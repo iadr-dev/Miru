@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "WebFetch(domain:*)",
+      "Bash(ls:*)",
+      "Bash(claude mcp:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(cd:*)",
+      "Bash(node:*)",
+      "Bash(npx:*)",
+      "Bash(pnpm:*)",
+      "Bash(uv:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(pytest:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Skill(**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_secret_writes.py\""
+          }
+        ]
+      }
+    ]
+  }
+}
