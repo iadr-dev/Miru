@@ -56,11 +56,7 @@ jobs:
         run: uv run pytest
 
       - name: Governance suite
-        # A layered PR that hasn't landed any governance-marked tests yet leaves this marker
-        # matching zero tests; pytest's own "no tests collected" exit code (5) is not a real
-        # failure in that case — only a genuine test failure (any other non-zero code) fails
-        # the build.
-        run: uv run pytest -m governance || [ $? -eq 5 ]
+        run: uv run pytest -m governance
 
   dual-dialect-migrations:
     name: dual-dialect Alembic (SQLite + Postgres)
@@ -98,15 +94,13 @@ jobs:
         run: uv sync --all-extras --frozen
 
       - name: Dual-dialect migration suite
-        # See the governance-suite step's comment: exit code 5 (zero tests matched) is not a
-        # real failure for a layered PR that hasn't landed dual-dialect-marked tests yet.
-        run: uv run pytest -m dual_dialect -v || [ $? -eq 5 ]
+        run: uv run pytest -m dual_dialect -v
 
       - name: Concurrency suite (real Postgres)
         # Shared-state race proofs that only mean something against a store allowing concurrent
         # writers; reuses the same Postgres service, so it rides along with the dual-dialect job
-        # rather than paying for a second container. Same zero-tests-matched tolerance as above.
-        run: uv run pytest -m concurrency -v || [ $? -eq 5 ]
+        # rather than paying for a second container.
+        run: uv run pytest -m concurrency -v
 
   secret-scan:
     name: secret scan (gitleaks)
