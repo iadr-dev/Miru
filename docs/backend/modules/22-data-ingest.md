@@ -236,11 +236,16 @@ machinery, dedupe key `(job_id, trigger_date)`.
 ## 5. Quota budgeting — whole-market-by-date is non-negotiable
 
 - **Whole-market-by-date** (`TaiwanStockPrice` etc. **without `data_id`, by `start_date`**) =
-  **≈1 call/dataset/day**. The full daily bundle is **~25–35 calls/day** — trivially inside even
-  Free 600/hr, and vast headroom on Sponsor 6000/hr. **This is the design.**
+  **≈1 call/dataset/day**. The full daily bundle is **~25–35 calls/day** — trivially inside the
+  platform's own operator-held FinMind token's rate ceiling, whichever plan it's on. **This is
+  the design.** (This is FinMind's own published per-plan rate limit on the platform's single
+  ingest token — a different concept from the per-user Sponsor-pool reservation described in
+  [modules/12](12-multi-user-tiers.md) §4, which gates *user-facing* Sponsor-tier tool calls,
+  not ingest.)
 - **Per-symbol is the trap** — ~2,000+ symbols × datasets = thousands of calls/dataset/day; one
-  dataset alone blows Free's 600/hr in ~18 min. **Never ingest per-symbol for market-wide EOD.**
-  Enforce whole-market at the router/adapter level; alert if a market-wide job issues >(datasets) calls.
+  dataset alone would exhaust even a generous hourly ceiling in minutes. **Never ingest
+  per-symbol for market-wide EOD.** Enforce whole-market at the router/adapter level; alert if a
+  market-wide job issues >(datasets) calls.
 - **Tier reality:** whole-market pulls require **≥Backer** (Free is a per-symbol interactive
   tier and 403s on whole-market — fail loud in preflight, surface via M5Q). The 分點/官股/產業鏈/
   主動ETF/tick datasets are **Sponsor-only**. Steady-state daily ingest is comfortable on Sponsor;

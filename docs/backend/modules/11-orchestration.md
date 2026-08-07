@@ -146,5 +146,6 @@ adapter maps role → provider/model from config.
 - The routing decision, each agent's tools (with `agent_id`), and synthesis provenance are
   journaled — a fan-out is reconstructable per lane.
 - Bounded by config: max **4** sub-agents, per-agent ReAct-iteration cap, per-turn tool-call
-  and **cost/token ceiling** (hard abort → degraded answer), plus FinMind per-tier limit
-  (600/hr free · 6000/hr Sponsor) with pre-flight reservation before fan-out. See §3b + [16](16-infrastructure.md).
+  and **cost/token ceiling** (hard abort → degraded answer), plus the FinMind Sponsor pool's
+  static 6000 req/hr ceiling (shared across all Premium/Pro users; Free never draws on it) with
+  pre-flight reservation before fan-out. See §3b + [16](16-infrastructure.md).

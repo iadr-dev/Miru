@@ -101,9 +101,9 @@ first provider and are user-overridable via `PATCH /me`.
 
 | Tier | AI chats/day | Req/min | FinMind class | Gated AI features |
 |------|--------------|---------|---------------|-------------------|
-| **Free** | 3 | 60 | Free (600/hr) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_score`, public factors); rule screener (public criteria); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
-| **Premium** | 100 | 300 | Sponsor (6000/hr) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot`), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, theme discovery, news_sentiment, web_search |
-| **Pro** | unlimited | 600 | Sponsor (6000/hr) | + tick/minute-K, **deep_research** (multi-step web), scheduler |
+| **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors); tag screener (`run_tag_screener`/`get_tag_catalog`); theme/tier lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
+| **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), full 多空 score (incl. 分點 chip sub-signal), news_sentiment. **`get_ai_summary`/`get_swot`/AI top-N ranking/theme discovery are design intent, not real tools yet** — see [module 20](20-analytics-scoring.md)'s implementation-status note. There is no per-turn `web_search` toggle in the real API today (`AgentQueryRequest` is `{message, thread_id}` only) |
+| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + tick/minute-K, **deep_research** (multi-step web), scheduler |
 
 **Price tiering:** Free = EOD only; Premium/Pro = `price_intraday` — a delayed snapshot pushed
 over SSE by the shared **demand-driven server poller** (5s, market-open only, [modules/16](../modules/16-infrastructure.md)
@@ -150,10 +150,12 @@ class Entitlements:                              # OUR gate — feature-tier + d
 Enforced at the `pre_turn` / `pre_llm` hooks ([10-events-hooks.md](10-events-hooks.md)):
 
 - **Request rate** (per-minute) and **daily chat count** per tier.
-- **FinMind quota** is now **tier-aware**: Free token = **600/hr**, Sponsor token =
-  **6000/hr** (corrected from earlier catalog note). A shared Sponsor token is pooled across
-  users, so the quota manager tracks usage against the pool and, when near the cap, degrades
-  gracefully (serve cached / `unavailable-tier`) rather than failing — surfaced via M5Q.
+- **FinMind quota** is a single static Redis-backed pool (6000 req/hr) shared across every
+  Premium/Pro user — atomically reserved before each Sponsor-tier fetch and refunded on
+  failure/under-use (`usage/finmind_pool.py::RedisFinMindPoolReserver`). Free tier never draws
+  on this pool at all; there is no Free-tier FinMind quota concept, and no live upstream
+  quota-polling call anywhere. Near the cap, requests degrade gracefully (serve cached /
+  `unavailable-tier`) rather than failing — surfaced via M5Q.
 - **LLM cost budget** per tier/user; `usage` accounting from [10](10-events-hooks.md) enforces it.
 
 ## 5. BYOK (bring your own key)
