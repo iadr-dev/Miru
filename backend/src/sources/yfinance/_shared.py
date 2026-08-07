@@ -82,11 +82,12 @@ def _init_tz_cache() -> None:
     error, or a re-fetch every process start) — this must happen before the first `Ticker`/
     `download` call, but importing this module must stay cheap, so it's deferred to first use
     rather than done at import time."""
-    global _tz_cache_initialized  # noqa: PLW0603 — one-time process-lifetime init, not shared
-    # mutable request state
+    # One-time process-lifetime init, not shared mutable request state.
+    global _tz_cache_initialized  # noqa: PLW0603
     if _tz_cache_initialized:
         return
-    import yfinance as yf  # noqa: PLC0415 — lazy import, see `_fetch_info_blocking`
+    # Lazy import — see `_fetch_info_blocking`'s own comment for why.
+    import yfinance as yf  # noqa: PLC0415
 
     settings = get_settings()
     yf.set_tz_cache_location(settings.yf_tz_cache_dir)

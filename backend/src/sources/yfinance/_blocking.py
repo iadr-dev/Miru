@@ -21,8 +21,9 @@ def _fetch_info_blocking(yahoo_symbol: str) -> dict[str, Any]:
     # `Ticker.get_info()`/frame-returning properties are dynamically-shaped `dict[str,
     # Any]`/`DataFrame`; this is the isolated 3rd-party edge, never crossed by callers of
     # fetch().
-    import yfinance as yf  # noqa: PLC0415 — lazy import: heavy/optional dep, loaded only
-    # inside this threadpool-run function so importing the adapter package itself stays cheap
+    # Lazy import: heavy/optional dep, loaded only inside this threadpool-run function so
+    # importing the adapter package itself stays cheap.
+    import yfinance as yf  # noqa: PLC0415
 
     _init_tz_cache()
     ticker = yf.Ticker(yahoo_symbol)
