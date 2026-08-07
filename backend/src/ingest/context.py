@@ -1,0 +1,41 @@
+"""Shared ingest run context — bundles the collaborators every job/backfill/preflight call
+needs (`FinMindAdapter`, `ParquetStore`, `LeaderElection`, `TradingDayCalendar`, TLS policy)
+so call sites take one object instead of five positional/keyword dependencies. Pure wiring,
+no behavior of its own.
+"""
+
+from __future__ import annotations
+
+from calendar.trading_days import TradingDayCalendar
+from dataclasses import dataclass, field
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from ingest.data_updates import DataUpdatePublisher, NoOpDataUpdatePublisher
+from ingest.leader import LeaderElection
+from ingest.store import ParquetStore
+from schemas.enums import Market, TLSPolicy
+from sources.finmind import FinMindAdapter
+
+
+@dataclass(frozen=True)
+class IngestContext:
+    """Everything a job function needs to run one whole-market-by-date pass."""
+
+    finmind: FinMindAdapter
+    store: ParquetStore
+    leader: LeaderElection
+    calendar: TradingDayCalendar
+    tls_policy: TLSPolicy = TLSPolicy.STRICT
+    market: Market = Market.TW
+    # The batch-completion invalidation signal — only the leader publishes it (the same
+    # leadership gate that guards the write). Defaults to a no-op so an ingest run with no
+    # transport wired still lands its partition; the client falls back to boundary revalidation.
+    data_update_publisher: DataUpdatePublisher = field(default_factory=NoOpDataUpdatePublisher)
+    # A DB session factory for jobs that write the relational store (the theme seed) rather than
+    # the Parquet store. Defaults to None: the whole-market Parquet jobs never touch it, and only
+    # a relational job asserts its presence — so the common ingest path composes without a DB.
+    session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+__all__ = ["IngestContext"]

@@ -1,0 +1,189 @@
+"""The `Tool` Protocol + `ToolContext` + the entitlement gate.
+
+Every agent action goes through a registered `Tool` — the agent never touches network/
+filesystem directly. All tools are **read-only and always runnable**; there is no
+safety-tier system and no confirmation/approval gate (a deliberate design choice, superseding an
+earlier safety-tier design). The *only* access control is the `data_class` entitlement check
+(`dispatch_tool` below), which substitutes a masked teaser for `sponsor` data instead of
+running the tool — never a hard error.
+
+Design notes (judgment calls):
+- The design sketches its own `DataClass` enum, but it is byte-for-byte the same
+  two-value shape (`public`/`sponsor`) as `schemas.enums.DataClass`, already built in Phase 1
+  and already carried on every `SourceResult`/`CanonicalRecord`/`ConversationFact`. Reusing it
+  here (rather than defining a duplicate, colliding `tools.base.DataClass`) keeps exactly one
+  `data_class` vocabulary project-wide.
+- `Tool` is declared as a `Protocol` (the project convention: depend on seams/Protocols, never
+  a concrete implementation) — callers
+  (the registry, the future agent runtime) type against this Protocol, never a concrete class.
+  `BaseTool` below is a plain (non-Protocol) implementation-sharing convenience: concrete tool
+  classes may subclass it to get `to_tool_spec()` for free, but nothing outside `tools/`
+  should ever type a variable as `BaseTool` — always `Tool`.
+- `to_tool_spec()` is the Phase 4 -> Phase 5 integration seam: it converts a `Tool`'s
+  `input_model` into an `llm.base.ToolSpec` (name/description/JSON-schema) so the future agent
+  runtime can hand `[t.to_spec() for t in registry.immediate_tools()]` to `LLMClient.chat`.
+  `llm/` is not listed in `tests/arch/test_layering.py`'s `LAYER_ORDER` (it sits beside `tools/`
+  as a leaf module the future `agent/` runtime depends on independently, per `llm/base.py`'s
+  own docstring) — so `tools -> llm.base` for this one type is not a tracked/forbidden edge,
+  and is the explicit integration point the phase-4 brief calls out.
+- `ToolContext.journal` is a placeholder (`object | None`) for Phase 7's audit-journal handle
+  (the future journal is expected to record every dispatch) — unused today,
+  kept so this model's shape doesn't need to change again once the journal lands.
+- **The real Phase-9 entitlement lookup plugs into `dispatch_tool` below** — see its docstring.
+"""
+
+from __future__ import annotations
+
+from typing import Literal, Protocol, runtime_checkable
+
+import structlog
+from pydantic import BaseModel, ConfigDict, Field
+
+from llm.base import ToolSpec
+from schemas.enums import DataClass, Tier, TLSPolicy
+
+logger = structlog.get_logger(__name__)
+
+
+def parse_args[T: BaseModel](model: type[T], args: BaseModel) -> T:
+    """Re-validate an arbitrary `BaseModel` instance into a tool's own `input_model` type.
+
+    `Tool.run(args: BaseModel, ...)` is deliberately typed against the base `BaseModel` (the
+    Protocol's contract) rather than each tool's concrete input type — a concrete
+    tool implementation calls this at the top of `run()` to recover its own typed model,
+    without an `isinstance`/`cast` dance at every call site.
+    """
+    return model.model_validate(args.model_dump())
+
+
+class ToolContext(BaseModel):
+    """Per-call context: caller identity/entitlement, the active
+    TLS policy, and a journal-handle slot.
+
+    `tier` stands in for the not-yet-built `accounts/entitlements` per-user lookup (Phase 9):
+    the future runtime resolves the authenticated (or anonymous -> `Tier.FREE`) caller's tier
+    and passes it here. **This module never queries a database or session itself.**
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    user_id: str | None = None
+    tier: Tier = Tier.FREE
+    tls_policy: TLSPolicy = TLSPolicy.STRICT
+    journal: object | None = None  # Phase 7 audit-journal handle — not wired yet
+
+
+@runtime_checkable
+class Tool(Protocol):
+    """The agent's action-surface contract.
+
+    `input_model`/`output_model` double as the MCP structured input/output schema. `run()` is
+    async end-to-end and must never touch `sources/`/the network directly — only via `context/`
+    or `dataaccess/`.
+    """
+
+    name: str
+    description: str
+    input_model: type[BaseModel]
+    output_model: type[BaseModel]
+    data_class: DataClass
+    card_type: str | None
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        """Execute the tool. Always runnable — no approval/confirmation gate."""
+        ...
+
+    def to_tool_spec(self) -> ToolSpec:
+        """Render this tool's schema as an `llm.base.ToolSpec` for the LLM adapter."""
+        ...
+
+
+class BaseTool:
+    """Implementation-sharing convenience for concrete `Tool` implementations.
+
+    Not a `Protocol`, not itself typed against by callers outside `tools/` (always use `Tool`)
+    — purely spares every concrete tool class from re-deriving `to_tool_spec()`.
+    """
+
+    name: str
+    description: str
+    input_model: type[BaseModel]
+    output_model: type[BaseModel]
+    data_class: DataClass
+    # Opt-in structured-card classification: a tool whose typed output is genuinely
+    # chart/table/gauge-shaped sets this to a stable label the frontend renders a card from;
+    # left at None (the default for every tool) it stays prose-only, so opting a tool in is an
+    # explicit, per-tool decision with no behavior change for the rest.
+    card_type: str | None = None
+
+    def to_tool_spec(self) -> ToolSpec:
+        return ToolSpec(
+            name=self.name,
+            description=self.description,
+            parameters=self.input_model.model_json_schema(),
+        )
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:  # pragma: no cover
+        raise NotImplementedError
+
+
+class MaskedTeaser(BaseModel):
+    """The masked-teaser envelope for an unentitled `sponsor` call — rendered blurred/馬賽克
+    with an upgrade CTA by the frontend. Never a hard error/exception; this is a normal,
+    successful tool result shape."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locked: Literal[True] = True
+    required_tier: Tier
+    preview: str = Field(min_length=1)
+    tool_name: str
+
+
+_ENTITLED_TIERS: frozenset[Tier] = frozenset({Tier.PREMIUM, Tier.PRO})
+
+
+def is_entitled(data_class: DataClass, tier: Tier) -> bool:
+    """Pure predicate: does `tier` satisfy `data_class`'s access rule?
+
+    `public` is free for everyone (incl. anonymous/`Tier.FREE`); `sponsor` requires
+    Premium/Pro. This has no side effects and performs no lookup of its own — `tier` is
+    supplied by the caller (see `dispatch_tool`).
+    """
+    if data_class is DataClass.PUBLIC:
+        return True
+    return tier in _ENTITLED_TIERS
+
+
+async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseModel | MaskedTeaser:
+    """The `pre_tool`-shaped entitlement gate.
+
+    A tool always runs — there is no approval/confirmation step. The *only* substitution this
+    function can make instead of running the tool is a `MaskedTeaser`, and only when
+    `tool.data_class == DataClass.SPONSOR` and `ctx.tier` isn't entitled.
+
+    **Phase-9 seam:** `accounts/entitlements.py` (not yet built) will eventually resolve
+    `ctx.user_id` to a live per-user tier and either construct `ctx` with that real tier before
+    calling this function, or replace `is_entitled(...)` with its own lookup — this function's
+    signature and masked-teaser shape are the stable contract that lookup plugs into. Nothing
+    here queries a database; `ctx.tier` is trusted as given (entitlement is meant to be resolved
+    per tool call, not cached for the turn — the *caller* re-resolves it each call).
+    """
+    if tool.data_class is DataClass.SPONSOR and not is_entitled(tool.data_class, ctx.tier):
+        logger.info("tool_entitlement_masked", tool=tool.name, tier=ctx.tier.value)
+        return MaskedTeaser(
+            required_tier=Tier.PREMIUM,
+            preview=f"{tool.name} requires a Premium or Pro subscription to unlock.",
+            tool_name=tool.name,
+        )
+    return await tool.run(args, ctx)
+
+
+__all__ = [
+    "BaseTool",
+    "MaskedTeaser",
+    "Tool",
+    "ToolContext",
+    "dispatch_tool",
+    "is_entitled",
+]
