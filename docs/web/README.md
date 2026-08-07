@@ -104,9 +104,9 @@ nav, `Enter` → Stock Detail, inline **☆ add-to-watchlist** per row (adapts K
 | 2 | **大盤 / Market** | chart-bar | `/market` (**`/` redirects here** — the default landing) | market-wide dashboard (two-row tabs: 台股/美股/ETF × 每日焦點/熱力圖/籌碼/…) — [market.md](market.md); `/market/*`, `/derivatives/*`, `/macro` ([api-reference §4a-2](../backend/api-reference.md)) |
 | 3 | **自選 / Watchlist** | star | **right-side rail toggle** (not a route) | `/memory` (type=watchlist, [09](../backend/modules/09-memory.md)) + `/quote`(`/quote/stream` Premium) — see [design-system §7.7](design-system.md#77-watchlist-rail-右側自選欄--drag-and-drop) |
 | 4 | **個股 / Stock** | chart-line | `/stock/{symbol}` | `/analytics/{symbol}/*` ([20](../backend/modules/20-analytics-scoring.md)), `/quote`, `/calendar?symbol=` |
-| 5 | **選股 / Screener** | funnel | `/screener` | funnel (gates→setup→rank) — [screener/README.md](screener/README.md); `/analytics/screener/*`, `/analytics/rankings` ([20](../backend/modules/20-analytics-scoring.md) §5); **主題 Themes** sub-tab → `/analytics/themes` (Premium) |
+| 5 | **選股 / Screener** | funnel | `/screener` | funnel (gates→setup→rank) — [screener/README.md](screener/README.md); `/analytics/rankings` is **real** (top/bottom-N leaderboard, [20](../backend/modules/20-analytics-scoring.md) §5), `/analytics/screener/*` (the custom AND/OR funnel + saved screens) is **not yet built** — the only real screener today is the tag-flag `run_tag_screener`/`get_tag_catalog` agent tool pair, no REST projection yet ([api-reference.md](../backend/api-reference.md) §4a); **主題 Themes** sub-tab → the real theme-lookup REST (`/themes/{key}`, `/themes/{key}/tiers`, `/symbols/{symbol}/themes`, all `public`, [api-reference.md](../backend/api-reference.md) §4a-3) — `/analytics/themes` (LLM-discovered concept themes, Premium) is a separate, not-yet-built endpoint |
 | — | ~~首頁 / Home~~ | — | **removed as a nav item** — there is no separate personal-dashboard destination. `/` **redirects to `/market`** (the default landing). The old Home blocks dissolve: 大盤概況/top-N live in **Market**; recent chats + prompt starters live in **Chat**; watchlist is the **right rail**; the pet streak is the sidebar Sisi footer. |
-| — | ~~行事曆 / Calendar~~ | — | **removed as a top-level nav item** — per-stock events live in Stock Detail › 研究圖表 ([stock-detail/研究圖表.md](stock-detail/研究圖表.md)); market-wide events in Market › 每日焦點 本週行事曆 block. Backed by `/calendar`, `get_dividend_schedule` ([18](../backend/modules/18-calendar-events.md)) — surfaced in-context, not a standalone destination. |
+| — | ~~行事曆 / Calendar~~ | — | **removed as a top-level nav item** — per-stock events live in Stock Detail › 研究圖表 ([stock-detail/研究圖表.md](stock-detail/研究圖表.md)); market-wide events in Market › 每日焦點 本週行事曆 block. **No `/calendar` REST route exists yet** — calendar data is real only as the agent tool `get_calendar_events` (`tools/calendar_tools.py`, `sponsor` data_class, [18](../backend/modules/18-calendar-events.md)); a page consuming it today goes through the agent/tool path, not a dedicated REST projection — surfaced in-context, not a standalone destination. |
 | — | ~~提醒 / Alerts~~ | — | **moved into Settings** ([settings/README.md](settings/README.md)) — alerts/schedules are a low-frequency Pro *config* surface, not a daily destination. The **notifications inbox** stays reachable via the 🔔 bell in the top bar on every page. Backed by `/alerts`, `/schedules`, `/notifications` ([14](../backend/modules/14-scheduler-alerts.md)). |
 | — | **設定 / Settings** | gear (bottom) | `/settings/*` | hub (incl. 提醒/alerts) — see §3.3 |
 
@@ -123,7 +123,10 @@ Thread list with sort/star/pin/archive/search/tags ([13](../backend/modules/13-c
 `/stock/{symbol}` route. Full spec: [stock-detail.md](stock-detail.md). Tabs (TW stock):
 `基本資料 · 產業分析 · 財務分析 · 籌碼分析 · 技術分析 · 智能摘要(含多空評分 score gauge + SWOT) ·
 相關新聞(即時/財經) · 研究圖表 · 即時🔒`. **多空評分 lives inside 智能摘要** (gauge = quantitative
-half, SWOT = narrative half). A docked **「問 Miru 關於此股」** launcher opens Chat pre-seeded with the symbol.
+half, SWOT = narrative half). The **score gauge half is real** (`GET /analytics/{symbol}/score`,
+[api-reference.md](../backend/api-reference.md) §4a); the **SWOT/AI-summary half is not yet
+built** (`GET /analytics/{symbol}/summary` has no backing tool/code today — same section). A
+docked **「問 Miru 關於此股」** launcher opens Chat pre-seeded with the symbol.
 
 ### 2.3 Settings hub (nested, gear — not daily destinations)
 | Sub-page | Backend |
@@ -134,7 +137,7 @@ half, SWOT = narrative half). A docked **「問 Miru 關於此股」** launcher 
 | **夥伴 / Pets** (collection, gacha, equip, streak) | `/pets/*` ([21](../backend/modules/21-pet-gamification.md)) |
 | 方案與帳單 / Billing (BYOK checkbox) | `/billing/*` ([15](../backend/modules/15-payments-paddle.md)) |
 | API 金鑰 / BYOK keys | `/me/keys` |
-| 用量 / Usage & quota | `/usage/quota`, `/usage/summary` |
+| 用量 / Usage & quota | `/usage/quota` (real — resolved limits, not live consumption); `/usage/summary` not built yet ([api-reference.md](../backend/api-reference.md) §6) |
 | 通知偏好 / Alert preferences | `/me/alert-preferences` ([14](../backend/modules/14-scheduler-alerts.md)) |
 | 記憶 / Memory | `/memory` list + delete ([09](../backend/modules/09-memory.md)) |
 
@@ -146,8 +149,14 @@ half, SWOT = narrative half). A docked **「問 Miru 關於此股」** launcher 
 Center column = the conversation over SSE; the **NL `activity` narration is the primary line**
 ("正在查 台積電 近 20 日籌碼…"), raw `thinking.delta`/tool internals collapsed behind a "顯示過程"
 disclosure ([07](../backend/modules/07-conversation-streaming.md) §narration). `rich_card` renders
-stock cards / score gauges inline; `caveat` badge on every analytical answer; `follow_up` chips
-below. **`tool.locked` → inline 馬賽克 teaser + upgrade CTA** (§5). Composer: text + voice mic
+stock cards / score gauges inline (**real, built** — see [api-reference.md](../backend/api-reference.md)
+§1); `caveat` badge on every analytical answer (**real**); `follow_up` chips below (**not yet
+built**). **`tool.locked` → inline 馬賽克 teaser + upgrade CTA (§5) is design intent — that SSE
+frame kind is not emitted yet**; a masked `sponsor` result comes back inline in the final
+answer/`tool.result` payload today, so the UI must degrade to reading it from there until
+`tool.locked` lands ([api-reference.md](../backend/api-reference.md) §1's implementation-status
+note). `activity`/`thinking.delta` themselves are also not yet emitted (same note) — this section
+describes the target design, not the current stream. Composer: text + voice mic
 (Premium, confirm-before-send [13](../backend/modules/13-chat-interaction-features.md)). Steering:
 sending mid-run queues a steering message (no cancel). **Parallel sub-agent fan-out renders as
 side-by-side lanes** on the wide canvas ([07](../backend/modules/07-conversation-streaming.md) §run-tree).

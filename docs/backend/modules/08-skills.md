@@ -67,68 +67,160 @@ outputs: markdown | rich_card                                # caveated, non-tra
 The body is **not** code that bypasses the loop — it is guidance the loop follows, so **all
 global guardrails still apply**: even if a trigger keyword is 該買嗎 ("should I buy?"), the skill
 **reframes to descriptive factor context** and `guardrails.check_output` still blocks any
-buy/sell/target/sizing language. Level-3 `resources` load on demand via `read_skill_resource(name)`.
+buy/sell/target/sizing language. Level-3 `resources` load on demand via
+`SkillRegistry.read_resource(name, filename)` — **there is no `read_skill_resource` tool**;
+several `SKILL.md` bodies (e.g. `chip-flow-review`) reference that name conditionally ("if
+`read_skill_resource` is available"), but it is not registered in `tools/` and not reachable by
+the agent as a tool call today — only `SkillRegistry` itself can call `read_resource` directly.
 
 ## Invocation
 
 This is a **web/mobile chat** product, so skills are **not** primarily triggered by typed
-slash commands (that's a CLI affordance). Triggering, in priority order:
+slash commands (that's a CLI affordance). The real, built mechanism (`orchestrator/
+classifier.py::IntentClassifier`) is a single path, not the three-tier priority list the
+original design sketched:
 
-1. **Classifier-selected (primary):** the orchestrator's intent classifier
-   ([11-orchestration.md](11-orchestration.md)) — an **LLM call** — reads the natural-language
-   message and picks 0–4 skills **+ the framework** (only the LLM can pick the framework, so it is
-   the primary decision-maker). Each skill's `triggers` keywords play a supporting role via a
-   **deterministic keyword matcher**: a **fast-path** (an unambiguous keyword hit can pre-pin a skill
-   without waiting on the classifier) and the **fallback** (if the classifier call fails,
-   keyword-match `triggers` and default the framework to `single` — see [11](11-orchestration.md)
-   §1). This is how most skills run — the user types "全面分析 2330" and the classifier assigns
-   `[chip-flow-review, earnings-quality, valuation-band]`.
-2. **UI action chips (secondary):** the web/mobile client renders quick-action buttons
-   ("Analyze chips", "Compare ETFs", "Valuation") that map to a skill — the GUI equivalent
-   of a slash command, one tap instead of typed syntax. Sent as a structured hint that
-   pins the skill, bypassing classification.
-3. **`/skill` shortcut (optional, power-user):** if a client's input box supports it,
-   `/chip-flow-review 2330` is accepted as a convenience alias — not load-bearing, and not
-   required on any surface.
+1. **Classifier-selected (the only real path):** a cheap LLM call
+   (`orchestrator/classifier.py`) reads the natural-language message + the skill menu and
+   returns a `Routing` (framework + 0–4 skills + a short reason), journaled as `route.decided`.
+   This is how skills run today — the user types "全面分析 2330" and the classifier assigns
+   `[chip-flow-review, earnings-quality, valuation-band]` with `framework=subagent`.
+2. **Keyword match is a *failure fallback only* — not a fast-path.** `_keyword_fallback` scores
+   each skill's `triggers` against the message and pre-pins the single best-scoring match with
+   `framework=single`, but it only ever runs when the classifier LLM call itself fails
+   (transport error, unparseable JSON, an invalid verdict) — the module's own docstring is
+   explicit that an unambiguous keyword hit does **not** pre-pin a skill or bypass the classifier
+   while it's available. There is no keyword fast-path that races or short-circuits the LLM call.
+3. **UI action chips and the `/skill` shortcut are not built.** `POST /agent/query`'s
+   `AgentQueryRequest` (`api/routers/agent.py`) carries only `message`/`thread_id` — there is no
+   field for a pinned-skill hint from a quick-action button, and no `/skill-name` parsing exists
+   anywhere in the request path. Both are design intent only.
 
-However triggered, the skill is loaded into context, its `tools` allowlist is enforced by
-guardrails for the duration, and execution streams over the same SSE protocol. If a skill's
-allowlist includes `sponsor` tools, those results are entitlement-masked for unentitled users
-(the skill still runs and reports around the masked section).
+However triggered, the skill's `tools` allowlist is resolved to concrete tools and handed to the
+lane's `AgentLoop` (`orchestrator/orchestrator.py::_tools_for`) — a tool outside the allowlist is
+simply never in the loop's tool set, so it's unreachable by construction; there is no separate
+runtime "refusal" check on an attempted out-of-allowlist call in the request path itself (that
+predicate, `skills/registry.py::enforce_allowlist`, exists and is unit-tested but is not called
+from `orchestrator/` today — the allowlist is enforced by *what tools the lane is given*, not by
+intercepting a call to a disallowed name). If a skill's allowlist includes `sponsor` tools,
+those results are entitlement-masked for unentitled users via `tools.base.dispatch_tool` (the
+skill still runs and reports around the masked section).
 
 ## Registry & governance
 
-- `skills/registry.py` discovers skills from a `skills/` dir (built-in) and an optional
-  user dir. Each is validated against a schema on load.
-- **Tool allowlist:** a skill may only call tools in its `tools` list; the runtime refuses
-  any other call. `sponsor` tools in the list are entitlement-masked per user (no approval).
+- `skills/registry.py::SkillRegistry.load(directories)` discovers skills from every
+  `<dir>/*/SKILL.md` given. The real composition root (`orchestrator/composition.py::
+  build_skill_registry`) only ever passes the one bundled built-in directory
+  (`skills/built_ins/`) — **there is no optional user skill directory wired up today**; `load`
+  accepts a list so a second directory is structurally possible, but nothing in the app passes
+  one. Each `SKILL.md` is validated against `skills.models.SkillFrontmatter` on load; a
+  malformed manifest raises `SkillValidationError` at startup rather than being silently
+  skipped, and a duplicate skill name across directories also raises.
+- **Tool allowlist:** a skill may only call tools in its `tools` list — enforced *by
+  construction*: `orchestrator/orchestrator.py::_tools_for` resolves only the allowlisted tool
+  names into the lane's `AgentLoop`, so a disallowed tool simply isn't in the set the loop can
+  dispatch. The separate `skills.registry.enforce_allowlist` predicate (raises
+  `ToolNotAllowedError`) exists and is unit-tested but is not called anywhere in the request
+  path — it's the pure-function half of the guarantee, not an active runtime interceptor.
+  `sponsor` tools in the list are entitlement-masked per user via `tools.base.dispatch_tool`
+  (no approval step).
 - **Non-trading:** skill outputs pass the same `guardrails.check_output` — no skill can emit
   trading signals, regardless of its instructions.
-- Skills are versioned; the journal records which skill+version produced a finding, so an
-  external handoff (conversation package) is reproducible.
+- **Skills are versioned in their frontmatter** (`SkillFrontmatter.version`), logged once at
+  registry load time (`skill_loaded` structlog line). **The per-turn journal does not record
+  which skill+version produced a finding** — `agent.journal.JournalEntry` has no skill/version
+  field; only `tool_name`/`agent_id`/`parent_agent_id` are journaled per Step. Skill+version
+  traceability for an external handoff is therefore not yet reproducible from the journal alone.
 
 ## Starter skill set (built-in)
 
 | Skill | Purpose | Uses sponsor data? |
 |-------|---------|--------------------|
 | `chip-flow-review` | 三大法人/融資融券/借券/分點 flows for a stock | 分點 (sponsor); rest public |
-| `etf-compare` | Compare holdings/NAV/折溢價/fees/yield/受益人數 of two ETFs | active-ETF holdings (sponsor) |
-| `earnings-quality` | Revenue trend + margin/ROE/FCF read from statements | no (public) |
+| `etf-compare` | Compare two ETFs on fund-level metadata + holdings/money-flow (NAV/折溢價/受益人數/fees/yield not covered — no adapter) | active-ETF holdings (sponsor) |
+| `earnings-quality` | Revenue trend + balance-sheet/cash-flow-derived quality read + settled dividend results | no (public) |
 | `valuation-band` | PE/PB band + yield context vs history | no (public) |
-| `derivatives-positioning` | 期權 OI / PC ratio / 大額交易人 context | no (public) |
+| `derivatives-positioning` | 期權 OI / P-C ratio (self-computed from raw volume) / 大額交易人 context / VIX | 大額交易人 OI + VIX (sponsor); rest public |
 | `daily-context-brief` | Assemble conversation brief for a watchlist | no (public) |
-| `disposition-watch` | 處置/注意股 status, disposition period & "最快 N 日後進入處置" forecast | no (public) |
-| `catalyst-scan` | MOPS 重大訊息/董事會決議/庫藏股/內部人/法說會/自結 catalysts for a stock, classified | no (public) |
-| `governance-risk` | 質押比/資金貸與/背書保證/訴訟裁罰 red-flag gate | no (public) |
-| `news-sentiment` | Near-real-time news + PTT stock buzz + sentiment for a symbol | no (public) |
+| `disposition-watch` | 處置有價證券 announcement stream (注意股 side + escalation forecast not covered — no adapter) | disposition stream (sponsor) |
+| `catalyst-scan` | MOPS 重大訊息 (today only) + 董監事持股/質押 for a stock (董事會決議/庫藏股/法說會/自結 not covered — no adapter) | no (public) |
+| `governance-risk` | 質押比 (董監事持股) + 資金貸與/質押 collateral balance (背書保證/訴訟裁罰 not covered — no adapter) | collateral balance (sponsor); rest public |
 | `active-etf-flow` | 主動式ETF 操作日報 + cross-ETF 資金流向 (流入/流出, 加碼/減碼, 多空共識) | active-ETF holdings (sponsor) |
-| `market-pulse` | 大盤: 加權/櫃買, 指數貢獻排行, 產業別漲跌, 個股漲跌分佈/家數 | no (public) |
-| `company-profile` | 個股資訊卡: 基本資料 (產業/董座/成立/總部/官網/資本額) + 財務概況 (市值/PE/PB/營收YoY/三率/EPS) | no (public) |
-| `analyst-consensus` | 目標價/評等/升降評 + earnings/revenue consensus (yfinance, large-cap; attributed third-party estimate) | no (public) |
-| `market-calendar` | Upcoming events for watchlist/market (除權息/配息, 股東會, 法說會, 財報/月營收 deadlines, 期貨結算, rebalance, macro) | no (public) |
-| `technical-read` | Full 技術面 read: 均線排列, KD/MACD/RSI, 布林, **量能 (volume/OBV/VWAP + 爆量/量縮)**, **支撐/壓力 (support/resistance levels + break/false-break)**, **N 波回檔 (impulse to a key level → pullback → hold)**, K-line patterns — all 描述, non-trading | no (public) |
-| `multi-factor-score` | Lean 5-factor 多空 composite (momentum/RS · trend · value · quality · 籌碼-flow), horizon-aware (swing/position) + 偏多/中性/偏空 band + breakdown + regime caveat | 分點 flow sub-signal (sponsor); rest public |
-| `ai-summary-swot` | AI 智能摘要 + 市場定位 + SWOT, grounded in the factor scores (attributed, caveated) | no (public); AI feature = Premium+ |
-| `stock-screener` | The funnel — hard gates (liquidity/處置/…) → setup screen or named preset (Minervini/CANSLIM/Weinstein/Piotroski/Magic Formula/TW) → rank survivors | public/sponsor per criteria |
-| `theme-discovery` | LLM-discovered emerging themes + 資金流向 per theme | no (public); AI feature = Premium+ |
-| `live-snapshot-check` | Bounded live-ish observation | real-time snapshot (sponsor) |
+| `company-profile` | 個股資訊卡 (narrow): sector/industry classification + latest announced dividend, missing MOPS-sourced fields disclosed | no (public) |
+| `live-snapshot-check` | Bounded, delayed TWSE MIS live-ish quote snapshot, one explicit check at a time | no (public) |
+
+**Not built this pass (see the audit below for why):** `news-sentiment`, `analyst-consensus`,
+`market-calendar`, `market-pulse`, `technical-read`, `ai-summary-swot`, `theme-discovery`.
+`multi-factor-score` and `stock-screener` were originally listed here too but are now built —
+see `stock-score` and `stock-screener` in the catch-all table below.
+
+## Catch-all skills (cover previously-orphaned tools, not in the original 20-skill starter set)
+
+The tool-registry pass ([03-tools.md](03-tools.md)) landed far more real tools than the
+original 20-skill starter set's stated scope covers — see that doc's "Registered tools" section
+for the current authoritative count, which grows as new tool groups land. Rather than leave the long tail
+unreachable (a skill's `tools` allowlist is the *only* way the runtime will dispatch a tool —
+see the enforcement rule above), the following skills were added to give every remaining real
+tool a coherent, natural-language-triggerable home:
+
+| Skill | Purpose | Uses sponsor data? |
+|-------|---------|--------------------|
+| `margin-and-short-interest` | 融資融券/借券/融資維持率/外資持股/股權分散 for one stock, plus whole-market margin/short totals on request | 股權分散 + 大盤融資維持率 (sponsor); rest public |
+| `block-trade-and-broker-flow` | 鉅額交易 (plain + broker-level) + 分點進出彙總 + 八大官股買賣 for one stock | all sponsor (broker directory lookup is public) |
+| `futures-options-market-data` | 期貨/選擇權 contract roster, EOD price/volume/OI, dealer volume, spread quotes, FinMind + TAIFEX settlement, asset swap | spread/settlement/asset-swap (sponsor); roster/EOD/dealer-volume/TAIFEX settlement public |
+| `convertible-bond-review` | One CB's profile (roster/overview/put schedule) + trading/institutional-flow/custody picture | all sponsor |
+| `macro-dashboard` | 匯率/利率/黃金/原油/美債殖利率/Fear-Greed + TW 景氣對策信號 (market-level, no per-symbol scope) | all sponsor |
+| `international-equity-snapshot` | yfinance-backed non-TW options/holders/fund-holdings/market-status/sector-overview/calendars + FinMind's own international roster+price, for US/GB/JP/EU | US minute price (sponsor); rest public |
+| `reference-data-lookup` | Symbol search/lookup (non-TW), TW stock/warrant roster, trading calendar, active-ETF roster, warrant-underlying mapping, source matrix | warrant-underlying (sponsor); rest public |
+| `market-breadth-and-flow` | TAIEX/TPEx 5-second index/order-book snapshots, whole-market 三大法人 totals + one-stock wide view, 報酬指數, non-TAIEX index snapshots, US/GB/JP/EU equity screener (漲跌分佈/家數 + 指數貢獻排行 not covered — no adapter) | non-TAIEX index snapshot (sponsor); rest public |
+| `corporate-actions-and-market-value` | 減資/下市/分割/面額變動 events, daily market value + market-cap-weight ranking, 當沖 eligibility, 漲跌停參考價 | market value + weight ranking (sponsor); rest public |
+| `intraday-and-multi-timeframe-price` | Tick-level trades, minute K-bars, weekly/monthly bars, ten-year price line, 暫停交易 announcements for one stock | all sponsor |
+| `industry-chain-money-flow` | 產業鏈資金流 whole-market aggregate (single trading day) + a stock's static 產業鏈分類 | all sponsor |
+| `finmind-stock-news` | FinMind's own news dataset for one stock, one trading day at a time (distinct from the excluded RSS/GDELT/Finnhub aggregator + PTT buzz) | no (public) |
+| `theme-lookup` | 主題/產業鏈查詢: what theme a stock is in, what stocks are in a theme, and a theme's upstream/midstream/downstream breakdown — over the relational theme store (industry-chain facts vs AI-researched concept members distinguished, curated vs heuristic tiers distinguished) | no (public) |
+| `stock-score` | 多因子綜合評分: one symbol's cached 5-factor composite (momentum/trend_quality/value_guard/quality/revenue_flow) + descriptive band, swing/position horizon profiles, plus the whole-TW-universe bullish/bearish leaderboard — both cache-only, daily-batch reads | no (public) |
+| `stock-screener` | 標籤篩選器: discover the real tag catalog (技術面/籌碼面/熱門/智能) via `get_tag_catalog`, then AND/OR-match TW symbols against named end-of-day tags via `run_tag_screener` — a daily-batch-computed descriptive filter, never a ranked recommendation | no (public) |
+| `etf-overlap-and-comparison` | 3檔以上非台股ETF持股重疊比較 (`get_etf_overlap`) + 跨市場（含台股）股利再投入總報酬比較 (`get_fund_comparison`), with honest disclosure of the TW-holdings/NAV adapter gap | no (public) |
+
+**Deliberately still uncovered by any skill:** `web_search`/`fetch_url` (enablement-gated
+generic tools, not skill-shaped — the agent decides when to use them directly, subject to the
+per-turn web-search toggle, not via a skill allowlist).
+
+**Real-backing check (as of this pass).** Every skill in both tables above is backed by real,
+named tools verified directly against `backend/src/tools/*.py` (not just this doc's prior
+description) — no skill invents a field or capability its tools don't actually return. Several
+skills are honestly narrower than the original design intended, and say so explicitly in their
+own `SKILL.md` `boundaries`/output-structure, mirroring `company-profile`'s established
+`missing_fields` pattern: `catalyst-scan` (no 董事會決議/庫藏股/法說會/自結 adapter),
+`governance-risk` (no 背書保證/訴訟裁罰 adapter), `disposition-watch` (no TPEX 注意股 adapter,
+no escalation forecast), `etf-compare` (no NAV/折溢價/受益人數/fees/yield adapter),
+`market-breadth-and-flow` (no 漲跌分佈/家數 or 指數貢獻排行 adapter).
+
+**Audit — which of the 9 originally-not-built rows above remain not built, and why:**
+- **Still blocked, no real tool covers any of the stated scope:** `news-sentiment` (news/PTT
+  tools were explicitly excluded from wrapping this pass — see [03-tools.md](03-tools.md)),
+  `analyst-consensus` (the `analyst_consensus` capability exists in `sources/yfinance/` and
+  feeds context-building, but no tool wraps it), `market-calendar` (the TW-first
+  `get_calendar_events` this skill needs has no real tool — only the narrower, non-TW
+  `get_calendar_events_feed`, now used by `international-equity-snapshot`, exists),
+  `market-pulse` (加權/櫃買 breadth + 指數貢獻排行 have no real tool — only the plain
+  `get_taiex_index_snapshot` index level exists, now used by `market-breadth-and-flow`).
+- **Blocked on [module 20](20-analytics-scoring.md), confirmed unchanged:** `technical-read`
+  (`get_indicators`), `ai-summary-swot` (`get_ai_summary`/`get_swot`) — `analytics/` still has no
+  `indicators/` or `summary/` subpackage, so neither has a real tool of that name in `tools/`
+  today. Not re-litigated by this pass — tracked against module 20.
+- **No longer blocked — now built:** `multi-factor-score` and `stock-screener` were tracked here
+  as blocked on module 20's `analytics/scoring/` and `analytics/screener/` subpackages; both
+  subpackages have since landed (`get_stock_score`/`get_score_leaderboard` in `score_tools.py`,
+  `run_tag_screener`/`get_tag_catalog` in `screener_tools.py`), and are now wrapped by the
+  `stock-score` and `stock-screener` skills above rather than the originally-named
+  `get_score`/`get_score_breakdown`/`run_screener`/`get_factor_catalog`/`get_top_stocks` tool
+  names (the real registry's naming, per [03-tools.md](03-tools.md), diverged from the original
+  design the same way several other tool groups did).
+- **Theme lookup now real (was `theme-discovery`, split):** the `analytics/themes/` data layer
+  (industry-chain + concept themes, memberships, tiers) is built and now reachable — the
+  `theme-lookup` skill above wraps the three real `theme_tools.py` tools
+  (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`). What remains not built is the
+  richer `theme-discovery` framing (`get_themes`/`get_theme_flow` — LLM-surfaced themes ranked by
+  資金流向), which is a scoring/flow concern still tracked against module 20, distinct from the
+  now-live relational theme *lookup*.

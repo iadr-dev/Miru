@@ -89,7 +89,7 @@ self-heals on the next page load (no separate ledger job needed at this scale).
 PADDLE_API_KEY            = server-side key            # encrypted at rest, never client-exposed
 PADDLE_WEBHOOK_SECRET     = signature verification
 PADDLE_CLIENT_TOKEN       = Paddle.js (publishable)
-PADDLE_ENV                = sandbox | production
+PADDLE_ENVIRONMENT        = sandbox | production        # config.settings.paddle_environment
 PADDLE_PRICE_*            = the 8 IDs above
 ```
 

@@ -25,11 +25,12 @@ catalog, tuning, and mechanics below are **our own** (values are our config, not
 
 ## 1. Catalog & rarity
 
-Our pet catalog (`config`, code-defined — not a DB table) is a fixed set across **4 rarities** —
-common / uncommon / rare / legendary. Each entry: `pet_id`, `name`, `name_zh`, `rarity`, bilingual
-`description`. TW/finance flavor lives only in names/descriptions — the 藍鵲/Sisi flagship
-([../../brand.md](../../brand.md) §3a) plus a 台灣特有種 line (石虎 / 黑面琵鷺 / 櫻花鉤吻鮭…). **No combat
-stats** — the only per-owned-pet state is `level` + `xp`;
+Our pet catalog (`config`, code-defined — not a DB table) is a fixed set of **15 pets** across
+**4 rarities** — common / uncommon / rare / legendary. Each entry: `pet_id`, `name`, `name_zh`,
+`rarity`, bilingual `description`. TW/finance flavor lives only in names/descriptions — the
+藍鵲/Sisi flagship ([../../brand.md](../../brand.md) §3a) plus a wider 台灣特有種 line (石虎 / 黑面琵鷺 /
+櫻花鉤吻鮭 / 台灣藍鵲 / 帝雉 / 台灣黑熊 / 水鹿 / 台灣獼猴 / 大冠鷲 / 台灣山羊 / 白面鼯鼠 / 台灣野豬 /
+台灣長鬃山羊 / 穿山甲…). **No combat stats** — the only per-owned-pet state is `level` + `xp`;
 rarity is purely a drop-weight + a companion-persona tier.
 
 ## 2. Data model (relational — Postgres/SQLite, **not** the market-data store)
@@ -51,64 +52,83 @@ code). Consumes **1 `available_pulls`** (atomic reserve-before-act, so a double-
 — [modules/16](16-infrastructure.md) §10). Mechanics:
 
 - **Pity system** — `pity_counter++` each pull; guarantees a rare/legendary at our configured
-  thresholds (`pets.pity.rare_at` / `pets.pity.legendary_at` — starting ≈ 30 / 50, chosen for a
-  reasonable pulls-to-legendary at our cadence). Equipping a higher-rarity pet lowers the thresholds
-  slightly (a loyalty perk). Counter resets on a rare/legendary hit.
+  thresholds (`pets.config.PITY_RARE_AT` / `PITY_LEGENDARY_AT` = **30 / 50**, chosen for a
+  reasonable pulls-to-legendary at our cadence). Counter resets on a rare/legendary hit
+  (`SqlAlchemyPetStore._roll_rarity`). **Not yet built:** any loyalty perk that lowers the
+  thresholds for equipping a higher-rarity pet — the current implementation applies the same
+  fixed thresholds to every pull regardless of what is equipped.
 - **Duplicate** → the pull instead grants **+XP** to the already-owned pet (`pets.xp_per_duplicate`),
   so a dup is never wasted.
 - **First-ever pet auto-equips.**
 
 ## 4. XP & leveling
 
-- Max level + XP curve are **our** config (`pets.max_level`, `pets.xp_curve`); level-ups roll over
-  surplus XP. Values are ours to tune, not inherited.
-- **XP sources:** (a) **chatting** — each completed agent turn grants XP to the *equipped* pet;
-  (b) **login streak** — consecutive-day logins; (c) **duplicate pulls**.
-- **Milestone bonus pulls** — crossing configured levels (e.g. L5 → +1 pull, L10 → +2) and
-  every N chats / every 7-day streak grant `available_pulls`. One-time per milestone.
+- Max level + XP curve are **our** config (`pets.config.MAX_LEVEL` = 30, `XP_PER_LEVEL` = 100
+  flat); level-ups roll over surplus XP (`SqlAlchemyPetStore._apply_xp`). Values are ours to
+  tune, not inherited.
+- **XP sources (store methods exist; only the duplicate-pull path is actually wired):**
+  (a) **chatting** — `PetStore.grant_chat_xp` grants XP to the *equipped* pet and bumps
+  `chat_count`; (b) **login streak** — `PetStore.register_login` runs the consecutive-day streak
+  logic; (c) **duplicate pulls** — `PetStore.pull` awards `XP_PER_DUPLICATE` on a dup, and this
+  path IS wired (every `POST /pets/pull` call). **Not yet built:** nothing in the turn-lifecycle
+  or auth/login path calls `grant_chat_xp` or `register_login` — no router, no
+  `api/turn_driver.py` hook, no post-login handler invokes either method today, so a real chat
+  turn or login currently grants no pet XP/streak in the running app even though the store logic
+  is implemented and unit-tested (`tests/pets/test_store.py`).
+- **Milestone bonus pulls** — crossing configured levels (`pets.config.LEVEL_MILESTONE_PULLS =
+  {5: 1, 10: 2, 20: 3}`) and every `CHATS_PER_BONUS_PULL` (25) chats / every
+  `STREAK_DAYS_PER_BONUS_PULL` (7) day streak grant `available_pulls`. One-time per milestone
+  (`_apply_xp`'s crossing check makes this idempotent on retry — see its docstring). Reachable
+  only once chat/login wiring above exists.
 - All XP/pull mutations are **atomic upserts** on `user_pet_stats` / `user_pets` (concurrency
   §10) — parallel turns on multiple devices can't lose an update or double-grant.
 
-## 5. Reactive companion in chat (the standout integration)
+## 5. Reactive companion in chat (design intent — tone modulation is real, SSE reactions are not)
 
-The equipped pet is wired into the agent loop as a **tone modulator + reaction emitter** —
-**not** a second speaker and **not** part of the analysis:
-
-- **Tone modulation:** `pets/persona.py` injects a small rarity/level-scaled **persona hint**
-  into the assistant's system prompt (e.g. common = a light encouraging closing line; rare =
-  slightly richer phrasing; a high level adds a friendlier tone). It changes *how warmly* the
-  assistant phrases things — **never what data, score, or caveat it produces**. The pet hint is
-  the **lowest** styling layer — appended *after* the governance prompt **and the agent
-  personality** ([modules/23](23-agent-personality.md) §1: governance → personality → skill → pet)
-  — and **cannot override guardrails** ([modules/05](05-agent-runtime.md)):
-  `guardrails.check_output` runs on the final text regardless, so no persona can introduce trading
-  language or drop a caveat. (Personality = the base analyst voice; the pet is a lighter nudge on top.)
-- **Reaction events (SSE):** the pet avatar reacts via dedicated stream events, rendered in a
-  **separate companion UI region**, visually distinct from the analysis:
-  - `pet.reaction` — avatar animation cue (thinking / done / a watched symbol moved).
-  - `pet.leveled` — level-up celebration mid-stream.
-  - `pet.pull_earned` — a milestone granted a pull.
-  These are additive frames on the existing envelope ([modules/07](07-conversation-streaming.md),
-  [10](10-events-hooks.md)) — the client can ignore them entirely with zero effect on the answer.
-- **Hard separation from advice:** the pet **never** emits analysis, a score, or a
-  recommendation. Its copy is flavor only ("我在幫你看盤面～" as a spinner line), and it is rendered
-  outside the answer/caveat area so a user can't mistake mascot chatter for analysis (§ governance).
+- **Tone modulation — real, wired.** `pets/persona.py`'s `pet_hint_for(pet)` renders a small
+  rarity/level-scaled **persona hint** string (e.g. common = a light encouraging closing line;
+  legendary = warmer, more companion-like phrasing; level ≥10 adds a friendlier note). It changes
+  *how warmly* the assistant phrases things — **never what data, score, or caveat it produces** —
+  and the module has no import of `accounts`/entitlements/tools by design.
+  `agent.prompts.PromptLayers.pet_hint` is the seam this string is meant to occupy, appended
+  *after* the governance prompt **and the agent personality** ([modules/23](23-agent-personality.md)
+  §1: governance → personality → skill → pet), so it can never override guardrails
+  ([modules/05](05-agent-runtime.md)) — `guardrails.check_output` runs on the final text
+  regardless. **However, `pet_hint_for` is not yet called from `orchestrator/orchestrator.py`** —
+  today's `PromptLayers` are built with `personality` set but `pet_hint` always `None`
+  (`_skill_prompt_layers`/`default_prompt_layers` never populate it), so the pet hint is proven
+  correct by `tests/pets/test_persona.py` in isolation but does not yet reach a live turn's system
+  prompt. Wiring it in is a small addition (call `pet_hint_for(active_pet)` and set the field), not
+  a redesign.
+- **Reaction events (SSE) — not yet built.** No `pet.reaction` / `pet.leveled` / `pet.pull_earned`
+  stream-event kind exists in `conversation/models.py` or the event bus today, and no code emits
+  one. The companion-avatar reaction UI (thinking / done / level-up celebration / pull-earned
+  toast) described here is design intent for a later slice, not implemented.
+- **Hard separation from advice (upheld by construction):** the pet mechanism has no path to emit
+  analysis, a score, or a recommendation — `pets/` never imports `tools`/`orchestrator`'s
+  analysis path, and the one real integration point (`pet_hint_for`) only ever returns a tone
+  string that has no room for trading language by construction.
 
 ## 6. Onboarding & lifecycle flows
 
-**New user (register):**
+**New user (register) — real, reachable today:**
 1. OAuth sign-up completes ([modules/12](12-multi-user-tiers.md)) → `user_pet_stats` seeded
-   with `available_pulls = 1` (lazy `_ensure_stats` on first pet-endpoint access).
+   with `available_pulls = 1` (lazy `ensure_stats`/`_ensure_stats` on first pet-endpoint access,
+   or on the first `pull` call if no stats row exists yet).
 2. Client shows the **welcome gacha modal** with an animated pull bar → `POST /pets/pull`.
-3. Pet revealed (rarity animation), **auto-equipped**, companion appears in chat.
+3. Pet revealed (rarity animation), **auto-equipped**, companion appears in chat (contingent on
+   the pet-hint wiring gap in §5 above — the persona hint is not yet reaching the live prompt).
 
-**Existing user (return):** on login, the streak logic runs (yesterday → `streak_days++`;
-every 7-day streak → +1 pull); accrued XP/pulls from prior chats are already applied. If
-`available_pulls > 0`, the client surfaces a "you have a pull" nudge.
+**Existing user (return) — store method exists, not yet called on login:**
+`PetStore.register_login` implements the streak logic (yesterday → `streak_days++`; every
+7-day streak → +1 pull; idempotent same-day), but **no login/auth code path calls it** — see the
+gap noted in §4. Once wired, this is the intended flow: accrued XP/pulls from prior chats are
+already applied; if `available_pulls > 0`, the client surfaces a "you have a pull" nudge.
 
-**Ongoing loop:** chat → equipped pet gains XP → level-ups (`pet.leveled`) + milestone pulls
-(`pet.pull_earned`) → pull new pets → equip favorite. `GET /pets/progress` returns streak,
-chat_count, available_pulls, pity thresholds, next milestones, and collection completion (N/total).
+**Ongoing loop (design intent, pending the §4/§5 wiring gaps):** chat → equipped pet gains XP →
+level-ups + milestone pulls → pull new pets → equip favorite. `GET /pets/progress` (real, wired)
+returns streak, chat_count, available_pulls, pity thresholds, next milestones, and collection
+completion (N/total) from whatever state the stats row currently holds.
 
 ## 7. Endpoints
 
@@ -127,10 +147,11 @@ All scoped by `user_id`; standard session auth. No tier check anywhere in this m
 - **Fully outside the analysis + entitlement path.** Pets grant no data access, no quota, no
   analytical capability; rarity/level affect only cosmetic tone. Not gated by tier; not part of
   `data_class`; not billed. A pet can never change a trading-relevant output.
-- **Guardrails supersede persona.** The persona hint is appended after the governance prompt
-  and is subject to `guardrails.check_output` — it can never introduce buy/sell language, a
-  target, or drop a caveat. Pet reaction copy is flavor only, rendered outside the analysis area.
-- **Non-advice separation.** The companion never speaks as an analyst; its SSE events are in a
-  distinct channel/UI region so mascot chatter is never mistakable for market analysis.
+- **Guardrails supersede persona (by design, pending §5's wiring gap).** `pet_hint_for`'s output
+  is designed to be appended after the governance prompt and subject to `guardrails.check_output`
+  — it can never introduce buy/sell language, a target, or drop a caveat, and this is proven by
+  `tests/pets/test_persona.py` today even though the hint isn't yet reaching a live prompt.
+- **Non-advice separation.** The companion never speaks as an analyst — `pets/` has no path to
+  emit analysis. The dedicated SSE reaction channel/UI region described in §5 is not yet built.
 - **Per-user isolation + concurrency.** Pet state is `user_id`-scoped; all XP/pull/equip
   mutations use atomic upserts / reserve-before-act ([16](16-infrastructure.md) §10).

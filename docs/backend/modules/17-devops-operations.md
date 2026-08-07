@@ -6,38 +6,43 @@ residency, cost ops, and runbooks. From the DevOps review (see [../adr/0016](../
 
 ## 1. CI/CD pipeline
 
-Python/FastAPI monorepo. Gates, in blocking order:
+Python/FastAPI monorepo. **Real CI (`.github/workflows/ci.yml`), in blocking order:**
 
-- **PR gate (fast, blocking):** ruff + black → mypy (strict) → `fast` unit → `default-ci`
-  (non-network, fixtures) → **governance suite** (non-trading, caveat, per-user isolation,
-  `sponsor` gate) → **dual-dialect Alembic test** (apply **+ rollback** on both SQLite and a
-  Postgres service container) → secret scan (gitleaks — 35+ key env vars) + dep vuln
-  (`pip-audit`) + image scan (Trivy) + SBOM.
-- **Merge / nightly:** `full-non-network` + coverage.
-- **Scheduled / pre-release (network, gated, low-quota tokens):** `operator-preflight` (live
-  source reachability) + `browser-e2e` — hit FinMind/Brave/scraper quotas, so cron only, never
-  per-PR.
-- **Scraper contract canary (cron):** run versioned parsers against recorded + a small live
-  sample and diff → catches MOPS/PTT/ETF-PCF/Brave drift before users do (operationalizes
-  [16](16-infrastructure.md) §7 monitoring).
-- **Deploy:** blue-green or canary; **migration order = expand → deploy → contract-later**
-  (never a breaking migration in-place). Rollback = redeploy previous image + (if needed)
-  down-migration; expand-contract keeps rollback safe.
+- **`lint-type-test` job:** `ruff check` → `ruff format --check` (ruff is both linter and
+  formatter — it replaces black; see `backend/CLAUDE.md`) → `mypy --strict` → `pyright` (strict)
+  → the default non-network `pytest` suite → the **governance suite** (`pytest -m governance`).
+- **`dual-dialect-migrations` job (separate, parallel):** applies the Alembic migration suite
+  against **both SQLite and a real Postgres service container** (`pytest -m dual_dialect`), then
+  the **concurrency suite** (`pytest -m concurrency`) against the same Postgres container
+  (shared-state race/lost-update/TOCTOU proofs, [16](16-infrastructure.md) §10).
+- **`secret-scan` job:** gitleaks.
+- **Not yet built:** dependency-vulnerability scanning (`pip-audit`), container image scanning
+  (Trivy), SBOM generation, a scheduled/pre-release `operator-preflight`/`browser-e2e` network
+  job, a scraper-contract canary job, and any deploy-stage automation (blue-green/canary rollout,
+  expand-deploy-contract migration ordering) — these remain design intent, not current pipeline
+  steps. The CI trigger itself is PR + push-to-`main` only (no nightly/merge-queue job exists).
 
 ## 2. Containerization & runtime
 
-- **One image, role-selected entrypoint** (`api` | `scheduler` | `worker` via env) — parity
-  across the three process types ([16](16-infrastructure.md) §1). Non-root, pinned base,
-  `.dockerignore` excludes fixtures/secrets.
-- **`docker-compose` (dev parity)** brings up the **full** stack: api + scheduler(leader) +
-  worker + Redis + Postgres + Parquet/DuckDB volume + broker — so the Redis-transport path is
-  exercised locally, not first discovered in prod.
-- **Ollama** = optional compose profile (large/GPU); the offline/self-host path, **not** in the
-  hosted prod image.
+- **One image, role-selected entrypoint** — real roles are **`api` | `scheduler` | `ingest` |
+  `mcp`** (`docker-entrypoint.sh`'s `SERVICE_ROLE` dispatch; not `worker` — there is no generic
+  queue-worker role in this codebase). Parity across all four process types
+  ([16](16-infrastructure.md) §1, which itself needs correcting to the same four roles — no
+  `worker(queue)` process exists yet, only `api`/`scheduler`/`ingest`/`mcp`). Non-root, pinned
+  base (`python:3.13-slim`), no `.dockerignore`-driven secret exclusion beyond the standard
+  build-context copy allowlist in the `Dockerfile`.
+- **`docker-compose.yml` (dev parity)** brings up the real stack: `postgres` + `redis` +
+  a one-shot `migrate` job (`alembic upgrade head`) + `api` + `scheduler` + `ingest` + `mcp` (each
+  the same image, role-selected via `SERVICE_ROLE`) — so the Redis-transport path (`EVENT_BUS_
+  BACKEND=redis`/`RATE_LIMITER_BACKEND=redis`) is exercised locally, not first discovered in
+  prod. **No separate `worker`/broker/queue service exists** — that process type is design
+  intent per [16](16-infrastructure.md) §1, not part of the real compose file today.
+- **Ollama** = optional compose profile (`--profile ollama`, large/GPU); the offline/self-host
+  path, **not** in the hosted prod image or brought up by default.
 
 ## 3. Environments
 
-- **dev / staging / prod** config matrix. Staging uses **Paddle sandbox** (`PADDLE_ENV`) and a
+- **dev / staging / prod** config matrix. Staging uses **Paddle sandbox** (`PADDLE_ENVIRONMENT`) and a
   **separate FinMind token** (must not consume prod's pooled 6000/hr).
 - FinMind has no sandbox → staging runs mostly on fixtures (non-network profiles) + a tiny live
   token. Staging **seed data** (accounts/tiers/threads) exercises entitlement gating + a
@@ -45,10 +50,15 @@ Python/FastAPI monorepo. Gates, in blocking order:
 
 ## 4. Probes & lifecycle
 
-- **`/livez`** (process up), **`/readyz`** (Redis + Postgres + broker reachable — refuses LB
-  traffic if not), **`/startupz`**. These are **distinct from `/health`** (which is business
-  data-currency + FinMind quota, not an infra probe). Scheduler/worker have their own liveness
-  (leader-lock held? queue consumable?).
+- **`/livez`** (process up, no dependency check), **`/readyz`** (Postgres always, Redis only when
+  `event_bus_backend`/`rate_limiter_backend` is configured `redis` — refuses LB traffic on a 503
+  with a per-dependency breakdown if not), **`/startupz`** (same checks as `/readyz`, reported
+  under a separate path so an orchestrator can tell "still booting" from "was ready, now
+  degraded") — all real, in `api/routers/probes.py`, mounted unprefixed (not under `/api/v1`).
+  These are **distinct from `/health`** (which is business data-currency + FinMind quota, not an
+  infra probe). **Not yet implemented:** a broker-reachability check in `/readyz` (no broker/queue
+  process exists yet — see [16](16-infrastructure.md) §1's `worker(queue)` process type) and
+  scheduler/worker's own leader-lock/queue-consumable liveness probes.
 - **Graceful shutdown / SSE draining:** on SIGTERM → stop accepting new turns → checkpoint or
   emit `turn.end` for in-flight turns → hold `terminationGracePeriodSeconds` (sized to P99 turn
   or a hard cap) → LB deregistration delay + `preStop`. Define whether a killed turn resumes on
@@ -86,11 +96,14 @@ Python/FastAPI monorepo. Gates, in blocking order:
   region; **assert PII never enters LLM prompts/journal/logs** (extends governance §9); publish
   a **sub-processor inventory** (7 LLM vendors + Brave + FinMind + Paddle + OAuth + LINE/Telegram/
   email) + backup residency. Paddle (merchant of record) handles payment PII; profile PII is ours.
-- **Log redaction:** no raw payloads / secrets / PII in log sinks or shipping — a startup
-  self-check refuses to boot if the mandatory guardrail hooks aren't registered.
+- **Log redaction:** no raw payloads / secrets / PII in log sinks or shipping (`structlog` usage
+  throughout the codebase never binds a raw secret/token/body — see `backend/CLAUDE.md` §2/§8).
+  **Not yet built:** a startup self-check that refuses to boot if the mandatory guardrail hooks
+  aren't registered — no such check exists in `api/composition.py`/`mcp/composition.py` today.
 - **Audit-log shipping:** `journal_entries` is the audit record — define retention (see
   [../database-schema.md](../database-schema.md)), immutability/tamper-evidence, and off-box shipping.
-- **GDPR/PDPA account deletion** flow: purge/anonymize across all `user_id`-scoped tables.
+- **GDPR/PDPA account deletion** flow: purge/anonymize across all `user_id`-scoped tables — not
+  yet built (no deletion/purge endpoint or job exists in `accounts/` today).
 
 ## 8. Runbooks, on-call, feature flags
 
@@ -99,8 +112,12 @@ Python/FastAPI monorepo. Gates, in blocking order:
   outage / fallback-chain exhaustion; **Paddle webhook outage** (entitlement is webhook-sourced →
   backlog delays upgrades → replay/reconcile against Paddle).
 - **On-call / incident severities** defined; alerting routes to the channel.
-- **Feature flags** (config-driven, hot-reload where safe): dark-launch scrapers, toggle
-  `AITW_WEBSEARCH` backend, gate new skills, **kill a misbehaving source without a deploy**.
+- **Feature flags — not yet built.** No config-driven, hot-reloadable feature-flag system exists
+  (no `AITW_WEBSEARCH`-style env toggle, no dark-launch mechanism); the closest real analog is
+  `accounts.entitlements.feature_allowed`'s static feature→min-tier table (gates a feature by
+  the caller's tier, not a deploy-time on/off switch) and each source adapter's own
+  presence-of-credential degrade (a provider with no key configured simply reports unhealthy —
+  not the same as an operator flipping a flag to kill it live).
 - **MCP deployment surface:** separate process/port vs same image role, principal auth
   (API key / anonymous — [06](06-interfaces.md)), and rate-limiting like the REST tier — an
   externally-exposed surface, spec its exposure explicitly.

@@ -4,32 +4,43 @@ Assembles source results into the governed context packages. Preserves the refer
 project's **mode/level semantics** (kept as governance concepts) while using clean domain
 filenames. Concept ↔ code mapping is in [../architecture.md](../architecture.md) §1.
 
-## `MarketDataStore` protocol — still pending, not built
+## `MarketDataStore` protocol — design intent, not yet built
 
-Like `ConversationStore`/`MemoryStore`, market/derived data was designed to sit behind a
-**protocol**, not an ad-hoc store: `MarketDataStore` (read/write canonical packages, observation
-runs, the normalized `etf_holdings` table, cached source results), with a DuckDB/Parquet + Redis
-read-through concrete impl selected by config. **This protocol does not exist in the real
-codebase** — zero references anywhere under `backend/src/`. The real market-data read path
-today is `context/builder.py` → the data-access router → adapters directly for live/on-demand
-reads, or, for already-ingested derived data, `ingest/reader.py`'s `ParquetMarketDataReader`
-(read-only DuckDB over the leader's Hive-partitioned Parquet — see
-[16-infrastructure.md](16-infrastructure.md) §3 and [22-data-ingest.md](22-data-ingest.md)).
-There is no unifying protocol seam between these two paths yet; this remains a real future-design
-item, not a load-bearing part of the request path today.
+[ADR-0018](../adr/0018-enforcement-seam-and-store-protocols.md) §3 decided that market/derived
+data should sit behind a **protocol**, not an ad-hoc store — `MarketDataStore` (read/write
+canonical packages, observation runs, the normalized `etf_holdings` table, cached source
+results), peer to `ConversationStore`/`MemoryStore`, with a read-through cache as a caching
+`SourceAdapter` wrapper in `sources/` so `context/` itself never opens a socket/DuckDB/Redis
+handle.
+
+> **Still pending:** `MarketDataStore` is a confirmed **future design intent**, not current
+> code — there is no `MarketDataStore` protocol, no caching `SourceAdapter` wrapper, and no
+> Redis read-through anywhere in `src/sources/` today (verified: zero references). What exists
+> instead is the leader-writes-Parquet / workers-read-only split (`ingest/store.py`'s
+> `ParquetStore` + per-worker read-only DuckDB, [16-infrastructure.md](16-infrastructure.md)
+> §3) plus the data-access router's own per-call source fetch — real, wired, and load-bearing,
+> but not the `MarketDataStore` protocol seam ADR-0018 describes. Building that seam is a
+> follow-up, not a current gap in the request path: `context/` still performs no I/O of its own
+> today (the router does the fetching), so ADR-0002's "only `sources/` does I/O" invariant holds
+> regardless of whether this protocol lands.
 
 **Layering (preserves ADR-0002 "only `sources/` does I/O"):** `context/` requests a
 **capability for a (symbol, market)** from the **data-access router**
 ([19-data-access-router.md](19-data-access-router.md)) — it never names a source or opens a
 socket/DuckDB handle. The router resolves per-market priority + fallback and returns a
-normalized result. This is what makes `context/` market-agnostic (works for TW today, US/JP later).
+normalized result directly from the configured adapter(s); there is no cache tier between the
+router and the adapter yet (that is the pending `MarketDataStore` seam above). This is what
+makes `context/` market-agnostic (works for TW today, US/JP later) even before that seam exists.
 
 ## Canonical (Mode A / Level 1) — `canonical.py`
 
 - Build and **validate** the immutable canonical market-context package.
-- **Immutable:** `canonical.py` performs no I/O itself and holds no durable store of its own
-  today (see the `MarketDataStore` note above) — an existing package is never mutated in
-  memory; a durable, versioned/append-only write path is part of the same still-pending seam.
+- **Immutable in memory today:** `CanonicalPackage` is a frozen Pydantic model;
+  `new_version()` returns a new object with `version + 1` rather than mutating in place
+  (enforced by the framework, not just convention). This module performs **no I/O** — there is
+  no durable canonical-package store yet (that would be the pending `MarketDataStore` seam
+  above); a caller that wants a canonical package persisted across requests has nowhere to
+  write it to today.
 
 ## Bounded Observation (Mode B / Level 2) — `observation.py`
 
@@ -53,8 +64,8 @@ normalized result. This is what makes `context/` market-agnostic (works for TW t
 
 | Sub | Scope | Status |
 |-----|-------|--------|
-| M8A | Official EOD merge (TWSE/TPEX/TAIFEX OpenAPI + FinMind history) | primary |
-| M8B | TAIFEX derivatives context | real, configured adapter (`taifex_openapi`) — but **opt-in**: a default build never requests derivatives; the caller must pass `BuildOptions.include_derivatives=True` |
+| M8A | Official EOD merge (TWSE/TPEX/TAIFEX OpenAPI + FinMind history) | primary — in the default capability set |
+| M8B | TAIFEX derivatives context (`derivatives_oi`, via the real `taifex_openapi` adapter) | built and configured, but **opt-in**: excluded from the default capability set, requested only via `BuildOptions.include_derivatives=True` |
 | M8C | `TAIFEX_MIS` live-ish + real-time snapshots | **staged behind a validation flag; `sponsor` where it uses paid FinMind data** |
 
 ## Governance obligations

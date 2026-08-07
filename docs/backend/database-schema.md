@@ -89,25 +89,26 @@ in-process TTL map; never a durable table.)*
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
-| user_id | uuid FK→users | |
+| user_id | uuid FK→users | CASCADE |
 | paddle_subscription_id | text unique | |
-| paddle_customer_id | text | |
+| paddle_customer_id | text null | |
 | price_id | text | one of the 8 Paddle price IDs |
-| tier | text | `premium` \| `pro` (derived from price_id) |
-| interval | text | `monthly` \| `annual` |
-| byok | bool | derived from price_id (BYOK variant → lower price) |
-| status | text | `active`\|`past_due`\|`paused`\|`canceled` |
-| scheduled_change | json null | Paddle `scheduled_change` (e.g. cancel effective_at) — display, don't act |
-| current_period_end | timestamptz | period-end anchor |
+| tier | text | CHECK `IN ('free','premium','pro')` (derived from price_id) |
+| byok | bool default false | derived from price_id (BYOK variant → lower price); no separate `interval` column — `monthly`/`annual` is derived from `price_id` at read time via `payments/plans.py`, not stored redundantly |
+| status | text | CHECK `IN ('active','trialing','past_due','paused','canceled')` |
+| current_period_start, current_period_end | timestamptz null | period anchors |
+| scheduled_cancel_at | timestamptz null | non-null = user asked to cancel, effective at that date; tier stays active until the real `subscription.canceled` event lands |
 | updated_from_event_at | timestamptz | last-applied event `occurred_at` — **order guard** (apply only if newer) |
 | created_at, updated_at | timestamptz | |
-| **unique** | partial `(user_id) WHERE status IN ('active','past_due','paused')` — one current sub/user | |
 | index | `(user_id)` | entitlement resolve |
 - Written **only by the webhook** (single writer → no optimistic lock needed; `updated_from_event_at`
   guards ordering, not concurrency). `users.tier` is a derived cache of the active row's price_id.
 
 ### `billing_events` (Paddle webhook idempotency + audit)
-| id | paddle_event_id text unique | type | occurred_at | user_id FK | payload json | processed_at |
+| id | paddle_event_id text unique | event_type | occurred_at | processed_at | raw_payload json |
+- No `user_id` column — the row is the redelivery-idempotency ledger keyed on
+  `paddle_event_id` alone (a second insert of the same event collides); `raw_payload` is the
+  verified envelope kept for audit (no card data, Paddle is merchant of record).
 
 *(No local `invoices` table — Paddle (MoR) owns tax-compliant invoices/PDFs; `/billing/history`
 proxies Paddle's transactions API / deep-links the portal. See [modules/15](modules/15-payments-paddle.md) §5.)*
@@ -165,7 +166,13 @@ proxies Paddle's transactions API / deep-links the portal. See [modules/15](modu
 | created_at | timestamptz | |
 | index | (turn_id, seq), (parent_id), (user_id) | |
 
-### `journal_entries` (auditable tool log — see [modules/05](modules/05-agent-runtime.md))
+### `journal_entries` (auditable tool log — **design only, not built**; see [modules/05](modules/05-agent-runtime.md))
+
+**Not built.** `agent/journal.py` journals every Step's tool calls + guardrail verdicts as
+**structured logs (structlog)**, not a DB table — its own module docstring calls a queryable
+per-user/per-thread journal store "an interaction-layer concern, not yet built" and notes the
+`JournalEntry` shape is deliberately DB-sink-ready for when that lands. No `journal_entries`
+table exists in `backend/src/db/models.py` today. The shape below is the design.
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
@@ -234,7 +241,7 @@ no dual-write. Reverses the earlier "not shipped" decision → [adr/0027](adr/00
 | id | uuid PK | |
 | user_id | uuid FK→users | CASCADE; every query scoped by this |
 | name | text | e.g. `半導體`; per-user + tab unique (below) |
-| market | text | CHECK `IN ('TW','US')` — the **true market** ([modules/19](modules/19-data-access-router.md) `Market`); no longer polluted by ETF |
+| market | text | CHECK `IN ('TW','US')` — the **true market** ([modules/19](modules/19-data-access-router.md) `Market`); no longer polluted by ETF. **Now stale vs. the real `schemas.enums.Market` enum**, which also has `GB`/`JP`/`EU`/`GLOBAL` (all real, adapter-backed since the yfinance/FinMind-international expansion, [module 01](modules/01-sources.md)) — this CHECK predates that expansion (ADR-0027) and would reject a GB/JP/EU watchlist row today |
 | asset_class | text | CHECK `IN ('stock','etf')` — **instrument type**; the rail's "ETF tab" = `market='TW' AND asset_class='etf'` (resolved ADR-0027 A1) |
 | sort_order | text | **lexorank/fractional key** (not int) — collision-free reorder |
 | is_default | bool default false | auto-created group; ≤1 true per (user, market, asset_class) |
@@ -251,7 +258,7 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 | watchlist_id | uuid FK→watchlists | CASCADE |
 | user_id | uuid FK→users | CASCADE; denormalized for isolation + reverse query |
 | symbol | text | canonical market-scoped id ([modules/19](modules/19-data-access-router.md) `Symbol.id`) |
-| market | text | CHECK `IN ('TW','US')`; denormalized from parent (kept consistent in the add tx) → lets `/quote` batch by market without a join |
+| market | text | CHECK `IN ('TW','US')`; denormalized from parent (kept consistent in the add tx) → lets `/quote` batch by market without a join. Same stale-vs.-`Market`-enum gap as `watchlists.market` above (§3a note) |
 | asset_class | text | CHECK `IN ('stock','etf')`; denormalized from parent |
 | note | text null | optional; CHECK length ≤ 280 |
 | sort_order | text | lexorank within the group |
@@ -266,7 +273,14 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 
 ---
 
-## 3b. Saved screens ([modules/20](modules/20-analytics-scoring.md) §5, [api-reference §4a](api-reference.md))
+## 3b. Saved screens ([modules/20](modules/20-analytics-scoring.md) §5, [api-reference §4a](api-reference.md)) — **design only, not built**
+
+**Not built.** No `saved_screens` table exists in `backend/src/db/models.py`, and the
+`GET/POST/PATCH/DELETE /analytics/screener/screens` routes it would back are not registered
+either — only `run_tag_screener`/`get_tag_catalog` (the real, shipped tag-flag screener, see
+[api-reference.md](api-reference.md) §4a's implementation-status note) exist today. The table
+shape below is the design, kept for when the custom AND/OR screener + saved-screen persistence
+lands.
 
 ### `saved_screens` (a user's named screener definitions — `GET/POST/PATCH/DELETE /analytics/screener/screens`)
 | Column | Type | Notes |
@@ -288,42 +302,196 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 
 ---
 
+## 3c. Themes, tiers & supply-chain ([modules/20](modules/20-analytics-scoring.md))
+
+Platform **reference data**, not per-user state — these tables carry **no `user_id`** (a
+stock's industry membership is the same for everyone), so the `WHERE user_id = ?` isolation
+wrapper does not apply. **Layers 1 and 2 are built and populated:** `themes` + `theme_memberships`
+from the FinMind industry-chain classification roster, and `theme_tiers` from a curated editorial
+map plus a keyword-heuristic backfill — both on the same monthly ingest cadence, the tier seed
+running immediately after the membership seed in each pass. **Layer 3 is built and
+operator-triggered:** `supply_chain_edges` is populated (a hand-seeded bootstrap set with
+`source='seed'`, extended by an in-theme-only LLM extractor with `source='llm_extraction'`), and
+`concept`-kind `themes`/`theme_memberships` are discovered by the concept-research pipeline
+(`source='concept_research'`). `theme_change_log` (added in its own migration) audits every write.
+The concept-research and edge-generation writes run only when an operator invokes `python -m
+analytics.themes` — never on a schedule — and every model-proposed symbol is filtered against the
+stored universe before persistence (the fabrication safeguard; see modules/20-analytics-scoring.md).
+
+### `themes` (one industry classification, or a future research/LLM concept)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | app-generated |
+| key | text unique | natural slug; for industry themes the industry name itself (unique in the roster) |
+| name_zh | text | |
+| name_en | text default `''` | |
+| kind | text | CHECK `IN ('industry','concept')` |
+| status | text default `active` | CHECK `IN ('active','proposed','retired')` |
+| source | text | CHECK `IN ('industry_chain','concept_research','llm_discovery')` |
+| created_at, updated_at | timestamptz | |
+
+### `theme_memberships` (one (theme, symbol) row)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| theme_id | uuid FK→themes | CASCADE |
+| symbol | text | |
+| market | text | CHECK `IN ('TW','US')` |
+| sub_industry | text default `''` | |
+| confidence | float default `1.0` | CHECK `>= 0 AND <= 1` |
+| source | text | CHECK `IN ('industry_chain','concept_research','llm_discovery')` |
+| created_at | timestamptz | |
+| unique | `(theme_id, symbol)` | serves the screener's "symbols in theme X" hot path as an index range scan |
+| index | `(symbol, market)` | serves the reverse "themes for symbol X" lookup |
+
+- No soft-delete column: a refresh **replaces per `(theme_id, source)` in one transaction** (delete
+  that source's rows, insert the fresh snapshot), so every row present is current and the read path
+  stays predicate-free. Mirrors the ingest store's replace-by-partition philosophy.
+
+### `theme_tiers` (one (theme, sub_industry) upstream/midstream/downstream position — *populated*)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| theme_id | uuid FK→themes | CASCADE |
+| sub_industry | text | |
+| tier | text | CHECK `IN ('upstream','midstream','downstream')` |
+| source | text | CHECK `IN ('curated','heuristic')` |
+| updated_at | timestamptz | |
+| unique | `(theme_id, sub_industry)` | keyed on for the idempotent upsert; curated rows are never overwritten by a heuristic pass |
+
+- Populated on the monthly cadence right after `theme_memberships`: a curated editorial map
+  (`config/theme_tiers.yaml`) writes `source='curated'` rows for the major themes, then the
+  keyword heuristic backfills every other membership sub-industry with `source='heuristic'`.
+  Curated-wins is enforced at the write (a heuristic write against an already-curated row is a
+  no-op) as well as by the backfill only visiting pairs the curated pass did not cover.
+
+### `supply_chain_edges` (one directed symbol→symbol relationship — *populated*)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| from_symbol, to_symbol | text | |
+| market | text | CHECK `IN ('TW','US')` |
+| edge_type | text | CHECK `IN ('supplies','customer','competes')` |
+| confidence | text | CHECK `IN ('high','medium','low')` — provenance transparency band, **not** a numeric score |
+| revenue_pct | float null | |
+| source | text | CHECK `IN ('seed','llm_extraction')` |
+| from_name, to_name | text default `''` | |
+| created_at, updated_at | timestamptz | |
+| index | `(from_symbol)`, `(to_symbol)` | both directions of "edges touching symbol X" must be fast |
+
+- Populated in two ways, each a **replace-per-`source` snapshot** (a re-run replaces that source's
+  rows rather than duplicating): a hand-seeded bootstrap YAML (`config/supply_chain_seed.yaml`,
+  `source='seed'`) of well-known TW/global relationships, and an in-theme-only LLM extractor
+  (`source='llm_extraction'`) that may connect only a single theme's own members — a proposed edge
+  to a symbol outside the theme is rejected in code.
+
+### `theme_change_log` (audit trail of theme/tier/edge writes — *populated*)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| entity | text | CHECK `IN ('theme','membership','tier','edge')` |
+| entity_ref | text | human-identifiable key — theme key, or `"supply_chain_seed"` etc. |
+| action | text | CHECK `IN ('create','update','replace')` |
+| source | text | the producing source (`concept_research`/`seed`/`llm_extraction`/…) |
+| detail | text | short human summary (≤200 chars) — member count, confidence distribution; **not** a payload dump |
+| run_id | text | correlates every row a single seed/refresh invocation produced |
+| created_at | timestamptz | |
+| index | `(run_id)` | "what did one run change" |
+
+- Append-only. Deferred out of the migration that shipped the other theme tables and added in its
+  own migration by the layer that first writes it.
+
+## 3d. Multi-factor score cache ([modules/20](modules/20-analytics-scoring.md) §2c)
+
+### `stock_scores` (one symbol's cached daily composite score, per horizon profile — *populated*)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| symbol, market | text | `market` CHECK `IN ('TW','US')` |
+| as_of | text (ISO date) | the trading day the batch scored, not a timestamp |
+| profile | text | CHECK `IN ('swing','position')` |
+| composite | float null | 0-100, or `null` if every factor was unavailable that day |
+| band | text | CHECK `IN ('偏多','中性','偏空')` |
+| `{momentum,trend_quality,value_guard,quality,revenue_flow}_percentile` | float null (x5) | one column triplet per factor, not one JSON blob — a fixed five-factor shape, so flat columns are simpler and index-free reads faster than unpacking JSON |
+| `{...}_description` | text (x5) | the human-readable basis for each factor's percentile |
+| `{...}_unavailable_reason` | text null (x5) | why a factor is `null`, when it is |
+| partial_factors | JSON array | factor names excluded from the composite blend that day |
+| regime_caveat, non_trading_caveat, normalization_caveat | text | always non-empty |
+| computed_at | timestamptz | |
+| unique | `(symbol, market, profile, as_of)` | the write-side upsert key; a re-run for the same day replaces the row rather than accumulating history |
+| index | `(market, profile, as_of, composite)` | serves the leaderboard's `WHERE market=? AND profile=? AND as_of=? ORDER BY composite` sort-and-slice directly off the index |
+
+- No `user_id` — platform-wide reference data, like the theme tables above, not per-user state.
+  Unlike the theme tables, this one carries a date (`as_of`): a score is genuinely a new value
+  every trading day, so it is a same-day snapshot cache rather than slow-moving classification
+  data — replaced (upserted) once a day by `analytics/scoring_batch.py::job_scoring_batch`, never
+  accumulated as a history. Read through `analytics/scoring_store.py`'s `get_cached_score`
+  (point lookup) and `get_leaderboard` (sort-and-slice), never as raw rows above that seam.
+
+---
+
 ## 4. Feedback & quality ([modules/13](modules/13-chat-interaction-features.md))
 
-### `feedback_events`
-| id | user_id FK | turn_id FK | skill_name | rating (`up`\|`down`) | comment | created_at |
-- index `(skill_name, created_at)` (rolling 7-day per skill) + `(user_id, created_at)`
-  (`/feedback/recent`); **`UNIQUE (user_id, turn_id)`** — one feedback per turn per user (upsert to change).
+### `turn_feedback` (built — a minimal thumbs + comment capture)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid PK | |
+| turn_id | uuid FK→turns | CASCADE |
+| user_id | uuid | denormalized, not FK-constrained (matches the rest of this schema's per-row `user_id` convention) |
+| rating | text | CHECK `IN ('up','down')` |
+| comment | text null | CHECK length ≤ 500 |
+| created_at, updated_at | timestamptz | |
+| unique | `(turn_id, user_id)` | **upsert target** — a re-submit updates the one row (rating/comment/`updated_at`) rather than accumulating duplicates |
+| index | `(turn_id)`, `(user_id)` | |
 
-### `feedback_alerts`
-| id | skill_name | quality_score | sample_count | status (`pending`\|`acknowledged`\|`resolved`) | resolved_by | note | created_at | resolved_at |
+**Built:** `POST /threads/{id}/turns/{tid}/feedback` writes a real row here via
+`SqlAlchemyFeedbackStore.submit`. **Not built:** the rolling 7-day per-skill quality score, the
+`<60%`-with-`≥10`-samples alert threshold, and the admin `feedback_events`/`feedback_alerts`
+tables + `GET /feedback/quality`, `GET /feedback/alerts`, `GET /feedback/recent`,
+`PUT /feedback/alerts/{id}/acknowledge|resolve` endpoints this section once described — that
+quality-score/alert pipeline remains a dedicated follow-up, not a table in this schema today.
 
 ---
 
 ## 5. Usage & quotas ([modules/10](modules/10-events-hooks.md), [modules/12](modules/12-multi-user-tiers.md))
 
-### `usage_events`
-| id | user_id FK | turn_id FK null | kind (`llm`\|`stt`\|`tts`\|`finmind`) | provider | model | input_tokens | output_tokens | tool_calls | finmind_calls | audio_seconds | cost | token_breakdown json | created_at |
-- `kind` + `audio_seconds` let voice (STT/TTS per-minute) cost count against the tier budget.
-- `token_breakdown`: input tokens attributed to `{system_prompt, recent_messages,
-  compaction_summary, branch_summaries, memory_block, tool_schemas_immediate,
-  tool_schemas_deferred, tool_results}` — measures compaction/branch/deferred-tool savings.
-- index `(user_id, created_at)` (rollups/`GET /usage`); `cost` as **int micro-units** (SQLite
-  `REAL` loses precision). High-volume → time-range partition candidate.
-
-### `usage_counters` (rollups for fast quota checks)
+### `usage_events` (real, built — the durable per-turn usage rollup)
 | Column | Type | Notes |
 |--------|------|-------|
-| user_id | uuid FK | |
-| window | text | CHECK `IN ('day','minute','hour','second')` — `second` is the FinMind-pool burst window |
-| window_start | timestamptz | |
-| chats | int | daily chat count |
-| requests | int | rate-limit window |
-| finmind_calls | int | vs tier cap (600/6000) |
-| cost | int | LLM budget (micro-units) |
-| pk | (user_id, window, window_start) | |
-- **Concurrency:** increment via atomic `INSERT … ON CONFLICT (pk) DO UPDATE SET requests =
-  usage_counters.requests + 1` (no app-side read-modify-write race).
+| id | uuid PK | |
+| user_id | uuid, indexed | |
+| turn_id | text | |
+| input_tokens, output_tokens | int default 0 | |
+| tool_calls | int default 0 | |
+| finmind_calls | int default 0 | |
+| cost_micros | int default 0 | LLM cost, **int micro-units** (SQLite `REAL` loses precision) |
+| created_at | timestamptz | |
+| unique | `(user_id, turn_id)` | one rollup row per completed turn |
+| index | `(user_id, created_at)` | rollups/future `GET /usage` |
+- The write-through target of a finished turn's `UsageAccumulator.snapshot()` — append-only,
+  distinct from `usage_counters` below (the live enforcement gate). No `kind`/`provider`/`model`/
+  `audio_seconds`/`token_breakdown` columns exist today — voice-cost and prompt-composition
+  attribution are not broken out per-row yet, unlike an earlier draft of this schema described.
+  High-volume → time-range partition candidate.
+
+### `usage_counters` (real, built — the authoritative daily-chat-limit enforcement gate)
+| Column | Type | Notes |
+|--------|------|-------|
+| user_id | text | part of PK |
+| counter | text | part of PK — e.g. `chat` |
+| window_key | text | part of PK — e.g. a UTC-day string like `2026-08-05` |
+| n | int default 0 | CHECK `>= 0` |
+| updated_at | timestamptz | |
+| pk | `(user_id, counter, window_key)` | |
+| index | `(user_id)` | |
+- A generic `(user_id, counter, window_key) → n` counter, not one fixed row-shape per metric —
+  simpler than an earlier draft of this schema that sketched separate `chats`/`requests`/
+  `finmind_calls`/`cost` columns. **Concurrency:** mutated only via an atomic
+  `INSERT … ON CONFLICT DO UPDATE SET n = n + :delta` upsert, never read-then-write, so two
+  concurrent turns for the same user/window can't both slip past the cap — this lives in the app
+  DB (not Redis) on purpose, since it must survive a Redis flush. The FinMind Sponsor-pool
+  ceiling is a **separate** mechanism entirely (`usage/finmind_pool.py`'s Redis-backed
+  reserve-before-act pool, §Governance §9), not one of this table's counters.
 
 ---
 
@@ -336,6 +504,7 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 | user_id | uuid FK→users | |
 | trigger_type | text | `cron` \| `market_event` |
 | trigger_spec | text | cron expr or `after_close`/`pre_open` |
+| trigger_market | text default `TW` | CHECK `IN ('TW','US')` |
 | skill_ref | text | governed skill name |
 | skill_inputs | json | |
 | read_only | bool default true | enforced true (carve-out §9a: no streaming/poll) |
@@ -353,7 +522,8 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 | id | user_id FK | symbol | market | condition json | channels (json array) | quiet_start/end | daily_limit | enabled | last_triggered | created_at |
 - `symbol` + `market` (CHECK `IN ('TW','US')`) match the multi-market `Symbol` model
   ([modules/19](modules/19-data-access-router.md)) / `watchlist_items` — a US alert is disambiguated
-  (was a bare TW-only `stock_id`).
+  (was a bare TW-only `stock_id`). Same stale-vs.-`Market`-enum gap as `watchlists.market` (§3a
+  note) — `GB`/`JP`/`EU` are real markets now but not in this CHECK.
 - index partial `(market, symbol) WHERE enabled` + `(user_id)` — alert-engine scan + list mine.
 
 ### `alert_preferences`
@@ -381,7 +551,13 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 
 ## 7. Skills (registry metadata — definitions live in `backend/src/skills/`)
 
-### `skill_registry` (optional cache/version table; source of truth is the skill files)
+### `skill_registry` — **design only, not built**
+
+**Not built.** No `skill_registry` table exists in `backend/src/db/models.py`. Skills are
+discovered entirely from `<dir>/*/SKILL.md` frontmatter at process startup
+(`skills/registry.py`'s `SkillRegistry.load`) — there is no DB-backed cache/version table today,
+and nothing in this codebase writes one. The shape below is the design, kept for if a queryable
+DB projection of the file-based registry is ever needed.
 | name PK | version | description | tools json | enabled | updated_at |
 
 ---
@@ -476,8 +652,8 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
   table note). Soft-deleted `threads` purged on a scheduled job **with PII scrub** — profile PII
   (`birthday/phone/nationality`) is **overwritten/NULLed** on purge (these are plaintext columns; not
   "crypto-shredded" — only `user_secrets.ciphertext` is encrypted, so crypto-shredding applies there).
-  `feedback_events` are retained but only *queried* within a rolling 7-day window (the index, not the
-  rows, is time-bounded) — add them to the TTL purge job if unbounded growth matters.
+  `turn_feedback` has no time-bounded query today (there is no rolling-window quality score built
+  yet — see §4) — add it to the TTL purge job if unbounded growth matters once that pipeline lands.
   `billing_events`/`journal_entries`/`usage_events` grow unbounded → **time-range partition (monthly)
   on Postgres** for cheap detach/drop (their PKs include/allow `created_at` in the partition key).
 - **Account deletion (GDPR-style):** a "delete my account + all data" flow purges/anonymizes
