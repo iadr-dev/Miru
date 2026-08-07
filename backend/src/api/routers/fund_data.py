@@ -1,0 +1,238 @@
+"""Fund/analyst-data REST — thin projections of the previously tool-only `analyst_tools.py` and
+`etf_overlap_tools.py` agent tools, dispatched through `tools.base.dispatch_tool` exactly as
+`themes.py`/`market_rest.py` do, so the entitlement gate applies uniformly (every tool wrapped
+here is `public`, so every caller including anonymous gets real data).
+
+This is a new router rather than an extension of `market_rest.py`: that router's own docstring
+scopes it to market/derivatives/macro reads, and everything here is fund/holder/options-chain
+shaped (`analyst_tools.py`'s non-TW-primary capability set plus the ETF-overlap pair) — a
+distinct enough concern to warrant its own file, matching how `themes.py` and `analytics.py`
+(the `score_tools.py` projection) each got their own router rather than being folded into
+`market_rest.py`.
+
+List-typed query params (`get_etf_overlap`'s 3-10 symbols, `get_fund_comparison`'s 2-10
+`(id, market)` pairs) follow this codebase's one existing multi-symbol REST convention —
+`market.py`'s `/quote?symbols=2330,2317` comma-separated string, parsed with the same
+`_split_symbols` shape — rather than a repeated `?symbols=a&symbols=b` query param, for which
+this codebase has no other precedent. `get_fund_comparison`'s comparison list needs a market per
+symbol (unlike the single-market overlap-checker), so each entry is `id:market`
+(e.g. `0050:TW,SPY:US`) rather than a bare id.
+
+Both list-bounded tools' own Pydantic input models enforce the real min/max symbol counts
+(`GetEtfOverlapInput`/`GetFundComparisonInput` in `etf_overlap_tools.py`) — `model_validate`
+raising `pydantic.ValidationError` for an out-of-bounds count is caught here and turned into the
+standard 422 envelope, the same shape `RequestValidationError` renders for a bad query param, so
+an out-of-bounds symbol count never 500s.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query, status
+from pydantic import ValidationError
+
+from accounts.models import User
+from api.dependencies import AppState, get_state, optional_user, tool_context_for
+from api.errors import ApiError
+from schemas.enums import Market
+from tools.base import ToolContext, dispatch_tool
+
+router = APIRouter(tags=["fund-data"])
+
+# The numeric literal, matching `api/errors.py`'s own convention — the `status.HTTP_422_*`
+# constant's name churns across Starlette versions (entity → content) and emits a deprecation
+# warning; the code is stable.
+_HTTP_422_UNPROCESSABLE = 422
+
+_MIN_OVERLAP_SYMBOLS = 3
+_MAX_OVERLAP_SYMBOLS = 10
+_MIN_COMPARISON_SYMBOLS = 2
+_MAX_COMPARISON_SYMBOLS = 10
+
+
+def _context(
+    user: User | None = Depends(optional_user),
+    state: AppState = Depends(get_state),
+) -> ToolContext:
+    return tool_context_for(user, state)
+
+
+async def _dispatch(
+    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
+) -> dict[str, object]:
+    tool = state.tool_registry.get_tool(tool_name)
+    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
+        raise ApiError(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="tool_unavailable",
+            message=f"Tool {tool_name} is not registered.",
+            retryable=False,
+        )
+    try:
+        validated = tool.input_model.model_validate(args)
+    except ValidationError as exc:
+        raise ApiError(
+            status_code=_HTTP_422_UNPROCESSABLE,
+            code="invalid_request",
+            message=f"Request failed validation: {exc.errors()[0]['msg']}"
+            if exc.errors()
+            else "Request failed validation.",
+            retryable=False,
+        ) from exc
+    result = await dispatch_tool(tool, validated, ctx)
+    return result.model_dump(mode="json")
+
+
+# ---- per-symbol analyst-data reads (non-TW) ------------------------------------------------
+
+
+@router.get("/funds/{symbol}/options-chain")
+async def options_chain(
+    symbol: str,
+    market: Market = Query(Market.US),
+    expiry: str | None = Query(
+        None, description="Option expiry date (ISO). Omitted means the nearest expiry."
+    ),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Option chain (calls + puts, one expiry) for one non-TW symbol."""
+    args: dict[str, object] = {"id": symbol, "market": market.value}
+    if expiry is not None:
+        args["expiry"] = expiry
+    return await _dispatch(state, "get_options_chain", args, ctx)
+
+
+@router.get("/funds/{symbol}/institutional-holders")
+async def institutional_holders(
+    symbol: str,
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Institutional + mutual-fund holder rows for one non-TW symbol."""
+    return await _dispatch(
+        state, "get_institutional_holders", {"id": symbol, "market": market.value}, ctx
+    )
+
+
+@router.get("/funds/{symbol}/insider-activity")
+async def insider_activity(
+    symbol: str,
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Insider (Form-4-derived) transaction rows for one non-TW symbol."""
+    return await _dispatch(
+        state, "get_insider_activity", {"id": symbol, "market": market.value}, ctx
+    )
+
+
+@router.get("/funds/{symbol}/holdings")
+async def fund_holdings(
+    symbol: str,
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Top-holdings + sector-weighting rows for one non-TW ETF/mutual fund."""
+    return await _dispatch(state, "get_fund_holdings", {"id": symbol, "market": market.value}, ctx)
+
+
+# ---- multi-symbol overlap / comparison -----------------------------------------------------
+
+
+@router.get("/funds/overlap")
+async def etf_overlap(
+    symbols: str = Query(
+        ...,
+        description=(
+            "Comma-separated ETF/fund symbols, 3-10, same non-TW market, e.g. 'SPY,VOO,IVV'."
+        ),
+    ),
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Constituent-overlap comparison across 3+ non-TW ETFs/funds — the explicit fix for
+    'existing tools only compare 2 funds at a time'. Never available for TW ETFs (see
+    `sources/etf_pcf.py`'s documented per-constituent-holdings gap)."""
+    ids = _split_symbols(symbols, min_count=_MIN_OVERLAP_SYMBOLS, max_count=_MAX_OVERLAP_SYMBOLS)
+    return await _dispatch(state, "get_etf_overlap", {"symbols": ids, "market": market.value}, ctx)
+
+
+@router.get("/funds/comparison")
+async def fund_comparison(
+    symbols: str = Query(
+        ...,
+        description=(
+            "Comma-separated 'id:market' pairs, 2-10, any market (incl. TW), e.g. '0050:TW,SPY:US'."
+        ),
+    ),
+    lookback_days: int = Query(
+        365, ge=1, le=3650, description="Total-return lookback window in calendar days."
+    ),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Total-return-with-dividends-reinvested comparison across 2+ symbols in any market
+    (including TW). Never computes overlap%/NAV/premium-discount for TW symbols — a documented,
+    honest adapter gap relayed in each TW row's `unavailable_note`."""
+    pairs = _split_symbol_market_pairs(
+        symbols, min_count=_MIN_COMPARISON_SYMBOLS, max_count=_MAX_COMPARISON_SYMBOLS
+    )
+    return await _dispatch(
+        state,
+        "get_fund_comparison",
+        {"symbols": pairs, "lookback_days": lookback_days},
+        ctx,
+    )
+
+
+def _split_symbols(raw: str, *, min_count: int, max_count: int) -> list[str]:
+    ids = [part.strip() for part in raw.split(",") if part.strip()]
+    if not (min_count <= len(ids) <= max_count):
+        raise ApiError(
+            status_code=_HTTP_422_UNPROCESSABLE,
+            code="invalid_request",
+            message=f"Expected between {min_count} and {max_count} symbols, got {len(ids)}.",
+            retryable=False,
+        )
+    return ids
+
+
+def _split_symbol_market_pairs(
+    raw: str, *, min_count: int, max_count: int
+) -> list[dict[str, object]]:
+    tokens = [part.strip() for part in raw.split(",") if part.strip()]
+    if not (min_count <= len(tokens) <= max_count):
+        raise ApiError(
+            status_code=_HTTP_422_UNPROCESSABLE,
+            code="invalid_request",
+            message=f"Expected between {min_count} and {max_count} symbols, got {len(tokens)}.",
+            retryable=False,
+        )
+    pairs: list[dict[str, object]] = []
+    for token in tokens:
+        if ":" not in token:
+            raise ApiError(
+                status_code=_HTTP_422_UNPROCESSABLE,
+                code="invalid_request",
+                message=f"Expected 'id:market' pairs, got {token!r}.",
+                retryable=False,
+            )
+        symbol_id, market_id = token.split(":", 1)
+        try:
+            market = Market(market_id.strip().upper())
+        except ValueError as exc:
+            raise ApiError(
+                status_code=_HTTP_422_UNPROCESSABLE,
+                code="invalid_request",
+                message=f"Unknown market {market_id!r} in {token!r}.",
+                retryable=False,
+            ) from exc
+        pairs.append({"id": symbol_id.strip(), "market": market.value})
+    return pairs
+
+
+__all__ = ["router"]

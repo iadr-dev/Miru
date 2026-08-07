@@ -1,0 +1,342 @@
+"""The shared streaming turn-driver: the one seam `POST /agent/query`, `POST
+/threads/{id}/turns/{tid}/regenerate`, and `POST /threads/{id}/turns/{tid}/edit` all invoke to run
+the orchestrator and stream its frames — extracted from `agent.py` so a second route can drive a
+turn without forking (and inevitably drifting from) the governance-checked path.
+
+Governance is not re-implemented here, same as `agent.py`'s own docstring: the answer text comes
+from `Orchestrator.run()`, whose lanes and synthesis each run `guardrails.check_output`, and whose
+every tool call routes through `tools.base.dispatch_tool`'s sponsor gate via the `ToolContext` the
+caller hands in. This module adds no tool path of its own and no bypass of the pre-turn rate/quota
+gate — `regenerate`/`edit` call `enforce_pre_turn_gate` exactly as `/agent/query` does, so a retry
+or an edit-resend cannot dodge the daily-chat cap or the per-minute rate limit either.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+from collections.abc import AsyncIterator
+
+import structlog
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
+from accounts.entitlements import chat_limit_for, rate_limit_per_minute
+from accounts.models import User
+from accounts.secrets import SqlAlchemySecretStore
+from api.dependencies import AppState
+from api.errors import ApiError
+from api.sse import format_sse_event
+from conversation.models import (
+    Framework,
+    MessageBlockContent,
+    MessageBlockType,
+    RichCardBlock,
+    TextBlock,
+    TurnRole,
+)
+from conversation.store import ConversationStore
+from conversation.turn_lifecycle import SimpleCancelToken
+from events.bus import EventBus
+from orchestrator.models import OrchestratorResult
+from orchestrator.orchestrator import PersonalityContext
+from tools.base import ToolContext
+from usage.store import write_turn_usage
+
+_RATE_WINDOW_SECONDS = 60
+_TERMINAL_KIND = "turn.end"
+
+logger = structlog.get_logger(__name__)
+
+
+async def byok_active(session: AsyncSession, state: AppState, *, user_id: str) -> bool:
+    """Whether the caller has a BYOK LLM key on file — the one flag that lifts the daily-chat cap
+    (the user pays their own inference). A missing/invalid encryption config is treated as no
+    BYOK, never over-granting and never a crash."""
+    try:
+        cipher = SecretCipher.from_settings(state.settings)
+    except SecretEncryptionNotConfiguredError:
+        return False
+    return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
+
+
+async def enforce_pre_turn_gate(state: AppState, session: AsyncSession, user: User) -> None:
+    """Reject a turn before it is created when the caller is over their per-minute request rate or
+    would exceed their daily-chat allowance. Shared by every route that starts a real turn
+    (`/agent/query`, `regenerate`, `edit`) — a retry/regenerate/edit can never dodge the cap.
+
+    Rate limit: an atomic Redis `INCR`+TTL check-and-increment keyed on the caller and window (the
+    shared multi-worker backend) or its single-process in-memory equivalent — a `429` with a
+    `retry_after_seconds` hint. Daily-chat quota: a reserve-before-act atomic increment of the
+    caller's durable UTC-day counter, so the "has headroom?" check and the claim are one operation
+    (no TOCTOU) — over-cap callers are refunded and rejected without spending the day's allowance.
+    An unlimited tier (Pro) or an active BYOK key means no daily cap and no counter write."""
+    verdict = await state.rate_limiter.check(
+        user.id,
+        max_requests=rate_limit_per_minute(user),
+        window_seconds=_RATE_WINDOW_SECONDS,
+    )
+    if not verdict.allowed:
+        raise ApiError(
+            status_code=429,
+            code="rate_limited",
+            message="Too many requests. Please slow down and retry shortly.",
+            retryable=True,
+        )
+
+    byok = await byok_active(session, state, user_id=user.id)
+    limit = chat_limit_for(user, byok_active=byok)
+    quota = await state.usage_store.reserve_daily_chat(user_id=user.id, limit=limit)
+    if not quota.allowed:
+        raise ApiError(
+            status_code=429,
+            code="chat_limit_reached",
+            message=(
+                f"Daily chat limit reached ({quota.limit} messages/day). "
+                "Upgrade your plan or add your own API key to continue."
+            ),
+            retryable=False,
+        )
+
+
+async def run_and_stream(
+    *,
+    state: AppState,
+    store: ConversationStore,
+    session: AsyncSession,
+    event_bus: EventBus,
+    user_id: str,
+    thread_id: str,
+    turn_id: str,
+    message: str,
+    ctx: ToolContext,
+    personality: PersonalityContext,
+    answer_parent_message_id: str,
+    regenerate_of: str | None = None,
+) -> AsyncIterator[str]:
+    """Subscribe to the bus first, then drive the orchestrator in a background task so no frame
+    published between `turn.start` and `turn.end` is missed. Yields SSE frames until `turn.end`.
+
+    This MUST stay an `async def` generator (not a plain function that returns one): the body
+    below — `event_bus.subscribe()`, then `asyncio.create_task(...)` — only executes on the first
+    `__anext__()`, i.e. when the `StreamingResponse` actually starts consuming it. That deferral is
+    what guarantees the subscriber is registered before the driver task gets its first chance to
+    run (the `async for` line's first step suspends on `queue.get()`, handing control to the
+    scheduler only *after* this subscriber is in the bus's subscriber map) — publish-before-
+    subscribe would otherwise silently drop the turn's early frames (`turn.start`, and sometimes
+    more), which is exactly what happened when this was briefly written as an eager function that
+    created the task before the caller began iterating the response body.
+
+    `answer_parent_message_id` is the message the assistant's answer attaches under — the normal
+    `/agent/query` flow computes it as "whatever the active leaf is right now" (the user message
+    just appended), but `regenerate`/`edit` must pin it explicitly (the original parent, so the
+    new assistant turn lands as a *sibling*, not wherever the active leaf happens to be).
+    `regenerate_of` (a source turn id) is stamped on the new assistant turn only for `regenerate`
+    -- it is the provenance link a client uses to render prior/next version navigation."""
+    subscription = event_bus.subscribe()
+    runner = asyncio.create_task(
+        _drive_turn(
+            state=state,
+            store=store,
+            session=session,
+            event_bus=event_bus,
+            user_id=user_id,
+            thread_id=thread_id,
+            turn_id=turn_id,
+            message=message,
+            ctx=ctx,
+            personality=personality,
+            answer_parent_message_id=answer_parent_message_id,
+            regenerate_of=regenerate_of,
+        )
+    )
+    running = state.turn_registry.get(turn_id)
+    if running is not None:
+        running.task = runner
+    try:
+        async for event in subscription:
+            yield format_sse_event(event)
+            if event.kind == _TERMINAL_KIND:
+                break
+    finally:
+        runner.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await runner
+        state.turn_registry.unregister(turn_id)
+        # A Redis-backed bus runs a background mirror-writer; drain + stop it so the per-turn bus
+        # leaves no dangling task. The in-process bus has no such handle (duck-typed, optional).
+        closer = getattr(event_bus, "aclose", None)
+        if closer is not None:
+            with contextlib.suppress(Exception):
+                await closer()
+
+
+def start_turn_stream(
+    *,
+    state: AppState,
+    store: ConversationStore,
+    session: AsyncSession,
+    user_id: str,
+    thread_id: str,
+    turn_id: str,
+    message: str,
+    ctx: ToolContext,
+    personality: PersonalityContext,
+    answer_parent_message_id: str,
+    regenerate_of: str | None = None,
+) -> StreamingResponse:
+    """Register the turn + return the `StreamingResponse` — the one call every route that starts
+    a real turn makes, so registration/streaming plumbing exists in exactly one place."""
+    event_bus = state.event_bus_factory.new_bus(turn_id=turn_id, user_id=user_id)
+    cancel_token = SimpleCancelToken()
+    state.turn_registry.register(
+        turn_id=turn_id,
+        user_id=user_id,
+        thread_id=thread_id,
+        event_bus=event_bus,
+        cancel_token=cancel_token,
+    )
+    stream = run_and_stream(
+        state=state,
+        store=store,
+        session=session,
+        event_bus=event_bus,
+        user_id=user_id,
+        thread_id=thread_id,
+        turn_id=turn_id,
+        message=message,
+        ctx=ctx,
+        personality=personality,
+        answer_parent_message_id=answer_parent_message_id,
+        regenerate_of=regenerate_of,
+    )
+    return StreamingResponse(stream, media_type="text/event-stream")
+
+
+async def _drive_turn(
+    *,
+    state: AppState,
+    store: ConversationStore,
+    session: AsyncSession,
+    event_bus: EventBus,
+    user_id: str,
+    thread_id: str,
+    turn_id: str,
+    message: str,
+    ctx: ToolContext,
+    personality: PersonalityContext,
+    answer_parent_message_id: str,
+    regenerate_of: str | None = None,
+) -> None:
+    event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
+    # The registry entry is `RunningTurn` itself — the same live handle `POST .../steer` appends
+    # to and `.../cancel` flips — so the loop's `drain()` calls read exactly what a concurrent
+    # steer request queued, with no second queue to keep in sync.
+    running = state.turn_registry.get(turn_id)
+    try:
+        result = await state.orchestrator.run(
+            message,
+            tool_context=ctx,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            personality=personality,
+            steering_source=running,
+        )
+    except asyncio.CancelledError:
+        # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
+        # cancelled frame rather than letting the cancellation propagate as a silent drop.
+        event_bus.publish("turn.end", turn_id=turn_id, data={"status": "cancelled"})
+        raise
+    except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
+        logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
+        event_bus.publish(
+            "turn.end", turn_id=turn_id, data={"status": "error", "message": str(exc)}
+        )
+        return
+
+    await _persist_answer(
+        store,
+        user_id=user_id,
+        thread_id=thread_id,
+        result=result,
+        parent_message_id=answer_parent_message_id,
+        regenerate_of=regenerate_of,
+    )
+    await _record_usage(session, user_id=user_id, turn_id=turn_id, result=result)
+    event_bus.publish(
+        "message",
+        turn_id=turn_id,
+        data={"text": result.final_text, "framework": result.routing.framework},
+    )
+    event_bus.publish("turn.end", turn_id=turn_id, data={"status": "done"})
+
+
+async def _record_usage(
+    session: AsyncSession, *, user_id: str, turn_id: str, result: OrchestratorResult
+) -> None:
+    """Write the finished turn's usage rollup through to the durable sink on the request's own
+    session (one connection, no second writer contending). Idempotent on `(user_id, turn_id)`, so
+    a retry cannot double-count. Best-effort relative to the turn: a write failure is rolled back
+    and logged, never allowed to fail the already-answered turn."""
+    usage = result.usage
+    if usage is None:
+        return
+    try:
+        await write_turn_usage(
+            session,
+            user_id=user_id,
+            turn_id=turn_id,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            tool_calls=usage.tool_calls,
+            finmind_calls=usage.finmind_calls,
+            cost_micros=usage.cost_micros,
+        )
+        await session.commit()
+    except Exception as exc:  # a durable-usage write is best-effort — never fail an answered turn
+        await session.rollback()
+        logger.warning("usage_record_failed", turn_id=turn_id, error=repr(exc))
+
+
+async def _persist_answer(
+    store: ConversationStore,
+    *,
+    user_id: str,
+    thread_id: str,
+    result: OrchestratorResult,
+    parent_message_id: str,
+    regenerate_of: str | None = None,
+) -> None:
+    blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
+        (MessageBlockType.TEXT, TextBlock(text=result.final_text))
+    ]
+    # Persist each governed card as its own block so a re-opened thread renders the same cards
+    # the live stream showed — the card payload is already scanned/caveated by the Step loop.
+    blocks.extend(
+        (MessageBlockType.RICH_CARD, RichCardBlock(card_type=card.card_type, data=card.data))
+        for card in result.rich_cards
+    )
+    await store.append_turn(
+        user_id=user_id,
+        thread_id=thread_id,
+        role=TurnRole.ASSISTANT,
+        blocks=blocks,
+        parent_message_id=parent_message_id,
+        framework=Framework(result.routing.framework),
+        regenerate_of=regenerate_of,
+    )
+
+
+async def current_leaf(store: ConversationStore, thread_id: str) -> str | None:
+    path = await store.active_path(thread_id=thread_id)
+    return path[-1].id if path else None
+
+
+__all__ = [
+    "byok_active",
+    "current_leaf",
+    "enforce_pre_turn_gate",
+    "run_and_stream",
+    "start_turn_stream",
+]

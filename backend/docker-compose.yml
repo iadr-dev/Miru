@@ -1,0 +1,208 @@
+# Dev-parity stack: the full runtime graph on one host so the Redis-transport path (cross-worker
+# SSE fan-out, quota counters, locks) is exercised locally against a real Redis + Postgres, not
+# first discovered in prod. One image, role-selected per service via SERVICE_ROLE.
+#
+# Secrets are never baked in: credential-shaped values read from the shell/.env via ${VAR}
+# interpolation with dev-only fallbacks for the non-secret infra wiring. Provider API keys are
+# passed through from the environment (unset = that provider simply degrades, per its adapter).
+
+name: miro
+
+x-app-env: &app-env
+  # App state on the compose Postgres; async driver required.
+  DATABASE_URL: postgresql+asyncpg://miro:${POSTGRES_PASSWORD:-miro_dev_pw}@postgres:5432/miro
+  # The whole point of the dev-parity stack: real Redis, real Redis-backed transport + limiter,
+  # so the code paths that only activate on the redis backend actually run here.
+  REDIS_URL: redis://redis:6379/0
+  EVENT_BUS_BACKEND: redis
+  RATE_LIMITER_BACKEND: redis
+  # Derived-store dirs on the shared named volume (leader writes Parquet, readers read it).
+  DUCKDB_PATH: /app/data/duckdb
+  PARQUET_ROOT: /app/data/parquet
+  AITW_ENV: development
+  INGEST_ON_STARTUP: "false"
+  # A dev JWT secret so auth-required routes work locally; override via the shell for anything real.
+  JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-not-a-real-secret-change-me}
+  # LLM / data-provider keys pass through from the host env; unset = that provider degrades.
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}
+  OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+  FINMIND_API_KEY: ${FINMIND_API_KEY:-}
+  BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
+  # Point the offline path at the compose Ollama service when the `ollama` profile is up.
+  OLLAMA_BASE_URL: http://ollama:11434
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: miro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-miro_dev_pw}
+      POSTGRES_DB: miro
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U miro -d miro"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # AOF on: quota counters + idempotency locks must survive a restart so a flush can't cause
+    # double-billing / double-delivery (cache keys are ephemeral and don't rely on this).
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot migrator: applies Alembic to head against the compose Postgres before api/scheduler
+  # start, so a fresh volume comes up with the schema in place. Exits 0 on success.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: miro-backend
+    environment:
+      <<: *app-env
+    entrypoint: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: miro-backend
+    environment:
+      <<: *app-env
+      SERVICE_ROLE: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - marketdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # Readiness probe verifies Postgres + Redis reachability (not just process-up), matching what
+      # a real load balancer would gate traffic on.
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/readyz').status==200 else 1)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: miro-backend
+    environment:
+      <<: *app-env
+      SERVICE_ROLE: scheduler
+    # Single replica in compose — the dev-single-process leader assumption (AlwaysLeader). Proving
+    # multi-replica leader election is a separate, larger scope; a real cross-process election
+    # swaps in at the leader-composition site without touching the loop.
+    volumes:
+      - marketdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: miro-backend
+    environment:
+      <<: *app-env
+      SERVICE_ROLE: ingest
+    # Single replica in compose — the dev-single-process leader assumption (AlwaysLeader), the same
+    # leader-election domain the scheduler role uses. A real cross-process election swaps in at the
+    # leader-composition site without touching the loop, exactly as for the scheduler role.
+    volumes:
+      - marketdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: miro-backend
+    environment:
+      <<: *app-env
+      SERVICE_ROLE: mcp
+      MCP_HOST: ${MCP_HOST:-0.0.0.0}
+      MCP_PORT: ${MCP_PORT:-8100}
+    ports:
+      - "8100:8100"
+    # The MCP tool registry is built the same way the API's is (`orchestrator.composition.
+    # build_tool_registry`) — it wires a `market_data_reader` over the Parquet store (the
+    # screener/theme tools read it) and a `session_factory` against the compose Postgres, so
+    # this role needs the same derived-store volume and the same readiness ordering as api/
+    # scheduler/ingest.
+    volumes:
+      - marketdata:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # mcp/app.py registers a plain liveness route separate from the /mcp protocol endpoint
+      # (which requires standing up a full MCP session to probe) — verified live against a real
+      # container: returns 200 {"status": "ok"} once the ASGI app has started.
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/healthz').status==200 else 1)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  # Offline / self-host inference path — NOT in the hosted prod image. Disabled by default; bring it
+  # up with `--profile ollama` when running the local LLM stack.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollamadata:/root/.ollama
+
+volumes:
+  pgdata:
+  redisdata:
+  marketdata:
+  ollamadata:
