@@ -27,6 +27,19 @@ def test_write_then_read_partition_round_trips(tmp_path: object) -> None:
     assert {r["symbol"] for r in read_back} == {"2330", "0050"}
 
 
+def test_write_partition_with_zero_rows_does_not_crash(tmp_path: object) -> None:
+    """A genuinely empty trading day (zero rows, not zero *columns*) must still write and read
+    back successfully — `pd.DataFrame([])` has zero columns, which DuckDB's `COPY` used to
+    reject outright ("Need a DataFrame with at least one column")."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+
+    written = store.write_partition("TaiwanStockPrice", "TW", date(2024, 1, 2), [])
+
+    assert written == 0
+    assert store.has_partition("TaiwanStockPrice", "TW", date(2024, 1, 2))
+    assert store.read_partition("TaiwanStockPrice", "TW", date(2024, 1, 2)) == []
+
+
 def test_partition_not_visible_until_manifest_flip(tmp_path: object) -> None:
     """Simulate a crash *before* the final rename: write to the temp dir but never call
     `write_partition` to completion — the partition must stay unreadable. A reader globbing
