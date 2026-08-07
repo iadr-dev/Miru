@@ -147,5 +147,5 @@ adapter maps role → provider/model from config.
   journaled — a fan-out is reconstructable per lane.
 - Bounded by config: max **4** sub-agents, per-agent ReAct-iteration cap, per-turn tool-call
   and **cost/token ceiling** (hard abort → degraded answer), plus the FinMind Sponsor pool's
-  static 6000 req/hr ceiling (shared across all Premium/Pro users; Free never draws on it) with
-  pre-flight reservation before fan-out. See §3b + [16](16-infrastructure.md).
+  static **6000 req/hr** ceiling (shared across all Premium/Pro users; Free never draws on it)
+  with pre-flight reservation before fan-out. See §3b + [16](16-infrastructure.md).
