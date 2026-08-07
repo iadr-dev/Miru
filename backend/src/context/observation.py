@@ -9,11 +9,10 @@ observation rather than a preserved canonical fact:
   timer, no background task, no retry loop in this module.
 - **Runs without a separate approval step** — unlike a legacy
   "safety-tier" gate, there is nothing here to approve; the caller (a tool) simply invokes it.
-- **Entitlement hook (not yet built — Phase 9):** where an observation draws on FinMind
-  Sponsor data, the *tool* layer's `pre_tool` entitlement hook
-  (`accounts/entitlements.py`, not yet built) is what will gate it — this module does not
-  and must not implement any gating itself. The attachment point is `ObservationRun.result.
-  data_class`, already carried through from the router's `SourceResult`; a future
+- **Entitlement hook lives one layer up:** where an observation draws on FinMind Sponsor data,
+  the *tool* layer's `pre_tool` entitlement check (`accounts/entitlements.py`) is what gates it —
+  this module does not and must not implement any gating itself. The attachment point is
+  `ObservationRun.result.data_class`, carried through from the router's `SourceResult`; the
   entitlement hook inspects that field before the tool result reaches the caller.
 """
 
