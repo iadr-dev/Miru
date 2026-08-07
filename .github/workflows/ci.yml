@@ -1,0 +1,115 @@
+# PR gate for the Python backend. Gates run in blocking order: lint/format, then both type
+# checkers, then the fast non-network suite, then the governance suite, then the dual-dialect
+# Alembic check against a real Postgres service container. The default suite stays fast (no service
+# container) — only the dual-dialect job pays for Postgres, so the common path isn't slowed by a DB
+# it doesn't need.
+name: backend-ci
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/ci.yml"
+  push:
+    branches: [main]
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: backend
+
+env:
+  # Pin to the 3.13 toolchain target (local dev is 3.14; C-extension wheels lag there).
+  UV_PYTHON: "3.13"
+
+jobs:
+  lint-type-test:
+    name: lint, types, fast + governance suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (frozen)
+        run: uv sync --all-extras --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: mypy (strict)
+        run: uv run mypy src
+
+      - name: pyright (strict)
+        run: uv run pyright src
+
+      - name: Default suite (non-network)
+        run: uv run pytest
+
+      - name: Governance suite
+        run: uv run pytest -m governance
+
+  dual-dialect-migrations:
+    name: dual-dialect Alembic (SQLite + Postgres)
+    runs-on: ubuntu-latest
+    # Only this job needs a database. A Postgres service container gives the migrations a real
+    # dialect to apply + roll back against, so "every migration works on Postgres too" is enforced,
+    # not assumed. The SQLite half runs in-process and needs no service.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: miro
+          POSTGRES_PASSWORD: miro_ci_pw
+          POSTGRES_DB: miro_test
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U miro -d miro_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The dual-dialect test skips the Postgres half unless this is set; the service container sets
+      # it, so the check actually runs in CI while a local `pytest` without a DB still passes.
+      TEST_POSTGRES_URL: postgresql+asyncpg://miro:miro_ci_pw@localhost:5432/miro_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (frozen)
+        run: uv sync --all-extras --frozen
+
+      - name: Dual-dialect migration suite
+        run: uv run pytest -m dual_dialect -v
+
+      - name: Concurrency suite (real Postgres)
+        # Shared-state race proofs that only mean something against a store allowing concurrent
+        # writers; reuses the same Postgres service, so it rides along with the dual-dialect job
+        # rather than paying for a second container.
+        run: uv run pytest -m concurrency -v
+
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
