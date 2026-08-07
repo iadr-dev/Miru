@@ -1,0 +1,79 @@
+"""Theme/tier lookup REST — thin projections of the theme-lookup agent tools, dispatched through
+`tools.base.dispatch_tool` exactly as the other market routes are, so the entitlement gate applies
+uniformly (theme data is `public`, so every caller including anonymous gets real data).
+
+This is platform reference data — classification and relationships, not user-scoped state — so
+every route reads through `optional_user` (an anonymous caller is fine), mirroring how the pets
+catalog is public while a user's own pets require sign-in. There is no user-scoped theme data.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query, status
+
+from accounts.models import User
+from api.dependencies import AppState, get_state, optional_user, tool_context_for
+from api.errors import ApiError
+from schemas.enums import Market
+from tools.base import ToolContext, dispatch_tool
+
+router = APIRouter(tags=["themes"])
+
+
+def _context(
+    user: User | None = Depends(optional_user),
+    state: AppState = Depends(get_state),
+) -> ToolContext:
+    return tool_context_for(user, state)
+
+
+async def _dispatch(
+    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
+) -> dict[str, object]:
+    tool = state.tool_registry.get_tool(tool_name)
+    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
+        raise ApiError(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="tool_unavailable",
+            message=f"Tool {tool_name} is not registered.",
+            retryable=False,
+        )
+    validated = tool.input_model.model_validate(args)
+    result = await dispatch_tool(tool, validated, ctx)
+    return result.model_dump(mode="json")
+
+
+@router.get("/themes/{key}")
+async def theme_detail(
+    key: str,
+    limit: int = Query(200, ge=1, le=1000),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One theme's identity + its member symbols, each with sub-industry/confidence/source."""
+    return await _dispatch(state, "get_theme_members", {"theme_key": key, "limit": limit}, ctx)
+
+
+@router.get("/themes/{key}/tiers")
+async def theme_tiers(
+    key: str,
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One theme's sub-industries grouped into upstream/midstream/downstream, each assignment
+    marked curated (editorial) or heuristic (automatically classified)."""
+    return await _dispatch(state, "get_theme_tiers", {"theme_key": key}, ctx)
+
+
+@router.get("/symbols/{symbol}/themes")
+async def symbol_themes(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The reverse lookup: every theme one symbol belongs to."""
+    return await _dispatch(state, "get_symbol_themes", {"id": symbol, "market": market.value}, ctx)
+
+
+__all__ = ["router"]

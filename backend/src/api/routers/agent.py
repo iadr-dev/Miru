@@ -1,0 +1,115 @@
+"""`POST /agent/query` — the core chat entrypoint, wired to the already-built `Orchestrator`.
+
+Flow of one turn:
+1. Resolve the (required) signed-in user → the per-request `ToolContext` (entitlement + TLS).
+2. Auto-create a thread when none is supplied; persist the user message.
+3. Hand off to `api.turn_driver.start_turn_stream` — the shared seam `regenerate`/`edit` also call
+   — which runs `Orchestrator.run()` in a background task against a fresh in-process `EventBus`,
+   while the SSE response subscribes to that bus and streams every frame the orchestrator
+   publishes (`route.decided`, `agent.spawned`, `synthesis.start`, …) in real time.
+4. On completion, the driver persists the assistant answer, then publishes a final `message`
+   frame + `turn.end` so the stream terminates cleanly.
+
+Governance is not re-implemented here: the answer text is produced by the orchestrator, whose
+lanes and synthesis each run `guardrails.check_output`, and whose every tool call routes through
+`tools.base.dispatch_tool`'s sponsor gate via the `ToolContext` this router hands it. This router
+adds no tool path of its own, so it cannot bypass either hook.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Header, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from accounts.models import User
+from api.dependencies import (
+    AppState,
+    get_session,
+    get_state,
+    require_user,
+    tool_context_for,
+)
+from api.errors import ApiError
+from api.turn_driver import current_leaf, enforce_pre_turn_gate, start_turn_stream
+from conversation.models import MessageBlockType, TextBlock, Thread, TurnRole
+from conversation.store import (
+    ConversationStore,
+    SqlAlchemyConversationStore,
+    ThreadNotFoundError,
+)
+from orchestrator.orchestrator import PersonalityContext
+
+router = APIRouter(tags=["agent"])
+
+
+class AgentQueryRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    thread_id: str | None = None
+
+
+def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
+    return SqlAlchemyConversationStore(session)
+
+
+@router.post("/agent/query")
+async def agent_query(
+    body: AgentQueryRequest,
+    user: User = Depends(require_user),
+    state: AppState = Depends(get_state),
+    store: ConversationStore = Depends(_store),
+    session: AsyncSession = Depends(get_session),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> StreamingResponse:
+    ctx = tool_context_for(user, state)
+    await enforce_pre_turn_gate(state, session, user)
+    thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
+    thread_id = thread.id
+
+    user_turn = await store.append_turn(
+        user_id=user.id,
+        thread_id=thread_id,
+        role=TurnRole.USER,
+        blocks=[(MessageBlockType.TEXT, TextBlock(text=body.message))],
+        parent_message_id=await current_leaf(store, thread_id),
+        idempotency_key=idempotency_key,
+    )
+
+    # The streaming correlation id must be the persisted turn's own id — `stream_events.turn_id`
+    # has a hard FK to `turns.id`, so a durable-log write for any other id silently no-ops.
+    turn_id = user_turn.id
+    personality = PersonalityContext(
+        thread_override=thread.personality_override, user_preference=user.personality_id
+    )
+    return start_turn_stream(
+        state=state,
+        store=store,
+        session=session,
+        user_id=user.id,
+        thread_id=thread_id,
+        turn_id=turn_id,
+        message=body.message,
+        ctx=ctx,
+        personality=personality,
+        answer_parent_message_id=user_turn.messages[-1].id,
+    )
+
+
+async def _resolve_thread(
+    store: ConversationStore, *, user_id: str, thread_id: str | None
+) -> Thread:
+    if thread_id is not None:
+        try:
+            return await store.get_thread(user_id=user_id, thread_id=thread_id)
+        except ThreadNotFoundError as exc:
+            raise ApiError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="thread_not_found",
+                message=f"Thread {thread_id} not found.",
+                retryable=False,
+            ) from exc
+    return await store.create_thread(user_id=user_id)
+
+
+__all__ = ["router"]
