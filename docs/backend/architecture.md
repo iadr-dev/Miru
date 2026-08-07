@@ -81,7 +81,7 @@ The reference project's module codes are kept as **governance/mode concepts** (s
 │  ALL network I/O · TLS · currentness caveats│   │  leader-only writer; cron/  │
 │  twse/tpex/taifex_openapi · *_mis ·         │   │  backfill (§9c) → writes ─┐ │
 │  ncdr·finmind·mops·news·ptt·etf_pcf·         │   └───────────────────────────│─┘
-│  web_search·yfinance                          │                    ┌──────────▼─────────┐
+│  web_search·yfinance·calendar_ext            │                    ┌──────────▼─────────┐
 └──────────────────────────────────────────────┘                    │ Derived store       │
                                                                      │ DuckDB/Parquet+Redis│
                                             analytics + context read◀│ (Hive-partitioned)  │
@@ -104,23 +104,22 @@ router resolves *which* adapters, in per-market priority order with fallback ([m
 | `TPEX_OPENAPI` | `tpex_openapi.py` | Official OTC + emerging EOD | official-eod | OTC / 興櫃 |
 | `TAIFEX_OPENAPI` | `taifex_openapi.py` | Derivatives EOD / reference | official-eod | Derivatives |
 | `TWSE_MIS` | `twse_mis.py` | Browser-observed snapshot | live-ish (bounded) | Listed / OTC |
+| `TAIFEX_MIS` | `taifex_mis.py` | Derivatives snapshot (staged) | live-ish (bounded) | Derivatives |
 | `NCDR_DGPA_CLOSURE_CAP` | `ncdr_closure.py` | Work-suspension / closure evidence | event-driven | Taiwan-wide |
-| `FINMIND` | `finmind/` (package: 9 category modules) | 104 datasets across Technical/Chip/Fundamental/Derivative/Real-Time/CB/Others/International/Global-Economic; gap-filler | mixed | All |
-| `MOPS` | `mops.py` | 公開資訊觀測站 disclosure stream via TWSE's own OpenAPI (`t187ap04_L`/`t187ap11_L`) — real JSON, not the dead legacy HTML scraper — 重大訊息/董監事持股 | event-driven / reference | All |
+| `FINMIND` | `finmind.py` | 75+ history-enabled datasets; gap-filler | mixed | All |
+| `MOPS` | `mops.py` | 公開資訊觀測站 disclosure stream (**scraped**) — 重大訊息/董事會/庫藏股/內部人/法說會/自結 | event-driven / reference | All |
 | `NEWS` | `news.py` | Financial RSS (鉅亨/經濟日報/TechNews) + GDELT (keyless) + Finnhub | reference (near-RT) | All |
 | `PTT` | `ptt.py` | PTT boards (**scraped**): Stock/Tech_Job buzz + Beauty/Gossiping off-topic | reference (near-RT) | All |
 | `ETF_PCF` | `etf_pcf.py` | Passive ETF 成分股/權重 + 受益人數 + NAV/units (**scraped**: issuer PCF/公會/TWSE `fund/`) | official-eod | All |
 | `WEB` | `web_search.py` | **Brave Search API** web search + fetch (provider-agnostic); LLM-native search when available | reference (live) | All (toggle) |
-| `YFINANCE` | `yfinance/` (package: domain-organized modules) | TW gap-filler (analyst consensus/目標價/ESG) **and** full primary source for non-TW markets (US/GB/JP/EU) — price/financials/holders/discovery/screener; attributed 3rd-party | reference | All |
+| `YFINANCE` | `yfinance.py` | Analyst consensus/目標價 + ESG + English sector/symbol-resolution for `.TW`/`.TWO` (**narrow**; attributed 3rd-party) | reference | All |
+| `CALENDAR_EXT` | `calendar_ext.py` | Forward-dated calendar gaps (**scraped**): index rebalance (TIP/MSCI/FTSE), macro release dates, IPO 承銷/抽籤 | reference / scheduled | All |
 
 **Critical caveat, carried on every result:** no source is real-time. `*_MIS` are
 bounded snapshots, not streams. OpenAPIs are latest-only with no backfill (FinMind adds
 history). Every payload is tagged with source id, timing class, fetch timestamp, and a
 currentness caveat that propagates to the agent's output. Full inventory:
-[data-catalog.md](data-catalog.md). Note: `TAIFEX_MIS` and a standalone `CALENDAR_EXT` adapter
-named in earlier drafts of this doc were never built as separate source files — TAIFEX
-derivatives snapshots are staged behind `context/builder.py`'s validation flag (§4), and
-calendar-gap feeds are composed directly in `calendar/` rather than via a dedicated adapter.
+[data-catalog.md](data-catalog.md).
 
 ## 4. Context pipeline
 
@@ -143,11 +142,7 @@ tool declares `name`, Pydantic input/output models, a `data_class`, and `run()`.
 | `data_class` | Meaning | Example tools | Access |
 |--------------|---------|---------------|--------|
 | `public` | Gov OpenAPI + FinMind Free/Backer + derived | `get_canonical_context`, `build_conversation_package`, `get_source_health`, `run_bounded_observation` | All users + MCP |
-| `sponsor` | Paid FinMind Sponsor data | `get_chip_flows` (分點), `get_government_bank_flows` (八大官股), `get_intraday_kbar`, `get_us_stock_price_minute` | **Premium/Pro only** |
-
-The full registry is **97 real tools** across 22 domain files (chip/technical/fundamental/
-derivatives/analyst/international/macro/others/theme/score/screener, etc.) — this table shows a
-representative slice; the authoritative list is [modules/03-tools.md](modules/03-tools.md).
+| `sponsor` | Paid FinMind Sponsor data | `get_chip_flows` (分點), `get_government_bank_flows` (八大官股), `get_realtime_snapshot`, `get_intraday_kbars` | **Premium/Pro only** |
 
 The single access gate: a `sponsor` tool called by an unentitled user returns a **masked
 teaser** (`{locked, required_tier, preview}`) → frontend blurs it (馬賽克) with an upgrade
@@ -231,17 +226,14 @@ runtime builds system prompt via transform_context:                [05 runtime]
   ▼
   LLM proposes: get_chip_flows(2330)  [sponsor]
   │  entitlement (per-call): Free → masked teaser {locked, required_tier, preview}
-  │  → Premium/Pro → full data
+  │  → tool.locked SSE frame; Premium/Pro → full data
   ▼
   LLM composes final answer                                         [05 loop]
   │  pre_output hook: guardrails scan — no trading language, caveats present → pass
   ▼
 Journal records every step; usage finalized (post_turn)            [10 usage]
-  → streamed to caller as typed SSE events (caveat, turn.end, tool.result, …)  [07]
+  → streamed to caller as typed SSE events (message.delta, caveat, turn.end)  [07]
 ```
-(This sequence is illustrative of the design; `tool.locked` and `message.delta` SSE frame kinds
-are not yet emitted — see [modules/07](modules/07-conversation-streaming.md)'s
-implementation-status note for the real/not-yet-built split.)
 
 **Parallel / team variants ([11](modules/11-orchestration.md)):** for `subagent` the orchestrator
 fans out N lanes (each its own Step loop with a skill's tool allowlist), every event tagged with
@@ -264,7 +256,7 @@ ai-tw-stock/
    │  │                        #   openrouter)/local(ollama) + registry, routing
    │  ├─ tools/                # base, registry, market, context, health tool groups
    │  ├─ dataaccess/           # capability registry + Market/Symbol + priority-fallback router (config-driven)
-   │  ├─ sources/              # 12 adapters incl. finmind/ and yfinance/ packages (mops/ptt/etf_pcf scrapers, news, web_search) + base + tls — ONLY network I/O
+   │  ├─ sources/              # 14 adapters (finmind, mops/ptt/etf_pcf/calendar_ext scrapers, news, web_search, yfinance) + base + tls — ONLY network I/O
    │  ├─ calendar/             # events calendar: rule engine + feed/scraper composition, state model
    │  ├─ ingest/               # data-ingest/ETL: cron job groups, whole-market-by-date writers, backfill (§9c)
    │  ├─ analytics/            # derived compute: indicators, multi-factor 多空 score, AI summary/SWOT, screener, themes
@@ -299,10 +291,7 @@ The runtime is wrapped by a chat-backend layer — all under the same governance
   assignment; cost-tiered model routing. Decides single-vs-parallel so the caller doesn't.
 - **Conversation & streaming** ([modules/07](modules/07-conversation-streaming.md)):
   persistent threads (create/list/get/fork/resume), typed SSE events, turn cancellation,
-  and steering (real, mid-run — [modules/07](modules/07-conversation-streaming.md)). Inline
-  `ask_user` clarifications are designed (no approval gate) but not yet built — the agent loop
-  returns one whole `TurnResult` per turn, not the token/tool-level stream `ask_user` needs; see
-  [modules/07](modules/07-conversation-streaming.md)'s implementation-status note.
+  and inline `ask_user` clarifications (no approval gate).
 - **Skills** ([modules/08](modules/08-skills.md)): versioned analysis playbooks; triggered
   by the classifier or UI action chips (not slash-command-first).
 - **Memory** ([modules/09](modules/09-memory.md)): working / session / long-term.
@@ -319,10 +308,8 @@ AI discussion handoff": a thread's journaled turns + Conversation package are th
 
 - **Accounts & tiers** ([modules/12](modules/12-multi-user-tiers.md)): OAuth, users (profile:
   birthday/phone+country code/nationality), tiers (free/premium/pro), single `entitlements`
-  module, per-tier rate limits + LLM cost budgets, **a single static Redis-backed FinMind
-  Sponsor pool (6000 req/hr) shared across all Premium/Pro users** — reserve-before-act with
-  refund-on-failure/under-use, not a per-tier quota (Free never touches this pool at all; see
-  [governance.md](governance.md) §9) — BYOK. Everything stateful is scoped by `user_id`.
+  module, per-tier rate limits + LLM cost budgets, **tier-aware FinMind quota (Free 600/hr ·
+  Sponsor 6000/hr)**, BYOK. Everything stateful is scoped by `user_id`.
 - **Payments** ([modules/15](modules/15-payments-paddle.md)): **Paddle** subscriptions
   (Premium/Pro × monthly/annual × **BYOK/standard**, 8 price IDs); webhook is the source of
   truth for `tier`/`byok`; BYOK variant is cheaper.
@@ -344,12 +331,8 @@ AI discussion handoff": a thread's journaled turns + Conversation package are th
 
 ## 11. Build phases
 
-This list is the **design-time phase sequence**, not a live status board — for current
-per-phase status (what's actually built, tested, and verified vs. still pending), see
-[DEVELOPMENT.md §3](DEVELOPMENT.md#3-build-order-turn-the-blueprint-into-code).
-
 1. Foundations (scaffold `backend/`, config, schemas, db, TLS + tier enums, docs)
-2. Data layer (12 adapters incl. the FinMind [104 datasets] and yfinance packages + **data-access router** (capabilities, Market/Symbol, per-market priority-fallback config) + contracts + fixtures)
+2. Data layer (14 adapters + **data-access router** (capabilities, Market/Symbol, per-market priority-fallback config) + contracts + fixtures)
 3. Context pipeline (canonical/observation/conversation/source_health/builder) + calendar (rule engine + event composition)
 3a. **Data ingest / ETL** ([modules/22](modules/22-data-ingest.md)): cron job groups, whole-market-by-date writers, idempotent upsert + gap-fill, backfill — populates the derived store (§9c). Precedes analytics.
 3b. **Analytics & scoring** ([modules/20](modules/20-analytics-scoring.md)): indicator library, multi-factor 多空 score, AI summary/SWOT, screener + AI top-N, theme discovery — derived compute over the ingest store.

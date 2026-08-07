@@ -16,7 +16,7 @@ data source as a governed tool, and serves results over a **read-only FastAPI AP
 2. [governance.md](governance.md) — the non-negotiable rules the whole system enforces:
    Mode A/B/C, Level 1/2, data-class entitlement gate (paid FinMind), TLS policy, non-trading guarantee.
 3. [data-catalog.md](data-catalog.md) — verified inventory of every data source
-   (TWSE/TPEX/TAIFEX OpenAPI + FinMind's 104 datasets), a CMoney-class gap analysis, and
+   (TWSE/TPEX/TAIFEX OpenAPI + FinMind's 75+ datasets), a CMoney-class gap analysis, and
    the direct/derive/paid build strategy.
 4. [api-reference.md](api-reference.md) — consolidated REST + SSE + MCP endpoint reference.
 5. [database-schema.md](database-schema.md) — all tables (accounts, threads, memory,
@@ -78,6 +78,5 @@ governance gate). It's the *how*; the docs above are the *what & why*. Coding st
 
 ## Status
 
-Real, growing codebase (see [DEVELOPMENT.md §3](DEVELOPMENT.md#3-build-order-turn-the-blueprint-into-code)
-for the per-phase build-order status) — no longer just a design/blueprint. No production
-guarantee, no real-time guarantee, no trading recommendations — by design.
+Design/blueprint stage. No production guarantee, no real-time guarantee, no trading
+recommendations — by design.
