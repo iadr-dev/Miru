@@ -55,6 +55,9 @@ class _ListRow:
 
 _DOT_DATE_PARTS = 3  # YYYY.MM.DD
 
+# The one cast() target type every raw JSON list-of-unknowns value below uses.
+type _UntypedList = list[object]
+
 
 def _parse_roc_or_dot_date(value: str) -> date | None:
     """TWSE `fund/list` dates are `YYYY.MM.DD` (Gregorian); dual-listing rows (e.g. a
@@ -74,7 +77,7 @@ def _parse_list_rows(raw: dict[str, object]) -> dict[str, _ListRow]:
     data = raw.get("data")
     if not isinstance(fields, list) or not isinstance(data, list):
         raise ValueError("TWSE ETF list response missing 'fields'/'data'")
-    field_names = [str(f) for f in cast("list[object]", fields)]
+    field_names = [str(f) for f in cast(_UntypedList, fields)]
     try:
         idx_date = field_names.index("上市日期")
         idx_code = field_names.index("證券代號")
@@ -85,10 +88,10 @@ def _parse_list_rows(raw: dict[str, object]) -> dict[str, _ListRow]:
         raise ValueError(f"TWSE ETF list response missing expected column: {exc}") from exc
 
     rows: dict[str, _ListRow] = {}
-    for raw_row in cast("list[object]", data):
+    for raw_row in cast(_UntypedList, data):
         if not isinstance(raw_row, list):
             continue
-        row = cast("list[object]", raw_row)
+        row = cast(_UntypedList, raw_row)
         if len(row) <= max(idx_date, idx_code, idx_name, idx_issuer, idx_index):
             continue
         # A dual-listing row packs two codes as `A<br>B` — the first is the primary/NTD line.
@@ -109,7 +112,7 @@ def _parse_fund_info_rows(raw: object) -> dict[str, dict[str, object]]:
     if not isinstance(raw, list):
         raise ValueError("TWSE t187ap47_L response is not a list")
     rows: dict[str, dict[str, object]] = {}
-    for raw_row in cast("list[object]", raw):
+    for raw_row in cast(_UntypedList, raw):
         if not isinstance(raw_row, dict):
             continue
         row = cast("dict[str, object]", raw_row)
@@ -129,6 +132,31 @@ def _as_int_or_none(value: object) -> int | None:
         return int(float(text))
     except ValueError:
         return None
+
+
+def _build_fund_info(
+    sym: Symbol, listing: _ListRow | None, fund_info: dict[str, object] | None
+) -> EtfFundInfo:
+    """Merge whichever of the two TWSE sources actually has a row for this symbol — either can
+    be `None` (already checked by the caller that at least one is not) — into one `EtfFundInfo`.
+    Pulled out of `EtfPcfAdapter.fetch` purely to keep that method's branching shallow; no
+    behavior of its own beyond the field-by-field fallback each line already documents."""
+    fund_name = (
+        str(fund_info.get("基金簡稱", "")) if fund_info else (listing.name if listing else "")
+    )
+    fund_type = str(fund_info.get("基金類型", "")) if fund_info else "unknown"
+    units = _as_int_or_none(fund_info.get("發行單位數/轉換數")) if fund_info else None
+    manager = str(fund_info.get("基金經理人", "")) if fund_info else None
+    return EtfFundInfo(
+        symbol=sym.id,
+        market=sym.market,
+        fund_name=fund_name or sym.id,
+        fund_type=fund_type,
+        tracked_index=(listing.tracked_index if listing else None) or None,
+        units_outstanding=units,
+        listed_date=listing.listed_date if listing else None,
+        manager_company=manager or None,
+    )
 
 
 class EtfPcfAdapter:
@@ -197,25 +225,7 @@ class EtfPcfAdapter:
                 ),
             )
 
-        fund_name = (
-            str(fund_info.get("基金簡稱", "")) if fund_info else (listing.name if listing else "")
-        )
-        fund_type = str(fund_info.get("基金類型", "")) if fund_info else "unknown"
-        tracked_index = listing.tracked_index if listing else None
-        listed_date = listing.listed_date if listing else None
-        units = _as_int_or_none(fund_info.get("發行單位數/轉換數")) if fund_info else None
-        manager = str(fund_info.get("基金經理人", "")) if fund_info else None
-
-        info = EtfFundInfo(
-            symbol=sym.id,
-            market=sym.market,
-            fund_name=fund_name or sym.id,
-            fund_type=fund_type,
-            tracked_index=tracked_index or None,
-            units_outstanding=units,
-            listed_date=listed_date,
-            manager_company=manager or None,
-        )
+        info = _build_fund_info(sym, listing, fund_info)
         return _result(
             payload={"info": info.model_dump(mode="json")},
             health=SourceHealth(status=HealthStatus.OK, detail="ok"),

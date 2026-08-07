@@ -48,6 +48,10 @@ MIN_SECONDS_BETWEEN_REQUESTS = 30.0
 _GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 _FINNHUB_URL = "https://finnhub.io/api/v1/company-news"
 
+# The two cast() target types every raw JSON list/dict-of-unknowns value below uses.
+type _UntypedList = list[object]
+type _UntypedDict = dict[str, object]
+
 
 @dataclass(frozen=True)
 class _RssFeed:
@@ -87,12 +91,12 @@ def _parse_rss_body(source: str, body: bytes) -> list[NewsItem]:
     # crossing into the typed `NewsItem` model.
     parsed = cast("object", feedparser.parse(body))
     raw_entries: object = getattr(parsed, "entries", [])
-    entries = cast("list[object]", raw_entries) if isinstance(raw_entries, list) else []
+    entries = cast(_UntypedList, raw_entries) if isinstance(raw_entries, list) else []
     items: list[NewsItem] = []
     for raw_entry in entries:
         if not isinstance(raw_entry, dict):
             continue
-        entry = cast("dict[str, object]", raw_entry)
+        entry = cast(_UntypedDict, raw_entry)
         title = str(entry.get("title", "")).strip()
         link = str(entry.get("link", "")).strip()
         if not title or not link:
@@ -115,10 +119,10 @@ def _parse_gdelt_body(raw: dict[str, object]) -> list[NewsItem]:
     if not isinstance(articles, list):
         return []
     items: list[NewsItem] = []
-    for raw_article in cast("list[object]", articles):
+    for raw_article in cast(_UntypedList, articles):
         if not isinstance(raw_article, dict):
             continue
-        article = cast("dict[str, object]", raw_article)
+        article = cast(_UntypedDict, raw_article)
         title = str(article.get("title", "")).strip()
         link = str(article.get("url", "")).strip()
         if not title or not link:
@@ -149,10 +153,10 @@ def _parse_finnhub_body(raw: object) -> list[NewsItem]:
     if not isinstance(raw, list):
         return []
     items: list[NewsItem] = []
-    for raw_item in cast("list[object]", raw):
+    for raw_item in cast(_UntypedList, raw):
         if not isinstance(raw_item, dict):
             continue
-        item = cast("dict[str, object]", raw_item)
+        item = cast(_UntypedDict, raw_item)
         title = str(item.get("headline", "")).strip()
         link = str(item.get("url", "")).strip()
         if not title or not link:

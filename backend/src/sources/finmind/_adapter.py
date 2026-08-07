@@ -28,6 +28,29 @@ _HTTP_OK = 200
 _HTTP_PAYMENT_REQUIRED = 402  # FinMind's rate-limit-exceeded status
 
 
+def _build_query(
+    config: _DatasetConfig, *, data_id: str | None, params: dict[str, object]
+) -> dict[str, str]:
+    """The `dataset`/`data_id`/date-range query params for one `/data` call — pulled out of
+    `FinMindAdapter._call` purely to keep that method's branching shallow; identical logic,
+    just named."""
+    query: dict[str, str] = {"dataset": config.dataset}
+    if data_id is not None:
+        query["data_id"] = data_id
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
+    if config.date_param == "date":
+        date_value = params.get("date") or start_date
+        if date_value is not None:
+            query["date"] = str(date_value)
+    else:
+        if start_date is not None:
+            query["start_date"] = str(start_date)
+        if end_date is not None:
+            query["end_date"] = str(end_date)
+    return query
+
+
 class FinMindAdapter:
     """The `FINMIND` source adapter."""
 
@@ -111,30 +134,21 @@ class FinMindAdapter:
             )
         return await self._call(config, data_id=None, sym=None, tls_policy=tls_policy, **params)
 
-    async def _call(
-        self,
-        config: _DatasetConfig,
-        *,
-        data_id: str | None,
-        sym: Symbol | None,
-        tls_policy: TLSPolicy,
-        **params: object,
-    ) -> SourceResult:
-        query: dict[str, str] = {"dataset": config.dataset}
-        if data_id is not None:
-            query["data_id"] = data_id
-        start_date = params.get("start_date")
-        end_date = params.get("end_date")
-        if config.date_param == "date":
-            date_value = params.get("date") or start_date
-            if date_value is not None:
-                query["date"] = str(date_value)
-        else:
-            if start_date is not None:
-                query["start_date"] = str(start_date)
-            if end_date is not None:
-                query["end_date"] = str(end_date)
+    def _error_result(self, config: _DatasetConfig, *, detail: str) -> SourceResult:
+        return _result(
+            data_class=config.data_class,
+            timing_class=config.timing_class,
+            caveat=config.caveat,
+            payload={},
+            health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=detail),
+        )
 
+    async def _fetch_raw(
+        self, config: _DatasetConfig, *, query: dict[str, str], tls_policy: TLSPolicy
+    ) -> object | SourceResult:
+        """The HTTP round trip + its two error mappings, pulled out of `_call` purely to keep
+        that method's branching shallow. Returns the parsed JSON body on success, or an
+        already-built error `SourceResult` the caller should return as-is."""
         base_url = self._settings.finmind_base_url.rstrip("/")
         endpoint = config.special_endpoint or _DATA_ENDPOINT
         url = f"{base_url}{endpoint}"
@@ -156,7 +170,7 @@ class FinMindAdapter:
             ) as client:
                 response = await client.get(url, params=query)
                 response.raise_for_status()
-                raw = response.json()
+                return cast("object", response.json())
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
             detail = (
@@ -164,26 +178,28 @@ class FinMindAdapter:
                 if status_code == _HTTP_PAYMENT_REQUIRED
                 else (f"FinMind HTTP {status_code}")
             )
-            return _result(
-                data_class=config.data_class,
-                timing_class=config.timing_class,
-                caveat=config.caveat,
-                payload={},
-                health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=detail),
-            )
+            return self._error_result(config, detail=detail)
         except httpx.HTTPError as exc:
-            return _result(
-                data_class=config.data_class,
-                timing_class=config.timing_class,
-                caveat=config.caveat,
-                payload={},
-                health=SourceHealth(
-                    status=HealthStatus.UNREACHABLE, detail=f"transport error: {type(exc).__name__}"
-                ),
-            )
+            return self._error_result(config, detail=f"transport error: {type(exc).__name__}")
+
+    async def _call(
+        self,
+        config: _DatasetConfig,
+        *,
+        data_id: str | None,
+        sym: Symbol | None,
+        tls_policy: TLSPolicy,
+        **params: object,
+    ) -> SourceResult:
+        query = _build_query(config, data_id=data_id, params=params)
+        raw = await self._fetch_raw(config, query=query, tls_policy=tls_policy)
+        if isinstance(raw, SourceResult):
+            return raw
+        if not isinstance(raw, dict):
+            return self._error_result(config, detail="FinMind response is not an object")
 
         try:
-            validated = self.validate(raw)
+            validated = self.validate(cast("dict[str, object]", raw))
         except ValueError as exc:
             return _result(
                 data_class=config.data_class,

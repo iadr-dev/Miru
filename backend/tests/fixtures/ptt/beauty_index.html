@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant-TW">
 <head><title>看板 Beauty 文章列表 - 批踢踢實業坊</title></head>
 <body>
 <script>
 (() => {
-    if (document.cookie.indexOf('over18=1') === -1) {
+    if (!document.cookie.includes('over18=1')) {
         location = 'https://www.ptt.cc/ask/over18?from=' + encodeURIComponent(location.pathname);
     }
 })();
