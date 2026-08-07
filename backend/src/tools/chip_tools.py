@@ -1,0 +1,837 @@
+"""Chip/institutional-flow tools — the FinMind Chip/Institutional-category datasets not already
+wired in `market_tools.py` (`institutional_flow`, `chip_broker`). Every tool here follows the
+same "fetch one capability, validate its rows" shape (`tools/_rows.py`); `data_class` mirrors
+each dataset's own `DataClass` in `sources/finmind/chip_institutional.py`/`others.py` exactly —
+several of these are Sponsor-tier and must stay gated.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from dataaccess.router import DataAccessRouter
+from schemas.capabilities import (
+    BlockTradeBrokerReportRow,
+    BlockTradeRow,
+    ChipBrokerAggRow,
+    DailyShortSaleBalancesRow,
+    DispositionSecuritiesRow,
+    ForeignShareholdingRow,
+    GovernmentBankBuySellRow,
+    IndustryChainClassificationRow,
+    IndustryChainMoneyFlowRow,
+    InstitutionalFlowTotalMarketRow,
+    InstitutionalFlowWideRow,
+    LoanCollateralBalanceRow,
+    MarginMaintenanceRatioRow,
+    MarginShortRow,
+    MarginShortSaleSuspensionRow,
+    MarginShortTotalMarketRow,
+    SecuritiesLendingRow,
+    SecuritiesTraderInfoRow,
+    ShareholdingDistributionRow,
+)
+from schemas.enums import Capability, DataClass
+from schemas.source import HealthStatus
+from tools._rows import fetch_rows
+from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.common import DateRangeInput, MarketOnlyInput
+
+
+class _RowsOutput(BaseModel):
+    """Shared output shape: source provenance + a tuple of normalized rows. Each concrete
+    tool below subclasses this once per row model so MCP still sees a distinctly-named,
+    distinctly-typed output schema per tool."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: str
+    currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
+
+
+class GetMarginShortOutput(_RowsOutput):
+    rows: tuple[MarginShortRow, ...] = Field(default_factory=tuple)
+
+
+class GetMarginShortTool(BaseTool):
+    """`get_margin_short` — wraps `Capability.MARGIN_SHORT` (per-stock 融資融劵 balance)."""
+
+    name = "get_margin_short"
+    description = "Get daily margin-purchase/short-sale (融資融劵) balance rows for one stock."
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetMarginShortOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "margin_short"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.MARGIN_SHORT,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=MarginShortRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetMarginShortOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetMarginShortTotalMarketOutput(_RowsOutput):
+    rows: tuple[MarginShortTotalMarketRow, ...] = Field(default_factory=tuple)
+
+
+class GetMarginShortTotalMarketTool(BaseTool):
+    """`get_margin_short_total_market` — wraps `Capability.MARGIN_SHORT_TOTAL_MARKET`
+    (whole-market margin/short-sale total by category; market-level, no per-symbol scope)."""
+
+    name = "get_margin_short_total_market"
+    description = "Get the whole-market margin-purchase/short-sale total by category for a market."
+    input_model: type[BaseModel] = MarketOnlyInput
+    output_model: type[BaseModel] = GetMarginShortTotalMarketOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "margin_short_total_market"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(MarketOnlyInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.MARGIN_SHORT_TOTAL_MARKET,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=MarginShortTotalMarketRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetMarginShortTotalMarketOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetInstitutionalFlowWideOutput(_RowsOutput):
+    rows: tuple[InstitutionalFlowWideRow, ...] = Field(default_factory=tuple)
+
+
+class GetInstitutionalFlowWideTool(BaseTool):
+    """`get_institutional_flow_wide` — wraps `Capability.INSTITUTIONAL_FLOW_WIDE` (same data
+    as `get_institutional_flow`, reshaped one row per day with a column per investor category)."""
+
+    name = "get_institutional_flow_wide"
+    description = (
+        "Get the three-major-institutional-investor buy/sell for one stock, reshaped one row "
+        "per day with a dedicated buy/sell column per investor category."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetInstitutionalFlowWideOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "institutional_flow_wide"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.INSTITUTIONAL_FLOW_WIDE,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=InstitutionalFlowWideRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetInstitutionalFlowWideOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetInstitutionalFlowTotalMarketOutput(_RowsOutput):
+    rows: tuple[InstitutionalFlowTotalMarketRow, ...] = Field(default_factory=tuple)
+
+
+class GetInstitutionalFlowTotalMarketTool(BaseTool):
+    """`get_institutional_flow_total_market` — wraps `Capability.INSTITUTIONAL_FLOW_TOTAL_MARKET`
+    (whole-market three-major-institutional-investor buy/sell total by category)."""
+
+    name = "get_institutional_flow_total_market"
+    description = (
+        "Get the whole-market three-major-institutional-investor buy/sell total by category."
+    )
+    input_model: type[BaseModel] = MarketOnlyInput
+    output_model: type[BaseModel] = GetInstitutionalFlowTotalMarketOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "institutional_flow_total_market"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(MarketOnlyInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.INSTITUTIONAL_FLOW_TOTAL_MARKET,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=InstitutionalFlowTotalMarketRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetInstitutionalFlowTotalMarketOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetForeignShareholdingOutput(_RowsOutput):
+    rows: tuple[ForeignShareholdingRow, ...] = Field(default_factory=tuple)
+
+
+class GetForeignShareholdingTool(BaseTool):
+    """`get_foreign_shareholding` — wraps `Capability.FOREIGN_SHAREHOLDING` (外資持股)."""
+
+    name = "get_foreign_shareholding"
+    description = "Get daily foreign-shareholding-limit/ratio rows for one stock."
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetForeignShareholdingOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "foreign_shareholding"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.FOREIGN_SHAREHOLDING,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=ForeignShareholdingRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetForeignShareholdingOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetShareholderDispersionOutput(_RowsOutput):
+    rows: tuple[ShareholdingDistributionRow, ...] = Field(default_factory=tuple)
+
+
+class GetShareholderDispersionTool(BaseTool):
+    """`get_shareholder_dispersion` — 股東人數/千張大戶比率 concentration signal, wrapping
+    `Capability.SHAREHOLDING_DISTRIBUTION` (`TaiwanStockHoldingSharesPer`, Sponsor-tier)."""
+
+    name = "get_shareholder_dispersion"
+    description = (
+        "Get the shareholding-level distribution (股權分散) rows for one stock — a "
+        "chip-concentration signal (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetShareholderDispersionOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "shareholder_dispersion"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.SHAREHOLDING_DISTRIBUTION,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=ShareholdingDistributionRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetShareholderDispersionOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetSecuritiesLendingOutput(_RowsOutput):
+    rows: tuple[SecuritiesLendingRow, ...] = Field(default_factory=tuple)
+
+
+class GetSecuritiesLendingTool(BaseTool):
+    """`get_securities_lending` — wraps `Capability.SECURITIES_LENDING` (借券成交)."""
+
+    name = "get_securities_lending"
+    description = "Get daily securities-lending (借券) transaction rows for one stock."
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetSecuritiesLendingOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "securities_lending"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.SECURITIES_LENDING,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=SecuritiesLendingRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetSecuritiesLendingOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetMarginShortSaleSuspensionOutput(_RowsOutput):
+    rows: tuple[MarginShortSaleSuspensionRow, ...] = Field(default_factory=tuple)
+
+
+class GetMarginShortSaleSuspensionTool(BaseTool):
+    """`get_margin_short_sale_suspension` — wraps `Capability.MARGIN_SHORT_SALE_SUSPENSION`."""
+
+    name = "get_margin_short_sale_suspension"
+    description = "Get 暫停融券賣出 (short-sale suspension) announcement rows for one stock."
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetMarginShortSaleSuspensionOutput
+    data_class = DataClass.PUBLIC
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.MARGIN_SHORT_SALE_SUSPENSION,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=MarginShortSaleSuspensionRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetMarginShortSaleSuspensionOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetDailyShortSaleBalancesOutput(_RowsOutput):
+    rows: tuple[DailyShortSaleBalancesRow, ...] = Field(default_factory=tuple)
+
+
+class GetDailyShortSaleBalancesTool(BaseTool):
+    """`get_daily_short_sale_balances` — wraps `Capability.DAILY_SHORT_SALE_BALANCES`."""
+
+    name = "get_daily_short_sale_balances"
+    description = (
+        "Get the daily credit-limit short-sale quota/balance rows (margin + "
+        "securities-lending) for one stock."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetDailyShortSaleBalancesOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "daily_short_sale_balances"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.DAILY_SHORT_SALE_BALANCES,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=DailyShortSaleBalancesRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetDailyShortSaleBalancesOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetSecuritiesTraderInfoOutput(_RowsOutput):
+    rows: tuple[SecuritiesTraderInfoRow, ...] = Field(default_factory=tuple)
+
+
+class GetSecuritiesTraderInfoTool(BaseTool):
+    """`get_securities_trader_info` — wraps `Capability.SECURITIES_TRADER_INFO` (broker
+    directory reference table; market-level, no per-symbol scope)."""
+
+    name = "get_securities_trader_info"
+    description = "Get the whole-market broker/securities-trader directory reference table."
+    input_model: type[BaseModel] = MarketOnlyInput
+    output_model: type[BaseModel] = GetSecuritiesTraderInfoOutput
+    data_class = DataClass.PUBLIC
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(MarketOnlyInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.SECURITIES_TRADER_INFO,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=SecuritiesTraderInfoRow,
+            key="rows",
+        )
+        return GetSecuritiesTraderInfoOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetGovernmentBankFlowsOutput(_RowsOutput):
+    rows: tuple[GovernmentBankBuySellRow, ...] = Field(default_factory=tuple)
+
+
+class GetGovernmentBankFlowsTool(BaseTool):
+    """`get_government_bank_flows` — wraps `Capability.GOVERNMENT_BANK_BUYSELL` (八大行庫)."""
+
+    name = "get_government_bank_flows"
+    description = (
+        "Get daily eight-government-bank(八大行庫) buy/sell rows for one stock (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetGovernmentBankFlowsOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "government_bank_flows"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.GOVERNMENT_BANK_BUYSELL,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=GovernmentBankBuySellRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetGovernmentBankFlowsOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetMarginMaintenanceOutput(_RowsOutput):
+    rows: tuple[MarginMaintenanceRatioRow, ...] = Field(default_factory=tuple)
+
+
+class GetMarginMaintenanceTool(BaseTool):
+    """`get_margin_maintenance` — wraps `Capability.MARGIN_MAINTENANCE_RATIO` (大盤融資維持率;
+    market-level, no per-symbol scope)."""
+
+    name = "get_margin_maintenance"
+    description = (
+        "Get the whole-market margin-maintenance-ratio (融資維持率) reading (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = MarketOnlyInput
+    output_model: type[BaseModel] = GetMarginMaintenanceOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "margin_maintenance"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(MarketOnlyInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.MARGIN_MAINTENANCE_RATIO,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=MarginMaintenanceRatioRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetMarginMaintenanceOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetChipBrokerAggOutput(_RowsOutput):
+    rows: tuple[ChipBrokerAggRow, ...] = Field(default_factory=tuple)
+
+
+class GetChipBrokerAggTool(BaseTool):
+    """`get_chip_broker_agg` — wraps `Capability.CHIP_BROKER_AGG` (per-broker aggregated
+    分點 buy/sell volume/price; distinct from `get_chip_flows`'s per-branch rows)."""
+
+    name = "get_chip_broker_agg"
+    description = (
+        "Get per-broker aggregated branch(分點) buy/sell volume/price for one stock (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetChipBrokerAggOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "chip_broker_agg"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.CHIP_BROKER_AGG,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=ChipBrokerAggRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetChipBrokerAggOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetBlockTradeBrokerReportOutput(_RowsOutput):
+    rows: tuple[BlockTradeBrokerReportRow, ...] = Field(default_factory=tuple)
+
+
+class GetBlockTradeBrokerReportTool(BaseTool):
+    """`get_block_trade_broker_report` — wraps `Capability.BLOCK_TRADE_BROKER_REPORT`."""
+
+    name = "get_block_trade_broker_report"
+    description = (
+        "Get broker-level 鉅額交易 (block-trade) buy/sell rows for one stock (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetBlockTradeBrokerReportOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "block_trade_broker_report"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.BLOCK_TRADE_BROKER_REPORT,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=BlockTradeBrokerReportRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetBlockTradeBrokerReportOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetBlockTradeOutput(_RowsOutput):
+    rows: tuple[BlockTradeRow, ...] = Field(default_factory=tuple)
+
+
+class GetBlockTradeTool(BaseTool):
+    """`get_block_trade` — wraps `Capability.BLOCK_TRADE` (鉅額交易 execution report)."""
+
+    name = "get_block_trade"
+    description = "Get 鉅額交易 (block-trade) execution rows for one stock (Sponsor-tier)."
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetBlockTradeOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "block_trade"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.BLOCK_TRADE,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=BlockTradeRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetBlockTradeOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetLoanCollateralBalanceOutput(_RowsOutput):
+    rows: tuple[LoanCollateralBalanceRow, ...] = Field(default_factory=tuple)
+
+
+class GetLoanCollateralBalanceTool(BaseTool):
+    """`get_loan_collateral_balance` — wraps `Capability.LOAN_COLLATERAL_BALANCE`."""
+
+    name = "get_loan_collateral_balance"
+    description = "Get the loan-collateral balance rows for one stock (Sponsor-tier)."
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetLoanCollateralBalanceOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "loan_collateral_balance"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.LOAN_COLLATERAL_BALANCE,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=LoanCollateralBalanceRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetLoanCollateralBalanceOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetIndustryMoneyFlowOutput(_RowsOutput):
+    rows: tuple[IndustryChainMoneyFlowRow, ...] = Field(default_factory=tuple)
+
+
+class GetIndustryMoneyFlowTool(BaseTool):
+    """`get_industry_money_flow` — wraps `Capability.INDUSTRY_CHAIN_MONEY_FLOW` (產業鏈資金流;
+    market-level, single trading day per request)."""
+
+    name = "get_industry_money_flow"
+    description = (
+        "Get the whole-market industry-chain money-flow (產業鏈資金流) aggregate (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = MarketOnlyInput
+    output_model: type[BaseModel] = GetIndustryMoneyFlowOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "industry_money_flow"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(MarketOnlyInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.INDUSTRY_CHAIN_MONEY_FLOW,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=IndustryChainMoneyFlowRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetIndustryMoneyFlowOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetDispositionSecuritiesOutput(_RowsOutput):
+    rows: tuple[DispositionSecuritiesRow, ...] = Field(default_factory=tuple)
+
+
+class GetDispositionSecuritiesTool(BaseTool):
+    """`get_disposition_securities` — wraps `Capability.DISPOSITION_SECURITIES` (公布處置有價證券).
+
+    Narrower than the design's full `get_disposition_stocks` composite (which additionally
+    folds in TPEX 注意股/停資停券 and a derived escalation projection) — this tool covers the
+    FinMind disposition-event stream only; the attention-stock and forecast composites are not
+    built this pass (no adapter exists for the TPEX 注意股 side yet)."""
+
+    name = "get_disposition_securities"
+    description = (
+        "Get 處置有價證券 (disposition-securities) announcement rows for one stock (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetDispositionSecuritiesOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.DISPOSITION_SECURITIES,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=DispositionSecuritiesRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetDispositionSecuritiesOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+class GetIndustryChainClassificationOutput(_RowsOutput):
+    rows: tuple[IndustryChainClassificationRow, ...] = Field(default_factory=tuple)
+
+
+class GetIndustryChainClassificationTool(BaseTool):
+    """`get_industry_chain_classification` — wraps `Capability.INDUSTRY_CHAIN_CLASSIFICATION`
+    (the static roster underlying `get_industry_money_flow`'s daily aggregate)."""
+
+    name = "get_industry_chain_classification"
+    description = (
+        "Get the static industry-chain (產業鏈) classification rows for one stock (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetIndustryChainClassificationOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.INDUSTRY_CHAIN_CLASSIFICATION,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=IndustryChainClassificationRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetIndustryChainClassificationOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
+def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
+    """This module's `(tool, immediate)` registration table — every tool here is a real,
+    deferred capability (none are part of the named immediate core)."""
+    return [
+        (GetMarginShortTool(router), False),
+        (GetMarginShortTotalMarketTool(router), False),
+        (GetInstitutionalFlowWideTool(router), False),
+        (GetInstitutionalFlowTotalMarketTool(router), False),
+        (GetForeignShareholdingTool(router), False),
+        (GetShareholderDispersionTool(router), False),
+        (GetSecuritiesLendingTool(router), False),
+        (GetMarginShortSaleSuspensionTool(router), False),
+        (GetDailyShortSaleBalancesTool(router), False),
+        (GetSecuritiesTraderInfoTool(router), False),
+        (GetGovernmentBankFlowsTool(router), False),
+        (GetMarginMaintenanceTool(router), False),
+        (GetChipBrokerAggTool(router), False),
+        (GetBlockTradeBrokerReportTool(router), False),
+        (GetBlockTradeTool(router), False),
+        (GetLoanCollateralBalanceTool(router), False),
+        (GetIndustryMoneyFlowTool(router), False),
+        (GetDispositionSecuritiesTool(router), False),
+        (GetIndustryChainClassificationTool(router), False),
+    ]
+
+
+__all__ = [
+    "GetBlockTradeBrokerReportOutput",
+    "GetBlockTradeBrokerReportTool",
+    "GetBlockTradeOutput",
+    "GetBlockTradeTool",
+    "GetChipBrokerAggOutput",
+    "GetChipBrokerAggTool",
+    "GetDailyShortSaleBalancesOutput",
+    "GetDailyShortSaleBalancesTool",
+    "GetDispositionSecuritiesOutput",
+    "GetDispositionSecuritiesTool",
+    "GetForeignShareholdingOutput",
+    "GetForeignShareholdingTool",
+    "GetGovernmentBankFlowsOutput",
+    "GetGovernmentBankFlowsTool",
+    "GetIndustryChainClassificationOutput",
+    "GetIndustryChainClassificationTool",
+    "GetIndustryMoneyFlowOutput",
+    "GetIndustryMoneyFlowTool",
+    "GetInstitutionalFlowTotalMarketOutput",
+    "GetInstitutionalFlowTotalMarketTool",
+    "GetInstitutionalFlowWideOutput",
+    "GetInstitutionalFlowWideTool",
+    "GetLoanCollateralBalanceOutput",
+    "GetLoanCollateralBalanceTool",
+    "GetMarginMaintenanceOutput",
+    "GetMarginMaintenanceTool",
+    "GetMarginShortOutput",
+    "GetMarginShortSaleSuspensionOutput",
+    "GetMarginShortSaleSuspensionTool",
+    "GetMarginShortTool",
+    "GetMarginShortTotalMarketOutput",
+    "GetMarginShortTotalMarketTool",
+    "GetSecuritiesLendingOutput",
+    "GetSecuritiesLendingTool",
+    "GetSecuritiesTraderInfoOutput",
+    "GetSecuritiesTraderInfoTool",
+    "GetShareholderDispersionOutput",
+    "GetShareholderDispersionTool",
+    "build_registration_table",
+]
