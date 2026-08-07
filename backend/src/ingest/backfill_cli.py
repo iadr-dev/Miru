@@ -22,6 +22,7 @@ import argparse
 import asyncio
 import sys
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import structlog
 
@@ -30,7 +31,9 @@ from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings
 from ingest.jobs import ALL_WHOLE_MARKET_JOBS, WholeMarketJobSpec
 from ingest.journal import JobRun, RunStatus
-from ingest.preflight import run_preflight_if_enabled
+from ingest.preflight import last_available_trading_day, run_preflight_if_enabled
+from ingest.us_jobs import backfill_us_price_range
+from ingest.us_universe import job_us_symbol_universe
 
 logger = structlog.get_logger(__name__)
 
@@ -64,6 +67,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Override dev_backfill_years (small positive int; default from Settings).",
+    )
+    parser.add_argument(
+        "--market",
+        choices=("tw", "us"),
+        default="tw",
+        help=(
+            "Which whole-market job group to backfill: 'tw' (default, FinMind-sourced "
+            "ALL_WHOLE_MARKET_JOBS) or 'us' (yfinance-sourced price + fundamentals, "
+            "ingest/us_jobs.py — requires the US symbol universe, refreshed first if stale)."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -129,6 +142,64 @@ async def run_backfill_cli(
     return tuple(all_runs)
 
 
+async def run_us_backfill_cli(
+    settings: Settings,
+    ctx: IngestContext,
+    *,
+    override: bool,
+    years: int,
+) -> tuple[JobRun, ...]:
+    """The US (yfinance) counterpart to `run_backfill_cli` — refreshes the symbol universe
+    first (a stale/never-run universe means the price backfill below would have nothing to
+    fetch), then gap-fills `job_us_price_eod` over the same bounded `dev_backfill_years` window
+    the TW path uses (`backfill_us_price_range`, `only_missing=True`). The weekly fundamentals
+    job is intentionally NOT run here: unlike price, a "backfill fundamentals" request is a
+    single current-snapshot pull, not a historical-date-range pull (yfinance's financials/
+    dividends/splits calls always return each symbol's own available history, not a
+    caller-scoped date range) — an operator wanting fundamentals runs `job_us_fundamentals`
+    directly, or waits for its own weekly schedule; this CLI's job is filling the *date-range*
+    gap only price EOD actually has."""
+    _check_not_production(settings)
+    ingest_on_startup = override or settings.ingest_on_startup
+    if not ingest_on_startup:
+        logger.warning(
+            "ingest_backfill_cli_refused",
+            reason="INGEST_ON_STARTUP is false and --yes was not passed",
+        )
+        return ()
+
+    universe_run = await job_us_symbol_universe(datetime.now(UTC).date(), ctx)
+    logger.info(
+        "ingest_backfill_cli_run",
+        dataset=universe_run.dataset,
+        run_date=universe_run.run_date.isoformat(),
+        rows_written=universe_run.rows_written,
+        status=universe_run.status.value,
+    )
+    if universe_run.status is RunStatus.FAILED:
+        return (universe_run,)
+
+    target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    start = ctx.calendar.shift_business_days(target, -(years * 250))
+    logger.info(
+        "ingest_backfill_cli_started",
+        market="us",
+        start=start.isoformat(),
+        target=target.isoformat(),
+        dev_backfill_years=years,
+    )
+    price_runs = await backfill_us_price_range(ctx, start=start, end=target, only_missing=True)
+    for run in price_runs:
+        logger.info(
+            "ingest_backfill_cli_run",
+            dataset=run.dataset,
+            run_date=run.run_date.isoformat(),
+            rows_written=run.rows_written,
+            status=run.status.value,
+        )
+    return (universe_run, *price_runs)
+
+
 async def _amain(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     settings = get_settings()
@@ -140,7 +211,10 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
         return 1
 
     ctx = build_ingest_context_from_settings(settings)
-    runs = await run_backfill_cli(settings, ctx, override=args.yes, years=years)
+    if args.market == "us":
+        runs = await run_us_backfill_cli(settings, ctx, override=args.yes, years=years)
+    else:
+        runs = await run_backfill_cli(settings, ctx, override=args.yes, years=years)
     if not runs:
         logger.info("ingest_backfill_cli_no_runs")
         return 0
@@ -161,4 +235,10 @@ if __name__ == "__main__":
     sys.exit(main())
 
 
-__all__ = ["ProductionHardStopError", "main", "parse_args", "run_backfill_cli"]
+__all__ = [
+    "ProductionHardStopError",
+    "main",
+    "parse_args",
+    "run_backfill_cli",
+    "run_us_backfill_cli",
+]

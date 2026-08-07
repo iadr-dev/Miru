@@ -1,0 +1,324 @@
+"""US whole-market ingest jobs — the non-TW counterpart to `ingest/jobs.py`'s FinMind pulls.
+
+`ingest/jobs.py::run_whole_market_job` cannot be reused unmodified here: it calls
+`ctx.finmind.fetch_whole_market(...)`, a FinMind-only method with no yfinance equivalent, and
+expects a FinMind-shaped `SourceResult`. Two jobs live in this module instead:
+
+- **`job_us_price_eod`** — one true batch call (`sources.yfinance.batch.batch_download`,
+  `yf.download([...])`), the same "N symbols, one HTTP round trip" shape `ingest/jobs.py`'s
+  FinMind jobs get from `fetch_whole_market`'s omit-`data_id` form.
+- **`job_us_fundamentals`** — financials/balance-sheet/cash-flow/dividends/splits have no bulk
+  endpoint in yfinance, so this calls the existing, already-tested per-symbol
+  `YFinanceAdapter.fetch(cap, sym, ...)` once per symbol per capability — reusing
+  `sources/yfinance/price_financials.py`'s row-mapping as-is rather than inventing a parallel
+  bulk path. This is the one accepted per-symbol-fan-out exception in this module (yfinance
+  genuinely has no whole-market financials form), mirrored from how `ingest/jobs.py::
+  FINANCIALS_JOB` documents its own irregular-cadence exception rather than hiding it.
+
+Both jobs read their symbol list from `ingest.us_universe.latest_us_symbols` — an empty universe
+(the discovery job has never run) is a graceful skipped run, never a crash, matching every other
+"nothing to do yet" case elsewhere in `ingest/`.
+
+Symbol/market-scoping, leader-gating, and journaling follow the exact same contract as
+`ingest/jobs.py`: `ctx.store.write_partition(dataset, "US", run_date, rows)`, one `JobRun` per
+run, `ctx.data_update_publisher.publish_data_updated(...)` on a successful leader write.
+"""
+
+from __future__ import annotations
+
+from datetime import date as date_
+from datetime import timedelta
+from typing import Any, cast
+
+import pandas as pd
+import structlog
+
+from ingest.context import IngestContext
+from ingest.journal import JobRun, RunStatus, journal_run
+from ingest.us_universe import latest_us_symbols
+from schemas.enums import Capability, Market
+from schemas.market import Symbol
+from sources.yfinance import batch_download
+
+logger = structlog.get_logger(__name__)
+
+US_PRICE_EOD_DATASET = "us_price_eod"
+
+# One capability -> Parquet dataset name per fundamentals family this job covers. Mirrors the
+# split `ingest/jobs.py::FINANCIALS_JOB`/`BALANCE_SHEET_JOB`/`CASH_FLOW_JOB`/`DIVIDENDS_JOB` take
+# for TW, so a US symbol's financials land in the same dataset-name shape a TW symbol's do.
+_FUNDAMENTALS_DATASETS: dict[Capability, str] = {
+    Capability.FINANCIALS: "us_financials",
+    Capability.BALANCE_SHEET: "us_balance_sheet",
+    Capability.CASH_FLOW_STATEMENT: "us_cash_flow",
+    Capability.DIVIDENDS: "us_dividends",
+    Capability.SPLIT_PRICE: "us_split_price",
+}
+
+_ONE_DAY = timedelta(days=1)
+
+
+def _as_float(value: object) -> float | None:
+    """Coerce an untyped upstream pandas/numpy scalar to a plain float, treating NaN/None as
+    missing — the same isolated 3rd-party edge `sources/yfinance/_shared.py::_as_float` uses,
+    duplicated narrowly here rather than imported, since this module's edge is a raw
+    `batch_download` DataFrame cell, not a `SourceResult`-bound frame."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    try:
+        return float(cast("Any", value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value: object) -> int | None:
+    as_float = _as_float(value)
+    return int(as_float) if as_float is not None else None
+
+
+def _rows_from_price_frame(frame: Any, run_date: date_) -> list[dict[str, object]]:
+    """Row-map `batch_download`'s raw `yf.download([...], group_by='ticker')` MultiIndex
+    DataFrame into the flat per-symbol-per-day rows `ParquetStore.write_partition` expects — the
+    "ingest layer's own row-mapper" responsibility `batch.py`'s docstring calls out explicitly.
+
+    `yf.download` with multiple symbols returns columns as a `(symbol, field)` MultiIndex; a
+    single-symbol frame collapses to a plain `field` index instead — both shapes are handled so
+    a one-symbol universe (e.g. in a test) doesn't need special-casing by the caller. `symbol` is
+    left unset (`None`) in the single-symbol case since that shape carries no symbol column of
+    its own; `job_us_price_eod` backfills it once the one requested symbol is known.
+    """
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
+        return []
+    rows: list[dict[str, object]] = []
+    columns = frame.columns
+    symbols: list[str] = []
+    if isinstance(columns, pd.MultiIndex):
+        pairs = cast("list[tuple[Any, Any]]", list(columns))
+        symbols = sorted({str(sym) for sym, _field in pairs})
+    for trade_date, row in frame.iterrows():
+        trade_date_iso = pd.Timestamp(cast("Any", trade_date)).date().isoformat()
+        if symbols:
+            for symbol in symbols:
+                try:
+                    close = _as_float(cast("Any", row[(symbol, "Close")]))
+                except KeyError:
+                    continue
+                if close is None:
+                    continue
+                rows.append(
+                    {
+                        "symbol": symbol,
+                        "market": Market.US.value,
+                        "trade_date": trade_date_iso,
+                        "open": _as_float(cast("Any", row.get((symbol, "Open")))),
+                        "high": _as_float(cast("Any", row.get((symbol, "High")))),
+                        "low": _as_float(cast("Any", row.get((symbol, "Low")))),
+                        "close": close,
+                        "volume": _as_int(cast("Any", row.get((symbol, "Volume")))) or 0,
+                        "turnover": None,
+                    }
+                )
+        else:
+            close = _as_float(cast("Any", row.get("Close")))
+            if close is None:
+                continue
+            rows.append(
+                {
+                    "symbol": None,
+                    "market": Market.US.value,
+                    "trade_date": trade_date_iso,
+                    "open": _as_float(cast("Any", row.get("Open"))),
+                    "high": _as_float(cast("Any", row.get("High"))),
+                    "low": _as_float(cast("Any", row.get("Low"))),
+                    "close": close,
+                    "volume": _as_int(cast("Any", row.get("Volume"))) or 0,
+                    "turnover": None,
+                }
+            )
+    return rows
+
+
+async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
+    """Daily US EOD price pull — one `batch_download` call for the whole tracked universe,
+    the yfinance equivalent of `ingest/jobs.py::job_price_eod`'s single FinMind whole-market
+    call. Calendar-gated the same way (`ctx.calendar` degrades to Mon-Fri weekday math for any
+    market — a US holiday just lands as a legitimate empty response, same as how
+    `FINANCIALS_JOB` already handles empty-filing TW days)."""
+    if not ctx.calendar.is_trading_day(run_date):
+        return journal_run(
+            US_PRICE_EOD_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
+    if not ctx.leader.is_leader():
+        return journal_run(
+            US_PRICE_EOD_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+
+    symbols = latest_us_symbols(ctx.store)
+    if not symbols:
+        return journal_run(
+            US_PRICE_EOD_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="no US symbol universe yet — run job_us_symbol_universe first",
+        )
+
+    date_str = run_date.isoformat()
+    end_str = (run_date + _ONE_DAY).isoformat()
+    try:
+        frame = await batch_download(symbols, start=date_str, end=end_str, interval="1d")
+    except Exception as exc:  # never retry-loop tightly — journal and let the next run retry
+        logger.warning("us_price_eod_fetch_failed", run_date=date_str, error=str(exc))
+        return journal_run(
+            US_PRICE_EOD_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.FAILED,
+            detail=str(exc),
+        )
+
+    rows = _rows_from_price_frame(frame, run_date)
+    if len(symbols) == 1 and rows:
+        # The single-symbol MultiIndex-collapse case (see `_rows_from_price_frame`) — the one
+        # requested symbol is unambiguous, so backfill it onto the row the frame-mapper left
+        # `symbol=None` on.
+        for row in rows:
+            row["symbol"] = symbols[0]
+
+    rows_written = ctx.store.write_partition(US_PRICE_EOD_DATASET, Market.US.value, run_date, rows)
+    await ctx.data_update_publisher.publish_data_updated(
+        capability=Capability.PRICE_EOD,
+        market=Market.US,
+        as_of=date_str,
+        scope="whole-market",
+    )
+    return journal_run(
+        US_PRICE_EOD_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=RunStatus.SUCCESS,
+        detail="ok",
+    )
+
+
+async def job_us_fundamentals(run_date: date_, ctx: IngestContext) -> JobRun:
+    """Weekly US financials/balance-sheet/cash-flow/dividends/splits pull — per-symbol, since
+    yfinance has no bulk fundamentals endpoint (the one accepted per-symbol-fan-out exception in
+    this module; see the module docstring). One failing symbol never aborts the run: it's
+    counted, journaled as a `PARTIAL` run if any symbol failed, and every other symbol's data
+    still lands."""
+    if not ctx.leader.is_leader():
+        return journal_run(
+            "us_fundamentals",
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+    if ctx.yfinance is None:
+        return journal_run(
+            "us_fundamentals",
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="no YFinanceAdapter wired on this IngestContext",
+        )
+
+    symbols = latest_us_symbols(ctx.store)
+    if not symbols:
+        return journal_run(
+            "us_fundamentals",
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="no US symbol universe yet — run job_us_symbol_universe first",
+        )
+
+    rows_by_capability: dict[Capability, list[dict[str, object]]] = {
+        cap: [] for cap in _FUNDAMENTALS_DATASETS
+    }
+    failures = 0
+    for symbol_id in symbols:
+        sym = Symbol(id=symbol_id, market=Market.US)
+        for cap in _FUNDAMENTALS_DATASETS:
+            try:
+                result = await ctx.yfinance.fetch(cap, sym, tls_policy=ctx.tls_policy)
+            except Exception as exc:  # one symbol's failure never aborts the batch
+                logger.warning(
+                    "us_fundamentals_fetch_failed",
+                    symbol=symbol_id,
+                    capability=cap.value,
+                    error=str(exc),
+                )
+                failures += 1
+                continue
+            payload_rows = next(iter(result.payload.values()), None)
+            if isinstance(payload_rows, list):
+                rows_by_capability[cap].extend(cast("list[dict[str, object]]", payload_rows))
+
+    total_written = 0
+    for cap, dataset in _FUNDAMENTALS_DATASETS.items():
+        rows = rows_by_capability[cap]
+        if not rows:
+            continue
+        total_written += ctx.store.write_partition(dataset, Market.US.value, run_date, rows)
+        await ctx.data_update_publisher.publish_data_updated(
+            capability=cap,
+            market=Market.US,
+            as_of=run_date.isoformat(),
+            scope="whole-market",
+        )
+
+    status = RunStatus.SUCCESS
+    if failures and total_written == 0:
+        status = RunStatus.FAILED
+    elif failures:
+        status = RunStatus.PARTIAL
+    return journal_run(
+        "us_fundamentals",
+        run_date,
+        rows_written=total_written,
+        status=status,
+        detail=f"{failures} symbol fetch(es) failed" if failures else "ok",
+    )
+
+
+async def backfill_us_price_range(
+    ctx: IngestContext,
+    *,
+    start: date_,
+    end: date_,
+    only_missing: bool = True,
+) -> tuple[JobRun, ...]:
+    """Gap-fill/backfill `job_us_price_eod` over `[start, end]` — the US-price counterpart to
+    `ingest/backfill.py::backfill_range`, kept here rather than there since that module's
+    `detect_missing_trading_days`/`backfill_range` are typed against `WholeMarketJobSpec`
+    (FinMind-shaped), while this job takes no spec at all. Same idempotency/resumability
+    contract: each date is independently checked/run, so a partial backfill can simply be
+    re-invoked."""
+    dates = ctx.calendar.business_days_between(start, end)
+    if only_missing:
+        market = Market.US.value
+        dates = tuple(
+            d for d in dates if not ctx.store.has_partition(US_PRICE_EOD_DATASET, market, d)
+        )
+    runs: list[JobRun] = []
+    for run_date in dates:
+        runs.append(await job_us_price_eod(run_date, ctx))
+    return tuple(runs)
+
+
+__all__ = [
+    "US_PRICE_EOD_DATASET",
+    "backfill_us_price_range",
+    "job_us_fundamentals",
+    "job_us_price_eod",
+]

@@ -61,7 +61,10 @@ from ingest.jobs import (
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
 from ingest.store import ParquetStore
+from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
+from ingest.us_universe import job_us_symbol_universe
 from sources.finmind import FinMindAdapter
+from sources.yfinance import YFinanceAdapter
 
 logger = structlog.get_logger(__name__)
 
@@ -72,17 +75,24 @@ _TAIPEI = ZoneInfo("Asia/Taipei")
 # month-length differences and a missed trigger day without a per-month calendar bookkeeping.
 _MONTHLY_MIN_GAP_DAYS = 28
 
+# Same rolling-gap reasoning as `_MONTHLY_MIN_GAP_DAYS`, one week instead of ~4.
+_WEEKLY_MIN_GAP_DAYS = 7
+
 # The one async signature every whole-market job function already presents.
 IngestJobFn = Callable[[date_, IngestContext], Awaitable[JobRun]]
 
 
 class Cadence(StrEnum):
-    """How often a scheduled job may fire. `DAILY` fires at most once per local trading day;
-    `MONTHLY` fires at most once per rolling ~4-week window (see `_MONTHLY_MIN_GAP_DAYS`) — the
-    right granularity for reference data that changes on a monthly-or-slower cadence, so it is not
-    re-pulled every day."""
+    """How often a scheduled job may fire. `DAILY` fires at most once per local trading day and
+    is trading-day-gated; `WEEKLY` fires at most once per rolling ~7-day window
+    (`_WEEKLY_MIN_GAP_DAYS`) and, like `MONTHLY`, is NOT trading-day-gated — both are reference-
+    data cadences (a US financials/dividends filing is not tied to a trading session, same
+    reasoning as the industry-chain theme seed); `MONTHLY` fires at most once per rolling ~4-week
+    window (`_MONTHLY_MIN_GAP_DAYS`) — the right granularity for reference data that changes on
+    a monthly-or-slower cadence, so it is not re-pulled every day."""
 
     DAILY = "daily"
+    WEEKLY = "weekly"
     MONTHLY = "monthly"
 
 
@@ -146,6 +156,29 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # immediately after the membership job is what sequences them; it reads the relational store
     # (curated map + heuristic backfill) and makes no FinMind call.
     ScheduledIngestJob("theme_tiers", time_(0, 30), seed_theme_tiers, cadence=Cadence.MONTHLY),
+    # US whole-market ingest (`ingest/us_jobs.py`, `ingest/us_universe.py`) — the non-TW
+    # counterpart to everything above, yfinance-sourced rather than FinMind. The universe
+    # discovery job must run before either US pull can find any symbols; MONTHLY, since the
+    # tracked roster is only ever "the ~250 largest US equities by market cap" (bounded by
+    # Yahoo's own screener size cap — see `us_universe.py`'s module docstring) and doesn't
+    # meaningfully change day to day. Fires at 01:00, after the TW monthly theme jobs, so a
+    # reader sees the whole non-trading-day-gated reference-data group together.
+    ScheduledIngestJob(
+        "us_symbol_universe", time_(1, 0), job_us_symbol_universe, cadence=Cadence.MONTHLY
+    ),
+    # Daily US EOD price — one `batch_download` call for the whole tracked universe, the
+    # yfinance equivalent of `price_eod` above. Fires well after US market close (16:00 ET is
+    # ~04:00/05:00 Taipei depending on DST; 06:00 Taipei gives comfortable margin over Yahoo's
+    # own EOD-data lag) and is trading-day-gated the same way `price_eod` is.
+    ScheduledIngestJob("us_price_eod", time_(6, 0), job_us_price_eod),
+    # US financials/balance-sheet/cash-flow/dividends/splits — per-symbol (yfinance has no bulk
+    # fundamentals endpoint; see `us_jobs.py`'s module docstring for why this is the one accepted
+    # per-symbol-fan-out exception here). WEEKLY: these datasets change far slower than daily
+    # price, so a daily pull would be pure quota waste. Fires at 06:30, after the daily US price
+    # pull, so both land in a predictable order even though they're otherwise independent.
+    ScheduledIngestJob(
+        "us_fundamentals", time_(6, 30), job_us_fundamentals, cadence=Cadence.WEEKLY
+    ),
 )
 
 
@@ -184,13 +217,15 @@ class IngestDaemon:
 
     def _is_due(self, job: ScheduledIngestJob, today: date_) -> bool:
         """Whether `job` should fire this pass, given the day it last fired. A daily job is due
-        once per local day; a monthly job is due when it has never fired or last fired at least
-        `_MONTHLY_MIN_GAP_DAYS` ago (a rolling ~4-week window)."""
+        once per local day; a weekly/monthly job is due when it has never fired or last fired at
+        least its own rolling-gap window ago (`_WEEKLY_MIN_GAP_DAYS`/`_MONTHLY_MIN_GAP_DAYS`)."""
         last = self._last_handled.get(job.name)
         if last is None:
             return True
         if job.cadence is Cadence.MONTHLY:
             return (today - last).days >= _MONTHLY_MIN_GAP_DAYS
+        if job.cadence is Cadence.WEEKLY:
+            return (today - last).days >= _WEEKLY_MIN_GAP_DAYS
         return last != today
 
     async def run_due_jobs(self, *, now: datetime | None = None) -> list[str]:
@@ -259,6 +294,8 @@ def build_ingest_context_from_settings(settings: Settings | None = None) -> Inge
         # The relational session factory the theme-seed job writes through — the daily Parquet
         # jobs never touch it. Built here from the same database URL the rest of the app uses.
         session_factory=make_session_factory(make_engine(resolved.database_url)),
+        # Only the US whole-market jobs (`ingest/us_jobs.py`) use this.
+        yfinance=YFinanceAdapter(),
     )
 
 
