@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 
 import httpx
 import structlog
-from selectolax.parser import HTMLParser
+from selectolax.parser import HTMLParser, Node
 
 from schemas.capabilities import PttPost
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
@@ -71,40 +71,49 @@ class _BoardParseResult:
     deleted_count: int
 
 
+def _parse_entry(entry: Node, *, board: str, tag: str) -> tuple[PttPost | None, bool]:
+    """One `div.r-ent` listing row -> `(post, is_deleted)`. `is_deleted=True` only for a
+    removed/self-deleted post (still occupies a row but has no title/link node — never
+    fabricate a record for it); a row with a link but empty title text yields
+    `(None, False)` (skipped, but not counted as a deletion — distinct, pre-existing cases).
+    Pulled out of `_parse_index_html` purely to keep that function's loop body shallow;
+    identical parsing, just named."""
+    title_node = entry.css_first("div.title")
+    link_node = title_node.css_first("a") if title_node is not None else None
+    if title_node is None or link_node is None:
+        return None, True
+    raw_title = link_node.text(strip=True)
+    if not raw_title:
+        return None, False
+    href = link_node.attributes.get("href") or ""
+    link = f"{_BASE_URL}{href}" if href.startswith("/") else href
+    author_node = entry.css_first("div.author")
+    author = author_node.text(strip=True) if author_node is not None else ""
+    push_node = entry.css_first("div.nrec")
+    push_count = push_node.text(strip=True) if push_node is not None else ""
+    post = PttPost(
+        board=board,
+        board_tag=tag,
+        title=raw_title,
+        post_tag=_extract_post_tag(raw_title),
+        author=author,
+        push_count=push_count or "0",
+        link=link,
+    )
+    return post, False
+
+
 def _parse_index_html(board: str, html: str) -> _BoardParseResult:
     tag = _BOARD_TAGS.get(board, _OFFTOPIC_TAG)
     tree = HTMLParser(html)
     posts: list[PttPost] = []
     deleted = 0
     for entry in tree.css("div.r-ent"):
-        title_node = entry.css_first("div.title")
-        link_node = title_node.css_first("a") if title_node is not None else None
-        if title_node is None or link_node is None:
-            # A removed/self-deleted post still occupies a listing row but has no link —
-            # never fabricate a record for it.
+        post, is_deleted = _parse_entry(entry, board=board, tag=tag)
+        if is_deleted:
             deleted += 1
-            continue
-        raw_title = link_node.text(strip=True)
-        if not raw_title:
-            continue
-        href = link_node.attributes.get("href") or ""
-        link = f"{_BASE_URL}{href}" if href.startswith("/") else href
-        author_node = entry.css_first("div.author")
-        author = author_node.text(strip=True) if author_node is not None else ""
-        push_node = entry.css_first("div.nrec")
-        push_count = push_node.text(strip=True) if push_node is not None else ""
-        post_tag = _extract_post_tag(raw_title)
-        posts.append(
-            PttPost(
-                board=board,
-                board_tag=tag,
-                title=raw_title,
-                post_tag=post_tag,
-                author=author,
-                push_count=push_count or "0",
-                link=link,
-            )
-        )
+        if post is not None:
+            posts.append(post)
     return _BoardParseResult(posts=posts, deleted_count=deleted)
 
 
