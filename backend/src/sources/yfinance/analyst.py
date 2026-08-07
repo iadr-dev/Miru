@@ -19,6 +19,9 @@ from schemas.source import HealthStatus, SourceHealth, SourceResult
 
 from ._shared import _as_float, _as_int, _as_str, _get, _result
 
+# The one cast() target type every already-known-to-be-a-row pandas value below uses.
+type _Series = pd.Series
+
 
 def _analyst_consensus(sym: Symbol, info: dict[str, Any], frames: dict[str, Any]) -> SourceResult:
     n_analysts = _as_int(_get(info, "numberOfAnalystOpinions")) or 0
@@ -57,7 +60,7 @@ def _analyst_consensus_extended(frames: dict[str, Any]) -> dict[str, object]:
     extended: dict[str, object] = {}
     rec_summary = frames.get("recommendations_summary")
     if isinstance(rec_summary, pd.DataFrame) and not rec_summary.empty:
-        current = cast("pd.Series", rec_summary.iloc[0])
+        current = cast(_Series, rec_summary.iloc[0])
         extended["strong_buy"] = _as_int(_get(current, "strongBuy"))
         extended["buy"] = _as_int(_get(current, "buy"))
         extended["hold"] = _as_int(_get(current, "hold"))
@@ -66,23 +69,23 @@ def _analyst_consensus_extended(frames: dict[str, Any]) -> dict[str, object]:
 
     upgrades = frames.get("upgrades_downgrades")
     if isinstance(upgrades, pd.DataFrame) and not upgrades.empty:
-        latest = cast("pd.Series", upgrades.sort_index(ascending=False).iloc[0])
+        latest = cast(_Series, upgrades.sort_index(ascending=False).iloc[0])
         extended["latest_upgrade_downgrade_firm"] = _as_str(_get(latest, "Firm"))
         extended["latest_upgrade_downgrade_action"] = _as_str(_get(latest, "Action"))
 
     earnings_est = frames.get("earnings_estimate")
     if isinstance(earnings_est, pd.DataFrame) and "0y" in earnings_est.index:
-        eps_row = cast("pd.Series", earnings_est.loc["0y"])
+        eps_row = cast(_Series, earnings_est.loc["0y"])
         extended["forward_eps_estimate"] = _as_float(_get(eps_row, "avg"))
 
     revenue_est = frames.get("revenue_estimate")
     if isinstance(revenue_est, pd.DataFrame) and "0y" in revenue_est.index:
-        revenue_row = cast("pd.Series", revenue_est.loc["0y"])
+        revenue_row = cast(_Series, revenue_est.loc["0y"])
         extended["forward_revenue_estimate"] = _as_float(_get(revenue_row, "avg"))
 
     growth_est = frames.get("growth_estimates")
     if isinstance(growth_est, pd.DataFrame) and "LTG" in growth_est.index:
-        growth_row = cast("pd.Series", growth_est.loc["LTG"])
+        growth_row = cast(_Series, growth_est.loc["LTG"])
         extended["long_term_growth_estimate"] = _as_float(_get(growth_row, "stockTrend"))
     return extended
 

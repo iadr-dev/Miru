@@ -60,6 +60,9 @@ _FEED_ROW_KEY = "events"
 _STATE_BY_LABEL: dict[str, EventState] = {state.value: state for state in EventState}
 _TYPE_BY_LABEL: dict[str, EventType] = {etype.value: etype for etype in EventType}
 
+# The one cast() target type every already-validated-list-of-dict payload row uses below.
+type _TypedRows = list[dict[str, object]]
+
 
 def _state_for_date(event_date: date_, *, as_of: date_) -> EventState:
     """A feed-confirmed date that has not yet happened is `scheduled`; once `as_of` has passed
@@ -159,7 +162,7 @@ async def fetch_dividend_events(  # noqa: PLR0913 — each kwarg (router/symbol/
     rows = result.payload.get("events")
     if not isinstance(rows, list):
         return (), result
-    typed_rows = cast("list[dict[str, object]]", rows)
+    typed_rows = cast(_TypedRows, rows)
     events = _dividend_calendar_events(typed_rows, symbol, result.source_id, as_of=as_of)
     return tuple(events), result
 
@@ -189,7 +192,7 @@ async def fetch_cb_put_events(  # noqa: PLR0913 — see `fetch_dividend_events` 
     rows = result.payload.get("rows")
     if not isinstance(rows, list):
         return (), result
-    typed_rows = cast("list[dict[str, object]]", rows)
+    typed_rows = cast(_TypedRows, rows)
     events = _cb_put_calendar_events(typed_rows, symbol, result.source_id, as_of=as_of)
     return tuple(events), result
 
@@ -261,7 +264,7 @@ async def fetch_feed_events(
     rows = result.payload.get(_FEED_ROW_KEY)
     if not isinstance(rows, list):
         return (), result
-    typed_rows = cast("list[dict[str, object]]", rows)
+    typed_rows = cast(_TypedRows, rows)
     events = tuple(
         event
         for row in typed_rows
