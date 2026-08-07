@@ -33,8 +33,10 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app src/ ./src/
 COPY --chown=app:app alembic.ini ./alembic.ini
-COPY --chown=app:app docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+# Owned by root, not the runtime `app` user: the entrypoint is code the container executes on
+# every start, so the unprivileged process it later drops into must not be able to modify it.
+COPY --chown=root:root docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod 755 ./docker-entrypoint.sh
 
 # Flat top-level packages live under src/ (agent, api, scheduler, ...); put the venv first and src
 # on the path so `uvicorn api.app:app` and `python -m scheduler` both resolve. yfinance writes a

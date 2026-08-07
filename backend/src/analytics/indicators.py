@@ -141,7 +141,7 @@ def rsi(bars: Sequence[PriceBar], period: int = 14) -> RsiResult:
 
 
 def _rsi_from_averages(avg_gain: float, avg_loss: float) -> float:
-    if avg_loss == 0.0:
+    if avg_loss <= 0.0:
         return 100.0
     rs = avg_gain / avg_loss
     return 100.0 - (100.0 / (1.0 + rs))

@@ -69,7 +69,7 @@ global guardrails still apply**: even if a trigger keyword is 該買嗎 ("should
 **reframes to descriptive factor context** and `guardrails.check_output` still blocks any
 buy/sell/target/sizing language. Level-3 `resources` load on demand via
 `SkillRegistry.read_resource(name, filename)` — **there is no `read_skill_resource` tool**;
-several `SKILL.md` bodies (e.g. `chip-flow-review`) reference that name conditionally ("if
+one `SKILL.md` body (`chip-flow-review`) references that name conditionally ("if
 `read_skill_resource` is available"), but it is not registered in `tools/` and not reachable by
 the agent as a tool call today — only `SkillRegistry` itself can call `read_resource` directly.
 

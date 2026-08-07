@@ -31,7 +31,7 @@ deliberate, per-tool opt-in into the `rich_card` SSE event ([07-conversation-str
 a chart/table/gauge-shaped tool result the frontend renders as a structured card rather than
 plain prose. Chosen over inferring card-worthiness from a tool's `output_model` shape, since
 shape alone (e.g. field count) can't reliably distinguish a genuine table from an incidentally
-wide scalar result. **69 tools are opted in today** — the price/chip/flow/valuation/derivatives/
+wide scalar result. **68 tools are opted in today** — the price/chip/flow/valuation/derivatives/
 fundamental/ETF/macro/theme/score/screener reads whose typed output is genuinely tabular,
 time-series, or gauge-shaped (the exact name→label mapping is locked by a parametrized test in
 `tests/agent/test_loop.py`).
