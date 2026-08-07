@@ -25,14 +25,18 @@ Backend Architect + Database Optimizer reviews (see [../adr/0015](../adr/0015-ho
         PostgreSQL (app state)   DuckDB/Parquet (derived market data, columnar)
               │
         Scheduler workers (≥1, leader-elected)  ← background: jobs, alerts, delivery
-        Broker/queue (Celery/RQ) for scraper + delivery tasks
+        Broker/queue (Celery/RQ) for scraper + delivery tasks  ← not built, design intent
 ```
 
 - **API workers** are stateless — any worker serves any request (including SSE reconnect),
   which is why live events must go through Redis, not an in-process bus (see §2).
 - **Scheduler workers** run the §9a jobs/alerts; ≥1 with leader election (see §5).
-- **Process types:** api, scheduler, worker(queue). Scale api horizontally; scheduler is
-  1-active-leader + standbys.
+- **Real process types today (`docker-entrypoint.sh`'s `SERVICE_ROLE` dispatch):** `api`,
+  `scheduler`, `ingest`, `mcp` — one image, role-selected entrypoint, each a distinct container in
+  `docker-compose.yml`. **A generic `worker(queue)` process/broker (Celery/RQ) does not exist in
+  this codebase** — it is design intent for future scraper/delivery task offload, not a built
+  role; scale `api` horizontally, `scheduler`/`ingest` are each single-leader-only today
+  (`ingest.leader.AlwaysLeader` — no real cross-process election exists yet, see §5).
 
 ## 2. Cross-process event transport (fixes in-process bus at scale)
 
@@ -128,58 +132,75 @@ config-selected like every other store:
   against Parquet** — it is not a cacheable key, so "Redis makes read-concurrency moot" does **not**
   hold. Read-only Parquet is what scales the reader fan-out ([22](22-data-ingest.md) §7).
 
-## 3a. Read-model freshness contract (client cache-coherence)
+## 3a. Read-model freshness contract (client cache-coherence) — design intent, partially built
 
 So a client cache can never extend a value's freshness budget ([web data-freshness.md](../../web/data-freshness.md)
-— the coherence invariant), the read surface exposes the server's own currency, cheaply:
+— the coherence invariant), the read surface should expose the server's own currency, cheaply.
+**Implementation status:** only the `data.updated` invalidation signal (the third bullet) is
+real code today; `as_of` on every cacheable REST response, conditional GET, and the
+`Cache-Control` policy are still design intent, not yet built.
 
-- **`as_of` on every cacheable read.** Each `GET /quote`, `/analytics/*`, `/market/*` response
-  carries an **`as_of`** timestamp = when the served value was produced (ingest/compute time), plus
-  the `timing_class` it belongs to. This is the client's **monotonic validator** — it discards any
-  response not newer than what it holds, and stamps the `DataFreshnessBadge`. `as_of` reflects the
-  cache key's canonical version (§3), not the HTTP hit time.
-- **Conditional GET (`ETag` / `If-None-Match`).** Cacheable reads return a strong **`ETag`** derived
-  from the canonical version; a client revalidate sends `If-None-Match` → **`304 Not Modified`** (no
-  body, no re-render) when nothing changed. This makes boundary revalidation *cheap* — the client
-  polls the boundary but only pays for a payload when the value actually advanced.
-- **Batch-completion invalidation signal.** When a derived-compute batch lands
-  (`compute-scores` / `compute-topN` / `compute-ai-summary` / `discover-themes`, [22](22-data-ingest.md)
-  §2), the ingest leader publishes a lightweight **`data.updated`** event over the §2 transport
-  carrying `{capability, market, as_of, symbols?|scope}`. API workers relay it on the client's SSE
-  connection so the frontend **invalidates exactly the affected keys** (`revalidateTag`) the moment
-  fresh analytics exist — instead of waiting out a time boundary. Absent a subscription, the
-  boundary-anchored `revalidate` (fixed batch time) remains the correct floor.
-- **`Cache-Control`.** Cacheable reads send `private, max-age=0, stale-while-revalidate=<to class
-  boundary>` — the browser serves the last good value instantly and background-revalidates; the
-  intraday stream is `no-store` (it's live SSE, not a cacheable body). The **single per-class TTL**
-  lives server-side and is echoed to the client so RSC/TanStack/HTTP layers mirror one budget, never
-  sum three (the client-side rule, [web data-freshness.md](../../web/data-freshness.md) §5).
-- **Entitlement-keyed reads.** A sponsor-gated read's cache entry is keyed by entitlement so a tier
-  change busts the cached **masked** payload (per-call entitlement, §10) — an upgraded user never
-  keeps seeing the 馬賽克 cell.
+- **`as_of` on every cacheable read — partially real.** The live-quote SSE frame
+  (`events/live_quote.py`'s `quote` event) carries a real `as_of` (the snapshot's source
+  timestamp, from `api/quote_stream.py`'s `_extract_as_of`) and `market_open`. **Not yet built:**
+  a uniform `as_of`/`timing_class` field on the plain `GET /quote`, `/analytics/*`, `/market/*`
+  REST responses — those return whatever shape the backing tool's output model defines today
+  (some, like `score_tools.py`'s `as_of`, already carry a currency field; there is no codebase-
+  wide convention enforcing one on every cacheable route yet).
+- **Conditional GET (`ETag` / `If-None-Match`) — not yet built.** No route in `api/routers/`
+  sets an `ETag` or reads `If-None-Match`; there is no `304 Not Modified` path anywhere in this
+  codebase today.
+- **Batch-completion invalidation signal — real.** `GET /updates/stream`
+  (`api/routers/context.py`) is real: it subscribes to `AppState.data_update_broker`'s
+  reader and relays each `data.updated`-shaped frame the ingest leader (or, in dev, the
+  in-memory broker) publishes. The publisher/reader pair is real
+  (`events/data_updates.py`, wired per backend in `events/live_quote_factory.py`); whether the
+  ingest leader itself calls the publisher on every batch landing is a per-batch-writer concern
+  outside this module.
+- **`Cache-Control` — not yet built.** No route in `api/routers/` sets a `Cache-Control` header;
+  the described `private, max-age=0, stale-while-revalidate=...` policy and the "single
+  server-side per-class TTL echoed to the client" model are design intent only.
+- **Entitlement-keyed reads — enforced per-call, not as an HTTP cache key.** Every tool
+  dispatch already resolves entitlement fresh per call (`dispatch_tool`'s sponsor gate, §10's
+  "resolved per tool call" row) — so a stale *masked* payload is never served regardless of
+  caching, because there is no server-side response cache in front of these routes today. The
+  "cache entry keyed by entitlement" framing describes a future response-cache layer, not
+  today's uncached dispatch-per-request reality.
 
 ## 4. FinMind Sponsor quota — caching + fair-share (fixes the shared-token ceiling)
 
 A single Sponsor token = **6000 req/hr pooled across all paid users** (~1.67/s) — a hard
-ceiling. Mitigation (also [12-multi-user-tiers.md](12-multi-user-tiers.md) §4):
-- **Cache-first:** Sponsor EOD data (分點/官股/產業鏈) is T+1 and changes once/day → cache per
-  `(dataset, stock, date)` in DuckDB/Redis; repeat reads never re-hit FinMind. The vast
-  majority of the 6000 budget should be cache misses only.
-- **Fair-share:** a per-user sub-quota + priority within the pool so one user's fan-out can't
-  starve others; over-sub-quota requests queue or serve cached.
-- **Capacity model:** document the paid-user count at which one token saturates and the plan
-  (multiple Sponsor tokens, request coalescing). The ceiling must be visible, not discovered
-  in production.
+ceiling. Mitigation (also [12-multi-user-tiers.md](12-multi-user-tiers.md) §4) — **none of §4's
+three mitigations is built yet**; today the only real guard against the pool is the per-tier
+`chat_limit_per_day`/`requests_per_minute` in `accounts/entitlements.py` (`TIER_LIMITS`), which
+bounds a user's overall chat rate but implements no FinMind-specific sub-quota, cache, or
+capacity model:
+- **Cache-first — not yet built.** No DuckDB/Redis caching `SourceAdapter` wrapper exists in
+  `sources/` today (this is the same pending seam [02-packages.md](02-packages.md) flags as
+  `MarketDataStore` design intent, not current code); every Sponsor read hits FinMind directly.
+- **Fair-share — not yet built.** No per-user sub-quota or priority within the pool exists;
+  `finmind_class_for` (`accounts/entitlements.py`) only resolves which *token class* (free vs.
+  sponsor) a user's tier uses, not a share of the sponsor pool itself.
+- **Capacity model — not yet built.** No documented saturation point or multi-token/coalescing
+  plan exists in code or config.
 
 ## 5. Scheduler HA & delivery semantics (fixes SPOF)
 
-[14-scheduler-alerts.md](14-scheduler-alerts.md) runs ≥1 scheduler worker:
-- **Leader election / locking job store** (Postgres advisory locks or a broker) so multiple
-  workers run safely without double-firing; no SPOF.
-- **At-least-once execution + idempotent delivery:** dedupe key `(rule_id/job_id, trigger_date,
-  channel)` in `notifications`; a redelivered LINE/Telegram/web native is a no-op.
-- **Retry + DLQ** for transient channel failures; **`running` status** added to
-  `schedule_jobs` to detect stuck/orphaned runs after a crash.
+[14-scheduler-alerts.md](14-scheduler-alerts.md) runs ≥1 scheduler worker (today: exactly one —
+`scheduler/__main__.py`'s single daemon process gated by `ingest.leader.LeaderElection`, whose
+only real implementation is `AlwaysLeader`; **not yet built:** a real cross-process election
+— Postgres advisory locks or a broker-based lease — so multi-worker-without-double-firing is
+design intent, not current capacity):
+- **Leader election / locking job store** — design intent above; `AlwaysLeader`/`NeverLeader`
+  are the only implementations today (single-process-correct, not yet multi-worker-safe).
+- **At-least-once execution + idempotent delivery — real:** `dedupe_key_for(source_id,
+  trigger_date, channel)` (`scheduler/models.py`) backs the `notifications` unique dedupe guard
+  `scheduler/worker.py::_deliver` checks before sending — a redelivered
+  LINE/Telegram/in-app/push is a no-op.
+- **Retry + DLQ — not yet built.** A channel's `DeliveryReceipt.retryable` flag is logged
+  (`_log_receipt`) but nothing currently retries or routes it to a dead-letter queue.
+  **`running` status — real:** `JobStatus.RUNNING` (`scheduler/models.py`) is set before a job
+  fires and used to detect stuck/orphaned runs after a crash.
 
 ## 6. Concurrency, cost & abuse ceilings
 
@@ -191,9 +212,10 @@ ceiling. Mitigation (also [12-multi-user-tiers.md](12-multi-user-tiers.md) §4):
   ([11-orchestration.md](11-orchestration.md) §5).
 - **BYOK lifts only the LLM chat limit** — FinMind quota, web-search, scraper load, and
   request-rate limits still apply (platform-side cost). See [12](12-multi-user-tiers.md) §5.
-- **Provider resilience:** per-call timeout budgets, retry-with-backoff, error classification
-  (rate-limit/5xx/timeout → fallback vs fail), and a **circuit breaker** per provider and per
-  scraped source ([04](04-llm-adapter.md) fallback chains).
+- **Provider resilience — design intent, not yet built here.** No circuit breaker exists
+  anywhere in `src/` for any provider or scraped source, and no generic retry-with-backoff
+  wrapper exists in `llm/`. See [04-llm-adapter.md](04-llm-adapter.md) for that module's own,
+  separately-reconciled account of its current (narrower) fallback behavior.
 
 ## 7. Observability (currently missing)
 
@@ -248,12 +270,12 @@ declared concurrency-safety mechanism** — no path relies on "one process at a 
 | `subscriptions` (Paddle) | out-of-order / duplicate webhooks | single writer + `occurred_at` ordering guard + `billing_events` idempotency ([15](15-payments-paddle.md)) |
 | `threads` (rename/star/archive, multi-device) | lost update | optimistic `version` compare-and-set (409 on stale) |
 | **Thread active-leaf / branch switch** | two devices edit/switch same thread | CAS on `threads.active_leaf_message_id` keyed by `version`; last-writer-wins with 409 retry |
-| **Concurrent turns in one thread** | two `POST /agent/query` on same thread interleave | **one active turn per thread**: `turns.status='running'` guard — a 2nd request 409s or queues (config) |
+| **Concurrent turns in one thread** | two `POST /agent/query` on same thread interleave | **Partially built.** The DB has the guard: a partial-unique index on `turns` (`status='running'`, applied in the migration — `db/models.py` §comment). **But no request-path code ever writes `status='running'`** — `ConversationStore.append_turn` always inserts a turn with `status=TurnStatus.DONE` (`conversation/store.py`), so the constraint is present but never exercised, and `POST /agent/query` does not check `TurnRegistry.active_for_thread` before starting a second turn — today two concurrent requests on the same thread can both proceed. |
 | `messages.seq` / `stream_events.event_seq` | gap/collision across parallel sub-agent lanes | assigned in-process by the **single event-bus writer per turn**; `UNIQUE(turn_id, seq)` guard |
-| Idempotent turn create | double-submit / retry | `UNIQUE(user_id, idempotency_key)` + short Redis lock → replay in-flight stream, not a dup turn |
+| Idempotent turn create | double-submit / retry | **Partially built.** The DB constraint is real (`uq_turns_user_idempotency_key`), and a separate `conversation.turn_lifecycle.TurnLifecycle` class implements the full in-process-dedupe-map + durable-constraint-backstop pattern — but `POST /agent/query` (`api/routers/agent.py`) does **not** use `TurnLifecycle`; it calls `ConversationStore.append_turn` directly, which does not check for an existing `idempotency_key` first and does not catch the constraint's `IntegrityError` — a real double-submit against the live HTTP route hits an unhandled 500, not a graceful replay. No Redis lock exists anywhere in this path. |
 | Scheduler jobs | multiple workers fire same job | leader election / locking job store; at-least-once + idempotent delivery dedupe (§5) |
 | Live-quote poller | duplicate polls for a symbol | single shared poller; demand set is a Redis refcount (§2a) |
-| **Cache fill (market data)** | stampede — N requests miss + all fetch same key | **single-flight**: first miss takes a per-key lock and fetches; others await the result (protects the FinMind pool) |
+| **Cache fill (market data)** | stampede — N requests miss + all fetch same key | **Not yet built** — no caching layer exists in `sources/` yet (§3/§4), so there is no single-flight-on-miss mechanism to race today; design intent is a per-key lock so concurrent misses await one fetch |
 | **Market-data store (DuckDB/Parquet)** | leader writer + API-worker readers on one file → **lock error / torn read** (DuckDB: 1 read-write *or* N read-only per file; MVCC in-process only) | **Readers = read-only Parquet** (`read_parquet` glob, per-worker `:memory:` DuckDB — no shared file lock). **Writer = leader only**; partition writes are **temp-dir → atomic rename + manifest pointer** so a glob never straddles a swap; startup sweeps orphaned temp dirs. DuckDB version pinned ([22](22-data-ingest.md) §7) |
 | **Watchlist reorder (item/group), multi-device drag** | two devices reorder same list → lost update / flicker | **lexorank `sort_order` (fractional key)** — insert *between* neighbors, no neighbor rewrite; equal-midpoint collision → jitter+retry; bulk reshuffle uses `POST /watchlists/reorder` full-array + parent `version` CAS ([adr/0027](../adr/0027-first-class-watchlist.md)) |
 | **Watchlist group rename, multi-device** | lost update | optimistic `version` CAS (409 on stale), as `threads` |

@@ -37,9 +37,14 @@ ScheduleJob
  └─ enabled, last_run, next_run, status
 ```
 
-- Backed by a durable job store + a single worker (APScheduler/Celery-beat class), **not**
-  an in-request loop. Runs are executed through the **same agent runtime + guardrails** as
-  interactive turns — a scheduled run is just a turn with no live human in the loop.
+- Backed by a durable job store (`scheduler/store.py`) + a standalone daemon process
+  (`python -m scheduler`, `scheduler/__main__.py`) — a plain `asyncio` wake/fire/sleep loop with
+  its own SIGTERM/SIGINT-cooperative shutdown, **not** an in-request loop, and **not** built on
+  APScheduler/Celery-beat (no such dependency in this codebase — every pass is leader-gated via
+  `ingest.leader.LeaderElection`, the same seam the ingest writer uses). Runs are executed through
+  the **same agent runtime + guardrails** as interactive turns
+  (`Orchestrator.run_skill` — `scheduler/worker.py`) — a scheduled run is just a turn with no live
+  human in the loop.
 - A scheduled run touching `sponsor` data requires the owner's entitlement; if absent, that
   section is omitted/masked in the delivered brief (no upgrade prompt spamming).
 
@@ -59,19 +64,34 @@ AlertPreference: channels, enabled_categories, quiet_start/end, daily_limit, mor
 
 ## 4. Delivery channels
 
-- Behind a **`DeliveryChannel` protocol** (`send(notification, recipient) → receipt`), one impl
-  per channel — in-app (persisted), LINE, Telegram, email, **native push (APNs/FCM)** — selected by
-  config. Adding a channel = one new impl, no scheduler change (same "protocol + config-driven impl"
-  idiom as `SourceAdapter`/`LLMClient`). Channel credentials are the platform's or the user's, stored
-  encrypted (never in prompts/journal).
-- **Native push (mobile).** Devices register a push token; a notification's payload carries a
-  **deep-link** so a tap opens the right surface. `device_push_tokens(user_id, platform ios|android,
-  token, created_at, last_seen)` — a user may have several devices; a token that APNs/FCM reports
-  invalid is pruned. Payload: `{title, body, deep_link:{route, symbol?, thread_id?}, notification_id}`
-  — the client resolves `deep_link` to the target screen (Stock Detail / a thread / an alert's symbol),
-  with a cold-land skeleton if the app was killed ([mobile interaction-spec §7.3](../../mobile/interaction-spec.md)).
-  LINE binding already exists (§4 above); native push is the additional mobile channel.
-- Respects per-user quiet hours and daily notification limits.
+- Behind a **`DeliveryChannel` protocol** (`send(notification, recipient) → receipt`,
+  `scheduler/delivery/base.py`), one impl per channel — in-app, LINE, Telegram, email, native
+  push (APNs/FCM) (`scheduler/delivery/channels.py`) — selected by config
+  (`build_default_channels`). Adding a channel = one new impl, no scheduler change (same
+  "protocol + config-driven impl" idiom as `SourceAdapter`/`LLMClient`).
+- **Implementation status (real, but only in-app is fully live):** `InAppChannel` is fully real —
+  the `notifications` row itself is the delivery. LINE/Telegram/email/push each build a real,
+  correctly-shaped outbound request (`OutboundRequest`: method/url/headers/json) but the module
+  deliberately does **not** open the socket yet (the "only `sources/` does network I/O"
+  invariant — the live HTTP transport is a config-selected seam deferred to `sources/`); with no
+  credential configured they report a successful no-network delivery so the default test profile
+  never hits a live upstream. **A currently-missing piece:** `SchedulerWorker._deliver` builds
+  `DeliveryRecipient` with only `user_id`/`email_address`/`device_tokens` populated —
+  `line_user_id`/`telegram_chat_id` are never resolved from anywhere (no LINE-Messaging or
+  Telegram identity binding exists in `accounts/`; the LINE OAuth flow that does exist is
+  **LINE Login** for sign-in, a distinct credential from the LINE **Messaging** push channel).
+  So today, a LINE/Telegram channel selection always fails `ChannelNotConfiguredError` — real
+  delivery to those two channels is not yet reachable in practice, only their request-shaping
+  code is built.
+- **Native push (mobile).** Devices register a push token via `POST /me/devices` /
+  `DELETE /me/devices/{token}`; a notification's payload carries a **deep-link** so a tap opens
+  the right surface. `device_push_tokens` (real table, backing `scheduler.store`) — a user may
+  have several devices; token pruning on an APNs/FCM invalid-token report is not yet implemented.
+  Payload: `{title, body, deep_link:{route, symbol?, thread_id?}, notification_id}` — the client
+  resolves `deep_link` to the target screen (Stock Detail / a thread / an alert's symbol), with a
+  cold-land skeleton if the app was killed ([mobile interaction-spec §7.3](../../mobile/interaction-spec.md)).
+- Quiet hours + daily notification limits are enforced in `SchedulerWorker` (`_within_quiet_hours`,
+  `_daily_limit_reached`), not per-channel.
 
 ## 5. Endpoints
 
