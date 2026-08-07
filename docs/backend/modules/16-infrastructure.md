@@ -59,23 +59,35 @@ design (1 poll → N clients instead of N clients × N polls against the 6000/hr
 
 ```
 client opens  GET /quote/stream?symbols=2330,0050&market=TW   (SSE; reuses §2 transport)
-   │  subscription registered in Redis: demand{TW}: {2330, 0050, …} (refcounted per connection)
+   │  subscription registered: refcounted per connection; the demand set's total refcount is
+   │  tracked in Redis as the global union (fleet-wide cap + observability)
    ▼
-shared quote poller (one worker):  every 5s, for each symbol with ≥1 subscriber & market-open:
-   fetch snapshot via dataaccess router (price_intraday → finmind/twse_mis) → cache →
-   publish to Redis  quote:{market}:{symbol}
+each API worker runs its OWN poll loop (per-worker, not one shared poller — see below):
+   every 5s (or slower, per cadence tie-break below), for each symbol with ≥1 subscriber ON
+   THAT WORKER & market-open: fetch snapshot via the injected QuoteFetcher seam (built over
+   dispatch_tool + get_price_quote, same path as the one-shot /quote) → publish to
+   quote:{market}:{symbol} (Redis, or in-process if REDIS_URL unset)
    ▼
 each API worker's SSE handler subscribes to its connection's quote:* channels → pushes `quote` events
-   │  client disconnects → refcount--; at 0 the symbol leaves the demand set → poller stops it
+   │  client disconnects → refcount--; at 0 the symbol leaves that worker's local poll set
 ```
 
 - **Transport = SSE + Redis** (the same fan-out as agent chat, §2) — a quote feed is
   server→client only; subscribe/unsubscribe is just the stream's `symbols` param (or a small
   `POST /quote/subscribe`), so no WebSocket is needed. Detail page = 1 symbol; watchlist = N;
   an agent `rich_card` quote piggybacks the same mechanism.
-- **Demand set = union of all live subscriptions** (Redis refcount). The poller **only** touches
-  symbols someone is watching, **only** in market hours, **auto-stops** on last disconnect
-  (governance §9b) — bounded observation, not an unattended scan.
+- **Per-worker poller, not one shared poller.** `events/live_quote.py`'s own docstring is explicit
+  about this: each API-worker process runs its own poll loop over only the symbols with a
+  subscriber *on that worker*; the Redis refcount is the global union used to enforce the
+  fleet-wide demanded-symbol cap and make the demand set observable, but nothing elects a single
+  leader poller. A symbol watched on two workers costs at most one extra fetch per worker with a
+  subscriber — never one per client, which is the actual scaling win — in exchange for not needing
+  a second leader-election domain distinct from ingest's. The duplicate-poll hazard the
+  concurrency contract names is still bounded: no worker ever polls a symbol nobody on it is
+  watching.
+- **Demand set = union of all live subscriptions** (Redis refcount). Each worker's poller **only**
+  touches symbols someone is watching **on that worker**, **only** in market hours, **auto-stops**
+  on last local disconnect (governance §9b) — bounded observation, not an unattended scan.
 - **Caps:** per-connection symbol cap + global demanded-symbol cap; feeds the FinMind Sponsor
   quota manager (§4) — over-budget → slower cadence / cached, never a tight loop.
 - **Cadence tiers (client hint).** The stream accepts a `cadence` hint on subscribe — `normal` (~5s,
@@ -274,7 +286,7 @@ declared concurrency-safety mechanism** — no path relies on "one process at a 
 | `messages.seq` / `stream_events.event_seq` | gap/collision across parallel sub-agent lanes | assigned in-process by the **single event-bus writer per turn**; `UNIQUE(turn_id, seq)` guard |
 | Idempotent turn create | double-submit / retry | **Partially built.** The DB constraint is real (`uq_turns_user_idempotency_key`), and a separate `conversation.turn_lifecycle.TurnLifecycle` class implements the full in-process-dedupe-map + durable-constraint-backstop pattern — but `POST /agent/query` (`api/routers/agent.py`) does **not** use `TurnLifecycle`; it calls `ConversationStore.append_turn` directly, which does not check for an existing `idempotency_key` first and does not catch the constraint's `IntegrityError` — a real double-submit against the live HTTP route hits an unhandled 500, not a graceful replay. No Redis lock exists anywhere in this path. |
 | Scheduler jobs | multiple workers fire same job | leader election / locking job store; at-least-once + idempotent delivery dedupe (§5) |
-| Live-quote poller | duplicate polls for a symbol | single shared poller; demand set is a Redis refcount (§2a) |
+| Live-quote poller | duplicate polls for a symbol | **per-worker** poller (not single-shared); demand set is a Redis refcount enforcing the fleet-wide cap (§2a) |
 | **Cache fill (market data)** | stampede — N requests miss + all fetch same key | **Not yet built** — no caching layer exists in `sources/` yet (§3/§4), so there is no single-flight-on-miss mechanism to race today; design intent is a per-key lock so concurrent misses await one fetch |
 | **Market-data store (DuckDB/Parquet)** | leader writer + API-worker readers on one file → **lock error / torn read** (DuckDB: 1 read-write *or* N read-only per file; MVCC in-process only) | **Readers = read-only Parquet** (`read_parquet` glob, per-worker `:memory:` DuckDB — no shared file lock). **Writer = leader only**; partition writes are **temp-dir → atomic rename + manifest pointer** so a glob never straddles a swap; startup sweeps orphaned temp dirs. DuckDB version pinned ([22](22-data-ingest.md) §7) |
 | **Watchlist reorder (item/group), multi-device drag** | two devices reorder same list → lost update / flicker | **lexorank `sort_order` (fractional key)** — insert *between* neighbors, no neighbor rewrite; equal-midpoint collision → jitter+retry; bulk reshuffle uses `POST /watchlists/reorder` full-array + parent `version` CAS ([adr/0027](../adr/0027-first-class-watchlist.md)) |

@@ -56,8 +56,13 @@ makes `context/` market-agnostic (works for TW today, US/JP later) even before t
 
 ## Source Health — `source_health.py`
 
-- Diagnostics on provider currentness and closure evidence (via the `ncdr_closure` adapter)
-  and FinMind tier/quota status.
+- A capability-agnostic **reducer**, not a diagnostics source of its own: it aggregates the
+  `SourceHealth`/`HealthStatus` already carried on each already-fetched `SourceResult` (from a
+  `CanonicalPackage`, an `ObservationRun`, or a raw `{capability: SourceResult}` map) into one
+  `SourceHealthReport` per `(symbol, market)` build. No I/O, and no special-casing for any
+  specific adapter — it does not itself call `ncdr_closure` or read FinMind tier/quota state;
+  whatever health/caveat a capability's serving adapter already stamped on its `SourceResult` is
+  what gets surfaced here.
 - Produces the health view surfaced at `GET /health` and over MCP (`get_source_health`).
 
 ## Multi-source builder (M8A/B/C) — `builder.py`
