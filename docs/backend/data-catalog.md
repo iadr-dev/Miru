@@ -31,16 +31,16 @@
 | Family | Base | Auth | History | Role |
 |--------|------|------|---------|------|
 | **TWSE OpenAPI** | `openapi.twse.com.tw/v1` | none | latest snapshot only | Official listed-market EOD/reference |
-| **TPEX OpenAPI** (225 endpoints) | `tpex.org.tw/openapi/v1` | none (UA header req'd) | latest snapshot only | Official OTC/emerging EOD/reference |
-| **TAIFEX OpenAPI** (135 endpoints) | `openapi.taifex.com.tw/v1` | none | latest snapshot only | Official derivatives EOD/reference |
+| **TPEX OpenAPI** (~225 endpoints in the family; **1 wired** — `tpex_mainboard_daily_close_quotes`, `price_eod`) | `tpex.org.tw/openapi/v1` | none (UA header req'd) | latest snapshot only | Official OTC EOD; `sources/tpex_openapi.py` currently returns `UNREACHABLE` under strict TLS due to a real upstream cert defect (missing Subject Key Identifier) |
+| **TAIFEX OpenAPI** (~135 endpoints in the family; **1 wired** — `DailyMarketReportFut`, `derivatives_oi`) | `openapi.taifex.com.tw/v1` | none | latest snapshot only | Official derivatives EOD (open interest) |
 | **TWSE_MIS** | mis endpoints | none | live-ish snapshot | Bounded intraday observation |
 | **TAIFEX_MIS** | mis endpoints | none | live-ish snapshot | Bounded derivatives observation |
 | **NCDR / DGPA** | gov closure feeds | none | event-driven | Closure/currentness evidence |
-| **FinMind** (104 datasets wired, 77 whole-market-eligible) | `api.finmindtrade.com/api/v4` | Bearer token | **date-range**, deep backfill | Aggregated, history-enabled superset |
-| **MOPS** (scraped) | `mopsov.twse.com.tw/mops/web` | none | event-driven | Disclosure/catalyst stream — see §2.7 |
+| **FinMind** (104 datasets) | `api.finmindtrade.com/api/v4` | Bearer token | **date-range**, deep backfill | Aggregated, history-enabled superset — Technical/Chip-Institutional/Fundamental/Derivative/Real-Time/Convertible-Bond/Others/International (US/GB/EU/JP)/Global-Economic |
+| **MOPS** (TWSE OpenAPI) | `openapi.twse.com.tw/v1/opendata/{t187ap04_L,t187ap11_L}` | none | latest whole-market dump | Disclosure/catalyst stream — see §2.7 |
 | **News / GDELT / Finnhub** | RSS + `api.gdeltproject.org` + Finnhub | mixed (Finnhub key) | near-real-time | News freshness — see §2.8 |
 | **PTT** (scraped) | `ptt.cc` | none | near-real-time | Social buzz (Stock/Tech_Job/Beauty/Gossiping) — see §2.8 |
-| **ETF PCF** (scraped) | issuer / 投信投顧公會 / TWSE `fund/` | none | official-eod | Passive ETF 成分股/受益人數/NAV — see §2.10–2.11 |
+| **ETF PCF** (`sources/etf_pcf.py`) | TWSE `rwd/zh/ETF/list` + OpenAPI `t187ap47_L` (JSON, not HTML scrape despite the name) | none | official-eod | Fund-level roster + units-outstanding **only** — 成分股/權重, 受益人數, NAV/IOPV remain unbuilt gaps, see §2.10–2.11 |
 | **Brave web search** | `api.search.brave.com` | `BRAVE_API_KEY` | live | Provider-agnostic web search + fetch; **per-turn toggle**, cite sources; LLM-native search when available. `public`. See [adr/0014](adr/0014-web-search.md) |
 
 **Key architectural distinction:**
@@ -53,10 +53,15 @@
 
 ## 2. FinMind dataset catalog (grouped) — all tiers
 
+**104 datasets wired**, one `Capability` each, grouped into 9 category modules under
+`backend/src/sources/finmind/` (`technical.py`, `chip_institutional.py`, `fundamental.py`,
+`derivative.py`, `realtime.py`, `convertible_bond.py`, `others.py`, `international.py`,
+`global_economic.py`) merged by `_registry.py` into one `Capability → dataset` map — this
+mirrors every category in FinMind's own reference doc ([finmind/llm.md](finmind/llm.md)).
 Tier legend: **F** = Free · **B** = Backer · **S** = Sponsor. `data_id` = symbol/contract.
 Full field lists live in [finmind/llm.md](finmind/llm.md); summarized here.
 
-### 2.1 Technical / price (21)
+### 2.1 Technical / price (20)
 | Dataset | Tier | Notes |
 |---------|------|-------|
 | `TaiwanStockInfo`, `...WithWarrant`, `TaiwanStockTradingDate` | F | universe & calendar |
@@ -73,7 +78,7 @@ Full field lists live in [finmind/llm.md](finmind/llm.md); summarized here.
 | `TaiwanVariousIndicators5Seconds`, `TaiwanStockEvery5SecondsIndex` | F / B·S | intraday index |
 | `TaiwanStockSuspended`, `...DayTradingSuspension` | B·S | halts |
 
-### 2.2 Chip / institutional (24) — the 籌碼 core
+### 2.2 Chip / institutional (21) — the 籌碼 core
 | Dataset | Tier | Notes |
 |---------|------|-------|
 | `TaiwanStockInstitutionalInvestorsBuySell` / `...Wide` | F/B·S | 個股三大法人 (wide = per-investor columns) |
@@ -102,7 +107,7 @@ Full field lists live in [finmind/llm.md](finmind/llm.md); summarized here.
 & `...MarketValueWeight` (B·S, 市值/比重), plus corporate-action refs
 (`CapitalReductionReferencePrice`, `SplitPrice`, `ParValueChange`, `Delisting`).
 
-### 2.4 Derivatives (18)
+### 2.4 Derivatives (20)
 `TaiwanFutOptDailyInfo` (期貨/選擇權契約總覽, F), `TaiwanFuturesDaily` / `TaiwanOptionDaily`
 (F/B·S), `TaiwanFutures/OptionInstitutionalInvestors` (+ `AfterHours` B·S),
 `TaiwanFutures/OptionOpenInterestLargeTraders` (B·S, 大額交易人), `TaiwanFutures/OptionTick`
@@ -145,18 +150,25 @@ period, 資/券/沖 eligibility, and "最快 N 日後進入處置 / 再次處置
 
 ### 2.7 MOPS catalyst layer (公開資訊觀測站) — the event-driven disclosure stream
 The gap our structured EOD/price/institutional data **cannot** contain: the free-text,
-event-driven filing stream that *moves* price. **No official JSON API** — sourced by scraping
-MOPS forms (`mopsov.twse.com.tw/mops/web/<report_id>`, ROC dates, Big5/UTF-8), with TWSE/TPEX
-announcement pages as an easier real-time mirror for 重大訊息. All `public`. Priority order:
+event-driven filing stream that *moves* price. **Built, `sources/mops.py`** — via TWSE
+OpenAPI's own JSON endpoints (`openapi.twse.com.tw/v1/opendata/t187ap04_L` 重大訊息 and
+`.../t187ap11_L` 董監事持股), **not** the legacy `mopsov.twse.com.tw/mops/web/<report_id>`
+HTML-form scraper: TWSE retired that endpoint (it now serves a "page can not be accessed"
+security-stub page), so this adapter never does ROC-date/Big5 HTML parsing — it's a plain
+JSON whole-market dump, filtered client-side to the requested company. `t187ap04_L` is
+`event-driven` (the catalyst stream below); `t187ap11_L` is `reference` (a slow monthly
+filing). All `public`. Priority order for the full catalyst surface (rows 3–6 below are not
+yet wired as adapter datasets — tracked as future MOPS coverage, not yet built):
 
-| # | Dataset (report id) | Contents | Cadence | Signal |
-|---|---------------------|----------|---------|--------|
-| 1 | **重大訊息** (`t05st01` / real-time `t05sr01_1`) | Free-text disclosures: contract wins, capacity, M&A, litigation, guidance, 澄清 | real-time | **top catalyst**; NLP classify + sentiment |
-| 2 | **董事會決議** (subclass of 重大訊息, keyed on 主旨) | 減資/增資/私募/併購/CB發行/股利/庫藏股決議 | event | high-magnitude discrete events |
-| 3 | **庫藏股買回** (`t35sc09`) | planned count/price band/purpose + actual bought-back % | event + progress | bullish + measurable follow-through |
-| 4 | **內部人持股轉讓事前申報 / 董監持股 / 質押** (`t56sb01`/`t56sc01`) | insiders file **before** selling; 質押比 (pledge ratio) | event + monthly | leading; rising 質押比 = risk flag |
-| 5 | **法說會** (`t100sb02_1`) | investor-conference schedule + presentation PDFs/audio | event (pre-announced) | scheduled catalyst + guidance for NLP |
-| 6 | **自結損益 / 財務預測** | unaudited management earnings weeks before 財報; guidance | event/monthly | earliest earnings read |
+| # | Dataset (report id) | Contents | Cadence | Signal | Status |
+|---|---------------------|----------|---------|--------|--------|
+| 1 | **重大訊息** (TWSE OpenAPI `t187ap04_L`) | Free-text disclosures: contract wins, capacity, M&A, litigation, guidance, 澄清 | whole-market current dump | **top catalyst**; NLP classify + sentiment | ✅ built (`sources/mops.py`) |
+| 2 | **董事會決議** (subclass of 重大訊息, keyed on 主旨) | 減資/增資/私募/併購/CB發行/股利/庫藏股決議 | derived filter over #1 | high-magnitude discrete events | subject-keyword filter over #1's data, not a separate fetch |
+| 3 | **董監事持股 / 質押** (TWSE OpenAPI `t187ap11_L`) | 董監事持股餘額 + 設質股數/比例 (pledge ratio) | monthly whole-market dump | leading; rising 質押比 = risk flag | ✅ built (`sources/mops.py`) |
+| 4 | **庫藏股買回** (`t35sc09`) | planned count/price band/purpose + actual bought-back % | event + progress | bullish + measurable follow-through | ⬜ not yet built |
+| 5 | **內部人持股轉讓事前申報** (`t56sb01`) | insiders file **before** selling | event | leading risk flag | ⬜ not yet built |
+| 6 | **法說會** (`t100sb02_1`) | investor-conference schedule + presentation PDFs/audio | event (pre-announced) | scheduled catalyst + guidance for NLP | ⬜ not yet built |
+| 7 | **自結損益 / 財務預測** | unaudited management earnings weeks before 財報; guidance | event/monthly | earliest earnings read | ⬜ not yet built |
 
 Risk/governance overlays (Tier B): **資金貸與/背書保證** (`t05st05`), **訴訟/裁罰/財報更正**,
 **財報申報行事曆/延遲** — red-flag gates + earnings-day anticipation. Note: ESG *summary
@@ -206,7 +218,7 @@ NLP-classified, **non-trading**. Two purposes, kept separate:
 FinMind `TaiwanStockNews` (§2.9 Others) remains the per-stock historical news backbone; this
 layer adds the fresh leading edge + social buzz.
 
-### 2.9 Convertible bonds (6), Others (3), International & Macro
+### 2.9 Convertible bonds (6), Others (3), International (9) & Macro (6)
 - **CB (6):** `TaiwanStockConvertibleBondInfo` (總覽), `...Daily` (日成交), `...InstitutionalInvestors`
   (法人), `...DailyOverview` (每日總覽), `...PutProvision` (賣回權時程),
   `TaiwanStockConvertibleBondMonthlyAnalysis` (月份分析). All B·S.
@@ -279,10 +291,14 @@ holdings** source (daily issuer PCF constituents+weights). We maintain a normali
 `etf_holdings(etf_id, stock_id, weight, shares, date)` table (active from FinMind + passive
 from PCF) so both the forward (ETF → holdings) and reverse (stock → ETFs) views are one query.
 
-### 2.12 yfinance — analyst consensus / ESG / classification (narrow gap-filler)
-Wraps yfinance for the **few fields it uniquely adds for `.TW`/`.TWO`**; **not** a price/
-financials source. `data_class: public`, `timing_class: reference`. Coverage is cap-tiered
-(good large-cap, sparse mid/small) and the API is unofficial → cache + retry + degrade via M5Q.
+### 2.12 yfinance — TW narrow gap-filler, non-TW primary source
+`data_class: public`, `timing_class: reference`. The API is unofficial → cache + retry +
+degrade via M5Q; `data_class`/`timing_class` are the same for every capability below,
+TW and non-TW alike. Two distinct roles by market — a deliberate policy encoded in
+`config/source_priority.yaml`, not an oversight (see [modules/19](modules/19-data-access-router.md)):
+
+**TW — narrow gap-filler (unchanged from original scope).** Prices/financials stay off
+yfinance for TW — FinMind/TWSE own those. yfinance adds only:
 
 | Field | Value | TW coverage |
 |-------|-------|-------------|
@@ -292,11 +308,39 @@ financials source. `data_class: public`, `timing_class: reference`. Coverage is 
 | `sustainability` | ESG risk score (Sustainalytics) | large-cap only |
 | `info.sector`/`industry`, `Search`/`Lookup` | English GICS-like taxonomy + symbol resolution ("台積電"→2330.TW) | good |
 
-**Skipped (empty/US-only for TW or already covered):** prices, financials, dividends,
+**Skipped for TW** (empty/US-only or already covered): prices, financials, dividends,
 `institutional_holders`/`mutualfund_holders`/`insider_*` (US 13F/Form-4 → empty for TW),
-`options`, `funds_data` ETF holdings, `Market.status/summary`, news, macro. Also skip the
-yfinance **`Sector`/`Industry` aggregate methods** (`top_companies`, `top_etfs`, `industries`,
-`top_performing_companies`) — Yahoo scopes them US-first and they're **sparse/weak for TW**.
+`options`, `funds_data` ETF holdings, `Market.status/summary`, news, macro. Also skipped for
+TW: the yfinance **`Sector`/`Industry` aggregate methods** (`top_companies`, `top_etfs`,
+`industries`, `top_performing_companies`) — Yahoo scopes them US-first and they're
+**sparse/weak for TW** (they're real, wired capabilities for non-TW markets, below).
+
+**US/GB/EU/JP — yfinance is PRIMARY**, the inverse ordering of TW. `source_priority.yaml`'s
+US/GB/EU/JP blocks put `yfinance` first for the shared capability names other adapters use
+for TW — `price_eod` (`Ticker.history()`), `financials`/`balance_sheet`/`cash_flow_statement`
+(`Ticker.financials`/`.balance_sheet`/`.cash_flow`), `dividends` (`Ticker.dividends`),
+`split_price` (`Ticker.splits`) — plus the same `analyst_consensus`/`esg`/`sector_class`
+capabilities as TW, but with real, non-sparse coverage. On top of that, yfinance serves
+capabilities with **no FinMind/gov equivalent at all**, wired for these markets only:
+
+| Capability | yfinance surface | Notes |
+|------------|-------------------|-------|
+| `options_chain` | `Ticker.options` + `.option_chain()` | |
+| `institutional_holders` | `Ticker.institutional_holders`/`.mutualfund_holders` | US 13F-style; expected empty outside US |
+| `insider_activity` | `Ticker.insider_transactions` | US Form-4-style; expected empty outside US |
+| `symbol_search` / `symbol_lookup` | `yfinance.Search` / `Lookup` | |
+| `earnings_calendar` / `ipo_calendar` / `economic_calendar` | `yfinance.Calendars` | |
+| `sector_overview` / `industry_overview` | `yfinance.Sector`/`Industry` top-companies/top-ETFs/top-mutual-funds | the market-wide counterpart to the TW-skipped aggregate methods above |
+| `market_status` | `yfinance.Market` open/closed + summary | only `US` region verified live; GB/JP/EU degrade to `STALE` honestly rather than fabricate |
+| `fund_holdings` | `Ticker.funds_data` top holdings + sector weightings | relevant to this project's ETF focus |
+
+Also a **module-level, non-`SourceAdapter` carve-out** — `run_screener` (`sources/yfinance/screener.py`):
+equity/ETF/fund screening via Yahoo's `EquityQuery`/`ETFQuery`/`FundQuery`, called directly by the
+real `run_equity_screener_us` tool (`tools/analyst_tools.py` — deliberately not named
+`run_screener` itself, to leave that name free for a possible future TW screener), analogous to
+`FinMindAdapter.fetch_whole_market`/`batch_download`, since a
+screener query is query-shaped, not a `(capability, symbol)` lookup and has no meaningful single
+`market` axis to route through.
 
 **No conflict with FinMind on sector/industry (different taxonomies, clear ownership):**
 - **FinMind owns TW classification** — `TaiwanStockInfo.industry_category` (上市/上櫃 產業別) and
@@ -324,7 +368,10 @@ Powers the events calendar ([modules/18](modules/18-calendar-events.md)). Most e
 
 Rule-derived (no feed): 期貨/選擇權結算 (3rd Wed / weekly Wed), 財報 deadlines (Q1 5/15 · Q2
 8/14, 金融 8/31 · Q3 11/14 · 年報 3/31), 月營收 by-10th window, 融券強制回補 (停止過戶−6營業日),
-交易日曆/休市 (`TaiwanStockTradingDate` + NCDR). **月營收/財報 have no per-company scheduled
+business-day math in `calendar/trading_days.py`'s `TradingDayCalendar` — which today falls back
+to plain Mon–Fri weekday math since no `TaiwanStockTradingDate` ingest cache or NCDR closure
+list is wired into it yet (see [modules/18](modules/18-calendar-events.md)). **月營收/財報 have
+no per-company scheduled
 date** — only statutory deadlines → render as markers, reconcile on release.
 
 ## 3. Government OpenAPI highlights (authoritative, free, latest-only)
@@ -346,7 +393,8 @@ date** — only statutory deadlines → render as markers, reconcile on release.
 | minute-K, tick, 週/月K, 還原股價 (whole-market) | **FinMind Backer/Sponsor** |
 | real-time snapshots | **FinMind Sponsor** → `sponsor` data_class (Premium/Pro; masked teaser otherwise) |
 | 技術指標, 財務比率/杜邦/FCF, PE/PB 河流圖, 法人連續買賣超, 籌碼集中度 | **Derive** — our compute layer over the raw feeds |
-| **重大訊息/董事會決議/庫藏股/內部人異動/法說會/自結** (event catalysts) | **MOPS scrape** — no open API; the unique catalyst layer (§2.7) |
+| **重大訊息/董監事持股** (event catalysts) | **Built** — MOPS via TWSE OpenAPI JSON (`t187ap04_L`/`t187ap11_L`, `sources/mops.py`), no HTML scrape needed (§2.7) |
+| **董事會決議/庫藏股/內部人異動/法說會/自結** (remaining catalyst sub-types) | **Not yet built** — derived filter over 重大訊息 (董事會決議) or genuinely new MOPS surfaces (庫藏股/內部人/法說會/自結) (§2.7) |
 | news freshness + 社群情緒 (RSS/GDELT/Finnhub/PTT) | **News/social layer** (§2.8) — near-real-time RSS + keyless GDELT + Finnhub + PTT; NLP sentiment |
 | **passive/傳統 ETF 成分股/權重** (市值型/科技型/配息型/債券型) → reverse "被 N 支 ETF 持有" | **Issuer PCF scrape** (§2.11) — 投信投顧公會/TWSE `fund/`; active side already via FinMind |
 | **analyst 目標價/評等, earnings/revenue consensus** (large-cap) | **yfinance** (§2.12) — Yahoo-aggregated consensus for `.TW`/`.TWO`; attributed third-party estimate, coverage-gated |
@@ -354,9 +402,11 @@ date** — only statutory deadlines → render as markers, reconcile on release.
 
 ## 5. How FinMind fits the framework
 
-- New adapter `backend/src/sources/finmind.py` implementing the same `SourceAdapter` contract.
-  It is the **only adapter that carries a Bearer token** — supplied via env
-  (`FINMIND_TOKEN`), **never stored** (consistent with [governance.md](governance.md)).
+- Adapter package `backend/src/sources/finmind/` implementing the same `SourceAdapter` contract
+  (public `FinMindAdapter` import path unchanged; internally split into one category module per
+  §2.1–2.9 group, merged by `_registry.py`). It is the **only adapter that carries a Bearer
+  token** — supplied via env (`FINMIND_TOKEN`), **never stored** (consistent with
+  [governance.md](governance.md)).
 - **data_class mapping for FinMind datasets:**
   - `public`: datasets available on FinMind Free/Backer (EOD/fundamental + most history) —
     free to all our users.
@@ -365,13 +415,15 @@ date** — only statutory deadlines → render as markers, reconcile on release.
     Served to Premium/Pro; masked teaser (blurred + upgrade CTA) for Free users. No approval
     gate; still non-streaming / user-driven per governance §1.
     (Note: 股權分級/大戶 `TaiwanStockHoldingSharesPer` is **Backer** → `public`, not sponsor.)
-- **FinMind plan tier availability** is surfaced through the **M5Q source-health** view; a
-  dataset the current token can't access reports as `unavailable-tier`, not a hard error. There
-  is no live upstream quota poll — the platform reserves its own budget locally: a single
-  static Redis-backed ceiling (6000 req/hr) shared across every Premium/Pro user, atomically
-  reserved before each Sponsor-tier fetch and refunded on failure/under-use (see
-  [modules/12](modules/12-multi-user-tiers.md) §3). Free tier never draws on this pool at all —
-  there is no Free-tier FinMind quota concept.
+- **The real quota mechanism is a single static Redis-backed budget, not a per-tier rate
+  limit.** `usage/finmind_pool.py`'s `RedisFinMindPoolReserver` reserves against one shared
+  Sponsor pool (default **6000 req/hr**, `finmind_pool_limit_per_window`) across **all**
+  Premium/Pro users — reserve-before-act with refund-on-failure/under-use. Free never draws on
+  this pool at all (its skills run against the free FinMind token outside it). A dataset the
+  current token can't access reports as `unavailable-tier`, not a hard error, via the M5Q
+  source-health view; there is no live upstream quota-polling call backing that report — the
+  ceiling is a static config value (see [governance.md](governance.md) §9 and
+  [modules/12](modules/12-multi-user-tiers.md)).
 - **Timing classes:** FinMind EOD datasets = `official-eod` (with a "T+1 aggregator"
   caveat); snapshots = `live-ish`; news/macro = `reference`.
 - FinMind's `storage_objects` bulk parquet (tick/minute-K/分點) is used for whole-day
@@ -383,8 +435,9 @@ date** — only statutory deadlines → render as markers, reconcile on release.
   `tpex.org.tw/openapi/swagger.json` (needs `User-Agent` header),
   `openapi.taifex.com.tw/swagger.json`.
 - FinMind: `GET /translation?dataset=...` gives column CH/EN mapping; `GET /datalist`
-  enumerates valid `data_id`s. There is no live quota-polling endpoint in use — see §5's note on
-  the real, locally-reserved Sponsor-pool mechanism.
+  enumerates valid `data_id`s. No code calls `api.web.finmindtrade.com/v2/user_info` or any
+  other live upstream quota-polling endpoint — the Sponsor pool ceiling is a static config
+  value (see §5 above), not read from FinMind at runtime.
 - Data quirks to encode in validators: `TaiwanStockPrice` publishes `0` for no-trade days
   (filter on `close > 0`, not volume); `PriceAdj` forward-fills instead; emerging-board
   `open` = previous-day average, can fall outside [min,max].
