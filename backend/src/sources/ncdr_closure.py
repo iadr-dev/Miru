@@ -48,14 +48,20 @@ _BASE_URL = "https://alerts.ncdr.nat.gov.tw/JSONAtomFeed.ashx?AlertType=33"
 _SUSPENDED_KEYWORDS = ("停止上班", "停止上課")
 
 # Matches "<area>:<month>/<day><suspension text>" inside an entry's summary HTML, e.g.
-# "基隆市:7/10停止上班、停止上課。" — area name, then the affected month/day.
-_AREA_DATE_RE = re.compile(r"([一-鿿]+):(\d{1,2})/(\d{1,2})")
+# "基隆市:7/10停止上班、停止上課。" — area name, then the affected month/day. Area names in this
+# feed are a handful of CJK characters (a Taiwan county/city name, e.g. 基隆市) — bounded at 10
+# rather than unbounded `+` so this can't exhibit super-linear backtracking on a pathological
+# no-colon input, without changing what any real feed entry matches.
+_AREA_DATE_RE = re.compile(r"([一-鿿]{1,10}):(\d{1,2})/(\d{1,2})")
 
 _CAVEAT = (
     "NCDR closure feed lists currently-active work/school-suspension alerts (typhoon/disaster "
     "days) — a live feed of in-force announcements, not a historical archive or a "
     "confirmed-in-advance schedule."
 )
+
+# The one cast() target type every raw JSON object-of-unknowns value below uses.
+type _UntypedDict = dict[str, object]
 
 
 def _strip_html(text: str) -> str:
@@ -77,7 +83,7 @@ def _parse_entry(entry: dict[str, object], *, now: datetime) -> dict[str, object
     summary_field = entry.get("summary")
     summary_text = ""
     if isinstance(summary_field, dict):
-        summary_text = str(cast("dict[str, object]", summary_field).get("#text", ""))
+        summary_text = str(cast(_UntypedDict, summary_field).get("#text", ""))
     elif isinstance(summary_field, str):
         summary_text = summary_field
     summary_text = _strip_html(summary_text)
@@ -164,7 +170,7 @@ class NcdrClosureAdapter:
             )
 
         try:
-            validated = self.validate(cast("dict[str, object]", body))
+            validated = self.validate(cast(_UntypedDict, body))
         except ValueError as exc:
             return _result(
                 payload={}, health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=str(exc))
@@ -172,7 +178,7 @@ class NcdrClosureAdapter:
 
         entries_field = validated.get("entry", [])
         if isinstance(entries_field, dict):
-            raw_entries: list[dict[str, object]] = [cast("dict[str, object]", entries_field)]
+            raw_entries: list[dict[str, object]] = [cast(_UntypedDict, entries_field)]
         else:
             raw_entries = cast("list[dict[str, object]]", entries_field)
 
