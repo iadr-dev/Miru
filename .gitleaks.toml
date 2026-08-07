@@ -19,7 +19,9 @@ id = "generic-api-key"
 [rules.allowlist]
 paths = [
   '''backend/src/analytics/screener/catalog\.py''',
+  '''backend/tests/payments/test_no_secret_logging\.py''',
 ]
 regexes = [
   '''^[a-z][a-z0-9_]*$''',
+  '''^pk-SUPER-SECRET-KEY$''',
 ]
