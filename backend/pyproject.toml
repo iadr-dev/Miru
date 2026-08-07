@@ -221,6 +221,14 @@ disallow_any_explicit = false
 module = ["sources.yfinance", "sources.yfinance.*"]
 disallow_any_explicit = false
 
+[[tool.mypy.overrides]]
+# `batch_download` returns a raw yfinance/pandas MultiIndex DataFrame with no stable stub for
+# its shape (same edge as sources.yfinance above, one layer up in ingest/) — isolated to the one
+# row-mapper function that touches the raw frame; never let this Any cross into the flat
+# `list[dict[str, object]]` rows `ParquetStore.write_partition` receives.
+module = ["ingest.us_jobs"]
+disallow_any_explicit = false
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
