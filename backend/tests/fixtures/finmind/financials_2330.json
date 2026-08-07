@@ -1,0 +1,20 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2023-12-31",
+      "stock_id": "2330",
+      "type": "EPS",
+      "value": 9.21,
+      "origin_name": "基本每股盈餘（元）"
+    },
+    {
+      "date": "2023-12-31",
+      "stock_id": "2330",
+      "type": "Revenue",
+      "value": 625529765000.0,
+      "origin_name": "營業收入"
+    }
+  ]
+}

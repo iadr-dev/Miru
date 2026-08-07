@@ -1,0 +1,26 @@
+[
+  {
+    "SecuritiesCompanyCode": "6547",
+    "CompanyName": "高端疫苗",
+    "Close": "85.5000",
+    "Change": "1.5000",
+    "Open": "84.0000",
+    "High": "86.0000",
+    "Low": "83.5000",
+    "TradingShares": "1234567",
+    "TransactionAmount": "104938271",
+    "Date": "20240102"
+  },
+  {
+    "SecuritiesCompanyCode": "5346",
+    "CompanyName": "力晶科技",
+    "Close": "32.1000",
+    "Change": "-0.4000",
+    "Open": "32.5000",
+    "High": "32.6000",
+    "Low": "31.9000",
+    "TradingShares": "9876543",
+    "TransactionAmount": "316938271",
+    "Date": "20240102"
+  }
+]

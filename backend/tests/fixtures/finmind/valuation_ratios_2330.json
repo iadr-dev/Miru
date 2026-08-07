@@ -1,0 +1,13 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2024-01-02",
+      "stock_id": "2330",
+      "dividend_yield": 1.85,
+      "PER": 19.5,
+      "PBR": 6.1
+    }
+  ]
+}

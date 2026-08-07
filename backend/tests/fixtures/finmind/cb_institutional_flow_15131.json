@@ -1,0 +1,21 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "Foreign_Investor_Buy": 10.0,
+      "Foreign_Investor_Sell": 5.0,
+      "Foreign_Investor_Overbuy": 5.0,
+      "Investment_Trust_Buy": 2.0,
+      "Investment_Trust_Sell": 1.0,
+      "Investment_Trust_Overbuy": 1.0,
+      "Dealer_self_Buy": 0.0,
+      "Dealer_self_Sell": 0.0,
+      "Dealer_self_Overbuy": 0.0,
+      "Total_Overbuy": 6.0,
+      "cb_id": "15131",
+      "cb_name": "某某一",
+      "date": "2020-04-01"
+    }
+  ]
+}

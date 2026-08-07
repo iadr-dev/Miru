@@ -1,0 +1,21 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-01",
+      "stock_id": "2330",
+      "stock_name": "台積電",
+      "InternationalCode": "US8740391003",
+      "ForeignInvestmentRemainingShares": 1000000,
+      "ForeignInvestmentShares": 5000000,
+      "ForeignInvestmentRemainRatio": 20.5,
+      "ForeignInvestmentSharesRatio": 79.5,
+      "ForeignInvestmentUpperLimitRatio": 100.0,
+      "ChineseInvestmentUpperLimitRatio": 0.0,
+      "NumberOfSharesIssued": 25900000,
+      "RecentlyDeclareDate": "2020-03-31",
+      "note": ""
+    }
+  ]
+}

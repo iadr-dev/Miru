@@ -1,0 +1,24 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2026-07-17",
+      "industry": "半導體",
+      "sub_industry": "",
+      "stock_count": 120,
+      "trading_volume": 500000000,
+      "trading_money": 150000000000.0,
+      "trading_money_pct": 25.5
+    },
+    {
+      "date": "2026-07-17",
+      "industry": "半導體",
+      "sub_industry": "IC設計",
+      "stock_count": 60,
+      "trading_volume": 200000000,
+      "trading_money": 60000000000.0,
+      "trading_money_pct": 10.2
+    }
+  ]
+}

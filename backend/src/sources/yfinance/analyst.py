@@ -1,0 +1,129 @@
+"""Analyst-consensus / ESG / sector-classification capability domain.
+
+Covers the original narrow TW gap-filling trio (`analyst_consensus`, `esg`, `sector_class`)
+plus the richer non-TW-only analyst fields (recommendations tally, latest rating action,
+forward EPS/revenue estimate, long-term growth) layered on top of the same
+`analyst_consensus` capability when the symbol isn't TW.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any, cast
+
+import pandas as pd
+
+from schemas.enums import Market
+from schemas.market import Symbol
+from schemas.source import HealthStatus, SourceHealth, SourceResult
+
+from ._shared import _as_float, _as_int, _as_str, _get, _result
+
+
+def _analyst_consensus(sym: Symbol, info: dict[str, Any], frames: dict[str, Any]) -> SourceResult:
+    n_analysts = _as_int(_get(info, "numberOfAnalystOpinions")) or 0
+    if n_analysts <= 0:
+        # Coverage-gating rule: never render empty scaffolding as data.
+        return _result(
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.STALE, detail="no analyst coverage for this symbol"
+            ),
+        )
+    consensus: dict[str, object] = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "as_of": date.today().isoformat(),
+        "mean_target": _get(info, "targetMeanPrice"),
+        "median_target": _get(info, "targetMedianPrice"),
+        "high_target": _get(info, "targetHighPrice"),
+        "low_target": _get(info, "targetLowPrice"),
+        "number_of_analysts": n_analysts,
+        "recommendation_key": _get(info, "recommendationKey"),
+    }
+    if sym.market is not Market.TW:
+        consensus.update(_analyst_consensus_extended(frames))
+    return _result(
+        payload={"consensus": consensus},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+def _analyst_consensus_extended(frames: dict[str, Any]) -> dict[str, object]:
+    """Non-TW-only richer analyst fields — recommendations tally, latest rating action,
+    forward EPS/revenue estimate, long-term growth. Any individually-missing sub-frame
+    (e.g. no upgrades/downgrades history) degrades that one field to `None`, never the
+    whole payload."""
+    extended: dict[str, object] = {}
+    rec_summary = frames.get("recommendations_summary")
+    if isinstance(rec_summary, pd.DataFrame) and not rec_summary.empty:
+        current = cast("pd.Series", rec_summary.iloc[0])
+        extended["strong_buy"] = _as_int(_get(current, "strongBuy"))
+        extended["buy"] = _as_int(_get(current, "buy"))
+        extended["hold"] = _as_int(_get(current, "hold"))
+        extended["sell"] = _as_int(_get(current, "sell"))
+        extended["strong_sell"] = _as_int(_get(current, "strongSell"))
+
+    upgrades = frames.get("upgrades_downgrades")
+    if isinstance(upgrades, pd.DataFrame) and not upgrades.empty:
+        latest = cast("pd.Series", upgrades.sort_index(ascending=False).iloc[0])
+        extended["latest_upgrade_downgrade_firm"] = _as_str(_get(latest, "Firm"))
+        extended["latest_upgrade_downgrade_action"] = _as_str(_get(latest, "Action"))
+
+    earnings_est = frames.get("earnings_estimate")
+    if isinstance(earnings_est, pd.DataFrame) and "0y" in earnings_est.index:
+        eps_row = cast("pd.Series", earnings_est.loc["0y"])
+        extended["forward_eps_estimate"] = _as_float(_get(eps_row, "avg"))
+
+    revenue_est = frames.get("revenue_estimate")
+    if isinstance(revenue_est, pd.DataFrame) and "0y" in revenue_est.index:
+        revenue_row = cast("pd.Series", revenue_est.loc["0y"])
+        extended["forward_revenue_estimate"] = _as_float(_get(revenue_row, "avg"))
+
+    growth_est = frames.get("growth_estimates")
+    if isinstance(growth_est, pd.DataFrame) and "LTG" in growth_est.index:
+        growth_row = cast("pd.Series", growth_est.loc["LTG"])
+        extended["long_term_growth_estimate"] = _as_float(_get(growth_row, "stockTrend"))
+    return extended
+
+
+def _esg(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    score = _get(info, "esgScore") or _get(info, "totalEsg")
+    if score is None:
+        return _result(
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.STALE, detail="no ESG coverage for this symbol"
+            ),
+        )
+    esg = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "as_of": date.today().isoformat(),
+        "total_esg_score": score,
+        "esg_risk_percentile": _get(info, "esgPercentile"),
+    }
+    return _result(payload={"esg": esg}, health=SourceHealth(status=HealthStatus.OK, detail="ok"))
+
+
+def _sector_class(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    sector = _get(info, "sector")
+    industry = _get(info, "industry")
+    if not sector and not industry:
+        return _result(
+            payload={},
+            health=SourceHealth(status=HealthStatus.STALE, detail="no sector/industry label"),
+        )
+    classification = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "sector": sector,
+        "industry": industry,
+    }
+    return _result(
+        payload={"classification": classification},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+__all__ = ["_analyst_consensus", "_analyst_consensus_extended", "_esg", "_sector_class"]

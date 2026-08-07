@@ -1,0 +1,13 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2019-03-31",
+      "stock_id": "2330",
+      "type": "CashFlowsFromOperatingActivities",
+      "value": 150000000.0,
+      "origin_name": "營業活動之現金流量"
+    }
+  ]
+}

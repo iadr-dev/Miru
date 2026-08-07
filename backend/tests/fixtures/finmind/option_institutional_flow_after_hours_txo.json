@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "option_id": "TXO",
+      "date": "2021-10-12",
+      "call_put": "call",
+      "institutional_investors": "Foreign_Investor",
+      "long_deal_volume": 100,
+      "long_deal_amount": 400000,
+      "short_deal_volume": 80,
+      "short_deal_amount": 320000
+    }
+  ]
+}

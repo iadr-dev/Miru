@@ -1,0 +1,24 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "code": "TX",
+      "callput": "",
+      "date": "2026-01-05",
+      "name": "臺股期貨",
+      "listing_date": "1998-07-21",
+      "expire_price": 0.0,
+      "update_date": "2026-01-05"
+    },
+    {
+      "code": "TXO",
+      "callput": "call",
+      "date": "2026-01-05",
+      "name": "臺指選擇權",
+      "listing_date": "2001-12-24",
+      "expire_price": 0.0,
+      "update_date": "2026-01-05"
+    }
+  ]
+}

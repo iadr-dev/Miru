@@ -1,0 +1,13 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2011-06-22",
+      "cb_id": "12345",
+      "cb_name": "某某三",
+      "PutPrice": 100.0,
+      "PutYieldRate": 1.5
+    }
+  ]
+}

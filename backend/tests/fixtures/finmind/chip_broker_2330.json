@@ -1,0 +1,24 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "securities_trader": "元大",
+      "price": 593.0,
+      "buy": 1234,
+      "sell": 987,
+      "securities_trader_id": "9200",
+      "stock_id": "2330",
+      "date": "2024-01-02"
+    },
+    {
+      "securities_trader": "凱基",
+      "price": 593.0,
+      "buy": 654,
+      "sell": 321,
+      "securities_trader_id": "6460",
+      "stock_id": "2330",
+      "date": "2024-01-02"
+    }
+  ]
+}

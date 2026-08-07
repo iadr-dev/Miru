@@ -1,0 +1,17 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2010-05-24",
+      "stock_id": "2327",
+      "ClosingPriceonTheLastTradingDay": 20.0,
+      "PostReductionReferencePrice": 25.0,
+      "LimitUp": 27.5,
+      "LimitDown": 22.5,
+      "OpeningReferencePrice": 25.0,
+      "ExrightReferencePrice": 25.0,
+      "ReasonforCapitalReduction": "彌補虧損"
+    }
+  ]
+}

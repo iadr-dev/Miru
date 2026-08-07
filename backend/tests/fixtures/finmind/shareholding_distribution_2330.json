@@ -1,0 +1,14 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-01",
+      "stock_id": "2330",
+      "HoldingSharesLevel": "1-999",
+      "people": 200000,
+      "percent": 0.5,
+      "unit": 5000000
+    }
+  ]
+}

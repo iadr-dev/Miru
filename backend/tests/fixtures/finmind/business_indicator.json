@@ -1,0 +1,17 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-01-01",
+      "leading": 100.5,
+      "leading_notrend": 99.8,
+      "coincident": 98.2,
+      "coincident_notrend": 97.9,
+      "lagging": 96.0,
+      "lagging_notrend": 95.5,
+      "monitoring": 25.0,
+      "monitoring_color": "yellow-red"
+    }
+  ]
+}

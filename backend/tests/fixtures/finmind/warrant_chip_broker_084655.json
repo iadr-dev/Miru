@@ -1,0 +1,15 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "securities_trader": "元大",
+      "price": 1.23,
+      "buy": 500,
+      "sell": 300,
+      "securities_trader_id": "9200",
+      "stock_id": "084655",
+      "date": "2023-06-21"
+    }
+  ]
+}

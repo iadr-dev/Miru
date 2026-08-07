@@ -1,0 +1,12 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "country": "FED",
+      "date": "1982-01-01",
+      "full_country_name": "United States",
+      "interest_rate": 8.5
+    }
+  ]
+}

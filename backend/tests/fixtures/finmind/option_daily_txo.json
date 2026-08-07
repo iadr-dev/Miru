@@ -1,0 +1,21 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-01",
+      "option_id": "TXO",
+      "contract_date": "202004",
+      "strike_price": 10500.0,
+      "call_put": "call",
+      "open": 150.0,
+      "max": 180.0,
+      "min": 120.0,
+      "close": 160.0,
+      "volume": 12000,
+      "settlement_price": 160.0,
+      "open_interest": 8000,
+      "trading_session": "position"
+    }
+  ]
+}

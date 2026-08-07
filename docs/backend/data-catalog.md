@@ -36,7 +36,7 @@
 | **TWSE_MIS** | mis endpoints | none | live-ish snapshot | Bounded intraday observation |
 | **TAIFEX_MIS** | mis endpoints | none | live-ish snapshot | Bounded derivatives observation |
 | **NCDR / DGPA** | gov closure feeds | none | event-driven | Closure/currentness evidence |
-| **FinMind** (75+ datasets) | `api.finmindtrade.com/api/v4` | Bearer token | **date-range**, deep backfill | Aggregated, history-enabled superset |
+| **FinMind** (104 datasets wired, 77 whole-market-eligible) | `api.finmindtrade.com/api/v4` | Bearer token | **date-range**, deep backfill | Aggregated, history-enabled superset |
 | **MOPS** (scraped) | `mopsov.twse.com.tw/mops/web` | none | event-driven | Disclosure/catalyst stream — see §2.7 |
 | **News / GDELT / Finnhub** | RSS + `api.gdeltproject.org` + Finnhub | mixed (Finnhub key) | near-real-time | News freshness — see §2.8 |
 | **PTT** (scraped) | `ptt.cc` | none | near-real-time | Social buzz (Stock/Tech_Job/Beauty/Gossiping) — see §2.8 |
@@ -365,11 +365,13 @@ date** — only statutory deadlines → render as markers, reconcile on release.
     Served to Premium/Pro; masked teaser (blurred + upgrade CTA) for Free users. No approval
     gate; still non-streaming / user-driven per governance §1.
     (Note: 股權分級/大戶 `TaiwanStockHoldingSharesPer` is **Backer** → `public`, not sponsor.)
-- **Rate limits are tier-aware** — Free token **600/hr**, **Sponsor token 6000/hr** — and
-  **tier availability** are surfaced through the **M5Q source-health** view; a dataset the
-  current token can't access reports as `unavailable-tier`, not a hard error. A shared
-  Sponsor token is pooled across users by the quota manager (see
-  [modules/12](modules/12-multi-user-tiers.md)).
+- **FinMind plan tier availability** is surfaced through the **M5Q source-health** view; a
+  dataset the current token can't access reports as `unavailable-tier`, not a hard error. There
+  is no live upstream quota poll — the platform reserves its own budget locally: a single
+  static Redis-backed ceiling (6000 req/hr) shared across every Premium/Pro user, atomically
+  reserved before each Sponsor-tier fetch and refunded on failure/under-use (see
+  [modules/12](modules/12-multi-user-tiers.md) §3). Free tier never draws on this pool at all —
+  there is no Free-tier FinMind quota concept.
 - **Timing classes:** FinMind EOD datasets = `official-eod` (with a "T+1 aggregator"
   caveat); snapshots = `live-ish`; news/macro = `reference`.
 - FinMind's `storage_objects` bulk parquet (tick/minute-K/分點) is used for whole-day
@@ -381,7 +383,8 @@ date** — only statutory deadlines → render as markers, reconcile on release.
   `tpex.org.tw/openapi/swagger.json` (needs `User-Agent` header),
   `openapi.taifex.com.tw/swagger.json`.
 - FinMind: `GET /translation?dataset=...` gives column CH/EN mapping; `GET /datalist`
-  enumerates valid `data_id`s; `api.web.finmindtrade.com/v2/user_info` reports quota.
+  enumerates valid `data_id`s. There is no live quota-polling endpoint in use — see §5's note on
+  the real, locally-reserved Sponsor-pool mechanism.
 - Data quirks to encode in validators: `TaiwanStockPrice` publishes `0` for no-trade days
   (filter on `close > 0`, not volume); `PriceAdj` forward-fills instead; emerging-board
   `open` = previous-day average, can fall outside [min,max].

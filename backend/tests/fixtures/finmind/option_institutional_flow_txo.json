@@ -1,0 +1,34 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "name": "Foreign_Investor",
+      "date": "2020-04-01",
+      "call_put": "call",
+      "institutional_investors": "Foreign_Investor",
+      "long_deal_volume": 500,
+      "long_deal_amount": 2000000,
+      "short_deal_volume": 400,
+      "short_deal_amount": 1600000,
+      "long_open_interest_balance_volume": 6000,
+      "long_open_interest_balance_amount": 24000000,
+      "short_open_interest_balance_volume": 5000,
+      "short_open_interest_balance_amount": 20000000
+    },
+    {
+      "name": "Foreign_Investor",
+      "date": "2020-04-01",
+      "call_put": "put",
+      "institutional_investors": "Foreign_Investor",
+      "long_deal_volume": 300,
+      "long_deal_amount": 900000,
+      "short_deal_volume": 250,
+      "short_deal_amount": 750000,
+      "long_open_interest_balance_volume": 3000,
+      "long_open_interest_balance_amount": 9000000,
+      "short_open_interest_balance_volume": 2500,
+      "short_open_interest_balance_amount": 7500000
+    }
+  ]
+}

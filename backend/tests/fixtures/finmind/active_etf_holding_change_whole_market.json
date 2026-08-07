@@ -1,0 +1,22 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2025-05-07",
+      "stock_id": "00980A",
+      "component_stock_id": "2330",
+      "component_stock_name": "台積電",
+      "buy": 20000,
+      "sell": 0
+    },
+    {
+      "date": "2025-05-07",
+      "stock_id": "00981A",
+      "component_stock_id": "2454",
+      "component_stock_name": "聯發科",
+      "buy": 0,
+      "sell": 5000
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2019-03-31",
+      "stock_id": "2330",
+      "type": "TotalAssets",
+      "value": 2000000000.0,
+      "origin_name": "資產總額"
+    },
+    {
+      "date": "2019-03-31",
+      "stock_id": "2330",
+      "type": "TotalLiabilities",
+      "value": 500000000.0,
+      "origin_name": "負債總額"
+    }
+  ]
+}

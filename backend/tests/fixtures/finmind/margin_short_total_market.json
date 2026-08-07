@@ -1,0 +1,15 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "TodayBalance": 1000000,
+      "YesBalance": 995000,
+      "buy": 20000,
+      "date": "2020-04-01",
+      "name": "MarginPurchaseMoney",
+      "Return": 0.5,
+      "sell": 15000
+    }
+  ]
+}

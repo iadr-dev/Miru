@@ -1,0 +1,20 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2024-01-02",
+      "stock_id": "2330",
+      "buy": 12345678,
+      "name": "Foreign_Investor",
+      "sell": 9876543
+    },
+    {
+      "date": "2024-01-02",
+      "stock_id": "2330",
+      "buy": 234567,
+      "name": "Investment_Trust",
+      "sell": 345678
+    }
+  ]
+}

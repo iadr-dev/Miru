@@ -1,0 +1,22 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-01-02",
+      "stock_id": "2330",
+      "deal_price": 340.5,
+      "volume": 2000,
+      "Time": "09:00:03",
+      "TickType": "1"
+    },
+    {
+      "date": "2020-01-02",
+      "stock_id": "2330",
+      "deal_price": 340.0,
+      "volume": 1000,
+      "Time": "09:00:05",
+      "TickType": "2"
+    }
+  ]
+}

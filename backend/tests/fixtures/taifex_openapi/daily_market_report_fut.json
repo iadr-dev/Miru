@@ -1,0 +1,18 @@
+[
+  {
+    "ContractCode": "TX",
+    "ContractMonth": "202401",
+    "Date": "20240102",
+    "SettlementPrice": "17500.0000",
+    "Volume": "123456",
+    "OpenInterest": "45678"
+  },
+  {
+    "ContractCode": "MTX",
+    "ContractMonth": "202401",
+    "Date": "20240102",
+    "SettlementPrice": "17500.0000",
+    "Volume": "654321",
+    "OpenInterest": "98765"
+  }
+]

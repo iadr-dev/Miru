@@ -1,0 +1,17 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2025-04-01",
+      "stock_id": "2330",
+      "stock_name": "台積電",
+      "notional_amount": 100000000,
+      "number_of_transactions": 3,
+      "rate_lowest": 1.2,
+      "rate_highest": 1.5,
+      "rate_average": 1.35,
+      "contract_term_years": 2.0
+    }
+  ]
+}

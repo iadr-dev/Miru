@@ -1,0 +1,49 @@
+{
+  "id": "https://alerts.ncdr.nat.gov.tw/Json.aspx",
+  "title": "NCDR_CAP-即時防災資訊(Json)",
+  "updated": "2024-07-24T08:00:00+08:00",
+  "entry": [
+    {
+      "id": "dgpa.gov.tw_workSchlClos_20240724060000_i_10017_001",
+      "title": "停班停課",
+      "updated": "2024-07-24T06:00:00+08:00",
+      "summary": {
+        "@type": "html",
+        "#text": "[停班停課通知]基隆市:7/24停止上班、停止上課。"
+      },
+      "category": { "@term": "停班停課" },
+      "status": "Actual",
+      "msgType": "Alert",
+      "effective": "2024/7/24 上午 06:00:00",
+      "expires": "2024/7/25 上午 12:00:00"
+    },
+    {
+      "id": "dgpa.gov.tw_workSchlClos_20240724060500_i_10017_002",
+      "title": "停班停課",
+      "updated": "2024-07-24T06:05:00+08:00",
+      "summary": {
+        "@type": "html",
+        "#text": "[停班停課通知]新北市:7/24停止上班、停止上課。"
+      },
+      "category": { "@term": "停班停課" },
+      "status": "Actual",
+      "msgType": "Alert",
+      "effective": "2024/7/24 上午 06:05:00",
+      "expires": "2024/7/25 上午 12:00:00"
+    },
+    {
+      "id": "dgpa.gov.tw_workSchlClos_20240724061000_i_10017_003",
+      "title": "停班停課",
+      "updated": "2024-07-24T06:10:00+08:00",
+      "summary": {
+        "@type": "html",
+        "#text": "[停班停課通知]台北市:7/24上半日停止上班、上半日停止上課。"
+      },
+      "category": { "@term": "停班停課" },
+      "status": "Actual",
+      "msgType": "Alert",
+      "effective": "2024/7/24 上午 06:10:00",
+      "expires": "2024/7/24 下午 12:00:00"
+    }
+  ]
+}

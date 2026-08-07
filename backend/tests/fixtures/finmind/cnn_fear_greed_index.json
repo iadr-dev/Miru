@@ -1,0 +1,11 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2021-01-01",
+      "fear_greed": 65.0,
+      "fear_greed_emotion": "greed"
+    }
+  ]
+}

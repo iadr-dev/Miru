@@ -1,0 +1,28 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2026-01-05",
+      "futures_id": "TXF",
+      "open": 20000.0,
+      "high": 20100.0,
+      "low": 19950.0,
+      "close": 20050.0,
+      "change_price": 50.0,
+      "change_rate": 0.25,
+      "average_price": 20020.0,
+      "volume": 500,
+      "total_volume": 12000,
+      "amount": 1000000.0,
+      "total_amount": 24000000.0,
+      "yesterday_volume": 11000,
+      "buy_price": 20045.0,
+      "buy_volume": 3,
+      "sell_price": 20055.0,
+      "sell_volume": 4,
+      "volume_ratio": 1.1,
+      "TickType": "2"
+    }
+  ]
+}

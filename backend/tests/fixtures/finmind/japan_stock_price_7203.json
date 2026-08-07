@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-06-16",
+      "stock_id": "7203.T",
+      "Adj_Close": 6800.0,
+      "Close": 6800.0,
+      "High": 6900.0,
+      "Low": 6700.0,
+      "Open": 6750.0,
+      "Volume": 3000000
+    }
+  ]
+}

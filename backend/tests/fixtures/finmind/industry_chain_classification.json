@@ -1,0 +1,12 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "2330",
+      "industry": "半導體",
+      "sub_industry": "IC設計",
+      "date": "2026-01-01"
+    }
+  ]
+}

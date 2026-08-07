@@ -1,0 +1,28 @@
+[
+  {
+    "Code": "2330",
+    "Name": "台積電",
+    "TradeVolume": "22762022",
+    "TradeValue": "14235667780",
+    "OpeningPrice": "594.0000",
+    "HighestPrice": "597.0000",
+    "LowestPrice": "590.0000",
+    "ClosingPrice": "593.0000",
+    "Change": "-2.0000",
+    "Transaction": "45123",
+    "Date": "20240102"
+  },
+  {
+    "Code": "0050",
+    "Name": "元大台灣50",
+    "TradeVolume": "5123456",
+    "TradeValue": "654321000",
+    "OpeningPrice": "128.5000",
+    "HighestPrice": "129.0000",
+    "LowestPrice": "128.0000",
+    "ClosingPrice": "128.8000",
+    "Change": "0.3000",
+    "Transaction": "12345",
+    "Date": "20240102"
+  }
+]

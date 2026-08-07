@@ -1,0 +1,19 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "name": "Foreign_Investor",
+      "date": "2020-04-01",
+      "institutional_investors": "Foreign_Investor",
+      "long_deal_volume": 1000,
+      "long_deal_amount": 5000000,
+      "short_deal_volume": 800,
+      "short_deal_amount": 4000000,
+      "long_open_interest_balance_volume": 20000,
+      "long_open_interest_balance_amount": 100000000,
+      "short_open_interest_balance_volume": 15000,
+      "short_open_interest_balance_amount": 75000000
+    }
+  ]
+}

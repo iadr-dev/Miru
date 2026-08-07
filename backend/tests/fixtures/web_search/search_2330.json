@@ -1,0 +1,18 @@
+{
+  "web": {
+    "results": [
+      {
+        "title": "TSMC (2330) shares rise on AI demand",
+        "url": "https://example.com/news/2330-ai-demand",
+        "description": "TSMC shares gained after strong AI chip demand commentary.",
+        "age": "2h"
+      },
+      {
+        "title": "台積電法說會重點整理",
+        "url": "https://example.com/news/2330-earnings-call",
+        "description": "法說會逐字稿重點摘要。",
+        "age": "1d"
+      }
+    ]
+  }
+}

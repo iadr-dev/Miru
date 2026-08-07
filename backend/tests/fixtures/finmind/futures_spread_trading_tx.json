@@ -1,0 +1,22 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-01",
+      "futures_id": "TX",
+      "contract_date": "202004/202005",
+      "open": -10.0,
+      "max": -5.0,
+      "min": -15.0,
+      "close": -8.0,
+      "best_bid": -9.0,
+      "best_ask": -7.0,
+      "historical_max": 20.0,
+      "historical_min": -40.0,
+      "spread_to_spread_volume": 10,
+      "spread_to_single_volume": 5,
+      "trading_session": "position"
+    }
+  ]
+}

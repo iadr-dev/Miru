@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "securities_trader": "元大",
+      "price": 593.0,
+      "buy": 10000,
+      "sell": 0,
+      "trade_type": "普通",
+      "securities_trader_id": "9200",
+      "stock_id": "2330",
+      "date": "2026-04-28"
+    }
+  ]
+}

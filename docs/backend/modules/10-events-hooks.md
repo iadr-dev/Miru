@@ -86,9 +86,13 @@ Two distinct enforcement concerns, cleanly separated (do not conflate — see go
 ## 4. Rate limiting & quotas
 
 - `pre_turn` hook enforces per-caller request/token budgets (config-driven) — protects
-  provider spend and FinMind's per-tier limit (600/hr free · 6000/hr Sponsor).
-- FinMind quota is read from `api.web.finmindtrade.com/v2/user_info` and surfaced via M5Q;
-  **tier-aware** (Free 600/hr, Sponsor 6000/hr). Approaching the limit degrades gracefully
+  provider spend and the FinMind Sponsor pool's static 6000 req/hr ceiling.
+- FinMind quota is not read from any live upstream endpoint — the platform reserves its own
+  budget locally: `RedisFinMindPoolReserver` (`usage/finmind_pool.py`) against a single static
+  6000 req/hr ceiling shared across every Premium/Pro user, atomically reserved before each
+  Sponsor-tier fetch and refunded on failure/under-use; surfaced via M5Q. Free tier never draws
+  on this pool at all — there is no Free-tier FinMind quota concept. Approaching the limit
+  degrades gracefully
   (`unavailable-tier` / cached), never crashes. A shared Sponsor token is pooled across users
   by the quota manager ([12-multi-user-tiers.md](12-multi-user-tiers.md)).
 

@@ -1,0 +1,13 @@
+[
+  {
+    "category": "company",
+    "datetime": 1785757048,
+    "headline": "TSMC announces new capacity expansion",
+    "id": 1,
+    "image": "",
+    "related": "TSM",
+    "source": "Reuters",
+    "summary": "TSMC plans further capacity expansion in Arizona.",
+    "url": "https://example.com/finnhub/1"
+  }
+]

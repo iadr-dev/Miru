@@ -1,0 +1,24 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-02",
+      "stock_id": "2330",
+      "MarginPurchaseBuy": 1000,
+      "MarginPurchaseCashRepayment": 50,
+      "MarginPurchaseLimit": 500000,
+      "MarginPurchaseSell": 900,
+      "MarginPurchaseTodayBalance": 20000,
+      "MarginPurchaseYesterdayBalance": 19950,
+      "Note": "",
+      "OffsetLoanAndShort": 0,
+      "ShortSaleBuy": 200,
+      "ShortSaleCashRepayment": 10,
+      "ShortSaleLimit": 100000,
+      "ShortSaleSell": 220,
+      "ShortSaleTodayBalance": 5000,
+      "ShortSaleYesterdayBalance": 4990
+    }
+  ]
+}

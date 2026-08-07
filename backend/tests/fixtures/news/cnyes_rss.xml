@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+    <channel>
+        <title>Anue鉅亨</title>
+        <link>https://news.cnyes.com/</link>
+        <description>台股新聞</description>
+        <language>zh</language>
+        <item>
+            <title><![CDATA[台積電法說會釋出樂觀展望 股價收紅]]></title>
+            <link>https://news.cnyes.com/news/id/1000001</link>
+            <guid isPermaLink="true">https://news.cnyes.com/news/id/1000001</guid>
+            <pubDate>Mon, 03 Aug 2026 15:30:00 +0800</pubDate>
+            <description><![CDATA[台積電今日召開法人說明會，管理層對下季展望轉趨樂觀。]]></description>
+        </item>
+        <item>
+            <title><![CDATA[聯電擴產計畫曝光 供應鏈受惠]]></title>
+            <link>https://news.cnyes.com/news/id/1000002</link>
+            <guid isPermaLink="true">https://news.cnyes.com/news/id/1000002</guid>
+            <pubDate>Mon, 03 Aug 2026 14:00:00 +0800</pubDate>
+            <description><![CDATA[聯電宣布新一輪擴產計畫。]]></description>
+        </item>
+    </channel>
+</rss>

@@ -89,7 +89,6 @@ TW:
   financials:         [finmind, twse_openapi]               # never yfinance for TW financials
   chip_broker:        [finmind]                              # sponsor; TW-only
   analyst_consensus:  [yfinance]                             # the licensed gap
-  calendar_events:    [finmind, mops, calendar_ext, rule_engine]  # feeds + the calendar rule-engine pseudo-adapter (§4)
 US:
   price_eod:          [yfinance, finmind]                    # US: yfinance first, FinMind fallback
   financials:         [yfinance]
@@ -103,8 +102,15 @@ JP: { price_eod: [yfinance, finmind], ... }
 - **Fallback + coverage-gating are built in** — matches the reliability requirements (circuit
   breakers [16](16-infrastructure.md) §6; don't render empty scaffolding). A source that is
   down/rate-limited/empty is skipped to the next automatically.
-- **Merge policy (optional):** some capabilities *merge* rather than first-wins (e.g. calendar
-  events union multiple feeds + rule engine, deduped). Declared per capability.
+- **Merge policy (optional):** some capabilities *merge* rather than first-wins. `calendar_events`
+  is the real example — but it composes at the `calendar/` layer itself (`calendar/events.py`
+  fetching `Capability.DIVIDENDS`/`Capability.CB_PUT_PROVISION` directly, plus the Layer-1 rule
+  engine's own output), not via a `calendar_events`-registered source-priority row: there is no
+  `calendar_ext`/`rule_engine` source id in the real router, and no `calendar_events` entry
+  exists in `source_priority.yaml` for TW today (only `sources/ncdr_closure.py`, typhoon
+  closures, registers that capability). See [18-calendar-events.md](18-calendar-events.md) for
+  why composition happens above the router rather than through it — a `sources/` adapter may
+  never call back into `dataaccess/` (it's the layer below).
 - **Provenance:** the normalized result records which source actually served it + its
   `data_class`/`timing_class`/caveat, so the entitlement gate, teaser, and citations still work
   unchanged downstream.
@@ -131,11 +137,17 @@ tuples with display metadata (name, 產業/sector) — because it's the layer th
 Sourced from ingested reference data (`TaiwanStockInfo` for TW stocks + ETF list; registered US
 symbols for the phased US market), refreshed by the ingest layer ([22](22-data-ingest.md)), cached.
 
-`GET /search?q=&market=` (public) resolves the top-bar palette / mobile Stock tab: match `q` against
-代號 / 名稱 / 產業 (prefix-ranked above substring), return `[{symbol, name, market, asset_class,
-sector}]` **grouped TW → ETF → US**, plus optional 主題/產業 match sections. It's a lookup over the
-cached universe, not a per-request source fetch. The universe is client-cacheable (long TTL); the
-result feeds Stock Detail navigation and the ☆ add-to-watchlist affordance.
+`GET /search?q=&market=` (public) is the design intent for the top-bar palette / mobile Stock
+tab: match `q` against 代號 / 名稱 / 產業 (prefix-ranked above substring), return
+`[{symbol, name, market, asset_class, sector}]` grouped TW → ETF → US, plus optional 主題/產業
+match sections — a lookup over a cached universe, not a per-request source fetch.
+
+**Implementation status.** Only non-TW markets (US/GB/JP/EU, via `yfinance.Search`/`Lookup`) are
+actually wired. `market=TW` returns a clear `501 not_supported` rather than a naive whole-roster
+scan masquerading as a ranked type-ahead — there is no ingested `TaiwanStockInfo`/ETF
+symbol-universe search service backing a TW/ETF type-ahead today. The universe is
+client-cacheable (long TTL) where it does work; the result feeds Stock Detail navigation and the
+☆ add-to-watchlist affordance.
 
 ## Governance
 - Router lives above `sources/`; it performs **no I/O itself** (ADR-0002 holds).

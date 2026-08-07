@@ -1,0 +1,19 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "cb_id": "13166",
+      "cb_name": "某某二",
+      "cb_name_en": "SomeCB2",
+      "custody_balance": 100000,
+      "last_month_balance": 95000,
+      "change": 5000,
+      "change_percent": 5.26,
+      "issued_units": 500000,
+      "custody_accounts": 300,
+      "pledged_units": 1000,
+      "date": "2026-05-01"
+    }
+  ]
+}
