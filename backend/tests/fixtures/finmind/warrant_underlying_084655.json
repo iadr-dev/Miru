@@ -1,0 +1,34 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "084655",
+      "date": "2020-04-06",
+      "close": 1.23,
+      "target_stock_id": "2330",
+      "target_close": 594.0,
+      "type": "call",
+      "fulfillment_method": "cash",
+      "end_date": "2020-10-05",
+      "fulfillment_start_date": "2020-09-28",
+      "fulfillment_end_date": "2020-10-05",
+      "exercise_ratio": 0.1,
+      "fulfillment_price": 620.0
+    },
+    {
+      "stock_id": "084655",
+      "date": "2022-01-10",
+      "close": 0.55,
+      "target_stock_id": "2454",
+      "target_close": 880.0,
+      "type": "put",
+      "fulfillment_method": "cash",
+      "end_date": "2022-07-08",
+      "fulfillment_start_date": "2022-07-01",
+      "fulfillment_end_date": "2022-07-08",
+      "exercise_ratio": 0.05,
+      "fulfillment_price": 800.0
+    }
+  ]
+}

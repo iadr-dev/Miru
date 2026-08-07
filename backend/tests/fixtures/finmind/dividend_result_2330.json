@@ -1,0 +1,18 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2019-06-13",
+      "stock_id": "2330",
+      "before_price": 260.0,
+      "after_price": 249.5,
+      "stock_and_cache_dividend": 10.5,
+      "stock_or_cache_dividend": "cash",
+      "max_price": 251.0,
+      "min_price": 248.0,
+      "open_price": 249.5,
+      "reference_price": 249.5
+    }
+  ]
+}

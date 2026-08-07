@@ -1,0 +1,20 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "industry_category": "半導體業",
+      "stock_id": "2330",
+      "stock_name": "台積電",
+      "type": "twse",
+      "date": "2024-01-01"
+    },
+    {
+      "industry_category": "權證",
+      "stock_id": "084655",
+      "stock_name": "元大台積電購01",
+      "type": "warrant",
+      "date": "2024-01-01"
+    }
+  ]
+}

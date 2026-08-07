@@ -1,0 +1,22 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2021-04-01",
+      "dealer_code": "8560",
+      "dealer_name": "元大",
+      "futures_id": "TX",
+      "volume": 300,
+      "is_after_hour": 0
+    },
+    {
+      "date": "2021-04-01",
+      "dealer_code": "8560",
+      "dealer_name": "元大",
+      "futures_id": "TX",
+      "volume": 50,
+      "is_after_hour": 1
+    }
+  ]
+}

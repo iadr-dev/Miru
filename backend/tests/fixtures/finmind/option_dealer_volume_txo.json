@@ -1,0 +1,14 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2021-04-01",
+      "dealer_code": "8560",
+      "dealer_name": "元大",
+      "option_id": "TXO",
+      "volume": 120,
+      "is_after_hour": 0
+    }
+  ]
+}

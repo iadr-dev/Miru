@@ -1,0 +1,29 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "name": "臺股期貨",
+      "contract_type": "all",
+      "buy_top5_trader_open_interest": 5000,
+      "buy_top5_trader_open_interest_per": 25.0,
+      "buy_top10_trader_open_interest": 8000,
+      "buy_top10_trader_open_interest_per": 40.0,
+      "sell_top5_trader_open_interest": 4500,
+      "sell_top5_trader_open_interest_per": 22.5,
+      "sell_top10_trader_open_interest": 7500,
+      "sell_top10_trader_open_interest_per": 37.5,
+      "market_open_interest": 20000,
+      "buy_top5_specific_open_interest": 3000,
+      "buy_top5_specific_open_interest_per": 15.0,
+      "buy_top10_specific_open_interest": 5000,
+      "buy_top10_specific_open_interest_per": 25.0,
+      "sell_top5_specific_open_interest": 2500,
+      "sell_top5_specific_open_interest_per": 12.5,
+      "sell_top10_specific_open_interest": 4500,
+      "sell_top10_specific_open_interest_per": 22.5,
+      "date": "2024-09-01",
+      "futures_id": "TJF"
+    }
+  ]
+}

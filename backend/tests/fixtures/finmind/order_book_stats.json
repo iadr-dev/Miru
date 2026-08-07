@@ -1,0 +1,17 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "Time": "09:00:05",
+      "TotalBuyOrder": "12345",
+      "TotalBuyVolume": 5000,
+      "TotalSellOrder": 11000,
+      "TotalSellVolume": 4800,
+      "TotalDealOrder": 3000,
+      "TotalDealVolume": 2500,
+      "TotalDealMoney": 850000000,
+      "date": "2021-01-07"
+    }
+  ]
+}

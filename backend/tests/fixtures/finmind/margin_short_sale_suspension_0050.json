@@ -1,0 +1,12 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "0050",
+      "date": "2015-01-05",
+      "end_date": "2015-01-06",
+      "reason": "除息"
+    }
+  ]
+}

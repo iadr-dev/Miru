@@ -1,0 +1,22 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "2330",
+      "date": "2020-04-02",
+      "BuyAfterSale": "Y",
+      "Volume": 500000,
+      "BuyAmount": 170000000,
+      "SellAmount": 171000000
+    },
+    {
+      "stock_id": "2330",
+      "date": "2020-04-03",
+      "BuyAfterSale": "*",
+      "Volume": 300000,
+      "BuyAmount": 102000000,
+      "SellAmount": 101500000
+    }
+  ]
+}

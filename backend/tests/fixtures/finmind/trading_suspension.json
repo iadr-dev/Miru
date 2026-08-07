@@ -1,0 +1,13 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "2618",
+      "date": "2024-12-05",
+      "suspension_time": "09:00:00",
+      "resumption_date": "2024-12-06",
+      "resumption_time": "09:00:00"
+    }
+  ]
+}

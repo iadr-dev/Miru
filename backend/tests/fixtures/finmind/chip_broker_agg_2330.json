@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "securities_trader": "元大",
+      "securities_trader_id": "9200",
+      "stock_id": "2330",
+      "date": "2024-07-01",
+      "buy_volume": 100000,
+      "sell_volume": 95000,
+      "buy_price": 593.5,
+      "sell_price": 593.2
+    }
+  ]
+}

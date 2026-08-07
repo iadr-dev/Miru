@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-15",
+      "contract_month": "202004",
+      "futures_type": "臺股期貨",
+      "futures_id": "TX",
+      "futures_name": "臺股期貨",
+      "settlement_price": 10600.0,
+      "underlying_code": "TAIEX",
+      "notional_value": 2120000.0
+    }
+  ]
+}

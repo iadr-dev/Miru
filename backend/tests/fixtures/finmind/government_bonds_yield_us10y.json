@@ -1,0 +1,11 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-01-01",
+      "name": "United States 10-Year",
+      "value": 1.88
+    }
+  ]
+}

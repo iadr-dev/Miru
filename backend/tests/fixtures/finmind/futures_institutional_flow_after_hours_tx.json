@@ -1,0 +1,15 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "futures_id": "TX",
+      "date": "2021-10-12",
+      "institutional_investors": "Foreign_Investor",
+      "long_deal_volume": 200,
+      "long_deal_amount": 1000000,
+      "short_deal_volume": 150,
+      "short_deal_amount": 750000
+    }
+  ]
+}

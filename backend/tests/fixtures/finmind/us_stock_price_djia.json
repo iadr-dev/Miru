@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-06-16",
+      "stock_id": "^DJI",
+      "Adj_Close": 26289.98,
+      "Close": 26289.98,
+      "High": 26428.0,
+      "Low": 25850.0,
+      "Open": 26000.0,
+      "Volume": 400000000
+    }
+  ]
+}

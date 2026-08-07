@@ -1,0 +1,8 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {"code": "TX", "type": "futures", "name": "臺股期貨"},
+    {"code": "TXO", "type": "option", "name": "臺指選擇權"}
+  ]
+}

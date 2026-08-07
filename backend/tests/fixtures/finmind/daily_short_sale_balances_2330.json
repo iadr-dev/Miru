@@ -1,0 +1,23 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "2330",
+      "MarginShortSalesPreviousDayBalance": 1000,
+      "MarginShortSalesShortSales": 100,
+      "MarginShortSalesShortCovering": 50,
+      "MarginShortSalesStockRedemption": 0,
+      "MarginShortSalesCurrentDayBalance": 1050,
+      "MarginShortSalesQuota": 500000,
+      "SBLShortSalesPreviousDayBalance": 2000,
+      "SBLShortSalesShortSales": 200,
+      "SBLShortSalesReturns": 100,
+      "SBLShortSalesAdjustments": 0,
+      "SBLShortSalesCurrentDayBalance": 2100,
+      "SBLShortSalesQuota": 800000,
+      "SBLShortSalesShortCovering": 50,
+      "date": "2020-04-01"
+    }
+  ]
+}

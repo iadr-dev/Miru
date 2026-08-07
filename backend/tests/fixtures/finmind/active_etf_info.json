@@ -1,0 +1,20 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2025-05-05",
+      "stock_id": "00980A",
+      "stock_name": "統一台股增長主動式ETF",
+      "category": "domestic",
+      "type": "twse"
+    },
+    {
+      "date": "2025-05-05",
+      "stock_id": "00981A",
+      "stock_name": "統一全球AI主動式ETF",
+      "category": "foreign",
+      "type": "tpex"
+    }
+  ]
+}

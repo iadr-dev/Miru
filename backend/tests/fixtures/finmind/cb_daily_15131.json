@@ -1,0 +1,24 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "cb_id": "15131",
+      "cb_name": "某某一",
+      "transaction_type": "buy",
+      "close": 105.5,
+      "change": 0.5,
+      "open": 105.0,
+      "max": 106.0,
+      "min": 104.5,
+      "no_of_transactions": 12,
+      "unit": "張",
+      "trading_value": 105500.0,
+      "avg_price": 105.2,
+      "next_ref_price": 105.5,
+      "next_max_limit": 116.0,
+      "next_min_limit": 95.0,
+      "date": "2020-04-01"
+    }
+  ]
+}

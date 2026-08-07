@@ -1,0 +1,14 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2026-04-24",
+      "stock_id": "2330",
+      "trade_type": "普通",
+      "price": 593.0,
+      "volume": 50000,
+      "trading_money": 29650000.0
+    }
+  ]
+}

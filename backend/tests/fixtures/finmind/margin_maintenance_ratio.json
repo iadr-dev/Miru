@@ -1,0 +1,7 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    { "date": "2024-04-01", "TotalExchangeMarginMaintenance": 165.32 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-01-02",
+      "currency": "USD",
+      "cash_buy": 29.9,
+      "cash_sell": 30.5,
+      "spot_buy": 30.0,
+      "spot_sell": 30.2
+    }
+  ]
+}

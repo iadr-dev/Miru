@@ -1,0 +1,12 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-06-16",
+      "stock_id": "BP.L",
+      "Country": "United Kingdom",
+      "stock_name": "BP PLC"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "symbol": "2330.TW",
+  "sector": "Technology",
+  "industry": "Semiconductors",
+  "targetMeanPrice": 750.0,
+  "targetMedianPrice": 745.0,
+  "targetHighPrice": 850.0,
+  "targetLowPrice": 650.0,
+  "numberOfAnalystOpinions": 28,
+  "recommendationKey": "buy",
+  "esgScore": 18.4,
+  "esgPercentile": 62.0
+}

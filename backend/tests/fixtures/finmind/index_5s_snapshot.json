@@ -1,0 +1,20 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2025-05-09",
+      "time": "09:00:05",
+      "stock_id": "TAIEX",
+      "price": 21000.5,
+      "kind": "TSE"
+    },
+    {
+      "date": "2025-05-09",
+      "time": "09:00:05",
+      "stock_id": "OTC",
+      "price": 250.1,
+      "kind": "OTC"
+    }
+  ]
+}

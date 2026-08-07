@@ -1,0 +1,15 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-06-16",
+      "stock_id": "^DJI",
+      "Country": "United States",
+      "IPOYear": "",
+      "MarketCap": 0,
+      "Subsector": "",
+      "stock_name": "Dow Jones Industrial Average"
+    }
+  ]
+}

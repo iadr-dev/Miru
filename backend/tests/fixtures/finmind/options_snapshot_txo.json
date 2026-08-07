@@ -1,0 +1,28 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2026-01-05",
+      "options_id": "TXO",
+      "open": 100.0,
+      "high": 110.0,
+      "low": 95.0,
+      "close": 105.0,
+      "change_price": 5.0,
+      "change_rate": 5.0,
+      "average_price": 102.0,
+      "volume": 200,
+      "total_volume": 5000,
+      "amount": 500000.0,
+      "total_amount": 5100000.0,
+      "yesterday_volume": 4800,
+      "buy_price": 104.0,
+      "buy_volume": 2,
+      "sell_price": 106.0,
+      "sell_volume": 3,
+      "volume_ratio": 0.9,
+      "TickType": "1"
+    }
+  ]
+}

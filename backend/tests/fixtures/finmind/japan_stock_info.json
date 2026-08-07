@@ -1,0 +1,13 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-06-16",
+      "stock_id": "7203.T",
+      "Exchange": "Tokyo Stock Exchange",
+      "Sector": "Automobiles",
+      "stock_name": "Toyota Motor Corp"
+    }
+  ]
+}

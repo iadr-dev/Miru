@@ -1,0 +1,19 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "stock_id": "2330",
+      "yweek": "2020-14",
+      "max": 300.0,
+      "min": 280.0,
+      "trading_volume": 50000000,
+      "trading_money": 14000000000,
+      "trading_turnover": 0.5,
+      "date": "2020-04-03",
+      "close": 295.0,
+      "open": 282.0,
+      "spread": 13.0
+    }
+  ]
+}

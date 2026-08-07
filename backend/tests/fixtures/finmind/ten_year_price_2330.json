@@ -1,0 +1,8 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    { "date": "2020-04-02", "stock_id": "2330", "close": 300.0 },
+    { "date": "2020-04-03", "stock_id": "2330", "close": 305.5 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "rank": 1,
+      "stock_id": "2330",
+      "stock_name": "台積電",
+      "weight_per": 28.5,
+      "date": "2024-01-02",
+      "type": "twse"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "contract_date": "202606/202607",
+      "date": "2026-06-09",
+      "time": "08:45:03",
+      "futures_id": "CAF",
+      "price": -5.0,
+      "volume": 1,
+      "near_price": 10550.0,
+      "far_price": 10555.0,
+      "spread_to_spread": 1
+    }
+  ]
+}

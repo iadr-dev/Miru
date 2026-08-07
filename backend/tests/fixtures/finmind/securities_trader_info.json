@@ -1,0 +1,13 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "securities_trader_id": "9200",
+      "securities_trader": "元大",
+      "date": "2024-01-01",
+      "address": "台北市松仁路",
+      "phone": "02-1234-5678"
+    }
+  ]
+}

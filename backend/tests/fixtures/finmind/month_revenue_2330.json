@@ -1,0 +1,24 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2019-04-10",
+      "stock_id": "2330",
+      "country": "TW",
+      "revenue": 90000000000,
+      "revenue_month": 3,
+      "revenue_year": 2019,
+      "create_time": "2019-04-10"
+    },
+    {
+      "date": "1999-04-10",
+      "stock_id": "2330",
+      "country": "TW",
+      "revenue": 5000000000,
+      "revenue_month": 3,
+      "revenue_year": 1999,
+      "create_time": ""
+    }
+  ]
+}

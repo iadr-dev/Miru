@@ -1,0 +1,11 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2015-06-30",
+      "stock_id": "1234",
+      "stock_name": "某某公司"
+    }
+  ]
+}

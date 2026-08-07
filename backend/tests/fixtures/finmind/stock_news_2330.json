@@ -1,0 +1,14 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-01",
+      "stock_id": "2330",
+      "description": "台積電發布最新消息",
+      "link": "https://example.com/news/1",
+      "source": "cnyes",
+      "title": "台積電消息標題"
+    }
+  ]
+}

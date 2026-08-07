@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-06-15",
+      "stock_id": "2911",
+      "stock_name": "麗嬰房",
+      "before_close": 10.0,
+      "after_ref_close": 20.0,
+      "after_ref_max": 22.0,
+      "after_ref_min": 18.0,
+      "after_ref_open": 20.0
+    }
+  ]
+}

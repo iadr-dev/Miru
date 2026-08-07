@@ -1,0 +1,11 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2023-01-03",
+      "stock_id": "2330",
+      "market_value": 14000000000000
+    }
+  ]
+}

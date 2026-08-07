@@ -1,0 +1,16 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2020-04-01",
+      "stock_id": "2330",
+      "transaction_type": "競價",
+      "volume": 1000,
+      "fee_rate": 0.5,
+      "close": 300.0,
+      "original_return_date": "2020-10-01",
+      "original_lending_period": "180"
+    }
+  ]
+}

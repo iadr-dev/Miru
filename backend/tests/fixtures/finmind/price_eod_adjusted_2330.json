@@ -1,0 +1,30 @@
+{
+  "msg": "success",
+  "status": 200,
+  "data": [
+    {
+      "date": "2025-07-29",
+      "stock_id": "2317",
+      "Trading_Volume": 30000000,
+      "Trading_money": 5100000000,
+      "open": 168.0,
+      "max": 172.0,
+      "min": 167.0,
+      "close": 171.5,
+      "spread": 1.5,
+      "Trading_turnover": 0.0
+    },
+    {
+      "date": "2025-07-30",
+      "stock_id": "2317",
+      "Trading_Volume": 0,
+      "Trading_money": 0,
+      "open": 169.94,
+      "max": 170.43,
+      "min": 166.06,
+      "close": 166.54,
+      "spread": 0.0,
+      "Trading_turnover": 0.0
+    }
+  ]
+}
