@@ -159,10 +159,10 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # US whole-market ingest (`ingest/us_jobs.py`, `ingest/us_universe.py`) — the non-TW
     # counterpart to everything above, yfinance-sourced rather than FinMind. The universe
     # discovery job must run before either US pull can find any symbols; MONTHLY, since the
-    # tracked roster is only ever "the ~250 largest US equities by market cap" (bounded by
-    # Yahoo's own screener size cap — see `us_universe.py`'s module docstring) and doesn't
-    # meaningfully change day to day. Fires at 01:00, after the TW monthly theme jobs, so a
-    # reader sees the whole non-trading-day-gated reference-data group together.
+    # tracked roster (~1,000-1,500 large-and-mid-cap US equities, paginated by market-cap band
+    # — see `us_universe.py`'s module docstring) doesn't meaningfully change day to day. Fires
+    # at 01:00, after the TW monthly theme jobs, so a reader sees the whole non-trading-day-
+    # gated reference-data group together.
     ScheduledIngestJob(
         "us_symbol_universe", time_(1, 0), job_us_symbol_universe, cadence=Cadence.MONTHLY
     ),

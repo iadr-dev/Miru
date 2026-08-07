@@ -3,16 +3,23 @@ whole-market price/fundamentals jobs in `ingest/us_jobs.py`.
 
 Unlike TW (where FinMind's `TaiwanStockInfo` dataset is the roster), there is no whole-market
 symbol-list endpoint for yfinance — `sources.yfinance.screener.run_screener` is a *query*
-surface (matching symbols for a condition), not a full-roster dump. This module runs one broad,
-US-scoped equity query and treats the result as the tracked universe.
+surface (matching symbols for a condition), not a full-roster dump.
 
-**Bounded by construction, not just convention.** Yahoo hard-caps a custom screen at
-`ScreenerQuery.size <= 250` (`schemas/screener.py`), and `run_screener` exposes no pagination
-(no `offset` param) — so one query is the entire universe this module can ever produce. Sorted
-by market cap descending, this is "the ~250 largest US equities," not "every US-listed symbol."
-Widening this later means adding real pagination to `run_screener` (multiple queries, e.g. by
-market-cap band) — deliberately out of scope here rather than faked with a client-side loop that
-still only ever sees Yahoo's return-250-per-request ceiling per call.
+**Bounded by construction, not just convention.** Yahoo hard-caps a single custom screen at
+`ScreenerQuery.size <= 250` (`schemas/screener.py`), and `run_screener` exposes no `offset`
+param — one query alone can never return more than 250 symbols. This module works around that
+per-query ceiling with real pagination-by-market-cap-band: `_MARKET_CAP_BANDS` splits the US
+equity universe into disjoint `intradaymarketcap` ranges, and one query (each individually
+still capped at 250) runs per band. This is genuine pagination — each band is a distinct,
+verified, non-overlapping slice of the real market — not multiple identical queries dressed up
+as different pages.
+
+**Still an honest, disclosed approximation, not "every US-listed symbol":** a band whose real
+`ScreenerResult.total_matches` exceeds 250 (e.g. the $50-200B band alone had 539 real matches
+when this was verified) is truncated to its top-250-by-market-cap within that band — the
+smaller-cap tail inside a wide band is dropped, not silently included. `_MARKET_CAP_BANDS`'
+five ranges were chosen (and verified against live data) to land around ~1,000-1,500 total
+symbols — roughly the large-and-mid-cap range, not micro-caps.
 
 Writes the resulting symbol list to its own Parquet partition (`US_SYMBOL_UNIVERSE_DATASET`)
 rather than a relational table — nothing here needs relational joins/queries, so this stays
@@ -21,6 +28,7 @@ consistent with how every other whole-market dataset lands (`ingest/store.py`).
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date as date_
 
 import structlog
@@ -37,37 +45,72 @@ logger = structlog.get_logger(__name__)
 US_SYMBOL_UNIVERSE_DATASET = "us_symbol_universe"
 
 # Yahoo's own hard cap for a custom screen (`schemas/screener.py::ScreenerQuery.size`) — the
-# largest single query can ever return, and therefore the largest universe this module tracks.
-_UNIVERSE_SIZE = 250
+# largest any single query (one market-cap band) can ever return.
+_BAND_SIZE = 250
+
+# Disjoint `intradaymarketcap` (USD) ranges, high to low; `None` as the upper bound means
+# "and above" (no ceiling). Verified against live data at design time: mega-cap ($200B+) had
+# 126 real matches (fits in one query uncapped); the next four bands each had more real matches
+# than 250 (539 / 1702 / 2964 / 2377) and are therefore each truncated to their own top-250 by
+# market cap — an honest, bounded approximation, not a full roster. Five bands land the total
+# tracked universe around ~1,000-1,500 symbols (large-and-mid-cap range).
+_MARKET_CAP_BANDS: tuple[tuple[int, int | None], ...] = (
+    (200_000_000_000, None),
+    (50_000_000_000, 200_000_000_000),
+    (10_000_000_000, 50_000_000_000),
+    (2_000_000_000, 10_000_000_000),
+    (500_000_000, 2_000_000_000),
+)
+
+# Same rate-limit lesson as `ingest/us_jobs.py::_YFINANCE_THROTTLE_SECONDS`: pace sequential
+# screener queries rather than firing them back-to-back.
+_BAND_THROTTLE_SECONDS = 0.5
 
 
-async def discover_us_symbols() -> list[dict[str, object]]:
-    """Run the bounded US equity screen and return `(symbol, name, exchange)` rows.
-
-    Never raises — `run_screener` itself degrades to an empty `ScreenerResult` with an honest
-    `detail` on any failure (bad query, upstream error); this function passes that through as
-    an empty row list rather than inventing symbols.
-    """
-    query = ScreenerQuery(
+def _band_query(lo: int, hi: int | None) -> ScreenerQuery:
+    conditions = [ScreenerCondition(field="region", op=ScreenerOperator.EQ, value="us")]
+    if hi is None:
+        conditions.append(
+            ScreenerCondition(field="intradaymarketcap", op=ScreenerOperator.GT, value=lo)
+        )
+    else:
+        conditions.append(
+            ScreenerCondition(
+                field="intradaymarketcap", op=ScreenerOperator.BETWEEN, value=lo, value2=hi
+            )
+        )
+    return ScreenerQuery(
         asset_kind=ScreenerAssetKind.EQUITY,
-        conditions=(ScreenerCondition(field="region", op=ScreenerOperator.EQ, value="us"),),
-        size=_UNIVERSE_SIZE,
+        conditions=tuple(conditions),
+        size=_BAND_SIZE,
         sort_field="intradaymarketcap",
         sort_ascending=False,
     )
-    result = await run_screener(query)
-    if not result.hits:
-        logger.warning("us_universe_discovery_empty", detail=result.detail)
-        return []
-    return [
-        {
-            "symbol": hit.symbol,
-            "name": hit.name,
-            "exchange": hit.exchange,
-        }
-        for hit in result.hits
-        if hit.symbol
-    ]
+
+
+async def discover_us_symbols() -> list[dict[str, object]]:
+    """Run one bounded equity screen per market-cap band (`_MARKET_CAP_BANDS`) and return the
+    combined `(symbol, name, exchange)` rows, deduplicated by symbol (a symbol can only ever
+    match one disjoint band, but dedup stays defensive rather than assuming the bands never
+    drift). A band that returns nothing is logged and skipped — never a hard failure for the
+    whole run; only a wholesale empty result across every band fails the job."""
+    seen: set[str] = set()
+    rows: list[dict[str, object]] = []
+    for index, (lo, hi) in enumerate(_MARKET_CAP_BANDS):
+        if index > 0:
+            await asyncio.sleep(_BAND_THROTTLE_SECONDS)
+        result = await run_screener(_band_query(lo, hi))
+        if not result.hits:
+            logger.warning("us_universe_band_empty", lo=lo, hi=hi, detail=result.detail)
+            continue
+        for hit in result.hits:
+            if not hit.symbol or hit.symbol in seen:
+                continue
+            seen.add(hit.symbol)
+            rows.append({"symbol": hit.symbol, "name": hit.name, "exchange": hit.exchange})
+    if not rows:
+        logger.warning("us_universe_discovery_empty")
+    return rows
 
 
 async def job_us_symbol_universe(run_date: date_, ctx: IngestContext) -> JobRun:

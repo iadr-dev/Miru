@@ -104,7 +104,16 @@ class ParquetStore:
         partition_dir = key.path(self.root)
         partition_dir.mkdir(parents=True, exist_ok=True)
 
-        frame = pd.DataFrame(rows)
+        # `pd.DataFrame([])` has zero columns (not just zero rows) — DuckDB's `COPY` rejects a
+        # frame with no columns at all ("Need a DataFrame with at least one column"), even
+        # though the Parquet format itself has no trouble with zero *rows*. A genuinely empty
+        # `rows` list still needs one placeholder column so the write succeeds; the reader
+        # side (`read_partition`) already handles a column-only, row-empty frame correctly —
+        # it just yields no rows, exactly like any other zero-row read.
+        if rows:
+            frame = pd.DataFrame(rows)
+        else:
+            frame = pd.DataFrame({"_empty": pd.Series([], dtype="object")})
         version_id = uuid.uuid4().hex
         tmp_dir = self.root / _TMP_DIRNAME / f"{dataset}__{market}__{run_date.isoformat()}"
         tmp_dir = tmp_dir.with_name(f"{tmp_dir.name}__{version_id}")

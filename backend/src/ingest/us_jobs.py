@@ -26,6 +26,7 @@ run, `ctx.data_update_publisher.publish_data_updated(...)` on a successful leade
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date as date_
 from datetime import timedelta
 from typing import Any, cast
@@ -38,6 +39,7 @@ from ingest.journal import JobRun, RunStatus, journal_run
 from ingest.us_universe import latest_us_symbols
 from schemas.enums import Capability, Market
 from schemas.market import Symbol
+from schemas.source import HealthStatus
 from sources.yfinance import batch_download
 
 logger = structlog.get_logger(__name__)
@@ -56,6 +58,14 @@ _FUNDAMENTALS_DATASETS: dict[Capability, str] = {
 }
 
 _ONE_DAY = timedelta(days=1)
+
+# yfinance's anonymous/free tier rate-limits aggressively: a tight per-symbol loop (250 symbols
+# x 5 capabilities = ~1250 calls with no delay) gets almost every call throttled to
+# HealthStatus.UNREACHABLE within seconds — confirmed empirically (455 "Too Many Requests" in
+# under 4 minutes on the first real run of this job). A fixed inter-call pause is the accepted
+# per-symbol-fan-out exception's own mitigation — this is not a batch endpoint, so pacing the
+# calls is the only lever available.
+_YFINANCE_THROTTLE_SECONDS = 0.5
 
 
 def _as_float(value: object) -> float | None:
@@ -209,6 +219,96 @@ async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
     )
 
 
+async def _fetch_one_fundamental(
+    ctx: IngestContext, sym: Symbol, cap: Capability
+) -> list[dict[str, object]] | None:
+    """One (symbol, capability) fetch, classified into rows-to-keep or `None` (a real failure
+    the caller should count). Pulled out of `job_us_fundamentals` purely to keep that
+    function's loop body shallow; identical fetch/classify logic, just named. A degraded
+    (never-raised) result — e.g. rate-limited — is treated the same as a raised exception: both
+    must count as a real failure, or a fully-throttled run silently reports SUCCESS with
+    rows_written=0 (exactly what happened before this check existed)."""
+    try:
+        result = await ctx.yfinance.fetch(cap, sym, tls_policy=ctx.tls_policy)  # type: ignore[union-attr]
+    except Exception as exc:  # one symbol's failure never aborts the batch
+        logger.warning(
+            "us_fundamentals_fetch_failed", symbol=sym.id, capability=cap.value, error=str(exc)
+        )
+        return None
+    if result.health.status in (HealthStatus.UNREACHABLE, HealthStatus.UNAVAILABLE_TIER):
+        logger.warning(
+            "us_fundamentals_fetch_degraded",
+            symbol=sym.id,
+            capability=cap.value,
+            status=result.health.status.value,
+            detail=result.health.detail,
+        )
+        return None
+    payload_rows = next(iter(result.payload.values()), None)
+    return cast("list[dict[str, object]]", payload_rows) if isinstance(payload_rows, list) else []
+
+
+async def _collect_fundamentals_rows(
+    ctx: IngestContext, symbols: list[str]
+) -> tuple[dict[Capability, list[dict[str, object]]], int]:
+    """The paced per-(symbol, capability) fetch loop, pulled out of `job_us_fundamentals`
+    purely to keep that function's own branching shallow. Returns the collected rows per
+    capability and the total failure count (raised exceptions + degraded results, see
+    `_fetch_one_fundamental`)."""
+    rows_by_capability: dict[Capability, list[dict[str, object]]] = {
+        cap: [] for cap in _FUNDAMENTALS_DATASETS
+    }
+    failures = 0
+    first_call = True
+    for symbol_id in symbols:
+        sym = Symbol(id=symbol_id, market=Market.US)
+        for cap in _FUNDAMENTALS_DATASETS:
+            if first_call:
+                first_call = False
+            else:
+                # Paced, not concurrent: yfinance has no bulk fundamentals endpoint, and an
+                # unthrottled per-symbol loop over the full universe gets almost every call
+                # rate-limited within seconds (empirically: 455 "Too Many Requests" in under
+                # 4 minutes on the first real run with no delay). This is the mitigation, not
+                # a nice-to-have.
+                await asyncio.sleep(_YFINANCE_THROTTLE_SECONDS)
+            rows = await _fetch_one_fundamental(ctx, sym, cap)
+            if rows is None:
+                failures += 1
+                continue
+            rows_by_capability[cap].extend(rows)
+    return rows_by_capability, failures
+
+
+async def _write_fundamentals_partitions(
+    ctx: IngestContext,
+    run_date: date_,
+    rows_by_capability: dict[Capability, list[dict[str, object]]],
+) -> int:
+    """Write whichever capabilities actually collected rows and publish the invalidation
+    signal for each — pulled out of `job_us_fundamentals` for the same shallow-branching
+    reason as `_collect_fundamentals_rows`."""
+    total_written = 0
+    for cap, dataset in _FUNDAMENTALS_DATASETS.items():
+        rows = rows_by_capability[cap]
+        if not rows:
+            continue
+        total_written += ctx.store.write_partition(dataset, Market.US.value, run_date, rows)
+        await ctx.data_update_publisher.publish_data_updated(
+            capability=cap,
+            market=Market.US,
+            as_of=run_date.isoformat(),
+            scope="whole-market",
+        )
+    return total_written
+
+
+def _fundamentals_status(*, failures: int, total_written: int) -> RunStatus:
+    if not failures:
+        return RunStatus.SUCCESS
+    return RunStatus.FAILED if total_written == 0 else RunStatus.PARTIAL
+
+
 async def job_us_fundamentals(run_date: date_, ctx: IngestContext) -> JobRun:
     """Weekly US financials/balance-sheet/cash-flow/dividends/splits pull — per-symbol, since
     yfinance has no bulk fundamentals endpoint (the one accepted per-symbol-fan-out exception in
@@ -242,46 +342,9 @@ async def job_us_fundamentals(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="no US symbol universe yet — run job_us_symbol_universe first",
         )
 
-    rows_by_capability: dict[Capability, list[dict[str, object]]] = {
-        cap: [] for cap in _FUNDAMENTALS_DATASETS
-    }
-    failures = 0
-    for symbol_id in symbols:
-        sym = Symbol(id=symbol_id, market=Market.US)
-        for cap in _FUNDAMENTALS_DATASETS:
-            try:
-                result = await ctx.yfinance.fetch(cap, sym, tls_policy=ctx.tls_policy)
-            except Exception as exc:  # one symbol's failure never aborts the batch
-                logger.warning(
-                    "us_fundamentals_fetch_failed",
-                    symbol=symbol_id,
-                    capability=cap.value,
-                    error=str(exc),
-                )
-                failures += 1
-                continue
-            payload_rows = next(iter(result.payload.values()), None)
-            if isinstance(payload_rows, list):
-                rows_by_capability[cap].extend(cast("list[dict[str, object]]", payload_rows))
-
-    total_written = 0
-    for cap, dataset in _FUNDAMENTALS_DATASETS.items():
-        rows = rows_by_capability[cap]
-        if not rows:
-            continue
-        total_written += ctx.store.write_partition(dataset, Market.US.value, run_date, rows)
-        await ctx.data_update_publisher.publish_data_updated(
-            capability=cap,
-            market=Market.US,
-            as_of=run_date.isoformat(),
-            scope="whole-market",
-        )
-
-    status = RunStatus.SUCCESS
-    if failures and total_written == 0:
-        status = RunStatus.FAILED
-    elif failures:
-        status = RunStatus.PARTIAL
+    rows_by_capability, failures = await _collect_fundamentals_rows(ctx, symbols)
+    total_written = await _write_fundamentals_partitions(ctx, run_date, rows_by_capability)
+    status = _fundamentals_status(failures=failures, total_written=total_written)
     return journal_run(
         "us_fundamentals",
         run_date,

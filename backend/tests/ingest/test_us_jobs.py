@@ -11,6 +11,7 @@ import anyio.to_thread
 import pandas as pd
 import pytest
 
+import ingest.us_jobs as us_jobs_module
 import sources.yfinance._adapter as yfinance_adapter_module
 from config.settings import Settings
 from ingest.context import IngestContext
@@ -213,6 +214,70 @@ async def test_job_us_fundamentals_one_symbol_failure_is_partial_not_fatal(
 
     assert run.status is RunStatus.PARTIAL
     assert run.rows_written > 0
+
+
+async def test_job_us_fundamentals_rate_limited_result_counts_as_failure_not_success(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A degraded (never-raised) `HealthStatus.UNREACHABLE` result — e.g. yfinance rate-limiting
+    every call — must not be silently treated as a real, empty-but-successful fetch. Regression
+    test for the real bug found on the first live run: 250 symbols x 5 capabilities with no
+    inter-call delay got almost every call rate-limited, and the run still reported
+    `RunStatus.SUCCESS` with `rows_written=0` because only raised exceptions were counted."""
+    ctx = _ctx(tmp_path)
+    run_date = date(2024, 1, 2)
+    _seed_universe(ctx, run_date, ["AAPL", "MSFT"])
+
+    async def fake_fetch(
+        self: object, cap: Capability, sym: Symbol, *, tls_policy: object, **params: object
+    ) -> SourceResult:
+        return SourceResult(
+            source_id="YFINANCE",
+            data_class=DataClass.PUBLIC,
+            timing_class=TimingClass.REFERENCE,
+            fetched_at=pd.Timestamp("2024-01-02", tz="UTC").to_pydatetime(),
+            currentness_caveat="test fixture",
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.UNREACHABLE, detail="Too Many Requests. Rate limited."
+            ),
+        )
+
+    monkeypatch.setattr(yfinance_adapter_module.YFinanceAdapter, "fetch", fake_fetch)
+
+    run = await job_us_fundamentals(run_date, ctx)
+
+    assert run.status is RunStatus.FAILED
+    assert run.rows_written == 0
+
+
+async def test_job_us_fundamentals_throttles_between_calls(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real inter-call delay must actually run between fetches — not just exist as an unused
+    constant. Confirms `asyncio.sleep` is invoked (symbols x capabilities - 1) times, never on
+    the very first call."""
+    ctx = _ctx(tmp_path)
+    run_date = date(2024, 1, 2)
+    _seed_universe(ctx, run_date, ["AAPL", "MSFT"])
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    async def fake_fetch(
+        self: object, cap: Capability, sym: Symbol, *, tls_policy: object, **params: object
+    ) -> SourceResult:
+        return _stub_result({"lines": [{"symbol": sym.id, "value": 1}]})
+
+    monkeypatch.setattr(yfinance_adapter_module.YFinanceAdapter, "fetch", fake_fetch)
+    monkeypatch.setattr(us_jobs_module.asyncio, "sleep", fake_sleep)
+
+    await job_us_fundamentals(run_date, ctx)
+
+    # 2 symbols x 5 capabilities = 10 calls, 9 delays (never before the first call).
+    assert len(sleep_calls) == 9
 
 
 async def test_job_us_fundamentals_without_yfinance_adapter_is_skipped(
