@@ -16,6 +16,7 @@ from ingest.leader import LeaderElection
 from ingest.store import ParquetStore
 from schemas.enums import Market, TLSPolicy
 from sources.finmind import FinMindAdapter
+from sources.yfinance import YFinanceAdapter
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,10 @@ class IngestContext:
     # the Parquet store. Defaults to None: the whole-market Parquet jobs never touch it, and only
     # a relational job asserts its presence — so the common ingest path composes without a DB.
     session_factory: async_sessionmaker[AsyncSession] | None = None
+    # Only the US whole-market jobs (`ingest/us_jobs.py`) use this — defaults to `None` so every
+    # existing FinMind-only job/test is unaffected; those jobs assert it's set themselves rather
+    # than this dataclass enforcing a cross-field invariant it has no business knowing about.
+    yfinance: YFinanceAdapter | None = None
 
 
 __all__ = ["IngestContext"]
