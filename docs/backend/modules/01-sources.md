@@ -41,22 +41,31 @@ US/GB/JP `price_eod`; `finmind` covers US/JP prices too).
 
 ## Adapters
 
-| File | source_id | timing_class | Notes |
+Twelve real adapters under `backend/src/sources/` — `finmind/` and `yfinance/` are packages
+(one category module per data family, merged into one adapter surface by an internal registry),
+not single files:
+
+| File / package | source_id | timing_class | Notes |
 |------|-----------|--------------|-------|
 | `twse_openapi.py` | `TWSE_OPENAPI` | official-eod | Latest EOD, no backfill (no params) |
 | `tpex_openapi.py` | `TPEX_OPENAPI` | official-eod | OTC + 興櫃; 225 endpoints; needs UA header |
 | `taifex_openapi.py` | `TAIFEX_OPENAPI` | official-eod | Derivatives EOD/reference; 135 endpoints |
-| `twse_mis.py` | `TWSE_MIS` | live-ish | Browser-observed snapshot; free → `public` |
-| `taifex_mis.py` | `TAIFEX_MIS` | live-ish | M8C-02 staged behind validation flag |
+| `twse_mis.py` | `TWSE_MIS` | live-ish | Browser-observed bounded snapshot; free → `public` |
 | `ncdr_closure.py` | `NCDR_DGPA_CLOSURE_CAP` | event-driven | Work-suspension/closure evidence |
-| `finmind.py` | `FINMIND` | official-eod / live-ish / reference | 75+ history-enabled datasets; **only token-bearing adapter** |
-| `mops.py` | `MOPS` | event-driven / reference | 公開資訊觀測站 disclosure stream — **scraped** (no open API) |
+| `finmind/` (9 category modules) | `FINMIND` | official-eod / live-ish / reference | 104 datasets wired (77 whole-market-eligible), across Technical/Chip-Institutional/Fundamental/Derivative/Real-Time/Convertible-Bond/Others/International/Global-Economic; **only token-bearing adapter** |
+| `mops.py` | `MOPS` | event-driven / reference | 公開資訊觀測站 disclosure stream — via TWSE's own OpenAPI JSON endpoints (`t187ap04_L`/`t187ap11_L`), **not** a scraper; the legacy HTML report endpoint is retired |
 | `news.py` | `NEWS` | reference (near-real-time) | Financial RSS (鉅亨/經濟日報/TechNews…) + GDELT (keyless) + Finnhub |
 | `ptt.py` | `PTT` | reference (near-real-time) | PTT boards — Stock/Tech_Job (stock buzz) + Beauty/Gossiping (off-topic buzz) — **scraped** |
-| `etf_pcf.py` | `ETF_PCF` | official-eod | Passive/傳統 ETF 成分股/權重 (issuer PCF / 投信投顧公會 / TWSE `fund/`) + 受益人數 + NAV/units — **scraped** |
+| `etf_pcf.py` | `ETF_PCF` | official-eod | TWSE ETF roster + fund-level metadata (issuer, units outstanding). Per-constituent holdings/weights and NAV/IOPV remain a documented, unfilled gap — no stable free machine-readable source was found |
 | `web_search.py` | `WEB` | reference (live) | **Brave Search API** (provider-agnostic) — general web search + fetch; the fallback when the LLM has no native search |
-| `yfinance.py` | `YFINANCE` | reference (near-real-time) | **Analyst consensus/target prices** (the one licensed gap) + ESG + English sector/symbol-resolution for `.TW`/`.TWO` — **narrow scope** |
-| `calendar_ext.py` | `CALENDAR_EXT` | reference / scheduled | Forward-dated calendar gaps — **scraped**: index rebalance (TIP/MSCI/FTSE), macro release calendar (DGBAS/財政部/國發會/央行/FOMC), IPO 承銷/抽籤 |
+| `yfinance/` (package: domain-organized modules) | `YFINANCE` | reference (near-real-time) | TW gap-filler (analyst consensus/target prices, ESG, English sector/symbol-resolution) **and** the full primary source for non-TW markets (US/GB/JP/EU) — price/financials/holders/discovery/screener |
+
+**Not built** (named in earlier drafts of this doc, never implemented as separate adapters):
+`taifex_mis.py`/`TAIFEX_MIS` and `calendar_ext.py`/`CALENDAR_EXT` do not exist as source files.
+TAIFEX derivatives snapshots are staged behind `context/builder.py`'s own validation flag
+instead of a dedicated adapter; calendar-gap events are composed directly in `calendar/`
+(rule engine + whatever real feed capabilities already exist, e.g. FinMind dividends/CB data),
+not via a standalone scraper. See [architecture.md](../architecture.md) §3 for the same note.
 
 The full endpoint/dataset inventory these adapters wrap is in
 [../data-catalog.md](../data-catalog.md).
@@ -73,28 +82,33 @@ gov adapters:
 - **Per-dataset data_class:** FinMind Free/Backer datasets → `public`; **FinMind Sponsor
   datasets → `sponsor`** (分點, 八大官股, 股權分級, 產業鏈資金流, tick/minute-K, real-time
   snapshots, active-ETF holdings) — entitlement-masked for unentitled users, not approval-gated.
-- **FinMind membership tiers** (Free/Backer/Sponsor) and the **tier-aware rate limit** (Free
-  token **600/hr**, Sponsor token **6000/hr**) are reported through M5Q; an out-of-plan
-  dataset returns `unavailable-tier`, not a hard failure.
+- **FinMind membership tiers** (Free/Backer/Sponsor) gate which datasets are reachable; an
+  out-of-plan dataset returns `unavailable-tier`, not a hard failure. There is no live upstream
+  quota-polling call — the platform reserves its own budget locally, a single static
+  Redis-backed ceiling (6000 req/hr) shared across every Premium/Pro user, atomically reserved
+  before each Sponsor-tier fetch and refunded on failure/under-use ([modules/12](12-multi-user-tiers.md)
+  §3). Free tier never draws on this pool at all — there is no Free-tier FinMind quota concept.
 - Uses `/translation` (column CH/EN map), `/datalist` (valid `data_id`s), and
   `storage_objects` (whole-day parquet for tick/minute-K/分點).
 
-## MOPS adapter — the catalyst layer (scraped)
+## MOPS adapter — the catalyst layer (TWSE OpenAPI JSON, not a scraper)
 
-MOPS (公開資訊觀測站) is the **event-driven disclosure stream** — 重大訊息, 董事會決議, 庫藏股,
-內部人持股轉讓事前申報/質押, 法說會, 自結/財測 (see [../data-catalog.md](../data-catalog.md) §2.7).
-It has **no official JSON API**, so this adapter is the one **scraper**:
+MOPS (公開資訊觀測站) is the **event-driven disclosure stream** — currently built: 重大訊息
+(material announcements) and 董監事持股 (director/supervisor shareholding). The legacy HTML
+report endpoint (`mopsov.twse.com.tw/mops/web/<report_id>`) TWSE itself retired (it now serves a
+"page can not be accessed" security stub), so this adapter never does ROC-date/Big5 HTML
+parsing — it calls TWSE's own JSON OpenAPI endpoints instead:
 
-- POSTs MOPS forms (`mopsov.twse.com.tw/mops/web/<report_id>`); handles **ROC-year dates** and
-  **Big5/UTF-8** quirks; parses HTML → typed models. For real-time 重大訊息 it may instead poll
-  the TWSE/TPEX announcement lists (easier, same data).
+- `opendata/t187ap04_L` (重大訊息) — whole-market current dump, `event-driven`, filtered
+  client-side to the requested company.
+- `opendata/t187ap11_L` (董監事持股餘額 + 質押比) — whole-market monthly dump, `reference`.
 - Emits structured records (announcement type, subject, filed_at, parsed fields) — **never raw
-  HTML** downstream. `timing_class`: 重大訊息/董事會/庫藏股/內部人/法說會 = `event-driven`;
-  基本資料/集團/評鑑 = `reference`. All `public` data_class.
-- **Politeness & resilience:** rate-limited, backed off, cached with honest staleness; a
-  scrape failure surfaces via M5Q as degraded, never fabricated. Still **user-driven only** —
-  no startup calls, no high-frequency polling (governance §1.3); the scheduler may refresh the
-  announcement list at a coarse cadence under the §9a carve-out.
+  payloads** downstream. All `public` data_class.
+- **Remaining catalyst sub-types are not yet built** (董事會決議 as a subject-keyword filter over
+  重大訊息, 庫藏股買回 `t35sc09`, 內部人持股轉讓事前申報 `t56sb01`, 法說會 `t100sb02_1`, 自結損益) —
+  see [../data-catalog.md](../data-catalog.md) §2.7 for the honest per-row status.
+- Still **user-driven only** — no startup calls, no high-frequency polling (governance §1.3);
+  the scheduler may refresh at a coarse cadence under the §9a carve-out.
 - Text disclosures feed the agent's NLP (classify contract-win vs litigation vs guidance;
   extract magnitude/sentiment) — all output stays caveated and **non-trading**.
 
@@ -114,11 +128,24 @@ It has **no official JSON API**, so this adapter is the one **scraper**:
 - Both are **user-driven**, rate-limited, politely backed off, honest staleness via M5Q — no
   high-frequency polling; a coarse refresh may run under the §9a scheduler carve-out.
 
-## yfinance adapter — narrow-scope analyst/ESG gap-filler (`.TW`/`.TWO`)
+## yfinance adapter — two distinct roles by market
 
-`yfinance.py` wraps the yfinance library for the **few fields it uniquely adds for Taiwan** — it
-is **not** a general price/financials source (those stay on FinMind/TWSE; yfinance TW OHLCV/
-financials are lower-quality). Scope is deliberately tight:
+`sources/yfinance/` (a package: `_adapter.py`/`price_financials.py`/`analyst.py`/`holders.py`/
+`discovery.py`/`screener.py`/`batch.py`) plays **two deliberately different roles**, config-driven
+via `source_priority.yaml` ([modules/19](19-data-access-router.md)), not an accident of scope:
+
+- **TW — narrow gap-filler** (the original scope, unchanged): the few fields it uniquely adds
+  for Taiwan, described below. Price/financials stay off yfinance for TW — FinMind/TWSE own
+  those; yfinance TW OHLCV/financials are lower-quality and never used.
+- **US/GB/JP/EU — the primary source**: yfinance serves the *same* shared capability names
+  (`price_eod`, `financials`, `balance_sheet`, `cash_flow_statement`, `dividends`, `split_price`)
+  as the primary adapter for these markets, plus capabilities with no FinMind/gov equivalent at
+  all (`options_chain`, `institutional_holders`, `insider_activity`, `symbol_search`,
+  `earnings_calendar`/`ipo_calendar`/`economic_calendar`, `sector_overview`/`industry_overview`,
+  `market_status`, `fund_holdings`). See [../data-catalog.md](../data-catalog.md) §2.12 for the
+  full non-TW capability table.
+
+### TW gap-filler scope (unchanged from original design)
 - **Analyst consensus (primary)** — `analyst_price_targets` (mean/median/high/low),
   `recommendations_summary`, `upgrades_downgrades`, `earnings_estimate`/`revenue_estimate`/
   `eps_trend`/`growth_estimates`, and `info` scalars (`targetMeanPrice`, `numberOfAnalystOpinions`,
@@ -155,6 +182,13 @@ mid/small `.TWO`); cache, retry/backoff, and **never let a yfinance outage break
   the default path can be read-only/ephemeral in a container (permission error or re-fetch every
   run). One-line call in the adapter's module init, before the first `download`/`Ticker`.
 
+> **Implementation status.** The weekly batch-and-serve-from-Parquet pattern above is the
+> intended design; the real adapter today calls yfinance directly, per request, via
+> `anyio.to_thread.run_sync` (never blocking the event loop) — `yfinance/batch.py`'s
+> `batch_download` exists but is not yet wired into any scheduled ingest job. yfinance is still
+> never called from inside a synchronous hot path; the "batch, not per-symbol" discipline just
+> isn't built yet for this adapter specifically.
+
 `web_search.py` is the **provider-agnostic** web-search backend (**Brave Search API**, key via
 `BRAVE_API_KEY`): `search(query) → [{title, url, snippet, published}]` + `fetch(url) → text`.
 It is used when the active LLM has no native search, or always if configured. The
@@ -174,5 +208,6 @@ cited, caveated, non-trading).
 
 ## Testing
 
-Recorded fixtures per adapter; the default and CI profiles are **non-network**. Live
-fetch is exercised only under the `operator-preflight` / `browser-e2e` profiles.
+Recorded fixtures per adapter; the default and CI profiles are **non-network**. Live fetch
+against the real upstream is opt-in only, under the `network`, `operator_preflight`, or
+`browser_e2e` pytest markers (never part of the default suite).
