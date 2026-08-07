@@ -1,0 +1,810 @@
+"""The orchestrator: classify a turn, run the chosen framework, synthesize, enforce ceilings.
+
+Wires the four pieces built alongside it — `IntentClassifier`, the per-lane `AgentLoop` fan-out
+(runtime, below this layer), `Synthesizer`, and the `TurnBudget`/`QuotaReserver` ceilings — into
+one `Orchestrator.run` entrypoint a future turn-lifecycle caller invokes instead of `AgentLoop`
+directly.
+
+Framework mapping:
+- `none`  — direct reply from the system prompt, no tools, no skills.
+- `single` — one `AgentLoop` with the matched skill's tool allowlist (or the planner's warm
+  context/health tools when no skill matched).
+- `subagent` — parallel fan-out: one `AgentLoop` per skill under
+  `asyncio.gather(..., return_exceptions=True)` for lane isolation, each with a scoped context
+  slice and its skill's allowlist, then synthesis.
+- `team` — sequential fan-out: teammates run in order, each receiving prior teammates'
+  structured `Finding` records (never raw transcript), then synthesis.
+
+Governance: each lane's output is guardrail-checked inside its own Step loop before it enters
+synthesis, and the synthesized answer is guardrail-checked again (two layers). The routing
+decision, each lane's `agent_id`, and synthesis provenance are journaled/evented.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import dataclasses
+import uuid
+
+import structlog
+
+from agent.hooks import PostToolHook, SteeringSource
+from agent.loop import AgentLoop, StepBudgetExceededError, TurnResult
+from agent.prompts import PromptLayers, default_prompt_layers
+from config.settings import Settings, get_settings
+from events.bus import EventBus
+from events.usage import UsageAccumulator
+from llm.base import LLMClient
+from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
+from orchestrator.ceilings import (
+    NoQuotaReserver,
+    QuotaReservation,
+    QuotaReserver,
+    TurnBudget,
+    TurnCeilingExceededError,
+)
+from orchestrator.classifier import IntentClassifier
+from orchestrator.models import (
+    Finding,
+    LaneResult,
+    OrchestratorResult,
+    RichCard,
+    Routing,
+    SynthesisProvenance,
+)
+from orchestrator.synthesis import NoSuccessfulLanesError, Synthesizer
+from personality.registry import PersonalityRegistry, default_registry
+from skills.models import Skill
+from skills.registry import SkillRegistry
+from tools.base import Tool, ToolContext
+
+logger = structlog.get_logger(__name__)
+
+_ROOT_AGENT_ID = "root"
+_WARM_TOOLS: tuple[str, ...] = ("get_canonical_context", "get_source_health")
+_DEGRADED_ALL_LANES = (
+    "All analysis lanes were unavailable for this request, so no market context could be "
+    "compiled. This is informational only and not a buy/sell/hold recommendation; please try "
+    "again shortly."
+)
+
+
+def _tools_for(skill: Skill, tool_lookup: dict[str, Tool]) -> list[Tool]:
+    """The skill's tool allowlist resolved to concrete `Tool`s. Only allowlisted tools are ever
+    handed to the lane's `AgentLoop`, so a call outside the allowlist is unreachable — the loop
+    has no such tool to dispatch (the registry's `enforce_allowlist` guarantee, realized by
+    construction of the lane's tool set)."""
+    return [tool_lookup[name] for name in skill.frontmatter.tools if name in tool_lookup]
+
+
+def _warm_tools(tool_lookup: dict[str, Tool]) -> list[Tool]:
+    return [tool_lookup[name] for name in _WARM_TOOLS if name in tool_lookup]
+
+
+@dataclasses.dataclass(frozen=True)
+class PersonalityContext:
+    """The turn's personality-resolution inputs, threaded in from whatever caller already holds
+    the user/thread context (the API router's authenticated `User` + loaded `Thread`; a
+    scheduled job's loaded `User`, which has no thread so `thread_override` is `None`).
+
+    `turn_override` has no producer yet — no API surface lets a single turn pin a one-off
+    preset (Fix B's related finding) — so it is always `None` until that surface exists; the
+    field stays here so `PersonalityRegistry.resolve`'s full turn -> thread -> user precedence is
+    honored the moment one lands, with no further orchestrator change required.
+    """
+
+    turn_override: str | None = None
+    thread_override: str | None = None
+    user_preference: str | None = None
+
+
+def _resolve_personality_fragment(
+    registry: PersonalityRegistry, personality: PersonalityContext | None
+) -> str:
+    ctx = personality or PersonalityContext()
+    return registry.resolve_fragment(
+        turn_override=ctx.turn_override,
+        thread_override=ctx.thread_override,
+        user_preference=ctx.user_preference,
+    )
+
+
+def _skill_prompt_layers(skill: Skill | None, personality_fragment: str) -> PromptLayers:
+    base = default_prompt_layers()
+    layers = dataclasses.replace(base, personality=personality_fragment)
+    if skill is None:
+        return layers
+    return dataclasses.replace(layers, skill_body=skill.body)
+
+
+def _lane_from_turn(turn: TurnResult, *, agent_id: str, skill: str) -> LaneResult:
+    text = turn.final_text.strip()
+    if not text:
+        return LaneResult(
+            agent_id=agent_id,
+            skill=skill,
+            status="degraded",
+            completeness="empty",
+            confidence=0.0,
+            reason="lane produced no final content",
+            rich_cards=turn.rich_cards,
+        )
+    return LaneResult(
+        agent_id=agent_id, skill=skill, text=text, status="ok", rich_cards=turn.rich_cards
+    )
+
+
+def _finding_from_lane(lane: LaneResult) -> Finding:
+    """Reduce a completed lane to the structured `Finding` a downstream teammate receives —
+    decision (the lane's conclusion text, bounded) + provenance, never the raw transcript."""
+    decision = lane.text.strip() or f"{lane.skill}: no usable finding"
+    return Finding(
+        skill=lane.skill,
+        agent_id=lane.agent_id,
+        decision=decision[:2000],
+        cause=lane.reason or "",
+    )
+
+
+def _lane_cards(lanes: tuple[LaneResult, ...]) -> tuple[RichCard, ...]:
+    """Flatten every lane's rich cards into one turn-level tuple, in lane order — the durable
+    record of what the fan-out surfaced, mirroring the live per-lane `rich_card` events."""
+    return tuple(card for lane in lanes for card in lane.rich_cards)
+
+
+def _render_findings(findings: tuple[Finding, ...]) -> str:
+    blocks = [f"### Prior finding from {f.skill}\n{f.decision}" for f in findings]
+    return (
+        "Prior teammates' structured findings (treat as established context, build on them):\n\n"
+        + "\n\n".join(blocks)
+    )
+
+
+class Orchestrator:
+    """Classify-then-route entrypoint. Construct once per application (stateless across turns);
+    `run` is called per turn with the user message + tool context."""
+
+    def __init__(  # noqa: PLR0913 — one seam per collaborator; each is independently swappable
+        self,
+        *,
+        registry: SkillRegistry,
+        tool_lookup: dict[str, Tool],
+        classifier: IntentClassifier | None = None,
+        synthesizer: Synthesizer | None = None,
+        quota_reserver: QuotaReserver | None = None,
+        agent_client: LLMClient | None = None,
+        subagent_client: LLMClient | None = None,
+        settings: Settings | None = None,
+        personality_registry: PersonalityRegistry | None = None,
+    ) -> None:
+        self._registry = registry
+        self._tool_lookup = tool_lookup
+        self._settings = settings or get_settings()
+        self._classifier = classifier or IntentClassifier(registry)
+        self._synthesizer = synthesizer or Synthesizer()
+        # Constructed once (mirroring every other collaborator here) rather than per-call: the
+        # registry loads + validates every preset file from disk, so a per-turn instantiation
+        # would re-parse YAML on every request for no benefit — the resolved presets are
+        # immutable and shared across turns.
+        self._personality_registry = personality_registry or default_registry()
+        # Config-selected FinMind pool reserver, mirroring the event-bus factory: an explicitly
+        # injected reserver always wins (tests); otherwise the Redis Sponsor-pool reserver is
+        # selected when the quota backend is Redis, else the permissive default. Imported locally
+        # so the module load order stays acyclic across the interaction layer.
+        if quota_reserver is not None:
+            self._quota_reserver: QuotaReserver = quota_reserver
+        else:
+            from usage.finmind_pool import build_quota_reserver  # noqa: PLC0415 — same-layer wiring
+
+            self._quota_reserver = build_quota_reserver(self._settings) or NoQuotaReserver()
+        # Injected clients override role resolution — the seam tests use to avoid live
+        # providers. When omitted, each role resolves through `llm/registry.py` at use time
+        # (single/none = strong AGENT role; lanes = cheap/fast SUBAGENT role), never hardcoded.
+        self._agent_client = agent_client
+        self._subagent_client = subagent_client
+
+    async def run(  # noqa: PLR0913 — one field per turn-start dimension
+        self,
+        user_message: str,
+        *,
+        tool_context: ToolContext,
+        event_bus: EventBus | None = None,
+        turn_id: str | None = None,
+        personality: PersonalityContext | None = None,
+        steering_source: SteeringSource | None = None,
+    ) -> OrchestratorResult:
+        """`steering_source` is only meaningful for `single` (the interactive root-agent lane a
+        live `POST .../steer` call actually targets) — the fan-out frameworks' sub-agent lanes
+        are independent, short-lived, and not individually steerable by a client that only knows
+        the turn, not any one lane's `agent_id`; wiring it there is future scope, not silently
+        dropped functionality today."""
+        routing = await self._classifier.classify(
+            user_message, event_bus=event_bus, turn_id=turn_id
+        )
+        budget = TurnBudget.from_settings(self._settings)
+        usage = UsageAccumulator(turn_id or "")
+        fragment = _resolve_personality_fragment(self._personality_registry, personality)
+        try:
+            if routing.framework == "none":
+                result = await self._run_none(user_message, routing, tool_context, usage, fragment)
+            elif routing.framework == "single":
+                result = await self._run_single(
+                    user_message=user_message,
+                    routing=routing,
+                    tool_context=tool_context,
+                    budget=budget,
+                    event_bus=event_bus,
+                    turn_id=turn_id,
+                    usage=usage,
+                    personality_fragment=fragment,
+                    steering_source=steering_source,
+                )
+            elif routing.framework == "subagent":
+                result = await self._run_subagent(
+                    user_message=user_message,
+                    routing=routing,
+                    tool_context=tool_context,
+                    budget=budget,
+                    event_bus=event_bus,
+                    turn_id=turn_id,
+                    usage=usage,
+                    personality_fragment=fragment,
+                )
+            else:
+                result = await self._run_team(
+                    user_message=user_message,
+                    routing=routing,
+                    tool_context=tool_context,
+                    budget=budget,
+                    event_bus=event_bus,
+                    turn_id=turn_id,
+                    usage=usage,
+                    personality_fragment=fragment,
+                )
+        except TurnCeilingExceededError as exc:
+            logger.warning(
+                "orch_turn_ceiling_exceeded",
+                turn_id=turn_id,
+                dimension=exc.dimension,
+                limit=exc.limit,
+            )
+            return self._finalize(self._degraded_ceiling_result(routing, exc), usage, event_bus)
+        return self._finalize(result, usage, event_bus)
+
+    async def run_skill(  # noqa: PLR0913 — one field per turn-start dimension
+        self,
+        skill_ref: str,
+        user_message: str,
+        *,
+        tool_context: ToolContext,
+        event_bus: EventBus | None = None,
+        turn_id: str | None = None,
+        personality: PersonalityContext | None = None,
+    ) -> OrchestratorResult:
+        """Run one already-chosen skill, skipping the intent classifier entirely.
+
+        A caller that already knows which skill to run (a scheduled job names its skill) uses
+        this instead of `run`: it avoids the extra classifier LLM call and the risk of
+        re-routing to a different framework, while reusing the exact single-lane machinery —
+        same `AgentLoop`, same per-agent budget, and the same mandatory `pre_output` guardrail
+        that fires on every lane's output regardless of entrypoint. Governance is therefore
+        identical to an interactive single-skill turn.
+        """
+        routing = Routing(
+            framework="single",
+            skills=(skill_ref,),
+            reason=f"scheduled run of skill {skill_ref}",
+        )
+        budget = TurnBudget.from_settings(self._settings)
+        usage = UsageAccumulator(turn_id or "")
+        fragment = _resolve_personality_fragment(self._personality_registry, personality)
+        try:
+            result = await self._run_single(
+                user_message=user_message,
+                routing=routing,
+                tool_context=tool_context,
+                budget=budget,
+                event_bus=event_bus,
+                turn_id=turn_id,
+                usage=usage,
+                personality_fragment=fragment,
+            )
+        except TurnCeilingExceededError as exc:
+            logger.warning(
+                "orch_skill_turn_ceiling_exceeded",
+                turn_id=turn_id,
+                skill=skill_ref,
+                dimension=exc.dimension,
+            )
+            return self._finalize(self._degraded_ceiling_result(routing, exc), usage, event_bus)
+        return self._finalize(result, usage, event_bus)
+
+    # ---- none ----
+
+    async def _run_none(
+        self,
+        user_message: str,
+        routing: Routing,
+        tool_context: ToolContext,
+        usage: UsageAccumulator,
+        personality_fragment: str,
+    ) -> OrchestratorResult:
+        """Direct reply from the system prompt — no tools, no skills. Runs through an
+        `AgentLoop` with an empty tool set so the mandatory `pre_output` guardrail still fires
+        on the answer."""
+        loop = self._build_loop(
+            tools=[],
+            prompt_layers=dataclasses.replace(
+                default_prompt_layers(), personality=personality_fragment
+            ),
+            max_steps=1,
+            role=ModelRole.AGENT,
+        )
+        turn = await loop.run_turn(user_message, tool_context=tool_context)
+        self._feed_usage(usage, turn)
+        # No tools run in the `none` framework, so there are never cards here — but the emit is
+        # threaded uniformly so this path is not a silent exception if that ever changes.
+        return OrchestratorResult(final_text=turn.final_text, routing=routing)
+
+    # ---- single ----
+
+    async def _run_single(  # noqa: PLR0913 — threads the per-turn correlation + budget context
+        self,
+        *,
+        user_message: str,
+        routing: Routing,
+        tool_context: ToolContext,
+        budget: TurnBudget,
+        event_bus: EventBus | None,
+        turn_id: str | None,
+        usage: UsageAccumulator,
+        personality_fragment: str,
+        steering_source: SteeringSource | None = None,
+    ) -> OrchestratorResult:
+        skills = routing.bounded_skills()
+        skill = self._registry.get(skills[0]) if skills else None
+        tools = _tools_for(skill, self._tool_lookup) if skill else _warm_tools(self._tool_lookup)
+        loop = self._build_loop(
+            tools=tools,
+            prompt_layers=_skill_prompt_layers(skill, personality_fragment),
+            max_steps=budget.max_steps_per_agent,
+            role=ModelRole.AGENT,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            agent_id=_ROOT_AGENT_ID,
+            steering_source=steering_source,
+        )
+        try:
+            turn = await loop.run_turn(user_message, tool_context=tool_context)
+        except StepBudgetExceededError:
+            logger.warning("orch_single_step_budget_exceeded", turn_id=turn_id)
+            return OrchestratorResult(final_text=_DEGRADED_ALL_LANES, routing=routing)
+        self._feed_usage(usage, turn)
+        budget.record_tool_calls(self._count_tool_calls(turn))
+        # The `single` framework is the common one-shot path — a card-eligible tool call here
+        # must emit its `rich_card` exactly as the fan-out lanes do, or the feature would be
+        # inert for most real turns.
+        self._emit_cards(
+            turn.rich_cards, event_bus=event_bus, turn_id=turn_id, agent_id=_ROOT_AGENT_ID
+        )
+        return OrchestratorResult(
+            final_text=turn.final_text, routing=routing, rich_cards=turn.rich_cards
+        )
+
+    # ---- subagent (parallel) ----
+
+    async def _run_subagent(  # noqa: PLR0913 — threads the per-turn correlation + budget context
+        self,
+        *,
+        user_message: str,
+        routing: Routing,
+        tool_context: ToolContext,
+        budget: TurnBudget,
+        event_bus: EventBus | None,
+        turn_id: str | None,
+        usage: UsageAccumulator,
+        personality_fragment: str,
+    ) -> OrchestratorResult:
+        skills = self._plan_fanout(routing, budget)
+        reservation = await self._quota_reserver.reserve(
+            skills=skills, tier=tool_context.tier.value
+        )
+
+        async def run_lane(skill_name: str) -> LaneResult:
+            return await self._run_one_lane(
+                skill_name=skill_name,
+                user_message=user_message,
+                tool_context=tool_context,
+                budget=budget,
+                event_bus=event_bus,
+                turn_id=turn_id,
+                degraded=reservation.is_degraded(skill_name),
+                usage=usage,
+                personality_fragment=personality_fragment,
+            )
+
+        outcomes = await asyncio.gather(
+            *(run_lane(name) for name in skills), return_exceptions=True
+        )
+        lanes = tuple(
+            self._lane_from_outcome(outcome, skill=name)
+            for name, outcome in zip(skills, outcomes, strict=True)
+        )
+        await self._refund_unspent(reservation, lanes)
+        return await self._synthesize(routing, lanes, event_bus, turn_id)
+
+    # ---- team (sequential) ----
+
+    async def _run_team(  # noqa: PLR0913 — threads the per-turn correlation + budget context
+        self,
+        *,
+        user_message: str,
+        routing: Routing,
+        tool_context: ToolContext,
+        budget: TurnBudget,
+        event_bus: EventBus | None,
+        turn_id: str | None,
+        usage: UsageAccumulator,
+        personality_fragment: str,
+    ) -> OrchestratorResult:
+        skills = self._plan_fanout(routing, budget)
+        reservation = await self._quota_reserver.reserve(
+            skills=skills, tier=tool_context.tier.value
+        )
+        lanes: list[LaneResult] = []
+        findings: tuple[Finding, ...] = ()
+        for skill_name in skills:
+            prior = _render_findings(findings) if findings else None
+            try:
+                lane = await self._run_one_lane(
+                    skill_name=skill_name,
+                    user_message=user_message,
+                    tool_context=tool_context,
+                    budget=budget,
+                    event_bus=event_bus,
+                    turn_id=turn_id,
+                    degraded=reservation.is_degraded(skill_name),
+                    usage=usage,
+                    prior_findings=prior,
+                    personality_fragment=personality_fragment,
+                )
+            except Exception as exc:
+                # A teammate's failure is a missing dimension, isolated the same way a parallel
+                # lane's is; the sequence continues rather than aborting the turn.
+                lane = self._lane_from_outcome(exc, skill=skill_name)
+            lanes.append(lane)
+            if lane.succeeded:
+                findings = (*findings, _finding_from_lane(lane))
+        await self._refund_unspent(reservation, tuple(lanes))
+        return await self._synthesize(routing, tuple(lanes), event_bus, turn_id)
+
+    # ---- shared lane execution ----
+
+    async def _run_one_lane(  # noqa: PLR0913 — one field per lane-spawn dimension
+        self,
+        *,
+        skill_name: str,
+        user_message: str,
+        tool_context: ToolContext,
+        budget: TurnBudget,
+        event_bus: EventBus | None,
+        turn_id: str | None,
+        degraded: bool,
+        usage: UsageAccumulator,
+        personality_fragment: str,
+        prior_findings: str | None = None,
+    ) -> LaneResult:
+        """Run one lane's Step loop, with one corrective retry on an empty/degraded result then
+        drop-with-flag. Sub-agents are read-only + independent, so the retry is
+        idempotent. A quota-degraded lane is flagged (cached/unavailable-tier posture) before
+        it even spawns rather than fanning out on unavailable Sponsor budget."""
+        agent_id = f"{skill_name}:{uuid.uuid4().hex[:8]}"
+        skill = self._registry.get(skill_name)
+        tools = _tools_for(skill, self._tool_lookup)
+        activity = f"Running {skill_name}"
+        if event_bus is not None:
+            event_bus.publish(
+                "agent.spawned",
+                turn_id=turn_id,
+                agent_id=agent_id,
+                parent_agent_id=_ROOT_AGENT_ID,
+                data={
+                    "agent_id": agent_id,
+                    "parent_agent_id": _ROOT_AGENT_ID,
+                    "role": ModelRole.SUBAGENT.value,
+                    "skill": skill_name,
+                    "activity": activity,
+                },
+            )
+
+        if degraded:
+            if event_bus is not None:
+                event_bus.publish(
+                    "agent.progress",
+                    turn_id=turn_id,
+                    agent_id=agent_id,
+                    data={"agent_id": agent_id, "status": "degraded", "phase": "quota"},
+                )
+            return LaneResult(
+                agent_id=agent_id,
+                skill=skill_name,
+                status="unavailable_tier",
+                completeness="empty",
+                confidence=0.0,
+                reason="FinMind quota unavailable — lane degraded to cached/unavailable-tier "
+                "before spawning",
+            )
+
+        lane_message = (
+            f"{prior_findings}\n\n---\n\nUser request:\n{user_message}"
+            if prior_findings
+            else user_message
+        )
+        lane = await self._run_lane_attempt(
+            skill=skill,
+            tools=tools,
+            lane_message=lane_message,
+            tool_context=tool_context,
+            budget=budget,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            agent_id=agent_id,
+            usage=usage,
+            personality_fragment=personality_fragment,
+        )
+        if lane.completeness == "empty":
+            lane = await self._run_lane_attempt(
+                skill=skill,
+                tools=tools,
+                lane_message=lane_message,
+                tool_context=tool_context,
+                budget=budget,
+                event_bus=event_bus,
+                turn_id=turn_id,
+                agent_id=agent_id,
+                usage=usage,
+                personality_fragment=personality_fragment,
+            )
+            if lane.completeness == "empty":
+                lane = lane.model_copy(
+                    update={
+                        "status": "dropped",
+                        "reason": "empty after one corrective retry — dropped with flag",
+                    }
+                )
+        self._emit_cards(lane.rich_cards, event_bus=event_bus, turn_id=turn_id, agent_id=agent_id)
+        if event_bus is not None:
+            event_bus.publish(
+                "agent.done",
+                turn_id=turn_id,
+                agent_id=agent_id,
+                data={"agent_id": agent_id, "status": lane.status},
+            )
+        return lane
+
+    async def _run_lane_attempt(  # noqa: PLR0913 — one field per lane-attempt dimension
+        self,
+        *,
+        skill: Skill,
+        tools: list[Tool],
+        lane_message: str,
+        tool_context: ToolContext,
+        budget: TurnBudget,
+        event_bus: EventBus | None,
+        turn_id: str | None,
+        agent_id: str,
+        usage: UsageAccumulator,
+        personality_fragment: str,
+    ) -> LaneResult:
+        loop = self._build_loop(
+            tools=tools,
+            prompt_layers=_skill_prompt_layers(skill, personality_fragment),
+            max_steps=budget.max_steps_per_agent,
+            role=ModelRole.SUBAGENT,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            agent_id=agent_id,
+        )
+        try:
+            turn = await loop.run_turn(lane_message, tool_context=tool_context)
+        except StepBudgetExceededError:
+            return LaneResult(
+                agent_id=agent_id,
+                skill=skill.name,
+                status="degraded",
+                completeness="empty",
+                confidence=0.0,
+                reason="per-agent ReAct-iteration cap reached without a final answer",
+            )
+        self._feed_usage(usage, turn)
+        budget.record_tool_calls(self._count_tool_calls(turn))
+        return _lane_from_turn(turn, agent_id=agent_id, skill=skill.name)
+
+    def _lane_from_outcome(self, outcome: LaneResult | BaseException, *, skill: str) -> LaneResult:
+        """Normalize a `gather(return_exceptions=True)` outcome: a `LaneResult` passes through;
+        an exception becomes a lane-scoped `error` (isolation — one lane's crash never kills
+        siblings or the turn)."""
+        if isinstance(outcome, LaneResult):
+            return outcome
+        logger.warning("orch_lane_isolated_exception", skill=skill, error=str(outcome))
+        return LaneResult(
+            agent_id=f"{skill}:errored",
+            skill=skill,
+            status="error",
+            completeness="empty",
+            confidence=0.0,
+            reason=f"lane raised {type(outcome).__name__}: {outcome}",
+        )
+
+    async def _synthesize(
+        self,
+        routing: Routing,
+        lanes: tuple[LaneResult, ...],
+        event_bus: EventBus | None,
+        turn_id: str | None,
+    ) -> OrchestratorResult:
+        if event_bus is not None:
+            event_bus.publish(
+                "synthesis.start",
+                turn_id=turn_id,
+                agent_id=_ROOT_AGENT_ID,
+                data={"from_agents": [lane.agent_id for lane in lanes if lane.succeeded]},
+            )
+        try:
+            final_text, provenance = await self._synthesizer.synthesize(lanes)
+        except NoSuccessfulLanesError:
+            logger.warning("orch_all_lanes_failed", turn_id=turn_id)
+            provenance = SynthesisProvenance(
+                contributing_skills=(),
+                missing_skills=tuple(lane.skill for lane in lanes),
+                degraded=True,
+            )
+            return OrchestratorResult(
+                final_text=_DEGRADED_ALL_LANES,
+                routing=routing,
+                lanes=lanes,
+                provenance=provenance,
+                rich_cards=_lane_cards(lanes),
+            )
+        logger.info(
+            "synthesis_provenance",
+            turn_id=turn_id,
+            contributing=list(provenance.contributing_skills),
+            missing=list(provenance.missing_skills),
+            degraded=provenance.degraded,
+        )
+        return OrchestratorResult(
+            final_text=final_text,
+            routing=routing,
+            lanes=lanes,
+            provenance=provenance,
+            rich_cards=_lane_cards(lanes),
+        )
+
+    def _emit_cards(
+        self,
+        cards: tuple[RichCard, ...],
+        *,
+        event_bus: EventBus | None,
+        turn_id: str | None,
+        agent_id: str,
+    ) -> None:
+        """Publish one `rich_card` event per governed card onto the live bus, attributed to the
+        emitting agent lane. The card payload is already governance-scanned and caveated by the
+        Step loop that built it — this only projects it onto the stream, matching the existing
+        `tool.result`/`agent.done` publish idiom."""
+        if event_bus is None:
+            return
+        for card in cards:
+            event_bus.publish(
+                "rich_card",
+                turn_id=turn_id,
+                agent_id=agent_id,
+                data={"card_type": card.card_type, "data": card.data},
+            )
+
+    def _plan_fanout(self, routing: Routing, budget: TurnBudget) -> tuple[str, ...]:
+        skills = routing.bounded_skills()
+        clamped = budget.clamp_subagents(len(skills))
+        return skills[:clamped]
+
+    def _degraded_ceiling_result(
+        self, routing: Routing, exc: TurnCeilingExceededError
+    ) -> OrchestratorResult:
+        text = (
+            f"This request hit a per-turn {exc.dimension} ceiling, so the analysis was stopped "
+            f"early and returned incomplete. This is informational only and not a buy/sell/hold "
+            f"recommendation."
+        )
+        return OrchestratorResult(final_text=text, routing=routing)
+
+    def _count_tool_calls(self, turn: TurnResult) -> int:
+        return sum(len(step.tool_messages) for step in turn.steps)
+
+    def _feed_usage(self, usage: UsageAccumulator, turn: TurnResult) -> None:
+        """Fold one completed lane/turn's token + tool consumption into the shared per-turn
+        accumulator, so the durable post-turn sink and the live `usage` event both reflect the
+        whole fan-out, not just the root lane."""
+        for step in turn.steps:
+            step_usage = step.response.usage
+            usage.add_llm_call(
+                input_tokens=step_usage.input_tokens,
+                output_tokens=step_usage.output_tokens,
+            )
+            for _ in step.tool_messages:
+                usage.add_tool_call()
+
+    def _finalize(
+        self,
+        result: OrchestratorResult,
+        usage: UsageAccumulator,
+        event_bus: EventBus | None,
+    ) -> OrchestratorResult:
+        """Attach the per-turn usage snapshot to the result and emit the live `usage` event. The
+        snapshot is what the request/scheduler layer writes through to the durable usage sink at
+        post-turn — the orchestrator itself never touches the DB."""
+        if event_bus is not None:
+            usage.publish(event_bus, agent_id=_ROOT_AGENT_ID)
+        return result.model_copy(update={"usage": usage.snapshot()})
+
+    async def _refund_unspent(
+        self, reservation: QuotaReservation, lanes: tuple[LaneResult, ...]
+    ) -> None:
+        """Credit back the FinMind reservation for granted lanes that did not actually spend their
+        Sponsor budget (failed/dropped/empty before any real fetch), so a reservation never
+        permanently burns pool budget the fan-out didn't consume. No-op unless the reserver exposes
+        a `refund` (the permissive default doesn't)."""
+        refund = getattr(self._quota_reserver, "refund", None)
+        if refund is None or not reservation.granted:
+            return
+        granted = set(reservation.granted)
+        unspent = sum(1 for lane in lanes if lane.skill in granted and not lane.succeeded)
+        if unspent > 0:
+            await refund(lanes=unspent)
+
+    def _build_loop(  # noqa: PLR0913 — mirrors AgentLoop's own knob set, per-lane
+        self,
+        *,
+        tools: list[Tool],
+        prompt_layers: PromptLayers,
+        max_steps: int,
+        role: ModelRole,
+        event_bus: EventBus | None = None,
+        turn_id: str | None = None,
+        agent_id: str = _ROOT_AGENT_ID,
+        steering_source: SteeringSource | None = None,
+    ) -> AgentLoop:
+        post_tool_hooks: list[PostToolHook] | None = None
+        if event_bus is not None:
+            from events.hooks import EventBusPostToolHook  # noqa: PLC0415 — same-layer import
+
+            post_tool_hooks = [
+                EventBusPostToolHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
+            ]
+        return AgentLoop(
+            self._resolve_client(role),
+            tools=tools,
+            prompt_layers=prompt_layers,
+            max_steps=max_steps,
+            settings=self._settings,
+            post_tool_hooks=post_tool_hooks,
+            steering_source=steering_source,
+        )
+
+    def _resolve_client(self, role: ModelRole) -> LLMClient:
+        """Resolve the Step-loop client for a role: single/none reply agents use the strong
+        AGENT role, fan-out lanes use the cheap/fast SUBAGENT role. Injected clients (tests)
+        take precedence; otherwise route via `llm/registry.py` — never a hardcoded model."""
+        if role is ModelRole.SUBAGENT:
+            if self._subagent_client is not None:
+                return self._subagent_client
+            try:
+                return resolve_role(ModelRole.SUBAGENT, self._settings)
+            except ProviderNotConfiguredError:
+                return resolve_role(ModelRole.AGENT, self._settings)
+        if self._agent_client is not None:
+            return self._agent_client
+        return resolve_role(ModelRole.AGENT, self._settings)
+
+
+__all__ = ["Orchestrator", "PersonalityContext"]
