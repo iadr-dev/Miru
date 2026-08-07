@@ -127,8 +127,14 @@ This amends — but does not weaken — the rules above:
 - **User tiers gate only paid data + throughput, never a trading recommendation.** The
   `sponsor` data-class gate (§4) and rate/quota limits are the only things tiers control;
   non-trading and caveat rules apply equally to Free/Premium/Pro.
-- **FinMind rate limits are tier-aware:** Free token **600/hr**, Sponsor token **6000/hr**.
-  Shared-token pools degrade gracefully via M5Q.
+- **The FinMind Sponsor pool is a single, static, shared budget — not tier-aware per-user
+  quota.** One Redis-backed atomic-reservation pool (default **6000 req/hr**) is shared across
+  **all** Premium/Pro users; Free never touches it at all (its skills run against the free
+  FinMind token, outside this pool). Reservation is reserve-before-act with refund-on-failure/
+  under-use (§5 concurrency); a fan-out that would overrun the pool degrades the overrunning
+  lanes to a cached/`unavailable_tier` posture rather than spending budget the pool doesn't
+  have. There is no live upstream quota-polling endpoint — the ceiling is a static config value,
+  not read from FinMind at runtime.
 
 ### 9a. Scheduler carve-out (overrides "no scheduler / no auto-poll")
 

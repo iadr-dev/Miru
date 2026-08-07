@@ -1,0 +1,236 @@
+# config/source_priority.yaml — the single place "who serves what for which market" lives.
+# Populated in Phase 2 for the adapters actually built this phase: FINMIND, TWSE_OPENAPI,
+# YFINANCE. WEB is not capability-routed — `web_search` tool calls it directly; see
+# sources/web_search.py docstring.
+#
+# Format:
+#   <MARKET>:
+#     <capability>: [source_id, source_id, ...]   # priority order, first healthy result wins
+TW:
+  price_eod: [finmind, twse_openapi] # FinMind first (has backfill); TWSE latest-only fallback
+  financials: [finmind] # never yfinance for TW financials
+  dividends: [finmind]
+  institutional_flow: [finmind]
+  chip_broker: [finmind] # sponsor; TW-only
+  analyst_consensus: [yfinance] # the licensed gap
+  esg: [yfinance]
+  sector_class: [yfinance] # English cross-market label only; FinMind remains TW authority
+  news: [news] # RSS + GDELT + Finnhub aggregator; keyless/near-keyless, all-market capable
+  etf_holdings: [etf_pcf] # fund-level metadata only — see sources/etf_pcf.py for the gap it does NOT cover
+  corporate_actions: [mops] # 重大訊息 material-announcement disclosure stream
+  shareholding: [mops] # 董監事持股 monthly director/supervisor shareholding filing
+  price_intraday: [twse_mis] # bounded live-ish snapshot; the only adapter that serves this capability
+  derivatives_oi: [taifex_openapi] # official EOD settlement/volume/OI per contract; no FinMind equivalent
+  active_etf_info: [finmind] # free-tier active-ETF roster
+  active_etf_holding: [finmind] # sponsor; per-ETF daily constituent snapshot
+  active_etf_holding_change: [finmind] # sponsor; pre-diffed buy/sell per constituent per day
+  # Taiwan Market - Technical
+  stock_info: [finmind]
+  stock_info_with_warrant: [finmind]
+  warrant_underlying: [finmind] # sponsor
+  trading_calendar: [finmind]
+  price_eod_adjusted: [finmind]
+  price_tick: [finmind] # backer/sponsor
+  valuation_ratios: [finmind]
+  order_book_stats: [finmind]
+  taiex_5s_index: [finmind]
+  day_trading: [finmind]
+  total_return_index: [finmind]
+  ten_year_price: [finmind] # backer/sponsor
+  intraday_kbar: [finmind] # sponsor
+  price_weekly: [finmind] # backer/sponsor
+  price_monthly: [finmind] # backer/sponsor
+  index_5s_snapshot: [finmind] # backer/sponsor
+  trading_suspension: [finmind] # backer/sponsor
+  day_trading_suspension: [finmind] # backer/sponsor
+  price_limit: [finmind]
+  # Taiwan Market - Chip / Institutional
+  margin_short: [finmind]
+  margin_short_total_market: [finmind]
+  institutional_flow_wide: [finmind]
+  institutional_flow_total_market: [finmind]
+  foreign_shareholding: [finmind]
+  shareholding_distribution: [finmind] # backer/sponsor
+  securities_lending: [finmind]
+  margin_short_sale_suspension: [finmind]
+  daily_short_sale_balances: [finmind]
+  securities_trader_info: [finmind]
+  warrant_chip_broker: [finmind] # sponsor
+  government_bank_buysell: [finmind] # sponsor
+  margin_maintenance_ratio: [finmind] # backer/sponsor
+  chip_broker_agg: [finmind] # sponsor; dedicated endpoint
+  block_trade_broker_report: [finmind] # sponsor
+  block_trade: [finmind] # sponsor
+  loan_collateral_balance: [finmind] # sponsor
+  industry_chain_money_flow: [finmind] # sponsor
+  disposition_securities: [finmind] # backer/sponsor
+  # Taiwan Market - Fundamental
+  balance_sheet: [finmind]
+  cash_flow_statement: [finmind]
+  dividend_result: [finmind]
+  month_revenue: [finmind]
+  capital_reduction_reference_price: [finmind]
+  market_value: [finmind] # backer/sponsor only, no free per-symbol tier
+  stock_delisting: [finmind]
+  market_value_weight: [finmind] # backer/sponsor only, no free per-symbol tier
+  split_price: [finmind]
+  par_value_change: [finmind]
+  # Taiwan Market - Derivative
+  futopt_info: [finmind]
+  futures_daily: [finmind]
+  option_daily: [finmind]
+  futures_tick: [finmind] # backer/sponsor
+  futures_spread_tick: [finmind] # sponsor
+  option_tick: [finmind] # backer/sponsor
+  futures_institutional_flow: [finmind]
+  option_institutional_flow: [finmind]
+  futures_institutional_flow_after_hours: [finmind] # backer/sponsor
+  option_institutional_flow_after_hours: [finmind] # backer/sponsor
+  futures_dealer_volume: [finmind]
+  option_dealer_volume: [finmind]
+  futures_oi_large_traders: [finmind] # backer/sponsor
+  option_oi_large_traders: [finmind] # backer/sponsor
+  futures_spread_trading: [finmind] # backer/sponsor
+  futures_final_settlement_price: [finmind] # backer/sponsor
+  option_final_settlement_price: [finmind] # backer/sponsor
+  option_vix: [finmind] # backer/sponsor
+  asset_swap_fixed_income_daily: [finmind] # backer/sponsor
+  asset_swap_option_daily: [finmind] # backer/sponsor
+  # Taiwan Market - Real-Time
+  tick_snapshot: [finmind] # sponsor; LIVE_ISH bounded snapshot, not official-eod
+  futopt_tick_info: [finmind]
+  futures_snapshot: [finmind] # sponsor; LIVE_ISH bounded snapshot
+  options_snapshot: [finmind] # sponsor; LIVE_ISH bounded snapshot
+  # Taiwan Market - Convertible Bond
+  cb_info: [finmind] # backer/sponsor
+  cb_daily: [finmind] # backer/sponsor
+  cb_institutional_flow: [finmind] # backer/sponsor
+  cb_daily_overview: [finmind] # backer/sponsor
+  cb_monthly_analysis: [finmind] # backer/sponsor
+  cb_put_provision: [finmind] # backer/sponsor
+  # Taiwan Market - Others
+  stock_news: [finmind] # FinMind's own news dataset, distinct from the `news` aggregator
+  business_indicator: [finmind] # backer/sponsor
+  industry_chain_classification: [finmind] # backer/sponsor
+  # Global Economic Data (TW-context macro; TWD-vs-foreign-currency)
+  exchange_rate: [finmind]
+
+# Datasets with no single-country home — modeled Market.GLOBAL rather than forced into TW/US.
+GLOBAL:
+  central_bank_rate: [finmind]
+  gold_price: [finmind]
+  crude_oil_prices: [finmind]
+
+# International Markets. Policy: yfinance is PRIMARY for every non-TW market — it now serves
+# price_eod/financials/balance_sheet/cash_flow_statement/dividends/split_price directly (the
+# same shared capability names FinMind's TW path uses) for US/GB/JP/EU, plus
+# analyst_consensus/esg/sector_class (already yfinance-only) and the yfinance-native
+# capabilities with no FinMind/gov equivalent at all (options_chain/institutional_holders/
+# insider_activity/symbol_search/symbol_lookup/earnings_calendar/ipo_calendar/
+# economic_calendar/sector_overview/industry_overview/market_status/fund_holdings). FinMind's
+# own `us_stock_price`/`uk_stock_price`/`europe_stock_price`/`japan_stock_price`/
+# `us_stock_info`/... datasets are modeled as distinct capability names (not `price_eod`), so
+# they aren't superseded here — both stay independently resolvable; no caller-visible
+# behavior of the existing FinMind international rows below changes.
+US:
+  us_stock_info: [finmind]
+  us_stock_price: [finmind]
+  us_stock_price_minute: [finmind] # backer/sponsor
+  government_bond_yield: [finmind] # US Treasury yield curve, a genuine single-country home
+  fear_greed_index: [finmind] # backer/sponsor; US-market sentiment gauge
+  price_eod: [yfinance] # yfinance primary for non-TW — no FinMind price_eod entry for US
+  financials: [yfinance]
+  balance_sheet: [yfinance]
+  cash_flow_statement: [yfinance]
+  dividends: [yfinance]
+  split_price: [yfinance]
+  analyst_consensus: [yfinance]
+  esg: [yfinance]
+  sector_class: [yfinance]
+  options_chain: [yfinance]
+  institutional_holders: [yfinance]
+  insider_activity: [yfinance]
+  symbol_search: [yfinance]
+  symbol_lookup: [yfinance]
+  earnings_calendar: [yfinance]
+  ipo_calendar: [yfinance]
+  economic_calendar: [yfinance]
+  sector_overview: [yfinance]
+  industry_overview: [yfinance]
+  market_status: [yfinance]
+  fund_holdings: [yfinance]
+
+GB:
+  uk_stock_info: [finmind]
+  uk_stock_price: [finmind]
+  price_eod: [yfinance]
+  financials: [yfinance]
+  balance_sheet: [yfinance]
+  cash_flow_statement: [yfinance]
+  dividends: [yfinance]
+  split_price: [yfinance]
+  analyst_consensus: [yfinance]
+  esg: [yfinance]
+  sector_class: [yfinance]
+  options_chain: [yfinance]
+  institutional_holders: [yfinance]
+  insider_activity: [yfinance]
+  symbol_search: [yfinance]
+  symbol_lookup: [yfinance]
+  earnings_calendar: [yfinance]
+  ipo_calendar: [yfinance]
+  economic_calendar: [yfinance]
+  sector_overview: [yfinance]
+  industry_overview: [yfinance]
+  market_status: [yfinance]
+  fund_holdings: [yfinance]
+
+EU:
+  europe_stock_info: [finmind]
+  europe_stock_price: [finmind]
+  price_eod: [yfinance]
+  financials: [yfinance]
+  balance_sheet: [yfinance]
+  cash_flow_statement: [yfinance]
+  dividends: [yfinance]
+  split_price: [yfinance]
+  analyst_consensus: [yfinance]
+  esg: [yfinance]
+  sector_class: [yfinance]
+  options_chain: [yfinance]
+  institutional_holders: [yfinance]
+  insider_activity: [yfinance]
+  symbol_search: [yfinance]
+  symbol_lookup: [yfinance]
+  earnings_calendar: [yfinance]
+  ipo_calendar: [yfinance]
+  economic_calendar: [yfinance]
+  sector_overview: [yfinance]
+  industry_overview: [yfinance]
+  market_status: [yfinance]
+  fund_holdings: [yfinance]
+
+JP:
+  japan_stock_info: [finmind]
+  japan_stock_price: [finmind]
+  price_eod: [yfinance]
+  financials: [yfinance]
+  balance_sheet: [yfinance]
+  cash_flow_statement: [yfinance]
+  dividends: [yfinance]
+  split_price: [yfinance]
+  analyst_consensus: [yfinance]
+  esg: [yfinance]
+  sector_class: [yfinance]
+  options_chain: [yfinance]
+  institutional_holders: [yfinance]
+  insider_activity: [yfinance]
+  symbol_search: [yfinance]
+  symbol_lookup: [yfinance]
+  earnings_calendar: [yfinance]
+  ipo_calendar: [yfinance]
+  economic_calendar: [yfinance]
+  sector_overview: [yfinance]
+  industry_overview: [yfinance]
+  market_status: [yfinance]
+  fund_holdings: [yfinance]

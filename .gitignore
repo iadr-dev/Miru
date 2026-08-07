@@ -45,3 +45,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# === yFinance ===
+.cache/
