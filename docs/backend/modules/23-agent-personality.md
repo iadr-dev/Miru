@@ -28,10 +28,32 @@ The assistant's system prompt is assembled in a **fixed precedence** — lower l
      guardrails.check_output (pre_output)  — final non-trading/caveat backstop ([05])
 ```
 
-Personality is injected in **`transform_context`** ([05](05-agent-runtime.md) §loop) as a
-fixed prompt segment resolved once per turn from the user's setting — it is **not** re-derived
-per step and does not consume tool/loop budget beyond its (small, measured) token cost
-([10](10-events-hooks.md) §usage `token_breakdown.system_prompt`).
+Personality is injected via the `PromptLayers` the caller constructs `AgentLoop` with
+(`agent/loop.py`'s `AgentLoop.run_turn` builds the turn's one system message from
+`assemble_system_prompt(self._prompt_layers)` at the top of `run_turn`, before the Step loop
+starts) — a fixed prompt segment resolved once per turn from the user's setting, **not**
+re-derived per Step. `_transform_context` (the `transform_context` seam, [05](05-agent-runtime.md)
+§loop) is a separate concern — it only compacts the message list between Steps and never touches
+the system message.
+
+**Resolution is real, end-to-end, on every turn.** `orchestrator/orchestrator.py` holds a
+`PersonalityRegistry` (built via `orchestrator/composition.py`, shared app-wide through
+`AppState.personality_registry` so it is loaded once, not per turn) and a `PersonalityContext`
+dataclass (`turn_override`/`thread_override`/`user_preference` — the same three-level precedence
+as §3 below). `_resolve_personality_fragment` resolves the context against the registry once per
+turn, and every real turn path populates `PromptLayers.personality` from the result: `run`
+(`none`/`single`/`subagent`/`team`), `run_skill` (scheduled runs), `_run_none`, `_run_single`,
+and each fan-out lane via `_skill_prompt_layers`. The callers that build `PersonalityContext`
+already hold what they need — `api/routers/agent.py` builds it from the authenticated `User` and
+the loaded `Thread` (`thread_override=thread.personality_override`,
+`user_preference=user.personality_id`); `scheduler/worker.py` does the analogous thing for a
+scheduled job, which has no thread so only `user_preference` is set. `turn_override` has no
+producer yet (no API surface lets a single turn pin a one-off preset) — the field stays on
+`PersonalityContext` so the full precedence is honored the moment one lands, with no further
+orchestrator change required. Regardless of which personality fragment is resolved,
+`guardrails.check_output` still scans the final output on every path — personality is
+appended **after** the governance layer and never bypasses this backstop (see the governance
+invariant at the top of this doc, and [05](05-agent-runtime.md) §guardrails).
 
 ## 2. Preset registry (`personality/presets/` — file-defined, like skills)
 
@@ -64,17 +86,25 @@ fragment: |                       # curated system-prompt text (governance-revie
 | `concise` | 簡潔派 | Bullet points, terse, lead with the takeaway | terse / balanced / bullets / neutral |
 | `data` | 數據派 | Numbers-first, tables, minimal prose | medium / technical / tables / neutral |
 
-All four carry the **same** governance floor — they differ only in styling. The registry is
-versioned; the journal records which personality (id+version) shaped a turn (reproducibility).
+All four carry the **same** governance floor — they differ only in styling. Each preset carries
+a `version` field (all four are `"1.0.0"` today) for future reproducibility tracking. **Not yet
+built:** nothing writes the resolved personality id/version into the turn journal or any other
+durable record — there is no code path that persists "this turn was shaped by preset X vN" today.
 
 ## 3. Selection & precedence rules
 
 - **Where set:** Settings → *Agent style*; stored on the user (`users.personality_id`,
   [database-schema](../database-schema.md) §1). New users default to `steady`.
-- **Per-thread / per-turn override (optional):** a thread may pin a personality
-  (`threads.personality_override`), and `POST /agent/query` accepts a one-shot `personality`
-  (same shape as `model`/`skill_hint`, [api-reference](../api-reference.md) §1). Resolution
-  order: **turn override → thread override → user setting → `steady`**.
+- **Per-thread override (real seam, not yet settable):** the resolution reads
+  `threads.personality_override` and `PersonalityContext.thread_override` honors it, but there is
+  currently **no route that writes it** — a per-thread pin isn't settable from the API yet even
+  though `_resolve_personality_fragment` would apply it immediately if it were.
+- **Per-turn override (not yet built):** `PersonalityContext.turn_override` exists in the
+  dataclass and the registry's precedence honors it, but `POST /agent/query`'s real request body
+  is just `{message, thread_id?}` ([api-reference](../api-reference.md) §1) — there is no
+  `personality`/`model`/`skill_hint` per-turn field today, so `turn_override` is always `None` in
+  practice. Resolution order once both land: **turn override → thread override → user setting →
+  `steady`**; today only the last two are reachable.
 - **Concurrency:** resolved **per turn** from the current setting (like entitlement,
   [16](16-infrastructure.md) §10) — a mid-thread change applies to the next turn, no stale voice.
 - **Interaction with the pet persona:** both are *styling* layers; **personality is [2], pet is
@@ -94,7 +124,8 @@ versioned; the journal records which personality (id+version) shaped a turn (rep
   data/throughput, not a "smarter voice"). (If a premium-only preset is ever added it is
   entitlement-gated like any feature, tier axis 2 — [12](12-multi-user-tiers.md) §3 — but the
   four starters are free.)
-- **Auditable.** Personality id+version is journaled per turn; changing it is a normal profile
-  edit (`PATCH /me`), per-user isolated.
+- **Changeable, per-user isolated.** Changing the voice is a normal profile edit (`PATCH /me
+  {personality_id}`). **Not yet built:** journaling which personality (id+version) shaped a given
+  turn — see §2 above.
 - **Non-English safety.** Presets are authored zh-TW-first; the tone `jargon`/`structure` params
   never translate away a required caveat — the caveat text is governance-owned, not persona-owned.

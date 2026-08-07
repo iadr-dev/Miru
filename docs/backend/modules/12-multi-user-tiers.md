@@ -19,8 +19,11 @@ Two-leg flow per provider, **with PKCE (S256)**:
    `state`, exchange `code` at the token endpoint **server-side (client secret + `code_verifier`)**,
    fetch identity, upsert `users` + `oauth_accounts`, issue our JWT session.
 
-- **PKCE (S256)** is applied to both providers (LINE-recommended, defense-in-depth vs. code
-  interception; complements — doesn't replace — the client secret for our confidential server).
+- **PKCE (S256) is LINE-only.** LINE recommends it as defense-in-depth against code interception,
+  complementing (not replacing) the client secret for our confidential server. Google's
+  authorization-code flow for confidential server-side clients does not require or meaningfully
+  add PKCE — `state` is Google's real CSRF defense here — so the Google leg uses `state` only,
+  no `code_verifier`/`code_challenge`.
 - **LINE auto-login failure:** the LINE in-app auto-login can fail (private browsing, OS
   Universal/App-Link limits). Detected at the callback by **`state` mismatch / unusable `code`**
   → the app retries the authorize URL with **`disable_auto_login=true`** (button-triggered
@@ -47,8 +50,11 @@ Two-leg flow per provider, **with PKCE (S256)**:
 
 ## 1a. Multi-provider identity & account linking
 
-A user may sign in with **Google and/or LINE** and expect **one account**. `oauth_accounts` is a
-separate table (many providers per `user_id`), so this is native. Resolution at callback:
+**Google and LINE are peer, coexisting login methods on the same account — never a primary/
+fallback pair.** A user may hold both simultaneously and sign in with either one on any visit;
+neither provider is authoritative over the other, and there is no "primary provider" concept
+anywhere in the schema. `oauth_accounts` is a separate table (many providers per `user_id`), so
+this is native, not a retrofit. Resolution at callback:
 
 1. **Known provider identity** — `oauth_accounts(provider, provider_account_id)` matches → log
    into that user. (Primary key; always works, even when LINE has no email.)
@@ -64,7 +70,14 @@ already bound to another account is refused (surface "already linked elsewhere")
 **unlink** a provider only while **≥1 login method remains** (never orphan an account).
 
 **Settings** shows linked providers with link/unlink; `display_name`/`picture_url` seed from the
-first provider and are user-overridable via `PATCH /me`.
+first provider and are user-overridable via `PATCH /me`. Concretely, case 3 above plays out as:
+a user first signs up via Google → `GET /me/connections` shows a "Google — linked" badge only →
+in Settings they click "Link LINE account" → `POST /auth/oauth/line/link` starts the same
+authorization-code(+PKCE) flow as a fresh login, but tagged with the **current, already-
+authenticated** `user_id` → on a successful callback, `complete_authorization` resolves case 3
+(attach, don't create-or-auto-link-by-email) → `GET /me/connections` now shows both
+"Google — linked" and "LINE — linked" badges, and either provider logs into the same account
+from then on.
 
 ## 1b. Session security — token storage & persistence
 
@@ -101,8 +114,8 @@ first provider and are user-overridable via `PATCH /me`.
 
 | Tier | AI chats/day | Req/min | FinMind class | Gated AI features |
 |------|--------------|---------|---------------|-------------------|
-| **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors); tag screener (`run_tag_screener`/`get_tag_catalog`); theme/tier lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
-| **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), full 多空 score (incl. 分點 chip sub-signal), news_sentiment. **`get_ai_summary`/`get_swot`/AI top-N ranking/theme discovery are design intent, not real tools yet** — see [module 20](20-analytics-scoring.md)'s implementation-status note. There is no per-turn `web_search` toggle in the real API today (`AgentQueryRequest` is `{message, thread_id}` only) |
+| **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors — real, cache-only reads, [module 20](../modules/20-analytics-scoring.md) §2c); tag screener (`run_tag_screener`/`get_tag_catalog`, public criteria — real, [module 20](../modules/20-analytics-scoring.md) §5T); theme lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`, public); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
+| **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, theme discovery (LLM-surfaced, distinct from the public theme-lookup tools above), news_sentiment, web_search |
 | **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + tick/minute-K, **deep_research** (multi-step web), scheduler |
 
 **Price tiering:** Free = EOD only; Premium/Pro = `price_intraday` — a delayed snapshot pushed
@@ -130,13 +143,15 @@ together they are "capability resolution"):
 3. **Per-turn consent** — a request-scoped toggle the *user* flips for that turn (e.g. the
    web-search toggle, [03-tools.md](03-tools.md)): opt-in, not tier.
 
+Real API (`accounts/entitlements.py` — module functions, not a class; `TIER_LIMITS`/
+`FEATURE_MIN_TIER` are the config tables):
+
 ```python
-class Entitlements:                              # OUR gate — feature-tier + data-licensing axes
-    def chat_limit_for(user) -> int | None       # None = unlimited (or BYOK)
-    def rate_limit_for(user) -> RateLimit
-    def feature_allowed(user, feature) -> bool    # (2) FEATURE_MIN_TIER lookup
-    def finmind_class_for(user) -> "free" | "sponsor"   # (1) drives data_class unmask
-    # or fold all three axes into one resolver: resolve_capability(user, request) -> CapabilityDecision
+def chat_limit_for(user: User, *, byok_active: bool) -> int | None   # None = unlimited (or BYOK)
+def rate_limit_per_minute(user: User) -> int
+def feature_allowed(user: User, feature: str) -> bool                # (2) FEATURE_MIN_TIER lookup
+def finmind_class_for(user: User) -> Tier                             # (1) drives data_class unmask — FREE or PREMIUM
+def entitlement_view(user: User, *, byok_active: bool) -> EntitlementView  # folds all axes into the `GET /me` envelope
 ```
 
 - **Market data / watchlist / news stay free** for everyone. Gating applies **only** to AI
@@ -147,16 +162,22 @@ class Entitlements:                              # OUR gate — feature-tier + d
 
 ## 4. Rate limits & quotas (ties into hooks + M5Q)
 
-Enforced at the `pre_turn` / `pre_llm` hooks ([10-events-hooks.md](10-events-hooks.md)):
+Enforced by `api.turn_driver.enforce_pre_turn_gate` — the `pre_turn` gate every turn-starting
+route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10-events-hooks.md](10-events-hooks.md)
+§ hook taxonomy):
 
 - **Request rate** (per-minute) and **daily chat count** per tier.
-- **FinMind quota** is a single static Redis-backed pool (6000 req/hr) shared across every
-  Premium/Pro user — atomically reserved before each Sponsor-tier fetch and refunded on
-  failure/under-use (`usage/finmind_pool.py::RedisFinMindPoolReserver`). Free tier never draws
-  on this pool at all; there is no Free-tier FinMind quota concept, and no live upstream
-  quota-polling call anywhere. Near the cap, requests degrade gracefully (serve cached /
-  `unavailable-tier`) rather than failing — surfaced via M5Q.
-- **LLM cost budget** per tier/user; `usage` accounting from [10](10-events-hooks.md) enforces it.
+- **FinMind quota is not a live upstream poll.** Premium/Pro (`finmind_class=sponsor`) draw on
+  a single shared **Sponsor pool** — a Redis-backed atomic counter reserved pre-flight against a
+  static **6000 req/hr** ceiling and refunded on failure/under-use ([16](../modules/16-infrastructure.md)
+  §4). Free never touches this pool (Free-tier skills use the free FinMind token — there is no
+  Free-tier FinMind quota concept). When the pool nears its ceiling, requests degrade gracefully
+  (serve cached / `unavailable-tier`) rather than failing — surfaced via M5Q.
+- **LLM cost accounting** — `usage.store.record_turn`/`write_turn_usage` persist `cost_micros`
+  per turn/user (§ usage rollup, [10](10-events-hooks.md)). **Not yet built:** an actual per-
+  tier/user cost *budget* that rejects a turn on overspend — today cost is recorded, not
+  enforced. Only the two limits above (`enforce_pre_turn_gate`'s rate + daily-chat reservation)
+  are real gates.
 
 ## 5. BYOK (bring your own key)
 
@@ -179,7 +200,10 @@ POST /auth/logout                     revoke session
 GET  /me/connections                  linked providers (google/line) for Settings
 POST /auth/oauth/{provider}/link      link a provider to the CURRENT user (Settings; logged-in)
 DELETE /me/connections/{provider}     unlink a provider (refused if it's the last login method)
-GET  /usage/quota                     per-user usage vs limits (chat/day, req/min, FinMind, cost)
+GET  /usage/quota                     the caller's resolved `EntitlementView` (chat/day limit,
+                                      req/min, FinMind class, BYOK, features) — limits only; live
+                                      consumption counters and cost are not surfaced yet (no
+                                      durable usage-rollup store wired to this endpoint)
 POST /me/keys                         store BYOK key (encrypted)
 DELETE /me/keys/{provider}
 ```
