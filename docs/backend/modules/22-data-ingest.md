@@ -59,6 +59,35 @@ The fetch→store path is fixed for speed and correctness:
 
 ## 2. Cadence table (dataset → cron → source → inc/full → store)
 
+> **Implementation status — the real schedule is smaller and differently architected than this
+> section's cadence table.** There is no cron-job-group scheduler; the real architecture
+> (`ingest/daemon.py`'s `IngestDaemon`) is a **leader-gated, wall-clock poll loop**: one pass
+> (`run_due_jobs`) checks a fixed `SCHEDULED_JOBS` tuple of `(name, fire_time, run_fn, cadence)`
+> entries against the current Taipei-local time and fires whatever has newly become due, marking
+> it handled *before* running it (so a failed run is never retried in a tight loop — the next
+> window's pass, or an explicit backfill, retries). `ingest/__main__.py` (`python -m ingest`) wraps
+> this in a real sleep/wake loop with graceful SIGTERM/SIGINT handling; there is no separate
+> "cron job group" concept in code.
+>
+> **Real job count today: 13 scheduled jobs, not the ~25–35/day this table's whole-market bundle
+> implies.** 9 are whole-market FinMind pulls, from `ingest.jobs.ALL_WHOLE_MARKET_JOBS` (the same
+> canonical list §6b's backfill CLI walks): `price_eod` (17:40), `institutional_flow` (20:10),
+> `financials`/`balance_sheet`/`cash_flow`/`dividends` (all 21:30), `market_value` (23:40),
+> `active_etf_holdings`/`active_etf_holding_changes` (both 21:15). 2 are daily derived-compute
+> passes over the store, not FinMind pulls (module 20): `screener_flags` (20:30, after price +
+> institutional-flow land) and `scoring_batch` (23:55, after every other daily job — it depends on
+> market-cap and financial-statement families, which don't land until 21:30/23:40). 2 are monthly
+> reference-data jobs (also module 20): `theme_industry_chain` and `theme_tiers`, both fired
+> 00:30 on a rolling ~4-week cadence, sequenced so tiers run after the membership seed. Every other
+> dataset this cadence table below documents (市場總法人/借券, 報酬指數, PER/PBR/漲跌停, 處置/注意股,
+> VIX, 期貨/選擇權regular pulls, ETF NAV/PCF scrape, 融資融券 family, 分點/八大官股/產業鏈資金流, 集保股權
+> 分散, all of §"Monthly" and §"Event-driven") **is still design intent — not one of the 13 real
+> scheduled jobs.** Chain-order dependencies (screener_flags/scoring_batch after their upstream
+> data jobs) are real and enforced by fire-time ordering, exactly as designed. Where this section's
+> narrative cadence/cron framing conflicts with the 13-job list above, the 13-job list is the real
+> one — treat everything else in §2/§3 below as the still-relevant design target for datasets not
+> yet wired, not as a description of what fires today.
+
 All crons **Asia/Taipei**, gated on `TaiwanStockTradingDate` (skip weekends/holidays) + the
 NCDR typhoon overlay (§6). FinMind whole-market pulls omit `data_id` (⇒ **≥Backer token**,
 §5). "Land" = DuckDB/Parquet.
@@ -125,29 +154,55 @@ whole-market (Backer ⇒ `public`). ETF 受益人數 (if weekly) — `etf_pcf`/S
 
 ### Derived-compute jobs (analytics — module 20; **consume the store, don't hit FinMind**)
 
-These are **pure-compute / LLM jobs, not ingest jobs** — they read the freshly-written columnar
-store, so they run **in dependency order *after* `ingest-daily-late` lands** (chained, not on an
-independent clock). They draw the **compute/LLM budget, not the FinMind quota**.
+> **Implementation status.** Only the first two rows below are real — `screener_flags` and
+> `scoring_batch`, both in the real 13-job `SCHEDULED_JOBS` tuple (§2 top callout). Their real
+> names/times differ from this table's original `compute-*` naming: the real job is called
+> `screener_flags` (fires **20:30**, not a `compute-topN` ranking pass — module 20 §5a's tag
+> screener has no "top-N ranking of survivors" step at all, since there is no gates→setup→rank
+> funnel), and `scoring_batch` (fires **23:55**, matching "after 市值/官股 land" as designed, but
+> writing the real five-factor `stock_scores` cache, not a Stage-C top-N rank of a funnel that
+> doesn't exist). `compute-ai-summary` and `discover-themes` are **not real** — there is no
+> `ai_summaries` table, no SWOT feature, and no LLM theme-discovery job (module 20 §3/§5b already
+> covers what shipped instead: the theme layer's real jobs are `theme_industry_chain`/`theme_tiers`,
+> monthly, and Layer 3 concept research is an unscheduled operator CLI, `python -m
+> analytics.themes` — never a cron job).
 
-| Job | Cadence | Depends on | Cost | Notes |
+| Job (real name) | Cadence | Depends on | Cost | Notes |
 |-----|---------|-----------|------|-------|
-| **`compute-scores`** (多空 5-factor, module 20 §2) | **daily** post-close (~23:50, after 市值/官股 land) | daily-late ingest | pure compute (no LLM) | winsorize → percentile → blend both profiles; write `stock_scores` |
-| **`compute-topN`** (AI 篩選, module 20 §5C) | **daily**, **right after** `compute-scores` | `compute-scores` | pure compute | gates → setup → rank survivors; cache the ranked lists |
-| **`compute-ai-summary`** (智能摘要 + SWOT, module 20 §3) | **weekly, ALL ~1,900 stocks, weekend (Sat/Sun)** → upsert `ai_summaries`; **on-demand only when the DB row is empty** (new IPOs) | `compute-scores` (Fri) | **LLM (cheap-tier)** | full coverage affordable at cheap-tier (~$/week); if row has data, serve as-is — no refresh (module 20 §3) |
-| **`discover-themes`** + figure events (module 20 §5C) | scheduled LLM pass, **~7-day window** | ingested news/price signals | **LLM** | proposes descriptive themes + confidence; theme = a tag, not a scored factor |
+| **`screener_flags`** (tag screener, module 20 §5a) | **daily**, 20:30, after `price_eod` (17:40) + `institutional_flow` (20:10) | `price_eod`, `institutional_flow` | pure compute (no LLM) | evaluates the 29-tag catalog over price/flow history; writes only true `(symbol, tag)` rows to the `screener_flags` Parquet dataset |
+| **`scoring_batch`** (多空 5-factor, module 20 §2) | **daily**, 23:55, after every other daily job (needs `market_value`/financial-statement families, which land at 21:30/23:40) | `price_eod`, `institutional_flow`, `financials`, `balance_sheet`, `cash_flow`, `market_value` | pure compute (no LLM) | winsorize/z-score → percentile → blend both profiles for every symbol in one pass; upserts the relational `stock_scores` cache |
+| **`theme_industry_chain`** (module 20 §5b Layer 1) | **monthly**, 00:30, rolling ~4-week gap | FinMind whole-market industry-chain classification (a live FinMind call, not the Parquet store) | pure compute (no LLM) | deterministic industry-theme + membership seed |
+| **`theme_tiers`** (module 20 §5b Layer 2) | **monthly**, 00:30, immediately after `theme_industry_chain` in the same pass | `theme_industry_chain`'s memberships + `config/theme_tiers.yaml` | pure compute (no LLM) | curated map + keyword-heuristic tier backfill |
+| `compute-ai-summary` (智能摘要 + SWOT) | — | — | — | **not real** — design intent, module 20 §3 |
+| `discover-themes` + figure events | — | — | — | **not real** — superseded by the real three-layer theme design, module 20 §5b |
 
-**Dependency chain (daily):** `ingest-daily-late` → `compute-scores` → `compute-topN`. The
-weekly `compute-ai-summary` and `discover-themes` hang off the same store on their own cadence.
-A score/topN job that finds the day's ingest incomplete (gap-detect, §4) **skips and reports**
-rather than scoring stale/partial data — no half-day rankings.
+Layer 3 concept-theme research + in-theme supply-chain edges (module 20 §5b) is real but
+**deliberately unscheduled** — an operator runs `python -m analytics.themes` by hand, since it is
+the only analytics job that spends on LLM calls and does live web research.
 
-**On completion → cache-invalidation signal.** When a derived-compute job commits, the leader
-**publishes a `data.updated` event** `{capability, market, as_of, scope}` over the §2 event
-transport ([16](16-infrastructure.md) §3a) — `compute-scores`→`{score,…}`, `compute-topN`→`{topN,…}`,
-`compute-ai-summary`→`{summary,…}`, `discover-themes`→`{themes,…}`. API workers relay it on
-`/updates/stream` so clients **revalidate exactly the affected keys** the moment fresh analytics
-exist, instead of waiting out a time boundary ([web data-freshness.md](../../web/data-freshness.md) §4).
-Same trigger updates the read-model `as_of`/`ETag` so a boundary-anchored conditional GET also sees it.
+**Dependency chain (daily, real):** `price_eod` + `institutional_flow` → `screener_flags`;
+`price_eod` + `institutional_flow` + `financials`/`balance_sheet`/`cash_flow` + `market_value` →
+`scoring_batch`. Both jobs are calendar- and leader-gated exactly like the whole-market pulls: a
+non-trading day is a journaled skip, a non-leader pass writes nothing, and a run that finds no
+upstream history in its read window writes a real, journaled empty result rather than an error —
+never scores/flags stale or partial data.
+
+**On completion → cache-invalidation signal.** The seam for this is real
+(`ingest/data_updates.py`'s `DataUpdatePublisher` Protocol + `NoOpDataUpdatePublisher` default,
+wired onto `IngestContext.data_update_publisher`), and the **whole-market FinMind jobs in
+`ingest/jobs.py` do call `publish_data_updated({capability, market, as_of, scope})`** on landing —
+only the leader publishes (same `is_leader()` gate as the write itself), and with no concrete
+transport wired the default is a no-op, so an ingest run still lands its partition either way and
+clients fall back to boundary-anchored revalidation. **`scoring_batch` and `screener_flags`
+(module 20's two real derived-compute jobs) do not call this publisher** — confirmed by reading
+both modules directly; they write their result and journal the run, nothing more. So the
+"`compute-scores`→`{score,…}`" style per-job event-name mapping this section originally described
+is design intent for those two jobs specifically, not yet wired, even though the underlying
+publish mechanism itself is real and already exercised by the whole-market pulls. API workers
+relaying this onto `/updates/stream` so clients **revalidate exactly the affected keys** the
+moment fresh data exists ([web data-freshness.md](../../web/data-freshness.md) §4) was not
+independently verified in this pass — treat that specific claim as unconfirmed rather than
+verified-real.
 
 ### Backfill (one-time / on-demand ops job — checkpointed, resumable)
 FinMind **date-range paginated** by year chunks, whole-market by `start_date`, per dataset;
@@ -168,29 +223,43 @@ minute-K (`storage_objects` exist only from FinMind's feature-launch date) — s
 
 ## 3. Job groups (the cron bundles)
 
-1. **`ingest-daily-postclose`** (15:10–20:10 staggered per §2 cron column) — 市場總法人/借券
-   (15:10), 報酬指數 (17:00), EOD prices (**17:40**), PER/漲跌停 (18:10), 處置/注意 + VIX (18:00–18:10),
-   期/選 daily + regular 法人 (20:10), **個股三大法人 (20:10 — its own 20:00 slot, not the early edge)**,
-   ETF NAV/PCF. Stagger to each dataset's FinMind update time; don't fire at the group's early edge.
-2. **`ingest-daily-late`** (21:05 + 23:40 sub-job) — 融資融券, 外資持股, 信用總量, 大盤維持率 (21:05),
-   當沖 values (21:40), Sponsor chip 分點/主動ETF (21:15), 官股/市值/產業鏈 (23:40).
-2b. **`ingest-reconcile`** (next morning ~08:30) — re-pull *yesterday* and upsert via the atomic
-   swap (§4): catches late/revised 融資融券/官股/市值, **and the next-morning-only** 期/選 盤後(夜盤)
-   三大法人 (`...InstitutionalInvestorsAfterHours`) + the weekly 集保股權分散 (Mon).
-3. **`ingest-weekly`** (**Sun 06:00** + Mon reconcile) — 集保股權分級 (`TaiwanStockHoldingSharesPer`;
-   TDCC lands Sun/Mon, **not** Sat — see §2), ETF 受益人數.
-4. **`ingest-monthly`** — 月營收 (daily days 1–12), 財報 (deadline windows), 景氣信號, 股利.
-5. **`ingest-event`** — MOPS/news/PTT coarse pollers (queue, not cron), IPO daily, rebalance
-   weekly, macro yearly, yfinance weekly.
-5b. **`compute-*`** (derived analytics, module 20 — consume the store, not FinMind) — chained
-   after daily-late: **`compute-scores` (daily)** → **`compute-topN` (daily)**;
-   **`compute-ai-summary` (weekly + on-demand)** and **`discover-themes` (~7-day)** on their own
-   cadence. Draw the compute/LLM budget, not the FinMind quota.
-6. **`ingest-backfill`** — one-time/on-demand, checkpointed & resumable.
+> **Implementation status.** These groups are, and always were, a documentation grouping of the
+> cadence table above — there is no group concept in code. The real `IngestDaemon` has one flat
+> `SCHEDULED_JOBS` tuple of 13 jobs with no grouping (§2's top callout has the full real list).
+> Below, each group's real jobs are called out inline; everything else in that group is still
+> design intent.
 
-Runs on the **leader-elected scheduler workers** (infra §5); tasks dispatched to the broker/
-queue; scrapers in the thread/process pool (infra §6). Reuse the §5 at-least-once + idempotent
-machinery, dedupe key `(job_id, trigger_date)`.
+1. **`ingest-daily-postclose`** (15:10–20:10 staggered per §2 cron column) — real: **EOD prices
+   (`price_eod`, 17:40)** and **個股三大法人 (`institutional_flow`, 20:10)**. Still design intent:
+   市場總法人/借券 (15:10), 報酬指數 (17:00), PER/漲跌停 (18:10), 處置/注意 + VIX (18:00–18:10),
+   期/選 daily + regular 法人 (20:10), ETF NAV/PCF.
+2. **`ingest-daily-late`** (21:05 + 23:40 sub-job) — real: **`financials`/`balance_sheet`/
+   `cash_flow`/`dividends`** (all 21:30), **`market_value`** (23:40), **`active_etf_holdings`/
+   `active_etf_holding_changes`** (both 21:15). Still design intent: 融資融券, 外資持股, 信用總量,
+   大盤維持率, 當沖 values, 分點, 八大官股, 產業鏈資金流.
+2b. **`ingest-reconcile`** (next morning ~08:30) — still design intent; no reconcile pass exists
+   in the real 13-job schedule today.
+3. **`ingest-weekly`** — still design intent; no weekly job exists in the real schedule.
+4. **`ingest-monthly`** — real: **`theme_industry_chain`/`theme_tiers`** (both 00:30, rolling
+   ~4-week cadence, module 20 §5b Layers 1–2). Still design intent: 月營收 (daily days 1–12), 財報
+   (deadline windows), 景氣信號, 股利.
+5. **`ingest-event`** — still design intent; no worker-queue/coarse-poller mechanism exists yet
+   (MOPS/news/PTT/rebalance/macro/yfinance-weekly are all unbuilt).
+5b. **derived analytics** (module 20 — consume the store, not FinMind) — real: **`screener_flags`**
+   (daily, 20:30, after `price_eod` + `institutional_flow`) and **`scoring_batch`** (daily, 23:55,
+   after every other daily job). Not real: any `compute-topN`/`compute-ai-summary`/
+   `discover-themes` job — see module 20 §3/§5 for what's design intent vs. what shipped instead.
+6. **`ingest-backfill`** — real, but as a **one-shot operator CLI**
+   (`python -m ingest.backfill_cli`, §6b), not a scheduled cron bundle: checkpointed/resumable via
+   the same `backfill_range(only_missing=True)` gap-diff the daily jobs' own catch-up uses.
+
+Runs on the **leader-elected scheduler workers** (infra §5 — real today only in the single-process
+`AlwaysLeader` sense; see [§6c](#6c-leader-election--still-a-single-process-stub-not-real-cross-process-election)
+for exactly what "leader-elected" means right now). The real daemon
+has **no separate task-broker/queue and no thread/process pool for scrapers yet** —
+`IngestDaemon.run_due_jobs()` simply awaits each due job in-process within one pass. The
+broker/queue + thread-pool-scraper architecture below remains design intent for the event-driven
+scrapers (group 5) once they exist.
 
 ## 4. Idempotency, reconciliation, gap-fill
 
@@ -236,12 +305,14 @@ machinery, dedupe key `(job_id, trigger_date)`.
 ## 5. Quota budgeting — whole-market-by-date is non-negotiable
 
 - **Whole-market-by-date** (`TaiwanStockPrice` etc. **without `data_id`, by `start_date`**) =
-  **≈1 call/dataset/day**. The full daily bundle is **~25–35 calls/day** — trivially inside the
-  platform's own operator-held FinMind token's rate ceiling, whichever plan it's on. **This is
-  the design.** (This is FinMind's own published per-plan rate limit on the platform's single
-  ingest token — a different concept from the per-user Sponsor-pool reservation described in
-  [modules/12](12-multi-user-tiers.md) §4, which gates *user-facing* Sponsor-tier tool calls,
-  not ingest.)
+  **≈1 call/dataset/day**. The 9 real whole-market FinMind jobs wired today
+  (`ingest.jobs.ALL_WHOLE_MARKET_JOBS`, §2/§6b) are **≈9 calls/day**; the originally-designed full
+  daily bundle (once every still-design-intent dataset in §2 is wired) would be **~25–35
+  calls/day**. Either figure is trivially inside the platform's own operator-held FinMind token's
+  rate ceiling, whichever plan it's on. **This is the design.** (This is FinMind's own published
+  per-plan rate limit on the platform's single ingest token — a different concept from the
+  per-user Sponsor-pool reservation described in [modules/12](12-multi-user-tiers.md) §4, which
+  gates *user-facing* Sponsor-tier tool calls, not ingest.)
 - **Per-symbol is the trap** — ~2,000+ symbols × datasets = thousands of calls/dataset/day; one
   dataset alone would exhaust even a generous hourly ceiling in minutes. **Never ingest
   per-symbol for market-wide EOD.** Enforce whole-market at the router/adapter level; alert if a
@@ -263,33 +334,101 @@ machinery, dedupe key `(job_id, trigger_date)`.
 
 ## 6a. Startup preflight catch-up (`INGEST_ON_STARTUP`) — dev-only
 
+> **Implementation status.** The gap-fill logic itself is real (`ingest/preflight.py`'s
+> `run_preflight_if_enabled`/`last_available_trading_day`), and its production hard gate is real
+> (`ingest_on_startup=False` short-circuits before any fetch or leader check). But **there is no
+> app-startup entrypoint wired to call it yet** — `preflight.py`'s own docstring says so plainly:
+> "There is no app entrypoint yet (that's a later phase)... it is not wired to anything today."
+> `python -m backend.ingest.preflight` (below) is **not a real command** — there is no
+> `ingest/__main__.py` guard that parses `--dev`/`--once`-style flags at all (`ingest/__main__.py`
+> takes no CLI arguments; it starts the long-running leader-scheduled daemon loop, described in
+> §3, unconditionally). The **real, working operator trigger today** is
+> `python -m ingest.backfill_cli` (§6b, new below) — a separate one-shot CLI that already calls
+> `run_preflight_if_enabled` for every job in `ingest.jobs.ALL_WHOLE_MARKET_JOBS`. Use that command
+> for the dev catch-up this section describes; the `dev.sh` snippet below is design intent for a
+> future direct-module invocation, not something you can run today.
+
 In **dev** the server (and its in-process cron) isn't kept alive overnight, so the scheduled
-ingest never fires and the store goes stale. A **startup preflight** closes the gap — it is just
+ingest never fires and the store goes stale. A startup preflight would close the gap — it is just
 the **gap-fill code path (§4) invoked manually** at boot instead of by cron:
 
 ```bash
-# dev.sh
+# design intent — NOT a real command today (no app-startup entrypoint calls preflight.py yet);
+# use `python -m ingest.backfill_cli --yes` (§6b) for the real equivalent
 INGEST_ON_STARTUP=true python -m backend.ingest.preflight   # catch up to last trading day
 uvicorn backend.src.api.app:app --reload
 ```
 
-`preflight` logic:
-1. Read `max(date)` present per **core** dataset in the Parquet store.
-2. Compute `last_available_trading_day` from `TaiwanStockTradingDate`, **respecting the FinMind
-   lag** (if today's EOD isn't published yet — before ~17:30 — target yesterday).
-3. `store_max < target` → enqueue a **targeted date-range backfill** for the gap (same code as
-   gap-fill; whole-market-by-date, cheap — a few dozen calls even for a multi-day gap).
-4. **Empty store** → first-run backfill **bounded to a dev window** (e.g. last 1–2 years, config
-   `DEV_BACKFILL_YEARS`), not to 1994.
+`preflight` logic (real, in `run_preflight_if_enabled`):
+1. Sweep orphaned temp dirs from a crashed mid-write leader startup first (cheap, local, no
+   network) before touching FinMind.
+2. Compute `last_available_trading_day` from the trading-day calendar, **respecting the FinMind
+   lag** (if today's EOD isn't published yet — before 17:30 — target yesterday).
+3. Request the bounded window `[target - dev_backfill_years*250 trading days, target]` via
+   `backfill_range(only_missing=True)` — the same gap-diff the daily cron path uses, so a
+   non-empty store naturally backfills just its actual gap and an empty store naturally gets a
+   first-run backfill, through one call. `dev_backfill_years` comes from `Settings` (config
+   `DEV_BACKFILL_YEARS`), not hardcoded to 1994.
 
 - **Gated behind a flag, dev-only.** **Production sets `INGEST_ON_STARTUP=false`** — workers must
-  boot clean; a startup fetch on every worker boot would reintroduce the §1.3 "no startup network
+  boot clean; a startup fetch on every worker boot would reintroduce the "no startup network
   call" hazard N× and race the leader. **Prod ingest is owned solely by the always-on
   leader-elected scheduler** (§3, infra §5). The preflight is a developer convenience, not a
-  production path.
+  production path — real today at the function level, just not yet reachable from an app-boot
+  hook.
 - **Governance:** the startup fetch is still **platform ingest under §9c** (purpose-/calendar-
   bounded, cache-building, journaled) — just manually triggered by the developer rather than by
   cron. It introduces no new capability; it runs the exact §4 gap-fill.
+
+## 6b. The real operator backfill CLI (`ingest/backfill_cli.py`)
+
+> **Implementation status.** This is real and shipped — the actual way an operator runs a bounded
+> gap-fill or dev backfill today, in place of the not-yet-wired direct-module invocation in §6a.
+
+`python -m ingest.backfill_cli` is the one-shot, exit-code-bearing operator tool — deliberately a
+separate module from `ingest/__main__.py` (the long-running leader-scheduled daemon), since a
+one-shot interactive CLI and an always-on daemon are different process shapes that shouldn't share
+argument-parsing or exit semantics.
+
+- **Walks the canonical whole-market job list.** For each `WholeMarketJobSpec` in
+  `ingest.jobs.ALL_WHOLE_MARKET_JOBS` (the same canonical list the daemon's `SCHEDULED_JOBS`
+  wraps — currently **9 specs**: `price_eod`, `institutional_flow`, `financials`, `dividends`,
+  `balance_sheet`, `cash_flow`, `market_value`, `active_etf_holdings`,
+  `active_etf_holding_changes` — see §2 below for the full scheduled-job count including the
+  derived-compute and monthly theme jobs this list does not cover), it calls
+  `run_preflight_if_enabled` once. One failing spec is logged (`ingest_backfill_cli_spec_errored`)
+  and does not stop the remaining specs — the same per-item resumability philosophy
+  `backfill_range` itself uses.
+- **`--yes` override, not an env-var requirement.** Rather than exporting `INGEST_ON_STARTUP=true`
+  into the whole process environment, `--yes` passes the same override into
+  `run_preflight_if_enabled`'s existing `ingest_on_startup` parameter — per-invocation instead of
+  via env. Without `--yes` and without `INGEST_ON_STARTUP` already set, the CLI logs
+  `ingest_backfill_cli_refused` and exits cleanly having done nothing.
+- **`--years` bounds the dev backfill window** (default from `Settings.dev_backfill_years`,
+  validated into `[1, 10]` — `_MAX_BACKFILL_YEARS = 10` is a hard ceiling regardless of what an
+  operator passes).
+- **Unconditional production hard-stop.** `_check_not_production` raises
+  `ProductionHardStopError` whenever `Settings.aitw_env == "production"`, checked **before**
+  touching any spec and **regardless of `--yes`** — so a mis-set override can never turn into an
+  accidental prod backfill. This is the load-bearing safety property of this CLI.
+- **Exit code reflects failure.** Returns `1` if any `JobRun` in the batch has
+  `status=RunStatus.FAILED`, else `0` — scriptable by an operator or a CI/ops check.
+
+## 6c. Leader election — still a single-process stub, not real cross-process election
+
+> **Implementation status, stated honestly.** `ingest/leader.py`'s own docstring says it plainly:
+> "This is the ingest-local version; a future infrastructure phase will generalize this into a
+> real cross-process election (Postgres advisory lock or a broker-based lease)." Today
+> `get_default_leader_election()` returns `AlwaysLeader` — every process that asks `is_leader()`
+> gets `True`, unconditionally. This is correct for local dev and a single-scheduler-worker
+> deployment (the only topology that exists today), and every write-path job function already
+> checks `is_leader()` before writing rather than assuming single-process forever — so swapping in
+> a real election later is a one-line change at the construction site, not a redesign. It is
+> **not** correct once ≥2 scheduler workers run concurrently; that topology has not shipped.
+> `NeverLeader` also exists, purely as a test double for asserting a write path correctly no-ops
+> under standby. Everywhere else in this doc that says "leader-elected" or "leader-gated" is
+> accurate about the *behavior* (every write path really does check leadership first) but should
+> be read with this caveat about what "leader" currently resolves to.
 
 ## 7. Store & concurrency — DuckDB/Parquet, and when to reconsider
 
