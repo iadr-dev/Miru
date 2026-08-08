@@ -1,0 +1,73 @@
+/**
+ * Single source of truth for the design tokens (design-system.md §2/§3/§5).
+ * Set once at :root per theme; components read only var(--token) — never a hardcoded hex.
+ * This file is the palette the shared mobile client is expected to consume too, so values
+ * live here and nowhere else.
+ *
+ * Off-black / off-white only (never pure #000/#fff). One accent (藍鵲 teal), chrome-only.
+ * 紅漲綠跌: --up is 漲 red, --down is 跌 green — market-data tokens, never chrome, always
+ * paired with ▲▼ + sign in components.
+ */
+
+:root,
+:root[data-theme="dark"] {
+  --bg: #0b0e13;
+  --surface: #12161d;
+  --surface-2: #1a1f28;
+  --border: #232a35;
+  --text: #e6eaf0;
+  --text-muted: #8a93a3;
+  --accent: #2dd4bf;
+  --accent-weak: #123c39;
+  /* TW market convention — RED UP / GREEN DOWN */
+  --up: #f0483e;
+  --up-weak: #2a1512;
+  --down: #1fb574;
+  --down-weak: #0e2a1e;
+  --warn: #f5a524;
+  /* categorical chart series (never signed, distinct from up/down + accent) */
+  --chart-1: #6aa9ff;
+  --chart-2: #c08cff;
+  --chart-3: #f5a524;
+  --chart-4: #4fd1c5;
+  --chart-5: #e06c9f;
+  --chart-6: #93a3b8;
+  --grid: #1a1f28;
+  --crosshair: #8a93a3;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --surface-2: #f0f2f5;
+  --border: #e2e6ec;
+  --text: #0e1319;
+  --text-muted: #5b6472;
+  --accent: #0e9e8e;
+  --accent-weak: #dcf5f1;
+  --up: #d42a20;
+  --up-weak: #fce9e7;
+  --down: #0e9e6b;
+  --down-weak: #e3f6ee;
+  --warn: #b26a00;
+  --chart-1: #3b6fd4;
+  --chart-2: #7c5ce0;
+  --chart-3: #b07d00;
+  --chart-4: #0e9e8e;
+  --chart-5: #c64c7e;
+  --chart-6: #64748b;
+  --grid: #e2e6ec;
+  --crosshair: #5b6472;
+
+  color-scheme: light;
+}
+
+/* Radius scale (locked, design-system §5) + spacing base as tokens. */
+:root {
+  --radius-card: 16px;
+  --radius-input: 10px;
+  --radius-pill: 999px;
+  --radius-button: 12px;
+}

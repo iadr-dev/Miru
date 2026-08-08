@@ -1,0 +1,85 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+/**
+ * Tailwind v4 CSS-first theme (web/CLAUDE.md §1). We expose the CSS-variable tokens as Tailwind
+ * theme values so utilities like `bg-surface` / `text-muted` / `text-up` resolve to the same
+ * single-source var — no hardcoded hex ever enters a component. `next/font` provides the two font
+ * CSS variables (--font-sans, --font-num) consumed here.
+ */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-weak: var(--accent-weak);
+  --color-up: var(--up);
+  --color-up-weak: var(--up-weak);
+  --color-down: var(--down);
+  --color-down-weak: var(--down-weak);
+  --color-warn: var(--warn);
+
+  --radius-card: var(--radius-card);
+  --radius-input: var(--radius-input);
+  --radius-pill: var(--radius-pill);
+  --radius-button: var(--radius-button);
+
+  --font-sans: var(--font-noto-sans-tc), "Inter", system-ui, sans-serif;
+  --font-num: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+body {
+  min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Body CJK air (design-system §3): 16px / line-height 1.7. */
+body {
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+/* Tabular numerals wherever the mono face is used — flicker-free, column-aligned. */
+.font-num,
+[class~="font-num"] {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus-visible ring: 2px --accent, both themes, never removed (web/CLAUDE.md §7). */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-button);
+}
+
+/* Reduced-motion: honor the OS preference globally (Tier 4–5 → stop). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Glass surfaces fall back to solid --surface under reduced transparency (web/CLAUDE.md §7). */
+@media (prefers-reduced-transparency: reduce) {
+  .glass {
+    background-color: var(--surface) !important;
+    backdrop-filter: none !important;
+  }
+}
