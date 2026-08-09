@@ -24,6 +24,7 @@ from api.dependencies import AppState, get_session, get_state, require_user, too
 from api.errors import ApiError
 from api.sse import format_sse_event
 from api.turn_driver import enforce_pre_turn_gate, start_turn_stream
+from api.turn_registry import RunningTurn
 from conversation.models import MessageBlockType, TextBlock, Thread, Turn, TurnRole
 from conversation.store import (
     ConversationStore,
@@ -174,6 +175,35 @@ def _thread_to_markdown(thread: Thread) -> str:
 # ---- turn-lifecycle actions ----------------------------------------------------------------
 
 
+async def _attach_local_stream(running: RunningTurn, after_seq: int) -> AsyncIterator[str]:
+    """Same-worker live attach — the in-memory backend has no durable/cross-worker log to
+    replay from, so this is the only path there. Pulled out of `stream_thread` purely to keep
+    that function's own branching shallow."""
+    async for event in running.event_bus.subscribe():
+        if event.seq <= after_seq:
+            continue  # already delivered before the drop — never re-send (no duplicate)
+        yield format_sse_event(event)
+        if event.kind == TURN_END_KIND:
+            break
+
+
+def _same_worker_stream_response(
+    running: RunningTurn | None, *, user_id: str, after_seq: int
+) -> StreamingResponse:
+    if running is None or running.user_id != user_id:
+        return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
+    return StreamingResponse(_attach_local_stream(running, after_seq), media_type=_SSE_MEDIA_TYPE)
+
+
+def _resolve_durable_turn_id(thread: Thread, running: RunningTurn | None) -> str | None:
+    """The turn this thread's cross-worker stream belongs to: the live registry if this worker
+    happens to hold it, else the thread's latest turn from the store (a reconnect can land on a
+    worker that never ran the turn)."""
+    if running is not None:
+        return running.turn_id
+    return thread.turns[-1].id if thread.turns else None
+
+
 @router.get("/threads/{thread_id}/stream")
 async def stream_thread(
     thread_id: str,
@@ -204,30 +234,10 @@ async def stream_thread(
     running = state.turn_registry.active_for_thread(thread_id)
     reader = state.event_bus_factory.reader()
 
-    # Same-worker live attach — no durable reader means the in-memory backend, which cannot
-    # replay, so this is the only path there. A live turn owned by the caller is attached directly.
     if reader is None:
-        if running is None or running.user_id != user.id:
-            return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
+        return _same_worker_stream_response(running, user_id=user.id, after_seq=after_seq)
 
-        async def _attach_local() -> AsyncIterator[str]:
-            async for event in running.event_bus.subscribe():
-                if event.seq <= after_seq:
-                    continue  # already delivered before the drop — never re-send (no duplicate)
-                yield format_sse_event(event)
-                if event.kind == TURN_END_KIND:
-                    break
-
-        return StreamingResponse(_attach_local(), media_type=_SSE_MEDIA_TYPE)
-
-    # Cross-worker durable resume. Resolve the turn this thread's stream belongs to: the live
-    # registry if this worker happens to hold it, else the thread's latest turn from the store
-    # (a reconnect can land on a worker that never ran the turn).
-    turn_id: str | None
-    if running is not None:
-        turn_id = running.turn_id
-    else:
-        turn_id = thread.turns[-1].id if thread.turns else None
+    turn_id = _resolve_durable_turn_id(thread, running)
     if turn_id is None:
         return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
 
