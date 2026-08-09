@@ -282,9 +282,7 @@ async def oauth_callback(
             state.settings, provider, code="oauth_state_mismatch", retryable=False
         )
     except (TokenExchangeError, IdentityVerificationError):
-        return _oauth_error_redirect(
-            state.settings, provider, code="oauth_failed", retryable=True
-        )
+        return _oauth_error_redirect(state.settings, provider, code="oauth_failed", retryable=True)
     except ProviderAlreadyLinkedError:
         return _oauth_error_redirect(
             state.settings, provider, code="provider_already_linked", retryable=False
