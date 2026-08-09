@@ -163,6 +163,12 @@ class Settings(BaseSettings):
     line_channel_secret: str | None = None
     line_redirect_uri: str | None = None
 
+    # The web app's origin. `redirect_uri` (above) points the OAuth provider at *this backend's*
+    # own /callback route (so the code-exchange leg's redirect_uri matches exactly, as the OAuth
+    # spec requires) — after that route establishes the session, it 302s the browser here rather
+    # than leaving it on a bare JSON response. No trailing slash.
+    frontend_base_url: str = "http://localhost:3000"
+
     # ---- Auth ----
     jwt_secret_key: str | None = None
     jwt_algorithm: str = "HS256"
