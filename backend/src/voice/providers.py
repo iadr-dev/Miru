@@ -42,6 +42,7 @@ class StubTranscriber:
     async def transcribe(
         self, audio: bytes, *, language: str = "zh-TW", hints: tuple[str, ...] = ()
     ) -> Transcript:
+        del hints  # accepted for Protocol conformance; a real STT adapter biases on this
         text = audio.decode("utf-8", errors="replace").strip()
         confidence = self._confidence if text else 0.0
         return Transcript(
@@ -60,6 +61,7 @@ class StubSpeaker:
         self._content_type = content_type
 
     async def speak(self, ssml_or_text: str, *, language: str = "zh-TW") -> SpeechAudio:
+        del language  # accepted for Protocol conformance; a real TTS adapter voices per-locale
         return SpeechAudio(
             audio=ssml_or_text.encode("utf-8"),
             content_type=self._content_type,

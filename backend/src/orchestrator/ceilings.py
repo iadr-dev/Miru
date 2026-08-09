@@ -130,6 +130,7 @@ class NoQuotaReserver:
     typed against the `QuotaReserver` Protocol, never a hardcoded 'always allow' branch."""
 
     async def reserve(self, *, skills: tuple[str, ...], tier: str) -> QuotaReservation:
+        del tier  # accepted for the Protocol; the permissive default grants every tier alike
         return QuotaReservation(granted=skills, degraded=())
 
 

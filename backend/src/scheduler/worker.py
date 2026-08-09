@@ -186,7 +186,6 @@ class SchedulerWorker:
 
             await self._persist_turn(session, user_id=user.id, text=result.final_text)
             await self._deliver(
-                session,
                 store,
                 user=user,
                 source=NotificationSource.SCHEDULE,
@@ -239,7 +238,6 @@ class SchedulerWorker:
 
             self._emit("alert.fired", user_id=user.id, data={"alert_id": alert.id})
             await self._deliver(
-                session,
                 store,
                 user=user,
                 source=NotificationSource.ALERT,
@@ -264,7 +262,6 @@ class SchedulerWorker:
 
     async def _deliver(  # noqa: PLR0913 — one field per delivery dimension
         self,
-        session: AsyncSession,
         store: SqlAlchemySchedulerStore,
         *,
         user: User,

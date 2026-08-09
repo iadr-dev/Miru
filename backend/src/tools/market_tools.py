@@ -38,13 +38,17 @@ from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import DateRangeInput, SymbolInput
 
+# The untyped row-list edge every `cast(...)` below narrows a `SourceResult.payload` value from
+# — one PEP-695 local alias instead of repeating the same cast-target string at every call site.
+type _RowList = list[dict[str, object]]
+
 
 def _latest_bar(payload: dict[str, object]) -> EODBar | None:
     """`price_eod` payload is `{"bars": [...]}` (FinMind, possibly many rows) or `{"bar": {...}}`
     (TWSE OpenAPI, single latest snapshot) — normalize both shapes to "the latest bar"."""
     bars = payload.get("bars")
     if isinstance(bars, list) and bars:
-        rows = cast("list[dict[str, object]]", bars)
+        rows = cast(_RowList, bars)
         return EODBar.model_validate(rows[-1])
     bar = payload.get("bar")
     if isinstance(bar, dict):
@@ -124,7 +128,7 @@ class GetDividendScheduleTool(BaseTool):
         raw_events = result.payload.get("events")
         events: tuple[DividendEvent, ...] = ()
         if isinstance(raw_events, list):
-            rows = cast("list[dict[str, object]]", raw_events)
+            rows = cast(_RowList, raw_events)
             events = tuple(DividendEvent.model_validate(row) for row in rows)
         return GetDividendScheduleOutput(
             source_id=result.source_id,
@@ -171,7 +175,7 @@ class GetInstitutionalFlowTool(BaseTool):
         raw_rows = result.payload.get("rows")
         rows: tuple[InstitutionalFlowRow, ...] = ()
         if isinstance(raw_rows, list):
-            typed_rows = cast("list[dict[str, object]]", raw_rows)
+            typed_rows = cast(_RowList, raw_rows)
             rows = tuple(InstitutionalFlowRow.model_validate(row) for row in typed_rows)
         return GetInstitutionalFlowOutput(
             source_id=result.source_id,
@@ -224,7 +228,7 @@ class GetChipFlowsTool(BaseTool):
         raw_rows = result.payload.get("rows")
         rows: tuple[ChipBrokerRow, ...] = ()
         if isinstance(raw_rows, list):
-            typed_rows = cast("list[dict[str, object]]", raw_rows)
+            typed_rows = cast(_RowList, raw_rows)
             rows = tuple(ChipBrokerRow.model_validate(row) for row in typed_rows)
         return GetChipFlowsOutput(
             source_id=result.source_id,
@@ -355,6 +359,78 @@ class GetActiveEtfReportOutput(BaseModel):
     rows: tuple[ActiveEtfReportRow, ...] = Field(default_factory=tuple)
 
 
+def _active_etf_report_row(
+    change: ActiveEtfHoldingChangeRow,
+    *,
+    prior_row: ActiveEtfHoldingRow | None,
+    current_row: ActiveEtfHoldingRow | None,
+    has_prior_day: bool,
+) -> ActiveEtfReportRow:
+    """One changed constituent's report row — pulled out of `GetActiveEtfReportTool.run` purely
+    to keep that method's own branching shallow; identical status/delta computation, just
+    named."""
+    status = _classify_holding_status(
+        buy=change.buy,
+        sell=change.sell,
+        prior_weight=prior_row.weight if prior_row else None,
+        current_weight=current_row.weight if current_row else None,
+        has_prior_day=has_prior_day,
+    )
+    shares_delta = change.buy - change.sell
+    pct_change = shares_delta / prior_row.shares if prior_row and prior_row.shares else None
+    weight_delta_pct = current_row.weight - prior_row.weight if current_row and prior_row else None
+    return ActiveEtfReportRow(
+        component_stock_id=change.component_stock_id,
+        component_stock_name=change.component_stock_name,
+        status=status,
+        shares_delta=shares_delta,
+        pct_change=pct_change,
+        current_weight=current_row.weight if current_row else None,
+        weight_delta_pct=weight_delta_pct,
+    )
+
+
+def _active_etf_report_rows(
+    changes: tuple[ActiveEtfHoldingChangeRow, ...],
+    *,
+    prior_holdings: dict[str, ActiveEtfHoldingRow],
+    report_holdings: dict[str, ActiveEtfHoldingRow],
+    has_prior_day: bool,
+) -> list[ActiveEtfReportRow]:
+    rows: list[ActiveEtfReportRow] = []
+    for change in changes:
+        if change.buy == 0 and change.sell == 0:
+            continue  # defensive — FinMind documents exactly one non-zero per row
+        rows.append(
+            _active_etf_report_row(
+                change,
+                prior_row=prior_holdings.get(change.component_stock_id),
+                current_row=report_holdings.get(change.component_stock_id),
+                has_prior_day=has_prior_day,
+            )
+        )
+    return rows
+
+
+def _active_etf_fund_size_fields(
+    *,
+    report_holdings: dict[str, ActiveEtfHoldingRow],
+    prior_holdings: dict[str, ActiveEtfHoldingRow],
+) -> tuple[float | None, float | None, float | None]:
+    """`(fund_size, fund_size_prior, fund_size_change_pct)` — pulled out of
+    `GetActiveEtfReportTool.run` for the same shallow-branching reason as the row-builders."""
+    fund_size = sum(h.market_value for h in report_holdings.values()) if report_holdings else None
+    fund_size_prior = (
+        sum(h.market_value for h in prior_holdings.values()) if prior_holdings else None
+    )
+    fund_size_change_pct = (
+        (fund_size - fund_size_prior) / fund_size_prior
+        if fund_size is not None and fund_size_prior
+        else None
+    )
+    return fund_size, fund_size_prior, fund_size_change_pct
+
+
 class GetActiveEtfReportTool(BaseTool):
     """`get_active_etf_report` — 主動式ETF 操作日報 for one ETF: per-holding 新增/刪除/加碼/減碼 +
     變動張數/幅度 + 目前權重/權重變動% + 基金規模較前日 (折溢價 unavailable, see
@@ -392,7 +468,7 @@ class GetActiveEtfReportTool(BaseTool):
         raw_holdings = holding_result.payload.get("holdings")
         holdings: tuple[ActiveEtfHoldingRow, ...] = ()
         if isinstance(raw_holdings, list):
-            typed_holdings = cast("list[dict[str, object]]", raw_holdings)
+            typed_holdings = cast(_RowList, raw_holdings)
             holdings = tuple(ActiveEtfHoldingRow.model_validate(row) for row in typed_holdings)
 
         if not holdings:
@@ -424,49 +500,17 @@ class GetActiveEtfReportTool(BaseTool):
         raw_changes = change_result.payload.get("changes")
         changes: tuple[ActiveEtfHoldingChangeRow, ...] = ()
         if isinstance(raw_changes, list):
-            typed_changes = cast("list[dict[str, object]]", raw_changes)
+            typed_changes = cast(_RowList, raw_changes)
             changes = tuple(ActiveEtfHoldingChangeRow.model_validate(row) for row in typed_changes)
 
-        rows: list[ActiveEtfReportRow] = []
-        for change in changes:
-            if change.buy == 0 and change.sell == 0:
-                continue  # defensive — FinMind documents exactly one non-zero per row
-            prior_row = prior_holdings.get(change.component_stock_id)
-            current_row = report_holdings.get(change.component_stock_id)
-            status = _classify_holding_status(
-                buy=change.buy,
-                sell=change.sell,
-                prior_weight=prior_row.weight if prior_row else None,
-                current_weight=current_row.weight if current_row else None,
-                has_prior_day=prior_date is not None,
-            )
-            shares_delta = change.buy - change.sell
-            pct_change = shares_delta / prior_row.shares if prior_row and prior_row.shares else None
-            weight_delta_pct = (
-                current_row.weight - prior_row.weight if current_row and prior_row else None
-            )
-            rows.append(
-                ActiveEtfReportRow(
-                    component_stock_id=change.component_stock_id,
-                    component_stock_name=change.component_stock_name,
-                    status=status,
-                    shares_delta=shares_delta,
-                    pct_change=pct_change,
-                    current_weight=current_row.weight if current_row else None,
-                    weight_delta_pct=weight_delta_pct,
-                )
-            )
-
-        fund_size = (
-            sum(h.market_value for h in report_holdings.values()) if report_holdings else None
+        rows = _active_etf_report_rows(
+            changes,
+            prior_holdings=prior_holdings,
+            report_holdings=report_holdings,
+            has_prior_day=prior_date is not None,
         )
-        fund_size_prior = (
-            sum(h.market_value for h in prior_holdings.values()) if prior_holdings else None
-        )
-        fund_size_change_pct = (
-            (fund_size - fund_size_prior) / fund_size_prior
-            if fund_size is not None and fund_size_prior
-            else None
+        fund_size, fund_size_prior, fund_size_change_pct = _active_etf_fund_size_fields(
+            report_holdings=report_holdings, prior_holdings=prior_holdings
         )
 
         return GetActiveEtfReportOutput(
@@ -723,7 +767,7 @@ class GetCompanyProfileTool(BaseTool):
         latest_dividend: DividendEvent | None = None
         raw_events = dividend_result.payload.get("events")
         if isinstance(raw_events, list) and raw_events:
-            rows = cast("list[dict[str, object]]", raw_events)
+            rows = cast(_RowList, raw_events)
             latest_dividend = DividendEvent.model_validate(rows[-1])
 
         return GetCompanyProfileOutput(
