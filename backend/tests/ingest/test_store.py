@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from ingest.reader import ParquetMarketDataReader
 from ingest.store import ParquetStore
 
 
@@ -96,6 +97,31 @@ def test_crash_before_rename_leaves_prior_partition_intact(tmp_path: object) -> 
     # Sweeping never touches the good partition.
     read_back_after_sweep = store.read_partition("TaiwanStockPrice", "TW", date(2024, 1, 2))
     assert len(read_back_after_sweep) == 1
+
+
+def test_reader_glob_reads_across_mixed_empty_and_real_schema_partitions(tmp_path: object) -> None:
+    """A dataset with some empty trading days (the `_empty`-placeholder schema) alongside real
+    ones (the actual row schema) must still be readable by `ParquetMarketDataReader`, the
+    cross-date glob reader — reproduces the real `schema mismatch in glob` crash found against
+    the live US backfill (an empty US market holiday partition sitting beside a real-data one)."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        "us_price_eod", "US", date(2023, 9, 21), [{"symbol": "AAPL", "close": 175.0}]
+    )
+    store.write_partition("us_price_eod", "US", date(2023, 11, 23), [])  # empty-schema partition
+    store.write_partition(
+        "us_price_eod", "US", date(2023, 11, 24), [{"symbol": "AAPL", "close": 190.0}]
+    )
+
+    reader = ParquetMarketDataReader(root=tmp_path)
+    try:
+        rows = reader.read_range(
+            "us_price_eod", "US", [date(2023, 9, 21), date(2023, 11, 23), date(2023, 11, 24)]
+        )
+    finally:
+        reader.close()
+
+    assert [r["symbol"] for r in rows] == ["AAPL", "AAPL"]
 
 
 def test_read_range_concatenates_written_partitions_and_skips_gaps(tmp_path: object) -> None:
