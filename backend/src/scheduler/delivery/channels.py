@@ -37,6 +37,8 @@ from scheduler.models import DeliveryChannelKind
 
 logger = structlog.get_logger(__name__)
 
+_JSON_CONTENT_TYPE = "application/json"
+
 
 class ChannelNotConfiguredError(RuntimeError):
     """A channel was asked to send but its credential/recipient is missing — surfaced as a
@@ -101,7 +103,7 @@ class LineMessagingChannel:
             url=self._PUSH_URL,
             headers={
                 "Authorization": f"Bearer {self._token or ''}",
-                "Content-Type": "application/json",
+                "Content-Type": _JSON_CONTENT_TYPE,
             },
             json={
                 "to": recipient.line_user_id,
@@ -131,7 +133,7 @@ class TelegramChannel:
         return OutboundRequest(
             method="POST",
             url=f"https://api.telegram.org/bot{self._token or ''}/sendMessage",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": _JSON_CONTENT_TYPE},
             json={
                 "chat_id": recipient.telegram_chat_id,
                 "text": f"{notification.title}\n{notification.body}".strip(),
@@ -189,7 +191,7 @@ class PushChannel:
         return OutboundRequest(
             method="POST",
             url="https://fcm.googleapis.com/v1/messages:send",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": _JSON_CONTENT_TYPE},
             json={
                 "tokens": list(recipient.device_tokens),
                 "notification": {"title": notification.title, "body": notification.body},

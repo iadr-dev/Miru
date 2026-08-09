@@ -33,14 +33,15 @@ from conversation.store import (
     ThreadNotFoundError,
     TurnNotFoundError,
 )
-from events.bus import Event
+from events.bus import TURN_END_KIND, Event
 from events.factory import StreamReader
 from feedback.store import FeedbackRecord, FeedbackStore, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
 router = APIRouter(tags=["threads"])
 
-_TERMINAL_KIND = "turn.end"
+_SSE_MEDIA_TYPE = "text/event-stream"
+_NO_SOURCE_USER_TURN_MESSAGE = "This assistant turn has no source user turn to re-run."
 
 
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
@@ -207,17 +208,17 @@ async def stream_thread(
     # replay, so this is the only path there. A live turn owned by the caller is attached directly.
     if reader is None:
         if running is None or running.user_id != user.id:
-            return StreamingResponse(iter([]), media_type="text/event-stream")
+            return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
 
         async def _attach_local() -> AsyncIterator[str]:
             async for event in running.event_bus.subscribe():
                 if event.seq <= after_seq:
                     continue  # already delivered before the drop — never re-send (no duplicate)
                 yield format_sse_event(event)
-                if event.kind == _TERMINAL_KIND:
+                if event.kind == TURN_END_KIND:
                     break
 
-        return StreamingResponse(_attach_local(), media_type="text/event-stream")
+        return StreamingResponse(_attach_local(), media_type=_SSE_MEDIA_TYPE)
 
     # Cross-worker durable resume. Resolve the turn this thread's stream belongs to: the live
     # registry if this worker happens to hold it, else the thread's latest turn from the store
@@ -228,11 +229,11 @@ async def stream_thread(
     else:
         turn_id = thread.turns[-1].id if thread.turns else None
     if turn_id is None:
-        return StreamingResponse(iter([]), media_type="text/event-stream")
+        return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
 
     return StreamingResponse(
         _resume_stream(reader, turn_id=turn_id, after_seq=after_seq),
-        media_type="text/event-stream",
+        media_type=_SSE_MEDIA_TYPE,
     )
 
 
@@ -279,7 +280,7 @@ async def _resume_stream(
         for event in await reader.replay_since(turn_id, after_seq):
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == _TERMINAL_KIND:
+            if event.kind == TURN_END_KIND:
                 return
         # Follow live from the queue, de-duplicating against what replay already covered.
         while True:
@@ -288,7 +289,7 @@ async def _resume_stream(
                 continue
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == _TERMINAL_KIND:
+            if event.kind == TURN_END_KIND:
                 return
     finally:
         buffer_task.cancel()
@@ -477,7 +478,7 @@ async def _source_user_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message="This assistant turn has no source user turn to re-run.",
+            message=_NO_SOURCE_USER_TURN_MESSAGE,
             retryable=False,
         )
     try:
@@ -486,7 +487,7 @@ async def _source_user_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message="This assistant turn has no source user turn to re-run.",
+            message=_NO_SOURCE_USER_TURN_MESSAGE,
             retryable=False,
         ) from exc
     return await _load_turn(
@@ -533,7 +534,7 @@ async def regenerate_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message="This assistant turn has no source user turn to re-run.",
+            message=_NO_SOURCE_USER_TURN_MESSAGE,
             retryable=False,
         )
     sibling_parent_id = source_user_turn.messages[-1].id
