@@ -86,6 +86,11 @@ from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
 
+# The untyped payload-list edge every `cast(...)` below narrows from — same PEP-695 local alias
+# convention as `sources/etf_pcf.py`/`sources/news.py` use for their own `SourceResult.payload`
+# unwrapping, so `cast(_UntypedList, ...)` isn't a repeated string literal at every call site.
+type _UntypedList = list[object]
+
 # Mirrors `tools/analyst_tools.py`'s own `_NON_TW_MARKETS`/`_validate_non_tw` (the yfinance
 # non-TW-primary capability set `FUND_HOLDINGS` is served for) — duplicated rather than
 # importing that module's private names across a tool-group boundary; both sets are pinned to
@@ -217,9 +222,7 @@ class GetEtfOverlapTool(BaseTool):
             if result.health.status != HealthStatus.OK or not isinstance(raw_holdings, list):
                 unavailable.append(symbol.id)
                 continue
-            rows = [
-                FundHoldingRow.model_validate(row) for row in cast("list[object]", raw_holdings)
-            ]
+            rows = [FundHoldingRow.model_validate(row) for row in cast(_UntypedList, raw_holdings)]
             if not rows:
                 unavailable.append(symbol.id)
                 continue
@@ -381,8 +384,103 @@ def _sector_weighting_strings(payload: dict[str, object]) -> tuple[str, ...]:
     raw = payload.get("sector_weightings")
     if not isinstance(raw, list):
         return ()
-    rows = [FundSectorWeightingRow.model_validate(r) for r in cast("list[object]", raw)]
+    rows = [FundSectorWeightingRow.model_validate(r) for r in cast(_UntypedList, raw)]
     return tuple(f"{row.sector} ({row.weight * 100:.1f}%)" for row in rows)
+
+
+async def _fund_comparison_return_fields(
+    router: DataAccessRouter,
+    symbol: Symbol,
+    *,
+    ctx: ToolContext,
+    window_start: date_,
+    window_end: date_,
+) -> tuple[float | None, str | None]:
+    """`(total_return_pct, price_unavailable_reason)` — pulled out of
+    `GetFundComparisonTool.run` purely to keep that method's own branching shallow."""
+    price_result = await router.fetch(
+        Capability.PRICE_EOD,
+        symbol,
+        tls_policy=ctx.tls_policy,
+        start_date=window_start.isoformat(),
+        end_date=window_end.isoformat(),
+    )
+    raw_bars = price_result.payload.get("bars")
+    bars = (
+        [EODBar.model_validate(b) for b in cast(_UntypedList, raw_bars)]
+        if isinstance(raw_bars, list)
+        else []
+    )
+    if not bars:
+        return None, (
+            f"No usable price history: {price_result.health.status.value} "
+            f"({price_result.currentness_caveat})"
+        )
+
+    dividend_result = await router.fetch(
+        Capability.DIVIDENDS,
+        symbol,
+        tls_policy=ctx.tls_policy,
+        start_date=window_start.isoformat(),
+        end_date=window_end.isoformat(),
+    )
+    raw_events = dividend_result.payload.get("events")
+    events = (
+        [DividendEvent.model_validate(e) for e in cast(_UntypedList, raw_events)]
+        if isinstance(raw_events, list)
+        else []
+    )
+    total_return = _total_return_with_dividends_reinvested(bars, events, window_start, window_end)
+    if total_return is None:
+        return None, (
+            "Fewer than two price bars fell inside the requested window — total return cannot "
+            "be computed."
+        )
+    return total_return, None
+
+
+async def _fund_comparison_profile_fields(
+    router: DataAccessRouter, symbol: Symbol, *, ctx: ToolContext
+) -> tuple[tuple[str, ...], EtfFundInfo | None, str | None]:
+    """`(sector_weightings, fund_info, unavailable_note)` — pulled out of
+    `GetFundComparisonTool.run` for the same shallow-branching reason as the return fields."""
+    if symbol.market is Market.TW:
+        fund_result = await router.fetch(Capability.ETF_HOLDINGS, symbol, tls_policy=ctx.tls_policy)
+        raw_info = fund_result.payload.get("info")
+        fund_info = EtfFundInfo.model_validate(raw_info) if isinstance(raw_info, dict) else None
+        return (), fund_info, _TW_HOLDINGS_GAP_NOTE
+    holdings_result = await router.fetch(
+        Capability.FUND_HOLDINGS, symbol, tls_policy=ctx.tls_policy
+    )
+    return _sector_weighting_strings(holdings_result.payload), None, None
+
+
+async def _fund_comparison_row(
+    router: DataAccessRouter,
+    symbol_input: SymbolInput,
+    *,
+    ctx: ToolContext,
+    window_start: date_,
+    window_end: date_,
+) -> FundComparisonRow:
+    symbol = symbol_input.to_symbol()
+    total_return, price_unavailable_reason = await _fund_comparison_return_fields(
+        router, symbol, ctx=ctx, window_start=window_start, window_end=window_end
+    )
+    sector_weightings, fund_info, unavailable_note = await _fund_comparison_profile_fields(
+        router, symbol, ctx=ctx
+    )
+    return FundComparisonRow(
+        symbol=symbol.id,
+        market=symbol.market.value,
+        window_start=window_start,
+        window_end=window_end,
+        total_return_pct=total_return,
+        price_unavailable_reason=price_unavailable_reason,
+        sector_weightings=sector_weightings,
+        fund_info=fund_info,
+        unavailable_note=unavailable_note,
+    )
 
 
 class GetFundComparisonTool(BaseTool):
@@ -408,86 +506,16 @@ class GetFundComparisonTool(BaseTool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetFundComparisonInput, args)
         window_start, window_end = typed.window()
-
-        rows: list[FundComparisonRow] = []
-        for symbol_input in typed.symbols:
-            symbol = symbol_input.to_symbol()
-            price_result = await self._router.fetch(
-                Capability.PRICE_EOD,
-                symbol,
-                tls_policy=ctx.tls_policy,
-                start_date=window_start.isoformat(),
-                end_date=window_end.isoformat(),
+        rows = [
+            await _fund_comparison_row(
+                self._router,
+                symbol_input,
+                ctx=ctx,
+                window_start=window_start,
+                window_end=window_end,
             )
-            raw_bars = price_result.payload.get("bars")
-            bars = (
-                [EODBar.model_validate(b) for b in cast("list[object]", raw_bars)]
-                if isinstance(raw_bars, list)
-                else []
-            )
-
-            dividend_result = await self._router.fetch(
-                Capability.DIVIDENDS,
-                symbol,
-                tls_policy=ctx.tls_policy,
-                start_date=window_start.isoformat(),
-                end_date=window_end.isoformat(),
-            )
-            raw_events = dividend_result.payload.get("events")
-            events = (
-                [DividendEvent.model_validate(e) for e in cast("list[object]", raw_events)]
-                if isinstance(raw_events, list)
-                else []
-            )
-
-            total_return: float | None = None
-            price_unavailable_reason: str | None = None
-            if bars:
-                total_return = _total_return_with_dividends_reinvested(
-                    bars, events, window_start, window_end
-                )
-                if total_return is None:
-                    price_unavailable_reason = (
-                        "Fewer than two price bars fell inside the requested window — total "
-                        "return cannot be computed."
-                    )
-            else:
-                price_unavailable_reason = (
-                    f"No usable price history: {price_result.health.status.value} "
-                    f"({price_result.currentness_caveat})"
-                )
-
-            sector_weightings: tuple[str, ...] = ()
-            fund_info: EtfFundInfo | None = None
-            unavailable_note: str | None = None
-            if symbol.market is Market.TW:
-                unavailable_note = _TW_HOLDINGS_GAP_NOTE
-                fund_result = await self._router.fetch(
-                    Capability.ETF_HOLDINGS, symbol, tls_policy=ctx.tls_policy
-                )
-                raw_info = fund_result.payload.get("info")
-                if isinstance(raw_info, dict):
-                    fund_info = EtfFundInfo.model_validate(raw_info)
-            else:
-                holdings_result = await self._router.fetch(
-                    Capability.FUND_HOLDINGS, symbol, tls_policy=ctx.tls_policy
-                )
-                sector_weightings = _sector_weighting_strings(holdings_result.payload)
-
-            rows.append(
-                FundComparisonRow(
-                    symbol=symbol.id,
-                    market=symbol.market.value,
-                    window_start=window_start,
-                    window_end=window_end,
-                    total_return_pct=total_return,
-                    price_unavailable_reason=price_unavailable_reason,
-                    sector_weightings=sector_weightings,
-                    fund_info=fund_info,
-                    unavailable_note=unavailable_note,
-                )
-            )
-
+            for symbol_input in typed.symbols
+        ]
         return GetFundComparisonOutput(rows=tuple(rows))
 
 

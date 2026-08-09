@@ -79,8 +79,13 @@ class ParquetMarketDataReader:
         if version_dir is None:
             return []
         parquet_glob = str(version_dir / "*.parquet")
+        # `union_by_name`: a genuinely-empty trading day writes a placeholder `_empty` column
+        # (`ParquetStore.write_partition`'s empty-rows case), a different schema than a real-data
+        # write for the same dataset — `read_range` globs across dates that can mix both, and
+        # DuckDB's default glob read rejects any schema mismatch outright.
         relation = self._con.execute(
-            "SELECT * FROM read_parquet(?, hive_partitioning => true)", [parquet_glob]
+            "SELECT * FROM read_parquet(?, hive_partitioning => true, union_by_name => true)",
+            [parquet_glob],
         )
         columns = [d[0] for d in relation.description or []]
         return [dict(zip(columns, row, strict=True)) for row in relation.fetchall()]

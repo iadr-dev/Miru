@@ -10,7 +10,7 @@ name: miro
 
 x-app-env: &app-env
   # App state on the compose Postgres; async driver required.
-  DATABASE_URL: postgresql+asyncpg://miro:${POSTGRES_PASSWORD:-miro_dev_pw}@postgres:5432/miro
+  DATABASE_URL: postgresql+asyncpg://miro:${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}@postgres:5432/miro
   # The whole point of the dev-parity stack: real Redis, real Redis-backed transport + limiter,
   # so the code paths that only activate on the redis backend actually run here.
   REDIS_URL: redis://redis:6379/0
@@ -40,7 +40,7 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: miro
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-miro_dev_pw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}
       POSTGRES_DB: miro
     volumes:
       - pgdata:/var/lib/postgresql/data

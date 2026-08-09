@@ -1,0 +1,81 @@
+{
+  "brand": {
+    "name": "了然 · Miru",
+    "logoAlt": "了然 · Miru logo"
+  },
+  "topbar": {
+    "signIn": "Sign in",
+    "register": "Register",
+    "theme": {
+      "toDark": "Switch to dark mode",
+      "toLight": "Switch to light mode"
+    },
+    "language": {
+      "label": "Language",
+      "zh-TW": "繁體中文",
+      "en": "English",
+      "switchTo": "Switch language to {language}"
+    }
+  },
+  "hero": {
+    "tagline": "Your AI analysis companion for Taiwan stocks & ETFs",
+    "subtitle": "Ask a question about Taiwan's market — Miru walks you through the data, the tape, and the flows.",
+    "composer": {
+      "label": "Ask Miru",
+      "placeholder": "Ask me anything about Taiwan stocks — e.g. how have TSMC's institutional flows shifted lately?",
+      "send": "Send",
+      "signInToSend": "Sign in to start a conversation",
+      "signInPrompt": "Sign in to chat with Miru",
+      "signInPromptBody": "Chat requires an account. Your question is kept and ready to send the moment you sign in."
+    }
+  },
+  "auth": {
+    "modal": {
+      "signInTitle": "Sign in to 了然 · Miru",
+      "registerTitle": "Create your 了然 · Miru account",
+      "signInSubtitle": "Continue with your account.",
+      "registerSubtitle": "Create an account to start chatting with Miru.",
+      "close": "Close",
+      "continueWithGoogle": "Continue with Google",
+      "continueWithLine": "Continue with LINE",
+      "orDivider": "or",
+      "terms": "By continuing you agree to our Terms of Service and Privacy Policy."
+    },
+    "state": {
+      "redirecting": "Taking you to {provider} sign-in…",
+      "completing": "Finishing sign-in…"
+    },
+    "provider": {
+      "google": "Google",
+      "line": "LINE"
+    },
+    "error": {
+      "title": "Sign-in didn't finish",
+      "provider_unconfigured": "{provider} sign-in isn't configured in this environment — please use another method.",
+      "oauth_state_mismatch": "Your sign-in session expired. Please try again.",
+      "oauth_failed": "Sign-in couldn't be completed. Please try again.",
+      "provider_already_linked": "That {provider} account is already linked to another user.",
+      "unknown_provider": "Unsupported sign-in method.",
+      "network_error": "Couldn't reach the sign-in service. Please try again shortly.",
+      "bad_response": "The sign-in service returned an unexpected response. Please try again.",
+      "missing_params": "The sign-in link is incomplete. Please sign in again.",
+      "retry": "Try again",
+      "back": "Back to home",
+      "lineRetry": "Sign in with LINE's regular browser"
+    }
+  },
+  "market": {
+    "stub": {
+      "signedIn": "You're signed in",
+      "body": "The market dashboard is coming soon. This is the default landing page after sign-in.",
+      "signOut": "Sign out"
+    }
+  },
+  "disclaimer": {
+    "text": "Analysis from 了然 · Miru is data observation, not investment advice."
+  },
+  "meta": {
+    "title": "了然 · Miru — AI analysis companion for Taiwan stocks",
+    "description": "了然 · Miru is an AI analysis companion for Taiwan stocks & ETFs — data, the tape, and the flows. Its analysis is data observation, not investment advice."
+  }
+}

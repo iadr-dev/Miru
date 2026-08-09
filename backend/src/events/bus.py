@@ -20,6 +20,12 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# The one lifecycle `kind` every turn-driving path (turn_driver, turn_lifecycle) publishes on
+# completion/cancel/error, and every SSE consumer (threads_actions' resume/attach paths) checks
+# for to know a stream is over — named here, in the shared envelope module, so it is one string
+# literal instead of copies drifting across publisher and subscriber sides.
+TURN_END_KIND = "turn.end"
+
 
 class Event(BaseModel):
     """The correlation envelope every event carries, projected verbatim to the SSE frame and
@@ -116,4 +122,4 @@ class InMemoryEventBus:
             self._subscribers.pop(subscriber_id, None)
 
 
-__all__ = ["Event", "EventBus", "InMemoryEventBus"]
+__all__ = ["TURN_END_KIND", "Event", "EventBus", "InMemoryEventBus"]

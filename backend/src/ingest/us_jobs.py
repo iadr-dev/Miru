@@ -67,6 +67,14 @@ _ONE_DAY = timedelta(days=1)
 # calls is the only lever available.
 _YFINANCE_THROTTLE_SECONDS = 0.5
 
+# `batch_download` genuinely batches within one call, but a long-running backfill drives many
+# such calls back-to-back (one per date) — confirmed empirically on the first live US backfill:
+# per-day symbol coverage degraded across consecutive calls (244/250 -> 44/250 within ~3 months
+# of simulated trading days) until the run stopped making progress entirely. A pause between
+# dates is the same mitigation `_YFINANCE_THROTTLE_SECONDS` is for the fundamentals fan-out,
+# just at the "one call per date" granularity instead of "one call per symbol".
+_US_PRICE_BACKFILL_THROTTLE_SECONDS = 3.0
+
 
 def _as_float(value: object) -> float | None:
     """Coerce an untyped upstream pandas/numpy scalar to a plain float, treating NaN/None as
@@ -86,65 +94,80 @@ def _as_int(value: object) -> int | None:
     return int(as_float) if as_float is not None else None
 
 
-def _rows_from_price_frame(frame: Any, run_date: date_) -> list[dict[str, object]]:
+def _multi_symbol_row(row: Any, symbol: str, trade_date_iso: str) -> dict[str, object] | None:
+    """One symbol's row out of a MultiIndex-columned frame, or `None` if that symbol has no
+    `Close` for this trade date (a genuine gap, e.g. a symbol newly listed after this date)."""
+    try:
+        close = _as_float(row[(symbol, "Close")])
+    except KeyError:
+        return None
+    if close is None:
+        return None
+    return {
+        "symbol": symbol,
+        "market": Market.US.value,
+        "trade_date": trade_date_iso,
+        "open": _as_float(row.get((symbol, "Open"))),
+        "high": _as_float(row.get((symbol, "High"))),
+        "low": _as_float(row.get((symbol, "Low"))),
+        "close": close,
+        "volume": _as_int(row.get((symbol, "Volume"))) or 0,
+        "turnover": None,
+    }
+
+
+def _single_symbol_row(row: Any, trade_date_iso: str) -> dict[str, object] | None:
+    """The single-symbol MultiIndex-collapse case's row — `symbol` is left unset (`None`) since
+    this shape carries no symbol column of its own; `job_us_price_eod` backfills it once the one
+    requested symbol is known."""
+    close = _as_float(row.get("Close"))
+    if close is None:
+        return None
+    return {
+        "symbol": None,
+        "market": Market.US.value,
+        "trade_date": trade_date_iso,
+        "open": _as_float(row.get("Open")),
+        "high": _as_float(row.get("High")),
+        "low": _as_float(row.get("Low")),
+        "close": close,
+        "volume": _as_int(row.get("Volume")) or 0,
+        "turnover": None,
+    }
+
+
+def _frame_symbols(columns: Any) -> list[str]:
+    if not isinstance(columns, pd.MultiIndex):
+        return []
+    pairs = cast("list[tuple[Any, Any]]", list(columns))
+    return sorted({str(sym) for sym, _field in pairs})
+
+
+def _rows_from_price_frame(frame: Any) -> list[dict[str, object]]:
     """Row-map `batch_download`'s raw `yf.download([...], group_by='ticker')` MultiIndex
     DataFrame into the flat per-symbol-per-day rows `ParquetStore.write_partition` expects — the
     "ingest layer's own row-mapper" responsibility `batch.py`'s docstring calls out explicitly.
 
     `yf.download` with multiple symbols returns columns as a `(symbol, field)` MultiIndex; a
     single-symbol frame collapses to a plain `field` index instead — both shapes are handled so
-    a one-symbol universe (e.g. in a test) doesn't need special-casing by the caller. `symbol` is
-    left unset (`None`) in the single-symbol case since that shape carries no symbol column of
-    its own; `job_us_price_eod` backfills it once the one requested symbol is known.
+    a one-symbol universe (e.g. in a test) doesn't need special-casing by the caller.
     """
     if not isinstance(frame, pd.DataFrame) or frame.empty:
         return []
+    symbols = _frame_symbols(frame.columns)
     rows: list[dict[str, object]] = []
-    columns = frame.columns
-    symbols: list[str] = []
-    if isinstance(columns, pd.MultiIndex):
-        pairs = cast("list[tuple[Any, Any]]", list(columns))
-        symbols = sorted({str(sym) for sym, _field in pairs})
     for trade_date, row in frame.iterrows():
         trade_date_iso = pd.Timestamp(cast("Any", trade_date)).date().isoformat()
         if symbols:
-            for symbol in symbols:
-                try:
-                    close = _as_float(cast("Any", row[(symbol, "Close")]))
-                except KeyError:
-                    continue
-                if close is None:
-                    continue
-                rows.append(
-                    {
-                        "symbol": symbol,
-                        "market": Market.US.value,
-                        "trade_date": trade_date_iso,
-                        "open": _as_float(cast("Any", row.get((symbol, "Open")))),
-                        "high": _as_float(cast("Any", row.get((symbol, "High")))),
-                        "low": _as_float(cast("Any", row.get((symbol, "Low")))),
-                        "close": close,
-                        "volume": _as_int(cast("Any", row.get((symbol, "Volume")))) or 0,
-                        "turnover": None,
-                    }
-                )
-        else:
-            close = _as_float(cast("Any", row.get("Close")))
-            if close is None:
-                continue
-            rows.append(
-                {
-                    "symbol": None,
-                    "market": Market.US.value,
-                    "trade_date": trade_date_iso,
-                    "open": _as_float(cast("Any", row.get("Open"))),
-                    "high": _as_float(cast("Any", row.get("High"))),
-                    "low": _as_float(cast("Any", row.get("Low"))),
-                    "close": close,
-                    "volume": _as_int(cast("Any", row.get("Volume"))) or 0,
-                    "turnover": None,
-                }
+            rows.extend(
+                mapped
+                for symbol in symbols
+                if (mapped := _multi_symbol_row(row, symbol, trade_date_iso)) is not None
             )
+        else:
+            mapped = _single_symbol_row(row, trade_date_iso)
+            if mapped is not None:
+                rows.append(mapped)
     return rows
 
 
@@ -195,7 +218,7 @@ async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
             detail=str(exc),
         )
 
-    rows = _rows_from_price_frame(frame, run_date)
+    rows = _rows_from_price_frame(frame)
     if len(symbols) == 1 and rows:
         # The single-symbol MultiIndex-collapse case (see `_rows_from_price_frame`) — the one
         # requested symbol is unambiguous, so backfill it onto the row the frame-mapper left
@@ -374,7 +397,12 @@ async def backfill_us_price_range(
             d for d in dates if not ctx.store.has_partition(US_PRICE_EOD_DATASET, market, d)
         )
     runs: list[JobRun] = []
-    for run_date in dates:
+    for i, run_date in enumerate(dates):
+        if i:
+            # Paced, not back-to-back: see `_US_PRICE_BACKFILL_THROTTLE_SECONDS`'s docstring —
+            # `batch_download`'s own internal per-symbol threading has no cooldown of its own,
+            # and consecutive calls within one backfill run compound into escalating rate-limits.
+            await asyncio.sleep(_US_PRICE_BACKFILL_THROTTLE_SECONDS)
         runs.append(await job_us_price_eod(run_date, ctx))
     return tuple(runs)
 

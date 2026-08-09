@@ -156,6 +156,7 @@ class GoogleOAuthProvider:
         code_challenge: str | None = None,
         nonce: str | None = None,
     ) -> str:
+        del code_challenge, nonce  # accepted for the Protocol; Google's flow here uses neither
         params = {
             "client_id": self._client_id,
             "redirect_uri": self._redirect_uri,
@@ -170,6 +171,7 @@ class GoogleOAuthProvider:
     async def exchange_code(
         self, *, code: str, code_verifier: str | None = None
     ) -> ProviderTokenResponse:
+        del code_verifier  # accepted for the Protocol; Google's flow here uses no PKCE verifier
         data = {
             "code": code,
             "client_id": self._client_id,
@@ -185,6 +187,7 @@ class GoogleOAuthProvider:
         return client.get_signing_key_from_jwt(id_token).key
 
     async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> VerifiedIdentity:
+        del nonce  # accepted for the Protocol; Google's ID-token claims carry no nonce to check
         # JWKS resolution and RS256 verification are blocking (urllib fetch + crypto); keep them
         # off the event loop.
         signing_key: Any = await anyio.to_thread.run_sync(self._resolve_key, id_token)

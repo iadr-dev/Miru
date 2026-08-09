@@ -43,6 +43,7 @@ class AnonymousOnlyResolver:
     until a real accounts-backed resolver is injected."""
 
     async def resolve(self, api_key: str) -> tuple[str, Tier] | None:
+        del api_key  # accepted for the Protocol; this resolver recognizes no key by design
         return None
 
 

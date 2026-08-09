@@ -1,0 +1,81 @@
+{
+  "brand": {
+    "name": "了然 · Miru",
+    "logoAlt": "了然 · Miru 標誌"
+  },
+  "topbar": {
+    "signIn": "登入",
+    "register": "註冊",
+    "theme": {
+      "toDark": "切換至深色模式",
+      "toLight": "切換至淺色模式"
+    },
+    "language": {
+      "label": "語言",
+      "zh-TW": "繁體中文",
+      "en": "English",
+      "switchTo": "切換語言至 {language}"
+    }
+  },
+  "hero": {
+    "tagline": "台股與 ETF 的 AI 分析夥伴",
+    "subtitle": "問一個關於台股的問題，Miru 會帶你看資料、看盤面、看籌碼。",
+    "composer": {
+      "label": "向 Miru 提問",
+      "placeholder": "問我任何台股問題，例如：台積電最近的籌碼變化？",
+      "send": "送出",
+      "signInToSend": "登入後即可開始對話",
+      "signInPrompt": "登入以與 Miru 對話",
+      "signInPromptBody": "對話功能需要登入。你輸入的問題會在登入後保留，馬上就能送出。"
+    }
+  },
+  "auth": {
+    "modal": {
+      "signInTitle": "登入 了然 · Miru",
+      "registerTitle": "註冊 了然 · Miru",
+      "signInSubtitle": "使用你的帳號繼續。",
+      "registerSubtitle": "建立帳號，開始與 Miru 對話。",
+      "close": "關閉",
+      "continueWithGoogle": "使用 Google 繼續",
+      "continueWithLine": "使用 LINE 繼續",
+      "orDivider": "或",
+      "terms": "登入即表示你同意我們的服務條款與隱私權政策。"
+    },
+    "state": {
+      "redirecting": "正在前往 {provider} 登入…",
+      "completing": "正在完成登入…"
+    },
+    "provider": {
+      "google": "Google",
+      "line": "LINE"
+    },
+    "error": {
+      "title": "登入未完成",
+      "provider_unconfigured": "此環境尚未設定 {provider} 登入，請改用其他方式。",
+      "oauth_state_mismatch": "登入階段已逾時，請重新登入。",
+      "oauth_failed": "登入未能完成，請再試一次。",
+      "provider_already_linked": "此 {provider} 帳號已連結至其他使用者。",
+      "unknown_provider": "不支援的登入方式。",
+      "network_error": "無法連線至登入服務，請稍後再試。",
+      "bad_response": "登入服務回應異常，請再試一次。",
+      "missing_params": "登入連結不完整，請重新登入。",
+      "retry": "再試一次",
+      "back": "返回首頁",
+      "lineRetry": "以 LINE 一般瀏覽器登入"
+    }
+  },
+  "market": {
+    "stub": {
+      "signedIn": "你已登入",
+      "body": "大盤儀表板即將推出。這是登入後的預設著陸頁。",
+      "signOut": "登出"
+    }
+  },
+  "disclaimer": {
+    "text": "了然 · Miru 提供的分析為資料觀察，不構成投資建議。"
+  },
+  "meta": {
+    "title": "了然 · Miru — 台股 AI 分析夥伴",
+    "description": "了然 · Miru 是台股與 ETF 的 AI 分析夥伴，帶你看資料、看盤面、看籌碼；提供的分析為資料觀察，不構成投資建議。"
+  }
+}

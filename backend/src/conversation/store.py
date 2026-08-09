@@ -333,6 +333,7 @@ class SqlAlchemyConversationStore:
         """A new thread that shares no message rows with the source — never a deep copy.
         The caller (`conversation.branch_summary`) is expected to seed the new thread's first
         turn with a summary of the source path; this method only creates the empty shell."""
+        del from_turn_id  # accepted for the Protocol; the caller seeds the branch point itself
         await self._get_thread_row(user_id=user_id, thread_id=source_thread_id)
         new_title = title or f"Fork of {source_thread_id}"
         return await self.create_thread(user_id=user_id, title=new_title)
