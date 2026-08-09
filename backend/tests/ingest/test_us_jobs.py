@@ -314,3 +314,30 @@ async def test_backfill_us_price_range_fills_only_missing_trading_days(
     # Re-running only fills whatever's still missing — already-written dates are skipped.
     again = await backfill_us_price_range(ctx, start=start, end=end, only_missing=True)
     assert len(again) == 0
+
+
+async def test_backfill_us_price_range_throttles_between_dates(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real inter-date pause must run between `batch_download` calls within one backfill —
+    regression test for the real bug found on the first live US backfill: with no pause,
+    per-day symbol coverage degraded across consecutive calls (244/250 -> 44/250 within ~3
+    months of simulated trading days) until the run stopped making progress entirely."""
+    ctx = _ctx(tmp_path)
+    start = date(2024, 1, 1)
+    end = date(2024, 1, 3)
+    _seed_universe(ctx, start, ["AAPL"])
+    _patch_batch_download(monkeypatch, _two_symbol_frame(date(2024, 1, 2)))
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr(us_jobs_module.asyncio, "sleep", fake_sleep)
+
+    runs = await backfill_us_price_range(ctx, start=start, end=end, only_missing=True)
+
+    # 3 dates, 2 pauses (never before the first call).
+    assert len(runs) == 3
+    assert len(sleep_calls) == 2
