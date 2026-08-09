@@ -136,6 +136,39 @@ def _function_call_to_tool_call(call: genai_types.FunctionCall, index: int) -> T
     )
 
 
+def _events_from_chunk_parts(
+    parts: list[genai_types.Part], emitted_tool_calls: int
+) -> tuple[list[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent], int]:
+    """One chunk's parts turned into events, plus the running tool-call count (Gemini yields
+    each function call whole, so a tool call surfaces as one `ToolCallDeltaEvent` + immediate
+    `ToolCallEvent`, never assembled incrementally like Anthropic/OpenAI's argument chunks).
+    Pulled out of `stream()` purely to keep that method's own branching shallow."""
+    events: list[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent] = []
+    for part in parts:
+        if part.text:
+            events.append(TextDeltaEvent(text=part.text))
+        elif part.function_call is not None:
+            call = _function_call_to_tool_call(part.function_call, emitted_tool_calls)
+            emitted_tool_calls += 1
+            events.append(
+                ToolCallDeltaEvent(
+                    id=call.id, name=call.name, arguments_delta=json.dumps(call.arguments)
+                )
+            )
+            events.append(ToolCallEvent(tool_call=call))
+    return events, emitted_tool_calls
+
+
+def _chunk_stop_reason(
+    candidate: genai_types.Candidate | None, *, emitted_tool_calls: int
+) -> StopReason | None:
+    if candidate is None or candidate.finish_reason is None:
+        return None
+    if emitted_tool_calls:
+        return StopReason.TOOL_USE
+    return _FINISH_REASON_MAP.get(candidate.finish_reason, StopReason.END_TURN)
+
+
 class GeminiClient:
     """The Google Gemini `LLMClient`."""
 
@@ -235,22 +268,12 @@ class GeminiClient:
         async for chunk in stream:
             candidate = chunk.candidates[0] if chunk.candidates else None
             parts = candidate.content.parts if candidate and candidate.content else None
-            for part in parts or []:
-                if part.text:
-                    yield TextDeltaEvent(text=part.text)
-                elif part.function_call is not None:
-                    call = _function_call_to_tool_call(part.function_call, emitted_tool_calls)
-                    emitted_tool_calls += 1
-                    yield ToolCallDeltaEvent(
-                        id=call.id, name=call.name, arguments_delta=json.dumps(call.arguments)
-                    )
-                    yield ToolCallEvent(tool_call=call)
-            if candidate is not None and candidate.finish_reason is not None:
-                stop_reason = (
-                    StopReason.TOOL_USE
-                    if emitted_tool_calls
-                    else _FINISH_REASON_MAP.get(candidate.finish_reason, StopReason.END_TURN)
-                )
+            events, emitted_tool_calls = _events_from_chunk_parts(parts or [], emitted_tool_calls)
+            for event in events:
+                yield event
+            chunk_stop_reason = _chunk_stop_reason(candidate, emitted_tool_calls=emitted_tool_calls)
+            if chunk_stop_reason is not None:
+                stop_reason = chunk_stop_reason
             if chunk.usage_metadata is not None:
                 usage = _usage_from_metadata(chunk.usage_metadata)
 

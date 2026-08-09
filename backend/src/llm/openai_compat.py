@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import Final, cast
 
 import httpx
@@ -47,6 +48,11 @@ _FINISH_REASON_MAP: Final[dict[str, StopReason]] = {
     "tool_calls": StopReason.TOOL_USE,
     "length": StopReason.MAX_TOKENS,
 }
+
+# The untyped JSON-object edge every `cast(...)` below narrows an httpx-decoded response value
+# from — one PEP-695 local alias instead of repeating the same cast-target string at every call
+# site (this module's wire responses are dynamically-shaped JSON, not a typed SDK response).
+type _JsonObject = dict[str, object]
 
 
 def _message_to_wire(message: Message) -> dict[str, object]:
@@ -103,7 +109,7 @@ def _apply_tool_call_delta(
     args_delta: str | None = None
     fn = item.get("function")
     if isinstance(fn, dict):
-        fn_dict = cast("dict[str, object]", fn)
+        fn_dict = cast(_JsonObject, fn)
         name = fn_dict.get("name")
         if isinstance(name, str) and name:
             slot["name"] = name
@@ -132,7 +138,7 @@ def _events_from_delta(
     """Normalize one choice's `delta` object into zero or more typed events (helper split out
     of `stream()` to keep its branch/statement count under the ruff PLR0912/PLR0915 limits)."""
     events: list[TextDeltaEvent | ToolCallDeltaEvent] = []
-    delta = cast("dict[str, object]", choice.get("delta", {}))
+    delta = cast(_JsonObject, choice.get("delta", {}))
     text = delta.get("content")
     if isinstance(text, str) and text:
         events.append(TextDeltaEvent(text=text))
@@ -140,9 +146,7 @@ def _events_from_delta(
     if isinstance(raw_tool_deltas, list):
         for raw_delta in cast("list[object]", raw_tool_deltas):
             if isinstance(raw_delta, dict):
-                events.append(
-                    _apply_tool_call_delta(cast("dict[str, object]", raw_delta), pending_calls)
-                )
+                events.append(_apply_tool_call_delta(cast(_JsonObject, raw_delta), pending_calls))
     return events
 
 
@@ -155,7 +159,7 @@ def _parse_json_object(raw: str) -> dict[str, object]:
         parsed: object = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
+    return cast(_JsonObject, parsed) if isinstance(parsed, dict) else {}
 
 
 def _parse_tool_calls(raw_calls: object) -> list[ToolCall]:
@@ -165,11 +169,11 @@ def _parse_tool_calls(raw_calls: object) -> list[ToolCall]:
     for raw in cast("list[object]", raw_calls):
         if not isinstance(raw, dict):
             continue
-        item = cast("dict[str, object]", raw)
+        item = cast(_JsonObject, raw)
         fn = item.get("function")
         if not isinstance(fn, dict):
             continue
-        fn_dict = cast("dict[str, object]", fn)
+        fn_dict = cast(_JsonObject, fn)
         arguments_raw = fn_dict.get("arguments")
         arguments = _parse_json_object(arguments_raw) if isinstance(arguments_raw, str) else {}
         calls.append(
@@ -178,6 +182,50 @@ def _parse_tool_calls(raw_calls: object) -> list[ToolCall]:
             )
         )
     return calls
+
+
+_SSE_DONE = "[DONE]"
+
+
+@dataclass
+class _SseLineResult:
+    """One SSE `data:` line's parsed outcome — pulled out of `stream()` purely to keep that
+    method's own branching shallow. `done=True` means the line was the terminal `[DONE]`
+    sentinel; `events`/`stop_reason`/`usage` are empty/`None` when the line carried nothing
+    new (a blank keep-alive line, or a chunk with no usable choice)."""
+
+    done: bool = False
+    events: list[TextDeltaEvent | ToolCallDeltaEvent] = field(
+        default_factory=list[TextDeltaEvent | ToolCallDeltaEvent]
+    )
+    stop_reason: StopReason | None = None
+    usage: TokenUsage | None = None
+
+
+def _parse_sse_line(line: str, pending_calls: dict[int, dict[str, str]]) -> _SseLineResult:
+    data = _sse_data(line)
+    if data is None:
+        return _SseLineResult()
+    if data == _SSE_DONE:
+        return _SseLineResult(done=True)
+    chunk = cast(_JsonObject, json.loads(data))
+    usage = (
+        _usage_from_raw(cast(_JsonObject, chunk["usage"]))
+        if isinstance(chunk.get("usage"), dict)
+        else None
+    )
+    choice = _first_choice(chunk)
+    if choice is None:
+        return _SseLineResult(usage=usage)
+    finish_reason = choice.get("finish_reason")
+    stop_reason = (
+        _FINISH_REASON_MAP.get(finish_reason, StopReason.END_TURN)
+        if isinstance(finish_reason, str)
+        else None
+    )
+    return _SseLineResult(
+        events=_events_from_delta(choice, pending_calls), stop_reason=stop_reason, usage=usage
+    )
 
 
 class OpenAICompatClient:
@@ -244,11 +292,11 @@ class OpenAICompatClient:
             raw: dict[str, object] = response.json()
 
         choice = cast("list[dict[str, object]]", raw["choices"])[0]
-        message = cast("dict[str, object]", choice["message"])
+        message = cast(_JsonObject, choice["message"])
         content = message.get("content")
         tool_calls = _parse_tool_calls(message.get("tool_calls"))
         finish_reason = str(choice.get("finish_reason", "stop"))
-        usage_raw = cast("dict[str, object]", raw.get("usage", {}))
+        usage_raw = cast(_JsonObject, raw.get("usage", {}))
         return LLMResponse(
             text=content if isinstance(content, str) else None,
             tool_calls=tuple(tool_calls),
@@ -274,21 +322,14 @@ class OpenAICompatClient:
         ):
             response.raise_for_status()
             async for line in response.aiter_lines():
-                data = _sse_data(line)
-                if data is None or data == "[DONE]":
-                    if data == "[DONE]":
-                        break
-                    continue
-                chunk = cast("dict[str, object]", json.loads(data))
-                if isinstance(chunk.get("usage"), dict):
-                    usage = _usage_from_raw(cast("dict[str, object]", chunk["usage"]))
-                choice = _first_choice(chunk)
-                if choice is None:
-                    continue
-                finish_reason = choice.get("finish_reason")
-                if isinstance(finish_reason, str):
-                    stop_reason = _FINISH_REASON_MAP.get(finish_reason, StopReason.END_TURN)
-                for event in _events_from_delta(choice, pending_calls):
+                result = _parse_sse_line(line, pending_calls)
+                if result.done:
+                    break
+                if result.usage is not None:
+                    usage = result.usage
+                if result.stop_reason is not None:
+                    stop_reason = result.stop_reason
+                for event in result.events:
                     yield event
 
         for slot in pending_calls.values():
