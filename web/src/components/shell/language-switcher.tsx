@@ -1,6 +1,6 @@
 "use client";
 
-import { Translate } from "@phosphor-icons/react";
+import { TranslateIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useTransition } from "react";
 import { usePathname, useRouter } from "@/i18n/navigation";
@@ -36,7 +36,12 @@ export function LanguageSwitcher(): ReactNode {
       role="group"
       aria-label={t("label")}
     >
-      <Translate size={16} weight="regular" aria-hidden className="ml-1 text-[var(--text-muted)]" />
+      <TranslateIcon
+        size={16}
+        weight="regular"
+        aria-hidden
+        className="ml-1 text-[var(--text-muted)]"
+      />
       {routing.locales.map((locale) => {
         const isActive = locale === active;
         return (
@@ -48,7 +53,7 @@ export function LanguageSwitcher(): ReactNode {
             aria-pressed={isActive}
             aria-label={t("switchTo", { language: t(locale) })}
             className={cn(
-              "min-h-9 rounded-[var(--radius-pill)] px-3 text-sm transition-colors",
+              "min-h-11 rounded-[var(--radius-pill)] px-3 text-sm transition-colors",
               isActive
                 ? "bg-[var(--accent-weak)] text-[var(--text)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",

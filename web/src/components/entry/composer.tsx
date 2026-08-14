@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowUp, LockSimple } from "@phosphor-icons/react";
+import { ArrowUpIcon, LockSimpleIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { useTypewriterHints } from "@/hooks/use-typewriter-hints";
 import { cn } from "@/lib/cn";
 
 type ComposerProps = {
@@ -18,6 +19,19 @@ type ComposerProps = {
 export function Composer({ onAttemptSend }: ComposerProps): ReactNode {
   const t = useTranslations("hero.composer");
   const [draft, setDraft] = useState("");
+  const hints = t.raw("hints") as string[];
+  const placeholder = useTypewriterHints(hints);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grows with content up to ~45% of the viewport height (matching the Claude-style composer —
+  // the box itself expands, no inner scrollbar, until it's genuinely too tall to keep growing).
+  const grow = (el: HTMLTextAreaElement): void => {
+    const cap = Math.round(window.innerHeight * 0.45);
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, cap);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > cap ? "auto" : "hidden";
+  };
 
   const submit = (e: FormEvent): void => {
     e.preventDefault();
@@ -37,8 +51,12 @@ export function Composer({ onAttemptSend }: ComposerProps): ReactNode {
         </label>
         <textarea
           id="miru-composer"
+          ref={textareaRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            grow(e.target);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
@@ -46,7 +64,7 @@ export function Composer({ onAttemptSend }: ComposerProps): ReactNode {
             }
           }}
           rows={1}
-          placeholder={t("placeholder")}
+          placeholder={placeholder}
           className={cn(
             "max-h-40 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5",
             "text-[15px] text-[var(--text)] leading-relaxed placeholder:text-[var(--text-muted)]",
@@ -62,11 +80,11 @@ export function Composer({ onAttemptSend }: ComposerProps): ReactNode {
             "bg-[var(--accent)] text-[var(--bg)] transition-opacity hover:opacity-90 active:scale-95",
           )}
         >
-          <ArrowUp size={20} weight="bold" />
+          <ArrowUpIcon size={20} weight="bold" />
         </button>
       </div>
       <p className="mt-2 flex items-center justify-center gap-1.5 text-[13px] text-[var(--text-muted)]">
-        <LockSimple size={13} weight="regular" aria-hidden />
+        <LockSimpleIcon size={13} weight="regular" aria-hidden />
         {t("signInToSend")}
       </p>
     </form>

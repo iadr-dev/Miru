@@ -1,9 +1,10 @@
 "use client";
 
-import { GoogleLogo, X } from "@phosphor-icons/react";
+import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { GoogleIcon, LineIcon } from "@/components/icons/brand-icons";
 import { Button } from "@/components/ui/button";
 import { AuthError, beginOAuth, type OAuthProvider } from "@/lib/api/auth";
 import { cn } from "@/lib/cn";
@@ -157,17 +158,17 @@ export function AuthModal({ open, intent, onClose }: AuthModalProps): ReactNode 
               onClick={handleClose}
               aria-label={t("modal.close")}
               className={cn(
-                "absolute top-3 right-3 inline-flex size-11 items-center justify-center",
+                "absolute right-3 top-3 inline-flex size-11 items-center justify-center",
                 "rounded-[var(--radius-button)] text-[var(--text-muted)] hover:bg-[var(--surface-2)]",
               )}
             >
-              <X size={18} weight="regular" />
+              <XIcon size={18} weight="regular" />
             </button>
 
-            <h2 id={titleId} className="font-semibold text-[var(--text)] text-xl">
+            <h2 id={titleId} className="text-xl font-semibold text-[var(--text)]">
               {intent === "register" ? t("modal.registerTitle") : t("modal.signInTitle")}
             </h2>
-            <p id={descId} className="mt-1 text-[var(--text-muted)] text-sm">
+            <p id={descId} className="mt-1 text-sm text-[var(--text-muted)]">
               {intent === "register" ? t("modal.registerSubtitle") : t("modal.signInSubtitle")}
             </p>
 
@@ -187,7 +188,7 @@ export function AuthModal({ open, intent, onClose }: AuthModalProps): ReactNode 
                 disabled={phase.kind === "redirecting"}
                 className="w-full justify-start"
               >
-                <GoogleLogo size={20} weight="regular" aria-hidden />
+                <GoogleIcon size={20} />
                 <span className="flex-1 text-center">{t("modal.continueWithGoogle")}</span>
               </Button>
               <Button
@@ -196,18 +197,18 @@ export function AuthModal({ open, intent, onClose }: AuthModalProps): ReactNode 
                 disabled={phase.kind === "redirecting"}
                 className="w-full justify-start"
               >
-                <LineGlyph />
+                <LineIcon size={20} />
                 <span className="flex-1 text-center">{t("modal.continueWithLine")}</span>
               </Button>
             </div>
 
             {phase.kind === "redirecting" ? (
-              <p className="mt-4 text-center text-[var(--text-muted)] text-sm" aria-live="polite">
+              <p className="mt-4 text-center text-sm text-[var(--text-muted)]" aria-live="polite">
                 {t("state.redirecting", { provider: t(`provider.${phase.provider}`) })}
               </p>
             ) : null}
 
-            <p className="mt-6 text-center text-[13px] text-[var(--text-muted)] leading-relaxed">
+            <p className="mt-6 text-center text-[13px] leading-relaxed text-[var(--text-muted)]">
               {t("modal.terms")}
             </p>
           </motion.div>
@@ -247,7 +248,7 @@ function AuthErrorPanel({
       role="alert"
       className={cn(
         "mt-4 rounded-[var(--radius-input)] border border-[var(--warn)]/40",
-        "bg-[var(--surface-2)] p-3 text-[var(--text)] text-sm",
+        "bg-[var(--surface-2)] p-3 text-sm text-[var(--text)]",
       )}
     >
       <p className="font-medium">{t("error.title")}</p>
@@ -258,7 +259,7 @@ function AuthErrorPanel({
         <button
           type="button"
           onClick={onRetry}
-          className="mt-2 min-h-9 font-medium text-[var(--accent)] text-sm hover:underline"
+          className="mt-2 min-h-9 text-sm font-medium text-[var(--accent)] hover:underline"
         >
           {t("error.retry")}
         </button>
@@ -272,7 +273,7 @@ function LineGlyph(): ReactNode {
   return (
     <span
       aria-hidden
-      className="grid size-5 place-items-center rounded-[6px] bg-[var(--text-muted)] font-bold text-[11px] text-[var(--surface)]"
+      className="grid size-5 place-items-center rounded-[6px] bg-[var(--text-muted)] text-[11px] font-bold text-[var(--surface)]"
     >
       L
     </span>

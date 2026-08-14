@@ -16,6 +16,7 @@
   --color-text-muted: var(--text-muted);
   --color-accent: var(--accent);
   --color-accent-weak: var(--accent-weak);
+  --color-accent-text: var(--accent-text);
   --color-up: var(--up);
   --color-up-weak: var(--up-weak);
   --color-down: var(--down);

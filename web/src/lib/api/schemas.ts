@@ -1,8 +1,9 @@
 /**
  * Zod schemas mirroring the backend contracts we touch on the entry/auth pass.
- * Mirrors `backend/src/api/routers/auth.py` (BeginAuthResponse, MeResponse) and
- * `backend/src/api/errors.py` (the `{code, message, retryable}` envelope). Parse-don't-trust:
- * a malformed payload fails loud at the seam (web/CLAUDE.md §2).
+ * Mirrors `backend/src/api/routers/auth.py` (BeginAuthResponse) and `backend/src/api/errors.py`
+ * (the `{code, message, retryable}` envelope). Parse-don't-trust: a malformed payload fails loud
+ * at the seam (web/CLAUDE.md §2). The callback endpoint's own `MeResponse` schema lives in
+ * `@/types/account` (shared with `lib/api/settings.ts`'s `GET /me`) — not duplicated here.
  */
 import { z } from "zod";
 
@@ -20,19 +21,3 @@ export const apiErrorSchema = z.object({
   retryable: z.boolean().optional().default(false),
 });
 export type ApiErrorPayload = z.infer<typeof apiErrorSchema>;
-
-/** Minimal shape of GET /me / callback MeResponse — only what the landing redirect needs. */
-export const meResponseSchema = z.object({
-  user: z.object({
-    id: z.string(),
-    display_name: z.string().nullable().optional(),
-    email: z.string().nullable().optional(),
-  }),
-  entitlements: z
-    .object({
-      tier: z.string().optional(),
-    })
-    .passthrough()
-    .optional(),
-});
-export type MeResponse = z.infer<typeof meResponseSchema>;

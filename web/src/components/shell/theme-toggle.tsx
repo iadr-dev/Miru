@@ -1,6 +1,6 @@
 "use client";
 
-import { Moon, Sun } from "@phosphor-icons/react";
+import { MoonIcon, SunIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
@@ -44,7 +44,11 @@ export function ThemeToggle(): ReactNode {
         "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
       )}
     >
-      {theme === "dark" ? <Moon size={20} weight="regular" /> : <Sun size={20} weight="regular" />}
+      {theme === "dark" ? (
+        <MoonIcon size={20} weight="regular" />
+      ) : (
+        <SunIcon size={20} weight="regular" />
+      )}
     </button>
   );
 }
