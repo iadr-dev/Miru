@@ -19,6 +19,8 @@ TW:
   etf_holdings: [etf_pcf] # fund-level metadata only — see sources/etf_pcf.py for the gap it does NOT cover
   corporate_actions: [mops] # 重大訊息 material-announcement disclosure stream
   shareholding: [mops] # 董監事持股 monthly director/supervisor shareholding filing
+  profile: [mops] # 基本資料 company-identity fields (chairman/capital/spokesperson/auditor/...)
+  calendar_events: [ncdr_closure] # 停班停課 typhoon/disaster closure alerts; TW only
   price_intraday: [twse_mis] # bounded live-ish snapshot; the only adapter that serves this capability
   derivatives_oi: [taifex_openapi] # official EOD settlement/volume/OI per contract; no FinMind equivalent
   active_etf_info: [finmind] # free-tier active-ETF roster
@@ -114,6 +116,13 @@ TW:
   industry_chain_classification: [finmind] # backer/sponsor
   # Global Economic Data (TW-context macro; TWD-vs-foreign-currency)
   exchange_rate: [finmind]
+  # TDCC (集保結算所) OpenData — free, keyless, TW-only; no other adapter serves these.
+  tdcc_securities_info: [tdcc]
+  tdcc_pledged_custody_shares: [tdcc]
+  tdcc_shareholding_distribution: [tdcc]
+  tdcc_offshore_fund_nav: [tdcc]
+  tdcc_evoting_schedule: [tdcc]
+  tdcc_monthly_custody_accounts: [tdcc]
 
 # Datasets with no single-country home — modeled Market.GLOBAL rather than forced into TW/US.
 GLOBAL:
