@@ -193,7 +193,7 @@ class FallbackLLMClient:
         for client in self._clients:
             try:
                 return await client.chat(messages, tools, native_web_search=native_web_search)
-            except Exception as exc:  # noqa: BLE001 — deliberately broad: any transport/auth/
+            except Exception as exc:
                 # rate-limit error from one provider must not abort the whole chain
                 last_exc = exc
                 logger.warning(
@@ -223,7 +223,7 @@ class FallbackLLMClient:
                 first = await stream.__anext__()
             except StopAsyncIteration:
                 return
-            except Exception as exc:  # noqa: BLE001 — see chat()'s own broad-catch rationale
+            except Exception as exc:
                 last_exc = exc
                 logger.warning(
                     "llm_fallback_stream_failed",

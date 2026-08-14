@@ -75,7 +75,10 @@ def test_check_output_redacts_trading_language(text: str) -> None:
 def test_check_output_redacts_only_the_offending_sentence_in_chinese_prose() -> None:
     """A Chinese-language answer is many sentences, not one — only the sentence carrying
     trading language should be redacted, leaving the surrounding analysis intact."""
-    text = "鴻海（2317）的上游供應商包含多家半導體廠商。目標價 600 元，買進建議。近期營收成長主要來自組裝業務擴張。"
+    text = (
+        "鴻海（2317）的上游供應商包含多家半導體廠商。目標價 600 元，買進建議。"
+        "近期營收成長主要來自組裝業務擴張。"
+    )
     verdict = check_output(text)
     assert verdict.allowed is True
     assert verdict.redacted_text is not None

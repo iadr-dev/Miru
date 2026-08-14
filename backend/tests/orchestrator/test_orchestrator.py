@@ -8,14 +8,14 @@ network."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import fakeredis.aioredis
 import pytest
 
 from config.settings import Settings
-from schemas.enums import Tier
-from usage.finmind_pool import RedisFinMindPoolReserver
+from events.bus import InMemoryEventBus
 from llm.base import (
     LLMResponse,
     Message,
@@ -33,9 +33,11 @@ from orchestrator.classifier import IntentClassifier
 from orchestrator.models import Routing
 from orchestrator.orchestrator import Orchestrator
 from orchestrator.synthesis import Synthesizer
+from schemas.enums import Tier
 from skills.registry import SkillRegistry
 from tests.llm.stubs import StubLLMClient, make_text_response, make_tool_call_response
 from tools.base import Tool, ToolContext
+from usage.finmind_pool import RedisFinMindPoolReserver
 
 
 class _StaticClassifier(IntentClassifier):
@@ -251,7 +253,9 @@ async def test_subagent_framework_fans_out_and_synthesizes(
             "Company profile": "profile lane finding. informational.",
         }
     )
-    synth = Synthesizer(client=StubLLMClient(script=[make_text_response("merged both. info only.")]))
+    synth = Synthesizer(
+        client=StubLLMClient(script=[make_text_response("merged both. info only.")])
+    )
     orch = _orchestrator(
         registry, tool_lookup, routing, subagent_client=lane_client, synthesizer=synth
     )
@@ -272,8 +276,6 @@ async def test_subagent_agent_spawned_activity_is_natural_language_not_the_raw_s
     """`orchestrator.py`'s `agent.spawned` `activity` field is a natural-language label
     (`skills.activity_labels.skill_activity_label`) — never the literal
     `f"Running {skill_name}"` templating this replaced."""
-    from events.bus import InMemoryEventBus
-
     routing = Routing(
         framework="subagent",
         skills=("chip-flow-review", "company-profile"),
@@ -302,8 +304,6 @@ async def test_subagent_agent_spawned_activity_is_natural_language_not_the_raw_s
             spawned_activities.append(activity)
             if len(spawned_activities) == 2:
                 return
-
-    import asyncio
 
     task = asyncio.create_task(collect())
     await asyncio.sleep(0)
@@ -381,8 +381,6 @@ async def test_subagent_clamps_to_four_lanes(
 ) -> None:
     # Only three skills exist, so to prove the clamp we set the ceiling to 1 via a Routing that
     # names two skills and assert only one lane runs.
-    from config.settings import Settings
-
     routing = Routing(
         framework="subagent",
         skills=("chip-flow-review", "company-profile"),
@@ -419,9 +417,7 @@ async def test_subagent_quota_degrades_lane_before_spawn(
     )
 
     class _DegradingReserver:
-        async def reserve(
-            self, *, skills: tuple[str, ...], tier: str
-        ) -> QuotaReservation:
+        async def reserve(self, *, skills: tuple[str, ...], tier: str) -> QuotaReservation:
             return QuotaReservation(granted=("chip-flow-review",), degraded=("company-profile",))
 
     lane_client = LaneAwareClient({"Chip-flow review": "chip ok. info."})
@@ -472,9 +468,7 @@ async def test_real_finmind_reserver_degrades_via_run(
         quota_reserver=reserver,
     )
 
-    result = await orch.run(
-        "analyze 2330", tool_context=ToolContext(tier=Tier.PREMIUM)
-    )
+    result = await orch.run("analyze 2330", tool_context=ToolContext(tier=Tier.PREMIUM))
     await redis.aclose()
 
     # Pool holds 1 lane's budget → one lane granted, one degraded before spawn.
@@ -557,10 +551,6 @@ async def test_team_second_teammate_receives_prior_finding(
 async def test_tool_call_ceiling_aborts_to_degraded_answer(
     registry: SkillRegistry, tool_lookup: dict[str, Tool]
 ) -> None:
-    from config.settings import Settings
-
-    from tests.llm.stubs import make_tool_call_response
-
     routing = Routing(framework="single", skills=("chip-flow-review",), reason="one dimension")
     # the lane makes one tool call then answers → the single-framework tool-call accounting
     # records 1 > ceiling of 0, so `run` catches TurnCeilingExceededError and returns a
@@ -736,9 +726,7 @@ async def test_web_search_enabled_grants_tools_on_none_framework(
     agent_client = StubLLMClient(script=[make_text_response("Hi! Informational only.")])
     orch = _orchestrator(registry, tool_lookup, routing, agent_client=agent_client)
 
-    result = await orch.run(
-        "hello", tool_context=ToolContext(), web_search_enabled=True
-    )
+    result = await orch.run("hello", tool_context=ToolContext(), web_search_enabled=True)
 
     assert result.final_text
     assert {"web_search", "fetch_url"} <= _tool_names_from_call(agent_client)
@@ -847,9 +835,7 @@ async def test_web_search_enabled_not_granted_to_subagent_fanout_lanes(
         registry, tool_lookup, routing, subagent_client=lane_client, synthesizer=synth
     )
 
-    result = await orch.run(
-        "analyze 2330", tool_context=ToolContext(), web_search_enabled=True
-    )
+    result = await orch.run("analyze 2330", tool_context=ToolContext(), web_search_enabled=True)
 
     assert "merged both" in result.final_text
     for _messages, tools in lane_client.calls:

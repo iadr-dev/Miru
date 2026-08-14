@@ -111,8 +111,6 @@ def _inspect_tables_and_indexes(sync_conn: object) -> tuple[set[str], set[str]]:
         # `get_indexes` on some versions — merge both so a partial-unique built as either an
         # index or a constraint is still found by name.
         index_names.update(
-            uc["name"]
-            for uc in inspector.get_unique_constraints(table_name)
-            if uc.get("name")
+            uc["name"] for uc in inspector.get_unique_constraints(table_name) if uc.get("name")
         )
     return table_names, index_names

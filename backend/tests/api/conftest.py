@@ -324,9 +324,6 @@ def build_sponsor_registry() -> ToolRegistry:
     """A registry whose `get_price_quote` is sponsor-classed — lets an HTTP test prove the
     quote route returns a masked teaser for a Free caller and real data for a Premium one, i.e.
     that the sponsor gate holds over the HTTP boundary exactly as at the tool-dispatch seam."""
-    from pydantic import BaseModel
-
-    from schemas.enums import DataClass
 
     class _Input(BaseModel):
         id: str

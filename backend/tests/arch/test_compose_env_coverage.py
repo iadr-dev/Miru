@@ -18,6 +18,8 @@ from pathlib import Path
 
 import yaml
 
+from config.settings import Settings
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = BACKEND_ROOT / "docker-compose.yml"
 
@@ -42,8 +44,6 @@ COMPOSE_INTERNAL_FIELDS = frozenset(
 def _settings_field_names() -> set[str]:
     """Every `Settings` field, via Pydantic's own model introspection — not a regex over the
     source, so it can't drift from whatever pydantic actually considers a field."""
-    from config.settings import Settings
-
     return set(Settings.model_fields.keys())
 
 
@@ -91,8 +91,6 @@ def test_compose_anchor_values_are_pydantic_settings_env_syntax() -> None:
     raw = COMPOSE_PATH.read_text(encoding="utf-8")
     doc = yaml.safe_load(raw)
     app_env = doc["x-app-env"]
-
-    from config.settings import Settings
 
     int_or_float_fields = {
         name

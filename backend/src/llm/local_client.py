@@ -55,7 +55,7 @@ class LocalOllamaClient:
             provider_id="ollama",
             model_id=model_id,
             base_url=f"{base_url.rstrip('/')}/v1",
-            api_key="ollama-local-no-key-required",  # noqa: S105 — NOSONAR, not a real secret
+            api_key="ollama-local-no-key-required",  # NOSONAR — not a real secret
             capabilities=self.capabilities,
             timeout=timeout,
         )

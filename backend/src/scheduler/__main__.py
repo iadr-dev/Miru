@@ -56,7 +56,7 @@ async def _run_once(worker: SchedulerWorker) -> None:
         ran = await worker.run_due_jobs()
         fired = await worker.evaluate_alerts()
         logger.info("scheduler_pass_complete", jobs_run=len(ran), alerts_fired=len(fired))
-    except Exception:  # noqa: BLE001 — a pass-level failure must not take down the daemon
+    except Exception:
         logger.exception("scheduler_pass_failed")
 
 
@@ -74,9 +74,7 @@ async def run_scheduler_loop(
         # deliver step, keeping at-least-once delivery dedupe-safe rather than half-written.
         pass_task = asyncio.ensure_future(_run_once(worker))
         hard = asyncio.ensure_future(shutdown.hard_stop.wait())
-        done, _pending = await asyncio.wait(
-            {pass_task, hard}, return_when=asyncio.FIRST_COMPLETED
-        )
+        done, _pending = await asyncio.wait({pass_task, hard}, return_when=asyncio.FIRST_COMPLETED)
         if pass_task not in done:
             pass_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

@@ -23,7 +23,7 @@ from tests.payments.conftest import (
 
 pytestmark = pytest.mark.governance
 
-_TEST_JWT_SECRET = "test-secret-not-a-real-key-0123456789abcdef"  # noqa: S105 — matches api conftest
+_TEST_JWT_SECRET = "test-secret-not-a-real-key-0123456789abcdef"
 
 
 @pytest.fixture
@@ -85,9 +85,7 @@ def test_webhook_applies_entitlement_end_to_end(
         b'"items":[{"price":{"id":"' + PRICE_PREMIUM_MONTHLY.encode() + b'"}}],'
         b'"custom_data":{"user_id":"' + user_id.encode() + b'"}}}'
     )
-    resp = client.post(
-        "/api/v1/billing/webhook/paddle", content=raw, headers=_signed_headers(raw)
-    )
+    resp = client.post("/api/v1/billing/webhook/paddle", content=raw, headers=_signed_headers(raw))
     assert resp.status_code == 200
     assert resp.json()["processed"] is True
 

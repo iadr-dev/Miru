@@ -27,9 +27,9 @@ from schemas.capabilities import (
 )
 from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
-from tools.base import BaseTool, Tool, ToolContext, parse_args
-from tools.common import DateRangeInput, MarketOnlyInput
 from tools._rows import fetch_rows
+from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.common import DateRangeInput
 
 
 class _RowsOutput(BaseModel):
@@ -222,7 +222,9 @@ class GetMarketValueWeightTool(BaseTool):
     """`get_market_value_weight` — wraps `Capability.MARKET_VALUE_WEIGHT` (市值比重排行)."""
 
     name = "get_market_value_weight"
-    description = "Get the daily whole-market market-cap-weight ranking rows for one stock (Sponsor-tier)."
+    description = (
+        "Get the daily whole-market market-cap-weight ranking rows for one stock (Sponsor-tier)."
+    )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetMarketValueWeightOutput
     data_class = DataClass.SPONSOR

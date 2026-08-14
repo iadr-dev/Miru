@@ -39,7 +39,6 @@ from conversation.models import (
 )
 from conversation.store import (
     ConversationStore,
-    SqlAlchemyConversationStore,
     ThreadNotFoundError,
 )
 from conversation.title_generator import generate_title

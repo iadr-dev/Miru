@@ -9,7 +9,6 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from anthropic.types import Message as AnthropicMessage
 from anthropic.types import (
     InputJSONDelta,
     RawContentBlockDeltaEvent,
@@ -26,6 +25,7 @@ from anthropic.types import (
     WebSearchResultBlock,
     WebSearchToolResultBlock,
 )
+from anthropic.types import Message as AnthropicMessage
 from anthropic.types.message_delta_usage import MessageDeltaUsage
 from anthropic.types.message_tokens_count import MessageTokensCount
 from anthropic.types.raw_message_delta_event import Delta as StopDelta
@@ -61,7 +61,10 @@ def _client() -> AnthropicClient:
 
 
 def _sdk_message(
-    *, content: list[Any], stop_reason: str = "end_turn", input_tokens: int = 5,
+    *,
+    content: list[Any],
+    stop_reason: str = "end_turn",
+    input_tokens: int = 5,
     output_tokens: int = 3,
 ) -> AnthropicMessage:
     return AnthropicMessage(
@@ -86,9 +89,7 @@ def test_construction_performs_no_network_call() -> None:
 async def test_chat_normalizes_text_response(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _client()
     sdk_response = _sdk_message(content=[TextBlock(type="text", text="hello", citations=None)])
-    monkeypatch.setattr(
-        client._client.messages, "create", AsyncMock(return_value=sdk_response)
-    )
+    monkeypatch.setattr(client._client.messages, "create", AsyncMock(return_value=sdk_response))
 
     response = await client.chat([Message(role=MessageRole.USER, content="hi")])
 
@@ -134,9 +135,7 @@ async def test_chat_normalizes_tool_call_response(monkeypatch: pytest.MonkeyPatc
         ],
         stop_reason="tool_use",
     )
-    monkeypatch.setattr(
-        client._client.messages, "create", AsyncMock(return_value=sdk_response)
-    )
+    monkeypatch.setattr(client._client.messages, "create", AsyncMock(return_value=sdk_response))
 
     response = await client.chat(
         [Message(role=MessageRole.USER, content="hi")],

@@ -86,8 +86,6 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "run_equity_screener_us": "equity_screener",
     "get_analyst_consensus": "analyst_consensus",
     "get_esg_score": "esg_score",
-    "get_analyst_consensus": "analyst_consensus",
-    "get_esg_score": "esg_score",
     # convertible_bond_tools.py
     "get_convertible_bond_profile": "cb_profile",
     "get_convertible_bond_flow": "cb_flow",
@@ -344,9 +342,7 @@ async def test_run_turn_raises_step_budget_exceeded_when_model_never_finalizes()
 async def test_run_turn_reports_unknown_tool_without_dispatching() -> None:
     llm = StubLLMClient(
         script=[
-            make_tool_call_response(
-                tool_call_id="call-1", name="not_a_real_tool", arguments={}
-            ),
+            make_tool_call_response(tool_call_id="call-1", name="not_a_real_tool", arguments={}),
             make_text_response("done"),
         ]
     )

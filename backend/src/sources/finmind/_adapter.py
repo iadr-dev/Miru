@@ -45,7 +45,8 @@ def _default_date_range() -> tuple[str, str]:
 
 
 def _default_single_date() -> str:
-    return (datetime.now(UTC).date() - timedelta(days=_DEFAULT_SINGLE_DAY_LOOKBACK_DAYS)).isoformat()
+    lookback = timedelta(days=_DEFAULT_SINGLE_DAY_LOOKBACK_DAYS)
+    return (datetime.now(UTC).date() - lookback).isoformat()
 
 
 def _build_query(
@@ -202,9 +203,7 @@ class FinMindAdapter:
             )
             return self._error_result(config, detail=detail)
         except httpx.HTTPError as exc:
-            return self._error_result(
-                config, detail=f"transport error: {type(exc).__name__}"
-            )
+            return self._error_result(config, detail=f"transport error: {type(exc).__name__}")
 
     async def _call(
         self,
