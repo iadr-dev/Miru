@@ -266,11 +266,7 @@ class GetEsgScoreTool(BaseTool):
             Capability.ESG, typed.to_symbol(), tls_policy=ctx.tls_policy
         )
         raw = result.payload.get("esg")
-        esg = (
-            EsgScore.model_validate(cast(_UntypedDict, raw))
-            if isinstance(raw, dict)
-            else None
-        )
+        esg = EsgScore.model_validate(cast(_UntypedDict, raw)) if isinstance(raw, dict) else None
         return GetEsgScoreOutput(
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
@@ -354,7 +350,9 @@ class GetSymbolSearchTool(BaseTool):
     name/ticker resolution, e.g. "台積電"/"TSMC" -> 2330.TW)."""
 
     name = "get_symbol_search"
-    description = "Search for a symbol by free-text company name or ticker (multi-market resolution)."
+    description = (
+        "Search for a symbol by free-text company name or ticker (multi-market resolution)."
+    )
     input_model: type[BaseModel] = SymbolSearchInput
     output_model: type[BaseModel] = GetSymbolSearchOutput
     data_class = DataClass.PUBLIC
@@ -390,7 +388,9 @@ class GetSymbolLookupTool(BaseTool):
     one instrument type)."""
 
     name = "get_symbol_lookup"
-    description = "Look up symbols by free-text query, scoped to one instrument type (stock/ETF/index/...)."
+    description = (
+        "Look up symbols by free-text query, scoped to one instrument type (stock/ETF/index/...)."
+    )
     input_model: type[BaseModel] = SymbolSearchInput
     output_model: type[BaseModel] = GetSymbolLookupOutput
     data_class = DataClass.PUBLIC
@@ -452,7 +452,9 @@ class GetCalendarEventsFeedTool(BaseTool):
     IPO_CALENDAR` + `Capability.ECONOMIC_CALENDAR` (`yfinance.Calendars`, market-wide feeds)."""
 
     name = "get_calendar_events_feed"
-    description = "Get upcoming earnings, IPO, and macro-economic calendar events for one non-TW market."
+    description = (
+        "Get upcoming earnings, IPO, and macro-economic calendar events for one non-TW market."
+    )
     input_model: type[BaseModel] = MarketScopedInput
     output_model: type[BaseModel] = GetCalendarEventsFeedOutput
     data_class = DataClass.PUBLIC
@@ -547,7 +549,9 @@ class GetIndustryOverviewTool(BaseTool):
     """`get_industry_overview` — wraps `Capability.INDUSTRY_OVERVIEW` (`yfinance.Industry`)."""
 
     name = "get_industry_overview"
-    description = "Get top companies for one Yahoo industry aggregate (one level narrower than sector)."
+    description = (
+        "Get top companies for one Yahoo industry aggregate (one level narrower than sector)."
+    )
     input_model: type[BaseModel] = GetIndustryOverviewInput
     output_model: type[BaseModel] = GetIndustryOverviewOutput
     data_class = DataClass.PUBLIC
@@ -642,7 +646,7 @@ class RunEquityScreenerUsTool(BaseTool):
     data_class = DataClass.PUBLIC
     card_type: str | None = "equity_screener"
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:  # noqa: ARG002 — ctx unused, no router dependency
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(ScreenerQuery, args)
         result = await _run_equity_screener(typed)
         return RunEquityScreenerUsOutput(result=result)

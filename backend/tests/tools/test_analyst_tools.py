@@ -53,7 +53,9 @@ async def test_get_options_chain_delegates() -> None:
         "implied_volatility": None,
         "in_the_money": True,
     }
-    router, adapter = make_router(symbol, {Capability.OPTIONS_CHAIN: _result({"contracts": [contract]})})
+    router, adapter = make_router(
+        symbol, {Capability.OPTIONS_CHAIN: _result({"contracts": [contract]})}
+    )
     tool = GetOptionsChainTool(router)
 
     output = await tool.run(NonTwSymbolInput(id="AAPL", market=Market.US), ToolContext())

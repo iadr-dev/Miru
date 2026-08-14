@@ -12,11 +12,8 @@ resolved tier flows through `entitlements`/`ToolContext` on every downstream cal
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,7 +48,6 @@ from api.dependencies import (
     get_session,
     get_state,
     get_user_store,
-    optional_user,
     require_user,
 )
 from api.errors import ApiError
@@ -61,7 +57,7 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["accounts"])
 
-REFRESH_TOKEN_COOKIE = "refresh_token"  # noqa: S105 — cookie name, not a secret
+REFRESH_TOKEN_COOKIE = "refresh_token"
 _STATE_COOKIE = "oauth_state"
 _VERIFIER_COOKIE = "oauth_code_verifier"
 _NONCE_COOKIE = "oauth_nonce"
@@ -225,7 +221,7 @@ class MeResponse(BaseModel):
 
 
 @router.get("/auth/oauth/{provider}/callback")
-async def oauth_callback(  # noqa: PLR0913 — the callback carries the request + stored verifiers + DI seams
+async def oauth_callback(
     provider: str,
     request: Request,
     response: Response,
@@ -286,9 +282,7 @@ async def oauth_callback(  # noqa: PLR0913 — the callback carries the request 
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client else None,
     )
-    _issue_session_cookies(
-        response, state.settings, user_id=user.id, refresh_token=refresh_token
-    )
+    _issue_session_cookies(response, state.settings, user_id=user.id, refresh_token=refresh_token)
     return MeResponse(user=user, entitlements=_entitlements(user))
 
 

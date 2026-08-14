@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import skills
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import skills
 from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router
 from dataaccess.router import DataAccessRouter

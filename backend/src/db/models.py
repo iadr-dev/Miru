@@ -825,9 +825,7 @@ class SupplyChainEdgeRow(Base):
         CheckConstraint(
             "confidence IN ('high','medium','low')", name="ck_supply_chain_edges_confidence"
         ),
-        CheckConstraint(
-            "source IN ('seed','llm_extraction')", name="ck_supply_chain_edges_source"
-        ),
+        CheckConstraint("source IN ('seed','llm_extraction')", name="ck_supply_chain_edges_source"),
         Index("ix_supply_chain_edges_from", "from_symbol"),
         Index("ix_supply_chain_edges_to", "to_symbol"),
     )

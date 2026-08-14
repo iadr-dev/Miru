@@ -105,7 +105,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TID", "PTH", "A
 ignore = ["ANN401"] # explicit Any ONLY where justified with a noqa + reason
 # zh-TW-first product (personality fragments, pet persona hints, spoken-caveat text) — fullwidth
 # CJK punctuation is correct typography, not a confusable to flag (RUF001/RUF002/RUF003).
-allowed-confusables = ["，", "；", "：", "（", "）", "、", "。", "「", "」", "〇"]
+allowed-confusables = ["，", "；", "：", "（", "）", "、", "。", "「", "」", "〇", "！", "？"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 # One-way dependency rule: a layer may not import an upper layer;

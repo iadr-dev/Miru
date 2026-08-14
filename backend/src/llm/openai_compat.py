@@ -185,9 +185,7 @@ def _events_from_delta(
     if isinstance(raw_tool_deltas, list):
         for raw_delta in cast(_JsonList, raw_tool_deltas):
             if isinstance(raw_delta, dict):
-                events.append(
-                    _apply_tool_call_delta(cast(_JsonObject, raw_delta), pending_calls)
-                )
+                events.append(_apply_tool_call_delta(cast(_JsonObject, raw_delta), pending_calls))
     return events
 
 

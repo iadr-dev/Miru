@@ -89,6 +89,7 @@ def _validate_years(years: int | None, settings: Settings) -> int:
         )
     return resolved
 
+
 def _check_not_production(settings: Settings) -> None:
     if settings.env == _PRODUCTION_ENV:
         raise ProductionHardStopError(

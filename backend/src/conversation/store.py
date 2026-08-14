@@ -236,9 +236,7 @@ class SqlAlchemyConversationStore:
         turns: list[Turn] = []
         for turn_row in turn_rows:
             messages_result = await self._session.execute(
-                select(MessageRow)
-                .where(MessageRow.turn_id == turn_row.id)
-                .order_by(MessageRow.seq)
+                select(MessageRow).where(MessageRow.turn_id == turn_row.id).order_by(MessageRow.seq)
             )
             messages = [_message_row_to_model(row) for row in messages_result.scalars().all()]
             turns.append(_turn_row_to_model(turn_row, messages))
@@ -257,9 +255,7 @@ class SqlAlchemyConversationStore:
         regenerate_of: str | None = None,
         turn_id: str | None = None,
     ) -> Turn:
-        print("DEBUG: append_turn about to get_thread_row", flush=True)
         thread_row = await self._get_thread_row(user_id=user_id, thread_id=thread_id)
-        print("DEBUG: append_turn got thread_row", flush=True)
         now = datetime.now(UTC)
         turn_row = TurnRow(
             id=turn_id or str(uuid.uuid4()),
@@ -273,14 +269,11 @@ class SqlAlchemyConversationStore:
             created_at=now,
         )
         self._session.add(turn_row)
-        print("DEBUG: append_turn about to flush turn_row", flush=True)
         await self._session.flush()
-        print("DEBUG: append_turn flushed turn_row", flush=True)
 
         messages: list[Message] = []
         parent_id = parent_message_id
         for seq, (block_type, content) in enumerate(blocks):
-            print(f"DEBUG: append_turn message loop seq={seq}", flush=True)
             message_row = MessageRow(
                 id=str(uuid.uuid4()),
                 turn_id=turn_row.id,
@@ -292,18 +285,14 @@ class SqlAlchemyConversationStore:
                 created_at=now,
             )
             self._session.add(message_row)
-            print(f"DEBUG: append_turn about to flush message seq={seq}", flush=True)
             await self._session.flush()
-            print(f"DEBUG: append_turn flushed message seq={seq}", flush=True)
             messages.append(_message_row_to_model(message_row))
             parent_id = message_row.id
 
         thread_row.active_leaf_message_id = parent_id
         thread_row.last_message_at = now
         thread_row.updated_at = now
-        print("DEBUG: append_turn about to flush thread_row update", flush=True)
         await self._session.flush()
-        print("DEBUG: append_turn flushed thread_row update", flush=True)
         logger.info("turn_appended", user_id=user_id, thread_id=thread_id, turn_id=turn_row.id)
         return _turn_row_to_model(turn_row, messages)
 

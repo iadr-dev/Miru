@@ -319,8 +319,8 @@ class OpenAITTSSpeaker:
 
         client = AsyncOpenAI(api_key=self._api_key)
         response = await client.audio.speech.create(
-            model=self._model,  # type: ignore[arg-type] — validated string, SDK's own Literal
-            voice=self._voice,  # type: ignore[arg-type] — validated string, SDK's own Literal
+            model=self._model,
+            voice=self._voice,
             input=ssml_or_text,
             response_format=self._response_format,  # type: ignore[arg-type]
         )

@@ -41,28 +41,20 @@ from zoneinfo import ZoneInfo
 import structlog
 
 from analytics.screener.batch import job_screener_flags
-from analytics.scoring_batch import job_scoring_batch
-from analytics.themes.seed import seed_industry_themes
-from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
+from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.context import IngestContext
 from ingest.jobs import (
     job_active_etf_holding_changes,
     job_active_etf_holdings,
-    job_balance_sheet,
-    job_cash_flow,
     job_dividends,
     job_financials,
     job_institutional_flow,
-    job_market_value,
     job_price_eod,
 )
-from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
 from ingest.store import ParquetStore
-from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
-from ingest.us_universe import job_us_symbol_universe
 from sources.finmind import FinMindAdapter
 from sources.yfinance import YFinanceAdapter
 
@@ -123,9 +115,7 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # right after its dependencies in tuple order too. Daily and trading-day-gated like the pulls.
     ScheduledIngestJob("screener_flags", time_(20, 30), job_screener_flags),
     ScheduledIngestJob("active_etf_holdings", time_(21, 15), job_active_etf_holdings),
-    ScheduledIngestJob(
-        "active_etf_holding_changes", time_(21, 15), job_active_etf_holding_changes
-    ),
+    ScheduledIngestJob("active_etf_holding_changes", time_(21, 15), job_active_etf_holding_changes),
     ScheduledIngestJob("financials", time_(21, 30), job_financials),
     ScheduledIngestJob("dividends", time_(21, 30), job_dividends),
 )

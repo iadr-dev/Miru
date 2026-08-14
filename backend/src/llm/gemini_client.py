@@ -32,7 +32,7 @@ from __future__ import annotations
 import base64
 import json
 from collections.abc import AsyncIterator
-from typing import Final
+from typing import Final, cast
 
 import structlog
 from google import genai
@@ -111,7 +111,9 @@ def _image_part(image: ImagePart) -> genai_types.Part:
     """Verified against the installed `google-genai` SDK's `Part.from_bytes(data: bytes,
     mime_type: str)` — this SDK method wants raw bytes, not base64 text, so the normalized
     `ImagePart.data` (base64) is decoded here before handing it to the SDK."""
-    return genai_types.Part.from_bytes(data=base64.b64decode(image.data), mime_type=image.media_type)
+    return genai_types.Part.from_bytes(
+        data=base64.b64decode(image.data), mime_type=image.media_type
+    )
 
 
 def _message_to_content(message: Message, name_map: dict[str, str]) -> genai_types.Content:
@@ -184,7 +186,9 @@ def _events_from_chunk_parts(
             call = _function_call_to_tool_call(part.function_call, emitted_tool_calls)
             emitted_tool_calls += 1
             events.append(
-                ToolCallDeltaEvent(id=call.id, name=call.name, arguments_delta=json.dumps(call.arguments))
+                ToolCallDeltaEvent(
+                    id=call.id, name=call.name, arguments_delta=json.dumps(call.arguments)
+                )
             )
             events.append(ToolCallEvent(tool_call=call))
     return events, emitted_tool_calls
@@ -304,9 +308,13 @@ class GeminiClient:
             config.tools = [genai_types.Tool(function_declarations=declarations)]
         return config
 
-    def _contents(self, messages: list[Message]) -> list[genai_types.Content]:
+    def _contents(self, messages: list[Message]) -> genai_types.ContentListUnion:
+        # `list[Content]` is a `ContentListUnion` at runtime, but mypy's list invariance rejects
+        # it as an argument to the SDK's broader `list[Content | str | Image | File | Part]`
+        # member of that union — cast once here instead of at every call site.
         name_map = _build_tool_call_name_map(messages)
-        return [_message_to_content(m, name_map) for m in messages]
+        contents = [_message_to_content(m, name_map) for m in messages]
+        return cast("genai_types.ContentListUnion", contents)
 
     async def chat(
         self,

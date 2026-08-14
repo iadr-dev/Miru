@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from schemas.enums import Capability, DataClass, Market, TimingClass
+from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
@@ -15,10 +15,11 @@ from tools.fundamental_tools import (
     GetFinancialStatementTool,
     GetMarketValueTool,
 )
-from schemas.enums import Tier
 
 
-def _result(payload: dict[str, object], *, data_class: DataClass = DataClass.PUBLIC) -> SourceResult:
+def _result(
+    payload: dict[str, object], *, data_class: DataClass = DataClass.PUBLIC
+) -> SourceResult:
     return SourceResult(
         source_id="STUB",
         data_class=data_class,

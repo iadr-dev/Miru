@@ -197,9 +197,7 @@ class GoogleOAuthProvider:
         client = self._signing_key_client or PyJWKClient(GOOGLE_CERTS_URL)
         return client.get_signing_key_from_jwt(id_token).key
 
-    async def verify_id_token(
-        self, id_token: str, *, nonce: str | None = None
-    ) -> VerifiedIdentity:
+    async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> VerifiedIdentity:
         # JWKS resolution and RS256 verification are blocking (urllib fetch + crypto); keep them
         # off the event loop.
         signing_key: Any = await anyio.to_thread.run_sync(self._resolve_key, id_token)
@@ -304,9 +302,7 @@ class LineOAuthProvider:
         payload = await _post_form(self._client_factory, LINE_TOKEN_ENDPOINT, data)
         return ProviderTokenResponse.model_validate(payload)
 
-    async def verify_id_token(
-        self, id_token: str, *, nonce: str | None = None
-    ) -> VerifiedIdentity:
+    async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> VerifiedIdentity:
         # LINE validates the ID token server-side and returns its claims — no local HMAC-secret
         # handling. The web-login ID token is HS256-signed with the channel secret, so keeping
         # that secret out of a JWT-verification path is deliberate hygiene.
