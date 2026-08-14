@@ -28,6 +28,22 @@ dependencies = [
   "redis>=8.1.0",
 ]
 
+[project.optional-dependencies]
+# Real (non-stub) voice STT/TTS providers — heavy/network deps kept out of the base install;
+# only pulled in when a deployment actually configures `voice_stt_provider`/`voice_tts_provider`
+# to a non-"stub" value. `uv sync --extra voice` (or `--all-extras`) installs this group.
+voice = [
+  "faster-whisper>=1.0",
+  "edge-tts>=6.1",
+]
+# Office/PDF -> Markdown text extraction for chat attachments (`api/routers/agent.py`'s
+# `AttachmentInput`, `attachments/extractor.py`). Kept out of the base install like `voice`
+# above — it pulls in a large converter dependency tree (python-docx/openpyxl/pdfminer/...)
+# only a deployment that actually accepts document attachments needs.
+attachments = [
+  "markitdown[docx,pptx,xlsx,pdf]>=0.1.3",
+]
+
 [dependency-groups]
 dev = [
   "ruff>=0.8",
@@ -69,6 +85,7 @@ packages = [
   "src/usage",
   "src/scheduler",
   "src/voice",
+  "src/attachments",
   "src/personality",
   "src/pets",
   "src/schemas",
@@ -129,7 +146,17 @@ disallow_any_explicit = true
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = ["duckdb.*", "yfinance.*", "FinMind.*", "pandas.*", "feedparser.*", "selectolax.*"]
+module = [
+  "duckdb.*",
+  "yfinance.*",
+  "FinMind.*",
+  "pandas.*",
+  "feedparser.*",
+  "selectolax.*",
+  "faster_whisper.*",
+  "edge_tts.*",
+  "markitdown.*",
+]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

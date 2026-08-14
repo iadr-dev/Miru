@@ -9,10 +9,19 @@ provider/model. No orchestrator/agent-loop coupling.
 from __future__ import annotations
 
 from voice.models import SpeechAudio, Transcript, TranscriptSegment
-from voice.providers import Speaker, StubSpeaker, StubTranscriber, Transcriber
+from voice.providers import (
+    EdgeTTSSpeaker,
+    FasterWhisperTranscriber,
+    Speaker,
+    StubSpeaker,
+    StubTranscriber,
+    Transcriber,
+)
 from voice.service import ensure_caveated_for_speech, speak, transcribe
 
 __all__ = [
+    "EdgeTTSSpeaker",
+    "FasterWhisperTranscriber",
     "Speaker",
     "SpeechAudio",
     "StubSpeaker",
