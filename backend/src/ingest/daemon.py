@@ -47,9 +47,12 @@ from ingest.context import IngestContext
 from ingest.jobs import (
     job_active_etf_holding_changes,
     job_active_etf_holdings,
+    job_balance_sheet,
+    job_cash_flow,
     job_dividends,
     job_financials,
     job_institutional_flow,
+    job_market_value,
     job_price_eod,
 )
 from ingest.journal import JobRun
@@ -104,7 +107,7 @@ class ScheduledIngestJob:
     cadence: Cadence = Cadence.DAILY
 
 
-# The six whole-market pulls, each at the Taipei-local time its own job docstring documents.
+# The nine whole-market pulls, each at the Taipei-local time its own job docstring documents.
 SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
     ScheduledIngestJob("institutional_flow", time_(20, 10), job_institutional_flow),
@@ -118,6 +121,14 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("active_etf_holding_changes", time_(21, 15), job_active_etf_holding_changes),
     ScheduledIngestJob("financials", time_(21, 30), job_financials),
     ScheduledIngestJob("dividends", time_(21, 30), job_dividends),
+    # Balance-sheet/cash-flow share FINANCIALS_JOB's own irregular-per-filing cadence and fire
+    # alongside it (jobs.py's own comment: "ingested alongside the income statement" so the
+    # derived value factor's ROE/debt-equity/ROIC/EV-EBITDA/FCF-yield sub-metrics have every
+    # statement family available together).
+    ScheduledIngestJob("balance_sheet", time_(21, 30), job_balance_sheet),
+    ScheduledIngestJob("cash_flow", time_(21, 30), job_cash_flow),
+    # Market cap — Mon-Fri ~23:30 FinMind publish clock (MARKET_VALUE_JOB's own cron_hint).
+    ScheduledIngestJob("market_value", time_(23, 40), job_market_value),
 )
 
 

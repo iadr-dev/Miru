@@ -33,7 +33,6 @@ WORKDIR /app
 # The resolved virtualenv and the application source, owned by the unprivileged user.
 COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app src/ ./src/
-COPY --chown=app:app alembic.ini ./alembic.ini
 # Owned by root, not the runtime `app` user: the entrypoint is code the container executes on
 # every start, so the unprivileged process it later drops into must not be able to modify it.
 COPY --chown=root:root docker-entrypoint.sh ./docker-entrypoint.sh

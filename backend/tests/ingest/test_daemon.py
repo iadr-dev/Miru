@@ -15,8 +15,28 @@ import pytest
 import sources.finmind as finmind_module
 from config.settings import Settings
 from ingest.context import IngestContext
-from ingest.daemon import IngestDaemon, ScheduledIngestJob
-from ingest.jobs import PRICE_EOD_JOB, job_price_eod
+from ingest.daemon import SCHEDULED_JOBS, IngestDaemon, ScheduledIngestJob
+from ingest.jobs import (
+    ACTIVE_ETF_HOLDING_CHANGE_JOB,
+    ACTIVE_ETF_HOLDING_JOB,
+    ALL_WHOLE_MARKET_JOBS,
+    BALANCE_SHEET_JOB,
+    CASH_FLOW_JOB,
+    DIVIDENDS_JOB,
+    FINANCIALS_JOB,
+    INSTITUTIONAL_FLOW_JOB,
+    MARKET_VALUE_JOB,
+    PRICE_EOD_JOB,
+    job_active_etf_holding_changes,
+    job_active_etf_holdings,
+    job_balance_sheet,
+    job_cash_flow,
+    job_dividends,
+    job_financials,
+    job_institutional_flow,
+    job_market_value,
+    job_price_eod,
+)
 from ingest.journal import JobRun, RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
@@ -158,3 +178,37 @@ async def test_pass_drives_real_job_price_eod_end_to_end(
 
     assert ran == ["price_eod"]
     assert ctx.store.has_partition(PRICE_EOD_JOB.dataset, "TW", trading_day)
+
+
+def test_every_whole_market_job_is_scheduled() -> None:
+    """Regression guard for the gap this test was added to close: `job_balance_sheet`,
+    `job_cash_flow`, and `job_market_value` were fully implemented and exported (reachable from
+    the backfill CLI's `ALL_WHOLE_MARKET_JOBS`) but never added to `SCHEDULED_JOBS`, so the daily
+    cron silently never refreshed those three datasets — only a manual backfill run ever
+    populated them. `ALL_WHOLE_MARKET_JOBS` is the canonical list `jobs.py`'s own comment says a
+    completeness-asserting test should walk; this is that test."""
+    scheduled_run_fns = {job.run for job in SCHEDULED_JOBS}
+    # `WholeMarketJobSpec` has no back-reference to its wrapping `job_*` function, so the mapping
+    # is spelled out explicitly here rather than derived — deliberately verbose so a newly added
+    # spec without a matching entry fails loudly instead of being silently skipped by a clever
+    # but wrong inference.
+    spec_to_job_fn = {
+        PRICE_EOD_JOB: job_price_eod,
+        INSTITUTIONAL_FLOW_JOB: job_institutional_flow,
+        FINANCIALS_JOB: job_financials,
+        DIVIDENDS_JOB: job_dividends,
+        BALANCE_SHEET_JOB: job_balance_sheet,
+        CASH_FLOW_JOB: job_cash_flow,
+        MARKET_VALUE_JOB: job_market_value,
+        ACTIVE_ETF_HOLDING_JOB: job_active_etf_holdings,
+        ACTIVE_ETF_HOLDING_CHANGE_JOB: job_active_etf_holding_changes,
+    }
+    missing = [
+        spec.dataset
+        for spec in ALL_WHOLE_MARKET_JOBS
+        if spec_to_job_fn[spec] not in scheduled_run_fns
+    ]
+    assert not missing, (
+        f"WholeMarketJobSpec dataset(s) not wired into SCHEDULED_JOBS — the daily cron will "
+        f"never refresh them, only a manual backfill will: {missing}"
+    )
