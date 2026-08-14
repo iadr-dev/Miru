@@ -32,6 +32,7 @@ from api.dependencies import (
 from api.errors import ApiError
 from api.sse import format_sse_event
 from api.turn_driver import enforce_pre_turn_gate, start_turn_stream
+from api.turn_registry import RunningTurn
 from config.settings import Settings
 from conversation.models import MessageBlockType, TextBlock, Thread, Turn, TurnRole
 from conversation.store import (
@@ -42,14 +43,15 @@ from conversation.store import (
     ThreadNotFoundError,
     TurnNotFoundError,
 )
-from events.bus import Event
+from events.bus import TURN_END_KIND, Event
 from events.factory import StreamReader
 from feedback.store import FeedbackRecord, FeedbackStore, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
 router = APIRouter(tags=["threads"])
 
-_TERMINAL_KIND = "turn.end"
+_SSE_MEDIA_TYPE = "text/event-stream"
+_NO_SOURCE_USER_TURN_MESSAGE = "This assistant turn has no source user turn to re-run."
 
 
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
@@ -217,34 +219,42 @@ async def stream_thread(
     # Same-worker live attach — no durable reader means the in-memory backend, which cannot
     # replay, so this is the only path there. A live turn owned by the caller is attached directly.
     if reader is None:
-        if running is None or running.user_id != user.id:
-            return StreamingResponse(iter([]), media_type="text/event-stream")
-
-        async def _attach_local() -> AsyncIterator[str]:
-            async for event in running.event_bus.subscribe():
-                if event.seq <= after_seq:
-                    continue  # already delivered before the drop — never re-send (no duplicate)
-                yield format_sse_event(event)
-                if event.kind == _TERMINAL_KIND:
-                    break
-
-        return StreamingResponse(_attach_local(), media_type="text/event-stream")
+        return _attach_local_or_empty(running, user_id=user.id, after_seq=after_seq)
 
     # Cross-worker durable resume. Resolve the turn this thread's stream belongs to: the live
     # registry if this worker happens to hold it, else the thread's latest turn from the store
     # (a reconnect can land on a worker that never ran the turn).
-    turn_id: str | None
-    if running is not None:
-        turn_id = running.turn_id
-    else:
-        turn_id = thread.turns[-1].id if thread.turns else None
+    turn_id = running.turn_id if running is not None else _latest_turn_id(thread)
     if turn_id is None:
-        return StreamingResponse(iter([]), media_type="text/event-stream")
+        return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
 
     return StreamingResponse(
         _resume_stream(reader, turn_id=turn_id, after_seq=after_seq),
-        media_type="text/event-stream",
+        media_type=_SSE_MEDIA_TYPE,
     )
+
+
+def _latest_turn_id(thread: Thread) -> str | None:
+    return thread.turns[-1].id if thread.turns else None
+
+
+def _attach_local_or_empty(
+    running: RunningTurn | None, *, user_id: str, after_seq: int
+) -> StreamingResponse:
+    """Attach directly to a same-worker live turn's in-process bus, or return an
+    immediately-closing stream if there is no live turn owned by this caller."""
+    if running is None or running.user_id != user_id:
+        return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
+
+    async def _attach_local() -> AsyncIterator[str]:
+        async for event in running.event_bus.subscribe():
+            if event.seq <= after_seq:
+                continue  # already delivered before the drop — never re-send (no duplicate)
+            yield format_sse_event(event)
+            if event.kind == TURN_END_KIND:
+                break
+
+    return StreamingResponse(_attach_local(), media_type=_SSE_MEDIA_TYPE)
 
 
 def _parse_last_event_id(last_event_id: str | None) -> int:
@@ -290,7 +300,7 @@ async def _resume_stream(
         for event in await reader.replay_since(turn_id, after_seq):
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == _TERMINAL_KIND:
+            if event.kind == TURN_END_KIND:
                 return
         # Follow live from the queue, de-duplicating against what replay already covered.
         while True:
@@ -299,7 +309,7 @@ async def _resume_stream(
                 continue
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == _TERMINAL_KIND:
+            if event.kind == TURN_END_KIND:
                 return
     finally:
         buffer_task.cancel()
@@ -488,7 +498,7 @@ async def _source_user_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message="This assistant turn has no source user turn to re-run.",
+            message=_NO_SOURCE_USER_TURN_MESSAGE,
             retryable=False,
         )
     try:
@@ -497,7 +507,7 @@ async def _source_user_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message="This assistant turn has no source user turn to re-run.",
+            message=_NO_SOURCE_USER_TURN_MESSAGE,
             retryable=False,
         ) from exc
     return await _load_turn(
@@ -552,7 +562,7 @@ async def regenerate_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message="This assistant turn has no source user turn to re-run.",
+            message=_NO_SOURCE_USER_TURN_MESSAGE,
             retryable=False,
         )
     sibling_parent_id = source_user_turn.messages[-1].id

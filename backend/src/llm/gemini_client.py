@@ -217,6 +217,29 @@ def _chunk_stop_reason(
     return _FINISH_REASON_MAP.get(candidate.finish_reason, StopReason.END_TURN)
 
 
+_ChunkEvent = (
+    TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | ToolCallEvent | WebSearchResultEvent
+)
+
+
+def _process_chunk(
+    chunk: genai_types.GenerateContentResponse, emitted_tool_calls: int
+) -> tuple[list[_ChunkEvent], int, StopReason | None, TokenUsage | None]:
+    """One stream chunk's events + updated running state — pulled out of `stream()` purely to
+    keep that method's own branching shallow."""
+    candidate = chunk.candidates[0] if chunk.candidates else None
+    parts = candidate.content.parts if candidate and candidate.content else None
+    part_events, emitted_tool_calls = _events_from_chunk_parts(parts or [], emitted_tool_calls)
+    events: list[_ChunkEvent] = list(part_events)
+    grounding = candidate.grounding_metadata if candidate else None
+    web_search_event = _web_search_result_event(grounding)
+    if web_search_event is not None:
+        events.append(web_search_event)
+    stop_reason = _chunk_stop_reason(candidate, emitted_tool_calls=emitted_tool_calls)
+    usage = _usage_from_metadata(chunk.usage_metadata) if chunk.usage_metadata is not None else None
+    return events, emitted_tool_calls, stop_reason, usage
+
+
 class GeminiClient:
     """The Google Gemini `LLMClient`."""
 
@@ -358,21 +381,15 @@ class GeminiClient:
             config=self._config(system, tools, native_web_search=native_web_search),
         )
         async for chunk in stream:
-            candidate = chunk.candidates[0] if chunk.candidates else None
-            parts = candidate.content.parts if candidate and candidate.content else None
-            events, emitted_tool_calls = _events_from_chunk_parts(parts or [], emitted_tool_calls)
+            events, emitted_tool_calls, chunk_stop_reason, chunk_usage = _process_chunk(
+                chunk, emitted_tool_calls
+            )
             for event in events:
                 yield event
-            web_search_event = _web_search_result_event(
-                candidate.grounding_metadata if candidate else None
-            )
-            if web_search_event is not None:
-                yield web_search_event
-            chunk_stop_reason = _chunk_stop_reason(candidate, emitted_tool_calls=emitted_tool_calls)
             if chunk_stop_reason is not None:
                 stop_reason = chunk_stop_reason
-            if chunk.usage_metadata is not None:
-                usage = _usage_from_metadata(chunk.usage_metadata)
+            if chunk_usage is not None:
+                usage = chunk_usage
 
         yield StreamDoneEvent(stop_reason=stop_reason, usage=usage)
 

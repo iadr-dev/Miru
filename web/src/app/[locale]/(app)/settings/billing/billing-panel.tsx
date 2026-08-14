@@ -99,73 +99,121 @@ export function BillingPanel(): ReactNode {
         {unconfigured ? (
           <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>
         ) : (
-          <div className="space-y-4 py-1">
-            <SettingsRow label={t("tier")}>
-              <Select
-                aria-label={t("tier")}
-                value={tier}
-                onChange={(e) => setTier(e.target.value as (typeof PAYABLE_TIERS)[number])}
-                className="w-40"
-              >
-                {PAYABLE_TIERS.map((v) => (
-                  <option key={v} value={v}>
-                    {t(`tierOption.${v}`)}
-                  </option>
-                ))}
-              </Select>
-            </SettingsRow>
-            <SettingsRow label={t("interval")}>
-              <Select
-                aria-label={t("interval")}
-                value={interval}
-                onChange={(e) => setInterval(e.target.value as (typeof BILLING_INTERVALS)[number])}
-                className="w-40"
-              >
-                {BILLING_INTERVALS.map((v) => (
-                  <option key={v} value={v}>
-                    {t(`intervalOption.${v}`)}
-                  </option>
-                ))}
-              </Select>
-            </SettingsRow>
-            <SettingsRow label={t("byok")}>
-              <Checkbox checked={byok} onChange={setByok} label={t("byokCheckbox")} />
-            </SettingsRow>
-            {actionError ? (
-              <p role="alert" className="text-[13px] text-[var(--warn)]">
-                {actionError}
-              </p>
-            ) : null}
-            <Button
-              variant="filled"
-              size="sm"
-              disabled={checkoutMutation.isPending}
-              onClick={() => checkoutMutation.mutate()}
-            >
-              {t("checkout")}
-            </Button>
-          </div>
+          <PlansForm
+            tier={tier}
+            setTier={setTier}
+            interval={interval}
+            setInterval={setInterval}
+            byok={byok}
+            setByok={setByok}
+            actionError={actionError}
+            checkoutPending={checkoutMutation.isPending}
+            onCheckout={() => checkoutMutation.mutate()}
+          />
         )}
       </SettingsSection>
 
       <SettingsSection title={t("historyTitle")}>
-        {historyQuery.isLoading ? (
-          <SettingsLoading rows={2} />
-        ) : historyQuery.isError ? (
-          <p className="text-[13px] text-[var(--text-muted)]">
-            {historyQuery.error instanceof SettingsApiError &&
-            historyQuery.error.code === "billing_unconfigured"
-              ? t("unconfigured")
-              : tc("errorLoad")}
-          </p>
-        ) : (historyQuery.data ?? []).length === 0 ? (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("noHistory")}</p>
-        ) : (
-          <HistoryList transactions={historyQuery.data ?? []} />
-        )}
+        <BillingHistorySection query={historyQuery} />
       </SettingsSection>
     </>
   );
+}
+
+type PlansFormProps = {
+  tier: (typeof PAYABLE_TIERS)[number];
+  setTier: (tier: (typeof PAYABLE_TIERS)[number]) => void;
+  interval: (typeof BILLING_INTERVALS)[number];
+  setInterval: (interval: (typeof BILLING_INTERVALS)[number]) => void;
+  byok: boolean;
+  setByok: (byok: boolean) => void;
+  actionError: string | null;
+  checkoutPending: boolean;
+  onCheckout: () => void;
+};
+
+function PlansForm({
+  tier,
+  setTier,
+  interval,
+  setInterval,
+  byok,
+  setByok,
+  actionError,
+  checkoutPending,
+  onCheckout,
+}: PlansFormProps): ReactNode {
+  const t = useTranslations("settings.billing");
+  return (
+    <div className="space-y-4 py-1">
+      <SettingsRow label={t("tier")}>
+        <Select
+          aria-label={t("tier")}
+          value={tier}
+          onChange={(e) => setTier(e.target.value as (typeof PAYABLE_TIERS)[number])}
+          className="w-40"
+        >
+          {PAYABLE_TIERS.map((v) => (
+            <option key={v} value={v}>
+              {t(`tierOption.${v}`)}
+            </option>
+          ))}
+        </Select>
+      </SettingsRow>
+      <SettingsRow label={t("interval")}>
+        <Select
+          aria-label={t("interval")}
+          value={interval}
+          onChange={(e) => setInterval(e.target.value as (typeof BILLING_INTERVALS)[number])}
+          className="w-40"
+        >
+          {BILLING_INTERVALS.map((v) => (
+            <option key={v} value={v}>
+              {t(`intervalOption.${v}`)}
+            </option>
+          ))}
+        </Select>
+      </SettingsRow>
+      <SettingsRow label={t("byok")}>
+        <Checkbox checked={byok} onChange={setByok} label={t("byokCheckbox")} />
+      </SettingsRow>
+      {actionError ? (
+        <p role="alert" className="text-[13px] text-[var(--warn)]">
+          {actionError}
+        </p>
+      ) : null}
+      <Button variant="filled" size="sm" disabled={checkoutPending} onClick={onCheckout}>
+        {t("checkout")}
+      </Button>
+    </div>
+  );
+}
+
+function BillingHistorySection({
+  query,
+}: {
+  query: ReturnType<typeof useQuery<BillingTransaction[]>>;
+}): ReactNode {
+  const t = useTranslations("settings.billing");
+  const tc = useTranslations("settings.common");
+
+  if (query.isLoading) {
+    return <SettingsLoading rows={2} />;
+  }
+  if (query.isError) {
+    const unconfigured =
+      query.error instanceof SettingsApiError && query.error.code === "billing_unconfigured";
+    return (
+      <p className="text-[13px] text-[var(--text-muted)]">
+        {unconfigured ? t("unconfigured") : tc("errorLoad")}
+      </p>
+    );
+  }
+  const transactions = query.data ?? [];
+  if (transactions.length === 0) {
+    return <p className="text-[13px] text-[var(--text-muted)]">{t("noHistory")}</p>;
+  }
+  return <HistoryList transactions={transactions} />;
 }
 
 function HistoryList({ transactions }: { transactions: BillingTransaction[] }): ReactNode {

@@ -36,6 +36,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 _LOW_CONFIDENCE_THRESHOLD = 0.6
+_MP3_CONTENT_TYPE = "audio/mpeg"
 
 
 @runtime_checkable
@@ -76,7 +77,7 @@ class StubSpeaker:
     """Deterministic TTS for the default profile — no network. 'Renders' by UTF-8-encoding the
     text; the real adapter would return encoded audio for the same string."""
 
-    def __init__(self, *, content_type: str = "audio/mpeg") -> None:
+    def __init__(self, *, content_type: str = _MP3_CONTENT_TYPE) -> None:
         self._content_type = content_type
 
     async def speak(self, ssml_or_text: str, *, language: str = "zh-TW") -> SpeechAudio:
@@ -248,7 +249,7 @@ class EdgeTTSSpeaker:
     needed here, unlike the blocking `faster-whisper` SDK above. Produces MP3 (`audio/mpeg`),
     matching `StubSpeaker`'s declared default content type."""
 
-    def __init__(self, *, content_type: str = "audio/mpeg") -> None:
+    def __init__(self, *, content_type: str = _MP3_CONTENT_TYPE) -> None:
         self._content_type = content_type
 
     async def speak(self, ssml_or_text: str, *, language: str = "zh-TW") -> SpeechAudio:
@@ -304,7 +305,7 @@ class OpenAITTSSpeaker:
         voice: str = "alloy",
         model: str = "tts-1-hd",
         response_format: str = "mp3",
-        content_type: str = "audio/mpeg",
+        content_type: str = _MP3_CONTENT_TYPE,
     ) -> None:
         self._api_key = api_key
         self._voice = voice

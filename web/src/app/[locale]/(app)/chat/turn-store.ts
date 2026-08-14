@@ -25,6 +25,7 @@ import {
   isSseEventKind,
   messageDataSchema,
   routeDecidedDataSchema,
+  type SseEventKind,
   steeringAcceptedDataSchema,
   thinkingDeltaDataSchema,
   toolResultDataSchema,
@@ -155,6 +156,139 @@ function appendThinkingDelta(
   return chunks.map((chunk) => (chunk.agentId === agentId ? updated : chunk));
 }
 
+/** One per-`frame.kind` reducer: `base` already has `turnId` resolved; each function narrows
+ * `frame.envelope.data` against its own schema and returns the next `ActiveTurn` (or `base`
+ * unchanged on a parse failure — an unrecognized/malformed payload never crashes the overlay).
+ * Split out of `applyFrame`'s switch purely to keep that function's own branching shallow — each
+ * kind becomes a one-line dispatch instead of an inline schema-parse-and-merge block. Keyed by
+ * EVERY `SseEventKind` (a total, not partial, map) so a newly-emitted kind added to
+ * `SSE_EVENT_KINDS` is a compile error here until given a reducer — `synthesis.start`/`usage`
+ * carry no overlay-relevant fields, so their reducer is the identity function. */
+const FRAME_REDUCERS: {
+  [K in SseEventKind]: (base: ActiveTurn, frame: AgentStreamFrame) => ActiveTurn;
+} = {
+  "turn.start": (base, frame) => {
+    const parsed = turnStartDataSchema.safeParse(frame.envelope.data);
+    return { ...base, threadId: parsed.success ? parsed.data.thread_id : base.threadId };
+  },
+  "route.decided": (base, frame) => {
+    const parsed = routeDecidedDataSchema.safeParse(frame.envelope.data);
+    return { ...base, framework: parsed.success ? parsed.data.framework : base.framework };
+  },
+  "agent.spawned": (base, frame) => {
+    const parsed = agentSpawnedDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      lanes: upsertLane(base.lanes, {
+        agentId: parsed.data.agent_id,
+        seq: frame.envelope.seq,
+        skill: parsed.data.skill ?? null,
+        activity: parsed.data.activity ?? null,
+        status: "running",
+      }),
+    };
+  },
+  "agent.progress": (base, frame) => {
+    const parsed = agentProgressDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    const degraded = parsed.data.status === "degraded";
+    return {
+      ...base,
+      lanes: upsertLane(base.lanes, {
+        agentId: parsed.data.agent_id,
+        seq: frame.envelope.seq,
+        skill: null,
+        activity: null,
+        status: degraded ? "degraded" : "running",
+      }),
+    };
+  },
+  "agent.done": (base, frame) => {
+    const parsed = agentDoneDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      lanes: upsertLane(base.lanes, {
+        agentId: parsed.data.agent_id,
+        seq: frame.envelope.seq,
+        skill: null,
+        activity: null,
+        status: "done",
+      }),
+    };
+  },
+  "tool.result": (base, frame) => {
+    const parsed = toolResultDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      toolSteps: [
+        ...base.toolSteps,
+        {
+          seq: frame.envelope.seq,
+          toolName: parsed.data.tool_name,
+          summary: parsed.data.summary ?? null,
+        },
+      ],
+    };
+  },
+  "thinking.delta": (base, frame) => {
+    const parsed = thinkingDeltaDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      thinkingChunks: appendThinkingDelta(
+        base.thinkingChunks,
+        parsed.data.agent_id,
+        parsed.data.text,
+        frame.envelope.seq,
+      ),
+    };
+  },
+  "web_search.result": (base, frame) => {
+    const parsed = webSearchResultDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return { ...base, webSearchSources: [...base.webSearchSources, ...parsed.data.sources] };
+  },
+  rich_card: (base, frame) => {
+    const parsed = richCardSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      richCards: [...base.richCards, { seq: frame.envelope.seq, card: parsed.data }],
+    };
+  },
+  "steering.accepted": (base, frame) => {
+    const parsed = steeringAcceptedDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return { ...base, steeringQueued: [...base.steeringQueued, parsed.data.message] };
+  },
+  message: (base, frame) => {
+    const parsed = messageDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      answerText: parsed.data.text,
+      framework: parsed.data.framework ?? base.framework,
+    };
+  },
+  "turn.end": (base, frame) => {
+    const parsed = turnEndDataSchema.safeParse(frame.envelope.data);
+    const status = parsed.success ? parsed.data.status : "done";
+    const phase: TurnPhase =
+      status === "error" ? "error" : status === "cancelled" ? "cancelled" : "done";
+    return {
+      ...base,
+      phase,
+      errorMessage:
+        status === "error" ? ((parsed.success ? parsed.data.message : null) ?? "") : null,
+    };
+  },
+  "synthesis.start": (base) => base,
+  usage: (base) => base,
+};
+
 export const useTurnStore = create<TurnStore>((set) => ({
   activeTurn: null,
 
@@ -192,186 +326,7 @@ export const useTurnStore = create<TurnStore>((set) => ({
         return { activeTurn: base }; // unknown/future kind — ignore, don't crash
       }
 
-      const { data } = frame.envelope;
-      switch (frame.kind) {
-        case "turn.start": {
-          const parsed = turnStartDataSchema.safeParse(data);
-          return {
-            activeTurn: {
-              ...base,
-              threadId: parsed.success ? parsed.data.thread_id : base.threadId,
-            },
-          };
-        }
-        case "route.decided": {
-          const parsed = routeDecidedDataSchema.safeParse(data);
-          return {
-            activeTurn: {
-              ...base,
-              framework: parsed.success ? parsed.data.framework : base.framework,
-            },
-          };
-        }
-        case "agent.spawned": {
-          const parsed = agentSpawnedDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              lanes: upsertLane(base.lanes, {
-                agentId: parsed.data.agent_id,
-                seq: frame.envelope.seq,
-                skill: parsed.data.skill ?? null,
-                activity: parsed.data.activity ?? null,
-                status: "running",
-              }),
-            },
-          };
-        }
-        case "agent.progress": {
-          const parsed = agentProgressDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          const degraded = parsed.data.status === "degraded";
-          return {
-            activeTurn: {
-              ...base,
-              lanes: upsertLane(base.lanes, {
-                agentId: parsed.data.agent_id,
-                seq: frame.envelope.seq,
-                skill: null,
-                activity: null,
-                status: degraded ? "degraded" : "running",
-              }),
-            },
-          };
-        }
-        case "agent.done": {
-          const parsed = agentDoneDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              lanes: upsertLane(base.lanes, {
-                agentId: parsed.data.agent_id,
-                seq: frame.envelope.seq,
-                skill: null,
-                activity: null,
-                status: "done",
-              }),
-            },
-          };
-        }
-        case "tool.result": {
-          const parsed = toolResultDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              toolSteps: [
-                ...base.toolSteps,
-                {
-                  seq: frame.envelope.seq,
-                  toolName: parsed.data.tool_name,
-                  summary: parsed.data.summary ?? null,
-                },
-              ],
-            },
-          };
-        }
-        case "thinking.delta": {
-          const parsed = thinkingDeltaDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              thinkingChunks: appendThinkingDelta(
-                base.thinkingChunks,
-                parsed.data.agent_id,
-                parsed.data.text,
-                frame.envelope.seq,
-              ),
-            },
-          };
-        }
-        case "web_search.result": {
-          const parsed = webSearchResultDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              webSearchSources: [...base.webSearchSources, ...parsed.data.sources],
-            },
-          };
-        }
-        case "rich_card": {
-          const parsed = richCardSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              richCards: [...base.richCards, { seq: frame.envelope.seq, card: parsed.data }],
-            },
-          };
-        }
-        case "steering.accepted": {
-          const parsed = steeringAcceptedDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              steeringQueued: [...base.steeringQueued, parsed.data.message],
-            },
-          };
-        }
-        case "message": {
-          const parsed = messageDataSchema.safeParse(data);
-          if (!parsed.success) {
-            return { activeTurn: base };
-          }
-          return {
-            activeTurn: {
-              ...base,
-              answerText: parsed.data.text,
-              framework: parsed.data.framework ?? base.framework,
-            },
-          };
-        }
-        case "turn.end": {
-          const parsed = turnEndDataSchema.safeParse(data);
-          const status = parsed.success ? parsed.data.status : "done";
-          const phase: TurnPhase =
-            status === "error" ? "error" : status === "cancelled" ? "cancelled" : "done";
-          return {
-            activeTurn: {
-              ...base,
-              phase,
-              errorMessage:
-                status === "error" ? ((parsed.success ? parsed.data.message : null) ?? "") : null,
-            },
-          };
-        }
-        case "synthesis.start":
-        case "usage":
-          return { activeTurn: base };
-        default:
-          return assertNever(frame.kind);
-      }
+      return { activeTurn: FRAME_REDUCERS[frame.kind](base, frame) };
     }),
 
   fail: (message) =>
@@ -383,9 +338,3 @@ export const useTurnStore = create<TurnStore>((set) => ({
 
   clear: () => set({ activeTurn: null }),
 }));
-
-/** Exhaustiveness guard — a newly-emitted SSE kind added to `SSE_EVENT_KINDS` becomes a compile
- * error here until its reducer arm is written (web/CLAUDE.md §2.1 discriminated-union rule). */
-function assertNever(value: never): never {
-  throw new Error(`Unhandled SSE event kind: ${String(value)}`);
-}

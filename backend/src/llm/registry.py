@@ -50,6 +50,7 @@ class ModelRole(StrEnum):
 # `LLM_PROVIDER` / `LLM_MODEL`.
 _DEFAULT_PROVIDER: Final[str] = "anthropic"
 _DEFAULT_MODEL: Final[str] = "claude-sonnet-5"
+_ANTHROPIC_SONNET_FALLBACK: Final[str] = "anthropic/claude-sonnet-4-6"
 
 # Suggested per-role defaults, each an ordered fallback chain of "provider/model" specs — the
 # first entry is tried first; on a `chat()`/`stream()` failure `FallbackLLMClient` tries the
@@ -58,10 +59,10 @@ _DEFAULT_ROLE_MODELS: Final[dict[ModelRole, tuple[str, ...]]] = {
     ModelRole.CLASSIFIER: (
         "groq/llama-3.3-70b-versatile",
         "cerebras/gpt-oss-120b",
-        "anthropic/claude-sonnet-4-6",
+        _ANTHROPIC_SONNET_FALLBACK,
     ),
-    ModelRole.AGENT: ("anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5-20251001"),
-    ModelRole.SUBAGENT: ("anthropic/claude-sonnet-4-6",),
+    ModelRole.AGENT: (_ANTHROPIC_SONNET_FALLBACK, "anthropic/claude-haiku-4-5-20251001"),
+    ModelRole.SUBAGENT: (_ANTHROPIC_SONNET_FALLBACK,),
     ModelRole.SYNTHESIS: ("openai/gpt-4o-mini",),
 }
 
@@ -89,6 +90,32 @@ def _api_key_for(provider_id: str, settings: Settings) -> str | None:
     }.get(provider_id)
 
 
+def _require_api_key(provider_id: str, settings: Settings) -> str:
+    key = _api_key_for(provider_id, settings)
+    if not key:
+        raise ProviderNotConfiguredError(f"{provider_id}_api_key is not configured")
+    return key
+
+
+def _build_openai_compat_client(provider_id: str, model_id: str, settings: Settings) -> LLMClient:
+    key = _require_api_key(provider_id, settings)
+    # OpenRouter has its own native web-search plugin (`openai_compat._body` appends
+    # `openrouter:web_search` when this capability is set) — Groq/Cerebras have no
+    # equivalent, so they keep the default `ModelCapabilities()` (native_web_search=False).
+    capabilities = (
+        ModelCapabilities(native_tool_calling=True, streaming=True, native_web_search=True)
+        if provider_id == "openrouter"
+        else None
+    )
+    return OpenAICompatClient(
+        provider_id=provider_id,
+        model_id=model_id,
+        base_url=_OPENAI_COMPAT_BASE_URLS[provider_id],
+        api_key=key,
+        capabilities=capabilities,
+    )
+
+
 def build_client(provider_id: str, model_id: str, settings: Settings | None = None) -> LLMClient:
     """Construct the concrete `LLMClient` for `(provider_id, model_id)`.
 
@@ -102,42 +129,16 @@ def build_client(provider_id: str, model_id: str, settings: Settings | None = No
         return LocalOllamaClient(model_id=model_id, base_url=settings.ollama_base_url)
 
     if provider_id == "anthropic":
-        key = _api_key_for(provider_id, settings)
-        if not key:
-            raise ProviderNotConfiguredError("anthropic_api_key is not configured")
-        return AnthropicClient(model_id=model_id, api_key=key)
+        return AnthropicClient(model_id=model_id, api_key=_require_api_key(provider_id, settings))
 
     if provider_id == "openai":
-        key = _api_key_for(provider_id, settings)
-        if not key:
-            raise ProviderNotConfiguredError("openai_api_key is not configured")
-        return OpenAIClient(model_id=model_id, api_key=key)
+        return OpenAIClient(model_id=model_id, api_key=_require_api_key(provider_id, settings))
 
     if provider_id == "gemini":
-        key = _api_key_for(provider_id, settings)
-        if not key:
-            raise ProviderNotConfiguredError("gemini_api_key is not configured")
-        return GeminiClient(model_id=model_id, api_key=key)
+        return GeminiClient(model_id=model_id, api_key=_require_api_key(provider_id, settings))
 
     if provider_id in _OPENAI_COMPAT_BASE_URLS:
-        key = _api_key_for(provider_id, settings)
-        if not key:
-            raise ProviderNotConfiguredError(f"{provider_id}_api_key is not configured")
-        # OpenRouter has its own native web-search plugin (`openai_compat._body` appends
-        # `openrouter:web_search` when this capability is set) — Groq/Cerebras have no
-        # equivalent, so they keep the default `ModelCapabilities()` (native_web_search=False).
-        capabilities = (
-            ModelCapabilities(native_tool_calling=True, streaming=True, native_web_search=True)
-            if provider_id == "openrouter"
-            else None
-        )
-        return OpenAICompatClient(
-            provider_id=provider_id,
-            model_id=model_id,
-            base_url=_OPENAI_COMPAT_BASE_URLS[provider_id],
-            api_key=key,
-            capabilities=capabilities,
-        )
+        return _build_openai_compat_client(provider_id, model_id, settings)
 
     # No client implementation for this provider id — a config that names one fails loudly
     # here rather than silently falling back to a different vendor.

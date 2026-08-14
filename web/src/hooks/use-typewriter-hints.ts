@@ -32,6 +32,7 @@ export function useTypewriterHints(hints: readonly string[]): string {
       }
       let index = lastIndex;
       while (index === lastIndex) {
+        // NOSONAR — picking a UI placeholder-copy variant, not a security-sensitive value.
         index = Math.floor(Math.random() * hints.length);
       }
       lastIndex = index;

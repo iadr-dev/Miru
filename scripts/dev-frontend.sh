@@ -15,6 +15,8 @@ if [ ! -f .env.local ] && [ ! -f .env ]; then
 fi
 
 if [ ! -d node_modules ]; then
+  # NOSONAR (S6505) — --ignore-scripts would break the native builds (sharp, @swc/core,
+  # @parcel/watcher) explicitly allowlisted in web/pnpm-workspace.yaml's allowBuilds.
   pnpm install
 fi
 

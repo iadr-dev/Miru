@@ -83,6 +83,41 @@ export function ChatClient(): ReactNode {
     [queryClient],
   );
 
+  // Consumes one stream, folding every frame into the overlay, and returns the thread id the
+  // turn resolved to (a brand-new thread's id first surfaces on the `turn.start` frame). Split
+  // out of `runStream` purely to keep that function's own branching shallow.
+  const consumeStream = useCallback(
+    async (
+      threadIdAtStart: string | null,
+      open: (signal: AbortSignal) => AsyncGenerator<AgentStreamFrame>,
+    ): Promise<string | null> => {
+      const controller = new AbortController();
+      abortRef.current = controller;
+      let resolvedThreadId = threadIdAtStart;
+      try {
+        for await (const frame of open(controller.signal)) {
+          applyFrame(frame);
+          if (frame.kind === "turn.start" && typeof frame.envelope.data.thread_id === "string") {
+            resolvedThreadId = frame.envelope.data.thread_id;
+            if (resolvedThreadId !== threadIdAtStart) {
+              useNewThreadStore.getState().resolve(resolvedThreadId);
+            }
+          }
+        }
+      } catch (err) {
+        // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
+        if (!(err instanceof DOMException && err.name === "AbortError")) {
+          fail(err instanceof Error ? err.message : t("error"));
+          useNewThreadStore.getState().reset();
+        }
+      } finally {
+        abortRef.current = null;
+      }
+      return resolvedThreadId;
+    },
+    [applyFrame, fail, t],
+  );
+
   // Shared by a fresh send, a regenerate, and an edit-resubmit — all three open a
   // `text/event-stream` POST and fold identical frame kinds into the same overlay; only which
   // endpoint is opened (and whether an optimistic user bubble is shown) differs, so that part is
@@ -99,28 +134,8 @@ export function ChatClient(): ReactNode {
       if (threadId === null && mode === "send") {
         useNewThreadStore.getState().startPending();
       }
-      const controller = new AbortController();
-      abortRef.current = controller;
-      let resolvedThreadId = threadId;
-      try {
-        for await (const frame of open(controller.signal)) {
-          applyFrame(frame);
-          if (frame.kind === "turn.start" && typeof frame.envelope.data.thread_id === "string") {
-            resolvedThreadId = frame.envelope.data.thread_id;
-            if (resolvedThreadId !== threadId) {
-              useNewThreadStore.getState().resolve(resolvedThreadId);
-            }
-          }
-        }
-      } catch (err) {
-        // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          fail(err instanceof Error ? err.message : t("error"));
-          useNewThreadStore.getState().reset();
-        }
-      } finally {
-        abortRef.current = null;
-      }
+
+      const resolvedThreadId = await consumeStream(threadId, open);
 
       // A brand-new thread's id first surfaces on turn.start — adopt it so the URL + queries track it.
       if (resolvedThreadId !== null && resolvedThreadId !== threadId) {
@@ -148,12 +163,10 @@ export function ChatClient(): ReactNode {
       pendingModelOverride,
       applyModelOverride,
       begin,
-      applyFrame,
-      fail,
+      consumeStream,
       clear,
       queryClient,
       router,
-      t,
     ],
   );
 

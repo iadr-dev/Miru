@@ -41,9 +41,11 @@ from tools._rows import validate_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import DateRangeInput, SymbolInput
 
-# The untyped row-list edge every `cast(...)` below narrows a `SourceResult.payload` value from
-# — one PEP-695 local alias instead of repeating the same cast-target string at every call site.
+# The untyped edges every `cast(...)` below narrows a `SourceResult.payload` value from — PEP-695
+# local aliases instead of repeating the same cast-target strings at every call site.
 type _RowList = list[dict[str, object]]
+type _UntypedDict = dict[str, object]
+type _OptionalStr = str | None
 
 
 def _latest_bar(payload: dict[str, object]) -> EODBar | None:
@@ -51,11 +53,11 @@ def _latest_bar(payload: dict[str, object]) -> EODBar | None:
     (TWSE OpenAPI, single latest snapshot) — normalize both shapes to "the latest bar"."""
     bars = payload.get("bars")
     if isinstance(bars, list) and bars:
-        rows = cast("list[dict[str, object]]", bars)
+        rows = cast(_RowList, bars)
         return EODBar.model_validate(rows[-1])
     bar = payload.get("bar")
     if isinstance(bar, dict):
-        return EODBar.model_validate(cast("dict[str, object]", bar))
+        return EODBar.model_validate(cast(_UntypedDict, bar))
     return None
 
 
@@ -131,7 +133,7 @@ class GetDividendScheduleTool(BaseTool):
         raw_events = result.payload.get("events")
         events: tuple[DividendEvent, ...] = ()
         if isinstance(raw_events, list):
-            rows = cast("list[dict[str, object]]", raw_events)
+            rows = cast(_RowList, raw_events)
             events = tuple(DividendEvent.model_validate(row) for row in rows)
         return GetDividendScheduleOutput(
             source_id=result.source_id,
@@ -178,7 +180,7 @@ class GetInstitutionalFlowTool(BaseTool):
         raw_rows = result.payload.get("rows")
         rows: tuple[InstitutionalFlowRow, ...] = ()
         if isinstance(raw_rows, list):
-            typed_rows = cast("list[dict[str, object]]", raw_rows)
+            typed_rows = cast(_RowList, raw_rows)
             rows = tuple(InstitutionalFlowRow.model_validate(row) for row in typed_rows)
         return GetInstitutionalFlowOutput(
             source_id=result.source_id,
@@ -231,7 +233,7 @@ class GetChipFlowsTool(BaseTool):
         raw_rows = result.payload.get("rows")
         rows: tuple[ChipBrokerRow, ...] = ()
         if isinstance(raw_rows, list):
-            typed_rows = cast("list[dict[str, object]]", raw_rows)
+            typed_rows = cast(_RowList, raw_rows)
             rows = tuple(ChipBrokerRow.model_validate(row) for row in typed_rows)
         return GetChipFlowsOutput(
             source_id=result.source_id,
@@ -692,7 +694,7 @@ def _latest_eps(payload: dict[str, object]) -> float | None:
     raw_lines = payload.get("lines")
     if not isinstance(raw_lines, list):
         return None
-    rows = cast("list[dict[str, object]]", raw_lines)
+    rows = cast(_RowList, raw_lines)
     eps_rows = [row for row in rows if row.get("item") == "EPS"]
     if not eps_rows:
         return None
@@ -781,6 +783,32 @@ class GetCompanyProfileTool(BaseTool):
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
 
+    @staticmethod
+    def _sector_and_industry(sector_payload: dict[str, object]) -> tuple[str | None, str | None]:
+        classification = sector_payload.get("classification")
+        if not isinstance(classification, dict):
+            return None, None
+        parsed = SectorClassification.model_validate(cast(_UntypedDict, classification))
+        return parsed.sector, parsed.industry
+
+    @staticmethod
+    def _latest_dividend(dividend_payload: dict[str, object]) -> DividendEvent | None:
+        raw_events = dividend_payload.get("events")
+        if not (isinstance(raw_events, list) and raw_events):
+            return None
+        rows = cast(_RowList, raw_events)
+        return DividendEvent.model_validate(rows[-1])
+
+    @staticmethod
+    def _mops_fields(profile_payload: dict[str, object]) -> dict[str, object | None]:
+        mops_fields: dict[str, object | None] = dict.fromkeys(_MOPS_PROFILE_FIELDS)
+        mops_profile = profile_payload.get("profile")
+        if isinstance(mops_profile, dict):
+            typed_profile = cast(_UntypedDict, mops_profile)
+            for field_name in _MOPS_PROFILE_FIELDS:
+                mops_fields[field_name] = typed_profile.get(field_name)
+        return mops_fields
+
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(SymbolInput, args)
         symbol = typed.to_symbol()
@@ -805,18 +833,8 @@ class GetCompanyProfileTool(BaseTool):
 
         missing_fields: list[str] = list(_ALWAYS_MISSING_FIELDS)
 
-        sector: str | None = None
-        industry: str | None = None
-        classification = sector_result.payload.get("classification")
-        if isinstance(classification, dict):
-            parsed = SectorClassification.model_validate(cast("dict[str, object]", classification))
-            sector, industry = parsed.sector, parsed.industry
-
-        latest_dividend: DividendEvent | None = None
-        raw_events = dividend_result.payload.get("events")
-        if isinstance(raw_events, list) and raw_events:
-            rows = cast("list[dict[str, object]]", raw_events)
-            latest_dividend = DividendEvent.model_validate(rows[-1])
+        sector, industry = self._sector_and_industry(sector_result.payload)
+        latest_dividend = self._latest_dividend(dividend_result.payload)
 
         market_value_rows = validate_rows(MarketValueRow, market_value_result.payload, "rows")
         market_value = market_value_rows[-1].market_value if market_value_rows else None
@@ -836,15 +854,10 @@ class GetCompanyProfileTool(BaseTool):
         if eps is None:
             missing_fields.append("eps")
 
-        mops_profile = profile_result.payload.get("profile")
-        mops_fields: dict[str, object | None] = dict.fromkeys(_MOPS_PROFILE_FIELDS)
-        if isinstance(mops_profile, dict):
-            typed_profile = cast("dict[str, object]", mops_profile)
-            for field_name in _MOPS_PROFILE_FIELDS:
-                mops_fields[field_name] = typed_profile.get(field_name)
-        for field_name in _MOPS_PROFILE_FIELDS:
-            if mops_fields[field_name] is None:
-                missing_fields.append(field_name)
+        mops_fields = self._mops_fields(profile_result.payload)
+        missing_fields.extend(
+            field_name for field_name in _MOPS_PROFILE_FIELDS if mops_fields[field_name] is None
+        )
 
         return GetCompanyProfileOutput(
             symbol=symbol.id,
@@ -856,13 +869,13 @@ class GetCompanyProfileTool(BaseTool):
             per=per,
             dividend_yield=dividend_yield,
             eps=eps,
-            chairman=cast("str | None", mops_fields["chairman"]),
-            auditor=cast("str | None", mops_fields["auditor"]),
-            headquarters=cast("str | None", mops_fields["headquarters"]),
-            website=cast("str | None", mops_fields["website"]),
+            chairman=cast(_OptionalStr, mops_fields["chairman"]),
+            auditor=cast(_OptionalStr, mops_fields["auditor"]),
+            headquarters=cast(_OptionalStr, mops_fields["headquarters"]),
+            website=cast(_OptionalStr, mops_fields["website"]),
             capital=cast("int | None", mops_fields["capital"]),
-            spokesperson=cast("str | None", mops_fields["spokesperson"]),
-            founding_date=cast("str | None", mops_fields["founding_date"]),
+            spokesperson=cast(_OptionalStr, mops_fields["spokesperson"]),
+            founding_date=cast(_OptionalStr, mops_fields["founding_date"]),
             industry_classification_code=cast(
                 "str | None", mops_fields["industry_classification_code"]
             ),

@@ -58,6 +58,11 @@ from llm.base import LLMClient, Message, MessageRole
 
 logger = structlog.get_logger(__name__)
 
+# The untyped edges every `cast(...)` below narrows a parsed-JSON model-response value from —
+# PEP-695 local aliases instead of repeating the same cast-target strings at every call site.
+type _JsonList = list[object]
+type _JsonObject = dict[str, object]
+
 _CONCEPT_CONFIG_PATH: Final[Path] = (
     Path(__file__).resolve().parents[2] / "config" / "concept_themes.yaml"
 )
@@ -179,10 +184,10 @@ def _evidence_from_search(payload: dict[str, object], *, limit: int = 8) -> str:
     if not isinstance(hits, list):
         return ""
     lines: list[str] = []
-    for raw_hit in cast("list[object]", hits)[:limit]:
+    for raw_hit in cast(_JsonList, hits)[:limit]:
         if not isinstance(raw_hit, dict):
             continue
-        hit = cast("dict[str, object]", raw_hit)
+        hit = cast(_JsonObject, raw_hit)
         title = str(hit.get("title", "")).strip()
         snippet = str(hit.get("snippet", "")).strip()
         if title or snippet:
@@ -217,10 +222,10 @@ def _parse_picks(text: str | None) -> list[ResearchPick]:
     if not isinstance(parsed, list):
         return []
     picks: list[ResearchPick] = []
-    for raw_item in cast("list[object]", parsed):
+    for raw_item in cast(_JsonList, parsed):
         if not isinstance(raw_item, dict):
             continue
-        item = cast("dict[str, object]", raw_item)
+        item = cast(_JsonObject, raw_item)
         symbol = str(item.get("symbol", "")).strip()
         if not symbol:
             continue
@@ -241,11 +246,11 @@ def _parse_symbol_list(text: str | None) -> set[str]:
     if not isinstance(parsed, list):
         return set()
     kept: set[str] = set()
-    for raw_item in cast("list[object]", parsed):
+    for raw_item in cast(_JsonList, parsed):
         if isinstance(raw_item, str):
             kept.add(raw_item.strip())
         elif isinstance(raw_item, dict):
-            symbol = str(cast("dict[str, object]", raw_item).get("symbol", "")).strip()
+            symbol = str(cast(_JsonObject, raw_item).get("symbol", "")).strip()
             if symbol:
                 kept.add(symbol)
     return kept
@@ -332,10 +337,10 @@ def _parse_edges(text: str | None) -> list[tuple[str, str, EdgeType, EdgeConfide
     if not isinstance(parsed, list):
         return []
     out: list[tuple[str, str, EdgeType, EdgeConfidence]] = []
-    for raw_item in cast("list[object]", parsed):
+    for raw_item in cast(_JsonList, parsed):
         if not isinstance(raw_item, dict):
             continue
-        item = cast("dict[str, object]", raw_item)
+        item = cast(_JsonObject, raw_item)
         from_symbol = str(item.get("from", "")).strip()
         to_symbol = str(item.get("to", "")).strip()
         if not from_symbol or not to_symbol:

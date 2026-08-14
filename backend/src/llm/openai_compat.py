@@ -57,10 +57,11 @@ _FINISH_REASON_MAP: Final[dict[str, StopReason]] = {
     "length": StopReason.MAX_TOKENS,
 }
 
-# The untyped JSON-object edge every `cast(...)` below narrows an httpx-decoded response value
-# from — one PEP-695 local alias instead of repeating the same cast-target string at every call
-# site (this module's wire responses are dynamically-shaped JSON, not a typed SDK response).
+# The untyped JSON edges every `cast(...)` below narrows an httpx-decoded response value from —
+# PEP-695 local aliases instead of repeating the same cast-target strings at every call site
+# (this module's wire responses are dynamically-shaped JSON, not a typed SDK response).
 type _JsonObject = dict[str, object]
+type _JsonList = list[object]
 
 
 def _image_content_part(image: ImagePart) -> dict[str, object]:
@@ -136,7 +137,7 @@ def _apply_tool_call_delta(
     args_delta: str | None = None
     fn = item.get("function")
     if isinstance(fn, dict):
-        fn_dict = cast("dict[str, object]", fn)
+        fn_dict = cast(_JsonObject, fn)
         name = fn_dict.get("name")
         if isinstance(name, str) and name:
             slot["name"] = name
@@ -172,7 +173,7 @@ def _events_from_delta(
     a non-OpenRouter provider, mirroring the `native_web_search` provider carve-out already in
     this module."""
     events: list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent] = []
-    delta = cast("dict[str, object]", choice.get("delta", {}))
+    delta = cast(_JsonObject, choice.get("delta", {}))
     if provider_id == "openrouter":
         reasoning = delta.get("reasoning") or delta.get("reasoning_content")
         if isinstance(reasoning, str) and reasoning:
@@ -182,10 +183,10 @@ def _events_from_delta(
         events.append(TextDeltaEvent(text=text))
     raw_tool_deltas = delta.get("tool_calls")
     if isinstance(raw_tool_deltas, list):
-        for raw_delta in cast("list[object]", raw_tool_deltas):
+        for raw_delta in cast(_JsonList, raw_tool_deltas):
             if isinstance(raw_delta, dict):
                 events.append(
-                    _apply_tool_call_delta(cast("dict[str, object]", raw_delta), pending_calls)
+                    _apply_tool_call_delta(cast(_JsonObject, raw_delta), pending_calls)
                 )
     return events
 
@@ -199,16 +200,16 @@ def _url_citations_from_delta(delta: dict[str, object]) -> list[WebSearchSource]
     raw_annotations = delta.get("annotations")
     if not isinstance(raw_annotations, list):
         return sources
-    for raw in cast("list[object]", raw_annotations):
+    for raw in cast(_JsonList, raw_annotations):
         if not isinstance(raw, dict):
             continue
-        annotation = cast("dict[str, object]", raw)
+        annotation = cast(_JsonObject, raw)
         if annotation.get("type") != "url_citation":
             continue
         citation = annotation.get("url_citation")
         if not isinstance(citation, dict):
             continue
-        citation_dict = cast("dict[str, object]", citation)
+        citation_dict = cast(_JsonObject, citation)
         url = citation_dict.get("url")
         title = citation_dict.get("title")
         if isinstance(url, str) and isinstance(title, str):
@@ -225,21 +226,21 @@ def _parse_json_object(raw: str) -> dict[str, object]:
         parsed: object = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
+    return cast(_JsonObject, parsed) if isinstance(parsed, dict) else {}
 
 
 def _parse_tool_calls(raw_calls: object) -> list[ToolCall]:
     if not isinstance(raw_calls, list):
         return []
     calls: list[ToolCall] = []
-    for raw in cast("list[object]", raw_calls):
+    for raw in cast(_JsonList, raw_calls):
         if not isinstance(raw, dict):
             continue
-        item = cast("dict[str, object]", raw)
+        item = cast(_JsonObject, raw)
         fn = item.get("function")
         if not isinstance(fn, dict):
             continue
-        fn_dict = cast("dict[str, object]", fn)
+        fn_dict = cast(_JsonObject, fn)
         arguments_raw = fn_dict.get("arguments")
         arguments = _parse_json_object(arguments_raw) if isinstance(arguments_raw, str) else {}
         calls.append(
@@ -379,11 +380,11 @@ class OpenAICompatClient:
             raw: dict[str, object] = response.json()
 
         choice = cast("list[dict[str, object]]", raw["choices"])[0]
-        message = cast("dict[str, object]", choice["message"])
+        message = cast(_JsonObject, choice["message"])
         content = message.get("content")
         tool_calls = _parse_tool_calls(message.get("tool_calls"))
         finish_reason = str(choice.get("finish_reason", "stop"))
-        usage_raw = cast("dict[str, object]", raw.get("usage", {}))
+        usage_raw = cast(_JsonObject, raw.get("usage", {}))
         return LLMResponse(
             text=content if isinstance(content, str) else None,
             tool_calls=tuple(tool_calls),
