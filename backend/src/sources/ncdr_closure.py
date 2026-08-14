@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from typing import cast
+from typing import TypeAlias, cast
 
 import httpx
 import structlog
@@ -61,7 +61,7 @@ _CAVEAT = (
 )
 
 # The one cast() target type every raw JSON object-of-unknowns value below uses.
-type _UntypedDict = dict[str, object]
+_UntypedDict: TypeAlias = dict[str, object]
 
 
 def _strip_html(text: str) -> str:
@@ -83,7 +83,7 @@ def _parse_entry(entry: dict[str, object], *, now: datetime) -> dict[str, object
     summary_field = entry.get("summary")
     summary_text = ""
     if isinstance(summary_field, dict):
-        summary_text = str(cast(_UntypedDict, summary_field).get("#text", ""))
+        summary_text = str(cast("dict[str, object]", summary_field).get("#text", ""))
     elif isinstance(summary_field, str):
         summary_text = summary_field
     summary_text = _strip_html(summary_text)
@@ -108,6 +108,15 @@ def _parse_entry(entry: dict[str, object], *, now: datetime) -> dict[str, object
         "alert_id": entry.get("id"),
         "effective": entry.get("effective"),
         "expires": entry.get("expires"),
+        # `calendar/events.py::_feed_event_from_row`'s expected shape — a whole-market marker
+        # (no `stock_id`), always CONFIRMED (this feed only ever lists alerts already in force,
+        # never a future-scheduled one), titled with the affected area since NCDR issues one
+        # alert per region rather than one nationwide alert.
+        "type": "market_closure",
+        "state": "confirmed",
+        "event_date": closure_date.isoformat(),
+        "title_zh": f"{area} 停班停課",
+        "title_en": f"{area} market/work closure",
     }
 
 
@@ -170,7 +179,7 @@ class NcdrClosureAdapter:
             )
 
         try:
-            validated = self.validate(cast(_UntypedDict, body))
+            validated = self.validate(cast("dict[str, object]", body))
         except ValueError as exc:
             return _result(
                 payload={}, health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=str(exc))
@@ -178,7 +187,7 @@ class NcdrClosureAdapter:
 
         entries_field = validated.get("entry", [])
         if isinstance(entries_field, dict):
-            raw_entries: list[dict[str, object]] = [cast(_UntypedDict, entries_field)]
+            raw_entries: list[dict[str, object]] = [cast("dict[str, object]", entries_field)]
         else:
             raw_entries = cast("list[dict[str, object]]", entries_field)
 

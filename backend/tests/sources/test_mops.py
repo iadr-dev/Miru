@@ -8,7 +8,13 @@ import sources.mops as mops_module
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus
-from sources.mops import MopsAdapter, _fmt_time, _roc_to_iso_date, _roc_yearmonth_to_iso
+from sources.mops import (
+    MopsAdapter,
+    _fmt_time,
+    _gregorian_yyyymmdd_to_iso,
+    _roc_to_iso_date,
+    _roc_yearmonth_to_iso,
+)
 from tests.sources.conftest import load_fixture, make_json_client_factory
 
 
@@ -16,11 +22,12 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, body: object) -> None:
     monkeypatch.setattr(mops_module, "build_async_client", make_json_client_factory(body))
 
 
-def test_supports_corporate_actions_and_shareholding_tw_only() -> None:
+def test_supports_corporate_actions_shareholding_and_profile_tw_only() -> None:
     adapter = MopsAdapter()
     assert adapter.supports() == {
         (Capability.CORPORATE_ACTIONS, Market.TW),
         (Capability.SHAREHOLDING, Market.TW),
+        (Capability.PROFILE, Market.TW),
     }
 
 
@@ -143,6 +150,61 @@ async def test_fetch_director_shareholding_symbol_not_in_dump_is_stale(
     sym = Symbol(id="9999", market=Market.TW)
 
     result = await adapter.fetch(Capability.SHAREHOLDING, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.STALE
+    assert result.payload == {}
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("19870221", "1987-02-21"),
+        ("19501229", "1950-12-29"),
+    ],
+)
+def test_gregorian_yyyymmdd_to_iso(raw: str, expected: str) -> None:
+    assert _gregorian_yyyymmdd_to_iso(raw) == expected
+
+
+def test_gregorian_yyyymmdd_to_iso_rejects_malformed_input() -> None:
+    assert _gregorian_yyyymmdd_to_iso("not-a-date") is None
+    assert _gregorian_yyyymmdd_to_iso("1150625") is None  # 7 digits — that's the ROC format
+
+
+async def test_fetch_company_profile_filters_to_symbol_and_converts_dates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = load_fixture("mops", "t187ap03_L.json")
+    _patch_client(monkeypatch, body)
+    adapter = MopsAdapter()
+    sym = Symbol(id="2330", market=Market.TW)
+
+    result = await adapter.fetch(Capability.PROFILE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.source_id == "MOPS"
+    assert result.timing_class is TimingClass.REFERENCE
+    assert result.health.status is HealthStatus.OK
+    profile = result.payload["profile"]
+    assert isinstance(profile, dict)
+    assert profile["symbol"] == "2330"
+    assert profile["chairman"] == "魏哲家"
+    assert profile["auditor"] == "勤業眾信聯合會計師事務所"
+    assert profile["website"] == "https://www.tsmc.com"
+    assert profile["capital"] == 259303805050
+    assert profile["founding_date"] == "1987-02-21"
+    assert profile["listed_date"] == "1994-09-05"
+    assert profile["industry_classification_code"] == "24"
+
+
+async def test_fetch_company_profile_symbol_not_in_dump_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = load_fixture("mops", "t187ap03_L.json")
+    _patch_client(monkeypatch, body)
+    adapter = MopsAdapter()
+    sym = Symbol(id="9999", market=Market.TW)
+
+    result = await adapter.fetch(Capability.PROFILE, sym, tls_policy=TLSPolicy.STRICT)
 
     assert result.health.status is HealthStatus.STALE
     assert result.payload == {}

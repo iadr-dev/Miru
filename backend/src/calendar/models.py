@@ -43,6 +43,7 @@ class EventType(StrEnum):
     INDEX_REBALANCE = "index_rebalance"  # TIP/MSCI/FTSE (gap-scraper, Layer 3 — not built yet)
     MACRO_RELEASE = "macro_release"  # DGBAS/央行/FOMC (gap-scraper, Layer 3 — not built yet)
     CB_PUT_OR_MATURITY = "cb_put_or_maturity"  # CB 賣回權/到期 (feed-sourced, FinMind)
+    MARKET_CLOSURE = "market_closure"  # 停班停課 typhoon/disaster closure (feed-sourced, NCDR)
 
 
 class CalendarEvent(BaseModel):

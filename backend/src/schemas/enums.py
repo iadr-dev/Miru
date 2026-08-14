@@ -35,14 +35,15 @@ class Market(StrEnum):
     GB = "GB"
     JP = "JP"
     HK = "HK"
-    EU = "EU"  # continental-Europe equities (e.g. Euronext Amsterdam) — no single-country home
-    GLOBAL = "GLOBAL"  # datasets with no single-country home at all (multi-country central-bank
-    # rate panels, world commodity benchmark prices) — distinct from a market-specific gap;
-    # using e.g. TW here would misleadingly imply Taiwan is the data's country of origin
+    EU = "EU"
+    # No single-country home (global macro benchmarks, world commodity prices) — see
+    # sources/finmind/global_economic.py for the FinMind datasets modeled under this market.
+    GLOBAL = "GLOBAL"
 
 
 class Tier(StrEnum):
-    """User subscription tier — gates paid data + throughput only, never a recommendation."""
+    """User subscription tier — gates paid data + throughput only, never a recommendation
+    (governance.md §9)."""
 
     FREE = "free"
     PREMIUM = "premium"
@@ -52,123 +53,145 @@ class Tier(StrEnum):
 class Capability(StrEnum):
     """What callers request — never a source id."""
 
+    # --- Price / market data (core equity) ---
     PRICE_EOD = "price_eod"
+    PRICE_EOD_ADJUSTED = "price_eod_adjusted"
     PRICE_INTRADAY = "price_intraday"
+    PRICE_TICK = "price_tick"
+    PRICE_WEEKLY = "price_weekly"
+    PRICE_MONTHLY = "price_monthly"
+    PRICE_LIMIT = "price_limit"
+    INTRADAY_KBAR = "intraday_kbar"
+    TICK_SNAPSHOT = "tick_snapshot"
+    ORDER_BOOK_STATS = "order_book_stats"
+    TEN_YEAR_PRICE = "ten_year_price"
+    TOTAL_RETURN_INDEX = "total_return_index"
+
+    # --- Corporate fundamentals / financials ---
     FINANCIALS = "financials"
+    BALANCE_SHEET = "balance_sheet"
+    CASH_FLOW_STATEMENT = "cash_flow_statement"
+    MONTH_REVENUE = "month_revenue"
+    VALUATION_RATIOS = "valuation_ratios"
+    BUSINESS_INDICATOR = "business_indicator"
     DIVIDENDS = "dividends"
+    DIVIDEND_RESULT = "dividend_result"
     CORPORATE_ACTIONS = "corporate_actions"
+    CAPITAL_REDUCTION_REFERENCE_PRICE = "capital_reduction_reference_price"
+    PAR_VALUE_CHANGE = "par_value_change"
+    SPLIT_PRICE = "split_price"
+    STOCK_DELISTING = "stock_delisting"
+    TRADING_SUSPENSION = "trading_suspension"
+    DAY_TRADING_SUSPENSION = "day_trading_suspension"
+    INSIDER_ACTIVITY = "insider_activity"
+
+    # --- Institutional flow / chip data ---
     INSTITUTIONAL_FLOW = "institutional_flow"
-    MARGIN_SHORT = "margin_short"
-    SHAREHOLDING = "shareholding"
+    INSTITUTIONAL_FLOW_WIDE = "institutional_flow_wide"
+    INSTITUTIONAL_FLOW_TOTAL_MARKET = "institutional_flow_total_market"
+    INSTITUTIONAL_HOLDERS = "institutional_holders"
     CHIP_BROKER = "chip_broker"
+    CHIP_BROKER_AGG = "chip_broker_agg"
+    WARRANT_CHIP_BROKER = "warrant_chip_broker"
+    BLOCK_TRADE = "block_trade"
+    BLOCK_TRADE_BROKER_REPORT = "block_trade_broker_report"
+    DAY_TRADING = "day_trading"
+    GOVERNMENT_BANK_BUYSELL = "government_bank_buysell"
+
+    # --- Margin / short / lending ---
+    MARGIN_SHORT = "margin_short"
+    MARGIN_SHORT_TOTAL_MARKET = "margin_short_total_market"
+    MARGIN_SHORT_SALE_SUSPENSION = "margin_short_sale_suspension"
+    MARGIN_MAINTENANCE_RATIO = "margin_maintenance_ratio"
+    DAILY_SHORT_SALE_BALANCES = "daily_short_sale_balances"
+    SECURITIES_LENDING = "securities_lending"
+    LOAN_COLLATERAL_BALANCE = "loan_collateral_balance"
+    DISPOSITION_SECURITIES = "disposition_securities"
+
+    # --- Shareholding / distribution ---
+    SHAREHOLDING = "shareholding"
+    SHAREHOLDING_DISTRIBUTION = "shareholding_distribution"
+    FOREIGN_SHAREHOLDING = "foreign_shareholding"
+    MARKET_VALUE = "market_value"
+    MARKET_VALUE_WEIGHT = "market_value_weight"
+
+    # --- TDCC (Taiwan Depository & Clearing Corporation) ---
+    TDCC_SHAREHOLDING_DISTRIBUTION = "tdcc_shareholding_distribution"
+    TDCC_MONTHLY_CUSTODY_ACCOUNTS = "tdcc_monthly_custody_accounts"
+    TDCC_PLEDGED_CUSTODY_SHARES = "tdcc_pledged_custody_shares"
+    TDCC_EVOTING_SCHEDULE = "tdcc_evoting_schedule"
+    TDCC_OFFSHORE_FUND_NAV = "tdcc_offshore_fund_nav"
+    TDCC_SECURITIES_INFO = "tdcc_securities_info"
+
+    # --- Analyst / consensus / research ---
     ANALYST_CONSENSUS = "analyst_consensus"
     ESG = "esg"
     PROFILE = "profile"
     NEWS = "news"
-    CALENDAR_EVENTS = "calendar_events"
-    ETF_HOLDINGS = "etf_holdings"
-    DERIVATIVES_OI = "derivatives_oi"
-    MACRO = "macro"
-    SECTOR_CLASS = "sector_class"
-    ACTIVE_ETF_INFO = "active_etf_info"
-    ACTIVE_ETF_HOLDING = "active_etf_holding"
-    ACTIVE_ETF_HOLDING_CHANGE = "active_etf_holding_change"
+    STOCK_NEWS = "stock_news"
 
-    # Taiwan Market - Technical
+    # --- Reference / symbol lookup ---
     STOCK_INFO = "stock_info"
     STOCK_INFO_WITH_WARRANT = "stock_info_with_warrant"
-    WARRANT_UNDERLYING = "warrant_underlying"
-    TRADING_CALENDAR = "trading_calendar"
-    PRICE_EOD_ADJUSTED = "price_eod_adjusted"
-    PRICE_TICK = "price_tick"
-    VALUATION_RATIOS = "valuation_ratios"
-    ORDER_BOOK_STATS = "order_book_stats"
-    TAIEX_5S_INDEX = "taiex_5s_index"
-    DAY_TRADING = "day_trading"
-    TOTAL_RETURN_INDEX = "total_return_index"
-    TEN_YEAR_PRICE = "ten_year_price"
-    INTRADAY_KBAR = "intraday_kbar"
-    PRICE_WEEKLY = "price_weekly"
-    PRICE_MONTHLY = "price_monthly"
-    INDEX_5S_SNAPSHOT = "index_5s_snapshot"
-    TRADING_SUSPENSION = "trading_suspension"
-    DAY_TRADING_SUSPENSION = "day_trading_suspension"
-    PRICE_LIMIT = "price_limit"
-
-    # Taiwan Market - Chip / Institutional
-    MARGIN_SHORT_TOTAL_MARKET = "margin_short_total_market"
-    INSTITUTIONAL_FLOW_WIDE = "institutional_flow_wide"
-    INSTITUTIONAL_FLOW_TOTAL_MARKET = "institutional_flow_total_market"
-    FOREIGN_SHAREHOLDING = "foreign_shareholding"
-    SHAREHOLDING_DISTRIBUTION = "shareholding_distribution"
-    SECURITIES_LENDING = "securities_lending"
-    MARGIN_SHORT_SALE_SUSPENSION = "margin_short_sale_suspension"
-    DAILY_SHORT_SALE_BALANCES = "daily_short_sale_balances"
+    SYMBOL_LOOKUP = "symbol_lookup"
+    SYMBOL_SEARCH = "symbol_search"
     SECURITIES_TRADER_INFO = "securities_trader_info"
-    WARRANT_CHIP_BROKER = "warrant_chip_broker"
-    GOVERNMENT_BANK_BUYSELL = "government_bank_buysell"
-    MARGIN_MAINTENANCE_RATIO = "margin_maintenance_ratio"
-    CHIP_BROKER_AGG = "chip_broker_agg"
-    BLOCK_TRADE_BROKER_REPORT = "block_trade_broker_report"
-    BLOCK_TRADE = "block_trade"
-    LOAN_COLLATERAL_BALANCE = "loan_collateral_balance"
-    INDUSTRY_CHAIN_MONEY_FLOW = "industry_chain_money_flow"
-    DISPOSITION_SECURITIES = "disposition_securities"
+    MARKET_STATUS = "market_status"
+    TRADING_CALENDAR = "trading_calendar"
 
-    # Taiwan Market - Fundamental
-    BALANCE_SHEET = "balance_sheet"
-    CASH_FLOW_STATEMENT = "cash_flow_statement"
-    DIVIDEND_RESULT = "dividend_result"
-    MONTH_REVENUE = "month_revenue"
-    CAPITAL_REDUCTION_REFERENCE_PRICE = "capital_reduction_reference_price"
-    MARKET_VALUE = "market_value"
-    STOCK_DELISTING = "stock_delisting"
-    MARKET_VALUE_WEIGHT = "market_value_weight"
-    SPLIT_PRICE = "split_price"
-    PAR_VALUE_CHANGE = "par_value_change"
+    # --- Calendar / events ---
+    CALENDAR_EVENTS = "calendar_events"
+    EARNINGS_CALENDAR = "earnings_calendar"
+    ECONOMIC_CALENDAR = "economic_calendar"
+    IPO_CALENDAR = "ipo_calendar"
 
-    # Taiwan Market - Derivative
-    FUTOPT_INFO = "futopt_info"
-    FUTURES_DAILY = "futures_daily"
-    OPTION_DAILY = "option_daily"
-    FUTURES_TICK = "futures_tick"
-    FUTURES_SPREAD_TICK = "futures_spread_tick"
-    OPTION_TICK = "option_tick"
-    FUTURES_INSTITUTIONAL_FLOW = "futures_institutional_flow"
-    OPTION_INSTITUTIONAL_FLOW = "option_institutional_flow"
-    FUTURES_INSTITUTIONAL_FLOW_AFTER_HOURS = "futures_institutional_flow_after_hours"
-    OPTION_INSTITUTIONAL_FLOW_AFTER_HOURS = "option_institutional_flow_after_hours"
-    FUTURES_DEALER_VOLUME = "futures_dealer_volume"
-    OPTION_DEALER_VOLUME = "option_dealer_volume"
-    FUTURES_OI_LARGE_TRADERS = "futures_oi_large_traders"
-    OPTION_OI_LARGE_TRADERS = "option_oi_large_traders"
-    FUTURES_SPREAD_TRADING = "futures_spread_trading"
-    FUTURES_FINAL_SETTLEMENT_PRICE = "futures_final_settlement_price"
-    OPTION_FINAL_SETTLEMENT_PRICE = "option_final_settlement_price"
-    OPTION_VIX = "option_vix"
-    ASSET_SWAP_FIXED_INCOME_DAILY = "asset_swap_fixed_income_daily"
-    ASSET_SWAP_OPTION_DAILY = "asset_swap_option_daily"
+    # --- ETF / fund ---
+    ETF_HOLDINGS = "etf_holdings"
+    ACTIVE_ETF_HOLDING = "active_etf_holding"
+    ACTIVE_ETF_HOLDING_CHANGE = "active_etf_holding_change"
+    ACTIVE_ETF_INFO = "active_etf_info"
+    FUND_HOLDINGS = "fund_holdings"
 
-    # Taiwan Market - Real-Time
-    TICK_SNAPSHOT = "tick_snapshot"
-    FUTOPT_TICK_INFO = "futopt_tick_info"
-    FUTURES_SNAPSHOT = "futures_snapshot"
-    OPTIONS_SNAPSHOT = "options_snapshot"
-
-    # Taiwan Market - Convertible Bond
-    CB_INFO = "cb_info"
+    # --- Convertible bonds (CB) ---
     CB_DAILY = "cb_daily"
-    CB_INSTITUTIONAL_FLOW = "cb_institutional_flow"
     CB_DAILY_OVERVIEW = "cb_daily_overview"
+    CB_INFO = "cb_info"
+    CB_INSTITUTIONAL_FLOW = "cb_institutional_flow"
     CB_MONTHLY_ANALYSIS = "cb_monthly_analysis"
     CB_PUT_PROVISION = "cb_put_provision"
 
-    # Taiwan Market - Others
-    STOCK_NEWS = "stock_news"
-    BUSINESS_INDICATOR = "business_indicator"
-    INDUSTRY_CHAIN_CLASSIFICATION = "industry_chain_classification"
+    # --- Asset swap ---
+    ASSET_SWAP_FIXED_INCOME_DAILY = "asset_swap_fixed_income_daily"
+    ASSET_SWAP_OPTION_DAILY = "asset_swap_option_daily"
 
-    # International Markets
+    # --- Futures / options / derivatives (TAIFEX) ---
+    DERIVATIVES_OI = "derivatives_oi"
+    FUTOPT_INFO = "futopt_info"
+    FUTOPT_TICK_INFO = "futopt_tick_info"
+    FUTURES_DAILY = "futures_daily"
+    FUTURES_DEALER_VOLUME = "futures_dealer_volume"
+    FUTURES_FINAL_SETTLEMENT_PRICE = "futures_final_settlement_price"
+    FUTURES_INSTITUTIONAL_FLOW = "futures_institutional_flow"
+    FUTURES_INSTITUTIONAL_FLOW_AFTER_HOURS = "futures_institutional_flow_after_hours"
+    FUTURES_OI_LARGE_TRADERS = "futures_oi_large_traders"
+    FUTURES_SNAPSHOT = "futures_snapshot"
+    FUTURES_SPREAD_TICK = "futures_spread_tick"
+    FUTURES_SPREAD_TRADING = "futures_spread_trading"
+    FUTURES_TICK = "futures_tick"
+    OPTION_DAILY = "option_daily"
+    OPTION_DEALER_VOLUME = "option_dealer_volume"
+    OPTION_FINAL_SETTLEMENT_PRICE = "option_final_settlement_price"
+    OPTION_INSTITUTIONAL_FLOW = "option_institutional_flow"
+    OPTION_INSTITUTIONAL_FLOW_AFTER_HOURS = "option_institutional_flow_after_hours"
+    OPTION_OI_LARGE_TRADERS = "option_oi_large_traders"
+    OPTION_TICK = "option_tick"
+    OPTION_VIX = "option_vix"
+    OPTIONS_CHAIN = "options_chain"
+    OPTIONS_SNAPSHOT = "options_snapshot"
+    INDEX_5S_SNAPSHOT = "index_5s_snapshot"
+    TAIEX_5S_INDEX = "taiex_5s_index"
+
+    # --- Foreign markets (US / UK / Europe / Japan) ---
     US_STOCK_INFO = "us_stock_info"
     US_STOCK_PRICE = "us_stock_price"
     US_STOCK_PRICE_MINUTE = "us_stock_price_minute"
@@ -179,38 +202,19 @@ class Capability(StrEnum):
     JAPAN_STOCK_INFO = "japan_stock_info"
     JAPAN_STOCK_PRICE = "japan_stock_price"
 
-    # Global Economic Data
-    EXCHANGE_RATE = "exchange_rate"
-    CENTRAL_BANK_RATE = "central_bank_rate"
-    GOLD_PRICE = "gold_price"
-    CRUDE_OIL_PRICES = "crude_oil_prices"
-    GOVERNMENT_BOND_YIELD = "government_bond_yield"
-    FEAR_GREED_INDEX = "fear_greed_index"
-
-    # yfinance-native — no existing FinMind/gov equivalent (options, holders, cross-market
-    # search/resolution, calendars, sector/industry aggregates, market status, fund holdings).
-    # PRICE_EOD/FINANCIALS/BALANCE_SHEET/CASH_FLOW_STATEMENT/DIVIDENDS/SPLIT_PRICE/
-    # ANALYST_CONSENSUS/ESG/SECTOR_CLASS are reused as-is for non-TW markets — never
-    # duplicated under a yfinance-only name.
-    OPTIONS_CHAIN = "options_chain"
-    INSTITUTIONAL_HOLDERS = "institutional_holders"
-    INSIDER_ACTIVITY = "insider_activity"
-    SYMBOL_SEARCH = "symbol_search"
-    SYMBOL_LOOKUP = "symbol_lookup"
-    EARNINGS_CALENDAR = "earnings_calendar"
-    IPO_CALENDAR = "ipo_calendar"
-    ECONOMIC_CALENDAR = "economic_calendar"
+    # --- Macro / sector ---
+    MACRO = "macro"
+    SECTOR_CLASS = "sector_class"
     SECTOR_OVERVIEW = "sector_overview"
     INDUSTRY_OVERVIEW = "industry_overview"
-    MARKET_STATUS = "market_status"
-    FUND_HOLDINGS = "fund_holdings"
+    INDUSTRY_CHAIN_CLASSIFICATION = "industry_chain_classification"
+    INDUSTRY_CHAIN_MONEY_FLOW = "industry_chain_money_flow"
+    CENTRAL_BANK_RATE = "central_bank_rate"
+    EXCHANGE_RATE = "exchange_rate"
+    GOVERNMENT_BOND_YIELD = "government_bond_yield"
+    GOLD_PRICE = "gold_price"
+    CRUDE_OIL_PRICES = "crude_oil_prices"
+    FEAR_GREED_INDEX = "fear_greed_index"
 
-    # Screener query concepts. A screener takes a *query* over a whole universe, not a
-    # `(capability, symbol)` pair, so these are never declared in `supports()` and never
-    # dispatched through `SourceAdapter.fetch()`/`dataaccess/router.py` — they exist purely to
-    # name the concept consistently in logs/journal entries and for a future screener tool to
-    # reference. The actual execution path is `sources.yfinance.run_screener`, a query-shaped
-    # carve-out analogous to `batch_download`/`fetch_whole_market`.
-    EQUITY_SCREENER = "equity_screener"
-    ETF_SCREENER = "etf_screener"
-    FUND_SCREENER = "fund_screener"
+    # --- Warrant ---
+    WARRANT_UNDERLYING = "warrant_underlying"
