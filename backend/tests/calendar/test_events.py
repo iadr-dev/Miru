@@ -12,10 +12,15 @@ from calendar.events import get_calendar_events
 from calendar.models import CalendarEvent, EventState, EventType
 from datetime import UTC, date, datetime
 
+import pytest
+
+import sources.ncdr_closure as ncdr_module
 from dataaccess.router import DataAccessRouter
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.ncdr_closure import NcdrClosureAdapter
+from tests.sources.conftest import load_fixture, make_json_client_factory
 
 
 def _rule_engine_event(event_date: date) -> CalendarEvent:
@@ -107,6 +112,33 @@ async def test_get_calendar_events_merges_feed_rows_and_skips_malformed_ones() -
     assert len(events) == 1
     assert events[0].type is EventType.AGM
     assert events[0].event_date == date(2024, 6, 20)
+
+
+async def test_get_calendar_events_surfaces_real_ncdr_closure_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real, now-registered `NcdrClosureAdapter` end to end — a typhoon closure alert must
+    surface as an `EventType.MARKET_CLOSURE` `CalendarEvent`, not be silently dropped for
+    lacking the generic feed-row shape `_feed_event_from_row` expects (the bug this test
+    guards against: the adapter existed and was `supports()`-correct long before it was wired
+    into `dataaccess/composition.py`/`source_priority.yaml` or emitted matching row keys)."""
+    body = load_fixture("ncdr_closure", "alerts_typhoon.json")
+    monkeypatch.setattr(ncdr_module, "build_async_client", make_json_client_factory(body))
+    symbol = Symbol(id="2330", market=Market.TW)
+    router = DataAccessRouter(
+        {"NCDR_DGPA_CLOSURE_CAP": NcdrClosureAdapter()},
+        priority_config={"TW": {"calendar_events": ["NCDR_DGPA_CLOSURE_CAP"]}},
+    )
+
+    events, result = await get_calendar_events(
+        router, symbol, start_date=date(2024, 1, 1), end_date=date(2024, 12, 31)
+    )
+
+    assert result.source_id == "NCDR_DGPA_CLOSURE_CAP"
+    assert len(events) == 3
+    assert all(event.type is EventType.MARKET_CLOSURE for event in events)
+    assert all(event.state is EventState.CONFIRMED for event in events)
+    assert {event.event_date for event in events} == {date(2024, 7, 24)}
 
 
 async def test_get_calendar_events_filters_to_requested_window() -> None:

@@ -123,6 +123,83 @@ def _chip_broker_result() -> SourceResult:
     )
 
 
+def _market_value_result() -> SourceResult:
+    return SourceResult(
+        source_id="STUB",
+        data_class=DataClass.SPONSOR,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="market value caveat",
+        payload={
+            "rows": [
+                {
+                    "symbol": "2330",
+                    "market": "TW",
+                    "trade_date": "2026-08-01",
+                    "market_value": 15000000000,
+                }
+            ]
+        },
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+def _valuation_ratios_result() -> SourceResult:
+    return SourceResult(
+        source_id="STUB",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="valuation ratios caveat",
+        payload={
+            "rows": [
+                {
+                    "symbol": "2330",
+                    "market": "TW",
+                    "trade_date": "2026-08-01",
+                    "dividend_yield": 2.1,
+                    "per": 18.5,
+                    "pbr": 5.2,
+                }
+            ]
+        },
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+def _income_statement_result() -> SourceResult:
+    return SourceResult(
+        source_id="STUB",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="income statement caveat",
+        payload={
+            "lines": [
+                {
+                    "symbol": "2330",
+                    "market": "TW",
+                    "period_end": "2025-12-31",
+                    "statement_type": "income_statement",
+                    "item": "EPS",
+                    "origin_name": "基本每股盈餘（元）",
+                    "value": 9.21,
+                },
+                {
+                    "symbol": "2330",
+                    "market": "TW",
+                    "period_end": "2025-12-31",
+                    "statement_type": "income_statement",
+                    "item": "Revenue",
+                    "origin_name": "營業收入",
+                    "value": 625529765000.0,
+                },
+            ]
+        },
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
 def _sector_result() -> SourceResult:
     return SourceResult(
         source_id="STUB",
@@ -503,13 +580,47 @@ async def test_get_etf_money_flow_aggregates_across_etfs_and_ranks_flows(tmp_pat
     assert outflow_ids[0] == "2454"
 
 
-async def test_get_company_profile_composes_sector_and_dividend_and_lists_missing_fields() -> None:
+def _profile_result() -> SourceResult:
+    return SourceResult(
+        source_id="MOPS",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.REFERENCE,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="profile caveat",
+        payload={
+            "profile": {
+                "symbol": "2330",
+                "market": "TW",
+                "company_name": "台灣積體電路製造股份有限公司",
+                "industry_classification_code": "24",
+                "founding_date": "1987-02-21",
+                "listed_date": "1994-09-05",
+                "chairman": "魏哲家",
+                "general_manager": "魏哲家",
+                "spokesperson": "黃仁昭",
+                "spokesperson_title": "副總經理",
+                "headquarters": "新竹科學園區力行六路8號",
+                "phone": "(03)563-6688",
+                "website": "https://www.tsmc.com",
+                "capital": 259303805050,
+                "auditor": "勤業眾信聯合會計師事務所",
+            }
+        },
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+async def test_get_company_profile_enriches_all_fields_when_every_capability_is_healthy() -> None:
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(
         symbol,
         {
             Capability.SECTOR_CLASS: _sector_result(),
             Capability.DIVIDENDS: _dividend_result(),
+            Capability.MARKET_VALUE: _market_value_result(),
+            Capability.VALUATION_RATIOS: _valuation_ratios_result(),
+            Capability.FINANCIALS: _income_statement_result(),
+            Capability.PROFILE: _profile_result(),
         },
     )
     tool = GetCompanyProfileTool(router)
@@ -518,5 +629,96 @@ async def test_get_company_profile_composes_sector_and_dividend_and_lists_missin
 
     assert output.sector == "Tech"
     assert output.latest_dividend is not None
+    assert output.market_value == 15000000000
+    assert output.per == 18.5
+    assert output.dividend_yield == 2.1
+    assert output.eps == 9.21
+
+    # MOPS-sourced identity fields, real when the profile capability is healthy.
+    assert output.chairman == "魏哲家"
+    assert output.auditor == "勤業眾信聯合會計師事務所"
+    assert output.headquarters == "新竹科學園區力行六路8號"
+    assert output.website == "https://www.tsmc.com"
+    assert output.capital == 259303805050
+    assert output.spokesperson == "黃仁昭"
+    assert output.founding_date == "1987-02-21"
+    assert output.industry_classification_code == "24"
+    assert "chairman" not in output.missing_fields
+    assert "auditor" not in output.missing_fields
+
+    # Non-trivial-to-derive analytics fields stay honestly out of scope, even when the raw
+    # income-statement capability is healthy.
+    assert "revenue_yoy" in output.missing_fields
+    assert "margins" in output.missing_fields
+
+    # Successfully-enriched fields must NOT be listed as missing.
+    assert "market_value" not in output.missing_fields
+    assert "per" not in output.missing_fields
+    assert "dividend_yield" not in output.missing_fields
+    assert "eps" not in output.missing_fields
+
+
+async def test_get_company_profile_lists_mops_fields_missing_when_no_profile_adapter() -> None:
+    """A market with no MOPS/`profile` adapter (e.g. the router's own `unavailable` degrade)
+    must list every MOPS-sourced identity field in `missing_fields`, never fabricate one."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    router, _ = make_router(
+        symbol,
+        {
+            Capability.SECTOR_CLASS: _sector_result(),
+            Capability.DIVIDENDS: _dividend_result(),
+            Capability.MARKET_VALUE: _market_value_result(),
+            Capability.VALUATION_RATIOS: _valuation_ratios_result(),
+            Capability.FINANCIALS: _income_statement_result(),
+        },
+    )
+    tool = GetCompanyProfileTool(router)
+
+    output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
+
+    assert output.chairman is None
     assert "chairman" in output.missing_fields
     assert "auditor" in output.missing_fields
+    assert "headquarters" in output.missing_fields
+    assert "website" in output.missing_fields
+    assert "capital" in output.missing_fields
+    assert "spokesperson" in output.missing_fields
+    assert "founding_date" in output.missing_fields
+    assert "industry_classification_code" in output.missing_fields
+
+
+async def test_get_company_profile_lists_field_missing_when_its_capability_fetch_is_unhealthy() -> (
+    None
+):
+    """`missing_fields` is computed per-call, not a static reduced list — a field whose
+    capability exists in general still lands there for a symbol where this specific fetch came
+    back empty/unhealthy."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    unavailable_market_value = SourceResult(
+        source_id="STUB",
+        data_class=DataClass.SPONSOR,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="market value unavailable",
+        payload={},
+        health=SourceHealth(status=HealthStatus.UNREACHABLE, detail="no data"),
+    )
+    router, _ = make_router(
+        symbol,
+        {
+            Capability.SECTOR_CLASS: _sector_result(),
+            Capability.DIVIDENDS: _dividend_result(),
+            Capability.MARKET_VALUE: unavailable_market_value,
+            Capability.VALUATION_RATIOS: _valuation_ratios_result(),
+            Capability.FINANCIALS: _income_statement_result(),
+        },
+    )
+    tool = GetCompanyProfileTool(router)
+
+    output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
+
+    assert output.market_value is None
+    assert "market_value" in output.missing_fields
+    # The other enriched fields still succeeded and must not be dragged into missing_fields too.
+    assert "per" not in output.missing_fields
+    assert "eps" not in output.missing_fields

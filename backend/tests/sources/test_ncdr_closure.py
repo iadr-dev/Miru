@@ -52,6 +52,15 @@ async def test_fetch_extracts_closure_dates(monkeypatch: pytest.MonkeyPatch) -> 
     assert len(events) == 3  # type: ignore[arg-type]
     areas = {event["area"] for event in events}  # type: ignore[union-attr]
     assert areas == {"基隆市", "新北市", "台北市"}
+    # `calendar/events.py::_feed_event_from_row`'s expected keys must be present on every row
+    # so a registered NCDR adapter's rows actually surface as CalendarEvents, not silently
+    # skipped for lacking type/state/event_date.
+    first = events[0]  # type: ignore[index]
+    assert first["type"] == "market_closure"  # type: ignore[index]
+    assert first["state"] == "confirmed"  # type: ignore[index]
+    assert first["event_date"] == first["date"]  # type: ignore[index]
+    assert first["title_zh"]  # type: ignore[index]
+    assert first["title_en"]  # type: ignore[index]
 
 
 def test_closure_dates_feed_trading_day_calendar() -> None:

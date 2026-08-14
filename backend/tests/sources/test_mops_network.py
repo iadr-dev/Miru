@@ -54,3 +54,18 @@ async def test_live_director_shareholding_1101() -> None:
     result = await adapter.fetch(Capability.SHAREHOLDING, sym, tls_policy=TLSPolicy.STRICT)
 
     assert result.health.status in (HealthStatus.OK, HealthStatus.STALE)
+
+
+@pytest.mark.parametrize("stock_id", [_LARGE_CAP, _MID_CAP, _SMALL_CAP])
+async def test_live_company_profile(stock_id: str) -> None:
+    adapter = MopsAdapter()
+    sym = Symbol(id=stock_id, market=Market.TW)
+
+    result = await adapter.fetch(Capability.PROFILE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status in (HealthStatus.OK, HealthStatus.STALE)
+    if result.health.status is HealthStatus.OK:
+        profile = result.payload["profile"]
+        assert isinstance(profile, dict)
+        assert profile["chairman"]
+        assert profile["capital"] is not None

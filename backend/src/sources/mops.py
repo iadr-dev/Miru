@@ -1,12 +1,13 @@
-"""MOPS (公開資訊觀測站) disclosure-stream adapter — material announcements and
-director/supervisor shareholding, no auth, no query parameters.
+"""MOPS (公開資訊觀測站) disclosure-stream adapter — material announcements,
+director/supervisor shareholding, and basic company-profile identity fields, no auth, no query
+parameters.
 
 The legacy MOPS HTML-form scraper this adapter was long assumed to require
 (`mopsov.twse.com.tw/mops/web/<report_id>`, ROC-date/Big5 HTML parsing) is dead — the upstream
 retired that endpoint when it migrated MOPS to a single-page application, and it now serves a
 "page can not be accessed" stub. The same disclosure data is published as real JSON through
 TWSE's own open-data catalog instead, on the same base domain as the EOD-snapshot adapter in
-this package. Two datasets are covered here:
+this package. Three datasets are covered here:
 
 - `t187ap04_L` — 重大訊息 (material announcements). Whole-market current dump, one row per
   disclosure. `timing_class=EVENT_DRIVEN` — this is the catalyst stream: board resolutions,
@@ -14,19 +15,23 @@ this package. Two datasets are covered here:
 - `t187ap11_L` — 董監事持股餘額 (director/supervisor shareholding). Whole-market current dump,
   one row per person per company for the latest reported month. `timing_class=REFERENCE` — a
   slow-moving monthly filing, not an event feed.
+- `t187ap03_L` — 基本資料 (basic company-profile identity fields: chairman/capital/spokesperson/
+  auditor/founding date/headquarters/website/industry code). Whole-market current dump, one row
+  per company. `timing_class=REFERENCE` — this is exactly the "MOPS-only identity fields" set
+  `tools/market_tools.py::_MOPS_ONLY_MISSING_FIELDS` previously always omitted for lack of any
+  adapter; `Capability.PROFILE` (declared in `schemas/enums.py` but unwired until now) is this
+  dataset's capability.
 
-Both dumps are the *whole market* in one response, matching this source family's shape
+All three dumps are the *whole market* in one response, matching this source family's shape
 elsewhere in this package: `fetch()` still serves one symbol per call — it makes exactly one
-upstream GET and filters to the requested company code client-side, returning **every** matching
-row (both datasets are naturally one-to-many per company, unlike the single-bar EOD case).
+upstream GET and filters to the requested company code client-side. The two disclosure streams
+are naturally one-to-many per company (unlike the single-bar EOD case); the profile dataset is
+one-to-one per company, so `fetch()` returns at most one row for it.
 
 Known raw-JSON quirk confirmed against a live response: some Chinese field keys carry a
 trailing space (`"主旨 "`, `"選任時持股 "` at the time of writing) while otherwise-identical rows
 have been observed without it — `_field()` below tries both the bare and space-suffixed key so a
 future upstream cleanup does not silently break this adapter.
-
-Company-profile data (chairman/spokesman/capital, `t187ap03_L`) is a distinct, larger surface
-deliberately out of scope here — this adapter covers only the two disclosure-stream endpoints.
 """
 
 from __future__ import annotations
@@ -47,6 +52,7 @@ logger = structlog.get_logger(__name__)
 _BASE_URL = "https://openapi.twse.com.tw/v1"
 _MATERIAL_ANNOUNCEMENTS = f"{_BASE_URL}/opendata/t187ap04_L"
 _DIRECTOR_SHAREHOLDING = f"{_BASE_URL}/opendata/t187ap11_L"
+_COMPANY_PROFILE = f"{_BASE_URL}/opendata/t187ap03_L"
 
 _MIN_ROC_DATE_LEN = 5
 _MIN_ROC_YEARMONTH_LEN = 3
@@ -60,6 +66,11 @@ _SHAREHOLDING_CAVEAT = (
     "MOPS director/supervisor shareholding (董監事持股) dump reflects the single most recently "
     "reported month only — a slow-moving monthly regulatory filing, not a live shareholding "
     "figure, and carries no history beyond that one snapshot."
+)
+_PROFILE_CAVEAT = (
+    "MOPS company-profile (基本資料) dump is the current whole-market snapshot as published "
+    "today — identity fields (chairman/capital/spokesperson/...) change infrequently but this "
+    "adapter carries no history, only whatever MOPS reports as of the dump's own 出表日期."
 )
 
 
@@ -102,6 +113,24 @@ def _fmt_time(raw: str) -> str:
     return f"{digits[0:2]}:{digits[2:4]}:{digits[4:6]}"
 
 
+_GREGORIAN_YYYYMMDD_LEN = 8
+
+
+def _gregorian_yyyymmdd_to_iso(raw: str) -> str | None:
+    """8-digit plain-Gregorian date string (e.g. "19870221") -> ISO "YYYY-MM-DD"
+    ("1987-02-21"). `t187ap03_L`'s own two date fields (成立日期/上市日期) use this format —
+    unlike every other MOPS dataset in this module, which uses ROC-offset dates — confirmed
+    against a live response (TSMC's 成立日期 is "19870221", a plain Gregorian year, not
+    1987+1911)."""
+    digits = raw.strip()
+    if len(digits) != _GREGORIAN_YYYYMMDD_LEN or not digits.isdigit():
+        return None
+    try:
+        return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8])).isoformat()
+    except ValueError:
+        return None
+
+
 def _to_int(value: object) -> int | None:
     if value is None:
         return None
@@ -127,6 +156,7 @@ class MopsAdapter:
         return {
             (Capability.CORPORATE_ACTIONS, Market.TW),
             (Capability.SHAREHOLDING, Market.TW),
+            (Capability.PROFILE, Market.TW),
         }
 
     def validate(self, raw: dict[str, object]) -> dict[str, object]:
@@ -155,6 +185,8 @@ class MopsAdapter:
             return await self._fetch_material_announcements(sym, tls_policy=tls_policy)
         if cap is Capability.SHAREHOLDING:
             return await self._fetch_director_shareholding(sym, tls_policy=tls_policy)
+        if cap is Capability.PROFILE:
+            return await self._fetch_company_profile(sym, tls_policy=tls_policy)
         return _unavailable(cap, sym)
 
     async def _fetch_material_announcements(
@@ -252,6 +284,51 @@ class MopsAdapter:
             health=SourceHealth(status=HealthStatus.OK, detail="ok"),
             timing_class=TimingClass.REFERENCE,
             caveat=_SHAREHOLDING_CAVEAT,
+        )
+
+    async def _fetch_company_profile(self, sym: Symbol, *, tls_policy: TLSPolicy) -> SourceResult:
+        rows, error = await self._fetch_rows(_COMPANY_PROFILE, tls_policy=tls_policy)
+        if error is not None:
+            return _result(
+                payload={}, health=error, timing_class=TimingClass.REFERENCE, caveat=_PROFILE_CAVEAT
+            )
+
+        matches = _rows_matching(rows, key="公司代號", stock_id=sym.id)
+        if not matches:
+            return _result(
+                payload={},
+                health=SourceHealth(
+                    status=HealthStatus.STALE,
+                    detail=f"company {sym.id} not found in the current company-profile dump",
+                ),
+                timing_class=TimingClass.REFERENCE,
+                caveat=_PROFILE_CAVEAT,
+            )
+
+        row = matches[0]  # one-to-one per company — the profile dataset has no history rows
+        profile = {
+            "symbol": sym.id,
+            "market": sym.market.value,
+            "company_name": row.get("公司名稱"),
+            "industry_classification_code": row.get("產業別"),
+            "founding_date": _gregorian_yyyymmdd_to_iso(str(row.get("成立日期", ""))),
+            "listed_date": _gregorian_yyyymmdd_to_iso(str(row.get("上市日期", ""))),
+            "chairman": row.get("董事長"),
+            "general_manager": row.get("總經理"),
+            "spokesperson": row.get("發言人"),
+            "spokesperson_title": row.get("發言人職稱"),
+            "headquarters": row.get("住址"),
+            "phone": row.get("總機電話"),
+            "website": row.get("網址"),
+            "capital": _to_int(row.get("實收資本額")),
+            "auditor": row.get("簽證會計師事務所"),
+        }
+
+        return _result(
+            payload={"profile": profile},
+            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+            timing_class=TimingClass.REFERENCE,
+            caveat=_PROFILE_CAVEAT,
         )
 
     async def _fetch_rows(

@@ -31,10 +31,13 @@ from schemas.capabilities import (
     DividendEvent,
     EODBar,
     InstitutionalFlowRow,
+    MarketValueRow,
     SectorClassification,
+    ValuationRatiosRow,
 )
 from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
+from tools._rows import validate_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import DateRangeInput, SymbolInput
 
@@ -48,7 +51,7 @@ def _latest_bar(payload: dict[str, object]) -> EODBar | None:
     (TWSE OpenAPI, single latest snapshot) — normalize both shapes to "the latest bar"."""
     bars = payload.get("bars")
     if isinstance(bars, list) and bars:
-        rows = cast(_RowList, bars)
+        rows = cast("list[dict[str, object]]", bars)
         return EODBar.model_validate(rows[-1])
     bar = payload.get("bar")
     if isinstance(bar, dict):
@@ -75,8 +78,8 @@ class GetPriceQuoteTool(BaseTool):
     description = "Get the latest available end-of-day price bar for one stock/ETF symbol."
     input_model: type[BaseModel] = SymbolInput
     output_model: type[BaseModel] = GetPriceQuoteOutput
-    data_class = DataClass.PUBLIC
     card_type: str | None = "price_quote"
+    data_class = DataClass.PUBLIC
 
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
@@ -111,8 +114,8 @@ class GetDividendScheduleTool(BaseTool):
     description = "Get the announced dividend/ex-dividend schedule for one stock/ETF symbol."
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetDividendScheduleOutput
-    data_class = DataClass.PUBLIC
     card_type: str | None = "dividend_schedule"
+    data_class = DataClass.PUBLIC
 
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
@@ -128,7 +131,7 @@ class GetDividendScheduleTool(BaseTool):
         raw_events = result.payload.get("events")
         events: tuple[DividendEvent, ...] = ()
         if isinstance(raw_events, list):
-            rows = cast(_RowList, raw_events)
+            rows = cast("list[dict[str, object]]", raw_events)
             events = tuple(DividendEvent.model_validate(row) for row in rows)
         return GetDividendScheduleOutput(
             source_id=result.source_id,
@@ -158,8 +161,8 @@ class GetInstitutionalFlowTool(BaseTool):
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetInstitutionalFlowOutput
-    data_class = DataClass.PUBLIC
     card_type: str | None = "institutional_flow"
+    data_class = DataClass.PUBLIC
 
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
@@ -175,7 +178,7 @@ class GetInstitutionalFlowTool(BaseTool):
         raw_rows = result.payload.get("rows")
         rows: tuple[InstitutionalFlowRow, ...] = ()
         if isinstance(raw_rows, list):
-            typed_rows = cast(_RowList, raw_rows)
+            typed_rows = cast("list[dict[str, object]]", raw_rows)
             rows = tuple(InstitutionalFlowRow.model_validate(row) for row in typed_rows)
         return GetInstitutionalFlowOutput(
             source_id=result.source_id,
@@ -211,8 +214,8 @@ class GetChipFlowsTool(BaseTool):
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetChipFlowsOutput
-    data_class = DataClass.SPONSOR
     card_type: str | None = "chip_flows"
+    data_class = DataClass.SPONSOR
 
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
@@ -228,7 +231,7 @@ class GetChipFlowsTool(BaseTool):
         raw_rows = result.payload.get("rows")
         rows: tuple[ChipBrokerRow, ...] = ()
         if isinstance(raw_rows, list):
-            typed_rows = cast(_RowList, raw_rows)
+            typed_rows = cast("list[dict[str, object]]", raw_rows)
             rows = tuple(ChipBrokerRow.model_validate(row) for row in typed_rows)
         return GetChipFlowsOutput(
             source_id=result.source_id,
@@ -465,11 +468,7 @@ class GetActiveEtfReportTool(BaseTool):
             start_date=start,
             end_date=end,
         )
-        raw_holdings = holding_result.payload.get("holdings")
-        holdings: tuple[ActiveEtfHoldingRow, ...] = ()
-        if isinstance(raw_holdings, list):
-            typed_holdings = cast(_RowList, raw_holdings)
-            holdings = tuple(ActiveEtfHoldingRow.model_validate(row) for row in typed_holdings)
+        holdings = validate_rows(ActiveEtfHoldingRow, holding_result.payload, "holdings")
 
         if not holdings:
             return GetActiveEtfReportOutput(
@@ -497,11 +496,7 @@ class GetActiveEtfReportTool(BaseTool):
             start_date=report_date.isoformat(),
             end_date=report_date.isoformat(),
         )
-        raw_changes = change_result.payload.get("changes")
-        changes: tuple[ActiveEtfHoldingChangeRow, ...] = ()
-        if isinstance(raw_changes, list):
-            typed_changes = cast(_RowList, raw_changes)
-            changes = tuple(ActiveEtfHoldingChangeRow.model_validate(row) for row in typed_changes)
+        changes = validate_rows(ActiveEtfHoldingChangeRow, change_result.payload, "changes")
 
         rows = _active_etf_report_rows(
             changes,
@@ -689,13 +684,51 @@ class GetEtfMoneyFlowTool(BaseTool):
         )
 
 
+def _latest_eps(payload: dict[str, object]) -> float | None:
+    """`financials`' payload is `{"lines": [...]}` — one row per (period, statement line);
+    the most recent `item == "EPS"` row's `value` is the latest reported EPS. Only EPS is
+    extracted here — `revenue_yoy`/`margins` need period-over-period comparison this tool
+    doesn't do, so they stay in `missing_fields` even when this fetch is healthy."""
+    raw_lines = payload.get("lines")
+    if not isinstance(raw_lines, list):
+        return None
+    rows = cast("list[dict[str, object]]", raw_lines)
+    eps_rows = [row for row in rows if row.get("item") == "EPS"]
+    if not eps_rows:
+        return None
+    latest = max(eps_rows, key=lambda row: cast("str", row.get("period_end", "")))
+    value = latest.get("value")
+    return float(cast("float", value)) if isinstance(value, int | float) else None
+
+
+# MOPS-sourced identity fields (`Capability.PROFILE`'s `profile` payload) that map straight into
+# `GetCompanyProfileOutput` — named once here so the enrichment loop and `missing_fields` fallback
+# both walk the exact same set instead of two hand-kept lists drifting apart.
+_MOPS_PROFILE_FIELDS: tuple[str, ...] = (
+    "chairman",
+    "auditor",
+    "headquarters",
+    "website",
+    "capital",
+    "spokesperson",
+    "founding_date",
+    "industry_classification_code",
+)
+
+# Derived-analytics fields no capability here can back yet (would need period-over-period /
+# margin-comparison analytics this tool doesn't have) — always missing, regardless of any single
+# capability's health.
+_ALWAYS_MISSING_FIELDS: tuple[str, ...] = ("revenue_yoy", "margins")
+
+
 class GetCompanyProfileOutput(BaseModel):
-    """A **partial** company-profile card: only the fields two real capabilities
-    (`sector_class`, `dividends`) can back today. The design calls for this tool to be a MOPS +
-    FinMind composite (產業分類/成立年份/董事長/總部/官網/資本額/發言人/簽證會計師 + financial
-    snapshot) — no MOPS adapter exists (Phase 2 didn't build one), so every MOPS-sourced field
-    is omitted rather than faked; `missing_fields` names exactly what's absent so the agent
-    never claims completeness it doesn't have."""
+    """A company-profile card composed from every capability wired below: `sector_class`
+    (industry/sector), `dividends` (latest announced dividend), `market_value`/
+    `valuation_ratios` (市值/PER/殖利率), `financials` (EPS, from the income-statement lines),
+    and `profile` (MOPS-sourced identity fields — 董事長/簽證會計師/住址/官網/資本額/發言人/
+    成立日期/產業別). Each field is only ever populated from a genuinely healthy fetch for this
+    call; `missing_fields` is computed per-call from which fetches actually succeeded, never a
+    static reduced list, so the agent never claims completeness it doesn't have."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -704,45 +737,46 @@ class GetCompanyProfileOutput(BaseModel):
     sector: str | None = None
     industry: str | None = None
     latest_dividend: DividendEvent | None = None
+    market_value: int | None = None
+    per: float | None = None
+    dividend_yield: float | None = None
+    eps: float | None = None
+    chairman: str | None = None
+    auditor: str | None = None
+    headquarters: str | None = None
+    website: str | None = None
+    capital: int | None = None
+    spokesperson: str | None = None
+    founding_date: str | None = None
+    industry_classification_code: str | None = None
     sector_caveat: str = Field(min_length=1)
     dividend_caveat: str = Field(min_length=1)
     missing_fields: tuple[str, ...] = Field(
-        default=(
-            "industry_classification_code",
-            "founding_year",
-            "chairman",
-            "headquarters",
-            "website",
-            "capital",
-            "spokesperson",
-            "auditor",
-            "market_value",
-            "per",
-            "revenue_yoy",
-            "margins",
-            "eps",
-            "dividend_yield",
-        ),
-        description="MOPS-sourced / derived-analytics fields this profile cannot populate "
-        "today (no MOPS adapter, no analytics layer) — never silently omitted from the caller.",
+        default=(),
+        description="Fields this profile call could not populate — either no adapter exists "
+        "for that capability, or this call's fetch of it was unhealthy/empty. Never silently "
+        "omitted from the caller.",
     )
 
 
 class GetCompanyProfileTool(BaseTool):
-    """`get_company_profile` — narrowed to what `sector_class` (yfinance) + `dividends`
-    (FinMind) can actually back; every other field this profile can't cover is named in
-    `missing_fields` rather than built as a stub. Immediate core, built narrow."""
+    """`get_company_profile` — composes `sector_class` + `dividends` + `market_value` +
+    `valuation_ratios` + `financials` + `profile` (MOPS) into one card. Every field is real when
+    its capability's fetch is healthy for this call; otherwise it's `None` and named in
+    `missing_fields` rather than faked. Immediate core."""
 
     name = "get_company_profile"
     description = (
-        "Get a partial company-profile card for one stock: sector/industry classification "
-        "and the latest announced dividend. Does not include MOPS-sourced identity fields "
-        "(chairman/capital/auditor/...) or derived financial ratios — see `missing_fields`."
+        "Get a company-profile card for one stock: sector/industry classification, latest "
+        "announced dividend, market value/PER/dividend yield/EPS, and MOPS-sourced identity "
+        "fields (chairman/auditor/headquarters/website/capital/spokesperson/founding date/"
+        "industry classification code). See `missing_fields` for anything this call couldn't "
+        "populate."
     )
     input_model: type[BaseModel] = SymbolInput
     output_model: type[BaseModel] = GetCompanyProfileOutput
-    data_class = DataClass.PUBLIC
     card_type: str | None = "company_profile"
+    data_class = DataClass.PUBLIC
 
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
@@ -756,6 +790,20 @@ class GetCompanyProfileTool(BaseTool):
         dividend_result = await self._router.fetch(
             Capability.DIVIDENDS, symbol, tls_policy=ctx.tls_policy
         )
+        market_value_result = await self._router.fetch(
+            Capability.MARKET_VALUE, symbol, tls_policy=ctx.tls_policy
+        )
+        valuation_result = await self._router.fetch(
+            Capability.VALUATION_RATIOS, symbol, tls_policy=ctx.tls_policy
+        )
+        financials_result = await self._router.fetch(
+            Capability.FINANCIALS, symbol, tls_policy=ctx.tls_policy
+        )
+        profile_result = await self._router.fetch(
+            Capability.PROFILE, symbol, tls_policy=ctx.tls_policy
+        )
+
+        missing_fields: list[str] = list(_ALWAYS_MISSING_FIELDS)
 
         sector: str | None = None
         industry: str | None = None
@@ -767,8 +815,36 @@ class GetCompanyProfileTool(BaseTool):
         latest_dividend: DividendEvent | None = None
         raw_events = dividend_result.payload.get("events")
         if isinstance(raw_events, list) and raw_events:
-            rows = cast(_RowList, raw_events)
+            rows = cast("list[dict[str, object]]", raw_events)
             latest_dividend = DividendEvent.model_validate(rows[-1])
+
+        market_value_rows = validate_rows(MarketValueRow, market_value_result.payload, "rows")
+        market_value = market_value_rows[-1].market_value if market_value_rows else None
+        if market_value is None:
+            missing_fields.append("market_value")
+
+        valuation_rows = validate_rows(ValuationRatiosRow, valuation_result.payload, "rows")
+        latest_valuation = valuation_rows[-1] if valuation_rows else None
+        per = latest_valuation.per if latest_valuation else None
+        dividend_yield = latest_valuation.dividend_yield if latest_valuation else None
+        if per is None:
+            missing_fields.append("per")
+        if dividend_yield is None:
+            missing_fields.append("dividend_yield")
+
+        eps = _latest_eps(financials_result.payload)
+        if eps is None:
+            missing_fields.append("eps")
+
+        mops_profile = profile_result.payload.get("profile")
+        mops_fields: dict[str, object | None] = dict.fromkeys(_MOPS_PROFILE_FIELDS)
+        if isinstance(mops_profile, dict):
+            typed_profile = cast("dict[str, object]", mops_profile)
+            for field_name in _MOPS_PROFILE_FIELDS:
+                mops_fields[field_name] = typed_profile.get(field_name)
+        for field_name in _MOPS_PROFILE_FIELDS:
+            if mops_fields[field_name] is None:
+                missing_fields.append(field_name)
 
         return GetCompanyProfileOutput(
             symbol=symbol.id,
@@ -776,8 +852,23 @@ class GetCompanyProfileTool(BaseTool):
             sector=sector,
             industry=industry,
             latest_dividend=latest_dividend,
+            market_value=market_value,
+            per=per,
+            dividend_yield=dividend_yield,
+            eps=eps,
+            chairman=cast("str | None", mops_fields["chairman"]),
+            auditor=cast("str | None", mops_fields["auditor"]),
+            headquarters=cast("str | None", mops_fields["headquarters"]),
+            website=cast("str | None", mops_fields["website"]),
+            capital=cast("int | None", mops_fields["capital"]),
+            spokesperson=cast("str | None", mops_fields["spokesperson"]),
+            founding_date=cast("str | None", mops_fields["founding_date"]),
+            industry_classification_code=cast(
+                "str | None", mops_fields["industry_classification_code"]
+            ),
             sector_caveat=sector_result.currentness_caveat,
             dividend_caveat=dividend_result.currentness_caveat,
+            missing_fields=tuple(missing_fields),
         )
 
 
