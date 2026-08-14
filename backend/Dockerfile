@@ -15,7 +15,8 @@ WORKDIR /app
 
 # The dependency graph is resolved from the committed lockfile only (--frozen); the project itself
 # is an editable install over src/, so the source tree is copied before sync. --no-dev keeps the
-# lint/type/test toolchain out of the runtime venv.
+# lint/type/test toolchain out of the runtime venv. NOSONAR (S8541) — --no-build isn't viable:
+# this sync is exactly what builds and registers the editable install itself.
 COPY pyproject.toml uv.lock ./
 COPY src/ ./src/
 RUN uv sync --frozen --no-dev --all-extras

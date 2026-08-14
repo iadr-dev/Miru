@@ -69,10 +69,14 @@ def _closes(bars: Sequence[PriceBar]) -> list[float]:
     return [b.close for b in bars]
 
 
+_WINDOW_MUST_BE_POSITIVE = "window must be >= 1"
+_PERIOD_MUST_BE_POSITIVE = "period must be >= 1"
+
+
 def sma(bars: Sequence[PriceBar], window: int) -> SmaResult:
     """Simple moving average over `close`, warm-up-padded with `None`."""
     if window < 1:
-        raise ValueError("window must be >= 1")
+        raise ValueError(_WINDOW_MUST_BE_POSITIVE)
     closes = _closes(bars)
     values: list[float | None] = []
     running_sum = 0.0
@@ -89,7 +93,7 @@ def ema(bars: Sequence[PriceBar], window: int) -> EmaResult:
     `window` closes (the conventional seeding — avoids biasing an EMA-of-EMA chain like MACD's
     signal line toward the very first price)."""
     if window < 1:
-        raise ValueError("window must be >= 1")
+        raise ValueError(_WINDOW_MUST_BE_POSITIVE)
     closes = _closes(bars)
     values: list[float | None] = [None] * len(closes)
     if len(closes) < window:
@@ -118,7 +122,7 @@ def rsi(bars: Sequence[PriceBar], period: int = 14) -> RsiResult:
     """Wilder-smoothed RSI. `values[i]` undefined (`None`) until `period` prior changes exist
     (i.e. first defined value is at index `period`)."""
     if period < 1:
-        raise ValueError("period must be >= 1")
+        raise ValueError(_PERIOD_MUST_BE_POSITIVE)
     closes = _closes(bars)
     n = len(closes)
     values: list[float | None] = [None] * n
@@ -167,7 +171,7 @@ def kd(
     genuinely undefined; it takes the neutral 50 rather than a fabricated directional 0 or 100, the
     same neutral value the smoothing is seeded with."""
     if period < 1:
-        raise ValueError("period must be >= 1")
+        raise ValueError(_PERIOD_MUST_BE_POSITIVE)
     if k_smoothing < 1 or d_smoothing < 1:
         raise ValueError("smoothing factors must be >= 1")
     n = len(bars)
@@ -229,7 +233,7 @@ def macd(
 def bollinger(bars: Sequence[PriceBar], window: int = 20, num_std: float = 2.0) -> BollingerResult:
     """20-period / 2-std-dev Bollinger Bands (population std-dev over the window)."""
     if window < 1:
-        raise ValueError("window must be >= 1")
+        raise ValueError(_WINDOW_MUST_BE_POSITIVE)
     closes = _closes(bars)
     n = len(closes)
     mid: list[float | None] = [None] * n
@@ -250,7 +254,7 @@ def atr(bars: Sequence[PriceBar], period: int = 14) -> AtrResult:
     """Wilder average true range. Needs `high`/`low`/`close`; the first true-range term
     (bar 0) has no prior close, so it falls back to that bar's own high-low range."""
     if period < 1:
-        raise ValueError("period must be >= 1")
+        raise ValueError(_PERIOD_MUST_BE_POSITIVE)
     n = len(bars)
     values: list[float | None] = [None] * n
     if n == 0:

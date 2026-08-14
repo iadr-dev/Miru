@@ -49,12 +49,13 @@ class LocalOllamaClient:
         self.capabilities = capabilities or ModelCapabilities(
             native_tool_calling=True, streaming=True, native_web_search=False
         )
-        # No key: Ollama's OpenAI-compat endpoint accepts (and ignores) any bearer value.
+        # No key: Ollama's OpenAI-compat endpoint accepts (and ignores) any bearer value. This
+        # is a placeholder sentinel, not a credential — nothing to rotate or protect.
         self._delegate = OpenAICompatClient(
             provider_id="ollama",
             model_id=model_id,
             base_url=f"{base_url.rstrip('/')}/v1",
-            api_key="ollama-local-no-key-required",
+            api_key="ollama-local-no-key-required",  # noqa: S105 — NOSONAR, not a real secret
             capabilities=self.capabilities,
             timeout=timeout,
         )

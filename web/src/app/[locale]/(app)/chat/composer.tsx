@@ -489,6 +489,152 @@ export function Composer({
  *   composer's `streaming`→Stop button (`SquareIcon` fill, same size/colors) for consistency.
  * - `voiceState === "transcribing"`: a brief disabled spinner while `/voice/transcribe` is in
  *   flight — the mic is already released by then (see the caller's `recorder.onstop`). */
+/** Shared entrance/exit animation for every `VoiceOrSendButton` state — split out so each
+ * per-state button below only spells out what's actually different about it. */
+function useButtonMotionProps(reduceMotion: boolean | null): {
+  initial: { opacity: number; scale: number };
+  animate: { opacity: number; scale: number };
+  exit: { opacity: number; scale: number };
+  transition: { duration: number };
+} {
+  return {
+    initial: { opacity: 0, scale: 0.6 },
+    animate: { opacity: 1, scale: 1 },
+    exit: { opacity: 0, scale: 0.6 },
+    transition: { duration: reduceMotion ? 0 : 0.15 },
+  };
+}
+
+function SendButton({
+  sendLabel,
+  reduceMotion,
+}: {
+  sendLabel: string;
+  reduceMotion: boolean | null;
+}): ReactNode {
+  return (
+    <motion.button
+      key="send"
+      type="submit"
+      aria-label={sendLabel}
+      title={sendLabel}
+      {...useButtonMotionProps(reduceMotion)}
+      className={cn(
+        "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
+        "bg-[var(--accent)] text-[var(--bg)] transition-opacity hover:opacity-90 active:scale-95",
+      )}
+    >
+      <ArrowUpIcon size={20} weight="bold" />
+    </motion.button>
+  );
+}
+
+function StopRecordingButton({
+  stopRecordingLabel,
+  reduceMotion,
+  onStopRecording,
+}: {
+  stopRecordingLabel: string;
+  reduceMotion: boolean | null;
+  onStopRecording: () => void;
+}): ReactNode {
+  return (
+    <motion.button
+      key="recording"
+      type="button"
+      onClick={onStopRecording}
+      aria-label={stopRecordingLabel}
+      title={stopRecordingLabel}
+      {...useButtonMotionProps(reduceMotion)}
+      className={cn(
+        "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
+        "bg-[var(--accent)] text-[var(--bg)] transition-colors hover:opacity-90 active:scale-95",
+      )}
+    >
+      <motion.span
+        animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.55, 1] }}
+        transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
+        className="inline-flex"
+      >
+        <SquareIcon size={18} weight="fill" />
+      </motion.span>
+    </motion.button>
+  );
+}
+
+function TranscribingButton({
+  voiceLabel,
+  reduceMotion,
+}: {
+  voiceLabel: string;
+  reduceMotion: boolean | null;
+}): ReactNode {
+  return (
+    <motion.button
+      key="transcribing"
+      type="button"
+      disabled
+      aria-label={voiceLabel}
+      title={voiceLabel}
+      {...useButtonMotionProps(reduceMotion)}
+      className={cn(
+        "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
+        "text-[var(--text-muted)]",
+      )}
+    >
+      <CircleNotchIcon
+        size={20}
+        weight="regular"
+        className={reduceMotion ? undefined : "animate-spin"}
+      />
+    </motion.button>
+  );
+}
+
+function StartRecordingButton({
+  voiceLabel,
+  streaming,
+  reduceMotion,
+  onStartRecording,
+}: {
+  voiceLabel: string;
+  streaming: boolean;
+  reduceMotion: boolean | null;
+  onStartRecording: () => void;
+}): ReactNode {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <motion.button
+      key="voice"
+      type="button"
+      disabled={streaming}
+      onClick={onStartRecording}
+      aria-label={voiceLabel}
+      title={voiceLabel}
+      onHoverStart={() => setHovering(true)}
+      onHoverEnd={() => setHovering(false)}
+      {...useButtonMotionProps(reduceMotion)}
+      className={cn(
+        "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
+        "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+        streaming && "opacity-50",
+      )}
+    >
+      <motion.span
+        className="inline-flex"
+        animate={
+          hovering && !reduceMotion
+            ? { scale: [1, 1.15, 0.95, 1.08, 1], opacity: [1, 0.75, 1, 0.85, 1] }
+            : { scale: 1, opacity: 1 }
+        }
+        transition={{ duration: 0.6, ease: "easeInOut" }}
+      >
+        <WaveformIcon size={20} weight="regular" />
+      </motion.span>
+    </motion.button>
+  );
+}
+
 function VoiceOrSendButton({
   canSend,
   voiceState,
@@ -509,106 +655,27 @@ function VoiceOrSendButton({
   sendLabel: string;
 }): ReactNode {
   const reduceMotion = useReducedMotion();
-  const [hovering, setHovering] = useState(false);
 
   return (
     <div className="relative size-11 shrink-0">
       <AnimatePresence initial={false} mode="wait">
         {canSend ? (
-          <motion.button
-            key="send"
-            type="submit"
-            aria-label={sendLabel}
-            title={sendLabel}
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            transition={{ duration: reduceMotion ? 0 : 0.15 }}
-            className={cn(
-              "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
-              "bg-[var(--accent)] text-[var(--bg)] transition-opacity hover:opacity-90 active:scale-95",
-            )}
-          >
-            <ArrowUpIcon size={20} weight="bold" />
-          </motion.button>
+          <SendButton sendLabel={sendLabel} reduceMotion={reduceMotion} />
         ) : voiceState === "recording" ? (
-          <motion.button
-            key="recording"
-            type="button"
-            onClick={onStopRecording}
-            aria-label={stopRecordingLabel}
-            title={stopRecordingLabel}
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            transition={{ duration: reduceMotion ? 0 : 0.15 }}
-            className={cn(
-              "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
-              "bg-[var(--accent)] text-[var(--bg)] transition-colors hover:opacity-90 active:scale-95",
-            )}
-          >
-            <motion.span
-              animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.55, 1] }}
-              transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-              className="inline-flex"
-            >
-              <SquareIcon size={18} weight="fill" />
-            </motion.span>
-          </motion.button>
+          <StopRecordingButton
+            stopRecordingLabel={stopRecordingLabel}
+            reduceMotion={reduceMotion}
+            onStopRecording={onStopRecording}
+          />
         ) : voiceState === "transcribing" ? (
-          <motion.button
-            key="transcribing"
-            type="button"
-            disabled
-            aria-label={voiceLabel}
-            title={voiceLabel}
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            transition={{ duration: reduceMotion ? 0 : 0.15 }}
-            className={cn(
-              "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
-              "text-[var(--text-muted)]",
-            )}
-          >
-            <CircleNotchIcon
-              size={20}
-              weight="regular"
-              className={reduceMotion ? undefined : "animate-spin"}
-            />
-          </motion.button>
+          <TranscribingButton voiceLabel={voiceLabel} reduceMotion={reduceMotion} />
         ) : (
-          <motion.button
-            key="voice"
-            type="button"
-            disabled={streaming}
-            onClick={onStartRecording}
-            aria-label={voiceLabel}
-            title={voiceLabel}
-            onHoverStart={() => setHovering(true)}
-            onHoverEnd={() => setHovering(false)}
-            initial={{ opacity: 0, scale: 0.6 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.6 }}
-            transition={{ duration: reduceMotion ? 0 : 0.15 }}
-            className={cn(
-              "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
-              "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
-              streaming && "opacity-50",
-            )}
-          >
-            <motion.span
-              className="inline-flex"
-              animate={
-                hovering && !reduceMotion
-                  ? { scale: [1, 1.15, 0.95, 1.08, 1], opacity: [1, 0.75, 1, 0.85, 1] }
-                  : { scale: 1, opacity: 1 }
-              }
-              transition={{ duration: 0.6, ease: "easeInOut" }}
-            >
-              <WaveformIcon size={20} weight="regular" />
-            </motion.span>
-          </motion.button>
+          <StartRecordingButton
+            voiceLabel={voiceLabel}
+            streaming={streaming}
+            reduceMotion={reduceMotion}
+            onStartRecording={onStartRecording}
+          />
         )}
       </AnimatePresence>
     </div>

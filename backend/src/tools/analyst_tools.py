@@ -42,11 +42,12 @@ from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from schemas.screener import ScreenerQuery, ScreenerResult
 from schemas.source import HealthStatus
+from tools._rows import fetch_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
-from tools._rows import fetch_rows
 
 _NON_TW_MARKETS = frozenset({Market.US, Market.GB, Market.JP, Market.EU})
+type _UntypedDict = dict[str, object]
 
 
 def _validate_non_tw(market: Market) -> Market:
@@ -224,7 +225,7 @@ class GetAnalystConsensusTool(BaseTool):
         )
         raw = result.payload.get("consensus")
         consensus = (
-            AnalystConsensus.model_validate(cast("dict[str, object]", raw))
+            AnalystConsensus.model_validate(cast(_UntypedDict, raw))
             if isinstance(raw, dict)
             else None
         )
@@ -266,7 +267,7 @@ class GetEsgScoreTool(BaseTool):
         )
         raw = result.payload.get("esg")
         esg = (
-            EsgScore.model_validate(cast("dict[str, object]", raw))
+            EsgScore.model_validate(cast(_UntypedDict, raw))
             if isinstance(raw, dict)
             else None
         )
@@ -603,7 +604,7 @@ class GetMarketStatusTool(BaseTool):
         )
         raw_status = result.payload.get("status")
         status = (
-            MarketStatusInfo.model_validate(cast("dict[str, object]", raw_status))
+            MarketStatusInfo.model_validate(cast(_UntypedDict, raw_status))
             if isinstance(raw_status, dict)
             else None
         )

@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
-from typing import TypeAlias, cast
+from typing import cast
 
 import httpx
 import structlog
@@ -61,7 +61,7 @@ _CAVEAT = (
 )
 
 # The one cast() target type every raw JSON object-of-unknowns value below uses.
-_UntypedDict: TypeAlias = dict[str, object]
+type _UntypedDict = dict[str, object]
 
 
 def _strip_html(text: str) -> str:
@@ -83,7 +83,7 @@ def _parse_entry(entry: dict[str, object], *, now: datetime) -> dict[str, object
     summary_field = entry.get("summary")
     summary_text = ""
     if isinstance(summary_field, dict):
-        summary_text = str(cast("dict[str, object]", summary_field).get("#text", ""))
+        summary_text = str(cast(_UntypedDict, summary_field).get("#text", ""))
     elif isinstance(summary_field, str):
         summary_text = summary_field
     summary_text = _strip_html(summary_text)
@@ -129,7 +129,9 @@ class NcdrClosureAdapter:
     def supports(self) -> set[tuple[Capability, Market]]:
         return {(Capability.CALENDAR_EVENTS, Market.TW)}
 
-    def validate(self, raw: dict[str, object]) -> dict[str, object]:
+    def validate(self, raw: dict[str, object]) -> dict[str, object]:  # NOSONAR — a fail-fast
+        # validator: every path either raises on malformed input or echoes `raw` unchanged.
+        # Always returning the same reference is the point, not a bug.
         if "entry" not in raw:
             # An empty-alerts day legitimately omits `entry` entirely — not a contract
             # violation, just nothing currently in force.
@@ -179,7 +181,7 @@ class NcdrClosureAdapter:
             )
 
         try:
-            validated = self.validate(cast("dict[str, object]", body))
+            validated = self.validate(cast(_UntypedDict, body))
         except ValueError as exc:
             return _result(
                 payload={}, health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=str(exc))
@@ -187,7 +189,7 @@ class NcdrClosureAdapter:
 
         entries_field = validated.get("entry", [])
         if isinstance(entries_field, dict):
-            raw_entries: list[dict[str, object]] = [cast("dict[str, object]", entries_field)]
+            raw_entries: list[dict[str, object]] = [cast(_UntypedDict, entries_field)]
         else:
             raw_entries = cast("list[dict[str, object]]", entries_field)
 

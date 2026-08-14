@@ -36,6 +36,14 @@ from schemas.source import HealthStatus, SourceResult
 
 logger = structlog.get_logger(__name__)
 
+# Shared across FINANCIALS/BALANCE_SHEET/CASH_FLOW below — all three statement families are
+# filed on the same irregular, per-company statutory reporting cadence (no fixed daily publish
+# clock), unlike the intraday EOD/institutional-flow datasets.
+_IRREGULAR_PER_FILING_UPDATE_TIME = (
+    "irregular per-filing (no fixed daily publish clock; statutory "
+    "reporting-period cadence, not intraday)"
+)
+
 
 @dataclass(frozen=True)
 class WholeMarketJobSpec:
@@ -75,8 +83,7 @@ INSTITUTIONAL_FLOW_JOB = WholeMarketJobSpec(
 FINANCIALS_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockFinancialStatements",
     capability=Capability.FINANCIALS,
-    finmind_update_time="irregular per-filing (no fixed daily publish clock; statutory "
-    "reporting-period cadence, not intraday)",
+    finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint="21:30 Asia/Taipei (after the other post-close pulls; catches same-day filings)",
 )
 
@@ -100,16 +107,14 @@ DIVIDENDS_JOB = WholeMarketJobSpec(
 BALANCE_SHEET_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockBalanceSheet",
     capability=Capability.BALANCE_SHEET,
-    finmind_update_time="irregular per-filing (no fixed daily publish clock; statutory "
-    "reporting-period cadence, not intraday)",
+    finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
 )
 
 CASH_FLOW_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockCashFlowsStatement",
     capability=Capability.CASH_FLOW_STATEMENT,
-    finmind_update_time="irregular per-filing (no fixed daily publish clock; statutory "
-    "reporting-period cadence, not intraday)",
+    finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
 )
 

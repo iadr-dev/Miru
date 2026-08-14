@@ -15,6 +15,44 @@ import {
   webSearchSourcesBlockSchema,
 } from "@/types/conversation";
 
+/** One turn's message blocks rendered per `type` — split out of `PersistedThreadView` purely to
+ * keep that component's own branching shallow. `thinking`/`tool_use`/`tool_result`/`steering`/
+ * `branch_summary`/`compaction` blocks are not surfaced in the persisted thread view (process
+ * detail is a live-only concern this pass); the caveat is handled by the caller so it's always
+ * present on assistant turns. */
+function renderMessageBlock(
+  message: Turn["messages"][number],
+  opts: {
+    isUser: boolean;
+    youLabel: string;
+    onEditText?: (newText: string) => void;
+  },
+): ReactNode {
+  const { isUser, youLabel, onEditText } = opts;
+  if (message.type === "text") {
+    const text = typeof message.content.text === "string" ? message.content.text : "";
+    return isUser ? (
+      <UserBubble key={message.id} text={text} label={youLabel} onEdit={onEditText} />
+    ) : (
+      <AnswerMarkdown key={message.id} text={text} />
+    );
+  }
+  if (message.type === "rich_card") {
+    const parsed = richCardSchema.safeParse(message.content);
+    return parsed.success ? <RichCardView key={message.id} card={parsed.data} /> : null;
+  }
+  if (message.type === "web_search_sources") {
+    // Positioned right below the answer text, above the caveat — mirrors
+    // `active-turn-view.tsx`'s live placement of the same component, so the pill doesn't jump
+    // position when a turn hands off from the live overlay to this persisted render on reload.
+    const parsed = webSearchSourcesBlockSchema.safeParse(message.content);
+    return parsed.success ? (
+      <WebSearchSources key={message.id} sources={parsed.data.sources} />
+    ) : null;
+  }
+  return null;
+}
+
 /**
  * Renders a loaded thread's persisted history (the TanStack `['thread', id]` cold read). Maps each
  * turn's message blocks to the view: `text` blocks render as user bubble (user turn) or document
@@ -51,41 +89,14 @@ export function PersistedThreadView({
         const isUser = turn.role === "user";
         return (
           <div key={turn.id} className="flex flex-col gap-3">
-            {turn.messages.map((message) => {
-              if (message.type === "text") {
-                const text = typeof message.content.text === "string" ? message.content.text : "";
-                return isUser ? (
-                  <UserBubble
-                    key={message.id}
-                    text={text}
-                    label={t("you")}
-                    onEdit={
-                      onEdit && !streaming ? (newText) => onEdit(turn.id, newText) : undefined
-                    }
-                  />
-                ) : (
-                  <AnswerMarkdown key={message.id} text={text} />
-                );
-              }
-              if (message.type === "rich_card") {
-                const parsed = richCardSchema.safeParse(message.content);
-                return parsed.success ? <RichCardView key={message.id} card={parsed.data} /> : null;
-              }
-              if (message.type === "web_search_sources") {
-                // Positioned right below the answer text, above the caveat — mirrors
-                // `active-turn-view.tsx`'s live placement of the same component, so the pill
-                // doesn't jump position when a turn hands off from the live overlay to this
-                // persisted render on reload.
-                const parsed = webSearchSourcesBlockSchema.safeParse(message.content);
-                return parsed.success ? (
-                  <WebSearchSources key={message.id} sources={parsed.data.sources} />
-                ) : null;
-              }
-              // thinking / tool_use / tool_result / steering / branch_summary / compaction blocks
-              // are not surfaced in the persisted thread view (process detail is a live-only concern
-              // this pass); caveat handled below so it's always present on assistant turns.
-              return null;
-            })}
+            {turn.messages.map((message) =>
+              renderMessageBlock(message, {
+                isUser,
+                youLabel: t("you"),
+                onEditText:
+                  onEdit && !streaming ? (newText) => onEdit(turn.id, newText) : undefined,
+              }),
+            )}
             {!isUser ? (
               <>
                 <Caveat text={tCaveat("nonTrading")} />

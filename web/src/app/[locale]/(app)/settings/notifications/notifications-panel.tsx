@@ -72,8 +72,13 @@ export function NotificationsPanel(): ReactNode {
   }
 
   const original = query.data;
+  // Order-insensitive equality check for the channel set — the sort is only to normalize
+  // ordering before comparing, so an explicit lexicographic compare fn (not locale-aware) is
+  // both correct and required.
+  const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
   const dirty =
-    JSON.stringify([...channels].sort()) !== JSON.stringify([...original.channels].sort()) ||
+    JSON.stringify([...channels].sort(byCodePoint)) !==
+      JSON.stringify([...original.channels].sort(byCodePoint)) ||
     quietStart !== (original.quiet_hours?.start ?? "") ||
     quietEnd !== (original.quiet_hours?.end ?? "") ||
     dailyLimit !== (original.daily_limit === null ? "" : String(original.daily_limit)) ||

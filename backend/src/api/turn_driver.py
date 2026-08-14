@@ -52,7 +52,6 @@ from tools.base import ToolContext
 from usage.store import write_turn_usage
 
 _RATE_WINDOW_SECONDS = 60
-_TERMINAL_KIND = "turn.end"
 
 logger = structlog.get_logger(__name__)
 
@@ -174,7 +173,7 @@ async def run_and_stream(
     try:
         async for event in subscription:
             yield format_sse_event(event)
-            if event.kind == _TERMINAL_KIND:
+            if event.kind == TURN_END_KIND:
                 break
     finally:
         runner.cancel()
@@ -279,12 +278,12 @@ async def _drive_turn(
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
         # cancelled frame rather than letting the cancellation propagate as a silent drop.
-        event_bus.publish("turn.end", turn_id=turn_id, data={"status": "cancelled"})
+        event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "cancelled"})
         raise
     except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
         logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
         event_bus.publish(
-            "turn.end", turn_id=turn_id, data={"status": "error", "message": str(exc)}
+            TURN_END_KIND, turn_id=turn_id, data={"status": "error", "message": str(exc)}
         )
         return
 
@@ -303,7 +302,7 @@ async def _drive_turn(
         turn_id=turn_id,
         data={"text": result.final_text, "framework": result.routing.framework},
     )
-    event_bus.publish("turn.end", turn_id=turn_id, data={"status": "done"})
+    event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "done"})
 
 
 async def _maybe_title_thread(

@@ -37,6 +37,8 @@ _FEED_ROW_KEY = "events"
 _STATE_BY_LABEL: dict[str, EventState] = {state.value: state for state in EventState}
 _TYPE_BY_LABEL: dict[str, EventType] = {etype.value: etype for etype in EventType}
 
+type _UntypedRows = list[dict[str, object]]
+
 
 def _feed_event_from_row(
     row: dict[str, object], symbol: Symbol, source_id: str
@@ -105,7 +107,7 @@ async def fetch_feed_events(
     rows = result.payload.get(_FEED_ROW_KEY)
     if not isinstance(rows, list):
         return (), result
-    typed_rows = cast("list[dict[str, object]]", rows)
+    typed_rows = cast(_UntypedRows, rows)
     events = tuple(
         event
         for row in typed_rows
@@ -196,7 +198,7 @@ async def fetch_dividend_events(  # noqa: PLR0913 — one param per fetch dimens
     rows = result.payload.get("events")
     if not isinstance(rows, list):
         return (), result
-    typed_rows = cast("list[dict[str, object]]", rows)
+    typed_rows = cast(_UntypedRows, rows)
     events = tuple(
         event
         for row in typed_rows
@@ -232,7 +234,7 @@ async def fetch_cb_put_events(  # noqa: PLR0913 — signature symmetry with `fet
     rows = result.payload.get("rows")
     if not isinstance(rows, list):
         return (), result
-    typed_rows = cast("list[dict[str, object]]", rows)
+    typed_rows = cast(_UntypedRows, rows)
     events = tuple(
         event
         for row in typed_rows

@@ -10,7 +10,7 @@ of native enums, JSON (not JSONB) for portable structured columns, and `ON DELET
 The `users` table now exists (Phase 9, accounts/entitlements). The deferred-FK decision is
 resolved as follows: the **new** account/pet tables added this phase (`oauth_accounts`,
 `user_secrets`, `sessions`, `user_pets`, `user_pet_stats`) carry a real
-`ForeignKey("users.id", ondelete="CASCADE")` — they are pure children of a user with no
+`ForeignKey(_USERS_ID_FK, ondelete="CASCADE")` — they are pure children of a user with no
 independent lifecycle. The **pre-existing** per-row `user_id` columns on `threads`/`turns`/
 `messages`/`stream_events`/`memories`/`watchlists`/`watchlist_items` are deliberately left as
 bare indexed columns and are *not* retrofitted with a FK: they are denormalized
@@ -38,6 +38,11 @@ from db.base import Base
 
 _UTC = DateTime(timezone=True)
 
+_CASCADE_DELETE_ORPHAN = "all, delete-orphan"
+_TURNS_ID_FK = "turns.id"
+_USERS_ID_FK = "users.id"
+_MARKET_TW_US_CHECK = "market IN ('TW','US')"
+
 # ---- Conversations -------------------------------------------------------------------------
 
 
@@ -61,7 +66,7 @@ class ThreadRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
 
     turns: Mapped[list[TurnRow]] = relationship(
-        back_populates="thread", cascade="all, delete-orphan"
+        back_populates="thread", cascade=_CASCADE_DELETE_ORPHAN
     )
 
     __table_args__ = (
@@ -86,7 +91,7 @@ class TurnRow(Base):
 
     thread: Mapped[ThreadRow] = relationship(back_populates="turns")
     messages: Mapped[list[MessageRow]] = relationship(
-        back_populates="turn", cascade="all, delete-orphan"
+        back_populates="turn", cascade=_CASCADE_DELETE_ORPHAN
     )
 
     __table_args__ = (
@@ -116,7 +121,7 @@ class MessageRow(Base):
     __tablename__ = "messages"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    turn_id: Mapped[str] = mapped_column(ForeignKey("turns.id", ondelete="CASCADE"))
+    turn_id: Mapped[str] = mapped_column(ForeignKey(_TURNS_ID_FK, ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(index=True)  # denormalized for isolation + FTS
     parent_id: Mapped[str | None] = mapped_column(default=None)
     seq: Mapped[int]
@@ -145,7 +150,7 @@ class StreamEventRow(Base):
     __tablename__ = "stream_events"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    turn_id: Mapped[str] = mapped_column(ForeignKey("turns.id", ondelete="CASCADE"))
+    turn_id: Mapped[str] = mapped_column(ForeignKey(_TURNS_ID_FK, ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(index=True)
     event_seq: Mapped[int]
     event_type: Mapped[str]
@@ -212,11 +217,11 @@ class WatchlistRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
 
     items: Mapped[list[WatchlistItemRow]] = relationship(
-        back_populates="watchlist", cascade="all, delete-orphan"
+        back_populates="watchlist", cascade=_CASCADE_DELETE_ORPHAN
     )
 
     __table_args__ = (
-        CheckConstraint("market IN ('TW','US')", name="ck_watchlists_market"),
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_watchlists_market"),
         CheckConstraint("asset_class IN ('stock','etf')", name="ck_watchlists_asset_class"),
         Index(
             "ix_watchlists_user_market_class_sort",
@@ -255,7 +260,7 @@ class WatchlistItemRow(Base):
     watchlist: Mapped[WatchlistRow] = relationship(back_populates="items")
 
     __table_args__ = (
-        CheckConstraint("market IN ('TW','US')", name="ck_watchlist_items_market"),
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_watchlist_items_market"),
         CheckConstraint("asset_class IN ('stock','etf')", name="ck_watchlist_items_asset_class"),
         CheckConstraint("note IS NULL OR length(note) <= 280", name="ck_watchlist_items_note_len"),
         UniqueConstraint("watchlist_id", "symbol", name="uq_watchlist_items_watchlist_symbol"),
@@ -292,13 +297,13 @@ class UserRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
 
     oauth_accounts: Mapped[list[OAuthAccountRow]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", cascade=_CASCADE_DELETE_ORPHAN
     )
     secrets: Mapped[list[UserSecretRow]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", cascade=_CASCADE_DELETE_ORPHAN
     )
     sessions: Mapped[list[SessionRow]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
+        back_populates="user", cascade=_CASCADE_DELETE_ORPHAN
     )
 
     __table_args__ = (
@@ -322,7 +327,7 @@ class OAuthAccountRow(Base):
     __tablename__ = "oauth_accounts"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     provider: Mapped[str]
     provider_account_id: Mapped[str]
     email_at_provider: Mapped[str | None] = mapped_column(default=None)
@@ -346,7 +351,7 @@ class UserSecretRow(Base):
     __tablename__ = "user_secrets"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     kind: Mapped[str]
     provider: Mapped[str]
     ciphertext: Mapped[bytes]
@@ -372,7 +377,7 @@ class SessionRow(Base):
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     token_hash: Mapped[str] = mapped_column(unique=True)
     family_id: Mapped[str] = mapped_column(index=True)
     rotated_from: Mapped[str | None] = mapped_column(default=None)
@@ -398,7 +403,7 @@ class UserPetRow(Base):
     __tablename__ = "user_pets"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     pet_id: Mapped[str]
     is_active: Mapped[bool] = mapped_column(default=False)
     level: Mapped[int] = mapped_column(default=1)
@@ -431,7 +436,7 @@ class UserPetStatsRow(Base):
     __tablename__ = "user_pet_stats"
 
     user_id: Mapped[str] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), primary_key=True
     )
     total_pulls: Mapped[int] = mapped_column(default=0)
     streak_days: Mapped[int] = mapped_column(default=0)
@@ -453,7 +458,7 @@ class ScheduleJobRow(Base):
     __tablename__ = "schedule_jobs"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     trigger_type: Mapped[str]
     trigger_spec: Mapped[str]
     trigger_market: Mapped[str] = mapped_column(default="TW")
@@ -498,7 +503,7 @@ class AlertRuleRow(Base):
     __tablename__ = "alert_rules"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     symbol: Mapped[str]
     market: Mapped[str]
     condition: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
@@ -512,7 +517,7 @@ class AlertRuleRow(Base):
     updated_at: Mapped[datetime] = mapped_column(_UTC)
 
     __table_args__ = (
-        CheckConstraint("market IN ('TW','US')", name="ck_alert_rules_market"),
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_alert_rules_market"),
         Index("ix_alert_rules_user", "user_id"),
         # The alert-engine scan — a partial index over only enabled rules.
         Index(
@@ -529,7 +534,7 @@ class AlertPreferenceRow(Base):
     __tablename__ = "alert_preferences"
 
     user_id: Mapped[str] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), primary_key=True
     )
     channels: Mapped[list[str]] = mapped_column(JSON, default=list)
     enabled_categories: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -544,7 +549,7 @@ class DevicePushTokenRow(Base):
     __tablename__ = "device_push_tokens"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     platform: Mapped[str]
     token: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(_UTC)
@@ -565,7 +570,7 @@ class NotificationRow(Base):
     __tablename__ = "notifications"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     source: Mapped[str]
     source_id: Mapped[str]
     channel: Mapped[str]
@@ -656,7 +661,7 @@ class SubscriptionRow(Base):
     __tablename__ = "subscriptions"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     paddle_subscription_id: Mapped[str] = mapped_column(unique=True)
     paddle_customer_id: Mapped[str | None] = mapped_column(default=None)
     status: Mapped[str]
@@ -753,7 +758,7 @@ class ThemeMembershipRow(Base):
     created_at: Mapped[datetime] = mapped_column(_UTC)
 
     __table_args__ = (
-        CheckConstraint("market IN ('TW','US')", name="ck_theme_memberships_market"),
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_theme_memberships_market"),
         CheckConstraint(
             "confidence >= 0 AND confidence <= 1", name="ck_theme_memberships_confidence"
         ),
@@ -813,7 +818,7 @@ class SupplyChainEdgeRow(Base):
     updated_at: Mapped[datetime] = mapped_column(_UTC)
 
     __table_args__ = (
-        CheckConstraint("market IN ('TW','US')", name="ck_supply_chain_edges_market"),
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_supply_chain_edges_market"),
         CheckConstraint(
             "edge_type IN ('supplies','customer','competes')", name="ck_supply_chain_edges_type"
         ),
@@ -872,7 +877,7 @@ class TurnFeedbackRow(Base):
     __tablename__ = "turn_feedback"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    turn_id: Mapped[str] = mapped_column(ForeignKey("turns.id", ondelete="CASCADE"), index=True)
+    turn_id: Mapped[str] = mapped_column(ForeignKey(_TURNS_ID_FK, ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(index=True)
     rating: Mapped[str]
     comment: Mapped[str | None] = mapped_column(default=None)
@@ -953,7 +958,7 @@ class StockScoreRow(Base):
     computed_at: Mapped[datetime] = mapped_column(_UTC)
 
     __table_args__ = (
-        CheckConstraint("market IN ('TW','US')", name="ck_stock_scores_market"),
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_stock_scores_market"),
         CheckConstraint("profile IN ('swing','position')", name="ck_stock_scores_profile"),
         CheckConstraint("band IN ('偏多','中性','偏空')", name="ck_stock_scores_band"),
         UniqueConstraint(
