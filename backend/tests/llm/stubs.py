@@ -21,10 +21,13 @@ from llm.base import (
     StopReason,
     StreamDoneEvent,
     TextDeltaEvent,
+    ThinkingDeltaEvent,
     TokenUsage,
     ToolCall,
     ToolCallEvent,
     ToolSpec,
+    WebSearchResultEvent,
+    WebSearchSource,
 )
 
 
@@ -49,13 +52,29 @@ class StubLLMClient:
     provider_id: str = "stub"
     model_id: str = "stub-model"
     capabilities: ModelCapabilities = field(default_factory=ModelCapabilities)
+    # One list of thinking-delta chunk strings per scripted `stream()` call (index-aligned with
+    # `script`) — a test that wants to assert `ThinkingDeltaEvent` forwarding without a live
+    # provider populates this; every other test leaves it empty (no thinking events emitted).
+    thinking_chunks: Sequence[Sequence[str]] = field(default_factory=lambda: ())
+    # One tuple of `WebSearchSource`s per scripted `stream()` call (index-aligned with `script`)
+    # — a test that wants to assert `WebSearchResultEvent` forwarding without a live provider
+    # populates this; every other test leaves it empty (no web-search event emitted).
+    web_search_sources: Sequence[Sequence[WebSearchSource]] = field(default_factory=lambda: ())
     calls: list[tuple[list[Message], list[ToolSpec] | None]] = field(default_factory=lambda: [])
+    # Recorded per-call so orchestrator/runtime tests can assert whether a given `chat()`/
+    # `stream()` invocation requested native web search, alongside `.calls`'s messages/tools.
+    native_web_search_calls: list[bool] = field(default_factory=lambda: [])
     _next_index: int = field(default=0, init=False, repr=False)
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
         self.calls.append((messages, tools))
+        self.native_web_search_calls.append(native_web_search)
         if self._next_index >= len(self.script):
             raise AssertionError(
                 f"StubLLMClient.chat called {self._next_index + 1} times but script only has "
@@ -66,13 +85,27 @@ class StubLLMClient:
         return response
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
-    ) -> AsyncIterator[TextDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        response = await self.chat(messages, tools)
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
+    ) -> AsyncIterator[
+        TextDeltaEvent | ThinkingDeltaEvent | ToolCallEvent | WebSearchResultEvent | StreamDoneEvent
+    ]:
+        call_index = self._next_index
+        response = await self.chat(messages, tools, native_web_search=native_web_search)
+        if call_index < len(self.thinking_chunks):
+            for chunk in self.thinking_chunks[call_index]:
+                yield ThinkingDeltaEvent(text=chunk)
         if response.text:
             yield TextDeltaEvent(text=response.text)
         for call in response.tool_calls:
             yield ToolCallEvent(tool_call=call)
+        if call_index < len(self.web_search_sources):
+            sources = self.web_search_sources[call_index]
+            if sources:
+                yield WebSearchResultEvent(sources=tuple(sources))
         yield StreamDoneEvent(stop_reason=response.stop_reason, usage=response.usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:

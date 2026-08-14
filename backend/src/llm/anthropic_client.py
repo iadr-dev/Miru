@@ -18,9 +18,10 @@ from typing import Any, Final, cast
 import structlog
 from anthropic import AsyncAnthropic
 from anthropic.types import Message as AnthropicMessage
-from anthropic.types import MessageParam
+from anthropic.types import MessageParam, ThinkingConfigParam, WebSearchToolResultBlock
 
 from llm.base import (
+    ImagePart,
     LLMResponse,
     Message,
     MessageRole,
@@ -28,12 +29,15 @@ from llm.base import (
     StopReason,
     StreamDoneEvent,
     TextDeltaEvent,
+    ThinkingDeltaEvent,
     TokenUsage,
     ToolCall,
     ToolCallDeltaEvent,
     ToolCallEvent,
     ToolResultPart,
     ToolSpec,
+    WebSearchResultEvent,
+    WebSearchSource,
 )
 
 logger = structlog.get_logger(__name__)
@@ -44,6 +48,27 @@ _STOP_REASON_MAP: Final[dict[str, StopReason]] = {
     "max_tokens": StopReason.MAX_TOKENS,
     "stop_sequence": StopReason.END_TURN,
 }
+
+# Anthropic's native server-side web-search tool — a raw block appended to `tools` alongside
+# the `_tool_spec_to_param`-built function-tool entries, never converted from a `ToolSpec` (it
+# has no JSON-schema `input_schema`; Claude drives it itself). Verified against the installed
+# `anthropic` SDK's `WebSearchTool20250305Param` (`anthropic.types`) — `name`/`type` are the
+# only required fields.
+_WEB_SEARCH_TOOL_BLOCK: Final[dict[str, Any]] = {
+    "type": "web_search_20250305",
+    "name": "web_search",
+}
+
+_CACHE_CONTROL_EPHEMERAL: Final[dict[str, str]] = {"type": "ephemeral"}
+
+# Models with native extended-thinking support in this build — matched by prefix so a dated
+# snapshot id under either family still qualifies. Verified against the installed SDK's
+# `ThinkingConfigAdaptiveParam` (adaptive thinking, no `budget_tokens`) — see `_thinking_param`.
+_EXTENDED_THINKING_MODEL_PREFIXES: Final[tuple[str, ...]] = ("claude-opus-4-8", "claude-sonnet-5")
+
+
+def _supports_extended_thinking(model_id: str) -> bool:
+    return any(model_id.startswith(prefix) for prefix in _EXTENDED_THINKING_MODEL_PREFIXES)
 
 
 def _system_and_turns(messages: list[Message]) -> tuple[str | None, list[Message]]:
@@ -63,6 +88,15 @@ def _tool_result_block(part: ToolResultPart) -> dict[str, Any]:
     }
 
 
+def _image_block(image: ImagePart) -> dict[str, Any]:
+    """One `image`-type content block — verified against the installed SDK's `ImageBlockParam`
+    (`type`/`source`) + `Base64ImageSourceParam` (`type: "base64"`/`media_type`/`data`)."""
+    return {
+        "type": "image",
+        "source": {"type": "base64", "media_type": image.media_type, "data": image.data},
+    }
+
+
 def _message_to_param(message: Message) -> MessageParam:
     if message.role is MessageRole.TOOL:
         content = [_tool_result_block(part) for part in message.tool_results]
@@ -77,11 +111,53 @@ def _message_to_param(message: Message) -> MessageParam:
         )
         return cast("MessageParam", {"role": "assistant", "content": blocks})
     role = "assistant" if message.role is MessageRole.ASSISTANT else "user"
+    if message.images:
+        # Images-plus-text is a content-block list, per the SDK: image blocks then the text
+        # block last — Anthropic's own examples order image(s) before the text referencing them.
+        blocks = [_image_block(image) for image in message.images]
+        if message.content:
+            blocks.append({"type": "text", "text": message.content})
+        return cast("MessageParam", {"role": role, "content": blocks})
     return cast("MessageParam", {"role": role, "content": message.content or ""})
 
 
 def _tool_spec_to_param(spec: ToolSpec) -> dict[str, Any]:
     return {"name": spec.name, "description": spec.description, "input_schema": spec.parameters}
+
+
+def _system_param(system: str) -> list[dict[str, Any]]:
+    """Render the system prompt as a single cacheable content block — `cache_control` on a
+    plain string `system` isn't possible (the field must be a content-block list to carry it),
+    so this always takes the list form. Verified against the installed SDK's `TextBlockParam`
+    (`text`/`type`/`cache_control`)."""
+    return [{"type": "text", "text": system, "cache_control": _CACHE_CONTROL_EPHEMERAL}]
+
+
+def _tools_param(
+    tools: list[ToolSpec] | None, *, native_web_search: bool
+) -> list[dict[str, Any]] | None:
+    """Build the `tools` list, marking the last entry cacheable so the whole (static) schema
+    block is cached across turns — cache_control on the last tool caches every tool before it
+    too, mirroring the system-prompt breakpoint (see `shared/prompt-caching.md`'s placement
+    guidance, applied here without a doc citation per this repo's comment convention)."""
+    params = [_tool_spec_to_param(t) for t in tools] if tools else []
+    if native_web_search:
+        params.append(dict(_WEB_SEARCH_TOOL_BLOCK))
+    if not params:
+        return None
+    params[-1] = {**params[-1], "cache_control": _CACHE_CONTROL_EPHEMERAL}
+    return params
+
+
+def _thinking_param() -> ThinkingConfigParam:
+    """Adaptive-thinking config — verified against the installed SDK's
+    `ThinkingConfigAdaptiveParam`, which carries no `budget_tokens` field. Both models this
+    module currently flags `extended_thinking=True` for (`_EXTENDED_THINKING_MODEL_PREFIXES`)
+    reject the older `{"type": "enabled", "budget_tokens": N}` shape with a 400, so the
+    budget_tokens fallback the task brief allows for pre-4.7-style models is never reached here
+    — only called when `ModelCapabilities.extended_thinking` is `True` for exactly those
+    models."""
+    return cast("ThinkingConfigParam", {"type": "adaptive"})
 
 
 def _parse_json_object(raw: str) -> dict[str, object]:
@@ -96,26 +172,89 @@ def _parse_json_object(raw: str) -> dict[str, object]:
     return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
 
 
+def _web_search_result_event(
+    block: WebSearchToolResultBlock,
+) -> WebSearchResultEvent | None:
+    """Build a `WebSearchResultEvent` from a `web_search_tool_result` content block, if it
+    carries real sources — verified live: the block's `content` is either a
+    `WebSearchToolResultError` (no sources, e.g. the query was blocked/rate-limited) or a list
+    of `WebSearchResultBlock`s (each carrying real `url`/`title` values, confirmed present on
+    every result in a live query), so a bare `isinstance(content, list)` check is all that's
+    needed to distinguish the two — every item in that list is a `WebSearchResultBlock`, per
+    the SDK's own `WebSearchToolResultBlockContent` union."""
+    content = block.content
+    if not isinstance(content, list):
+        return None
+    sources = tuple(WebSearchSource(url=result.url, title=result.title) for result in content)
+    return WebSearchResultEvent(sources=sources) if sources else None
+
+
+def _content_block_start_event(
+    event: Any, pending: dict[int, dict[str, str]]
+) -> ToolCallDeltaEvent | WebSearchResultEvent | None:
+    """Extract a tool-call/web-search-result event from one `content_block_start` event, if
+    any (split out of `_content_block_event` purely to keep that function's own branch count
+    under the ruff PLR0912/PLR0911 limits).
+
+    A `thinking` block (SDK type `ThinkingBlock`) carries nothing to track — unlike `tool_use`,
+    there is no id/name to seed `pending` with, the thinking text only ever arrives via
+    subsequent `content_block_delta` events — so it falls through to the `None` return below,
+    verified against the installed `anthropic` SDK's `RawContentBlockStartEvent.content_block`
+    union (`ThinkingBlock` has just `thinking`/`signature` fields, no id).
+
+    A `web_search_tool_result` block (SDK type `WebSearchToolResultBlock`) arrives as one
+    complete unit — verified live: the full list of `WebSearchResultBlock`s (each with
+    `url`/`title` already populated) is present on the `content_block_start` event itself,
+    nothing streams incrementally for it — so it is turned into a `WebSearchResultEvent` right
+    here rather than assembled like a tool call."""
+    block = event.content_block
+    if block.type == "tool_use":
+        pending[event.index] = {"id": block.id, "name": block.name, "args": ""}
+        return ToolCallDeltaEvent(id=block.id, name=block.name)
+    if block.type == "web_search_tool_result":
+        return _web_search_result_event(block)
+    return None
+
+
+def _content_block_delta_event(
+    event: Any, pending: dict[int, dict[str, str]]
+) -> TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | None:
+    """Extract a text/thinking/tool-call delta from one `content_block_delta` event, if any
+    (split out of `_content_block_event` for the same PLR0912/PLR0911 reason as
+    `_content_block_start_event`).
+
+    `ThinkingDelta` (verified: `delta.type == "thinking_delta"`, field `delta.thinking: str`)
+    is the actual incremental reasoning text. `SignatureDelta` (the block's trailing signature,
+    `delta.type == "signature_delta"`) carries no user-facing text and is intentionally not
+    surfaced as an event. `CitationsDelta` (per-cited-text-span source attribution interleaved
+    with the answer text) is also intentionally not surfaced as a separate event: it references
+    the exact same url/title already captured from the `web_search_tool_result` block, just
+    scoped to a smaller span of the answer, which this normalized shape (one source list per
+    search) does not need."""
+    delta = event.delta
+    if delta.type == "text_delta":
+        return TextDeltaEvent(text=delta.text)
+    if delta.type == "thinking_delta":
+        return ThinkingDeltaEvent(text=delta.thinking)
+    if delta.type == "input_json_delta":
+        slot = pending.get(event.index)
+        if slot is not None:
+            slot["args"] += delta.partial_json
+            return ToolCallDeltaEvent(id=slot["id"], arguments_delta=delta.partial_json)
+    return None
+
+
 def _content_block_event(
     event: Any, pending: dict[int, dict[str, str]]
-) -> TextDeltaEvent | ToolCallDeltaEvent | None:
-    """Extract a text/tool-call delta from one raw stream event, if any (helper split out of
-    `AnthropicClient.stream` to keep branch count under the ruff PLR0912 limit)."""
+) -> TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | WebSearchResultEvent | None:
+    """Extract a text/thinking/tool-call/web-search-result event from one raw stream event, if
+    any (helper split out of `AnthropicClient.stream` to keep branch count under the ruff
+    PLR0912 limit) — dispatches to `_content_block_start_event`/`_content_block_delta_event`
+    by the raw event's own `type`."""
     if event.type == "content_block_start":
-        block = event.content_block
-        if block.type == "tool_use":
-            pending[event.index] = {"id": block.id, "name": block.name, "args": ""}
-            return ToolCallDeltaEvent(id=block.id, name=block.name)
-        return None
+        return _content_block_start_event(event, pending)
     if event.type == "content_block_delta":
-        delta = event.delta
-        if delta.type == "text_delta":
-            return TextDeltaEvent(text=delta.text)
-        if delta.type == "input_json_delta":
-            slot = pending.get(event.index)
-            if slot is not None:
-                slot["args"] += delta.partial_json
-                return ToolCallDeltaEvent(id=slot["id"], arguments_delta=delta.partial_json)
+        return _content_block_delta_event(event, pending)
     return None
 
 
@@ -151,18 +290,35 @@ class AnthropicClient:
         api_key: str,
         capabilities: ModelCapabilities | None = None,
         max_tokens: int = 4096,
+        extended_thinking: bool | None = None,
     ) -> None:
         self.provider_id = "anthropic"
         self.model_id = model_id
         self.capabilities = capabilities or ModelCapabilities(
-            native_tool_calling=True, streaming=True, native_web_search=True
+            native_tool_calling=True,
+            streaming=True,
+            native_web_search=True,
+            extended_thinking=(
+                extended_thinking
+                if extended_thinking is not None
+                else _supports_extended_thinking(model_id)
+            ),
+            # Every model in Anthropic's current catalog (Claude Opus/Sonnet/Haiku 4.x, 5.x)
+            # supports image input per Anthropic's own vision documentation — verified against
+            # the published model-capabilities table, not assumed; no model id in this build's
+            # catalog is a text-only variant.
+            supports_vision=True,
         )
         self._max_tokens = max_tokens
         # SDK client construction is local — no network call.
         self._client = AsyncAnthropic(api_key=api_key)
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
         system, turns = _system_and_turns(messages)
         params = [_message_to_param(m) for m in turns]
@@ -172,9 +328,12 @@ class AnthropicClient:
             "messages": params,
         }
         if system:
-            kwargs["system"] = system
-        if tools:
-            kwargs["tools"] = [_tool_spec_to_param(t) for t in tools]
+            kwargs["system"] = _system_param(system)
+        tools_param = _tools_param(tools, native_web_search=native_web_search)
+        if tools_param is not None:
+            kwargs["tools"] = tools_param
+        if self.capabilities.extended_thinking:
+            kwargs["thinking"] = _thinking_param()
 
         try:
             response = cast("AnthropicMessage", await self._client.messages.create(**kwargs))
@@ -206,7 +365,11 @@ class AnthropicClient:
         )
 
     def _stream_kwargs(
-        self, messages: list[Message], tools: list[ToolSpec] | None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None,
+        *,
+        native_web_search: bool,
     ) -> dict[str, Any]:
         system, turns = _system_and_turns(messages)
         params = [_message_to_param(m) for m in turns]
@@ -216,15 +379,29 @@ class AnthropicClient:
             "messages": params,
         }
         if system:
-            kwargs["system"] = system
-        if tools:
-            kwargs["tools"] = [_tool_spec_to_param(t) for t in tools]
+            kwargs["system"] = _system_param(system)
+        tools_param = _tools_param(tools, native_web_search=native_web_search)
+        if tools_param is not None:
+            kwargs["tools"] = tools_param
+        if self.capabilities.extended_thinking:
+            kwargs["thinking"] = _thinking_param()
         return kwargs
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
-    ) -> AsyncIterator[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        kwargs = self._stream_kwargs(messages, tools)
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
+    ) -> AsyncIterator[
+        TextDeltaEvent
+        | ThinkingDeltaEvent
+        | ToolCallDeltaEvent
+        | ToolCallEvent
+        | WebSearchResultEvent
+        | StreamDoneEvent
+    ]:
+        kwargs = self._stream_kwargs(messages, tools, native_web_search=native_web_search)
 
         # Assembled per content-block index as Anthropic streams tool-call JSON input
         # incrementally via `input_json_delta` events keyed to the block's index.
