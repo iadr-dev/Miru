@@ -19,13 +19,19 @@ mechanism, per `backend/CLAUDE.md` §6, not a DB-level FK), and retrofitting a h
 denormalized copy would both fight that design and force every conversation/memory row to
 already have a `users` parent — a coupling those stores intentionally don't take. Identity is
 the `users` table; these columns point at it by convention, scoped in SQL.
+
+`Base.metadata.create_all()` (called once at process startup, see `db/base.py`) is this project's
+sole schema-provisioning mechanism — no Alembic migration chain. Every partial (`WHERE`-qualified)
+index/constraint below is expressed directly via `Index(..., sqlite_where=..., postgresql_where=
+...)`, which SQLAlchemy Core supports natively on both dialects, so `create_all()` alone produces
+a complete, dual-dialect-correct schema with no DDL that only a migration could express.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base
@@ -93,10 +99,16 @@ class TurnRow(Base):
         Index("ix_turns_thread_created", "thread_id", "created_at"),
         Index("ix_turns_user_created", "user_id", "created_at"),
         UniqueConstraint("user_id", "idempotency_key", name="uq_turns_user_idempotency_key"),
-        # "one active turn per thread" (partial unique on status='running') is dialect-specific
-        # DDL (Postgres/SQLite partial index both supported, but expressed with the dialect-
-        # specific `postgresql_where`/`sqlite_where` kwargs) — applied directly in the migration
-        # rather than here, same reasoning as the watchlist partial-unique constraint below.
+        # At most one 'running' turn per thread — a partial-unique index, expressed with the
+        # dialect-specific `postgresql_where`/`sqlite_where` kwargs `Index(...)` accepts directly
+        # (no separate migration DDL needed for this).
+        Index(
+            "uq_turns_one_running_per_thread",
+            "thread_id",
+            unique=True,
+            sqlite_where=text("status = 'running'"),
+            postgresql_where=text("status = 'running'"),
+        ),
     )
 
 
@@ -117,7 +129,7 @@ class MessageRow(Base):
     __table_args__ = (
         CheckConstraint(
             "type IN ('text','thinking','tool_use','tool_result','caveat','rich_card',"
-            "'steering','branch_summary','compaction')",
+            "'steering','branch_summary','compaction','attachment','web_search_sources')",
             name="ck_messages_type",
         ),
         Index("ix_messages_turn_seq", "turn_id", "seq"),
@@ -213,9 +225,17 @@ class WatchlistRow(Base):
             "asset_class",
             "sort_order",
         ),
-        # Partial-unique (user_id, market, asset_class, name) WHERE deleted_at IS NULL —
-        # dialect-specific partial-index DDL, applied directly in the migration (same reasoning
-        # as `turns`' partial "one active run per thread" constraint above).
+        # One non-deleted group name per (user, market, asset_class) — partial-unique index.
+        Index(
+            "uq_watchlists_user_market_class_name",
+            "user_id",
+            "market",
+            "asset_class",
+            "name",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
 
@@ -253,8 +273,7 @@ class UserRow(Base):
     `personality_id` is the user's selected agent-voice preset (defaults to `steady`).
 
     `email` is nullable (a LINE user may lack one) and identity is keyed on `oauth_accounts`,
-    not email — the partial-unique-where-not-null on email is applied in the migration
-    (dialect-specific partial index), not here."""
+    not email — see `uq_users_email` below for the partial-unique-where-not-null."""
 
     __tablename__ = "users"
 
@@ -284,8 +303,14 @@ class UserRow(Base):
 
     __table_args__ = (
         CheckConstraint("tier IN ('free','premium','pro')", name="ck_users_tier"),
-        # Partial-unique on email WHERE email IS NOT NULL — dialect-specific partial index,
-        # applied in the migration (same reasoning as the watchlist/turns partial constraints).
+        # At most one non-null email across users (a LINE user may have none) — partial-unique.
+        Index(
+            "uq_users_email",
+            "email",
+            unique=True,
+            sqlite_where=text("email IS NOT NULL"),
+            postgresql_where=text("email IS NOT NULL"),
+        ),
     )
 
 
@@ -368,7 +393,7 @@ class SessionRow(Base):
 class UserPetRow(Base):
     """One owned pet. Cosmetic only — no tier/entitlement/data linkage. `pet_id` is a catalog
     key (definitions live in `pets` config code, not a table). At most one `is_active=True` per
-    user (enforced in the equip transaction + a partial-unique index in the migration)."""
+    user (enforced in the equip transaction + `uq_user_pets_one_active_per_user` below)."""
 
     __tablename__ = "user_pets"
 
@@ -385,8 +410,16 @@ class UserPetRow(Base):
     __table_args__ = (
         CheckConstraint("obtained_via IN ('pull','admin')", name="ck_user_pets_obtained_via"),
         Index("ix_user_pets_user_active", "user_id", "is_active"),
-        # Partial-unique (user_id) WHERE is_active — one equipped pet per user, applied in the
-        # migration (dialect-specific partial index).
+        # At most one equipped pet per user — partial-unique index. SQLite stores booleans as
+        # 0/1 so its predicate must compare against `1`; Postgres accepts the bare boolean column
+        # as a predicate directly.
+        Index(
+            "uq_user_pets_one_active_per_user",
+            "user_id",
+            unique=True,
+            sqlite_where=text("is_active = 1"),
+            postgresql_where=text("is_active"),
+        ),
     )
 
 
@@ -451,8 +484,13 @@ class ScheduleJobRow(Base):
             "status IN ('ok','running','skipped_quota','error')", name="ck_schedule_jobs_status"
         ),
         Index("ix_schedule_jobs_user", "user_id"),
-        # Partial index on `next_run WHERE enabled` — the due-jobs worker scan; dialect-specific
-        # partial-index DDL applied in the migration.
+        # The due-jobs worker scans only enabled jobs by next_run — a partial index.
+        Index(
+            "ix_schedule_jobs_due",
+            "next_run",
+            sqlite_where=text("enabled = 1"),
+            postgresql_where=text("enabled"),
+        ),
     )
 
 
@@ -476,8 +514,14 @@ class AlertRuleRow(Base):
     __table_args__ = (
         CheckConstraint("market IN ('TW','US')", name="ck_alert_rules_market"),
         Index("ix_alert_rules_user", "user_id"),
-        # Partial index on `(market, symbol) WHERE enabled` — the alert-engine scan; applied in
-        # the migration (dialect-specific partial index).
+        # The alert-engine scan — a partial index over only enabled rules.
+        Index(
+            "ix_alert_rules_scan",
+            "market",
+            "symbol",
+            sqlite_where=text("enabled = 1"),
+            postgresql_where=text("enabled"),
+        ),
     )
 
 
@@ -534,7 +578,13 @@ class NotificationRow(Base):
         CheckConstraint("source IN ('schedule','alert','digest')", name="ck_notifications_source"),
         UniqueConstraint("user_id", "dedupe_key", name="uq_notifications_user_dedupe"),
         Index("ix_notifications_user_delivered", "user_id", "delivered_at"),
-        # Partial index on `WHERE read_at IS NULL` (unread badge) — applied in the migration.
+        # The unread-badge scan — a partial index over only unread rows.
+        Index(
+            "ix_notifications_unread",
+            "user_id",
+            sqlite_where=text("read_at IS NULL"),
+            postgresql_where=text("read_at IS NULL"),
+        ),
     )
 
 
@@ -770,7 +820,9 @@ class SupplyChainEdgeRow(Base):
         CheckConstraint(
             "confidence IN ('high','medium','low')", name="ck_supply_chain_edges_confidence"
         ),
-        CheckConstraint("source IN ('seed','llm_extraction')", name="ck_supply_chain_edges_source"),
+        CheckConstraint(
+            "source IN ('seed','llm_extraction')", name="ck_supply_chain_edges_source"
+        ),
         Index("ix_supply_chain_edges_from", "from_symbol"),
         Index("ix_supply_chain_edges_to", "to_symbol"),
     )
