@@ -27,6 +27,16 @@ from llm.base import ImagePart
 logger = structlog.get_logger(__name__)
 
 
+_MAX_ATTACHMENTS_PER_REQUEST = 10
+# Base64 expands 4 bytes of text per 3 bytes of decoded data — a `data_base64` string longer
+# than this could only decode to something over the settings-configured size cap, so reject the
+# oversized wire payload before `b64decode` ever allocates the decoded buffer (the resource-bound
+# check below runs AFTER decoding, which is too late to bound the decode allocation itself).
+_MAX_BASE64_LEN = (
+    20_000_000  # ~15MB decoded — generously above any real settings.max_attachment_size_bytes
+)
+
+
 class AttachmentInput(BaseModel):
     """One chat attachment as sent by the client — the whole file inline as base64, mirroring
     `voice.py`'s `audio_base64` idiom (base64-in-JSON, not multipart)."""
@@ -35,7 +45,7 @@ class AttachmentInput(BaseModel):
 
     filename: str = Field(min_length=1, max_length=255)
     media_type: str = Field(min_length=1, max_length=255)
-    data_base64: str = Field(min_length=1)
+    data_base64: str = Field(min_length=1, max_length=_MAX_BASE64_LEN)
 
 
 def _decode(attachment: AttachmentInput, *, max_bytes: int) -> bytes:
@@ -81,6 +91,13 @@ async def process_attachments(
     parse) fails the whole request with a 4xx `ApiError` rather than silently dropping it —
     the user explicitly attached it, so a silent drop would be a worse surprise than an error.
     """
+    if len(attachments) > _MAX_ATTACHMENTS_PER_REQUEST:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="too_many_attachments",
+            message=f"at most {_MAX_ATTACHMENTS_PER_REQUEST} attachments are allowed per turn.",
+            retryable=False,
+        )
     augmented = message
     images: list[ImagePart] = []
     blocks: list[tuple[MessageBlockType, MessageBlockContent]] = []
