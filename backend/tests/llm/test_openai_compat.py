@@ -13,8 +13,8 @@ import httpx
 import pytest
 
 import llm.openai_compat as openai_compat_module
-from llm.base import Message, MessageRole, StopReason, ToolResultPart, ToolSpec
-from llm.openai_compat import OpenAICompatClient
+from llm.base import ImagePart, Message, MessageRole, StopReason, ToolResultPart, ToolSpec
+from llm.openai_compat import OpenAICompatClient, _message_to_wire
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatch replaces it
 
@@ -36,8 +36,8 @@ def _patch_json_response(
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(status_code, json=body)
 
-    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
-        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+    def factory(**kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
 
@@ -48,8 +48,8 @@ def _patch_sse_response(monkeypatch: pytest.MonkeyPatch, lines: list[str]) -> No
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
 
-    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
-        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+    def factory(**kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
 
@@ -76,6 +76,21 @@ async def test_chat_normalizes_text_response(monkeypatch: pytest.MonkeyPatch) ->
     assert response.tool_calls == ()
     assert response.stop_reason is StopReason.END_TURN
     assert response.usage.total_tokens == 8
+
+
+def test_message_to_wire_sends_image_url_content_part_alongside_text() -> None:
+    message = Message(
+        role=MessageRole.USER,
+        content="what's in this chart?",
+        images=(ImagePart(media_type="image/png", data="Zm9v"),),
+    )
+
+    wire = _message_to_wire(message)
+
+    assert wire["content"] == [
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,Zm9v"}},
+        {"type": "text", "text": "what's in this chart?"},
+    ]
 
 
 async def test_chat_normalizes_tool_call_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -127,8 +142,8 @@ async def test_chat_sends_tool_result_message(monkeypatch: pytest.MonkeyPatch) -
             },
         )
 
-    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
-        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+    def factory(**kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
 
@@ -146,6 +161,78 @@ async def test_chat_sends_tool_result_message(monkeypatch: pytest.MonkeyPatch) -
     assert isinstance(body, dict)
     sent_messages = body["messages"]
     assert sent_messages[0] == {"role": "tool", "tool_call_id": "call_1", "content": "42"}
+
+
+async def test_chat_appends_openrouter_web_search_tool_when_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+        )
+
+    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+
+    client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
+    await client.chat([Message(role=MessageRole.USER, content="hi")], native_web_search=True)
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert {"type": "openrouter:web_search"} in body["tools"]
+
+
+async def test_chat_omits_openrouter_web_search_tool_when_not_requested(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+        )
+
+    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+
+    client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
+    await client.chat([Message(role=MessageRole.USER, content="hi")])
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert "tools" not in body
+
+
+async def test_chat_never_appends_openrouter_tool_for_a_different_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+        )
+
+    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+
+    client = _client()  # provider_id="groq" — no native web-search mechanism
+    await client.chat([Message(role=MessageRole.USER, content="hi")], native_web_search=True)
+
+    body = captured["body"]
+    assert isinstance(body, dict)
+    assert "tools" not in body
 
 
 async def test_chat_raises_on_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -203,6 +290,166 @@ async def test_stream_assembles_text_and_tool_call_deltas(monkeypatch: pytest.Mo
     assert done.type == "done"
     assert done.usage.total_tokens == 3  # type: ignore[union-attr]
     assert done.stop_reason is StopReason.TOOL_USE  # type: ignore[union-attr]
+
+
+async def test_stream_emits_thinking_delta_for_openrouter_reasoning_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenRouter streams reasoning tokens as `delta.reasoning` (verified against OpenRouter's
+    own published reasoning-tokens docs) — this must only fire for `provider_id ==
+    "openrouter"`, mirroring the `native_web_search` provider carve-out already in this
+    module."""
+    chunks = [
+        {"choices": [{"delta": {"reasoning": "pondering"}}]},
+        {"choices": [{"delta": {"content": "final"}, "finish_reason": "stop"}]},
+    ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    _patch_sse_response(monkeypatch, lines)
+
+    client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
+    events = [
+        event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
+    ]
+
+    thinking_events = [e for e in events if e.type == "thinking_delta"]
+    assert [e.text for e in thinking_events] == ["pondering"]  # type: ignore[union-attr]
+
+    text_events = [e for e in events if e.type == "text_delta"]
+    assert [e.text for e in text_events] == ["final"]  # type: ignore[union-attr]
+
+
+async def test_stream_emits_thinking_delta_for_openrouter_reasoning_content_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [{"choices": [{"delta": {"reasoning_content": "deep thought"}}]}]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    _patch_sse_response(monkeypatch, lines)
+
+    client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
+    events = [
+        event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
+    ]
+
+    thinking_events = [e for e in events if e.type == "thinking_delta"]
+    assert [e.text for e in thinking_events] == ["deep thought"]  # type: ignore[union-attr]
+
+
+async def test_stream_never_emits_thinking_delta_for_a_non_openrouter_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Groq/Cerebras have no `reasoning`/`reasoning_content` field — even if a raw chunk somehow
+    carried one, a non-OpenRouter provider must never surface it as a `thinking_delta`."""
+    chunks = [{"choices": [{"delta": {"reasoning": "should be ignored", "content": "hi"}}]}]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    _patch_sse_response(monkeypatch, lines)
+
+    client = _client()  # provider_id="groq"
+    events = [
+        event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
+    ]
+
+    assert not [e for e in events if e.type == "thinking_delta"]
+    text_events = [e for e in events if e.type == "text_delta"]
+    assert [e.text for e in text_events] == ["hi"]  # type: ignore[union-attr]
+
+
+async def test_stream_emits_web_search_result_event_for_openrouter_annotations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenRouter's `openrouter:web_search` streams sources as `delta.annotations`
+    (`url_citation` objects) — verified live against a real streamed response (see the task's
+    live-verification pass): one full annotation per chunk, accumulated across the whole
+    stream and emitted as one `WebSearchResultEvent` right before `StreamDoneEvent`."""
+    chunks = [
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "role": "assistant",
+                        "annotations": [
+                            {
+                                "type": "url_citation",
+                                "url_citation": {
+                                    "url": "https://www.cnbc.com/quotes/NVDA",
+                                    "title": "NVDA: NVIDIA Corp - Stock Price, Quote and News",
+                                    "start_index": 0,
+                                    "end_index": 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        },
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "role": "assistant",
+                        "annotations": [
+                            {
+                                "type": "url_citation",
+                                "url_citation": {
+                                    "url": "https://stockanalysis.com/stocks/nvda/",
+                                    "title": "NVIDIA (NVDA) Stock Price & Overview",
+                                    "start_index": 0,
+                                    "end_index": 0,
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        },
+        {"choices": [{"delta": {"content": "final"}, "finish_reason": "stop"}]},
+    ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    _patch_sse_response(monkeypatch, lines)
+
+    client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
+    events = [
+        event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
+    ]
+
+    web_search_events = [e for e in events if e.type == "web_search_result"]
+    assert len(web_search_events) == 1
+    sources = web_search_events[0].sources  # type: ignore[union-attr]
+    assert sources[0].url == "https://www.cnbc.com/quotes/NVDA"
+    assert sources[1].url == "https://stockanalysis.com/stocks/nvda/"
+    # emitted before the terminal `done` event
+    assert events[-1].type == "done"
+    assert events[-2].type == "web_search_result"
+
+
+async def test_stream_never_emits_web_search_result_for_a_non_openrouter_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    chunks = [
+        {
+            "choices": [
+                {
+                    "delta": {
+                        "annotations": [
+                            {
+                                "type": "url_citation",
+                                "url_citation": {"url": "https://x.com", "title": "X"},
+                            }
+                        ],
+                        "content": "hi",
+                    }
+                }
+            ]
+        }
+    ]
+    lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
+    _patch_sse_response(monkeypatch, lines)
+
+    client = _client()  # provider_id="groq"
+    events = [
+        event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
+    ]
+
+    assert not [e for e in events if e.type == "web_search_result"]
 
 
 async def test_count_tokens_is_a_heuristic_estimate() -> None:

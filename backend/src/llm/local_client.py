@@ -24,9 +24,11 @@ from llm.base import (
     ModelCapabilities,
     StreamDoneEvent,
     TextDeltaEvent,
+    ThinkingDeltaEvent,
     ToolCallDeltaEvent,
     ToolCallEvent,
     ToolSpec,
+    WebSearchResultEvent,
 )
 from llm.openai_compat import OpenAICompatClient
 
@@ -58,14 +60,29 @@ class LocalOllamaClient:
         )
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
-        return await self._delegate.chat(messages, tools)
+        return await self._delegate.chat(messages, tools, native_web_search=native_web_search)
 
     def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
-    ) -> AsyncIterator[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        return self._delegate.stream(messages, tools)
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
+    ) -> AsyncIterator[
+        TextDeltaEvent
+        | ThinkingDeltaEvent
+        | ToolCallDeltaEvent
+        | ToolCallEvent
+        | WebSearchResultEvent
+        | StreamDoneEvent
+    ]:
+        return self._delegate.stream(messages, tools, native_web_search=native_web_search)
 
     async def count_tokens(self, messages: list[Message]) -> int:
         return await self._delegate.count_tokens(messages)

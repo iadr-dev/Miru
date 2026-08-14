@@ -29,6 +29,7 @@ is threaded back, never by this synthetic id.
 
 from __future__ import annotations
 
+import base64
 import json
 from collections.abc import AsyncIterator
 from typing import Final
@@ -38,6 +39,7 @@ from google import genai
 from google.genai import types as genai_types
 
 from llm.base import (
+    ImagePart,
     LLMResponse,
     Message,
     MessageRole,
@@ -45,15 +47,29 @@ from llm.base import (
     StopReason,
     StreamDoneEvent,
     TextDeltaEvent,
+    ThinkingDeltaEvent,
     TokenUsage,
     ToolCall,
     ToolCallDeltaEvent,
     ToolCallEvent,
     ToolResultPart,
     ToolSpec,
+    WebSearchResultEvent,
+    WebSearchSource,
 )
 
 logger = structlog.get_logger(__name__)
+
+# Models with thinking-config support in this build's catalog, matched by prefix so a dated
+# snapshot id under either family still qualifies — verified against the installed
+# `google-genai` SDK's `ThinkingConfig` (`include_thoughts`/`thinking_budget`/`thinking_level`)
+# and `Part.thought` (the streamed-part flag distinguishing reasoning text from answer text).
+_EXTENDED_THINKING_MODEL_PREFIXES: Final[tuple[str, ...]] = ("gemini-3", "gemini-2.5")
+
+
+def _supports_extended_thinking(model_id: str) -> bool:
+    return any(model_id.startswith(prefix) for prefix in _EXTENDED_THINKING_MODEL_PREFIXES)
+
 
 _FINISH_REASON_MAP: Final[dict[genai_types.FinishReason, StopReason]] = {
     genai_types.FinishReason.STOP: StopReason.END_TURN,
@@ -91,6 +107,13 @@ def _tool_result_part(part: ToolResultPart, name_map: dict[str, str]) -> genai_t
     return genai_types.Part.from_function_response(name=name, response=response)
 
 
+def _image_part(image: ImagePart) -> genai_types.Part:
+    """Verified against the installed `google-genai` SDK's `Part.from_bytes(data: bytes,
+    mime_type: str)` — this SDK method wants raw bytes, not base64 text, so the normalized
+    `ImagePart.data` (base64) is decoded here before handing it to the SDK."""
+    return genai_types.Part.from_bytes(data=base64.b64decode(image.data), mime_type=image.media_type)
+
+
 def _message_to_content(message: Message, name_map: dict[str, str]) -> genai_types.Content:
     if message.role is MessageRole.TOOL:
         parts = [_tool_result_part(part, name_map) for part in message.tool_results]
@@ -105,6 +128,11 @@ def _message_to_content(message: Message, name_map: dict[str, str]) -> genai_typ
         )
         return genai_types.Content(role="model", parts=assistant_parts)
     role = "model" if message.role is MessageRole.ASSISTANT else "user"
+    if message.images:
+        parts = [_image_part(image) for image in message.images]
+        if message.content:
+            parts.append(genai_types.Part.from_text(text=message.content))
+        return genai_types.Content(role=role, parts=parts)
     text_part = genai_types.Part.from_text(text=message.content or "")
     return genai_types.Content(role=role, parts=[text_part])
 
@@ -138,25 +166,45 @@ def _function_call_to_tool_call(call: genai_types.FunctionCall, index: int) -> T
 
 def _events_from_chunk_parts(
     parts: list[genai_types.Part], emitted_tool_calls: int
-) -> tuple[list[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent], int]:
+) -> tuple[list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | ToolCallEvent], int]:
     """One chunk's parts turned into events, plus the running tool-call count (Gemini yields
     each function call whole, so a tool call surfaces as one `ToolCallDeltaEvent` + immediate
     `ToolCallEvent`, never assembled incrementally like Anthropic/OpenAI's argument chunks).
-    Pulled out of `stream()` purely to keep that method's own branching shallow."""
-    events: list[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent] = []
+    A part with `thought is True` (verified against the installed SDK's `Part.thought: bool |
+    None` field) carries reasoning text, not final-answer text, and becomes a
+    `ThinkingDeltaEvent` instead of a `TextDeltaEvent`. Pulled out of `stream()` purely to keep
+    that method's own branching shallow."""
+    events: list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | ToolCallEvent] = []
     for part in parts:
-        if part.text:
+        if part.text and part.thought:
+            events.append(ThinkingDeltaEvent(text=part.text))
+        elif part.text:
             events.append(TextDeltaEvent(text=part.text))
         elif part.function_call is not None:
             call = _function_call_to_tool_call(part.function_call, emitted_tool_calls)
             emitted_tool_calls += 1
             events.append(
-                ToolCallDeltaEvent(
-                    id=call.id, name=call.name, arguments_delta=json.dumps(call.arguments)
-                )
+                ToolCallDeltaEvent(id=call.id, name=call.name, arguments_delta=json.dumps(call.arguments))
             )
             events.append(ToolCallEvent(tool_call=call))
     return events, emitted_tool_calls
+
+
+def _web_search_result_event(
+    metadata: genai_types.GroundingMetadata | None,
+) -> WebSearchResultEvent | None:
+    """Build a `WebSearchResultEvent` from one chunk's `grounding_metadata`, if present —
+    verified live: `grounding_chunks[].web.title`/`.uri` are populated real values (a
+    provider-domain title + a redirect-wrapped source URL), arriving as one complete blob on
+    a single late chunk of the stream, not incrementally per-chunk like text/tool-call deltas."""
+    if metadata is None or not metadata.grounding_chunks:
+        return None
+    sources = tuple(
+        WebSearchSource(url=chunk.web.uri, title=chunk.web.title)
+        for chunk in metadata.grounding_chunks
+        if chunk.web is not None and chunk.web.uri and chunk.web.title
+    )
+    return WebSearchResultEvent(sources=sources) if sources else None
 
 
 def _chunk_stop_reason(
@@ -187,19 +235,48 @@ class GeminiClient:
         # so `native_web_search=True` is accurate for this provider's
         # current model family, unlike OpenAI's Chat Completions catalog (see openai_client.py).
         self.capabilities = capabilities or ModelCapabilities(
-            native_tool_calling=True, streaming=True, native_web_search=True
+            native_tool_calling=True,
+            streaming=True,
+            native_web_search=True,
+            extended_thinking=_supports_extended_thinking(model_id),
+            # Both catalog models (`gemini-3.1-pro-preview`, `gemini-3.5-flash`) are natively
+            # multimodal per Google's own Gemini model docs — verified against the published
+            # capabilities table, not assumed.
+            supports_vision=True,
         )
         self._max_output_tokens = max_output_tokens
         # SDK client construction is local — no network call.
         self._client = genai.Client(api_key=api_key)
 
     def _config(
-        self, system: str | None, tools: list[ToolSpec] | None
+        self,
+        system: str | None,
+        tools: list[ToolSpec] | None,
+        *,
+        native_web_search: bool,
     ) -> genai_types.GenerateContentConfig:
+        """Gemini currently disallows mixing function-calling tools with the `google_search`
+        grounding tool in one request (a `Tool` with both `function_declarations` and
+        `google_search` set is rejected) — verified against the installed `google-genai` SDK's
+        `Tool` model, which carries both fields but the API rejects them combined. When this
+        turn wants native web search, `google_search` wins and any function-declaration tools
+        for the turn are skipped rather than raising: `web_search`/`fetch_url`'s Brave-backed
+        equivalents are deliberately withheld by the orchestrator's `_maybe_add_web_search`
+        branch in this same case (native capability replaces them, never both), so no
+        turn-specific tool this client is asked to send in that state is actually load-bearing;
+        preserving correctness (a valid request that gets grounding) matters more here than
+        silently dropping to un-grounded function-calling tools instead."""
         config = genai_types.GenerateContentConfig(
             system_instruction=system, max_output_tokens=self._max_output_tokens
         )
-        if tools:
+        if self.capabilities.extended_thinking:
+            # `thinking_level` left unset (`None`) — verified against the SDK's own field default
+            # (`None`, no forced level), so the model's own default budget applies rather than
+            # this client inventing a level with no documented recommended value.
+            config.thinking_config = genai_types.ThinkingConfig(include_thoughts=True)
+        if native_web_search:
+            config.tools = [genai_types.Tool(google_search=genai_types.GoogleSearch())]
+        elif tools:
             declarations = [_tool_spec_to_declaration(t) for t in tools]
             config.tools = [genai_types.Tool(function_declarations=declarations)]
         return config
@@ -209,14 +286,18 @@ class GeminiClient:
         return [_message_to_content(m, name_map) for m in messages]
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
         system, turns = _split_system(messages)
         try:
             response = await self._client.aio.models.generate_content(
                 model=self.model_id,
                 contents=self._contents(turns),
-                config=self._config(system, tools),
+                config=self._config(system, tools, native_web_search=native_web_search),
             )
         except Exception as exc:
             # Never log the api_key (governance §6) — the SDK never surfaces it in exc text.
@@ -248,8 +329,19 @@ class GeminiClient:
         )
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
-    ) -> AsyncIterator[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent | StreamDoneEvent]:
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
+    ) -> AsyncIterator[
+        TextDeltaEvent
+        | ThinkingDeltaEvent
+        | ToolCallDeltaEvent
+        | ToolCallEvent
+        | WebSearchResultEvent
+        | StreamDoneEvent
+    ]:
         system, turns = _split_system(messages)
 
         stop_reason = StopReason.END_TURN
@@ -263,7 +355,7 @@ class GeminiClient:
         stream = await self._client.aio.models.generate_content_stream(
             model=self.model_id,
             contents=self._contents(turns),
-            config=self._config(system, tools),
+            config=self._config(system, tools, native_web_search=native_web_search),
         )
         async for chunk in stream:
             candidate = chunk.candidates[0] if chunk.candidates else None
@@ -271,6 +363,11 @@ class GeminiClient:
             events, emitted_tool_calls = _events_from_chunk_parts(parts or [], emitted_tool_calls)
             for event in events:
                 yield event
+            web_search_event = _web_search_result_event(
+                candidate.grounding_metadata if candidate else None
+            )
+            if web_search_event is not None:
+                yield web_search_event
             chunk_stop_reason = _chunk_stop_reason(candidate, emitted_tool_calls=emitted_tool_calls)
             if chunk_stop_reason is not None:
                 stop_reason = chunk_stop_reason

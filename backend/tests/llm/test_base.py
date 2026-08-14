@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from llm.base import (
+    ImagePart,
     LLMClient,
     LLMResponse,
     Message,
@@ -23,6 +24,17 @@ def test_message_round_trip_frozen_and_immutable() -> None:
     assert msg.content == "hi"
     assert msg.tool_calls == ()
     assert msg.tool_results == ()
+    assert msg.images == ()
+
+
+def test_message_can_carry_both_text_and_images() -> None:
+    msg = Message(
+        role=MessageRole.USER,
+        content="what's in this chart?",
+        images=(ImagePart(media_type="image/png", data="Zm9v"),),
+    )
+    assert msg.content == "what's in this chart?"
+    assert msg.images[0].media_type == "image/png"
 
 
 def test_tool_call_and_tool_result_shapes() -> None:
@@ -50,6 +62,7 @@ def test_model_capabilities_defaults() -> None:
     caps = ModelCapabilities()
     assert caps.native_tool_calling is True
     assert caps.native_web_search is False
+    assert caps.supports_vision is False
 
 
 def test_stub_client_satisfies_llmclient_protocol() -> None:

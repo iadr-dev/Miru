@@ -25,6 +25,7 @@ import httpx
 import structlog
 
 from llm.base import (
+    ImagePart,
     LLMResponse,
     Message,
     MessageRole,
@@ -32,17 +33,24 @@ from llm.base import (
     StopReason,
     StreamDoneEvent,
     TextDeltaEvent,
+    ThinkingDeltaEvent,
     TokenUsage,
     ToolCall,
     ToolCallDeltaEvent,
     ToolCallEvent,
     ToolSpec,
+    WebSearchResultEvent,
+    WebSearchSource,
 )
 
 logger = structlog.get_logger(__name__)
 
 _CHARS_PER_TOKEN_ESTIMATE: Final[float] = 4.0  # documented estimate — no real token-counting
 # endpoint exists for these providers
+# OpenRouter's own native web-search plugin — a raw tool-array entry, distinct from a
+# function-tool built from `_tool_spec_to_wire`. Groq/Cerebras have no equivalent, so this is
+# only ever appended when `provider_id == "openrouter"`.
+_OPENROUTER_WEB_SEARCH_TOOL: Final[dict[str, str]] = {"type": "openrouter:web_search"}
 _FINISH_REASON_MAP: Final[dict[str, StopReason]] = {
     "stop": StopReason.END_TURN,
     "tool_calls": StopReason.TOOL_USE,
@@ -55,6 +63,17 @@ _FINISH_REASON_MAP: Final[dict[str, StopReason]] = {
 type _JsonObject = dict[str, object]
 
 
+def _image_content_part(image: ImagePart) -> dict[str, object]:
+    """One `image_url` content part with a base64 data URL — OpenRouter's documented vision
+    input shape for OpenAI-Chat-Completions-compatible wire format (this module is hand-rolled
+    HTTP, not an SDK, so verified against OpenRouter's published multimodal-request docs
+    rather than any installed SDK's types)."""
+    return {
+        "type": "image_url",
+        "image_url": {"url": f"data:{image.media_type};base64,{image.data}"},
+    }
+
+
 def _message_to_wire(message: Message) -> dict[str, object]:
     if message.role is MessageRole.TOOL:
         # OpenAI-compat represents each tool result as its own `role: tool` message.
@@ -62,7 +81,15 @@ def _message_to_wire(message: Message) -> dict[str, object]:
         # multiple results become multiple Message entries upstream (llm/base.py docstring).
         part = message.tool_results[0]
         return {"role": "tool", "tool_call_id": part.tool_call_id, "content": part.content}
-    wire: dict[str, object] = {"role": message.role.value, "content": message.content}
+    content: object = message.content
+    if message.images:
+        # Content becomes a content-part list once an image is attached — the plain-string
+        # shorthand `content` only covers text-only messages in this wire format.
+        parts: list[dict[str, object]] = [_image_content_part(image) for image in message.images]
+        if message.content:
+            parts.append({"type": "text", "text": message.content})
+        content = parts
+    wire: dict[str, object] = {"role": message.role.value, "content": content}
     if message.tool_calls:
         wire["tool_calls"] = [
             {
@@ -109,7 +136,7 @@ def _apply_tool_call_delta(
     args_delta: str | None = None
     fn = item.get("function")
     if isinstance(fn, dict):
-        fn_dict = cast(_JsonObject, fn)
+        fn_dict = cast("dict[str, object]", fn)
         name = fn_dict.get("name")
         if isinstance(name, str) and name:
             slot["name"] = name
@@ -133,12 +160,23 @@ def _first_choice(chunk: dict[str, object]) -> dict[str, object] | None:
 
 
 def _events_from_delta(
-    choice: dict[str, object], pending_calls: dict[int, dict[str, str]]
-) -> list[TextDeltaEvent | ToolCallDeltaEvent]:
+    choice: dict[str, object], pending_calls: dict[int, dict[str, str]], *, provider_id: str
+) -> list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent]:
     """Normalize one choice's `delta` object into zero or more typed events (helper split out
-    of `stream()` to keep its branch/statement count under the ruff PLR0912/PLR0915 limits)."""
-    events: list[TextDeltaEvent | ToolCallDeltaEvent] = []
-    delta = cast(_JsonObject, choice.get("delta", {}))
+    of `stream()` to keep its branch/statement count under the ruff PLR0912/PLR0915 limits).
+
+    Reasoning-delta text is OpenRouter-only (`delta.reasoning` per OpenRouter's published
+    reasoning-tokens docs, or its `delta.reasoning_content` alias some upstream providers use
+    instead) — Groq/Cerebras have no such field, and even if a raw chunk somehow carried one
+    (a provider quirk, not a documented field), it must never surface as a `thinking_delta` for
+    a non-OpenRouter provider, mirroring the `native_web_search` provider carve-out already in
+    this module."""
+    events: list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent] = []
+    delta = cast("dict[str, object]", choice.get("delta", {}))
+    if provider_id == "openrouter":
+        reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+        if isinstance(reasoning, str) and reasoning:
+            events.append(ThinkingDeltaEvent(text=reasoning))
     text = delta.get("content")
     if isinstance(text, str) and text:
         events.append(TextDeltaEvent(text=text))
@@ -146,8 +184,36 @@ def _events_from_delta(
     if isinstance(raw_tool_deltas, list):
         for raw_delta in cast("list[object]", raw_tool_deltas):
             if isinstance(raw_delta, dict):
-                events.append(_apply_tool_call_delta(cast(_JsonObject, raw_delta), pending_calls))
+                events.append(
+                    _apply_tool_call_delta(cast("dict[str, object]", raw_delta), pending_calls)
+                )
     return events
+
+
+def _url_citations_from_delta(delta: dict[str, object]) -> list[WebSearchSource]:
+    """Extract `url_citation` annotations from one streamed delta — OpenRouter's own
+    `openrouter:web_search` plugin shape (`delta.annotations`, verified live: one full
+    annotation object per chunk, `{"type": "url_citation", "url_citation": {"url", "title",
+    ...}}`), OpenRouter-only like the reasoning-delta carve-out above."""
+    sources: list[WebSearchSource] = []
+    raw_annotations = delta.get("annotations")
+    if not isinstance(raw_annotations, list):
+        return sources
+    for raw in cast("list[object]", raw_annotations):
+        if not isinstance(raw, dict):
+            continue
+        annotation = cast("dict[str, object]", raw)
+        if annotation.get("type") != "url_citation":
+            continue
+        citation = annotation.get("url_citation")
+        if not isinstance(citation, dict):
+            continue
+        citation_dict = cast("dict[str, object]", citation)
+        url = citation_dict.get("url")
+        title = citation_dict.get("title")
+        if isinstance(url, str) and isinstance(title, str):
+            sources.append(WebSearchSource(url=url, title=title))
+    return sources
 
 
 def _parse_json_object(raw: str) -> dict[str, object]:
@@ -159,7 +225,7 @@ def _parse_json_object(raw: str) -> dict[str, object]:
         parsed: object = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return cast(_JsonObject, parsed) if isinstance(parsed, dict) else {}
+    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
 
 
 def _parse_tool_calls(raw_calls: object) -> list[ToolCall]:
@@ -169,11 +235,11 @@ def _parse_tool_calls(raw_calls: object) -> list[ToolCall]:
     for raw in cast("list[object]", raw_calls):
         if not isinstance(raw, dict):
             continue
-        item = cast(_JsonObject, raw)
+        item = cast("dict[str, object]", raw)
         fn = item.get("function")
         if not isinstance(fn, dict):
             continue
-        fn_dict = cast(_JsonObject, fn)
+        fn_dict = cast("dict[str, object]", fn)
         arguments_raw = fn_dict.get("arguments")
         arguments = _parse_json_object(arguments_raw) if isinstance(arguments_raw, str) else {}
         calls.append(
@@ -195,14 +261,17 @@ class _SseLineResult:
     new (a blank keep-alive line, or a chunk with no usable choice)."""
 
     done: bool = False
-    events: list[TextDeltaEvent | ToolCallDeltaEvent] = field(
-        default_factory=list[TextDeltaEvent | ToolCallDeltaEvent]
+    events: list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent] = field(
+        default_factory=list[TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent]
     )
     stop_reason: StopReason | None = None
     usage: TokenUsage | None = None
+    web_search_sources: list[WebSearchSource] = field(default_factory=list[WebSearchSource])
 
 
-def _parse_sse_line(line: str, pending_calls: dict[int, dict[str, str]]) -> _SseLineResult:
+def _parse_sse_line(
+    line: str, pending_calls: dict[int, dict[str, str]], *, provider_id: str
+) -> _SseLineResult:
     data = _sse_data(line)
     if data is None:
         return _SseLineResult()
@@ -223,8 +292,14 @@ def _parse_sse_line(line: str, pending_calls: dict[int, dict[str, str]]) -> _Sse
         if isinstance(finish_reason, str)
         else None
     )
+    delta = cast(_JsonObject, choice.get("delta", {}))
     return _SseLineResult(
-        events=_events_from_delta(choice, pending_calls), stop_reason=stop_reason, usage=usage
+        events=_events_from_delta(choice, pending_calls, provider_id=provider_id),
+        stop_reason=stop_reason,
+        usage=usage,
+        web_search_sources=(
+            _url_citations_from_delta(delta) if provider_id == "openrouter" else []
+        ),
     )
 
 
@@ -258,23 +333,35 @@ class OpenAICompatClient:
         return {"Authorization": f"Bearer {self._api_key}", "content-type": "application/json"}
 
     def _body(
-        self, messages: list[Message], tools: list[ToolSpec] | None, *, stream: bool
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None,
+        *,
+        stream: bool,
+        native_web_search: bool,
     ) -> dict[str, object]:
         body: dict[str, object] = {
             "model": self.model_id,
             "messages": [_message_to_wire(m) for m in messages],
             "stream": stream,
         }
-        if tools:
-            body["tools"] = [_tool_spec_to_wire(t) for t in tools]
+        wire_tools = [_tool_spec_to_wire(t) for t in tools] if tools else []
+        if native_web_search and self.provider_id == "openrouter":
+            wire_tools.append(dict(_OPENROUTER_WEB_SEARCH_TOOL))
+        if wire_tools:
+            body["tools"] = wire_tools
         if stream:
             body["stream_options"] = {"include_usage": True}
         return body
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
-        body = self._body(messages, tools, stream=False)
+        body = self._body(messages, tools, stream=False, native_web_search=native_web_search)
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             try:
                 response = await client.post(
@@ -292,11 +379,11 @@ class OpenAICompatClient:
             raw: dict[str, object] = response.json()
 
         choice = cast("list[dict[str, object]]", raw["choices"])[0]
-        message = cast(_JsonObject, choice["message"])
+        message = cast("dict[str, object]", choice["message"])
         content = message.get("content")
         tool_calls = _parse_tool_calls(message.get("tool_calls"))
         finish_reason = str(choice.get("finish_reason", "stop"))
-        usage_raw = cast(_JsonObject, raw.get("usage", {}))
+        usage_raw = cast("dict[str, object]", raw.get("usage", {}))
         return LLMResponse(
             text=content if isinstance(content, str) else None,
             tool_calls=tuple(tool_calls),
@@ -305,14 +392,30 @@ class OpenAICompatClient:
         )
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
-    ) -> AsyncIterator[TextDeltaEvent | ToolCallDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        body = self._body(messages, tools, stream=True)
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
+    ) -> AsyncIterator[
+        TextDeltaEvent
+        | ThinkingDeltaEvent
+        | ToolCallDeltaEvent
+        | ToolCallEvent
+        | WebSearchResultEvent
+        | StreamDoneEvent
+    ]:
+        body = self._body(messages, tools, stream=True, native_web_search=native_web_search)
         # Assembles partial tool-call argument fragments keyed by index (OpenAI-compat streams
         # tool calls by array index, filling in id/name once then appending arguments deltas).
         pending_calls: dict[int, dict[str, str]] = {}
         stop_reason = StopReason.END_TURN
         usage = TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
+        # OpenRouter streams one full `url_citation` annotation per chunk — accumulated across
+        # the whole response and emitted as ONE `WebSearchResultEvent` right before the
+        # terminal `StreamDoneEvent`, mirroring the Anthropic/Gemini clients' own "whole,
+        # once complete" web-search-result event shape rather than a delta-per-source stream.
+        web_search_sources: list[WebSearchSource] = []
 
         async with (
             httpx.AsyncClient(timeout=self._timeout) as client,
@@ -322,13 +425,14 @@ class OpenAICompatClient:
         ):
             response.raise_for_status()
             async for line in response.aiter_lines():
-                result = _parse_sse_line(line, pending_calls)
+                result = _parse_sse_line(line, pending_calls, provider_id=self.provider_id)
                 if result.done:
                     break
                 if result.usage is not None:
                     usage = result.usage
                 if result.stop_reason is not None:
                     stop_reason = result.stop_reason
+                web_search_sources.extend(result.web_search_sources)
                 for event in result.events:
                     yield event
 
@@ -338,6 +442,8 @@ class OpenAICompatClient:
                     id=slot["id"], name=slot["name"], arguments=_parse_json_object(slot["args"])
                 )
             )
+        if web_search_sources:
+            yield WebSearchResultEvent(sources=tuple(web_search_sources))
         yield StreamDoneEvent(stop_reason=stop_reason, usage=usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:
