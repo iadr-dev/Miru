@@ -38,6 +38,21 @@ class TestThreadManagement:
         assert list(body["tags"]) == ["a", "b"]
         assert body["version"] == 1
 
+    def test_patch_model_override_round_trips(self, client: TestClient, signed_in_user) -> None:
+        headers, _ = signed_in_user
+        thread_id = _create_thread(client, headers)
+        resp = client.patch(
+            f"/api/v1/threads/{thread_id}",
+            json={"model_override": "anthropic/claude-opus-4-8"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["model_override"] == "anthropic/claude-opus-4-8"
+
+        get_resp = client.get(f"/api/v1/threads/{thread_id}", headers=headers)
+        assert get_resp.status_code == 200
+        assert get_resp.json()["model_override"] == "anthropic/claude-opus-4-8"
+
     def test_patch_if_match_mismatch_409(self, client: TestClient, signed_in_user) -> None:
         headers, _ = signed_in_user
         thread_id = _create_thread(client, headers)
@@ -144,19 +159,9 @@ class TestTurnLifecycle:
         assert resp.status_code == 200
         assert resp.text == ""
 
-    def test_feedback_on_missing_turn_is_404(self, client: TestClient, signed_in_user) -> None:
-        """Feedback/regenerate/edit are real now (see `tests/api/test_turn_actions.py` for the
-        e2e coverage of what they actually do) — this just proves the 404 boundary holds for a
-        turn id that does not exist on the thread, no `501` shortcut anymore."""
-        headers, _ = signed_in_user
-        thread_id = _create_thread(client, headers)
-        fb = client.post(
-            f"/api/v1/threads/{thread_id}/turns/t/feedback",
-            json={"rating": "up"},
-            headers=headers,
-        )
-        assert fb.status_code == 404
-        assert fb.json()["code"] == "turn_not_found"
+    # `feedback`/`regenerate`/`edit` are real, persisted endpoints now — see
+    # `tests/api/test_turn_actions.py::TestTurnFeedback`/`TestRegenerateTurn`/`TestEditTurn`
+    # for their actual coverage; this class no longer asserts a 501 stub.
 
 
 class TestVoice:

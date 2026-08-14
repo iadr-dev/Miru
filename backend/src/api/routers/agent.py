@@ -24,16 +24,19 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
+from api.attachments import AttachmentInput, process_attachments
 from api.dependencies import (
     AppState,
     get_session,
+    get_settings_dep,
     get_state,
     require_user,
     tool_context_for,
 )
 from api.errors import ApiError
 from api.turn_driver import current_leaf, enforce_pre_turn_gate, start_turn_stream
-from conversation.models import MessageBlockType, TextBlock, Thread, TurnRole
+from config.settings import Settings
+from conversation.models import MessageBlockContent, MessageBlockType, TextBlock, Thread, TurnRole
 from conversation.store import (
     ConversationStore,
     SqlAlchemyConversationStore,
@@ -47,6 +50,9 @@ router = APIRouter(tags=["agent"])
 class AgentQueryRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     thread_id: str | None = None
+    web_search: bool = False
+    locale: str = "zh-TW"
+    attachments: tuple[AttachmentInput, ...] = Field(default_factory=tuple)
 
 
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
@@ -60,6 +66,7 @@ async def agent_query(
     state: AppState = Depends(get_state),
     store: ConversationStore = Depends(_store),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> StreamingResponse:
     ctx = tool_context_for(user, state)
@@ -67,11 +74,19 @@ async def agent_query(
     thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
     thread_id = thread.id
 
+    augmented_message, images, attachment_blocks = await process_attachments(
+        body.attachments, message=body.message, settings=settings
+    )
+
+    blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
+        (MessageBlockType.TEXT, TextBlock(text=body.message)),
+        *attachment_blocks,
+    ]
     user_turn = await store.append_turn(
         user_id=user.id,
         thread_id=thread_id,
         role=TurnRole.USER,
-        blocks=[(MessageBlockType.TEXT, TextBlock(text=body.message))],
+        blocks=blocks,
         parent_message_id=await current_leaf(store, thread_id),
         idempotency_key=idempotency_key,
     )
@@ -89,10 +104,14 @@ async def agent_query(
         user_id=user.id,
         thread_id=thread_id,
         turn_id=turn_id,
-        message=body.message,
+        message=augmented_message,
         ctx=ctx,
         personality=personality,
         answer_parent_message_id=user_turn.messages[-1].id,
+        model_override=thread.model_override,
+        web_search_enabled=body.web_search,
+        locale=body.locale,
+        images=images,
     )
 
 

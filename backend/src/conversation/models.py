@@ -15,7 +15,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from events.usage import TurnUsage
-from llm.base import ToolCall, ToolResultPart
+from llm.base import ToolCall, ToolResultPart, WebSearchSource
 
 
 class TurnRole(StrEnum):
@@ -47,6 +47,8 @@ class MessageBlockType(StrEnum):
     STEERING = "steering"
     BRANCH_SUMMARY = "branch_summary"
     COMPACTION = "compaction"
+    ATTACHMENT = "attachment"
+    WEB_SEARCH_SOURCES = "web_search_sources"
 
 
 class TextBlock(BaseModel):
@@ -117,6 +119,41 @@ class CompactionBlock(BaseModel):
     preserved_caveats: tuple[str, ...] = Field(default_factory=tuple)
 
 
+class AttachmentBlock(BaseModel):
+    """Metadata + (for documents) extracted text for one user-uploaded chat attachment.
+
+    Deliberately **never** carries the raw file/image bytes — those are ephemeral, living only
+    in-memory for the one turn's LLM call (see `api/routers/agent.py`'s `AttachmentInput` and
+    `attachments/extractor.py`), never persisted here past that turn, mirroring this codebase's
+    "don't persist a raw blob where a smaller derived form suffices" discipline
+    (`governance.md`'s no-raw-payload-logging principle, applied to user-uploaded content
+    rather than model/source output). `extracted_text` is the `markitdown`-converted Markdown
+    for a document attachment (`.docx`/`.xlsx`/`.pptx`/`.pdf`/...); it is `None` for an image
+    attachment (images go to the LLM as vision input for that turn only, never through
+    `markitdown`, and are not re-derivable as text here)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    filename: str = Field(min_length=1)
+    media_type: str = Field(min_length=1)
+    is_image: bool
+    extracted_text: str | None = None
+    size_bytes: int = Field(ge=0)
+
+
+class WebSearchSourcesBlock(BaseModel):
+    """The sources a turn's native web search actually consulted, persisted so a reopened thread
+    renders the same "N sources" pill the live stream showed — without this block, `web_search.
+    result` was a live-only SSE event with nowhere to land once the turn finished (the bug this
+    block exists to fix). `sources` reuses `llm.base.WebSearchSource` verbatim (same shape
+    `EventBusWebSearchHook` already publishes over SSE) rather than re-declaring a second
+    url/title record, per this module's own "interoperate, don't duplicate" convention."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sources: tuple[WebSearchSource, ...] = Field(default_factory=tuple)
+
+
 MessageBlockContent = (
     TextBlock
     | ThinkingBlock
@@ -127,6 +164,8 @@ MessageBlockContent = (
     | SteeringBlock
     | BranchSummaryBlock
     | CompactionBlock
+    | AttachmentBlock
+    | WebSearchSourcesBlock
 )
 
 
@@ -189,6 +228,7 @@ class Thread(BaseModel):
 
 
 __all__ = [
+    "AttachmentBlock",
     "BranchSummaryBlock",
     "CaveatBlock",
     "CompactionBlock",
@@ -206,4 +246,5 @@ __all__ = [
     "Turn",
     "TurnRole",
     "TurnStatus",
+    "WebSearchSourcesBlock",
 ]

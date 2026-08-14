@@ -18,8 +18,8 @@ _TEST_JWT_SECRET = "test-secret-not-a-real-key-0123456789abcdef"
 
 def test_build_mcp_http_app_returns_a_real_asgi_app() -> None:
     settings = Settings(jwt_secret_key=_TEST_JWT_SECRET)
-    app = build_mcp_http_app(settings)
-    assert isinstance(app, StarletteWithLifespan)
+    built = build_mcp_http_app(settings)
+    assert isinstance(built.app, StarletteWithLifespan)
 
 
 def test_build_mcp_http_app_honors_allowed_origins_and_hosts() -> None:
@@ -28,8 +28,8 @@ def test_build_mcp_http_app_honors_allowed_origins_and_hosts() -> None:
         mcp_allowed_origins="https://example.com, https://other.example.com",
         mcp_allowed_hosts="mcp.example.com",
     )
-    app = build_mcp_http_app(settings)
-    assert isinstance(app, StarletteWithLifespan)
+    built = build_mcp_http_app(settings)
+    assert isinstance(built.app, StarletteWithLifespan)
 
 
 def test_settings_parse_empty_allowlists_as_none() -> None:

@@ -20,7 +20,7 @@ from tests.api.conftest import build_test_client, sign_in
 def byok_settings() -> Settings:
     return Settings(
         jwt_secret_key="test-secret-not-a-real-key-0123456789abcdef",
-        aitw_env="development",
+        env="development",
         google_client_id=None,
         google_client_secret=None,
         google_redirect_uri=None,

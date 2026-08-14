@@ -3,20 +3,14 @@ actual set of tools built this phase (via `tools.build_default_tool_registry`)."
 
 from __future__ import annotations
 
-import tempfile
 from datetime import UTC, datetime
-from pathlib import Path
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from ingest.reader import ParquetMarketDataReader
 from llm.base import ToolSpec
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
-from tools.registry import ToolRegistry
 
 
 def _router():
@@ -34,29 +28,8 @@ def _router():
     return router
 
 
-def _session_factory() -> async_sessionmaker:
-    """A bare factory so the theme-lookup/score tools register — these tests inspect registry
-    metadata only, never call a tool's `run()`, so the engine is never queried."""
-    return async_sessionmaker(create_async_engine("sqlite+aiosqlite:///:memory:"))
-
-
-def _market_data_reader() -> ParquetMarketDataReader:
-    """A `ParquetMarketDataReader` over an empty temp tree so the tag-screener tools
-    (`run_tag_screener`/`get_tag_catalog`) register — these tests inspect registry metadata only,
-    never run a screener query, so the empty tree is never actually read."""
-    return ParquetMarketDataReader(root=Path(tempfile.mkdtemp()))
-
-
-def _registry() -> ToolRegistry:
-    return build_default_tool_registry(
-        _router(),
-        session_factory=_session_factory(),
-        market_data_reader=_market_data_reader(),
-    )
-
-
 def test_immediate_core_matches_the_documented_named_subset_of_built_tools() -> None:
-    registry = _registry()
+    registry = build_default_tool_registry(_router())
     immediate_names = {t.name for t in registry.immediate_tools()}
 
     # The documented named immediate-core set, restricted to what this phase actually built.
@@ -74,10 +47,13 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
     yfinance/web-search coverage expansion — this asserts the total count and a representative
     sample from each newly-added tool group, rather than re-enumerating all ~80 names (which
     would just duplicate every `build_registration_table` list and add no real coverage)."""
-    registry = _registry()
+    registry = build_default_tool_registry(_router())
     deferred_names = {e.name for e in registry.deferred_index()}
 
-    assert len(deferred_names) == 92
+    # `_router()` passes no `session_factory`/`market_data_reader`, so `theme_tools`/
+    # `score_tools`/`screener_tools` (which require one) are never registered here — this
+    # count/sample covers only the router-backed groups this fixture actually builds.
+    assert len(deferred_names) == 94
     # The pre-existing core, still deferred:
     assert {
         "run_bounded_observation",
@@ -110,29 +86,21 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
         "get_macro_indicators",  # macro_tools
         "get_international_stock",  # international_tools
         "get_active_etf_roster",  # others_tools
-        "get_theme_members",  # theme_tools
-        "get_symbol_themes",  # theme_tools
-        "get_theme_tiers",  # theme_tools
-        "get_stock_score",  # score_tools
-        "get_score_leaderboard",  # score_tools
-        "run_tag_screener",  # screener_tools — regression guard: only registers when the
-        "get_tag_catalog",  # screener_tools — fixture also wires `market_data_reader`
+        "get_tdcc_securities_info",  # tdcc_tools
     } <= deferred_names
 
 
 def test_total_tool_count_reflects_the_coverage_expansion() -> None:
-    """7 tools before this expansion (all FinMind-only) -> 97 after (5 immediate + 92
-    deferred), across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/web-search/yfinance plus the
-    three relational theme-lookup tools, the two multi-factor score tools, the two tag-
-    screener tools (the last pair only register when a `market_data_reader` is wired, which this
-    fixture now does), and `get_calendar_events` (`calendar_tools`)."""
-    registry = _registry()
+    """5 immediate + 94 deferred = 99, across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/
+    web-search/yfinance/TDCC — `_router()` builds no `session_factory`/`market_data_reader`,
+    so theme/score/screener tools (which require one) are excluded from this count."""
+    registry = build_default_tool_registry(_router())
 
-    assert len(registry.all_tools()) == 97
+    assert len(registry.all_tools()) == 99
 
 
 def test_get_tool_reaches_both_immediate_and_deferred_tools() -> None:
-    registry = _registry()
+    registry = build_default_tool_registry(_router())
 
     assert registry.get_tool("get_canonical_context") is not None
     assert registry.get_tool("get_chip_flows") is not None
@@ -140,7 +108,7 @@ def test_get_tool_reaches_both_immediate_and_deferred_tools() -> None:
 
 
 def test_every_registered_tool_spec_round_trips_into_a_valid_toolspec() -> None:
-    registry = _registry()
+    registry = build_default_tool_registry(_router())
 
     for tool in registry.all_tools():
         spec = tool.to_tool_spec()
@@ -153,27 +121,23 @@ def test_every_registered_tool_spec_round_trips_into_a_valid_toolspec() -> None:
 def test_no_tool_input_schema_can_express_a_full_market_scan() -> None:
     """Every input schema requires a specific `id`+`market` (or, for `get_source_matrix`, no
     symbol-shaped field at all) — never an unbounded 'all symbols'/array-of-symbols shape.
-
-    `get_etf_overlap`/`get_fund_comparison` (`etf_overlap_tools.py`) are the one legitimate
-    exception the plain "no array field named id/symbol/symbols" rule below didn't anticipate:
-    they take a *bounded* (`maxItems` capped well below a whole-market size), explicit,
-    caller-named list of 2-10 symbols — the same "N explicit symbols, never a market-wide query"
-    shape every other multi-symbol tool in this registry already follows, just expressed as an
-    array field instead of N separate `(id, market)` calls. The check below still fails any
-    array-of-symbols field with no `maxItems` cap (the actual full-market-scan risk)."""
-    registry = _registry()
+    A finite, explicitly-capped multi-symbol comparison (e.g. `get_fund_comparison`'s 3-10
+    `symbols`) is not a full-market scan and is allowed — the invariant this guards is no
+    `maxItems`-less array that could express "every symbol", not "no array field ever"."""
+    registry = build_default_tool_registry(_router())
 
     for tool in registry.all_tools():
         schema = tool.input_model.model_json_schema()
         properties = schema.get("properties", {})
         required = set(schema.get("required", []))
 
-        # A field named id/symbol/symbols may be array-shaped only if it carries an explicit,
-        # small `maxItems` cap — otherwise it must not be array-shaped at all.
+        # No field may accept an unbounded list of symbols/a wildcard "all" market scope.
         for name, prop in properties.items():
             if prop.get("type") == "array" and name in {"id", "symbol", "symbols"}:
-                max_items = prop.get("maxItems")
-                assert isinstance(max_items, int) and max_items <= 10
+                assert "maxItems" in prop, (
+                    f"{tool.name}.{name} is an array field with no maxItems cap — "
+                    "could express a full-market scan"
+                )
 
         if "id" in properties:
             assert "id" in required

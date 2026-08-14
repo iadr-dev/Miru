@@ -20,11 +20,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
-from api.dependencies import AppState, get_session, get_state, require_user, tool_context_for
+from api.attachments import AttachmentInput
+from api.dependencies import (
+    AppState,
+    get_session,
+    get_settings_dep,
+    get_state,
+    require_user,
+    tool_context_for,
+)
 from api.errors import ApiError
 from api.sse import format_sse_event
 from api.turn_driver import enforce_pre_turn_gate, start_turn_stream
-from api.turn_registry import RunningTurn
+from config.settings import Settings
 from conversation.models import MessageBlockType, TextBlock, Thread, Turn, TurnRole
 from conversation.store import (
     ConversationStore,
@@ -34,15 +42,14 @@ from conversation.store import (
     ThreadNotFoundError,
     TurnNotFoundError,
 )
-from events.bus import TURN_END_KIND, Event
+from events.bus import Event
 from events.factory import StreamReader
 from feedback.store import FeedbackRecord, FeedbackStore, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
 router = APIRouter(tags=["threads"])
 
-_SSE_MEDIA_TYPE = "text/event-stream"
-_NO_SOURCE_USER_TURN_MESSAGE = "This assistant turn has no source user turn to re-run."
+_TERMINAL_KIND = "turn.end"
 
 
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
@@ -77,6 +84,7 @@ class PatchThreadRequest(BaseModel):
     starred: bool | None = None
     archived: bool | None = None
     tags: tuple[str, ...] | None = None
+    model_override: str | None = Field(default=None, max_length=200)
 
 
 @router.patch("/threads/{thread_id}")
@@ -97,6 +105,7 @@ async def patch_thread(
             starred=body.starred,
             archived=body.archived,
             tags=body.tags,
+            model_override=body.model_override,
             expected_version=if_match,
         )
     except ThreadNotFoundError as exc:
@@ -175,35 +184,6 @@ def _thread_to_markdown(thread: Thread) -> str:
 # ---- turn-lifecycle actions ----------------------------------------------------------------
 
 
-async def _attach_local_stream(running: RunningTurn, after_seq: int) -> AsyncIterator[str]:
-    """Same-worker live attach — the in-memory backend has no durable/cross-worker log to
-    replay from, so this is the only path there. Pulled out of `stream_thread` purely to keep
-    that function's own branching shallow."""
-    async for event in running.event_bus.subscribe():
-        if event.seq <= after_seq:
-            continue  # already delivered before the drop — never re-send (no duplicate)
-        yield format_sse_event(event)
-        if event.kind == TURN_END_KIND:
-            break
-
-
-def _same_worker_stream_response(
-    running: RunningTurn | None, *, user_id: str, after_seq: int
-) -> StreamingResponse:
-    if running is None or running.user_id != user_id:
-        return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
-    return StreamingResponse(_attach_local_stream(running, after_seq), media_type=_SSE_MEDIA_TYPE)
-
-
-def _resolve_durable_turn_id(thread: Thread, running: RunningTurn | None) -> str | None:
-    """The turn this thread's cross-worker stream belongs to: the live registry if this worker
-    happens to hold it, else the thread's latest turn from the store (a reconnect can land on a
-    worker that never ran the turn)."""
-    if running is not None:
-        return running.turn_id
-    return thread.turns[-1].id if thread.turns else None
-
-
 @router.get("/threads/{thread_id}/stream")
 async def stream_thread(
     thread_id: str,
@@ -234,16 +214,36 @@ async def stream_thread(
     running = state.turn_registry.active_for_thread(thread_id)
     reader = state.event_bus_factory.reader()
 
+    # Same-worker live attach — no durable reader means the in-memory backend, which cannot
+    # replay, so this is the only path there. A live turn owned by the caller is attached directly.
     if reader is None:
-        return _same_worker_stream_response(running, user_id=user.id, after_seq=after_seq)
+        if running is None or running.user_id != user.id:
+            return StreamingResponse(iter([]), media_type="text/event-stream")
 
-    turn_id = _resolve_durable_turn_id(thread, running)
+        async def _attach_local() -> AsyncIterator[str]:
+            async for event in running.event_bus.subscribe():
+                if event.seq <= after_seq:
+                    continue  # already delivered before the drop — never re-send (no duplicate)
+                yield format_sse_event(event)
+                if event.kind == _TERMINAL_KIND:
+                    break
+
+        return StreamingResponse(_attach_local(), media_type="text/event-stream")
+
+    # Cross-worker durable resume. Resolve the turn this thread's stream belongs to: the live
+    # registry if this worker happens to hold it, else the thread's latest turn from the store
+    # (a reconnect can land on a worker that never ran the turn).
+    turn_id: str | None
+    if running is not None:
+        turn_id = running.turn_id
+    else:
+        turn_id = thread.turns[-1].id if thread.turns else None
     if turn_id is None:
-        return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
+        return StreamingResponse(iter([]), media_type="text/event-stream")
 
     return StreamingResponse(
         _resume_stream(reader, turn_id=turn_id, after_seq=after_seq),
-        media_type=_SSE_MEDIA_TYPE,
+        media_type="text/event-stream",
     )
 
 
@@ -290,7 +290,7 @@ async def _resume_stream(
         for event in await reader.replay_since(turn_id, after_seq):
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == TURN_END_KIND:
+            if event.kind == _TERMINAL_KIND:
                 return
         # Follow live from the queue, de-duplicating against what replay already covered.
         while True:
@@ -299,7 +299,7 @@ async def _resume_stream(
                 continue
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == TURN_END_KIND:
+            if event.kind == _TERMINAL_KIND:
                 return
     finally:
         buffer_task.cancel()
@@ -488,7 +488,7 @@ async def _source_user_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message=_NO_SOURCE_USER_TURN_MESSAGE,
+            message="This assistant turn has no source user turn to re-run.",
             retryable=False,
         )
     try:
@@ -497,7 +497,7 @@ async def _source_user_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message=_NO_SOURCE_USER_TURN_MESSAGE,
+            message="This assistant turn has no source user turn to re-run.",
             retryable=False,
         ) from exc
     return await _load_turn(
@@ -505,10 +505,18 @@ async def _source_user_turn(
     )
 
 
+class RegenerateRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    web_search: bool = False
+    locale: str = "zh-TW"
+
+
 @router.post("/threads/{thread_id}/turns/{turn_id}/regenerate")
 async def regenerate_turn(
     thread_id: str,
     turn_id: str,
+    body: RegenerateRequest = RegenerateRequest(),
     user: User = Depends(require_user),
     state: AppState = Depends(get_state),
     store: ConversationStore = Depends(_store),
@@ -544,7 +552,7 @@ async def regenerate_turn(
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_source_user_turn",
-            message=_NO_SOURCE_USER_TURN_MESSAGE,
+            message="This assistant turn has no source user turn to re-run.",
             retryable=False,
         )
     sibling_parent_id = source_user_turn.messages[-1].id
@@ -569,6 +577,8 @@ async def regenerate_turn(
         personality=personality,
         answer_parent_message_id=sibling_parent_id,
         regenerate_of=turn_id,
+        model_override=thread.model_override,
+        web_search_enabled=body.web_search,
     )
 
 
@@ -576,6 +586,9 @@ class EditTurnRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     message: str = Field(min_length=1, max_length=8000)
+    web_search: bool = False
+    locale: str = "zh-TW"
+    attachments: tuple[AttachmentInput, ...] = Field(default_factory=tuple)
 
 
 @router.post("/threads/{thread_id}/turns/{turn_id}/edit")
@@ -587,6 +600,7 @@ async def edit_turn(
     state: AppState = Depends(get_state),
     store: ConversationStore = Depends(_store),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ) -> StreamingResponse:
     """Edit a user message + resend — creates a NEW branch: a new user turn as a sibling of the
     original (same parent message), with a new assistant turn as its child. The original user
@@ -639,6 +653,8 @@ async def edit_turn(
         ctx=ctx,
         personality=personality,
         answer_parent_message_id=new_user_turn.messages[-1].id,
+        model_override=thread.model_override,
+        web_search_enabled=body.web_search,
     )
 
 

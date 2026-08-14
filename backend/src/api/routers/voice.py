@@ -26,7 +26,15 @@ from api.errors import ApiError
 from config.settings import Settings
 from memory.watchlists import WatchlistStore
 from voice.models import SpeechAudio, Transcript
-from voice.providers import Speaker, StubSpeaker, StubTranscriber, Transcriber
+from voice.providers import (
+    EdgeTTSSpeaker,
+    FasterWhisperTranscriber,
+    OpenAITTSSpeaker,
+    Speaker,
+    StubSpeaker,
+    StubTranscriber,
+    Transcriber,
+)
 from voice.service import speak as speak_service
 from voice.service import transcribe as transcribe_service
 
@@ -36,13 +44,22 @@ _TTS_FEATURE = "tts_read_aloud"
 _STUB_PROVIDER = "stub"
 _MAX_AUDIO_BYTES = 12_000_000  # ~a minute of compressed audio; a hard upper bound, not a quota
 
+# A `FasterWhisperTranscriber` owns a loaded model — constructed once per provider id, not per
+# request, so repeated calls don't re-load the model from disk/hub each time. Config-selected,
+# same idiom as `llm.registry`'s per-role client construction; never hardcoded elsewhere.
+_faster_whisper_transcriber: FasterWhisperTranscriber | None = None
+
 
 def _transcriber(settings: Settings) -> Transcriber:
-    """Config-selected STT provider. Only the stub ships in the default profile; a real cloud/
-    self-host provider is wired behind the same Protocol once configured (it would live under
-    `sources/` transport-wise)."""
+    """Config-selected STT provider. Only the stub ships in the default profile; real providers
+    (`faster_whisper`) are opt-in via `voice_stt_provider`."""
+    global _faster_whisper_transcriber  # noqa: PLW0603 — single lazily-built module-level cache
     if settings.voice_stt_provider == _STUB_PROVIDER:
         return StubTranscriber()
+    if settings.voice_stt_provider == "faster_whisper":
+        if _faster_whisper_transcriber is None:
+            _faster_whisper_transcriber = FasterWhisperTranscriber()
+        return _faster_whisper_transcriber
     raise ApiError(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         code="voice_provider_unconfigured",
@@ -54,6 +71,10 @@ def _transcriber(settings: Settings) -> Transcriber:
 def _speaker(settings: Settings) -> Speaker:
     if settings.voice_tts_provider == _STUB_PROVIDER:
         return StubSpeaker()
+    if settings.voice_tts_provider == "edge_tts":
+        return EdgeTTSSpeaker()
+    if settings.voice_tts_provider == "openai":
+        return OpenAITTSSpeaker(api_key=settings.openai_api_key)
     raise ApiError(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         code="voice_provider_unconfigured",

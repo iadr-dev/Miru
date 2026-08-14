@@ -16,6 +16,7 @@ from __future__ import annotations
 from accounts.hooks import EntitlementResolver
 from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router
+from db.base import ensure_schema_for
 from ingest.leader import LeaderElection, get_default_leader_election
 from orchestrator.composition import (
     build_orchestrator,
@@ -27,10 +28,15 @@ from scheduler.delivery.channels import build_default_channels
 from scheduler.worker import SchedulerWorker, build_scheduler_worker
 
 
-def build_scheduler_from_settings(settings: Settings | None = None) -> SchedulerWorker:
-    """Assemble the real worker from config — the composition root the scheduler process invokes."""
+async def build_scheduler_from_settings(settings: Settings | None = None) -> SchedulerWorker:
+    """Assemble the real worker from config — the composition root the scheduler process invokes.
+
+    `async def` (not sync) so it can `await ensure_schema_for(...)` on the caller's own already-
+    running startup loop — this project's sole schema-provisioning mechanism, no Alembic
+    migration chain."""
     resolved = settings or get_settings()
     session_factory = build_session_factory(resolved)
+    await ensure_schema_for(session_factory)
     router = build_default_router(resolved)
     tool_registry = build_tool_registry(router, session_factory=session_factory)
     skill_registry = build_skill_registry()

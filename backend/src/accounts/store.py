@@ -165,11 +165,14 @@ class SqlAlchemyUserStore:
                 )
                 return _row_to_user(matched_user)
 
-        # 3. Otherwise create a new user + its first provider link.
+        # 3. Otherwise create a new user + its first provider link. An unverified email is never
+        # persisted on the new row — it can't be trusted as this identity's own email yet, and
+        # storing it would risk colliding with `uq_users_email` (partial-unique-where-not-null)
+        # against whichever account actually owns that address.
         now = datetime.now(UTC)
         user_row = UserRow(
             id=str(uuid.uuid4()),
-            email=email,
+            email=email if email_verified else None,
             display_name=display_name,
             picture_url=picture_url,
             tier=Tier.FREE.value,

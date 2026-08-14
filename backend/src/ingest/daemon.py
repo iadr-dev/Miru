@@ -40,12 +40,11 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
-from analytics.scoring_batch import job_scoring_batch
 from analytics.screener.batch import job_screener_flags
+from analytics.scoring_batch import job_scoring_batch
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
-from db.base import make_engine, make_session_factory
 from ingest.context import IngestContext
 from ingest.jobs import (
     job_active_etf_holding_changes,
@@ -58,6 +57,7 @@ from ingest.jobs import (
     job_market_value,
     job_price_eod,
 )
+from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
 from ingest.store import ParquetStore
@@ -112,11 +112,7 @@ class ScheduledIngestJob:
     cadence: Cadence = Cadence.DAILY
 
 
-# The whole-market pulls, each at the Taipei-local time its own job docstring documents. The
-# three financial-statement families (income/balance-sheet/cash-flow) plus the daily market-cap
-# snapshot are scheduled here because the derived multi-factor quality/value read draws line items
-# from all three statements and market cap — the income statement alone cannot back ROE,
-# debt/equity, ROIC, EV/EBITDA, or FCF yield.
+# The six whole-market pulls, each at the Taipei-local time its own job docstring documents.
 SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
     ScheduledIngestJob("institutional_flow", time_(20, 10), job_institutional_flow),
@@ -127,58 +123,11 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # right after its dependencies in tuple order too. Daily and trading-day-gated like the pulls.
     ScheduledIngestJob("screener_flags", time_(20, 30), job_screener_flags),
     ScheduledIngestJob("active_etf_holdings", time_(21, 15), job_active_etf_holdings),
-    ScheduledIngestJob("active_etf_holding_changes", time_(21, 15), job_active_etf_holding_changes),
+    ScheduledIngestJob(
+        "active_etf_holding_changes", time_(21, 15), job_active_etf_holding_changes
+    ),
     ScheduledIngestJob("financials", time_(21, 30), job_financials),
-    ScheduledIngestJob("balance_sheet", time_(21, 30), job_balance_sheet),
-    ScheduledIngestJob("cash_flow", time_(21, 30), job_cash_flow),
     ScheduledIngestJob("dividends", time_(21, 30), job_dividends),
-    ScheduledIngestJob("market_value", time_(23, 40), job_market_value),
-    # Multi-factor score batch — a derived-compute pass over the whole TW universe (never a
-    # FinMind pull), computing both horizon profiles' composite for every symbol the day's price/
-    # institutional-flow/financial-statement/market-value partitions cover and upserting into the
-    # relational `stock_scores` cache. It depends on every one of those upstream datasets — most
-    # narrowly the market-cap and financial-statement families, which do not land until the
-    # 21:30/23:40 slots above — so it fires at 23:55, after all of them, on the same daily,
-    # trading-day-gated cadence. Deliberately placed after `screener_flags` (20:30) in reading
-    # order too, even though the two jobs are otherwise independent, since both are derived-
-    # compute passes over the same upstream price/flow data.
-    ScheduledIngestJob("scoring_batch", time_(23, 55), job_scoring_batch),
-    # Industry-chain theme/membership refresh — the classification roster is static reference data
-    # that changes on a monthly-or-slower cadence, so it fires once a rolling ~4-week window rather
-    # than daily. Fires early (00:30) on the first pass a window opens, independent of the daily
-    # post-close pulls; it writes the relational store, not the Parquet store.
-    ScheduledIngestJob(
-        "theme_industry_chain", time_(0, 30), seed_industry_themes, cadence=Cadence.MONTHLY
-    ),
-    # Layer-2 tier classification — must run AFTER the membership seed above in the same monthly
-    # pass, since it tiers the sub-industries that seed just wrote. `run_due_jobs` fires jobs in
-    # tuple order within one pass and both share the same fire time and cadence, so listing this
-    # immediately after the membership job is what sequences them; it reads the relational store
-    # (curated map + heuristic backfill) and makes no FinMind call.
-    ScheduledIngestJob("theme_tiers", time_(0, 30), seed_theme_tiers, cadence=Cadence.MONTHLY),
-    # US whole-market ingest (`ingest/us_jobs.py`, `ingest/us_universe.py`) — the non-TW
-    # counterpart to everything above, yfinance-sourced rather than FinMind. The universe
-    # discovery job must run before either US pull can find any symbols; MONTHLY, since the
-    # tracked roster (~1,000-1,500 large-and-mid-cap US equities, paginated by market-cap band
-    # — see `us_universe.py`'s module docstring) doesn't meaningfully change day to day. Fires
-    # at 01:00, after the TW monthly theme jobs, so a reader sees the whole non-trading-day-
-    # gated reference-data group together.
-    ScheduledIngestJob(
-        "us_symbol_universe", time_(1, 0), job_us_symbol_universe, cadence=Cadence.MONTHLY
-    ),
-    # Daily US EOD price — one `batch_download` call for the whole tracked universe, the
-    # yfinance equivalent of `price_eod` above. Fires well after US market close (16:00 ET is
-    # ~04:00/05:00 Taipei depending on DST; 06:00 Taipei gives comfortable margin over Yahoo's
-    # own EOD-data lag) and is trading-day-gated the same way `price_eod` is.
-    ScheduledIngestJob("us_price_eod", time_(6, 0), job_us_price_eod),
-    # US financials/balance-sheet/cash-flow/dividends/splits — per-symbol (yfinance has no bulk
-    # fundamentals endpoint; see `us_jobs.py`'s module docstring for why this is the one accepted
-    # per-symbol-fan-out exception here). WEEKLY: these datasets change far slower than daily
-    # price, so a daily pull would be pure quota waste. Fires at 06:30, after the daily US price
-    # pull, so both land in a predictable order even though they're otherwise independent.
-    ScheduledIngestJob(
-        "us_fundamentals", time_(6, 30), job_us_fundamentals, cadence=Cadence.WEEKLY
-    ),
 )
 
 
@@ -275,7 +224,7 @@ class IngestDaemon:
         return ran
 
 
-def build_ingest_context_from_settings(settings: Settings | None = None) -> IngestContext:
+async def build_ingest_context_from_settings(settings: Settings | None = None) -> IngestContext:
     """Assemble the job context from config — the FinMind adapter, the leader-only Parquet writer,
     the shared leader-election seam, and the trading-day calendar. No network I/O at construction.
 
@@ -283,8 +232,14 @@ def build_ingest_context_from_settings(settings: Settings | None = None) -> Inge
     cross-process transport lives in an upper layer the ingest layer may not import under the
     one-way dependency rule, so an ingest-owned composition can only bind the seam's no-op. The
     partition still lands; clients fall back to boundary-anchored revalidation.
+
+    `async def` (not sync) so it can `await ensure_schema_for(...)` on the caller's own already-
+    running startup loop — this project's sole schema-provisioning mechanism for the relational
+    session factory below (the daily Parquet jobs never touch it, but the theme-seed job does).
     """
     resolved = settings or get_settings()
+    session_factory = make_session_factory(make_engine(resolved.database_url))
+    await ensure_schema_for(session_factory)
     return IngestContext(
         finmind=FinMindAdapter(resolved),
         store=ParquetStore(root=resolved.parquet_root),
@@ -293,15 +248,15 @@ def build_ingest_context_from_settings(settings: Settings | None = None) -> Inge
         tls_policy=resolved.tls_policy,
         # The relational session factory the theme-seed job writes through — the daily Parquet
         # jobs never touch it. Built here from the same database URL the rest of the app uses.
-        session_factory=make_session_factory(make_engine(resolved.database_url)),
+        session_factory=session_factory,
         # Only the US whole-market jobs (`ingest/us_jobs.py`) use this.
         yfinance=YFinanceAdapter(),
     )
 
 
-def build_ingest_daemon_from_settings(settings: Settings | None = None) -> IngestDaemon:
+async def build_ingest_daemon_from_settings(settings: Settings | None = None) -> IngestDaemon:
     """The composition root the ingest process invokes."""
-    return IngestDaemon(build_ingest_context_from_settings(settings))
+    return IngestDaemon(await build_ingest_context_from_settings(settings))
 
 
 __all__ = [

@@ -13,7 +13,11 @@ from config.settings import Settings
 
 
 def _settings() -> Settings:
-    return Settings(jwt_secret_key="test-secret-not-a-real-key-0123456789abcdef")
+    # `_env_file=None` so a developer's local `.env` can never leak into this test's expectations.
+    return Settings(  # type: ignore[call-arg]
+        _env_file=None,  # type: ignore[arg-type]
+        jwt_secret_key="test-secret-not-a-real-key-0123456789abcdef",
+    )
 
 
 def _attachment(name: str, data: bytes = b"hello") -> AttachmentInput:

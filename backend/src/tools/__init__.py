@@ -14,11 +14,6 @@ optional so a caller wiring only the router-backed set (e.g. a narrow test) stil
 is omitted, the theme group is simply not registered. `score_tools` shares this same shape — it
 reads the relational `stock_scores` cache the daily scoring batch writes — and is likewise
 registered only when a session factory is supplied.
-
-`screener_tools` is likewise parameterized by the derived-store reader rather than the router: its
-`run_tag_screener` reads the ingest-owned Parquet flag store. The reader is optional for the same
-reason — a narrow test may wire only the router-backed set — and when omitted the screener group
-(both `run_tag_screener` and its companion `get_tag_catalog`) is not registered.
 """
 
 from __future__ import annotations
@@ -47,6 +42,7 @@ from tools import (
     others_tools,
     score_tools,
     screener_tools,
+    tdcc_tools,
     technical_tools,
     theme_tools,
     web_search_tools,
@@ -66,6 +62,9 @@ def build_default_tool_registry(
     score_group = (
         score_tools.build_registration_table(session_factory) if session_factory is not None else []
     )
+    # The tag screener reads the ingest-owned Parquet flag store through the derived-store reader.
+    # Optional so a narrow test wiring only the router-backed set still composes; when omitted, the
+    # screener group is simply not registered (its catalog tool goes with it — they are a pair).
     screener_group = (
         screener_tools.build_registration_table(market_data_reader)
         if market_data_reader is not None
@@ -91,6 +90,7 @@ def build_default_tool_registry(
         macro_tools.build_registration_table(router),
         international_tools.build_registration_table(router),
         others_tools.build_registration_table(router),
+        tdcc_tools.build_registration_table(router),
         theme_group,
         score_group,
         screener_group,

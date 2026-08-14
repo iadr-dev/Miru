@@ -19,6 +19,7 @@ from sqlalchemy import String, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from conversation.models import (
+    AttachmentBlock,
     BranchSummaryBlock,
     CaveatBlock,
     CompactionBlock,
@@ -36,6 +37,7 @@ from conversation.models import (
     Turn,
     TurnRole,
     TurnStatus,
+    WebSearchSourcesBlock,
 )
 from db.models import MessageRow, ThreadRow, TurnRow
 
@@ -103,6 +105,7 @@ class ConversationStore(Protocol):
         starred: bool | None = None,
         archived: bool | None = None,
         tags: tuple[str, ...] | None = None,
+        model_override: str | None = None,
         expected_version: int | None = None,
     ) -> Thread: ...
 
@@ -141,6 +144,8 @@ def _content_model_for_type(block_type: MessageBlockType) -> type[MessageBlockCo
         MessageBlockType.STEERING: SteeringBlock,
         MessageBlockType.BRANCH_SUMMARY: BranchSummaryBlock,
         MessageBlockType.COMPACTION: CompactionBlock,
+        MessageBlockType.ATTACHMENT: AttachmentBlock,
+        MessageBlockType.WEB_SEARCH_SOURCES: WebSearchSourcesBlock,
     }
     return mapping[block_type]
 
@@ -231,7 +236,9 @@ class SqlAlchemyConversationStore:
         turns: list[Turn] = []
         for turn_row in turn_rows:
             messages_result = await self._session.execute(
-                select(MessageRow).where(MessageRow.turn_id == turn_row.id).order_by(MessageRow.seq)
+                select(MessageRow)
+                .where(MessageRow.turn_id == turn_row.id)
+                .order_by(MessageRow.seq)
             )
             messages = [_message_row_to_model(row) for row in messages_result.scalars().all()]
             turns.append(_turn_row_to_model(turn_row, messages))
@@ -250,7 +257,9 @@ class SqlAlchemyConversationStore:
         regenerate_of: str | None = None,
         turn_id: str | None = None,
     ) -> Turn:
+        print("DEBUG: append_turn about to get_thread_row", flush=True)
         thread_row = await self._get_thread_row(user_id=user_id, thread_id=thread_id)
+        print("DEBUG: append_turn got thread_row", flush=True)
         now = datetime.now(UTC)
         turn_row = TurnRow(
             id=turn_id or str(uuid.uuid4()),
@@ -264,11 +273,14 @@ class SqlAlchemyConversationStore:
             created_at=now,
         )
         self._session.add(turn_row)
+        print("DEBUG: append_turn about to flush turn_row", flush=True)
         await self._session.flush()
+        print("DEBUG: append_turn flushed turn_row", flush=True)
 
         messages: list[Message] = []
         parent_id = parent_message_id
         for seq, (block_type, content) in enumerate(blocks):
+            print(f"DEBUG: append_turn message loop seq={seq}", flush=True)
             message_row = MessageRow(
                 id=str(uuid.uuid4()),
                 turn_id=turn_row.id,
@@ -280,14 +292,18 @@ class SqlAlchemyConversationStore:
                 created_at=now,
             )
             self._session.add(message_row)
+            print(f"DEBUG: append_turn about to flush message seq={seq}", flush=True)
             await self._session.flush()
+            print(f"DEBUG: append_turn flushed message seq={seq}", flush=True)
             messages.append(_message_row_to_model(message_row))
             parent_id = message_row.id
 
         thread_row.active_leaf_message_id = parent_id
         thread_row.last_message_at = now
         thread_row.updated_at = now
+        print("DEBUG: append_turn about to flush thread_row update", flush=True)
         await self._session.flush()
+        print("DEBUG: append_turn flushed thread_row update", flush=True)
         logger.info("turn_appended", user_id=user_id, thread_id=thread_id, turn_id=turn_row.id)
         return _turn_row_to_model(turn_row, messages)
 
@@ -353,12 +369,22 @@ class SqlAlchemyConversationStore:
         starred: bool | None = None,
         archived: bool | None = None,
         tags: tuple[str, ...] | None = None,
+        model_override: str | None = None,
         expected_version: int | None = None,
     ) -> Thread:
-        """Patch thread metadata (rename/star/archive/tag). `expected_version` enforces
-        optimistic concurrency: a mismatch means another device won the race — raise rather than
-        overwrite the newer state. Every applied patch bumps `version`, so the next stale write
-        is caught."""
+        """Patch thread metadata (rename/star/archive/tag/model-override). `expected_version`
+        enforces optimistic concurrency: a mismatch means another device won the race — raise
+        rather than overwrite the newer state. Every applied patch bumps `version`, so the next
+        stale write is caught.
+
+        `model_override` follows every other field's own "set if provided, never explicitly
+        clear" semantics (`None` means the caller didn't touch this field, exactly like `title`/
+        `starred`/`archived`/`tags` above) rather than adding a separate sentinel — there is no
+        existing precedent in this method for distinguishing "omitted" from "clear to None", and
+        this PATCH surface has no need to invent one yet: a client that wants to remove an
+        override can PATCH a resolvable `"provider/model"` string back to the default, and a
+        dedicated clear affordance can be added later if a real need for it shows up.
+        """
         row = await self._get_thread_row(user_id=user_id, thread_id=thread_id)
         if expected_version is not None and row.version != expected_version:
             raise StaleThreadVersionError(thread_id)
@@ -370,6 +396,8 @@ class SqlAlchemyConversationStore:
             row.archived = archived
         if tags is not None:
             row.tags = list(tags)
+        if model_override is not None:
+            row.model_override = model_override
         row.version += 1
         row.updated_at = datetime.now(UTC)
         await self._session.flush()

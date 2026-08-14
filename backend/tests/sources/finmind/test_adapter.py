@@ -109,6 +109,63 @@ async def test_fetch_whole_market_rejects_capability_without_whole_market_form()
     assert result.payload == {}
 
 
+async def test_fetch_without_a_date_range_fills_a_default_start_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FinMind's `/data` endpoint 400s outright when `start_date` is omitted — a tool caller
+    that reasonably didn't name a range (`DateRangeInput.start_date` is `None`-able) must not
+    surface as `unreachable`. The adapter fills in a default window rather than sending an
+    incomplete request."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    result = await adapter.fetch(Capability.PRICE_EOD, sym, tls_policy=TLSPolicy.STRICT)
+
+    params = captured["params"]
+    assert isinstance(params, dict)
+    assert "start_date" in params
+    assert params["start_date"]  # non-empty ISO date string
+    assert result.health.status is not HealthStatus.UNREACHABLE
+
+
+async def test_fetch_single_day_capability_without_a_date_fills_a_default_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`CHIP_BROKER` uses `date_param="date"` (a single-day lookup, not a range) — same 400
+    without a value, same fix: default rather than omit."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    await adapter.fetch(Capability.CHIP_BROKER, sym, tls_policy=TLSPolicy.STRICT)
+
+    params = captured["params"]
+    assert isinstance(params, dict)
+    assert "date" in params
+    assert params["date"]  # non-empty ISO date string
+
+
 def test_token_never_appears_in_result(monkeypatch: pytest.MonkeyPatch) -> None:
     """Governance — no secrets logged/surfaced. The Bearer token must never leak into any
     SourceResult field."""

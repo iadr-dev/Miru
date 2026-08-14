@@ -22,6 +22,13 @@ def load_fixture(*parts: str) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_text_fixture(*parts: str, encoding: str = "utf-8") -> str:
+    """Like `load_fixture` but for raw text fixtures (CSV, etc.) that need a specific
+    encoding — TDCC's own CSVs are utf-8-sig or big5 depending on dataset."""
+    path = FIXTURES_ROOT.joinpath(*parts)
+    return path.read_text(encoding=encoding)
+
+
 def make_json_client_factory(
     body: object, *, status_code: int = 200
 ) -> Callable[..., httpx.AsyncClient]:
@@ -31,6 +38,21 @@ def make_json_client_factory(
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(status_code, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    return factory
+
+
+def make_bytes_client_factory(
+    body: bytes, *, status_code: int = 200
+) -> Callable[..., httpx.AsyncClient]:
+    """Like `make_json_client_factory` but for adapters that decode raw response bytes
+    themselves (TDCC's CSV-over-HTTP endpoints have no `Content-Type: application/json`)."""
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, content=body)
 
     def factory(**_kwargs: object) -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(handler))

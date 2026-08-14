@@ -41,6 +41,10 @@ LINE_ISSUER = "https://access.line.me"
 LINE_SCOPES = "profile openid email"
 
 _HTTP_TIMEOUT_SECONDS = 10.0
+# PyJWT's `leeway` for iat/exp/nbf checks — absorbs ordinary clock drift between this host and
+# the provider's without weakening signature/audience/issuer verification (those are unaffected
+# by leeway). 60s comfortably covers typical NTP drift and Docker-Desktop-WSL2 clock lag.
+_CLOCK_SKEW_LEEWAY_SECONDS = 60
 
 
 class OAuthConfigError(RuntimeError):
@@ -119,6 +123,14 @@ async def _post_form(
     async with client_factory() as client:
         response = await client.post(url, data=data)
     if response.status_code != int(httpx.codes.OK):
+        # Never log `data` (carries the client secret / code / verifier) — only the provider's
+        # own error body, which is documented to be error-code-shaped, not credential-shaped.
+        logger.warning(
+            "oauth_provider_http_error",
+            url=url,
+            status_code=response.status_code,
+            body=response.text[:500],
+        )
         raise TokenExchangeError(f"provider returned HTTP {response.status_code}")
     payload: dict[str, Any] = response.json()
     return payload
@@ -171,7 +183,6 @@ class GoogleOAuthProvider:
     async def exchange_code(
         self, *, code: str, code_verifier: str | None = None
     ) -> ProviderTokenResponse:
-        del code_verifier  # accepted for the Protocol; Google's flow here uses no PKCE verifier
         data = {
             "code": code,
             "client_id": self._client_id,
@@ -186,8 +197,9 @@ class GoogleOAuthProvider:
         client = self._signing_key_client or PyJWKClient(GOOGLE_CERTS_URL)
         return client.get_signing_key_from_jwt(id_token).key
 
-    async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> VerifiedIdentity:
-        del nonce  # accepted for the Protocol; Google's ID-token claims carry no nonce to check
+    async def verify_id_token(
+        self, id_token: str, *, nonce: str | None = None
+    ) -> VerifiedIdentity:
         # JWKS resolution and RS256 verification are blocking (urllib fetch + crypto); keep them
         # off the event loop.
         signing_key: Any = await anyio.to_thread.run_sync(self._resolve_key, id_token)
@@ -198,8 +210,21 @@ class GoogleOAuthProvider:
                 algorithms=["RS256"],
                 audience=self._client_id,
                 issuer=list(GOOGLE_ISSUERS),
+                # Tolerate small clock skew between this host and Google's — without it, `iat`/
+                # `exp`/`nbf` are checked against wall-clock-exact, and container clocks (esp.
+                # under Docker Desktop's WSL2 VM after a host sleep/resume) can drift by a few
+                # seconds, rejecting an otherwise-valid token as "not yet valid" (iat).
+                leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
             )
         except jwt.PyJWTError as exc:
+            # The specific PyJWT exception class (ExpiredSignatureError, InvalidAudienceError,
+            # InvalidIssuerError, ...) is the actual diagnostic — surfaced here since the router's
+            # catch-all log site only sees the wrapping IdentityVerificationError's static message.
+            logger.warning(
+                "google_id_token_verification_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             raise IdentityVerificationError("google id token verification failed") from exc
 
         subject = claims.get("sub")
@@ -279,7 +304,9 @@ class LineOAuthProvider:
         payload = await _post_form(self._client_factory, LINE_TOKEN_ENDPOINT, data)
         return ProviderTokenResponse.model_validate(payload)
 
-    async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> VerifiedIdentity:
+    async def verify_id_token(
+        self, id_token: str, *, nonce: str | None = None
+    ) -> VerifiedIdentity:
         # LINE validates the ID token server-side and returns its claims — no local HMAC-secret
         # handling. The web-login ID token is HS256-signed with the channel secret, so keeping
         # that secret out of a JWT-verification path is deliberate hygiene.
