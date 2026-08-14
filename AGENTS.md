@@ -1,8 +1,19 @@
 # AGENTS.md — AI TW Stock/ETF Agent Framework
 
 Shared guidance for **all** AI coding agents (Claude Code, Codex, Cursor, Amp, …). This is the
-canonical root file; `CLAUDE.md` points here. Language/stack rules for the Python backend live in
-[`backend/CLAUDE.md`](backend/CLAUDE.md).
+canonical root file; `CLAUDE.md` points here.
+
+**Per-area coding standards:**
+
+| Area | Standards doc |
+|---|---|
+| Python backend | [`backend/CLAUDE.md`](backend/CLAUDE.md) |
+| Next.js frontend — full standards + toolchain | [`web/OVERVIEW.md`](web/OVERVIEW.md) |
+| Next.js frontend — quick style reference | [`web/CODE-STYLE.md`](web/CODE-STYLE.md) |
+
+> `web/AGENTS.md` / `web/CLAUDE.md` are **Next.js's own auto-generated agent-rules files**
+> (re-written by `next dev`) — not this project's docs. Our frontend standards live at
+> `web/OVERVIEW.md` / `web/CODE-STYLE.md` specifically so the two never collide.
 
 ## What this project is
 
@@ -11,8 +22,8 @@ runtime that treats governed market data as tools, served over a read-only **Fas
 interface. Built on the **context-only, non-trading, bounded-observation** governance of the
 reference project `SmartyJohnway/tw-market-live-data-intelligence`.
 
-**Current stage: design blueprint.** The authoritative spec is the doc set — code implements it,
-not the other way round.
+**Current stage:** the doc set is the authoritative spec — code implements it, not the other way
+round. The backend is a real, growing FastAPI codebase; the Next.js frontend build is underway.
 
 ## Repository layout
 
@@ -20,20 +31,27 @@ not the other way round.
 ai-tw-stock/
 ├─ AGENTS.md · CLAUDE.md          # this file (+ its pointer)
 ├─ docs/
-│  ├─ backend/                    # ← the authoritative blueprint (READ THIS FIRST)
+│  ├─ backend/                    # ← the authoritative backend blueprint (READ THIS FIRST)
 │  │  ├─ README.md                #   index + confirmed decisions + module map
 │  │  ├─ architecture.md          #   layered architecture + DEPENDENCY RULE + repo layout
 │  │  ├─ governance.md            #   NON-NEGOTIABLE rules (non-trading, §9a/§9b/§9c carve-outs)
 │  │  ├─ api-reference.md · database-schema.md · data-catalog.md
 │  │  ├─ modules/ (01–23)         #   one spec per module
 │  │  └─ adr/ (0001–0026)         #   why each decision was made
-│  ├─ web/ · mobile/              # frontend clients (deferred deliverables, scaffold only)
+│  ├─ web/                        # ← the authoritative frontend blueprint
+│  │  ├─ README.md · design-system.md · interaction-spec.md · data-freshness.md
+│  │  └─ DEVELOPMENT.md           #   §4: audited backend reality vs the spec — read before wiring an endpoint
+│  └─ mobile/                     # deferred deliverable — don't build unless asked
 ├─ backend/                       # Python FastAPI backend — see backend/CLAUDE.md
 │  ├─ .env                        # ⚠ LIVE SECRETS — gitignored, never read aloud / commit / log
 │  └─ src/<domain>/               # agent, orchestrator, llm, tools, sources, dataaccess,
 │                                 #   context, ingest, analytics, calendar, conversation, memory,
 │                                 #   skills, events, accounts, payments, feedback, usage,
 │                                 #   scheduler, voice, personality, pets, schemas, db, api, mcp, config
+└─ web/                           # Next.js App Router frontend — see web/OVERVIEW.md
+   ├─ CLAUDE.md · AGENTS.md       # Next.js-owned agent-rules files (not ours — see note above)
+   ├─ OVERVIEW.md · CODE-STYLE.md # our coding standards + quick style reference
+   └─ src/                        # app/ (routes), components/, lib/, i18n/, types/
 ```
 
 ## The rules that override everything (governance — `docs/backend/governance.md`)
@@ -73,28 +91,35 @@ make code, a test, or a feature pass:
 
 ## Working agreements
 
-- **Read the spec before coding.** For any backend work, read the relevant `docs/backend/modules/`
-  spec + `governance.md`. The docs are the source of truth; if code and docs disagree, the docs win
-  (or update the docs deliberately with an ADR).
+- **Read the spec before coding.** Backend work → the relevant `docs/backend/modules/` spec +
+  `governance.md`. Frontend work → `docs/web/README.md` + `design-system.md` +
+  `web/OVERVIEW.md`, and check `docs/web/DEVELOPMENT.md` §4 before wiring any endpoint (the spec
+  describes more surface than the backend currently implements — the code wins on conflict).
+  The docs are the source of truth; if code and docs disagree elsewhere, update the docs
+  deliberately (with an ADR, for a backend decision).
 - **Keep docs in sync.** Changing a decision → update the module doc **and** add/update an ADR.
   Internal doc links must resolve (there's a link-checker convention; keep anchors valid).
-- **Match surrounding style.** Follow `backend/CLAUDE.md` for Python; don't introduce new tools or
-  patterns without cause.
+- **Match surrounding style.** Backend → `backend/CLAUDE.md`. Frontend → `web/OVERVIEW.md` +
+  `web/CODE-STYLE.md`. Don't introduce new tools or patterns without cause.
 - **Governance tests are highest priority.** A feature isn't done until the governance suite
   (`@pytest.mark.governance`) passes for it.
 - **Never read secrets aloud or echo `.env` values.** Treat `backend/.env` as exposed/rotate-worthy;
   reference variable *names*, never values.
-- **Frontend (`docs/web/`, `docs/mobile/`) is a deferred deliverable** — not yet specced; don't
-  build it unless asked.
 
 ## Quick pointers
 
 | Need | Read |
 |------|------|
-| Big picture + module map | `docs/backend/README.md`, `architecture.md` |
+| Backend big picture + module map | `docs/backend/README.md`, `architecture.md` |
 | What's allowed / forbidden | `docs/backend/governance.md` |
 | Python coding rules + toolchain | `backend/CLAUDE.md` |
-| Endpoints | `docs/backend/api-reference.md` |
+| Backend endpoints | `docs/backend/api-reference.md` |
 | Tables + portability | `docs/backend/database-schema.md` |
 | Data sources + ingest cadence | `docs/backend/data-catalog.md`, `modules/22-data-ingest.md` |
-| A past decision's rationale | `docs/backend/adr/` |
+| A past backend decision's rationale | `docs/backend/adr/` |
+| Frontend IA, nav, tokens | `docs/web/README.md`, `design-system.md` |
+| Frontend motion/state/a11y contracts | `docs/web/interaction-spec.md` |
+| Frontend cache-coherence contract | `docs/web/data-freshness.md` |
+| What's real vs spec-only in the backend today | `docs/web/DEVELOPMENT.md` §4 |
+| TypeScript/Next.js coding rules + toolchain | `web/OVERVIEW.md` |
+| Quick frontend style reference | `web/CODE-STYLE.md` |
