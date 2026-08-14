@@ -1,6 +1,7 @@
-/** Per-request message loading for RSC. Resolves the active locale from the route segment,
- * validates it against the routing contract, and hands the matching message set to the server
- * render. */
+/** Per-request message loading for RSC. `requestLocale` corresponds to the `[locale]` route
+ * segment matched by `proxy.ts`'s `next-intl` middleware (which runs on every request); it can be
+ * `undefined` for routes outside that segment, so we fall back to the configured default. */
+
 import { hasLocale } from "next-intl";
 import { getRequestConfig } from "next-intl/server";
 import { routing } from "@/i18n/routing";

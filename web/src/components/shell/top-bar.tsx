@@ -1,0 +1,228 @@
+"use client";
+
+import {
+  BellIcon,
+  MagnifyingGlassIcon,
+  SignOutIcon,
+  StarIcon,
+  UserIcon,
+} from "@phosphor-icons/react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useTranslations } from "next-intl";
+import { type ReactNode, useState } from "react";
+import { LanguageSwitcher } from "@/components/shell/language-switcher";
+import { ThemeToggle } from "@/components/shell/theme-toggle";
+import { useRouter } from "@/i18n/navigation";
+import { logout } from "@/lib/api/auth";
+import { cn } from "@/lib/cn";
+import type { MeResponse, Tier } from "@/types/account";
+
+/**
+ * Sticky glass top bar (README §9, design-system §6.2). Carries the 搜尋股票 command-palette
+ * placeholder (visual only — stock search is future Stock/Screener work), a static notifications
+ * bell, the real tier badge (from `/me`), the account menu (real sign-out via `logout()`), plus the
+ * existing theme + language controls and the watchlist rail toggle. Glass falls back to solid
+ * `--surface` under `prefers-reduced-transparency` (globals.css `.glass`).
+ */
+export function TopBar({
+  me,
+  onToggleWatchlist,
+}: {
+  me: MeResponse;
+  onToggleWatchlist: () => void;
+}): ReactNode {
+  const t = useTranslations("shell");
+
+  return (
+    <header
+      className={cn(
+        "glass sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4",
+        "border-[var(--border)] border-b bg-[color-mix(in_srgb,var(--surface)_72%,transparent)]",
+        "backdrop-blur-[20px] backdrop-saturate-150",
+      )}
+    >
+      <SearchPlaceholder />
+
+      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        <NotificationsBell />
+        <TierBadge tier={me.entitlements.tier} />
+        <div className="mx-0.5 hidden h-6 w-px bg-[var(--border)] sm:block" />
+        <LanguageSwitcher />
+        <ThemeToggle />
+        <button
+          type="button"
+          onClick={onToggleWatchlist}
+          aria-label={t("watchlist.toggle")}
+          title={t("watchlist.toggle")}
+          className={cn(
+            "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
+            "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+          )}
+        >
+          <StarIcon size={20} weight="regular" />
+        </button>
+        <AccountMenu me={me} />
+      </div>
+    </header>
+  );
+}
+
+/** The 股票搜尋 command-palette affordance. Visual-only: it does not search anything yet (stock
+ * search depends on Stock/Screener surfaces not built this pass). Clearly inert — clicking shows a
+ * "coming soon" hint rather than faking results. */
+function SearchPlaceholder(): ReactNode {
+  const t = useTranslations("shell.search");
+  const [hint, setHint] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={() => setHint(true)}
+      onBlur={() => setHint(false)}
+      aria-label={t("label")}
+      className={cn(
+        "flex min-h-11 max-w-md flex-1 items-center gap-2 rounded-[var(--radius-input)] px-3",
+        "border border-[var(--border)] bg-[var(--surface)] text-left text-[var(--text-muted)] text-sm",
+        "transition-colors hover:border-[var(--text-muted)]",
+      )}
+    >
+      <MagnifyingGlassIcon size={16} weight="regular" aria-hidden />
+      <span className="flex-1 truncate">{hint ? t("comingSoon") : t("placeholder")}</span>
+      <kbd
+        className={cn(
+          "hidden rounded-[6px] border border-[var(--border)] bg-[var(--surface-2)] px-1.5",
+          "py-0.5 font-num text-[11px] text-[var(--text-muted)] sm:inline",
+        )}
+      >
+        {t("hint")}
+      </kbd>
+    </button>
+  );
+}
+
+/** Static notifications bell — no real notification data this pass; the panel shows the empty
+ * state. Radix `DropdownMenu` (not a hand-rolled `mousedown`-listener div) so `Esc`-close and
+ * focus-return-to-trigger come for free, matching every other menu in the shell. */
+function NotificationsBell(): ReactNode {
+  const t = useTranslations("shell.notifications");
+  const [open, setOpen] = useState(false);
+
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={t("label")}
+          title={t("label")}
+          className={cn(
+            "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
+            "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+            "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+            "data-[state=open]:bg-[var(--surface-2)] data-[state=open]:text-[var(--text)]",
+          )}
+        >
+          <BellIcon size={20} weight="regular" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className={cn(
+            "z-50 w-64 rounded-[var(--radius-card)] border border-[var(--border)]",
+            "bg-[var(--surface)] p-4 shadow-lg",
+          )}
+        >
+          <p className="text-center text-[var(--text-muted)] text-sm">{t("empty")}</p>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+const TIER_STYLE: Record<Tier, string> = {
+  free: "border-[var(--border)] text-[var(--text-muted)]",
+  premium: "border-[var(--accent)] text-[var(--accent-text)]",
+  pro: "border-[var(--accent)] text-[var(--accent-text)]",
+};
+
+/** Real tier badge from `/me` entitlements — never fakes premium. */
+function TierBadge({ tier }: { tier: Tier }): ReactNode {
+  const t = useTranslations("shell.tier");
+  return (
+    <span
+      className={cn(
+        "hidden items-center rounded-[var(--radius-pill)] border px-2.5 py-1 font-medium text-[12px] sm:inline-flex",
+        TIER_STYLE[tier],
+      )}
+    >
+      {t(tier)}
+    </span>
+  );
+}
+
+/** Radix `DropdownMenu` (not a hand-rolled `mousedown`/`keydown`-listener div) so `Esc`-close and
+ * focus-return-to-trigger come for free, matching every other menu in the shell. */
+function AccountMenu({ me }: { me: MeResponse }): ReactNode {
+  const t = useTranslations("shell.account");
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  // logout() is best-effort and always resolves (never rejects) — see its own contract.
+  const onSignOut = (): void => {
+    setPending(true);
+    void logout().then(() => router.replace("/"));
+  };
+
+  const name = me.user.display_name || me.user.email || t("label");
+
+  return (
+    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={t("menu")}
+          className={cn(
+            "inline-flex size-11 items-center justify-center rounded-full",
+            "bg-[var(--surface-2)] text-[var(--text-muted)] transition-colors",
+            "hover:text-[var(--text)]",
+            "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          )}
+        >
+          <UserIcon size={20} weight="regular" aria-hidden />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className={cn(
+            "z-50 w-56 rounded-[var(--radius-card)] border border-[var(--border)]",
+            "bg-[var(--surface)] p-2 shadow-lg",
+          )}
+        >
+          <div className="border-[var(--border)] border-b px-3 py-2">
+            <p className="text-[12px] text-[var(--text-muted)]">{t("signedInAs")}</p>
+            <p className="truncate font-medium text-[var(--text)] text-sm">{name}</p>
+          </div>
+          <DropdownMenu.Item
+            onSelect={onSignOut}
+            disabled={pending}
+            className={cn(
+              "mt-1 flex min-h-11 w-full cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-3",
+              "text-[var(--text)] text-sm outline-none transition-colors",
+              "data-[highlighted]:bg-[var(--surface-2)]",
+              "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50",
+            )}
+          >
+            <SignOutIcon size={18} weight="regular" aria-hidden />
+            {t("signOut")}
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}

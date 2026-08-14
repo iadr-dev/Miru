@@ -1,0 +1,101 @@
+import { CardsIcon } from "@phosphor-icons/react/dist/ssr";
+import type { ReactNode } from "react";
+import { PLUMBING_KEYS } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { shapeForCardType } from "@/app/[locale]/(app)/chat/cards/card-registry";
+import { CompareTable } from "@/app/[locale]/(app)/chat/cards/compare-table";
+import { DataSheet } from "@/app/[locale]/(app)/chat/cards/data-sheet";
+import { EventTimeline } from "@/app/[locale]/(app)/chat/cards/event-timeline";
+import { anyRowsPresent, hasSnapshotEntity } from "@/app/[locale]/(app)/chat/cards/extract-rows";
+import { FlowDistribution } from "@/app/[locale]/(app)/chat/cards/flow-distribution";
+import { LeaderboardTable } from "@/app/[locale]/(app)/chat/cards/leaderboard-table";
+import { SnapshotCard } from "@/app/[locale]/(app)/chat/cards/snapshot-card";
+import { TimeseriesChart } from "@/app/[locale]/(app)/chat/cards/timeseries-chart";
+import type { RichCard } from "@/types/conversation";
+
+/**
+ * Inline `rich_card` renderer (interaction-spec §2.6). The card `data` shape is card-type-specific
+ * and NOT invented here — the backend (`agent/loop.py::RichCard`) emits an already-governance-scanned
+ * open object. `card_type` is looked up in `card-registry.ts`'s shape map; a mapped type renders
+ * through one of 7 dedicated components (chart/snapshot/data-sheet/leaderboard/compare/
+ * distribution/timeline) — but only once a pure, hook-free check confirms the payload actually
+ * has the rows/entity that shape needs (`extract-rows.ts`); a mapped type whose real payload
+ * doesn't resolve, or a type absent from the map altogether, falls through to the flat key/value
+ * list below — honest, never a crash, never fabricated structure.
+ *
+ * Governance: renders external/model-derived values as inert text only (no HTML injection); numbers
+ * use `--font-num` + `tabular-nums`; `--accent` is never used to color a value.
+ */
+export function RichCardView({ card }: { card: RichCard }): ReactNode {
+  const shape = shapeForCardType(card.card_type);
+  const usable = shape === "snapshot" ? hasSnapshotEntity(card.data) : anyRowsPresent(card.data);
+  if (shape && usable) {
+    return renderShaped(shape, card);
+  }
+  return <FlatCard card={card} />;
+}
+
+function renderShaped(
+  shape: NonNullable<ReturnType<typeof shapeForCardType>>,
+  card: RichCard,
+): ReactNode {
+  switch (shape) {
+    case "timeseries":
+      return <TimeseriesChart data={card.data} />;
+    case "snapshot":
+      return <SnapshotCard card_type={card.card_type} data={card.data} />;
+    case "data_sheet":
+      return <DataSheet data={card.data} />;
+    case "leaderboard":
+      return <LeaderboardTable data={card.data} />;
+    case "comparison":
+      return <CompareTable data={card.data} />;
+    case "distribution":
+      return <FlowDistribution data={card.data} />;
+    case "event_list":
+      return <EventTimeline data={card.data} />;
+    default:
+      return null;
+  }
+}
+
+function FlatCard({ card }: { card: RichCard }): ReactNode {
+  const scalars = Object.entries(card.data).filter(
+    ([key, value]) =>
+      !PLUMBING_KEYS.has(key) &&
+      (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
+  );
+  // Nothing but source/health plumbing came back (a genuinely empty tool result) — the caveat
+  // text already covers the "no data" case in prose; an empty card with just a card_type label
+  // is noise, not information, so render nothing rather than a content-free box.
+  if (scalars.length === 0) {
+    return null;
+  }
+
+  return (
+    <figure
+      className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5"
+      aria-label={card.card_type}
+    >
+      <figcaption className="mb-3 inline-flex items-center gap-2 font-medium text-[13px] text-[var(--text-muted)]">
+        <CardsIcon size={16} weight="regular" aria-hidden />
+        {card.card_type}
+      </figcaption>
+      <dl className="divide-y divide-[var(--border)]">
+        {scalars.map(([key, value]) => (
+          <div key={key} className="flex items-center justify-between gap-4 py-2">
+            <dt className="truncate text-[var(--text-muted)] text-sm">{key}</dt>
+            <dd
+              className={
+                typeof value === "number"
+                  ? "font-num text-[var(--text)] text-sm tabular-nums"
+                  : "text-[var(--text)] text-sm"
+              }
+            >
+              {String(value)}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </figure>
+  );
+}

@@ -19,6 +19,9 @@
   --text-muted: #8a93a3;
   --accent: #2dd4bf;
   --accent-weak: #123c39;
+  /* --accent already clears 4.5:1 as text in dark mode, so the text-safe variant is a no-op
+     alias here — see the light-theme block below for why light mode needs a real darken. */
+  --accent-text: var(--accent);
   /* TW market convention — RED UP / GREEN DOWN */
   --up: #f0483e;
   --up-weak: #2a1512;
@@ -34,6 +37,10 @@
   --chart-6: #93a3b8;
   --grid: #1a1f28;
   --crosshair: #8a93a3;
+  /* --chart-4 as body *text* needs the 4.5:1 text threshold, not the 3:1 graphical-element
+     threshold it's tuned for — this variant is AA-safe as text in each theme (dark mode's
+     --chart-4 already clears 4.5:1, so it's reused as-is here). */
+  --chart-4-text: var(--chart-4);
 
   color-scheme: dark;
 }
@@ -47,11 +54,21 @@
   --text-muted: #5b6472;
   --accent: #0e9e8e;
   --accent-weak: #dcf5f1;
+  /* --accent (#0e9e8e) measures ~3.33:1 on white — meets the 3:1 graphical-element threshold
+     it's tuned for (icons, borders, focus rings), but not 4.5:1 for body text. Darkened
+     text-only variant for the few places --accent is used as a text/link color (retry links,
+     markdown links/inline-code) — same hue, AA-safe at 4.5:1+ against every light surface this
+     app puts text on; graphical uses stay on the untouched --accent token. */
+  --accent-text: #0a7367;
   --up: #d42a20;
   --up-weak: #fce9e7;
   --down: #0e9e6b;
   --down-weak: #e3f6ee;
-  --warn: #b26a00;
+  /* #b26a00 measured ~4.24:1 on white — just under the 4.5:1 AA text threshold; darkened to
+     restore AA while staying the same amber hue (chrome/graphical uses of --warn at 3px+ borders
+     etc. are unaffected by the text-contrast requirement, so this is a like-for-like darken, not
+     a hue change). */
+  --warn: #996000;
   --chart-1: #3b6fd4;
   --chart-2: #7c5ce0;
   --chart-3: #b07d00;
@@ -60,6 +77,11 @@
   --chart-6: #64748b;
   --grid: #e2e6ec;
   --crosshair: #5b6472;
+  /* --chart-4 (#0e9e8e) measures ~3.33:1 on white — meets the 3:1 graphical-element threshold
+     it's tuned for, but not the 4.5:1 text threshold. Darkened text-only variant for the one
+     place it's used as text (pet rarity labels); the token itself is untouched for graphical
+     uses (chart series, fills) where 3:1 is correct. */
+  --chart-4-text: #0a7166;
 
   color-scheme: light;
 }

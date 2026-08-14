@@ -18,11 +18,22 @@
     }
   },
   "hero": {
-    "tagline": "台股與 ETF 的 AI 分析夥伴",
+    "tagline": "你的股票與 ETF AI 助理",
     "subtitle": "問一個關於台股的問題，Miru 會帶你看資料、看盤面、看籌碼。",
     "composer": {
       "label": "向 Miru 提問",
-      "placeholder": "問我任何台股問題，例如：台積電最近的籌碼變化？",
+      "hints": [
+        "台積電最近一週的外資買賣超變化如何？",
+        "鴻海（2317）的供應鏈關係是什麼樣子？",
+        "有哪些股票剛連續三天外資淨買超？",
+        "0050 最近的動能與趨勢評分如何？",
+        "聯發科（2454）今年的月營收趨勢怎麼樣？",
+        "本週有哪些高股息 ETF 資金流向異常？",
+        "台達電（2308）的多空評分是多少？",
+        "有哪些股票最近可能變成處置股？",
+        "台積電（2330）的股利與估值歷史如何？",
+        "鴻海（2317）最近有什麼新聞？"
+      ],
       "send": "送出",
       "signInToSend": "登入後即可開始對話",
       "signInPrompt": "登入以與 Miru 對話",
@@ -69,6 +80,174 @@
       "signedIn": "你已登入",
       "body": "大盤儀表板即將推出。這是登入後的預設著陸頁。",
       "signOut": "登出"
+    }
+  },
+  "nav": {
+    "chat": { "label": "對話", "sublabel": "Chat" },
+    "market": { "label": "大盤", "sublabel": "Market" },
+    "stock": { "label": "個股", "sublabel": "Stock" },
+    "screener": { "label": "選股", "sublabel": "Screener" },
+    "settings": { "label": "設定", "sublabel": "Settings" },
+    "newChat": "新對話",
+    "expand": "展開側欄",
+    "collapse": "收合側欄",
+    "primary": "主要導覽",
+    "comingSoon": "即將推出"
+  },
+  "shell": {
+    "search": {
+      "placeholder": "搜尋股票 代號／名稱",
+      "hint": "⌘K",
+      "label": "搜尋股票",
+      "comingSoon": "股票搜尋即將推出。"
+    },
+    "notifications": { "label": "通知", "empty": "目前沒有通知" },
+    "tier": { "free": "免費", "premium": "Premium", "pro": "Pro" },
+    "account": {
+      "label": "帳號",
+      "menu": "帳號選單",
+      "settings": "設定",
+      "language": "語言",
+      "upgrade": "升級方案",
+      "signOut": "登出",
+      "signedInAs": "已登入"
+    },
+    "watchlist": {
+      "toggle": "切換自選欄",
+      "title": "自選股",
+      "close": "關閉自選欄",
+      "tabs": { "tw": "台股", "us": "美股", "etf": "ETF" },
+      "empty": "尚無股票，點 ☆ 或問 Miru 加入"
+    },
+    "sisi": { "streak": "連續 {days} 天", "dismiss": "關閉" },
+    "loading": "載入中…",
+    "authRequired": "請先登入以繼續。",
+    "goHome": "返回首頁"
+  },
+  "chat": {
+    "title": "對話",
+    "empty": {
+      "heading": "問我任何台股問題",
+      "subheading": "問一支股票、盤面或籌碼，Miru 會帶你看資料。",
+      "starters": {
+        "s1": "台積電最近的法人籌碼變化如何？",
+        "s2": "整理一下 0050 近期的折溢價。",
+        "s3": "鴻海 2317 的籌碼結構長怎樣？"
+      }
+    },
+    "threads": {
+      "title": "對話紀錄",
+      "recents": "近期對話",
+      "starred": "已加星號",
+      "loading": "載入對話中…",
+      "empty": "尚無對話",
+      "error": "無法載入對話",
+      "retry": "重試",
+      "untitled": "新對話",
+      "newFailed": "無法建立新對話。",
+      "creating": "正在建立新對話…",
+      "groups": {
+        "today": "今天",
+        "yesterday": "昨天",
+        "previous7Days": "過去 7 天",
+        "previous30Days": "過去 30 天",
+        "older": "更早"
+      },
+      "menu": {
+        "label": "更多選項",
+        "star": "加星號",
+        "unstar": "移除星號",
+        "rename": "重新命名",
+        "delete": "刪除"
+      },
+      "rename": {
+        "placeholder": "對話標題",
+        "failed": "無法重新命名此對話。"
+      },
+      "delete": {
+        "confirmTitle": "刪除對話？",
+        "confirmBody": "「{title}」將永久刪除，無法復原。",
+        "cancel": "取消",
+        "confirm": "刪除",
+        "failed": "無法刪除此對話。"
+      },
+      "starFailed": "無法更新此對話。"
+    },
+    "turn": {
+      "thinking": "Miru 正在看盤面…",
+      "showProcess": "顯示過程",
+      "hideProcess": "隱藏過程",
+      "lane": "{skill}",
+      "laneDegraded": "資料額度受限—改用快取／可得資料",
+      "toolStep": "{tool}",
+      "thinkingChunk": "推理過程",
+      "steeringQueued": "已排入，本輪結束後處理。",
+      "cancelled": "本輪已取消。",
+      "error": "這一輪發生了問題。",
+      "retry": "再試一次",
+      "loadError": "無法載入這則對話。",
+      "you": "你",
+      "actions": {
+        "copy": "複製",
+        "copied": "已複製",
+        "edit": "編輯訊息",
+        "editSave": "儲存並送出",
+        "editCancel": "取消編輯",
+        "retry": "重新產生",
+        "thumbsUp": "回答不錯",
+        "thumbsDown": "回答不佳",
+        "speak": "朗讀",
+        "stopSpeaking": "停止朗讀",
+        "speakError": "無法朗讀此內容。"
+      },
+      "webSearch": {
+        "sourcesCount": "{count} 個來源"
+      }
+    },
+    "table": {
+      "copy": "複製表格",
+      "copied": "已複製",
+      "download": "下載表格",
+      "downloadCsv": "下載為 CSV",
+      "downloadXlsx": "下載為 Excel（.xlsx）",
+      "downloadPdf": "下載為 PDF"
+    },
+    "caveat": {
+      "nonTrading": "了然 · Miru 提供的分析為資料觀察，不構成投資建議。"
+    },
+    "composer": {
+      "placeholder": "問我任何台股問題…",
+      "label": "向 Miru 提問",
+      "send": "送出",
+      "stop": "停止",
+      "featureMenu": "新增功能",
+      "featureMenuItems": {
+        "addFiles": "新增檔案或照片",
+        "screenshot": "拍攝截圖",
+        "webSearch": "網路搜尋"
+      },
+      "screenshot": {
+        "remove": "移除截圖",
+        "notSupported": "聊天功能尚不支援傳送圖片，請先移除截圖再送出訊息。"
+      },
+      "model": "模型",
+      "voice": "語音輸入",
+      "listening": "聆聽中…",
+      "stopRecording": "停止錄音",
+      "voiceError": "無法辨識這段錄音，請再試一次。",
+      "micPermissionDenied": "無法使用麥克風，請檢查瀏覽器的麥克風權限後再試一次。",
+      "comingSoon": "即將推出",
+      "modelMenu": {
+        "trigger": "模型：{model}",
+        "default": "伺服器預設",
+        "category": {
+          "anthropic": "Anthropic",
+          "openai": "OpenAI",
+          "openrouter": "OpenRouter",
+          "gemini": "Gemini",
+          "ollama": "Ollama（本機）"
+        }
+      }
     }
   },
   "disclaimer": {

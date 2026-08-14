@@ -18,11 +18,22 @@
     }
   },
   "hero": {
-    "tagline": "Your AI analysis companion for Taiwan stocks & ETFs",
+    "tagline": "Your AI assistant for stocks & ETFs",
     "subtitle": "Ask a question about Taiwan's market — Miru walks you through the data, the tape, and the flows.",
     "composer": {
       "label": "Ask Miru",
-      "placeholder": "Ask me anything about Taiwan stocks — e.g. how have TSMC's institutional flows shifted lately?",
+      "hints": [
+        "How have TSMC's institutional flows shifted over the past week?",
+        "What does Foxconn's (2317) supply chain look like?",
+        "Which stocks just had 3 straight days of foreign net buying?",
+        "Show me 0050's recent momentum and trend score.",
+        "What's MediaTek's (2454) monthly revenue trend this year?",
+        "Are any high-dividend ETFs seeing unusual money flow this week?",
+        "What's the multi-factor score on Delta Electronics (2308)?",
+        "Any stocks about to become Disposal Stocks soon?",
+        "What's TSMC's (2330) dividend and valuation history look like?",
+        "What's the latest news on Foxconn (2317)?"
+      ],
       "send": "Send",
       "signInToSend": "Sign in to start a conversation",
       "signInPrompt": "Sign in to chat with Miru",
@@ -69,6 +80,174 @@
       "signedIn": "You're signed in",
       "body": "The market dashboard is coming soon. This is the default landing page after sign-in.",
       "signOut": "Sign out"
+    }
+  },
+  "nav": {
+    "chat": { "label": "Chat", "sublabel": "對話" },
+    "market": { "label": "Market", "sublabel": "大盤" },
+    "stock": { "label": "Stock", "sublabel": "個股" },
+    "screener": { "label": "Screener", "sublabel": "選股" },
+    "settings": { "label": "Settings", "sublabel": "設定" },
+    "newChat": "New chat",
+    "expand": "Expand sidebar",
+    "collapse": "Collapse sidebar",
+    "primary": "Primary",
+    "comingSoon": "Coming soon"
+  },
+  "shell": {
+    "search": {
+      "placeholder": "Search stocks — code / name",
+      "hint": "⌘K",
+      "label": "Search stocks",
+      "comingSoon": "Stock search is coming soon."
+    },
+    "notifications": { "label": "Notifications", "empty": "No notifications yet" },
+    "tier": { "free": "Free", "premium": "Premium", "pro": "Pro" },
+    "account": {
+      "label": "Account",
+      "menu": "Account menu",
+      "settings": "Settings",
+      "language": "Language",
+      "upgrade": "Upgrade plan",
+      "signOut": "Sign out",
+      "signedInAs": "Signed in"
+    },
+    "watchlist": {
+      "toggle": "Toggle watchlist",
+      "title": "Watchlist",
+      "close": "Close watchlist",
+      "tabs": { "tw": "TW", "us": "US", "etf": "ETF" },
+      "empty": "尚無股票，點 ☆ 或問 Miru 加入"
+    },
+    "sisi": { "streak": "{days}-day streak", "dismiss": "Dismiss" },
+    "loading": "Loading…",
+    "authRequired": "Please sign in to continue.",
+    "goHome": "Back to home"
+  },
+  "chat": {
+    "title": "Chat",
+    "empty": {
+      "heading": "問我任何台股問題",
+      "subheading": "Ask about a stock, the tape, or the flows — Miru walks you through the data.",
+      "starters": {
+        "s1": "How have TSMC's institutional flows shifted lately?",
+        "s2": "Summarise 0050's recent premium/discount.",
+        "s3": "What does 2317's chip structure look like?"
+      }
+    },
+    "threads": {
+      "title": "Conversations",
+      "recents": "Recents",
+      "starred": "Starred",
+      "loading": "Loading conversations…",
+      "empty": "No conversations yet",
+      "error": "Couldn't load conversations",
+      "retry": "Retry",
+      "untitled": "New conversation",
+      "newFailed": "Couldn't start a new conversation.",
+      "creating": "Starting a new conversation…",
+      "groups": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "previous7Days": "Previous 7 days",
+        "previous30Days": "Previous 30 days",
+        "older": "Older"
+      },
+      "menu": {
+        "label": "More options",
+        "star": "Star",
+        "unstar": "Unstar",
+        "rename": "Rename",
+        "delete": "Delete"
+      },
+      "rename": {
+        "placeholder": "Conversation title",
+        "failed": "Couldn't rename this conversation."
+      },
+      "delete": {
+        "confirmTitle": "Delete conversation?",
+        "confirmBody": "\"{title}\" will be permanently deleted. This can't be undone.",
+        "cancel": "Cancel",
+        "confirm": "Delete",
+        "failed": "Couldn't delete this conversation."
+      },
+      "starFailed": "Couldn't update this conversation."
+    },
+    "turn": {
+      "thinking": "Miru is looking at the data…",
+      "showProcess": "Show process",
+      "hideProcess": "Hide process",
+      "lane": "{skill}",
+      "laneDegraded": "Data quota degraded — using cached / available data",
+      "toolStep": "{tool}",
+      "thinkingChunk": "Reasoning",
+      "steeringQueued": "Queued — will be handled after this turn.",
+      "cancelled": "This turn was cancelled.",
+      "error": "Something went wrong on this turn.",
+      "retry": "Try again",
+      "loadError": "Couldn't load this conversation.",
+      "you": "You",
+      "actions": {
+        "copy": "Copy",
+        "copied": "Copied",
+        "edit": "Edit message",
+        "editSave": "Save & submit",
+        "editCancel": "Cancel edit",
+        "retry": "Retry",
+        "thumbsUp": "Good response",
+        "thumbsDown": "Bad response",
+        "speak": "Read aloud",
+        "stopSpeaking": "Stop reading aloud",
+        "speakError": "Couldn't read this aloud."
+      },
+      "webSearch": {
+        "sourcesCount": "{count} sources"
+      }
+    },
+    "table": {
+      "copy": "Copy table",
+      "copied": "Copied",
+      "download": "Download table",
+      "downloadCsv": "Download as CSV",
+      "downloadXlsx": "Download as Excel (.xlsx)",
+      "downloadPdf": "Download as PDF"
+    },
+    "caveat": {
+      "nonTrading": "了然 · Miru 提供的分析為資料觀察，不構成投資建議。"
+    },
+    "composer": {
+      "placeholder": "Ask me anything about Taiwan stocks…",
+      "label": "Message Miru",
+      "send": "Send",
+      "stop": "Stop",
+      "featureMenu": "Add feature",
+      "featureMenuItems": {
+        "addFiles": "Add files or photos",
+        "screenshot": "Take a screenshot",
+        "webSearch": "Web search"
+      },
+      "screenshot": {
+        "remove": "Remove screenshot",
+        "notSupported": "Chat doesn't support sending images yet — remove the screenshot to send your message."
+      },
+      "model": "Model",
+      "voice": "Voice input",
+      "listening": "Listening…",
+      "stopRecording": "Stop recording",
+      "voiceError": "Couldn't transcribe your recording. Please try again.",
+      "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
+      "comingSoon": "Coming soon",
+      "modelMenu": {
+        "trigger": "Model: {model}",
+        "default": "Server default",
+        "category": {
+          "anthropic": "Anthropic",
+          "openai": "OpenAI",
+          "openrouter": "OpenRouter",
+          "gemini": "Gemini",
+          "ollama": "Ollama (Local)"
+        }
+      }
     }
   },
   "disclaimer": {
