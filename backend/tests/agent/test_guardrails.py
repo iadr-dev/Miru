@@ -72,6 +72,19 @@ def test_check_output_redacts_trading_language(text: str) -> None:
     assert verdict.reason == "trading_language_redacted"
 
 
+def test_check_output_redacts_only_the_offending_sentence_in_chinese_prose() -> None:
+    """A Chinese-language answer is many sentences, not one — only the sentence carrying
+    trading language should be redacted, leaving the surrounding analysis intact."""
+    text = "鴻海（2317）的上游供應商包含多家半導體廠商。目標價 600 元，買進建議。近期營收成長主要來自組裝業務擴張。"
+    verdict = check_output(text)
+    assert verdict.allowed is True
+    assert verdict.redacted_text is not None
+    assert "上游供應商包含多家半導體廠商" in verdict.redacted_text
+    assert "近期營收成長主要來自組裝業務擴張" in verdict.redacted_text
+    assert "目標價" not in verdict.redacted_text
+    assert "[redacted" in verdict.redacted_text
+
+
 def test_check_output_leaves_institutional_flow_prose_alone() -> None:
     """Bare 'bought'/'sold' describing institutional flows that already happened is not
     advice-shaped and must survive untouched (aside from caveat-appending)."""

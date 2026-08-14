@@ -8,7 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from agent.prompts import PromptLayers, assemble_system_prompt, default_prompt_layers
-from agent.prompts.governance import GOVERNANCE_PROMPT, governance_prompt
+from agent.prompts.governance import governance_prompt
 
 
 def test_default_prompt_layers_only_populates_governance() -> None:
@@ -23,7 +23,7 @@ def test_default_prompt_layers_only_populates_governance() -> None:
 def test_assemble_system_prompt_with_default_layers_is_just_governance() -> None:
     prompt = assemble_system_prompt()
 
-    assert prompt == GOVERNANCE_PROMPT
+    assert prompt == governance_prompt()
 
 
 def test_assemble_system_prompt_places_governance_first_always() -> None:
@@ -71,3 +71,31 @@ def test_governance_layer_cannot_be_omitted() -> None:
     produces a layer stack with an empty/missing governance layer."""
     with pytest.raises((TypeError, ValidationError)):
         PromptLayers()  # type: ignore[call-arg]
+
+
+def test_governance_prompt_defaults_to_zh_tw_locale() -> None:
+    prompt = governance_prompt()
+
+    assert "interface locale: zh-TW" in prompt
+
+
+def test_governance_prompt_interpolates_explicit_locale() -> None:
+    prompt = governance_prompt("en")
+
+    assert "interface locale: en" in prompt
+    assert "interface locale: zh-TW" not in prompt
+
+
+def test_governance_prompt_states_provider_data_beats_web_search() -> None:
+    prompt = governance_prompt()
+
+    assert "always authoritative" in prompt
+    assert "web search" in prompt
+    assert "gap-filling" in prompt
+
+
+def test_default_prompt_layers_forwards_locale_to_governance() -> None:
+    layers = default_prompt_layers("en")
+
+    assert layers.governance == governance_prompt("en")
+    assert "interface locale: en" in layers.governance

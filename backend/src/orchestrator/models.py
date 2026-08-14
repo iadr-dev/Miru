@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agent.loop import RichCard
 from events.usage import TurnUsage
+from llm.base import WebSearchSource
 
 Framework = Literal["none", "single", "subagent", "team"]
 
@@ -62,6 +63,7 @@ class LaneResult(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     reason: str | None = None
     rich_cards: tuple[RichCard, ...] = Field(default_factory=tuple)
+    web_search_sources: tuple[WebSearchSource, ...] = Field(default_factory=tuple)
 
     @property
     def succeeded(self) -> bool:
@@ -113,6 +115,7 @@ class OrchestratorResult(BaseModel):
     provenance: SynthesisProvenance | None = None
     usage: TurnUsage | None = None
     rich_cards: tuple[RichCard, ...] = Field(default_factory=tuple)
+    web_search_sources: tuple[WebSearchSource, ...] = Field(default_factory=tuple)
 
 
 __all__ = [

@@ -46,11 +46,35 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agent import guardrails
 from agent.context_window import compact
-from agent.hooks import CancelToken, PostToolHook, PreLLMHook, SteeringSource
+from agent.hooks import (
+    CancelToken,
+    PostToolHook,
+    PreLLMHook,
+    SteeringSource,
+    ThinkingHook,
+    WebSearchHook,
+)
 from agent.journal import Journal
 from agent.prompts import PromptLayers, assemble_system_prompt, default_prompt_layers
 from config.settings import Settings, get_settings
-from llm.base import LLMClient, LLMResponse, Message, MessageRole, ToolResultPart, ToolSpec
+from llm.base import (
+    ImagePart,
+    LLMClient,
+    LLMResponse,
+    Message,
+    MessageRole,
+    StopReason,
+    StreamDoneEvent,
+    TextDeltaEvent,
+    ThinkingDeltaEvent,
+    TokenUsage,
+    ToolCall,
+    ToolCallEvent,
+    ToolResultPart,
+    ToolSpec,
+    WebSearchResultEvent,
+    WebSearchSource,
+)
 from tools.base import MaskedTeaser, Tool, ToolContext, dispatch_tool
 
 logger = structlog.get_logger(__name__)
@@ -105,13 +129,19 @@ class StepResult:
 
 @dataclass(frozen=True)
 class TurnResult:
-    """The completed Turn: the final caveated text, every Step along the way, and any
-    structured rich cards built from card-opted-in tool results during the Turn."""
+    """The completed Turn: the final caveated text, every Step along the way, any
+    structured rich cards built from card-opted-in tool results during the Turn, and every
+    native-web-search source consulted (accumulated across however many `WebSearchResultEvent`s
+    the Turn's Steps streamed) — the same source list `EventBusWebSearchHook` already forwards
+    live over SSE, kept here too so the caller (`api.turn_driver._persist_answer`) has something
+    to persist once the turn ends; without this the sources only ever existed for the duration
+    of the stream, per the bug this field exists to close."""
 
     final_text: str
     steps: tuple[StepResult, ...]
     journal: Journal
     rich_cards: tuple[RichCard, ...] = ()
+    web_search_sources: tuple[WebSearchSource, ...] = ()
 
 
 class StepBudgetExceededError(RuntimeError):
@@ -145,8 +175,9 @@ class AgentLoop:
     sub-agent fan-out — those are later phases' concern)."""
 
     def __init__(  # noqa: PLR0913 — every constructor arg configures a distinct,
-        # independently-testable runtime knob (client, tool set, three budget knobs, prompt
-        # layers); collapsing them into one options object would obscure each seam's default
+        # independently-testable runtime knob (client, tool set, budget knobs, prompt layers,
+        # the registrable non-veto hook lists, and the cooperative cancel/steering seams);
+        # collapsing them into one options object would obscure each seam's default
         self,
         llm: LLMClient,
         tools: list[Tool],
@@ -158,70 +189,73 @@ class AgentLoop:
         settings: Settings | None = None,
         post_tool_hooks: list[PostToolHook] | None = None,
         pre_llm_hooks: list[PreLLMHook] | None = None,
-        cancel_token: CancelToken | None = None,
+        thinking_hooks: list[ThinkingHook] | None = None,
+        web_search_hooks: list[WebSearchHook] | None = None,
         steering_source: SteeringSource | None = None,
+        cancel_token: CancelToken | None = None,
+        native_web_search: bool = False,
     ) -> None:
         settings = settings or get_settings()
         self._llm = llm
         self._tools = tools
         self._tool_specs: list[ToolSpec] = [tool.to_tool_spec() for tool in tools]
         self._context_window = (
-            context_window if context_window is not None else settings.aitw_context_window_tokens
+            context_window if context_window is not None else settings.context_window_tokens
         )
         self._context_reserve = (
-            context_reserve if context_reserve is not None else settings.aitw_context_reserve_tokens
+            context_reserve if context_reserve is not None else settings.context_reserve_tokens
         )
-        self._max_steps = max_steps if max_steps is not None else settings.aitw_agent_max_steps
+        self._max_steps = max_steps if max_steps is not None else settings.agent_max_steps
         self._prompt_layers = prompt_layers or default_prompt_layers()
-        # Dependency-inverted extension seams (see `agent.hooks`) — registered from outside
-        # `agent/` (application-wiring time), never imported here beyond the Protocol shapes.
-        self._post_tool_hooks = post_tool_hooks or []
-        self._pre_llm_hooks = pre_llm_hooks or []
-        self._cancel_token = cancel_token
+        self._post_tool_hooks: list[PostToolHook] = post_tool_hooks or []
+        self._pre_llm_hooks: list[PreLLMHook] = pre_llm_hooks or []
+        self._thinking_hooks: list[ThinkingHook] = thinking_hooks or []
+        self._web_search_hooks: list[WebSearchHook] = web_search_hooks or []
         self._steering_source = steering_source
+        self._cancel_token = cancel_token
+        self._native_web_search = native_web_search
 
     @property
     def cancel_token(self) -> CancelToken | None:
+        """The cooperative cancellation flag polled at every Step boundary. Settable after
+        construction so a caller (the interaction-layer turn lifecycle) can attach the live
+        turn's token once it exists, rather than requiring it up front."""
         return self._cancel_token
 
     @cancel_token.setter
     def cancel_token(self, token: CancelToken | None) -> None:
-        """Lets a caller that constructs one `AgentLoop` per turn-lifecycle wiring (rather
-        than per turn) hand it a fresh per-turn `CancelToken` after construction — see
-        `conversation.turn_lifecycle.TurnLifecycle.start`."""
         self._cancel_token = token
 
-    @property
-    def steering_source(self) -> SteeringSource | None:
-        return self._steering_source
-
-    @steering_source.setter
-    def steering_source(self, source: SteeringSource | None) -> None:
-        """Mirrors the `cancel_token` setter: a caller that builds one `AgentLoop` ahead of the
-        turn's own live handle (the turn registry entry doesn't exist until the turn is
-        registered) attaches the real queue right after construction."""
-        self._steering_source = source
-
-    async def run_turn(self, user_message: str, *, tool_context: ToolContext) -> TurnResult:
+    async def run_turn(
+        self,
+        user_message: str,
+        *,
+        tool_context: ToolContext,
+        images: tuple[ImagePart, ...] = (),
+    ) -> TurnResult:
         """Run Steps until the model returns a final (non-tool-call) response, the step
-        budget is exhausted, a proposed tool call is vetoed by governance, or the caller's
-        `cancel_token` is flipped between Steps."""
+        budget is exhausted, or a proposed tool call is vetoed by governance. `images` attaches
+        to the initial user message only (a user can attach an image alongside their own text
+        in the same turn, per `Message`'s own docstring) — never re-sent on later Steps."""
         journal = Journal()
         messages: list[Message] = [
             Message(role=MessageRole.SYSTEM, content=assemble_system_prompt(self._prompt_layers)),
-            Message(role=MessageRole.USER, content=user_message),
+            Message(role=MessageRole.USER, content=user_message, images=images),
         ]
         step_context = tool_context.model_copy(update={"journal": journal})
 
         steps: list[StepResult] = []
         rich_cards: list[RichCard] = []
+        web_search_sources: list[WebSearchSource] = []
         for step_index in range(self._max_steps):
             if self._cancel_token is not None and self._cancel_token.is_cancelled():
-                raise TurnCancelledError(f"turn cancelled before step {step_index}")
+                raise TurnCancelledError(
+                    f"turn cancelled before step {step_index} (cancel_token flipped)"
+                )
             messages = self._inject_steering(messages)
             messages = await self._transform_context(messages)
             messages = await self._run_pre_llm_hooks(messages)
-            response = await self._llm.chat(messages, tools=self._tool_specs)
+            response = await self._stream_step(messages, web_search_sources=web_search_sources)
 
             if not response.tool_calls:
                 final_text = await self._finalize_output(
@@ -233,6 +267,7 @@ class AgentLoop:
                     steps=tuple(steps),
                     journal=journal,
                     rich_cards=tuple(rich_cards),
+                    web_search_sources=tuple(web_search_sources),
                 )
 
             assistant_tool_calls = tuple(response.tool_calls)
@@ -311,6 +346,69 @@ class AgentLoop:
         for hook in self._pre_llm_hooks:
             messages = await hook(messages=messages)
         return messages
+
+    async def _run_thinking_hooks(self, text: str) -> None:
+        for hook in self._thinking_hooks:
+            await hook(text=text)
+
+    async def _run_web_search_hooks(self, event: WebSearchResultEvent) -> None:
+        for hook in self._web_search_hooks:
+            await hook(sources=event.sources)
+
+    async def _stream_step(
+        self, messages: list[Message], *, web_search_sources: list[WebSearchSource]
+    ) -> LLMResponse:
+        """Drive one Step via `llm.stream()` rather than `chat()` — the live agent-turn path,
+        so a genuinely reasoning-capable model's `ThinkingDeltaEvent`s can be forwarded to the
+        `thinking` hooks (and, through them, the SSE `thinking.delta` frame) as they arrive,
+        not buffered until the Step completes. `TextDeltaEvent`s are still only concatenated
+        into the final `response.text` here, never forwarded per-token — there is still no
+        token streaming for the final answer itself (see `turn-store.ts`'s own docstring); only
+        thinking text is genuinely live.
+
+        Every thinking chunk is passed through `guardrails.check_output` before it reaches a
+        `thinking` hook: it is model-generated text like any other, and the non-trading scan
+        that gates the final answer is not narrowly scoped to "the last message" — a
+        buy/sell/hold signal leaking mid-reasoning is exactly the kind of output that hook
+        exists to catch, so exempting thinking text would be a governance gap, not a
+        performance optimization worth making.
+
+        `web_search_sources` is the caller's (`run_turn`'s) turn-scoped accumulator — every
+        `WebSearchResultEvent` this Step streams appends its sources here, in addition to firing
+        the observe-only `web_search` hooks, so `TurnResult.web_search_sources` reflects every
+        native-web-search call across the whole Turn (not just the hook's live SSE echo)."""
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        stop_reason = StopReason.END_TURN
+        usage = TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
+        async for event in self._llm.stream(
+            messages, tools=self._tool_specs, native_web_search=self._native_web_search
+        ):
+            if isinstance(event, TextDeltaEvent):
+                text_parts.append(event.text)
+            elif isinstance(event, ThinkingDeltaEvent):
+                verdict = guardrails.check_output(event.text, has_market_data=False)
+                safe_text = event.text if verdict.redacted_text is None else verdict.redacted_text
+                if safe_text:
+                    await self._run_thinking_hooks(safe_text)
+            elif isinstance(event, ToolCallEvent):
+                tool_calls.append(event.tool_call)
+            elif isinstance(event, WebSearchResultEvent):
+                web_search_sources.extend(event.sources)
+                await self._run_web_search_hooks(event)
+            elif isinstance(event, StreamDoneEvent):
+                stop_reason = event.stop_reason
+                usage = event.usage
+            # `ToolCallDeltaEvent` — the incrementally-assembled tool-call fragment every
+            # streaming client also emits before its final `ToolCallEvent` — carries nothing
+            # this Step needs; the client itself already assembles the complete `ToolCallEvent`
+            # this loop consumes above, so the fragment is intentionally a no-op here.
+        return LLMResponse(
+            text="".join(text_parts) or None,
+            tool_calls=tuple(tool_calls),
+            stop_reason=stop_reason,
+            usage=usage,
+        )
 
     async def _run_post_tool_hooks(  # noqa: PLR0913 — mirrors `PostToolHook.__call__`'s shape
         self,
@@ -426,13 +524,11 @@ class AgentLoop:
         )
         return ToolResultPart(tool_call_id=tool_call_id, content=summary), card
 
-    @staticmethod
-    def _card_for(tool: Tool, result: BaseModel) -> RichCard | None:
-        """Build a governed `RichCard` for a card-opted-in tool, or `None` for a tool that
-        hasn't opted in. `card_type` defaults to `None` on every tool, so this is a no-op
-        unless a tool explicitly declares a card shape."""
+    def _card_for(self, tool: Tool, result: BaseModel) -> RichCard | None:
+        """Build a governed `RichCard` for a card-opted-in tool's dispatched result — `None`
+        for the vast majority of tools that haven't opted in (`Tool.card_type` stays `None`)."""
         card_type = getattr(tool, "card_type", None)
-        if not card_type:
+        if card_type is None:
             return None
         return _build_card(card_type, result)
 

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from agent.loop import AgentLoop, StepBudgetExceededError
 from config.settings import Settings
-from llm.base import StopReason, TokenUsage
+from llm.base import StopReason, TokenUsage, WebSearchSource
 from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -84,6 +84,10 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_sector_overview": "sector_overview",
     "get_industry_overview": "industry_overview",
     "run_equity_screener_us": "equity_screener",
+    "get_analyst_consensus": "analyst_consensus",
+    "get_esg_score": "esg_score",
+    "get_analyst_consensus": "analyst_consensus",
+    "get_esg_score": "esg_score",
     # convertible_bond_tools.py
     "get_convertible_bond_profile": "cb_profile",
     "get_convertible_bond_flow": "cb_flow",
@@ -109,6 +113,9 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     # score_tools.py
     "get_stock_score": "stock_score",
     "get_score_leaderboard": "score_leaderboard",
+    # tdcc_tools.py
+    "get_tdcc_shareholding_distribution": "tdcc_shareholding_distribution",
+    "get_tdcc_evoting_schedule": "tdcc_evoting_schedule",
 }
 
 
@@ -337,7 +344,9 @@ async def test_run_turn_raises_step_budget_exceeded_when_model_never_finalizes()
 async def test_run_turn_reports_unknown_tool_without_dispatching() -> None:
     llm = StubLLMClient(
         script=[
-            make_tool_call_response(tool_call_id="call-1", name="not_a_real_tool", arguments={}),
+            make_tool_call_response(
+                tool_call_id="call-1", name="not_a_real_tool", arguments={}
+            ),
             make_text_response("done"),
         ]
     )
@@ -352,9 +361,9 @@ async def test_run_turn_reports_unknown_tool_without_dispatching() -> None:
 
 async def test_run_turn_uses_settings_defaults_when_no_explicit_budget_given() -> None:
     """Constructing an `AgentLoop` without explicit context/step knobs reads
-    `Settings.aitw_context_window_tokens`/`aitw_context_reserve_tokens`/`aitw_agent_max_steps`
+    `Settings.context_window_tokens`/`context_reserve_tokens`/`agent_max_steps`
     rather than a hardcoded literal."""
-    settings = Settings(aitw_agent_max_steps=1)
+    settings = Settings(agent_max_steps=1)
     llm = StubLLMClient(
         script=[
             make_tool_call_response(
@@ -377,3 +386,93 @@ async def test_stop_reason_and_usage_are_carried_through_step_result() -> None:
 
     assert result.steps[0].response.stop_reason == StopReason.END_TURN
     assert result.steps[0].response.usage.total_tokens == 10
+
+
+async def test_run_turn_forwards_thinking_deltas_to_registered_thinking_hooks() -> None:
+    """`AgentLoop` now drives every Step via `llm.stream()` (not `chat()`) so a
+    `ThinkingDeltaEvent` the client yields reaches every registered `thinking` hook live, as
+    each chunk arrives — not buffered until the Step completes."""
+    llm = StubLLMClient(
+        script=[make_text_response("Here is some context.")],
+        thinking_chunks=[["pondering", " further"]],
+    )
+    received: list[str] = []
+
+    async def hook(*, text: str) -> None:
+        received.append(text)
+
+    loop = AgentLoop(llm, tools=[], max_steps=2, thinking_hooks=[hook])
+
+    result = await loop.run_turn("what's up with 2330?", tool_context=ToolContext())
+
+    assert received == ["pondering", " further"]
+    assert "Here is some context." in result.final_text
+
+
+async def test_run_turn_scans_thinking_deltas_for_trading_language_before_forwarding() -> None:
+    """Thinking text is model-generated output like any other — it goes through the same
+    `guardrails.check_output` non-trading scan as the final answer before it ever reaches a
+    `thinking` hook, so a leaked buy/sell/hold signal mid-reasoning is redacted, not forwarded
+    verbatim."""
+    llm = StubLLMClient(
+        script=[make_text_response("final answer")],
+        thinking_chunks=[["You should buy this stock now."]],
+    )
+    received: list[str] = []
+
+    async def hook(*, text: str) -> None:
+        received.append(text)
+
+    loop = AgentLoop(llm, tools=[], max_steps=2, thinking_hooks=[hook])
+
+    await loop.run_turn("hi", tool_context=ToolContext())
+
+    assert len(received) == 1
+    assert "buy" not in received[0].lower()
+    assert "redacted" in received[0].lower()
+
+
+async def test_run_turn_forwards_web_search_sources_to_registered_web_search_hooks() -> None:
+    """A `WebSearchResultEvent` the client streams reaches every registered `web_search` hook
+    verbatim (no `guardrails.check_output` scan — this is structured url/title metadata, not
+    prose, mirroring the `thinking` hook's forwarding but without the text-scan step)."""
+    sources = (
+        WebSearchSource(url="https://example.com/a", title="Source A"),
+        WebSearchSource(url="https://example.com/b", title="Source B"),
+    )
+    llm = StubLLMClient(
+        script=[make_text_response("Here is some context.")],
+        web_search_sources=[sources],
+    )
+    received: list[tuple[WebSearchSource, ...]] = []
+
+    async def hook(*, sources: tuple[WebSearchSource, ...]) -> None:
+        received.append(sources)
+
+    loop = AgentLoop(llm, tools=[], max_steps=2, web_search_hooks=[hook])
+
+    result = await loop.run_turn("what's the latest on 2330?", tool_context=ToolContext())
+
+    assert received == [sources]
+    assert "Here is some context." in result.final_text
+
+
+async def test_run_turn_accumulates_web_search_sources_onto_the_turn_result() -> None:
+    """`TurnResult.web_search_sources` collects every `WebSearchResultEvent`'s sources across the
+    whole Turn — not just what a registered `web_search` hook happens to observe — since a Turn
+    can complete with no hook registered at all (e.g. a unit test, or a caller that only cares
+    about persistence). This is what `api.turn_driver._persist_answer` reads to build the
+    `WebSearchSourcesBlock` that survives past the live stream."""
+    sources = (
+        WebSearchSource(url="https://example.com/a", title="Source A"),
+        WebSearchSource(url="https://example.com/b", title="Source B"),
+    )
+    llm = StubLLMClient(
+        script=[make_text_response("Here is some context.")],
+        web_search_sources=[sources],
+    )
+    loop = AgentLoop(llm, tools=[], max_steps=2)
+
+    result = await loop.run_turn("what's the latest on 2330?", tool_context=ToolContext())
+
+    assert result.web_search_sources == sources

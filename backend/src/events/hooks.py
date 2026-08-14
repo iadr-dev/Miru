@@ -4,9 +4,12 @@ knows `PostToolHook`/`PreLLMHook`/`CancelToken` as Protocol shapes; the handlers
 built here (interaction layer) and handed into `AgentLoop`'s constructor at application-wiring
 time (e.g. `api/` composing a request-scoped `AgentLoop`, itself out of scope for this phase).
 
-Two handlers ship today:
+Three handlers ship today:
 - `EventBusPostToolHook` — publishes a `tool.result`-shaped internal event for every dispatch
   outcome (blocked / masked / real), so the SSE bridge and any metrics subscriber see it live.
+- `EventBusThinkingHook` — publishes a `thinking.delta`-shaped internal event for every
+  extended-thinking chunk the model streams, so the SSE bridge forwards it live to the
+  frontend's timeline UI.
 - `MemoryRecallPreLLMHook` — the `pre_llm` memory-injection handler; wraps `memory.recall.
   recall` and appends its rendered block as a system message right after compaction, never
   touching the governance-owned system prefix.
@@ -17,13 +20,22 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from events.bus import EventBus
-from llm.base import Message, MessageRole
+from llm.base import Message, MessageRole, WebSearchSource
+
+
+def _natural_language_summary(tool_name: str, *, guardrail_allowed: bool) -> str:
+    """A short, frontend-facing narration of one tool dispatch — deliberately NOT
+    `agent.loop._summarize_result`'s `TypeName(field, field)` journal/LLM-facing dump, which is
+    an internal debugging shape a user-facing tool-call pill must never render verbatim."""
+    label = tool_name.replace("_", " ")
+    return f"Ran {label}" if guardrail_allowed else f"Blocked {label}"
 
 
 class EventBusPostToolHook:
     """`post_tool` handler: republishes every tool-dispatch outcome onto the event bus as an
-    internal `tool.result` event. Carries no raw payload — only the same redacted
-    `result_summary` the journal already uses."""
+    internal `tool.result` event. Carries no raw payload — the `summary` field is a short
+    natural-language narration derived from the tool name, not the raw `result_summary` the
+    journal uses internally (that shape is debugging-oriented, not user-facing)."""
 
     def __init__(self, bus: EventBus, *, turn_id: str, agent_id: str = "root") -> None:
         self._bus = bus
@@ -40,6 +52,7 @@ class EventBusPostToolHook:
         guardrail_allowed: bool,
         guardrail_reason: str | None,
     ) -> None:
+        del result_summary  # journal/LLM-facing shape — never the frontend's own `summary`
         self._bus.publish(
             "tool.result",
             turn_id=self._turn_id,
@@ -48,9 +61,54 @@ class EventBusPostToolHook:
                 "step_index": step_index,
                 "tool_name": tool_name,
                 "argument_keys": list(argument_keys),
-                "summary": result_summary,
+                "summary": _natural_language_summary(
+                    tool_name, guardrail_allowed=guardrail_allowed
+                ),
                 "guardrail_allowed": guardrail_allowed,
                 "guardrail_reason": guardrail_reason,
+            },
+        )
+
+
+class EventBusThinkingHook:
+    """`thinking` handler: republishes every extended-thinking delta chunk onto the event bus
+    as a `thinking.delta` event, `{agent_id, text}` — `text` is the raw delta chunk (not
+    accumulated), the frontend's `turn-store.ts` owns per-`agent_id` accumulation client-side,
+    mirroring how `EventBusPostToolHook` republishes rather than accumulates."""
+
+    def __init__(self, bus: EventBus, *, turn_id: str, agent_id: str = "root") -> None:
+        self._bus = bus
+        self._turn_id = turn_id
+        self._agent_id = agent_id
+
+    async def __call__(self, *, text: str) -> None:
+        self._bus.publish(
+            "thinking.delta",
+            turn_id=self._turn_id,
+            agent_id=self._agent_id,
+            data={"agent_id": self._agent_id, "text": text},
+        )
+
+
+class EventBusWebSearchHook:
+    """`web_search` handler: republishes every completed native-web-search call onto the event
+    bus as a `web_search.result` event, `{agent_id, sources}` — `sources` is the full source
+    list for that one search (already-complete, not a delta to accumulate), mirroring how
+    `EventBusThinkingHook` republishes verbatim rather than transforming."""
+
+    def __init__(self, bus: EventBus, *, turn_id: str, agent_id: str = "root") -> None:
+        self._bus = bus
+        self._turn_id = turn_id
+        self._agent_id = agent_id
+
+    async def __call__(self, *, sources: tuple[WebSearchSource, ...]) -> None:
+        self._bus.publish(
+            "web_search.result",
+            turn_id=self._turn_id,
+            agent_id=self._agent_id,
+            data={
+                "agent_id": self._agent_id,
+                "sources": [{"url": source.url, "title": source.title} for source in sources],
             },
         )
 
@@ -82,4 +140,10 @@ class MemoryRecallPreLLMHook:
         return [memory_message, *messages]
 
 
-__all__ = ["EventBusPostToolHook", "MemoryRecallPreLLMHook", "RecallBlockProvider"]
+__all__ = [
+    "EventBusPostToolHook",
+    "EventBusThinkingHook",
+    "EventBusWebSearchHook",
+    "MemoryRecallPreLLMHook",
+    "RecallBlockProvider",
+]

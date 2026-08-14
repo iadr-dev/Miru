@@ -9,9 +9,14 @@ import asyncio
 from pathlib import Path
 
 from agent.loop import AgentLoop
-from events.bus import InMemoryEventBus
-from events.hooks import EventBusPostToolHook, MemoryRecallPreLLMHook
-from llm.base import MessageRole
+from events.bus import Event, InMemoryEventBus
+from events.hooks import (
+    EventBusPostToolHook,
+    EventBusThinkingHook,
+    EventBusWebSearchHook,
+    MemoryRecallPreLLMHook,
+)
+from llm.base import MessageRole, WebSearchSource
 from tests.agent.conftest import EchoTool
 from tests.llm.stubs import StubLLMClient, make_text_response, make_tool_call_response
 from tools.base import ToolContext
@@ -61,6 +66,88 @@ async def test_post_tool_hook_built_in_events_fires_from_the_real_loop_dispatch(
     result = await task
 
     assert result == ["tool.result"]
+
+
+async def test_post_tool_hook_publishes_natural_language_summary_not_raw_field_dump() -> None:
+    """The `tool.result` `summary` field is frontend-facing narration — never the raw
+    `TypeName(field, field)` `_summarize_result` dump the journal/LLM-facing `ToolResultPart`
+    use for the exact same dispatch outcome."""
+    bus = InMemoryEventBus()
+    hook = EventBusPostToolHook(bus, turn_id="turn-1")
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(
+                tool_call_id="call-1", name="echo_tool", arguments={"text": "hi"}
+            ),
+            make_text_response("done"),
+        ]
+    )
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=4, post_tool_hooks=[hook])
+
+    async def collect() -> Event:
+        async for event in bus.subscribe(["tool.result"]):
+            return event
+        raise AssertionError("no tool.result event published")
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    await loop.run_turn("echo hi", tool_context=ToolContext())
+    event = await task
+
+    summary = event.data["summary"]
+    assert isinstance(summary, str)
+    assert "(" not in summary  # never the `TypeName(field, field)` shape
+    assert "echo" in summary.lower()
+
+
+async def test_thinking_hook_built_in_events_fires_from_the_real_loop_stream() -> None:
+    bus = InMemoryEventBus()
+    hook = EventBusThinkingHook(bus, turn_id="turn-1", agent_id="root")
+    llm = StubLLMClient(
+        script=[make_text_response("done")],
+        thinking_chunks=[["pondering"]],
+    )
+    loop = AgentLoop(llm, tools=[], max_steps=2, thinking_hooks=[hook])
+
+    async def collect() -> Event:
+        async for event in bus.subscribe(["thinking.delta"]):
+            return event
+        raise AssertionError("no thinking.delta event published")
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    await loop.run_turn("hi", tool_context=ToolContext())
+    event = await task
+
+    assert event.kind == "thinking.delta"
+    assert event.data == {"agent_id": "root", "text": "pondering"}
+
+
+async def test_web_search_hook_built_in_events_fires_from_the_real_loop_stream() -> None:
+    bus = InMemoryEventBus()
+    hook = EventBusWebSearchHook(bus, turn_id="turn-1", agent_id="root")
+    sources = (WebSearchSource(url="https://example.com/a", title="Source A"),)
+    llm = StubLLMClient(
+        script=[make_text_response("done")],
+        web_search_sources=[sources],
+    )
+    loop = AgentLoop(llm, tools=[], max_steps=2, web_search_hooks=[hook])
+
+    async def collect() -> Event:
+        async for event in bus.subscribe(["web_search.result"]):
+            return event
+        raise AssertionError("no web_search.result event published")
+
+    task = asyncio.create_task(collect())
+    await asyncio.sleep(0)
+    await loop.run_turn("hi", tool_context=ToolContext())
+    event = await task
+
+    assert event.kind == "web_search.result"
+    assert event.data == {
+        "agent_id": "root",
+        "sources": [{"url": "https://example.com/a", "title": "Source A"}],
+    }
 
 
 async def test_pre_llm_hook_injects_memory_block_into_the_real_loop_messages() -> None:

@@ -66,4 +66,10 @@ def tool_lookup(registry: SkillRegistry) -> dict[str, Tool]:
     names: set[str] = set()
     for skill in registry.all_skills():
         names.update(skill.frontmatter.tools)
+    # `web_search`/`fetch_url` are never in a skill's own allowlist (no built-in skill names
+    # them) — they are granted only via the orchestrator's per-turn `web_search_enabled` toggle,
+    # so this fixture adds them explicitly, matching how the real default tool registry
+    # (`tools.__init__.build_default_registry`) always registers `web_search_tools` regardless
+    # of any skill's allowlist.
+    names.update({"web_search", "fetch_url"})
     return {name: ScriptedTool(name) for name in names}

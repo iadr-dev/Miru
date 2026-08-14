@@ -128,9 +128,17 @@ def _contains_trading_language(sentence: str) -> bool:
 
 
 def _split_sentences(text: str) -> list[str]:
+    """Split on both ASCII (`. ! ?`) and full-width Chinese (`。！？`) sentence terminators.
+
+    Chinese sentences don't reliably have trailing whitespace after the terminator (unlike
+    English), so the split keeps the terminator attached without requiring `\\s+` after it —
+    an ASCII-only split treats an entire Chinese-language answer as one "sentence", so a single
+    stray trading-language match anywhere in it would redact the whole multi-paragraph answer
+    instead of just the offending clause.
+    """
     if not text:
         return []
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    parts = re.split(r"(?<=[.!?。！？])\s*", text.strip())
     return [part for part in parts if part]
 
 
@@ -158,7 +166,15 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
         else:
             cleaned.append(sentence)
 
-    candidate = " ".join(cleaned).strip()
+    # `_split_sentences` discards each terminator's trailing whitespace, so a plain `" ".join`
+    # would insert a space that was never there for CJK text (Chinese sentences run together
+    # with no space after `。！？`) while still needing one between ASCII sentences (`. ! ?`).
+    # Rejoin using each *preceding* sentence's own terminator to decide.
+    candidate = cleaned[0] if cleaned else ""
+    for sentence in cleaned[1:]:
+        separator = "" if candidate and candidate[-1] in "。！？" else " "
+        candidate += separator + sentence
+    candidate = candidate.strip()
     if has_market_data and not _has_caveat(candidate):
         candidate = f"{candidate}\n\n{_NON_TRADING_CAVEAT}".strip()
 
