@@ -17,9 +17,9 @@ from config import get_settings
 class Base(DeclarativeBase):
     """Declarative base for all ORM models (backend/src/db/).
 
-    Dual-dialect conventions (SQLite dev / Postgres prod): UUID PKs as app-generated `text`,
-    JSON not JSONB where portable, CHECK constraints instead of native ENUM, money as integer
-    micro-units. Applies to every model built on this base.
+    Dual-dialect conventions (database-schema.md, backend/CLAUDE.md §6): UUID PKs as
+    app-generated `text`, JSON not JSONB where portable, CHECK constraints instead of native
+    ENUM, money as integer micro-units. Applies to every model built on this base.
     """
 
 
@@ -30,6 +30,30 @@ def make_engine(database_url: str | None = None) -> AsyncEngine:
 
 def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def ensure_schema(engine: AsyncEngine) -> None:
+    """Create every table/index/constraint declared on `Base.metadata` that doesn't already
+    exist — this project's sole schema-provisioning mechanism (no Alembic migration chain).
+    `create_all()` is idempotent (skips existing tables), so calling this once per process at
+    startup is safe even when multiple replicas race to call it concurrently; each schema-bearing
+    process (api, scheduler, ingest, mcp) calls it once from its own composition root."""
+    # Side-effect import: registers every ORM model on `Base.metadata` before `create_all` runs —
+    # deferred here (not a top-level import) to avoid a construction-time import cycle, since
+    # `db.models` imports `Base` from this module.
+    from db import models  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def ensure_schema_for(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """`ensure_schema`, recovering the bound engine from an already-built session factory —
+    the composition roots (`api`/`mcp`/`scheduler`/`ingest`) each build their session factory
+    via the shared, sync `build_session_factory`/`make_session_factory` helpers and only have a
+    running event loop to await this on afterward, at their own async startup point."""
+    engine = session_factory.kw["bind"]
+    await ensure_schema(engine)
 
 
 @asynccontextmanager
