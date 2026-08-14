@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
+import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
@@ -50,14 +51,17 @@ from api.dependencies import (
     get_session,
     get_state,
     get_user_store,
+    optional_user,
     require_user,
 )
 from api.errors import ApiError
 from config.settings import Settings
 
+logger = structlog.get_logger(__name__)
+
 router = APIRouter(tags=["accounts"])
 
-REFRESH_TOKEN_COOKIE = "refresh_token"
+REFRESH_TOKEN_COOKIE = "refresh_token"  # noqa: S105 — cookie name, not a secret
 _STATE_COOKIE = "oauth_state"
 _VERIFIER_COOKIE = "oauth_code_verifier"
 _NONCE_COOKIE = "oauth_nonce"
@@ -71,7 +75,7 @@ def _session_store(session: AsyncSession = Depends(get_session)) -> SessionStore
 
 def _secure_cookies(settings: Settings) -> bool:
     """`Secure` cookies in production; relaxed in local dev so the flow works over plain HTTP."""
-    return settings.aitw_env == "production"
+    return settings.env == "production"
 
 
 def _set_flow_cookies(
@@ -220,45 +224,19 @@ class MeResponse(BaseModel):
     entitlements: EntitlementView
 
 
-def _frontend_url(settings: Settings, path: str, **query: str) -> str:
-    url = f"{settings.frontend_base_url}{path}"
-    return f"{url}?{urlencode(query)}" if query else url
-
-
-def _oauth_error_redirect(
-    settings: Settings, provider: str, *, code: str, retryable: bool
-) -> RedirectResponse:
-    # A provider callback is a full top-level browser navigation, never a fetch the frontend can
-    # inspect — an error here must land the user back on a real page, not a bare JSON body, so
-    # the outcome travels as a query param the frontend's error screen reads and localizes.
-    target = _frontend_url(
-        settings,
-        "/auth/error",
-        provider=provider,
-        code=code,
-        retryable="1" if retryable else "0",
-    )
-    redirect = RedirectResponse(url=target, status_code=status.HTTP_302_FOUND)
-    _clear_flow_cookies(redirect)
-    return redirect
-
-
 @router.get("/auth/oauth/{provider}/callback")
-async def oauth_callback(
+async def oauth_callback(  # noqa: PLR0913 — the callback carries the request + stored verifiers + DI seams
     provider: str,
     request: Request,
+    response: Response,
     code: str = Query(...),
     oauth_state: str = Query(..., alias="state"),
     state: AppState = Depends(get_state),
     store: UserStore = Depends(get_user_store),
     session_store: SessionStore = Depends(_session_store),
-) -> RedirectResponse:
+) -> MeResponse:
     """OAuth redirect target: verify `state`, exchange the code, verify the ID token, resolve the
-    identity (login/signup or link), issue the session cookies, then hand the browser back to the
-    frontend. The provider lands the browser here as a full top-level navigation (per
-    `google_redirect_uri`/`line_redirect_uri` in settings pointing directly at this route) — so
-    every outcome, success or failure, must end in a redirect, never a bare JSON body the user
-    would otherwise be staring at."""
+    identity (login/signup or link), then issue the session cookies."""
     oauth_provider = _parse_provider(provider)
     stored_state = request.cookies.get(_STATE_COOKIE)
     stored_verifier = request.cookies.get(_VERIFIER_COOKIE)
@@ -277,28 +255,41 @@ async def oauth_callback(
             stored_nonce=stored_nonce,
             current_user_id=link_user_id,
         )
-    except StateMismatchError:
-        return _oauth_error_redirect(
-            state.settings, provider, code="oauth_state_mismatch", retryable=False
-        )
-    except (TokenExchangeError, IdentityVerificationError):
-        return _oauth_error_redirect(state.settings, provider, code="oauth_failed", retryable=True)
-    except ProviderAlreadyLinkedError:
-        return _oauth_error_redirect(
-            state.settings, provider, code="provider_already_linked", retryable=False
-        )
+    except StateMismatchError as exc:
+        _clear_flow_cookies(response)
+        raise ApiError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="oauth_state_mismatch",
+            message="OAuth state mismatch — please restart sign-in.",
+            retryable=False,
+        ) from exc
+    except (TokenExchangeError, IdentityVerificationError) as exc:
+        _clear_flow_cookies(response)
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="oauth_failed",
+            message="Sign-in could not be completed.",
+            retryable=True,
+        ) from exc
+    except ProviderAlreadyLinkedError as exc:
+        _clear_flow_cookies(response)
+        raise ApiError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="provider_already_linked",
+            message="That provider identity is already linked to another account.",
+            retryable=False,
+        ) from exc
 
+    _clear_flow_cookies(response)
     _, refresh_token = await session_store.create(
         user_id=user.id,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client else None,
     )
-    redirect = RedirectResponse(
-        url=_frontend_url(state.settings, "/market"), status_code=status.HTTP_302_FOUND
+    _issue_session_cookies(
+        response, state.settings, user_id=user.id, refresh_token=refresh_token
     )
-    _clear_flow_cookies(redirect)
-    _issue_session_cookies(redirect, state.settings, user_id=user.id, refresh_token=refresh_token)
-    return redirect
+    return MeResponse(user=user, entitlements=_entitlements(user))
 
 
 @router.post("/auth/refresh")
