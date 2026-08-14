@@ -65,11 +65,11 @@ class TurnBudget:
     def from_settings(cls, settings: Settings | None = None) -> TurnBudget:
         settings = settings or get_settings()
         return cls(
-            max_subagents=settings.aitw_orch_max_subagents,
-            max_steps_per_agent=settings.aitw_orch_max_steps_per_agent,
-            max_tool_calls=settings.aitw_orch_max_tool_calls_per_turn,
-            max_cost_micros=settings.aitw_orch_max_cost_micros_per_turn,
-            max_tokens=settings.aitw_orch_max_tokens_per_turn,
+            max_subagents=settings.orch_max_subagents,
+            max_steps_per_agent=settings.orch_max_steps_per_agent,
+            max_tool_calls=settings.orch_max_tool_calls_per_turn,
+            max_cost_micros=settings.orch_max_cost_micros_per_turn,
+            max_tokens=settings.orch_max_tokens_per_turn,
         )
 
     def clamp_subagents(self, requested: int) -> int:

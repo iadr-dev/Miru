@@ -27,9 +27,9 @@ def _budget(**over: int) -> TurnBudget:
 
 def test_from_settings_reads_config_knobs() -> None:
     settings = Settings(
-        aitw_orch_max_subagents=3,
-        aitw_orch_max_steps_per_agent=6,
-        aitw_orch_max_tool_calls_per_turn=25,
+        orch_max_subagents=3,
+        orch_max_steps_per_agent=6,
+        orch_max_tool_calls_per_turn=25,
     )
     budget = TurnBudget.from_settings(settings)
     assert budget.max_subagents == 3

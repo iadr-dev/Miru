@@ -27,10 +27,12 @@ class PromptLayers:
     pet_hint: str | None = None
 
 
-def default_prompt_layers() -> PromptLayers:
+def default_prompt_layers(locale: str | None = None) -> PromptLayers:
     """The layer stack with only the (mandatory) governance layer populated — today's default
-    until personality/skill/pet layers exist."""
-    return PromptLayers(governance=governance_prompt())
+    until personality/skill/pet layers exist. `locale` (e.g. `"zh-TW"`/`"en"`) is interpolated
+    into the governance layer's language-matching rule; omitted, `governance_prompt()`'s own
+    default (`zh-TW`, the app's default interface locale) applies."""
+    return PromptLayers(governance=governance_prompt(locale) if locale else governance_prompt())
 
 
 def assemble_system_prompt(layers: PromptLayers | None = None) -> str:

@@ -8,7 +8,12 @@ from events.factory import (
     StreamReader,
     build_event_bus_factory,
 )
-from events.hooks import EventBusPostToolHook, MemoryRecallPreLLMHook
+from events.hooks import (
+    EventBusPostToolHook,
+    EventBusThinkingHook,
+    EventBusWebSearchHook,
+    MemoryRecallPreLLMHook,
+)
 from events.rate_limit import InMemoryRateLimiter, RateLimiter, RateLimitVerdict
 from events.redis_bus import RedisEventBus, RedisStreamReader, channel_for
 from events.stream_store import SqlAlchemyStreamEventStore, StreamEventStore
@@ -19,6 +24,8 @@ __all__ = [
     "EventBus",
     "EventBusFactory",
     "EventBusPostToolHook",
+    "EventBusThinkingHook",
+    "EventBusWebSearchHook",
     "InMemoryEventBus",
     "InMemoryEventBusFactory",
     "InMemoryRateLimiter",

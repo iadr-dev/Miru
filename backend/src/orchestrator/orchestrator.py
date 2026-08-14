@@ -28,14 +28,14 @@ import uuid
 
 import structlog
 
-from agent.hooks import PostToolHook, SteeringSource
+from agent.hooks import PostToolHook, SteeringSource, ThinkingHook, WebSearchHook
 from agent.loop import AgentLoop, StepBudgetExceededError, TurnResult
 from agent.prompts import PromptLayers, default_prompt_layers
 from config.settings import Settings, get_settings
 from events.bus import EventBus
 from events.usage import UsageAccumulator
-from llm.base import LLMClient
-from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
+from llm.base import ImagePart, LLMClient, WebSearchSource
+from llm.registry import ModelRole, ProviderNotConfiguredError, build_client, resolve_role
 from orchestrator.ceilings import (
     NoQuotaReserver,
     QuotaReservation,
@@ -54,6 +54,7 @@ from orchestrator.models import (
 )
 from orchestrator.synthesis import NoSuccessfulLanesError, Synthesizer
 from personality.registry import PersonalityRegistry, default_registry
+from skills.activity_labels import skill_activity_label
 from skills.models import Skill
 from skills.registry import SkillRegistry
 from tools.base import Tool, ToolContext
@@ -79,6 +80,38 @@ def _tools_for(skill: Skill, tool_lookup: dict[str, Tool]) -> list[Tool]:
 
 def _warm_tools(tool_lookup: dict[str, Tool]) -> list[Tool]:
     return [tool_lookup[name] for name in _WARM_TOOLS if name in tool_lookup]
+
+
+_WEB_SEARCH_TOOLS: tuple[str, ...] = ("web_search", "fetch_url")
+
+
+def _maybe_add_web_search(
+    tools: list[Tool],
+    tool_lookup: dict[str, Tool],
+    client: LLMClient,
+    *,
+    web_search_enabled: bool,
+) -> tuple[list[Tool], bool]:
+    """Decide this turn's web-search posture, branching on the resolved LLM client's own
+    capability: when the client's native web-search mechanism is available
+    (`client.capabilities.native_web_search`), grant that instead of the Brave-backed
+    `web_search`/`fetch_url` tools — the two are never both active for one turn, since the
+    native path already gives the model the same grounding/search ability the Brave tools
+    would, just server-side and without the extra tool-call round trip. Returns the (possibly
+    unchanged) tool list plus whether `native_web_search=True` should be passed into this
+    turn's `chat()`/`stream()` call.
+
+    Falls back to the additive Brave-tool behavior when the client has no native mechanism —
+    looked up from the same `tool_lookup` dict `_tools_for`/`_warm_tools` resolve from, so a
+    deployment that hasn't registered the web-search tools (no Brave key configured) silently
+    grants nothing rather than raising. Only ever called for the `none`/`single` framework
+    paths — fan-out lanes never see this, mirroring `model_override`'s SUBAGENT carve-out."""
+    if not web_search_enabled:
+        return tools, False
+    if client.capabilities.native_web_search:
+        return tools, True
+    extra = [tool_lookup[name] for name in _WEB_SEARCH_TOOLS if name in tool_lookup]
+    return [*tools, *extra], False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -109,8 +142,10 @@ def _resolve_personality_fragment(
     )
 
 
-def _skill_prompt_layers(skill: Skill | None, personality_fragment: str) -> PromptLayers:
-    base = default_prompt_layers()
+def _skill_prompt_layers(
+    skill: Skill | None, personality_fragment: str, locale: str
+) -> PromptLayers:
+    base = default_prompt_layers(locale)
     layers = dataclasses.replace(base, personality=personality_fragment)
     if skill is None:
         return layers
@@ -128,9 +163,15 @@ def _lane_from_turn(turn: TurnResult, *, agent_id: str, skill: str) -> LaneResul
             confidence=0.0,
             reason="lane produced no final content",
             rich_cards=turn.rich_cards,
+            web_search_sources=turn.web_search_sources,
         )
     return LaneResult(
-        agent_id=agent_id, skill=skill, text=text, status="ok", rich_cards=turn.rich_cards
+        agent_id=agent_id,
+        skill=skill,
+        text=text,
+        status="ok",
+        rich_cards=turn.rich_cards,
+        web_search_sources=turn.web_search_sources,
     )
 
 
@@ -150,6 +191,13 @@ def _lane_cards(lanes: tuple[LaneResult, ...]) -> tuple[RichCard, ...]:
     """Flatten every lane's rich cards into one turn-level tuple, in lane order — the durable
     record of what the fan-out surfaced, mirroring the live per-lane `rich_card` events."""
     return tuple(card for lane in lanes for card in lane.rich_cards)
+
+
+def _lane_web_search_sources(lanes: tuple[LaneResult, ...]) -> tuple[WebSearchSource, ...]:
+    """Flatten every lane's web-search sources into one turn-level tuple, in lane order —
+    mirrors `_lane_cards`'s own flattening, the durable record `api.turn_driver._persist_answer`
+    turns into a `WebSearchSourcesBlock`."""
+    return tuple(source for lane in lanes for source in lane.web_search_sources)
 
 
 def _render_findings(findings: tuple[Finding, ...]) -> str:
@@ -212,12 +260,22 @@ class Orchestrator:
         turn_id: str | None = None,
         personality: PersonalityContext | None = None,
         steering_source: SteeringSource | None = None,
+        locale: str = "zh-TW",
+        model_override: str | None = None,
+        web_search_enabled: bool = False,
+        images: tuple[ImagePart, ...] = (),
     ) -> OrchestratorResult:
         """`steering_source` is only meaningful for `single` (the interactive root-agent lane a
         live `POST .../steer` call actually targets) — the fan-out frameworks' sub-agent lanes
         are independent, short-lived, and not individually steerable by a client that only knows
         the turn, not any one lane's `agent_id`; wiring it there is future scope, not silently
-        dropped functionality today."""
+        dropped functionality today.
+
+        `model_override`/`web_search_enabled`/`images` are per-turn knobs consulted only by the
+        `none`/`single` framework paths (the interactive root-agent lane) — fan-out lanes
+        (`subagent`/`team`) never see any of them, mirroring the SUBAGENT-role carve-out
+        `_resolve_client` already enforces for `model_override` (an attached image is part of
+        the user's own turn, not something a fan-out sub-agent lane independently receives)."""
         routing = await self._classifier.classify(
             user_message, event_bus=event_bus, turn_id=turn_id
         )
@@ -226,7 +284,19 @@ class Orchestrator:
         fragment = _resolve_personality_fragment(self._personality_registry, personality)
         try:
             if routing.framework == "none":
-                result = await self._run_none(user_message, routing, tool_context, usage, fragment)
+                result = await self._run_none(
+                    user_message,
+                    routing,
+                    tool_context,
+                    usage,
+                    fragment,
+                    model_override,
+                    event_bus=event_bus,
+                    turn_id=turn_id,
+                    web_search_enabled=web_search_enabled,
+                    locale=locale,
+                    images=images,
+                )
             elif routing.framework == "single":
                 result = await self._run_single(
                     user_message=user_message,
@@ -238,6 +308,10 @@ class Orchestrator:
                     usage=usage,
                     personality_fragment=fragment,
                     steering_source=steering_source,
+                    locale=locale,
+                    model_override=model_override,
+                    web_search_enabled=web_search_enabled,
+                    images=images,
                 )
             elif routing.framework == "subagent":
                 result = await self._run_subagent(
@@ -249,6 +323,7 @@ class Orchestrator:
                     turn_id=turn_id,
                     usage=usage,
                     personality_fragment=fragment,
+                    locale=locale,
                 )
             else:
                 result = await self._run_team(
@@ -260,6 +335,7 @@ class Orchestrator:
                     turn_id=turn_id,
                     usage=usage,
                     personality_fragment=fragment,
+                    locale=locale,
                 )
         except TurnCeilingExceededError as exc:
             logger.warning(
@@ -280,6 +356,7 @@ class Orchestrator:
         event_bus: EventBus | None = None,
         turn_id: str | None = None,
         personality: PersonalityContext | None = None,
+        locale: str = "zh-TW",
     ) -> OrchestratorResult:
         """Run one already-chosen skill, skipping the intent classifier entirely.
 
@@ -308,6 +385,7 @@ class Orchestrator:
                 turn_id=turn_id,
                 usage=usage,
                 personality_fragment=fragment,
+                locale=locale,
             )
         except TurnCeilingExceededError as exc:
             logger.warning(
@@ -321,30 +399,54 @@ class Orchestrator:
 
     # ---- none ----
 
-    async def _run_none(
+    async def _run_none(  # noqa: PLR0913, PLR0917 — one field per turn-start dimension
         self,
         user_message: str,
         routing: Routing,
         tool_context: ToolContext,
         usage: UsageAccumulator,
         personality_fragment: str,
+        model_override: str | None = None,
+        *,
+        event_bus: EventBus | None = None,
+        turn_id: str | None = None,
+        web_search_enabled: bool = False,
+        locale: str = "zh-TW",
+        images: tuple[ImagePart, ...] = (),
     ) -> OrchestratorResult:
-        """Direct reply from the system prompt — no tools, no skills. Runs through an
-        `AgentLoop` with an empty tool set so the mandatory `pre_output` guardrail still fires
-        on the answer."""
+        """Direct reply from the system prompt — no tools, no skills (unless `web_search_enabled`
+        grants the two web-access tools for this turn). Runs through an `AgentLoop` with the
+        resolved tool set so the mandatory `pre_output` guardrail still fires on the answer.
+
+        `_build_loop` resolves the AGENT-role client (honoring `model_override`) and decides the
+        web-search posture from that client's own capabilities — this method only forwards the
+        turn's raw tool list (empty here) and toggle. `event_bus`/`turn_id` must be forwarded too
+        (not just `_run_single`'s concern): `_build_loop` only wires the `web_search`/`thinking`
+        event-bus hooks when it has a bus, and `none` turns can trigger native web search same
+        as `single` — dropping them here would silently swallow the live `web_search.result`
+        SSE frame for every `none`-framework turn."""
         loop = self._build_loop(
             tools=[],
             prompt_layers=dataclasses.replace(
-                default_prompt_layers(), personality=personality_fragment
+                default_prompt_layers(locale), personality=personality_fragment
             ),
             max_steps=1,
             role=ModelRole.AGENT,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            model_override=model_override,
+            web_search_enabled=web_search_enabled,
         )
-        turn = await loop.run_turn(user_message, tool_context=tool_context)
+        turn = await loop.run_turn(user_message, tool_context=tool_context, images=images)
         self._feed_usage(usage, turn)
-        # No tools run in the `none` framework, so there are never cards here — but the emit is
-        # threaded uniformly so this path is not a silent exception if that ever changes.
-        return OrchestratorResult(final_text=turn.final_text, routing=routing)
+        # No tools run in the `none` framework, so `turn.rich_cards` is always empty here — but
+        # `web_search_sources` is real: `web_search_enabled` can grant native web search even
+        # with zero tool calls, so it must still surface on the result, not be silently dropped.
+        return OrchestratorResult(
+            final_text=turn.final_text,
+            routing=routing,
+            web_search_sources=turn.web_search_sources,
+        )
 
     # ---- single ----
 
@@ -360,22 +462,29 @@ class Orchestrator:
         usage: UsageAccumulator,
         personality_fragment: str,
         steering_source: SteeringSource | None = None,
+        locale: str = "zh-TW",
+        model_override: str | None = None,
+        web_search_enabled: bool = False,
+        images: tuple[ImagePart, ...] = (),
     ) -> OrchestratorResult:
         skills = routing.bounded_skills()
         skill = self._registry.get(skills[0]) if skills else None
         tools = _tools_for(skill, self._tool_lookup) if skill else _warm_tools(self._tool_lookup)
         loop = self._build_loop(
             tools=tools,
-            prompt_layers=_skill_prompt_layers(skill, personality_fragment),
+            prompt_layers=_skill_prompt_layers(skill, personality_fragment, locale),
             max_steps=budget.max_steps_per_agent,
             role=ModelRole.AGENT,
             event_bus=event_bus,
             turn_id=turn_id,
             agent_id=_ROOT_AGENT_ID,
             steering_source=steering_source,
+            model_override=model_override,
+            web_search_enabled=web_search_enabled,
+            locale=locale,
         )
         try:
-            turn = await loop.run_turn(user_message, tool_context=tool_context)
+            turn = await loop.run_turn(user_message, tool_context=tool_context, images=images)
         except StepBudgetExceededError:
             logger.warning("orch_single_step_budget_exceeded", turn_id=turn_id)
             return OrchestratorResult(final_text=_DEGRADED_ALL_LANES, routing=routing)
@@ -388,7 +497,10 @@ class Orchestrator:
             turn.rich_cards, event_bus=event_bus, turn_id=turn_id, agent_id=_ROOT_AGENT_ID
         )
         return OrchestratorResult(
-            final_text=turn.final_text, routing=routing, rich_cards=turn.rich_cards
+            final_text=turn.final_text,
+            routing=routing,
+            rich_cards=turn.rich_cards,
+            web_search_sources=turn.web_search_sources,
         )
 
     # ---- subagent (parallel) ----
@@ -404,6 +516,7 @@ class Orchestrator:
         turn_id: str | None,
         usage: UsageAccumulator,
         personality_fragment: str,
+        locale: str = "zh-TW",
     ) -> OrchestratorResult:
         skills = self._plan_fanout(routing, budget)
         reservation = await self._quota_reserver.reserve(
@@ -421,6 +534,7 @@ class Orchestrator:
                 degraded=reservation.is_degraded(skill_name),
                 usage=usage,
                 personality_fragment=personality_fragment,
+                locale=locale,
             )
 
         outcomes = await asyncio.gather(
@@ -446,6 +560,7 @@ class Orchestrator:
         turn_id: str | None,
         usage: UsageAccumulator,
         personality_fragment: str,
+        locale: str = "zh-TW",
     ) -> OrchestratorResult:
         skills = self._plan_fanout(routing, budget)
         reservation = await self._quota_reserver.reserve(
@@ -465,8 +580,9 @@ class Orchestrator:
                     turn_id=turn_id,
                     degraded=reservation.is_degraded(skill_name),
                     usage=usage,
-                    prior_findings=prior,
                     personality_fragment=personality_fragment,
+                    prior_findings=prior,
+                    locale=locale,
                 )
             except Exception as exc:
                 # A teammate's failure is a missing dimension, isolated the same way a parallel
@@ -493,6 +609,7 @@ class Orchestrator:
         usage: UsageAccumulator,
         personality_fragment: str,
         prior_findings: str | None = None,
+        locale: str = "zh-TW",
     ) -> LaneResult:
         """Run one lane's Step loop, with one corrective retry on an empty/degraded result then
         drop-with-flag. Sub-agents are read-only + independent, so the retry is
@@ -501,7 +618,7 @@ class Orchestrator:
         agent_id = f"{skill_name}:{uuid.uuid4().hex[:8]}"
         skill = self._registry.get(skill_name)
         tools = _tools_for(skill, self._tool_lookup)
-        activity = f"Running {skill_name}"
+        activity = skill_activity_label(skill_name, locale=locale)
         if event_bus is not None:
             event_bus.publish(
                 "agent.spawned",
@@ -551,6 +668,7 @@ class Orchestrator:
             agent_id=agent_id,
             usage=usage,
             personality_fragment=personality_fragment,
+            locale=locale,
         )
         if lane.completeness == "empty":
             lane = await self._run_lane_attempt(
@@ -564,6 +682,7 @@ class Orchestrator:
                 agent_id=agent_id,
                 usage=usage,
                 personality_fragment=personality_fragment,
+                locale=locale,
             )
             if lane.completeness == "empty":
                 lane = lane.model_copy(
@@ -595,15 +714,17 @@ class Orchestrator:
         agent_id: str,
         usage: UsageAccumulator,
         personality_fragment: str,
+        locale: str = "zh-TW",
     ) -> LaneResult:
         loop = self._build_loop(
             tools=tools,
-            prompt_layers=_skill_prompt_layers(skill, personality_fragment),
+            prompt_layers=_skill_prompt_layers(skill, personality_fragment, locale),
             max_steps=budget.max_steps_per_agent,
             role=ModelRole.SUBAGENT,
             event_bus=event_bus,
             turn_id=turn_id,
             agent_id=agent_id,
+            locale=locale,
         )
         try:
             turn = await loop.run_turn(lane_message, tool_context=tool_context)
@@ -665,6 +786,7 @@ class Orchestrator:
                 lanes=lanes,
                 provenance=provenance,
                 rich_cards=_lane_cards(lanes),
+                web_search_sources=_lane_web_search_sources(lanes),
             )
         logger.info(
             "synthesis_provenance",
@@ -679,6 +801,7 @@ class Orchestrator:
             lanes=lanes,
             provenance=provenance,
             rich_cards=_lane_cards(lanes),
+            web_search_sources=_lane_web_search_sources(lanes),
         )
 
     def _emit_cards(
@@ -773,28 +896,55 @@ class Orchestrator:
         turn_id: str | None = None,
         agent_id: str = _ROOT_AGENT_ID,
         steering_source: SteeringSource | None = None,
+        model_override: str | None = None,
+        web_search_enabled: bool = False,
+        locale: str = "zh-TW",
     ) -> AgentLoop:
         post_tool_hooks: list[PostToolHook] | None = None
+        thinking_hooks: list[ThinkingHook] | None = None
+        web_search_hooks: list[WebSearchHook] | None = None
         if event_bus is not None:
-            from events.hooks import EventBusPostToolHook  # noqa: PLC0415 — same-layer import
+            from events.hooks import (  # noqa: PLC0415 — same-layer import
+                EventBusPostToolHook,
+                EventBusThinkingHook,
+                EventBusWebSearchHook,
+            )
 
             post_tool_hooks = [
                 EventBusPostToolHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
             ]
+            thinking_hooks = [
+                EventBusThinkingHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
+            ]
+            web_search_hooks = [
+                EventBusWebSearchHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
+            ]
+        client = self._resolve_client(role, model_override=model_override)
+        # `web_search_enabled` is only ever passed for the `none`/`single` framework paths
+        # (`_run_none`/`_run_single`) — fan-out lanes never pass it, so `native_web_search`
+        # resolves to `False` for every SUBAGENT-role loop regardless of this turn's toggle.
+        tools, native_web_search = _maybe_add_web_search(
+            tools, self._tool_lookup, client, web_search_enabled=web_search_enabled
+        )
         return AgentLoop(
-            self._resolve_client(role),
+            client,
             tools=tools,
             prompt_layers=prompt_layers,
             max_steps=max_steps,
             settings=self._settings,
             post_tool_hooks=post_tool_hooks,
+            thinking_hooks=thinking_hooks,
+            web_search_hooks=web_search_hooks,
             steering_source=steering_source,
+            native_web_search=native_web_search,
         )
 
-    def _resolve_client(self, role: ModelRole) -> LLMClient:
+    def _resolve_client(self, role: ModelRole, *, model_override: str | None = None) -> LLMClient:
         """Resolve the Step-loop client for a role: single/none reply agents use the strong
         AGENT role, fan-out lanes use the cheap/fast SUBAGENT role. Injected clients (tests)
-        take precedence; otherwise route via `llm/registry.py` — never a hardcoded model."""
+        take precedence; otherwise route via `llm/registry.py` — never a hardcoded model.
+        `model_override` is only consulted for the non-SUBAGENT (AGENT) path — fan-out lanes
+        never take a thread's model override, regardless of what the caller passes here."""
         if role is ModelRole.SUBAGENT:
             if self._subagent_client is not None:
                 return self._subagent_client
@@ -804,7 +954,33 @@ class Orchestrator:
                 return resolve_role(ModelRole.AGENT, self._settings)
         if self._agent_client is not None:
             return self._agent_client
-        return resolve_role(ModelRole.AGENT, self._settings)
+        return self._resolve_agent_client(model_override)
+
+    def _resolve_agent_client(self, model_override: str | None) -> LLMClient:
+        """The AGENT-role client, honoring a per-thread `model_override` (a `"provider/model"`
+        string) when present. Any failure to resolve it — malformed string, unconfigured
+        provider, or an unimplemented provider id — degrades to the normal
+        `resolve_role(ModelRole.AGENT, ...)` behavior rather than failing the turn, mirroring the
+        degrade-on-`ProviderNotConfiguredError` pattern already used by `IntentClassifier.
+        _resolve_client` and this class's own SUBAGENT→AGENT fallback above."""
+        if model_override is None:
+            return resolve_role(ModelRole.AGENT, self._settings)
+        try:
+            # Same "provider/model" split `llm.registry.resolve_role` uses internally
+            # (`_split_provider_model`) — reimplemented inline rather than imported since that
+            # helper is a private, underscore-prefixed name of a leaf module (`pyright`'s
+            # `reportPrivateUsage` correctly flags cross-module use of it).
+            provider_id, _, model_id = model_override.partition("/")
+            if not model_id:
+                raise ValueError(f"expected 'provider/model', got {model_override!r}")
+            return build_client(provider_id, model_id, self._settings)
+        except Exception as exc:  # malformed spec, unconfigured/unimplemented provider, etc.
+            logger.warning(
+                "model_override_failed_falling_back",
+                model_override=model_override,
+                error=str(exc),
+            )
+            return resolve_role(ModelRole.AGENT, self._settings)
 
 
 __all__ = ["Orchestrator", "PersonalityContext"]

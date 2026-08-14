@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import skills
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-import skills
 from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router
 from dataaccess.router import DataAccessRouter
@@ -32,7 +32,11 @@ from tools.registry import ToolRegistry
 
 
 def build_session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]:
-    """The real DB session factory built from `settings.database_url` (dialect-agnostic)."""
+    """The real DB session factory built from `settings.database_url` (dialect-agnostic).
+
+    Does NOT ensure the schema exists — this function is sync (called from sync composition
+    roots) and schema creation needs a running event loop. Each process's own async startup
+    path calls `db.base.ensure_schema_for(session_factory)` once, separately, to do that."""
     return make_session_factory(make_engine(settings.database_url))
 
 

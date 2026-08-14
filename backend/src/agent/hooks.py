@@ -1,8 +1,10 @@
-"""Dependency-inverted extension Protocols for the two Step-loop dispatch points that had no
+"""Dependency-inverted extension Protocols for the Step-loop dispatch points that had no
 registration seam before this phase: `post_tool` (fires after every tool dispatch, cannot
-veto) and `pre_llm` (runs on the message list right before every model call, cannot veto —
+veto), `pre_llm` (runs on the message list right before every model call, cannot veto —
 the only pre_llm check that can veto, the token-budget/compaction trigger, stays governance-
-owned and hardcoded in `agent.context_window.compact`).
+owned and hardcoded in `agent.context_window.compact`), `thinking` (fires once per
+extended-thinking delta chunk during a streamed Step, also observe-only), and `web_search`
+(fires once per completed native-web-search call during a streamed Step, also observe-only).
 
 `agent/loop.py` only ever imports the Protocol shapes below — never a concrete handler. Higher
 layers (the interaction-layer `events/` package) build concrete handlers (journal writers,
@@ -19,7 +21,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from llm.base import Message
+from llm.base import Message, WebSearchSource
 
 
 @runtime_checkable
@@ -52,6 +54,30 @@ class PreLLMHook(Protocol):
 
 
 @runtime_checkable
+class ThinkingHook(Protocol):
+    """Fires once per extended-thinking delta chunk the model streams (`llm.base.
+    ThinkingDeltaEvent`), already governance-scanned by the loop before this hook ever sees it
+    (see `AgentLoop._stream_step`) — mirrors `PostToolHook`'s "observe, never veto" contract.
+    Registered the same way as `PostToolHook`/`PreLLMHook`: a concrete handler (the
+    interaction-layer `events.hooks.EventBusThinkingHook`) is built above `agent/` and passed
+    into `AgentLoop`'s constructor, so this module only ever depends on the Protocol shape."""
+
+    async def __call__(self, *, text: str) -> None: ...
+
+
+@runtime_checkable
+class WebSearchHook(Protocol):
+    """Fires once per completed native-web-search call the model streams (`llm.base.
+    WebSearchResultEvent`) — mirrors `ThinkingHook`'s "observe, never veto" contract. Unlike
+    thinking text, sources are structured metadata (url/title), not free text, so this does
+    not run through `guardrails.check_output` — there is no prose to scan, and the URLs/titles
+    are exactly what the provider's own web-search call already surfaced, no different in kind
+    from a tool-result summary a `PostToolHook` already observes unscanned."""
+
+    async def __call__(self, *, sources: tuple[WebSearchSource, ...]) -> None: ...
+
+
+@runtime_checkable
 class CancelToken(Protocol):
     """A cooperative cancellation flag `AgentLoop.run_turn` polls between Steps. Read-only from
     the loop's perspective — whoever holds the token (the interaction-layer turn lifecycle)
@@ -77,4 +103,11 @@ class SteeringSource(Protocol):
     def drain(self) -> tuple[str, ...]: ...
 
 
-__all__ = ["CancelToken", "PostToolHook", "PreLLMHook", "SteeringSource"]
+__all__ = [
+    "CancelToken",
+    "PostToolHook",
+    "PreLLMHook",
+    "SteeringSource",
+    "ThinkingHook",
+    "WebSearchHook",
+]
