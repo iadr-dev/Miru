@@ -46,9 +46,13 @@ class _ScriptedToolThenAnswerClient:
         self._answer = answer
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
-        del tools
+        del tools, native_web_search
         already_called = any(msg.tool_results for msg in messages)
         usage = TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10)
         if already_called:
@@ -61,20 +65,24 @@ class _ScriptedToolThenAnswerClient:
         return LLMResponse(
             text=None,
             tool_calls=(
-                ToolCall(
-                    id="call-1", name="get_price_quote", arguments={"id": "2330", "market": "TW"}
-                ),
+                ToolCall(id="call-1", name="get_price_quote", arguments={"id": "2330", "market": "TW"}),
             ),
             stop_reason=StopReason.TOOL_USE,
             usage=usage,
         )
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> AsyncIterator[TextDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        response = await self.chat(messages, tools)
+        response = await self.chat(messages, tools, native_web_search=native_web_search)
         if response.text:
             yield TextDeltaEvent(text=response.text)
+        for call in response.tool_calls:
+            yield ToolCallEvent(tool_call=call)
         yield StreamDoneEvent(stop_reason=response.stop_reason, usage=response.usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:
@@ -108,9 +116,7 @@ class TestRichCardStream:
     def test_single_framework_tool_call_emits_rich_card_frame(self, settings, agent_answer) -> None:
         with _client(settings, agent_answer) as client:
             headers, _ = sign_in(client, settings, tier=Tier.FREE)
-            resp = client.post(
-                "/api/v1/agent/query", json={"message": "台積電報價"}, headers=headers
-            )
+            resp = client.post("/api/v1/agent/query", json={"message": "台積電報價"}, headers=headers)
             assert resp.status_code == 200
 
             frames = _parse_sse(resp.text)
@@ -135,9 +141,7 @@ class TestRichCardStream:
     def test_rich_card_is_persisted_as_a_block(self, settings, agent_answer) -> None:
         with _client(settings, agent_answer) as client:
             headers, _ = sign_in(client, settings, tier=Tier.FREE)
-            resp = client.post(
-                "/api/v1/agent/query", json={"message": "台積電報價"}, headers=headers
-            )
+            resp = client.post("/api/v1/agent/query", json={"message": "台積電報價"}, headers=headers)
             _parse_sse(resp.text)  # drain so the background driver finishes its persist
 
             thread_id = client.get("/api/v1/threads", headers=headers).json()["threads"][0]["id"]
@@ -154,17 +158,18 @@ class TestRichCardStream:
 
         class _ScriptedChipFlowsClient(_ScriptedToolThenAnswerClient):
             async def chat(
-                self, messages: list[Message], tools: list[ToolSpec] | None = None
+                self,
+                messages: list[Message],
+                tools: list[ToolSpec] | None = None,
+                *,
+                native_web_search: bool = False,
             ) -> LLMResponse:
-                del tools
+                del tools, native_web_search
                 already_called = any(msg.tool_results for msg in messages)
                 usage = TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10)
                 if already_called:
                     return LLMResponse(
-                        text=agent_answer,
-                        tool_calls=(),
-                        stop_reason=StopReason.END_TURN,
-                        usage=usage,
+                        text=agent_answer, tool_calls=(), stop_reason=StopReason.END_TURN, usage=usage
                     )
                 return LLMResponse(
                     text=None,

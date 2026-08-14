@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
+from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
@@ -15,11 +15,10 @@ from tools.fundamental_tools import (
     GetFinancialStatementTool,
     GetMarketValueTool,
 )
+from schemas.enums import Tier
 
 
-def _result(
-    payload: dict[str, object], *, data_class: DataClass = DataClass.PUBLIC
-) -> SourceResult:
+def _result(payload: dict[str, object], *, data_class: DataClass = DataClass.PUBLIC) -> SourceResult:
     return SourceResult(
         source_id="STUB",
         data_class=data_class,
@@ -54,6 +53,31 @@ async def test_get_financial_statement_selects_balance_sheet_capability() -> Non
 
     assert adapter.calls[0][0] is Capability.BALANCE_SHEET
     assert output.lines[0].value == 100.0
+
+
+async def test_get_financial_statement_selects_income_statement_capability() -> None:
+    symbol = Symbol(id="2330", market=Market.TW)
+    line = {
+        "symbol": "2330",
+        "market": "TW",
+        "period_end": "2026-06-30",
+        "statement_type": "income_statement",
+        "item": "Revenue",
+        "origin_name": "營業收入",
+        "value": 500.0,
+    }
+    router, adapter = make_router(symbol, {Capability.FINANCIALS: _result({"lines": [line]})})
+    tool = GetFinancialStatementTool(router)
+
+    output = await tool.run(
+        GetFinancialStatementInput(
+            id="2330", market=Market.TW, statement_type=FinancialStatementType.INCOME_STATEMENT
+        ),
+        ToolContext(),
+    )
+
+    assert adapter.calls[0][0] is Capability.FINANCIALS
+    assert output.lines[0].value == 500.0
 
 
 async def test_get_market_value_is_sponsor_gated() -> None:

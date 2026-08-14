@@ -76,9 +76,13 @@ class _StubAgentClient:
         self._answer = answer
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
-        del messages, tools
+        del messages, tools, native_web_search
         return LLMResponse(
             text=self._answer,
             tool_calls=(),
@@ -87,11 +91,17 @@ class _StubAgentClient:
         )
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> AsyncIterator[TextDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        response = await self.chat(messages, tools)
+        response = await self.chat(messages, tools, native_web_search=native_web_search)
         if response.text:
             yield TextDeltaEvent(text=response.text)
+        for call in response.tool_calls:
+            yield ToolCallEvent(tool_call=call)
         yield StreamDoneEvent(stop_reason=response.stop_reason, usage=response.usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:
@@ -126,14 +136,18 @@ def _build_registry():
 
 @pytest.fixture
 def settings() -> Settings:
-    # Provider creds forced to None so the OAuth-unconfigured path is deterministic regardless of
-    # whatever a developer's local .env happens to hold.
+    # Provider creds forced to None, and voice providers forced to the deterministic `stub`
+    # backend, so this fixture's behavior never depends on whatever a developer's local .env
+    # happens to hold (e.g. a real `VOICE_STT_PROVIDER=faster_whisper` would otherwise try to
+    # decode this suite's fake base64 audio and fail with a real codec error).
     return Settings(
         jwt_secret_key=_TEST_JWT_SECRET,
-        aitw_env="development",
+        env="development",
         google_client_id=None,
         google_client_secret=None,
         google_redirect_uri=None,
+        voice_stt_provider="stub",
+        voice_tts_provider="stub",
     )
 
 
@@ -142,7 +156,7 @@ def agent_answer() -> str:
     return "台積電近期表現穩定。以上為資訊整理，非投資建議。"
 
 
-def build_test_app(  # noqa: PLR0913 — one create_app collaborator per param, all keyword-only
+def build_test_app(  # noqa: PLR0913 — one create_app collaborator per parameter, all keyword-only
     settings: Settings,
     *,
     agent_answer: str,
@@ -195,7 +209,7 @@ def build_test_app(  # noqa: PLR0913 — one create_app collaborator per param, 
         subagent_client=resolved_agent_client,  # type: ignore[arg-type]  # stub satisfies the seam
         settings=settings,
     )
-    return create_app(
+    app = create_app(
         session_factory=session_factory,
         tool_registry=registry,
         skill_registry=skill_registry,
@@ -205,6 +219,24 @@ def build_test_app(  # noqa: PLR0913 — one create_app collaborator per param, 
         quote_feed=quote_feed,  # type: ignore[arg-type]  # test double satisfies the seam
         data_update_broker=data_update_broker,  # type: ignore[arg-type]  # test double satisfies the seam
     )
+
+    # `app_engine` is this test app's own long-lived engine — never disposed by `create_app`
+    # itself (production apps live for the process lifetime). Left undisposed, its aiosqlite
+    # connection's worker thread and its `asyncio.Future`s stay bound to whichever event loop
+    # was running when the connection was opened — TestClient's own `anyio` blocking-portal
+    # loop, which stops existing the moment that `with TestClient(...) as client:` block exits.
+    # Hooking disposal into FastAPI's own ASGI shutdown event runs it on THAT SAME loop, before
+    # the loop stops — the only safe place; disposing later (e.g. from the test's own thread,
+    # after `TestClient.__exit__` has already torn the loop down) would hand aiosqlite's
+    # cross-thread future-completion callback a dead loop, which is the exact native access-
+    # violation crash this fixes (confirmed via a suite-wide run whose crash trace pointed at a
+    # LATER test's `sign_in`/`asyncio.run` opening a fresh loop while an earlier test's
+    # undisposed engine's worker thread was still alive on the same OS thread).
+    @app.on_event("shutdown")
+    async def _dispose_test_engine() -> None:  # pyright: ignore[reportUnusedFunction]
+        await app_engine.dispose()
+
+    return app
 
 
 def build_test_client(  # noqa: PLR0913 — passthrough to build_test_app, all keyword-only
@@ -220,19 +252,22 @@ def build_test_client(  # noqa: PLR0913 — passthrough to build_test_app, all k
 ) -> TestClient:
     """Assemble a fully-wired `TestClient`. A test may pass its own `tool_registry` (e.g. one
     holding a sponsor-classed tool) to exercise the entitlement gate over the HTTP boundary, or
-    its own `agent_client`/`classifier` to script a tool-calling, single-framework turn."""
-    return TestClient(
-        build_test_app(
-            settings,
-            agent_answer=agent_answer,
-            tool_registry=tool_registry,
-            rate_limiter=rate_limiter,
-            quote_feed=quote_feed,
-            data_update_broker=data_update_broker,
-            agent_client=agent_client,
-            classifier=classifier,
-        )
+    its own `agent_client`/`classifier` to script a tool-calling, single-framework turn.
+
+    Builds the app synchronously (no event loop needed) — `TestClient.__enter__` is what starts
+    the one loop this app will ever run on, and its ASGI `startup` event (see `build_test_app`)
+    is what creates the schema on THAT loop."""
+    app = build_test_app(
+        settings,
+        agent_answer=agent_answer,
+        tool_registry=tool_registry,
+        rate_limiter=rate_limiter,
+        quote_feed=quote_feed,
+        data_update_broker=data_update_broker,
+        agent_client=agent_client,
+        classifier=classifier,
     )
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -261,9 +296,21 @@ async def _insert_user(session_factory, *, tier: Tier) -> str:
 
 
 def sign_in(client: TestClient, settings: Settings, *, tier: Tier) -> tuple[dict[str, str], str]:
-    """Insert a real `users` row at `tier` and return an `Authorization` header + the user id."""
+    """Insert a real `users` row at `tier` and return an `Authorization` header + the user id.
+
+    Runs `_insert_user` via `client.portal.call(...)` — the SAME loop the `TestClient`'s own ASGI
+    app and its `app_engine` connections already live on — rather than `asyncio.run(...)`, which
+    would spin a second, throwaway loop concurrently with that portal's loop. Two live event
+    loops in one process, each with its own aiosqlite worker thread, is exactly the situation
+    that produced a native access-violation crash on Windows (see `build_test_app`'s own
+    docstring for the full story); routing through the portal keeps this to one loop, period."""
     state = client.app.state.app_state
-    user_id = asyncio.run(_insert_user(state.session_factory, tier=tier))
+    assert client.portal is not None
+
+    async def _do_insert() -> str:
+        return await _insert_user(state.session_factory, tier=tier)
+
+    user_id = client.portal.call(_do_insert)
     token = issue_access_token(user_id=user_id, settings=settings)
     return {"Authorization": f"Bearer {token}"}, user_id
 
@@ -277,6 +324,9 @@ def build_sponsor_registry() -> ToolRegistry:
     """A registry whose `get_price_quote` is sponsor-classed — lets an HTTP test prove the
     quote route returns a masked teaser for a Free caller and real data for a Premium one, i.e.
     that the sponsor gate holds over the HTTP boundary exactly as at the tool-dispatch seam."""
+    from pydantic import BaseModel
+
+    from schemas.enums import DataClass
 
     class _Input(BaseModel):
         id: str

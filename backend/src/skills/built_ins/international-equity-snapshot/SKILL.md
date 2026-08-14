@@ -1,8 +1,8 @@
 ---
 name: international-equity-snapshot
 version: 1.0.0
-description: yfinance-backed non-TW equity/ETF snapshot — options chain, institutional/insider holders, fund holdings, market status, sector/industry overview, calendars, FinMind's own international roster+price, for one US/GB/JP/EU symbol.
-triggers: [美股, 國際股票, 選擇權鏈, 機構持股, 產業總覽, 財報日曆, non-TW equity, options chain, sector overview, institutional holders, calendar]
+description: yfinance-backed non-TW equity/ETF snapshot — options chain, institutional/insider holders, fund holdings, market status, sector/industry overview, calendars, analyst consensus, ESG score, FinMind's own international roster+price, for one US/GB/JP/EU symbol.
+triggers: [美股, 國際股票, 選擇權鏈, 機構持股, 產業總覽, 財報日曆, 目標價, ESG, non-TW equity, options chain, sector overview, institutional holders, calendar, analyst consensus, esg]
 design_pattern: tool_wrapper
 inputs:
   symbol_id:
@@ -11,7 +11,7 @@ inputs:
   market:
     type: string
     required: true
-tools: [get_options_chain, get_institutional_holders, get_fund_holdings, get_insider_activity, get_market_status, get_sector_overview, get_industry_overview, get_calendar_events_feed, get_international_stock, get_us_stock_price_minute]
+tools: [get_options_chain, get_institutional_holders, get_fund_holdings, get_insider_activity, get_market_status, get_sector_overview, get_industry_overview, get_calendar_events_feed, get_analyst_consensus, get_esg_score, get_international_stock, get_us_stock_price_minute]
 output_structure:
   - '市場狀態: 目前開盤/休市狀態'
   - '選擇權鏈: 最近到期日的買權/賣權 (若查詢的是個股/ETF)'
@@ -20,12 +20,15 @@ output_structure:
   - '內部人交易: Form-4 derived transactions (美國以外市場通常稀疏或空白)'
   - '產業/類股總覽: 若呼叫者額外提供 sector_key/industry_key'
   - '財報/IPO/經濟日曆: 若查詢者要求該市場近期事件'
+  - '分析師共識: 目標價區間、評等分佈 (若有覆蓋)'
+  - 'ESG 分數: Sustainalytics 風險分數 (若有覆蓋)'
   - 'FinMind 國際股票資訊+價格: FinMind 自有的美/英/歐/日股票資訊+價格資料集 (與 yfinance 主線資料是不同來源)'
   - '美股分鐘K: 若查詢的是美股且需要分鐘級價格 (Sponsor)'
 freshness_rule: 每個工具各自標明其 currentness_caveat；insider_activity 在美國以外市場經常為空，須明確說明「稀疏/無資料」而非省略欄位；get_international_stock 與主線 yfinance 資料是不同來源，須標明來源差異。
 boundaries:
   - 本技能僅服務 US/GB/JP/EU 四個市場 — TW 個股請改用台灣專屬技能 (company-profile/chip-flow-review 等)，不得用本技能的工具處理 TW 標的。
   - get_insider_activity 是美股 Form-4 揭露資料，非台灣董監事持股 (質押比請改用 governance-risk 技能)。
+  - get_analyst_consensus 僅陳述第三方已發布的目標價/評等數據，不得由本技能自行解讀為買賣訊號；無覆蓋時明確說明「無分析師覆蓋」。
   - 僅描述持股結構與市場狀態，不提供評等、目標價或買賣建議。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []
@@ -54,12 +57,17 @@ outputs: markdown
 6. If the caller wants upcoming earnings/IPO/economic events for the region, call
    `get_calendar_events_feed(market)` — a market-wide feed bundle, not a single-symbol
    calendar.
-7. If the caller specifically wants FinMind's own roster+price dataset for this symbol (a
+7. If the caller wants the analyst target-price/rating consensus, call
+   `get_analyst_consensus(symbol_id, market)` — state the mean/median/high/low target and
+   analyst count when covered, and plainly "no analyst coverage" when `consensus` is null.
+   If the caller wants an ESG read, call `get_esg_score(symbol_id, market)` — plainly "no ESG
+   data" when `esg` is null (coverage is sparse and skewed toward large-cap names).
+8. If the caller specifically wants FinMind's own roster+price dataset for this symbol (a
    distinct source from the yfinance-primary path used above — `id` here is the market's own
    quote symbol, e.g. `^DJI`/`BP.L`/`AALB.AS`/`7203.T`), call `get_international_stock(id,
    market)`; if it's a US symbol and minute-level price is needed, call
    `get_us_stock_price_minute(symbol_id, market="US", start_date, end_date)` (Sponsor-tier).
-8. Synthesize using `output_structure`, in order, reporting only sections the tools actually
+9. Synthesize using `output_structure`, in order, reporting only sections the tools actually
    returned data for. Never merge `get_international_stock`'s FinMind-sourced numbers into the
    same figure as the yfinance-primary price without labeling which source produced which
    number.

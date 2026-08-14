@@ -17,16 +17,23 @@ the way the ingest/scheduler daemons do.
 
 from __future__ import annotations
 
+import asyncio
+
 import uvicorn
 
 from config.settings import get_settings
+from db.base import ensure_schema_for
 from mcp.composition import build_mcp_http_app
 
 
 def main() -> None:
     settings = get_settings()
-    app = build_mcp_http_app(settings)
-    uvicorn.run(app, host=settings.mcp_host, port=settings.mcp_port)
+    built = build_mcp_http_app(settings)
+    # `create_all()` is idempotent, so this is safe even under multiple replicas racing to call
+    # it. Run once, synchronously, before `uvicorn.run` starts its own loop — this project's sole
+    # schema-provisioning mechanism (no Alembic migration chain).
+    asyncio.run(ensure_schema_for(built.session_factory))
+    uvicorn.run(built.app, host=settings.mcp_host, port=settings.mcp_port)
 
 
 if __name__ == "__main__":

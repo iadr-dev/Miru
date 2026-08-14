@@ -22,8 +22,8 @@ from calendar.trading_days import TradingDayCalendar
 from datetime import date
 
 import pytest
-
 import sources.finmind as finmind_module
+
 from config.settings import Settings
 from events.data_updates import InMemoryDataUpdateBroker
 from events.live_quote import (
@@ -47,7 +47,7 @@ from tests.sources.conftest import load_fixture, make_json_client_factory
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings(jwt_secret_key=_TEST_JWT_SECRET, aitw_env="development")
+    return Settings(jwt_secret_key=_TEST_JWT_SECRET, env="development")
 
 
 class _CountingFetcher:

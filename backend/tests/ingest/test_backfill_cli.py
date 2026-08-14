@@ -56,7 +56,7 @@ def test_all_whole_market_jobs_is_the_spec_list_the_cli_walks() -> None:
 
 
 def test_production_hard_stop_is_unconditional() -> None:
-    prod_settings = _settings(aitw_env="production")
+    prod_settings = _settings(env="production")
     with pytest.raises(ProductionHardStopError):
         _check_not_production(prod_settings)
 
@@ -73,8 +73,8 @@ async def test_refuses_without_override_or_flag(tmp_path: object) -> None:
 
 async def test_production_hard_stop_wins_even_with_override(tmp_path: object) -> None:
     """The production hard-stop fires even when `override=True` is passed — no override can
-    paper over `AITW_ENV=production`."""
-    settings = _settings(aitw_env="production")
+    paper over `ENV=production`."""
+    settings = _settings(env="production")
     ctx = _ctx(tmp_path)
 
     with pytest.raises(ProductionHardStopError):

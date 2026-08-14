@@ -90,7 +90,7 @@ async def run_ingest_loop(
 
 async def main() -> None:
     settings = get_settings()
-    daemon = build_ingest_daemon_from_settings(settings)
+    daemon = await build_ingest_daemon_from_settings(settings)
     daemon.seed_startup()
     shutdown = _ShutdownState()
 

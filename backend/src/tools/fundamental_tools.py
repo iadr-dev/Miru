@@ -1,7 +1,8 @@
 """Fundamental-category tools — the FinMind Fundamental-category datasets not already wired in
-`market_tools.py` (`financials`/`dividends`). `balance_sheet`/`cash_flow_statement` are folded
-into one `get_financial_statement` tool alongside a `statement_type` selector rather than three
-near-duplicate tools, matching the same shared row shape their adapters already share
+`market_tools.py` (`dividends`). `financials`/`balance_sheet`/`cash_flow_statement` (income
+statement, balance sheet, cash-flow statement) are folded into one `get_financial_statement`
+tool alongside a `statement_type` selector rather than three near-duplicate tools, matching the
+same shared row shape their adapters already share
 (`schemas.capabilities.FinancialStatementLine`). Corporate-action reference rows (capital
 reduction, delisting, split, par-value change) are bundled into `get_corporate_action_events`.
 """
@@ -26,9 +27,9 @@ from schemas.capabilities import (
 )
 from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
-from tools._rows import fetch_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
-from tools.common import DateRangeInput
+from tools.common import DateRangeInput, MarketOnlyInput
+from tools._rows import fetch_rows
 
 
 class _RowsOutput(BaseModel):
@@ -40,11 +41,17 @@ class _RowsOutput(BaseModel):
 
 
 class FinancialStatementType(StrEnum):
+    INCOME_STATEMENT = "income_statement"
     BALANCE_SHEET = "balance_sheet"
     CASH_FLOW = "cash_flow"
 
 
 _STATEMENT_CAPABILITY: dict[FinancialStatementType, Capability] = {
+    # `Capability.FINANCIALS` already wraps FinMind's `TaiwanStockFinancialStatements`
+    # (綜合損益表) for TW and yfinance's income-statement equivalent elsewhere, sharing the
+    # exact `item`/`origin_name`/`value`/`period_end` row shape `balance_sheet`/`cash_flow`
+    # already use — no new capability needed, just this selector wiring.
+    FinancialStatementType.INCOME_STATEMENT: Capability.FINANCIALS,
     FinancialStatementType.BALANCE_SHEET: Capability.BALANCE_SHEET,
     FinancialStatementType.CASH_FLOW: Capability.CASH_FLOW_STATEMENT,
 }
@@ -52,9 +59,8 @@ _STATEMENT_CAPABILITY: dict[FinancialStatementType, Capability] = {
 
 class GetFinancialStatementInput(DateRangeInput):
     statement_type: FinancialStatementType = Field(
-        description="Which statement to fetch — 'balance_sheet' or 'cash_flow'. The income "
-        "statement is covered by the existing get_price_quote-sibling financials tool, not "
-        "here."
+        description="Which statement to fetch — 'income_statement' (revenue/COGS/gross "
+        "margin/EPS), 'balance_sheet', or 'cash_flow'."
     )
 
 
@@ -63,11 +69,14 @@ class GetFinancialStatementOutput(_RowsOutput):
 
 
 class GetFinancialStatementTool(BaseTool):
-    """`get_financial_statement` — wraps `Capability.BALANCE_SHEET`/`Capability.
-    CASH_FLOW_STATEMENT`, selected by `statement_type`."""
+    """`get_financial_statement` — wraps `Capability.FINANCIALS`/`Capability.BALANCE_SHEET`/
+    `Capability.CASH_FLOW_STATEMENT`, selected by `statement_type`."""
 
     name = "get_financial_statement"
-    description = "Get balance-sheet or cash-flow-statement line items for one stock."
+    description = (
+        "Get income-statement (revenue/COGS/gross margin/EPS), balance-sheet, or "
+        "cash-flow-statement line items for one stock."
+    )
     input_model: type[BaseModel] = GetFinancialStatementInput
     output_model: type[BaseModel] = GetFinancialStatementOutput
     data_class = DataClass.PUBLIC
@@ -213,9 +222,7 @@ class GetMarketValueWeightTool(BaseTool):
     """`get_market_value_weight` — wraps `Capability.MARKET_VALUE_WEIGHT` (市值比重排行)."""
 
     name = "get_market_value_weight"
-    description = (
-        "Get the daily whole-market market-cap-weight ranking rows for one stock (Sponsor-tier)."
-    )
+    description = "Get the daily whole-market market-cap-weight ranking rows for one stock (Sponsor-tier)."
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetMarketValueWeightOutput
     data_class = DataClass.SPONSOR

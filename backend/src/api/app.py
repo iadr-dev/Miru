@@ -14,6 +14,9 @@ below it (accounts, orchestrator, skills, tools), never the reverse.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -43,13 +46,10 @@ from api.routers import (
 )
 from api.turn_registry import TurnRegistry
 from config.settings import Settings, get_settings
+from db.base import ensure_schema_for
 from events.factory import EventBusFactory, build_event_bus_factory
 from events.live_quote import QuoteFeed
-from events.live_quote_factory import (
-    DataUpdateBroker,
-    build_data_update_broker,
-    build_quote_feed,
-)
+from events.live_quote_factory import DataUpdateBroker, build_data_update_broker, build_quote_feed
 from events.rate_limit import AsyncRateLimiter, build_rate_limiter
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry, default_registry
@@ -75,7 +75,15 @@ def create_app(
     allowed_origins: list[str] | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
-    app = FastAPI(title="Miro API", version="0.1.0")
+
+    @asynccontextmanager
+    async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
+        # `create_all()` is idempotent — safe even if the caller (a test fixture) already
+        # created the schema itself, and safe under multiple replicas racing to call it.
+        await ensure_schema_for(session_factory)
+        yield
+
+    app = FastAPI(title="Miro API", version="0.1.0", lifespan=_lifespan)
 
     resolved_quote_feed = quote_feed or build_quote_feed(
         resolved_settings,

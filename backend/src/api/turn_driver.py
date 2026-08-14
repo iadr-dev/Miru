@@ -35,16 +35,24 @@ from conversation.models import (
     RichCardBlock,
     TextBlock,
     TurnRole,
+    WebSearchSourcesBlock,
 )
-from conversation.store import ConversationStore
+from conversation.store import (
+    ConversationStore,
+    SqlAlchemyConversationStore,
+    ThreadNotFoundError,
+)
+from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import TURN_END_KIND, EventBus
+from llm.base import ImagePart
 from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import PersonalityContext
 from tools.base import ToolContext
 from usage.store import write_turn_usage
 
 _RATE_WINDOW_SECONDS = 60
+_TERMINAL_KIND = "turn.end"
 
 logger = structlog.get_logger(__name__)
 
@@ -113,6 +121,10 @@ async def run_and_stream(
     personality: PersonalityContext,
     answer_parent_message_id: str,
     regenerate_of: str | None = None,
+    model_override: str | None = None,
+    web_search_enabled: bool = False,
+    locale: str = "zh-TW",
+    images: tuple[ImagePart, ...] = (),
 ) -> AsyncIterator[str]:
     """Subscribe to the bus first, then drive the orchestrator in a background task so no frame
     published between `turn.start` and `turn.end` is missed. Yields SSE frames until `turn.end`.
@@ -134,8 +146,9 @@ async def run_and_stream(
     `regenerate_of` (a source turn id) is stamped on the new assistant turn only for `regenerate`
     -- it is the provenance link a client uses to render prior/next version navigation."""
     subscription = event_bus.subscribe()
-    runner = asyncio.create_task(
-        _drive_turn(
+
+    async def _noop() -> None:
+        await _drive_turn(
             state=state,
             store=store,
             session=session,
@@ -148,15 +161,20 @@ async def run_and_stream(
             personality=personality,
             answer_parent_message_id=answer_parent_message_id,
             regenerate_of=regenerate_of,
+            model_override=model_override,
+            web_search_enabled=web_search_enabled,
+            locale=locale,
+            images=images,
         )
-    )
+
+    runner = asyncio.create_task(_noop())
     running = state.turn_registry.get(turn_id)
     if running is not None:
         running.task = runner
     try:
         async for event in subscription:
             yield format_sse_event(event)
-            if event.kind == TURN_END_KIND:
+            if event.kind == _TERMINAL_KIND:
                 break
     finally:
         runner.cancel()
@@ -184,6 +202,10 @@ def start_turn_stream(
     personality: PersonalityContext,
     answer_parent_message_id: str,
     regenerate_of: str | None = None,
+    model_override: str | None = None,
+    web_search_enabled: bool = False,
+    locale: str = "zh-TW",
+    images: tuple[ImagePart, ...] = (),
 ) -> StreamingResponse:
     """Register the turn + return the `StreamingResponse` — the one call every route that starts
     a real turn makes, so registration/streaming plumbing exists in exactly one place."""
@@ -209,6 +231,10 @@ def start_turn_stream(
         personality=personality,
         answer_parent_message_id=answer_parent_message_id,
         regenerate_of=regenerate_of,
+        model_override=model_override,
+        web_search_enabled=web_search_enabled,
+        locale=locale,
+        images=images,
     )
     return StreamingResponse(stream, media_type="text/event-stream")
 
@@ -227,6 +253,10 @@ async def _drive_turn(
     personality: PersonalityContext,
     answer_parent_message_id: str,
     regenerate_of: str | None = None,
+    model_override: str | None = None,
+    web_search_enabled: bool = False,
+    locale: str = "zh-TW",
+    images: tuple[ImagePart, ...] = (),
 ) -> None:
     event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
     # The registry entry is `RunningTurn` itself — the same live handle `POST .../steer` appends
@@ -241,16 +271,20 @@ async def _drive_turn(
             turn_id=turn_id,
             personality=personality,
             steering_source=running,
+            model_override=model_override,
+            web_search_enabled=web_search_enabled,
+            locale=locale,
+            images=images,
         )
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
         # cancelled frame rather than letting the cancellation propagate as a silent drop.
-        event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "cancelled"})
+        event_bus.publish("turn.end", turn_id=turn_id, data={"status": "cancelled"})
         raise
     except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
         logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
         event_bus.publish(
-            TURN_END_KIND, turn_id=turn_id, data={"status": "error", "message": str(exc)}
+            "turn.end", turn_id=turn_id, data={"status": "error", "message": str(exc)}
         )
         return
 
@@ -262,13 +296,35 @@ async def _drive_turn(
         parent_message_id=answer_parent_message_id,
         regenerate_of=regenerate_of,
     )
+    await _maybe_title_thread(store, user_id=user_id, thread_id=thread_id, message=message)
     await _record_usage(session, user_id=user_id, turn_id=turn_id, result=result)
     event_bus.publish(
         "message",
         turn_id=turn_id,
         data={"text": result.final_text, "framework": result.routing.framework},
     )
-    event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "done"})
+    event_bus.publish("turn.end", turn_id=turn_id, data={"status": "done"})
+
+
+async def _maybe_title_thread(
+    store: ConversationStore, *, user_id: str, thread_id: str, message: str
+) -> None:
+    """Title a brand-new thread from its first user message, once, right after the first answer
+    lands — an empty `title` (the value `create_thread` defaults to) is the cheap, already-durable
+    signal that this is the thread's first turn, so no turn-count query is needed. Best-effort
+    exactly like `_record_usage` below: a failure here must never fail an already-answered turn,
+    so read-current-title, generate, and persist are each guarded and swallowed on error."""
+    try:
+        thread = await store.get_thread(user_id=user_id, thread_id=thread_id)
+    except ThreadNotFoundError:
+        return
+    if thread.title:
+        return
+    try:
+        title = await generate_title(message)
+        await store.update_thread(user_id=user_id, thread_id=thread_id, title=title)
+    except Exception as exc:  # cosmetic — never fail an already-answered turn over a title
+        logger.warning("thread_titling_failed", thread_id=thread_id, error=repr(exc))
 
 
 async def _record_usage(
@@ -316,6 +372,17 @@ async def _persist_answer(
         (MessageBlockType.RICH_CARD, RichCardBlock(card_type=card.card_type, data=card.data))
         for card in result.rich_cards
     )
+    # One block for every source this turn's native web search consulted, so a re-opened thread
+    # still shows the "N sources" pill `web-search-sources.tsx` renders — without this, `web_
+    # search.result` was a live-only SSE event with nowhere to land once the turn finished (see
+    # `agent.loop.TurnResult.web_search_sources`'s own docstring for where these are collected).
+    if result.web_search_sources:
+        blocks.append(
+            (
+                MessageBlockType.WEB_SEARCH_SOURCES,
+                WebSearchSourcesBlock(sources=result.web_search_sources),
+            )
+        )
     await store.append_turn(
         user_id=user_id,
         thread_id=thread_id,

@@ -11,6 +11,8 @@ from schemas.screener import ScreenerAssetKind, ScreenerCondition, ScreenerOpera
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
 from tools.analyst_tools import (
+    GetAnalystConsensusTool,
+    GetEsgScoreTool,
     GetInstitutionalHoldersTool,
     GetMarketStatusTool,
     GetOptionsChainTool,
@@ -19,6 +21,7 @@ from tools.analyst_tools import (
     RunEquityScreenerUsTool,
 )
 from tools.base import ToolContext
+from tools.common import SymbolInput
 
 
 def _result(payload: dict[str, object]) -> SourceResult:
@@ -50,9 +53,7 @@ async def test_get_options_chain_delegates() -> None:
         "implied_volatility": None,
         "in_the_money": True,
     }
-    router, adapter = make_router(
-        symbol, {Capability.OPTIONS_CHAIN: _result({"contracts": [contract]})}
-    )
+    router, adapter = make_router(symbol, {Capability.OPTIONS_CHAIN: _result({"contracts": [contract]})})
     tool = GetOptionsChainTool(router)
 
     output = await tool.run(NonTwSymbolInput(id="AAPL", market=Market.US), ToolContext())
@@ -64,6 +65,75 @@ async def test_get_options_chain_delegates() -> None:
 def test_non_tw_symbol_input_rejects_tw() -> None:
     with pytest.raises(ValidationError):
         NonTwSymbolInput(id="2330", market=Market.TW)
+
+
+async def test_get_analyst_consensus_delegates() -> None:
+    symbol = Symbol(id="AAPL", market=Market.US)
+    consensus = {
+        "symbol": "AAPL",
+        "market": "US",
+        "as_of": "2026-08-01",
+        "mean_target": 250.0,
+        "median_target": 248.0,
+        "high_target": 300.0,
+        "low_target": 200.0,
+        "number_of_analysts": 40,
+        "recommendation_key": "buy",
+    }
+    router, adapter = make_router(
+        symbol, {Capability.ANALYST_CONSENSUS: _result({"consensus": consensus})}
+    )
+    tool = GetAnalystConsensusTool(router)
+
+    output = await tool.run(SymbolInput(id="AAPL", market=Market.US), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ANALYST_CONSENSUS
+    assert output.consensus is not None
+    assert output.consensus.mean_target == 250.0
+    assert output.consensus.number_of_analysts == 40
+
+
+async def test_get_analyst_consensus_accepts_tw_symbol_with_no_coverage() -> None:
+    """`ANALYST_CONSENSUS` is in yfinance's `_TW_SUPPORTED` set — a TW symbol is a legitimate
+    call, not a rejected market, even though most tools in this module are non-TW-only."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    router, adapter = make_router(symbol, {Capability.ANALYST_CONSENSUS: _result({})})
+    tool = GetAnalystConsensusTool(router)
+
+    output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ANALYST_CONSENSUS
+    assert output.consensus is None
+
+
+async def test_get_esg_score_delegates() -> None:
+    symbol = Symbol(id="AAPL", market=Market.US)
+    esg = {
+        "symbol": "AAPL",
+        "market": "US",
+        "as_of": "2026-08-01",
+        "total_esg_score": 18.5,
+        "esg_risk_percentile": 12.0,
+    }
+    router, adapter = make_router(symbol, {Capability.ESG: _result({"esg": esg})})
+    tool = GetEsgScoreTool(router)
+
+    output = await tool.run(SymbolInput(id="AAPL", market=Market.US), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ESG
+    assert output.esg is not None
+    assert output.esg.total_esg_score == 18.5
+
+
+async def test_get_esg_score_degrades_gracefully_with_no_coverage() -> None:
+    symbol = Symbol(id="2330", market=Market.TW)
+    router, adapter = make_router(symbol, {Capability.ESG: _result({})})
+    tool = GetEsgScoreTool(router)
+
+    output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ESG
+    assert output.esg is None
 
 
 async def test_get_institutional_holders_delegates() -> None:

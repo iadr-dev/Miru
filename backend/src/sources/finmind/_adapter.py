@@ -8,6 +8,7 @@ logged, never returned in any payload.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import cast
 
 import httpx
@@ -27,6 +28,25 @@ _DATA_ENDPOINT = "/data"
 _HTTP_OK = 200
 _HTTP_PAYMENT_REQUIRED = 402  # FinMind's rate-limit-exceeded status
 
+# FinMind's `/data` endpoint 400s outright when `start_date` (or `date`, for the day-scoped
+# endpoints) is omitted — it is not truly optional upstream even though callers may reasonably
+# not name a range (a tool's `DateRangeInput.start_date` is `None`-able so the LLM isn't forced
+# to guess one). Rather than push a mandatory range onto every tool/input model, the adapter
+# fills in a sane default here, once, for every dataset this package serves.
+_DEFAULT_LOOKBACK_DAYS = 30
+# FinMind's own data lags same-day publication (most datasets land ~15:00-21:00) — defaulting a
+# single-day lookup to "yesterday" avoids a default that's simply too early to exist yet.
+_DEFAULT_SINGLE_DAY_LOOKBACK_DAYS = 1
+
+
+def _default_date_range() -> tuple[str, str]:
+    today = datetime.now(UTC).date()
+    return (today - timedelta(days=_DEFAULT_LOOKBACK_DAYS)).isoformat(), today.isoformat()
+
+
+def _default_single_date() -> str:
+    return (datetime.now(UTC).date() - timedelta(days=_DEFAULT_SINGLE_DAY_LOOKBACK_DAYS)).isoformat()
+
 
 def _build_query(
     config: _DatasetConfig, *, data_id: str | None, params: dict[str, object]
@@ -41,11 +61,13 @@ def _build_query(
     end_date = params.get("end_date")
     if config.date_param == "date":
         date_value = params.get("date") or start_date
-        if date_value is not None:
-            query["date"] = str(date_value)
+        query["date"] = str(date_value) if date_value is not None else _default_single_date()
     else:
-        if start_date is not None:
-            query["start_date"] = str(start_date)
+        if start_date is None:
+            start_date, default_end = _default_date_range()
+            if end_date is None:
+                end_date = default_end
+        query["start_date"] = str(start_date)
         if end_date is not None:
             query["end_date"] = str(end_date)
     return query
@@ -180,7 +202,9 @@ class FinMindAdapter:
             )
             return self._error_result(config, detail=detail)
         except httpx.HTTPError as exc:
-            return self._error_result(config, detail=f"transport error: {type(exc).__name__}")
+            return self._error_result(
+                config, detail=f"transport error: {type(exc).__name__}"
+            )
 
     async def _call(
         self,

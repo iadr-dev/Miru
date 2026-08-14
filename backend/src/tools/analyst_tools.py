@@ -22,8 +22,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from dataaccess.router import DataAccessRouter
 from dataaccess.screener import run_equity_screener as _run_equity_screener
 from schemas.capabilities import (
+    AnalystConsensus,
     EarningsCalendarRow,
     EconomicCalendarRow,
+    EsgScore,
     FundHoldingRow,
     FundSectorWeightingRow,
     IndustryOverviewCompanyRow,
@@ -40,9 +42,9 @@ from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from schemas.screener import ScreenerQuery, ScreenerResult
 from schemas.source import HealthStatus
-from tools._rows import fetch_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
+from tools._rows import fetch_rows
 
 _NON_TW_MARKETS = frozenset({Market.US, Market.GB, Market.JP, Market.EU})
 
@@ -189,6 +191,93 @@ class GetInsiderActivityTool(BaseTool):
         )
 
 
+class GetAnalystConsensusOutput(_RowsOutput):
+    consensus: AnalystConsensus | None = None
+
+
+class GetAnalystConsensusTool(BaseTool):
+    """`get_analyst_consensus` — wraps `Capability.ANALYST_CONSENSUS` (yfinance target-price/
+    rating consensus). Unlike most tools in this module, this capability is real for **every**
+    market including TW (`sources/yfinance/_shared.py::_TW_SUPPORTED`), so this tool takes a
+    plain `SymbolInput`, not `NonTwSymbolInput` — a TW symbol is a legitimate, expected call,
+    just a narrower payload shape (the `_extended` fields only populate for non-TW markets, per
+    `AnalystConsensus`'s own docstring). No coverage (a symbol yfinance tracks no analysts for)
+    is a graceful `consensus=None`, never fabricated."""
+
+    name = "get_analyst_consensus"
+    description = (
+        "Get the analyst target-price/rating consensus for one symbol (any market). Returns "
+        "no consensus (not an error) when yfinance tracks no analyst coverage for the symbol."
+    )
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetAnalystConsensusOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "analyst_consensus"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(SymbolInput, args)
+        result = await self._router.fetch(
+            Capability.ANALYST_CONSENSUS, typed.to_symbol(), tls_policy=ctx.tls_policy
+        )
+        raw = result.payload.get("consensus")
+        consensus = (
+            AnalystConsensus.model_validate(cast("dict[str, object]", raw))
+            if isinstance(raw, dict)
+            else None
+        )
+        return GetAnalystConsensusOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            consensus=consensus,
+        )
+
+
+class GetEsgScoreOutput(_RowsOutput):
+    esg: EsgScore | None = None
+
+
+class GetEsgScoreTool(BaseTool):
+    """`get_esg_score` — wraps `Capability.ESG` (yfinance Sustainalytics-derived ESG risk
+    score). Real for every market including TW, same reasoning as `GetAnalystConsensusTool`.
+    Sparse, large-cap-skewed coverage — no score is a graceful `esg=None`, never fabricated."""
+
+    name = "get_esg_score"
+    description = (
+        "Get the ESG (environmental/social/governance) risk score for one symbol (any "
+        "market). Returns no score (not an error) when yfinance tracks no ESG data for the "
+        "symbol — coverage is sparse and skewed toward large-cap names."
+    )
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetEsgScoreOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "esg_score"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(SymbolInput, args)
+        result = await self._router.fetch(
+            Capability.ESG, typed.to_symbol(), tls_policy=ctx.tls_policy
+        )
+        raw = result.payload.get("esg")
+        esg = (
+            EsgScore.model_validate(cast("dict[str, object]", raw))
+            if isinstance(raw, dict)
+            else None
+        )
+        return GetEsgScoreOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            esg=esg,
+        )
+
+
 class GetFundHoldingsOutput(_RowsOutput):
     holdings: tuple[FundHoldingRow, ...] = Field(default_factory=tuple)
     sector_weightings: tuple[FundSectorWeightingRow, ...] = Field(default_factory=tuple)
@@ -264,9 +353,7 @@ class GetSymbolSearchTool(BaseTool):
     name/ticker resolution, e.g. "台積電"/"TSMC" -> 2330.TW)."""
 
     name = "get_symbol_search"
-    description = (
-        "Search for a symbol by free-text company name or ticker (multi-market resolution)."
-    )
+    description = "Search for a symbol by free-text company name or ticker (multi-market resolution)."
     input_model: type[BaseModel] = SymbolSearchInput
     output_model: type[BaseModel] = GetSymbolSearchOutput
     data_class = DataClass.PUBLIC
@@ -302,9 +389,7 @@ class GetSymbolLookupTool(BaseTool):
     one instrument type)."""
 
     name = "get_symbol_lookup"
-    description = (
-        "Look up symbols by free-text query, scoped to one instrument type (stock/ETF/index/...)."
-    )
+    description = "Look up symbols by free-text query, scoped to one instrument type (stock/ETF/index/...)."
     input_model: type[BaseModel] = SymbolSearchInput
     output_model: type[BaseModel] = GetSymbolLookupOutput
     data_class = DataClass.PUBLIC
@@ -366,9 +451,7 @@ class GetCalendarEventsFeedTool(BaseTool):
     IPO_CALENDAR` + `Capability.ECONOMIC_CALENDAR` (`yfinance.Calendars`, market-wide feeds)."""
 
     name = "get_calendar_events_feed"
-    description = (
-        "Get upcoming earnings, IPO, and macro-economic calendar events for one non-TW market."
-    )
+    description = "Get upcoming earnings, IPO, and macro-economic calendar events for one non-TW market."
     input_model: type[BaseModel] = MarketScopedInput
     output_model: type[BaseModel] = GetCalendarEventsFeedOutput
     data_class = DataClass.PUBLIC
@@ -463,9 +546,7 @@ class GetIndustryOverviewTool(BaseTool):
     """`get_industry_overview` — wraps `Capability.INDUSTRY_OVERVIEW` (`yfinance.Industry`)."""
 
     name = "get_industry_overview"
-    description = (
-        "Get top companies for one Yahoo industry aggregate (one level narrower than sector)."
-    )
+    description = "Get top companies for one Yahoo industry aggregate (one level narrower than sector)."
     input_model: type[BaseModel] = GetIndustryOverviewInput
     output_model: type[BaseModel] = GetIndustryOverviewOutput
     data_class = DataClass.PUBLIC
@@ -560,7 +641,7 @@ class RunEquityScreenerUsTool(BaseTool):
     data_class = DataClass.PUBLIC
     card_type: str | None = "equity_screener"
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:  # noqa: ARG002 — ctx unused, no router dependency
         typed = parse_args(ScreenerQuery, args)
         result = await _run_equity_screener(typed)
         return RunEquityScreenerUsOutput(result=result)
@@ -571,6 +652,8 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetOptionsChainTool(router), False),
         (GetInstitutionalHoldersTool(router), False),
         (GetInsiderActivityTool(router), False),
+        (GetAnalystConsensusTool(router), False),
+        (GetEsgScoreTool(router), False),
         (GetFundHoldingsTool(router), False),
         (GetSymbolSearchTool(router), False),
         (GetSymbolLookupTool(router), False),
@@ -583,8 +666,12 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
 
 
 __all__ = [
+    "GetAnalystConsensusOutput",
+    "GetAnalystConsensusTool",
     "GetCalendarEventsFeedOutput",
     "GetCalendarEventsFeedTool",
+    "GetEsgScoreOutput",
+    "GetEsgScoreTool",
     "GetFundHoldingsOutput",
     "GetFundHoldingsTool",
     "GetIndustryOverviewInput",

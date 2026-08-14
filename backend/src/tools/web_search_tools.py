@@ -4,16 +4,15 @@ seam (`dataaccess/web_search.py`) rather than `DataAccessRouter.fetch()`: `WEB` 
 symbol)`-shaped, the same "not a router-fetch-shaped capability" pattern already established
 for `get_active_etf_report`/`get_etf_money_flow`'s non-router reads.
 
-**Follow-on dependency, not built here:** the per-turn "web search" enablement toggle
-(`POST /agent/query {web_search: true}`) is a Phase 7 conversation/runtime concept — the
-mechanism that decides *whether these two tools are even visible* to the model for a given
-turn. That mechanism does not exist yet in this codebase (no `conversation/`/`skills/` wiring
-to hook into, and this task's scope explicitly excludes touching those directories). These two
-tools are therefore built correctly and registered here so they are ready the moment that
-toggle lands — but nothing in `tools/` enforces the toggle itself; until Phase 7 wires it, these
-tools are reachable like any other deferred tool. `web_search` stays `public` per the design's
-own classification even though depth-limiting (`deep_research`) is a separate, not-yet-built
-entitlement axis this pass does not implement.
+**Per-turn enablement toggle:** `POST /agent/query {web_search: true}` (and the matching field
+on `regenerate`/`edit`) now decides whether these two tools are visible to the model for a given
+turn — wired in `orchestrator.orchestrator.Orchestrator.run`'s `web_search_enabled` parameter,
+which appends them to the resolved tool list on the `none`/`single` framework paths only (never
+the `subagent`/`team` fan-out lanes, mirroring the `model_override` carve-out). Nothing in
+`tools/` enforces the toggle itself — this module only builds and registers the tools; the
+orchestrator is what grants or withholds them per turn. `web_search` stays `public` per the
+design's own classification even though depth-limiting (`deep_research`) is a separate,
+not-yet-built entitlement axis this pass does not implement.
 """
 
 from __future__ import annotations

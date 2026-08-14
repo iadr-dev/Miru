@@ -158,9 +158,13 @@ class _TwoStepClient:
         self.steered = asyncio.Event()
 
     async def chat(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> LLMResponse:
-        del tools
+        del tools, native_web_search
         self.calls.append(list(messages))
         if len(self.calls) == 1:
             self.step_one_done.set()
@@ -185,9 +189,13 @@ class _TwoStepClient:
         )
 
     async def stream(
-        self, messages: list[Message], tools: list[ToolSpec] | None = None
+        self,
+        messages: list[Message],
+        tools: list[ToolSpec] | None = None,
+        *,
+        native_web_search: bool = False,
     ) -> AsyncIterator[TextDeltaEvent | ToolCallEvent | StreamDoneEvent]:
-        response = await self.chat(messages, tools)
+        response = await self.chat(messages, tools, native_web_search=native_web_search)
         if response.text:
             yield TextDeltaEvent(text=response.text)
         for call in response.tool_calls:
@@ -214,7 +222,7 @@ def _build_tool_registry():
 
 
 async def test_steer_between_steps_reaches_second_step_llm_call() -> None:
-    settings = Settings(jwt_secret_key=_TEST_JWT_SECRET, aitw_env="development")
+    settings = Settings(jwt_secret_key=_TEST_JWT_SECRET, env="development")
     two_step_client = _TwoStepClient()
     app = build_test_app(
         settings,
