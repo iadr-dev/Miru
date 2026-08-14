@@ -5,6 +5,13 @@
 # Secrets are never baked in: credential-shaped values read from the shell/.env via ${VAR}
 # interpolation with dev-only fallbacks for the non-secret infra wiring. Provider API keys are
 # passed through from the environment (unset = that provider simply degrades, per its adapter).
+#
+# Deliberately explicit per-var, not `env_file: .env` — .env also carries the *host*-side
+# DATABASE_URL/REDIS_URL etc. that would collide with this file's own service-hostname wiring
+# (postgres/redis, not localhost) if loaded wholesale. Consequence: every new `config/settings.py`
+# field that must reach a container needs a matching line below — Settings.() silently returns
+# None for anything missing here, so a forgotten var degrades quietly (e.g. OAuth 503s
+# `provider_unconfigured` even with real credentials in .env) rather than erroring at startup.
 
 name: miro
 
@@ -19,10 +26,21 @@ x-app-env: &app-env
   # Derived-store dirs on the shared named volume (leader writes Parquet, readers read it).
   DUCKDB_PATH: /app/data/duckdb
   PARQUET_ROOT: /app/data/parquet
-  AITW_ENV: development
+  ENV: development
   INGEST_ON_STARTUP: "false"
   # A dev JWT secret so auth-required routes work locally; override via the shell for anything real.
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-not-a-real-secret-change-me}
+  # OAuth sign-in (auth.py) — unset = that provider's begin-flow 503s `provider_unconfigured`
+  # rather than silently no-op'ing, so a missing credential is loud, not a quiet dead button.
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+  LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
+  LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
+  LINE_REDIRECT_URI: ${LINE_REDIRECT_URI:-}
+  # Where the OAuth callback 302s the browser after establishing (or failing to establish) a
+  # session — the web app's origin, not this backend's.
+  FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
   # LLM / data-provider keys pass through from the host env; unset = that provider degrades.
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -32,8 +50,117 @@ x-app-env: &app-env
   OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
   FINMIND_API_KEY: ${FINMIND_API_KEY:-}
   BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
+  FINNHUB_KEY: ${FINNHUB_KEY:-}
+  FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
   # Point the offline path at the compose Ollama service when the `ollama` profile is up.
   OLLAMA_BASE_URL: http://ollama:11434
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.6}
+  # LLM role/provider overrides — unset = config/settings.py's own per-role defaults apply.
+  LLM_PROVIDER: ${LLM_PROVIDER:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  MODEL_ROLE_CLASSIFIER: ${MODEL_ROLE_CLASSIFIER:-}
+  MODEL_ROLE_AGENT: ${MODEL_ROLE_AGENT:-}
+  MODEL_ROLE_SUBAGENT: ${MODEL_ROLE_SUBAGENT:-}
+  MODEL_ROLE_SYNTHESIS: ${MODEL_ROLE_SYNTHESIS:-}
+  CONTEXT_WINDOW_TOKENS: ${CONTEXT_WINDOW_TOKENS:-128000}
+  CONTEXT_RESERVE_TOKENS: ${CONTEXT_RESERVE_TOKENS:-4000}
+  AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
+  ORCH_MAX_SUBAGENTS: ${ORCH_MAX_SUBAGENTS:-4}
+  ORCH_MAX_STEPS_PER_AGENT: ${ORCH_MAX_STEPS_PER_AGENT:-8}
+  ORCH_MAX_TOOL_CALLS_PER_TURN: ${ORCH_MAX_TOOL_CALLS_PER_TURN:-40}
+  ORCH_MAX_COST_MICROS_PER_TURN: ${ORCH_MAX_COST_MICROS_PER_TURN:-5000000}
+  ORCH_MAX_TOKENS_PER_TURN: ${ORCH_MAX_TOKENS_PER_TURN:-1000000}
+  # JWT tuning — the secret above is the load-bearing one; these three rarely need overriding.
+  JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+  JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-30}
+  # BYOK/channel-token envelope encryption — unset = the secret store refuses to persist (fails
+  # loud rather than storing a key in plaintext); generate a real key for BYOK to work locally.
+  SECRET_ENCRYPTION_KEYS: ${SECRET_ENCRYPTION_KEYS:-}
+  # CORS + MCP network hardening — empty = no CORS layer / no allow-list installed (dev-permissive
+  # defaults from config/settings.py); set for anything simulating a real browser origin.
+  # Empty = no CORS middleware installed at all (api/app.py) — the browser then blocks every
+  # cross-origin fetch from the frontend dev server as an opaque network failure (this is the
+  # actual cause behind a frontend "couldn't reach the sign-in service" error, not a backend
+  # outage). Default to the frontend dev server's origin so the dev-parity stack works out of
+  # the box; override for a frontend running anywhere else.
+  CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+  MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+  MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-}
+  MCP_HOST: ${MCP_HOST:-0.0.0.0}
+  MCP_PORT: ${MCP_PORT:-8100}
+  WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL:-http://localhost:8000}
+  # strict|compatibility|unsafe-explicit — never silently downgraded (sources/tls.py, governance).
+  TLS_POLICY: ${TLS_POLICY:-strict}
+  # Ingest/scheduler cadence + FinMind Sponsor-pool budget — safe defaults, override to shorten
+  # loops while iterating on either.
+  DEV_BACKFILL_YEARS: ${DEV_BACKFILL_YEARS:-3}
+  INGEST_POLL_INTERVAL_SECONDS: ${INGEST_POLL_INTERVAL_SECONDS:-60}
+  SCHEDULER_POLL_INTERVAL_SECONDS: ${SCHEDULER_POLL_INTERVAL_SECONDS:-60}
+  RATE_LIMIT_KEY_PREFIX: ${RATE_LIMIT_KEY_PREFIX:-ratelimit}
+  FINMIND_POOL_KEY_PREFIX: ${FINMIND_POOL_KEY_PREFIX:-finmind:pool}
+  FINMIND_POOL_LIMIT_PER_WINDOW: ${FINMIND_POOL_LIMIT_PER_WINDOW:-6000}
+  FINMIND_POOL_WINDOW_SECONDS: ${FINMIND_POOL_WINDOW_SECONDS:-3600}
+  FINMIND_RESERVE_PER_LANE: ${FINMIND_RESERVE_PER_LANE:-1}
+  DATA_UPDATED_KEY_PREFIX: ${DATA_UPDATED_KEY_PREFIX:-data.updated}
+  # Market-data cache tier (module 16 §3/§4) — the dev-parity stack turns the read-through Redis
+  # cache on so the single-flight/TTL-by-timing_class paths actually run here, matching real Redis
+  # transport for everything else in this compose file.
+  MARKET_DATA_CACHE_BACKEND: ${MARKET_DATA_CACHE_BACKEND:-redis}
+  MARKET_DATA_CACHE_KEY_PREFIX: ${MARKET_DATA_CACHE_KEY_PREFIX:-marketdata:cache}
+  MARKET_DATA_CACHE_TTL_REFERENCE_SECONDS: ${MARKET_DATA_CACHE_TTL_REFERENCE_SECONDS:-300}
+  MARKET_DATA_CACHE_TTL_LIVE_ISH_SECONDS: ${MARKET_DATA_CACHE_TTL_LIVE_ISH_SECONDS:-5}
+  MARKET_DATA_CACHE_TTL_OFFICIAL_EOD_SECONDS: ${MARKET_DATA_CACHE_TTL_OFFICIAL_EOD_SECONDS:-43200}
+  MARKET_DATA_CACHE_TTL_EVENT_DRIVEN_SECONDS: ${MARKET_DATA_CACHE_TTL_EVENT_DRIVEN_SECONDS:-300}
+  # Live-quote poller tuning (module 16 §2a) — safe defaults.
+  QUOTE_POLL_CADENCE_NORMAL_SECONDS: ${QUOTE_POLL_CADENCE_NORMAL_SECONDS:-5}
+  QUOTE_POLL_CADENCE_SAVER_SECONDS: ${QUOTE_POLL_CADENCE_SAVER_SECONDS:-20}
+  QUOTE_STREAM_MAX_SYMBOLS_PER_CONNECTION: ${QUOTE_STREAM_MAX_SYMBOLS_PER_CONNECTION:-50}
+  QUOTE_STREAM_MAX_DEMANDED_SYMBOLS: ${QUOTE_STREAM_MAX_DEMANDED_SYMBOLS:-500}
+  QUOTE_CHANNEL_KEY_PREFIX: ${QUOTE_CHANNEL_KEY_PREFIX:-quote}
+  QUOTE_DEMAND_KEY_PREFIX: ${QUOTE_DEMAND_KEY_PREFIX:-demand}
+  # yfinance's tz cache — writable/persistent path inside the container.
+  YF_TZ_CACHE_DIR: ${YF_TZ_CACHE_DIR:-./.cache/yf_tz}
+  # Voice (module: voice/providers.py) — STT defaults to "faster_whisper" (real, local, no key
+  # needed); TTS defaults to "edge_tts" (real, free, no key needed) — both matching Settings'
+  # own defaults. "openai" is a paid opt-in for either. Compose does not read `.env` wholesale
+  # (see this file's header comment), so these fallbacks must be kept in sync with
+  # `config/settings.py`'s own defaults by hand.
+  VOICE_STT_PROVIDER: ${VOICE_STT_PROVIDER:-faster_whisper}
+  VOICE_TTS_PROVIDER: ${VOICE_TTS_PROVIDER:-edge_tts}
+  VOICE_MAX_AUDIO_SECONDS: ${VOICE_MAX_AUDIO_SECONDS:-60}
+  # Chat attachments (module: attachments/, api/attachments.py) — image/document upload cap.
+  MAX_ATTACHMENT_SIZE_BYTES: ${MAX_ATTACHMENT_SIZE_BYTES:-15000000}
+  # Paddle billing (module 15) — unset = /billing/* 503s `billing_unconfigured`.
+  PADDLE_API_KEY: ${PADDLE_API_KEY:-}
+  PADDLE_WEBHOOK_SECRET: ${PADDLE_WEBHOOK_SECRET:-}
+  PADDLE_CLIENT_TOKEN: ${PADDLE_CLIENT_TOKEN:-}
+  PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-sandbox}
+  PADDLE_PRICE_PREMIUM_MONTHLY: ${PADDLE_PRICE_PREMIUM_MONTHLY:-}
+  PADDLE_PRICE_PREMIUM_ANNUAL: ${PADDLE_PRICE_PREMIUM_ANNUAL:-}
+  PADDLE_PRICE_PREMIUM_BYOK_MONTHLY: ${PADDLE_PRICE_PREMIUM_BYOK_MONTHLY:-}
+  PADDLE_PRICE_PREMIUM_BYOK_ANNUAL: ${PADDLE_PRICE_PREMIUM_BYOK_ANNUAL:-}
+  PADDLE_PRICE_PRO_MONTHLY: ${PADDLE_PRICE_PRO_MONTHLY:-}
+  PADDLE_PRICE_PRO_ANNUAL: ${PADDLE_PRICE_PRO_ANNUAL:-}
+  PADDLE_PRICE_PRO_BYOK_MONTHLY: ${PADDLE_PRICE_PRO_BYOK_MONTHLY:-}
+  PADDLE_PRICE_PRO_BYOK_ANNUAL: ${PADDLE_PRICE_PRO_BYOK_ANNUAL:-}
+  # Notification channels (module 14 delivery/channels.py) — each degrades to a shaped no-network
+  # stub without credentials (only in_app truly delivers regardless).
+  LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: ${LINE_MESSAGING_CHANNEL_ACCESS_TOKEN:-}
+  LINE_MESSAGING_CHANNEL_SECRET: ${LINE_MESSAGING_CHANNEL_SECRET:-}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+  EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
+  EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
+  EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:-}
+  EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+  EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
+  APNS_KEY_ID: ${APNS_KEY_ID:-}
+  APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+  APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
+  APNS_AUTH_KEY: ${APNS_AUTH_KEY:-}
+  FCM_PROJECT_ID: ${FCM_PROJECT_ID:-}
+  FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
 
 services:
   postgres:
@@ -42,6 +169,11 @@ services:
       POSTGRES_USER: miro
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}
       POSTGRES_DB: miro
+    # Published to the host so a bare `uv run` process (no Docker) can also reach the same
+    # Postgres data as the containerized api/scheduler/ingest/mcp services — dev-only convenience,
+    # not something a prod deployment would do.
+    ports:
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -63,20 +195,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot migrator: applies Alembic to head against the compose Postgres before api/scheduler
-  # start, so a fresh volume comes up with the schema in place. Exits 0 on success.
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: miro-backend
-    environment:
-      <<: *app-env
-    entrypoint: ["alembic", "upgrade", "head"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   api:
     build:
       context: .
@@ -94,8 +212,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     healthcheck:
       # Readiness probe verifies Postgres + Redis reachability (not just process-up), matching what
       # a real load balancer would gate traffic on.
@@ -127,8 +243,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
 
   ingest:
     build:
@@ -148,8 +262,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
 
   mcp:
     build:
@@ -175,8 +287,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     healthcheck:
       # mcp/app.py registers a plain liveness route separate from the /mcp protocol endpoint
       # (which requires standing up a full MCP session to probe) — verified live against a real

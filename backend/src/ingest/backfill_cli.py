@@ -12,7 +12,7 @@ process environment just to run one bounded gap-fill, this CLI accepts its own `
 and passes it straight into `run_preflight_if_enabled`'s existing `ingest_on_startup` parameter —
 the same gate the dev-only startup catch-up uses, just supplied per-invocation instead of via env.
 The one thing this CLI will never do is let that override paper over a production config: it
-hard-stops unconditionally when `Settings.aitw_env == "production"`, regardless of `--yes`, before
+hard-stops unconditionally when `Settings.env == "production"`, regardless of `--yes`, before
 touching any spec, so a mis-set override can never turn into an accidental prod backfill.
 """
 
@@ -59,7 +59,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Explicit manual-trigger override: run even if INGEST_ON_STARTUP is not set in "
-            "the environment. Still hard-refuses if AITW_ENV=production."
+            "the environment. Still hard-refuses if ENV=production."
         ),
     )
     parser.add_argument(
@@ -89,11 +89,10 @@ def _validate_years(years: int | None, settings: Settings) -> int:
         )
     return resolved
 
-
 def _check_not_production(settings: Settings) -> None:
-    if settings.aitw_env == _PRODUCTION_ENV:
+    if settings.env == _PRODUCTION_ENV:
         raise ProductionHardStopError(
-            "refusing to run: AITW_ENV=production — this CLI never runs against a production "
+            "refusing to run: ENV=production — this CLI never runs against a production "
             "config, regardless of --yes or INGEST_ON_STARTUP."
         )
 
@@ -210,7 +209,7 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
         logger.error("ingest_backfill_cli_aborted", detail=str(exc))
         return 1
 
-    ctx = build_ingest_context_from_settings(settings)
+    ctx = await build_ingest_context_from_settings(settings)
     if args.market == "us":
         runs = await run_us_backfill_cli(settings, ctx, override=args.yes, years=years)
     else:
