@@ -10,7 +10,7 @@ inputs:
     required: true
 tools: [get_canonical_context, get_source_health, get_live_quote_snapshot, run_bounded_observation]
 output_structure:
-  - '五檔快照: 最新成交/開高低/量 + best bid/ask (TWSE MIS)'
+  - '五檔快照: 最新成交/開高低/量 + best bid/ask'
   - '通用有界觀測: 若五檔快照不可用時的替代能力摘要 (redacted)'
   - '有界性提醒: 這是單次觀測，不是串流或輪詢'
 freshness_rule: 每次回覆須標明觀測時間點 (observed_at) 與"延遲、非即時"的性質；絕不暗示為即時串流。

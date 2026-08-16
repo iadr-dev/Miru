@@ -31,12 +31,15 @@ outputs: markdown
 ## Procedure
 
 1. Call `get_canonical_context(stock_id, market)` to confirm the symbol resolves and get a
-   currentness baseline for the rest of the read.
+   currentness baseline for the rest of the read. Its `built_at` timestamp is the anchor for
+   "today" in step 3 below — never substitute your own notion of the current date, which can
+   silently drift from wall-clock time.
 2. Call `get_source_health(stock_id, market)`; if institutional-flow/chip-broker sources are
    stale or unreachable, say so explicitly before presenting any numbers — never silently
    present a stale number as current.
 3. Call `get_institutional_flow(stock_id, market, start_date, end_date)` for the requested
-   window (default 20 trading days if `window_days` is not given). Read the foreign
+   window (default 20 trading days ending at `built_at`'s date if `window_days` is not given —
+   state the default explicitly, including the actual end date used). Read the foreign
    (外資)/investment-trust(投信)/dealer(自營) rows separately — do not average them into one
    number, they answer different questions.
 4. Call `get_chip_flows(stock_id, market, start_date, end_date)` for branch(分點)-level rows.

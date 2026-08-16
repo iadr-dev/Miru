@@ -113,9 +113,9 @@ _MAX_COMPARISON_SYMBOLS = 10
 _DEFAULT_LOOKBACK_DAYS = 365
 
 _TW_HOLDINGS_GAP_NOTE = (
-    "Per-constituent holdings/weights and NAV/IOPV are a documented, unfilled gap for TW ETFs "
-    "(see sources/etf_pcf.py's own module docstring) — overlap% and premium/discount are never "
-    "estimated for this symbol; only fund-level metadata (issuer/tracked index) is available."
+    "Per-constituent holdings/weights and NAV/IOPV are a known, unfilled gap for TW ETFs — "
+    "overlap% and premium/discount are never estimated for this symbol; only fund-level "
+    "metadata (issuer/tracked index) is available."
 )
 
 

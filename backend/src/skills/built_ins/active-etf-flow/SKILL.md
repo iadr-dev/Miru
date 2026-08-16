@@ -38,7 +38,9 @@ outputs: markdown
 
 1. Call `get_canonical_context(etf_id, market)` for a currentness baseline, then
    `get_source_health(etf_id, market)` — if either flags a stale/unreachable source, say so
-   before presenting numbers.
+   before presenting numbers. Its `built_at` timestamp is the anchor for "today" in step 3
+   below — never substitute your own notion of the current date, which can silently drift from
+   wall-clock time.
 2. Call `get_active_etf_report(etf_id, market, trade_date)` (omit `trade_date` for "latest
    available"). Report per-holding 新增/刪除/加碼/減碼 status and the fund-size change vs the
    prior day. This tool's `premium_discount_pct` is always `None` today — when present, surface
@@ -46,7 +48,9 @@ outputs: markdown
 3. Call `get_etf_money_flow(market, start_date, end_date, top_n)` for a bounded window
    (≤30 days — the tool itself enforces this) covering the same period, to place this ETF's
    constituent moves in the context of cross-ETF consensus (how many other active ETFs are
-   buying/selling the same names). This tool is Sponsor-tier — if unentitled, report around
-   the masked section.
+   buying/selling the same names). `start_date`/`end_date` are required by this tool — if the
+   caller gave no `window_start`/`window_end`, default to the 30-day maximum window ending at
+   `built_at`'s date, and state the default explicitly, including the actual end date used.
+   This tool is Sponsor-tier — if unentitled, report around the masked section.
 4. Synthesize using the `output_structure` sections above. Every figure carries its as-of date.
    Never infer "smart money" motive from a flow pattern — describe the pattern only.

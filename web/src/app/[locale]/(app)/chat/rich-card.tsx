@@ -1,4 +1,5 @@
 import { CardsIcon } from "@phosphor-icons/react/dist/ssr";
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { PLUMBING_KEYS } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { shapeForCardType } from "@/app/[locale]/(app)/chat/cards/card-registry";
@@ -6,6 +7,7 @@ import { CompareTable } from "@/app/[locale]/(app)/chat/cards/compare-table";
 import { DataSheet } from "@/app/[locale]/(app)/chat/cards/data-sheet";
 import { EventTimeline } from "@/app/[locale]/(app)/chat/cards/event-timeline";
 import { anyRowsPresent, hasSnapshotEntity } from "@/app/[locale]/(app)/chat/cards/extract-rows";
+import { cardTypeLabel, fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { FlowDistribution } from "@/app/[locale]/(app)/chat/cards/flow-distribution";
 import { LeaderboardTable } from "@/app/[locale]/(app)/chat/cards/leaderboard-table";
 import { SnapshotCard } from "@/app/[locale]/(app)/chat/cards/snapshot-card";
@@ -59,6 +61,7 @@ function renderShaped(
 }
 
 function FlatCard({ card }: { card: RichCard }): ReactNode {
+  const t = useTranslations("chat.cards");
   const scalars = Object.entries(card.data).filter(
     ([key, value]) =>
       !PLUMBING_KEYS.has(key) &&
@@ -70,20 +73,21 @@ function FlatCard({ card }: { card: RichCard }): ReactNode {
   if (scalars.length === 0) {
     return null;
   }
+  const typeLabel = cardTypeLabel(t, card.card_type);
 
   return (
     <figure
       className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5"
-      aria-label={card.card_type}
+      aria-label={typeLabel}
     >
       <figcaption className="mb-3 inline-flex items-center gap-2 font-medium text-[13px] text-[var(--text-muted)]">
         <CardsIcon size={16} weight="regular" aria-hidden />
-        {card.card_type}
+        {typeLabel}
       </figcaption>
       <dl className="divide-y divide-[var(--border)]">
         {scalars.map(([key, value]) => (
           <div key={key} className="flex items-center justify-between gap-4 py-2">
-            <dt className="truncate text-[var(--text-muted)] text-sm">{key}</dt>
+            <dt className="truncate text-[var(--text-muted)] text-sm">{fieldLabel(t, key)}</dt>
             <dd
               className={
                 typeof value === "number"

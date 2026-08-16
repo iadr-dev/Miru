@@ -13,6 +13,8 @@ export const PLUMBING_KEYS = new Set([
   "health_status",
   "currentness_caveat",
   "non_trading_caveat",
+  "sector_caveat",
+  "dividend_caveat",
 ]);
 
 export function asArray(value: unknown): Record<string, unknown>[] {
