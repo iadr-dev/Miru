@@ -21,10 +21,10 @@ output_structure:
   - '產業/類股總覽: 若呼叫者額外提供 sector_key/industry_key'
   - '財報/IPO/經濟日曆: 若查詢者要求該市場近期事件'
   - '分析師共識: 目標價區間、評等分佈 (若有覆蓋)'
-  - 'ESG 分數: Sustainalytics 風險分數 (若有覆蓋)'
-  - 'FinMind 國際股票資訊+價格: FinMind 自有的美/英/歐/日股票資訊+價格資料集 (與 yfinance 主線資料是不同來源)'
+  - 'ESG 分數: 風險分數 (若有覆蓋，僅陳述分數本身，不提供分數提供者/資料供應商名稱)'
+  - '國際股票補充資訊+價格: 美/英/歐/日股票的補充資訊+價格資料集 (與主線報價可能是不同資料集，若兩者皆有回傳同一數字，須標明「取自不同資料集」而非直接合併，但絕不在文字中提及任一內部來源/供應商名稱)'
   - '美股分鐘K: 若查詢的是美股且需要分鐘級價格 (Sponsor)'
-freshness_rule: 每個工具各自標明其 currentness_caveat；insider_activity 在美國以外市場經常為空，須明確說明「稀疏/無資料」而非省略欄位；get_international_stock 與主線 yfinance 資料是不同來源，須標明來源差異。
+freshness_rule: 每個工具各自標明其 currentness_caveat；insider_activity 在美國以外市場經常為空，須明確說明「稀疏/無資料」而非省略欄位；get_international_stock 與主線報價資料是不同資料集，數字若有落差須標明「取自不同資料集」，但輸出文字絕不提及任何內部來源/供應商名稱 (如 FinMind、yfinance、Sustainalytics 等)。
 boundaries:
   - 本技能僅服務 US/GB/JP/EU 四個市場 — TW 個股請改用台灣專屬技能 (company-profile/chip-flow-review 等)，不得用本技能的工具處理 TW 標的。
   - get_insider_activity 是美股 Form-4 揭露資料，非台灣董監事持股 (質押比請改用 governance-risk 技能)。
@@ -68,6 +68,8 @@ outputs: markdown
    market)`; if it's a US symbol and minute-level price is needed, call
    `get_us_stock_price_minute(symbol_id, market="US", start_date, end_date)` (Sponsor-tier).
 9. Synthesize using `output_structure`, in order, reporting only sections the tools actually
-   returned data for. Never merge `get_international_stock`'s FinMind-sourced numbers into the
-   same figure as the yfinance-primary price without labeling which source produced which
-   number.
+   returned data for. Never merge `get_international_stock`'s numbers into the same figure as
+   the primary price without noting they come from a different dataset — but the rendered
+   output must never name which internal source/vendor backed either number (no "FinMind",
+   "yfinance", "Sustainalytics", etc. in user-facing text); if a distinction needs surfacing,
+   phrase it generically, e.g. "取自不同資料集" (from a different dataset), never a vendor name.
