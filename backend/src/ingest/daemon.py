@@ -58,6 +58,8 @@ from ingest.jobs import (
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
 from ingest.store import ParquetStore
+from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
+from ingest.us_universe import job_us_symbol_universe
 from sources.finmind import FinMindAdapter
 from sources.yfinance import YFinanceAdapter
 
@@ -107,7 +109,7 @@ class ScheduledIngestJob:
     cadence: Cadence = Cadence.DAILY
 
 
-# The nine whole-market pulls, each at the Taipei-local time its own job docstring documents.
+# The whole-market pulls, each at the Taipei-local time its own job docstring documents.
 SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
     ScheduledIngestJob("institutional_flow", time_(20, 10), job_institutional_flow),
@@ -129,6 +131,20 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("cash_flow", time_(21, 30), job_cash_flow),
     # Market cap — Mon-Fri ~23:30 FinMind publish clock (MARKET_VALUE_JOB's own cron_hint).
     ScheduledIngestJob("market_value", time_(23, 40), job_market_value),
+    # US symbol universe — monthly reference data (not trading-day-gated, mirrors the
+    # industry-chain theme seed's own cadence reasoning); must land before the price/fundamentals
+    # pulls below have anything to fetch, so it fires earliest in the Taipei morning.
+    ScheduledIngestJob("us_symbol_universe", time_(5, 30), job_us_symbol_universe, Cadence.MONTHLY),
+    # US price EOD — US markets close 16:00 ET (UTC-4/-5), i.e. ~04:00-05:00 Taipei the next
+    # calendar day; 06:00 Taipei gives yfinance's own upstream data a comfortable landing buffer
+    # past that close before this pulls. `job_us_price_eod` is calendar-gated the same Mon-Fri
+    # weekday way `is_trading_day` degrades to for any market (see its own docstring) — a US
+    # market holiday just lands as a legitimate empty response, same as a TW non-trading day.
+    ScheduledIngestJob("us_price_eod", time_(6, 0), job_us_price_eod),
+    # US fundamentals — per-symbol yfinance fan-out (no bulk endpoint), so it runs later in the
+    # Taipei morning, well clear of the price pull's own network usage. Weekly: fundamentals
+    # change far slower than daily price EOD (see `job_us_fundamentals`'s own docstring).
+    ScheduledIngestJob("us_fundamentals", time_(7, 0), job_us_fundamentals, Cadence.WEEKLY),
 )
 
 
