@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
   asNumber,
@@ -8,6 +8,7 @@ import {
   formatNumber,
   PLUMBING_KEYS,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { cardTypeLabel, fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 
 /** Fields to skip in the auto-derived stat grid — either structural (not a stat), already shown
  * as the card's own title/subtitle, or source/health plumbing. */
@@ -19,6 +20,7 @@ const SKIP_KEYS = new Set(["symbol", "market", "found", "missing_fields", ...PLU
  * `company_profile`), so this unwraps the first present nested object before deriving stats. */
 export function SnapshotCard({ card_type, data }: { card_type: string; data: unknown }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("chat.cards");
   const entity = unwrapEntity(data);
   if (entity === null) {
     return null;
@@ -33,19 +35,20 @@ export function SnapshotCard({ card_type, data }: { card_type: string; data: unk
       !SKIP_KEYS.has(key) &&
       (typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
   );
+  const typeLabel = cardTypeLabel(t, card_type);
 
   return (
     <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <span className="font-medium text-[13px] text-[var(--text-muted)]">
-          {symbol ?? card_type}
+          {symbol ?? typeLabel}
         </span>
-        <span className="text-[11px] text-[var(--text-muted)]">{card_type}</span>
+        <span className="text-[11px] text-[var(--text-muted)]">{typeLabel}</span>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {stats.map(([key, value]) => (
           <div key={key} className="min-w-0">
-            <p className="truncate text-[11px] text-[var(--text-muted)]">{key}</p>
+            <p className="truncate text-[11px] text-[var(--text-muted)]">{fieldLabel(t, key)}</p>
             <p
               className={
                 typeof value === "number"
@@ -65,7 +68,7 @@ export function SnapshotCard({ card_type, data }: { card_type: string; data: unk
               key={field}
               className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]"
             >
-              {field} unavailable
+              {t("fieldUnavailable", { field: fieldLabel(t, field) })}
             </span>
           ))}
         </div>

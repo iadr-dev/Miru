@@ -7,7 +7,7 @@ import {
   type IChartApi,
   type Time,
 } from "lightweight-charts";
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef } from "react";
 import {
   CartesianGrid,
@@ -24,6 +24,7 @@ import {
   formatNumber,
   rowDate,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 
 /** A row is candlestick-eligible once it carries all four OHLC fields — this is the one shape
  * TradingView-style price/OHLCV charting is actually meant for (per lightweight-charts' own
@@ -173,6 +174,7 @@ function CandlestickChart({ candles }: { candles: CandlestickData<Time>[] }): Re
 
 function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("chat.cards");
   const metricKeys = numericKeysIn(rows).slice(0, 6);
   if (rows.length === 0 || metricKeys.length === 0) {
     return null;
@@ -199,7 +201,7 @@ function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): Rea
               className="inline-block size-2 rounded-full"
               style={{ backgroundColor: LINE_COLORS[index % LINE_COLORS.length] }}
             />
-            {key}
+            {fieldLabel(t, key)}
           </span>
         ))}
       </div>
