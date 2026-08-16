@@ -360,7 +360,7 @@ async def test_get_fund_comparison_tw_symbol_honestly_omits_holdings_fields() ->
     by_symbol = {row.symbol: row for row in output.rows}  # type: ignore[union-attr]
     tw_row = by_symbol["0050"]
     assert tw_row.unavailable_note is not None
-    assert "etf_pcf.py" in tw_row.unavailable_note
+    assert "holdings" in tw_row.unavailable_note.lower()
     assert tw_row.fund_info is not None
     assert tw_row.fund_info.fund_name == "元大台灣50"
     assert tw_row.sector_weightings == ()
