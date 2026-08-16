@@ -1,10 +1,8 @@
 """Voice edge endpoints: `POST /voice/transcribe` (STT) and `POST /voice/speak` (TTS).
 
-Thin wiring over the already-built `voice.service`. Transcription is Free (quota-bounded, the
-beginner ask-loop) — every authenticated caller may use it. Read-aloud speech is a Premium+
-feature, gated the same way `scheduler.py` gates its Pro feature: an unentitled caller is refused
-here (the `tts_read_aloud` feature flag), never billed a masked-teaser shape (that shape is for
-`sponsor` *data*, not a whole binary-audio endpoint).
+Thin wiring over the already-built `voice.service`. Both STT and TTS are Free, quota-bounded
+(not tier-gated) — voice conversation mode (the composer's continuous hands-free overlay) is
+built on both and is itself a Free-tier feature end to end.
 
 The concrete STT/TTS providers are config-selected; only the deterministic stubs run in the
 default profile, so this router performs no live provider call there. Raw audio is never
@@ -19,7 +17,6 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from accounts.entitlements import feature_allowed
 from accounts.models import User
 from api.dependencies import get_session, get_settings_dep, require_user
 from api.errors import ApiError
@@ -40,7 +37,6 @@ from voice.service import transcribe as transcribe_service
 
 router = APIRouter(tags=["voice"])
 
-_TTS_FEATURE = "tts_read_aloud"
 _STUB_PROVIDER = "stub"
 _MAX_AUDIO_BYTES = 12_000_000  # ~a minute of compressed audio; a hard upper bound, not a quota
 
@@ -144,14 +140,9 @@ async def speak(
     user: User = Depends(require_user),
     settings: Settings = Depends(get_settings_dep),
 ) -> SpeakResponse:
-    """TTS read-aloud (Premium+). The spoken text is caveat-guaranteed before synthesis."""
-    if not feature_allowed(user, _TTS_FEATURE):
-        raise ApiError(
-            status_code=status.HTTP_403_FORBIDDEN,
-            code="feature_not_entitled",
-            message="Read-aloud requires a Premium or Pro subscription.",
-            retryable=False,
-        )
+    """TTS read-aloud (Free, quota-bounded like STT). The spoken text is caveat-guaranteed
+    before synthesis."""
+    del user  # accepted for the auth boundary only — TTS is unrestricted by tier
     audio: SpeechAudio = await speak_service(body.text, _speaker(settings), language=body.language)
     return SpeakResponse(
         audio_base64=base64.b64encode(audio.audio).decode("ascii"),

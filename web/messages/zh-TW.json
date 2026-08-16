@@ -179,7 +179,7 @@
       "hideProcess": "隱藏過程",
       "lane": "{skill}",
       "laneDegraded": "資料額度受限—改用快取／可得資料",
-      "toolStep": "{tool}",
+      "toolStep": "已查詢 {tool}",
       "thinkingChunk": "推理過程",
       "steeringQueued": "已排入，本輪結束後處理。",
       "cancelled": "本輪已取消。",
@@ -210,7 +210,9 @@
       "download": "下載表格",
       "downloadCsv": "下載為 CSV",
       "downloadXlsx": "下載為 Excel（.xlsx）",
-      "downloadPdf": "下載為 PDF"
+      "downloadPdf": "下載為 PDF",
+      "expand": "展開表格",
+      "collapse": "關閉展開檢視"
     },
     "cards": {
       "fieldUnavailable": "{field} 暫無資料",
@@ -349,17 +351,21 @@
         "screenshot": "拍攝截圖",
         "webSearch": "網路搜尋"
       },
-      "screenshot": {
-        "remove": "移除截圖",
-        "notSupported": "聊天功能尚不支援傳送圖片，請先移除截圖再送出訊息。"
+      "attachments": {
+        "remove": "移除附件",
+        "tooMany": "每則訊息最多可附加 {max} 個檔案，其餘的未加入。"
       },
       "model": "模型",
       "voice": "語音輸入",
+      "voiceMode": "語音對話",
       "listening": "聆聽中…",
       "stopRecording": "停止錄音",
+      "voiceRecording": {
+        "cancel": "取消錄音",
+        "confirm": "送出錄音"
+      },
       "voiceError": "無法辨識這段錄音，請再試一次。",
       "micPermissionDenied": "無法使用麥克風，請檢查瀏覽器的麥克風權限後再試一次。",
-      "comingSoon": "即將推出",
       "modelMenu": {
         "trigger": "模型：{model}",
         "default": "伺服器預設",
@@ -371,6 +377,18 @@
           "ollama": "Ollama（本機）"
         }
       }
+    },
+    "voiceMode": {
+      "close": "結束語音對話",
+      "phase": {
+        "listening": "聆聽中…",
+        "transcribing": "辨識中…",
+        "thinking": "Miru 正在思考…",
+        "speaking": "回覆中…"
+      },
+      "micPermissionDenied": "無法使用麥克風，請檢查瀏覽器的麥克風權限後再試一次。",
+      "transcribeError": "無法辨識這段錄音，重新聆聽中。",
+      "sendError": "送出時發生問題，重新聆聽中。"
     }
   },
   "disclaimer": {

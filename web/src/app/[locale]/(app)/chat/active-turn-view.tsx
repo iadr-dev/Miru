@@ -20,7 +20,11 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
 import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
-import { type ActiveTurn, buildTimeline } from "@/app/[locale]/(app)/chat/turn-store";
+import {
+  type ActiveTurn,
+  buildLaneGroups,
+  type LaneGroup,
+} from "@/app/[locale]/(app)/chat/turn-store";
 import { WebSearchSources } from "@/app/[locale]/(app)/chat/web-search-sources";
 import type { FeedbackRating } from "@/lib/api/threads";
 import { audioBase64ToObjectUrl, speakText } from "@/lib/api/voice";
@@ -322,10 +326,10 @@ function CopyButton({ text }: { text: string }): ReactNode {
 
 /** Read-aloud icon button: `POST /voice/speak` → base64 audio → `<audio>` playback. Morphs
  * speaker → stop while playing, the same idle/active icon-swap language `composer.tsx`'s
- * `VoiceOrSendButton` uses for its mic state machine. A 403 (`feature_not_entitled` — read-aloud
- * is Premium+) or any other failure surfaces as a brief inline message, not a silent no-op,
- * since unlike a dismissed permission prompt this is a real entitlement/network outcome the user
- * should understand. */
+ * `VoiceOrSendButton` uses for its mic state machine. TTS is Free/unrestricted, so a failure here
+ * is a genuine network/provider outcome, not an entitlement wall — it still surfaces as a brief
+ * inline message rather than a silent no-op, since unlike a dismissed permission prompt this is
+ * something the user should understand happened. */
 function SpeakButton({ text }: { text: string }): ReactNode {
   const t = useTranslations("chat.turn.actions");
   const locale = useLocale();
@@ -429,12 +433,16 @@ function ActionIconButton({
 }
 
 /**
- * The 顯示過程/隱藏過程 disclosure: lane statuses, redacted `tool.result` summaries, and — new —
- * accumulated `thinking.delta` reasoning chunks, all merged into ONE seq-ordered vertical timeline
- * (`buildTimeline`) rather than three separate lists. Visual pattern reused from
- * `chat/cards/event-timeline.tsx` (the calendar/corporate-action timeline): a continuous vertical
- * rule with a small dot marker per entry, newest-at-bottom instead of that component's
- * newest-first, since this timeline narrates a turn's chronology rather than dated history.
+ * The 顯示過程/隱藏過程 disclosure: lane statuses, redacted `tool.result` summaries, and
+ * accumulated `thinking.delta` reasoning chunks — grouped by owning lane (`buildLaneGroups`), each
+ * lane rendering its own nested sub-list of tool/thinking entries, rather than one flat timeline
+ * interleaving every lane's activity together. This matters most for `subagent` (independent
+ * parallel lanes) and `team` (sequential lanes, where lane 2 doesn't even start until lane 1's
+ * `Finding` exists) — a flat merge made both look identical and hid the sequential dependency.
+ * Visual pattern reused from `chat/cards/event-timeline.tsx` (the calendar/corporate-action
+ * timeline): a continuous vertical rule with a small dot marker per entry, newest-at-bottom instead
+ * of that component's newest-first, since this timeline narrates a turn's chronology rather than
+ * dated history — now applied once per lane group instead of once globally.
  *
  * Auto-follow: opens itself the moment the turn STARTS thinking, then auto-closes itself the
  * moment it stops (done/error/cancelled) — driven only on the ACTUAL phase transition
@@ -462,7 +470,7 @@ function ProcessDisclosure({ turn }: { turn: ActiveTurn }): ReactNode {
     }
   }, [turn.phase]);
 
-  const timeline = buildTimeline(turn);
+  const groups = buildLaneGroups(turn);
 
   return (
     <div className="mt-1">
@@ -489,14 +497,9 @@ function ProcessDisclosure({ turn }: { turn: ActiveTurn }): ReactNode {
       {open ? (
         // Thinking/tool narration stays aria-live="off" throughout — only the final answer
         // container (below, in the parent) is "polite" (web/OVERVIEW.md §7).
-        <ol className="mt-2 flex flex-col" aria-live="off">
-          {timeline.map((entry, index) => (
-            <TimelineRow
-              key={`${entry.kind}-${entry.seq}`}
-              entry={entry}
-              isLast={index === timeline.length - 1}
-              t={t}
-            />
+        <ol className="mt-2 flex flex-col gap-3" aria-live="off">
+          {groups.map((group) => (
+            <LaneGroupRow key={group.agentId ?? "root"} group={group} t={t} />
           ))}
         </ol>
       ) : null}
@@ -504,77 +507,116 @@ function ProcessDisclosure({ turn }: { turn: ActiveTurn }): ReactNode {
   );
 }
 
-function TimelineRow({
+/** One lane's header row (skipped for the root/no-lane bucket) plus its nested sub-timeline of
+ * tool/thinking entries — the `|_` indentation from the flat-timeline predecessor's visual rule,
+ * scoped to just this lane's own entries instead of spanning the whole turn. */
+function LaneGroupRow({
+  group,
+  t,
+}: {
+  group: LaneGroup;
+  t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  const degraded = group.lane?.status === "degraded";
+  const dotClass = degraded
+    ? "bg-[var(--warn)]"
+    : group.lane?.status === "running"
+      ? "bg-[var(--accent)]"
+      : "bg-[var(--text-muted)]";
+
+  return (
+    <li className="flex flex-col gap-1.5">
+      {group.lane ? (
+        <div className="flex items-center gap-2 text-[13px]">
+          <span className={cn("size-2 shrink-0 rounded-full", dotClass)} aria-hidden />
+          {degraded ? (
+            <span className="inline-flex items-center gap-1 text-[var(--warn)]">
+              <WarningIcon size={12} weight="regular" aria-hidden />
+              {t("laneDegraded")}
+            </span>
+          ) : (
+            <span className="text-[var(--text)]">
+              {group.lane.activity ?? group.lane.skill ?? group.lane.agentId}
+            </span>
+          )}
+        </div>
+      ) : null}
+      {group.entries.length > 0 ? (
+        <ol className={cn("flex flex-col", group.lane ? "ml-4" : undefined)}>
+          {group.entries.map((entry, index) => (
+            <ProcessSubEntryRow
+              key={`${entry.kind}-${entry.seq}`}
+              entry={
+                entry.kind === "tool"
+                  ? { kind: "tool", toolName: entry.step.toolName }
+                  : { kind: "thinking", text: entry.chunk.text }
+              }
+              isLast={index === group.entries.length - 1}
+              t={t}
+            />
+          ))}
+        </ol>
+      ) : null}
+    </li>
+  );
+}
+
+/** Normalized shape both the live (`LaneGroup["entries"]`) and persisted
+ * (`PersistedLaneEntry`) sub-entry unions reduce to before reaching `ProcessSubEntryRow` — one
+ * render body shared by the live and reload paths instead of two near-identical copies. */
+export type ProcessSubEntry =
+  | { kind: "tool"; toolName: string }
+  | { kind: "thinking"; text: string };
+
+/** One tool/thinking entry inside a lane's own sub-timeline (live or persisted) — the lane-dot
+ * marker lives in the caller's own group header, so this only ever renders the tool-icon/
+ * brain-icon markers. Exported for `persisted-thread-view.tsx`'s reload-path reuse. */
+export function ProcessSubEntryRow({
   entry,
   isLast,
   t,
 }: {
-  entry: ReturnType<typeof buildTimeline>[number];
+  entry: ProcessSubEntry;
   isLast: boolean;
   t: ReturnType<typeof useTranslations>;
 }): ReactNode {
-  const degraded = entry.kind === "lane" && entry.lane.status === "degraded";
-  const dotClass = degraded
-    ? "bg-[var(--warn)]"
-    : entry.kind === "lane" && entry.lane.status === "running"
-      ? "bg-[var(--accent)]"
-      : "bg-[var(--text-muted)]";
-
   return (
     <li className="relative flex gap-3 pb-3 last:pb-0">
       <div className="relative flex w-3 shrink-0 justify-center">
         {isLast ? null : (
           <span className="absolute top-2 bottom-0 w-px bg-[var(--border)]" aria-hidden />
         )}
-        {entry.kind === "lane" ? (
-          <span
-            className={cn("relative z-10 mt-1.5 size-2 shrink-0 rounded-full", dotClass)}
-            aria-hidden
-          />
-        ) : (
-          <span className="relative z-10 mt-1 flex size-3.5 shrink-0 items-center justify-center bg-[var(--bg)]">
-            {entry.kind === "tool" ? (
-              <MagnifyingGlassIcon
-                size={13}
-                weight="regular"
-                aria-hidden
-                className="text-[var(--text-muted)]"
-              />
-            ) : (
-              <BrainIcon
-                size={13}
-                weight="regular"
-                aria-hidden
-                className="text-[var(--text-muted)]"
-              />
-            )}
-          </span>
-        )}
+        <span className="relative z-10 mt-1 flex size-3.5 shrink-0 items-center justify-center bg-[var(--bg)]">
+          {entry.kind === "tool" ? (
+            <MagnifyingGlassIcon
+              size={13}
+              weight="regular"
+              aria-hidden
+              className="text-[var(--text-muted)]"
+            />
+          ) : (
+            <BrainIcon
+              size={13}
+              weight="regular"
+              aria-hidden
+              className="text-[var(--text-muted)]"
+            />
+          )}
+        </span>
       </div>
       <div className="min-w-0 flex-1 pt-0.5 text-[13px] text-[var(--text-muted)]">
-        {entry.kind === "lane" ? (
-          degraded ? (
-            <span className="inline-flex items-center gap-1 text-[var(--warn)]">
-              <WarningIcon size={12} weight="regular" aria-hidden />
-              {t("laneDegraded")}
-            </span>
-          ) : (
-            <span>{entry.lane.activity ?? entry.lane.skill ?? entry.lane.agentId}</span>
-          )
-        ) : null}
         {entry.kind === "tool" ? (
-          <span>{entry.step.summary ?? t("toolStep", { tool: entry.step.toolName })}</span>
-        ) : null}
-        {entry.kind === "thinking" ? (
+          <span>{t("toolStep", { tool: entry.toolName })}</span>
+        ) : (
           <div className="flex flex-col gap-0.5">
             <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
               {t("thinkingChunk")}
             </span>
             <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-[var(--text)]">
-              {entry.chunk.text}
+              {entry.text}
             </p>
           </div>
-        ) : null}
+        )}
       </div>
     </li>
   );

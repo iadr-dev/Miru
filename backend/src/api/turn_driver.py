@@ -34,6 +34,9 @@ from conversation.models import (
     MessageBlockType,
     RichCardBlock,
     TextBlock,
+    ThinkingBlock,
+    ToolResultBlock,
+    ToolUseBlock,
     TurnRole,
     WebSearchSourcesBlock,
 )
@@ -44,7 +47,7 @@ from conversation.store import (
 from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import TURN_END_KIND, EventBus
-from llm.base import ImagePart
+from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
 from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import PersonalityContext
 from tools.base import ToolContext
@@ -237,6 +240,36 @@ def start_turn_stream(
     return StreamingResponse(stream, media_type="text/event-stream")
 
 
+async def _load_history(
+    store: ConversationStore, *, user_id: str, thread_id: str, turn_id: str
+) -> tuple[Message, ...]:
+    """Prior turns on this thread, converted to `llm.base.Message`s the orchestrator/classifier
+    can read — without this, every turn starts from a blank slate and a follow-up like "what
+    about its dividend history?" has no way to resolve "its" to whatever symbol an earlier turn
+    discussed. Excludes `turn_id` itself: by the time `_drive_turn` runs, the current turn's own
+    user message is already persisted (`agent.py`/`threads_actions.py` append it before starting
+    the stream) — the caller passes that text separately as `message`, so including it here would
+    duplicate it. Only `TEXT` blocks are converted (tool/thinking/rich-card blocks are noise for
+    conversational continuity, not signal) — a `Turn.role` of `assistant`/`user` maps directly to
+    `MessageRole.ASSISTANT`/`USER`. Best-effort: a brand-new thread (no turns yet) or a lookup
+    failure returns no history rather than failing the turn over conversational context."""
+    try:
+        thread = await store.get_thread(user_id=user_id, thread_id=thread_id)
+    except ThreadNotFoundError:
+        return ()
+    history: list[Message] = []
+    for turn in thread.turns:
+        if turn.id == turn_id:
+            continue
+        role = MessageRole.USER if turn.role is TurnRole.USER else MessageRole.ASSISTANT
+        for block in turn.messages:
+            if block.type is MessageBlockType.TEXT:
+                text = getattr(block.content, "text", None)
+                if isinstance(text, str) and text:
+                    history.append(Message(role=role, content=text))
+    return tuple(history)
+
+
 async def _drive_turn(
     *,
     state: AppState,
@@ -261,6 +294,7 @@ async def _drive_turn(
     # to and `.../cancel` flips — so the loop's `drain()` calls read exactly what a concurrent
     # steer request queued, with no second queue to keep in sync.
     running = state.turn_registry.get(turn_id)
+    history = await _load_history(store, user_id=user_id, thread_id=thread_id, turn_id=turn_id)
     try:
         result = await state.orchestrator.run(
             message,
@@ -273,6 +307,7 @@ async def _drive_turn(
             web_search_enabled=web_search_enabled,
             locale=locale,
             images=images,
+            history=history,
         )
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
@@ -352,6 +387,51 @@ async def _record_usage(
         logger.warning("usage_record_failed", turn_id=turn_id, error=repr(exc))
 
 
+def _lane_process_blocks(
+    result: OrchestratorResult,
+) -> list[tuple[MessageBlockType, MessageBlockContent]]:
+    """Every lane's tool-call/thinking trace, as durable blocks — the persisted analogue of the
+    live SSE `tool.result`/`thinking.delta` frames, so a reopened thread's process disclosure
+    isn't limited to the live stream (see `agent.loop.TurnResult.tool_calls`/`thinking_text`'s own
+    docstrings for where this data comes from). Each block's `agent_id` lets the frontend group
+    them by lane the same way `turn-store.ts`'s `buildLaneGroups` already does for the live view.
+    A tool call's arguments are never persisted (only its name + already-redacted-summary result,
+    same "provenance not payload" rule the live journal follows) — `ToolUseBlock.call.arguments`
+    is always empty here, `activity` reuses the tool name since no richer NL label survives past
+    the live stream."""
+    blocks: list[tuple[MessageBlockType, MessageBlockContent]] = []
+    for lane in result.lanes:
+        for index, call in enumerate(lane.tool_calls):
+            call_id = f"{lane.agent_id}:{call.step_index}:{index}"
+            blocks.append(
+                (
+                    MessageBlockType.TOOL_USE,
+                    ToolUseBlock(
+                        call=ToolCall(id=call_id, name=call.tool_name, arguments={}),
+                        activity=call.tool_name,
+                        agent_id=lane.agent_id,
+                    ),
+                )
+            )
+            blocks.append(
+                (
+                    MessageBlockType.TOOL_RESULT,
+                    ToolResultBlock(
+                        result=ToolResultPart(tool_call_id=call_id, content=call.summary),
+                        agent_id=lane.agent_id,
+                    ),
+                )
+            )
+        if lane.thinking_text:
+            blocks.append(
+                (
+                    MessageBlockType.THINKING,
+                    ThinkingBlock(text=lane.thinking_text, agent_id=lane.agent_id),
+                )
+            )
+    return blocks
+
+
 async def _persist_answer(
     store: ConversationStore,
     *,
@@ -362,7 +442,8 @@ async def _persist_answer(
     regenerate_of: str | None = None,
 ) -> None:
     blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
-        (MessageBlockType.TEXT, TextBlock(text=result.final_text))
+        *_lane_process_blocks(result),
+        (MessageBlockType.TEXT, TextBlock(text=result.final_text)),
     ]
     # Persist each governed card as its own block so a re-opened thread renders the same cards
     # the live stream showed — the card payload is already scanned/caveated by the Step loop.

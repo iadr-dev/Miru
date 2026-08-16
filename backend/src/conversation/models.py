@@ -58,24 +58,35 @@ class TextBlock(BaseModel):
 
 
 class ThinkingBlock(BaseModel):
+    """`agent_id` attributes this reasoning chunk to the lane that produced it (`root` for a
+    non-fanned-out `single`/`none` turn) — needed so a persisted `subagent`/`team` turn's process
+    trace can be grouped by lane the same way the live SSE view already is."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     text: str
+    agent_id: str = "root"
 
 
 class ToolUseBlock(BaseModel):
+    """`agent_id` — see `ThinkingBlock`."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     call: ToolCall
     activity: str = Field(min_length=1, description="the NL narration label, e.g. 'Checking...'")
     data_class: str = "public"
+    agent_id: str = "root"
 
 
 class ToolResultBlock(BaseModel):
+    """`agent_id` — see `ThinkingBlock`."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     result: ToolResultPart
     locked: bool = False
+    agent_id: str = "root"
 
 
 class CaveatBlock(BaseModel):

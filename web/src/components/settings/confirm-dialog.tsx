@@ -1,9 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { type ReactNode, useCallback, useEffect, useRef } from "react";
+import { type ReactNode, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 /**
  * Focus-trapped confirm dialog (Esc cancels, Enter/click confirms) — shared by every Settings
@@ -27,67 +28,12 @@ export function ConfirmDialog({
   onCancel: () => void;
 }): ReactNode {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
 
   const close = useCallback(() => {
     onCancel();
   }, [onCancel]);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    const dialog = dialogRef.current;
-    const focusables = (): HTMLElement[] =>
-      dialog
-        ? Array.from(
-            dialog.querySelectorAll<HTMLElement>(
-              'button, [href], input, [tabindex]:not([tabindex="-1"])',
-            ),
-          ).filter((el) => !el.hasAttribute("disabled"))
-        : [];
-    focusables()[0]?.focus();
-
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close();
-        return;
-      }
-      if (e.key === "Enter" && !(document.activeElement instanceof HTMLButtonElement)) {
-        // A button's own Enter activation already fires its onClick — only intercept Enter when
-        // focus is elsewhere (e.g. the dialog's root), so Cancel-focused-then-Enter cancels
-        // instead of confirming.
-        e.preventDefault();
-        onConfirm();
-        return;
-      }
-      if (e.key === "Tab") {
-        const items = focusables();
-        if (items.length === 0) {
-          return;
-        }
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (!first || !last) {
-          return;
-        }
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      previouslyFocused.current?.focus?.();
-    };
-  }, [open, close, onConfirm]);
+  useFocusTrap(dialogRef, open, close, onConfirm);
 
   const titleId = "confirm-dialog-title";
   const descId = "confirm-dialog-description";

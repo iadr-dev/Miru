@@ -49,7 +49,8 @@ class _StaticClassifier(IntentClassifier):
         super().__init__(registry)
         self._routing = routing
 
-    async def _classify_inner(self, message: str) -> Routing:
+    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+        del message, history
         return self._routing
 
 
@@ -406,6 +407,9 @@ async def test_subagent_clamps_to_four_lanes(
     result = await orch.run("analyze 2330", tool_context=ToolContext())
 
     assert len(result.lanes) == 1
+    assert result.provenance is not None
+    assert result.provenance.dropped_skill_count == 1
+    assert "additional analytical angle" in result.final_text
 
 
 async def test_subagent_quota_degrades_lane_before_spawn(
@@ -649,8 +653,8 @@ async def test_model_override_used_for_none_framework(
     registry: SkillRegistry, tool_lookup: dict[str, Tool], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A resolvable `model_override` string substitutes the AGENT-role client on the `none`
-    framework path — `_resolve_agent_client` should call `llm.registry.build_client` with the
-    parsed `(provider, model)` instead of `resolve_role(ModelRole.AGENT, ...)`."""
+    framework path — `resolve_role_with_override` should call `llm.registry.build_client` with
+    the parsed `(provider, model)` instead of `resolve_role(ModelRole.AGENT, ...)`."""
     routing = Routing(framework="none", skills=(), reason="greeting")
     override_client = StubLLMClient(script=[make_text_response("Hi from the overridden model.")])
     captured: list[tuple[str, str]] = []
@@ -662,8 +666,8 @@ async def test_model_override_used_for_none_framework(
     def _fail_resolve_role(role: object, settings: object | None = None) -> object:
         raise AssertionError("resolve_role should not be called when model_override resolves")
 
-    monkeypatch.setattr("orchestrator.orchestrator.build_client", _fake_build_client)
-    monkeypatch.setattr("orchestrator.orchestrator.resolve_role", _fail_resolve_role)
+    monkeypatch.setattr("llm.registry.build_client", _fake_build_client)
+    monkeypatch.setattr("llm.registry.resolve_role", _fail_resolve_role)
 
     orch = _orchestrator(registry, tool_lookup, routing)
 
@@ -692,8 +696,8 @@ async def test_model_override_malformed_degrades_to_agent_role(
     def _fake_resolve_role(role: object, settings: object | None = None) -> object:
         return fallback_client
 
-    monkeypatch.setattr("orchestrator.orchestrator.build_client", _fail_build_client)
-    monkeypatch.setattr("orchestrator.orchestrator.resolve_role", _fake_resolve_role)
+    monkeypatch.setattr("llm.registry.build_client", _fail_build_client)
+    monkeypatch.setattr("llm.registry.resolve_role", _fake_resolve_role)
 
     orch = _orchestrator(registry, tool_lookup, routing)
 

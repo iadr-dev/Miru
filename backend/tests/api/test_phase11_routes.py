@@ -176,11 +176,16 @@ class TestVoice:
         assert resp.status_code == 200
         assert resp.json()["text"] == "台積電最近如何"
 
-    def test_speak_free_forbidden(self, client: TestClient, signed_in_user) -> None:
+    def test_speak_free_ok(self, client: TestClient, signed_in_user) -> None:
+        """TTS read-aloud is Free, quota-bounded like STT — voice conversation mode is a
+        Free-tier feature end to end, not gated behind Premium/Pro."""
         headers, _ = signed_in_user  # Free tier
         resp = client.post("/api/v1/voice/speak", json={"text": "測試"}, headers=headers)
-        assert resp.status_code == 403
-        assert resp.json()["code"] == "feature_not_entitled"
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["content_type"]
+        # The spoken text is caveat-guaranteed by the service.
+        assert body["spoken_text"]
 
     def test_speak_premium_ok(self, client: TestClient, settings: Settings) -> None:
         headers, _ = sign_in(client, settings, tier=Tier.PREMIUM)

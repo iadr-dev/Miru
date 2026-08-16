@@ -3,11 +3,12 @@
 import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { GoogleIcon, LineIcon } from "@/components/icons/brand-icons";
 import { Button } from "@/components/ui/button";
 import { AuthError, beginOAuth, type OAuthProvider } from "@/lib/api/auth";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 export type AuthIntent = "signIn" | "register";
 
@@ -36,61 +37,13 @@ export function AuthModal({ open, intent, onClose }: AuthModalProps): ReactNode 
   const t = useTranslations("auth");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const dialogRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
 
   const handleClose = useCallback(() => {
     setPhase({ kind: "idle" });
     onClose();
   }, [onClose]);
 
-  // Esc to close + focus trap + restore focus to the opener on close.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    const dialog = dialogRef.current;
-    const focusables = (): HTMLElement[] =>
-      dialog
-        ? Array.from(
-            dialog.querySelectorAll<HTMLElement>(
-              'button, [href], input, [tabindex]:not([tabindex="-1"])',
-            ),
-          ).filter((el) => !el.hasAttribute("disabled"))
-        : [];
-    focusables()[0]?.focus();
-
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        handleClose();
-        return;
-      }
-      if (e.key === "Tab") {
-        const items = focusables();
-        if (items.length === 0) {
-          return;
-        }
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (!first || !last) {
-          return;
-        }
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      previouslyFocused.current?.focus?.();
-    };
-  }, [open, handleClose]);
+  useFocusTrap(dialogRef, open, handleClose);
 
   const start = async (provider: OAuthProvider): Promise<void> => {
     setPhase({ kind: "redirecting", provider });

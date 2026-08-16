@@ -26,6 +26,7 @@ export const MESSAGE_BLOCK_TYPES = [
   "steering",
   "branch_summary",
   "compaction",
+  "attachment",
   "web_search_sources",
 ] as const;
 export type MessageBlockType = (typeof MESSAGE_BLOCK_TYPES)[number];
@@ -38,6 +39,56 @@ export const richCardSchema = z.object({
   data: z.record(z.string(), z.unknown()).default({}),
 });
 export type RichCard = z.infer<typeof richCardSchema>;
+
+/** A persisted `attachment` block (`conversation.models.AttachmentBlock`) — metadata + (for a
+ * document) extracted text for one attachment on a user turn. Never carries the raw file/image
+ * bytes (see the backend model's own docstring); an image attachment's `extracted_text` is
+ * always `null` since the image itself was the vision input, not re-derivable as text here. */
+export const attachmentBlockSchema = z.object({
+  filename: z.string(),
+  media_type: z.string(),
+  is_image: z.boolean(),
+  extracted_text: z.string().nullable().default(null),
+  size_bytes: z.number().int().nonnegative(),
+});
+export type AttachmentBlockContent = z.infer<typeof attachmentBlockSchema>;
+
+/** A persisted `thinking` block (`conversation.models.ThinkingBlock`) — the durable counterpart
+ * of the live `thinking.delta` SSE frames, one block per lane's accumulated reasoning text.
+ * `agent_id` groups this with its owning lane's `tool_use`/`tool_result` blocks, the same
+ * grouping `turn-store.ts`'s `buildLaneGroups` already does for the live view. */
+export const thinkingBlockSchema = z.object({
+  text: z.string(),
+  agent_id: z.string().default("root"),
+});
+export type ThinkingBlockContent = z.infer<typeof thinkingBlockSchema>;
+
+/** A persisted `tool_use` block (`conversation.models.ToolUseBlock`) — the durable counterpart of
+ * the live `tool.result` SSE frame's tool-name half. Arguments are never persisted (only the tool
+ * name + its already-redacted result summary survive past the live stream, same
+ * provenance-not-payload rule the backend journal follows), so `call.arguments` is always `{}`
+ * here — the UI never renders it as anything but a tool-name label. */
+export const toolUseBlockSchema = z.object({
+  call: z.object({
+    id: z.string(),
+    name: z.string(),
+    arguments: z.record(z.string(), z.unknown()).default({}),
+  }),
+  activity: z.string(),
+  data_class: z.string().default("public"),
+  agent_id: z.string().default("root"),
+});
+export type ToolUseBlockContent = z.infer<typeof toolUseBlockSchema>;
+
+/** A persisted `tool_result` block (`conversation.models.ToolResultBlock`) — pairs with a
+ * `tool_use` block by `result.tool_call_id`/`call.id`. `result.content` is the same redacted
+ * summary string the live `tool.result` SSE frame carries, never a raw payload. */
+export const toolResultBlockSchema = z.object({
+  result: z.object({ tool_call_id: z.string(), content: z.string() }),
+  locked: z.boolean().default(false),
+  agent_id: z.string().default("root"),
+});
+export type ToolResultBlockContent = z.infer<typeof toolResultBlockSchema>;
 
 /** A persisted `web_search_sources` block (`conversation.models.WebSearchSourcesBlock`) — the
  * durable counterpart of the live `web_search.result` SSE frame's `sources` list (same

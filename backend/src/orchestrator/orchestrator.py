@@ -34,8 +34,13 @@ from agent.prompts import PromptLayers, default_prompt_layers
 from config.settings import Settings, get_settings
 from events.bus import EventBus
 from events.usage import UsageAccumulator
-from llm.base import ImagePart, LLMClient, WebSearchSource
-from llm.registry import ModelRole, ProviderNotConfiguredError, build_client, resolve_role
+from llm.base import ImagePart, LLMClient, Message, WebSearchSource
+from llm.registry import (
+    ModelRole,
+    ProviderNotConfiguredError,
+    resolve_role,
+    resolve_role_with_override,
+)
 from orchestrator.ceilings import (
     NoQuotaReserver,
     QuotaReservation,
@@ -68,6 +73,21 @@ _DEGRADED_ALL_LANES = (
     "compiled. This is informational only and not a buy/sell/hold recommendation; please try "
     "again shortly."
 )
+
+
+def _append_dropped_notice(text: str, dropped_skill_count: int) -> str:
+    """Surfaces a fan-out clamp rather than silently absorbing it — appended once per turn when
+    the classifier identified more analytical angles than actually ran (either the `_MAX_SKILLS`
+    routing-parse backstop or `TurnBudget.clamp_subagents`'s per-turn ceiling clamped the list)."""
+    if dropped_skill_count <= 0:
+        return text
+    notice = (
+        f"（另有 {dropped_skill_count} 個分析角度因單次請求上限未執行 / "
+        f"{dropped_skill_count} additional analytical angle"
+        f"{'s' if dropped_skill_count != 1 else ''} were identified but not run due to a "
+        "per-turn limit.）"
+    )
+    return f"{text}\n\n{notice}"
 
 
 def _tools_for(skill: Skill, tool_lookup: dict[str, Tool]) -> list[Tool]:
@@ -164,6 +184,8 @@ def _lane_from_turn(turn: TurnResult, *, agent_id: str, skill: str) -> LaneResul
             reason="lane produced no final content",
             rich_cards=turn.rich_cards,
             web_search_sources=turn.web_search_sources,
+            tool_calls=turn.tool_calls,
+            thinking_text=turn.thinking_text,
         )
     return LaneResult(
         agent_id=agent_id,
@@ -172,6 +194,25 @@ def _lane_from_turn(turn: TurnResult, *, agent_id: str, skill: str) -> LaneResul
         status="ok",
         rich_cards=turn.rich_cards,
         web_search_sources=turn.web_search_sources,
+        tool_calls=turn.tool_calls,
+        thinking_text=turn.thinking_text,
+    )
+
+
+def _root_lane_from_turn(turn: TurnResult, *, skill: str) -> LaneResult:
+    """A synthetic `LaneResult` for the `single` framework's one root-level loop (no fan-out, no
+    `_run_one_lane` spawn) — exists purely so its tool-call/thinking trace has somewhere to land
+    on `OrchestratorResult.lanes` for persistence/process-trace purposes; synthesis itself never
+    reads a `single` turn's lanes (its answer is `turn.final_text` directly)."""
+    return LaneResult(
+        agent_id=_ROOT_AGENT_ID,
+        skill=skill,
+        text=turn.final_text.strip(),
+        status="ok",
+        rich_cards=turn.rich_cards,
+        web_search_sources=turn.web_search_sources,
+        tool_calls=turn.tool_calls,
+        thinking_text=turn.thinking_text,
     )
 
 
@@ -264,6 +305,7 @@ class Orchestrator:
         model_override: str | None = None,
         web_search_enabled: bool = False,
         images: tuple[ImagePart, ...] = (),
+        history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
         """`steering_source` is only meaningful for `single` (the interactive root-agent lane a
         live `POST .../steer` call actually targets) — the fan-out frameworks' sub-agent lanes
@@ -275,9 +317,16 @@ class Orchestrator:
         `none`/`single` framework paths (the interactive root-agent lane) — fan-out lanes
         (`subagent`/`team`) never see any of them, mirroring the SUBAGENT-role carve-out
         `_resolve_client` already enforces for `model_override` (an attached image is part of
-        the user's own turn, not something a fan-out sub-agent lane independently receives)."""
+        the user's own turn, not something a fan-out sub-agent lane independently receives).
+
+        `history` is prior turns from the same thread (oldest first, caller-supplied — the
+        orchestrator has no `conversation` access per the dependency rule, so it never fetches
+        this itself). Threaded to the classifier as a compact rendered summary (`_render_history`)
+        so a follow-up like "what about its dividend history?" can resolve its missing subject,
+        and to every framework's `AgentLoop`/lane so the skill's own LLM call sees the same
+        context, not just the routing decision."""
         routing = await self._classifier.classify(
-            user_message, event_bus=event_bus, turn_id=turn_id
+            user_message, event_bus=event_bus, turn_id=turn_id, history=history
         )
         budget = TurnBudget.from_settings(self._settings)
         usage = UsageAccumulator(turn_id or "")
@@ -296,6 +345,7 @@ class Orchestrator:
                     web_search_enabled=web_search_enabled,
                     locale=locale,
                     images=images,
+                    history=history,
                 )
             elif routing.framework == "single":
                 result = await self._run_single(
@@ -312,6 +362,7 @@ class Orchestrator:
                     model_override=model_override,
                     web_search_enabled=web_search_enabled,
                     images=images,
+                    history=history,
                 )
             elif routing.framework == "subagent":
                 result = await self._run_subagent(
@@ -324,6 +375,8 @@ class Orchestrator:
                     usage=usage,
                     personality_fragment=fragment,
                     locale=locale,
+                    model_override=model_override,
+                    history=history,
                 )
             else:
                 result = await self._run_team(
@@ -336,6 +389,8 @@ class Orchestrator:
                     usage=usage,
                     personality_fragment=fragment,
                     locale=locale,
+                    model_override=model_override,
+                    history=history,
                 )
         except TurnCeilingExceededError as exc:
             logger.warning(
@@ -413,6 +468,7 @@ class Orchestrator:
         web_search_enabled: bool = False,
         locale: str = "zh-TW",
         images: tuple[ImagePart, ...] = (),
+        history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
         """Direct reply from the system prompt — no tools, no skills (unless `web_search_enabled`
         grants the two web-access tools for this turn). Runs through an `AgentLoop` with the
@@ -437,7 +493,9 @@ class Orchestrator:
             model_override=model_override,
             web_search_enabled=web_search_enabled,
         )
-        turn = await loop.run_turn(user_message, tool_context=tool_context, images=images)
+        turn = await loop.run_turn(
+            user_message, tool_context=tool_context, images=images, history=history
+        )
         self._feed_usage(usage, turn)
         # No tools run in the `none` framework, so `turn.rich_cards` is always empty here — but
         # `web_search_sources` is real: `web_search_enabled` can grant native web search even
@@ -466,6 +524,7 @@ class Orchestrator:
         model_override: str | None = None,
         web_search_enabled: bool = False,
         images: tuple[ImagePart, ...] = (),
+        history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
         skills = routing.bounded_skills()
         skill = self._registry.get(skills[0]) if skills else None
@@ -484,7 +543,9 @@ class Orchestrator:
             locale=locale,
         )
         try:
-            turn = await loop.run_turn(user_message, tool_context=tool_context, images=images)
+            turn = await loop.run_turn(
+                user_message, tool_context=tool_context, images=images, history=history
+            )
         except StepBudgetExceededError:
             logger.warning("orch_single_step_budget_exceeded", turn_id=turn_id)
             return OrchestratorResult(final_text=_DEGRADED_ALL_LANES, routing=routing)
@@ -499,9 +560,23 @@ class Orchestrator:
         return OrchestratorResult(
             final_text=turn.final_text,
             routing=routing,
+            lanes=(_root_lane_from_turn(turn, skill=skill.name if skill else ""),),
             rich_cards=turn.rich_cards,
             web_search_sources=turn.web_search_sources,
         )
+
+    async def _start_fanout(
+        self, routing: Routing, budget: TurnBudget, tool_context: ToolContext
+    ) -> tuple[tuple[str, ...], int, QuotaReservation]:
+        """The setup common to both fan-out frameworks — plan which skills run (honoring the
+        classifier/ceiling drop) and reserve their quota — pulled out purely so `_run_subagent`/
+        `_run_team` don't repeat this identical block, which otherwise duplicates verbatim aside
+        from the loop shape each uses afterward."""
+        skills, dropped = self._plan_fanout(routing, budget)
+        reservation = await self._quota_reserver.reserve(
+            skills=skills, tier=tool_context.tier.value
+        )
+        return skills, dropped, reservation
 
     # ---- subagent (parallel) ----
 
@@ -517,11 +592,10 @@ class Orchestrator:
         usage: UsageAccumulator,
         personality_fragment: str,
         locale: str = "zh-TW",
+        model_override: str | None = None,
+        history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
-        skills = self._plan_fanout(routing, budget)
-        reservation = await self._quota_reserver.reserve(
-            skills=skills, tier=tool_context.tier.value
-        )
+        skills, dropped, reservation = await self._start_fanout(routing, budget, tool_context)
 
         async def run_lane(skill_name: str) -> LaneResult:
             return await self._run_one_lane(
@@ -535,6 +609,7 @@ class Orchestrator:
                 usage=usage,
                 personality_fragment=personality_fragment,
                 locale=locale,
+                history=history,
             )
 
         outcomes = await asyncio.gather(
@@ -545,7 +620,9 @@ class Orchestrator:
             for name, outcome in zip(skills, outcomes, strict=True)
         )
         await self._refund_unspent(reservation, lanes)
-        return await self._synthesize(routing, lanes, event_bus, turn_id)
+        return await self._synthesize(
+            routing, lanes, event_bus, turn_id, model_override, dropped_skill_count=dropped
+        )
 
     # ---- team (sequential) ----
 
@@ -561,11 +638,10 @@ class Orchestrator:
         usage: UsageAccumulator,
         personality_fragment: str,
         locale: str = "zh-TW",
+        model_override: str | None = None,
+        history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
-        skills = self._plan_fanout(routing, budget)
-        reservation = await self._quota_reserver.reserve(
-            skills=skills, tier=tool_context.tier.value
-        )
+        skills, dropped, reservation = await self._start_fanout(routing, budget, tool_context)
         lanes: list[LaneResult] = []
         findings: tuple[Finding, ...] = ()
         for skill_name in skills:
@@ -583,6 +659,7 @@ class Orchestrator:
                     personality_fragment=personality_fragment,
                     prior_findings=prior,
                     locale=locale,
+                    history=history,
                 )
             except Exception as exc:
                 # A teammate's failure is a missing dimension, isolated the same way a parallel
@@ -592,7 +669,14 @@ class Orchestrator:
             if lane.succeeded:
                 findings = (*findings, _finding_from_lane(lane))
         await self._refund_unspent(reservation, tuple(lanes))
-        return await self._synthesize(routing, tuple(lanes), event_bus, turn_id)
+        return await self._synthesize(
+            routing,
+            tuple(lanes),
+            event_bus,
+            turn_id,
+            model_override,
+            dropped_skill_count=dropped,
+        )
 
     # ---- shared lane execution ----
 
@@ -610,6 +694,7 @@ class Orchestrator:
         personality_fragment: str,
         prior_findings: str | None = None,
         locale: str = "zh-TW",
+        history: tuple[Message, ...] = (),
     ) -> LaneResult:
         """Run one lane's Step loop, with one corrective retry on an empty/degraded result then
         drop-with-flag. Sub-agents are read-only + independent, so the retry is
@@ -669,6 +754,7 @@ class Orchestrator:
             usage=usage,
             personality_fragment=personality_fragment,
             locale=locale,
+            history=history,
         )
         if lane.completeness == "empty":
             lane = await self._run_lane_attempt(
@@ -683,6 +769,7 @@ class Orchestrator:
                 usage=usage,
                 personality_fragment=personality_fragment,
                 locale=locale,
+                history=history,
             )
             if lane.completeness == "empty":
                 lane = lane.model_copy(
@@ -715,6 +802,7 @@ class Orchestrator:
         usage: UsageAccumulator,
         personality_fragment: str,
         locale: str = "zh-TW",
+        history: tuple[Message, ...] = (),
     ) -> LaneResult:
         loop = self._build_loop(
             tools=tools,
@@ -727,7 +815,7 @@ class Orchestrator:
             locale=locale,
         )
         try:
-            turn = await loop.run_turn(lane_message, tool_context=tool_context)
+            turn = await loop.run_turn(lane_message, tool_context=tool_context, history=history)
         except StepBudgetExceededError:
             return LaneResult(
                 agent_id=agent_id,
@@ -757,12 +845,15 @@ class Orchestrator:
             reason=f"lane raised {type(outcome).__name__}: {outcome}",
         )
 
-    async def _synthesize(
+    async def _synthesize(  # noqa: PLR0913 — one field per synthesis-input dimension
         self,
         routing: Routing,
         lanes: tuple[LaneResult, ...],
         event_bus: EventBus | None,
         turn_id: str | None,
+        model_override: str | None = None,
+        *,
+        dropped_skill_count: int = 0,
     ) -> OrchestratorResult:
         if event_bus is not None:
             event_bus.publish(
@@ -772,31 +863,36 @@ class Orchestrator:
                 data={"from_agents": [lane.agent_id for lane in lanes if lane.succeeded]},
             )
         try:
-            final_text, provenance = await self._synthesizer.synthesize(lanes)
+            final_text, provenance = await self._synthesizer.synthesize(
+                lanes, model_override=model_override
+            )
         except NoSuccessfulLanesError:
             logger.warning("orch_all_lanes_failed", turn_id=turn_id)
             provenance = SynthesisProvenance(
                 contributing_skills=(),
                 missing_skills=tuple(lane.skill for lane in lanes),
                 degraded=True,
+                dropped_skill_count=dropped_skill_count,
             )
             return OrchestratorResult(
-                final_text=_DEGRADED_ALL_LANES,
+                final_text=_append_dropped_notice(_DEGRADED_ALL_LANES, dropped_skill_count),
                 routing=routing,
                 lanes=lanes,
                 provenance=provenance,
                 rich_cards=_lane_cards(lanes),
                 web_search_sources=_lane_web_search_sources(lanes),
             )
+        provenance = provenance.model_copy(update={"dropped_skill_count": dropped_skill_count})
         logger.info(
             "synthesis_provenance",
             turn_id=turn_id,
             contributing=list(provenance.contributing_skills),
             missing=list(provenance.missing_skills),
             degraded=provenance.degraded,
+            dropped_skill_count=dropped_skill_count,
         )
         return OrchestratorResult(
-            final_text=final_text,
+            final_text=_append_dropped_notice(final_text, dropped_skill_count),
             routing=routing,
             lanes=lanes,
             provenance=provenance,
@@ -826,10 +922,18 @@ class Orchestrator:
                 data={"card_type": card.card_type, "data": card.data},
             )
 
-    def _plan_fanout(self, routing: Routing, budget: TurnBudget) -> tuple[str, ...]:
+    def _plan_fanout(self, routing: Routing, budget: TurnBudget) -> tuple[tuple[str, ...], int]:
+        """Returns the clamped skill tuple and how many analytical angles were dropped along the
+        way — combining the classifier's own pre-truncation count (`routing.requested_skill_count`,
+        which may exceed `routing.skills` if the `_MAX_SKILLS` backstop already trimmed it) with
+        whatever `TurnBudget.clamp_subagents` additionally clamps. Callers surface this in
+        synthesis rather than silently absorbing it."""
         skills = routing.bounded_skills()
         clamped = budget.clamp_subagents(len(skills))
-        return skills[:clamped]
+        final_skills = skills[:clamped]
+        requested = max(routing.requested_skill_count, len(routing.skills))
+        dropped = max(0, requested - len(final_skills))
+        return final_skills, dropped
 
     def _degraded_ceiling_result(
         self, routing: Routing, exc: TurnCeilingExceededError
@@ -958,29 +1062,9 @@ class Orchestrator:
 
     def _resolve_agent_client(self, model_override: str | None) -> LLMClient:
         """The AGENT-role client, honoring a per-thread `model_override` (a `"provider/model"`
-        string) when present. Any failure to resolve it — malformed string, unconfigured
-        provider, or an unimplemented provider id — degrades to the normal
-        `resolve_role(ModelRole.AGENT, ...)` behavior rather than failing the turn, mirroring the
-        degrade-on-`ProviderNotConfiguredError` pattern already used by `IntentClassifier.
-        _resolve_client` and this class's own SUBAGENT→AGENT fallback above."""
-        if model_override is None:
-            return resolve_role(ModelRole.AGENT, self._settings)
-        try:
-            # Same "provider/model" split `llm.registry.resolve_role` uses internally
-            # (`_split_provider_model`) — reimplemented inline rather than imported since that
-            # helper is a private, underscore-prefixed name of a leaf module (`pyright`'s
-            # `reportPrivateUsage` correctly flags cross-module use of it).
-            provider_id, _, model_id = model_override.partition("/")
-            if not model_id:
-                raise ValueError(f"expected 'provider/model', got {model_override!r}")
-            return build_client(provider_id, model_id, self._settings)
-        except Exception as exc:  # malformed spec, unconfigured/unimplemented provider, etc.
-            logger.warning(
-                "model_override_failed_falling_back",
-                model_override=model_override,
-                error=str(exc),
-            )
-            return resolve_role(ModelRole.AGENT, self._settings)
+        string) when present — see `llm.registry.resolve_role_with_override` for the shared
+        degrade-on-failure behavior (also used by `Synthesizer` for the SYNTHESIS role)."""
+        return resolve_role_with_override(ModelRole.AGENT, model_override, self._settings)
 
 
 __all__ = ["Orchestrator", "PersonalityContext"]

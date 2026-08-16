@@ -13,28 +13,36 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agent.loop import RichCard
+from agent.loop import RichCard, ToolCallRecord
 from events.usage import TurnUsage
 from llm.base import WebSearchSource
 
 Framework = Literal["none", "single", "subagent", "team"]
 
-_MAX_SKILLS = 4
+# A rare-hallucination backstop on the routing decision itself, not the routine fan-out
+# breadth control — that's `TurnBudget.max_subagents` (orchestrator/ceilings.py), which is the
+# real cost/latency-bearing ceiling and stays at 4. This only guards against a classifier verdict
+# naming an unreasonable number of skills.
+_MAX_SKILLS = 8
 
 
 class Routing(BaseModel):
-    """The intent-classifier verdict: which framework runs the turn and which 0-4 skills feed
+    """The intent-classifier verdict: which framework runs the turn and which 0-8 skills feed
     it. `reason` is journaled with the `route.decided` event so a routing decision is always
-    reconstructable."""
+    reconstructable. `requested_skill_count` is the classifier's pre-truncation skill count (how
+    many known skills it actually named before the `_MAX_SKILLS` backstop applied) — carried
+    separately from `skills` so a later clamp (this ceiling, or `TurnBudget.clamp_subagents`) can
+    report an honest "N angles dropped" count instead of only seeing the already-truncated list."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     framework: Framework
     skills: tuple[str, ...] = Field(default_factory=tuple)
     reason: str = Field(min_length=1)
+    requested_skill_count: int = 0
 
     def bounded_skills(self) -> tuple[str, ...]:
-        """The skills list clamped to the hard ceiling of 4 — a classifier that names
+        """The skills list clamped to the hard ceiling — a classifier that names
         more is trimmed here, never allowed to fan out past the bound."""
         return self.skills[:_MAX_SKILLS]
 
@@ -64,6 +72,11 @@ class LaneResult(BaseModel):
     reason: str | None = None
     rich_cards: tuple[RichCard, ...] = Field(default_factory=tuple)
     web_search_sources: tuple[WebSearchSource, ...] = Field(default_factory=tuple)
+    # Persisted process trace for this lane — same redacted tool-call/thinking data the live SSE
+    # stream already carries, kept here so `_persist_answer` has something to write once the turn
+    # ends instead of it being an ephemeral live-only concern (see `TurnResult`'s own docstring).
+    tool_calls: tuple[ToolCallRecord, ...] = Field(default_factory=tuple)
+    thinking_text: str = ""
 
     @property
     def succeeded(self) -> bool:
@@ -94,13 +107,18 @@ class Finding(BaseModel):
 
 class SynthesisProvenance(BaseModel):
     """Which skills contributed to a synthesized answer, and which were missing — the
-    provenance record journaled for the conversation-package hand-off."""
+    provenance record journaled for the conversation-package hand-off.
+
+    `dropped_skill_count` is how many analytical angles the classifier identified but never ran,
+    combining both the `_MAX_SKILLS` routing-parse backstop and `TurnBudget.clamp_subagents`'s
+    per-turn fan-out ceiling — surfaced in synthesis so a clamp is never silently absorbed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     contributing_skills: tuple[str, ...] = Field(default_factory=tuple)
     missing_skills: tuple[str, ...] = Field(default_factory=tuple)
     degraded: bool = False
+    dropped_skill_count: int = 0
 
 
 class OrchestratorResult(BaseModel):

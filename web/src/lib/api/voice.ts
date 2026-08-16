@@ -78,8 +78,9 @@ export function audioBase64ToObjectUrl(audioBase64: string, contentType: string)
 }
 
 /** Reads a `Blob` to a base64 string (no `data:...;base64,` prefix) via `FileReader`, since
- * `Buffer` isn't available in the browser. */
-function blobToBase64(blob: Blob): Promise<string> {
+ * `Buffer` isn't available in the browser. Exported for `lib/api/attachments.ts`'s file/photo
+ * attach flow, which needs the exact same encoding — one implementation, not a second copy. */
+export function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {

@@ -10,6 +10,7 @@ from events.bus import InMemoryEventBus
 from llm.base import (
     LLMResponse,
     Message,
+    MessageRole,
     ModelCapabilities,
     StopReason,
     StreamDoneEvent,
@@ -105,14 +106,27 @@ async def test_classifier_drops_unknown_skill_names(registry: SkillRegistry) -> 
     assert routing.skills == ("chip-flow-review",)
 
 
-async def test_classifier_clamps_to_four_skills(registry: SkillRegistry) -> None:
-    # duplicate valid names to exceed the ceiling — clamp keeps at most four.
+async def test_classifier_clamps_to_eight_skills(registry: SkillRegistry) -> None:
+    # 9 distinct valid names to exceed the backstop ceiling — clamp keeps at most eight. This
+    # ceiling is a rare-hallucination backstop, not the routine fan-out control (that's
+    # `TurnBudget.max_subagents`, still 4, enforced separately downstream in the orchestrator).
+    skill_names = [
+        "chip-flow-review",
+        "company-profile",
+        "active-etf-flow",
+        "valuation-band",
+        "stock-score",
+        "macro-dashboard",
+        "catalyst-scan",
+        "earnings-quality",
+        "governance-risk",
+    ]
     client = StubLLMClient(
         script=[
             _routing_response(
-                '{"framework": "subagent", "skills": '
-                '["chip-flow-review","company-profile","active-etf-flow","chip-flow-review",'
-                '"company-profile"], "reason": "x"}'
+                f'{{"framework": "subagent", "skills": {skill_names!r}, "reason": "x"}}'.replace(
+                    "'", '"'
+                )
             )
         ]
     )
@@ -120,7 +134,8 @@ async def test_classifier_clamps_to_four_skills(registry: SkillRegistry) -> None
 
     routing = await classifier.classify("everything")
 
-    assert len(routing.skills) <= 4
+    assert len(routing.skills) == 8
+    assert routing.requested_skill_count == 9
 
 
 async def test_classifier_falls_back_to_keywords_on_call_failure(
@@ -176,3 +191,45 @@ async def test_classifier_emits_route_decided_event(registry: SkillRegistry) -> 
     await asyncio.wait_for(task, timeout=1.0)
 
     assert published == ["route.decided"]
+
+
+async def test_classifier_folds_history_into_the_router_prompt(registry: SkillRegistry) -> None:
+    """Without history, the classifier's own LLM call has no way to resolve "its" in a
+    pronoun-only follow-up — this proves the recent-conversation block actually reaches the
+    router's prompt, not just that routing happens to work."""
+    client = StubLLMClient(
+        script=[
+            _routing_response(
+                '{"framework": "single", "skills": ["company-profile"], "reason": "dividend '
+                'history for 2330, resolved from context"}'
+            )
+        ]
+    )
+    classifier = IntentClassifier(registry, client=client)
+    history = (
+        Message(role=MessageRole.USER, content="tell me about 2330"),
+        Message(role=MessageRole.ASSISTANT, content="2330 (TSMC) is a semiconductor foundry."),
+    )
+
+    routing = await classifier.classify("what about its dividend history?", history=history)
+
+    assert routing.skills == ("company-profile",)
+    sent_messages, _tools = client.calls[0]
+    user_prompt = sent_messages[1].content or ""
+    assert "tell me about 2330" in user_prompt
+    assert "2330 (TSMC) is a semiconductor foundry." in user_prompt
+    assert "what about its dividend history?" in user_prompt
+
+
+async def test_classifier_omits_history_block_when_none_given(registry: SkillRegistry) -> None:
+    """No history → no "Recent conversation" block at all, not an empty/awkward one — a bare
+    lookup's prompt should look exactly as it did before this feature existed."""
+    client = StubLLMClient(
+        script=[_routing_response('{"framework": "single", "skills": [], "reason": "lookup"}')]
+    )
+    classifier = IntentClassifier(registry, client=client)
+
+    await classifier.classify("what is 2330")
+
+    sent_messages, _tools = client.calls[0]
+    assert "Recent conversation" not in (sent_messages[1].content or "")

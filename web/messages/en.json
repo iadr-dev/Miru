@@ -179,7 +179,7 @@
       "hideProcess": "Hide process",
       "lane": "{skill}",
       "laneDegraded": "Data quota degraded — using cached / available data",
-      "toolStep": "{tool}",
+      "toolStep": "Checked {tool}",
       "thinkingChunk": "Reasoning",
       "steeringQueued": "Queued — will be handled after this turn.",
       "cancelled": "This turn was cancelled.",
@@ -210,7 +210,9 @@
       "download": "Download table",
       "downloadCsv": "Download as CSV",
       "downloadXlsx": "Download as Excel (.xlsx)",
-      "downloadPdf": "Download as PDF"
+      "downloadPdf": "Download as PDF",
+      "expand": "Expand table",
+      "collapse": "Close expanded view"
     },
     "cards": {
       "fieldUnavailable": "{field} unavailable",
@@ -349,17 +351,21 @@
         "screenshot": "Take a screenshot",
         "webSearch": "Web search"
       },
-      "screenshot": {
-        "remove": "Remove screenshot",
-        "notSupported": "Chat doesn't support sending images yet — remove the screenshot to send your message."
+      "attachments": {
+        "remove": "Remove attachment",
+        "tooMany": "Up to {max} attachments per message — the rest weren't added."
       },
       "model": "Model",
       "voice": "Voice input",
+      "voiceMode": "Voice conversation",
       "listening": "Listening…",
       "stopRecording": "Stop recording",
+      "voiceRecording": {
+        "cancel": "Cancel recording",
+        "confirm": "Send recording"
+      },
       "voiceError": "Couldn't transcribe your recording. Please try again.",
       "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
-      "comingSoon": "Coming soon",
       "modelMenu": {
         "trigger": "Model: {model}",
         "default": "Server default",
@@ -371,6 +377,18 @@
           "ollama": "Ollama (Local)"
         }
       }
+    },
+    "voiceMode": {
+      "close": "Exit voice conversation",
+      "phase": {
+        "listening": "Listening…",
+        "transcribing": "Transcribing…",
+        "thinking": "Miru is thinking…",
+        "speaking": "Speaking…"
+      },
+      "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
+      "transcribeError": "Couldn't transcribe that — listening again.",
+      "sendError": "Something went wrong sending that — listening again."
     }
   },
   "disclaimer": {

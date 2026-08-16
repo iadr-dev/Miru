@@ -299,6 +299,35 @@ def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient
     return FallbackLLMClient(tuple(clients))
 
 
+def resolve_role_with_override(
+    role: ModelRole, model_override: str | None, settings: Settings | None = None
+) -> LLMClient:
+    """`resolve_role(role, ...)`, but honoring a user-supplied `"provider/model"` override when
+    one is given. Any failure to use it — malformed spec, unconfigured provider, or a provider
+    with no `LLMClient` implementation — degrades to the role's normal configured chain rather
+    than failing the turn; a user's model pick is a preference, not a hard requirement.
+
+    Callers name which roles honor a thread's override — today that's `AGENT` (the interactive
+    reply loop the user is actually talking to) and `SYNTHESIS` (the pass that writes the final
+    answer a fan-out turn's user actually reads). `CLASSIFIER`/`SUBAGENT` are cost/latency-tiered
+    plumbing the user has no mental model of and never named here, so callers simply don't pass
+    an override through to them — this function itself does not enforce that carve-out."""
+    settings = settings or get_settings()
+    if model_override is None:
+        return resolve_role(role, settings)
+    try:
+        provider_id, model_id = _split_provider_model(model_override)
+        return build_client(provider_id, model_id, settings)
+    except Exception as exc:  # malformed spec, unconfigured/unimplemented provider, etc.
+        logger.warning(
+            "model_override_failed_falling_back",
+            role=role.value,
+            model_override=model_override,
+            error=str(exc),
+        )
+        return resolve_role(role, settings)
+
+
 __all__ = [
     "FallbackLLMClient",
     "ModelRole",
@@ -306,4 +335,5 @@ __all__ = [
     "build_client",
     "default_client",
     "resolve_role",
+    "resolve_role_with_override",
 ]
