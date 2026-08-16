@@ -4,6 +4,7 @@ import { XIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/lib/use-focus-trap";
 
 /**
  * Full-table modal opened by `TableWithActions`'s expand button — for a table too tall/cramped
@@ -36,7 +37,6 @@ export function TableExpandModal({
 }): ReactNode {
   const dialogRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
   const reduceMotion = useReducedMotion();
 
   // Clone the live table node into the modal body on every open — a plain DOM clone, never an
@@ -58,53 +58,7 @@ export function TableExpandModal({
     onClose();
   }, [onClose]);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    const dialog = dialogRef.current;
-    const focusables = (): HTMLElement[] =>
-      dialog
-        ? Array.from(
-            dialog.querySelectorAll<HTMLElement>(
-              'button, [href], input, [tabindex]:not([tabindex="-1"])',
-            ),
-          ).filter((el) => !el.hasAttribute("disabled"))
-        : [];
-    focusables()[0]?.focus();
-
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close();
-        return;
-      }
-      if (e.key === "Tab") {
-        const items = focusables();
-        if (items.length === 0) {
-          return;
-        }
-        const first = items[0];
-        const last = items[items.length - 1];
-        if (!first || !last) {
-          return;
-        }
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      previouslyFocused.current?.focus?.();
-    };
-  }, [open, close]);
+  useFocusTrap(dialogRef, open, close);
 
   const titleId = "table-expand-modal-title";
   const fadeTransition = reduceMotion ? { duration: 0 } : { duration: 0.15 };
