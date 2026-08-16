@@ -58,7 +58,7 @@ export async function fileToPendingAttachment(file: File): Promise<PendingAttach
   const dataBase64 = await blobToBase64(file);
   const isImage = IMAGE_MEDIA_TYPES.has(file.type);
   return {
-    id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
+    id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
     filename: file.name,
     mediaType: file.type,
     isImage,
@@ -76,7 +76,7 @@ export function screenshotToPendingAttachment(dataUrl: string): PendingAttachmen
   const stamp = Date.now();
   const filename = `screenshot-${stamp}.png`;
   return {
-    id: `screenshot-${stamp}-${Math.random().toString(36).slice(2)}`,
+    id: `screenshot-${stamp}-${crypto.randomUUID()}`,
     filename,
     mediaType: "image/png",
     isImage: true,

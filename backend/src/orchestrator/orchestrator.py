@@ -565,6 +565,19 @@ class Orchestrator:
             web_search_sources=turn.web_search_sources,
         )
 
+    async def _start_fanout(
+        self, routing: Routing, budget: TurnBudget, tool_context: ToolContext
+    ) -> tuple[tuple[str, ...], int, QuotaReservation]:
+        """The setup common to both fan-out frameworks — plan which skills run (honoring the
+        classifier/ceiling drop) and reserve their quota — pulled out purely so `_run_subagent`/
+        `_run_team` don't repeat this identical block, which otherwise duplicates verbatim aside
+        from the loop shape each uses afterward."""
+        skills, dropped = self._plan_fanout(routing, budget)
+        reservation = await self._quota_reserver.reserve(
+            skills=skills, tier=tool_context.tier.value
+        )
+        return skills, dropped, reservation
+
     # ---- subagent (parallel) ----
 
     async def _run_subagent(  # noqa: PLR0913 — threads the per-turn correlation + budget context
@@ -582,10 +595,7 @@ class Orchestrator:
         model_override: str | None = None,
         history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
-        skills, dropped = self._plan_fanout(routing, budget)
-        reservation = await self._quota_reserver.reserve(
-            skills=skills, tier=tool_context.tier.value
-        )
+        skills, dropped, reservation = await self._start_fanout(routing, budget, tool_context)
 
         async def run_lane(skill_name: str) -> LaneResult:
             return await self._run_one_lane(
@@ -631,10 +641,7 @@ class Orchestrator:
         model_override: str | None = None,
         history: tuple[Message, ...] = (),
     ) -> OrchestratorResult:
-        skills, dropped = self._plan_fanout(routing, budget)
-        reservation = await self._quota_reserver.reserve(
-            skills=skills, tier=tool_context.tier.value
-        )
+        skills, dropped, reservation = await self._start_fanout(routing, budget, tool_context)
         lanes: list[LaneResult] = []
         findings: tuple[Finding, ...] = ()
         for skill_name in skills:
