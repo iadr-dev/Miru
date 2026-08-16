@@ -9,10 +9,12 @@ import { Composer } from "@/app/[locale]/(app)/chat/composer";
 import { EmptyState } from "@/app/[locale]/(app)/chat/empty-state";
 import { PersistedThreadView } from "@/app/[locale]/(app)/chat/persisted-thread-view";
 import { type ActiveTurnMode, useTurnStore } from "@/app/[locale]/(app)/chat/turn-store";
+import { VoiceModeOverlay } from "@/app/[locale]/(app)/chat/voice-mode-overlay";
 import { useNewThreadStore } from "@/components/shell/new-thread-store";
 import { useRouter } from "@/i18n/navigation";
 import {
   type AgentStreamFrame,
+  type AttachmentInput,
   streamAgentQuery,
   streamEditTurn,
   streamRegenerateTurn,
@@ -45,6 +47,7 @@ export function ChatClient(): ReactNode {
 
   const [threadId, setThreadId] = useState<string | null>(urlThreadId);
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(null);
+  const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   // Per-turn "Web search" toggle from the composer's feature menu. Unlike `modelOverride`, this
   // isn't a thread property persisted via `PATCH /threads/{id}` — it's a request-body flag on
   // `/agent/query` itself (`AgentQueryRequest.web_search`), so it lives here as plain local state
@@ -118,16 +121,19 @@ export function ChatClient(): ReactNode {
     [applyFrame, fail, t],
   );
 
-  // Shared by a fresh send, a regenerate, and an edit-resubmit — all three open a
-  // `text/event-stream` POST and fold identical frame kinds into the same overlay; only which
+  // Shared by a fresh send, a regenerate, an edit-resubmit, and a voice-mode turn — all four open
+  // a `text/event-stream` POST and fold identical frame kinds into the same overlay; only which
   // endpoint is opened (and whether an optimistic user bubble is shown) differs, so that part is
-  // injected as `open` while this owns the frame loop, thread-id adoption, and cache reconciliation.
+  // injected as `open` while this owns the frame loop, thread-id adoption, and cache
+  // reconciliation. Returns the turn's final answer text (or `null` on error/cancellation) so
+  // voice mode — which has no visible transcript to read back, only a spoken answer — can pass it
+  // straight to TTS; typed sends simply ignore the return value.
   const runStream = useCallback(
     async (
       userText: string,
       mode: ActiveTurnMode,
       open: (signal: AbortSignal) => AsyncGenerator<AgentStreamFrame>,
-    ): Promise<void> => {
+    ): Promise<string | null> => {
       begin(userText, threadId, mode);
       // No thread selected yet — this send is about to create one. Flag it so the sidebar shows
       // the breathing placeholder immediately, before the thread even exists server-side.
@@ -151,12 +157,18 @@ export function ChatClient(): ReactNode {
         setPendingModelOverride(null);
       }
 
+      // Captured before `clear()` wipes the overlay — the only place the finished turn's answer
+      // text still exists once the persisted-history refetch below takes over the render.
+      const finishedTurn = useTurnStore.getState().activeTurn;
+      const answerText = finishedTurn?.phase === "done" ? (finishedTurn.answerText ?? null) : null;
+
       // Reconcile with persisted history, then drop the live overlay once it lands.
       await queryClient.invalidateQueries({ queryKey: ["threads"] });
       if (resolvedThreadId !== null) {
         await queryClient.invalidateQueries({ queryKey: ["thread", resolvedThreadId] });
       }
       clear();
+      return answerText;
     },
     [
       threadId,
@@ -171,22 +183,42 @@ export function ChatClient(): ReactNode {
   );
 
   const runTurn = useCallback(
-    (message: string): Promise<void> =>
+    (message: string, attachments: AttachmentInput[]): Promise<string | null> =>
       runStream(message, "send", (signal) =>
         streamAgentQuery(
-          { message, web_search: webSearchEnabled, ...(threadId ? { thread_id: threadId } : {}) },
+          {
+            message,
+            web_search: webSearchEnabled,
+            ...(threadId ? { thread_id: threadId } : {}),
+            ...(attachments.length > 0 ? { attachments } : {}),
+          },
           signal,
         ),
       ),
     [runStream, webSearchEnabled, threadId],
   );
 
+  // Voice mode's own entrypoint: identical to a typed send (`runTurn`), but the caller wants the
+  // final answer text back to speak it — never called while a turn is already streaming (the
+  // overlay's own state machine gates on this the same way the composer's `streaming` prop does).
+  const runVoiceTurn = useCallback(
+    (message: string): Promise<string | null> => {
+      if (streaming) {
+        return Promise.resolve(null);
+      }
+      return runTurn(message, []);
+    },
+    [streaming, runTurn],
+  );
+
   // Regenerate/edit both need a real thread — neither can fire before a first send creates one,
   // which the action rows below only render for persisted (already-thread-scoped) turns anyway.
+  // Regenerate re-runs the ORIGINAL user turn verbatim (no new attachments to send — the source
+  // turn's own attachments, if any, are re-derived server-side same as its text is).
   const runRegenerate = useCallback(
-    (assistantTurnId: string, userText: string): Promise<void> => {
+    (assistantTurnId: string, userText: string): Promise<string | null> => {
       if (threadId === null) {
-        return Promise.resolve();
+        return Promise.resolve(null);
       }
       return runStream(userText, "regenerate", (signal) =>
         streamRegenerateTurn(threadId, assistantTurnId, { web_search: webSearchEnabled }, signal),
@@ -196,15 +228,23 @@ export function ChatClient(): ReactNode {
   );
 
   const runEdit = useCallback(
-    (userTurnId: string, newText: string): Promise<void> => {
+    (
+      userTurnId: string,
+      newText: string,
+      attachments: AttachmentInput[],
+    ): Promise<string | null> => {
       if (threadId === null) {
-        return Promise.resolve();
+        return Promise.resolve(null);
       }
       return runStream(newText, "send", (signal) =>
         streamEditTurn(
           threadId,
           userTurnId,
-          { message: newText, web_search: webSearchEnabled },
+          {
+            message: newText,
+            web_search: webSearchEnabled,
+            ...(attachments.length > 0 ? { attachments } : {}),
+          },
           signal,
         ),
       );
@@ -213,11 +253,11 @@ export function ChatClient(): ReactNode {
   );
 
   const onSend = useCallback(
-    (message: string): void => {
+    (message: string, attachments: AttachmentInput[] = []): void => {
       if (streaming) {
         return;
       }
-      void runTurn(message);
+      void runTurn(message, attachments);
     },
     [streaming, runTurn],
   );
@@ -265,7 +305,9 @@ export function ChatClient(): ReactNode {
                   void runRegenerate(assistantTurnId, userText);
                 }}
                 onEdit={(userTurnId, newText) => {
-                  void runEdit(userTurnId, newText);
+                  // The edit textarea (`UserBubble`) has no attachment picker of its own — an
+                  // edited message never adds new attachments, only changes the text.
+                  void runEdit(userTurnId, newText, []);
                 }}
               />
             ) : null}
@@ -282,7 +324,12 @@ export function ChatClient(): ReactNode {
         onModelOverrideChange={onModelOverrideChange}
         webSearchEnabled={webSearchEnabled}
         onWebSearchEnabledChange={setWebSearchEnabled}
+        onOpenVoiceMode={() => setVoiceModeOpen(true)}
       />
+
+      {voiceModeOpen ? (
+        <VoiceModeOverlay onClose={() => setVoiceModeOpen(false)} runTurn={runVoiceTurn} />
+      ) : null}
     </div>
   );
 }

@@ -6,7 +6,9 @@ import {
   CaretDownIcon,
   CheckIcon,
   CircleNotchIcon,
+  FileIcon,
   GlobeIcon,
+  MicrophoneIcon,
   PaperclipIcon,
   PlusIcon,
   SquareIcon,
@@ -18,6 +20,14 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import type { AttachmentInput } from "@/lib/api/agent-stream";
+import {
+  ACCEPTED_ATTACHMENT_MEDIA_TYPES,
+  fileToPendingAttachment,
+  MAX_ATTACHMENTS_PER_TURN,
+  type PendingAttachment,
+  screenshotToPendingAttachment,
+} from "@/lib/api/attachments";
 import { transcribeAudio } from "@/lib/api/voice";
 import { cn } from "@/lib/cn";
 
@@ -174,15 +184,13 @@ function modelOptionFor(modelOverride: string | null | undefined): ModelOption |
  * idle→send (➤) and streaming→stop (■). The disclaimer line under it reuses the exact governance
  * copy already in the catalog (`disclaimer.text`) — not rewritten.
  *
- * "Add files or photos" is still VISUAL ONLY — there is no upload endpoint anywhere in this API —
- * so it stays a genuinely-disabled, tooltipped "coming soon" control rather than wired to fake
- * behavior.
- *
- * "Take a screenshot" is wired for real: capturing a still frame is a pure browser API
- * (`captureScreenshot`, below) with no backend dependency. There is still no `/agent/query` field
- * for an image attachment, though, so a captured screenshot can be previewed and removed but not
- * actually sent — see `screenshot` state and the disabled-send-with-tooltip branch below for how
- * sending is blocked while one is attached, and why.
+ * "Add files or photos" and "Take a screenshot" are both wired for real: the backend already has
+ * a full attachment pipeline (`api/attachments.py::process_attachments` — image → vision input,
+ * document → `markitdown` text, up to `MAX_ATTACHMENTS_PER_TURN` per turn) that `/agent/query`
+ * and the `edit` turn action both accept via their `attachments` field; this component's job is
+ * only to stage `PendingAttachment[]` (picked files + captured screenshots share one
+ * representation, see `lib/api/attachments.ts`) and hand the wire `AttachmentInput[]` up to
+ * `onSend`/the caller's edit path on submit — it never calls the API itself.
  *
  * The model-selector IS wired for real: `modelOverride`/`onModelOverrideChange` are controlled by
  * the caller (`ChatClient`, which owns the current thread's id/version and the `patchThread` call
@@ -193,6 +201,14 @@ function modelOptionFor(modelOverride: string | null | undefined): ModelOption |
  * "Web search" is likewise wired for real now that `/agent/query` (and the `regenerate`/`edit`
  * turn actions) accept a `web_search: bool` field — `webSearchEnabled`/`onWebSearchEnabledChange`
  * are controlled by the caller the same way, and it defaults to enabled on the caller's side.
+ *
+ * Two distinct voice affordances, per chat/README.md's voice-input spec — never conflate them:
+ * - **Dictation mic** (`MicrophoneIcon`): one-shot speech-to-text INTO this composer. Tap → listen
+ *   → tap ✓ to confirm (transcribes then immediately sends, per product decision — no separate
+ *   review step) or ✕ to cancel (discards, never calls `/voice/transcribe`).
+ * - **Continuous voice mode** (`WaveformIcon`, `onOpenVoiceMode`): opens a fully separate
+ *   hands-free conversation overlay (`VoiceModeOverlay`) — this component only renders the
+ *   trigger; the overlay owns its own listen→transcribe→send→speak→relisten cycle.
  */
 export function Composer({
   streaming,
@@ -202,26 +218,73 @@ export function Composer({
   onModelOverrideChange,
   webSearchEnabled,
   onWebSearchEnabledChange,
+  onOpenVoiceMode,
 }: {
   streaming: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, attachments: AttachmentInput[]) => void;
   onStop: () => void;
   modelOverride: string | null;
   onModelOverrideChange: (modelId: string) => void;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (enabled: boolean) => void;
+  onOpenVoiceMode: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
   const tDisc = useTranslations("disclaimer");
   const locale = useLocale();
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Data URL of a screenshot captured via `captureScreenshot()`, or `null` when none is attached.
-  // There is no `POST /agent/query` field for an image attachment yet (see module docstring), so
-  // an attached screenshot blocks sending rather than being silently dropped — losing an attachment
-  // the user can see on screen without any signal would be far more confusing than a disabled send
-  // button with a tooltip explaining why.
-  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Staged attachments (picked files + captured screenshots, one representation — see
+  // `lib/api/attachments.ts`) not yet sent. `attachmentError` surfaces a client-side cap
+  // violation (count/size) inline rather than silently dropping the attachment — mirrors how
+  // `voiceError` reports a mic-permission failure below.
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  // Mirrors `attachments` for the unmount-only cleanup effect below, which must always revoke
+  // whatever is CURRENTLY staged without re-running (and re-registering a new cleanup closure)
+  // on every attach/remove — a plain ref read in the cleanup avoids a stale closure without
+  // making the effect depend on `attachments` itself.
+  const attachmentsRef = useRef<PendingAttachment[]>(attachments);
+  attachmentsRef.current = attachments;
+
+  // Revoke every staged attachment's object URL on unmount so a closed/navigated-away composer
+  // never leaks blob URLs — the same cleanup discipline the mic-stream effect below already
+  // applies to `MediaStream` tracks.
+  useEffect(() => {
+    return () => {
+      for (const attachment of attachmentsRef.current) {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl);
+        }
+      }
+    };
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((current) => {
+      const target = current.find((a) => a.id === id);
+      if (target?.previewUrl) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return current.filter((a) => a.id !== id);
+    });
+  }, []);
+
+  const addAttachments = useCallback(
+    (incoming: PendingAttachment[]) => {
+      setAttachments((current) => {
+        const merged = [...current, ...incoming];
+        if (merged.length > MAX_ATTACHMENTS_PER_TURN) {
+          setAttachmentError(t("attachments.tooMany", { max: MAX_ATTACHMENTS_PER_TURN }));
+          return merged.slice(0, MAX_ATTACHMENTS_PER_TURN);
+        }
+        setAttachmentError(null);
+        return merged;
+      });
+    },
+    [t],
+  );
 
   // Mic recording state machine — see `VoiceOrSendButton`. `mediaRecorderRef`/`streamRef` are the
   // live `MediaRecorder`/`MediaStream` for the in-progress recording (browser-only APIs, so both
@@ -262,34 +325,66 @@ export function Composer({
     }
   }, [draft]);
 
+  // Shared by the text-submit path and the voice-confirm path: both end in "send this text +
+  // these attachments, then clear the composer" — voice can't reuse `submit()` directly since
+  // its text comes from an async transcription result, never from `draft`/a form event.
+  const sendMessage = useCallback(
+    (text: string, toSend: PendingAttachment[]) => {
+      const trimmed = text.trim();
+      if (trimmed.length === 0 || streaming) {
+        return;
+      }
+      onSend(
+        trimmed,
+        toSend.map((a) => a.input),
+      );
+      for (const attachment of toSend) {
+        if (attachment.previewUrl) {
+          URL.revokeObjectURL(attachment.previewUrl);
+        }
+      }
+      setAttachments([]);
+      setAttachmentError(null);
+      setDraft("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    },
+    [streaming, onSend],
+  );
+
   const submit = (e?: FormEvent): void => {
     e?.preventDefault();
-    const text = draft.trim();
-    if (text.length === 0 || streaming || screenshot) {
-      return;
-    }
-    onSend(text);
-    setDraft("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
+    sendMessage(draft, attachments);
   };
+
+  // Set by `cancelRecording` right before `MediaRecorder.stop()` so `onstop` (which always fires,
+  // cancel or confirm) knows to discard the captured audio instead of transcribing it — the
+  // recorder has no native "abort without emitting" mode, only `stop()`.
+  const recordingCancelledRef = useRef(false);
 
   const finishRecording = useCallback(
     async (mimeType: string) => {
+      if (recordingCancelledRef.current) {
+        audioChunksRef.current = [];
+        setVoiceState("idle");
+        return;
+      }
       setVoiceState("transcribing");
       const blob = new Blob(audioChunksRef.current, { type: mimeType });
       audioChunksRef.current = [];
       try {
         const transcript = await transcribeAudio(blob, locale);
-        setDraft(transcript.text);
+        // Confirm = transcribe + send immediately (no separate review step) — the product
+        // decision this composer's voice flow is built to, matching the confirm/✓ affordance.
+        sendMessage(transcript.text, attachments);
       } catch {
         setVoiceError(t("voiceError"));
       } finally {
         setVoiceState("idle");
       }
     },
-    [locale, t],
+    [locale, t, sendMessage, attachments],
   );
 
   const startRecording = useCallback(async () => {
@@ -297,6 +392,7 @@ export function Composer({
       return;
     }
     setVoiceError(null);
+    recordingCancelledRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -333,14 +429,36 @@ export function Composer({
     }
   }, [streaming, voiceState, finishRecording, t]);
 
-  const stopRecording = useCallback((): void => {
+  /** ✓ — stop and transcribe+send (the confirm path `finishRecording` runs by default). */
+  const confirmRecording = useCallback((): void => {
     if (mediaRecorderRef.current && voiceState === "recording") {
+      recordingCancelledRef.current = false;
+      mediaRecorderRef.current.stop();
+    }
+  }, [voiceState]);
+
+  /** ✕ — stop and discard; `finishRecording` sees the cancelled flag and never calls
+   * `/voice/transcribe`. */
+  const cancelRecording = useCallback((): void => {
+    if (mediaRecorderRef.current && voiceState === "recording") {
+      recordingCancelledRef.current = true;
       mediaRecorderRef.current.stop();
     }
   }, [voiceState]);
 
   const hasText = draft.trim().length > 0;
-  const canSend = hasText && !screenshot;
+  const canSend = hasText;
+
+  const onFilesPicked = useCallback(
+    async (files: FileList | null) => {
+      if (!files || files.length === 0) {
+        return;
+      }
+      const staged = await Promise.all(Array.from(files).map(fileToPendingAttachment));
+      addAttachments(staged);
+    },
+    [addAttachments],
+  );
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
@@ -351,29 +469,54 @@ export function Composer({
             "bg-[var(--surface)] p-2 transition-colors focus-within:border-[var(--accent)]",
           )}
         >
-          {screenshot ? (
-            <div className="px-1 pt-1">
-              <ScreenshotPreview
-                src={screenshot}
-                removeLabel={t("screenshot.remove")}
-                onRemove={() => setScreenshot(null)}
-              />
-              <p className="mt-1.5 px-1 text-[12px] text-[var(--text-muted)]">
-                {t("screenshot.notSupported")}
-              </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept={ACCEPTED_ATTACHMENT_MEDIA_TYPES}
+            onChange={(e) => {
+              void onFilesPicked(e.target.files);
+              e.target.value = "";
+            }}
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+
+          {attachments.length > 0 ? (
+            <div className="flex flex-wrap gap-2 px-1 pt-1">
+              {attachments.map((attachment) => (
+                <AttachmentPreview
+                  key={attachment.id}
+                  attachment={attachment}
+                  removeLabel={t("attachments.remove")}
+                  onRemove={() => removeAttachment(attachment.id)}
+                />
+              ))}
             </div>
+          ) : null}
+
+          {attachmentError ? (
+            <p
+              role="alert"
+              className="flex items-center gap-1.5 px-2 pt-1 text-[12px] text-[var(--warn)]"
+            >
+              <WarningIcon size={13} weight="regular" aria-hidden />
+              {attachmentError}
+            </p>
           ) : null}
 
           <div className="flex items-end gap-2">
             <FeatureMenu
               label={t("featureMenu")}
-              comingSoon={t("comingSoon")}
+              addFilesLabel={t("featureMenuItems.addFiles")}
               webSearchEnabled={webSearchEnabled}
               onWebSearchEnabledChange={onWebSearchEnabledChange}
+              onAddFiles={() => fileInputRef.current?.click()}
               onCaptureScreenshot={async () => {
                 const dataUrl = await captureScreenshot();
                 if (dataUrl) {
-                  setScreenshot(dataUrl);
+                  addAttachments([screenshotToPendingAttachment(dataUrl)]);
                 }
               }}
             />
@@ -424,34 +567,27 @@ export function Composer({
               >
                 <SquareIcon size={18} weight="fill" />
               </button>
-            ) : screenshot ? (
-              // Sending is blocked outright while a screenshot is attached (no `/agent/query`
-              // field exists for an image attachment — see module docstring) — a disabled send
-              // button with an explanatory tooltip is more honest than silently dropping the
-              // image on submit, which would look like the screenshot was sent when it wasn't.
-              <button
-                type="button"
-                disabled
-                aria-label={`${t("send")} (${t("screenshot.notSupported")})`}
-                title={t("screenshot.notSupported")}
-                className={cn(
-                  "inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-button)]",
-                  "bg-[var(--accent)] text-[var(--bg)] opacity-40",
-                )}
-              >
-                <ArrowUpIcon size={20} weight="bold" />
-              </button>
-            ) : (
-              <VoiceOrSendButton
-                canSend={canSend}
-                voiceState={voiceState}
-                streaming={streaming}
-                onStartRecording={startRecording}
-                onStopRecording={stopRecording}
-                voiceLabel={t("voice")}
-                stopRecordingLabel={t("stopRecording")}
-                sendLabel={t("send")}
+            ) : voiceState === "recording" ? (
+              <RecordingControls
+                cancelLabel={t("voiceRecording.cancel")}
+                confirmLabel={t("voiceRecording.confirm")}
+                onCancel={cancelRecording}
+                onConfirm={confirmRecording}
               />
+            ) : (
+              <>
+                {!hasText && voiceState === "idle" ? (
+                  <VoiceModeTriggerButton label={t("voiceMode")} onClick={onOpenVoiceMode} />
+                ) : null}
+                <VoiceOrSendButton
+                  canSend={canSend}
+                  voiceState={voiceState}
+                  streaming={streaming}
+                  onStartRecording={startRecording}
+                  voiceLabel={t("voice")}
+                  sendLabel={t("send")}
+                />
+              </>
             )}
           </div>
 
@@ -481,14 +617,6 @@ export function Composer({
   );
 }
 
-/** The trailing composer control. Morphs across four states:
- * - `canSend` (any non-whitespace draft): the real send button (➤).
- * - idle + empty draft: the waveform mic — clicking it starts a real `getUserMedia` recording
- *   (`onStartRecording`, wired by the caller; browser-only APIs live there, never here).
- * - `voiceState === "recording"`: a Stop button reusing the exact same visual language as the
- *   composer's `streaming`→Stop button (`SquareIcon` fill, same size/colors) for consistency.
- * - `voiceState === "transcribing"`: a brief disabled spinner while `/voice/transcribe` is in
- *   flight — the mic is already released by then (see the caller's `recorder.onstop`). */
 /** Shared entrance/exit animation for every `VoiceOrSendButton` state — split out so each
  * per-state button below only spells out what's actually different about it. */
 function useButtonMotionProps(reduceMotion: boolean | null): {
@@ -529,36 +657,80 @@ function SendButton({
   );
 }
 
-function StopRecordingButton({
-  stopRecordingLabel,
-  reduceMotion,
-  onStopRecording,
+/** The X/✓ pair shown in place of the send button while `voiceState === "recording"` — matches
+ * the Claude Code composer's dictation confirm/cancel pattern (see chat/README.md's voice-input
+ * spec): ✕ discards the capture outright, ✓ stops and transcribes+sends (the default
+ * `finishRecording` path). Both live where the send button normally sits, not in the feature
+ * menu, since they're the two only-currently-valid actions while recording — the textarea itself
+ * is disabled during this state (see the `disabled` prop below its own render). */
+function RecordingControls({
+  cancelLabel,
+  confirmLabel,
+  onCancel,
+  onConfirm,
 }: {
-  stopRecordingLabel: string;
-  reduceMotion: boolean | null;
-  onStopRecording: () => void;
+  cancelLabel: string;
+  confirmLabel: string;
+  onCancel: () => void;
+  onConfirm: () => void;
 }): ReactNode {
   return (
-    <motion.button
-      key="recording"
+    <div className="flex shrink-0 items-center gap-1.5">
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label={cancelLabel}
+        title={cancelLabel}
+        className={cn(
+          "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
+          "bg-[var(--surface-2)] text-[var(--text-muted)] transition-colors hover:bg-[var(--border)] hover:text-[var(--text)]",
+          "active:scale-95",
+        )}
+      >
+        <XIcon size={18} weight="bold" />
+      </button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        aria-label={confirmLabel}
+        title={confirmLabel}
+        className={cn(
+          "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
+          "bg-[var(--accent)] text-[var(--bg)] transition-opacity hover:opacity-90 active:scale-95",
+        )}
+      >
+        <CheckIcon size={18} weight="bold" />
+      </button>
+    </div>
+  );
+}
+
+/** The always-visible trigger into the fully separate continuous voice-conversation overlay
+ * (`VoiceModeOverlay`) — distinct from the dictation mic (`MicrophoneIcon`/`StartRecordingButton`
+ * above): this one never records anything itself, it only opens the hands-free surface. Only
+ * shown when the draft is empty and no dictation is in progress (mirrors when the dictation mic
+ * itself is visible) — once there's text to send, the composer's job is sending it, not offering
+ * a second voice affordance. */
+function VoiceModeTriggerButton({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}): ReactNode {
+  return (
+    <button
       type="button"
-      onClick={onStopRecording}
-      aria-label={stopRecordingLabel}
-      title={stopRecordingLabel}
-      {...useButtonMotionProps(reduceMotion)}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
       className={cn(
-        "absolute inset-0 inline-flex items-center justify-center rounded-[var(--radius-button)]",
-        "bg-[var(--accent)] text-[var(--bg)] transition-colors hover:opacity-90 active:scale-95",
+        "inline-flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-button)]",
+        "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
       )}
     >
-      <motion.span
-        animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.55, 1] }}
-        transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-        className="inline-flex"
-      >
-        <SquareIcon size={18} weight="fill" />
-      </motion.span>
-    </motion.button>
+      <WaveformIcon size={20} weight="regular" />
+    </button>
   );
 }
 
@@ -629,29 +801,31 @@ function StartRecordingButton({
         }
         transition={{ duration: 0.6, ease: "easeInOut" }}
       >
-        <WaveformIcon size={20} weight="regular" />
+        <MicrophoneIcon size={20} weight="regular" />
       </motion.span>
     </motion.button>
   );
 }
 
+/** The trailing composer control for the non-recording states — `RecordingControls` (X/✓) takes
+ * over entirely while `voiceState === "recording"` (rendered by the caller instead of this).
+ * - `canSend` (any non-whitespace draft): the real send button (➤).
+ * - idle + empty draft: the dictation mic — clicking it starts a real `getUserMedia` recording.
+ * - `voiceState === "transcribing"`: a brief disabled spinner while `/voice/transcribe` is in
+ *   flight — the mic is already released by then (see the caller's `recorder.onstop`). */
 function VoiceOrSendButton({
   canSend,
   voiceState,
   streaming,
   onStartRecording,
-  onStopRecording,
   voiceLabel,
-  stopRecordingLabel,
   sendLabel,
 }: {
   canSend: boolean;
   voiceState: "idle" | "recording" | "transcribing";
   streaming: boolean;
   onStartRecording: () => void;
-  onStopRecording: () => void;
   voiceLabel: string;
-  stopRecordingLabel: string;
   sendLabel: string;
 }): ReactNode {
   const reduceMotion = useReducedMotion();
@@ -661,12 +835,6 @@ function VoiceOrSendButton({
       <AnimatePresence initial={false} mode="wait">
         {canSend ? (
           <SendButton sendLabel={sendLabel} reduceMotion={reduceMotion} />
-        ) : voiceState === "recording" ? (
-          <StopRecordingButton
-            stopRecordingLabel={stopRecordingLabel}
-            reduceMotion={reduceMotion}
-            onStopRecording={onStopRecording}
-          />
         ) : voiceState === "transcribing" ? (
           <TranscribingButton voiceLabel={voiceLabel} reduceMotion={reduceMotion} />
         ) : (
@@ -682,40 +850,70 @@ function VoiceOrSendButton({
   );
 }
 
-/** The inline thumbnail preview for a captured-but-unsent screenshot, with a small "×" remove
- * button. Plain `<img>` (not `next/image`) — the source is a `data:` URL, an ephemeral in-memory
- * capture that was never going to be optimized/served by Next's image pipeline anyway. */
-function ScreenshotPreview({
-  src,
+/** The inline preview for one staged (not-yet-sent) attachment, with a small "×" remove button —
+ * an image shows a thumbnail (plain `<img>`, not `next/image`: the source is either an ephemeral
+ * `data:`/blob object URL that was never going to be optimized/served by Next's image pipeline
+ * anyway), a document shows a filename chip with a file icon instead, since there's no visual
+ * thumbnail to render for a `.docx`/`.pdf`/etc. */
+function AttachmentPreview({
+  attachment,
   removeLabel,
   onRemove,
 }: {
-  src: string;
+  attachment: PendingAttachment;
   removeLabel: string;
   onRemove: () => void;
 }): ReactNode {
+  if (attachment.isImage && attachment.previewUrl) {
+    return (
+      <div className="relative inline-flex size-16 shrink-0">
+        {/* biome-ignore lint/performance/noImgElement: `src` is an ephemeral in-memory data:/blob
+         * URL (a screen capture or a locally-picked file) — there is nothing for next/image's
+         * remote-optimization pipeline to do with it. */}
+        <img
+          src={attachment.previewUrl}
+          alt=""
+          className={cn(
+            "size-16 rounded-[var(--radius-card)] border border-[var(--border)]",
+            "bg-[var(--surface)] object-cover",
+          )}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={removeLabel}
+          title={removeLabel}
+          className={cn(
+            "absolute -top-1.5 -right-1.5 inline-flex size-5 items-center justify-center rounded-full",
+            "border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)]",
+            "transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+          )}
+        >
+          <XIcon size={12} weight="regular" />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="relative inline-flex size-16 shrink-0">
-      {/* biome-ignore lint/performance/noImgElement: `src` is an ephemeral in-memory `data:` URL
-       * from a one-off screen capture — there is nothing for next/image's remote-optimization
-       * pipeline to do with it. */}
-      <img
-        src={src}
-        alt=""
-        className={cn(
-          "size-16 rounded-[var(--radius-card)] border border-[var(--border)]",
-          "bg-[var(--surface)] object-cover",
-        )}
-      />
+    <div
+      className={cn(
+        "inline-flex max-w-48 items-center gap-1.5 rounded-[var(--radius-card)] border border-[var(--border)]",
+        "bg-[var(--surface-2)] px-2.5 py-2",
+      )}
+    >
+      <FileIcon size={16} weight="regular" className="shrink-0 text-[var(--text-muted)]" />
+      <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text)]">
+        {attachment.filename}
+      </span>
       <button
         type="button"
         onClick={onRemove}
         aria-label={removeLabel}
         title={removeLabel}
         className={cn(
-          "absolute -top-1.5 -right-1.5 inline-flex size-5 items-center justify-center rounded-full",
-          "border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)]",
-          "transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+          "inline-flex size-5 shrink-0 items-center justify-center rounded-full",
+          "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--text)]",
         )}
       >
         <XIcon size={12} weight="regular" />
@@ -724,23 +922,24 @@ function ScreenshotPreview({
   );
 }
 
-/** The `+` feature-menu trigger. "Add files or photos" is still genuinely `disabled` + tooltipped
- * "coming soon" — there is no upload endpoint anywhere in this API. "Take a screenshot" and "Web
- * search" are both wired for real: the CAPTURE step of a screenshot is a pure-browser flow
- * (`captureScreenshot`, above) with no backend dependency, and web search is now a real
- * `web_search: bool` field `/agent/query` (and `regenerate`/`edit`) accept — so "Web search"
- * renders as a checkable toggle row rather than a disabled stub. */
+/** The `+` feature-menu trigger. "Add files or photos" opens the hidden file input (`onAddFiles`);
+ * "Take a screenshot" and "Web search" were already wired for real — the CAPTURE step of a
+ * screenshot is a pure-browser flow (`captureScreenshot`, above) with no backend dependency, and
+ * web search is a real `web_search: bool` field `/agent/query` (and `regenerate`/`edit`) accept,
+ * so "Web search" renders as a checkable toggle row rather than a disabled stub. */
 function FeatureMenu({
   label,
-  comingSoon,
+  addFilesLabel,
   webSearchEnabled,
   onWebSearchEnabledChange,
+  onAddFiles,
   onCaptureScreenshot,
 }: {
   label: string;
-  comingSoon: string;
+  addFilesLabel: string;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (enabled: boolean) => void;
+  onAddFiles: () => void;
   onCaptureScreenshot: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
@@ -772,8 +971,7 @@ function FeatureMenu({
             "bg-[var(--surface)] p-1.5 shadow-2xl",
           )}
         >
-          <FeatureMenuItem icon={PaperclipIcon} label={t("featureMenuItems.addFiles")} disabled />
-          <p className="px-2.5 pt-0.5 pb-1.5 text-[11px] text-[var(--text-muted)]">{comingSoon}</p>
+          <FeatureMenuItem icon={PaperclipIcon} label={addFilesLabel} onSelect={onAddFiles} />
           <FeatureMenuItem
             icon={CameraIcon}
             label={t("featureMenuItems.screenshot")}
