@@ -96,8 +96,8 @@ class _SingleQuoteSkillClassifier(IntentClassifier):
     allowlist includes the card-opted `get_price_quote` — so the common one-shot path runs a
     card-eligible tool."""
 
-    async def _classify_inner(self, message: str) -> Routing:
-        del message
+    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+        del message, history
         return Routing(
             framework="single",
             skills=("daily-context-brief",),
@@ -194,8 +194,10 @@ class TestRichCardStream:
                 )
 
         class _ChipFlowsSkillClassifier(IntentClassifier):
-            async def _classify_inner(self, message: str) -> Routing:
-                del message
+            async def _classify_inner(
+                self, message: str, *, history: tuple[Message, ...] = ()
+            ) -> Routing:
+                del message, history
                 return Routing(
                     framework="single",
                     skills=("chip-flow-review",),

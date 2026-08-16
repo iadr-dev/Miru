@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from agent.guardrails import REDACTION_NOTICE
 from agent.loop import AgentLoop, StepBudgetExceededError
 from config.settings import Settings
-from llm.base import StopReason, TokenUsage, WebSearchSource
+from llm.base import Message, MessageRole, StopReason, TokenUsage, WebSearchSource
 from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -155,6 +155,30 @@ async def test_run_turn_returns_final_text_when_model_answers_immediately() -> N
     assert len(result.steps) == 1
     # non-trading caveat appended since no caveat was present in the model's own text.
     assert "not a buy/sell/hold recommendation" in result.final_text
+
+
+async def test_run_turn_splices_history_between_system_and_current_user_message() -> None:
+    """Without `history`, a follow-up like "what about its dividend history?" has no way to
+    resolve "its" — this proves prior turns actually reach the model, positioned after the system
+    prompt and before the current turn's own user message, not appended/prepended incorrectly."""
+    llm = StubLLMClient(script=[make_text_response("2330 paid NT$3.5/share last quarter.")])
+    loop = AgentLoop(llm, tools=[], max_steps=1)
+    history = (
+        Message(role=MessageRole.USER, content="tell me about 2330"),
+        Message(role=MessageRole.ASSISTANT, content="2330 (TSMC) is a semiconductor foundry."),
+    )
+
+    await loop.run_turn(
+        "what about its dividend history?", tool_context=ToolContext(), history=history
+    )
+
+    sent_messages, _tools = llm.calls[0]
+    assert sent_messages[0].role is MessageRole.SYSTEM
+    assert sent_messages[1] == history[0]
+    assert sent_messages[2] == history[1]
+    assert sent_messages[3].role is MessageRole.USER
+    assert sent_messages[3].content == "what about its dividend history?"
+    assert len(sent_messages) == 4
 
 
 async def test_run_turn_drives_full_step_sequence_through_dispatch_tool() -> None:

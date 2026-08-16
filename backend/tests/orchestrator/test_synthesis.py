@@ -124,6 +124,30 @@ async def test_synthesis_raises_when_no_lane_succeeds() -> None:
         await synth.synthesize(lanes)
 
 
+async def test_synthesis_model_override_used_when_no_client_injected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A thread's `model_override` reaches the SYNTHESIS role too, not just AGENT — this is the
+    pass that writes the final answer a fan-out turn's user actually reads."""
+    override_client = StubLLMClient(
+        script=[make_text_response("Merged via the overridden model. Informational only.")]
+    )
+    captured: list[tuple[str, str]] = []
+
+    def _fake_build_client(provider_id: str, model_id: str, settings: object) -> object:
+        captured.append((provider_id, model_id))
+        return override_client
+
+    monkeypatch.setattr("llm.registry.build_client", _fake_build_client)
+    synth = Synthesizer()
+
+    lanes = (_lane("chip-flow-review", text="foreign net buy"),)
+    text, _ = await synth.synthesize(lanes, model_override="anthropic/claude-opus-4-8")
+
+    assert captured == [("anthropic", "claude-opus-4-8")]
+    assert "Merged via the overridden model" in text
+
+
 async def test_synthesis_conflicting_lanes_are_both_passed_to_the_model() -> None:
     client = StubLLMClient(
         script=[make_text_response("Both views surfaced with provenance. Informational only.")]
