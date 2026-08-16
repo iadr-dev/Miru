@@ -13,7 +13,7 @@ inputs:
     required: false
 tools: [get_source_health, get_finmind_stock_news]
 output_structure:
-  - '新聞列表: 指定交易日的 FinMind 新聞條目 (標題/來源/連結)'
+  - '新聞列表: 指定交易日的新聞條目 (標題/來源/連結)'
   - '引用提醒: 每則新聞皆為第三方內容，需標明來源'
 freshness_rule: get_finmind_stock_news 一次僅服務一個交易日；每則新聞須標明其發布日期。
 boundaries:

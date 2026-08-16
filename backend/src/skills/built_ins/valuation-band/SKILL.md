@@ -34,11 +34,14 @@ outputs: markdown
 ## Procedure
 
 1. Call `get_canonical_context(stock_id, market)` for a currentness baseline, then
-   `get_source_health(stock_id, market)` — surface any stale/unreachable source first.
+   `get_source_health(stock_id, market)` — surface any stale/unreachable source first. Its
+   `built_at` timestamp is the anchor for "today" in step 2 below — never substitute your own
+   notion of the current date, which can silently drift from wall-clock time.
 2. Call `get_valuation_ratios(stock_id, market, start_date, end_date)` for daily PER/PBR/
-   dividend-yield rows over the window (default to a reasonable window, e.g. 1 year, if the
-   caller gives no dates — state the default explicitly). Compute the window's min/max/current
-   for PER and PBR from the returned rows; do not assume a pre-computed band field exists.
+   dividend-yield rows over the window (default to a reasonable window, e.g. 1 year, ending at
+   `built_at`'s date, if the caller gives no dates — state the default explicitly, including the
+   actual end date used). Compute the window's min/max/current for PER and PBR from the returned
+   rows; do not assume a pre-computed band field exists.
 3. Call `get_dividend_schedule(stock_id, market)` for the announced dividend/ex-dividend
    timeline — context for interpreting the yield series, not a separate yield figure.
 4. Synthesize using `output_structure`, in order. Describe "目前 PE 落在窗口內第 X 百分位/接近

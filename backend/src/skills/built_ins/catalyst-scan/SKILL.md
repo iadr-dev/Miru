@@ -10,7 +10,7 @@ inputs:
     required: true
 tools: [get_canonical_context, get_source_health, get_material_announcements, get_insider_shareholding]
 output_structure:
-  - '今日重大訊息: MOPS 當日公告列表 (契約/併購/訴訟/財測/澄清等類型)'
+  - '今日重大訊息: 當日公告列表 (契約/併購/訴訟/財測/澄清等類型)'
   - '董監事持股變化: 本月持股餘額與質押比 (風險旗標)'
   - '尚無法提供的催化劑類型: 明確列出 (董事會決議/庫藏股/法說會/自結 等)'
 freshness_rule: 重大訊息僅為當日快照 (無日期區間參數)，董監事持股為當月餘額；兩者皆須標明資料截止日。

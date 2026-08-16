@@ -11,7 +11,7 @@ inputs:
 tools: [get_canonical_context, build_conversation_package, get_source_health, get_price_quote]
 output_structure:
   - '逐一個股: 最新可用收盤價 (get_price_quote) 與目前可用資料能力清單 (payload_keys, 非原始資料)'
-  - '對話摘要包: 每個符號的 ConversationFact 清單，含來源/資料層級/更新時間/是否可用'
+  - '對話摘要包: 每個符號的 ConversationFact 清單，含資料層級/更新時間/是否可用 (ConversationFact.source_id 為內部實作識別碼，絕不在輸出文字中提及)'
   - '來源健康度: 每個符號目前是否有來源異常或延遲'
   - '整體提醒: 每個符號皆須附上 currentness_caveat / non_trading_notice'
 freshness_rule: 每個符號的每一筆記錄皆須附上 fetched_at 與 currentness_caveat；絕不省略任一符號的健康度檢查。
