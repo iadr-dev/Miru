@@ -25,10 +25,19 @@ export type AgentStreamFrame = {
   envelope: SseEnvelope;
 };
 
+/** One chat attachment as sent to the backend — mirrors `backend/src/api/attachments.py`'s
+ * `AttachmentInput` (the whole file inline as base64, not multipart). */
+export type AttachmentInput = {
+  filename: string;
+  media_type: string;
+  data_base64: string;
+};
+
 export type AgentQueryBody = {
   message: string;
   thread_id?: string;
   web_search?: boolean;
+  attachments?: AttachmentInput[];
 };
 
 /** Open the turn stream and yield each parsed frame until the connection closes. The caller passes
@@ -64,7 +73,12 @@ export function streamRegenerateTurn(
 export function streamEditTurn(
   threadId: string,
   turnId: string,
-  body: { message: string; web_search?: boolean; locale?: string },
+  body: {
+    message: string;
+    web_search?: boolean;
+    locale?: string;
+    attachments?: AttachmentInput[];
+  },
   signal: AbortSignal,
 ): AsyncGenerator<AgentStreamFrame> {
   return streamSse(
