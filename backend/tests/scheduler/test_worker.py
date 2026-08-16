@@ -11,7 +11,7 @@ import pytest
 
 from accounts.entitlements import TierLimits
 from accounts.hooks import EntitlementResolver
-from agent.guardrails import check_output
+from agent.guardrails import REDACTION_NOTICE, check_output
 from ingest.leader import AlwaysLeader, NeverLeader
 from orchestrator.models import OrchestratorResult, Routing
 from scheduler.delivery.channels import InAppChannel
@@ -298,7 +298,9 @@ async def test_scheduled_run_output_passes_non_trading_guardrail(session_factory
     # subject to the identical non-trading check, not exempt from it.
     verdict = check_output(body)
     assert verdict.redacted_text is not None
-    assert "buy" not in (verdict.redacted_text.lower())
+    assert "should buy" not in verdict.redacted_text.lower()
+    assert "strong buy" not in verdict.redacted_text.lower()
+    assert REDACTION_NOTICE in verdict.redacted_text
 
 
 @pytest.mark.governance

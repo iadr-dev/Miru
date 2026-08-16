@@ -6,7 +6,12 @@ from __future__ import annotations
 
 import pytest
 
-from agent.guardrails import check_output, check_tool_call, scan_structured_payload
+from agent.guardrails import (
+    REDACTION_NOTICE,
+    check_output,
+    check_tool_call,
+    scan_structured_payload,
+)
 
 pytestmark = pytest.mark.governance
 
@@ -68,7 +73,7 @@ def test_check_output_redacts_trading_language(text: str) -> None:
     verdict = check_output(text)
     assert verdict.allowed is True  # output checks never hard-block
     assert verdict.redacted_text is not None
-    assert "[redacted" in verdict.redacted_text
+    assert REDACTION_NOTICE in verdict.redacted_text
     assert verdict.reason == "trading_language_redacted"
 
 
@@ -85,7 +90,7 @@ def test_check_output_redacts_only_the_offending_sentence_in_chinese_prose() -> 
     assert "上游供應商包含多家半導體廠商" in verdict.redacted_text
     assert "近期營收成長主要來自組裝業務擴張" in verdict.redacted_text
     assert "目標價" not in verdict.redacted_text
-    assert "[redacted" in verdict.redacted_text
+    assert REDACTION_NOTICE in verdict.redacted_text
 
 
 def test_check_output_leaves_institutional_flow_prose_alone() -> None:
@@ -95,8 +100,22 @@ def test_check_output_leaves_institutional_flow_prose_alone() -> None:
     verdict = check_output(text)
     assert verdict.allowed is True
     if verdict.redacted_text is not None:
-        assert "[redacted" not in verdict.redacted_text
+        assert REDACTION_NOTICE not in verdict.redacted_text
         assert "bought 12,000 lots" in verdict.redacted_text
+
+
+def test_check_output_leaves_descriptive_buy_sell_signal_prose_alone() -> None:
+    """'buy/sell signal' is common, legitimate descriptive institutional-flow/technical-analysis
+    terminology (e.g. describing what a net-buy pattern is conventionally read as) — unlike
+    'buy/sell rating'/'recommendation'/'call', which are specifically advice-shaped and essentially
+    never appear in neutral descriptive prose. A real regression: this false-positived and
+    redacted an otherwise-legitimate risk caveat sentence in production."""
+    text = "This net institutional buying is sometimes interpreted as a bullish buy signal."
+    verdict = check_output(text)
+    assert verdict.allowed is True
+    if verdict.redacted_text is not None:
+        assert REDACTION_NOTICE not in verdict.redacted_text
+        assert "buy signal" in verdict.redacted_text
 
 
 def test_check_output_appends_caveat_when_market_data_present_and_caveat_missing() -> None:
@@ -120,6 +139,20 @@ def test_check_output_skips_caveat_when_no_market_data_involved() -> None:
     assert verdict.redacted_text is None
 
 
+def test_check_output_preserves_markdown_link_url_intact() -> None:
+    """Regression guard: a bare-`.` sentence split used to chop a URL at every period
+    (`https://www.tsmc.com` -> `https://www.` / `tsmc.` / `com`) and the rejoin logic then
+    re-inserted spaces between the fragments, corrupting the link into
+    `https://www. tsmc. com`. The split must require whitespace after an ASCII terminator, not
+    just its presence, so a URL/domain with no market-data caveat trigger survives untouched."""
+    text = "官方網站 [www.tsmc.com](https://www.tsmc.com) 提供公司資訊。"
+    verdict = check_output(text, has_market_data=False)
+    assert verdict.allowed is True
+    result = verdict.redacted_text if verdict.redacted_text is not None else text
+    assert "[www.tsmc.com](https://www.tsmc.com)" in result
+    assert "www. tsmc" not in result
+
+
 def test_check_output_handles_empty_text() -> None:
     verdict = check_output("", has_market_data=False)
     assert verdict.allowed is True
@@ -141,10 +174,10 @@ def test_scan_structured_payload_redacts_trading_language_in_nested_strings() ->
     assert redacted is True
     assert isinstance(cleaned, dict)
     assert "buy" not in str(cleaned["note"]).lower()
-    assert "redacted" in str(cleaned["note"]).lower()
+    assert cleaned["note"] == REDACTION_NOTICE
     nested = cleaned["nested"]
     assert isinstance(nested, list)
-    assert "redacted" in str(nested[0]).lower()
+    assert nested[0] == REDACTION_NOTICE
     assert nested[1] == "neutral fact"
 
 

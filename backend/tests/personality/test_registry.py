@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from agent.guardrails import check_output
+from agent.guardrails import REDACTION_NOTICE, check_output
 from agent.prompts import PromptLayers, assemble_system_prompt
 from personality.registry import (
     PersonalityRegistry,
@@ -81,7 +81,7 @@ def test_guardrails_still_catch_trading_language_with_personality_active() -> No
     verdict = check_output(answer)
     assert verdict.redacted_text is not None
     assert "buy now" not in verdict.redacted_text
-    assert "redacted" in verdict.redacted_text.lower()
+    assert REDACTION_NOTICE in verdict.redacted_text
     # And a caveat is guaranteed present.
     assert verdict.reason in ("trading_language_redacted", "caveat_appended")
 
