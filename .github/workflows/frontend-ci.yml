@@ -1,0 +1,54 @@
+# PR gate for the Next.js frontend. Gates run in blocking order: lint/format, then typecheck,
+# then the unit/component suite, then a production build (catches build-time-only errors
+# typecheck/lint don't, e.g. a server/client boundary violation Next.js only rejects at build).
+name: frontend-ci
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches: [main]
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  lint-type-test-build:
+    name: lint, types, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          package_json_file: web/package.json
+
+      - name: Install Node (.nvmrc)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install dependencies (frozen)
+        run: pnpm install --frozen-lockfile
+
+      - name: Biome lint + format check
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit/component suite (vitest)
+        run: pnpm test
+
+      - name: Production build
+        run: pnpm build
