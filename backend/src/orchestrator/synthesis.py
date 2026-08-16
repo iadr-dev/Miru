@@ -23,7 +23,7 @@ import structlog
 
 from agent import guardrails
 from llm.base import LLMClient, Message, MessageRole
-from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
+from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role_with_override
 from orchestrator.models import LaneResult, SynthesisProvenance
 
 logger = structlog.get_logger(__name__)
@@ -91,16 +91,22 @@ class Synthesizer:
     def __init__(self, *, client: LLMClient | None = None) -> None:
         self._client = client
 
-    def _resolve_client(self) -> LLMClient | None:
+    def _resolve_client(self, model_override: str | None) -> LLMClient | None:
         if self._client is not None:
             return self._client
         try:
-            return resolve_role(ModelRole.SYNTHESIS)
+            # Honors the thread's `model_override` (same "provider/model" degrade-on-failure
+            # contract `Orchestrator._resolve_agent_client` uses) — synthesis is the pass that
+            # writes the final answer a fan-out turn's user actually reads, so their model pick
+            # should apply here too, not just to the AGENT role.
+            return resolve_role_with_override(ModelRole.SYNTHESIS, model_override)
         except ProviderNotConfiguredError:
             logger.warning("synthesis_provider_unconfigured_falling_back_to_concatenation")
             return None
 
-    async def synthesize(self, lanes: tuple[LaneResult, ...]) -> tuple[str, SynthesisProvenance]:
+    async def synthesize(
+        self, lanes: tuple[LaneResult, ...], *, model_override: str | None = None
+    ) -> tuple[str, SynthesisProvenance]:
         """Merge `lanes`. Returns the final guardrail-checked text plus its provenance. Raises
         `NoSuccessfulLanesError` if no lane produced usable content."""
         successful = [lane for lane in lanes if lane.succeeded]
@@ -111,7 +117,7 @@ class Synthesizer:
         contributing = tuple(lane.skill for lane in successful)
         missing_skills = tuple(lane.skill for lane in missing)
 
-        client = self._resolve_client()
+        client = self._resolve_client(model_override)
         if client is None:
             text = _finalize(_structured_concatenation(successful, missing))
             return text, SynthesisProvenance(
