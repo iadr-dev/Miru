@@ -103,6 +103,24 @@ class TestAccounts:
     def test_refresh_without_cookie_401(self, client: TestClient) -> None:
         assert client.post("/api/v1/auth/refresh").status_code == 401
 
+    def test_oauth_callback_state_mismatch_redirects_to_frontend_error_page(
+        self, client: TestClient
+    ) -> None:
+        # No oauth_state cookie was ever set, so `complete_authorization` raises
+        # StateMismatchError before any provider I/O — reachable over plain HTTP with no stub.
+        # The callback is a full top-level browser navigation, so the outcome must be a redirect
+        # the browser follows, never a bare JSON error body.
+        resp = client.get(
+            "/api/v1/auth/oauth/google/callback",
+            params={"code": "irrelevant", "state": "whatever"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert location.startswith("http://localhost:3000/auth/error?")
+        assert "provider=google" in location
+        assert "code=oauth_state_mismatch" in location
+
 
 class TestThreads:
     def test_create_list_get_delete(self, client: TestClient, signed_in_user) -> None:
