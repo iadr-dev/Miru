@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowsOutIcon,
   CheckIcon,
   CopyIcon,
   DownloadSimpleIcon,
@@ -19,6 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { TableExpandModal } from "@/app/[locale]/(app)/chat/table-expand-modal";
 import { cn } from "@/lib/cn";
 
 /** A rendered markdown table's data, read back from the DOM after mount (approach (a) from the
@@ -159,7 +161,15 @@ async function downloadPdf(rows: string[][], base: string): Promise<void> {
   autoTable(doc, {
     head: head ? [head] : [],
     body,
+    // `styles` alone isn't enough: autoTable's own default `headStyles` sets
+    // `fontStyle: "bold"`, which overrides `styles.font` for the header row specifically. Only
+    // the "normal" weight of the CJK subset font was registered above (`doc.addFont(...,
+    // "normal")`) — jsPDF has no "bold" variant of it to fall back to, so it silently substitutes
+    // its built-in Helvetica for the header, which has no CJK coverage and renders as mojibake
+    // (exactly the header-broken/body-fine split this fixes). Forcing `headStyles.fontStyle` to
+    // "normal" keeps the header on the same registered CJK font as the body.
     styles: { font: CJK_FONT_NAME },
+    headStyles: { font: CJK_FONT_NAME, fontStyle: "normal" },
   });
   doc.save(`${base}.pdf`);
 }
@@ -177,6 +187,8 @@ export function TableWithActions({
   const t = useTranslations("chat.table");
   const tableRef = useRef<HTMLTableElement | null>(null);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [expandTitle, setExpandTitle] = useState("");
   const reduceMotion = useReducedMotion();
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -221,6 +233,18 @@ export function TableWithActions({
       void downloadPdf(rows, base);
     }
   }, []);
+
+  const onExpand = useCallback(() => {
+    const table = tableRef.current;
+    if (!table) {
+      return;
+    }
+    // Same first-header-cell-as-title convention `tableFilenameBase` already uses for the
+    // download filename — one derivation, reused, rather than a second title-guessing rule.
+    const firstHeader = table.rows[0]?.cells[0]?.textContent?.trim();
+    setExpandTitle(firstHeader || t("expand"));
+    setExpanded(true);
+  }, [t]);
 
   return (
     <div className="my-3">
@@ -309,7 +333,27 @@ export function TableWithActions({
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
+        <button
+          type="button"
+          onClick={onExpand}
+          aria-label={t("expand")}
+          title={t("expand")}
+          className={cn(
+            "inline-flex size-7 items-center justify-center rounded-[var(--radius-button)]",
+            "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface)] hover:text-[var(--text)]",
+            "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          )}
+        >
+          <ArrowsOutIcon size={14} weight="regular" />
+        </button>
       </div>
+      <TableExpandModal
+        open={expanded}
+        title={expandTitle}
+        sourceTable={tableRef.current}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      />
     </div>
   );
 }
