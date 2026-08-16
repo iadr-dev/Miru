@@ -9,7 +9,7 @@ on:
   pull_request:
     paths:
       - "backend/**"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-ci.yml"
   push:
     branches: [main]
 
@@ -118,22 +118,3 @@ jobs:
         env:
           TEST_POSTGRES_URL: postgresql+asyncpg://miro:${{ env.PGPASSWORD }}@localhost:5432/miro_test
         run: uv run pytest -m concurrency -v
-
-  secret-scan:
-    name: secret scan (gitleaks)
-    runs-on: ubuntu-latest
-    # The action calls GET /pulls/{n}/commits to scan the PR's diff — the repo's default
-    # workflow token permissions alone weren't consistently granting that read, so it's
-    # requested explicitly here rather than relying on the (mutable, repo-settings-controlled)
-    # default.
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
