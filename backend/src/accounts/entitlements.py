@@ -51,8 +51,9 @@ TIER_LIMITS: Final[dict[Tier, TierLimits]] = {
 }
 
 # Feature → minimum tier. A feature absent from this table is unrestricted (available to every
-# tier, incl. anonymous/Free). Voice STT is deliberately NOT here (STT/voice-input is Free,
-# quota-bounded not tier-gated); TTS read-aloud is.
+# tier, incl. anonymous/Free). Voice STT and TTS read-aloud are both deliberately NOT here — both
+# are Free, quota-bounded rather than tier-gated (voice conversation mode is built on both, and
+# is a Free-tier feature end to end).
 FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
     "live_quote_stream": Tier.PREMIUM,
     "ai_summary": Tier.PREMIUM,
@@ -60,7 +61,6 @@ FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
     "full_score": Tier.PREMIUM,
     "news_sentiment": Tier.PREMIUM,
     "theme_discovery": Tier.PREMIUM,
-    "tts_read_aloud": Tier.PREMIUM,
     "deep_research": Tier.PRO,
     "scheduler": Tier.PRO,
     "tick_minute_k": Tier.PRO,
