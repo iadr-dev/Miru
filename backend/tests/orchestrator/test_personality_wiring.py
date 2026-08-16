@@ -10,6 +10,7 @@ resolved preset's distinguishing `fragment` text — proof the wiring reaches al
 
 from __future__ import annotations
 
+from agent.guardrails import REDACTION_NOTICE
 from orchestrator.models import Routing
 from orchestrator.orchestrator import Orchestrator, PersonalityContext
 from personality.models import PersonalityPreset
@@ -177,7 +178,7 @@ async def test_personality_fragment_cannot_smuggle_trading_language_past_output_
     # ...but the final answer the caller receives is redacted by the mandatory output guardrail.
     assert "should buy" not in result.final_text.lower()
     assert "strong buy" not in result.final_text.lower()
-    assert "[redacted" in result.final_text
+    assert REDACTION_NOTICE in result.final_text
 
 
 async def test_two_distinct_presets_render_distinguishable_prompts(

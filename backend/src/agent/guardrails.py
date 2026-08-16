@@ -89,7 +89,13 @@ _TRADING_PATTERNS: Final[tuple[re.Pattern[str], ...]] = tuple(
         r"\byou should (buy|sell|hold)\b",
         r"\bwe recommend (buying|selling|holding)\b",
         r"\bi recommend (buying|selling|holding)\b",
-        r"\b(buy|sell|hold)\s+(rating|signal|recommendation|call)\b",
+        # "signal" deliberately excluded from this group — "buy/sell signal" is common,
+        # legitimate descriptive institutional-flow/technical-analysis terminology (e.g. "this
+        # net-buy reads as a bullish signal"), unlike "rating"/"recommendation"/"call", which are
+        # specifically advice-shaped and essentially never appear in neutral descriptive prose. A
+        # genuinely advice-shaped "signal" sentence ("you should buy on this signal") is still
+        # caught by the separate "you should buy/sell/hold" pattern above.
+        r"\b(buy|sell|hold)\s+(rating|recommendation|call)\b",
         r"\b(buy|sell)\s+now\b",
         r"\bstrong (buy|sell)\b",
         r"\bprice target\b",
@@ -120,7 +126,9 @@ _NON_TRADING_CAVEAT: Final[str] = (
     "source here is guaranteed real-time."
 )
 
-_REDACTION_NOTICE: Final[str] = "[redacted — non-trading policy: no trading recommendations]"
+_REDACTION_NOTICE: Final[str] = (
+    "(此處內容因涉及買賣建議已省略 / content omitted — not a trading recommendation)"
+)
 
 
 def _contains_trading_language(sentence: str) -> bool:
@@ -135,10 +143,18 @@ def _split_sentences(text: str) -> list[str]:
     an ASCII-only split treats an entire Chinese-language answer as one "sentence", so a single
     stray trading-language match anywhere in it would redact the whole multi-paragraph answer
     instead of just the offending clause.
+
+    An ASCII terminator only splits when followed by whitespace (`\\s+`, not `\\s*`) — a bare
+    `.` immediately followed by a non-space character never splits. Without this, a URL/domain
+    (`https://www.tsmc.com`) or a decimal number (`12.5%`) gets chopped at every `.` and the
+    caller's `" ".join`-with-spaces rejoin (see `check_output`) corrupts it into
+    `https://www. tsmc. com` — a real bug this guards against, not just an edge case. Full-width
+    terminators are unaffected: Chinese prose has no space to require, so they keep the original
+    zero-width split.
     """
     if not text:
         return []
-    parts = re.split(r"(?<=[.!?。！？])\s*", text.strip())
+    parts = re.split(r"(?<=[。！？])\s*|(?<=[.!?])\s+", text.strip())
     return [part for part in parts if part]
 
 
@@ -188,6 +204,10 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
 # built from a typed tool result — can be stamped with the same caveat the prose path appends,
 # rather than re-declaring the wording.
 NON_TRADING_CAVEAT: Final[str] = _NON_TRADING_CAVEAT
+
+# Exposed so callers (tests, any future caller wanting to detect a redaction) check against the
+# real constant rather than hardcoding a substring of its wording, which would silently drift.
+REDACTION_NOTICE: Final[str] = _REDACTION_NOTICE
 
 
 def scan_structured_payload(value: object) -> tuple[object, bool]:
