@@ -212,3 +212,23 @@ def test_every_whole_market_job_is_scheduled() -> None:
         f"WholeMarketJobSpec dataset(s) not wired into SCHEDULED_JOBS — the daily cron will "
         f"never refresh them, only a manual backfill will: {missing}"
     )
+
+
+def test_us_jobs_are_scheduled() -> None:
+    """Regression guard mirroring `test_every_whole_market_job_is_scheduled`: `job_us_price_eod`,
+    `job_us_fundamentals`, and `job_us_symbol_universe` were fully implemented in `ingest/us_jobs.py`
+    / `ingest/us_universe.py` but never added to `SCHEDULED_JOBS`, so the daily cron never refreshed
+    US market data at all — only a manual backfill ever populated it."""
+    from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
+    from ingest.us_universe import job_us_symbol_universe
+
+    scheduled_run_fns = {job.run for job in SCHEDULED_JOBS}
+    missing = [
+        fn.__name__
+        for fn in (job_us_price_eod, job_us_fundamentals, job_us_symbol_universe)
+        if fn not in scheduled_run_fns
+    ]
+    assert not missing, (
+        f"US job(s) not wired into SCHEDULED_JOBS — the daily cron will never refresh them: "
+        f"{missing}"
+    )
