@@ -128,20 +128,36 @@ class StepResult:
 
 
 @dataclass(frozen=True)
+class ToolCallRecord:
+    """One dispatched tool call's redacted trace — tool name plus its already-summarized result
+    (never raw arguments/payload, same "provenance not payload" rule `_summarize_result`/`Journal`
+    already follow), kept on `TurnResult` so a lane's process trace can be persisted, not just
+    streamed live over SSE and then discarded once the turn ends."""
+
+    step_index: int
+    tool_name: str
+    summary: str
+
+
+@dataclass(frozen=True)
 class TurnResult:
     """The completed Turn: the final caveated text, every Step along the way, any
-    structured rich cards built from card-opted-in tool results during the Turn, and every
+    structured rich cards built from card-opted-in tool results during the Turn, every
     native-web-search source consulted (accumulated across however many `WebSearchResultEvent`s
     the Turn's Steps streamed) — the same source list `EventBusWebSearchHook` already forwards
     live over SSE, kept here too so the caller (`api.turn_driver._persist_answer`) has something
     to persist once the turn ends; without this the sources only ever existed for the duration
-    of the stream, per the bug this field exists to close."""
+    of the stream, per the bug this field exists to close — and, likewise, every dispatched
+    `ToolCallRecord` plus the concatenated genuinely-streamed `thinking_text` for the whole Turn,
+    so a fanned-out lane's process trace can be persisted the same way."""
 
     final_text: str
     steps: tuple[StepResult, ...]
     journal: Journal
     rich_cards: tuple[RichCard, ...] = ()
     web_search_sources: tuple[WebSearchSource, ...] = ()
+    tool_calls: tuple[ToolCallRecord, ...] = ()
+    thinking_text: str = ""
 
 
 class StepBudgetExceededError(RuntimeError):
@@ -232,14 +248,24 @@ class AgentLoop:
         *,
         tool_context: ToolContext,
         images: tuple[ImagePart, ...] = (),
+        history: tuple[Message, ...] = (),
     ) -> TurnResult:
         """Run Steps until the model returns a final (non-tool-call) response, the step
         budget is exhausted, or a proposed tool call is vetoed by governance. `images` attaches
         to the initial user message only (a user can attach an image alongside their own text
-        in the same turn, per `Message`'s own docstring) — never re-sent on later Steps."""
+        in the same turn, per `Message`'s own docstring) — never re-sent on later Steps.
+
+        `history` is prior turns from the same thread (oldest first), spliced in between the
+        system prompt and the current turn's user message — without it, a follow-up like "what
+        about its dividend history?" has no way to resolve "its" to a symbol mentioned 2 turns
+        ago, since each Turn otherwise starts from a blank slate. It flows through the same
+        `_transform_context`/`compact` seam as every other message on this Step loop (called
+        below, before the first LLM call), so a long thread's history is compacted under the
+        loop's existing context-window budget rather than needing a separate cap."""
         journal = Journal()
         messages: list[Message] = [
             Message(role=MessageRole.SYSTEM, content=assemble_system_prompt(self._prompt_layers)),
+            *history,
             Message(role=MessageRole.USER, content=user_message, images=images),
         ]
         step_context = tool_context.model_copy(update={"journal": journal})
@@ -247,6 +273,8 @@ class AgentLoop:
         steps: list[StepResult] = []
         rich_cards: list[RichCard] = []
         web_search_sources: list[WebSearchSource] = []
+        tool_calls: list[ToolCallRecord] = []
+        thinking_parts: list[str] = []
         for step_index in range(self._max_steps):
             if self._cancel_token is not None and self._cancel_token.is_cancelled():
                 raise TurnCancelledError(
@@ -255,7 +283,9 @@ class AgentLoop:
             messages = self._inject_steering(messages)
             messages = await self._transform_context(messages)
             messages = await self._run_pre_llm_hooks(messages)
-            response = await self._stream_step(messages, web_search_sources=web_search_sources)
+            response = await self._stream_step(
+                messages, web_search_sources=web_search_sources, thinking_parts=thinking_parts
+            )
 
             if not response.tool_calls:
                 final_text = await self._finalize_output(
@@ -268,6 +298,8 @@ class AgentLoop:
                     journal=journal,
                     rich_cards=tuple(rich_cards),
                     web_search_sources=tuple(web_search_sources),
+                    tool_calls=tuple(tool_calls),
+                    thinking_text="".join(thinking_parts),
                 )
 
             assistant_tool_calls = tuple(response.tool_calls)
@@ -291,6 +323,11 @@ class AgentLoop:
                 )
                 if card is not None:
                     rich_cards.append(card)
+                tool_calls.append(
+                    ToolCallRecord(
+                        step_index=step_index, tool_name=call.name, summary=result_part.content
+                    )
+                )
                 tool_result_messages.append(
                     Message(role=MessageRole.TOOL, tool_results=(result_part,))
                 )
@@ -356,7 +393,11 @@ class AgentLoop:
             await hook(sources=event.sources)
 
     async def _stream_step(
-        self, messages: list[Message], *, web_search_sources: list[WebSearchSource]
+        self,
+        messages: list[Message],
+        *,
+        web_search_sources: list[WebSearchSource],
+        thinking_parts: list[str],
     ) -> LLMResponse:
         """Drive one Step via `llm.stream()` rather than `chat()` — the live agent-turn path,
         so a genuinely reasoning-capable model's `ThinkingDeltaEvent`s can be forwarded to the
@@ -373,10 +414,11 @@ class AgentLoop:
         exists to catch, so exempting thinking text would be a governance gap, not a
         performance optimization worth making.
 
-        `web_search_sources` is the caller's (`run_turn`'s) turn-scoped accumulator — every
-        `WebSearchResultEvent` this Step streams appends its sources here, in addition to firing
-        the observe-only `web_search` hooks, so `TurnResult.web_search_sources` reflects every
-        native-web-search call across the whole Turn (not just the hook's live SSE echo)."""
+        `web_search_sources`/`thinking_parts` are the caller's (`run_turn`'s) turn-scoped
+        accumulators — every `WebSearchResultEvent`/redacted thinking chunk this Step streams
+        appends here, in addition to firing the observe-only `web_search`/`thinking` hooks, so
+        `TurnResult.web_search_sources`/`thinking_text` reflect the whole Turn (not just each
+        hook's live SSE echo, which nothing durable ever re-reads once the turn ends)."""
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         stop_reason = StopReason.END_TURN
@@ -390,6 +432,7 @@ class AgentLoop:
                 verdict = guardrails.check_output(event.text, has_market_data=False)
                 safe_text = event.text if verdict.redacted_text is None else verdict.redacted_text
                 if safe_text:
+                    thinking_parts.append(safe_text)
                     await self._run_thinking_hooks(safe_text)
             elif isinstance(event, ToolCallEvent):
                 tool_calls.append(event.tool_call)
