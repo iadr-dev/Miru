@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
   asArray,
@@ -9,6 +9,7 @@ import {
   formatNumber,
   PLUMBING_KEYS,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 
 const MAX_ROWS = 25;
 
@@ -18,6 +19,7 @@ const MAX_ROWS = 25;
  * used generically rather than naming every backend key here. */
 export function LeaderboardTable({ data }: { data: unknown }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("chat.cards");
   const rows = extractRows(data);
   if (rows.length === 0) {
     return null;
@@ -34,7 +36,7 @@ export function LeaderboardTable({ data }: { data: unknown }): ReactNode {
                 key={col}
                 className="border-[var(--border)] border-b px-3 py-2 text-left font-medium text-[var(--text-muted)]"
               >
-                {col}
+                {fieldLabel(t, col)}
               </th>
             ))}
           </tr>
@@ -72,13 +74,15 @@ export function LeaderboardTable({ data }: { data: unknown }): ReactNode {
   );
 }
 
-/** Prefers the row's own `symbol`/`broker_id`/`holder_name` identity field as the React key; a
- * row with none of those falls back to its index — no worse than the array-index-key default,
- * only reached when the payload genuinely has no natural per-row identity. */
+/** Prefers the row's own `symbol`/`broker_id`/`holder_name` identity field, suffixed with the row's
+ * index — some payloads repeat that identity field across rows (e.g. one symbol appearing once per
+ * date in a per-period breakdown), so the identity field alone is not always unique; the index
+ * suffix guarantees uniqueness while the identity field still gives React a stable-ish key across
+ * re-renders where row order doesn't change. */
 function rowKey(row: Record<string, unknown>, index: number): string {
-  return (
-    asString(row.symbol) ?? asString(row.broker_id) ?? asString(row.holder_name) ?? String(index)
-  );
+  const identity =
+    asString(row.symbol) ?? asString(row.broker_id) ?? asString(row.holder_name) ?? "row";
+  return `${identity}-${index}`;
 }
 
 function renderCell(value: unknown): string {
