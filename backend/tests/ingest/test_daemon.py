@@ -40,6 +40,8 @@ from ingest.jobs import (
 from ingest.journal import JobRun, RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
+from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
+from ingest.us_universe import job_us_symbol_universe
 from schemas.enums import TLSPolicy
 from sources.finmind import FinMindAdapter
 from tests.sources.conftest import load_fixture, make_json_client_factory
@@ -216,12 +218,10 @@ def test_every_whole_market_job_is_scheduled() -> None:
 
 def test_us_jobs_are_scheduled() -> None:
     """Regression guard mirroring `test_every_whole_market_job_is_scheduled`: `job_us_price_eod`,
-    `job_us_fundamentals`, and `job_us_symbol_universe` were fully implemented in `ingest/us_jobs.py`
-    / `ingest/us_universe.py` but never added to `SCHEDULED_JOBS`, so the daily cron never refreshed
-    US market data at all — only a manual backfill ever populated it."""
-    from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
-    from ingest.us_universe import job_us_symbol_universe
-
+    `job_us_fundamentals`, and `job_us_symbol_universe` were fully implemented in
+    `ingest/us_jobs.py` / `ingest/us_universe.py` but never added to `SCHEDULED_JOBS`, so the
+    daily cron never refreshed US market data at all — only a manual backfill ever populated it.
+    """
     scheduled_run_fns = {job.run for job in SCHEDULED_JOBS}
     missing = [
         fn.__name__
