@@ -39,8 +39,8 @@ export type TurnPhase = "thinking" | "done" | "error" | "cancelled";
 
 export type LaneView = {
   agentId: string;
-  /** The envelope `seq` of this lane's FIRST frame — fixes its position in the merged timeline
-   * (`buildTimeline`) even though the lane's own status/activity keeps mutating in place. */
+  /** The envelope `seq` of this lane's FIRST frame — fixes its position among lane groups
+   * (`buildLaneGroups`) even though the lane's own status/activity keeps mutating in place. */
   seq: number;
   skill: string | null;
   activity: string | null;
@@ -49,6 +49,11 @@ export type LaneView = {
 
 export type ToolStepView = {
   seq: number;
+  /** The lane that made this call — read straight off the SSE envelope (every frame carries
+   * `agent_id`), not the `tool.result` payload itself, so this is set even though
+   * `toolResultDataSchema`'s own body doesn't carry it. `null` for a root-level (non-fanned-out)
+   * `single`/`none` turn, which has no lane to attribute to. */
+  agentId: string | null;
   toolName: string;
   summary: string | null;
 };
@@ -62,24 +67,63 @@ export type ThinkingChunkView = {
   text: string;
 };
 
-/** One entry in the merged, seq-ordered timeline `ProcessDisclosure` renders — lanes, tool steps,
- * and thinking chunks interleaved chronologically instead of three separate lists. */
-export type TimelineEntry =
-  | { kind: "lane"; seq: number; lane: LaneView }
+/** One entry in a lane's own sub-timeline — tool steps and thinking chunks belonging to that
+ * lane, seq-ordered. */
+export type LaneSubEntry =
   | { kind: "tool"; seq: number; step: ToolStepView }
   | { kind: "thinking"; seq: number; chunk: ThinkingChunkView };
 
-/** Merge `lanes`/`toolSteps`/`thinkingChunks` into one seq-ordered array for the timeline UI. A
- * plain function (not store state) since it's a pure derivation of the three lists already held. */
-export function buildTimeline(turn: ActiveTurn): TimelineEntry[] {
-  const entries: TimelineEntry[] = [
-    ...turn.lanes.map((lane): TimelineEntry => ({ kind: "lane", seq: lane.seq, lane })),
-    ...turn.toolSteps.map((step): TimelineEntry => ({ kind: "tool", seq: step.seq, step })),
-    ...turn.thinkingChunks.map(
-      (chunk): TimelineEntry => ({ kind: "thinking", seq: chunk.seq, chunk }),
-    ),
-  ];
-  return entries.sort((a, b) => a.seq - b.seq);
+/** One lane and everything it produced, grouped for `ProcessDisclosure`'s nested render — replaces
+ * the old flat interleaved timeline (every tool/thinking entry mixed together regardless of which
+ * lane produced it, which made `subagent`'s parallel lanes and `team`'s sequential ones
+ * indistinguishable). `agentId: null` covers a root-level `single`/`none` turn with no fan-out —
+ * its tool/thinking entries have no lane header, rendered as one implicit ungrouped bucket. */
+export type LaneGroup = {
+  agentId: string | null;
+  seq: number;
+  lane: LaneView | null;
+  entries: LaneSubEntry[];
+};
+
+/** Group `toolSteps`/`thinkingChunks` by their owning `agentId` under each `lane`, each group's
+ * own entries kept in `seq` order — the nested-by-lane structure `ProcessDisclosure` renders. A
+ * plain function (not store state) since it's a pure derivation of the three lists already held.
+ * Groups themselves are ordered by the owning lane's `seq` (its first-seen position); the
+ * root-level (`agentId: null`) bucket, if non-empty, sorts by its own first entry's `seq`. */
+export function buildLaneGroups(turn: ActiveTurn): LaneGroup[] {
+  const byAgent = new Map<string | null, LaneSubEntry[]>();
+  const pushEntry = (agentId: string | null, entry: LaneSubEntry): void => {
+    const existing = byAgent.get(agentId);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      byAgent.set(agentId, [entry]);
+    }
+  };
+  for (const step of turn.toolSteps) {
+    pushEntry(step.agentId, { kind: "tool", seq: step.seq, step });
+  }
+  for (const chunk of turn.thinkingChunks) {
+    pushEntry(chunk.agentId, { kind: "thinking", seq: chunk.seq, chunk });
+  }
+  for (const entries of byAgent.values()) {
+    entries.sort((a, b) => a.seq - b.seq);
+  }
+
+  const groups: LaneGroup[] = turn.lanes.map((lane) => ({
+    agentId: lane.agentId,
+    seq: lane.seq,
+    lane,
+    entries: byAgent.get(lane.agentId) ?? [],
+  }));
+  for (const lane of turn.lanes) {
+    byAgent.delete(lane.agentId);
+  }
+  const rootEntries = byAgent.get(null);
+  if (rootEntries && rootEntries.length > 0) {
+    groups.push({ agentId: null, seq: rootEntries[0]?.seq ?? 0, lane: null, entries: rootEntries });
+  }
+  return groups.sort((a, b) => a.seq - b.seq);
 }
 
 /** A live rich card keyed by the envelope `seq` (globally monotonic per turn) for a stable React
@@ -227,6 +271,7 @@ const FRAME_REDUCERS: {
         ...base.toolSteps,
         {
           seq: frame.envelope.seq,
+          agentId: frame.envelope.agent_id ?? null,
           toolName: parsed.data.tool_name,
           summary: parsed.data.summary ?? null,
         },
