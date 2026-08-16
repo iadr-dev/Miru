@@ -1,15 +1,13 @@
 "use client";
 
-import {
-  BrainIcon,
-  CaretDownIcon,
-  FileIcon,
-  ImageIcon,
-  MagnifyingGlassIcon,
-} from "@phosphor-icons/react";
+import { CaretDownIcon, FileIcon, ImageIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { AssistantActions, UserBubble } from "@/app/[locale]/(app)/chat/active-turn-view";
+import {
+  AssistantActions,
+  ProcessSubEntryRow,
+  UserBubble,
+} from "@/app/[locale]/(app)/chat/active-turn-view";
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
 import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
@@ -118,7 +116,7 @@ function PersistedProcessDisclosure({
             <li key={agentId} className="flex flex-col gap-1.5">
               <ol className="flex flex-col">
                 {entries.map((entry, index) => (
-                  <PersistedLaneEntryRow
+                  <ProcessSubEntryRow
                     key={`${entry.kind}-${entry.seq}`}
                     entry={entry}
                     isLast={index === entries.length - 1}
@@ -131,60 +129,6 @@ function PersistedProcessDisclosure({
         </ol>
       ) : null}
     </div>
-  );
-}
-
-/** One tool/thinking entry inside a persisted lane's sub-list — mirrors
- * `active-turn-view.tsx`'s `LaneSubEntryRow` marker/layout so a turn's process trace looks the
- * same whether read live or from a reload. */
-function PersistedLaneEntryRow({
-  entry,
-  isLast,
-  t,
-}: {
-  entry: PersistedLaneEntry;
-  isLast: boolean;
-  t: ReturnType<typeof useTranslations>;
-}): ReactNode {
-  return (
-    <li className="relative flex gap-3 pb-3 last:pb-0">
-      <div className="relative flex w-3 shrink-0 justify-center">
-        {isLast ? null : (
-          <span className="absolute top-2 bottom-0 w-px bg-[var(--border)]" aria-hidden />
-        )}
-        <span className="relative z-10 mt-1 flex size-3.5 shrink-0 items-center justify-center bg-[var(--bg)]">
-          {entry.kind === "tool" ? (
-            <MagnifyingGlassIcon
-              size={13}
-              weight="regular"
-              aria-hidden
-              className="text-[var(--text-muted)]"
-            />
-          ) : (
-            <BrainIcon
-              size={13}
-              weight="regular"
-              aria-hidden
-              className="text-[var(--text-muted)]"
-            />
-          )}
-        </span>
-      </div>
-      <div className="min-w-0 flex-1 pt-0.5 text-[13px] text-[var(--text-muted)]">
-        {entry.kind === "tool" ? (
-          <span>{t("toolStep", { tool: entry.toolName })}</span>
-        ) : (
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
-              {t("thinkingChunk")}
-            </span>
-            <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-[var(--text)]">
-              {entry.text}
-            </p>
-          </div>
-        )}
-      </div>
-    </li>
   );
 }
 

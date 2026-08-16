@@ -544,9 +544,13 @@ function LaneGroupRow({
       {group.entries.length > 0 ? (
         <ol className={cn("flex flex-col", group.lane ? "ml-4" : undefined)}>
           {group.entries.map((entry, index) => (
-            <LaneSubEntryRow
+            <ProcessSubEntryRow
               key={`${entry.kind}-${entry.seq}`}
-              entry={entry}
+              entry={
+                entry.kind === "tool"
+                  ? { kind: "tool", toolName: entry.step.toolName }
+                  : { kind: "thinking", text: entry.chunk.text }
+              }
               isLast={index === group.entries.length - 1}
               t={t}
             />
@@ -557,14 +561,22 @@ function LaneGroupRow({
   );
 }
 
-/** One tool/thinking entry inside a lane's own sub-timeline — the lane-dot marker moved to
- * `LaneGroupRow`'s header, so this only ever renders the tool-icon/brain-icon markers. */
-function LaneSubEntryRow({
+/** Normalized shape both the live (`LaneGroup["entries"]`) and persisted
+ * (`PersistedLaneEntry`) sub-entry unions reduce to before reaching `ProcessSubEntryRow` — one
+ * render body shared by the live and reload paths instead of two near-identical copies. */
+export type ProcessSubEntry =
+  | { kind: "tool"; toolName: string }
+  | { kind: "thinking"; text: string };
+
+/** One tool/thinking entry inside a lane's own sub-timeline (live or persisted) — the lane-dot
+ * marker lives in the caller's own group header, so this only ever renders the tool-icon/
+ * brain-icon markers. Exported for `persisted-thread-view.tsx`'s reload-path reuse. */
+export function ProcessSubEntryRow({
   entry,
   isLast,
   t,
 }: {
-  entry: LaneGroup["entries"][number];
+  entry: ProcessSubEntry;
   isLast: boolean;
   t: ReturnType<typeof useTranslations>;
 }): ReactNode {
@@ -594,14 +606,14 @@ function LaneSubEntryRow({
       </div>
       <div className="min-w-0 flex-1 pt-0.5 text-[13px] text-[var(--text-muted)]">
         {entry.kind === "tool" ? (
-          <span>{t("toolStep", { tool: entry.step.toolName })}</span>
+          <span>{t("toolStep", { tool: entry.toolName })}</span>
         ) : (
           <div className="flex flex-col gap-0.5">
             <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
               {t("thinkingChunk")}
             </span>
             <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-[var(--text)]">
-              {entry.chunk.text}
+              {entry.text}
             </p>
           </div>
         )}
