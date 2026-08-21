@@ -40,8 +40,28 @@ outputs: markdown
    - **"what's upstream vs downstream in theme Y"** → `get_theme_tiers(theme_key)`. Present the
      upstream / midstream / downstream groups, and for each sub-industry show whether its tier is
      `curated` (editorially verified) or `heuristic` (automatically classified).
-3. Always surface the `source`/`confidence` distinction verbatim. An industry-chain member is an
+   - **combined "which themes is X in, AND what's upstream/downstream in each"** — `get_symbol_themes`
+     can return several themes for one stock, and expanding every one of them into its own
+     `get_theme_tiers`/`get_theme_members` call burns one tool-call pair per theme against this
+     turn's fixed step budget; a stock in 4+ themes can exhaust the budget before synthesis ever
+     runs, silently dropping every result already gathered. Cap tier/member expansion to **at
+     most the 2 themes most relevant to the question's own wording** (prefer an explicitly named
+     industry, e.g. "semiconductor", over a tangential membership) — list every theme name from
+     `get_symbol_themes` first, then note in the answer that tier detail is limited to those 2 and
+     name the rest so the user can ask a follow-up for any theme not expanded.
+3. **Never guess a second theme key.** Call `get_theme_tiers`/`get_theme_members` with your best
+   single reading of the caller's own wording (e.g. "半導體" for a semiconductor question) exactly
+   ONCE per theme. If that call returns `found: false`, treat the theme database as not covering
+   this theme at all — do NOT retry with a different spelling/synonym/English translation of the
+   same key ("IC設計", "semiconductor", "晶片", ...). Each retry is a real tool-call step against
+   this turn's fixed budget, and burning several of them hunting for a working key spelling is
+   the single most common way this skill exhausts its budget before ever reaching synthesis,
+   discarding every result already gathered. On the first `found: false`, go straight to a labeled
+   web-search supplement instead (state plainly that the structured theme database has no entry
+   for this key, then cite third-party sources for the rest) — this is honest and correct
+   behavior, not a fallback of last resort.
+4. Always surface the `source`/`confidence` distinction verbatim. An industry-chain member is an
    editorial fact at confidence 1.0; a concept member is AI-researched with a confidence score —
    never present the latter as equally guaranteed as the former.
-4. For tiers, never let a `heuristic` assignment read as authoritative as a `curated` one — label
+5. For tiers, never let a `heuristic` assignment read as authoritative as a `curated` one — label
    each group's assignments so the reader can tell them apart.

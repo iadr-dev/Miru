@@ -11,7 +11,9 @@ reshape.
 
 from __future__ import annotations
 
+import asyncio
 from calendar.trading_days import TradingDayCalendar
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import timedelta
@@ -20,9 +22,16 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from analytics.fundamentals import (
+    compute_fundamental_metrics,
+    compute_revenue_yoy,
+    load_symbol_financials,
+    load_symbol_market_value,
+    load_symbol_month_revenue,
+)
 from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
-from ingest.jobs import ACTIVE_ETF_HOLDING_CHANGE_JOB, ACTIVE_ETF_HOLDING_JOB
+from ingest.jobs import ACTIVE_ETF_HOLDING_CHANGE_JOB, ACTIVE_ETF_HOLDING_JOB, PRICE_EOD_JOB
 from ingest.store import ParquetStore
 from schemas.capabilities import (
     ActiveEtfHoldingChangeRow,
@@ -36,6 +45,7 @@ from schemas.capabilities import (
     ValuationRatiosRow,
 )
 from schemas.enums import Capability, DataClass, Market
+from schemas.market import Symbol
 from schemas.source import HealthStatus
 from tools._rows import validate_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
@@ -143,23 +153,93 @@ class GetDividendScheduleTool(BaseTool):
         )
 
 
+class InstitutionalFlowRollingNet(BaseModel):
+    """One investor category's pre-summed net buy/sell (`sum(buy - sell)`) over the trailing
+    5/10/20-trading-day windows within whatever range `get_institutional_flow` fetched — see
+    that tool's own docstring for why this exists: without it, a skill asking for a "5/10/20
+    日買賣超趨勢" forces the model to sum 20+ raw daily rows by hand across every investor
+    category, which measurably happened live (a `chip-flow-review` turn's reasoning trace
+    showed it manually adding up 20 days x 3 categories and running out of response budget
+    before writing any prose at all — the final answer had zero analysis, just a raw table).
+    A window field is `None` when fewer trading days than that window exist in the fetched
+    range (e.g. a 5-day request can't back a 20-day figure) — never a partial-window number
+    silently mislabeled as the full window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    investor: str
+    net_5d: float | None = None
+    net_10d: float | None = None
+    net_20d: float | None = None
+
+
 class GetInstitutionalFlowOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_id: str
     currentness_caveat: str = Field(min_length=1)
     health_status: HealthStatus
+    # `rolling_net` is declared BEFORE `rows` — `agent.loop._render_result_for_model` serializes
+    # this model to JSON in field-declaration order and hard-truncates at a fixed char budget;
+    # with `rows` first, a large window's raw rows alone can consume the entire budget and cut
+    # `rolling_net` out of what the model ever sees (confirmed live — see `_rolling_net_by_investor`
+    # and `ChipBrokerNetSummary`'s docstrings for the incident this fixes). Declaring the
+    # pre-aggregated summary first guarantees it always survives truncation.
+    rolling_net: tuple[InstitutionalFlowRollingNet, ...] = Field(default_factory=tuple)
     rows: tuple[InstitutionalFlowRow, ...] = Field(default_factory=tuple)
+
+
+def _rolling_net_by_investor(
+    rows: Sequence[InstitutionalFlowRow],
+) -> tuple[InstitutionalFlowRollingNet, ...]:
+    """Pre-sum `buy - sell` over the trailing 5/10/20 TRADING days present in `rows` (not
+    calendar days — a distinct-`trade_date` count, so a window with holidays/gaps still means
+    "N trading sessions"), independently per investor category. Every category the rows
+    actually contain gets its own entry — never hardcoded to just foreign/trust/dealer, since
+    FinMind's own category set includes `Dealer_Hedging`/`Foreign_Dealer_Self` too (confirmed
+    live) and a caller should see whatever categories were really returned."""
+    by_investor: dict[str, dict[date_, tuple[int, int]]] = {}
+    for row in rows:
+        per_date = by_investor.setdefault(row.investor, {})
+        buy, sell = per_date.get(row.trade_date, (0, 0))
+        per_date[row.trade_date] = (buy + row.buy, sell + row.sell)
+
+    results: list[InstitutionalFlowRollingNet] = []
+    for investor, per_date in sorted(by_investor.items()):
+        ordered_dates = sorted(per_date.keys())
+        results.append(
+            InstitutionalFlowRollingNet(
+                investor=investor,
+                net_5d=_net_over_trailing(per_date, ordered_dates, 5),
+                net_10d=_net_over_trailing(per_date, ordered_dates, 10),
+                net_20d=_net_over_trailing(per_date, ordered_dates, 20),
+            )
+        )
+    return tuple(results)
+
+
+def _net_over_trailing(
+    per_date: dict[date_, tuple[int, int]], ordered_dates: list[date_], window: int
+) -> float | None:
+    if len(ordered_dates) < window:
+        return None
+    trailing = ordered_dates[-window:]
+    return float(sum(per_date[d][0] - per_date[d][1] for d in trailing))
 
 
 class GetInstitutionalFlowTool(BaseTool):
     """`get_institutional_flow` — wraps `Capability.INSTITUTIONAL_FLOW` (三大法人買賣). Public,
-    deferred."""
+    deferred. Also returns `rolling_net` — server-side pre-summed 5/10/20-trading-day net
+    buy/sell per investor category (see `InstitutionalFlowRollingNet`'s own docstring for why:
+    a skill citing a rolling-window trend must never make the model sum raw daily rows by
+    hand)."""
 
     name = "get_institutional_flow"
     description = (
         "Get the three-major-institutional-investor (foreign/investment-trust/dealer) "
-        "buy/sell rows for one stock/ETF symbol over an optional date range."
+        "buy/sell rows for one stock/ETF symbol over an optional date range, plus a "
+        "pre-computed 5/10/20-trading-day rolling net buy/sell per investor category — cite "
+        "`rolling_net`'s figures directly rather than summing `rows` yourself."
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetInstitutionalFlowOutput
@@ -187,7 +267,24 @@ class GetInstitutionalFlowTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
+            rolling_net=_rolling_net_by_investor(rows),
         )
+
+
+class ChipBrokerNetSummary(BaseModel):
+    """One broker/branch's total net buy/sell (`sum(buy - sell)`) over the whole fetched range —
+    see `_top_broker_net_summary`'s docstring for why this exists: the same architecture gap as
+    `InstitutionalFlowRollingNet` (Finding #69), one tool over. `get_chip_flows` can return
+    thousands of per-day per-branch rows (a live repro against 鴻海/2317 returned 6,500+), and
+    without a pre-aggregated summary the model was observed spending its entire response budget
+    manually eyeballing/summing individual 分點 rows, leaving zero room for prose — this field
+    is what it should cite instead."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    broker_id: str
+    broker_name: str
+    net: int
 
 
 class GetChipFlowsOutput(BaseModel):
@@ -199,7 +296,33 @@ class GetChipFlowsOutput(BaseModel):
     source_id: str
     currentness_caveat: str = Field(min_length=1)
     health_status: HealthStatus
+    # `top_brokers` declared BEFORE `rows` for the same reason as `InstitutionalFlowOutput`'s
+    # `rolling_net` field ordering — see that field's comment. `rows` here is the worse offender
+    # in practice: a live repro against 鴻海/2317 returned 10,000+ rows, guaranteeing `rows`
+    # alone exceeds `agent.loop._MAX_MODEL_RESULT_CHARS` and would silently drop `top_brokers`
+    # from what the model ever sees if it were declared second.
+    top_brokers: tuple[ChipBrokerNetSummary, ...] = Field(default_factory=tuple)
     rows: tuple[ChipBrokerRow, ...] = Field(default_factory=tuple)
+
+
+_TOP_BROKER_COUNT = 10
+
+
+def _top_broker_net_summary(rows: Sequence[ChipBrokerRow]) -> tuple[ChipBrokerNetSummary, ...]:
+    """Pre-sum `buy - sell` per broker/branch across every row in the fetched range, then keep
+    only the `_TOP_BROKER_COUNT` largest-magnitude net positions (both buy- and sell-side) —
+    the handful of branches that actually moved the stock, not a re-derivation of all 6,500+ raw
+    rows the model would otherwise have to scan itself."""
+    net_by_broker: dict[str, tuple[str, int]] = {}
+    for row in rows:
+        name, net = net_by_broker.get(row.broker_id, (row.broker_name, 0))
+        net_by_broker[row.broker_id] = (name, net + row.buy - row.sell)
+
+    ranked = sorted(net_by_broker.items(), key=lambda item: abs(item[1][1]), reverse=True)
+    return tuple(
+        ChipBrokerNetSummary(broker_id=broker_id, broker_name=name, net=net)
+        for broker_id, (name, net) in ranked[:_TOP_BROKER_COUNT]
+    )
 
 
 class GetChipFlowsTool(BaseTool):
@@ -212,7 +335,9 @@ class GetChipFlowsTool(BaseTool):
 
     name = "get_chip_flows"
     description = (
-        "Get branch(分點)/broker-level buy-sell trading rows for one stock (Sponsor-tier)."
+        "Get branch(分點)/broker-level buy-sell trading rows for one stock (Sponsor-tier), plus "
+        "a pre-computed `top_brokers` summary of the largest net buy/sell positions across the "
+        "whole range — cite `top_brokers` directly rather than summing `rows` yourself."
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetChipFlowsOutput
@@ -240,6 +365,7 @@ class GetChipFlowsTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
+            top_brokers=_top_broker_net_summary(rows),
         )
 
 
@@ -417,16 +543,67 @@ def _active_etf_report_rows(
     return rows
 
 
+def _closes_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, float]:
+    """Every symbol's closing price on `trade_date`, read from the whole-market
+    `TaiwanStockPrice` partition the daily ingest job already wrote — the same derived-store
+    read `GetEtfMoneyFlowTool` uses, not a per-symbol live fetch (`_active_etf_holding_value`'s
+    own docstring explains why this beats trusting FinMind's own `market_value` field)."""
+    raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+    closes: dict[str, float] = {}
+    for row in raw_bars:
+        symbol = row.get("symbol")
+        close = row.get("close")
+        if isinstance(symbol, str) and isinstance(close, (int, float)):
+            closes[symbol] = float(close)
+    return closes
+
+
+def _holdings_market_value(
+    store: ParquetStore,
+    market: str,
+    trade_date: date_,
+    holdings: dict[str, ActiveEtfHoldingRow],
+) -> float | None:
+    """Total market value of `holdings` on `trade_date`, as `sum(shares x that day's closing
+    price)` — never FinMind's own `ActiveEtfHoldingRow.market_value` field, which its upstream
+    API returns as a hardcoded `0.0` for every row of this dataset (confirmed live: every
+    `TaiwanStockActiveETFHolding` row FinMind serves carries a real `shares`/`weight`, but
+    `market_value: 0.0` unconditionally). Recomputing from the already-ingested
+    `TaiwanStockPrice` partition gives `fund_size` a real, non-zero number instead of faithfully
+    propagating a broken upstream field. `None` when no constituent's close was found in the
+    store (a genuinely missing price is not silently treated as a $0 fund), not when `holdings`
+    is merely empty (`sum` of nothing is legitimately `0`, but that case never reaches here —
+    the caller only calls this when `holdings` is non-empty)."""
+    closes = _closes_by_symbol(store, market, trade_date)
+    values = [
+        h.shares * closes[h.component_stock_id]
+        for h in holdings.values()
+        if h.component_stock_id in closes
+    ]
+    return sum(values) if values else None
+
+
 def _active_etf_fund_size_fields(
-    *,
-    report_holdings: dict[str, ActiveEtfHoldingRow],
-    prior_holdings: dict[str, ActiveEtfHoldingRow],
+    store: ParquetStore,
+    market: str,
+    dates: tuple[date_, date_ | None],
+    holdings: tuple[dict[str, ActiveEtfHoldingRow], dict[str, ActiveEtfHoldingRow]],
 ) -> tuple[float | None, float | None, float | None]:
     """`(fund_size, fund_size_prior, fund_size_change_pct)` — pulled out of
-    `GetActiveEtfReportTool.run` for the same shallow-branching reason as the row-builders."""
-    fund_size = sum(h.market_value for h in report_holdings.values()) if report_holdings else None
+    `GetActiveEtfReportTool.run` for the same shallow-branching reason as the row-builders.
+    `dates`/`holdings` are each a `(report, prior)` pair, kept paired in one parameter rather
+    than four separate ones to stay under the project's argument-count lint budget."""
+    report_date, prior_date = dates
+    report_holdings, prior_holdings = holdings
+    fund_size = (
+        _holdings_market_value(store, market, report_date, report_holdings)
+        if report_holdings
+        else None
+    )
     fund_size_prior = (
-        sum(h.market_value for h in prior_holdings.values()) if prior_holdings else None
+        _holdings_market_value(store, market, prior_date, prior_holdings)
+        if prior_holdings and prior_date is not None
+        else None
     )
     fund_size_change_pct = (
         (fund_size - fund_size_prior) / fund_size_prior
@@ -440,9 +617,12 @@ class GetActiveEtfReportTool(BaseTool):
     """`get_active_etf_report` — 主動式ETF 操作日報 for one ETF: per-holding 新增/刪除/加碼/減碼 +
     變動張數/幅度 + 目前權重/權重變動% + 基金規模較前日 (折溢價 unavailable, see
     `_PREMIUM_DISCOUNT_UNAVAILABLE_REASON`). Wraps `Capability.ACTIVE_ETF_HOLDING` (the raw daily
-    snapshot, for weight/market-value) + `Capability.ACTIVE_ETF_HOLDING_CHANGE` (FinMind's own
+    snapshot, for weight/shares) + `Capability.ACTIVE_ETF_HOLDING_CHANGE` (FinMind's own
     pre-diffed buy/sell) via the router — a single-ETF report is always a per-symbol read, never
-    the whole-market ingest path."""
+    the whole-market ingest path. `fund_size` is recomputed from shares x the ingested
+    `TaiwanStockPrice` close (see `_active_etf_holding_value`'s docstring for why: FinMind's own
+    `market_value` field on this dataset is unconditionally `0.0`), which is why this tool also
+    takes the Parquet `store` alongside the router."""
 
     name = "get_active_etf_report"
     description = (
@@ -455,8 +635,9 @@ class GetActiveEtfReportTool(BaseTool):
     data_class = DataClass.SPONSOR
     card_type: str | None = "active_etf_report"
 
-    def __init__(self, router: DataAccessRouter) -> None:
+    def __init__(self, router: DataAccessRouter, store: ParquetStore) -> None:
         self._router = router
+        self._store = store
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetActiveEtfReportInput, args)
@@ -507,7 +688,10 @@ class GetActiveEtfReportTool(BaseTool):
             has_prior_day=prior_date is not None,
         )
         fund_size, fund_size_prior, fund_size_change_pct = _active_etf_fund_size_fields(
-            report_holdings=report_holdings, prior_holdings=prior_holdings
+            self._store,
+            symbol.market.value,
+            (report_date, prior_date),
+            (report_holdings, prior_holdings),
         )
 
         return GetActiveEtfReportOutput(
@@ -688,9 +872,7 @@ class GetEtfMoneyFlowTool(BaseTool):
 
 def _latest_eps(payload: dict[str, object]) -> float | None:
     """`financials`' payload is `{"lines": [...]}` — one row per (period, statement line);
-    the most recent `item == "EPS"` row's `value` is the latest reported EPS. Only EPS is
-    extracted here — `revenue_yoy`/`margins` need period-over-period comparison this tool
-    doesn't do, so they stay in `missing_fields` even when this fetch is healthy."""
+    the most recent `item == "EPS"` row's `value` is the latest reported EPS."""
     raw_lines = payload.get("lines")
     if not isinstance(raw_lines, list):
         return None
@@ -717,20 +899,29 @@ _MOPS_PROFILE_FIELDS: tuple[str, ...] = (
     "industry_classification_code",
 )
 
-# Derived-analytics fields no capability here can back yet (would need period-over-period /
-# margin-comparison analytics this tool doesn't have) — always missing, regardless of any single
-# capability's health.
-_ALWAYS_MISSING_FIELDS: tuple[str, ...] = ("revenue_yoy", "margins")
+# `revenue_yoy`/`margins` are read back from the derived store (whole-market-ingested
+# `TaiwanStockFinancialStatements`/`TaiwanStockMonthRevenue`, same pattern `get_etf_money_flow`
+# uses for its own cross-symbol read) rather than fetched live through the router — see
+# `analytics/fundamentals.py`'s module docstring. Lookback windows are trading days ending today:
+# 400 comfortably spans several quarterly filing cycles (mirrors `scoring_batch.py`'s own
+# `_FINANCIALS_LOOKBACK_DAYS`); revenue filings land monthly, so 400 trading days (~19 months)
+# reliably covers the same calendar month one year prior even with a late filing.
+_FINANCIALS_STORE_LOOKBACK_DAYS = 400
+_MONTH_REVENUE_STORE_LOOKBACK_DAYS = 400
 
 
 class GetCompanyProfileOutput(BaseModel):
     """A company-profile card composed from every capability wired below: `sector_class`
     (industry/sector), `dividends` (latest announced dividend), `market_value`/
     `valuation_ratios` (市值/PER/殖利率), `financials` (EPS, from the income-statement lines),
-    and `profile` (MOPS-sourced identity fields — 董事長/簽證會計師/住址/官網/資本額/發言人/
-    成立日期/產業別). Each field is only ever populated from a genuinely healthy fetch for this
-    call; `missing_fields` is computed per-call from which fetches actually succeeded, never a
-    static reduced list, so the agent never claims completeness it doesn't have."""
+    `profile` (MOPS-sourced identity fields — 董事長/簽證會計師/住址/官網/資本額/發言人/成立日期/
+    產業別), and two derived-store reads: `revenue_yoy` (this month's filed revenue vs the same
+    calendar month a year prior, from the ingested `TaiwanStockMonthRevenue` dataset) and
+    `margins` (TTM gross profit ÷ TTM revenue, from the same ingested statement lines `eps`
+    reads — see `analytics/fundamentals.py`). Each field is only ever populated from a genuinely
+    healthy fetch/read for this call; `missing_fields` is computed per-call from which fetches
+    actually succeeded, never a static reduced list, so the agent never claims completeness it
+    doesn't have."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -751,6 +942,8 @@ class GetCompanyProfileOutput(BaseModel):
     spokesperson: str | None = None
     founding_date: str | None = None
     industry_classification_code: str | None = None
+    revenue_yoy: float | None = None
+    margins: float | None = None
     sector_caveat: str = Field(min_length=1)
     dividend_caveat: str = Field(min_length=1)
     missing_fields: tuple[str, ...] = Field(
@@ -763,25 +956,29 @@ class GetCompanyProfileOutput(BaseModel):
 
 class GetCompanyProfileTool(BaseTool):
     """`get_company_profile` — composes `sector_class` + `dividends` + `market_value` +
-    `valuation_ratios` + `financials` + `profile` (MOPS) into one card. Every field is real when
-    its capability's fetch is healthy for this call; otherwise it's `None` and named in
-    `missing_fields` rather than faked. Immediate core."""
+    `valuation_ratios` + `financials` + `profile` (MOPS) into one card, plus `revenue_yoy`/
+    `margins` read back from the derived Parquet store (see `analytics/fundamentals.py`) rather
+    than fetched live — same "whole-market dataset, read back not fetched live" pattern
+    `get_etf_money_flow` uses. Every field is real when its capability's fetch/read is healthy for
+    this call; otherwise it's `None` and named in `missing_fields` rather than faked. Immediate
+    core."""
 
     name = "get_company_profile"
     description = (
         "Get a company-profile card for one stock: sector/industry classification, latest "
-        "announced dividend, market value/PER/dividend yield/EPS, and MOPS-sourced identity "
-        "fields (chairman/auditor/headquarters/website/capital/spokesperson/founding date/"
-        "industry classification code). See `missing_fields` for anything this call couldn't "
-        "populate."
+        "announced dividend, market value/PER/dividend yield/EPS, revenue YoY, gross margin, and "
+        "MOPS-sourced identity fields (chairman/auditor/headquarters/website/capital/"
+        "spokesperson/founding date/industry classification code). See `missing_fields` for "
+        "anything this call couldn't populate."
     )
     input_model: type[BaseModel] = SymbolInput
     output_model: type[BaseModel] = GetCompanyProfileOutput
     card_type: str | None = "company_profile"
     data_class = DataClass.PUBLIC
 
-    def __init__(self, router: DataAccessRouter) -> None:
+    def __init__(self, router: DataAccessRouter, store: ParquetStore) -> None:
         self._router = router
+        self._store = store
 
     @staticmethod
     def _sector_and_industry(sector_payload: dict[str, object]) -> tuple[str | None, str | None]:
@@ -809,29 +1006,64 @@ class GetCompanyProfileTool(BaseTool):
                 mops_fields[field_name] = typed_profile.get(field_name)
         return mops_fields
 
+    def _revenue_yoy_and_margins(
+        self, *, symbol: Symbol, market: Market
+    ) -> tuple[float | None, float | None]:
+        """Reads back the two derived-store-backed fields. `financials_lines` (income/balance/
+        cash-flow) already backs `margins` via the same TTM gross-profit/revenue lines
+        `compute_fundamental_metrics` uses; `month_revenue_rows` backs `revenue_yoy` via
+        `compute_revenue_yoy`. Both degrade to `None` independently when their own store read has
+        no rows for this symbol yet (not-yet-ingested/no-filing), never a fabricated number."""
+        calendar = TradingDayCalendar()
+        today = date_.today()
+        financials_window = calendar.business_days_between(
+            calendar.shift_business_days(today, -(_FINANCIALS_STORE_LOOKBACK_DAYS - 1)), today
+        )
+        revenue_window = calendar.business_days_between(
+            calendar.shift_business_days(today, -(_MONTH_REVENUE_STORE_LOOKBACK_DAYS - 1)), today
+        )
+        lines = load_symbol_financials(
+            self._store, market=market, run_dates=financials_window, symbol=symbol.id
+        )
+        revenue_rows = load_symbol_month_revenue(
+            self._store, market=market, run_dates=revenue_window, symbol=symbol.id
+        )
+        market_value = load_symbol_market_value(
+            self._store, market=market, run_dates=financials_window, symbol=symbol.id
+        )
+        margins = compute_fundamental_metrics(lines, market_value).gross_margin
+        revenue_yoy = compute_revenue_yoy(revenue_rows)
+        return revenue_yoy, margins
+
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(SymbolInput, args)
         symbol = typed.to_symbol()
-        sector_result = await self._router.fetch(
-            Capability.SECTOR_CLASS, symbol, tls_policy=ctx.tls_policy
-        )
-        dividend_result = await self._router.fetch(
-            Capability.DIVIDENDS, symbol, tls_policy=ctx.tls_policy
-        )
-        market_value_result = await self._router.fetch(
-            Capability.MARKET_VALUE, symbol, tls_policy=ctx.tls_policy
-        )
-        valuation_result = await self._router.fetch(
-            Capability.VALUATION_RATIOS, symbol, tls_policy=ctx.tls_policy
-        )
-        financials_result = await self._router.fetch(
-            Capability.FINANCIALS, symbol, tls_policy=ctx.tls_policy
-        )
-        profile_result = await self._router.fetch(
-            Capability.PROFILE, symbol, tls_policy=ctx.tls_policy
+        # Six independent per-capability fetches for the same symbol — none of their requests or
+        # post-processing depends on another's result, so they run concurrently rather than one
+        # await at a time. Sequential awaits here previously meant this single tool call could
+        # take 40+ seconds with zero intermediate `tool.start`/`tool.result` events (each fetch is
+        # inside this one dispatch, not its own agent-loop step) — a live process timeline showed
+        # a single unchanging "查詢中" status the whole time, indistinguishable from a hang.
+        # `router.fetch` never raises for a genuine no-data case (degrades to an `unavailable`
+        # `SourceResult`), so no `return_exceptions` handling is needed beyond what sequential
+        # awaits already had.
+        (
+            sector_result,
+            dividend_result,
+            market_value_result,
+            valuation_result,
+            financials_result,
+            profile_result,
+        ) = await asyncio.gather(
+            self._router.fetch(Capability.SECTOR_CLASS, symbol, tls_policy=ctx.tls_policy),
+            self._router.fetch(Capability.DIVIDENDS, symbol, tls_policy=ctx.tls_policy),
+            self._router.fetch(Capability.MARKET_VALUE, symbol, tls_policy=ctx.tls_policy),
+            self._router.fetch(Capability.VALUATION_RATIOS, symbol, tls_policy=ctx.tls_policy),
+            self._router.fetch(Capability.FINANCIALS, symbol, tls_policy=ctx.tls_policy),
+            self._router.fetch(Capability.PROFILE, symbol, tls_policy=ctx.tls_policy),
         )
 
-        missing_fields: list[str] = list(_ALWAYS_MISSING_FIELDS)
+        missing_fields: list[str] = []
 
         sector, industry = self._sector_and_industry(sector_result.payload)
         latest_dividend = self._latest_dividend(dividend_result.payload)
@@ -853,6 +1085,12 @@ class GetCompanyProfileTool(BaseTool):
         eps = _latest_eps(financials_result.payload)
         if eps is None:
             missing_fields.append("eps")
+
+        revenue_yoy, margins = self._revenue_yoy_and_margins(symbol=symbol, market=typed.market)
+        if revenue_yoy is None:
+            missing_fields.append("revenue_yoy")
+        if margins is None:
+            missing_fields.append("margins")
 
         mops_fields = self._mops_fields(profile_result.payload)
         missing_fields.extend(
@@ -879,6 +1117,8 @@ class GetCompanyProfileTool(BaseTool):
             industry_classification_code=cast(
                 "str | None", mops_fields["industry_classification_code"]
             ),
+            revenue_yoy=revenue_yoy,
+            margins=margins,
             sector_caveat=sector_result.currentness_caveat,
             dividend_caveat=dividend_result.currentness_caveat,
             missing_fields=tuple(missing_fields),
@@ -892,18 +1132,19 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     class docstring). `get_price_quote` backs the basic price-quote read that's also part of the
     immediate-core set. Everything else here is a real, deferred capability.
 
-    `get_etf_money_flow` reads the ingest-owned Parquet store directly (see its class
-    docstring for why) rather than the router, so it needs its own `ParquetStore` built from
-    `config.settings` here rather than the router this function otherwise only threads through.
+    `get_etf_money_flow` (and, for its `revenue_yoy`/`margins` fields only, `get_company_profile`)
+    read the ingest-owned Parquet store directly (see their class docstrings for why) rather than
+    the router, so this function builds its own `ParquetStore` from `config.settings` here rather
+    than the router this function otherwise only threads through.
     """
     store = ParquetStore(root=get_settings().parquet_root)
     tools: list[tuple[Tool, bool]] = [
-        (GetCompanyProfileTool(router), True),
+        (GetCompanyProfileTool(router, store), True),
         (GetPriceQuoteTool(router), True),
         (GetDividendScheduleTool(router), False),
         (GetInstitutionalFlowTool(router), False),
         (GetChipFlowsTool(router), False),
-        (GetActiveEtfReportTool(router), False),
+        (GetActiveEtfReportTool(router, store), False),
         (GetEtfMoneyFlowTool(store), False),
     ]
     return tools

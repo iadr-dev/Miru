@@ -39,13 +39,20 @@ outputs: markdown
    present a stale number as current.
 3. Call `get_institutional_flow(stock_id, market, start_date, end_date)` for the requested
    window (default 20 trading days ending at `built_at`'s date if `window_days` is not given —
-   state the default explicitly, including the actual end date used). Read the foreign
-   (外資)/investment-trust(投信)/dealer(自營) rows separately — do not average them into one
-   number, they answer different questions.
+   state the default explicitly, including the actual end date used). The tool's own
+   `rolling_net` field already carries the pre-computed 5/10/20-trading-day net buy/sell per
+   investor category — cite those figures directly for the "5/10/20 日買賣超趨勢" section.
+   Never re-derive a rolling sum by manually adding up the raw daily `rows` yourself; a window
+   with `null`/None means fewer trading days were fetched than that window needs, not zero. Read
+   the foreign(外資)/investment-trust(投信)/dealer(自營) rows separately — do not average them
+   into one number, they answer different questions.
 4. Call `get_chip_flows(stock_id, market, start_date, end_date)` for branch(分點)-level rows.
    This is a Sponsor-tier tool — if the caller is unentitled, the dispatch layer already
    substitutes a masked teaser; report around the masked section rather than treating the
-   absence as "no data".
+   absence as "no data". The tool's own `top_brokers` field already carries the largest net
+   buy/sell branches pre-summed across the whole range — cite those directly for "主力進出".
+   Never manually scan/sum the raw `rows` (this can be thousands of per-day per-branch rows);
+   doing so burns the whole response budget on arithmetic and leaves nothing for prose.
 5. Synthesize using the `output_structure` sections above, in order. Every number must carry
    the trading date it is as-of. Close every response with a currentness caveat if it does
    not already carry one — this must never be dropped even when the rest of the answer is

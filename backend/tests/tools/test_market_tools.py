@@ -21,6 +21,7 @@ from tools.market_tools import (
     GetInstitutionalFlowTool,
     GetPriceQuoteTool,
     HoldingStatus,
+    InstitutionalFlowRollingNet,
 )
 
 
@@ -253,6 +254,63 @@ async def test_get_institutional_flow_delegates_and_parses_rows() -> None:
 
     assert adapter.calls[0][0] is Capability.INSTITUTIONAL_FLOW
     assert output.rows[0].investor == "Foreign_Investor"
+    # Only one trading day is present in the fixture — every rolling window (5/10/20 days)
+    # must come back None rather than a partial-window figure silently mislabeled as the full
+    # window (see `InstitutionalFlowRollingNet`'s docstring).
+    assert output.rolling_net == (
+        InstitutionalFlowRollingNet(
+            investor="Foreign_Investor", net_5d=None, net_10d=None, net_20d=None
+        ),
+    )
+
+
+async def test_get_institutional_flow_computes_rolling_net_per_investor() -> None:
+    """Regression guard for Finding #69: `chip-flow-review` returned zero-prose answers because
+    the model manually summed 20+ raw daily rows across investor categories in its own
+    reasoning. `rolling_net` must carry that pre-computed 5-day figure so the model can cite it
+    directly instead."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    rows = [
+        {
+            "symbol": "2330",
+            "market": "TW",
+            "trade_date": f"2026-08-{day:02d}",
+            "investor": investor,
+            "buy": buy,
+            "sell": sell,
+        }
+        for day, investor, buy, sell in [
+            (1, "Foreign_Investor", 1000, 500),
+            (2, "Foreign_Investor", 800, 900),
+            (3, "Foreign_Investor", 1200, 700),
+            (4, "Foreign_Investor", 600, 600),
+            (5, "Foreign_Investor", 500, 300),
+            (1, "Investment_Trust", 300, 100),
+            (2, "Investment_Trust", 200, 250),
+            (3, "Investment_Trust", 400, 100),
+            (4, "Investment_Trust", 100, 150),
+            (5, "Investment_Trust", 300, 200),
+        ]
+    ]
+    result = SourceResult(
+        source_id="STUB",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="flow caveat",
+        payload={"rows": rows},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, _adapter = make_router(symbol, {Capability.INSTITUTIONAL_FLOW: result})
+    tool = GetInstitutionalFlowTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    by_investor = {r.investor: r for r in output.rolling_net}
+    # sum(buy - sell) over the 5 fetched days: (500)+(-100)+(500)+(0)+(200) = 1100
+    assert by_investor["Foreign_Investor"].net_5d == 1100.0
+    assert by_investor["Foreign_Investor"].net_10d is None  # fewer than 10 days fetched
+    assert by_investor["Investment_Trust"].net_5d == 200 + (-50) + 300 + (-50) + 100
 
 
 async def test_get_chip_flows_run_returns_real_sponsor_data_when_called_directly() -> None:
@@ -266,6 +324,55 @@ async def test_get_chip_flows_run_returns_real_sponsor_data_when_called_directly
 
     assert adapter.calls[0][0] is Capability.CHIP_BROKER
     assert output.rows[0].broker_name == "Fubon"
+    assert output.top_brokers[0].broker_name == "Fubon"
+    assert output.top_brokers[0].net == 500 - 100
+
+
+async def test_get_chip_flows_top_brokers_ranks_by_net_magnitude_across_branches() -> None:
+    """Regression guard for the live repro against 鴻海/2317 (a follow-on from Finding #69): with
+    only raw per-day per-branch rows and no pre-aggregation, the model spent its whole response
+    budget manually eyeballing/summing 6,500+ rows and produced zero prose. `top_brokers` must
+    rank by |net| across the *whole* fetched range, keeping only the largest movers, so the
+    model never needs to re-derive this from `rows` itself."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    rows = [
+        {
+            "symbol": "2330",
+            "market": "TW",
+            "trade_date": trade_date,
+            "broker_id": broker_id,
+            "broker_name": name,
+            "price": 100.0,
+            "buy": buy,
+            "sell": sell,
+        }
+        for trade_date, broker_id, name, buy, sell in [
+            ("2026-08-01", "1001", "Big Buyer", 10_000, 1_000),
+            ("2026-08-02", "1001", "Big Buyer", 8_000, 1_000),
+            ("2026-08-01", "1002", "Small Fry", 100, 50),
+            ("2026-08-01", "1003", "Big Seller", 500, 9_000),
+        ]
+    ]
+    result = SourceResult(
+        source_id="STUB",
+        data_class=DataClass.SPONSOR,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="chip caveat",
+        payload={"rows": rows},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, _adapter = make_router(symbol, {Capability.CHIP_BROKER: result})
+    tool = GetChipFlowsTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    by_broker = {b.broker_id: b for b in output.top_brokers}
+    assert by_broker["1001"].net == (10_000 - 1_000) + (8_000 - 1_000)  # 16,000
+    assert by_broker["1003"].net == 500 - 9_000  # -8,500
+    assert by_broker["1002"].net == 100 - 50  # 50 — still present, just ranked last
+    # Ranked by |net| descending: Big Buyer (16,000) > Big Seller (-8,500) > Small Fry (50).
+    assert [b.broker_id for b in output.top_brokers] == ["1001", "1003", "1002"]
 
 
 def _active_etf_holding_result(*, health_status: HealthStatus = HealthStatus.OK) -> SourceResult:
@@ -374,7 +481,37 @@ def _active_etf_holding_change_result() -> SourceResult:
     )
 
 
-async def test_get_active_etf_report_classifies_status_from_prior_day_weight() -> None:
+def _write_price_partitions(store: ParquetStore) -> None:
+    """`fund_size`/`fund_size_prior` are recomputed from `shares x close`, read from the
+    ingested `TaiwanStockPrice` partition (never FinMind's own `market_value` field on the
+    holding row — see `_holdings_market_value`'s docstring). Closes here are deliberately
+    different from `_active_etf_holding_result`'s own (stale/broken) `market_value` figures, so
+    an assertion against `shares x close` cannot pass by coincidentally matching the old
+    field — it only passes if the fix genuinely reads price data, not the holding row's own
+    `market_value`."""
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        date(2025, 5, 6),
+        [
+            {"symbol": "2330", "trade_date": "2025-05-06", "close": 100.0},
+            {"symbol": "2454", "trade_date": "2025-05-06", "close": 50.0},
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        date(2025, 5, 7),
+        [
+            {"symbol": "2330", "trade_date": "2025-05-07", "close": 110.0},
+            {"symbol": "2317", "trade_date": "2025-05-07", "close": 20.0},
+        ],
+    )
+
+
+async def test_get_active_etf_report_classifies_status_from_prior_day_weight(
+    tmp_path: Path,
+) -> None:
     """新增 (2317, no prior weight), 刪除 (2454, no current weight), 加碼 (2330, buy>0 with prior
     weight present) — all classified from `(buy, sell, prior_weight, current_weight)`."""
     symbol = Symbol(id="00980A", market=Market.TW)
@@ -385,7 +522,9 @@ async def test_get_active_etf_report_classifies_status_from_prior_day_weight() -
             Capability.ACTIVE_ETF_HOLDING_CHANGE: _active_etf_holding_change_result(),
         },
     )
-    tool = GetActiveEtfReportTool(router)
+    store = ParquetStore(root=tmp_path)
+    _write_price_partitions(store)
+    tool = GetActiveEtfReportTool(router, store)
     assert tool.data_class is DataClass.SPONSOR
 
     output = await tool.run(
@@ -399,13 +538,19 @@ async def test_get_active_etf_report_classifies_status_from_prior_day_weight() -
     assert by_stock["2330"].status is HoldingStatus.INCREASED
     assert output.report_date == date(2025, 5, 7)
     assert output.prior_date == date(2025, 5, 6)
-    assert output.fund_size == 71160000.0 + 5000000.0
-    assert output.fund_size_prior == 59300000.0 + 30000000.0
+    # report_date (2025-05-07) holdings: 2330 (120000 shares @ 110.0) + 2317 (40000 shares @ 20.0)
+    assert output.fund_size == 120000 * 110.0 + 40000 * 20.0
+    # prior_date (2025-05-06) holdings: 2330 (100000 shares @ 100.0) + 2454 (50000 shares @ 50.0)
+    assert output.fund_size_prior == 100000 * 100.0 + 50000 * 50.0
+    # Never the holding row's own (broken/stale) `market_value` field — see
+    # `_write_price_partitions`'s docstring for why these two are deliberately far apart.
+    assert output.fund_size != 71160000.0 + 5000000.0
+    assert output.fund_size_prior != 59300000.0 + 30000000.0
     assert output.premium_discount_pct is None
     assert output.premium_discount_unavailable_reason is not None
 
 
-async def test_get_active_etf_report_no_prior_day_is_not_guessed() -> None:
+async def test_get_active_etf_report_no_prior_day_is_not_guessed(tmp_path: Path) -> None:
     """A change row on the earliest date the window returns has no prior partition to diff
     against — `status` must say so explicitly, never guess 新增/加碼."""
     symbol = Symbol(id="00980A", market=Market.TW)
@@ -461,7 +606,11 @@ async def test_get_active_etf_report_no_prior_day_is_not_guessed() -> None:
             Capability.ACTIVE_ETF_HOLDING_CHANGE: single_day_change,
         },
     )
-    tool = GetActiveEtfReportTool(router)
+    store = ParquetStore(root=tmp_path)
+    store.write_partition(
+        "TaiwanStockPrice", "TW", date(2025, 5, 5), [{"symbol": "2330", "close": 593.0}]
+    )
+    tool = GetActiveEtfReportTool(router, store)
 
     output = await tool.run(
         GetActiveEtfReportInput(id="00980A", market=Market.TW, trade_date=date(2025, 5, 5)),
@@ -473,12 +622,15 @@ async def test_get_active_etf_report_no_prior_day_is_not_guessed() -> None:
     assert output.fund_size_prior is None
 
 
-async def test_get_active_etf_report_degrades_gracefully_when_holding_data_missing() -> None:
+async def test_get_active_etf_report_degrades_gracefully_when_holding_data_missing(
+    tmp_path: Path,
+) -> None:
     """No adapter configured for `ACTIVE_ETF_HOLDING` at all — the router surfaces its own
     `unavailable` result rather than the tool crashing or fabricating rows."""
     symbol = Symbol(id="00980A", market=Market.TW)
     router, _ = make_router(symbol, {})
-    tool = GetActiveEtfReportTool(router)
+    store = ParquetStore(root=tmp_path)
+    tool = GetActiveEtfReportTool(router, store)
 
     output = await tool.run(GetActiveEtfReportInput(id="00980A", market=Market.TW), ToolContext())
 
@@ -610,7 +762,9 @@ def _profile_result() -> SourceResult:
     )
 
 
-async def test_get_company_profile_enriches_all_fields_when_every_capability_is_healthy() -> None:
+async def test_get_company_profile_enriches_all_fields_when_every_capability_is_healthy(
+    tmp_path: Path,
+) -> None:
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(
         symbol,
@@ -623,7 +777,7 @@ async def test_get_company_profile_enriches_all_fields_when_every_capability_is_
             Capability.PROFILE: _profile_result(),
         },
     )
-    tool = GetCompanyProfileTool(router)
+    tool = GetCompanyProfileTool(router, ParquetStore(root=tmp_path))
 
     output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
 
@@ -646,8 +800,9 @@ async def test_get_company_profile_enriches_all_fields_when_every_capability_is_
     assert "chairman" not in output.missing_fields
     assert "auditor" not in output.missing_fields
 
-    # Non-trivial-to-derive analytics fields stay honestly out of scope, even when the raw
-    # income-statement capability is healthy.
+    # revenue_yoy/margins are read from the derived Parquet store, not the router — an empty
+    # store (no ingested partitions in this test) correctly degrades both to missing, independent
+    # of the router-fetched capabilities' health above.
     assert "revenue_yoy" in output.missing_fields
     assert "margins" in output.missing_fields
 
@@ -658,7 +813,9 @@ async def test_get_company_profile_enriches_all_fields_when_every_capability_is_
     assert "eps" not in output.missing_fields
 
 
-async def test_get_company_profile_lists_mops_fields_missing_when_no_profile_adapter() -> None:
+async def test_get_company_profile_lists_mops_fields_missing_when_no_profile_adapter(
+    tmp_path: Path,
+) -> None:
     """A market with no MOPS/`profile` adapter (e.g. the router's own `unavailable` degrade)
     must list every MOPS-sourced identity field in `missing_fields`, never fabricate one."""
     symbol = Symbol(id="2330", market=Market.TW)
@@ -672,7 +829,7 @@ async def test_get_company_profile_lists_mops_fields_missing_when_no_profile_ada
             Capability.FINANCIALS: _income_statement_result(),
         },
     )
-    tool = GetCompanyProfileTool(router)
+    tool = GetCompanyProfileTool(router, ParquetStore(root=tmp_path))
 
     output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
 
@@ -687,9 +844,9 @@ async def test_get_company_profile_lists_mops_fields_missing_when_no_profile_ada
     assert "industry_classification_code" in output.missing_fields
 
 
-async def test_get_company_profile_lists_field_missing_when_its_capability_fetch_is_unhealthy() -> (
-    None
-):
+async def test_get_company_profile_lists_field_missing_when_its_capability_fetch_is_unhealthy(
+    tmp_path: Path,
+) -> None:
     """`missing_fields` is computed per-call, not a static reduced list — a field whose
     capability exists in general still lands there for a symbol where this specific fetch came
     back empty/unhealthy."""
@@ -713,7 +870,7 @@ async def test_get_company_profile_lists_field_missing_when_its_capability_fetch
             Capability.FINANCIALS: _income_statement_result(),
         },
     )
-    tool = GetCompanyProfileTool(router)
+    tool = GetCompanyProfileTool(router, ParquetStore(root=tmp_path))
 
     output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
 

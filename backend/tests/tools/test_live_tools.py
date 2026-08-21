@@ -24,6 +24,8 @@ async def test_get_live_quote_snapshot_delegates_and_parses() -> None:
         "volume": 1000,
         "best_bid": "899.0",
         "best_ask": "901.0",
+        "best_bid_volume": "10_20_0_0_0_",
+        "best_ask_volume": "15_25_0_0_0_",
         "observed_at": "093000",
     }
     result = SourceResult(
@@ -44,3 +46,5 @@ async def test_get_live_quote_snapshot_delegates_and_parses() -> None:
     assert adapter.calls[0][0] is Capability.PRICE_INTRADAY
     assert output.snapshot is not None
     assert output.snapshot.last_price == 900.0
+    assert output.snapshot.best_bid_volume == "10_20_0_0_0_"
+    assert output.snapshot.best_ask_volume == "15_25_0_0_0_"

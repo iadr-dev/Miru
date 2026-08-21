@@ -10,7 +10,9 @@ inputs:
     required: true
 tools: [get_canonical_context, build_conversation_package, get_source_health, get_price_quote]
 output_structure:
-  - '逐一個股: 最新可用收盤價 (get_price_quote) 與目前可用資料能力清單 (payload_keys, 非原始資料)'
+  - '逐一個股: 用一句話帶出最新可用收盤價與當日漲跌 (get_price_quote)，不重建完整 OHLCV 表格 —
+    該工具呼叫已自動附上報價卡片顯示完整開高低收與成交量，文字重複整張表格對讀者是冗餘資訊。與目前可用資料能力清單
+    (payload_keys, 非原始資料)'
   - '對話摘要包: 每個符號的 ConversationFact 清單，含資料層級/更新時間/是否可用 (ConversationFact.source_id 為內部實作識別碼，絕不在輸出文字中提及)'
   - '來源健康度: 每個符號目前是否有來源異常或延遲'
   - '整體提醒: 每個符號皆須附上 currentness_caveat / non_trading_notice'
@@ -29,7 +31,10 @@ outputs: markdown
 
 1. For each `stock_id` in `stock_ids`, call `get_canonical_context(stock_id, market)` — the
    redacted M5F summary (per-capability provenance + `payload_keys`, never a raw payload) —
-   and `get_price_quote(stock_id, market)` for the latest available EOD price bar.
+   and `get_price_quote(stock_id, market)` for the latest available EOD price bar. That tool
+   call already renders its own price-quote card with the full OHLCV breakdown — mention only
+   the closing price and day-over-day change in prose (one sentence), never restate open/high/
+   low/volume/turnover in a markdown table; that duplicates the card with no added value.
 2. For each `stock_id`, call `build_conversation_package(stock_id, market)` — the Mode-C
    `ConversationFact` list (already payload-free by construction): capability, source_id,
    data_class, timing_class, fetched_at, currentness_caveat, headline, is_available.
