@@ -40,7 +40,10 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
+from analytics.scoring_batch import job_scoring_batch
 from analytics.screener.batch import job_screener_flags
+from analytics.themes.seed import seed_industry_themes
+from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
 from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.context import IngestContext
@@ -53,6 +56,7 @@ from ingest.jobs import (
     job_financials,
     job_institutional_flow,
     job_market_value,
+    job_month_revenue,
     job_price_eod,
 )
 from ingest.journal import JobRun
@@ -129,12 +133,33 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # statement family available together).
     ScheduledIngestJob("balance_sheet", time_(21, 30), job_balance_sheet),
     ScheduledIngestJob("cash_flow", time_(21, 30), job_cash_flow),
+    # Monthly-revenue filings — same irregular per-filing cadence as the statement family above;
+    # feeds `revenue_yoy`'s `analytics/fundamentals.py` compute in `get_company_profile`.
+    ScheduledIngestJob("month_revenue", time_(21, 30), job_month_revenue),
     # Market cap — Mon-Fri ~23:30 FinMind publish clock (MARKET_VALUE_JOB's own cron_hint).
     ScheduledIngestJob("market_value", time_(23, 40), job_market_value),
+    # Multi-factor composite score — a derived-compute pass over the day's already-landed price/
+    # flow/fundamental/market-value partitions (`get_stock_score`/`get_score_leaderboard`'s cache-
+    # only read backend). Fires last, after every one of its own inputs (price_eod,
+    # institutional_flow, financials/balance_sheet/cash_flow, market_value) has landed for the
+    # day — `job_scoring_batch`'s own docstring: idempotent, leader- and calendar-gated like every
+    # other batch here.
+    ScheduledIngestJob("scoring_batch", time_(23, 55), job_scoring_batch),
     # US symbol universe — monthly reference data (not trading-day-gated, mirrors the
     # industry-chain theme seed's own cadence reasoning); must land before the price/fundamentals
     # pulls below have anything to fetch, so it fires earliest in the Taipei morning.
     ScheduledIngestJob("us_symbol_universe", time_(5, 30), job_us_symbol_universe, Cadence.MONTHLY),
+    # Industry-chain theme seed (Layer 1) — monthly reference data derived from FinMind's
+    # whole-market industry-chain classification roster, feeding `theme-lookup`'s
+    # `get_symbol_themes`/`get_theme_members`. Fires after the price_eod window so this pass
+    # doesn't compete with it for FinMind quota; tier assignment (Layer 2, below) must fire AFTER
+    # this has written the month's memberships, since it classifies sub-industries actually
+    # present in them.
+    ScheduledIngestJob("theme_industry_seed", time_(18, 30), seed_industry_themes, Cadence.MONTHLY),
+    # Theme tier seed (Layer 2) — pure derived-compute over the memberships the job above just
+    # wrote plus the curated `config/theme_tiers.yaml` map; no FinMind call of its own, so it
+    # fires immediately after with no quota concern.
+    ScheduledIngestJob("theme_tier_seed", time_(18, 35), seed_theme_tiers, Cadence.MONTHLY),
     # US price EOD — US markets close 16:00 ET (UTC-4/-5), i.e. ~04:00-05:00 Taipei the next
     # calendar day; 06:00 Taipei gives yfinance's own upstream data a comfortable landing buffer
     # past that close before this pulls. `job_us_price_eod` is calendar-gated the same Mon-Fri

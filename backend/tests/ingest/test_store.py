@@ -141,3 +141,52 @@ def test_read_range_concatenates_written_partitions_and_skips_gaps(tmp_path: obj
     )
 
     assert [r["close"] for r in rows] == [593.0, 600.0]  # 1/3 (never written) is skipped
+
+
+def test_read_range_frame_projects_columns_and_skips_gaps_and_empties(tmp_path: object) -> None:
+    """`read_range_frame` is `read_range`'s columnar counterpart (added for `job_scoring_batch`'s
+    whole-market multi-day windows, where `read_range`'s per-row `dict` boxing OOMs — see that
+    method's own docstring). Proves it: reads only the requested columns (not the full row
+    shape), skips a never-written date the same way `read_range` does, and survives an empty-
+    schema partition sitting in the window (the same `_empty`-placeholder case
+    `test_reader_glob_reads_across_mixed_empty_and_real_schema_partitions` covers for the row
+    reader)."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        date(2024, 1, 2),
+        [{"symbol": "2330", "trade_date": "2024-01-02", "close": 593.0, "volume": 100}],
+    )
+    store.write_partition("TaiwanStockPrice", "TW", date(2024, 1, 3), [])  # empty-schema day
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        date(2024, 1, 4),
+        [{"symbol": "0050", "trade_date": "2024-01-04", "close": 130.8, "volume": 200}],
+    )
+    # 2024-01-05 is never written at all — a gap, same as `read_range`'s own gap case.
+
+    frame = store.read_range_frame(
+        "TaiwanStockPrice",
+        "TW",
+        [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)],
+        columns=("symbol", "close"),
+    )
+
+    assert list(frame.columns) == ["symbol", "close"]  # only the requested columns
+    assert sorted(frame["symbol"].tolist()) == ["0050", "2330"]
+    assert sorted(frame["close"].tolist()) == [130.8, 593.0]
+
+
+def test_read_range_frame_with_no_written_dates_returns_empty_frame(tmp_path: object) -> None:
+    """No partition in the window has ever been written — a genuine gap, not an error; the
+    result is an empty `DataFrame` shaped to the requested columns, not a crash or a `None`."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+
+    frame = store.read_range_frame(
+        "TaiwanStockPrice", "TW", [date(2024, 1, 2)], columns=("symbol", "close")
+    )
+
+    assert list(frame.columns) == ["symbol", "close"]
+    assert len(frame) == 0

@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import date as date_
 from typing import Protocol
 
-from schemas.capabilities import FinancialStatementLine, MarketValueRow
+from schemas.capabilities import FinancialStatementLine, MarketValueRow, MonthRevenueRow
 from schemas.enums import Market
 
 # FinMind dataset identifiers for the whole-market-ingested financial datasets. Stable upstream
@@ -40,6 +40,7 @@ FINANCIALS_DATASET = "TaiwanStockFinancialStatements"  # income statement
 BALANCE_SHEET_DATASET = "TaiwanStockBalanceSheet"
 CASH_FLOW_DATASET = "TaiwanStockCashFlowsStatement"
 MARKET_VALUE_DATASET = "TaiwanStockMarketValue"
+MONTH_REVENUE_DATASET = "TaiwanStockMonthRevenue"
 
 # Line-item name aliases — FinMind's normalized `type` column has varied over time and across the
 # three statement families; a metric matches the first alias present rather than assuming one
@@ -51,6 +52,7 @@ _NET_INCOME_ITEMS = (
     "ProfitAfterTax",
 )
 _GROSS_PROFIT_ITEMS = ("GrossProfit", "GrossProfitLoss")
+_REVENUE_ITEMS = ("Revenue", "OperatingRevenue", "NetRevenue")
 _OPERATING_INCOME_ITEMS = ("OperatingIncome", "OperatingIncomeLoss")
 _PRETAX_INCOME_ITEMS = ("PreTaxIncome", "IncomeBeforeIncomeTax", "ProfitBeforeTax")
 _TAX_ITEMS = ("IncomeTaxExpense", "IncomeTax", "TAX")
@@ -124,6 +126,7 @@ class FundamentalMetrics:
     fcf_yield: float | None = None
     pe: float | None = None
     pb: float | None = None
+    gross_margin: float | None = None
     ttm_is_annualized: bool = False
 
 
@@ -268,6 +271,9 @@ def compute_fundamental_metrics(
     pe = _safe_ratio(market_value, net_income_ttm)
     pb = _safe_ratio(market_value, equity)
 
+    revenue_ttm, _rev_annualized = _ttm_flow(lines, _REVENUE_ITEMS)
+    gross_margin = _safe_ratio(gross_profit_ttm, revenue_ttm)
+
     return FundamentalMetrics(
         roe=roe,
         debt_to_equity=debt_to_equity,
@@ -278,8 +284,56 @@ def compute_fundamental_metrics(
         fcf_yield=fcf_yield,
         pe=pe,
         pb=pb,
+        gross_margin=gross_margin,
         ttm_is_annualized=ttm_is_annualized,
     )
+
+
+_MONTHS_PER_YEAR = 12
+_MONTH_REVENUE_FIELDS = frozenset(MonthRevenueRow.model_fields)
+
+
+def parse_month_revenue_rows(rows: Sequence[dict[str, object]]) -> list[MonthRevenueRow]:
+    """Validate raw derived-store dicts into `MonthRevenueRow`s, skipping any row that does not
+    fit the shape (a defensive parse, not a silent data fabrication)."""
+    values: list[MonthRevenueRow] = []
+    for row in rows:
+        try:
+            values.append(MonthRevenueRow.model_validate(_project(row, _MONTH_REVENUE_FIELDS)))
+        except ValueError:
+            continue
+    return values
+
+
+def compute_revenue_yoy(rows: Sequence[MonthRevenueRow]) -> float | None:
+    """Year-over-year change of the most recently filed month's revenue vs the same calendar
+    month one year prior — `None` when either month is absent (never a fabricated comparison
+    from a mismatched month)."""
+    if not rows:
+        return None
+    latest = max(rows, key=lambda row: (row.revenue_year, row.revenue_month))
+    prior_year = [
+        row
+        for row in rows
+        if row.revenue_year == latest.revenue_year - 1 and row.revenue_month == latest.revenue_month
+    ]
+    if not prior_year:
+        return None
+    return _safe_ratio(latest.revenue - prior_year[0].revenue, prior_year[0].revenue)
+
+
+def load_symbol_month_revenue(
+    reader: DerivedStoreReader,
+    *,
+    market: Market,
+    run_dates: Sequence[date_],
+    symbol: str,
+) -> list[MonthRevenueRow]:
+    """Read this symbol's monthly-revenue filings back from the derived store across the given
+    ingest-run-date partitions. Reads only the whole-market-ingested dataset; never a live
+    per-symbol source call."""
+    rows = reader.read_range(MONTH_REVENUE_DATASET, market.value, run_dates)
+    return [row for row in parse_month_revenue_rows(rows) if row.symbol == symbol]
 
 
 def _latest_period_lines(lines: Sequence[FinancialStatementLine]) -> list[FinancialStatementLine]:
@@ -394,11 +448,15 @@ __all__ = [
     "CASH_FLOW_DATASET",
     "FINANCIALS_DATASET",
     "MARKET_VALUE_DATASET",
+    "MONTH_REVENUE_DATASET",
     "DerivedStoreReader",
     "FundamentalMetrics",
     "compute_fundamental_metrics",
+    "compute_revenue_yoy",
     "load_symbol_financials",
     "load_symbol_market_value",
+    "load_symbol_month_revenue",
     "parse_market_value_rows",
+    "parse_month_revenue_rows",
     "parse_statement_lines",
 ]

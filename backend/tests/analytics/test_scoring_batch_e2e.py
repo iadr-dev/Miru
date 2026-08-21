@@ -111,7 +111,7 @@ def _flat_then_ramp_closes(window: list[date_], *, final_return: float) -> list[
 
 def _seed_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None:
     """Three symbols with distinct, hand-engineered 12-1 momentum so the leaderboard's ordering
-    can be checked against real numbers: STRONG (+30%), MID (+10%), WEAK (-10%). Each also gets a
+    can be checked against real numbers: STRO (+30%), MID (+10%), WEAK (-10%). Each also gets a
     matching institutional-flow tilt so revenue_flow doesn't fight momentum in the composite."""
     window = calendar.business_days_between(
         calendar.shift_business_days(_RUN_DATE, -259), _RUN_DATE
@@ -123,7 +123,7 @@ def _seed_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None:
 
     for i, day in enumerate(window):
         rows = (
-            _price_rows_for("STRONG", [strong_closes[i]], [day])
+            _price_rows_for("STRO", [strong_closes[i]], [day])
             + _price_rows_for("MID", [mid_closes[i]], [day])
             + _price_rows_for("WEAK", [weak_closes[i]], [day])
         )
@@ -132,7 +132,7 @@ def _seed_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None:
     flow_window = window[-20:]
     for day in flow_window:
         rows = (
-            _flow_rows_for("STRONG", "Foreign_Investor", [500.0], [day])
+            _flow_rows_for("STRO", "Foreign_Investor", [500.0], [day])
             + _flow_rows_for("MID", "Foreign_Investor", [100.0], [day])
             + _flow_rows_for("WEAK", "Foreign_Investor", [-300.0], [day])
         )
@@ -179,7 +179,7 @@ async def test_daemon_pass_writes_score_rows_for_whole_universe(
 
     symbols = {row.symbol for row in rows}
     profiles = {row.profile for row in rows}
-    assert symbols == {"STRONG", "MID", "WEAK"}
+    assert symbols == {"STRO", "MID", "WEAK"}
     assert profiles == {"swing", "position"}
     # 3 symbols x 2 profiles = 6 rows — the whole universe, not a subset.
     assert len(rows) == 6
@@ -200,12 +200,12 @@ async def test_stock_score_tool_reads_back_cached_row(
 
     result = await dispatch_tool(
         tool,
-        tool.input_model.model_validate({"id": "STRONG", "market": "TW", "profile": "swing"}),
+        tool.input_model.model_validate({"id": "STRO", "market": "TW", "profile": "swing"}),
         ToolContext(user_id=None, tier=Tier.FREE, tls_policy=TLSPolicy.STRICT),
     )
     data = result.model_dump(mode="json")
     assert data["found"] is True
-    assert data["result"]["symbol"] == "STRONG"
+    assert data["result"]["symbol"] == "STRO"
     assert data["result"]["composite"] is not None
     breakdown = data["result"]["breakdown"]
     for factor_name in ScoreBreakdown.model_fields:
@@ -225,7 +225,7 @@ async def test_stock_score_tool_reads_back_cached_row(
 async def test_leaderboard_tool_orders_by_real_composite(
     tmp_path: Path, session_factory: async_sessionmaker
 ) -> None:
-    """Proof 3 + the cross-sectional check: STRONG (+30% momentum, positive flow) must rank above
+    """Proof 3 + the cross-sectional check: STRO (+30% momentum, positive flow) must rank above
     MID (+10%, mild positive flow), which must rank above WEAK (-10% momentum, negative flow) —
     for BOTH the bullish (descending) and bearish (ascending) directions, proving the leaderboard
     reads a genuinely correct ordering off the cache, not merely a non-empty list."""
@@ -245,7 +245,7 @@ async def test_leaderboard_tool_orders_by_real_composite(
     )
     bullish_data = bullish.model_dump(mode="json")
     bullish_symbols = [row["symbol"] for row in bullish_data["results"]]
-    assert bullish_symbols == ["STRONG", "MID", "WEAK"]
+    assert bullish_symbols == ["STRO", "MID", "WEAK"]
     composites = [row["composite"] for row in bullish_data["results"]]
     assert composites == sorted(composites, reverse=True)  # genuinely descending, not just present
 
@@ -257,7 +257,7 @@ async def test_leaderboard_tool_orders_by_real_composite(
         ToolContext(user_id=None, tier=Tier.FREE, tls_policy=TLSPolicy.STRICT),
     )
     bearish_symbols = [row["symbol"] for row in bearish.model_dump(mode="json")["results"]]
-    assert bearish_symbols == ["WEAK", "MID", "STRONG"]
+    assert bearish_symbols == ["WEAK", "MID", "STRO"]
 
     # limit is a read-time slice only — asking for 2 must not change the ordering, just truncate.
     top2 = await dispatch_tool(
@@ -268,7 +268,7 @@ async def test_leaderboard_tool_orders_by_real_composite(
         ToolContext(user_id=None, tier=Tier.FREE, tls_policy=TLSPolicy.STRICT),
     )
     top2_symbols = [row["symbol"] for row in top2.model_dump(mode="json")["results"]]
-    assert top2_symbols == ["STRONG", "MID"]
+    assert top2_symbols == ["STRO", "MID"]
 
 
 async def test_no_trading_language_in_score_or_leaderboard_output(
@@ -283,7 +283,7 @@ async def test_no_trading_language_in_score_or_leaderboard_output(
     score_tool, leaderboard_tool = (t for t, _ in build_registration_table(session_factory))
     score_result = await dispatch_tool(
         score_tool,
-        score_tool.input_model.model_validate({"id": "STRONG", "market": "TW"}),
+        score_tool.input_model.model_validate({"id": "STRO", "market": "TW"}),
         ToolContext(user_id=None, tier=Tier.FREE, tls_policy=TLSPolicy.STRICT),
     )
     leaderboard_result = await dispatch_tool(

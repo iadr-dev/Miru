@@ -13,6 +13,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import sources.finmind as finmind_module
+from analytics.scoring_batch import job_scoring_batch
+from analytics.screener.batch import job_screener_flags
 from config.settings import Settings
 from ingest.context import IngestContext
 from ingest.daemon import SCHEDULED_JOBS, IngestDaemon, ScheduledIngestJob
@@ -26,6 +28,7 @@ from ingest.jobs import (
     FINANCIALS_JOB,
     INSTITUTIONAL_FLOW_JOB,
     MARKET_VALUE_JOB,
+    MONTH_REVENUE_JOB,
     PRICE_EOD_JOB,
     job_active_etf_holding_changes,
     job_active_etf_holdings,
@@ -35,6 +38,7 @@ from ingest.jobs import (
     job_financials,
     job_institutional_flow,
     job_market_value,
+    job_month_revenue,
     job_price_eod,
 )
 from ingest.journal import JobRun, RunStatus
@@ -201,6 +205,7 @@ def test_every_whole_market_job_is_scheduled() -> None:
         DIVIDENDS_JOB: job_dividends,
         BALANCE_SHEET_JOB: job_balance_sheet,
         CASH_FLOW_JOB: job_cash_flow,
+        MONTH_REVENUE_JOB: job_month_revenue,
         MARKET_VALUE_JOB: job_market_value,
         ACTIVE_ETF_HOLDING_JOB: job_active_etf_holdings,
         ACTIVE_ETF_HOLDING_CHANGE_JOB: job_active_etf_holding_changes,
@@ -231,4 +236,23 @@ def test_us_jobs_are_scheduled() -> None:
     assert not missing, (
         f"US job(s) not wired into SCHEDULED_JOBS — the daily cron will never refresh them: "
         f"{missing}"
+    )
+
+
+def test_derived_compute_batches_are_scheduled() -> None:
+    """Regression guard mirroring `test_every_whole_market_job_is_scheduled`: `job_scoring_batch`
+    was fully implemented (`analytics/scoring_batch.py`) but never added to `SCHEDULED_JOBS`, so
+    `get_stock_score`/`get_score_leaderboard` — both cache-only reads by design, see that module's
+    own docstring for why — permanently returned "not yet computed" no matter how long the system
+    ran, since nothing ever populated the cache they read. Neither this job nor `job_screener_flags`
+    is backed by a `WholeMarketJobSpec` (they're derived-compute passes over already-ingested
+    partitions, not a FinMind pull), so `test_every_whole_market_job_is_scheduled`'s own guard
+    can't see them — this is the guard for that category instead."""
+    scheduled_run_fns = {job.run for job in SCHEDULED_JOBS}
+    missing = [
+        fn.__name__ for fn in (job_screener_flags, job_scoring_batch) if fn not in scheduled_run_fns
+    ]
+    assert not missing, (
+        f"Derived-compute batch job(s) not wired into SCHEDULED_JOBS — their cache is never "
+        f"populated, only a manual run would: {missing}"
     )

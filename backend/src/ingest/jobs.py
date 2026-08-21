@@ -98,6 +98,19 @@ DIVIDENDS_JOB = WholeMarketJobSpec(
     cron_hint="21:30 Asia/Taipei (after the other post-close pulls; catches same-day filings)",
 )
 
+# `TaiwanStockMonthRevenue` — same irregular, per-company statutory cadence as the income/balance/
+# cash-flow statements above (filed monthly, not on a fixed daily clock), and likewise already
+# `whole_market_ok=True` in the FinMind source config. Ingested so `revenue_yoy` (this month's
+# revenue vs the same month a year prior) can be computed from the derived store rather than a
+# live per-symbol fetch on every `get_company_profile` call — the same "whole-market dataset,
+# read back not fetched live" rationale `MARKET_VALUE_JOB` documents above.
+MONTH_REVENUE_JOB = WholeMarketJobSpec(
+    dataset="TaiwanStockMonthRevenue",
+    capability=Capability.MONTH_REVENUE,
+    finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
+    cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
+)
+
 # The balance-sheet and cash-flow statement families share the same irregular per-filing cadence
 # and the same documented omit-data_id whole-table request form as FINANCIALS above. They are
 # ingested alongside the income statement because the derived multi-factor quality/value read
@@ -162,6 +175,7 @@ ALL_WHOLE_MARKET_JOBS: tuple[WholeMarketJobSpec, ...] = (
     DIVIDENDS_JOB,
     BALANCE_SHEET_JOB,
     CASH_FLOW_JOB,
+    MONTH_REVENUE_JOB,
     MARKET_VALUE_JOB,
     ACTIVE_ETF_HOLDING_JOB,
     ACTIVE_ETF_HOLDING_CHANGE_JOB,
@@ -192,7 +206,7 @@ STUBBED_DATASETS: tuple[str, ...] = (
     "ingest-daily-late: TaiwanStockMarketValue+Weight (23:40)",
     "ingest-reconcile (~08:30 next-morning re-pull)",
     "ingest-weekly: TaiwanStockHoldingSharesPer (Sun 06:00 + Mon reconcile)",
-    "ingest-monthly: 月營收/景氣信號",
+    "ingest-monthly: 景氣信號",
     "ingest-event: MOPS/news/PTT/rebalance/macro/IPO/yfinance",
 )
 
@@ -332,6 +346,12 @@ async def job_cash_flow(run_date: date_, ctx: IngestContext) -> JobRun:
     return await run_whole_market_job(CASH_FLOW_JOB, run_date, ctx)
 
 
+async def job_month_revenue(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-monthly`/late-daily catch-all for monthly-revenue filings, cron **21:30**. A day
+    with no filings legitimately returns zero rows — filings are irregular per-company."""
+    return await run_whole_market_job(MONTH_REVENUE_JOB, run_date, ctx)
+
+
 async def job_market_value(run_date: date_, ctx: IngestContext) -> JobRun:
     """`ingest-daily-late` Sponsor group — daily whole-market market-capitalization snapshot,
     cron **23:40**."""
@@ -358,6 +378,7 @@ __all__ = [
     "FINANCIALS_JOB",
     "INSTITUTIONAL_FLOW_JOB",
     "MARKET_VALUE_JOB",
+    "MONTH_REVENUE_JOB",
     "PRICE_EOD_JOB",
     "STUBBED_DATASETS",
     "WholeMarketJobSpec",
@@ -369,6 +390,7 @@ __all__ = [
     "job_financials",
     "job_institutional_flow",
     "job_market_value",
+    "job_month_revenue",
     "job_price_eod",
     "run_whole_market_job",
 ]
