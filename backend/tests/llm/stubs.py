@@ -56,6 +56,13 @@ class StubLLMClient:
     # `script`) — a test that wants to assert `ThinkingDeltaEvent` forwarding without a live
     # provider populates this; every other test leaves it empty (no thinking events emitted).
     thinking_chunks: Sequence[Sequence[str]] = field(default_factory=lambda: ())
+    # One list of text-delta chunk strings per scripted `stream()` call (index-aligned with
+    # `script`), joined together must equal that call's own `response.text` — a test that wants
+    # to assert `TextDeltaEvent` sentence-boundary streaming (`AgentLoop._stream_step`'s
+    # `answer_delta` hook) populates this to control exactly where a sentence splits across
+    # multiple deltas; every other test leaves it empty and gets the whole text in one chunk
+    # (the pre-existing behavior, unaffected).
+    text_chunks: Sequence[Sequence[str]] = field(default_factory=lambda: ())
     # One tuple of `WebSearchSource`s per scripted `stream()` call (index-aligned with `script`)
     # — a test that wants to assert `WebSearchResultEvent` forwarding without a live provider
     # populates this; every other test leaves it empty (no web-search event emitted).
@@ -98,7 +105,10 @@ class StubLLMClient:
         if call_index < len(self.thinking_chunks):
             for chunk in self.thinking_chunks[call_index]:
                 yield ThinkingDeltaEvent(text=chunk)
-        if response.text:
+        if call_index < len(self.text_chunks) and self.text_chunks[call_index]:
+            for chunk in self.text_chunks[call_index]:
+                yield TextDeltaEvent(text=chunk)
+        elif response.text:
             yield TextDeltaEvent(text=response.text)
         for call in response.tool_calls:
             yield ToolCallEvent(tool_call=call)
