@@ -301,17 +301,20 @@ export function ChatClient(): ReactNode {
               <PersistedThreadView
                 thread={threadQuery.data}
                 streaming={streaming}
-                onRegenerate={(assistantTurnId, userText) => {
-                  void runRegenerate(assistantTurnId, userText);
-                }}
+                onRegenerate={(assistantTurnId, userText) =>
+                  runRegenerate(assistantTurnId, userText)
+                }
                 onEdit={(userTurnId, newText) => {
                   // The edit textarea (`UserBubble`) has no attachment picker of its own — an
                   // edited message never adds new attachments, only changes the text.
                   void runEdit(userTurnId, newText, []);
                 }}
+                onAskUserPick={onSend}
               />
             ) : null}
-            {activeTurn !== null ? <ActiveTurnView turn={activeTurn} /> : null}
+            {activeTurn !== null ? (
+              <ActiveTurnView turn={activeTurn} onAskUserPick={onSend} />
+            ) : null}
           </div>
         )}
       </div>

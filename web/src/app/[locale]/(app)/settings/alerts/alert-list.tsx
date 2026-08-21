@@ -63,7 +63,7 @@ export function AlertList(): ReactNode {
               <li key={alert.id} className="flex items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <p className="font-medium text-[14px] text-[var(--text)]">
-                    {alert.symbol} · {alert.market}
+                    {alert.symbol} · {tc(`marketOption.${alert.market}`)}
                   </p>
                   <p className="truncate text-[12px] text-[var(--text-muted)]">
                     {alert.condition.metric}{" "}

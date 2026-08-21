@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
   asArray,
@@ -9,6 +9,7 @@ import {
   formatNumber,
   PLUMBING_KEYS,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 
 /** 2+ named entities compared on the same fields (`fund_comparison`'s per-symbol rows,
  * `etf_overlap`'s `pairwise_overlap` matrix). Both shapes reduce to "one row per entity, one
@@ -17,16 +18,17 @@ import {
  * entity-per-row for a pairwise structure. */
 export function CompareTable({ data }: { data: unknown }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("chat.cards");
   if (!data || typeof data !== "object") {
     return null;
   }
   const record = data as Record<string, unknown>;
 
   if (Array.isArray(record.rows)) {
-    return <EntityRows rows={asArray(record.rows)} locale={locale} />;
+    return <EntityRows rows={asArray(record.rows)} locale={locale} t={t} />;
   }
   if (Array.isArray(record.pairwise_overlap)) {
-    return <PairwiseRows rows={asArray(record.pairwise_overlap)} locale={locale} />;
+    return <PairwiseRows rows={asArray(record.pairwise_overlap)} locale={locale} t={t} />;
   }
   return null;
 }
@@ -34,9 +36,11 @@ export function CompareTable({ data }: { data: unknown }): ReactNode {
 function EntityRows({
   rows,
   locale,
+  t,
 }: {
   rows: Record<string, unknown>[];
   locale: string;
+  t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   if (rows.length === 0) {
     return null;
@@ -58,7 +62,7 @@ function EntityRows({
                     : "border-[var(--border)] border-b px-3 py-2 text-right font-medium text-[var(--text-muted)]"
                 }
               >
-                {col}
+                {fieldLabel(t, col)}
               </th>
             ))}
           </tr>
@@ -96,9 +100,11 @@ function EntityRows({
 function PairwiseRows({
   rows,
   locale,
+  t,
 }: {
   rows: Record<string, unknown>[];
   locale: string;
+  t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   if (rows.length === 0) {
     return null;
@@ -109,13 +115,13 @@ function PairwiseRows({
         <thead>
           <tr className="bg-[var(--surface-2)]">
             <th className="border-[var(--border)] border-b px-3 py-2 text-left font-medium text-[var(--text-muted)]">
-              Pair
+              {fieldLabel(t, "pair")}
             </th>
             <th className="border-[var(--border)] border-b px-3 py-2 text-right font-medium text-[var(--text-muted)]">
-              Overlap %
+              {fieldLabel(t, "overlap_pct")}
             </th>
             <th className="border-[var(--border)] border-b px-3 py-2 text-right font-medium text-[var(--text-muted)]">
-              Shared holdings
+              {fieldLabel(t, "shared_holding_count")}
             </th>
           </tr>
         </thead>
@@ -126,7 +132,12 @@ function PairwiseRows({
                 {asString(row.etf_a)} / {asString(row.etf_b)}
               </td>
               <td className="border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums">
-                {formatNumber(asNumber(row.overlap_pct), locale, { decimals: 1 })}
+                {(() => {
+                  const pct = asNumber(row.overlap_pct);
+                  return pct === null
+                    ? "—"
+                    : `${formatNumber(pct * 100, locale, { decimals: 1 })}%`;
+                })()}
               </td>
               <td className="border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums">
                 {formatNumber(asNumber(row.shared_holding_count), locale)}

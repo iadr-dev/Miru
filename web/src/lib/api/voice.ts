@@ -7,6 +7,7 @@
  * Credentialed (session cookie), parsed with Zod at the boundary like every other client here.
  */
 import { z } from "zod";
+import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 
 const transcriptSegmentSchema = z.object({
@@ -28,7 +29,7 @@ export type Transcript = z.infer<typeof transcriptSchema>;
  * back to idle without touching the draft. */
 export async function transcribeAudio(audio: Blob, language: string): Promise<Transcript> {
   const audioBase64 = await blobToBase64(audio);
-  const response = await fetch(apiUrl("/voice/transcribe"), {
+  const response = await fetchWithRefresh(apiUrl("/voice/transcribe"), {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", accept: "application/json" },
@@ -53,7 +54,7 @@ export type SpeakResponse = z.infer<typeof speakResponseSchema>;
  * thrown error same as any other non-2xx, the caller decides how to show it). Mirrors
  * `voice.py::SpeakRequest` (`{text, language}`). */
 export async function speakText(text: string, language: string): Promise<SpeakResponse> {
-  const response = await fetch(apiUrl("/voice/speak"), {
+  const response = await fetchWithRefresh(apiUrl("/voice/speak"), {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", accept: "application/json" },

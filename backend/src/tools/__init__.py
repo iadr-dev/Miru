@@ -24,6 +24,7 @@ from dataaccess.router import DataAccessRouter
 from ingest.reader import ParquetMarketDataReader
 from tools import (
     analyst_tools,
+    ask_user_tools,
     calendar_tools,
     chip_tools,
     context_tools,
@@ -71,6 +72,7 @@ def build_default_tool_registry(
         else []
     )
     return build_default_registry(
+        ask_user_tools.build_registration_table(),
         context_tools.build_registration_table(router),
         health_tools.build_registration_table(router),
         market_tools.build_registration_table(router),

@@ -1,7 +1,8 @@
 "use client";
 
-import { useLocale } from "next-intl";
-import type { ReactNode } from "react";
+import { CaretDownIcon } from "@phosphor-icons/react";
+import { useLocale, useTranslations } from "next-intl";
+import { type ReactNode, useState } from "react";
 import {
   asArray,
   asNumber,
@@ -9,6 +10,18 @@ import {
   formatNumber,
   PLUMBING_KEYS,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { financialStatementItemLabel } from "@/app/[locale]/(app)/chat/cards/financial-statement-labels";
+import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
+import { cn } from "@/lib/cn";
+
+/** Rows shown before the "顯示全部" toggle — a flat roster (`insider_shareholding`,
+ * `theme_members`) is routinely 30-40+ records where most carry no notable value (e.g. a
+ * director with zero pledged shares), so showing every row by default buries the handful that
+ * matter under a wall of zeros. Unlike `ChartWithDataSheet` (which can fully hide its table
+ * behind a chart), a flat sheet's table IS the card's only content, so collapsed state still
+ * shows a short preview rather than nothing. */
+const FLAT_SHEET_PREVIEW_ROWS = 8;
 
 /** Line-item rows with a category dimension, often pivoted by period (`financial_statement`'s
  * `item` × `period_end` × `value`) or a flat roster (`insider_shareholding`, `theme_members`).
@@ -16,6 +29,7 @@ import {
  * otherwise renders one row per record. */
 export function DataSheet({ data }: { data: unknown }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("chat.cards");
   const rows = extractRows(data);
   if (rows.length === 0) {
     return null;
@@ -33,10 +47,11 @@ export function DataSheet({ data }: { data: unknown }): ReactNode {
         periodKey={periodKey}
         valueKey={valueKey}
         locale={locale}
+        t={t}
       />
     );
   }
-  return <FlatSheet rows={rows} locale={locale} />;
+  return <FlatSheet rows={rows} locale={locale} t={t} />;
 }
 
 function PivotedSheet({
@@ -45,12 +60,14 @@ function PivotedSheet({
   periodKey,
   valueKey,
   locale,
+  t,
 }: {
   rows: Record<string, unknown>[];
   categoryKey: string;
   periodKey: string;
   valueKey: string;
   locale: string;
+  t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const periods = [
     ...new Set(rows.map((r) => asString(r[periodKey])).filter((v): v is string => v !== null)),
@@ -68,56 +85,60 @@ function PivotedSheet({
   }
 
   return (
-    <div className="mt-3 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)]">
-      <table className="w-full border-collapse text-[13px]">
-        <thead>
-          <tr className="bg-[var(--surface-2)]">
-            <th className="border-[var(--border)] border-b px-3 py-2 text-left font-medium text-[var(--text-muted)]">
-              {categoryKey}
+    <TableWithActions className="text-[13px]">
+      <thead>
+        <tr className="bg-[var(--surface-2)]">
+          <th className="border-[var(--border)] border-b px-3 py-2 text-left font-medium text-[var(--text-muted)]">
+            {fieldLabel(t, categoryKey)}
+          </th>
+          {periods.map((period) => (
+            <th
+              key={period}
+              className="border-[var(--border)] border-b px-3 py-2 text-right font-medium text-[var(--text-muted)]"
+            >
+              {period}
             </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {categories.map((category) => (
+          <tr key={category}>
+            <td className="border-[var(--border)] border-b px-3 py-2 text-[var(--text)]">
+              {categoryKey === "item" ? financialStatementItemLabel(category) : category}
+            </td>
             {periods.map((period) => (
-              <th
+              <td
                 key={period}
-                className="border-[var(--border)] border-b px-3 py-2 text-right font-medium text-[var(--text-muted)]"
+                className="border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums"
               >
-                {period}
-              </th>
+                {formatNumber(cell.get(`${category}|${period}`) ?? null, locale)}
+              </td>
             ))}
           </tr>
-        </thead>
-        <tbody>
-          {categories.map((category) => (
-            <tr key={category}>
-              <td className="border-[var(--border)] border-b px-3 py-2 text-[var(--text)]">
-                {category}
-              </td>
-              {periods.map((period) => (
-                <td
-                  key={period}
-                  className="border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums"
-                >
-                  {formatNumber(cell.get(`${category}|${period}`) ?? null, locale)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+        ))}
+      </tbody>
+    </TableWithActions>
   );
 }
 
 function FlatSheet({
   rows,
   locale,
+  t,
 }: {
   rows: Record<string, unknown>[];
   locale: string;
+  t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const columns = columnsFor(rows);
+  const [expanded, setExpanded] = useState(false);
+  const hiddenCount = rows.length - FLAT_SHEET_PREVIEW_ROWS;
+  const visibleRows = expanded ? rows.slice(0, 50) : rows.slice(0, FLAT_SHEET_PREVIEW_ROWS);
+
   return (
-    <div className="mt-3 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)]">
-      <table className="w-full border-collapse text-[13px]">
+    <>
+      <TableWithActions className="text-[13px]">
         <thead>
           <tr className="bg-[var(--surface-2)]">
             {columns.map((col) => (
@@ -125,13 +146,13 @@ function FlatSheet({
                 key={col}
                 className="border-[var(--border)] border-b px-3 py-2 text-left font-medium text-[var(--text-muted)]"
               >
-                {col}
+                {fieldLabel(t, col)}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.slice(0, 50).map((row, i) => (
+          {visibleRows.map((row, i) => (
             <tr key={columns.map((col) => String(row[col] ?? "")).join("|") || i}>
               {columns.map((col) => {
                 const value = row[col];
@@ -154,8 +175,27 @@ function FlatSheet({
             </tr>
           ))}
         </tbody>
-      </table>
-    </div>
+      </TableWithActions>
+      {hiddenCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          className={cn(
+            "mt-2 inline-flex min-h-9 items-center gap-1 text-[13px] text-[var(--text-muted)]",
+            "transition-colors hover:text-[var(--text)]",
+          )}
+        >
+          <CaretDownIcon
+            size={14}
+            weight="regular"
+            aria-hidden
+            className={cn("transition-transform", expanded && "rotate-180")}
+          />
+          {expanded ? t("showFewerRows") : t("showAllRows", { count: hiddenCount })}
+        </button>
+      ) : null}
+    </>
   );
 }
 

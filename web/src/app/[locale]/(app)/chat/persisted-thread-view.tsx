@@ -169,9 +169,10 @@ function renderMessageBlock(
     isUser: boolean;
     youLabel: string;
     onEditText?: (newText: string) => void;
+    onAskUserPick?: (prompt: string) => void;
   },
 ): ReactNode {
-  const { isUser, youLabel, onEditText } = opts;
+  const { isUser, youLabel, onEditText, onAskUserPick } = opts;
   if (
     message.type === "tool_use" ||
     message.type === "tool_result" ||
@@ -182,7 +183,13 @@ function renderMessageBlock(
   if (message.type === "text") {
     const text = typeof message.content.text === "string" ? message.content.text : "";
     return isUser ? (
-      <UserBubble key={message.id} text={text} label={youLabel} onEdit={onEditText} />
+      <UserBubble
+        key={message.id}
+        text={text}
+        label={youLabel}
+        onEdit={onEditText}
+        onResend={onEditText ? () => onEditText(text) : undefined}
+      />
     ) : (
       <AnswerMarkdown key={message.id} text={text} />
     );
@@ -202,7 +209,9 @@ function renderMessageBlock(
   }
   if (message.type === "rich_card") {
     const parsed = richCardSchema.safeParse(message.content);
-    return parsed.success ? <RichCardView key={message.id} card={parsed.data} /> : null;
+    return parsed.success ? (
+      <RichCardView key={message.id} card={parsed.data} onAskUserPick={onAskUserPick} />
+    ) : null;
   }
   if (message.type === "web_search_sources") {
     // Positioned right below the answer text, above the caveat — mirrors
@@ -237,11 +246,13 @@ export function PersistedThreadView({
   streaming = false,
   onRegenerate,
   onEdit,
+  onAskUserPick,
 }: {
   thread: Thread;
   streaming?: boolean;
-  onRegenerate?: (assistantTurnId: string, userText: string) => void;
+  onRegenerate?: (assistantTurnId: string, userText: string) => Promise<unknown>;
   onEdit?: (userTurnId: string, newText: string) => void;
+  onAskUserPick?: (prompt: string) => void;
 }): ReactNode {
   const t = useTranslations("chat.turn");
   const tCaveat = useTranslations("chat.caveat");
@@ -258,6 +269,7 @@ export function PersistedThreadView({
                 youLabel: t("you"),
                 onEditText:
                   onEdit && !streaming ? (newText) => onEdit(turn.id, newText) : undefined,
+                onAskUserPick: !streaming ? onAskUserPick : undefined,
               }),
             )}
             {!isUser ? <PersistedProcessDisclosure messages={turn.messages} t={t} /> : null}
@@ -266,6 +278,7 @@ export function PersistedThreadView({
                 <Caveat text={tCaveat("nonTrading")} />
                 <AssistantTurnActions
                   turn={turn}
+                  sourceUserTurn={thread.turns.find((t) => t.id === turn.parent_turn_id) ?? null}
                   onRetry={
                     onRegenerate && !streaming
                       ? (userText) => onRegenerate(turn.id, userText)
@@ -286,13 +299,18 @@ export function PersistedThreadView({
  * cast in a prior session isn't reflected until this one is cast again) and resolves `onRetry`'s
  * `userText` argument (the regenerate stream needs the ORIGINAL user text purely for the optimistic
  * bubble the overlay shows while the new answer streams in — the backend re-derives its own copy
- * server-side from the message tree, this is display-only) from the turn's own text block. */
+ * server-side from the message tree, this is display-only) from `sourceUserTurn` — the turn this
+ * assistant turn's own `parent_turn_id` points back to, NOT this turn's own text block (which is
+ * the assistant's ANSWER, not the question; conflating the two was a real bug — regenerating a
+ * degraded/error turn re-sent the error text itself as if it were the user's question). */
 function AssistantTurnActions({
   turn,
+  sourceUserTurn,
   onRetry,
 }: {
   turn: Turn;
-  onRetry?: (userText: string) => void;
+  sourceUserTurn: Turn | null;
+  onRetry?: (userText: string) => Promise<unknown>;
 }): ReactNode {
   const [feedback, setFeedback] = useState<FeedbackRating | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -300,6 +318,11 @@ function AssistantTurnActions({
   const textBlock = turn.messages.find((m) => m.type === "text");
   const answerText =
     textBlock && typeof textBlock.content.text === "string" ? textBlock.content.text : "";
+  const userTextBlock = sourceUserTurn?.messages.find((m) => m.type === "text");
+  const userText =
+    userTextBlock && typeof userTextBlock.content.text === "string"
+      ? userTextBlock.content.text
+      : answerText;
 
   const onFeedback = (rating: FeedbackRating): void => {
     // Toggling the already-active rating still re-submits it (the backend upserts on
@@ -317,11 +340,14 @@ function AssistantTurnActions({
   const handleRetry = onRetry
     ? () => {
         setRetrying(true);
-        onRetry(answerText);
-        // `retrying` only gates this row's own retry button from double-firing while the new
-        // stream spins up — `ChatClient` clears the whole overlay on completion, at which point
-        // this component unmounts (a fresh persisted turn replaces it), so there's no "stuck
-        // spinner" state to reset back to false.
+        // `runRegenerate` never actually rejects — a transport/guard failure (e.g. the "one
+        // active turn per thread" 409) is caught internally and turned into the overlay's
+        // `error` phase, not a thrown/rejected promise — so this always resolves. On a genuine
+        // success the whole overlay clears and this component unmounts (a fresh persisted turn
+        // replaces it), making this `setRetrying(false)` a harmless no-op; on a failure this
+        // component stays mounted with nothing else to reset it, so it's the only place that can
+        // un-stick the button from staying disabled/spinning until a page reload.
+        void onRetry(userText).finally(() => setRetrying(false));
       }
     : undefined;
 

@@ -4,6 +4,8 @@ import {
   type CandlestickData,
   CandlestickSeries,
   createChart,
+  type HistogramData,
+  HistogramSeries,
   type IChartApi,
   type Time,
 } from "lightweight-charts";
@@ -21,26 +23,78 @@ import {
 import {
   asArray,
   asNumber,
+  formatCompactNumber,
   formatNumber,
   rowDate,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
 import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 
-/** A row is candlestick-eligible once it carries all four OHLC fields — this is the one shape
- * TradingView-style price/OHLCV charting is actually meant for (per lightweight-charts' own
- * scope: https://www.tradingview.com/x/xTW9HDQE/). Everything else in the timeseries bucket
- * (ratios, revenue, flows, ...) is multi-metric line data, not a price chart, and renders via
- * recharts below instead. */
+/** Field-name aliases each OHLC corner accepts, checked in order — covers every price-bearing
+ * card type's own naming, not just the plain `open`/`high`/`low`/`close` most EOD-bar rows use.
+ * `dividend_result` (除權除息結果) names its corners `open_price`/`max_price`/`min_price` and has
+ * no `close` at all — `reference_price` (the post-adjustment reference the exchange publishes for
+ * that ex-dividend day) is its closing-equivalent. Any card whose rows carry a real stock/ETF
+ * price series renders as a K-line, per this codebase's convention that price data is candlestick
+ * data — never a plain line, which flattens the day's actual trading range into one point. */
+const OPEN_ALIASES = ["open", "open_price"];
+const HIGH_ALIASES = ["high", "max_price"];
+const LOW_ALIASES = ["low", "min_price"];
+const CLOSE_ALIASES = ["close", "reference_price"];
+
+function firstNumeric(row: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = asNumber(row[key]);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return null;
+}
+
+/** A row is candlestick-eligible once it carries all four OHLC corners (under any of their known
+ * aliases) — this is the one shape TradingView-style price/OHLCV charting is actually meant for
+ * (per lightweight-charts' own scope: https://www.tradingview.com/x/xTW9HDQE/). Everything else in
+ * the timeseries bucket (ratios, flows, ...) is multi-metric line data, not a price chart, and
+ * renders via recharts below instead. */
 function toCandles(rows: Record<string, unknown>[]): CandlestickData<Time>[] {
   const points: CandlestickData<Time>[] = [];
   for (const row of rows) {
     const time = rowDate(row);
-    const open = asNumber(row.open);
-    const high = asNumber(row.high);
-    const low = asNumber(row.low);
-    const close = asNumber(row.close);
+    const open = firstNumeric(row, OPEN_ALIASES);
+    const high = firstNumeric(row, HIGH_ALIASES);
+    const low = firstNumeric(row, LOW_ALIASES);
+    const close = firstNumeric(row, CLOSE_ALIASES);
     if (time && open !== null && high !== null && low !== null && close !== null) {
       points.push({ time: time as Time, open, high, low, close });
+    }
+  }
+  return points;
+}
+
+/** `volume`/`trading_volume` aliases — covers `EODBar`/`KBarRow`'s `volume` and
+ * `PeriodPriceRow`'s `trading_volume`. Absent on `dividend_result` (no volume field at all), so
+ * the histogram pane is simply omitted there rather than showing an empty/zero series. */
+const VOLUME_ALIASES = ["volume", "trading_volume"];
+
+function toVolumes(rows: Record<string, unknown>[]): HistogramData<Time>[] {
+  const points: HistogramData<Time>[] = [];
+  for (const row of rows) {
+    const time = rowDate(row);
+    const volume = firstNumeric(row, VOLUME_ALIASES);
+    const close = firstNumeric(row, CLOSE_ALIASES);
+    const open = firstNumeric(row, OPEN_ALIASES);
+    if (time && volume !== null) {
+      points.push({
+        time: time as Time,
+        value: volume,
+        // 紅漲綠跌: a volume bar tints with the same day's direction as its candle, never a
+        // neutral gray — matches the reference TradingView layout's red/green volume histogram.
+        color:
+          close !== null && open !== null && close < open
+            ? resolveToken("var(--down)")
+            : resolveToken("var(--up)"),
+      });
     }
   }
   return points;
@@ -116,12 +170,26 @@ export function TimeseriesChart({ data }: { data: unknown }): ReactNode {
   const candles = toCandles(rows);
 
   if (candles.length > 0) {
-    return <CandlestickChart candles={candles} />;
+    return <CandlestickChart candles={candles} volumes={toVolumes(rows)} rows={rows} />;
   }
   return <TimeseriesLineChart rows={rows} />;
 }
 
-function CandlestickChart({ candles }: { candles: CandlestickData<Time>[] }): ReactNode {
+/** Volume renders as a histogram pane occupying the bottom ~20% of the same chart (via a
+ * dedicated `overlay` price scale + `scaleMargins`, `lightweight-charts`' documented pattern for
+ * a secondary indicator pane) rather than a separate chart — matches the reference TradingView
+ * layout (price candles on top, red/green volume bars below, one shared time axis). Omitted
+ * entirely when the row shape carries no volume field (e.g. `dividend_result`), never a
+ * zero-filled placeholder pane. */
+function CandlestickChart({
+  candles,
+  volumes,
+  rows,
+}: {
+  candles: CandlestickData<Time>[];
+  volumes: HistogramData<Time>[];
+  rows: Record<string, unknown>[];
+}): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -156,19 +224,32 @@ function CandlestickChart({ candles }: { candles: CandlestickData<Time>[] }): Re
       wickUpColor: resolveToken("var(--up)"),
       wickDownColor: resolveToken("var(--down)"),
     });
+    series
+      .priceScale()
+      .applyOptions({ scaleMargins: { top: 0.05, bottom: volumes.length > 0 ? 0.3 : 0.05 } });
     series.setData(candles);
+
+    if (volumes.length > 0) {
+      const volumeSeries = chart.addSeries(HistogramSeries, {
+        priceFormat: { type: "volume" },
+        priceScaleId: "volume",
+      });
+      volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+      volumeSeries.setData(volumes);
+    }
+
     chart.timeScale().fitContent();
 
     return () => {
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles]);
+  }, [candles, volumes]);
 
   return (
-    <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
-      <div ref={containerRef} className="h-64 w-full" />
-    </div>
+    <ChartWithDataSheet rows={rows}>
+      <div ref={containerRef} className="h-72 w-full" />
+    </ChartWithDataSheet>
   );
 }
 
@@ -189,7 +270,7 @@ function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): Rea
   });
 
   return (
-    <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
+    <ChartWithDataSheet rows={rows}>
       <div className="mb-2 flex flex-wrap gap-3">
         {metricKeys.map((key, index) => (
           <span
@@ -216,7 +297,8 @@ function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): Rea
             />
             <YAxis
               tick={{ fill: "var(--text-muted)", fontSize: 12 }}
-              tickFormatter={(v: number) => formatNumber(v, locale)}
+              tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+              width={56}
               stroke="var(--border)"
             />
             <Tooltip
@@ -241,7 +323,7 @@ function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): Rea
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </ChartWithDataSheet>
   );
 }
 

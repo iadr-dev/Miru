@@ -69,7 +69,7 @@ export function ScheduleList(): ReactNode {
               <li key={job.id} className="flex items-center justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <p className="font-medium text-[14px] text-[var(--text)]">
-                    {job.action.skill_ref} · {job.trigger.market}
+                    {job.action.skill_ref} · {tc(`marketOption.${job.trigger.market}`)}
                   </p>
                   <p className="truncate text-[12px] text-[var(--text-muted)]">
                     {t(`triggerTypeOption.${job.trigger.type}`)} — {job.trigger.spec}
@@ -131,6 +131,7 @@ export function ScheduleList(): ReactNode {
 
 function ScheduleForm({ onDone }: { onDone: () => void }): ReactNode {
   const t = useTranslations("settings.alerts.schedules.form");
+  const tc = useTranslations("settings.common");
   const queryClient = useQueryClient();
 
   const [triggerType, setTriggerType] = useState<ScheduleTrigger["type"]>("cron");
@@ -201,7 +202,7 @@ function ScheduleForm({ onDone }: { onDone: () => void }): ReactNode {
           >
             {MARKETS.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {tc(`marketOption.${m}`)}
               </option>
             ))}
           </Select>

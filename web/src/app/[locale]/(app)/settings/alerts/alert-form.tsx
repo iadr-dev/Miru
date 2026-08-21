@@ -23,6 +23,7 @@ type FieldErrors = Partial<Record<"symbol" | "metric" | "threshold", string>>;
  * threshold-direction validation (non-empty, coherent with comparator). */
 export function AlertForm({ onDone }: { onDone: () => void }): ReactNode {
   const t = useTranslations("settings.alerts.form");
+  const tc = useTranslations("settings.common");
   const queryClient = useQueryClient();
 
   const [symbol, setSymbol] = useState("");
@@ -117,7 +118,7 @@ export function AlertForm({ onDone }: { onDone: () => void }): ReactNode {
           >
             {MARKETS.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {tc(`marketOption.${m}`)}
               </option>
             ))}
           </Select>

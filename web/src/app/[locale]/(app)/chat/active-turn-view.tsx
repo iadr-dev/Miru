@@ -30,21 +30,40 @@ import type { FeedbackRating } from "@/lib/api/threads";
 import { audioBase64ToObjectUrl, speakText } from "@/lib/api/voice";
 import { cn } from "@/lib/cn";
 import { markdownToSpeech } from "@/lib/markdown-to-speech";
+import { useTypewriter } from "@/lib/use-typewriter";
 
 /**
  * Renders the in-flight (or just-finished-but-not-yet-persisted) turn from the Zustand overlay.
- * Lifecycle, NOT token streaming for the final answer (docs/web/DEVELOPMENT.md §4b): the user
- * bubble shows immediately, then a "thinking" state driven by `agent.spawned`/`agent.progress` + a
- * disclosure (auto-expands once the turn leaves "thinking") fed by `tool.result` summaries and
- * genuinely-streamed `thinking.delta` reasoning chunks, then the answer renders in one shot when
- * `message` lands. `aria-live="polite"` is on the FINAL answer container only — never on the
- * thinking/tool/reasoning narration (web/CLAUDE.md §7).
+ * The user bubble shows immediately, then a "thinking" state driven by `agent.spawned`/
+ * `agent.progress` + a disclosure (auto-expands once the turn leaves "thinking") fed by
+ * `tool.result` summaries and genuinely-streamed `thinking.delta` reasoning chunks. The final
+ * answer now genuinely token-streams too for `none`/`single`-framework turns
+ * (`turn.streamingAnswerText`, from `message.delta`) — rendered live, `aria-live="off"`, while
+ * the terminal `message` frame hasn't landed. Because `message.delta` batches per completed,
+ * guardrail-scanned sentence rather than per raw token (backend sentence-delayed streaming), the
+ * raw stream still arrives in sentence-sized jumps; `useTypewriter` smooths that into a steady
+ * character-by-character reveal (the Claude-Code-style typing effect) before it's handed to
+ * `AnswerMarkdown`, catching up only if a backlog piles up, and snapping to full text instantly
+ * under `prefers-reduced-motion`. Once the terminal frame lands, `turn.answerText` takes over as
+ * the `aria-live="polite"` final render (the only element with `polite` — thinking/tool/reasoning/
+ * streaming-partial narration all stay `off` per web/CLAUDE.md §7). A `subagent`/`team` turn
+ * never populates `streamingAnswerText` (see `turn-store.ts`'s module docstring), so those still
+ * render exactly as before: nothing, then the complete answer in one shot.
  */
-export function ActiveTurnView({ turn }: { turn: ActiveTurn }): ReactNode {
+export function ActiveTurnView({
+  turn,
+  onAskUserPick,
+}: {
+  turn: ActiveTurn;
+  onAskUserPick: (prompt: string) => void;
+}): ReactNode {
   const t = useTranslations("chat.turn");
   const tCaveat = useTranslations("chat.caveat");
+  const reduceMotion = useReducedMotion();
+  const typedStreamingAnswer = useTypewriter(turn.streamingAnswerText ?? "", reduceMotion ?? false);
 
-  const thinking = turn.phase === "thinking" && turn.answerText === null;
+  const thinking =
+    turn.phase === "thinking" && turn.answerText === null && turn.streamingAnswerText === null;
   const showProcess =
     turn.toolSteps.length > 0 || turn.lanes.length > 0 || turn.thinkingChunks.length > 0;
 
@@ -71,7 +90,7 @@ export function ActiveTurnView({ turn }: { turn: ActiveTurn }): ReactNode {
         ) : null}
 
         {turn.richCards.map((entry) => (
-          <RichCardView key={entry.seq} card={entry.card} />
+          <RichCardView key={entry.seq} card={entry.card} onAskUserPick={onAskUserPick} />
         ))}
 
         {turn.answerText !== null ? (
@@ -84,6 +103,15 @@ export function ActiveTurnView({ turn }: { turn: ActiveTurn }): ReactNode {
              * `runStream`), which is where those actions are wired for real (needs a real,
              * persisted turn id). Copy/read-aloud need no turn id, so they're available now. */}
             <AssistantActions text={turn.answerText} />
+          </div>
+        ) : turn.streamingAnswerText !== null ? (
+          // The live partial render while the terminal `message` frame hasn't landed yet —
+          // deliberately `aria-live="off"` (matches the thinking/tool narration rule in §7):
+          // `aria-live="polite"` above fires only once, on the FINAL answer, not on every
+          // growing partial. No actions/caveat/sources here either — those are only
+          // meaningful once the complete, governance-finalized text exists.
+          <div className="mt-1" aria-live="off">
+            <AnswerMarkdown text={typedStreamingAnswer} />
           </div>
         ) : null}
 
@@ -110,10 +138,12 @@ export function UserBubble({
   text,
   label,
   onEdit,
+  onResend,
 }: {
   text: string;
   label: string;
   onEdit?: (newText: string) => void;
+  onResend?: () => void;
 }): ReactNode {
   const t = useTranslations("chat.turn.actions");
   const [editing, setEditing] = useState(false);
@@ -200,6 +230,9 @@ export function UserBubble({
               setEditing(true);
             }}
           />
+        ) : null}
+        {onResend ? (
+          <ActionIconButton icon={ArrowsClockwiseIcon} label={t("resend")} onClick={onResend} />
         ) : null}
       </div>
     </div>
@@ -548,7 +581,11 @@ function LaneGroupRow({
               key={`${entry.kind}-${entry.seq}`}
               entry={
                 entry.kind === "tool"
-                  ? { kind: "tool", toolName: entry.step.toolName }
+                  ? {
+                      kind: "tool",
+                      toolName: entry.step.toolName,
+                      running: entry.step.status === "running",
+                    }
                   : { kind: "thinking", text: entry.chunk.text }
               }
               isLast={index === group.entries.length - 1}
@@ -563,9 +600,12 @@ function LaneGroupRow({
 
 /** Normalized shape both the live (`LaneGroup["entries"]`) and persisted
  * (`PersistedLaneEntry`) sub-entry unions reduce to before reaching `ProcessSubEntryRow` — one
- * render body shared by the live and reload paths instead of two near-identical copies. */
+ * render body shared by the live and reload paths instead of two near-identical copies.
+ * `running` is only ever `true` on the live path (a `tool.start`-only placeholder still awaiting
+ * its `tool.result`) — a persisted turn has no such state, every block it carries already
+ * finished, so `persisted-thread-view.tsx` never passes it. */
 export type ProcessSubEntry =
-  | { kind: "tool"; toolName: string }
+  | { kind: "tool"; toolName: string; running?: boolean }
   | { kind: "thinking"; text: string };
 
 /** One tool/thinking entry inside a lane's own sub-timeline (live or persisted) — the lane-dot
@@ -592,7 +632,10 @@ export function ProcessSubEntryRow({
               size={13}
               weight="regular"
               aria-hidden
-              className="text-[var(--text-muted)]"
+              className={cn(
+                "text-[var(--text-muted)]",
+                entry.running && "animate-pulse text-[var(--accent)]",
+              )}
             />
           ) : (
             <BrainIcon
@@ -606,7 +649,7 @@ export function ProcessSubEntryRow({
       </div>
       <div className="min-w-0 flex-1 pt-0.5 text-[13px] text-[var(--text-muted)]">
         {entry.kind === "tool" ? (
-          <span>{t("toolStep", { tool: entry.toolName })}</span>
+          <span>{t(entry.running ? "toolStepRunning" : "toolStep", { tool: entry.toolName })}</span>
         ) : (
           <div className="flex flex-col gap-0.5">
             <span className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">

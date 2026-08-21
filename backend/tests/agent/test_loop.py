@@ -115,6 +115,8 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     # tdcc_tools.py
     "get_tdcc_shareholding_distribution": "tdcc_shareholding_distribution",
     "get_tdcc_evoting_schedule": "tdcc_evoting_schedule",
+    # ask_user_tools.py
+    "ask_user": "ask_user",
 }
 
 

@@ -18,6 +18,15 @@ const ROW_LIST_KEYS = [
   "sector_weightings",
 ];
 
+/** Echoes of the CALLER's own request args, not real result rows — `etf_overlap`'s
+ * `requested_symbols`/`unavailable_symbols` (`GetEtfOverlapOutput`) are always non-empty
+ * whenever the request itself named symbols, even when the real result rows
+ * (`overlapping_holdings`/`pairwise_overlap`) are empty. Left in the generic fallback loop below,
+ * these made a genuinely-empty overlap result look "usable," routing it to `CompareTable`, which
+ * then rendered nothing (no `rows`/`pairwise_overlap` to show) instead of falling back to
+ * `FlatCard`'s honest raw-field display. */
+const ECHO_ONLY_KEYS = new Set(["requested_symbols", "unavailable_symbols"]);
+
 export function anyRowsPresent(data: unknown): boolean {
   if (!data || typeof data !== "object") {
     return false;
@@ -35,15 +44,15 @@ export function anyRowsPresent(data: unknown): boolean {
   if (result && typeof result === "object" && anyRowsPresent(result)) {
     return true;
   }
-  for (const value of Object.values(record)) {
-    if (Array.isArray(value) && value.length > 0) {
+  for (const [key, value] of Object.entries(record)) {
+    if (!ECHO_ONLY_KEYS.has(key) && Array.isArray(value) && value.length > 0) {
       return true;
     }
   }
   return false;
 }
 
-const NESTED_ENTITY_KEYS = ["bar", "snapshot", "info", "result", "profile"];
+const NESTED_ENTITY_KEYS = ["bar", "snapshot", "info", "result", "profile", "consensus", "esg"];
 
 export function hasSnapshotEntity(data: unknown): boolean {
   if (!data || typeof data !== "object") {

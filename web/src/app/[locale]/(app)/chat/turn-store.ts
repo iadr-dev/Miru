@@ -8,12 +8,19 @@
  * turn ends, the page invalidates the persisted-thread query and, once that refetch settles, clears
  * the overlay so the answer is rendered from persisted history (no duplicate, no flicker).
  *
- * There is NO token streaming for the final answer: the assistant text is null through the whole
- * `thinking` phase and appears in one shot when the `message` frame lands. The UI is built around
- * the spawned/progress/done + tool.result lifecycle, not a fake typewriter — EXCEPT for
- * `thinking.delta`, which is a genuine incremental model-reasoning stream (Claude's `thinking_delta`
- * tokens). That one field IS accumulated per-token, keyed by `agent_id` (`thinkingChunks`), since a
- * turn can fan out into multiple lanes and each lane's reasoning is independent.
+ * The final answer now DOES stream, for `none`/`single`-framework turns: `message.delta` frames
+ * accumulate into `streamingAnswerText` sentence-by-sentence as the model generates them (each
+ * sentence already governance-scanned server-side before it's ever sent — see
+ * `backend/src/agent/loop.py::_stream_step`'s docstring), rendered live while `answerText` is
+ * still null. The terminal `message` frame still always carries the complete text in one shot
+ * and remains the single source of truth once it lands (`answerText` takes over from
+ * `streamingAnswerText` in the render, never reconciled against it) — a `subagent`/`team` turn's
+ * synthesis pass never emits `message.delta` at all, so those turns still only ever populate
+ * `answerText` in one shot exactly as before (`Synthesizer.synthesize()` uses `chat()`, not
+ * `stream()` — a known, intentionally-scoped gap). `thinking.delta` remains the separate genuine
+ * incremental model-reasoning stream (Claude's `thinking_delta` tokens), accumulated per-token,
+ * keyed by `agent_id` (`thinkingChunks`), since a turn can fan out into multiple lanes and each
+ * lane's reasoning is independent.
  */
 import { create } from "zustand";
 import type { AgentStreamFrame } from "@/lib/api/agent-stream";
@@ -24,11 +31,13 @@ import {
   agentSpawnedDataSchema,
   isSseEventKind,
   messageDataSchema,
+  messageDeltaDataSchema,
   routeDecidedDataSchema,
   type SseEventKind,
   steeringAcceptedDataSchema,
   thinkingDeltaDataSchema,
   toolResultDataSchema,
+  toolStartDataSchema,
   turnEndDataSchema,
   turnStartDataSchema,
   type WebSearchSource,
@@ -56,6 +65,13 @@ export type ToolStepView = {
   agentId: string | null;
   toolName: string;
   summary: string | null;
+  /** `"running"` from the moment `tool.start` arrives (no summary yet, since the call hasn't
+   * finished); upgraded to `"done"` in place — same array slot, original `seq` — once the
+   * matching `tool.result` lands. This is what makes the process disclosure show something
+   * DURING a slow tool call rather than only after every call in the Step has finished — the
+   * gap `tool.start`/`EventBusPreToolHook` exists to close for models that stream no
+   * `thinking_delta` at all. */
+  status: "running" | "done";
 };
 
 /** One lane's accumulated extended-thinking text (`thinking.delta`, genuinely streamed — see the
@@ -119,9 +135,16 @@ export function buildLaneGroups(turn: ActiveTurn): LaneGroup[] {
   for (const lane of turn.lanes) {
     byAgent.delete(lane.agentId);
   }
-  const rootEntries = byAgent.get(null);
-  if (rootEntries && rootEntries.length > 0) {
-    groups.push({ agentId: null, seq: rootEntries[0]?.seq ?? 0, lane: null, entries: rootEntries });
+  // Whatever's left is un-lane'd — a root-level `single`/`none` turn's entries (the backend
+  // always stamps `agent_id: "root"` on these, never a literal `null`, even with no
+  // `agent.spawned` fan-out — see `orchestrator.py::_ROOT_AGENT_ID`) plus any entry whose
+  // envelope genuinely carried no `agent_id` at all. Both render as one implicit ungrouped
+  // bucket; a turn never has both, since a fanned-out turn's root loop doesn't itself call
+  // tools.
+  const unLaned = [...byAgent.values()].flat();
+  if (unLaned.length > 0) {
+    unLaned.sort((a, b) => a.seq - b.seq);
+    groups.push({ agentId: null, seq: unLaned[0]?.seq ?? 0, lane: null, entries: unLaned });
   }
   return groups.sort((a, b) => a.seq - b.seq);
 }
@@ -155,8 +178,19 @@ export type ActiveTurn = {
    * call, e.g. a fan-out with several lanes each searching) — append-only, never deduped, since
    * the "N sources" chip counts every source actually consulted, even repeats across lanes. */
   webSearchSources: WebSearchSource[];
-  /** The final answer — null until the single `message` frame arrives. */
+  /** The final answer, in one shot — null until the terminal `message` frame arrives. Always
+   * the authoritative full text once set (see `streamingAnswerText` for the live-partial
+   * counterpart); a client that missed every `message.delta` still gets the complete answer
+   * here. */
   answerText: string | null;
+  /** The live-streamed partial answer, accumulated sentence-by-sentence from `message.delta`
+   * frames — null until the first delta arrives, then grows until the turn ends. Rendered ONLY
+   * while `answerText` is still null (see `ActiveTurnView`): once the terminal `message` frame
+   * lands, `answerText` takes over as the single source of truth and this is left stale/unused,
+   * never reconciled against it — the two are expected to be textually identical for a
+   * `none`/`single` turn and there is nothing productive to do if they ever weren't (a
+   * `subagent`/`team` turn never populates this at all — see the module docstring). */
+  streamingAnswerText: string | null;
   steeringQueued: string[];
   /** Set when `turn.end` carries `status:"error"` (errors ride the terminal frame, no `error` event). */
   errorMessage: string | null;
@@ -184,6 +218,32 @@ function upsertLane(lanes: LaneView[], next: LaneView): LaneView[] {
   // status/activity, they must not drag the lane's timeline position forward.
   const updated: LaneView = { ...existing, ...next, seq: existing.seq };
   return lanes.map((lane) => (lane.agentId === next.agentId ? updated : lane));
+}
+
+/** `tool.start` always appends a new `"running"` step — it never matches an existing one
+ * (each call gets its own fresh row the instant it's about to dispatch). */
+function appendToolStart(steps: ToolStepView[], next: ToolStepView): ToolStepView[] {
+  return [...steps, next];
+}
+
+/** `tool.result` upgrades the OLDEST still-`"running"` step for the same `(agentId, toolName)`
+ * pair in place (same array slot, same `seq`) rather than appending a second row — the schemas
+ * carry no shared call id, but within one lane the same tool name is dispatched and resolved in
+ * FIFO order (`AgentLoop.run_turn` awaits each call before starting the next), so oldest-running
+ * is an exact match, not a heuristic. Falls back to appending (the pre-`tool.start` behavior) if
+ * no running placeholder exists — a `tool.start` frame dropped by the transport, or a persisted/
+ * replayed stream that never sent one, must still render the completed step. */
+function upsertToolResult(
+  steps: ToolStepView[],
+  next: Omit<ToolStepView, "status">,
+): ToolStepView[] {
+  const running = steps.find(
+    (s) => s.status === "running" && s.agentId === next.agentId && s.toolName === next.toolName,
+  );
+  if (running === undefined) {
+    return [...steps, { ...next, status: "done" }];
+  }
+  return steps.map((s) => (s === running ? { ...next, seq: running.seq, status: "done" } : s));
 }
 
 function appendThinkingDelta(
@@ -262,20 +322,31 @@ const FRAME_REDUCERS: {
       }),
     };
   },
+  "tool.start": (base, frame) => {
+    const parsed = toolStartDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      toolSteps: appendToolStart(base.toolSteps, {
+        seq: frame.envelope.seq,
+        agentId: frame.envelope.agent_id ?? null,
+        toolName: parsed.data.tool_name,
+        summary: null,
+        status: "running",
+      }),
+    };
+  },
   "tool.result": (base, frame) => {
     const parsed = toolResultDataSchema.safeParse(frame.envelope.data);
     if (!parsed.success) return base;
     return {
       ...base,
-      toolSteps: [
-        ...base.toolSteps,
-        {
-          seq: frame.envelope.seq,
-          agentId: frame.envelope.agent_id ?? null,
-          toolName: parsed.data.tool_name,
-          summary: parsed.data.summary ?? null,
-        },
-      ],
+      toolSteps: upsertToolResult(base.toolSteps, {
+        seq: frame.envelope.seq,
+        agentId: frame.envelope.agent_id ?? null,
+        toolName: parsed.data.tool_name,
+        summary: parsed.data.summary ?? null,
+      }),
     };
   },
   "thinking.delta": (base, frame) => {
@@ -308,6 +379,14 @@ const FRAME_REDUCERS: {
     const parsed = steeringAcceptedDataSchema.safeParse(frame.envelope.data);
     if (!parsed.success) return base;
     return { ...base, steeringQueued: [...base.steeringQueued, parsed.data.message] };
+  },
+  "message.delta": (base, frame) => {
+    const parsed = messageDeltaDataSchema.safeParse(frame.envelope.data);
+    if (!parsed.success) return base;
+    return {
+      ...base,
+      streamingAnswerText: (base.streamingAnswerText ?? "") + parsed.data.text,
+    };
   },
   message: (base, frame) => {
     const parsed = messageDataSchema.safeParse(frame.envelope.data);
@@ -352,6 +431,7 @@ export const useTurnStore = create<TurnStore>((set) => ({
         richCards: [],
         webSearchSources: [],
         answerText: null,
+        streamingAnswerText: null,
         steeringQueued: [],
         errorMessage: null,
       },

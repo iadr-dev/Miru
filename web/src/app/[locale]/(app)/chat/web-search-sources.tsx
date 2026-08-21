@@ -3,8 +3,9 @@
 import { GlobeIcon } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/cn";
+import { sourceLogoUrl } from "@/lib/source-logo";
 import type { WebSearchSource } from "@/types/sse";
 
 /**
@@ -79,15 +80,50 @@ function SourceMenuItem({ source }: { source: WebSearchSource }): ReactNode {
         rel="noopener noreferrer"
         aria-label={source.title}
         className={cn(
-          "flex min-h-11 flex-col justify-center gap-0.5 rounded-[var(--radius-button)] px-2.5 py-1.5",
+          "flex min-h-11 items-center gap-2 rounded-[var(--radius-button)] px-2.5 py-1.5",
           "outline-none transition-colors data-[highlighted]:bg-[var(--surface-2)]",
         )}
       >
-        <span className="truncate text-[13px] text-[var(--accent-text)] underline underline-offset-2">
-          {source.title}
+        <SourceLogo url={source.url} />
+        <span className="flex min-w-0 flex-col justify-center gap-0.5">
+          <span className="truncate text-[13px] text-[var(--accent-text)] underline underline-offset-2">
+            {source.title}
+          </span>
+          <span className="truncate text-[11px] text-[var(--text-muted)]">{source.url}</span>
         </span>
-        <span className="truncate text-[11px] text-[var(--text-muted)]">{source.url}</span>
       </a>
     </DropdownMenu.Item>
+  );
+}
+
+/** The source site's logo — a pre-downloaded local file for known finance/news domains, a live
+ * favicon-service fetch for anything else (`sourceLogoUrl`'s own docstring). Falls back to the
+ * generic globe glyph on a load failure (unreachable favicon service, unparseable URL, 404) —
+ * never a broken-image icon. */
+function SourceLogo({ url }: { url: string }): ReactNode {
+  const logoUrl = sourceLogoUrl(url);
+  const [failed, setFailed] = useState(false);
+
+  if (!logoUrl || failed) {
+    return (
+      <span className="flex size-5 shrink-0 items-center justify-center text-[var(--text-muted)]">
+        <GlobeIcon size={14} weight="regular" aria-hidden />
+      </span>
+    );
+  }
+
+  return (
+    // A favicon can come from an arbitrary domain `web_search` returns — `next/image` requires
+    // a static `remotePatterns` allowlist, which a dynamic per-source domain can't satisfy, so a
+    // plain `img` is the correct tool here (not a lint-worthy shortcut).
+    // biome-ignore lint/performance/noImgElement: dynamic per-source domain, remotePatterns can't allowlist it
+    <img
+      src={logoUrl}
+      alt=""
+      width={20}
+      height={20}
+      className="size-5 shrink-0 rounded-[4px] object-contain"
+      onError={() => setFailed(true)}
+    />
   );
 }

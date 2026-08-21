@@ -65,7 +65,7 @@ export function UsagePanel(): ReactNode {
       {quota.features.length > 0 ? (
         <SettingsRow label={t("features")}>
           <span className="max-w-56 text-right text-[13px] text-[var(--text-muted)]">
-            {quota.features.join(", ")}
+            {quota.features.map((f) => featureLabel(t, f)).join(", ")}
           </span>
         </SettingsRow>
       ) : null}
@@ -74,4 +74,23 @@ export function UsagePanel(): ReactNode {
       </p>
     </SettingsSection>
   );
+}
+
+/** `EntitlementView.features` is a backend enum-key list (`accounts/entitlements.py`'s
+ * `FEATURE_MIN_TIER`) — falls back to the raw key for a feature this map hasn't caught up to
+ * yet, same pattern as `cardTypeLabel`. */
+const LABELED_FEATURES = new Set([
+  "live_quote_stream",
+  "ai_summary",
+  "swot",
+  "full_score",
+  "news_sentiment",
+  "theme_discovery",
+  "deep_research",
+  "scheduler",
+  "tick_minute_k",
+]);
+
+function featureLabel(t: ReturnType<typeof useTranslations>, feature: string): string {
+  return LABELED_FEATURES.has(feature) ? t(`featureOption.${feature}`) : feature;
 }

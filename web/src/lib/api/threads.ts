@@ -5,6 +5,7 @@
  * (`POST /threads/{id}/turns/{tid}/cancel`). All credentialed (session cookie). Parse-don't-trust:
  * every response is Zod-validated at the boundary. */
 import { z } from "zod";
+import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 import { type Thread, threadListResponseSchema, threadSchema } from "@/types/conversation";
 
@@ -20,7 +21,7 @@ async function jsonOrThrow(response: Response, context: string): Promise<unknown
 
 /** `GET /threads` — the sidebar thread list, sorted by recency client-side. */
 export async function listThreads(signal?: AbortSignal): Promise<Thread[]> {
-  const response = await fetch(apiUrl("/threads"), {
+  const response = await fetchWithRefresh(apiUrl("/threads"), {
     method: "GET",
     credentials: "include",
     headers: { accept: "application/json" },
@@ -34,7 +35,7 @@ export async function listThreads(signal?: AbortSignal): Promise<Thread[]> {
 
 /** `GET /threads/{id}` — a thread with its active-path history (for rendering persisted turns). */
 export async function getThread(threadId: string, signal?: AbortSignal): Promise<Thread> {
-  const response = await fetch(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {
+  const response = await fetchWithRefresh(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {
     method: "GET",
     credentials: "include",
     headers: { accept: "application/json" },
@@ -45,7 +46,7 @@ export async function getThread(threadId: string, signal?: AbortSignal): Promise
 
 /** `POST /threads` — create an empty thread (the 新對話 button). */
 export async function createThread(title = ""): Promise<Thread> {
-  const response = await fetch(apiUrl("/threads"), {
+  const response = await fetchWithRefresh(apiUrl("/threads"), {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", accept: "application/json" },
@@ -62,7 +63,7 @@ export async function patchThread(
   patch: { title?: string; starred?: boolean; archived?: boolean; model_override?: string },
   expectedVersion: number,
 ): Promise<Thread> {
-  const response = await fetch(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {
+  const response = await fetchWithRefresh(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {
     method: "PATCH",
     credentials: "include",
     headers: {
@@ -77,7 +78,7 @@ export async function patchThread(
 
 /** `DELETE /threads/{id}` — permanent, no undo. */
 export async function deleteThread(threadId: string): Promise<void> {
-  const response = await fetch(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {
+  const response = await fetchWithRefresh(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {
     method: "DELETE",
     credentials: "include",
     headers: { accept: "application/json" },
@@ -87,9 +88,21 @@ export async function deleteThread(threadId: string): Promise<void> {
   }
 }
 
+/** Multi-select delete (sidebar "Select" mode) — the backend has no batch-delete endpoint, so
+ * this fires the existing per-thread `DELETE` in parallel and reports which ids failed, rather
+ * than adding a new backend route for what's a rare bulk action. Not atomic: a partial failure
+ * leaves some threads deleted and others not — the caller (`RecentsList`) surfaces the failed
+ * count and still refetches, so the list reflects exactly what happened, never a stale/optimistic
+ * view. */
+export async function deleteThreads(threadIds: string[]): Promise<{ failedIds: string[] }> {
+  const outcomes = await Promise.allSettled(threadIds.map((id) => deleteThread(id)));
+  const failedIds = threadIds.filter((_, i) => outcomes[i]?.status === "rejected");
+  return { failedIds };
+}
+
 /** `POST /threads/{id}/turns/{tid}/cancel` — stop a running turn (the composer's stop morph). */
 export async function cancelTurn(threadId: string, turnId: string): Promise<void> {
-  const response = await fetch(
+  const response = await fetchWithRefresh(
     apiUrl(`/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/cancel`),
     { method: "POST", credentials: "include", headers: { accept: "application/json" } },
   );
@@ -119,7 +132,7 @@ export async function submitTurnFeedback(
   turnId: string,
   rating: FeedbackRating,
 ): Promise<FeedbackRecord> {
-  const response = await fetch(
+  const response = await fetchWithRefresh(
     apiUrl(`/threads/${encodeURIComponent(threadId)}/turns/${encodeURIComponent(turnId)}/feedback`),
     {
       method: "POST",

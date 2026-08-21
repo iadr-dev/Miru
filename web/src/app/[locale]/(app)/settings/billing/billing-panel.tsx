@@ -75,7 +75,10 @@ export function BillingPanel(): ReactNode {
     <>
       <SettingsSection title={t("subscriptionTitle")} className="mb-6">
         {subscriptionQuery.data?.subscription ? (
-          <SettingsRow label={t("currentPlan")} hint={subscriptionQuery.data.subscription.status}>
+          <SettingsRow
+            label={t("currentPlan")}
+            hint={statusLabel(t, subscriptionQuery.data.subscription.status)}
+          >
             <Button
               variant="outline"
               size="sm"
@@ -232,6 +235,23 @@ function HistoryList({ transactions }: { transactions: BillingTransaction[] }): 
       })}
     </ul>
   );
+}
+
+/** Paddle's own subscription-status vocabulary (active/trialing/past_due/paused/canceled) is a
+ * fixed, small set — labeled the same way `cardTypeLabel` labels a `card_type`, falling back to
+ * the raw status string for a value Paddle adds later that this list hasn't caught up to yet. */
+const KNOWN_SUBSCRIPTION_STATUSES = [
+  "active",
+  "trialing",
+  "past_due",
+  "paused",
+  "canceled",
+] as const;
+
+function statusLabel(t: (key: string) => string, status: string): string {
+  return (KNOWN_SUBSCRIPTION_STATUSES as readonly string[]).includes(status)
+    ? t(`statusOption.${status}`)
+    : status;
 }
 
 function billingErrorMessage(err: unknown, tc: (key: string) => string): string {

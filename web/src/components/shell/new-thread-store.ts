@@ -10,7 +10,10 @@
  * placeholder shows with no id yet. `resolve(threadId)` once `turn.start` reports the real id
  * (thread now exists server-side, title still empty) → the placeholder swaps for the real row,
  * still breathing. `markRevealed()` once the typewriter finishes painting the generated title →
- * the row goes back to being a plain persisted row and the announcer resets to idle.
+ * the row goes back to being a plain persisted row and phase returns to idle (never leaving a
+ * completed reveal sitting at `"resolved"`, which would otherwise re-satisfy
+ * `RecentsList`'s "no thread to reveal yet" placeholder condition and leave a stale breathing row
+ * permanently stuck above the real one).
  */
 import { create } from "zustand";
 
@@ -36,7 +39,7 @@ export const useNewThreadStore = create<NewThreadState>((set) => ({
   resolve: (threadId) =>
     set((state) => (state.phase === "idle" ? state : { phase: "resolved", threadId })),
 
-  markRevealed: () => set({ revealed: true }),
+  markRevealed: () => set({ phase: "idle", threadId: null, revealed: false }),
 
   reset: () => set({ phase: "idle", threadId: null, revealed: false }),
 }));

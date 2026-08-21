@@ -9,15 +9,32 @@
  *
  * The set of `kind`s here is the AUDITED-REAL vocabulary the backend actually publishes today
  * (see the orchestrator/turn-driver publish sites): `turn.start`, `route.decided`, `agent.spawned`,
- * `agent.progress`, `agent.done`, `tool.result`, `rich_card`, `synthesis.start`, `usage`,
- * `steering.accepted`, `message`, `turn.end`, plus `thinking.delta` — genuine incremental
- * model-reasoning chunks (Claude's `thinking_delta` tokens), registered the same way as the other
- * per-agent kinds above — and `web_search.result` — one completed native-web-search call's
- * source list (`events/hooks.py::EventBusWebSearchHook`), a whole unit like `tool.result`, never a
- * delta. There is still NO token streaming for the final answer itself (`message.delta` does not
- * exist) and no `activity`/`tool.proposed`/`tool.locked`/`caveat`/`follow_up` event — the final
- * answer arrives in one `message` frame just before `turn.end`, and errors ride on `turn.end`
- * (`{status: "error"}`), never a separate `error` event.
+ * `agent.progress`, `agent.done`, `tool.start`, `tool.result`, `rich_card`, `synthesis.start`,
+ * `usage`, `steering.accepted`, `message`, `message.delta`, `turn.end`, plus `thinking.delta` —
+ * genuine incremental model-reasoning chunks (Claude's `thinking_delta` tokens), registered the
+ * same way as the other per-agent kinds above — and `web_search.result` — one completed
+ * native-web-search call's source list (`events/hooks.py::EventBusWebSearchHook`), a whole unit
+ * like `tool.result`, never a delta. `tool.start` (`events/hooks.py::EventBusPreToolHook`) fires
+ * the instant a call is about to dispatch — it is the ONLY live per-tool signal for a model that
+ * streams no `thinking_delta` at all (most configured models don't); its matching `tool.result`
+ * arrives later and is what actually persists to history, so `tool.start` is a live-only "in
+ * progress" preview, never itself persisted. `message.delta` (`events/hooks.py::
+ * EventBusAnswerDeltaHook`) is the genuine token-stream for the FINAL answer — one already
+ * governance-scanned sentence at a time, for `none`/`single`-framework turns only (a
+ * `subagent`/`team` turn's synthesis pass still buffers and sends the whole answer in one
+ * `message` frame — `Synthesizer.synthesize()` uses `chat()`, not `stream()`, a known,
+ * intentionally-scoped gap, not an oversight). `message` still always carries the complete final
+ * text as its own single source of truth (idempotent — a client that received every delta still
+ * gets the identical full text again here, so a client that joined late or dropped a delta frame
+ * never ends up with a partial answer) and no `activity`/`tool.proposed`/`tool.locked`/`caveat`
+ * event exists; errors ride on `turn.end` (`{status: "error"}`), never a separate `error` event.
+ * There is no `follow_up` event — that feature was attempted and reverted (a Haiku-based
+ * generator hung a live turn indefinitely; see git history) and is deferred for a proper
+ * redesign. `ask_user` is NOT its own event kind — a model's informational mid-turn clarification
+ * rides the already-real `rich_card` event with
+ * `card_type: "ask_user"` (see `tools/ask_user_tools.py`'s own module docstring for why: the
+ * agent loop has no mechanism to pause and await a live answer mid-turn, so this reuses the
+ * existing card pipeline rather than inventing a new pause/resume primitive).
  */
 import { z } from "zod";
 
@@ -42,6 +59,7 @@ export const SSE_EVENT_KINDS = [
   "agent.spawned",
   "agent.progress",
   "agent.done",
+  "tool.start",
   "tool.result",
   "thinking.delta",
   "web_search.result",
@@ -50,6 +68,7 @@ export const SSE_EVENT_KINDS = [
   "usage",
   "steering.accepted",
   "message",
+  "message.delta",
   "turn.end",
 ] as const;
 export type SseEventKind = (typeof SSE_EVENT_KINDS)[number];
@@ -98,6 +117,17 @@ export const agentDoneDataSchema = z.object({
 });
 export type AgentDoneData = z.infer<typeof agentDoneDataSchema>;
 
+/** `tool.start` — fires the instant a tool call is about to dispatch
+ * (`events/hooks.py::EventBusPreToolHook`), before governance has even decided whether to allow
+ * it. A live-only preview of the matching `tool.result` to come — carries just enough to render
+ * an "in progress" row (no arguments, no result). */
+export const toolStartDataSchema = z.object({
+  step_index: z.number().int().optional(),
+  tool_name: z.string(),
+  summary: z.string().nullable().optional(),
+});
+export type ToolStartData = z.infer<typeof toolStartDataSchema>;
+
 /** `tool.result` — the redacted, safe-to-show summary (`events/hooks.py::EventBusPostToolHook`).
  * Never a raw payload; `summary` is the same string the journal uses. */
 export const toolResultDataSchema = z.object({
@@ -119,6 +149,20 @@ export const thinkingDeltaDataSchema = z.object({
   text: z.string(),
 });
 export type ThinkingDeltaData = z.infer<typeof thinkingDeltaDataSchema>;
+
+/** `message.delta` — one already-governance-scanned sentence of the streaming final answer
+ * (`events/hooks.py::EventBusAnswerDeltaHook`), genuinely live token-by-token (well,
+ * sentence-by-sentence) unlike every other one-shot lifecycle frame above `thinking.delta`.
+ * Accumulate `text` client-side per `agent_id`, the same idea as `thinking.delta` — this is the
+ * second (and, for the final answer, authoritative-once-`message`-lands) per-token accumulation
+ * in this codebase. Only ever fires for `none`/`single`-framework turns (see the module
+ * docstring); a `subagent`/`team` turn's synthesis pass never emits this, going straight from
+ * `synthesis.start` to the one-shot `message` frame. */
+export const messageDeltaDataSchema = z.object({
+  agent_id: z.string(),
+  text: z.string(),
+});
+export type MessageDeltaData = z.infer<typeof messageDeltaDataSchema>;
 
 /** `web_search.result` — one completed native-web-search call's source list
  * (`events/hooks.py::EventBusWebSearchHook`). Unlike `thinking.delta`, this is a whole unit, not
