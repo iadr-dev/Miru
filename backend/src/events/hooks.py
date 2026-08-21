@@ -4,12 +4,23 @@ knows `PostToolHook`/`PreLLMHook`/`CancelToken` as Protocol shapes; the handlers
 built here (interaction layer) and handed into `AgentLoop`'s constructor at application-wiring
 time (e.g. `api/` composing a request-scoped `AgentLoop`, itself out of scope for this phase).
 
-Three handlers ship today:
+Five handlers ship today:
+- `EventBusPreToolHook` — publishes a `tool.start`-shaped internal event the instant a tool
+  call is about to dispatch, so the frontend's process timeline has *something* to show live
+  even when the model streams no `thinking_delta` at all (most configured models don't) —
+  without this, a slow multi-tool Step showed nothing until every call in it had already
+  finished and posted its `tool.result`.
 - `EventBusPostToolHook` — publishes a `tool.result`-shaped internal event for every dispatch
   outcome (blocked / masked / real), so the SSE bridge and any metrics subscriber see it live.
 - `EventBusThinkingHook` — publishes a `thinking.delta`-shaped internal event for every
   extended-thinking chunk the model streams, so the SSE bridge forwards it live to the
   frontend's timeline UI.
+- `EventBusAnswerDeltaHook` — publishes a `message.delta`-shaped internal event for every
+  already-governance-scanned sentence of the streaming final answer, so the frontend can
+  render it token-by-token as it's generated instead of waiting for the single terminal
+  `message` frame — closes the "answer looks frozen while the model drafts" gap that persisted
+  even after `tool.start` shipped, since most turns' final Step has no tool calls left to show
+  and (for most models) no `thinking_delta` either.
 - `MemoryRecallPreLLMHook` — the `pre_llm` memory-injection handler; wraps `memory.recall.
   recall` and appends its rendered block as a system message right after compaction, never
   touching the governance-owned system prefix.
@@ -29,6 +40,32 @@ def _natural_language_summary(tool_name: str, *, guardrail_allowed: bool) -> str
     an internal debugging shape a user-facing tool-call pill must never render verbatim."""
     label = tool_name.replace("_", " ")
     return f"Ran {label}" if guardrail_allowed else f"Blocked {label}"
+
+
+class EventBusPreToolHook:
+    """`pre_tool` handler: publishes a `tool.start` event the moment a call is about to
+    dispatch — fires even for a call that governance goes on to block, since the frontend
+    still wants to show "the agent tried to look this up" rather than nothing. Carries only
+    the tool name (a human label, via the same `_natural_language_summary` helper
+    `EventBusPostToolHook` uses) — no arguments, no result; those still arrive later on the
+    matching `tool.result` frame this event is a live preview of."""
+
+    def __init__(self, bus: EventBus, *, turn_id: str, agent_id: str = "root") -> None:
+        self._bus = bus
+        self._turn_id = turn_id
+        self._agent_id = agent_id
+
+    async def __call__(self, *, step_index: int, tool_name: str) -> None:
+        self._bus.publish(
+            "tool.start",
+            turn_id=self._turn_id,
+            agent_id=self._agent_id,
+            data={
+                "step_index": step_index,
+                "tool_name": tool_name,
+                "summary": _natural_language_summary(tool_name, guardrail_allowed=True),
+            },
+        )
 
 
 class EventBusPostToolHook:
@@ -90,6 +127,29 @@ class EventBusThinkingHook:
         )
 
 
+class EventBusAnswerDeltaHook:
+    """`answer_delta` handler: republishes every already-governance-scanned sentence of the
+    streaming final answer onto the event bus as a `message.delta` event, `{agent_id, text}` —
+    mirrors `EventBusThinkingHook`'s republish-verbatim shape. Only the root/synthesis answer
+    should ever wire this (a `agent_id="root"` default, like every other hook here) — fan-out
+    sub-agent lanes have no "final answer" of their own that reaches the user directly, so
+    `_build_loop` never attaches this hook to a SUBAGENT-role loop (mirrors the `thinking`/
+    `web_search` hook carve-out already documented on `orchestrator.py`'s fan-out paths)."""
+
+    def __init__(self, bus: EventBus, *, turn_id: str, agent_id: str = "root") -> None:
+        self._bus = bus
+        self._turn_id = turn_id
+        self._agent_id = agent_id
+
+    async def __call__(self, *, text: str) -> None:
+        self._bus.publish(
+            "message.delta",
+            turn_id=self._turn_id,
+            agent_id=self._agent_id,
+            data={"agent_id": self._agent_id, "text": text},
+        )
+
+
 class EventBusWebSearchHook:
     """`web_search` handler: republishes every completed native-web-search call onto the event
     bus as a `web_search.result` event, `{agent_id, sources}` — `sources` is the full source
@@ -141,7 +201,9 @@ class MemoryRecallPreLLMHook:
 
 
 __all__ = [
+    "EventBusAnswerDeltaHook",
     "EventBusPostToolHook",
+    "EventBusPreToolHook",
     "EventBusThinkingHook",
     "EventBusWebSearchHook",
     "MemoryRecallPreLLMHook",

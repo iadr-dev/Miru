@@ -202,13 +202,64 @@ async def test_run_turn_drives_full_step_sequence_through_dispatch_tool() -> Non
     assert len(first_step.tool_messages) == 1
     tool_result_message = first_step.tool_messages[0]
     assert tool_result_message.tool_results[0].is_error is False
-    assert "EchoOutput" in tool_result_message.tool_results[0].content
+    # The model sees the real echoed value (not just the type/field names) so it can
+    # accurately narrate what the tool returned.
+    assert "hello" in tool_result_message.tool_results[0].content
     # journal recorded the dispatch with an allowed verdict and no raw payload.
     journal_entries = result.journal.entries
     tool_call_entries = [e for e in journal_entries if e.kind == "tool_call"]
     assert len(tool_call_entries) == 1
     assert tool_call_entries[0].guardrail_allowed is True
     assert "hello" not in (tool_call_entries[0].result_summary or "")
+
+
+async def test_run_turn_fires_pre_tool_hooks_before_dispatch() -> None:
+    """`pre_tool` fires the instant a call is about to dispatch — the live "in progress" signal
+    a `thinking`-hookless model still needs (see `agent.hooks.PreToolHook`'s docstring)."""
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(
+                tool_call_id="call-1", name="echo_tool", arguments={"text": "hello"}
+            ),
+            make_text_response("The tool said hello back."),
+        ]
+    )
+    received: list[tuple[int, str]] = []
+
+    async def hook(*, step_index: int, tool_name: str) -> None:
+        received.append((step_index, tool_name))
+
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=4, pre_tool_hooks=[hook])
+
+    await loop.run_turn("echo hello", tool_context=ToolContext())
+
+    assert received == [(0, "echo_tool")]
+
+
+async def test_run_turn_fires_pre_tool_hooks_even_for_a_call_governance_goes_on_to_block() -> None:
+    """Unlike `post_tool` (which also observes a blocked call), `pre_tool` fires BEFORE
+    `guardrails.check_tool_call` even runs — proving the hook is not gated behind the veto it
+    precedes."""
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(
+                tool_call_id="call-1", name="echo_tool", arguments={"scan_all": True}
+            ),
+            make_text_response("done"),
+        ]
+    )
+    received: list[str] = []
+
+    async def hook(*, step_index: int, tool_name: str) -> None:
+        received.append(tool_name)
+
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=4, pre_tool_hooks=[hook])
+
+    result = await loop.run_turn("echo hello", tool_context=ToolContext())
+
+    assert received == ["echo_tool"]
+    tool_call_entries = [e for e in result.journal.entries if e.kind == "tool_call"]
+    assert tool_call_entries[0].guardrail_allowed is False
 
 
 async def test_run_turn_dispatches_sponsor_tool_through_entitlement_gate_free_tier() -> None:
@@ -258,7 +309,9 @@ async def test_run_turn_dispatches_sponsor_tool_for_entitled_tier() -> None:
     )
 
     tool_result_message = result.steps[0].tool_messages[0]
-    assert "GetChipFlowsOutput" in tool_result_message.tool_results[0].content
+    # The model sees the real governed field values (source id, health status), not just the
+    # bare type/field-name summary — this is what lets it accurately narrate the fetched data.
+    assert "STUB" in tool_result_message.tool_results[0].content
     assert "MaskedTeaser" not in tool_result_message.tool_results[0].content
     # An entitled caller's real result does become a governed card.
     assert len(result.rich_cards) == 1
@@ -450,6 +503,89 @@ async def test_run_turn_scans_thinking_deltas_for_trading_language_before_forwar
     assert len(received) == 1
     assert "buy" not in received[0].lower()
     assert received[0] == REDACTION_NOTICE
+
+
+async def test_run_turn_streams_the_final_answer_sentence_by_sentence() -> None:
+    """`AgentLoop` forwards each COMPLETE sentence of the final answer to every registered
+    `answer_delta` hook as soon as it closes, not buffered until the whole Step completes —
+    the live token-stream this hook exists for. The stub yields the answer split across
+    multiple `TextDeltaEvent`s so a sentence boundary can fall mid-chunk, exactly like a real
+    provider's token stream."""
+    llm = StubLLMClient(
+        script=[make_text_response("First sentence. Second sentence. Third.")],
+        text_chunks=[["First sent", "ence. Second sen", "tence. Third."]],
+    )
+    received: list[str] = []
+
+    async def hook(*, text: str) -> None:
+        received.append(text)
+
+    loop = AgentLoop(llm, tools=[], max_steps=2, answer_delta_hooks=[hook])
+
+    result = await loop.run_turn("hi", tool_context=ToolContext())
+
+    assert received == ["First sentence.", " Second sentence.", " Third."]
+    assert "".join(received) == "First sentence. Second sentence. Third."
+    assert result.final_text.startswith("First sentence. Second sentence. Third.")
+
+
+async def test_run_turn_scans_streamed_sentences_for_trading_language_before_forwarding() -> None:
+    """A sentence carrying trading language is redacted before it is ever forwarded to an
+    `answer_delta` hook — the same non-negotiable scan `check_output`'s buffered pass applies
+    to the whole answer, now applied per-sentence as each one streams live."""
+    llm = StubLLMClient(
+        script=[
+            make_text_response("Context is fine. You should buy this stock now. More context.")
+        ],
+        text_chunks=[
+            ["Context is fine. You should buy ", "this stock now. More context."],
+        ],
+    )
+    received: list[str] = []
+
+    async def hook(*, text: str) -> None:
+        received.append(text)
+
+    loop = AgentLoop(llm, tools=[], max_steps=2, answer_delta_hooks=[hook])
+
+    await loop.run_turn("hi", tool_context=ToolContext())
+
+    joined = "".join(received)
+    assert "buy" not in joined.lower()
+    assert REDACTION_NOTICE in joined
+    assert "Context is fine." in joined
+    assert "More context." in joined
+
+
+async def test_run_turn_flushes_a_trailing_sentence_fragment_with_no_terminator() -> None:
+    """A short answer with no closing punctuation at all (or the final sentence, which the
+    stream never explicitly terminates) is still forwarded once the stream ends — the trailing
+    buffer flush, not lost simply because no delta ever closed it."""
+    llm = StubLLMClient(
+        script=[make_text_response("好的")],
+        text_chunks=[["好", "的"]],
+    )
+    received: list[str] = []
+
+    async def hook(*, text: str) -> None:
+        received.append(text)
+
+    loop = AgentLoop(llm, tools=[], max_steps=2, answer_delta_hooks=[hook])
+
+    await loop.run_turn("hi", tool_context=ToolContext())
+
+    assert received == ["好的"]
+
+
+async def test_run_turn_answer_delta_hooks_are_a_no_op_when_none_registered() -> None:
+    """No `answer_delta_hooks` configured (the default) must not change `final_text` or crash —
+    the streaming path is purely additive over the existing buffered `response.text` behavior."""
+    llm = StubLLMClient(script=[make_text_response("A plain answer with no hooks watching.")])
+    loop = AgentLoop(llm, tools=[], max_steps=2)
+
+    result = await loop.run_turn("hi", tool_context=ToolContext())
+
+    assert "A plain answer with no hooks watching." in result.final_text
 
 
 async def test_run_turn_forwards_web_search_sources_to_registered_web_search_hooks() -> None:

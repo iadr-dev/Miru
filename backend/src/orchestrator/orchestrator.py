@@ -28,11 +28,20 @@ import uuid
 
 import structlog
 
-from agent.hooks import PostToolHook, SteeringSource, ThinkingHook, WebSearchHook
+from agent.hooks import (
+    AnswerDeltaHook,
+    PostToolHook,
+    PreLLMHook,
+    PreToolHook,
+    SteeringSource,
+    ThinkingHook,
+    WebSearchHook,
+)
 from agent.loop import AgentLoop, StepBudgetExceededError, TurnResult
 from agent.prompts import PromptLayers, default_prompt_layers
 from config.settings import Settings, get_settings
 from events.bus import EventBus
+from events.hooks import RecallBlockProvider
 from events.usage import UsageAccumulator
 from llm.base import ImagePart, LLMClient, Message, WebSearchSource
 from llm.registry import (
@@ -306,6 +315,7 @@ class Orchestrator:
         web_search_enabled: bool = False,
         images: tuple[ImagePart, ...] = (),
         history: tuple[Message, ...] = (),
+        recall_provider: RecallBlockProvider | None = None,
     ) -> OrchestratorResult:
         """`steering_source` is only meaningful for `single` (the interactive root-agent lane a
         live `POST .../steer` call actually targets) — the fan-out frameworks' sub-agent lanes
@@ -324,7 +334,14 @@ class Orchestrator:
         this itself). Threaded to the classifier as a compact rendered summary (`_render_history`)
         so a follow-up like "what about its dividend history?" can resolve its missing subject,
         and to every framework's `AgentLoop`/lane so the skill's own LLM call sees the same
-        context, not just the routing decision."""
+        context, not just the routing decision.
+
+        `recall_provider` is a zero-arg thunk (bound to this turn's user/thread/query by the
+        caller) that renders the long-term-memory block injected as a `pre_llm` SYSTEM message.
+        Like `web_search_enabled`/`images` it is consulted only by the `none`/`single` root-agent
+        paths — fan-out sub-agent lanes never receive it (the memory block is background for the
+        user-facing reply agent, not something each independent lane re-injects and re-guardrails
+        N times; the fan-out synthesis pass is a separate LLM seam out of `_build_loop`'s scope)."""
         routing = await self._classifier.classify(
             user_message, event_bus=event_bus, turn_id=turn_id, history=history
         )
@@ -346,6 +363,7 @@ class Orchestrator:
                     locale=locale,
                     images=images,
                     history=history,
+                    recall_provider=recall_provider,
                 )
             elif routing.framework == "single":
                 result = await self._run_single(
@@ -363,6 +381,7 @@ class Orchestrator:
                     web_search_enabled=web_search_enabled,
                     images=images,
                     history=history,
+                    recall_provider=recall_provider,
                 )
             elif routing.framework == "subagent":
                 result = await self._run_subagent(
@@ -469,6 +488,7 @@ class Orchestrator:
         locale: str = "zh-TW",
         images: tuple[ImagePart, ...] = (),
         history: tuple[Message, ...] = (),
+        recall_provider: RecallBlockProvider | None = None,
     ) -> OrchestratorResult:
         """Direct reply from the system prompt — no tools, no skills (unless `web_search_enabled`
         grants the two web-access tools for this turn). Runs through an `AgentLoop` with the
@@ -492,6 +512,7 @@ class Orchestrator:
             turn_id=turn_id,
             model_override=model_override,
             web_search_enabled=web_search_enabled,
+            recall_provider=recall_provider,
         )
         turn = await loop.run_turn(
             user_message, tool_context=tool_context, images=images, history=history
@@ -525,6 +546,7 @@ class Orchestrator:
         web_search_enabled: bool = False,
         images: tuple[ImagePart, ...] = (),
         history: tuple[Message, ...] = (),
+        recall_provider: RecallBlockProvider | None = None,
     ) -> OrchestratorResult:
         skills = routing.bounded_skills()
         skill = self._registry.get(skills[0]) if skills else None
@@ -541,6 +563,7 @@ class Orchestrator:
             model_override=model_override,
             web_search_enabled=web_search_enabled,
             locale=locale,
+            recall_provider=recall_provider,
         )
         try:
             turn = await loop.run_turn(
@@ -621,7 +644,13 @@ class Orchestrator:
         )
         await self._refund_unspent(reservation, lanes)
         return await self._synthesize(
-            routing, lanes, event_bus, turn_id, model_override, dropped_skill_count=dropped
+            routing,
+            lanes,
+            event_bus,
+            turn_id,
+            model_override,
+            dropped_skill_count=dropped,
+            locale=locale,
         )
 
     # ---- team (sequential) ----
@@ -676,6 +705,7 @@ class Orchestrator:
             turn_id,
             model_override,
             dropped_skill_count=dropped,
+            locale=locale,
         )
 
     # ---- shared lane execution ----
@@ -836,13 +866,17 @@ class Orchestrator:
         if isinstance(outcome, LaneResult):
             return outcome
         logger.warning("orch_lane_isolated_exception", skill=skill, error=str(outcome))
+        # The raw exception (`str(outcome)`) is logged above for operators only — it can carry
+        # an internal validation-error message naming implementation details (a tool's Pydantic
+        # field, a source adapter's capability check) that must never reach the synthesis prompt
+        # or the user; `reason` here is what `Synthesizer` renders into that prompt verbatim.
         return LaneResult(
             agent_id=f"{skill}:errored",
             skill=skill,
             status="error",
             completeness="empty",
             confidence=0.0,
-            reason=f"lane raised {type(outcome).__name__}: {outcome}",
+            reason="this lane could not complete for this query",
         )
 
     async def _synthesize(  # noqa: PLR0913 — one field per synthesis-input dimension
@@ -854,6 +888,7 @@ class Orchestrator:
         model_override: str | None = None,
         *,
         dropped_skill_count: int = 0,
+        locale: str = "zh-TW",
     ) -> OrchestratorResult:
         if event_bus is not None:
             event_bus.publish(
@@ -864,7 +899,7 @@ class Orchestrator:
             )
         try:
             final_text, provenance = await self._synthesizer.synthesize(
-                lanes, model_override=model_override
+                lanes, model_override=model_override, locale=locale
             )
         except NoSuccessfulLanesError:
             logger.warning("orch_all_lanes_failed", turn_id=turn_id)
@@ -1003,17 +1038,25 @@ class Orchestrator:
         model_override: str | None = None,
         web_search_enabled: bool = False,
         locale: str = "zh-TW",
+        recall_provider: RecallBlockProvider | None = None,
     ) -> AgentLoop:
+        pre_tool_hooks: list[PreToolHook] | None = None
         post_tool_hooks: list[PostToolHook] | None = None
         thinking_hooks: list[ThinkingHook] | None = None
+        answer_delta_hooks: list[AnswerDeltaHook] | None = None
         web_search_hooks: list[WebSearchHook] | None = None
         if event_bus is not None:
             from events.hooks import (  # noqa: PLC0415 — same-layer import
+                EventBusAnswerDeltaHook,
                 EventBusPostToolHook,
+                EventBusPreToolHook,
                 EventBusThinkingHook,
                 EventBusWebSearchHook,
             )
 
+            pre_tool_hooks = [
+                EventBusPreToolHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
+            ]
             post_tool_hooks = [
                 EventBusPostToolHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
             ]
@@ -1023,6 +1066,26 @@ class Orchestrator:
             web_search_hooks = [
                 EventBusWebSearchHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
             ]
+            # Only the root AGENT-role loop's own text is the answer a user reads directly
+            # (`none`/`single`, and `_synthesize`'s own dedicated AgentLoop-free call — see
+            # below) — a SUBAGENT-role fan-out lane's text is an intermediate `Finding`/lane
+            # result the synthesis pass consumes, never streamed to the user as-is, so wiring
+            # this hook there would surface half-formed intermediate prose as if it were the
+            # final answer. Mirrors the `recall_provider` root-only carve-out already applied
+            # a few lines below.
+            if role is ModelRole.AGENT:
+                answer_delta_hooks = [
+                    EventBusAnswerDeltaHook(event_bus, turn_id=turn_id or "", agent_id=agent_id)
+                ]
+        # Long-term-memory recall injects a `pre_llm` SYSTEM block; only the `none`/`single`
+        # root-agent paths pass a `recall_provider` (fan-out lanes never do — see `run`'s
+        # docstring), so this is `None` for every SUBAGENT-role loop, exactly like
+        # `web_search_enabled` below.
+        pre_llm_hooks: list[PreLLMHook] | None = None
+        if recall_provider is not None:
+            from events.hooks import MemoryRecallPreLLMHook  # noqa: PLC0415 — same-layer import
+
+            pre_llm_hooks = [MemoryRecallPreLLMHook(recall_provider)]
         client = self._resolve_client(role, model_override=model_override)
         # `web_search_enabled` is only ever passed for the `none`/`single` framework paths
         # (`_run_none`/`_run_single`) — fan-out lanes never pass it, so `native_web_search`
@@ -1036,9 +1099,12 @@ class Orchestrator:
             prompt_layers=prompt_layers,
             max_steps=max_steps,
             settings=self._settings,
+            pre_tool_hooks=pre_tool_hooks,
             post_tool_hooks=post_tool_hooks,
             thinking_hooks=thinking_hooks,
+            answer_delta_hooks=answer_delta_hooks,
             web_search_hooks=web_search_hooks,
+            pre_llm_hooks=pre_llm_hooks,
             steering_source=steering_source,
             native_web_search=native_web_search,
         )

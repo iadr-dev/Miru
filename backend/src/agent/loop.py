@@ -38,6 +38,7 @@ on; a Step already dispatching tool calls is never interrupted.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import cast
 
@@ -47,9 +48,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from agent import guardrails
 from agent.context_window import compact
 from agent.hooks import (
+    AnswerDeltaHook,
     CancelToken,
     PostToolHook,
     PreLLMHook,
+    PreToolHook,
     SteeringSource,
     ThinkingHook,
     WebSearchHook,
@@ -180,10 +183,37 @@ def _tool_by_name(tools: list[Tool], name: str) -> Tool | None:
 
 def _summarize_result(result: BaseModel) -> str:
     """Reduce any tool result to its type name plus top-level field names — never raw
-    payload values — for the journal and for what gets reported back to the model as a tool
-    result. A `MaskedTeaser` is already payload-free by construction."""
+    payload values — for the journal audit trail (`ToolCallRecord`/`Journal.record_tool_call`),
+    which by design never carries values (governance §7's audit log is provenance-only). This is
+    NOT what the model sees as the tool result; see `_render_result_for_model` for that."""
     field_names = sorted(type(result).model_fields.keys())
     return f"{type(result).__name__}({', '.join(field_names)})"
+
+
+# A tool result rendered for the model is still bounded — a handful of Sponsor datasets return
+# hundreds of rows per call, and an unbounded dump would blow the context-window budget on one
+# tool call. This is generous enough for every skill's own row caps (seen empirically: none
+# request more than a few hundred rows per call) while still bounding worst case.
+_MAX_MODEL_RESULT_CHARS = 20_000
+
+
+def _render_result_for_model(result: BaseModel) -> str:
+    """Render a tool result's actual field VALUES for the model's own tool-result message —
+    the same governance-scanned JSON dump `_build_card` already builds for the user-facing
+    `RichCard` (`guardrails.scan_structured_payload`), reused here so the model narrates the same
+    governed data the card renders, instead of `_summarize_result`'s bare field-name list.
+
+    Without this, the model only ever sees e.g. `"BlockTradeResult(rows, health)"` — the type and
+    field names, never a single value — and has no way to accurately describe what it fetched: it
+    either guesses or claims the data is missing, while the separately-built `RichCard` (built
+    from the same `result` object) renders the real rows to the user. That contradiction — model
+    says "no data available", card shows real rows — is exactly the failure this fixes."""
+    dumped = result.model_dump(mode="json")
+    cleaned, _ = guardrails.scan_structured_payload(dumped)
+    text = json.dumps(cleaned, ensure_ascii=False, separators=(",", ":"))
+    if len(text) > _MAX_MODEL_RESULT_CHARS:
+        text = f"{text[:_MAX_MODEL_RESULT_CHARS]}...<truncated, {len(text)} chars total>"
+    return text
 
 
 class AgentLoop:
@@ -203,9 +233,11 @@ class AgentLoop:
         max_steps: int | None = None,
         prompt_layers: PromptLayers | None = None,
         settings: Settings | None = None,
+        pre_tool_hooks: list[PreToolHook] | None = None,
         post_tool_hooks: list[PostToolHook] | None = None,
         pre_llm_hooks: list[PreLLMHook] | None = None,
         thinking_hooks: list[ThinkingHook] | None = None,
+        answer_delta_hooks: list[AnswerDeltaHook] | None = None,
         web_search_hooks: list[WebSearchHook] | None = None,
         steering_source: SteeringSource | None = None,
         cancel_token: CancelToken | None = None,
@@ -223,9 +255,11 @@ class AgentLoop:
         )
         self._max_steps = max_steps if max_steps is not None else settings.agent_max_steps
         self._prompt_layers = prompt_layers or default_prompt_layers()
+        self._pre_tool_hooks: list[PreToolHook] = pre_tool_hooks or []
         self._post_tool_hooks: list[PostToolHook] = post_tool_hooks or []
         self._pre_llm_hooks: list[PreLLMHook] = pre_llm_hooks or []
         self._thinking_hooks: list[ThinkingHook] = thinking_hooks or []
+        self._answer_delta_hooks: list[AnswerDeltaHook] = answer_delta_hooks or []
         self._web_search_hooks: list[WebSearchHook] = web_search_hooks or []
         self._steering_source = steering_source
         self._cancel_token = cancel_token
@@ -388,6 +422,14 @@ class AgentLoop:
         for hook in self._thinking_hooks:
             await hook(text=text)
 
+    async def _run_answer_delta_hooks(self, text: str) -> None:
+        for hook in self._answer_delta_hooks:
+            await hook(text=text)
+
+    async def _run_pre_tool_hooks(self, *, step_index: int, tool_name: str) -> None:
+        for hook in self._pre_tool_hooks:
+            await hook(step_index=step_index, tool_name=tool_name)
+
     async def _run_web_search_hooks(self, event: WebSearchResultEvent) -> None:
         for hook in self._web_search_hooks:
             await hook(sources=event.sources)
@@ -401,11 +443,32 @@ class AgentLoop:
     ) -> LLMResponse:
         """Drive one Step via `llm.stream()` rather than `chat()` — the live agent-turn path,
         so a genuinely reasoning-capable model's `ThinkingDeltaEvent`s can be forwarded to the
-        `thinking` hooks (and, through them, the SSE `thinking.delta` frame) as they arrive,
-        not buffered until the Step completes. `TextDeltaEvent`s are still only concatenated
-        into the final `response.text` here, never forwarded per-token — there is still no
-        token streaming for the final answer itself (see `turn-store.ts`'s own docstring); only
-        thinking text is genuinely live.
+        `thinking` hooks (and, through them, the SSE `thinking.delta` frame) as they arrive, not
+        buffered until the Step completes.
+
+        `TextDeltaEvent`s are buffered sentence-by-sentence (`guardrails.
+        split_sentences_streaming` — the incremental, nothing-discarded counterpart to
+        `check_output`'s own one-shot `split_sentences`; using the strip-based one here would
+        silently eat word-boundary whitespace on the still-growing tail) as they arrive: each
+        COMPLETE chunk is run through `guardrails.scan_sentence` and forwarded live to the
+        `answer_delta` hooks the instant it closes — the withheld trailing fragment (not yet
+        terminated, so it might still grow) is carried into the next delta rather than emitted
+        early. This is what makes the final answer genuinely stream token-by-token to the user
+        (the SSE `message.delta` frame) while still guaranteeing no unscanned text is ever
+        shown: the governance scan runs per-chunk as chunks close, not once on the whole
+        buffered answer at the end. The whole-answer `check_output` pass in `_finalize_output`
+        still runs too, unconditionally — this streaming path only ADDS a live preview, it does
+        not replace the authoritative final scan (which also owns the caveat-append step, a
+        whole-answer concern with no per-chunk equivalent).
+
+        This streams for every Step, not only a Step confirmed to end without tool calls — by
+        the time a `TextDeltaEvent` arrives there is no way to know yet whether this Step will
+        also propose a tool call (some models emit a short preamble before deciding to call a
+        tool). A Step that turns out to carry both text and tool calls means that preamble
+        streamed live but is not the Turn's `final_text` (a pre-existing behavior — see
+        `run_turn`: only a Step with zero tool_calls resolves the Turn); this is an accepted,
+        bounded cost (matches how other coding-agent products stream this same case), not a
+        governance gap, since the streamed text was scanned exactly like any other answer text.
 
         Every thinking chunk is passed through `guardrails.check_output` before it reaches a
         `thinking` hook: it is model-generated text like any other, and the non-trading scan
@@ -423,11 +486,20 @@ class AgentLoop:
         tool_calls: list[ToolCall] = []
         stop_reason = StopReason.END_TURN
         usage = TokenUsage(input_tokens=0, output_tokens=0, total_tokens=0)
+        answer_buffer = ""
         async for event in self._llm.stream(
             messages, tools=self._tool_specs, native_web_search=self._native_web_search
         ):
             if isinstance(event, TextDeltaEvent):
                 text_parts.append(event.text)
+                answer_buffer += event.text
+                chunks = guardrails.split_sentences_streaming(answer_buffer)
+                if len(chunks) > 1:
+                    *complete, answer_buffer = chunks
+                    for chunk in complete:
+                        safe_chunk = guardrails.scan_sentence(chunk)
+                        if safe_chunk:
+                            await self._run_answer_delta_hooks(safe_chunk)
             elif isinstance(event, ThinkingDeltaEvent):
                 verdict = guardrails.check_output(event.text, has_market_data=False)
                 safe_text = event.text if verdict.redacted_text is None else verdict.redacted_text
@@ -446,6 +518,12 @@ class AgentLoop:
             # streaming client also emits before its final `ToolCallEvent` — carries nothing
             # this Step needs; the client itself already assembles the complete `ToolCallEvent`
             # this loop consumes above, so the fragment is intentionally a no-op here.
+        # The stream ended with a trailing fragment still held back (either a genuinely final
+        # sentence with no more text coming, or a short answer with no terminator at all, e.g.
+        # "好的") — flush it now rather than losing it, since no further delta will ever close it.
+        trailing = guardrails.scan_sentence(answer_buffer)
+        if trailing:
+            await self._run_answer_delta_hooks(trailing)
         return LLMResponse(
             text="".join(text_parts) or None,
             tool_calls=tuple(tool_calls),
@@ -485,6 +563,7 @@ class AgentLoop:
         journal: Journal,
         step_index: int,
     ) -> tuple[ToolResultPart, RichCard | None]:
+        await self._run_pre_tool_hooks(step_index=step_index, tool_name=tool_name)
         argument_keys = tuple(sorted(arguments.keys()))
         pre_tool_verdict = guardrails.check_tool_call(tool_name, arguments)
         if not pre_tool_verdict.allowed:
@@ -565,7 +644,13 @@ class AgentLoop:
             guardrail_allowed=True,
             guardrail_reason=guardrail_reason,
         )
-        return ToolResultPart(tool_call_id=tool_call_id, content=summary), card
+        # The journal/hooks get the field-name-only `summary` (provenance, not payload — an
+        # audit trail never carries values); the model gets the real governed values via
+        # `_render_result_for_model` so it can accurately narrate what it fetched instead of
+        # guessing blind. A masked result has no values to render (`MaskedTeaser` is
+        # payload-free by construction), so it keeps the summary form either way.
+        model_content = summary if masked else _render_result_for_model(result)
+        return ToolResultPart(tool_call_id=tool_call_id, content=model_content), card
 
     def _card_for(self, tool: Tool, result: BaseModel) -> RichCard | None:
         """Build a governed `RichCard` for a card-opted-in tool's dispatched result — `None`

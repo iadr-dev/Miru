@@ -1,10 +1,14 @@
 """Dependency-inverted extension Protocols for the Step-loop dispatch points that had no
-registration seam before this phase: `post_tool` (fires after every tool dispatch, cannot
+registration seam before this phase: `pre_tool` (fires right before a tool call is dispatched,
+observe-only — NOT the governance veto hook of the same informal name in `agent.guardrails`,
+see `PreToolHook`'s own docstring), `post_tool` (fires after every tool dispatch, cannot
 veto), `pre_llm` (runs on the message list right before every model call, cannot veto —
 the only pre_llm check that can veto, the token-budget/compaction trigger, stays governance-
 owned and hardcoded in `agent.context_window.compact`), `thinking` (fires once per
-extended-thinking delta chunk during a streamed Step, also observe-only), and `web_search`
-(fires once per completed native-web-search call during a streamed Step, also observe-only).
+extended-thinking delta chunk during a streamed Step, also observe-only), `answer_delta`
+(fires once per already-governance-scanned sentence of the final answer as it streams, also
+observe-only), and `web_search` (fires once per completed native-web-search call during a
+streamed Step, also observe-only).
 
 `agent/loop.py` only ever imports the Protocol shapes below — never a concrete handler. Higher
 layers (the interaction-layer `events/` package) build concrete handlers (journal writers,
@@ -22,6 +26,21 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from llm.base import Message, WebSearchSource
+
+
+@runtime_checkable
+class PreToolHook(Protocol):
+    """Fires the moment a tool call is ABOUT to be dispatched — before the governance
+    `check_tool_call` veto even runs, so it fires for a call that ends up blocked too. This is
+    the "the agent is now looking something up" signal a live UI needs regardless of whether
+    the model happens to stream genuine reasoning tokens (`ThinkingHook`) for this turn: most
+    configured models never emit a `thinking_delta` at all, so `PostToolHook`'s after-the-fact
+    `tool.result` was previously the ONLY per-tool signal — meaning a slow multi-tool Step showed
+    nothing to the user until every call in it had already finished. Never vetoes; a `pre_tool`
+    handler observes, it does not gate (the actual veto is `agent.guardrails.check_tool_call`,
+    called separately and first)."""
+
+    async def __call__(self, *, step_index: int, tool_name: str) -> None: ...
 
 
 @runtime_checkable
@@ -66,6 +85,23 @@ class ThinkingHook(Protocol):
 
 
 @runtime_checkable
+class AnswerDeltaHook(Protocol):
+    """Fires once per completed, already-governance-scanned sentence of the FINAL answer as it
+    streams (`AgentLoop._stream_final_answer`) — the live token-by-token render seam, mirroring
+    `ThinkingHook`'s contract but for the answer text itself rather than reasoning. Unlike
+    `ThinkingHook` (which forwards a raw model-generated chunk as soon as it arrives), each
+    chunk here is a WHOLE sentence, and it has already passed `agent.guardrails.scan_sentence`
+    before this hook ever sees it — trading language and vendor names are stripped in place,
+    so what streams is always safe to render immediately, never provisional text a later pass
+    might still redact. This is what makes streaming compatible with the mandatory
+    non-negotiable `pre_output` scan: the scan runs per-sentence as sentences close, not once
+    on the whole buffered answer at the end (that final whole-answer `check_output` pass still
+    runs too, for the caveat-append step — never removed, only additionally chunked)."""
+
+    async def __call__(self, *, text: str) -> None: ...
+
+
+@runtime_checkable
 class WebSearchHook(Protocol):
     """Fires once per completed native-web-search call the model streams (`llm.base.
     WebSearchResultEvent`) — mirrors `ThinkingHook`'s "observe, never veto" contract. Unlike
@@ -104,9 +140,11 @@ class SteeringSource(Protocol):
 
 
 __all__ = [
+    "AnswerDeltaHook",
     "CancelToken",
     "PostToolHook",
     "PreLLMHook",
+    "PreToolHook",
     "SteeringSource",
     "ThinkingHook",
     "WebSearchHook",
