@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     context_window_tokens: int = 128_000
     context_reserve_tokens: int = 4_000
     agent_max_steps: int = 8
+    # Per-call output-token ceiling passed to every LLMClient's `max_tokens`/`max_output_tokens`
+    # constructor kwarg. Each provider client's own default (4096) is a conservative fallback for
+    # a bare `AnthropicClient(...)`/`OpenAIClient(...)` construction outside this registry, not a
+    # tuned production value: with extended/adaptive thinking counting against the same budget
+    # (Anthropic), 4096 was observed live truncating a long synthesis (multi-section prose + a
+    # per-month table) mid-sentence before any of the caller's actual answer landed.
+    llm_max_output_tokens: int = 16_000
 
     # ---- Orchestrator budgets (per-turn ceilings, orchestrator/ceilings.py) ----
     orch_max_subagents: int = 4
