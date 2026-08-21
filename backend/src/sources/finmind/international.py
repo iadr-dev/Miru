@@ -11,7 +11,7 @@ from collections.abc import Callable
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_symbol_field
+from ._shared import _as_date_str, _as_float, _as_int, _DatasetConfig, _row_symbol_field
 
 
 def _make_international_info_mapper(
@@ -63,7 +63,7 @@ def _make_international_price_mapper(
                 {
                     "symbol": row_sym.id,
                     "market": row_sym.market.value,
-                    "trade_date": row["date"],
+                    "trade_date": _as_date_str(row["date"]),
                     "open": _as_float(row.get("Open")),
                     "high": _as_float(row.get("High")),
                     "low": _as_float(row.get("Low")),
@@ -95,7 +95,7 @@ def _map_us_stock_price_minute(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "close": _as_float(row.get("close")),
                 "high": _as_float(row.get("high")),
                 "low": _as_float(row.get("low")),
@@ -145,6 +145,10 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_mapper=_map_uk_stock_info,
         whole_market_ok=True,
         market=Market.GB,
+        # Confirmed empirically: a static reference table with no date semantics — passing
+        # start_date/end_date doesn't 400, it silently filters the whole response to zero rows.
+        no_start_date_param=True,
+        no_data_id_param=True,  # per this dataset's own caveat: no data_id is ever meaningful.
     ),
     Capability.UK_STOCK_PRICE: _DatasetConfig(
         dataset="UKStockPrice",
@@ -166,6 +170,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_mapper=_map_europe_stock_info,
         whole_market_ok=True,
         market=Market.EU,
+        no_start_date_param=True,  # same static-reference-table behavior as UK_STOCK_INFO.
+        no_data_id_param=True,
     ),
     Capability.EUROPE_STOCK_PRICE: _DatasetConfig(
         dataset="EuropeStockPrice",
@@ -186,6 +192,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_mapper=_map_japan_stock_info,
         whole_market_ok=True,
         market=Market.JP,
+        no_start_date_param=True,  # same static-reference-table behavior as UK_STOCK_INFO.
+        no_data_id_param=True,
     ),
     Capability.JAPAN_STOCK_PRICE: _DatasetConfig(
         dataset="JapanStockPrice",

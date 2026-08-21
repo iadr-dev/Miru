@@ -9,7 +9,7 @@ from __future__ import annotations
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_symbol
+from ._shared import _as_date_str, _as_float, _as_int, _DatasetConfig, _row_symbol
 
 
 def _map_active_etf_info(
@@ -44,7 +44,7 @@ def _map_active_etf_holding(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "component_stock_id": str(row.get("component_stock_id", "")),
                 "component_stock_name": str(row.get("component_stock_name", "")),
                 "asset_type": str(row.get("asset_type", "")),
@@ -69,7 +69,7 @@ def _map_active_etf_holding_change(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "component_stock_id": str(row.get("component_stock_id", "")),
                 "component_stock_name": str(row.get("component_stock_name", "")),
                 "buy": _as_int(row.get("buy")),
@@ -90,7 +90,7 @@ def _map_stock_news(rows: list[dict[str, object]], sym: Symbol | None) -> list[d
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "description": str(row.get("description", "")),
                 "link": str(row.get("link", "")),
                 "source": str(row.get("source", "")),
@@ -108,7 +108,7 @@ def _map_business_indicator(
     return [
         {
             "market": Market.TW.value,
-            "date": row["date"],
+            "date": _as_date_str(row["date"]),
             "leading": _as_float(row.get("leading")),
             "leading_notrend": _as_float(row.get("leading_notrend")),
             "coincident": _as_float(row.get("coincident")),
@@ -183,6 +183,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "aggregator; single trading day per request upstream.",
         row_key="rows",
         row_mapper=_map_stock_news,
+        # Confirmed empirically: 400s ("size too large, we only send one day data") if
+        # end_date is present at all — single trading day per request only.
+        no_end_date_param=True,
     ),
     Capability.BUSINESS_INDICATOR: _DatasetConfig(
         dataset="TaiwanBusinessIndicator",
@@ -194,6 +197,10 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_business_indicator,
         whole_market_ok=True,
+        # Confirmed empirically: 400s ("data_id don't provide") if data_id is sent at all,
+        # even on the per-symbol fetch() path — matches this dataset's own caveat above.
+        no_data_id_param=True,
+        default_lookback_days=120,  # monthly cadence, same reasoning as MONTH_REVENUE.
     ),
     Capability.INDUSTRY_CHAIN_CLASSIFICATION: _DatasetConfig(
         dataset="TaiwanStockIndustryChain",

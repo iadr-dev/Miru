@@ -8,6 +8,7 @@ from schemas.enums import Capability, DataClass, Market, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus
 from sources.finmind import FinMindAdapter
+from sources.finmind.technical import _map_eod_bars
 from tests.sources.conftest import load_fixture
 
 from ._helpers import patch_client, settings
@@ -36,6 +37,52 @@ async def test_fetch_price_eod_filters_zero_price_days(monkeypatch: pytest.Monke
     # The 2024-01-03 zero-price no-trade day must be filtered out.
     assert len(bars) == 2
     assert all(bar["close"] > 0 for bar in bars)  # type: ignore[index]
+
+
+def test_map_eod_bars_drops_whole_market_index_and_sector_aggregate_rows() -> None:
+    """The whole-market pull (`sym=None`, `stock_id` read off each row) occasionally carries a
+    FinMind index/sector aggregate label (`TAIEX`, `TPEx`, or a named industry sector like
+    `Semiconductor`) instead of a real security code, with a nonzero `close` that survives the
+    `close <= 0` no-trade-day filter above it — confirmed live against the real derived store
+    (32 such rows across the full backfilled history, vs. ~21K genuine TW security codes).
+    Every real TW security code (stock/ETF/warrant/bond) starts with a digit; an aggregate
+    label never does."""
+    rows = [
+        {
+            "date": "2024-01-02",
+            "stock_id": "2330",
+            "close": 593.0,
+            "open": 594.0,
+            "max": 597.0,
+            "min": 590.0,
+            "Trading_Volume": 100,
+            "Trading_money": 1000,
+        },
+        {
+            "date": "2024-01-02",
+            "stock_id": "TAIEX",
+            "close": 18000.0,  # a real, nonzero index level — must not be mistaken for a stock
+            "open": 17990.0,
+            "max": 18010.0,
+            "min": 17980.0,
+            "Trading_Volume": 0,
+            "Trading_money": 0,
+        },
+        {
+            "date": "2024-01-02",
+            "stock_id": "Semiconductor",
+            "close": 500.0,
+            "open": 499.0,
+            "max": 501.0,
+            "min": 498.0,
+            "Trading_Volume": 0,
+            "Trading_money": 0,
+        },
+    ]
+
+    bars = _map_eod_bars(rows, sym=None)
+
+    assert [bar["symbol"] for bar in bars] == ["2330"]
 
 
 async def test_fetch_stock_info_is_public_reference_roster(

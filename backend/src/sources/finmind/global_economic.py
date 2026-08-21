@@ -8,7 +8,7 @@ from __future__ import annotations
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _DatasetConfig, _row_symbol_field
+from ._shared import _as_date_str, _as_float, _DatasetConfig, _row_symbol_field
 
 
 def _map_exchange_rate(
@@ -24,7 +24,7 @@ def _map_exchange_rate(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "cash_buy": _as_float(row.get("cash_buy")),
                 "cash_sell": _as_float(row.get("cash_sell")),
                 "spot_buy": _as_float(row.get("spot_buy")),
@@ -47,7 +47,7 @@ def _map_central_bank_rate(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "country": str(row.get("country", "")),
                 "full_country_name": str(row.get("full_country_name", "")),
                 "interest_rate": _as_float(row.get("interest_rate")),
@@ -62,7 +62,7 @@ def _map_gold_price(rows: list[dict[str, object]], _sym: Symbol | None) -> list[
     return [
         {
             "market": Market.GLOBAL.value,
-            "date": row["date"],
+            "date": _as_date_str(row["date"]),
             "price": _as_float(row.get("Price")),
         }
         for row in rows
@@ -82,7 +82,7 @@ def _map_crude_oil_prices(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "price": _as_float(row.get("price")),
             }
         )
@@ -101,7 +101,7 @@ def _map_government_bond_yield(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "value": _as_float(row.get("value")),
             }
         )
@@ -116,7 +116,7 @@ def _map_fear_greed_index(
     return [
         {
             "market": Market.US.value,
-            "date": row["date"],
+            "date": _as_date_str(row["date"]),
             "fear_greed": _as_float(row.get("fear_greed")),
             "fear_greed_emotion": str(row.get("fear_greed_emotion", "")),
         }
@@ -147,6 +147,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_mapper=_map_central_bank_rate,
         whole_market_ok=True,
         market=Market.GLOBAL,
+        default_lookback_days=450,  # policy-meeting cadence — a 30d window usually has none.
     ),
     Capability.GOLD_PRICE: _DatasetConfig(
         dataset="GoldPrice",
@@ -158,6 +159,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_mapper=_map_gold_price,
         whole_market_ok=True,
         market=Market.GLOBAL,
+        # Confirmed empirically: 400s ("data_id don't provide") if data_id is sent at all,
+        # even on the per-symbol fetch() path — matches this dataset's own caveat above.
+        no_data_id_param=True,
     ),
     Capability.CRUDE_OIL_PRICES: _DatasetConfig(
         dataset="CrudeOilPrices",

@@ -8,7 +8,7 @@ from __future__ import annotations
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_symbol_field
+from ._shared import _as_date_str, _as_float, _as_int, _DatasetConfig, _row_symbol_field
 
 
 def _map_tick_snapshot(
@@ -24,7 +24,7 @@ def _map_tick_snapshot(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "amount": _as_float(row.get("amount")),
                 "average_price": _as_float(row.get("average_price")),
                 "buy_price": _as_float(row.get("buy_price")),
@@ -78,7 +78,7 @@ def _map_futures_snapshot(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("high")),
                 "low": _as_float(row.get("low")),
@@ -112,7 +112,7 @@ def _map_options_snapshot(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("high")),
                 "low": _as_float(row.get("low")),

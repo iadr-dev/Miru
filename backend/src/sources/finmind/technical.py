@@ -11,6 +11,7 @@ from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
 from ._shared import (
+    _as_date_str,
     _as_float,
     _as_int,
     _DatasetConfig,
@@ -26,11 +27,20 @@ def _map_eod_bars(rows: list[dict[str, object]], sym: Symbol | None) -> list[dic
             # TaiwanStockPrice publishes 0 for no-trade days — filter on close, not volume.
             continue
         row_sym = _row_symbol(row, sym)
+        if not row_sym.id[:1].isdigit():
+            # The whole-market pull's `stock_id` occasionally carries a FinMind index/sector
+            # aggregate label instead of a real security code — confirmed live: `TAIEX`,
+            # `TPEx`, and TWSE's ~30 named industry sectors (`Semiconductor`, `Textiles`, …)
+            # each occasionally publish a nonzero `close`, which slips past the `close <= 0`
+            # filter above since it isn't a no-trade day for the aggregate. Every real TW
+            # security code (stock/ETF/warrant/bond) starts with a digit; an aggregate label
+            # never does — cheap, exact discriminator, no hardcoded label list to maintain.
+            continue
         bars.append(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("max")),
                 "low": _as_float(row.get("min")),
@@ -98,7 +108,7 @@ def _map_trading_calendar(
 ) -> list[dict[str, object]]:
     """`TaiwanStockTradingDate` — a market-level reference table (no `stock_id` column at
     all)."""
-    return [{"market": Market.TW.value, "trade_date": row["date"]} for row in rows]
+    return [{"market": Market.TW.value, "trade_date": _as_date_str(row["date"])} for row in rows]
 
 
 def _map_price_adj(rows: list[dict[str, object]], sym: Symbol | None) -> list[dict[str, object]]:
@@ -112,7 +122,7 @@ def _map_price_adj(rows: list[dict[str, object]], sym: Symbol | None) -> list[di
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("max")),
                 "low": _as_float(row.get("min")),
@@ -132,7 +142,7 @@ def _map_price_tick(rows: list[dict[str, object]], sym: Symbol | None) -> list[d
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "time": str(row.get("Time", "")),
                 "deal_price": _as_float(row.get("deal_price")),
                 "volume": _as_int(row.get("volume")),
@@ -152,7 +162,7 @@ def _map_valuation_ratios(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "dividend_yield": _as_float(row.get("dividend_yield")),
                 "per": _as_float(row.get("PER")),
                 "pbr": _as_float(row.get("PBR")),
@@ -171,7 +181,7 @@ def _map_order_book_stats(
         stats.append(
             {
                 "market": Market.TW.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "time": str(row.get("Time", "")),
                 "total_buy_order": _as_int(row.get("TotalBuyOrder")),
                 "total_buy_volume": _as_int(row.get("TotalBuyVolume")),
@@ -192,7 +202,7 @@ def _map_taiex_5s_index(
     return [
         {
             "market": Market.TW.value,
-            "trade_date": row["date"],
+            "trade_date": _as_date_str(row["date"]),
             "taiex": _as_float(row.get("TAIEX")),
         }
         for row in rows
@@ -207,7 +217,7 @@ def _map_day_trading(rows: list[dict[str, object]], sym: Symbol | None) -> list[
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "buy_after_sale": str(row.get("BuyAfterSale", "")),
                 "volume": _as_int(row.get("Volume")),
                 "buy_amount": _as_int(row.get("BuyAmount")),
@@ -229,7 +239,7 @@ def _map_total_return_index(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "price": _as_float(row.get("price")),
             }
         )
@@ -246,7 +256,7 @@ def _map_ten_year_price(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "close": _as_float(row.get("close")),
             }
         )
@@ -261,7 +271,7 @@ def _map_kbar(rows: list[dict[str, object]], sym: Symbol | None) -> list[dict[st
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "minute": str(row.get("minute", "")),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("high")),
@@ -288,7 +298,7 @@ def _make_period_price_mapper(
                     "symbol": row_sym.id,
                     "market": row_sym.market.value,
                     "period": str(row.get(period_field, "")),
-                    "trade_date": row["date"],
+                    "trade_date": _as_date_str(row["date"]),
                     "open": _as_float(row.get("open")),
                     "high": _as_float(row.get("max")),
                     "low": _as_float(row.get("min")),
@@ -319,7 +329,7 @@ def _map_index_5s_snapshot(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "time": str(row.get("time", "")),
                 "price": _as_float(row.get("price")),
                 "kind": str(row.get("kind", "")),
@@ -338,7 +348,7 @@ def _map_trading_suspension(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "suspension_time": str(row.get("suspension_time", "")),
                 "resumption_date": row.get("resumption_date") or None,
                 "resumption_time": row.get("resumption_time") or None,
@@ -357,7 +367,7 @@ def _map_day_trading_suspension(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "end_date": row.get("end_date"),
                 "reason": str(row.get("reason", "")),
             }
@@ -375,7 +385,7 @@ def _map_price_limit(rows: list[dict[str, object]], sym: Symbol | None) -> list[
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "reference_price": _as_float(row.get("reference_price")),
                 "limit_up": _as_float(row.get("limit_up")),
                 "limit_down": _as_float(row.get("limit_down")),
@@ -537,6 +547,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="bars",
         row_mapper=_map_price_monthly,
         whole_market_ok=True,
+        # One bar per calendar month — a 30-day window can straddle a month boundary and miss
+        # the only bar in range (confirmed empirically: 0 rows at 30d for 2330).
+        default_lookback_days=120,
     ),
     Capability.INDEX_5S_SNAPSHOT: _DatasetConfig(
         dataset="TaiwanStockEvery5SecondsIndex",
@@ -558,6 +571,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_trading_suspension,
         whole_market_ok=True,
+        default_lookback_days=450,  # rare event — a 30d window usually has no occurrence.
     ),
     Capability.DAY_TRADING_SUSPENSION: _DatasetConfig(
         dataset="TaiwanStockDayTradingSuspension",
@@ -568,6 +582,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_day_trading_suspension,
         whole_market_ok=True,
+        # Rare, irregular per-symbol event — a 30-day window frequently has no occurrence at
+        # all (confirmed empirically: 0 rows at 30d for 2330).
+        default_lookback_days=450,
     ),
     Capability.PRICE_LIMIT: _DatasetConfig(
         dataset="TaiwanStockPriceLimit",

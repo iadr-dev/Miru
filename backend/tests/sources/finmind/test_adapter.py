@@ -166,6 +166,122 @@ async def test_fetch_single_day_capability_without_a_date_fills_a_default_date(
     assert params["date"]  # non-empty ISO date string
 
 
+async def test_fetch_without_a_date_range_uses_the_dataset_own_default_lookback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flat 30-day default starves quarterly-filed datasets (confirmed empirically against
+    the real API: FINANCIALS returns 0 rows at 30 days, hundreds at 450+, for a filing that
+    genuinely exists) — each dataset's `_DatasetConfig.default_lookback_days` must actually
+    reach the adapter's fallback window, not just exist as an unused field. Proven by comparing
+    the computed `start_date` for a quarterly dataset (FINANCIALS, 450d) against a daily one
+    (PRICE_EOD, 30d) for the identical omitted-date call."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    await adapter.fetch(Capability.PRICE_EOD, sym, tls_policy=TLSPolicy.STRICT)
+    price_start = captured["params"]["start_date"]  # type: ignore[index]
+
+    await adapter.fetch(Capability.FINANCIALS, sym, tls_policy=TLSPolicy.STRICT)
+    financials_start = captured["params"]["start_date"]  # type: ignore[index]
+
+    assert financials_start < price_start  # type: ignore[operator]
+
+
+async def test_fetch_omits_data_id_for_a_no_data_id_param_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A handful of FinMind datasets (e.g. `MARGIN_MAINTENANCE_RATIO`, `OPTION_VIX`,
+    `INDUSTRY_CHAIN_MONEY_FLOW`, `PAR_VALUE_CHANGE`) 400 outright if `data_id` is present at
+    all, even on the generic per-symbol `fetch()` path — confirmed empirically against the
+    real API. `_DatasetConfig.no_data_id_param` must actually suppress it, not just describe
+    the constraint in a caveat string."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    await adapter.fetch(Capability.MARGIN_MAINTENANCE_RATIO, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert "data_id" not in captured["params"]  # type: ignore[operator]
+
+
+async def test_fetch_omits_end_date_for_a_no_end_date_param_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`INDUSTRY_CHAIN_MONEY_FLOW`/`BLOCK_TRADE_BROKER_REPORT` 400 outright ("size too large")
+    if `end_date` is present — single-trading-day-per-request only, confirmed empirically. The
+    adapter's own default-range fill-in (triggered by an omitted `start_date`) must not attach
+    one just because it normally would for a ranged dataset."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    await adapter.fetch(Capability.INDUSTRY_CHAIN_MONEY_FLOW, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert "end_date" not in captured["params"]  # type: ignore[operator]
+    assert "start_date" in captured["params"]  # type: ignore[operator]
+
+
+async def test_fetch_omits_start_date_for_a_no_start_date_param_dataset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`CB_INFO`/`UK_STOCK_INFO`/`EUROPE_STOCK_INFO`/`JAPAN_STOCK_INFO` are static whole-roster
+    reference tables — confirmed empirically that passing `start_date`/`end_date` doesn't 400,
+    it silently filters the real, non-empty response down to zero rows. Worse than the 400
+    cases above: a caller relying on the adapter's own default-range fill-in (the entire point
+    of this mechanism) would otherwise never see a row from this dataset."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    await adapter.fetch(Capability.CB_INFO, sym, tls_policy=TLSPolicy.STRICT)
+
+    params = captured["params"]
+    assert isinstance(params, dict)
+    assert "start_date" not in params
+    assert "end_date" not in params
+
+
 def test_token_never_appears_in_result(monkeypatch: pytest.MonkeyPatch) -> None:
     """Governance — no secrets logged/surfaced. The Bearer token must never leak into any
     SourceResult field."""

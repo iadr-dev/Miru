@@ -9,7 +9,7 @@ from __future__ import annotations
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_symbol
+from ._shared import _as_date_str, _as_float, _as_int, _as_optional_str, _DatasetConfig, _row_symbol
 
 
 def _map_margin_short(rows: list[dict[str, object]], sym: Symbol | None) -> list[dict[str, object]]:
@@ -20,7 +20,7 @@ def _map_margin_short(rows: list[dict[str, object]], sym: Symbol | None) -> list
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "margin_purchase_buy": _as_int(row.get("MarginPurchaseBuy")),
                 "margin_purchase_cash_repayment": _as_int(row.get("MarginPurchaseCashRepayment")),
                 "margin_purchase_limit": _as_int(row.get("MarginPurchaseLimit")),
@@ -52,7 +52,7 @@ def _map_margin_short_total_market(
         rows_out.append(
             {
                 "market": Market.TW.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "name": str(row.get("name", "")),
                 "buy": _as_int(row.get("buy")),
                 "sell": _as_int(row.get("sell")),
@@ -74,7 +74,7 @@ def _map_institutional_flow(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "investor": str(row.get("name", "")),
                 "buy": _as_int(row.get("buy")),
                 "sell": _as_int(row.get("sell")),
@@ -96,7 +96,7 @@ def _map_institutional_flow_wide(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "foreign_investor_buy": _as_int(row.get("Foreign_Investor_buy")),
                 "foreign_investor_sell": _as_int(row.get("Foreign_Investor_sell")),
                 "foreign_dealer_self_buy": _as_int(row.get("Foreign_Dealer_Self_buy")),
@@ -124,7 +124,7 @@ def _map_institutional_flow_total_market(
         rows_out.append(
             {
                 "market": Market.TW.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "name": str(row.get("name", "")),
                 "buy": _as_int(row.get("buy")),
                 "sell": _as_int(row.get("sell")),
@@ -143,7 +143,7 @@ def _map_foreign_shareholding(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "stock_name": str(row.get("stock_name", "")),
                 "international_code": str(row.get("InternationalCode", "")),
                 "foreign_investment_remaining_shares": _as_int(
@@ -180,7 +180,7 @@ def _map_shareholding_distribution(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "holding_shares_level": str(row.get("HoldingSharesLevel", "")),
                 "people": _as_int(row.get("people")),
                 "percent": _as_float(row.get("percent")),
@@ -200,13 +200,13 @@ def _map_securities_lending(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "transaction_type": str(row.get("transaction_type", "")),
                 "volume": _as_int(row.get("volume")),
                 "fee_rate": _as_float(row.get("fee_rate")),
                 "close": _as_float(row.get("close")),
-                "original_return_date": row.get("original_return_date") or None,
-                "original_lending_period": row.get("original_lending_period") or None,
+                "original_return_date": _as_optional_str(row.get("original_return_date")),
+                "original_lending_period": _as_optional_str(row.get("original_lending_period")),
             }
         )
     return rows_out
@@ -222,7 +222,7 @@ def _map_margin_short_sale_suspension(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "end_date": row.get("end_date"),
                 "reason": str(row.get("reason", "")),
             }
@@ -240,7 +240,7 @@ def _map_daily_short_sale_balances(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "margin_short_sales_previous_day_balance": _as_int(
                     row.get("MarginShortSalesPreviousDayBalance")
                 ),
@@ -296,7 +296,7 @@ def _map_chip_broker(rows: list[dict[str, object]], sym: Symbol | None) -> list[
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "broker_id": str(row.get("securities_trader_id", "")),
                 "broker_name": str(row.get("securities_trader", "")),
                 "price": _as_float(row.get("price")),
@@ -317,7 +317,7 @@ def _map_government_bank_buysell(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "buy_amount": _as_float(row.get("buy_amount")),
                 "sell_amount": _as_float(row.get("sell_amount")),
                 "buy": _as_int(row.get("buy")),
@@ -335,7 +335,7 @@ def _map_margin_maintenance_ratio(
     return [
         {
             "market": Market.TW.value,
-            "trade_date": row["date"],
+            "trade_date": _as_date_str(row["date"]),
             "total_exchange_margin_maintenance": _as_float(
                 row.get("TotalExchangeMarginMaintenance")
             ),
@@ -354,7 +354,7 @@ def _map_chip_broker_agg(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "broker_id": str(row.get("securities_trader_id", "")),
                 "broker_name": str(row.get("securities_trader", "")),
                 "buy_volume": _as_int(row.get("buy_volume")),
@@ -376,7 +376,7 @@ def _map_block_trade_broker_report(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "broker_id": str(row.get("securities_trader_id", "")),
                 "broker_name": str(row.get("securities_trader", "")),
                 "price": _as_float(row.get("price")),
@@ -396,7 +396,7 @@ def _map_block_trade(rows: list[dict[str, object]], sym: Symbol | None) -> list[
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "trade_type": str(row.get("trade_type", "")),
                 "price": _as_float(row.get("price")),
                 "volume": _as_int(row.get("volume")),
@@ -416,7 +416,7 @@ def _map_loan_collateral_balance(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "exchange_market": str(row.get("market", "")),
                 "margin_previous_day_balance": _as_int(row.get("MarginPreviousDayBalance")),
                 "margin_buy": _as_int(row.get("MarginBuy")),
@@ -509,7 +509,7 @@ def _map_industry_chain_money_flow(
         rows_out.append(
             {
                 "market": Market.TW.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "industry": str(row.get("industry", "")),
                 "sub_industry": str(row.get("sub_industry", "")),
                 "stock_count": _as_int(row.get("stock_count")),
@@ -531,7 +531,7 @@ def _map_disposition_securities(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "stock_name": str(row.get("stock_name", "")),
                 "disposition_cnt": _as_int(row.get("disposition_cnt")),
                 "condition": str(row.get("condition", "")),
@@ -639,6 +639,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_margin_short_sale_suspension,
         whole_market_ok=True,
+        # Rare, irregular event for any one symbol — a 30-day window frequently has no
+        # occurrence at all (confirmed empirically: 0 rows at 30d for 2330).
+        default_lookback_days=450,
     ),
     Capability.DAILY_SHORT_SALE_BALANCES: _DatasetConfig(
         dataset="TaiwanDailyShortSaleBalances",
@@ -667,15 +670,27 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         caveat="Sponsor-tier warrant branch(分點) trading report; published post-close, not live.",
         row_key="rows",
         row_mapper=_map_chip_broker,
+        # Confirmed empirically: 400s ("size too large, we only send one day data") if
+        # end_date is present at all — single trading day per request only.
+        no_end_date_param=True,
     ),
     Capability.GOVERNMENT_BANK_BUYSELL: _DatasetConfig(
-        dataset="TaiwanstockGovernmentBankBuySell",
+        # The FinMind docs' own markdown heading has a typo (lowercase "s" in "stock") — the
+        # real API rejects that spelling with a 422 enum-validation error and requires this
+        # capitalization (confirmed empirically against the live endpoint).
+        dataset="TaiwanStockGovernmentBankBuySell",
         data_class=DataClass.SPONSOR,
         timing_class=TimingClass.OFFICIAL_EOD,
         caveat="Sponsor-tier eight-government-bank(八大行庫) buy/sell row; updates Mon-Fri "
         "~23:30, not live.",
         row_key="rows",
         row_mapper=_map_government_bank_buysell,
+        # Confirmed empirically: 400s ("size too large, we only send one day data") if
+        # end_date is present at all — single trading day per request only. Also 400s
+        # ("data_id don't provide") if data_id is present at all — no per-stock filter exists.
+        no_end_date_param=True,
+        no_data_id_param=True,
+        whole_market_ok=True,
     ),
     Capability.MARGIN_MAINTENANCE_RATIO: _DatasetConfig(
         dataset="TaiwanTotalExchangeMarginMaintenance",
@@ -686,6 +701,10 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_margin_maintenance_ratio,
         whole_market_ok=True,
+        # Confirmed empirically: the upstream endpoint 400s outright if `data_id` is sent at
+        # all, even on the per-symbol `fetch()` path — this dataset has no per-stock filter,
+        # market-level only.
+        no_data_id_param=True,
     ),
     Capability.CHIP_BROKER_AGG: _DatasetConfig(
         dataset="TaiwanStockTradingDailyReportSecIdAgg",
@@ -697,6 +716,12 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_chip_broker_agg,
         special_endpoint="/taiwan_stock_trading_daily_report_secid_agg",
+        # KNOWN UNRESOLVED (confirmed empirically, not yet fixed): the live endpoint's own
+        # validation contradicts the doc's documented Params line (`data_id`+`start_date`+
+        # `end_date`) — a date-range call 400s demanding `securities_trader_id` (undocumented,
+        # not this dataset's actual per-symbol identity param), and a single-`date` call 400s
+        # with "date parameter is missing" even with `date` present. Needs a live capture of a
+        # real successful browser/SDK call to determine the actual required param shape.
     ),
     Capability.BLOCK_TRADE_BROKER_REPORT: _DatasetConfig(
         dataset="TaiwanStockBlockTradingDailyReport",
@@ -707,6 +732,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_block_trade_broker_report,
         whole_market_ok=True,
+        # Confirmed empirically: 400s ("size is too large, we only send one day data") if
+        # end_date is present at all — single trading day per request only.
+        no_end_date_param=True,
     ),
     Capability.BLOCK_TRADE: _DatasetConfig(
         dataset="TaiwanStockBlockTrade",
@@ -737,6 +765,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_industry_chain_money_flow,
         whole_market_ok=True,
+        no_data_id_param=True,  # confirmed empirically: no per-symbol filter exists upstream.
+        no_end_date_param=True,  # confirmed empirically: 400s ("size too large") with end_date.
     ),
     Capability.DISPOSITION_SECURITIES: _DatasetConfig(
         dataset="TaiwanStockDispositionSecuritiesPeriod",
@@ -747,6 +777,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_disposition_securities,
         whole_market_ok=True,
+        default_lookback_days=450,  # rare event — a 30d window usually has no occurrence.
     ),
 }
 

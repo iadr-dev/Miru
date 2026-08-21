@@ -57,6 +57,10 @@ async def test_fetch_gold_price_is_global_scoped(monkeypatch: pytest.MonkeyPatch
     assert isinstance(rows, list)
     assert rows[0]["price"] == 1500.5  # type: ignore[index]
     assert rows[0]["market"] == "GLOBAL"  # type: ignore[index]
+    # Confirmed empirically: FinMind returns a full timestamp ("2020-01-01 00:05:00") for this
+    # dataset's `date` column, not a bare date — pydantic's `date` field rejects that outright
+    # (`date_from_datetime_inexact`) unless truncated first.
+    assert rows[0]["date"] == "2020-01-01"  # type: ignore[index]
 
 
 async def test_fetch_crude_oil_prices_lag_caveat(monkeypatch: pytest.MonkeyPatch) -> None:
