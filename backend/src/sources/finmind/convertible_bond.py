@@ -9,7 +9,7 @@ from __future__ import annotations
 from schemas.enums import Capability, DataClass, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_cb_symbol
+from ._shared import _as_date_str, _as_float, _as_int, _DatasetConfig, _row_cb_symbol
 
 
 def _map_cb_info(rows: list[dict[str, object]], sym: Symbol | None) -> list[dict[str, object]]:
@@ -38,7 +38,7 @@ def _map_cb_daily(rows: list[dict[str, object]], sym: Symbol | None) -> list[dic
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
                 "name": str(row.get("cb_name", "")),
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "transaction_type": str(row.get("transaction_type", "")),
                 "close": _as_float(row.get("close")),
                 "change": _as_float(row.get("change")),
@@ -68,7 +68,7 @@ def _map_cb_institutional_flow(
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
                 "name": str(row.get("cb_name", "")),
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "foreign_investor_buy": _as_float(row.get("Foreign_Investor_Buy")),
                 "foreign_investor_sell": _as_float(row.get("Foreign_Investor_Sell")),
                 "foreign_investor_overbuy": _as_float(row.get("Foreign_Investor_Overbuy")),
@@ -98,7 +98,7 @@ def _map_cb_daily_overview(
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
                 "name": str(row.get("cb_name", "")),
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "initial_date_of_conversion": row.get("InitialDateOfConversion") or None,
                 "due_date_of_conversion": row.get("DueDateOfConversion") or None,
                 "initial_date_of_stop_conversion": row.get("InitialDateOfStopConversion") or None,
@@ -139,7 +139,7 @@ def _map_cb_monthly_analysis(
                 "market": row_sym.market.value,
                 "name": str(row.get("cb_name", "")),
                 "name_en": str(row.get("cb_name_en", "")),
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "custody_balance": _as_int(row.get("custody_balance")),
                 "last_month_balance": _as_int(row.get("last_month_balance")),
                 "change": _as_int(row.get("change")),
@@ -165,7 +165,7 @@ def _map_cb_put_provision(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "name": str(row.get("cb_name", "")),
                 "put_price": _as_float(row.get("PutPrice")),
                 "put_yield_rate": _as_float(row.get("PutYieldRate")),
@@ -184,6 +184,11 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_cb_info,
         whole_market_ok=True,
+        # Confirmed empirically: this is a static reference table with no date semantics — the
+        # doc's own Params line lists no date param, and passing start_date/end_date doesn't
+        # 400, it silently filters the whole response down to zero rows (worse than a 400: a
+        # caller relying on the adapter's default-range fill-in would otherwise never see a row).
+        no_start_date_param=True,
     ),
     Capability.CB_DAILY: _DatasetConfig(
         dataset="TaiwanStockConvertibleBondDaily",
@@ -224,6 +229,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "`symbol` is the `cb_id`. Updates Mon-Sat ~18:00; data range starts 2026-05-01.",
         row_key="rows",
         row_mapper=_map_cb_monthly_analysis,
+        default_lookback_days=120,  # monthly cadence, same reasoning as MONTH_REVENUE.
     ),
     Capability.CB_PUT_PROVISION: _DatasetConfig(
         dataset="TaiwanStockConvertibleBondPutProvision",
@@ -235,6 +241,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_cb_put_provision,
         whole_market_ok=True,
+        default_lookback_days=450,  # rare per-bond event — a 30d window usually has none.
     ),
 }
 

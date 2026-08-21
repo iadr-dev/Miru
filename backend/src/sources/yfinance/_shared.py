@@ -21,10 +21,10 @@ from schemas.market import Symbol
 from schemas.source import SourceHealth, SourceResult
 
 _CAVEAT = (
-    "yfinance-sourced third-party data (Yahoo-aggregated) — reference-only, attributed "
-    "content, not our recommendation; unofficial API, coverage varies by symbol/market; "
-    "never called synchronously on the request hot path in production (batch-fetched for "
-    "the covered symbol list; per-symbol calls here run in a threadpool for isolated fetch)."
+    "structured third-party market data — reference-only, attributed content, not our "
+    "recommendation; unofficial API, coverage varies by symbol/market; never called "
+    "synchronously on the request hot path in production (batch-fetched for the covered "
+    "symbol list; per-symbol calls here run in a threadpool for isolated fetch)."
 )
 
 # TW keeps the original narrow set — analyst/ESG/sector gap-filling only.

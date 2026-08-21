@@ -27,10 +27,12 @@ store, since the score cache is relational (see `scoring_store.py`'s docstring f
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date as date_
+from typing import cast
 
+import pandas as pd
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -127,53 +129,105 @@ def _as_int(value: object) -> int:
     return 0
 
 
-def _trade_date_key(row: dict[str, object]) -> str:
-    value = row.get("trade_date")
-    return value if isinstance(value, str) else str(value)
+# A composite momentum/quality/value score is not a meaningful product for a short-lived,
+# leverage-derivative warrant series — and scoring the full warrant-inclusive universe is also
+# what pushes this batch's per-symbol working set (bars/MA-series/signal dicts held for the
+# whole universe at once, see `_score_and_persist_universe`) past the ~7.6GB it OOM-killed at.
+# Confirmed live against a single day's `TaiwanStockPrice` partition: plain equities are 4-digit
+# numeric codes (~2.3K/day); ETFs are `00`-prefixed 5-6-digit codes (~350/day, e.g. `0050`,
+# `006201`, `00631L`); warrants are 6-digit numeric codes NOT starting with `00` (~17.1K/day —
+# the dominant driver of both the universe size and the OOM) plus a residual few hundred 5-char
+# preferred-share/other exotic codes not starting with `00`. A plain length cutoff alone is not
+# enough: some real preferred-share codes ARE 5 characters (e.g. `2881B`), same length as the
+# 5-char ETF codes, but a warrant is never `00`-prefixed — hence the two-part rule below.
+_MAX_PLAIN_EQUITY_LENGTH = 4
+_MAX_ETF_LENGTH = 6
+_ETF_PREFIX = "00"
 
 
-def _bars_by_symbol(price_rows: Sequence[dict[str, object]]) -> dict[str, tuple[PriceBar, ...]]:
-    """Group the raw price rows by symbol and build each an ascending-by-date `PriceBar` series.
-    A row with no usable close is dropped rather than faked (matches the ingest mapper and
-    `screener/batch.py`'s own `_bars_for_symbol`)."""
-    by_symbol: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for row in price_rows:
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and symbol:
-            by_symbol[symbol].append(row)
+def _scoreable_symbol_mask(symbols: pd.Series) -> pd.Series:
+    lengths = cast("pd.Series", symbols.str.len())
+    is_plain_equity = cast("pd.Series", lengths <= _MAX_PLAIN_EQUITY_LENGTH)
+    starts_with_etf_prefix = cast("pd.Series", symbols.str.startswith(_ETF_PREFIX))
+    is_etf = cast("pd.Series", (lengths <= _MAX_ETF_LENGTH) & starts_with_etf_prefix)
+    return cast("pd.Series", is_plain_equity | is_etf)
 
+
+_PRICE_FRAME_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "turnover",
+)
+_FLOW_FRAME_COLUMNS: tuple[str, ...] = ("symbol", "trade_date", "investor", "buy", "sell")
+
+
+def _bars_by_symbol(price_frame: pd.DataFrame) -> dict[str, tuple[PriceBar, ...]]:
+    """Group the price window's rows by symbol and build each an ascending-by-date `PriceBar`
+    series, from the columnar `read_range_frame` read (see that method's own docstring for why
+    this reads a `DataFrame`, not `list[dict]` — this whole-market, 260-trading-day window is
+    exactly the read `read_range`'s per-row `dict` boxing OOMs on). A row with no usable close
+    is dropped rather than faked (matches the ingest mapper and `screener/batch.py`'s own
+    `_bars_for_symbol`)."""
     bars_by_symbol: dict[str, tuple[PriceBar, ...]] = {}
-    for symbol, rows in by_symbol.items():
-        ordered = sorted(rows, key=_trade_date_key)
-        bars: list[PriceBar] = []
-        for row in ordered:
-            close = _as_float(row.get("close"))
-            high = _as_float(row.get("high"))
-            low = _as_float(row.get("low"))
-            if close is None or close <= 0 or high is None or low is None:
-                continue
-            bars.append(
-                PriceBar(
-                    high=high,
-                    low=low,
-                    close=close,
-                    volume=_as_int(row.get("volume")),
-                    open=_as_float(row.get("open")),
-                    turnover=_as_float(row.get("turnover")),
-                )
+    projected = cast("pd.DataFrame", price_frame.loc[:, list(_PRICE_FRAME_COLUMNS)])
+    # Drop warrant/derivative codes before any per-symbol grouping — a vectorized mask over the
+    # whole frame, not a per-row Python check, so the excluded ~90% of rows (`_scoreable_symbol_
+    # mask`'s own comment has the measured split) never reach `PriceBar` construction at all.
+    scoreable = _scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
+    ordered = cast("pd.DataFrame", projected.loc[scoreable].sort_values("trade_date"))
+    by_symbol: dict[str, list[PriceBar]] = defaultdict(list)
+    # Positional-tuple unpacking (`name=None`), not attribute access: pandas' `itertuples()`
+    # has no stub-backed field/row types (no `pandas-stubs` dependency here), so `row.close`
+    # style access is unknown to pyright end to end. The explicit `tuple[object, ...]` cast
+    # gives every unpacked name a concrete (if erased) type; the column order is guaranteed by
+    # `_PRICE_FRAME_COLUMNS`/the `.loc` reorder above.
+    price_tuples = cast(
+        "Iterable[tuple[object, object, object, object, object, object, object, object]]",
+        ordered.itertuples(index=False, name=None),
+    )
+    for symbol, trade_date, open_, high, low, close, volume, turnover in price_tuples:
+        del trade_date  # only used for the sort above; not part of PriceBar
+        close_f = _as_float(close)
+        high_f = _as_float(high)
+        low_f = _as_float(low)
+        if close_f is None or close_f <= 0 or high_f is None or low_f is None:
+            continue
+        by_symbol[str(symbol)].append(
+            PriceBar(
+                high=high_f,
+                low=low_f,
+                close=close_f,
+                volume=_as_int(volume),
+                open=_as_float(open_),
+                turnover=_as_float(turnover),
             )
+        )
+    for symbol, bars in by_symbol.items():
         bars_by_symbol[symbol] = tuple(bars)
     return bars_by_symbol
 
 
 def _flow_rows_by_symbol(
-    flow_rows: Sequence[dict[str, object]], market: Market
+    flow_frame: pd.DataFrame, market: Market
 ) -> dict[str, list[InstitutionalFlowRow]]:
+    """The `DataFrame` counterpart of `_bars_by_symbol`, same reasoning — see that function's
+    docstring."""
     by_symbol: dict[str, list[InstitutionalFlowRow]] = defaultdict(list)
-    for row in flow_rows:
-        symbol = row.get("symbol")
-        investor = row.get("investor")
-        trade_date = row.get("trade_date")
+    projected = cast("pd.DataFrame", flow_frame.loc[:, list(_FLOW_FRAME_COLUMNS)])
+    # Same warrant/derivative exclusion as `_bars_by_symbol` — see that function's docstring.
+    scoreable = _scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
+    ordered = cast("pd.DataFrame", projected.loc[scoreable])
+    # Positional unpacking — see `_bars_by_symbol`'s docstring for why.
+    flow_tuples = cast(
+        "Iterable[tuple[object, object, object, object, object]]",
+        ordered.itertuples(index=False, name=None),
+    )
+    for symbol, trade_date, investor, buy, sell in flow_tuples:
         if not isinstance(symbol, str) or not symbol or not isinstance(investor, str):
             continue
         if not isinstance(trade_date, str):
@@ -184,8 +238,8 @@ def _flow_rows_by_symbol(
                 market=market,
                 trade_date=date_.fromisoformat(trade_date),
                 investor=investor,
-                buy=_as_int(row.get("buy")),
-                sell=_as_int(row.get("sell")),
+                buy=_as_int(buy),
+                sell=_as_int(sell),
             )
         )
     return by_symbol
@@ -387,8 +441,12 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     financials_window = _trailing_trading_days(ctx, run_date, _FINANCIALS_LOOKBACK_DAYS)
     market_value_window = _trailing_trading_days(ctx, run_date, _MARKET_VALUE_LOOKBACK_DAYS)
 
-    price_rows = ctx.store.read_range(PRICE_EOD_DATASET, market_str, price_window)
-    flow_rows = ctx.store.read_range(INSTITUTIONAL_FLOW_DATASET, market_str, flow_window)
+    price_frame = ctx.store.read_range_frame(
+        PRICE_EOD_DATASET, market_str, price_window, columns=_PRICE_FRAME_COLUMNS
+    )
+    flow_frame = ctx.store.read_range_frame(
+        INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
+    )
     statement_rows = (
         ctx.store.read_range(FINANCIALS_DATASET, market_str, financials_window)
         + ctx.store.read_range(BALANCE_SHEET_DATASET, market_str, financials_window)
@@ -396,8 +454,8 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     )
     market_value_rows = ctx.store.read_range(MARKET_VALUE_DATASET, market_str, market_value_window)
 
-    bars_by_symbol = _bars_by_symbol(price_rows)
-    flow_by_symbol = _flow_rows_by_symbol(flow_rows, market)
+    bars_by_symbol = _bars_by_symbol(price_frame)
+    flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
     lines_by_symbol = _statement_lines_by_symbol(statement_rows)
     market_value_by_symbol = _latest_market_value_by_symbol(market_value_rows)
 

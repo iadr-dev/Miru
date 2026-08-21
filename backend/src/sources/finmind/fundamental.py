@@ -11,7 +11,7 @@ from collections.abc import Callable
 from schemas.enums import Capability, DataClass, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_symbol
+from ._shared import _as_date_str, _as_float, _as_int, _DatasetConfig, _row_symbol
 
 
 def _make_financial_statement_mapper(
@@ -29,7 +29,7 @@ def _make_financial_statement_mapper(
                 {
                     "symbol": row_sym.id,
                     "market": row_sym.market.value,
-                    "period_end": row["date"],
+                    "period_end": _as_date_str(row["date"]),
                     "statement_type": statement_type,
                     "item": str(row.get("type", "")),
                     "origin_name": str(row.get("origin_name", "")),
@@ -75,7 +75,7 @@ def _map_dividend_result(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "before_price": _as_float(row.get("before_price")),
                 "after_price": _as_float(row.get("after_price")),
                 "stock_and_cache_dividend": _as_float(row.get("stock_and_cache_dividend")),
@@ -99,7 +99,7 @@ def _map_month_revenue(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "country": str(row.get("country", "")),
                 "revenue": _as_int(row.get("revenue")),
                 "revenue_month": _as_int(row.get("revenue_month")),
@@ -120,7 +120,7 @@ def _map_capital_reduction_reference_price(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "closing_price_on_last_trading_day": _as_float(
                     row.get("ClosingPriceonTheLastTradingDay")
                 ),
@@ -144,7 +144,7 @@ def _map_market_value(rows: list[dict[str, object]], sym: Symbol | None) -> list
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "market_value": _as_int(row.get("market_value")),
             }
         )
@@ -162,7 +162,7 @@ def _map_stock_delisting(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "stock_name": str(row.get("stock_name", "")),
             }
         )
@@ -180,7 +180,7 @@ def _map_market_value_weight(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "rank": _as_int(row.get("rank")),
                 "stock_name": str(row.get("stock_name", "")),
                 "weight_per": _as_float(row.get("weight_per")),
@@ -198,7 +198,7 @@ def _map_split_price(rows: list[dict[str, object]], sym: Symbol | None) -> list[
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "split_type": str(row.get("type", "")),
                 "before_price": _as_float(row.get("before_price")),
                 "after_price": _as_float(row.get("after_price")),
@@ -220,7 +220,7 @@ def _map_par_value_change(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "date": row["date"],
+                "date": _as_date_str(row["date"]),
                 "stock_name": str(row.get("stock_name", "")),
                 "before_close": _as_float(row.get("before_close")),
                 "after_ref_close": _as_float(row.get("after_ref_close")),
@@ -248,6 +248,10 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         # daily publish time — this only says the *fetch* mechanics are whole-market-capable,
         # not that a caller should expect a fresh row for every stock every day.
         whole_market_ok=True,
+        # Quarterly filings — a 30-day window misses every filing date for most symbols most of
+        # the year (confirmed empirically: 0 rows at 30d, 170 rows at 450d for 2412). 450 days
+        # comfortably spans the last 4-5 quarterly filings even for a late reporter.
+        default_lookback_days=450,
     ),
     Capability.DIVIDENDS: _DatasetConfig(
         dataset="TaiwanStockDividend",
@@ -261,6 +265,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         # so this dataset is fetch-mechanically whole-market-capable without being a
         # daily-clock-time EOD dataset.
         whole_market_ok=True,
+        # Most TW issuers pay once a year — a 30-day window catches almost none of them.
+        default_lookback_days=450,
     ),
     Capability.BALANCE_SHEET: _DatasetConfig(
         dataset="TaiwanStockBalanceSheet",
@@ -270,6 +276,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="lines",
         row_mapper=_map_balance_sheet,
         whole_market_ok=True,
+        default_lookback_days=450,  # quarterly filing, same reasoning as FINANCIALS above.
     ),
     Capability.CASH_FLOW_STATEMENT: _DatasetConfig(
         dataset="TaiwanStockCashFlowsStatement",
@@ -279,6 +286,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="lines",
         row_mapper=_map_cash_flow_statement,
         whole_market_ok=True,
+        default_lookback_days=450,  # quarterly filing, same reasoning as FINANCIALS above.
     ),
     Capability.DIVIDEND_RESULT: _DatasetConfig(
         dataset="TaiwanStockDividendResult",
@@ -289,6 +297,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_dividend_result,
         whole_market_ok=True,
+        # Most TW issuers pay once a year — a 30-day window catches almost none of them.
+        default_lookback_days=450,
     ),
     Capability.MONTH_REVENUE: _DatasetConfig(
         dataset="TaiwanStockMonthRevenue",
@@ -299,6 +309,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_month_revenue,
         whole_market_ok=True,
+        # Monthly filing, but published early the following month — 30d can still straddle a
+        # publish gap; 120d reliably covers the last several months regardless of exact timing.
+        default_lookback_days=120,
     ),
     Capability.CAPITAL_REDUCTION_REFERENCE_PRICE: _DatasetConfig(
         dataset="TaiwanStockCapitalReductionReferencePrice",
@@ -310,6 +323,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "not marked whole_market_ok for the free per-symbol path.",
         row_key="rows",
         row_mapper=_map_capital_reduction_reference_price,
+        default_lookback_days=450,  # rare event — a 30d window usually has no occurrence.
     ),
     Capability.MARKET_VALUE: _DatasetConfig(
         dataset="TaiwanStockMarketValue",
@@ -358,6 +372,10 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_par_value_change,
         whole_market_ok=True,
+        # Confirmed empirically: the upstream endpoint 400s outright ("parameter data_id don't
+        # provide") if `data_id` is sent at all, even on the per-symbol `fetch()` path.
+        no_data_id_param=True,
+        default_lookback_days=450,  # rare event — a 30d window usually has no occurrence.
     ),
 }
 

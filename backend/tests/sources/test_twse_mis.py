@@ -46,6 +46,8 @@ async def test_fetch_returns_one_snapshot(monkeypatch: pytest.MonkeyPatch) -> No
     snapshot = result.payload["snapshot"]
     assert snapshot["symbol"] == "2330"  # type: ignore[index]
     assert snapshot["last_price"] == 596.0  # type: ignore[index]
+    assert snapshot["best_bid_volume"] == "363_747_0_0_0_"  # type: ignore[index]
+    assert snapshot["best_ask_volume"] == "217_312_0_0_0_"  # type: ignore[index]
 
 
 async def test_fetch_empty_msg_array_is_stale(monkeypatch: pytest.MonkeyPatch) -> None:

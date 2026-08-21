@@ -114,6 +114,10 @@ async def test_fetch_stock_news_is_finmind_own_dataset(monkeypatch: pytest.Monke
     rows = result.payload["rows"]
     assert isinstance(rows, list)
     assert rows[0]["source"] == "cnyes"  # type: ignore[index]
+    # Confirmed empirically: FinMind returns a full timestamp ("2020-04-01 01:00:59") for this
+    # dataset's `date` column, not a bare date — pydantic's `date` field rejects that outright
+    # (`date_from_datetime_inexact`) unless truncated first.
+    assert rows[0]["trade_date"] == "2020-04-01"  # type: ignore[index]
 
 
 async def test_fetch_business_indicator_is_market_level(

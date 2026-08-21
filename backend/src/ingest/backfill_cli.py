@@ -14,6 +14,12 @@ the same gate the dev-only startup catch-up uses, just supplied per-invocation i
 The one thing this CLI will never do is let that override paper over a production config: it
 hard-stops unconditionally when `Settings.env == "production"`, regardless of `--yes`, before
 touching any spec, so a mis-set override can never turn into an accidental prod backfill.
+
+The `tw` path also runs `run_derived_compute_catchup` after the whole-market pulls land: the
+score/screener batches are derived-compute passes over those pulls' own output, not
+`WholeMarketJobSpec`s, so `run_preflight_if_enabled`'s per-spec gap-fill never reaches them — see
+that function's own docstring for why a dev restart otherwise leaves them permanently stuck at
+"not yet computed" until the next scheduled fire time.
 """
 
 from __future__ import annotations
@@ -26,6 +32,8 @@ from datetime import UTC, datetime
 
 import structlog
 
+from analytics.scoring_batch import job_scoring_batch
+from analytics.screener.batch import job_screener_flags
 from config.settings import Settings, get_settings
 from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings
@@ -142,6 +150,46 @@ async def run_backfill_cli(
     return tuple(all_runs)
 
 
+async def run_derived_compute_catchup(
+    settings: Settings,
+    ctx: IngestContext,
+    *,
+    override: bool,
+) -> tuple[JobRun, ...]:
+    """The derived-compute counterpart to `run_backfill_cli`: `job_scoring_batch` and
+    `job_screener_flags` are not `WholeMarketJobSpec`s (they read back the partitions the whole-
+    market pulls above just wrote, rather than pulling from FinMind themselves), so
+    `run_preflight_if_enabled`'s own gap-fill never reaches them — a dev box that was down at
+    their 23:55/20:30 Taipei fire time permanently skips that day's compute with no catch-up,
+    unlike every whole-market pull. Run for the most recent trading day whose upstream data has
+    landed; both jobs are idempotent (`upsert_score` replaces the row, `write_partition`
+    overwrites the partition), so re-running here even when today's row already exists is a
+    same-answer no-op, not a correctness risk."""
+    _check_not_production(settings)
+    ingest_on_startup = override or settings.ingest_on_startup
+    if not ingest_on_startup:
+        logger.warning(
+            "ingest_backfill_cli_refused",
+            reason="INGEST_ON_STARTUP is false and --yes was not passed",
+        )
+        return ()
+
+    target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    runs = (
+        await job_screener_flags(target, ctx),
+        await job_scoring_batch(target, ctx),
+    )
+    for run in runs:
+        logger.info(
+            "ingest_backfill_cli_run",
+            dataset=run.dataset,
+            run_date=run.run_date.isoformat(),
+            rows_written=run.rows_written,
+            status=run.status.value,
+        )
+    return runs
+
+
 async def run_us_backfill_cli(
     settings: Settings,
     ctx: IngestContext,
@@ -215,6 +263,7 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
         runs = await run_us_backfill_cli(settings, ctx, override=args.yes, years=years)
     else:
         runs = await run_backfill_cli(settings, ctx, override=args.yes, years=years)
+        runs += await run_derived_compute_catchup(settings, ctx, override=args.yes)
     if not runs:
         logger.info("ingest_backfill_cli_no_runs")
         return 0
@@ -240,5 +289,6 @@ __all__ = [
     "main",
     "parse_args",
     "run_backfill_cli",
+    "run_derived_compute_catchup",
     "run_us_backfill_cli",
 ]

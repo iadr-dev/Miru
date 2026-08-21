@@ -154,6 +154,10 @@ async def test_fetch_securities_lending(monkeypatch: pytest.MonkeyPatch) -> None
     rows = result.payload["rows"]
     assert isinstance(rows, list)
     assert rows[0]["transaction_type"] == "競價"  # type: ignore[index]
+    # Confirmed empirically: FinMind sometimes returns a bare int (e.g. 184, a day count) for
+    # this field instead of a string — pydantic's `str | None` field rejects that outright
+    # unless coerced first.
+    assert rows[0]["original_lending_period"] == "184"  # type: ignore[index]
 
 
 async def test_fetch_margin_short_sale_suspension(monkeypatch: pytest.MonkeyPatch) -> None:

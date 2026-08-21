@@ -21,7 +21,10 @@ fi
 
 if [ "${1:-}" = "--backfill" ]; then
   shift
-  docker compose up --build -d postgres redis migrate ingest
+  # No separate migrate step — every process calls `ensure_schema()` (idempotent
+  # `Base.metadata.create_all`) at its own startup (backend/CLAUDE.md §6), so `ingest`
+  # coming up already has its schema.
+  docker compose up --build -d postgres redis ingest
   docker compose exec ingest python -m ingest.backfill_cli --yes --market tw
   docker compose exec ingest python -m ingest.backfill_cli --yes --market us
 fi

@@ -11,7 +11,14 @@ from collections.abc import Callable
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 
-from ._shared import _as_float, _as_int, _DatasetConfig, _row_derivative_symbol, _row_symbol
+from ._shared import (
+    _as_date_str,
+    _as_float,
+    _as_int,
+    _DatasetConfig,
+    _row_derivative_symbol,
+    _row_symbol,
+)
 
 
 def _map_futopt_info(rows: list[dict[str, object]], _sym: Symbol | None) -> list[dict[str, object]]:
@@ -38,7 +45,7 @@ def _map_futures_daily(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "contract_date": str(row.get("contract_date", "")),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("max")),
@@ -63,7 +70,7 @@ def _map_option_daily(rows: list[dict[str, object]], sym: Symbol | None) -> list
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "contract_date": str(row.get("contract_date", "")),
                 "strike_price": _as_float(row.get("strike_price")),
                 "call_put": str(row.get("call_put", "")),
@@ -92,7 +99,7 @@ def _map_futures_tick(rows: list[dict[str, object]], sym: Symbol | None) -> list
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "contract_date": str(row.get("contract_date", "")),
                 "price": _as_float(row.get("price")),
                 "volume": _as_int(row.get("volume")),
@@ -113,7 +120,7 @@ def _map_futures_spread_tick(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "time": str(row.get("time", "")),
                 "contract_date": str(row.get("contract_date", "")),
                 "price": _as_float(row.get("price")),
@@ -134,7 +141,7 @@ def _map_option_tick(rows: list[dict[str, object]], sym: Symbol | None) -> list[
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "contract_date": str(row.get("contract_date", "")),
                 "exercise_price": _as_float(row.get("ExercisePrice")),
                 "put_call": str(row.get("PutCall", "")),
@@ -158,7 +165,7 @@ def _map_futures_institutional_flow(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "investor": str(row.get("institutional_investors", "")),
                 "long_deal_volume": _as_int(row.get("long_deal_volume")),
                 "long_deal_amount": _as_int(row.get("long_deal_amount")),
@@ -193,7 +200,7 @@ def _map_option_institutional_flow(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "call_put": str(row.get("call_put", "")),
                 "investor": str(row.get("institutional_investors", "")),
                 "long_deal_volume": _as_int(row.get("long_deal_volume")),
@@ -227,7 +234,7 @@ def _map_futures_institutional_flow_after_hours(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "investor": str(row.get("institutional_investors", "")),
                 "long_deal_volume": _as_int(row.get("long_deal_volume")),
                 "long_deal_amount": _as_int(row.get("long_deal_amount")),
@@ -248,7 +255,7 @@ def _map_option_institutional_flow_after_hours(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "call_put": str(row.get("call_put", "")),
                 "investor": str(row.get("institutional_investors", "")),
                 "long_deal_volume": _as_int(row.get("long_deal_volume")),
@@ -274,7 +281,7 @@ def _make_dealer_volume_mapper(
                 {
                     "symbol": row_sym.id,
                     "market": row_sym.market.value,
-                    "trade_date": row["date"],
+                    "trade_date": _as_date_str(row["date"]),
                     "dealer_code": str(row.get("dealer_code", "")),
                     "dealer_name": str(row.get("dealer_name", "")),
                     "volume": _as_int(row.get("volume")),
@@ -300,7 +307,7 @@ def _map_futures_oi_large_traders(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "name": str(row.get("name", "")),
                 "contract_type": str(row.get("contract_type", "")),
                 "buy_top5_trader_open_interest": _as_int(row.get("buy_top5_trader_open_interest")),
@@ -367,7 +374,7 @@ def _map_option_oi_large_traders(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "put_call": str(row.get("put_call", "")),
                 "name": str(row.get("name", "")),
                 "contract_type": str(row.get("contract_type", "")),
@@ -433,7 +440,7 @@ def _map_futures_spread_trading(
             {
                 "symbol": row_sym.id,
                 "market": row_sym.market.value,
-                "trade_date": row["date"],
+                "trade_date": _as_date_str(row["date"]),
                 "contract_date": str(row.get("contract_date", "")),
                 "open": _as_float(row.get("open")),
                 "high": _as_float(row.get("max")),
@@ -465,7 +472,7 @@ def _make_final_settlement_price_mapper(
                 {
                     "symbol": row_sym.id,
                     "market": row_sym.market.value,
-                    "trade_date": row["date"],
+                    "trade_date": _as_date_str(row["date"]),
                     "contract_month": str(row.get("contract_month", "")),
                     "instrument_type": str(row.get(type_field, "")),
                     "instrument_name": str(row.get(name_field, "")),
@@ -492,7 +499,7 @@ def _map_option_vix(rows: list[dict[str, object]], _sym: Symbol | None) -> list[
     return [
         {
             "market": Market.TW.value,
-            "trade_date": row["date"],
+            "trade_date": _as_date_str(row["date"]),
             "time": str(row.get("time", "")),
             "vix": _as_float(row.get("vix")),
         }
@@ -514,7 +521,7 @@ def _make_asset_swap_mapper(
                 {
                     "symbol": row_sym.id,
                     "market": row_sym.market.value,
-                    "trade_date": row["date"],
+                    "trade_date": _as_date_str(row["date"]),
                     "stock_name": str(row.get("stock_name", "")),
                     "notional_amount": _as_int(row.get("notional_amount")),
                     "number_of_transactions": _as_int(row.get("number_of_transactions")),
@@ -715,6 +722,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_option_vix,
         whole_market_ok=True,
+        # Confirmed empirically: 400s ("data_id don't provide") if data_id is sent at all, even
+        # on the per-symbol fetch() path — this dataset has no per-contract filter.
+        no_data_id_param=True,
     ),
     Capability.ASSET_SWAP_FIXED_INCOME_DAILY: _DatasetConfig(
         dataset="TaiwanAssetSwapFixedIncomeDaily",

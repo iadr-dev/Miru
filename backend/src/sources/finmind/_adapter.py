@@ -32,16 +32,15 @@ _HTTP_PAYMENT_REQUIRED = 402  # FinMind's rate-limit-exceeded status
 # endpoints) is omitted — it is not truly optional upstream even though callers may reasonably
 # not name a range (a tool's `DateRangeInput.start_date` is `None`-able so the LLM isn't forced
 # to guess one). Rather than push a mandatory range onto every tool/input model, the adapter
-# fills in a sane default here, once, for every dataset this package serves.
-_DEFAULT_LOOKBACK_DAYS = 30
-# FinMind's own data lags same-day publication (most datasets land ~15:00-21:00) — defaulting a
-# single-day lookup to "yesterday" avoids a default that's simply too early to exist yet.
+# fills in a sane default here, once, for every dataset this package serves — sized per-dataset
+# via `_DatasetConfig.default_lookback_days`, since a quarterly-filed dataset and a daily-EOD one
+# need very different "how far back" windows to reliably contain at least one real row.
 _DEFAULT_SINGLE_DAY_LOOKBACK_DAYS = 1
 
 
-def _default_date_range() -> tuple[str, str]:
+def _default_date_range(config: _DatasetConfig) -> tuple[str, str]:
     today = datetime.now(UTC).date()
-    return (today - timedelta(days=_DEFAULT_LOOKBACK_DAYS)).isoformat(), today.isoformat()
+    return (today - timedelta(days=config.default_lookback_days)).isoformat(), today.isoformat()
 
 
 def _default_single_date() -> str:
@@ -58,6 +57,8 @@ def _build_query(
     query: dict[str, str] = {"dataset": config.dataset}
     if data_id is not None:
         query["data_id"] = data_id
+    if config.no_start_date_param:
+        return query
     start_date = params.get("start_date")
     end_date = params.get("end_date")
     if config.date_param == "date":
@@ -65,11 +66,11 @@ def _build_query(
         query["date"] = str(date_value) if date_value is not None else _default_single_date()
     else:
         if start_date is None:
-            start_date, default_end = _default_date_range()
-            if end_date is None:
+            start_date, default_end = _default_date_range(config)
+            if end_date is None and not config.no_end_date_param:
                 end_date = default_end
         query["start_date"] = str(start_date)
-        if end_date is not None:
+        if end_date is not None and not config.no_end_date_param:
             query["end_date"] = str(end_date)
     return query
 
@@ -124,7 +125,10 @@ class FinMindAdapter:
                 ),
             )
 
-        data_id = sym.finmind or sym.id
+        # A `no_data_id_param` dataset's upstream endpoint 400s if `data_id` is present at all,
+        # even on this per-symbol path — the request goes out whole-market and the row_mapper's
+        # own `sym` argument (still passed) attributes rows to the caller's symbol instead.
+        data_id = None if config.no_data_id_param else (sym.finmind or sym.id)
         return await self._call(config, data_id=data_id, sym=sym, tls_policy=tls_policy, **params)
 
     async def fetch_whole_market(

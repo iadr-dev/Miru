@@ -37,6 +37,28 @@ def _as_int(value: object, default: int = 0) -> int:
     return int(_as_float(value, float(default)))
 
 
+def _as_date_str(value: object) -> str:
+    """Coerce a FinMind `date` column to a bare `YYYY-MM-DD` string. Confirmed empirically:
+    `TaiwanStockNews` returns a full `YYYY-MM-DD HH:MM:SS` timestamp (e.g.
+    `2026-07-18 01:00:59`) rather than a plain date, which pydantic's `date` field rejects
+    outright (`date_from_datetime_inexact`) — every other FinMind dataset's `date` column is
+    already bare, so this truncation is isolated to the one row mapper that needs it rather
+    than applied blindly to every `trade_date`/`date` assignment."""
+    text = str(value)
+    return text.split(" ", 1)[0]
+
+
+def _as_optional_str(value: object) -> str | None:
+    """Coerce an untyped upstream JSON scalar to `str | None`, treating an empty string the same
+    as absent. Confirmed empirically: `SecuritiesLending`'s `original_lending_period` sometimes
+    returns a bare int (e.g. `184`, a day count) rather than a string, which pydantic's `str |
+    None` field rejects outright (`string_type`) — a plain `row.get(key) or None` passes that int
+    straight through instead of coercing it."""
+    if value is None or value == "":
+        return None
+    return str(value)
+
+
 @dataclass(frozen=True)
 class _DatasetConfig:
     dataset: str
@@ -51,6 +73,35 @@ class _DatasetConfig:
     market: Market = Market.TW  # the market this capability's dataset actually covers; only
     # the International Markets + Global Economic Data datasets from the third coverage pass
     # override this away from the TW default.
+    no_end_date_param: bool = False  # this dataset's upstream endpoint 400s if `end_date` is
+    # sent at all (confirmed empirically: TaiwanStockIndustryChainMoneyFlow — "size too large,
+    # we only send one day data" — and TaiwanStockBlockTradingDailyReport, both single-trading-
+    # day-per-request datasets whose own doc explicitly says "do NOT pass end_date"). The
+    # adapter's own default-range fill-in must not silently attach one just because a caller
+    # omitted `start_date`.
+    no_start_date_param: bool = False  # this dataset's upstream endpoint silently returns ZERO
+    # rows if `start_date` is present at all (confirmed empirically:
+    # TaiwanStockConvertibleBondInfo, a static whole-roster reference table with no date
+    # semantics — the doc's own Params line lists no date param, and passing one doesn't 400,
+    # it just filters the response down to nothing). Distinct from the `no_end_date_param`/
+    # `no_data_id_param` 400-on-presence cases below — this one fails silently, which is worse:
+    # a caller that always includes a default start_date (the whole point of this default-range
+    # mechanism) would otherwise never see a row from this dataset.
+    no_data_id_param: bool = False  # this dataset's upstream endpoint 400s if `data_id` is sent
+    # at all (confirmed empirically: TaiwanTotalExchangeMarginMaintenance/
+    # TaiwanStockParValueChange reject it even though the generic per-symbol `fetch()` path
+    # would otherwise always include one) — genuinely whole-market-only, never data_id-filterable,
+    # distinct from `whole_market_ok` (which describes an *additional* omit-data_id form some
+    # per-symbol-capable datasets also support). `fetch()` omits `data_id` when this is set and
+    # relies on the row_mapper's own `sym` parameter to attribute rows to the caller's symbol.
+    default_lookback_days: int = 30  # how far back an omitted `start_date` defaults to — must
+    # cover at least one real occurrence of this dataset's own publish cadence, or a caller that
+    # never names a date always gets zero rows back. A flat 30-day default (fine for genuinely
+    # daily datasets like price/margin/institutional-flow) silently starves anything published
+    # less often than monthly — confirmed empirically: FINANCIALS/BALANCE_SHEET/CASH_FLOW/
+    # DIVIDENDS/etc. returned 0 rows at 30 days and hundreds of rows at 450+. Each category
+    # module sets this explicitly for its own non-daily datasets rather than leaving the
+    # daily-tuned global default to silently under-serve them.
 
 
 def _row_symbol(row: dict[str, object], sym: Symbol | None) -> Symbol:
@@ -114,8 +165,10 @@ def _result(
 
 __all__ = [
     "_DatasetConfig",
+    "_as_date_str",
     "_as_float",
     "_as_int",
+    "_as_optional_str",
     "_result",
     "_row_cb_symbol",
     "_row_derivative_symbol",

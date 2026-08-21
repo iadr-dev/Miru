@@ -135,6 +135,12 @@ class TwseMisAdapter:
             "volume": _to_int(match.get("v")),
             "best_bid": match.get("b"),
             "best_ask": match.get("a"),
+            # `g`/`f` are the per-tier order VOLUME strings paired with `b`/`a`'s per-tier PRICE
+            # strings — same `_`-delimited, same tier order (confirmed live: `b`/`g` and `a`/`f`
+            # each have matching tier counts). Without these, a five-tier depth chart has prices
+            # but no bar length to size each tier by.
+            "best_bid_volume": match.get("g"),
+            "best_ask_volume": match.get("f"),
             "observed_at": match.get("t"),
         }
         return _result(

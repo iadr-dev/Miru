@@ -10,8 +10,11 @@ from datetime import date
 from analytics.fundamentals import (
     FundamentalMetrics,
     compute_fundamental_metrics,
+    compute_revenue_yoy,
     load_symbol_financials,
     load_symbol_market_value,
+    load_symbol_month_revenue,
+    parse_month_revenue_rows,
 )
 from schemas.capabilities import FinancialStatementLine
 from schemas.enums import Market
@@ -76,6 +79,15 @@ def test_gross_profitability_is_ttm_gross_profit_over_total_assets() -> None:
     ]
     metrics = compute_fundamental_metrics(lines, market_value=None)
     assert metrics.gross_profitability == 0.2  # 200 / 1000
+
+
+def test_gross_margin_is_ttm_gross_profit_over_ttm_revenue() -> None:
+    lines = [
+        *_four_quarter_flow("GrossProfit", (50.0, 50.0, 50.0, 50.0), "income_statement"),
+        *_four_quarter_flow("Revenue", (200.0, 200.0, 200.0, 200.0), "income_statement"),
+    ]
+    metrics = compute_fundamental_metrics(lines, market_value=None)
+    assert metrics.gross_margin == 0.25  # 200 / 800
 
 
 def test_earnings_variability_is_cv_of_quarterly_net_income() -> None:
@@ -191,3 +203,47 @@ def test_load_symbol_market_value_picks_latest_and_none_when_absent() -> None:
         )
         is None
     )
+
+
+def _revenue_row(year: int, month: int, revenue: int) -> dict[str, object]:
+    return {
+        "symbol": "2330",
+        "market": "TW",
+        "trade_date": date(year, month, 1).isoformat(),
+        "country": "Taiwan",
+        "revenue": revenue,
+        "revenue_month": month,
+        "revenue_year": year,
+    }
+
+
+def test_compute_revenue_yoy_compares_same_calendar_month_a_year_prior() -> None:
+    rows = parse_month_revenue_rows(
+        [_revenue_row(2023, 6, 100), _revenue_row(2024, 6, 120), _revenue_row(2024, 5, 999)]
+    )
+    assert compute_revenue_yoy(rows) == 0.2  # (120 - 100) / 100
+
+
+def test_compute_revenue_yoy_is_none_when_no_prior_year_month() -> None:
+    rows = parse_month_revenue_rows([_revenue_row(2024, 6, 120)])
+    assert compute_revenue_yoy(rows) is None
+
+
+def test_compute_revenue_yoy_is_none_when_no_rows() -> None:
+    assert compute_revenue_yoy([]) is None
+
+
+def test_load_symbol_month_revenue_filters_symbol() -> None:
+    reader = _FakeReader(
+        {
+            "TaiwanStockMonthRevenue": [
+                _revenue_row(2024, 6, 120),
+                {**_revenue_row(2024, 6, 1), "symbol": "2317"},
+            ]
+        }
+    )
+    rows = load_symbol_month_revenue(
+        reader, market=Market.TW, run_dates=[date(2024, 7, 1)], symbol="2330"
+    )
+    assert {row.symbol for row in rows} == {"2330"}
+    assert rows[0].revenue == 120
