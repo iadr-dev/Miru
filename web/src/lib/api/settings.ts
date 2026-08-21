@@ -10,6 +10,7 @@
  * instead of only having a generic message.
  */
 
+import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 import { apiErrorSchema } from "@/lib/api/schemas";
 import {
@@ -84,7 +85,7 @@ async function requestJson(
   init: RequestInit & { expectBody?: boolean } = {},
 ): Promise<unknown> {
   const { expectBody = true, ...rest } = init;
-  const response = await fetch(apiUrl(path), {
+  const response = await fetchWithRefresh(apiUrl(path), {
     credentials: "include",
     headers: { accept: "application/json", ...rest.headers },
     ...rest,

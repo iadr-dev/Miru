@@ -17,6 +17,7 @@
  *
  * Mirrors `backend/src/api/routers/agent.py::AgentQueryRequest` + `api/sse.py`.
  */
+import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 import { type SseEnvelope, sseEnvelopeSchema } from "@/types/sse";
 
@@ -98,7 +99,7 @@ async function* streamSse(
   signal: AbortSignal,
   errorContext: string,
 ): AsyncGenerator<AgentStreamFrame> {
-  const response = await fetch(apiUrl(path), {
+  const response = await fetchWithRefresh(apiUrl(path), {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", accept: "text/event-stream" },

@@ -1,16 +1,22 @@
 "use client";
 
-import { DotsThreeIcon, PencilSimpleIcon, StarIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  CheckIcon,
+  DotsThreeIcon,
+  PencilSimpleIcon,
+  StarIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useNewThreadStore } from "@/components/shell/new-thread-store";
 import { useTypewriterOnce } from "@/hooks/use-typewriter-once";
 import { useRouter } from "@/i18n/navigation";
-import { deleteThread, listThreads, patchThread } from "@/lib/api/threads";
+import { deleteThread, deleteThreads, listThreads, patchThread } from "@/lib/api/threads";
 import { cn } from "@/lib/cn";
 import type { Thread } from "@/types/conversation";
 
@@ -31,6 +37,17 @@ export function RecentsList(): ReactNode {
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["threads"], queryFn: ({ signal }) => listThreads(signal) });
   const newThread = useNewThreadStore();
+  // Multi-select ("Select" mode) is a separate mode from normal browsing, not a per-row toggle
+  // always available — entering it hides every row's own star/rename/delete menu (those verbs
+  // don't apply to a multi-selection) and repurposes row clicks from "navigate" to "toggle
+  // selection". `selectedIds` is cleared whenever select mode is exited (Cancel, or after a
+  // successful bulk delete) so a later "Select" always starts from zero, never a stale carry-over.
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Lives here, not inside `BulkDeleteDialog`, because a successful bulk delete calls
+  // `exitSelecting` — which unmounts `BulkDeleteBar`/`BulkDeleteDialog` immediately — so a
+  // partial-failure toast set inside either of those would never get a chance to render.
+  const [partialFailureCount, setPartialFailureCount] = useState<number | null>(null);
 
   const onSelect = (threadId: string): void => {
     router.push(`/chat?thread=${encodeURIComponent(threadId)}`);
@@ -38,6 +55,23 @@ export function RecentsList(): ReactNode {
 
   const invalidate = (): void => {
     void queryClient.invalidateQueries({ queryKey: ["threads"] });
+  };
+
+  const toggleSelected = (threadId: string): void => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(threadId)) {
+        next.delete(threadId);
+      } else {
+        next.add(threadId);
+      }
+      return next;
+    });
+  };
+
+  const exitSelecting = (): void => {
+    setSelecting(false);
+    setSelectedIds(new Set());
   };
 
   // Once the new thread's row has actually rendered (title present, revealed), the placeholder's
@@ -76,9 +110,24 @@ export function RecentsList(): ReactNode {
   const starred = query.data.filter((thread) => thread.starred);
   const unstarred = query.data.filter((thread) => !thread.starred);
   const groups = groupByRecency(unstarred);
+  const allIds = query.data.map((thread) => thread.id);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3">
+      <RecentsHeader
+        label={t("recents")}
+        selecting={selecting}
+        onEnterSelect={() => setSelecting(true)}
+        onExitSelect={exitSelecting}
+      />
+      {selecting ? (
+        <SelectAllRow
+          checked={allSelected}
+          count={allIds.length}
+          onToggle={() => setSelectedIds(allSelected ? new Set() : new Set(allIds))}
+        />
+      ) : null}
       {showPendingPlaceholder ? <PendingThreadRow /> : null}
       {starred.length > 0 ? (
         <ThreadSection
@@ -86,7 +135,10 @@ export function RecentsList(): ReactNode {
           threads={starred}
           activeThreadId={activeThreadId}
           revealingThreadId={revealingThreadId}
+          selecting={selecting}
+          selectedIds={selectedIds}
           onSelect={onSelect}
+          onToggleSelected={toggleSelected}
           onChanged={invalidate}
         />
       ) : null}
@@ -97,11 +149,121 @@ export function RecentsList(): ReactNode {
           threads={group.threads}
           activeThreadId={activeThreadId}
           revealingThreadId={revealingThreadId}
+          selecting={selecting}
+          selectedIds={selectedIds}
           onSelect={onSelect}
+          onToggleSelected={toggleSelected}
           onChanged={invalidate}
         />
       ))}
+      {selecting && selectedIds.size > 0 ? (
+        <BulkDeleteBar
+          selectedIds={selectedIds}
+          onChanged={invalidate}
+          onDone={exitSelecting}
+          onPartialFailure={setPartialFailureCount}
+        />
+      ) : null}
+      {partialFailureCount !== null ? (
+        <PartialFailureToast
+          count={partialFailureCount}
+          onDismiss={() => setPartialFailureCount(null)}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/** A transient "N couldn't be deleted" toast (interaction-spec §2.13's save-flow toast pattern,
+ * adapted here rather than imported from `components/settings/settings-states.tsx` — that
+ * component is settings-scoped, and this feature stays co-located per the project's own
+ * "feature-only shapes stay co-located" convention). Auto-dismisses so it never lingers as
+ * permanent chrome. */
+function PartialFailureToast({
+  count,
+  onDismiss,
+}: {
+  count: number;
+  onDismiss: () => void;
+}): ReactNode {
+  const t = useTranslations("chat.threads.select");
+  useEffect(() => {
+    const id = setTimeout(onDismiss, 4000);
+    return () => clearTimeout(id);
+  }, [onDismiss]);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-[var(--radius-pill)]",
+        "border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-[13px] text-[var(--text)] shadow-lg",
+      )}
+    >
+      {t("partialFailed", { count })}
+    </div>
+  );
+}
+
+/** The "最近" section label + the "Select"/"Cancel select" toggle in its trailing edge — only
+ * shown once there's at least one thread to select (the empty/error/loading states above never
+ * reach this component). */
+function RecentsHeader({
+  label,
+  selecting,
+  onEnterSelect,
+  onExitSelect,
+}: {
+  label: string;
+  selecting: boolean;
+  onEnterSelect: () => void;
+  onExitSelect: () => void;
+}): ReactNode {
+  const t = useTranslations("chat.threads.select");
+  return (
+    <div className="flex items-center justify-between pt-2 pb-1">
+      <p className="px-3 font-medium text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
+        {label}
+      </p>
+      <button
+        type="button"
+        onClick={selecting ? onExitSelect : onEnterSelect}
+        className={cn(
+          "min-h-7 rounded-[var(--radius-pill)] px-2.5 font-medium text-[12px] transition-colors",
+          "text-[var(--accent-text)] hover:bg-[var(--surface-2)]",
+          "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+        )}
+      >
+        {selecting ? t("exit") : t("enter")}
+      </button>
+    </div>
+  );
+}
+
+function SelectAllRow({
+  checked,
+  count,
+  onToggle,
+}: {
+  checked: boolean;
+  count: number;
+  onToggle: () => void;
+}): ReactNode {
+  const t = useTranslations("chat.threads.select");
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={cn(
+        "flex min-h-9 w-full items-center gap-2.5 rounded-[var(--radius-button)] px-3 text-left",
+        "text-[13px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)]",
+        "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+      )}
+    >
+      <RowCheckbox checked={checked} />
+      {t("selectAll", { count })}
+    </button>
   );
 }
 
@@ -175,14 +337,20 @@ function ThreadSection({
   threads,
   activeThreadId,
   revealingThreadId,
+  selecting,
+  selectedIds,
   onSelect,
+  onToggleSelected,
   onChanged,
 }: {
   label: string;
   threads: Thread[];
   activeThreadId: string | null;
   revealingThreadId: string | null;
+  selecting: boolean;
+  selectedIds: Set<string>;
   onSelect: (threadId: string) => void;
+  onToggleSelected: (threadId: string) => void;
   onChanged: () => void;
 }): ReactNode {
   return (
@@ -197,7 +365,10 @@ function ThreadSection({
             thread={thread}
             active={thread.id === activeThreadId}
             revealing={thread.id === revealingThreadId}
+            selecting={selecting}
+            checked={selectedIds.has(thread.id)}
             onSelect={() => onSelect(thread.id)}
+            onToggleSelected={() => onToggleSelected(thread.id)}
             onChanged={onChanged}
           />
         ))}
@@ -206,17 +377,44 @@ function ThreadSection({
   );
 }
 
+/** A small, unstyled checkbox glyph — a filled `--accent` box with a check when checked, an
+ * outlined `--border` box otherwise. Not a native `<input type="checkbox">`: every row here is
+ * already a `<button>` (the whole row toggles selection, not just a small hit target inside it),
+ * and nesting an interactive checkbox inside an interactive button is invalid HTML — this is
+ * purely the visual indicator, with the actual toggle semantics living on the row's own button. */
+function RowCheckbox({ checked }: { checked: boolean }): ReactNode {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex size-4 shrink-0 items-center justify-center rounded-[3px] border transition-colors",
+        checked
+          ? "border-[var(--accent)] bg-[var(--accent)]"
+          : "border-[var(--border)] bg-transparent",
+      )}
+    >
+      {checked ? <CheckIcon size={11} weight="bold" className="text-[var(--bg)]" /> : null}
+    </span>
+  );
+}
+
 function ThreadRow({
   thread,
   active,
   revealing,
+  selecting,
+  checked,
   onSelect,
+  onToggleSelected,
   onChanged,
 }: {
   thread: Thread;
   active: boolean;
   revealing: boolean;
+  selecting: boolean;
+  checked: boolean;
   onSelect: () => void;
+  onToggleSelected: () => void;
   onChanged: () => void;
 }): ReactNode {
   const t = useTranslations("chat.threads");
@@ -245,16 +443,19 @@ function ThreadRow({
     <li className="group relative">
       <button
         type="button"
-        onClick={onSelect}
-        aria-current={active ? "true" : undefined}
+        onClick={selecting ? onToggleSelected : onSelect}
+        aria-current={!selecting && active ? "true" : undefined}
+        aria-pressed={selecting ? checked : undefined}
         title={title}
         className={cn(
-          "flex min-h-9 w-full items-center rounded-[var(--radius-button)] px-3 pr-8 text-left transition-colors",
-          active
+          "flex min-h-9 w-full items-center gap-2.5 rounded-[var(--radius-button)] px-3 text-left transition-colors",
+          !selecting && "pr-8",
+          active || checked
             ? "bg-[var(--accent-weak)] text-[var(--text)]"
             : "text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
         )}
       >
+        {selecting ? <RowCheckbox checked={checked} /> : null}
         {revealing && title.length === 0 ? (
           <span
             aria-hidden
@@ -270,80 +471,84 @@ function ThreadRow({
         )}
       </button>
 
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label={t("menu.label")}
-            className={cn(
-              "absolute inset-y-0 right-1 inline-flex w-7 items-center justify-center rounded-[var(--radius-button)]",
-              "text-[var(--text-muted)] opacity-0 transition-opacity hover:bg-[var(--surface)] hover:text-[var(--text)]",
-              "focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100",
-              "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
-            )}
-          >
-            <DotsThreeIcon size={16} weight="bold" aria-hidden />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content
-            side="right"
-            align="start"
-            sideOffset={4}
-            className={cn(
-              "z-50 w-48 rounded-[var(--radius-card)] border border-[var(--border)]",
-              "bg-[var(--surface)] p-1.5 shadow-2xl",
-            )}
-          >
-            <DropdownMenu.Item
-              onSelect={() => starMutation.mutate()}
+      {selecting ? null : (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button
+              type="button"
+              aria-label={t("menu.label")}
               className={cn(
-                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                "text-[var(--text)] text-sm outline-none transition-colors",
-                "data-[highlighted]:bg-[var(--surface-2)]",
+                "absolute inset-y-0 right-1 inline-flex w-7 items-center justify-center rounded-[var(--radius-button)]",
+                "text-[var(--text-muted)] opacity-0 transition-opacity hover:bg-[var(--surface)] hover:text-[var(--text)]",
+                "focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100",
+                "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
               )}
             >
-              <StarIcon
-                size={16}
-                weight={thread.starred ? "fill" : "regular"}
-                aria-hidden
-                className={thread.starred ? "text-[var(--accent)]" : undefined}
-              />
-              {thread.starred ? t("menu.unstar") : t("menu.star")}
-            </DropdownMenu.Item>
-            <DropdownMenu.Item
-              onSelect={() => setRenaming(true)}
+              <DotsThreeIcon size={16} weight="bold" aria-hidden />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content
+              side="right"
+              align="start"
+              sideOffset={4}
               className={cn(
-                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                "text-[var(--text)] text-sm outline-none transition-colors",
-                "data-[highlighted]:bg-[var(--surface-2)]",
+                "z-50 w-48 rounded-[var(--radius-card)] border border-[var(--border)]",
+                "bg-[var(--surface)] p-1.5 shadow-2xl",
               )}
             >
-              <PencilSimpleIcon size={16} weight="regular" aria-hidden />
-              {t("menu.rename")}
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator className="my-1 h-px bg-[var(--border)]" />
-            <DropdownMenu.Item
-              onSelect={() => setDeleteOpen(true)}
-              className={cn(
-                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                "text-[var(--warn)] text-sm outline-none transition-colors",
-                "data-[highlighted]:bg-[var(--surface-2)]",
-              )}
-            >
-              <TrashIcon size={16} weight="regular" aria-hidden />
-              {t("menu.delete")}
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+              <DropdownMenu.Item
+                onSelect={() => starMutation.mutate()}
+                className={cn(
+                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                  "text-[var(--text)] text-sm outline-none transition-colors",
+                  "data-[highlighted]:bg-[var(--surface-2)]",
+                )}
+              >
+                <StarIcon
+                  size={16}
+                  weight={thread.starred ? "fill" : "regular"}
+                  aria-hidden
+                  className={thread.starred ? "text-[var(--accent)]" : undefined}
+                />
+                {thread.starred ? t("menu.unstar") : t("menu.star")}
+              </DropdownMenu.Item>
+              <DropdownMenu.Item
+                onSelect={() => setRenaming(true)}
+                className={cn(
+                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                  "text-[var(--text)] text-sm outline-none transition-colors",
+                  "data-[highlighted]:bg-[var(--surface-2)]",
+                )}
+              >
+                <PencilSimpleIcon size={16} weight="regular" aria-hidden />
+                {t("menu.rename")}
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="my-1 h-px bg-[var(--border)]" />
+              <DropdownMenu.Item
+                onSelect={() => setDeleteOpen(true)}
+                className={cn(
+                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                  "text-[var(--warn)] text-sm outline-none transition-colors",
+                  "data-[highlighted]:bg-[var(--surface-2)]",
+                )}
+              >
+                <TrashIcon size={16} weight="regular" aria-hidden />
+                {t("menu.delete")}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
+      )}
 
-      <DeleteThreadDialog
-        thread={thread}
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        onChanged={onChanged}
-      />
+      {selecting ? null : (
+        <DeleteThreadDialog
+          thread={thread}
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          onChanged={onChanged}
+        />
+      )}
     </li>
   );
 }
@@ -463,6 +668,142 @@ function DeleteThreadDialog({
                 )}
               >
                 {t("delete.confirm")}
+              </button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
+/** The bottom action bar, shown only once ≥1 row is checked — pinned below the thread list
+ * (`RecentsList` renders it last, inside the same scroll container's flow, not floating/fixed;
+ * the sidebar footer/account-chip below it stays put — see `sidebar.tsx`'s own layout, which
+ * this component doesn't need to know about). Delete opens the plural confirm dialog; only a
+ * successful (or partially-successful, see `deleteThreads`) delete exits select mode. */
+function BulkDeleteBar({
+  selectedIds,
+  onChanged,
+  onDone,
+  onPartialFailure,
+}: {
+  selectedIds: Set<string>;
+  onChanged: () => void;
+  onDone: () => void;
+  onPartialFailure: (count: number) => void;
+}): ReactNode {
+  const t = useTranslations("chat.threads.select");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        "sticky bottom-0 mt-1 flex items-center justify-between gap-2 rounded-[var(--radius-card)]",
+        "border border-[var(--border)] bg-[var(--surface)] px-3 py-2 shadow-lg",
+      )}
+    >
+      <span className="text-[13px] text-[var(--text-muted)]">
+        {t("selectedCount", { count: selectedIds.size })}
+      </span>
+      <button
+        type="button"
+        onClick={() => setConfirmOpen(true)}
+        className={cn(
+          "inline-flex min-h-9 items-center gap-1.5 rounded-[var(--radius-button)] px-3 text-[13px]",
+          "text-[var(--warn)] transition-colors hover:bg-[var(--surface-2)]",
+        )}
+      >
+        <TrashIcon size={16} weight="regular" aria-hidden />
+        {t("delete")}
+      </button>
+      <BulkDeleteDialog
+        selectedIds={selectedIds}
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        onChanged={onChanged}
+        onDone={onDone}
+        onPartialFailure={onPartialFailure}
+      />
+    </div>
+  );
+}
+
+function BulkDeleteDialog({
+  selectedIds,
+  open,
+  onOpenChange,
+  onChanged,
+  onDone,
+  onPartialFailure,
+}: {
+  selectedIds: Set<string>;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChanged: () => void;
+  onDone: () => void;
+  onPartialFailure: (count: number) => void;
+}): ReactNode {
+  const t = useTranslations("chat.threads.select");
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteThreads([...selectedIds]),
+    onSuccess: ({ failedIds }) => {
+      onChanged();
+      onOpenChange(false);
+      // A partial failure (some threads deleted, some not) still exits select mode — the list
+      // refetch above shows exactly what survived, which is the honest state to land on rather
+      // than leaving the user stuck in select mode second-guessing which ones failed. The
+      // count-only toast (no per-title detail) mirrors how `deleteThreads` itself only reports
+      // ids, not titles, to the caller. Reported to the parent (`RecentsList`) rather than shown
+      // here, since `onDone` below unmounts this component before a locally-owned toast could
+      // ever render.
+      if (failedIds.length > 0) {
+        onPartialFailure(failedIds.length);
+      }
+      onDone();
+    },
+  });
+
+  return (
+    <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+        <AlertDialog.Content
+          className={cn(
+            "fixed top-1/2 left-1/2 z-50 w-[min(360px,92vw)] -translate-x-1/2 -translate-y-1/2",
+            "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-2xl",
+          )}
+        >
+          <AlertDialog.Title className="font-medium text-[15px] text-[var(--text)]">
+            {t("confirmTitle", { count: selectedIds.size })}
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mt-2 text-[13px] text-[var(--text-muted)]">
+            {t("confirmBody")}
+          </AlertDialog.Description>
+          <div className="mt-4 flex justify-end gap-2">
+            <AlertDialog.Cancel asChild>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex min-h-9 items-center rounded-[var(--radius-button)] px-3 text-[13px]",
+                  "text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]",
+                )}
+              >
+                {t("cancel")}
+              </button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <button
+                type="button"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className={cn(
+                  "inline-flex min-h-9 items-center rounded-[var(--radius-button)] bg-[var(--warn)] px-3 text-[13px] text-[var(--bg)]",
+                  "transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+              >
+                {t("confirm")}
               </button>
             </AlertDialog.Action>
           </div>

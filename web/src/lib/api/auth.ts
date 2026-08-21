@@ -165,3 +165,26 @@ export function refreshSession(): Promise<boolean> {
   }
   return inFlightRefresh;
 }
+
+/** Issue a `fetch`, retrying exactly once via `refreshSession()` if the first attempt comes back
+ * 401 — the same access-token-expired-but-refresh-cookie-still-valid case `fetchMe()` already
+ * handles (account.ts). Every other credentialed client (threads, settings, voice, agent-stream)
+ * hits this same ~15-minute access-token expiry, so they share this one retry path rather than
+ * each re-implementing it — without it, any request outliving the access token (e.g. clicking an
+ * old thread after the tab sat idle) permanently 401s until a full page reload re-runs `fetchMe()`.
+ * `init` isn't narrowed to `credentials: "include"` at the type level (callers that build the
+ * request options via a spread, e.g. `settings.ts`, can't preserve that literal) — every real
+ * caller passes it, but this helper doesn't enforce it structurally.
+ * Returns the second response as-is (still possibly 401, if the refresh itself failed) — the
+ * caller's normal status handling covers that case unchanged. */
+export async function fetchWithRefresh(url: string, init: RequestInit): Promise<Response> {
+  const response = await fetch(url, init);
+  if (response.status !== 401) {
+    return response;
+  }
+  const refreshed = await refreshSession();
+  if (!refreshed) {
+    return response;
+  }
+  return fetch(url, init);
+}

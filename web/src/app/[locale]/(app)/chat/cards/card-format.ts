@@ -15,6 +15,11 @@ export const PLUMBING_KEYS = new Set([
   "non_trading_caveat",
   "sector_caveat",
   "dividend_caveat",
+  // Prose explaining why a sibling field is `null` (e.g. `premium_discount_unavailable_reason`
+  // alongside `etf_fund_info`'s `premium_discount_pct`) — the skill's own instructions already
+  // tell the model to surface that prose in the answer text, so a raw table/stat-grid rendering
+  // of it would just duplicate an unlabeled English sentence as a table cell.
+  "premium_discount_unavailable_reason",
 ]);
 
 export function asArray(value: unknown): Record<string, unknown>[] {
@@ -80,4 +85,19 @@ export function formatNumber(
       ? { minimumFractionDigits: decimals, maximumFractionDigits: decimals }
       : undefined,
   ).format(value);
+}
+
+/** Compact axis-tick formatting (e.g. "4.7億"/"4.7B") for large-magnitude series (monthly
+ * revenue, institutional-flow shares, chip trading value) — a chart Y-axis at its default fixed
+ * width clips a full `formatNumber` rendering of a hundreds-of-billions value (the tick literally
+ * gets cut off mid-digit), whereas `Tooltip`/the data-sheet table below the chart still show the
+ * exact full number via `formatNumber` — this is axis-label-only compaction, never a lossy
+ * display of the real value anywhere else. */
+export function formatCompactNumber(value: number | null, locale: string): string {
+  if (value === null) {
+    return "—";
+  }
+  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(
+    value,
+  );
 }
