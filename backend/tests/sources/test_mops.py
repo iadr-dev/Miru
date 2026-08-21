@@ -14,6 +14,7 @@ from sources.mops import (
     _gregorian_yyyymmdd_to_iso,
     _roc_to_iso_date,
     _roc_yearmonth_to_iso,
+    _text,
 )
 from tests.sources.conftest import load_fixture, make_json_client_factory
 
@@ -63,6 +64,22 @@ def test_roc_yearmonth_to_iso() -> None:
 def test_fmt_time() -> None:
     assert _fmt_time("55412") == "05:54:12"
     assert _fmt_time("91107") == "09:11:07"
+
+
+def test_text_decodes_a_literal_html_numeric_character_reference() -> None:
+    """Confirmed live: `t187ap11_L` served `"姓名":"&#28201;順德"` — a literal, undecoded HTML
+    entity (decimal codepoint 28201 = U+6E29 温) rather than a plain string. `_text` must recover
+    the real character, even though it's the simplified-form glyph the upstream dump itself
+    encodes — not something this adapter corrects to the traditional variant."""
+    assert _text("&#28201;順德") == "温順德"
+
+
+def test_text_is_a_no_op_on_already_plain_text() -> None:
+    assert _text("張安平") == "張安平"
+
+
+def test_text_is_none_for_none() -> None:
+    assert _text(None) is None
 
 
 async def test_fetch_material_announcements_filters_to_symbol_and_converts_dates(

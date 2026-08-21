@@ -36,6 +36,7 @@ future upstream cleanup does not silently break this adapter.
 
 from __future__ import annotations
 
+import html
 from datetime import UTC, date, datetime
 from typing import cast
 
@@ -81,6 +82,17 @@ def _field(row: dict[str, object], name: str) -> object:
         return row[name]
     spaced = f"{name} "
     return row.get(spaced)
+
+
+def _text(value: object) -> str | None:
+    """Free-text fields (人名/公司名/地址/主旨...) in this upstream's raw JSON sometimes carry a
+    literal, undecoded HTML numeric character reference for a CJK character (confirmed live:
+    `t187ap11_L` served `"姓名":"&#28201;順德"` for what should read 溫順德) — `html.unescape` is a
+    no-op on already-plain text, so this is safe to apply unconditionally rather than only when a
+    `&#` pattern happens to be spotted."""
+    if value is None:
+        return None
+    return html.unescape(str(value))
 
 
 def _roc_to_iso_date(roc: str) -> date | None:
@@ -222,12 +234,12 @@ class MopsAdapter:
                 {
                     "symbol": sym.id,
                     "market": sym.market.value,
-                    "company_name": row.get("公司名稱"),
+                    "company_name": _text(row.get("公司名稱")),
                     "announced_date": announced_date.isoformat() if announced_date else None,
                     "announced_time": _fmt_time(announced_time_raw) if announced_time_raw else None,
-                    "subject": _field(row, "主旨"),
-                    "detail": row.get("說明"),
-                    "qualifying_clause": row.get("符合條款"),
+                    "subject": _text(_field(row, "主旨")),
+                    "detail": _text(row.get("說明")),
+                    "qualifying_clause": _text(row.get("符合條款")),
                 }
             )
 
@@ -270,8 +282,8 @@ class MopsAdapter:
                     "symbol": sym.id,
                     "market": sym.market.value,
                     "as_of": _roc_yearmonth_to_iso(as_of_raw),
-                    "person_name": row.get("姓名"),
-                    "title": row.get("職稱"),
+                    "person_name": _text(row.get("姓名")),
+                    "title": _text(row.get("職稱")),
                     "shares_at_election": _to_int(_field(row, "選任時持股")),
                     "current_shares": _to_int(row.get("目前持股")),
                     "pledged_shares": _to_int(row.get("設質股數")),
@@ -309,19 +321,19 @@ class MopsAdapter:
         profile = {
             "symbol": sym.id,
             "market": sym.market.value,
-            "company_name": row.get("公司名稱"),
+            "company_name": _text(row.get("公司名稱")),
             "industry_classification_code": row.get("產業別"),
             "founding_date": _gregorian_yyyymmdd_to_iso(str(row.get("成立日期", ""))),
             "listed_date": _gregorian_yyyymmdd_to_iso(str(row.get("上市日期", ""))),
-            "chairman": row.get("董事長"),
-            "general_manager": row.get("總經理"),
-            "spokesperson": row.get("發言人"),
-            "spokesperson_title": row.get("發言人職稱"),
-            "headquarters": row.get("住址"),
+            "chairman": _text(row.get("董事長")),
+            "general_manager": _text(row.get("總經理")),
+            "spokesperson": _text(row.get("發言人")),
+            "spokesperson_title": _text(row.get("發言人職稱")),
+            "headquarters": _text(row.get("住址")),
             "phone": row.get("總機電話"),
             "website": row.get("網址"),
             "capital": _to_int(row.get("實收資本額")),
-            "auditor": row.get("簽證會計師事務所"),
+            "auditor": _text(row.get("簽證會計師事務所")),
         }
 
         return _result(
