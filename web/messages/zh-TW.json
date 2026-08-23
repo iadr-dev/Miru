@@ -76,10 +76,49 @@
     }
   },
   "market": {
-    "stub": {
-      "signedIn": "你已登入",
-      "body": "大盤儀表板即將推出。這是登入後的預設著陸頁。",
-      "signOut": "登出"
+    "title": "大盤",
+    "teaser": {
+      "cta": "解鎖看完整資料（{tier}）",
+      "tier": {
+        "premium": "Premium",
+        "pro": "Pro"
+      }
+    },
+    "cards": {
+      "institutionalRanking": {
+        "title": "三大法人買賣超"
+      },
+      "marginMaintenance": {
+        "title": "融資維持率",
+        "latest": "最新維持率"
+      },
+      "dayTrading": {
+        "title": "當沖統計",
+        "symbolLabel": "股票代號",
+        "symbolPlaceholder": "輸入股票代號，例如 2330"
+      },
+      "etfMoneyFlow": {
+        "title": "ETF 資金流向",
+        "inflow": "資金流入排行",
+        "outflow": "資金流出排行"
+      },
+      "industryFlow": {
+        "title": "產業鏈資金流向"
+      },
+      "macro": {
+        "title": "宏觀指標",
+        "exchangeRate": "匯率",
+        "centralBankRate": "央行利率",
+        "goldPrice": "黃金價格",
+        "crudeOilPrices": "原油價格",
+        "governmentBondYield": "美債殖利率",
+        "fearGreedIndex": "恐懼與貪婪指數",
+        "businessIndicator": "景氣對策信號"
+      },
+      "loading": "資料載入中…",
+      "empty": "此範圍內查無資料。",
+      "error": "載入失敗，請重試。",
+      "retry": "重試"
     }
   },
   "nav": {
