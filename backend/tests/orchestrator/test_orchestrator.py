@@ -35,7 +35,7 @@ from orchestrator.classifier import IntentClassifier
 from orchestrator.models import Routing
 from orchestrator.orchestrator import Orchestrator
 from orchestrator.synthesis import Synthesizer
-from schemas.enums import Tier
+from schemas.enums import DataClass, Tier
 from skills.registry import SkillRegistry
 from tests.llm.stubs import StubLLMClient, make_text_response, make_tool_call_response
 from tools.base import Tool, ToolContext
@@ -296,6 +296,64 @@ async def test_single_framework_without_skill_uses_warm_tools(
     result = await orch.run("what is 2330", tool_context=ToolContext())
 
     assert "Bare context" in result.final_text
+
+
+async def test_single_framework_reserves_quota_for_sponsor_tool(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    """`single` never went through `_start_fanout` — a skill whose allowlist carries a
+    Sponsor-tier tool (chip-flow-review's `get_chip_flows`) must still reserve against the
+    FinMind pool before running, the same as `subagent`/`team`."""
+    tool_lookup["get_chip_flows"].data_class = DataClass.SPONSOR
+    routing = Routing(framework="single", skills=("chip-flow-review",), reason="one dimension")
+    agent_client = LaneAwareClient({"Chip-flow review": "Foreign net-buy context. Informational."})
+
+    class _RecordingReserver:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, ...]] = []
+
+        async def reserve(self, *, skills: tuple[str, ...], tier: str) -> QuotaReservation:
+            del tier
+            self.calls.append(skills)
+            return QuotaReservation(granted=skills, degraded=())
+
+    reserver = _RecordingReserver()
+    orch = _orchestrator(
+        registry, tool_lookup, routing, agent_client=agent_client, quota_reserver=reserver
+    )
+
+    result = await orch.run("chip flows for 2330", tool_context=ToolContext())
+
+    assert reserver.calls == [("chip-flow-review",)]
+    assert "Foreign net-buy" in result.final_text
+
+
+async def test_single_framework_degrades_sponsor_tool_before_running(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    """A degraded reservation strips the Sponsor tool from the loop's tool set entirely, rather
+    than letting the model call one the pool has no budget for."""
+    tool_lookup["get_chip_flows"].data_class = DataClass.SPONSOR
+    routing = Routing(framework="single", skills=("chip-flow-review",), reason="one dimension")
+    agent_client = LaneAwareClient({"Chip-flow review": "Foreign net-buy context. Informational."})
+
+    class _DegradingReserver:
+        async def reserve(self, *, skills: tuple[str, ...], tier: str) -> QuotaReservation:
+            del tier
+            return QuotaReservation(granted=(), degraded=skills)
+
+    orch = _orchestrator(
+        registry,
+        tool_lookup,
+        routing,
+        agent_client=agent_client,
+        quota_reserver=_DegradingReserver(),
+    )
+
+    await orch.run("chip flows for 2330", tool_context=ToolContext())
+
+    sent_tools = agent_client.calls[-1][1] or []
+    assert all(spec.name != "get_chip_flows" for spec in sent_tools)
 
 
 # ---- subagent (parallel) ----
