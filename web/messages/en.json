@@ -76,10 +76,49 @@
     }
   },
   "market": {
-    "stub": {
-      "signedIn": "You're signed in",
-      "body": "The market dashboard is coming soon. This is the default landing page after sign-in.",
-      "signOut": "Sign out"
+    "title": "Market",
+    "teaser": {
+      "cta": "Unlock full data ({tier})",
+      "tier": {
+        "premium": "Premium",
+        "pro": "Pro"
+      }
+    },
+    "cards": {
+      "institutionalRanking": {
+        "title": "Institutional Buy/Sell"
+      },
+      "marginMaintenance": {
+        "title": "Margin Maintenance Ratio",
+        "latest": "Latest ratio"
+      },
+      "dayTrading": {
+        "title": "Day Trading",
+        "symbolLabel": "Stock symbol",
+        "symbolPlaceholder": "Enter a stock symbol, e.g. 2330"
+      },
+      "etfMoneyFlow": {
+        "title": "ETF Money Flow",
+        "inflow": "Top inflow",
+        "outflow": "Top outflow"
+      },
+      "industryFlow": {
+        "title": "Industry Chain Money Flow"
+      },
+      "macro": {
+        "title": "Macro Indicators",
+        "exchangeRate": "Exchange rate",
+        "centralBankRate": "Central bank rate",
+        "goldPrice": "Gold price",
+        "crudeOilPrices": "Crude oil prices",
+        "governmentBondYield": "US Treasury yield",
+        "fearGreedIndex": "Fear & Greed Index",
+        "businessIndicator": "Business climate indicator"
+      },
+      "loading": "Loading data…",
+      "empty": "No data for this range.",
+      "error": "Failed to load. Please retry.",
+      "retry": "Retry"
     }
   },
   "nav": {
