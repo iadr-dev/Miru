@@ -94,6 +94,17 @@ def test_governance_prompt_states_provider_data_beats_web_search() -> None:
     assert "gap-filling" in prompt
 
 
+def test_governance_prompt_bans_internal_identifiers_and_code_syntax() -> None:
+    """Rule 11 — the fix for a live-found leak: a skill's own tool-call trace (e.g.
+    `get_chip_broker_agg`) and raw Python-ish syntax (`rows: []`) surfaced verbatim in a
+    zh-TW answer. Checked as literal example fragments so a future prompt edit that drops the
+    rule's concrete guidance fails loudly, not just a vague "mentions tool names" substring."""
+    prompt = governance_prompt()
+
+    assert "get_chip_broker_agg" in prompt
+    assert "rows: []" in prompt
+
+
 def test_default_prompt_layers_forwards_locale_to_governance() -> None:
     layers = default_prompt_layers("en")
 

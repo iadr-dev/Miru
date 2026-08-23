@@ -6,6 +6,9 @@ each dataset's own `DataClass` in `sources/finmind/technical.py` exactly.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from datetime import date as date_
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.router import DataAccessRouter
@@ -190,16 +193,72 @@ class GetPriceTickTool(BaseTool):
         )
 
 
+class ValuationBandSummary(BaseModel):
+    """Pre-computed min/max/current PER/PBR/dividend-yield over the whole window a
+    `get_valuation_ratios` call returned — a "近一年本益比在哪個位置" question needs a band
+    comparison, never a hand-summed scan of hundreds of daily rows. `current` is the most recent
+    trading day's own value (not an average), so a caller comparing "current vs range" is
+    comparing like with like."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    window_start: date_
+    window_end: date_
+    per_min: float
+    per_max: float
+    per_current: float
+    pbr_min: float
+    pbr_max: float
+    pbr_current: float
+    dividend_yield_min: float
+    dividend_yield_max: float
+    dividend_yield_current: float
+
+
+def _valuation_band_summary(rows: Sequence[ValuationRatiosRow]) -> ValuationBandSummary | None:
+    if not rows:
+        return None
+    ordered = sorted(rows, key=lambda r: r.trade_date)
+    latest = ordered[-1]
+    return ValuationBandSummary(
+        window_start=ordered[0].trade_date,
+        window_end=latest.trade_date,
+        per_min=min(r.per for r in rows),
+        per_max=max(r.per for r in rows),
+        per_current=latest.per,
+        pbr_min=min(r.pbr for r in rows),
+        pbr_max=max(r.pbr for r in rows),
+        pbr_current=latest.pbr,
+        dividend_yield_min=min(r.dividend_yield for r in rows),
+        dividend_yield_max=max(r.dividend_yield for r in rows),
+        dividend_yield_current=latest.dividend_yield,
+    )
+
+
 class GetValuationRatiosOutput(_RowsOutput):
+    # `band` is declared BEFORE `rows` — `agent.loop._render_result_for_model` serializes this
+    # model to JSON in field-declaration order and hard-truncates at a fixed char budget; with
+    # `rows` first, a ~year-long daily window's raw rows alone can consume the entire budget and
+    # cut `band` out of what the model ever sees (same incident class as
+    # `GetInstitutionalFlowOutput.rolling_net`'s own docstring — confirmed live: the model's own
+    # reasoning trace showed it struggling to even find the latest date in a truncated raw dump,
+    # and gave up without ever stating whether the current PER/PBR was high or low in-range).
+    band: ValuationBandSummary | None = None
     rows: tuple[ValuationRatiosRow, ...] = Field(default_factory=tuple)
 
 
 class GetValuationRatiosTool(BaseTool):
     """`get_valuation_ratios` — wraps `Capability.VALUATION_RATIOS` (daily PER/PBR/dividend
-    yield)."""
+    yield). Also returns `band` — a pre-computed min/max/current summary over the requested
+    window; cite `band`'s figures directly for a "is this cheap/expensive relative to its own
+    range" question rather than scanning `rows` yourself."""
 
     name = "get_valuation_ratios"
-    description = "Get daily PER/PBR/dividend-yield rows for one stock."
+    description = (
+        "Get daily PER/PBR/dividend-yield rows for one stock over an optional date range, plus "
+        "a pre-computed min/max/current summary over that window — cite `band`'s figures "
+        "directly rather than scanning `rows` yourself."
+    )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetValuationRatiosOutput
     data_class = DataClass.PUBLIC
@@ -223,6 +282,7 @@ class GetValuationRatiosTool(BaseTool):
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
+            band=_valuation_band_summary(rows),
             rows=rows,
         )
 
@@ -664,5 +724,6 @@ __all__ = [
     "GetValuationRatiosTool",
     "GetWarrantUnderlyingOutput",
     "GetWarrantUnderlyingTool",
+    "ValuationBandSummary",
     "build_registration_table",
 ]

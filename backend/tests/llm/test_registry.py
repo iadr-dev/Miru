@@ -46,6 +46,27 @@ def test_build_client_anthropic() -> None:
     assert client.model_id == "claude-sonnet-5"
 
 
+def test_build_client_threads_llm_max_output_tokens() -> None:
+    """Regression guard: a live earnings-quality turn was observed getting cut off mid-sentence
+    because every client fell back to its own conservative 4096-token constructor default —
+    `build_client` must pass `Settings.llm_max_output_tokens` through, not silently drop it."""
+    settings = _settings(
+        anthropic_api_key="sk-ant-test",
+        openai_api_key="sk-test",
+        gemini_api_key="gem-test",
+        llm_max_output_tokens=16_000,
+    )
+    anthropic_client = build_client("anthropic", "claude-sonnet-5", settings)
+    openai_client = build_client("openai", "gpt-5.5", settings)
+    gemini_client = build_client("gemini", "gemini-3.5-flash", settings)
+    assert isinstance(anthropic_client, AnthropicClient)
+    assert isinstance(openai_client, OpenAIClient)
+    assert isinstance(gemini_client, GeminiClient)
+    assert anthropic_client._max_tokens == 16_000
+    assert openai_client._max_tokens == 16_000
+    assert gemini_client._max_output_tokens == 16_000
+
+
 def test_build_client_ollama_needs_no_key() -> None:
     settings = _settings(ollama_base_url="http://localhost:11434")
     client = build_client("ollama", "qwen3.6", settings)
@@ -104,7 +125,7 @@ def test_default_client_falls_back_to_anthropic_when_unset() -> None:
     settings = _settings(anthropic_api_key="sk-ant-test")
     client = default_client(settings)
     assert client.provider_id == "anthropic"
-    assert client.model_id == "claude-sonnet-5"
+    assert client.model_id == "claude-sonnet-4-6"
 
 
 def test_default_client_honors_explicit_override() -> None:

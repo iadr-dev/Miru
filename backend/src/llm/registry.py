@@ -49,7 +49,7 @@ class ModelRole(StrEnum):
 # documented default provider. Overridable via
 # `LLM_PROVIDER` / `LLM_MODEL`.
 _DEFAULT_PROVIDER: Final[str] = "anthropic"
-_DEFAULT_MODEL: Final[str] = "claude-sonnet-5"
+_DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
 _ANTHROPIC_SONNET_FALLBACK: Final[str] = "anthropic/claude-sonnet-4-6"
 
 # Suggested per-role defaults, each an ordered fallback chain of "provider/model" specs — the
@@ -129,13 +129,25 @@ def build_client(provider_id: str, model_id: str, settings: Settings | None = No
         return LocalOllamaClient(model_id=model_id, base_url=settings.ollama_base_url)
 
     if provider_id == "anthropic":
-        return AnthropicClient(model_id=model_id, api_key=_require_api_key(provider_id, settings))
+        return AnthropicClient(
+            model_id=model_id,
+            api_key=_require_api_key(provider_id, settings),
+            max_tokens=settings.llm_max_output_tokens,
+        )
 
     if provider_id == "openai":
-        return OpenAIClient(model_id=model_id, api_key=_require_api_key(provider_id, settings))
+        return OpenAIClient(
+            model_id=model_id,
+            api_key=_require_api_key(provider_id, settings),
+            max_tokens=settings.llm_max_output_tokens,
+        )
 
     if provider_id == "gemini":
-        return GeminiClient(model_id=model_id, api_key=_require_api_key(provider_id, settings))
+        return GeminiClient(
+            model_id=model_id,
+            api_key=_require_api_key(provider_id, settings),
+            max_output_tokens=settings.llm_max_output_tokens,
+        )
 
     if provider_id in _OPENAI_COMPAT_BASE_URLS:
         return _build_openai_compat_client(provider_id, model_id, settings)
@@ -156,7 +168,7 @@ def _split_provider_model(spec: str) -> tuple[str, str]:
 
 def default_client(settings: Settings | None = None) -> LLMClient:
     """The client for `LLM_PROVIDER`/`LLM_MODEL`, falling back to the documented
-    default (Anthropic/claude-sonnet-5) when unset."""
+    default (Anthropic/claude-sonnet-4-6) when unset."""
     settings = settings or get_settings()
     provider_id = settings.llm_provider or _DEFAULT_PROVIDER
     model_id = settings.llm_model or _DEFAULT_MODEL

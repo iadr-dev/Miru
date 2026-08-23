@@ -458,6 +458,28 @@ async def test_chat_sends_adaptive_thinking_for_a_supported_model(
     assert kwargs["thinking"] == {"type": "adaptive"}
 
 
+async def test_chat_sends_adaptive_thinking_for_the_deployment_default_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`claude-sonnet-4-6` is `llm/registry.py`'s own `_DEFAULT_MODEL` — the model actually
+    serving live turns in this deployment. Regression guard for the gap this test was added to
+    close: it was missing from `_EXTENDED_THINKING_MODEL_PREFIXES`, so no `thinking` param was
+    ever sent for it and `thinking.delta` never streamed even though the model supports
+    adaptive thinking (confirmed against Anthropic's own supported-model table)."""
+    client = AnthropicClient(model_id="claude-sonnet-4-6", api_key="test-key")
+    create_mock = AsyncMock(
+        return_value=_sdk_message(content=[TextBlock(type="text", text="ok", citations=None)])
+    )
+    monkeypatch.setattr(client._client.messages, "create", create_mock)
+
+    assert client.capabilities.extended_thinking is True
+
+    await client.chat([Message(role=MessageRole.USER, content="hi")])
+
+    _, kwargs = create_mock.call_args
+    assert kwargs["thinking"] == {"type": "adaptive"}
+
+
 async def test_chat_omits_thinking_for_an_unsupported_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

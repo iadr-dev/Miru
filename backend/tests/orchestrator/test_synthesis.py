@@ -83,9 +83,12 @@ async def test_synthesis_partial_declares_missing_dimensions() -> None:
 
     assert provenance.contributing_skills == ("chip-flow-review",)
     assert provenance.missing_skills == ("company-profile",)
-    # the missing dimension is passed into the synthesis prompt (see the sent messages).
+    # the missing dimension is passed into the synthesis prompt as its human-readable label
+    # (never the raw skill id — that would leak an internal identifier into the model's own
+    # merge input, and from there potentially into the user-facing answer).
     sent = client.calls[0][0]
-    assert any("company-profile" in (m.content or "") for m in sent)
+    assert any("個股基本資料" in (m.content or "") for m in sent)
+    assert not any("company-profile" in (m.content or "") for m in sent)
     assert text
 
 
@@ -100,9 +103,12 @@ async def test_synthesis_fallback_concatenates_on_call_failure() -> None:
 
     assert provenance.degraded is True
     assert "synthesis degraded" in text
-    # both successful lanes preserved in the concatenation.
-    assert "chip-flow-review" in text
-    assert "company-profile" in text
+    # both successful lanes preserved in the concatenation, by their human-readable label —
+    # never the raw internal skill id, even in the degraded fallback path.
+    assert "籌碼流向" in text
+    assert "個股基本資料" in text
+    assert "chip-flow-review" not in text
+    assert "company-profile" not in text
 
 
 async def test_synthesis_fallback_still_passes_output_guardrail() -> None:
@@ -146,6 +152,32 @@ async def test_synthesis_model_override_used_when_no_client_injected(
 
     assert captured == [("anthropic", "claude-opus-4-8")]
     assert "Merged via the overridden model" in text
+
+
+async def test_synthesis_uses_zh_tw_system_prompt_by_default() -> None:
+    """Without an explicit `locale`, the synthesis system prompt is zh-TW — the default
+    interface locale — so a fan-out turn's merged answer isn't silently produced in English
+    regardless of what language the user actually asked in (governance rule 8)."""
+    client = StubLLMClient(script=[make_text_response("已合併兩個分析路徑的結果。僅供參考。")])
+    synth = Synthesizer(client=client)
+
+    await synth.synthesize((_lane("chip-flow-review", text="外資買超"),))
+
+    sent = client.calls[0][0]
+    system_message = next(m for m in sent if m.role.value == "system")
+    assert "繁體中文" in (system_message.content or "")
+
+
+async def test_synthesis_honors_an_explicit_locale() -> None:
+    client = StubLLMClient(script=[make_text_response("Merged. Informational only.")])
+    synth = Synthesizer(client=client)
+
+    await synth.synthesize((_lane("chip-flow-review", text="foreign net buy"),), locale="en")
+
+    sent = client.calls[0][0]
+    system_message = next(m for m in sent if m.role.value == "system")
+    assert "entirely in English" in (system_message.content or "")
+    assert "繁體中文" not in (system_message.content or "")
 
 
 async def test_synthesis_conflicting_lanes_are_both_passed_to_the_model() -> None:

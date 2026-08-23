@@ -48,6 +48,9 @@ from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import TURN_END_KIND, EventBus
 from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
+from memory.recall import recall
+from memory.store import SqlAlchemyMemoryStore
+from memory.watchlists import WatchlistStore
 from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import PersonalityContext
 from tools.base import ToolContext
@@ -295,6 +298,23 @@ async def _drive_turn(
     # steer request queued, with no second queue to keep in sync.
     running = state.turn_registry.get(turn_id)
     history = await _load_history(store, user_id=user_id, thread_id=thread_id, turn_id=turn_id)
+
+    # Long-term-memory recall block for this turn's root reply agent (injected as a `pre_llm`
+    # SYSTEM message inside the orchestrator). Bound as a zero-arg thunk over this turn's
+    # user/thread/query so the orchestrator — which has no `memory`/`conversation` layer access
+    # per the dependency rule — never constructs the stores or knows the query shape itself.
+    memory_store = SqlAlchemyMemoryStore(session)
+    watchlist_store = WatchlistStore(session)
+
+    async def recall_provider() -> str | None:
+        return await recall(
+            memory_store=memory_store,
+            watchlist_store=watchlist_store,
+            user_id=user_id,
+            thread_id=thread_id,
+            query=message,
+        )
+
     try:
         result = await state.orchestrator.run(
             message,
@@ -308,6 +328,7 @@ async def _drive_turn(
             locale=locale,
             images=images,
             history=history,
+            recall_provider=recall_provider,
         )
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a

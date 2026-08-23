@@ -110,6 +110,20 @@ _TRADING_PATTERNS: Final[tuple[re.Pattern[str], ...]] = tuple(
     )
 )
 
+# Our own data-provider product names — governance-prompt rule 9: describe data by what it is
+# ("structured market data"), never by whose product fetched it. Deliberately narrower than "any
+# exchange/regulator name": TWSE/TPEx/TAIFEX/MOPS/TDCC are the real-world exchanges and official
+# disclosure/depository systems themselves — pointing the user at "臺灣證券交易所官網" or 集保結算所
+# for the authoritative source is encouraged, legitimate attribution, not a vendor leak. Only our
+# own backend's licensed third-party data-provider choices (FinMind, yfinance, and yfinance's own
+# upstream "Yahoo(-aggregated)" attribution in `sources/yfinance/_shared.py::_CAVEAT` — confirmed
+# leaking verbatim into a `company_profile`/`analyst_consensus`/`esg_score` card's `sector_caveat`/
+# `currentness_caveat` before this fix, since the pattern didn't cover it — which the user never
+# asked about and has no reason to know) are in scope here.
+_VENDOR_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\b(FinMind|yfinance|Yahoo(?:-aggregated)?)\b", re.IGNORECASE
+)
+
 _CAVEAT_MARKERS: Final[tuple[str, ...]] = (
     "not financial advice",
     "not investment advice",
@@ -127,7 +141,7 @@ _NON_TRADING_CAVEAT: Final[str] = (
 )
 
 _REDACTION_NOTICE: Final[str] = (
-    "(此處內容因涉及買賣建議已省略 / content omitted — not a trading recommendation)"
+    "A specific trading recommendation or price target was omitted here."
 )
 
 
@@ -135,7 +149,19 @@ def _contains_trading_language(sentence: str) -> bool:
     return any(pattern.search(sentence) for pattern in _TRADING_PATTERNS)
 
 
-def _split_sentences(text: str) -> list[str]:
+_VENDOR_NAME_REPLACEMENT: Final[str] = "the data provider"
+
+
+def _strip_vendor_names(text: str) -> tuple[str, bool]:
+    """Substitute our own third-party data-provider product names with a generic phrase,
+    in place — unlike trading-language redaction, this never discards the surrounding
+    sentence (the vendor name is normally a single incidental word inside otherwise-fine
+    prose, not the whole clause's reason for existing)."""
+    cleaned, count = _VENDOR_NAME_PATTERN.subn(_VENDOR_NAME_REPLACEMENT, text)
+    return cleaned, count > 0
+
+
+def split_sentences(text: str) -> list[str]:
     """Split on both ASCII (`. ! ?`) and full-width Chinese (`。！？`) sentence terminators.
 
     Chinese sentences don't reliably have trailing whitespace after the terminator (unlike
@@ -163,6 +189,50 @@ def _has_caveat(text: str) -> bool:
     return any(marker in lowered for marker in _CAVEAT_MARKERS)
 
 
+def scan_sentence(sentence: str) -> str:
+    """Apply the same per-sentence trading-language/vendor-name scan `check_output` runs
+    internally, to exactly one already-complete sentence — the seam the streaming answer path
+    (`AgentLoop._stream_step`) calls as each sentence boundary closes, so a live token-by-token
+    render never shows unscanned text: the sentence is redacted/cleaned before it is ever
+    forwarded to a `message.delta` SSE frame, not after. Does not append the non-trading
+    caveat — that is a whole-answer, end-of-stream concern `check_output` alone still owns, run
+    once on the fully assembled text after streaming completes.
+
+    `sentence` here comes from `split_sentences_streaming`, which (unlike `split_sentences`)
+    keeps leading whitespace attached to preserve exact reconstruction of the streamed buffer —
+    that whitespace is split off and reattached around the scan so a redacted sentence still
+    reads "...prose. (redacted) More prose." with the space intact, not "...prose.(redacted)"."""
+    stripped_len = len(sentence) - len(sentence.lstrip())
+    prefix, content = sentence[:stripped_len], sentence[stripped_len:]
+    if not content:
+        return sentence
+    if _contains_trading_language(content):
+        return prefix + _REDACTION_NOTICE
+    cleaned, _ = _strip_vendor_names(content)
+    return prefix + cleaned
+
+
+def split_sentences_streaming(buffer: str) -> list[str]:
+    """Split `buffer` into sentence-boundary chunks WITHOUT stripping or discarding any
+    character — `"".join(split_sentences_streaming(buffer)) == buffer` always holds. This is
+    the incremental counterpart to `split_sentences` (used for the streaming answer path,
+    `AgentLoop._stream_step`): that function calls `text.strip()` up front and consumes the
+    whitespace between sentences, which is safe for a one-shot scan of a complete, final answer
+    but corrupts a growing buffer — `text.strip()`-ing a still-incomplete tail mid-stream would
+    permanently drop the word-boundary space the NEXT delta needs once it arrives (a real bug
+    this function exists to avoid, not just a hypothetical edge case).
+
+    The split point sits immediately after a terminator character, before any following
+    whitespace — so that whitespace rides along with the START of the next chunk instead of
+    being consumed by the split itself. A caller streaming this incrementally treats every
+    chunk except the last as complete (nothing can still be appended to it) and holds the last
+    chunk as the still-growing remainder, exactly like `AgentLoop._stream_step`'s own buffering
+    loop does with `split_sentences`."""
+    if not buffer:
+        return []
+    return re.split(r"(?<=[。！？])|(?<=[.!?])(?=\s)", buffer)
+
+
 def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
     """Scan a proposed final/sub-agent output for trading language and caveat presence.
 
@@ -172,17 +242,25 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
     already carry one. Always `allowed=True`: the veto here is "what text reaches the
     caller", not "does the turn get to finish".
     """
-    sentences = _split_sentences(text)
+    sentences = split_sentences(text)
     cleaned: list[str] = []
     violation = False
+    vendor_name_stripped = False
     for sentence in sentences:
         if _contains_trading_language(sentence):
             violation = True
-            cleaned.append(_REDACTION_NOTICE)
-        else:
-            cleaned.append(sentence)
+            # Collapse back-to-back violations into a single notice — several adjacent
+            # offending sentences read as repetitive noise stacked one after another
+            # (confirmed live: 3 separate copies of the same notice in one short answer)
+            # rather than as N distinct redactions worth calling out individually.
+            if not cleaned or cleaned[-1] != _REDACTION_NOTICE:
+                cleaned.append(_REDACTION_NOTICE)
+            continue
+        stripped_sentence, sentence_had_vendor_name = _strip_vendor_names(sentence)
+        vendor_name_stripped = vendor_name_stripped or sentence_had_vendor_name
+        cleaned.append(stripped_sentence)
 
-    # `_split_sentences` discards each terminator's trailing whitespace, so a plain `" ".join`
+    # `split_sentences` discards each terminator's trailing whitespace, so a plain `" ".join`
     # would insert a space that was never there for CJK text (Chinese sentences run together
     # with no space after `。！？`) while still needing one between ASCII sentences (`. ! ?`).
     # Rejoin using each *preceding* sentence's own terminator to decide.
@@ -196,7 +274,12 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
 
     if candidate == text.strip():
         return HookVerdict(allowed=True)
-    reason = "trading_language_redacted" if violation else "caveat_appended"
+    if violation:
+        reason = "trading_language_redacted"
+    elif vendor_name_stripped:
+        reason = "vendor_name_redacted"
+    else:
+        reason = "caveat_appended"
     return HookVerdict(allowed=True, redacted_text=candidate, reason=reason)
 
 
@@ -211,20 +294,21 @@ REDACTION_NOTICE: Final[str] = _REDACTION_NOTICE
 
 
 def scan_structured_payload(value: object) -> tuple[object, bool]:
-    """Redact trading language from every text-bearing value in a structured payload, walking
-    nested dicts/lists in place-of-value.
+    """Redact trading language and strip our own data-provider vendor names from every
+    text-bearing value in a structured payload, walking nested dicts/lists in place-of-value.
 
     The prose scan (`check_output`) works sentence-by-sentence on a single string; a structured
     card payload instead carries many short string values (labels, names, caveat text) among
     numeric/date fields, so the same trading-language patterns are applied to each string value
-    and an offending one is replaced with the redaction notice. Returns the cleaned value plus
-    whether anything was redacted. The whole-payload caveat is stamped by the caller — there is
-    no prose to append a sentence to here.
+    (offending ones replaced with the redaction notice) and vendor-name substitution runs on
+    every other string. Returns the cleaned value plus whether anything was redacted/substituted.
+    The whole-payload caveat is stamped by the caller — there is no prose to append a sentence to
+    here.
     """
     if isinstance(value, str):
         if _contains_trading_language(value):
             return _REDACTION_NOTICE, True
-        return value, False
+        return _strip_vendor_names(value)
     if isinstance(value, Mapping):
         mapping = cast("Mapping[object, object]", value)
         cleaned_map: dict[str, object] = {}
@@ -248,8 +332,12 @@ def scan_structured_payload(value: object) -> tuple[object, bool]:
 
 __all__ = [
     "NON_TRADING_CAVEAT",
+    "REDACTION_NOTICE",
     "HookVerdict",
     "check_output",
     "check_tool_call",
+    "scan_sentence",
     "scan_structured_payload",
+    "split_sentences",
+    "split_sentences_streaming",
 ]

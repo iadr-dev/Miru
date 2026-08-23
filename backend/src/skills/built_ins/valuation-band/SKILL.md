@@ -40,8 +40,12 @@ outputs: markdown
 2. Call `get_valuation_ratios(stock_id, market, start_date, end_date)` for daily PER/PBR/
    dividend-yield rows over the window (default to a reasonable window, e.g. 1 year, ending at
    `built_at`'s date, if the caller gives no dates — state the default explicitly, including the
-   actual end date used). Compute the window's min/max/current for PER and PBR from the returned
-   rows; do not assume a pre-computed band field exists.
+   actual end date used). Cite the returned `band` field's `per_min`/`per_max`/`per_current`
+   (and the matching `pbr_*`/`dividend_yield_*` fields) directly — it is already the window's
+   min/max/current, pre-computed server-side. Never scan/sum `rows` yourself to recompute the
+   same figures: a ~year-long daily window is large enough that the raw rows alone can exhaust
+   this turn's tool-result render budget, leaving you unable to even find the latest row, let
+   alone answer the caller's question.
 3. Call `get_dividend_schedule(stock_id, market)` for the announced dividend/ex-dividend
    timeline — context for interpreting the yield series, not a separate yield figure.
 4. Synthesize using `output_structure`, in order. Describe "目前 PE 落在窗口內第 X 百分位/接近

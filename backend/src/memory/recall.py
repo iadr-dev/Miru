@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 
-from memory.models import Memory, MemoryScope
+from memory.models import Memory, MemoryScope, MemoryType
 from memory.store import MemoryStore
 from memory.watchlists import WatchlistStoreProtocol
 
@@ -28,7 +28,12 @@ _MEMORY_BLOCK_PREFACE = (
 
 
 def _tokenize(text: str) -> set[str]:
-    return {token for token in re.split(r"\W+", text.lower()) if token}
+    """Split on any run of non-alphanumeric characters, INCLUDING underscore — `\\W` alone
+    treats `_` as a word character, so a snake_case memory key like `answer_style` would never
+    split into `answer`/`style` and could never token-overlap-match a query containing either
+    word on its own (confirmed live: a stored `answer_style` preference scored 0.0 against
+    "What is your answer style preference?" before this fix)."""
+    return {token for token in re.split(r"[\W_]+", text.lower()) if token}
 
 
 def _score(query_tokens: set[str], memory: Memory) -> float:
@@ -67,8 +72,23 @@ async def recall(  # noqa: PLR0913 — one field per recall-scoping dimension
         is_thread_scoped = memory.scope is MemoryScope.THREAD and memory.thread_id == thread_id
         return (1 if is_thread_scoped else 0, _score(query_tokens, memory))
 
-    ranked = sorted(memories, key=sort_key, reverse=True)
-    selected = [memory for memory in ranked if sort_key(memory) > (0, 0.0)][:max_memories]
+    # `preference` memories (how the user wants analysis — verbosity/tone/language/horizon,
+    # per this module's own docstring convention and 09-memory.md's definition) are a global
+    # behavioral setting, not a topical fact — a "keep it concise" preference has no natural
+    # token overlap with an unrelated stock-price question and would never pass the topic
+    # filter below, even though it should apply to every turn regardless of topic. So every
+    # preference memory always qualifies, unscored, and is carved out BEFORE the `max_memories`
+    # cap is applied to the topically-scored remainder — otherwise a preference with a low
+    # topical score could still be sliced away by the cap if enough other memories out-scored
+    # it, defeating the "always include" intent for exactly the callers who own more than
+    # `max_memories` memories total.
+    all_preferences = [memory for memory in memories if memory.type is MemoryType.PREFERENCE]
+    topical_candidates = [memory for memory in memories if memory.type is not MemoryType.PREFERENCE]
+    preferences = sorted(all_preferences, key=sort_key, reverse=True)[:max_memories]
+    ranked_topical = sorted(topical_candidates, key=sort_key, reverse=True)
+    remaining_budget = max(max_memories - len(preferences), 0)
+    selected_topical = [m for m in ranked_topical if sort_key(m) > (0, 0.0)][:remaining_budget]
+    selected = sorted(preferences + selected_topical, key=sort_key, reverse=True)
 
     lines: list[str] = []
     if watchlist_store is not None:

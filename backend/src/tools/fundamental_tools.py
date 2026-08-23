@@ -9,6 +9,7 @@ reduction, delisting, split, par-value change) are bundled into `get_corporate_a
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -141,15 +142,73 @@ class GetDividendResultTool(BaseTool):
         )
 
 
+class MonthRevenueTrendPoint(BaseModel):
+    """One filed month's revenue plus its pre-computed MoM/YoY change — so a skill asking for a
+    "近期月營收趨勢" never forces the model to manually diff adjacent rows itself (the same
+    failure class as `InstitutionalFlowRollingNet`: a live `earnings-quality` turn's reasoning
+    trace showed the model hand-transcribing raw month-revenue rows into a markdown table and
+    running out of response budget before writing any prose — the final answer had zero
+    analysis). `mom_pct`/`yoy_pct` are `None` when the comparison month is absent from `rows`,
+    never a fabricated figure from a mismatched month."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    revenue_year: int
+    revenue_month: int
+    revenue: int
+    mom_pct: float | None = None
+    yoy_pct: float | None = None
+
+
+def _safe_pct_change(current: int, prior: int | None) -> float | None:
+    if prior is None or prior == 0:
+        return None
+    return (current - prior) / prior
+
+
+def _prior_calendar_month(year: int, month: int) -> tuple[int, int]:
+    return (year - 1, 12) if month == 1 else (year, month - 1)
+
+
+def _month_revenue_trend(rows: Sequence[MonthRevenueRow]) -> tuple[MonthRevenueTrendPoint, ...]:
+    ordered = sorted(rows, key=lambda row: (row.revenue_year, row.revenue_month))
+    by_year_month = {(row.revenue_year, row.revenue_month): row.revenue for row in ordered}
+    points: list[MonthRevenueTrendPoint] = []
+    for row in ordered:
+        prior_month_revenue = by_year_month.get(
+            _prior_calendar_month(row.revenue_year, row.revenue_month)
+        )
+        prior_year_revenue = by_year_month.get((row.revenue_year - 1, row.revenue_month))
+        points.append(
+            MonthRevenueTrendPoint(
+                revenue_year=row.revenue_year,
+                revenue_month=row.revenue_month,
+                revenue=row.revenue,
+                mom_pct=_safe_pct_change(row.revenue, prior_month_revenue),
+                yoy_pct=_safe_pct_change(row.revenue, prior_year_revenue),
+            )
+        )
+    return tuple(points)
+
+
 class GetMonthRevenueOutput(_RowsOutput):
+    # `trend` is declared BEFORE `rows` — same field-order-survives-truncation reasoning as
+    # `GetInstitutionalFlowOutput.rolling_net` — and, independent of truncation, gives the model
+    # a pre-computed MoM/YoY figure per month so it never hand-diffs adjacent rows itself.
+    trend: tuple[MonthRevenueTrendPoint, ...] = Field(default_factory=tuple)
     rows: tuple[MonthRevenueRow, ...] = Field(default_factory=tuple)
 
 
 class GetMonthRevenueTool(BaseTool):
-    """`get_month_revenue` — wraps `Capability.MONTH_REVENUE` (月營收 filing)."""
+    """`get_month_revenue` — wraps `Capability.MONTH_REVENUE` (月營收 filing). Also returns
+    `trend` — server-side pre-computed MoM/YoY change per filed month (see
+    `MonthRevenueTrendPoint`'s own docstring for why)."""
 
     name = "get_month_revenue"
-    description = "Get monthly revenue (月營收) filing rows for one stock."
+    description = (
+        "Get monthly revenue (月營收) filing rows for one stock, plus a pre-computed MoM/YoY "
+        "change per month — cite `trend`'s figures directly rather than diffing `rows` yourself."
+    )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetMonthRevenueOutput
     data_class = DataClass.PUBLIC
@@ -174,6 +233,7 @@ class GetMonthRevenueTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
+            trend=_month_revenue_trend(rows),
         )
 
 
@@ -365,5 +425,6 @@ __all__ = [
     "GetMarketValueWeightTool",
     "GetMonthRevenueOutput",
     "GetMonthRevenueTool",
+    "MonthRevenueTrendPoint",
     "build_registration_table",
 ]

@@ -37,8 +37,10 @@ outputs: markdown
 1. Call `get_canonical_context(stock_id, market)` for a currentness baseline, then
    `get_source_health(stock_id, market)` — surface any stale/unreachable source first.
 2. Call `get_month_revenue(stock_id, market, start_date, end_date)` for the 月營收 filing
-   history. Read MoM/YoY figures directly from the rows rather than re-deriving them if the
-   row already carries a computed field; if it doesn't, compute plainly and say so.
+   history. Cite the returned `trend` field's `mom_pct`/`yoy_pct` directly — it is already
+   pre-computed per filed month server-side. Never hand-diff adjacent `rows` yourself: a long
+   window's raw rows are enough to exhaust this turn's tool-result render budget on their own,
+   leaving no room to write the actual synthesis the caller asked for.
 3. Call `get_financial_statement(stock_id, market, statement_type, start_date, end_date)` —
    this tool serves **balance_sheet or cash_flow only** (the income statement is not this
    tool's scope; if the caller wants margin/EPS detail, note that only revenue and dividend

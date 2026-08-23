@@ -110,6 +110,64 @@ async def test_recall_renders_watchlist_snapshot() -> None:
     assert "2330" in result
 
 
+async def test_recall_tokenizes_snake_case_keys_on_underscore() -> None:
+    """Regression guard: `\\W` alone treats `_` as a word character, so `answer_style` never
+    split into `answer`/`style` and could never match a query naming either word on its own —
+    confirmed live: a stored `answer_style` preference scored 0.0 against "What is your answer
+    style preference?" before this fix."""
+    memory = _memory("answer_style", {"tone": "concise bullet points"})
+    result = await recall(
+        memory_store=_StubMemoryStore([memory]),
+        watchlist_store=None,
+        user_id="user-1",
+        thread_id=None,
+        query="What is your answer style preference?",
+    )
+    assert result is not None
+    assert "answer_style" in result
+
+
+async def test_recall_always_includes_preference_memories_regardless_of_topic() -> None:
+    """Regression guard: a `preference` memory (verbosity/tone/language/horizon, per this
+    module's own docstring + 09-memory.md) is a global behavioral setting, not a topical fact —
+    it must surface for every query, not just ones that happen to share vocabulary with it.
+    Confirmed live: a stored "answer in concise bullets" preference did not influence an
+    unrelated stock-price-quote turn before this fix."""
+    preference = _memory("answer_style", {"tone": "concise bullet points"})
+    result = await recall(
+        memory_store=_StubMemoryStore([preference]),
+        watchlist_store=None,
+        user_id="user-1",
+        thread_id=None,
+        query="台積電2330現在股價多少？",
+    )
+    assert result is not None
+    assert "answer_style" in result
+
+
+async def test_recall_preference_does_not_starve_topically_relevant_findings() -> None:
+    """A preference memory must not consume the entire `max_memories` budget when a
+    topically-relevant finding also qualifies — both should surface up to the cap."""
+    preference = _memory("answer_style", {"tone": "concise bullet points"}, id="mem-pref")
+    finding = _memory(
+        "chip flow note",
+        {"observation": "8-day foreign net-buy streak on 2330"},
+        id="mem-finding",
+        type=MemoryType.FINDING,
+    )
+    result = await recall(
+        memory_store=_StubMemoryStore([preference, finding]),
+        watchlist_store=None,
+        user_id="user-1",
+        thread_id=None,
+        query="tell me about chip flow",
+        max_memories=5,
+    )
+    assert result is not None
+    assert "answer_style" in result
+    assert "chip flow note" in result
+
+
 async def test_recall_ranks_thread_scoped_memory_above_user_scoped_at_equal_overlap() -> None:
     user_memory = _memory("dividend note", {"observation": "dividend note for stock"})
     thread_memory = _memory(

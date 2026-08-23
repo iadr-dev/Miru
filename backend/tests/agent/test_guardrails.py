@@ -10,7 +10,9 @@ from agent.guardrails import (
     REDACTION_NOTICE,
     check_output,
     check_tool_call,
+    scan_sentence,
     scan_structured_payload,
+    split_sentences_streaming,
 )
 
 pytestmark = pytest.mark.governance
@@ -93,6 +95,18 @@ def test_check_output_redacts_only_the_offending_sentence_in_chinese_prose() -> 
     assert REDACTION_NOTICE in verdict.redacted_text
 
 
+def test_check_output_collapses_consecutive_redactions_into_one_notice() -> None:
+    """Regression guard: a live analyst-consensus answer redacted 3 separate adjacent
+    sentences, each with its own copy of the notice stacked back-to-back — repetitive noise,
+    not 3 distinct pieces of information. Adjacent violations must collapse into one notice."""
+    text = "目標價 600 元。買進建議。強力買進評等。近期營收成長主要來自組裝業務擴張。"
+    verdict = check_output(text)
+    assert verdict.allowed is True
+    assert verdict.redacted_text is not None
+    assert verdict.redacted_text.count(REDACTION_NOTICE) == 1
+    assert "近期營收成長主要來自組裝業務擴張" in verdict.redacted_text
+
+
 def test_check_output_leaves_institutional_flow_prose_alone() -> None:
     """Bare 'bought'/'sold' describing institutional flows that already happened is not
     advice-shaped and must survive untouched (aside from caveat-appending)."""
@@ -158,6 +172,47 @@ def test_check_output_handles_empty_text() -> None:
     assert verdict.allowed is True
 
 
+# ---- check_output: our own data-provider vendor names never reach the user ----
+
+
+@pytest.mark.parametrize("vendor", ["FinMind", "finmind", "yfinance", "YFinance", "Yahoo"])
+def test_check_output_strips_our_own_vendor_names(vendor: str) -> None:
+    verdict = check_output(f"以上所有數據均為 {vendor} 資料，非即時報價。")
+    assert verdict.allowed is True
+    result = verdict.redacted_text if verdict.redacted_text is not None else ""
+    assert vendor.lower() not in result.lower()
+    assert verdict.reason == "vendor_name_redacted"
+
+
+def test_check_output_strips_yahoo_aggregated_the_actual_leaking_caveat_text() -> None:
+    """Regression guard for the real leak: `sources/yfinance/_shared.py::_CAVEAT` says
+    "yfinance-sourced third-party data (Yahoo-aggregated)" — the original vendor-name pattern
+    caught "yfinance" but not "Yahoo", so this exact substring reached a live company_profile
+    card's `sector_caveat` field unredacted."""
+    text = (
+        "yfinance-sourced third-party data (Yahoo-aggregated) — reference-only, attributed "
+        "content, not our recommendation."
+    )
+    verdict = check_output(text, has_market_data=False)
+    result = verdict.redacted_text if verdict.redacted_text is not None else text
+    assert "yahoo" not in result.lower()
+    assert "yfinance" not in result.lower()
+
+
+def test_check_output_leaves_the_real_exchange_and_regulator_names_alone() -> None:
+    """TWSE/TPEx/TAIFEX/MOPS/TDCC are the real-world exchanges and official disclosure/
+    depository systems, not our backend's own data-provider choice — pointing the user at
+    "臺灣證券交易所官網" for authoritative confirmation is encouraged attribution, unlike naming
+    our own FinMind/yfinance provider, which the user never asked about."""
+    text = (
+        "請至 TWSE、TPEx 或 TAIFEX 官網、公開資訊觀測站（MOPS）或集保結算所（TDCC）查核最新公告。"
+    )
+    verdict = check_output(text, has_market_data=False)
+    result = verdict.redacted_text if verdict.redacted_text is not None else text
+    for name in ("TWSE", "TPEx", "TAIFEX", "MOPS", "TDCC"):
+        assert name in result
+
+
 # ---- scan_structured_payload: the card-payload analogue of the prose scan ----
 
 
@@ -185,3 +240,95 @@ def test_scan_structured_payload_passes_through_non_text_scalars() -> None:
     cleaned, redacted = scan_structured_payload(101.0)
     assert redacted is False
     assert cleaned == 101.0
+
+
+def test_scan_structured_payload_strips_vendor_names_from_nested_strings() -> None:
+    payload = {"caveat": "資料來源：FinMind", "nested": ["yfinance snapshot", "neutral fact"]}
+    cleaned, redacted = scan_structured_payload(payload)
+    assert redacted is True
+    assert isinstance(cleaned, dict)
+    assert "finmind" not in str(cleaned["caveat"]).lower()
+    nested = cleaned["nested"]
+    assert isinstance(nested, list)
+    assert "yfinance" not in str(nested[0]).lower()
+    assert nested[1] == "neutral fact"
+
+
+def test_scan_structured_payload_strips_yahoo_from_a_card_caveat_field() -> None:
+    """Regression guard: this is `sources/yfinance/_shared.py::_CAVEAT`'s exact wording, as it
+    reaches a `company_profile`/`analyst_consensus`/`esg_score` card's `sector_caveat`/
+    `currentness_caveat` field via `agent.loop._build_card`'s `scan_structured_payload` call."""
+    payload = {
+        "sector_caveat": (
+            "yfinance-sourced third-party data (Yahoo-aggregated) — reference-only, "
+            "attributed content, not our recommendation."
+        )
+    }
+    cleaned, redacted = scan_structured_payload(payload)
+    assert redacted is True
+    assert isinstance(cleaned, dict)
+    assert "yahoo" not in str(cleaned["sector_caveat"]).lower()
+
+
+# ---- split_sentences_streaming: incremental, nothing-discarded boundary detection ----
+
+
+@pytest.mark.parametrize(
+    "buffer",
+    [
+        "First sentence. Second sentence. Third.",
+        "純中文句子。第二句。第三句",
+        "Mixed 中文 and English. 第二句 ends here.",
+        "A URL https://www.tsmc.com should not split mid-domain.",
+        "12.5% is a decimal, not a sentence end.",
+        "",
+        "No terminator at all",
+        "Ends with terminator.",
+        "結尾是全角句號。",
+    ],
+)
+def test_split_sentences_streaming_never_discards_a_character(buffer: str) -> None:
+    """The core correctness property this function exists for: reassembling every returned
+    chunk reproduces the original buffer byte-for-byte, including all whitespace — unlike
+    `split_sentences` (which `.strip()`s and swallows inter-sentence whitespace, safe only for
+    a one-shot final scan), losing so much as one space here would corrupt a live streaming
+    render the next delta can no longer repair."""
+    assert "".join(split_sentences_streaming(buffer)) == buffer
+
+
+def test_split_sentences_streaming_keeps_a_still_growing_tail_as_its_own_chunk() -> None:
+    """The first sentence closes (terminator + following space) and splits off; the still-open
+    remainder — which could still grow with more text — becomes its own trailing chunk, with
+    its leading space intact (nothing discarded, per the reconstruction invariant above)."""
+    chunks = split_sentences_streaming("First sentence. Second sen")
+    assert chunks == ["First sentence.", " Second sen"]
+
+
+def test_split_sentences_streaming_splits_full_width_terminator_with_no_space_needed() -> None:
+    chunks = split_sentences_streaming("第一句。第二句")
+    assert chunks == ["第一句。", "第二句"]
+
+
+# ---- scan_sentence: streaming per-chunk scan, whitespace-preserving ----
+
+
+def test_scan_sentence_preserves_a_leading_separator_around_a_redaction() -> None:
+    """`scan_sentence` is called on chunks from `split_sentences_streaming`, which (unlike
+    `split_sentences`) can carry a leading space (the word-boundary whitespace riding along
+    with the start of the next chunk) — a redacted sentence must keep that leading space, not
+    silently drop it and glue onto the preceding text with no gap."""
+    result = scan_sentence(" You should buy this stock now.")
+    assert result.startswith(" ")
+    assert REDACTION_NOTICE in result
+    assert "buy" not in result.lower()
+
+
+def test_scan_sentence_leaves_clean_text_untouched() -> None:
+    assert scan_sentence(" Foreign investors bought shares today.") == (
+        " Foreign investors bought shares today."
+    )
+
+
+def test_scan_sentence_strips_vendor_names() -> None:
+    result = scan_sentence(" Data sourced from FinMind.")
+    assert "finmind" not in result.lower()

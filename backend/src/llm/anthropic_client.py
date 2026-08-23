@@ -64,7 +64,18 @@ _CACHE_CONTROL_EPHEMERAL: Final[dict[str, str]] = {"type": "ephemeral"}
 # Models with native extended-thinking support in this build — matched by prefix so a dated
 # snapshot id under either family still qualifies. Verified against the installed SDK's
 # `ThinkingConfigAdaptiveParam` (adaptive thinking, no `budget_tokens`) — see `_thinking_param`.
-_EXTENDED_THINKING_MODEL_PREFIXES: Final[tuple[str, ...]] = ("claude-opus-4-8", "claude-sonnet-5")
+# `claude-sonnet-4-6` (this deployment's own default/agent-role model, `llm/registry.py`'s
+# `_DEFAULT_MODEL`) is on this list too — confirmed against Anthropic's own supported-model
+# table (docs/build-with-claude/thinking-troubleshooting, "Configurations each model rejects"):
+# its row reads "Adaptive, extended (deprecated)" / default "Off" / rejects nothing — adaptive
+# thinking is accepted, just not sent unless a caller opts in, which is what omitting this
+# model from the list was silently doing (no `thinking` param ever sent -> always Off, zero
+# `thinking.delta` events even though the model supports genuinely streaming them).
+_EXTENDED_THINKING_MODEL_PREFIXES: Final[tuple[str, ...]] = (
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-sonnet-4-6",
+)
 
 
 def _supports_extended_thinking(model_id: str) -> bool:
@@ -151,12 +162,13 @@ def _tools_param(
 
 def _thinking_param() -> ThinkingConfigParam:
     """Adaptive-thinking config — verified against the installed SDK's
-    `ThinkingConfigAdaptiveParam`, which carries no `budget_tokens` field. Both models this
-    module currently flags `extended_thinking=True` for (`_EXTENDED_THINKING_MODEL_PREFIXES`)
-    reject the older `{"type": "enabled", "budget_tokens": N}` shape with a 400, so the
-    budget_tokens fallback the task brief allows for pre-4.7-style models is never reached here
-    — only called when `ModelCapabilities.extended_thinking` is `True` for exactly those
-    models."""
+    `ThinkingConfigAdaptiveParam`, which carries no `budget_tokens` field. `claude-opus-4-8`/
+    `claude-sonnet-5` reject the older `{"type": "enabled", "budget_tokens": N}` shape with a
+    400 (adaptive-only per Anthropic's own supported-model table); `claude-sonnet-4-6` still
+    accepts that legacy shape too but it's deprecated there in favor of adaptive — so every
+    model `_EXTENDED_THINKING_MODEL_PREFIXES` flags gets the same adaptive param here, never
+    the budget_tokens fallback the task brief allows for pre-4.7-style models — only called
+    when `ModelCapabilities.extended_thinking` is `True` for exactly those models."""
     return cast("ThinkingConfigParam", {"type": "adaptive"})
 
 

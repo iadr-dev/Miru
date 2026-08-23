@@ -20,6 +20,7 @@ from events.bus import InMemoryEventBus
 from llm.base import (
     LLMResponse,
     Message,
+    MessageRole,
     ModelCapabilities,
     StopReason,
     StreamDoneEvent,
@@ -177,6 +178,65 @@ async def test_none_framework_replies_without_tools(
     assert "Hi!" in result.final_text
     assert result.routing.framework == "none"
     assert result.lanes == ()
+
+
+async def test_recall_provider_injects_a_memory_system_message_into_the_root_agent(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    """A `recall_provider` returning a block causes a SYSTEM memory message to be spliced in
+    before the current user message on the `none`/`single` root reply agent (via the
+    `MemoryRecallPreLLMHook` `pre_llm` seam) — the wiring that makes stored long-term memory
+    actually influence a live answer."""
+    routing = Routing(framework="none", skills=(), reason="greeting")
+    agent_client = StubLLMClient(script=[make_text_response("Noted. Informational only.")])
+    orch = _orchestrator(registry, tool_lookup, routing, agent_client=agent_client)
+    block = "Recalled background context (from prior sessions):\n- [preference] tone: concise"
+
+    async def recall_provider() -> str | None:
+        return block
+
+    await orch.run("hello", tool_context=ToolContext(), recall_provider=recall_provider)
+
+    sent_messages = agent_client.calls[0][0]
+    assert any(m.role is MessageRole.SYSTEM and m.content == block for m in sent_messages), (
+        "the recalled-memory block should appear as its own SYSTEM message on the root agent"
+    )
+
+
+async def test_recall_provider_is_not_injected_into_fan_out_subagent_lanes(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    """The memory block is background for the user-facing reply agent only — fan-out
+    (`subagent`/`team`) lanes never receive `recall_provider`, so the block never lands in any
+    lane's prompt (mirrors the `web_search_enabled`/`images` root-only carve-out)."""
+    routing = Routing(
+        framework="subagent",
+        skills=("chip-flow-review", "company-profile"),
+        reason="two independent dimensions",
+    )
+    lane_client = LaneAwareClient(
+        {
+            "Chip-flow review": "chip lane finding. informational.",
+            "Company profile": "profile lane finding. informational.",
+        }
+    )
+    synth = Synthesizer(
+        client=StubLLMClient(script=[make_text_response("merged both. info only.")])
+    )
+    orch = _orchestrator(
+        registry, tool_lookup, routing, subagent_client=lane_client, synthesizer=synth
+    )
+    block = "Recalled background context (from prior sessions):\n- [preference] tone: concise"
+
+    async def recall_provider() -> str | None:
+        return block
+
+    await orch.run("analyze 2330", tool_context=ToolContext(), recall_provider=recall_provider)
+
+    for messages, _tools in lane_client.calls:
+        assert all(m.content != block for m in messages), (
+            "the recalled-memory block must not leak into a fan-out sub-agent lane's prompt"
+        )
 
 
 async def test_locale_defaults_to_zh_tw_in_system_prompt(
@@ -345,6 +405,12 @@ async def test_subagent_lane_isolation_on_one_lane_exception(
     assert "company-profile" in result.provenance.missing_skills
     errored = [lane for lane in result.lanes if lane.skill == "company-profile"]
     assert errored and errored[0].status == "error"
+    # the raised exception's own message ("lane provider exploded") must never reach
+    # `LaneResult.reason` — that field flows straight into the synthesis prompt
+    # (`Synthesizer._render_missing`) and from there into what the user reads; only the
+    # operator-facing log (`orch_lane_isolated_exception`) gets the raw exception text.
+    assert "lane provider exploded" not in (errored[0].reason or "")
+    assert "RuntimeError" not in (errored[0].reason or "")
 
 
 async def test_subagent_corrective_retry_then_drop_on_empty_lane(

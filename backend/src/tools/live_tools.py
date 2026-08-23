@@ -38,6 +38,8 @@ class LiveQuoteSnapshot(BaseModel):
     volume: int
     best_bid: str | None = None
     best_ask: str | None = None
+    best_bid_volume: str | None = None
+    best_ask_volume: str | None = None
     observed_at: str | None = None
 
 
