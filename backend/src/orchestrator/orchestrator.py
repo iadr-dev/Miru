@@ -68,6 +68,7 @@ from orchestrator.models import (
 )
 from orchestrator.synthesis import NoSuccessfulLanesError, Synthesizer
 from personality.registry import PersonalityRegistry, default_registry
+from schemas.enums import DataClass
 from skills.activity_labels import skill_activity_label
 from skills.models import Skill
 from skills.registry import SkillRegistry
@@ -109,6 +110,10 @@ def _tools_for(skill: Skill, tool_lookup: dict[str, Tool]) -> list[Tool]:
 
 def _warm_tools(tool_lookup: dict[str, Tool]) -> list[Tool]:
     return [tool_lookup[name] for name in _WARM_TOOLS if name in tool_lookup]
+
+
+def _has_sponsor_tool(tools: list[Tool]) -> bool:
+    return any(tool.data_class is DataClass.SPONSOR for tool in tools)
 
 
 _WEB_SEARCH_TOOLS: tuple[str, ...] = ("web_search", "fetch_url")
@@ -551,6 +556,20 @@ class Orchestrator:
         skills = routing.bounded_skills()
         skill = self._registry.get(skills[0]) if skills else None
         tools = _tools_for(skill, self._tool_lookup) if skill else _warm_tools(self._tool_lookup)
+        reservation: QuotaReservation | None = None
+        if skill is not None and _has_sponsor_tool(tools):
+            # The `single` framework never went through `_start_fanout` (unlike `subagent`/
+            # `team`), so a skill whose allowlist carries a Sponsor-tier tool (e.g. chip-flow-
+            # review's `get_chip_flows`) could spend live FinMind Sponsor budget with no
+            # reservation at all — a real scope gap, since `single` handles the common one-symbol
+            # turn. Reserve exactly as the fan-out paths do; a degraded reservation strips the
+            # Sponsor tools from this loop's tool set rather than letting the model call one the
+            # pool has no budget for.
+            reservation = await self._quota_reserver.reserve(
+                skills=(skill.name,), tier=tool_context.tier.value
+            )
+            if reservation.is_degraded(skill.name):
+                tools = [tool for tool in tools if tool.data_class is not DataClass.SPONSOR]
         loop = self._build_loop(
             tools=tools,
             prompt_layers=_skill_prompt_layers(skill, personality_fragment, locale),
