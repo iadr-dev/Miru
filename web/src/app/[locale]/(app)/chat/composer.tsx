@@ -19,14 +19,24 @@ import {
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ClipboardEvent,
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { AttachmentInput } from "@/lib/api/agent-stream";
 import {
   ACCEPTED_ATTACHMENT_MEDIA_TYPES,
   fileToPendingAttachment,
   MAX_ATTACHMENTS_PER_TURN,
   type PendingAttachment,
+  pastedTextToPendingAttachment,
   screenshotToPendingAttachment,
+  shouldAttachPastedText,
 } from "@/lib/api/attachments";
 import { transcribeAudio } from "@/lib/api/voice";
 import { cn } from "@/lib/cn";
@@ -460,6 +470,25 @@ export function Composer({
     [addAttachments],
   );
 
+  // A long paste becomes a removable attachment chip instead of flooding the draft — mirrors
+  // Claude.ai's own composer behavior. A paste that also carries a `File` (e.g. copying an image)
+  // is left to the browser's native paste-as-text handling untouched; this only intercepts a
+  // plain-text clipboard payload once it crosses the length/line threshold.
+  const onPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      if (e.clipboardData.files.length > 0) {
+        return;
+      }
+      const text = e.clipboardData.getData("text/plain");
+      if (!shouldAttachPastedText(text)) {
+        return;
+      }
+      e.preventDefault();
+      void pastedTextToPendingAttachment(text).then((attachment) => addAttachments([attachment]));
+    },
+    [addAttachments],
+  );
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
       <form onSubmit={submit}>
@@ -539,6 +568,7 @@ export function Composer({
                   submit();
                 }
               }}
+              onPaste={onPaste}
               rows={1}
               disabled={voiceState === "recording" || voiceState === "transcribing"}
               placeholder={voiceState === "recording" ? t("listening") : t("placeholder")}
@@ -853,8 +883,9 @@ function VoiceOrSendButton({
 /** The inline preview for one staged (not-yet-sent) attachment, with a small "×" remove button —
  * an image shows a thumbnail (plain `<img>`, not `next/image`: the source is either an ephemeral
  * `data:`/blob object URL that was never going to be optimized/served by Next's image pipeline
- * anyway), a document shows a filename chip with a file icon instead, since there's no visual
- * thumbnail to render for a `.docx`/`.pdf`/etc. */
+ * anyway), a long paste shows a scrollable content preview + a "Pasted" badge (`PastedTextPreview`
+ * below), and any other document shows a filename chip with a file icon instead, since there's no
+ * visual thumbnail to render for a `.docx`/`.pdf`/etc. */
 function AttachmentPreview({
   attachment,
   removeLabel,
@@ -864,6 +895,12 @@ function AttachmentPreview({
   removeLabel: string;
   onRemove: () => void;
 }): ReactNode {
+  if (attachment.pastedText !== undefined) {
+    return (
+      <PastedTextPreview attachment={attachment} removeLabel={removeLabel} onRemove={onRemove} />
+    );
+  }
+
   if (attachment.isImage && attachment.previewUrl) {
     return (
       <div className="relative inline-flex size-16 shrink-0">
@@ -918,6 +955,66 @@ function AttachmentPreview({
       >
         <XIcon size={12} weight="regular" />
       </button>
+    </div>
+  );
+}
+
+/** The long-paste-turned-attachment card: a small scrollable content preview (never full-height —
+ * this is a glance, not a reader) with a "Pasted" pill badge in its corner, matching the reference
+ * pattern (a long paste collapses to a chip rather than flooding the draft). The character count
+ * gives a size cue without needing to expand the preview. */
+function PastedTextPreview({
+  attachment,
+  removeLabel,
+  onRemove,
+}: {
+  attachment: PendingAttachment;
+  removeLabel: string;
+  onRemove: () => void;
+}): ReactNode {
+  const t = useTranslations("chat.composer");
+  const text = attachment.pastedText ?? "";
+
+  return (
+    <div
+      className={cn(
+        "relative flex w-44 flex-col gap-1.5 rounded-[var(--radius-card)] border border-[var(--border)]",
+        "bg-[var(--surface-2)] p-2.5",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={removeLabel}
+        title={removeLabel}
+        className={cn(
+          "absolute -top-1.5 -right-1.5 inline-flex size-5 items-center justify-center rounded-full",
+          "border border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)]",
+          "transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+        )}
+      >
+        <XIcon size={12} weight="regular" />
+      </button>
+      <p
+        className={cn(
+          "line-clamp-4 whitespace-pre-line text-[11px] text-[var(--text-muted)] leading-snug",
+        )}
+      >
+        {text}
+      </p>
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "inline-flex items-center rounded-[var(--radius-pill)] border border-[var(--border)]",
+            "px-2 py-0.5 font-medium text-[10px] text-[var(--text-muted)] uppercase tracking-wide",
+          )}
+        >
+          {t("attachments.pasted")}
+        </span>
+        <span className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">
+          {t("attachments.pastedCharCount", { count: text.length })}
+        </span>
+      </div>
     </div>
   );
 }

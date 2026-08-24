@@ -41,7 +41,9 @@ export const MAX_ATTACHMENT_SIZE_BYTES = 10_000_000;
 
 /** One attachment staged in the composer before send: the wire payload plus what the UI needs to
  * render a preview/remove row without re-deriving it. `previewUrl` is only set for an image (an
- * object URL for the thumbnail); a document shows its filename/icon instead. */
+ * object URL for the thumbnail); a document shows its filename/icon instead; `pastedText` is only
+ * set for a long-paste-turned-attachment (see `shouldAttachPastedText` below), whose card shows a
+ * truncated content preview + a "pasted" badge instead of either. */
 export type PendingAttachment = {
   id: string;
   filename: string;
@@ -49,7 +51,44 @@ export type PendingAttachment = {
   isImage: boolean;
   previewUrl: string | null;
   input: AttachmentInput;
+  pastedText?: string;
 };
+
+/** Above this length OR line count, a paste is treated as "pasted content" rather than inserted
+ * into the draft — mirrors the Claude.ai/ChatGPT convention of keeping the compose box from being
+ * flooded by a large block of text, instead surfacing it as a removable attachment chip. Whichever
+ * threshold trips first wins (a long single-line paste and a many-short-lines paste are both
+ * "too much text for the box," even though only one of the two counts is large). */
+export const PASTE_TO_ATTACHMENT_CHAR_THRESHOLD = 1500;
+export const PASTE_TO_ATTACHMENT_LINE_THRESHOLD = 20;
+
+export function shouldAttachPastedText(text: string): boolean {
+  if (text.length > PASTE_TO_ATTACHMENT_CHAR_THRESHOLD) {
+    return true;
+  }
+  return text.split("\n").length > PASTE_TO_ATTACHMENT_LINE_THRESHOLD;
+}
+
+/** Converts a long clipboard paste into a `PendingAttachment` carrying the raw text as a
+ * `text/plain` attachment (the backend's `markitdown` extractor passes plain text through as-is —
+ * see `DOCUMENT_MEDIA_TYPES` above) — same wire shape as a picked `.txt` file, just sourced from
+ * the clipboard instead of the file picker. `pastedText` keeps the original string for the
+ * composer's own truncated-preview card; it never round-trips through `data_base64` for display. */
+export async function pastedTextToPendingAttachment(text: string): Promise<PendingAttachment> {
+  const blob = new Blob([text], { type: "text/plain" });
+  const dataBase64 = await blobToBase64(blob);
+  const stamp = Date.now();
+  const filename = `pasted-text-${stamp}.txt`;
+  return {
+    id: `pasted-${stamp}-${crypto.randomUUID()}`,
+    filename,
+    mediaType: "text/plain",
+    isImage: false,
+    previewUrl: null,
+    input: { filename, media_type: "text/plain", data_base64: dataBase64 },
+    pastedText: text,
+  };
+}
 
 /** Converts a `File` to a `PendingAttachment`. Revoke `previewUrl` (via `URL.revokeObjectURL`)
  * when the attachment is removed or sent — the caller owns that lifecycle, mirroring how
