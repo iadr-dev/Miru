@@ -26,7 +26,7 @@ product/app state (threads, memory, schedules…).
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/agent/query` | Start a turn (thread_id optional → auto-creates); returns SSE. **Real request body today is just `{message, thread_id?}`** (`api/routers/agent.py`'s `AgentQueryRequest`) + the `Idempotency-Key` header — the classifier alone decides framework/skills/model routing server-side. **Not yet built as per-turn body flags:** `web_search` toggle, `research`/`plan` modes, `model` override, `skill_hint`. Personality resolves from `threads.personality_override` else `users.personality_id` ([modules/23](modules/23-agent-personality.md), real, wired into every turn via `PersonalityContext`) — set via `PATCH /me {personality_id}` (user default); there is currently no route that writes `threads.personality_override` itself, so a per-thread pin isn't settable yet even though the resolution seam reads it |
+| POST | `/agent/query` | Start a turn (thread_id optional → auto-creates); returns SSE. **Real request body today is `{message, thread_id?, web_search?, locale?, attachments?}`** (`api/routers/agent.py`'s `AgentQueryRequest`) + the `Idempotency-Key` header — the classifier alone decides framework/skills routing server-side. `web_search` toggles web search for the turn and `attachments` are processed via `process_attachments()`, both wired through to `start_turn_stream(web_search_enabled=body.web_search, ...)`. A per-turn `model` override is real too, but lives on the separate `PATCH /threads/{id}` route (`model_override`, below), not on this body. **Not yet built:** `research`/`plan` modes, `skill_hint`. Personality resolves from `threads.personality_override` else `users.personality_id` ([modules/23](modules/23-agent-personality.md), real, wired into every turn via `PersonalityContext`) — set via `PATCH /me {personality_id}` (user default); there is currently no route that writes `threads.personality_override` itself, so a per-thread pin isn't settable yet even though the resolution seam reads it |
 | GET | `/threads/{id}/stream` | Attach/resume live stream (`Last-Event-ID`) |
 | POST | `/threads/{id}/steer` | Queue a **steering** message into the running turn (redirect, no cancel) |
 | POST | `/threads/{id}/switch-branch` | Switch active path to another message (generates a Branch Summary) |
@@ -70,7 +70,7 @@ Full semantics + run-tree: [modules/07](modules/07-conversation-streaming.md).
 | POST | `/threads` | Create thread |
 | GET | `/threads?include_archived=` | List mine. **Real query surface today is just `include_archived: bool` (default `false`)** (`api/routers/threads.py`'s `list_threads`) — `sort`/`filter`/`q`/pagination are not yet implemented as query params; use `GET /threads/search?q=` (below) for a text query |
 | GET | `/threads/{id}` | Thread + history |
-| PATCH | `/threads/{id}` | Rename title, star/pin, archive, tag |
+| PATCH | `/threads/{id}` | Rename title, star/pin, archive, tag, set per-thread `model_override` |
 | DELETE | `/threads/{id}` | Soft-delete → purge |
 | POST | `/threads/{id}/fork` | Fork from a turn |
 | GET | `/threads/search?q=` | Full-text search (title + messages) |
@@ -402,14 +402,15 @@ are config (`MCP_HOST`/`MCP_PORT`/`MCP_ALLOWED_ORIGINS`/`MCP_ALLOWED_HOSTS`).
 | `get_price_quote` | public | `{id, market}` | latest EOD price bar |
 | `search_tools` / `execute_tool` | public | `{intent}` / `{id, args}` | long-tail discovery + run |
 
-### Deferred (via `execute_tool` — 92 tools total exceed the per-turn schema budget)
+### Deferred (via `execute_tool` — the long tail exceeds the per-turn schema budget)
 `get_chip_flows`, `get_government_bank_flows`, `get_live_quote_snapshot`,
 `get_disposition_securities`, `get_finmind_stock_news`, `get_stock_score`,
 `get_score_leaderboard`, `run_tag_screener`, `get_tag_catalog`, `get_etf_overlap`,
 `get_fund_comparison`, … — `sponsor` ones return a masked teaser if unentitled.
-`tests/mcp/test_full_registry_coverage.py` asserts every one of the 97 real tools is reachable
-over MCP (immediate or via `execute_tool`), not just a spot-checked subset. (Verified via grep:
-97 real tools total, 5 immediate.)
+`tests/mcp/test_full_registry_coverage.py` asserts every real tool in the built registry is
+reachable over MCP (immediate or via `execute_tool`), not just a spot-checked subset. (The
+registry currently builds 100–107 tools depending on which optional dependencies are supplied —
+see [modules/03-tools.md](modules/03-tools.md) — 5 of which are immediate, the rest deferred.)
 
 ### Resources
 | URI | Purpose |

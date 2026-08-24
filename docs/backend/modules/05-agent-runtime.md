@@ -20,7 +20,9 @@ agent_start → repeat one Step:
     transform_context(AgentMessage[])   # compaction only
     run pre_llm hooks                   # e.g. memory-block injection (registered handler)
     convert_to_llm(Message[])           # → provider-native payload (tool-call format)
-    response = llm.chat(payload, tools)  # not streamed internally — one full LLMResponse per Step
+    response = await llm.stream(payload, tools)  # genuinely streamed — AgentLoop._stream_step
+                                                  # consumes text/thinking/tool-call/web-search
+                                                  # deltas as they arrive, not one buffered call
     if response.tool_calls:
         for call: guardrails.check_tool_call → tools.base.dispatch_tool → post_tool hooks → append toolResult
     else: guardrails.check_output(text)  # non-trading, caveats
@@ -35,13 +37,32 @@ agent_start → repeat one Step:
   `agent.context_window.compact` and nothing else; system-prompt assembly happens separately at
   `run_turn`'s start (`assemble_system_prompt`), not inside `transform_context`. The **`pre_llm`
   hook point is a distinct step run right after** (`AgentLoop._run_pre_llm_hooks`, before
-  `llm.chat`), on which **memory injection is a registered handler**
+  `llm.stream`), on which **memory injection is a registered handler**
   (`events.hooks.MemoryRecallPreLLMHook`, [10](10-events-hooks.md) §2) — like entitlement is
   resolved per-turn, recall is layered in via the hook seam, not hardcoded in the kernel. Branch
   summaries are not built — no registered `pre_llm` handler for them exists today.
 - **`convert_to_llm`** then maps internal messages → the active provider's payload/tool-call
   shape (the LLM adapter, [04](04-llm-adapter.md)) — the one place format differences live.
 - Guardrails are mandatory hooks ([10-events-hooks.md](10-events-hooks.md)).
+
+### Registrable, non-veto hooks (`agent/hooks.py`)
+
+Besides the two mandatory, hardcoded governance hooks (`pre_tool`/`pre_output`, owned by
+`agent.guardrails`), `agent/hooks.py` defines six observe-only Protocols a higher layer can
+register into `AgentLoop`'s constructor without `agent/` ever importing that layer:
+
+| Hook Protocol | Fires | Concrete handler (`events/hooks.py`) |
+|---|---|---|
+| `PreToolHook` | the instant a tool call is about to dispatch, before the governance veto even runs (so it fires for a call that ends up blocked too) | `EventBusPreToolHook` — publishes a `tool.start` event carrying just the tool name, so the frontend's process timeline has something to show live even when the model streams no thinking |
+| `PostToolHook` | after every tool dispatch (blocked, masked, or real) | `EventBusPostToolHook` — publishes a `tool.result` event with a natural-language summary, argument keys, and the guardrail outcome (never the raw result) |
+| `PreLLMHook` | on the message list right before every model call, after compaction | `MemoryRecallPreLLMHook` — injects the compact recalled-memory block as a system message once per turn |
+| `ThinkingHook` | once per extended-thinking delta chunk streamed during a Step, already governance-scanned by the loop before the hook sees it | `EventBusThinkingHook` — republishes each chunk as a `thinking.delta` event, `{agent_id, text}` |
+| `AnswerDeltaHook` | once per completed, already-governance-scanned sentence of the streaming final answer | `EventBusAnswerDeltaHook` — republishes each sentence as a `message.delta` event, `{agent_id, text}`, for token-by-token rendering |
+| `WebSearchHook` | once per completed native-web-search call during a streamed Step | `EventBusWebSearchHook` — republishes the source list as a `web_search.result` event, `{agent_id, sources}` |
+
+None of the six ever vetoes or removes content — they observe a dispatch point and, at most,
+append/transform (`PreLLMHook` only). All six concrete handlers above are wired into every
+`AgentLoop` build via `orchestrator/orchestrator.py::_build_loop`.
 
 ### Steering messages
 If the user sends a message **while a turn is running**, it is queued as a *steering message*

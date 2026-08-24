@@ -49,7 +49,8 @@ US/GB/JP `price_eod`; `finmind` covers US/JP prices too).
 | `taifex_openapi.py` | `TAIFEX_OPENAPI` | official-eod | Derivatives `derivatives_oi` only, via `DailyMarketReportFut` — **1 of ~135** upstream endpoints wired |
 | `twse_mis.py` | `TWSE_MIS` | live-ish | Browser-observed snapshot; free → `public` |
 | *(not built)* | `TAIFEX_MIS` | live-ish | `context/builder.py`'s `enable_taifex_mis_validation` flag is staged (M8C) but there is no adapter behind it yet — like `twse_mis.py`, this would be a browser-observed bounded snapshot, **never a scraper**, once built |
-| `ncdr_closure.py` | `NCDR_DGPA_CLOSURE_CAP` | event-driven | Work-suspension/closure evidence; declares `(CALENDAR_EVENTS, TW)` but is **not instantiated** in `dataaccess/composition.py`'s adapter map, so a live router call for `calendar_events` has no adapter behind it today (see [18](18-calendar-events.md)) |
+| `ncdr_closure.py` | `NCDR_DGPA_CLOSURE_CAP` | event-driven | Work-suspension/closure evidence; declares `(CALENDAR_EVENTS, TW)`, is instantiated as `"ncdr_closure": NcdrClosureAdapter()` in `dataaccess/composition.py`'s adapter map, and has a `calendar_events: [ncdr_closure]` row in `config/source_priority.yaml` — wired and reachable through the router today (see [18](18-calendar-events.md)) |
+| `tdcc/` (package: `_adapter.py`/`_registry.py`/`_shared.py`/`raw_query.py`) | `TDCC` | official-eod | 集保結算所 (TDCC) OpenData — free, keyless, TW-only. Serves 6 capabilities: `tdcc_securities_info`, `tdcc_pledged_custody_shares`, `tdcc_shareholding_distribution`, `tdcc_offshore_fund_nav`, `tdcc_evoting_schedule`, `tdcc_monthly_custody_accounts`; instantiated as `"tdcc": TdccAdapter()` in `dataaccess/composition.py`, with matching rows in `config/source_priority.yaml` |
 | `finmind/` (package) | `FINMIND` | official-eod / live-ish / reference | 104 history-enabled datasets across Technical/Chip-Institutional/Fundamental/Derivative/Real-Time/Convertible-Bond/Others/International/Global-Economic; **only token-bearing adapter** |
 | `mops.py` | `MOPS` | event-driven / reference | 公開資訊觀測站 disclosure stream via TWSE's own OpenAPI (`t187ap04_L`/`t187ap11_L`) — real JSON, **not scraped**; the legacy HTML scraper this was long assumed to require is dead |
 | `news.py` | `NEWS` | reference (near-real-time) | Financial RSS (鉅亨/經濟日報/TechNews…) + GDELT (keyless) + Finnhub |
@@ -57,6 +58,12 @@ US/GB/JP `price_eod`; `finmind` covers US/JP prices too).
 | `etf_pcf.py` | `ETF_PCF` | official-eod | **Fund-level metadata only** — listed-ETF roster (issuer/listing date/tracked index, via TWSE `rwd/zh/ETF/list` JSON) + fund basic-data disclosure (units outstanding/manager, via TWSE OpenAPI `t187ap47_L`). Both are TWSE JSON endpoints, not an HTML scrape, despite the file/module name. Per-constituent holdings/weights (成分股/權重), 受益人數, and NAV/IOPV are **not built** — a genuine, disclosed gap, not guessed |
 | `web_search.py` | `WEB` | reference (live) | **Brave Search API** (provider-agnostic) — general web search + fetch; the fallback when the LLM has no native search |
 | `yfinance/` (package) | `YFINANCE` | reference (near-real-time) | **TW**: analyst consensus/target prices (the one licensed gap) + ESG + English sector/symbol-resolution — narrow. **US/GB/JP/EU**: primary source for price/financials/dividends/splits/analyst/ESG/sector plus yfinance-native capabilities (options, holders, search, calendars, sector/industry aggregates, market status, fund holdings) — plus the `run_screener` module-level carve-out (equity/ETF/fund screening, outside `SourceAdapter.fetch()`) |
+
+**Caching wrapper (not a source, but adapter-shaped):** `caching_adapter.py`'s
+`CachingSourceAdapter` wraps any adapter above with a Redis read-through cache before
+`dataaccess/composition.py` hands it to the router — see
+[02-packages.md](02-packages.md)'s `MarketDataStore` section for the full description.
+
 The full endpoint/dataset inventory these adapters wrap is in
 [../data-catalog.md](../data-catalog.md).
 

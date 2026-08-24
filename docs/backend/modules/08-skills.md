@@ -161,7 +161,14 @@ original 20-skill starter set's stated scope covers — see that doc's "Register
 for the current authoritative count, which grows as new tool groups land. Rather than leave the long tail
 unreachable (a skill's `tools` allowlist is the *only* way the runtime will dispatch a tool —
 see the enforcement rule above), the following skills were added to give every remaining real
-tool a coherent, natural-language-triggerable home:
+tool a coherent, natural-language-triggerable home. **One real, registered tool is still an
+exception to that "every remaining tool covered" claim: `ask_user`** (`backend/src/tools/
+ask_user_tools.py`) appears in **no** skill's `tools:` allowlist across every `SKILL.md` under
+`skills/built_ins/*/` and is not in `orchestrator/orchestrator.py`'s `_WARM_TOOLS` either — so
+today it is unreachable in any live framework path (`single`/`subagent`/`team` all resolve a
+lane's tool set from a skill's allowlist or the warm-tool default, per the enforcement rule
+above). The tool itself is real and dispatchable in principle; it is simply orphaned by every
+current call site, the same "real but unreachable" gap `read_skill_resource` has above.
 
 | Skill | Purpose | Uses sponsor data? |
 |-------|---------|--------------------|
@@ -185,6 +192,11 @@ tool a coherent, natural-language-triggerable home:
 **Deliberately still uncovered by any skill:** `web_search`/`fetch_url` (enablement-gated
 generic tools, not skill-shaped — the agent decides when to use them directly, subject to the
 per-turn web-search toggle, not via a skill allowlist).
+
+**Not deliberately uncovered — an actual gap:** `ask_user` (see the note above the catch-all
+table) has no skill allowlist entry and no warm-tool default; unlike `web_search`/`fetch_url`,
+there is no enablement-gated direct-call path around the allowlist for it either, so it is
+currently unreachable in any live framework path, full stop.
 
 **Real-backing check (as of this pass).** Every skill in both tables above is backed by real,
 named tools verified directly against `backend/src/tools/*.py` (not just this doc's prior

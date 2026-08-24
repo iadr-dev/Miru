@@ -112,6 +112,7 @@ router resolves *which* adapters, in per-market priority order with fallback ([m
 | `ETF_PCF` | `etf_pcf.py` | Passive ETF 成分股/權重 + 受益人數 + NAV/units (**scraped**: issuer PCF/公會/TWSE `fund/`) | official-eod | All |
 | `WEB` | `web_search.py` | **Brave Search API** web search + fetch (provider-agnostic); LLM-native search when available | reference (live) | All (toggle) |
 | `YFINANCE` | `yfinance/` (package: domain-organized modules) | TW gap-filler (analyst consensus/目標價/ESG) **and** full primary source for non-TW markets (US/GB/JP/EU) — price/financials/holders/discovery/screener; attributed 3rd-party | reference | All |
+| `TDCC` | `tdcc/` (package: `_adapter.py`/`_registry.py`/`_shared.py`/`raw_query.py`) | 集保結算所 (TDCC) OpenData — free, keyless CSV dumps: securities info, pledged custody shares, shareholding distribution, offshore fund NAV, e-voting schedule, monthly custody accounts | official-eod | TW-only |
 
 **Critical caveat, carried on every result:** no source is real-time. `*_MIS` are
 bounded snapshots, not streams. OpenAPIs are latest-only with no backfill (FinMind adds
@@ -145,9 +146,10 @@ tool declares `name`, Pydantic input/output models, a `data_class`, and `run()`.
 | `public` | Gov OpenAPI + FinMind Free/Backer + derived | `get_canonical_context`, `build_conversation_package`, `get_source_health`, `run_bounded_observation` | All users + MCP |
 | `sponsor` | Paid FinMind Sponsor data | `get_chip_flows` (分點), `get_government_bank_flows` (八大官股), `get_intraday_kbar`, `get_us_stock_price_minute` | **Premium/Pro only** |
 
-The full registry is **97 real tools** across 22 domain files (chip/technical/fundamental/
-derivatives/analyst/international/macro/others/theme/score/screener, etc.) — this table shows a
-representative slice; the authoritative list is [modules/03-tools.md](modules/03-tools.md).
+The full registry is **107 real tools** across 24 domain files (chip/technical/fundamental/
+derivatives/analyst/international/macro/others/theme/score/screener/tdcc/ask_user, etc.) — this
+table shows a representative slice; the authoritative list is
+[modules/03-tools.md](modules/03-tools.md).
 
 The single access gate: a `sponsor` tool called by an unentitled user returns a **masked
 teaser** (`{locked, required_tier, preview}`) → frontend blurs it (馬賽克) with an upgrade
@@ -264,7 +266,8 @@ ai-tw-stock/
    │  │                        #   openrouter)/local(ollama) + registry, routing
    │  ├─ tools/                # base, registry, market, context, health tool groups
    │  ├─ dataaccess/           # capability registry + Market/Symbol + priority-fallback router (config-driven)
-   │  ├─ sources/              # 12 adapters incl. finmind/ and yfinance/ packages (mops/ptt/etf_pcf scrapers, news, web_search) + base + tls — ONLY network I/O
+   │  ├─ sources/              # 13 adapters incl. finmind/, yfinance/, and tdcc/ packages (mops/ptt/etf_pcf scrapers, news, web_search) + base + tls — ONLY network I/O
+   │  ├─ attachments/          # chat-attachment handling: image passthrough + markitdown-based document extraction
    │  ├─ calendar/             # events calendar: rule engine + feed/scraper composition, state model
    │  ├─ ingest/               # data-ingest/ETL: cron job groups, whole-market-by-date writers, backfill (§9c)
    │  ├─ analytics/            # derived compute: indicators, multi-factor 多空 score, AI summary/SWOT, screener, themes
@@ -299,10 +302,13 @@ The runtime is wrapped by a chat-backend layer — all under the same governance
   assignment; cost-tiered model routing. Decides single-vs-parallel so the caller doesn't.
 - **Conversation & streaming** ([modules/07](modules/07-conversation-streaming.md)):
   persistent threads (create/list/get/fork/resume), typed SSE events, turn cancellation,
-  and steering (real, mid-run — [modules/07](modules/07-conversation-streaming.md)). Inline
-  `ask_user` clarifications are designed (no approval gate) but not yet built — the agent loop
-  returns one whole `TurnResult` per turn, not the token/tool-level stream `ask_user` needs; see
-  [modules/07](modules/07-conversation-streaming.md)'s implementation-status note.
+  and steering (real, mid-run — [modules/07](modules/07-conversation-streaming.md)). The
+  `ask_user` **tool** (`tools/ask_user_tools.py`, `card_type = "ask_user"`) is real and built —
+  it runs today as an ordinary read-only tool call like any other. What's *not* yet built is a
+  dedicated `ask_user` SSE **event kind** with turn pause/resume semantics: the agent loop
+  returns one whole `TurnResult` per turn, not the token/tool-level stream a live, mid-turn pause
+  awaiting the user's answer would need; see [modules/07](modules/07-conversation-streaming.md)'s
+  implementation-status note.
 - **Skills** ([modules/08](modules/08-skills.md)): versioned analysis playbooks; triggered
   by the classifier or UI action chips (not slash-command-first).
 - **Memory** ([modules/09](modules/09-memory.md)): working / session / long-term.
@@ -349,7 +355,7 @@ per-phase status (what's actually built, tested, and verified vs. still pending)
 [DEVELOPMENT.md §3](DEVELOPMENT.md#3-build-order-turn-the-blueprint-into-code).
 
 1. Foundations (scaffold `backend/`, config, schemas, db, TLS + tier enums, docs)
-2. Data layer (12 adapters incl. the FinMind [104 datasets] and yfinance packages + **data-access router** (capabilities, Market/Symbol, per-market priority-fallback config) + contracts + fixtures)
+2. Data layer (13 adapters incl. the FinMind [104 datasets], yfinance, and TDCC packages + **data-access router** (capabilities, Market/Symbol, per-market priority-fallback config) + contracts + fixtures)
 3. Context pipeline (canonical/observation/conversation/source_health/builder) + calendar (rule engine + event composition)
 3a. **Data ingest / ETL** ([modules/22](modules/22-data-ingest.md)): cron job groups, whole-market-by-date writers, idempotent upsert + gap-fill, backfill — populates the derived store (§9c). Precedes analytics.
 3b. **Analytics & scoring** ([modules/20](modules/20-analytics-scoring.md)): indicator library, multi-factor 多空 score, AI summary/SWOT, screener + AI top-N, theme discovery — derived compute over the ingest store.

@@ -32,16 +32,22 @@ Two backends behind one `EventBusFactory` seam, config-selected
 Event kinds actually emitted in the codebase today (grep-verified against every
 `.publish(...)`/`bus.publish("...")` call site): `turn.start/end`, `route.decided`,
 `agent.spawned/progress/done`, `synthesis.start`, `steering.accepted`, `rich_card`, `usage`,
-`tool.result` (via `events.hooks.EventBusPostToolHook`, one kind — not the finer
-`proposed/started/locked/blocked` split the original design named), `message` (the final-answer
-frame, not `message.delta`), `data.updated` (ingest-invalidation, `events/data_updates.py`), and
-the skill-load-time `skill_loaded` structlog line (not a bus event). **Not found anywhere in the
-codebase:** `activity` (as a bus-published event kind — `"activity"` appears only as a data-field
-key inside an `agent.spawned` event's payload), `message.delta`, `thinking.delta`, `caveat` (as
-an event kind — `CAVEAT` is a `conversation.models.MessageBlockType`, not a bus event),
-`ask_user`, `follow_up`, the `pet.*` kinds ([21](21-pet-gamification.md) publishes no bus
-events), and `memory.recalled/written`/`source.fetch`. Treat this list as aspirational unless
-grep-confirmed against a real `.publish(` call.
+`tool.start` (via `events.hooks.EventBusPreToolHook`, published the instant a tool call is about
+to dispatch — before governance's veto even runs, so it fires for a call that ends up blocked
+too), `tool.result` (via `events.hooks.EventBusPostToolHook`, one kind — not the finer
+`proposed/started/locked/blocked` split the original design named), `thinking.delta` (via
+`events.hooks.EventBusThinkingHook`, one raw extended-thinking chunk per event, republished
+verbatim), `message` (the final-answer frame) and `message.delta` (via
+`events.hooks.EventBusAnswerDeltaHook`, one already-governance-scanned sentence of the streaming
+final answer per event), `web_search.result` (via `events.hooks.EventBusWebSearchHook`, one
+completed native-web-search call's `{agent_id, sources}` per event), `data.updated`
+(ingest-invalidation, `events/data_updates.py`), and the skill-load-time `skill_loaded` structlog
+line (not a bus event). **Not found anywhere in the codebase:** `activity` (as a bus-published
+event kind — `"activity"` appears only as a data-field key inside an `agent.spawned` event's
+payload), `caveat` (as an event kind — `CAVEAT` is a `conversation.models.MessageBlockType`, not
+a bus event), `ask_user`, `follow_up`, the `pet.*` kinds ([21](21-pet-gamification.md) publishes
+no bus events), and `memory.recalled/written`/`source.fetch`. Treat this list as aspirational
+unless grep-confirmed against a real `.publish(` call.
 
 ```python
 class Event(BaseModel):
@@ -72,17 +78,23 @@ setting it yet.
 
 Deterministic callbacks at fixed lifecycle points — the seam for audit, policy, and
 automation (analogous to Claude Code hooks). The two governance points (`pre_tool`/
-`pre_output`) can **veto**; the two registrable extension points below (`post_tool`/`pre_llm`)
-never veto — they observe/transform only.
+`pre_output`) can **veto**; the registrable extension points below (`pre_tool` observe-only/
+`post_tool`/`pre_llm`/`thinking`/`answer_delta`/`web_search`) never veto — they observe/transform
+only.
 
 **Dependency inversion (preserves the one-way layer rule):** `agent/hooks.py` declares
-`PostToolHook`/`PreLLMHook`/`CancelToken`/`SteeringSource` as `Protocol`s in the runtime kernel
-(`agent/`), which is *below* interaction/product. Higher layers **build concrete handlers**
-(`events/hooks.py::EventBusPostToolHook`, `events/hooks.py::MemoryRecallPreLLMHook`) and pass
-them into `AgentLoop`'s constructor at application-wiring time — `agent/loop.py` never imports
-`events/`. **`pre_tool`/`pre_output` are a different, non-registrable shape**: they stay
-hardcoded call sites inside `agent/loop.py` (`guardrails.check_tool_call`/`check_output`) —
-mandatory and not opened up for external registration the way `post_tool`/`pre_llm` are.
+`PreToolHook`/`PostToolHook`/`PreLLMHook`/`ThinkingHook`/`AnswerDeltaHook`/`WebSearchHook`/
+`CancelToken`/`SteeringSource` as `Protocol`s in the runtime kernel (`agent/`), which is *below*
+interaction/product. Higher layers **build concrete handlers** (`events/hooks.py::
+EventBusPreToolHook`/`EventBusPostToolHook`/`EventBusThinkingHook`/`EventBusAnswerDeltaHook`/
+`EventBusWebSearchHook`/`MemoryRecallPreLLMHook`) and pass them into `AgentLoop`'s constructor at
+application-wiring time — `agent/loop.py` never imports `events/`. Note `PreToolHook` here is a
+distinct, non-vetoing observe-only shape fired the instant a call is *about* to dispatch — not
+the governance veto hook of the same informal name, which is `agent.guardrails.check_tool_call`
+and stays a hardcoded call site (below). **`pre_tool` (governance)/`pre_output` are a different,
+non-registrable shape**: they stay hardcoded call sites inside `agent/loop.py`
+(`guardrails.check_tool_call`/`check_output`) — mandatory and not opened up for external
+registration the way `post_tool`/`pre_llm`/`thinking`/`answer_delta`/`web_search` are.
 Entitlement resolution is a third mechanism again: `accounts/hooks.py::EntitlementResolver`
 resolves a `User` to a real-tier `ToolContext` **once per turn** (not a registered hook fired
 per call), and `tools.base.dispatch_tool` re-applies its masking check on every dispatch using
@@ -92,11 +104,15 @@ Two distinct enforcement concerns, cleanly separated (do not conflate — see go
 
 | Hook point | Can veto? | **Governance** (`agent/guardrails.py`, hardcoded in `agent/loop.py`) | **Entitlement** (`tools.base.dispatch_tool`, tier resolved by `accounts/hooks.py`) | Other registered handlers |
 |------------|-----------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------|---------------------------|
-| `pre_tool` | yes | `check_tool_call` — no-full-market-scan keyword/shape check | `dispatch_tool` — `sponsor` data-class → `MaskedTeaser` | — |
+| `pre_tool` (governance veto) | yes | `check_tool_call` — no-full-market-scan keyword/shape check | `dispatch_tool` — `sponsor` data-class → `MaskedTeaser` | — |
+| `pre_tool` (observe-only) | no | — | — | `EventBusPreToolHook` — publishes a `tool.start` event the instant a call is about to dispatch (fires even for a call governance goes on to block), so a slow multi-tool Step shows something live instead of nothing until every call finishes |
 | `post_tool` | no | — | — | `EventBusPostToolHook` — republishes a `tool.result` event (real; journal-writing itself is not a registered `post_tool` handler, it happens directly inside `agent/loop.py::_dispatch_one`) |
 | `pre_output` | yes | `check_output` — trading-language redaction + caveat append | — | — |
 | `pre_turn`/`post_turn` | pre: yes | — | `enforce_pre_turn_gate` (`api/turn_driver.py`) — daily-chat-cap + per-minute rate limit | `write_turn_usage` (post-turn durable usage write) |
-| `pre_llm` | no (see below) | token-budget check (`agent.context_window.compact`, not registrable) | — | `MemoryRecallPreLLMHook` — injects the recalled-memory block |
+| `pre_llm` | no (see below) | token-budget check (`agent.context_window.compact`, not registrable) | — | `MemoryRecallPreLLMHook` — injects the recalled-memory block; wired only on the `none`/`single` root-agent path (`orchestrator.orchestrator.Orchestrator._build_loop` attaches it when given a `recall_provider`, which `_run_none`/`_run_single` pass and `_run_subagent`/`_run_team`'s fan-out lanes never do) |
+| `thinking` | no | — | — | `EventBusThinkingHook` — republishes each raw extended-thinking delta chunk as a `thinking.delta` event, `{agent_id, text}` |
+| `answer_delta` | no | — | — | `EventBusAnswerDeltaHook` — republishes each already-governance-scanned sentence of the streaming final answer as a `message.delta` event, `{agent_id, text}`; `_build_loop` attaches it only for a `ModelRole.AGENT` loop (the root/synthesis answer), never a SUBAGENT-role fan-out lane, mirroring the `recall_provider` root-only carve-out above |
+| `web_search` | no | — | — | `EventBusWebSearchHook` — republishes each completed native-web-search call as a `web_search.result` event, `{agent_id, sources}` |
 
 - **Governance** (`guardrails.py`): non-trading, no-scan, caveats — a **runtime/core invariant**,
   hardcoded, not config-toggleable.

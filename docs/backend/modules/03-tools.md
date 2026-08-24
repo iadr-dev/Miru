@@ -31,8 +31,9 @@ deliberate, per-tool opt-in into the `rich_card` SSE event ([07-conversation-str
 a chart/table/gauge-shaped tool result the frontend renders as a structured card rather than
 plain prose. Chosen over inferring card-worthiness from a tool's `output_model` shape, since
 shape alone (e.g. field count) can't reliably distinguish a genuine table from an incidentally
-wide scalar result. **68 tools are opted in today** — the price/chip/flow/valuation/derivatives/
-fundamental/ETF/macro/theme/score/screener reads whose typed output is genuinely tabular,
+wide scalar result. **74 tools are opted in today** (the exact set is locked by
+`tests/agent/test_loop.py::CARD_OPTED_TOOLS`) — the price/chip/flow/valuation/derivatives/
+fundamental/ETF/macro/theme/score/screener/TDCC/analyst reads whose typed output is genuinely tabular,
 time-series, or gauge-shaped (the exact name→label mapping is locked by a parametrized test in
 `tests/agent/test_loop.py`).
 What stays `card_type=None` is shaped, not arbitrary: reference/roster/lookup tools (rosters,
@@ -51,12 +52,16 @@ analogue of `guardrails.check_output`.
 
 ## Registered tools (grouped)
 
-**Real count: 97 tools**, registered from 22 domain files under `tools/` (`context_tools.py`,
+**Real count: `tools/__init__.py` imports 24 domain tool-group modules** (`context_tools.py`,
 `health_tools.py`, `market_tools.py`, `mops_tools.py`, `calendar_tools.py`, `live_tools.py`,
 `gov_api_tools.py`, `etf_pcf_tools.py`, `etf_overlap_tools.py`, `web_search_tools.py`,
 `analyst_tools.py`, `chip_tools.py`, `technical_tools.py`, `fundamental_tools.py`,
 `derivatives_tools.py`, `convertible_bond_tools.py`, `macro_tools.py`, `international_tools.py`,
-`others_tools.py`, `theme_tools.py`, `score_tools.py`, `screener_tools.py`) and assembled by
+`others_tools.py`, `tdcc_tools.py`, `ask_user_tools.py`, `theme_tools.py`, `score_tools.py`,
+`screener_tools.py`). `build_default_tool_registry(router)` called with no
+`session_factory`/`market_data_reader` (the theme/score/screener groups need one or both to
+register) yields **100 tools**; called with both optional dependencies supplied — the full
+production wiring — it yields **107 tools**. Assembled by
 `tools/__init__.py::build_default_tool_registry` into one `ToolRegistry`
 (`tools/registry.py`). The list below is a domain-grouped index of the real tool names;
 per-tool detail (input/output shape, capability wrapped) lives in each file's own docstrings.
@@ -165,6 +170,24 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_dividend_schedule` — per-stock/ETF 除權息 + 配息 timeline.
 - `get_institutional_flow` — 三大法人 per-stock (public slice; `get_chip_flows`/
   `get_government_bank_flows` below are the Sponsor-gated finer cuts).
+- `get_analyst_consensus` (`analyst_tools.py::GetAnalystConsensusTool`) — analyst target
+  prices/recommendations/estimates (`Capability.ANALYST_CONSENSUS`); `card_type =
+  "analyst_consensus"`. Real and registered — **not** in the "not built" list below.
+- `get_esg_score` (`analyst_tools.py::GetEsgScoreTool`) — Sustainalytics-derived ESG risk score
+  (`Capability.ESG`); `card_type = "esg_score"`. Real and registered — **not** in the "not
+  built" list below.
+- `get_tdcc_securities_info` / `get_tdcc_pledged_custody_shares` /
+  `get_tdcc_shareholding_distribution` / `get_tdcc_offshore_fund_nav` /
+  `get_tdcc_evoting_schedule` / `get_tdcc_monthly_custody_accounts` (`tdcc_tools.py`) — six
+  router-based capability tools wrapping the `TdccAdapter` (集保結算所 TDCC OpenData: 證券基本資料/
+  質押集保餘額/股權分散表/境外基金 NAV/電子投票議案/月底集保帳戶數). Plus `get_tdcc_raw_dataset`, a
+  direct-adapter-call catch-all for querying any other TDCC dataset id by its raw CSV shape —
+  7 tools total, all `public` (free, keyless upstream).
+- `ask_user` (`ask_user_tools.py::AskUserTool`) — an informational mid-turn clarification tool:
+  echoes back a question + optional tappable options as its typed output (no I/O, no side
+  effect) and opts into `card_type = "ask_user"` so it renders as a governed `RichCard`. Not a
+  permission/approval gate — every other tool still always runs regardless; this is meant to be
+  the model's only action for the turn when used, with the user's next message answering it.
 - `web_search` — general web search (query → results with source URLs). **Enablement-gated**:
   only available when the user toggles "web search" on for the turn (see below). Backed by the
   LLM's **native search** if the active provider supports it, else **Brave** (`web_search.py`);
@@ -212,10 +235,9 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 
 **Confirmed not built (no matching `Capability`/adapter at all, not just no tool):**
 `get_disposition_stocks`/`get_disposition_forecast`/`get_attention_stocks` (only the narrower,
-Sponsor-gated `get_disposition_securities` below exists — no TPEX 注意股 adapter),
-`get_esg_score` (the `esg` capability exists in yfinance and is wired for context-building, but
-**no tool wraps it**), `get_analyst_consensus` (same: `analyst_consensus` capability exists and
-feeds `context/builder.py`'s default context, but has no dedicated tool).
+Sponsor-gated `get_disposition_securities` below exists — no TPEX 注意股 adapter). (`get_esg_score`
+and `get_analyst_consensus` were previously listed here as not built — both are real, registered
+tools; see `analyst_tools.py` in the list above.)
 
 ### `sponsor` — Premium/Pro only (masked teaser otherwise)
 - `get_chip_flows` — 分點券商進出 (FinMind Sponsor).
@@ -303,7 +325,9 @@ filenames they live in are internal.
 
 ## Deferred / lazy tool loading
 
-With **97 tools**, sending every schema every turn wastes context. Following Pi's
+With **100–107 tools** (100 when the registry is built with no `session_factory`/
+`market_data_reader`; 107 in the full production wiring with both supplied), sending every
+schema every turn wastes context. Following Pi's
 `splitDeferredTools()`, the registry splits tools into:
 - **immediate** — **the canonical core set** whose full schemas are always sent (defined **here**,
   the single source of truth; other docs reference this list, never re-enumerate it). The real,
@@ -315,13 +339,14 @@ With **97 tools**, sending every schema every turn wastes context. Following Pi'
   is the basic price-quote read the design meant. **The MCP projection exposes the exact same
   5-tool immediate core, not a subset** — `mcp/app.py::build_mcp_server` registers a dedicated
   MCP tool for every name in `registry.immediate_tools()`, verified end-to-end against the real
-  97-tool registry in `tests/mcp/test_app_real_registry.py`
+  97-tool registry `tests/mcp/test_app_real_registry.py` builds (its own fixture wires a stub
+  session factory/Parquet reader but not the full 107-tool production set)
   (`test_real_immediate_tools_are_registered_as_dedicated_mcp_tools` asserts all 5 names,
   including `get_company_profile`/`get_price_quote`, appear as dedicated MCP tools).
-- **deferred** — the long tail (92 tools: per-signal chip/ETF/derivatives/MOPS/analyst/
-  technical/macro/international tools, the ETF overlap-checker/comparison pair, the three
-  relational theme-lookup tools, the stock-score pair, the tag-screener pair, and the calendar-
-  events tool); exposed to
+- **deferred** — the long tail (everything else: per-signal chip/ETF/derivatives/MOPS/analyst/
+  technical/macro/international/TDCC tools, `ask_user`, the ETF overlap-checker/comparison pair,
+  the three relational theme-lookup tools, the stock-score pair, the tag-screener pair, and the
+  calendar-events tool); exposed to
   the model only as a compact **index** (name +
   one-line description). When the model needs one, it's loaded on demand (full schema injected
   next turn), mirroring progressive skill loading ([08-skills.md](08-skills.md)). A skill's
@@ -333,31 +358,39 @@ Web search is exposed to the agent as **tools** — `web_search` and `fetch_url`
 here (`tools/web_search_tools.py`), deferred like any other long-tail tool, invoked in the loop
 like any other tool call. `web_search` is `public` data-class.
 
-**Real implementation vs. design intent — several claims below do not hold today:**
-- **No per-turn enablement toggle exists.** `POST /agent/query` (`AgentQueryRequest` in
-  `api/routers/agent.py`) takes only `message`/`thread_id` — there is no `web_search: true`
-  field, and nothing in `tools/`, `agent/`, or `orchestrator/` conditionally hides these two
-  tools for a turn. Both are simply deferred long-tail tools, reachable exactly like any other
-  deferred tool once a skill's allowlist includes them or `execute_tool` names them.
-- **No backend-selection logic exists.** The only implemented search backend is
-  **Brave Search API** (`sources/web_search.py::WebSearchAdapter`, gated on
-  `BRAVE_SEARCH_API_KEY`). `llm.base.ModelCapabilities.native_web_search` is declared on each
-  provider client (`True` for Anthropic/Gemini, `False` for OpenAI/local — reflecting whether
-  the *provider's own SDK* exposes native grounding) but **nothing reads this field** — there is
-  no `AITW_WEBSEARCH` config key, no `auto | brave | native | off` selection, and no code path
-  that ever routes a search through the LLM's native tool instead of Brave. `fetch_url` is a
+**Real implementation — a genuine, wired per-turn toggle with native-vs-Brave selection:**
+- **A real per-turn enablement toggle exists.** `AgentQueryRequest` (`api/routers/agent.py`) has
+  a real `web_search: bool = False` field (mirrored on the `regenerate`/`edit` request bodies),
+  threaded through `POST /agent/query` into `Orchestrator.run`'s `web_search_enabled`
+  parameter. It is consulted only on the `none`/`single` framework root-agent paths — fan-out
+  lanes (`subagent`/`team`) never receive it, mirroring the `model_override` carve-out.
+- **Real backend-selection logic exists**, in `orchestrator/orchestrator.py::_maybe_add_web_search`:
+  when `web_search_enabled` is true, it branches on the resolved LLM client's own
+  `client.capabilities.native_web_search` flag. If the client has a native web-search mechanism
+  (Anthropic/Gemini today), that flag alone is granted into the turn's `chat()`/`stream()` call
+  (`native_web_search=True`) — no `web_search`/`fetch_url` tool is added, since the native path
+  already gives the model the same grounding ability server-side, without an extra tool-call
+  round trip. If the client has no native mechanism (OpenAI/local), it falls back to the
+  additive path: `web_search` and `fetch_url` (looked up from the registered tool table) are
+  appended to the turn's tool list. The two paths are mutually exclusive per turn — never both
+  active at once. A deployment that hasn't registered the web-search tools (no Brave key
+  configured) silently grants nothing rather than raising.
+- The underlying Brave-backed implementation is `sources/web_search.py::WebSearchAdapter`
+  (`WEB` source_id, gated on `BRAVE_SEARCH_API_KEY`), reached through `dataaccess/web_search.py`'s
+  `WebSearchGateway` seam rather than the router (`WEB` has no `(capability, market)` row in
+  `source_priority.yaml` — a query/URL isn't `(capability, symbol)`-shaped). `fetch_url` is a
   second, plain `httpx` GET behind the same adapter (no separate config).
 - **No `deep_research` tool/mode is built.** `accounts/entitlements.py::FEATURE_MIN_TIER`
   reserves the string `"deep_research"` at `Tier.PRO` for a future feature gate, but no tool,
   skill, or endpoint implements a "multi-step deep research" mode — `feature_allowed(user,
   "deep_research")` exists as a predicate with nothing behind it yet.
 
-What genuinely works: both tools run through `WebSearchGateway` (`dataaccess/web_search.py`) →
+On the Brave path, both tools run through `WebSearchGateway` (`dataaccess/web_search.py`) →
 `WebSearchAdapter`, size-cap `fetch_url`'s extracted text at 20,000 characters (truncated flag
 on overflow), and return a `currentness_caveat` on every result. Governance still applies as
-designed: web results are external/unverified, so every claim drawn from the web must be
-**cited with its source URL** and is subject to the same non-trading `guardrails.check_output`
-scan as any other output.
+designed regardless of which path served the turn: web results are external/unverified, so
+every claim drawn from the web must be **cited with its source URL** and is subject to the same
+non-trading `guardrails.check_output` scan as any other output.
 
 ## Tool output size control
 

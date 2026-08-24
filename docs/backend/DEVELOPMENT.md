@@ -4,11 +4,13 @@
 4	`modules/*`, `adr/*`) is the **reference — what & why**; this doc is the **runbook — how**: how to
 5	set up, in what order to build, how to test, how to add things, and the gate a change must pass.
 6	
-7	> **Status: no code exists yet.** `backend/` is a design blueprint. This guide describes the
-8	> *intended* setup/toolchain (matching [`../../backend/CLAUDE.md`](../../backend/CLAUDE.md)) and the
-9	> path to turn the specs into the real FastAPI backend — not a tour of a running system. As code
-10	> lands, keep this doc in sync (it should never contradict `backend/CLAUDE.md` or the module specs;
-11	> when in doubt, **the spec wins** — fix the code, not the rule).
+7	> **Status: a working backend exists.** `backend/` is no longer just a design blueprint — it now
+> has a real, working FastAPI backend (30+ routers, 100+ tools, a full ORM, a real MCP server,
+> ~200 commits of history). This guide describes the real
+8	> setup/toolchain (matching [`../../backend/CLAUDE.md`](../../backend/CLAUDE.md)); §3's build-order
+9	> phase table below is kept as reference for how the system got built and what remains open — not
+10	> a claim that nothing exists yet. Keep this doc in sync with the code (it should never contradict
+11	> `backend/CLAUDE.md` or the module specs; when in doubt, **the spec wins** — fix the code, not the rule).
 12	
 13	**Before touching anything:** read [architecture.md](architecture.md) (layering + repo layout +
 14	turn anatomy), [governance.md](governance.md) (the non-negotiables), and
@@ -30,11 +32,13 @@
 30	uv sync --all-extras            # create/refresh venv from uv.lock (commit the lock)
 31	cp .env.example .env            # then fill in secrets (§2) — .env is gitignored, NEVER commit
 32	
-33	uv run alembic upgrade head     # create the dev SQLite app DB
-34	uv run python -m aitw.ingest --dev --once   # seed a little market data into DuckDB/Parquet (dev)
+33	# No separate migrate step — every process (api/scheduler/ingest/mcp) calls the idempotent
+    # ensure_schema() (db.base.ensure_schema, Base.metadata.create_all) at its own startup;
+    # there is no Alembic migration chain in this project (§5 below).
+34	uv run python -m ingest.backfill_cli --yes --market tw   # seed a little market data into DuckDB/Parquet (dev)
 35	
-36	uv run uvicorn aitw.api.app:app --reload     # the REST + SSE API  → http://localhost:8000
-37	uv run python -m aitw.mcp.server             # (separate shell) the MCP server
+36	uv run uvicorn api.app:app --reload          # the REST + SSE API  → http://localhost:8000
+37	uv run python -m mcp                         # (separate shell) the MCP server
 38	```
 39	
 40	Smoke-test a non-AI public read (no key needed):
@@ -115,19 +119,18 @@
 115	| 9 | Product layer — accounts/tiers/entitlements/BYOK, Paddle billing, chat features, voice, cosmetic pets, personality presets | [12](modules/12-multi-user-tiers.md), [15](modules/15-payments-paddle.md), [21](modules/21-pet-gamification.md), [23](modules/23-agent-personality.md) |
 116	| 10 | Scheduler & alerts — HA worker + leader election, job/alert store, at-least-once delivery (§9a) | [14](modules/14-scheduler-alerts.md) |
 117	| 11 | Interfaces — FastAPI routers, then MCP/FastMCP server + principal/entitlement | [06](modules/06-interfaces.md) |
-118	| 12 | Infra & ops — Redis transport + cache, DuckDB/Parquet tier, Alembic dual-dialect, observability, deploy | [16](modules/16-infrastructure.md), [17](modules/17-devops-operations.md) |
+118	| 12 | Infra & ops — Redis transport + cache, DuckDB/Parquet tier, `create_all()`-based dual-dialect schema provisioning, observability, deploy | [16](modules/16-infrastructure.md), [17](modules/17-devops-operations.md) |
 119	| 13 | Hardening — test profiles + governance/isolation/context-efficiency/summary-quality/routing evals | §5 below |
 120	
 121	**Post-Phase-2 data-layer expansion:** FinMind/yfinance were widened well past their original
 Phase-2 scope (8→104 FinMind datasets; yfinance 3 TW fields→full non-TW primary source) and MOPS
-landed via TWSE OpenAPI. **Tool expansion** (7→97 tools against the newly-available datasets, incl.
-the theme/score/screener/ETF-overlap groups) and **doc sync** (`03-tools.md`, `data-catalog.md`,
+landed via TWSE OpenAPI. **Tool expansion** (7→107 tools against the newly-available datasets, incl.
+the theme/score/screener/ETF-overlap/TDCC groups) and **doc sync** (`03-tools.md`, `data-catalog.md`,
 `08-skills.md`, and other module docs corrected against real code) have both since landed. Most of
 the long tail now has a skill allowlist home too (see the "Catch-all skills" table in
-[08](modules/08-skills.md)). Remaining backlog, not yet closed: ingest job coverage (9/77
-whole-market-eligible datasets wired, real daemon-fired via `ingest/daemon.py` — the remaining
-~14 job groups are enumerated as a documented checklist in `ingest/jobs.py`'s
-`STUBBED_DATASETS`, see [22](modules/22-data-ingest.md) §3); `analytics/` is TW-only and still
+[08](modules/08-skills.md)). Remaining backlog, not yet closed: ingest job coverage (10 TW
+whole-market FinMind jobs + 3 US-market jobs wired, real daemon-fired via `ingest/daemon.py` —
+see [22](modules/22-data-ingest.md) for the full job inventory); `analytics/` is TW-only and still
 missing its `summary/` subpackage (its `screener/`/`themes/`/`scoring/` subpackages now exist —
 see Phase 3b); `calendar/rules.py` ignores
 its own `market` parameter (TW logic runs regardless of market) — see [22](modules/22-data-ingest.md),
@@ -165,7 +168,7 @@ its own `market` parameter (TW logic runs regardless of market) — see [22](mod
 150	uv run pytest                          # default = -m 'not network' (CI default; recorded fixtures)
 151	uv run pytest -m governance            # HIGHEST priority — the guardrail/entitlement suite (§ below)
 152	uv run pytest -m concurrency           # shared-state races (needs Postgres+Redis) — module 16 §10
-153	uv run pytest -m dual_dialect          # every migration applies on BOTH SQLite and Postgres
+153	uv run pytest -m dual_dialect          # Base.metadata.create_all() produces a valid schema on BOTH SQLite and Postgres
 154	uv run pytest -m operator_preflight    # live source fetch — MANUAL, opt-in only
 155	uv run pytest -m browser_e2e           # scraper live path — MANUAL
 156	
@@ -181,8 +184,15 @@ its own `market` parameter (TW logic runs regardless of market) — see [22](mod
 166	context-efficiency, summary-quality, and classifier-routing evals ([architecture.md §11](architecture.md#11-build-phases)).
 167	
 168	**Write tests as you build:** recorded fixtures per source adapter (live fetch only under
-169	`operator_preflight`/`browser_e2e`); a **stub `LLMClient`** (deterministic scripted tool-calls) for
-170	all runtime/orchestrator tests — never a real provider in the default suite.
+    `operator_preflight`/`browser_e2e`); a **stub `LLMClient`** (deterministic scripted tool-calls) for
+    all runtime/orchestrator tests — never a real provider in the default suite.
+
+    **No Alembic migration chain.** This project has no `alembic.ini`/`versions/` directory —
+    `Base.metadata.create_all()` (`db/base.py::ensure_schema`) is the **sole** schema-provisioning
+    mechanism, called idempotently by every schema-bearing process (api/scheduler/ingest/mcp) at
+    its own startup — there is no separate migrate step. The `dual_dialect` marker above tests
+    `create_all()`'s portability/idempotency across SQLite and Postgres, **not** migrations (see
+    `tests/db/test_dual_dialect_migrations.py`'s own docstring).
 171	
 172	---
 173	
@@ -222,13 +232,15 @@ its own `market` parameter (TW logic runs regardless of market) — see [22](mod
 207	**Add an API endpoint** → [modules/06](modules/06-interfaces.md), [api-reference.md](api-reference.md)
 208	- Add the router under `api/routers/`; **api-reference.md is the authoritative endpoint list** — keep
 209	  it in sync. If it implies a new table, add it to [database-schema.md](database-schema.md) (dual-
-210	  dialect: text UUID PK, JSON not `text[]`, CHECK not ENUM, money as int micro-units) + an Alembic
-211	  expand-contract migration.
+210	  dialect: text UUID PK, JSON not `text[]`, CHECK not ENUM, money as int micro-units) — declare
+    the new model on `Base` and it's picked up automatically by `create_all()`, no separate
+    migration to write.
 212	
 213	**Add a DB table/column** → [database-schema.md](database-schema.md), [`../../backend/CLAUDE.md`](../../backend/CLAUDE.md) §6
 214	- Every stateful table carries `user_id` (isolation + RLS). Add the concurrency guard its hot path
 215	  needs ([modules/16](modules/16-infrastructure.md) §10 matrix: partial-unique, `version` CAS,
-216	  idempotency key, reserve-before-act…). Migration must pass `-m dual_dialect`.
+216	  idempotency key, reserve-before-act…). The new/changed model must still pass `-m dual_dialect`
+    (`create_all()` must produce a valid schema on both SQLite and Postgres — no migration to run).
 217	
 218	---
 219	
@@ -237,10 +249,13 @@ its own `market` parameter (TW logic runs regardless of market) — see [22](mod
 222	- **Run the domain gate:** the **`governance-reviewer`** agent (`.claude/agents/`) reviews a diff
 223	  under `backend/src/` against [governance.md](governance.md) + [architecture.md](architecture.md) +
 224	  [`../../backend/CLAUDE.md`](../../backend/CLAUDE.md) §3–§5 — the check a generic code review misses.
-225	- **CI must be green:** default `pytest` + `governance` + (if migrations touched) `dual_dialect` +
+225	- **CI must be green:** default `pytest` + `governance` + (if schema touched) `dual_dialect` +
 226	  (if shared state touched) `concurrency`; ruff + pyright + mypy clean.
-227	- **Migration safety:** expand → deploy → contract-later; never a breaking in-place migration
-228	  ([modules/17](modules/17-devops-operations.md) §1).
+227	- **Schema-change safety:** there is no Alembic migration chain — `create_all()`
+  (`db/base.py::ensure_schema`) is the sole schema-provisioning mechanism, applied idempotently at
+  each process's own startup. Additive/backward-compatible changes only (add columns/tables,
+  never a breaking in-place rewrite of an existing one), since there is no expand/contract
+228	  migration step to sequence a breaking change behind ([modules/17](modules/17-devops-operations.md) §1).
 229	- **Branch, don't push to default; commit/push only when asked.** A change that weakens a
 230	  non-negotiable to pass is a **reject**, not a merge — fix the code.
 231	

@@ -30,7 +30,10 @@ rules, currency, timezone, trading hours, and the source-priority table.
 ```python
 class Market(str, Enum):
     TW = "TW"        # 上市/上櫃 (TWSE/TPEx)
-    US = "US"; GB = "GB"; JP = "JP"; HK = "HK"
+    US = "US"; GB = "GB"; JP = "JP"
+    HK = "HK"        # real enum value, but — like the calendar_events gap noted in §4 below —
+                      # has no rows configured in source_priority.yaml today; a live router call
+                      # for any (HK, capability) pair degrades to unavailable
     EU = "EU"        # continental-Europe equities (e.g. Euronext) — no single-country home
     GLOBAL = "GLOBAL"  # datasets with no single-country home at all (multi-country central-bank
                         # rate panels, world commodity benchmarks) — distinct from a market gap
@@ -59,7 +62,7 @@ institutional_flow · margin_short · shareholding · chip_broker · analyst_con
 esg · profile · news · calendar_events · etf_holdings · derivatives_oi · macro · sector_class ·
 options_chain · institutional_holders · insider_activity · symbol_search · symbol_lookup ·
 earnings_calendar · ipo_calendar · economic_calendar · sector_overview · industry_overview ·
-market_status · fund_holdings · … (131 capabilities total across TW/US/GB/EU/JP/GLOBAL — this
+market_status · fund_holdings · … (134 capabilities total across TW/US/GB/EU/JP/HK/GLOBAL — this
 list is illustrative, not exhaustive; the full enum lives in `schemas/enums.Capability` and the
 full per-dataset inventory in [../data-catalog.md](../data-catalog.md))
 ```
@@ -105,7 +108,7 @@ TW:
   # this capability degrades to `unavailable` (see 18-calendar-events.md). There is no
   # `calendar_ext` source_id and the rule engine is not a router-resolvable adapter — it is a
   # separate, feedless Layer 1 (`calendar/rules.py`) composed above the router, not through it.
-  # ... every TW capability listed above; see the live file for the full 131-capability block
+  # ... every TW capability listed above; see the live file for the full 134-capability block
 
 GLOBAL:               # datasets with no single-country home — Market.GLOBAL, not forced into TW/US
   central_bank_rate:  [finmind]
@@ -168,6 +171,15 @@ honestly, rather than a naive whole-roster scan pretending to be ranked type-ahe
 grouped TW → ETF → US result shape, no 主題/產業 match section, and no long-TTL cached universe —
 building a TW/ETF symbol-universe search service (from ingested `TaiwanStockInfo` + ETF list) is
 still open work, not yet started.
+
+## Real frontend consumer of the market REST routes
+
+The 7 real `market_rest.py` routes (`/market/institutional-ranking`, `/market/margin-maintenance`,
+`/market/day-trading`, `/market/etf-money-flow`, `/market/industry-flow`, `/macro`,
+`/macro/business-indicator`) now have a real consumer: `web/src/app/[locale]/(app)/market/
+market-panel.tsx` + `web/src/lib/api/market.ts` ship the first real `/market` dashboard (git
+`2dc5f81`), calling exactly those 7 routes and no others — this is data-access output reaching a
+UI, not just agent tools/REST plumbing with no caller yet.
 
 ## Governance
 - Router lives above `sources/`; it performs **no I/O itself** (ADR-0002 holds).

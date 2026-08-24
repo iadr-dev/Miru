@@ -89,13 +89,14 @@ Provider-specific normalization worth knowing when debugging a client:
   literal `[DONE]` sentinel; `stream_options: {"include_usage": true}` requested so the final
   usage is real, not estimated, even on the streaming path.
 
-**Native web search** is exposed only as the `ModelCapabilities.native_web_search` flag per
-client (`True` for Anthropic/Gemini, `False` for OpenAI/Groq/Cerebras/OpenRouter/Ollama on
-today's catalog). **Not built:** there is no `AITW_WEBSEARCH` setting, no Brave-backend
-routing, and no code anywhere in `llm/` that actually invokes a provider's native search tool
-or falls back to a `web_search` tool implementation — the flag exists for a future caller to
-branch on, but nothing currently reads it. (See [01-sources.md](01-sources.md) for the real,
-separately-implemented Brave source adapter, which is not wired to this flag.)
+**Native web search** is exposed as the `ModelCapabilities.native_web_search` flag per client
+(`True` for Anthropic/Gemini, `False` for OpenAI/Groq/Cerebras/OpenRouter/Ollama on today's
+catalog). Nothing inside `llm/` itself branches on this flag — the selection logic is one layer
+up: `orchestrator/orchestrator.py::_maybe_add_web_search` reads a resolved client's
+`capabilities.native_web_search` to decide, per turn, whether to grant `native_web_search=True`
+into `chat()`/`stream()` or fall back to the Brave-backed `web_search`/`fetch_url` tools instead
+(see [03-tools.md](03-tools.md)'s "Web search" section for the full mechanism). So the flag is
+real and consumed today, just not by any code inside this module — `llm/` only declares it.
 
 ## Selection (`registry.py`)
 
@@ -107,7 +108,8 @@ separately-implemented Brave source adapter, which is not wired to this flag.)
 ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / GROQ_API_KEY / CEREBRAS_API_KEY
     / OPENROUTER_API_KEY          # Settings fields anthropic_api_key, openai_api_key, ...
 OLLAMA_BASE_URL   = http://localhost:11434     # settings.ollama_base_url, keyless
-AITW_LLM_PROVIDER / AITW_LLM_MODEL             # default_client() override
+LLM_PROVIDER / LLM_MODEL                       # settings.llm_provider / settings.llm_model,
+                                                # default_client() override
 ```
 
 `ollama` is the sole keyless provider. For every other `provider_id` in
@@ -118,56 +120,87 @@ not in that set plus `ollama`) also raises `ProviderNotConfiguredError`, with a 
 naming the id — a typo'd config value fails loudly instead of silently falling back to a
 different vendor.
 
-`default_client(settings=None)` builds the client for `AITW_LLM_PROVIDER`/`AITW_LLM_MODEL`,
-falling back to the hardcoded default constants `_DEFAULT_PROVIDER = "anthropic"` /
-`_DEFAULT_MODEL = "claude-sonnet-5"` when either is unset.
+`default_client(settings=None)` builds the client for `LLM_PROVIDER`/`LLM_MODEL`
+(`settings.llm_provider`/`settings.llm_model`), falling back to the hardcoded default
+constants `_DEFAULT_PROVIDER = "anthropic"` / `_DEFAULT_MODEL = "claude-sonnet-4-6"` when
+either is unset.
 
 ### Role-based model routing
 
 `ModelRole` is a `StrEnum` with four members — `CLASSIFIER`, `AGENT`, `SUBAGENT`,
 `SYNTHESIS` — matching the orchestrator's three-stage design
 ([11-orchestration.md](11-orchestration.md)). `resolve_role(role, settings=None)` maps a role
-to a `"provider/model"` spec and constructs the client:
+to its configured **ordered fallback chain** of `"provider/model"` specs and constructs the
+client (see Fallback below):
 
 ```python
-AITW_MODEL_ROLE_CLASSIFIER   # settings.aitw_model_role_classifier, else "groq/llama-3.3-70b-versatile"
-AITW_MODEL_ROLE_AGENT        # settings.aitw_model_role_agent,      else "anthropic/claude-sonnet-5"
-AITW_MODEL_ROLE_SUBAGENT     # settings.aitw_model_role_subagent,   else "cerebras/gpt-oss-120b"
-AITW_MODEL_ROLE_SYNTHESIS    # settings.aitw_model_role_synthesis,  else "anthropic/claude-opus-4-8"
+MODEL_ROLE_CLASSIFIER   # settings.model_role_classifier, else the default chain:
+                         #   "groq/llama-3.3-70b-versatile" -> "cerebras/gpt-oss-120b"
+                         #   -> "anthropic/claude-sonnet-4-6"
+MODEL_ROLE_AGENT        # settings.model_role_agent, else the default chain:
+                         #   "anthropic/claude-sonnet-4-6" -> "anthropic/claude-haiku-4-5-20251001"
+MODEL_ROLE_SUBAGENT     # settings.model_role_subagent, else the default chain:
+                         #   "anthropic/claude-sonnet-4-6" (single entry, no fallback)
+MODEL_ROLE_SYNTHESIS    # settings.model_role_synthesis, else the default chain:
+                         #   "openai/gpt-4o-mini" (single entry, no fallback)
 ```
 
-Each override is a bare `"provider/model"` string (`_split_provider_model` raises `ValueError`
-on a spec with no `/`). Pointing every `AITW_MODEL_ROLE_*` at `ollama/qwen3.6` is a pure
-config change — no code path branches on role identity beyond this table lookup.
+Each override is one or more comma-separated `"provider/model"` specs, in try-order
+(`_parse_role_chain`; `_split_provider_model` raises `ValueError` on an individual spec with no
+`/`). Pointing every `MODEL_ROLE_*` at `ollama/qwen3.6` is a pure config change — no code path
+branches on role identity beyond this table lookup.
 
-### Fallback — real mechanics, not a configured chain
+### Fallback — a real, ordered per-role provider chain
 
-The original design's **per-role ordered fallback list** (e.g.
-`anthropic/claude-sonnet-5 → openai/gpt-5.4 → openrouter/auto`, configured in `config/`) is
-**not built**. There is no fallback-chain config anywhere in `config/` or `llm/`, and
-`registry.py` has no notion of "try the next provider in a list."
+The per-role ordered fallback chain (e.g. `groq/... -> cerebras/... -> anthropic/...` for
+`CLASSIFIER`) is genuinely built, not just a future design intent. `_DEFAULT_ROLE_MODELS:
+dict[ModelRole, tuple[str, ...]]` in `llm/registry.py` holds the default chain for each role
+(quoted above); a `MODEL_ROLE_<ROLE>` setting overrides it with the caller's own
+comma-separated chain. `resolve_role`:
+- For a **single-entry chain**, builds and returns that one client directly (no wrapper) —
+  and still raises `ProviderNotConfiguredError` loudly if that one provider has no key, since
+  there is nothing else in the chain to try.
+- For a **multi-entry chain**, builds a client for every entry it can (skipping — with a debug
+  log, not an error — any entry whose provider is unconfigured) and wraps the survivors in
+  `FallbackLLMClient`. It raises `ProviderNotConfiguredError` only if *every* entry in the
+  chain is unconfigured.
+- `FallbackLLMClient` (also in `registry.py`) presents as the **first** client in its chain for
+  identity purposes (`provider_id`/`model_id`/`capabilities`), but `chat()`/`stream()` try each
+  wrapped client in order, catching any exception (auth error, 429, transport failure, mid-
+  stream break) and falling through to the next — only raising the last exception if every
+  client in the chain fails. This is a genuine "try the next provider in a list" mechanism,
+  living entirely in `registry.py`, not caller-side.
 
-What's actually implemented is caller-level, hardcoded, and narrower:
-- `orchestrator/orchestrator.py`'s `_resolve_subagent_client` catches
-  `ProviderNotConfiguredError` from `resolve_role(ModelRole.SUBAGENT, ...)` and falls back to
-  `resolve_role(ModelRole.AGENT, ...)` — one hop, subagent-role-unconfigured only.
-- `orchestrator/classifier.py`'s `IntentClassifier` catches `ProviderNotConfiguredError` from
-  `resolve_role(ModelRole.CLASSIFIER)` (provider unconfigured) and any other exception from
-  the actual `chat()` call (transport/parse failure) and falls back to
-  `_keyword_fallback()` — a deterministic keyword match over each skill's `triggers` — never
-  to a different LLM provider.
-- `orchestrator/synthesis.py` falls back the same way: `ProviderNotConfiguredError` on
-  `resolve_role(ModelRole.SYNTHESIS)`, or any exception from the synthesis `chat()` call,
-  degrades to `_structured_concatenation()` of the completed lane results — again, no
-  cross-provider retry.
+On top of that per-role chain, `orchestrator/orchestrator.py::Orchestrator._resolve_client`
+(a single role-parameterized method — not a `_resolve_subagent_client`) adds one more,
+narrower hop: for `ModelRole.SUBAGENT` specifically, it catches `ProviderNotConfiguredError`
+from `resolve_role(ModelRole.SUBAGENT, ...)` (i.e. every entry in the SUBAGENT chain
+unconfigured) and falls back to `resolve_role(ModelRole.AGENT, ...)` instead. `_resolve_client`
+delegates the non-SUBAGENT (AGENT) path to `_resolve_agent_client`, which calls
+`resolve_role_with_override` (see below) rather than `resolve_role` directly.
 
-So today's "fallback chain" is: unconfigured/failing role → a same-process non-LLM
-degradation specific to that caller (keyword match, plain concatenation, or the one
-subagent→agent role hop) — never an automatic hop to a second *provider*. BYOK keys
-([12-multi-user-tiers.md](12-multi-user-tiers.md)) exist as a concept in `accounts/secrets.py`
-(`SecretStore.has_llm_key`, `SecretKind.LLM_KEY`) but nothing in `llm/registry.py` reads a
-BYOK key — `build_client`/`resolve_role` only ever read the platform keys off `Settings`.
-Wiring a user's BYOK key into `build_client` is **not built**.
+`orchestrator/classifier.py`'s `IntentClassifier` and `orchestrator/synthesis.py` add their own
+non-LLM degradations on top of all the above: `IntentClassifier` catches
+`ProviderNotConfiguredError` from `resolve_role(ModelRole.CLASSIFIER)` or any exception from
+the actual `chat()` call and falls back to `_keyword_fallback()` (a deterministic keyword match
+over each skill's `triggers`); `Synthesizer` degrades the same way on `ModelRole.SYNTHESIS`
+failures, falling back to `_structured_concatenation()` of the completed lane results. Neither
+of these is a provider hop — they're the last-resort floor below the provider chain above.
+
+**Per-thread model override:** `llm/registry.py::resolve_role_with_override(role,
+model_override, settings)` honors a user-supplied `"provider/model"` string for a role when one
+is given, building that exact client; any failure to use it (malformed spec, unconfigured
+provider, unimplemented provider) degrades to the role's normal configured chain via
+`resolve_role` rather than failing the turn — a user's model pick is a preference, not a hard
+requirement. `Orchestrator._resolve_agent_client` uses it for `ModelRole.AGENT`, and
+`Synthesizer._resolve_client` uses it for `ModelRole.SYNTHESIS` — the two roles a thread-level
+override is meaningful for; `CLASSIFIER`/`SUBAGENT` are cost/latency-tiered plumbing callers
+never route a thread override through.
+
+BYOK keys ([12-multi-user-tiers.md](12-multi-user-tiers.md)) exist as a concept in
+`accounts/secrets.py` (`SecretStore.has_llm_key`, `SecretKind.LLM_KEY`) but nothing in
+`llm/registry.py` reads a BYOK key — `build_client`/`resolve_role` only ever read the platform
+keys off `Settings`. Wiring a user's BYOK key into `build_client` is **not built**.
 
 ## Callers (real usages outside `llm/`)
 
@@ -176,8 +209,8 @@ Grep for `llm.base`/`llm.registry` imports outside `llm/` turns up:
 | Caller | What it uses |
 |--------|--------------|
 | `orchestrator/classifier.py` | `resolve_role(ModelRole.CLASSIFIER)` for the LLM router; `LLMClient`/`Message`/`MessageRole` to build the routing prompt |
-| `orchestrator/orchestrator.py` | `resolve_role(ModelRole.AGENT \| SUBAGENT, settings)` per the tiering above |
-| `orchestrator/synthesis.py` | `resolve_role(ModelRole.SYNTHESIS)` for final-answer synthesis |
+| `orchestrator/orchestrator.py` | `_resolve_client(role, model_override=...)` — `resolve_role(ModelRole.SUBAGENT \| AGENT, settings)` per the tiering above, with `resolve_role_with_override(ModelRole.AGENT, ...)` for the AGENT path's per-thread override |
+| `orchestrator/synthesis.py` | `resolve_role_with_override(ModelRole.SYNTHESIS, ...)` for final-answer synthesis, honoring the same per-thread override mechanism |
 | `agent/loop.py` | takes an injected `LLMClient` and calls `llm.chat(messages, tools=...)` inside the step loop (`step_start -> transform_context -> convert_to_llm -> llm.chat -> ...`) |
 | `agent/context_window.py` | calls `llm.count_tokens(messages)` for context-window budgeting/compaction |
 | `agent/hooks.py` | operates on `llm.base.Message` right before each `chat()` call |

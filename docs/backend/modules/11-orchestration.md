@@ -89,9 +89,13 @@ records which skills+versions contributed (provenance for the conversation-packa
 
 Explicit, to avoid both context-budget blowup and silent starvation:
 - **Parallel sub-agents (`subagent`)** receive a **scoped slice** — the user query + resolved
-  entities/constraints + the relevant memory block + their skill body — **NOT the full
-  transcript**. They run on the **post-compaction** context; they never re-inflate history.
-  (4 lanes × full history would multiply tokens 4× and can exceed the window.)
+  entities/constraints + their skill body — **NOT the full transcript, and NOT the recalled
+  long-term-memory block**: `Orchestrator._build_loop` only attaches `MemoryRecallPreLLMHook`
+  when it is given a `recall_provider`, and only the `none`/`single` root-agent paths
+  (`_run_none`/`_run_single`) pass one — `_run_subagent`/`_run_team`'s fan-out lanes never do, so
+  a sub-agent's loop never sees the memory block ([09](09-memory.md), [10](10-events-hooks.md)).
+  They run on the **post-compaction** context; they never re-inflate history. (4 lanes × full
+  history would multiply tokens 4× and can exceed the window.)
 - **Teammates (`team`)** hand off **structured `finding` records** (per [09-memory.md](09-memory.md)
   summary-quality: decision + cause + key_figures), **not raw prose** — bounding growth across
   the sequence. A lightweight schema/sanity check runs on each shared-context write to stop a
@@ -122,6 +126,12 @@ Explicit, to avoid both context-budget blowup and silent starvation:
 - **FinMind pre-flight reservation:** before spawning a fan-out, the quota manager reserves the
   lanes' Sponsor budget; if unavailable, lanes degrade to cached/`unavailable-tier` **before**
   spawning (a distinct caveated lane-degradation, not a generic error). See [16](16-infrastructure.md) §4.
+  **`single` reserves too:** `_run_single` doesn't go through `_start_fanout`, but it now applies
+  the identical mechanism directly — when its resolved skill's tool allowlist carries a
+  Sponsor-tier tool (checked via `_has_sponsor_tool`), it reserves FinMind Sponsor quota before
+  running the loop; a degraded reservation strips the Sponsor tool(s) from that turn's tool set
+  rather than letting the model call one the pool has no budget for, mirroring the fan-out paths'
+  degrade-not-spend behavior for the common one-symbol turn.
 - **Steering during fan-out:** buffered and applied at synthesis / next root turn — it **never
   mutates an in-flight lane's context** (lanes are short-lived, read-only; no race).
 

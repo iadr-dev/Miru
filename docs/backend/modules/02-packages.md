@@ -13,24 +13,33 @@ results), peer to `ConversationStore`/`MemoryStore`, with a read-through cache a
 `SourceAdapter` wrapper in `sources/` so `context/` itself never opens a socket/DuckDB/Redis
 handle.
 
-> **Still pending:** `MarketDataStore` is a confirmed **future design intent**, not current
-> code — there is no `MarketDataStore` protocol, no caching `SourceAdapter` wrapper, and no
-> Redis read-through anywhere in `src/sources/` today (verified: zero references). What exists
-> instead is the leader-writes-Parquet / workers-read-only split (`ingest/store.py`'s
-> `ParquetStore` + per-worker read-only DuckDB, [16-infrastructure.md](16-infrastructure.md)
-> §3) plus the data-access router's own per-call source fetch — real, wired, and load-bearing,
-> but not the `MarketDataStore` protocol seam ADR-0018 describes. Building that seam is a
-> follow-up, not a current gap in the request path: `context/` still performs no I/O of its own
-> today (the router does the fetching), so ADR-0002's "only `sources/` does I/O" invariant holds
-> regardless of whether this protocol lands.
+> **Partially built:** the `MarketDataStore` protocol itself is still a confirmed **future
+> design intent**, not current code — there is no `MarketDataStore` protocol anywhere in
+> `context/` today. But the read-through caching wrapper ADR-0018 anticipated **is** built and
+> wired: `sources/caching_adapter.py`'s `CachingSourceAdapter` implements the `SourceAdapter`
+> protocol as a genuine Redis read-through cache — per-capability TTL keyed off each result's own
+> `TimingClass`, a single-flight-on-miss lock (`SET NX EX`) with poll-and-wait to guard against
+> stampedes on a hot key. `dataaccess/composition.py::build_default_adapters` wraps every
+> adapter with it when `settings.market_data_cache_backend == "redis"`, it has a dedicated test
+> module (`backend/tests/sources/test_caching_adapter.py`), and it is enabled by default in
+> `docker-compose.yml`. What's still missing is the rest of the `MarketDataStore` surface —
+> canonical-package/observation-run persistence and the normalized `etf_holdings` table — plus
+> the leader-writes-Parquet / workers-read-only split (`ingest/store.py`'s `ParquetStore` +
+> per-worker read-only DuckDB, [16-infrastructure.md](16-infrastructure.md) §3), which remains
+> the durable-storage half of that seam. Building the full protocol is a follow-up, not a
+> current gap in the request path: `context/` still performs no I/O of its own today (the router
+> does the fetching, now through a cache-wrapped adapter), so ADR-0002's "only `sources/` does
+> I/O" invariant holds regardless of whether the full protocol lands.
 
 **Layering (preserves ADR-0002 "only `sources/` does I/O"):** `context/` requests a
 **capability for a (symbol, market)** from the **data-access router**
 ([19-data-access-router.md](19-data-access-router.md)) — it never names a source or opens a
 socket/DuckDB handle. The router resolves per-market priority + fallback and returns a
-normalized result directly from the configured adapter(s); there is no cache tier between the
-router and the adapter yet (that is the pending `MarketDataStore` seam above). This is what
-makes `context/` market-agnostic (works for TW today, US/JP later) even before that seam exists.
+normalized result from the configured adapter(s), each of which is Redis-cache-wrapped by
+`CachingSourceAdapter` when `market_data_cache_backend == "redis"` (the pending piece is only
+the rest of the `MarketDataStore` seam above — canonical/observation persistence — not the cache
+tier itself). This is what makes `context/` market-agnostic (works for TW today, US/JP later)
+regardless of that remaining seam.
 
 ## Canonical (Mode A / Level 1) — `canonical.py`
 

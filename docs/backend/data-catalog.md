@@ -230,16 +230,32 @@ layer adds the fresh leading edge + social buzz.
 - **Macro:** `TaiwanExchangeRate`, `InterestRate`, `GoldPrice`, `CrudeOilPrices`,
   `GovernmentBondsYield`, `CnnFearGreedIndex`.
 
-### 2.10 TDCC (集保) & TWSE non-OpenAPI surfaces — gaps & duplicates
-Audited against our FinMind + OpenAPI stack. Most chip data is **already covered**; a few
-ETF/dispersion/intraday items are genuine gaps.
+### 2.10 TDCC (集保) — real, built adapter (6 capabilities) & TWSE non-OpenAPI surfaces
+TDCC (集保結算所) OpenData is a **real, already-built, public/keyless adapter** (`sources/tdcc/
+_adapter.py`, `tools/tdcc_tools.py`), registered as its own `[tdcc]` entry in
+`config/source_priority.yaml` — not merely reachable indirectly via FinMind. Six distinct
+`Capability` values (`schemas/enums.py`) are wired end-to-end:
 
-**Already covered — do NOT re-ingest (flagged to prevent duplication):**
-- **TDCC 集保戶股權分散表** (weekly, 15 lot brackets, open CSV `getOD.ashx?id=1-5`) is wrapped
-  by FinMind **`TaiwanStockHoldingSharesPer`** — whose columns `HoldingSharesLevel, people,
-  percent` already give **股東人數 (人數)** and the **千張大戶比率** (level 15 = >1,000,000 股).
-  So the "commonly-missed" dispersion pair (股東人數 + 大戶持股比率) is **derivable from data we
-  already have** — just compute trends. No new adapter.
+| Capability | OpenData id | Row model | Notes |
+|-----------|-------------|-----------|-------|
+| `tdcc_securities_info` | `1-1` | `TdccSecuritiesInfoRow` | 證券基本資料 — market/registrar/status/par-value reference facts, not a price |
+| `tdcc_pledged_custody_shares` | `1-4` | `TdccPledgedCustodyShareRow` | 集保股份保管明細 — dispersed (分戶) vs specific/mandatory (集保) custody split for one stock, as of the dump's single reported day |
+| `tdcc_shareholding_distribution` | `1-5` | `TdccShareholdingDistributionRow` | 集保戶股權分散表 — weekly, 17 holding-level tiers. **Deliberately a separate, free `Capability` from FinMind's Sponsor-tier `TaiwanStockHoldingSharesPer`** (same concept, different source, not unified into one name) — see below |
+| `tdcc_offshore_fund_nav` | `3-4` | `TdccOffshoreFundNavRow` | 境外基金淨值 — keyed by TDCC's own offshore-fund code, not a `Market`-scoped equity symbol |
+| `tdcc_evoting_schedule` | `6-2` | `TdccEvotingScheduleRow` | 股東會電子投票起訖日 — reference/scheduling only, never a vote tally or result |
+| `tdcc_monthly_custody_accounts` | `2-1` | `TdccMonthlyCustodyAccountsRow` | whole-market monthly 集保帳戶統計 (new/closed/total accounts) — market-level, no per-symbol scope |
+
+All six are `public`/keyless, all `B·S` cadence per their own table above (weekly/monthly/event
+as noted), and all registered under a dedicated `[tdcc]` adapter — not a FinMind fallback path.
+
+**Why `tdcc_shareholding_distribution` stays separate from FinMind's `TaiwanStockHoldingSharesPer`
+(§2 elsewhere)**, per `schemas/capabilities.py`'s own docstring: same underlying concept (holding-
+level distribution), but a different upstream source, and deliberately given a distinct
+`Capability` name rather than folded into one — so this remains a real duplicate-by-design pair,
+not dead weight to prune. Callers needing 股東人數/千張大戶比率 can use either the FinMind
+Sponsor-tier capability or this free TDCC one.
+
+**Remaining TWSE non-OpenAPI duplicates (already covered — do NOT re-ingest):**
 - Per-stock 外資/投信/自營 net (TWSE `TWT38U`/`TWT44U`/`TWT43U`) ≈ FinMind
   `TaiwanStockInstitutionalInvestorsBuySell(Wide)`; 融資融券 `TWTB4U` ≈ FinMind margin; 借券賣出
   `TWT72U` ≈ FinMind `TaiwanStockSecuritiesLending`; 當沖 `TWTASU` ≈ FinMind `TaiwanStockDayTrading`;
@@ -255,9 +271,10 @@ ETF/dispersion/intraday items are genuine gaps.
 | **未含金融電子 / 產業分類 sub-indices** — sector-rotation baseline | TWSE `MI_INDEX` | daily | OpenAPI → `public` |
 | **MIS best-5 bid/ask + intraday** (`mis.twse.com.tw`) — only free orderbook/intraday | TWSE MIS | real-time (5s) | keyless → `public`, via `twse_mis.py` |
 
-These attach to existing adapters: ETF NAV/受益人數 → a small `tdcc`/`etf` extension; 注意股/
-停資停券/sub-indices → `twse_openapi.py` + announcement scrape; best-5 → the existing
-`twse_mis.py` (§bounded observation). All `public`, non-trading, caveated.
+These attach to existing adapters: ETF NAV/受益人數 → a small extension of the now-real `tdcc`
+adapter (§2.10 above) or a sibling `etf` one; 注意股/停資停券/sub-indices → `twse_openapi.py` +
+announcement scrape; best-5 → the existing `twse_mis.py` (§bounded observation). All `public`,
+non-trading, caveated.
 
 ### 2.11 主動式ETF analytics & 大盤 views (mostly derived)
 The 主動式ETF / 大盤 dashboards (operator daily-report, cross-ETF money-flow, index
