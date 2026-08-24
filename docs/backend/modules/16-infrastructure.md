@@ -165,8 +165,12 @@
 165	- **Cache-first:** Sponsor EOD data (分點/官股/產業鏈) is T+1 and changes once/day → cache per
 166	  `(dataset, stock, date)` in DuckDB/Redis; repeat reads never re-hit FinMind. The vast
 167	  majority of the 6000 budget should be cache misses only.
-168	- **Fair-share:** a per-user sub-quota + priority within the pool so one user's fan-out can't
-169	  starve others; over-sub-quota requests queue or serve cached.
+168	- **Fair-share: not yet built.** The real reserver (`RedisFinMindPoolReserver`,
+169	  `usage/finmind_pool.py`) is a purely **global** rolling-window counter — its atomic
+170	  `INCRBY`/`DECRBY` reservation is keyed on `(key_prefix, window bucket)` only, with no `user_id`
+171	  dimension, no per-user sub-quota, no priority, and no queuing. One heavy user's fan-out can
+172	  exhaust the whole pool for every other paid user today; only the global reserve-before-act
+173	  ceiling (grant up to headroom, refund the overage) is enforced.
 170	- **Capacity model:** document the paid-user count at which one token saturates and the plan
 171	  (multiple Sponsor tokens, request coalescing). The ceiling must be visible, not discovered
 172	  in production.
@@ -178,8 +182,13 @@
 178	  workers run safely without double-firing; no SPOF.
 179	- **At-least-once execution + idempotent delivery:** dedupe key `(rule_id/job_id, trigger_date,
 180	  channel)` in `notifications`; a redelivered LINE/Telegram/web native is a no-op.
-181	- **Retry + DLQ** for transient channel failures; **`running` status** added to
-182	  `schedule_jobs` to detect stuck/orphaned runs after a crash.
+181	- **Retry + DLQ: designed but not yet implemented.** `scheduler/` has no retry-queue or
+182	  dead-letter logic today — grepped the whole package, none exists. `DeliveryReceipt.retryable`
+183	  (`scheduler/delivery/base.py`) is a boolean field nothing currently consumes; the field's own
+184	  docstring frames `retryable=True` as a documented future seam, not implemented behavior.
+185	  `scheduler/worker.py::_log_receipt` just logs the receipt (channel, `delivered`, `retryable`) —
+186	  a transient channel failure is observed, never retried or routed to a dead-letter path.
+187	  **`running` status** is added to `schedule_jobs` to detect stuck/orphaned runs after a crash.
 183	
 184	## 6. Concurrency, cost & abuse ceilings
 185	
@@ -244,7 +253,7 @@
 244	|----------------|--------|-----------|
 245	| `usage_counters` increment | lost update (parallel turns, same user/window) | atomic `INSERT … ON CONFLICT (pk) DO UPDATE SET n = n+1` ([10](10-events-hooks.md) §4) |
 246	| Rate-limit / daily-chat gate | two concurrent turns both pass the check | check-and-increment in the **same atomic upsert** (Redis `INCR` + TTL, or the counter upsert), not read-then-write |
-247	| Quota check (chat/day, FinMind) | TOCTOU — both admitted over the cap | reserve **before** work (atomic decrement of a Redis budget); refund on failure |
+247	| Quota check (chat/day, FinMind) | TOCTOU — both admitted over the cap | reserve **before** work (atomic decrement of a Redis budget); refund on failure. Reservation fires from two `orchestrator.py` call sites: `_start_fanout` (the `subagent`/`team` frameworks, via `_run_subagent`/`_run_team`) reserves per fan-out lane, and — closing a scope gap that previously left it unreserved — `_run_single` also reserves directly whenever its resolved skill's tool allowlist includes a Sponsor-tier tool (`_has_sponsor_tool`), stripping those tools from the loop if the reservation comes back degraded |
 248	| `subscriptions` (Paddle) | out-of-order / duplicate webhooks | single writer + `occurred_at` ordering guard + `billing_events` idempotency ([15](15-payments-paddle.md)) |
 249	| `threads` (rename/star/archive, multi-device) | lost update | optimistic `version` compare-and-set (409 on stale) |
 250	| **Thread active-leaf / branch switch** | two devices edit/switch same thread | CAS on `threads.active_leaf_message_id` keyed by `version`; last-writer-wins with 409 retry |

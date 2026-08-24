@@ -52,10 +52,11 @@ API-key-to-user lookup exists anywhere in this codebase yet (no API-key issuance
 `accounts/`); `principal_resolver=` is the one seam a future accounts-backed resolver plugs into
 at this same call site.
 
-### Exposure model — immediate tools + search/execute (97 tools ≫ context budget)
-With 97 registry tools (5 immediate, 92 deferred — see [03-tools.md](03-tools.md) for the
-current authoritative count), exposing every schema over MCP floods the client's context. So MCP
-mirrors our internal deferred-loading ([03-tools.md](03-tools.md)):
+### Exposure model — immediate tools + search/execute (100–107 tools ≫ context budget)
+With 100–107 registry tools (5 immediate, the rest deferred — see [03-tools.md](03-tools.md) for
+the current authoritative count and the exact conditions behind the range), exposing every schema
+over MCP floods the client's context. So MCP mirrors our internal deferred-loading
+([03-tools.md](03-tools.md)):
 - **Immediate:** the **canonical core set defined in [03-tools.md](03-tools.md) §deferred-loading**
   — the real, wired-up core is `get_canonical_context`, `build_conversation_package`,
   `get_source_health`, `get_company_profile`, `get_price_quote` (5 tools) — as dedicated MCP
@@ -63,8 +64,8 @@ mirrors our internal deferred-loading ([03-tools.md](03-tools.md)):
 - **Deferred long tail** (per-signal chip/ETF/derivatives/MOPS/analyst/screener/score tools)
   exposed via a **`search_tools` / `execute_tool`** pair — `search_tools(intent)` returns
   matching tool ids + schemas; `execute_tool(id, args)` runs one. Keeps the MCP client's context
-  lean. A dedicated test (`tests/mcp/test_full_registry_coverage.py`) asserts every one of the
-  97 real tools is reachable this way — either as a dedicated immediate tool or via
+  lean. A dedicated test (`tests/mcp/test_full_registry_coverage.py`) asserts every real tool in
+  the built registry is reachable this way — either as a dedicated immediate tool or via
   `execute_tool` — closing the "only spot-checked, never asserted at 100%" gap.
 
 All registry tools are read-only, so all are reachable over MCP (directly or via
