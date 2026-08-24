@@ -681,7 +681,9 @@
       },
       "attachments": {
         "remove": "Remove attachment",
-        "tooMany": "Up to {max} attachments per message — the rest weren't added."
+        "tooMany": "Up to {max} attachments per message — the rest weren't added.",
+        "pasted": "Pasted",
+        "pastedCharCount": "{count} characters"
       },
       "model": "Model",
       "voice": "Voice input",

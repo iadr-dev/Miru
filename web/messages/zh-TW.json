@@ -681,7 +681,9 @@
       },
       "attachments": {
         "remove": "移除附件",
-        "tooMany": "每則訊息最多可附加 {max} 個檔案，其餘的未加入。"
+        "tooMany": "每則訊息最多可附加 {max} 個檔案，其餘的未加入。",
+        "pasted": "已貼上",
+        "pastedCharCount": "{count} 個字元"
       },
       "model": "模型",
       "voice": "語音輸入",
