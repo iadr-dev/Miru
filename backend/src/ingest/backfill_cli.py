@@ -28,16 +28,22 @@ import argparse
 import asyncio
 import sys
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import structlog
 
 from analytics.scoring_batch import job_scoring_batch
-from analytics.screener.batch import job_screener_flags
+from analytics.screener.batch import SCREENER_FLAGS_DATASET, job_screener_flags
 from config.settings import Settings, get_settings
 from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings
-from ingest.jobs import ALL_WHOLE_MARKET_JOBS, WholeMarketJobSpec
+from ingest.jobs import (
+    DAILY_WHOLE_MARKET_JOBS,
+    SHAREHOLDING_DISTRIBUTION_JOB,
+    WholeMarketJobSpec,
+    job_shareholding_distribution,
+)
+from ingest.jobs import WEEKLY_PUBLISH_SEARCH_DAYS as _SHAREHOLDING_SEARCH_DAYS
 from ingest.journal import JobRun, RunStatus
 from ingest.preflight import last_available_trading_day, run_preflight_if_enabled
 from ingest.us_jobs import backfill_us_price_range
@@ -112,11 +118,17 @@ async def run_backfill_cli(
     *,
     override: bool,
     years: int,
-    specs: Sequence[WholeMarketJobSpec] = ALL_WHOLE_MARKET_JOBS,
+    specs: Sequence[WholeMarketJobSpec] = DAILY_WHOLE_MARKET_JOBS,
 ) -> tuple[JobRun, ...]:
     """Run `run_preflight_if_enabled` once per spec, printing a per-dataset summary as each
     `JobRun` batch lands. One failing spec is logged and does not stop the remaining specs —
-    mirroring `backfill_range`'s own per-date resumability philosophy."""
+    mirroring `backfill_range`'s own per-date resumability philosophy.
+
+    `specs` defaults to `DAILY_WHOLE_MARKET_JOBS` (every whole-market job EXCEPT the weekly
+    `SHAREHOLDING_DISTRIBUTION_JOB`) — that one dataset's own weekly publish-date-search control
+    flow doesn't fit the generic "one date per calendar day in range" sweep every other spec
+    here goes through, so it is backfilled separately, right after this generic loop, via
+    `_backfill_shareholding_distribution`."""
     _check_not_production(settings)
     ingest_on_startup = override or settings.ingest_on_startup
     if not ingest_on_startup:
@@ -147,7 +159,56 @@ async def run_backfill_cli(
                 status=run.status.value,
             )
         all_runs.extend(runs)
+
+    all_runs.extend(await _backfill_shareholding_distribution(ctx, years=years))
     return tuple(all_runs)
+
+
+async def _backfill_shareholding_distribution(
+    ctx: IngestContext, *, years: int
+) -> tuple[JobRun, ...]:
+    """The weekly counterpart to the generic per-calendar-day sweep above, for
+    `SHAREHOLDING_DISTRIBUTION_JOB` — `job_shareholding_distribution` resolves its own real
+    publish date via a backward search (see that function's own docstring), so this walks
+    backward one week at a time from `last_available_trading_day` over the same bounded
+    `years`-sized window the other jobs use, calling the job once per week rather than once per
+    calendar day.
+
+    Skips a week whose resolved publish-date partition already exists — checked via
+    `ctx.store.list_partition_dates`, which only reports partitions with real (non-empty) data,
+    never a placeholder — so a re-run over an already-covered window makes no FinMind calls at
+    all. The check must be against the set of RESOLVED dates already on disk, not the weekly
+    cursor itself: the cursor and the dataset's own resolved publish date (a Friday) can differ
+    by up to `WEEKLY_PUBLISH_SEARCH_DAYS` days, so a naive `has_partition(cursor)` check would
+    never match and would re-fetch every already-covered week."""
+    spec = SHAREHOLDING_DISTRIBUTION_JOB
+    known_dates = set(ctx.store.list_partition_dates(spec.dataset, ctx.market.value))
+    target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    start = ctx.calendar.shift_business_days(target, -(years * 250))
+
+    runs: list[JobRun] = []
+    cursor = start
+    while cursor <= target:
+        # A week is "already covered" if ANY known resolved-publish-date partition falls within
+        # the job's own backward-search window behind this cursor — the same window
+        # `job_shareholding_distribution` itself searches, so this skip check and that search
+        # agree on what counts as "this week".
+        already_covered = any(
+            cursor - timedelta(days=_SHAREHOLDING_SEARCH_DAYS) <= known <= cursor
+            for known in known_dates
+        )
+        if not already_covered:
+            run = await job_shareholding_distribution(cursor, ctx)
+            runs.append(run)
+            logger.info(
+                "ingest_backfill_cli_run",
+                dataset=run.dataset,
+                run_date=run.run_date.isoformat(),
+                rows_written=run.rows_written,
+                status=run.status.value,
+            )
+        cursor += timedelta(weeks=1)
+    return tuple(runs)
 
 
 async def run_derived_compute_catchup(
@@ -155,16 +216,23 @@ async def run_derived_compute_catchup(
     ctx: IngestContext,
     *,
     override: bool,
+    years: int = 1,
 ) -> tuple[JobRun, ...]:
     """The derived-compute counterpart to `run_backfill_cli`: `job_scoring_batch` and
     `job_screener_flags` are not `WholeMarketJobSpec`s (they read back the partitions the whole-
     market pulls above just wrote, rather than pulling from FinMind themselves), so
     `run_preflight_if_enabled`'s own gap-fill never reaches them — a dev box that was down at
     their 23:55/20:30 Taipei fire time permanently skips that day's compute with no catch-up,
-    unlike every whole-market pull. Run for the most recent trading day whose upstream data has
-    landed; both jobs are idempotent (`upsert_score` replaces the row, `write_partition`
-    overwrites the partition), so re-running here even when today's row already exists is a
-    same-answer no-op, not a correctness risk."""
+    unlike every whole-market pull.
+
+    Walks every trading day in `[target - years*250 trading days, target]` and computes both
+    jobs for each one that is still missing its `screener_flags` partition — not just the single
+    most recent day — so a dev box down across a multi-day gap (a long weekend plus a rebuild)
+    gets every in-between day covered, not permanently stuck once the underlying whole-market
+    data for it is later backfilled. Both jobs are idempotent (`upsert_score` replaces the row,
+    `write_partition` overwrites the partition), so re-running for an already-computed day is a
+    same-answer no-op, not a correctness risk — the missing-partition check is purely to avoid
+    needless recompute over the whole window on every catch-up run."""
     _check_not_production(settings)
     ingest_on_startup = override or settings.ingest_on_startup
     if not ingest_on_startup:
@@ -175,19 +243,26 @@ async def run_derived_compute_catchup(
         return ()
 
     target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
-    runs = (
-        await job_screener_flags(target, ctx),
-        await job_scoring_batch(target, ctx),
-    )
-    for run in runs:
-        logger.info(
-            "ingest_backfill_cli_run",
-            dataset=run.dataset,
-            run_date=run.run_date.isoformat(),
-            rows_written=run.rows_written,
-            status=run.status.value,
+    start = ctx.calendar.shift_business_days(target, -(years * 250))
+
+    runs: list[JobRun] = []
+    for day in ctx.calendar.business_days_between(start, target):
+        if ctx.store.has_partition(SCREENER_FLAGS_DATASET, ctx.market.value, day):
+            continue
+        day_runs = (
+            await job_screener_flags(day, ctx),
+            await job_scoring_batch(day, ctx),
         )
-    return runs
+        for run in day_runs:
+            logger.info(
+                "ingest_backfill_cli_run",
+                dataset=run.dataset,
+                run_date=run.run_date.isoformat(),
+                rows_written=run.rows_written,
+                status=run.status.value,
+            )
+        runs.extend(day_runs)
+    return tuple(runs)
 
 
 async def run_us_backfill_cli(
@@ -263,7 +338,7 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
         runs = await run_us_backfill_cli(settings, ctx, override=args.yes, years=years)
     else:
         runs = await run_backfill_cli(settings, ctx, override=args.yes, years=years)
-        runs += await run_derived_compute_catchup(settings, ctx, override=args.yes)
+        runs += await run_derived_compute_catchup(settings, ctx, override=args.yes, years=years)
     if not runs:
         logger.info("ingest_backfill_cli_no_runs")
         return 0

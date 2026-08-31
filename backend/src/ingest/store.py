@@ -202,6 +202,52 @@ class ParquetStore:
         key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
         return (key.path(self.root) / _MANIFEST_NAME).exists()
 
+    def list_partition_dates(self, dataset: str, market: str) -> tuple[date_, ...]:
+        """Every date under `dataset=<dataset>/market=<market>/` that has a real, non-empty
+        partition — the ground truth `ingest/daemon.py::_build_calendar` builds its real
+        trading-day calendar from, and `ingest/backfill_cli.py`'s weekly shareholding sweep
+        checks before re-fetching an already-covered week.
+
+        Must distinguish a genuinely-empty placeholder partition (`write_partition`'s own
+        single-`_empty`-column write for a legitimate zero-row day, e.g. a market holiday that
+        slipped past the calendar gate) from a real data day — counting the former would make an
+        empty day look like ground truth for "the market traded that day" (`_build_calendar`'s
+        whole reason for existing) or "this week is already covered" (the shareholding skip
+        check), when neither is true. A manifest that exists but whose version dir/parquet file
+        is missing (a crash between the rename and the manifest flip, or a partially-swept
+        directory) is skipped rather than raising — this is a read-side survey, not a write-path
+        invariant check.
+        """
+        base = self.root / f"dataset={dataset}" / f"market={market}"
+        if not base.is_dir():
+            return ()
+
+        dates: list[date_] = []
+        con = duckdb.connect()
+        try:
+            for date_dir in sorted(base.iterdir()):
+                if not date_dir.is_dir() or not date_dir.name.startswith("date="):
+                    continue
+                manifest_path = date_dir / _MANIFEST_NAME
+                if not manifest_path.exists():
+                    continue
+                try:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    version_dir = date_dir / f"v={manifest['version']}"
+                    parquet_glob = str(version_dir / "*.parquet")
+                    description = con.execute(
+                        "SELECT * FROM read_parquet(?) LIMIT 0", [parquet_glob]
+                    ).description
+                except (OSError, ValueError, KeyError, duckdb.Error):
+                    continue
+                columns = {d[0] for d in description or []}
+                if "_empty" in columns:
+                    continue
+                dates.append(date_.fromisoformat(date_dir.name.removeprefix("date=")))
+        finally:
+            con.close()
+        return tuple(dates)
+
     def read_range(
         self,
         dataset: str,
