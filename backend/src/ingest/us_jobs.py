@@ -174,10 +174,13 @@ def _rows_from_price_frame(frame: Any) -> list[dict[str, object]]:
 async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
     """Daily US EOD price pull — one `batch_download` call for the whole tracked universe,
     the yfinance equivalent of `ingest/jobs.py::job_price_eod`'s single FinMind whole-market
-    call. Calendar-gated the same way (`ctx.calendar` degrades to Mon-Fri weekday math for any
-    market — a US holiday just lands as a legitimate empty response, same as how
-    `FINANCIALS_JOB` already handles empty-filing TW days)."""
-    if not ctx.calendar.is_trading_day(run_date):
+    call. Calendar-gated against `ctx.us_calendar` — a separate calendar from the TW-oriented
+    `ctx.calendar`, since TW-only closures (Lunar New Year, Double Ten, etc.) are ordinary US
+    trading days and must not skip this job. Uses the extrapolating check since `run_date` is
+    almost always "today", which is always beyond `ctx.us_calendar`'s known range until this
+    very call writes its own partition — see
+    `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
+    if not ctx.us_calendar.is_trading_day_extrapolating(run_date):
         return journal_run(
             US_PRICE_EOD_DATASET,
             run_date,
@@ -390,7 +393,7 @@ async def backfill_us_price_range(
     (FinMind-shaped), while this job takes no spec at all. Same idempotency/resumability
     contract: each date is independently checked/run, so a partial backfill can simply be
     re-invoked."""
-    dates = ctx.calendar.business_days_between(start, end)
+    dates = ctx.us_calendar.business_days_between(start, end)
     if only_missing:
         market = Market.US.value
         dates = tuple(

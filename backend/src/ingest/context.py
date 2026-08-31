@@ -29,6 +29,13 @@ class IngestContext:
     calendar: TradingDayCalendar
     tls_policy: TLSPolicy = TLSPolicy.STRICT
     market: Market = Market.TW
+    # A separate calendar for `ingest/us_jobs.py`'s own gating, built from US price partitions —
+    # deliberately NOT the same object as `calendar` above. TW and US holiday sets diverge (e.g.
+    # Lunar New Year/Double Ten are TW-only closures where the US market trades normally); a
+    # calendar built from one market's known trading dates would wrongly gate the other market's
+    # jobs. Defaults to a fresh naive Mon-Fri `TradingDayCalendar()` so any existing test/caller
+    # that never sets this keeps the prior degraded-but-safe behavior.
+    us_calendar: TradingDayCalendar = field(default_factory=TradingDayCalendar)
     # The batch-completion invalidation signal — only the leader publishes it (the same
     # leadership gate that guards the write). Defaults to a no-op so an ingest run with no
     # transport wired still lands its partition; the client falls back to boundary revalidation.

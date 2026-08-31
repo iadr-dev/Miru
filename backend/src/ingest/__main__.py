@@ -1,10 +1,22 @@
 """The standalone platform-ingest process — `python -m ingest`.
 
 Turns the library-level `IngestDaemon` (one pass over the day's due whole-market pulls) into a
-long-running daemon: seed the startup state so an already-elapsed window isn't replayed, then wake
-on a config-driven interval, fire whatever became due, sleep, repeat. Leadership is checked inside
-each pass (a non-leader pass is a silent no-op), so a standby replica loops harmlessly until it
-wins the election.
+long-running daemon: optionally self-heal any gap since the last run, seed the startup state so an
+already-elapsed window isn't replayed, then wake on a config-driven interval, fire whatever became
+due, sleep, repeat. Leadership is checked inside each pass (a non-leader pass is a silent no-op),
+so a standby replica loops harmlessly until it wins the election.
+
+**Startup gap-fill (`INGEST_ON_STARTUP`, dev-only).** A dev stack is not continuously up the way
+prod is — the box sleeps, `docker compose down`/`up` happens between sessions, a rebuild restarts
+the container — and `IngestDaemon.seed_startup()` deliberately does NOT replay a window that
+elapsed while the process was down (see its own docstring: "production boots clean"). Left alone,
+that means a dev stack that was down across a job's fire time permanently skips that day with no
+automatic catch-up. When `settings.ingest_on_startup` is true, `main()` runs the same one-shot
+gap-fill `ingest.backfill_cli`'s operator CLI uses (`run_backfill_cli`/`run_us_backfill_cli`,
+`only_missing=True` under the hood) once before entering the poll loop — every `docker compose up`
+self-heals whatever gap accumulated, with no flag to remember. `run_backfill_cli` itself hard-stops
+if `settings.env == "production"` regardless of this flag, so a mis-set env var can never turn
+into an accidental prod backfill burst.
 
 Graceful shutdown (SIGTERM/SIGINT): a whole-market pull is a bounded batch write (fetch one
 dataset by date, bulk-COPY the partition atomically, flip the manifest pointer) — not an unbounded
@@ -20,13 +32,92 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import signal
+from datetime import UTC, datetime
 
 import structlog
 
-from config.settings import get_settings
-from ingest.daemon import IngestDaemon, build_ingest_daemon_from_settings
+from config.settings import Settings, get_settings
+from ingest.backfill_cli import (
+    run_backfill_cli,
+    run_derived_compute_catchup,
+    run_us_backfill_cli,
+)
+from ingest.context import IngestContext
+from ingest.daemon import IngestDaemon, build_ingest_context_from_settings
+from ingest.us_jobs import job_us_fundamentals
 
 logger = structlog.get_logger(__name__)
+
+
+async def _tw_gap_fill(settings: Settings, ctx: IngestContext) -> tuple[int, int]:
+    """The TW chain: whole-market pulls, THEN derived-compute — sequential because
+    `screener_flags`/`stock_scores` read back the price/flow partitions the whole-market pulls
+    just wrote, so derived-compute for a given day cannot run before that day's own TW data has
+    landed."""
+    tw_runs = await run_backfill_cli(
+        settings, ctx, override=False, years=settings.dev_backfill_years
+    )
+    # Derived-compute (`stock_scores`/`screener_flags`) is not a `WholeMarketJobSpec`, so
+    # `run_backfill_cli`'s per-spec gap-fill above never reaches it — see this module's own
+    # docstring for why a dev restart otherwise leaves those two permanently stuck.
+    derived_runs = await run_derived_compute_catchup(
+        settings, ctx, override=False, years=settings.dev_backfill_years
+    )
+    return len(tw_runs), len(derived_runs)
+
+
+async def _us_gap_fill(settings: Settings, ctx: IngestContext) -> tuple[int, str]:
+    """The US branch: price backfill, then a fundamentals catch-up pull for today.
+
+    `job_us_fundamentals` is otherwise only reachable via its own WEEKLY cron slot
+    (`ingest/daemon.py`'s `SCHEDULED_JOBS`) — a dev restart that lands between two weekly fire
+    windows leaves it stuck until the next one, same class of gap `_tw_gap_fill`'s derived-compute
+    catchup exists to close. Unlike price, fundamentals has no meaningful "backfill a date range"
+    operation (yfinance's financials/dividends/splits endpoints return each symbol's own
+    available history, not a caller-scoped range — see `run_us_backfill_cli`'s own docstring for
+    why it deliberately excludes this job) — so this is a single current-snapshot pull for
+    today, not a loop over a window."""
+    price_runs = await run_us_backfill_cli(
+        settings, ctx, override=False, years=settings.dev_backfill_years
+    )
+    fundamentals_run = await job_us_fundamentals(datetime.now(UTC).date(), ctx)
+    return len(price_runs), fundamentals_run.status.value
+
+
+async def _startup_gap_fill(settings: Settings, ctx: IngestContext) -> None:
+    """Best-effort catch-up before the poll loop starts — never fatal: a failure here (e.g. a
+    transient FinMind/yfinance outage) must not prevent the daemon from starting its normal
+    schedule, since the poll loop's own daily jobs will simply try again at their next fire time
+    regardless. Skipped entirely (and logged as such) when `ingest_on_startup` is false — the
+    production default, and this function's only real gate.
+
+    The TW chain (`_tw_gap_fill`) and the US chain (`_us_gap_fill`) run CONCURRENTLY via
+    `asyncio.gather` — they touch entirely disjoint datasets/sources (FinMind vs yfinance) with no
+    ordering dependency on each other. Note this concurrency is real only at each branch's own
+    `await` points: `_tw_gap_fill`'s derived-compute (`job_scoring_batch`/`job_screener_flags`) is
+    CPU-bound pandas/stats work with almost no `await`s of its own, so it still blocks the event
+    loop — and therefore the US branch too — for seconds at a stretch between its own awaits. This
+    still nets out ahead of pure sequential execution (the US branch's own awaits interleave
+    whenever the TW branch does yield), but does not guarantee the US branch makes steady progress
+    while a single TW compute call is mid-flight."""
+    if not settings.ingest_on_startup:
+        return
+    logger.info("ingest_startup_gap_fill_started")
+    try:
+        (tw_runs, derived_runs), (us_price_runs, fundamentals_status) = await asyncio.gather(
+            _tw_gap_fill(settings, ctx),
+            _us_gap_fill(settings, ctx),
+        )
+    except Exception:
+        logger.exception("ingest_startup_gap_fill_failed")
+        return
+    logger.info(
+        "ingest_startup_gap_fill_complete",
+        tw_runs=tw_runs,
+        derived_runs=derived_runs,
+        us_price_runs=us_price_runs,
+        us_fundamentals_status=fundamentals_status,
+    )
 
 
 class _ShutdownState:
@@ -90,7 +181,8 @@ async def run_ingest_loop(
 
 async def main() -> None:
     settings = get_settings()
-    daemon = await build_ingest_daemon_from_settings(settings)
+    ctx = await build_ingest_context_from_settings(settings)
+    daemon = IngestDaemon(ctx)
     daemon.seed_startup()
     shutdown = _ShutdownState()
 
@@ -105,10 +197,21 @@ async def main() -> None:
         "ingest_process_start",
         interval_seconds=settings.ingest_poll_interval_seconds,
     )
-    await run_ingest_loop(
-        daemon,
-        interval_seconds=settings.ingest_poll_interval_seconds,
-        shutdown=shutdown,
+    # The startup gap-fill and the normal poll loop run CONCURRENTLY, not sequentially: a
+    # multi-year historical gap-fill can take hours, and awaiting it before the poll loop even
+    # starts would delay every WEEKLY/MONTHLY cron job (e.g. `job_us_fundamentals`) from firing
+    # at all until the whole gap-fill finishes — even though that cron job has no dependency on
+    # the gap-fill completing. Both write to the store through the same atomic-partition-swap
+    # path and are individually idempotent, so a gap-fill run and a live cron pass touching
+    # overlapping dates is a same-answer overwrite, not a correctness risk — the same reasoning
+    # `_startup_gap_fill`'s own TW/US concurrency already relies on.
+    await asyncio.gather(
+        _startup_gap_fill(settings, ctx),
+        run_ingest_loop(
+            daemon,
+            interval_seconds=settings.ingest_poll_interval_seconds,
+            shutdown=shutdown,
+        ),
     )
 
 

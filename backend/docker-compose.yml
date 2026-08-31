@@ -27,7 +27,12 @@ x-app-env: &app-env
   DUCKDB_PATH: /app/data/duckdb
   PARQUET_ROOT: /app/data/parquet
   ENV: development
-  INGEST_ON_STARTUP: "false"
+  # Dev-only startup gap-fill (ingest/__main__.py's `_startup_gap_fill`, docs/backend/
+  # modules/22-data-ingest.md §6a) — every `docker compose up` self-heals whatever gap
+  # accumulated while the stack was down, instead of requiring the operator to remember
+  # `dev-backend.sh --backfill`. `run_backfill_cli` hard-refuses regardless of this flag when
+  # `ENV=production`, so this default is safe even if a prod compose file forgot to override it.
+  INGEST_ON_STARTUP: ${INGEST_ON_STARTUP:-true}
   # A dev JWT secret so auth-required routes work locally; override via the shell for anything real.
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-not-a-real-secret-change-me}
   # OAuth sign-in (auth.py) — unset = that provider's begin-flow 503s `provider_unconfigured`
@@ -113,6 +118,7 @@ x-app-env: &app-env
   MARKET_DATA_CACHE_TTL_LIVE_ISH_SECONDS: ${MARKET_DATA_CACHE_TTL_LIVE_ISH_SECONDS:-5}
   MARKET_DATA_CACHE_TTL_OFFICIAL_EOD_SECONDS: ${MARKET_DATA_CACHE_TTL_OFFICIAL_EOD_SECONDS:-43200}
   MARKET_DATA_CACHE_TTL_EVENT_DRIVEN_SECONDS: ${MARKET_DATA_CACHE_TTL_EVENT_DRIVEN_SECONDS:-300}
+  MARKET_DATA_CACHE_TTL_FAILURE_SECONDS: ${MARKET_DATA_CACHE_TTL_FAILURE_SECONDS:-30}
   # Live-quote poller tuning (module 16 §2a) — safe defaults.
   QUOTE_POLL_CADENCE_NORMAL_SECONDS: ${QUOTE_POLL_CADENCE_NORMAL_SECONDS:-5}
   QUOTE_POLL_CADENCE_SAVER_SECONDS: ${QUOTE_POLL_CADENCE_SAVER_SECONDS:-20}
