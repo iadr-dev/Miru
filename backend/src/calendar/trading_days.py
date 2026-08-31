@@ -50,12 +50,67 @@ class TradingDayCalendar:
 
         Degrades gracefully: absent an explicit `known_trading_dates` allow-list, this is
         exactly "is it a weekday and not an overlaid closure day" — never raises, never
-        requires network access.
+        requires network access. Once an allow-list IS supplied, it is authoritative for every
+        date, including one outside the list's own min/max span — a caller asking about a date
+        the list has no opinion on gets `False`, not a weekday guess (the list is presumed
+        complete for whatever range the caller cares about). The internal walking methods below
+        (`next_trading_day`/`business_days_between`/`shift_business_days`) use a separate,
+        non-public extrapolating variant instead of this method directly — see
+        `is_trading_day_extrapolating`'s own docstring for why.
         """
         if day in self.closure_dates:
             return False
         if self.known_trading_dates is not None:
             return day in self.known_trading_dates
+        return day.weekday() not in (_SATURDAY, _SUNDAY)
+
+    def known_trading_date_bounds(self) -> tuple[date_, date_] | None:
+        """`(earliest, latest)` of `known_trading_dates`, or `None` if this calendar has no
+        allow-list (pure weekday math, unbounded)."""
+        if not self.known_trading_dates:
+            return None
+        return min(self.known_trading_dates), max(self.known_trading_dates)
+
+    def is_trading_day_extrapolating(self, day: date_) -> bool:
+        """`is_trading_day`, but a day outside the allow-list's own known span falls back to
+        weekday math instead of being treated as authoritatively "not a trading day".
+
+        Used by the day-by-day walking methods below (`next_trading_day`/
+        `business_days_between`/`shift_business_days`) AND by every "should today's job run"
+        gate (`ingest/jobs.py::_run_if_trading_day`, `ingest/us_jobs.py::job_us_price_eod`,
+        `analytics/scoring_batch.py`/`analytics/screener/batch.py`'s own gates, the daemon's
+        daily-cadence dispatch check, `calendar/market_hours.py`) — **never** by the plain
+        `is_trading_day` (which stays strictly allow-list-authoritative for historical
+        gap-detection; see its own docstring).
+
+        The calendar's `known_trading_dates` is built once per process from whatever partitions
+        already exist on disk (`ingest/daemon.py::_build_calendar`) — so "today" is *always*
+        beyond the known max until today's own job has actually written its partition. A gate
+        that called the strict `is_trading_day` here would see `today not in known_trading_dates`
+        forever and skip its own run every single day, permanently landing one real trading day
+        behind with no way to catch up (confirmed empirically: `us_price_eod`/`TaiwanStockPrice`
+        both stalled one day behind their real upstream on every process, every day). Falling
+        back to weekday math for a day beyond the known range is the same graceful-degradation
+        default `is_trading_day` itself already uses when it has no allow-list at all (see the
+        class docstring) — a genuine holiday not yet in the known set is occasionally
+        mis-classified as a trading day this way, but the resulting fetch just returns an empty
+        `SourceResult`, which downstream partition/row-count logic already handles as a normal
+        "no rows published today" case, not an error.
+
+        Also prevents a walk that extrapolates past the list's known range -- e.g.
+        `shift_business_days` asked to go back further than a partially-ingested store's known
+        trading days -- from finding `is_trading_day` returning `False` for every remaining
+        candidate forever, since none of them are literally in the frozenset; the walk would
+        never terminate and eventually raise `OverflowError` on `date.min`. Confirmed
+        empirically: a 3-year dev-backfill window reaching back past ~9 months of actually-
+        ingested history."""
+        if day in self.closure_dates:
+            return False
+        bounds = self.known_trading_date_bounds()
+        if bounds is not None:
+            low, high = bounds
+            if low <= day <= high:
+                return day in self.known_trading_dates  # type: ignore[operator]
         return day.weekday() not in (_SATURDAY, _SUNDAY)
 
     def next_trading_day(self, day: date_, *, inclusive: bool = False) -> date_:
@@ -64,9 +119,21 @@ class TradingDayCalendar:
         # Bounded loop: a market is never closed for a full calendar week under any real
         # overlay, but bound defensively rather than risk an infinite loop on bad input.
         for _ in range(14):
-            if self.is_trading_day(candidate):
+            if self.is_trading_day_extrapolating(candidate):
                 return candidate
             candidate += timedelta(days=1)
+        raise ValueError(f"no trading day found within 14 days of {day.isoformat()}")
+
+    def previous_trading_day(self, day: date_, *, inclusive: bool = False) -> date_:
+        """The most recent trading day on/before `day` (or strictly before, if
+        `inclusive=False`) — the backward counterpart to `next_trading_day`, for "most recent
+        available data" callers (e.g. `ingest/preflight.py::last_available_trading_day`) that
+        must never walk into the future when `day` itself isn't a trading day."""
+        candidate = day if inclusive else day - timedelta(days=1)
+        for _ in range(14):
+            if self.is_trading_day_extrapolating(candidate):
+                return candidate
+            candidate -= timedelta(days=1)
         raise ValueError(f"no trading day found within 14 days of {day.isoformat()}")
 
     def business_days_between(self, start: date_, end: date_) -> tuple[date_, ...]:
@@ -77,7 +144,7 @@ class TradingDayCalendar:
         days: list[date_] = []
         current = start
         while current <= end:
-            if self.is_trading_day(current):
+            if self.is_trading_day_extrapolating(current):
                 days.append(current)
             current += timedelta(days=1)
         return tuple(days)
@@ -91,7 +158,7 @@ class TradingDayCalendar:
         current = day
         while remaining > 0:
             current += timedelta(days=step)
-            if self.is_trading_day(current):
+            if self.is_trading_day_extrapolating(current):
                 remaining -= 1
         return current
 

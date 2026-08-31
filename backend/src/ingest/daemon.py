@@ -29,7 +29,7 @@ from its process loop:
 
 from __future__ import annotations
 
-from calendar.trading_days import TradingDayCalendar
+from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,22 +48,29 @@ from config.settings import Settings, get_settings
 from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.context import IngestContext
 from ingest.jobs import (
+    PRICE_EOD_JOB,
     job_active_etf_holding_changes,
     job_active_etf_holdings,
     job_balance_sheet,
     job_cash_flow,
     job_dividends,
+    job_etf_expense_ratio,
+    job_etf_nav,
     job_financials,
     job_institutional_flow,
     job_market_value,
+    job_market_value_weight,
     job_month_revenue,
     job_price_eod,
+    job_shareholding_distribution,
+    job_stock_info,
 )
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
 from ingest.store import ParquetStore
-from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
+from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_price_eod
 from ingest.us_universe import job_us_symbol_universe
+from schemas.enums import Market
 from sources.finmind import FinMindAdapter
 from sources.yfinance import YFinanceAdapter
 
@@ -115,6 +122,13 @@ class ScheduledIngestJob:
 
 # The whole-market pulls, each at the Taipei-local time its own job docstring documents.
 SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
+    # Stock/ETF universe reference roster (industry classification) — fires first, well before
+    # the trading day's own post-close pulls, so `get_sector_heatmap`'s industry join against the
+    # same day's `price_eod` partition always has a fresh roster available (STOCK_INFO_JOB's own
+    # comment: once-daily, off-peak — no other REFERENCE-tier FinMind dataset is on a daily cron
+    # today, only monthly ones, but this one is deliberately daily so same-day
+    # listings/reclassifications aren't stale for up to a month).
+    ScheduledIngestJob("stock_info", time_(6, 0), job_stock_info),
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
     ScheduledIngestJob("institutional_flow", time_(20, 10), job_institutional_flow),
     # Screener-flag batch — a derived-compute pass, not a FinMind pull: it reads the price and
@@ -125,6 +139,18 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("screener_flags", time_(20, 30), job_screener_flags),
     ScheduledIngestJob("active_etf_holdings", time_(21, 15), job_active_etf_holdings),
     ScheduledIngestJob("active_etf_holding_changes", time_(21, 15), job_active_etf_holding_changes),
+    # ETF premium/discount-to-NAV snapshot (TWSE MIS `all_etf.txt`, not FinMind) — feeds the
+    # ETF-specific score breakdown's premium/discount factor; must land before `scoring_batch`
+    # (23:55) below, so it fires in the same 21:xx window as the other ETF-related pulls.
+    ScheduledIngestJob("etf_nav", time_(21, 20), job_etf_nav),
+    # ETF/fund internal-fee (內扣費用) whole-market snapshot (SITCA IN2105, not FinMind) — feeds
+    # the ETF-specific score breakdown's `cost` factor. Monthly cadence: SITCA's own report only
+    # refreshes monthly (same reasoning as the `theme_industry_seed`/`theme_tier_seed` monthly
+    # jobs above); not trading-day-gated for the same reason those aren't. Fires in the same
+    # 21:xx window as `etf_nav` so both ETF-specific pulls land before `scoring_batch` (23:55).
+    ScheduledIngestJob(
+        "etf_expense_ratio", time_(21, 25), job_etf_expense_ratio, Cadence.MONTHLY
+    ),
     ScheduledIngestJob("financials", time_(21, 30), job_financials),
     ScheduledIngestJob("dividends", time_(21, 30), job_dividends),
     # Balance-sheet/cash-flow share FINANCIALS_JOB's own irregular-per-filing cadence and fire
@@ -138,6 +164,9 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("month_revenue", time_(21, 30), job_month_revenue),
     # Market cap — Mon-Fri ~23:30 FinMind publish clock (MARKET_VALUE_JOB's own cron_hint).
     ScheduledIngestJob("market_value", time_(23, 40), job_market_value),
+    # Market-cap index weight — the paired FinMind publish alongside market_value above (same
+    # ~23:30 publish clock, MARKET_VALUE_WEIGHT_JOB's own cron_hint); fires at the same slot.
+    ScheduledIngestJob("market_value_weight", time_(23, 40), job_market_value_weight),
     # Multi-factor composite score — a derived-compute pass over the day's already-landed price/
     # flow/fundamental/market-value partitions (`get_stock_score`/`get_score_leaderboard`'s cache-
     # only read backend). Fires last, after every one of its own inputs (price_eod,
@@ -170,6 +199,14 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # Taipei morning, well clear of the price pull's own network usage. Weekly: fundamentals
     # change far slower than daily price EOD (see `job_us_fundamentals`'s own docstring).
     ScheduledIngestJob("us_fundamentals", time_(7, 0), job_us_fundamentals, Cadence.WEEKLY),
+    # TDCC/FinMind 股權持股分級表 — weekly (published for each week's final trading day; the job
+    # itself resolves the exact publish date, see `job_shareholding_distribution`'s own
+    # docstring). Fires at the same 06:00 off-peak slot `stock_info` uses, well before the
+    # trading day's own post-close pulls, since it has no same-day-relevance ordering
+    # dependency on anything else in this list.
+    ScheduledIngestJob(
+        "shareholding_distribution", time_(6, 5), job_shareholding_distribution, Cadence.WEEKLY
+    ),
 )
 
 
@@ -240,8 +277,13 @@ class IngestDaemon:
             self._last_handled[job.name] = today
             # Monthly reference-data jobs are not tied to the market calendar (the classification
             # roster is published independent of trading sessions), so only daily market pulls are
-            # trading-day-gated.
-            if job.cadence is Cadence.DAILY and not self._ctx.calendar.is_trading_day(today):
+            # trading-day-gated. Uses the extrapolating check (not the strict allow-list one) —
+            # `today` is always beyond the calendar's known range until today's own job writes
+            # its partition, so the strict check would skip every job every day forever; see
+            # `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring.
+            if job.cadence is Cadence.DAILY and not self._ctx.calendar.is_trading_day_extrapolating(
+                today
+            ):
                 logger.info(
                     "ingest_job_skipped_non_trading_day",
                     job=job.name,
@@ -266,6 +308,30 @@ class IngestDaemon:
         return ran
 
 
+def _build_calendar(store: ParquetStore, dataset: str, market: str) -> TradingDayCalendar:
+    """The real trading-day calendar for `market`, built from `PRICE_EOD_JOB`'s (TW) or
+    `job_us_price_eod`'s (US) own already-ingested partition dates — ground truth for "was this
+    a real trading day" in that specific market, never a naive Mon-Fri weekday guess. A
+    whole-market EOD job only ever writes a partition when its own calendar gate let a run
+    through, and a market's real holiday calendar can't be predicted from weekday math alone
+    (TW: 國慶日/農曆春節/清明/228; US: Thanksgiving/Juneteenth/etc.) — every one of those real
+    holidays previously miscounted as a trading day silently starved every TW lookback window
+    that assumes N calendar-weekdays == N trading days (see `analytics/scoring_batch.py`'s
+    `_PRICE_LOOKBACK_DAYS`, which needs ≥252 real trading days and was landing on as few as 239
+    out of a 260-weekday window before this fix). TW and US calendars are built and kept separate
+    (`IngestContext.calendar` vs `.us_calendar`) since their holiday sets diverge — a shared
+    calendar would wrongly gate one market's jobs off the other's closures.
+
+    Falls back to the plain Mon-Fri calendar (`TradingDayCalendar()`'s own documented
+    degradation) only on a genuinely empty store for that market — a fresh volume with no
+    partitions yet, where there is no ground truth to build from. Once even one whole-market
+    ingest run has landed for that market, every subsequent process picks up the real calendar."""
+    known_dates = store.list_partition_dates(dataset, market)
+    if not known_dates:
+        return TradingDayCalendar()
+    return calendar_from_known_dates(known_dates)
+
+
 async def build_ingest_context_from_settings(settings: Settings | None = None) -> IngestContext:
     """Assemble the job context from config — the FinMind adapter, the leader-only Parquet writer,
     the shared leader-election seam, and the trading-day calendar. No network I/O at construction.
@@ -282,11 +348,13 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     resolved = settings or get_settings()
     session_factory = make_session_factory(make_engine(resolved.database_url))
     await ensure_schema_for(session_factory)
+    store = ParquetStore(root=resolved.parquet_root)
     return IngestContext(
         finmind=FinMindAdapter(resolved),
-        store=ParquetStore(root=resolved.parquet_root),
+        store=store,
         leader=get_default_leader_election(),
-        calendar=TradingDayCalendar(),
+        calendar=_build_calendar(store, PRICE_EOD_JOB.dataset, Market.TW.value),
+        us_calendar=_build_calendar(store, US_PRICE_EOD_DATASET, Market.US.value),
         tls_policy=resolved.tls_policy,
         # The relational session factory the theme-seed job writes through — the daily Parquet
         # jobs never touch it. Built here from the same database URL the rest of the app uses.

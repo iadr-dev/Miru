@@ -255,8 +255,10 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
     jobs already wrote, so the daemon must schedule this after both of them.
 
     Idempotent: re-running for the same date rewrites the same partition version rather than
-    accumulating rows."""
-    if not ctx.calendar.is_trading_day(run_date):
+    accumulating rows. Uses the extrapolating check since `run_date` is almost always "today",
+    which is always beyond `ctx.calendar`'s known range until today's own whole-market pulls
+    have landed — see `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
         return journal_run(
             SCREENER_FLAGS_DATASET,
             run_date,

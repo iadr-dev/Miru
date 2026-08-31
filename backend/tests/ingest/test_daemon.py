@@ -28,8 +28,11 @@ from ingest.jobs import (
     FINANCIALS_JOB,
     INSTITUTIONAL_FLOW_JOB,
     MARKET_VALUE_JOB,
+    MARKET_VALUE_WEIGHT_JOB,
     MONTH_REVENUE_JOB,
     PRICE_EOD_JOB,
+    SHAREHOLDING_DISTRIBUTION_JOB,
+    STOCK_INFO_JOB,
     job_active_etf_holding_changes,
     job_active_etf_holdings,
     job_balance_sheet,
@@ -38,8 +41,11 @@ from ingest.jobs import (
     job_financials,
     job_institutional_flow,
     job_market_value,
+    job_market_value_weight,
     job_month_revenue,
     job_price_eod,
+    job_shareholding_distribution,
+    job_stock_info,
 )
 from ingest.journal import JobRun, RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
@@ -207,8 +213,11 @@ def test_every_whole_market_job_is_scheduled() -> None:
         CASH_FLOW_JOB: job_cash_flow,
         MONTH_REVENUE_JOB: job_month_revenue,
         MARKET_VALUE_JOB: job_market_value,
+        MARKET_VALUE_WEIGHT_JOB: job_market_value_weight,
         ACTIVE_ETF_HOLDING_JOB: job_active_etf_holdings,
         ACTIVE_ETF_HOLDING_CHANGE_JOB: job_active_etf_holding_changes,
+        STOCK_INFO_JOB: job_stock_info,
+        SHAREHOLDING_DISTRIBUTION_JOB: job_shareholding_distribution,
     }
     missing = [
         spec.dataset

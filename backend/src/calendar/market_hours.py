@@ -50,9 +50,13 @@ class MarketHours:
 
         A naive `now` is assumed to already be in the market's timezone; an aware one is
         converted. Never raises — a bad/edge instant simply reads as closed.
+
+        Uses the extrapolating day-check, not the strict allow-list one: `now` is almost always
+        "today", which is always beyond `self.calendar`'s known range until today's own EOD
+        ingest has run — see `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring.
         """
         local = now.astimezone(self.tz) if now.tzinfo is not None else now.replace(tzinfo=self.tz)
-        if not self.calendar.is_trading_day(local.date()):
+        if not self.calendar.is_trading_day_extrapolating(local.date()):
             return False
         return self.session_open <= local.timetz().replace(tzinfo=None) <= self.session_close
 
