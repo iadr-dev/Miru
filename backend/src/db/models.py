@@ -904,12 +904,17 @@ class StockScoreRow(Base):
     snapshot cache, not a time series. No `user_id`: the composite is platform-wide, not
     per-user state.
 
-    The five factor percentiles/descriptions/unavailable-reasons are stored as flat nullable
-    columns rather than one JSON blob — each is independently point-looked-up-shaped
-    (`ScoreBreakdown` always has exactly five named factors, never a variable set), so flat
-    columns are simpler and index-free reads faster than unpacking JSON on every read.
-    `partial_factors` (a short list of factor names) is a JSON array per this project's
-    SQLite/Postgres-portable JSON convention.
+    `symbol_type` discriminates which breakdown shape this row holds (`StockScoreBreakdown` vs
+    `EtfScoreBreakdown`, `analytics/models.py`) — a plain equity and an ETF need genuinely
+    different factors (an ETF has no ROE/EV-EBITDA of its own), so this table carries BOTH the
+    five stock factor columns and the five ETF factor columns (all nullable); a stock row leaves
+    the ETF columns null and vice versa. `momentum_*` is the one column name shared by both
+    breakdowns (12-1 momentum is meaningful for both a stock and a fund) — every other factor
+    name is shape-specific. Flat columns rather than one JSON blob for the same reason the
+    original 5-column design chose them: each is independently point-looked-up-shaped, never a
+    variable set, so flat columns are simpler and index-free reads faster than unpacking JSON on
+    every read. `partial_factors` (a short list of factor names) is a JSON array per this
+    project's SQLite/Postgres-portable JSON convention.
 
     Indexing: `uq_stock_scores_symbol_market_profile_as_of` is the write-side upsert key and also
     serves the detail-page point lookup (`WHERE symbol=? AND market=? AND profile=?` ordered by
@@ -925,13 +930,16 @@ class StockScoreRow(Base):
     market: Mapped[str]
     as_of: Mapped[str]  # ISO date string — portable, matches the theme layer's `as_of` convention
     profile: Mapped[str]
+    symbol_type: Mapped[str] = mapped_column(default="stock")
     composite: Mapped[float | None] = mapped_column(default=None)
     band: Mapped[str]
 
+    # Shared by both breakdowns — 12-1 momentum is meaningful for a stock AND a fund.
     momentum_percentile: Mapped[float | None] = mapped_column(default=None)
     momentum_description: Mapped[str] = mapped_column(default="")
     momentum_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
 
+    # -- Stock-only factors (StockScoreBreakdown) --
     trend_quality_percentile: Mapped[float | None] = mapped_column(default=None)
     trend_quality_description: Mapped[str] = mapped_column(default="")
     trend_quality_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
@@ -948,6 +956,23 @@ class StockScoreRow(Base):
     revenue_flow_description: Mapped[str] = mapped_column(default="")
     revenue_flow_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
 
+    # -- ETF-only factors (EtfScoreBreakdown) --
+    premium_discount_percentile: Mapped[float | None] = mapped_column(default=None)
+    premium_discount_description: Mapped[str] = mapped_column(default="")
+    premium_discount_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    cost_percentile: Mapped[float | None] = mapped_column(default=None)
+    cost_description: Mapped[str] = mapped_column(default="")
+    cost_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    management_activity_percentile: Mapped[float | None] = mapped_column(default=None)
+    management_activity_description: Mapped[str] = mapped_column(default="")
+    management_activity_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    liquidity_flow_percentile: Mapped[float | None] = mapped_column(default=None)
+    liquidity_flow_description: Mapped[str] = mapped_column(default="")
+    liquidity_flow_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
     partial_factors: Mapped[list[str]] = mapped_column(JSON, default=list)
     regime_caveat: Mapped[str] = mapped_column(default="")
     non_trading_caveat: Mapped[str] = mapped_column(default="")
@@ -959,6 +984,10 @@ class StockScoreRow(Base):
         CheckConstraint(_MARKET_TW_US_CHECK, name="ck_stock_scores_market"),
         CheckConstraint("profile IN ('swing','position')", name="ck_stock_scores_profile"),
         CheckConstraint("band IN ('偏多','中性','偏空')", name="ck_stock_scores_band"),
+        CheckConstraint(
+            "symbol_type IN ('stock','etf','etf_leveraged','etf_inverse')",
+            name="ck_stock_scores_symbol_type",
+        ),
         UniqueConstraint(
             "symbol",
             "market",

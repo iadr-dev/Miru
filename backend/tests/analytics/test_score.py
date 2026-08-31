@@ -9,7 +9,7 @@ from datetime import date
 import pytest
 
 from analytics.fundamentals import FundamentalMetrics
-from analytics.models import FactorScore, ScoreBand, ScoreBreakdown, ScoreProfile
+from analytics.models import FactorScore, ScoreBand, ScoreProfile, StockScoreBreakdown
 from analytics.score import (
     _QUALITY_SUB_METRICS,
     _VALUE_SUB_METRICS,
@@ -19,7 +19,7 @@ from analytics.score import (
     band_from_composite,
     blend_composite,
     build_score_result,
-    compute_factor_breakdown,
+    compute_stock_factor_breakdown,
     net_buy_20d_trend,
     normalization_caveat,
     trend_template_score,
@@ -27,6 +27,7 @@ from analytics.score import (
     unavailable_factor,
     winsorized_percentile,
 )
+from analytics.symbol_universe import SymbolType
 from schemas.capabilities import InstitutionalFlowRow
 from schemas.enums import Market
 
@@ -138,7 +139,7 @@ def test_unavailable_factor_is_null_not_fabricated() -> None:
 
 
 def test_blend_composite_renormalizes_over_available_factors_only() -> None:
-    breakdown = ScoreBreakdown(
+    breakdown = StockScoreBreakdown(
         momentum=FactorScore(name="momentum", percentile=80.0, description="d"),
         trend_quality=FactorScore(name="trend_quality", percentile=60.0, description="d"),
         value_guard=unavailable_factor("value_guard", "no data"),
@@ -153,7 +154,7 @@ def test_blend_composite_renormalizes_over_available_factors_only() -> None:
 
 
 def test_blend_composite_none_when_all_factors_unavailable() -> None:
-    breakdown = ScoreBreakdown(
+    breakdown = StockScoreBreakdown(
         momentum=unavailable_factor("momentum", "no data"),
         trend_quality=unavailable_factor("trend_quality", "no data"),
         value_guard=unavailable_factor("value_guard", "no data"),
@@ -190,7 +191,7 @@ def test_no_score_band_value_contains_trading_language() -> None:
 
 
 def test_score_result_always_carries_both_caveats() -> None:
-    breakdown = compute_factor_breakdown(
+    breakdown = compute_stock_factor_breakdown(
         FactorInputs(
             closes=[100.0] * 5,
             ma_series={"ma50": [None] * 5, "ma150": [None] * 5, "ma200": [None] * 5},
@@ -206,6 +207,7 @@ def test_score_result_always_carries_both_caveats() -> None:
         market=Market.TW,
         as_of=date(2024, 1, 2),
         profile=ScoreProfile.SWING,
+        symbol_type=SymbolType.STOCK,
         breakdown=breakdown,
     )
 
@@ -218,7 +220,7 @@ def test_score_result_always_carries_both_caveats() -> None:
 
 
 def test_score_result_discloses_all_unavailable_factors_when_no_data() -> None:
-    breakdown = compute_factor_breakdown(
+    breakdown = compute_stock_factor_breakdown(
         FactorInputs(
             closes=[100.0] * 5,
             ma_series={"ma50": [None] * 5, "ma150": [None] * 5, "ma200": [None] * 5},
@@ -234,6 +236,7 @@ def test_score_result_discloses_all_unavailable_factors_when_no_data() -> None:
         market=Market.TW,
         as_of=date(2024, 1, 2),
         profile=ScoreProfile.SWING,
+        symbol_type=SymbolType.STOCK,
         breakdown=breakdown,
     )
 

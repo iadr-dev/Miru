@@ -147,6 +147,8 @@ class Capability(StrEnum):
 
     # --- ETF / fund ---
     ETF_HOLDINGS = "etf_holdings"
+    ETF_EXPENSE_RATIO = "etf_expense_ratio"
+    ETF_NAV = "etf_nav"
     ACTIVE_ETF_HOLDING = "active_etf_holding"
     ACTIVE_ETF_HOLDING_CHANGE = "active_etf_holding_change"
     ACTIVE_ETF_INFO = "active_etf_info"

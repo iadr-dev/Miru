@@ -27,8 +27,9 @@ from analytics.score import (
     FactorInputs,
     SectorContext,
     build_score_result,
-    compute_factor_breakdown,
+    compute_stock_factor_breakdown,
 )
+from analytics.symbol_universe import SymbolType
 from ingest.reader import ParquetMarketDataReader
 from ingest.store import ParquetStore
 from schemas.capabilities import FinancialStatementLine, MarketValueRow
@@ -189,7 +190,7 @@ def test_quality_and_value_are_genuinely_computable_end_to_end(tmp_path: object)
         )
         value_universe = _universe_for(reader, symbols, tuple(s.attr for s in _VALUE_SUB_METRICS))
 
-        breakdown = compute_factor_breakdown(
+        breakdown = compute_stock_factor_breakdown(
             FactorInputs(
                 closes=[100.0] * 5,  # price factors intentionally short -> unavailable, isolating
                 ma_series={"ma50": [None] * 5, "ma150": [None] * 5, "ma200": [None] * 5},
@@ -218,6 +219,7 @@ def test_quality_and_value_are_genuinely_computable_end_to_end(tmp_path: object)
         market=Market.TW,
         as_of=_RUN_DATE,
         profile=ScoreProfile.POSITION,
+        symbol_type=SymbolType.STOCK,
         breakdown=breakdown,
         sector_context=SectorContext(sector_relative=False),
     )
@@ -247,7 +249,7 @@ def test_missing_financials_and_no_sector_degrades_cleanly(tmp_path: object) -> 
     assert mcap is None
 
     metrics = compute_fundamental_metrics(lines, market_value=mcap)
-    breakdown = compute_factor_breakdown(
+    breakdown = compute_stock_factor_breakdown(
         FactorInputs(
             closes=[100.0] * 5,
             ma_series={"ma50": [None] * 5, "ma150": [None] * 5, "ma200": [None] * 5},
@@ -267,6 +269,7 @@ def test_missing_financials_and_no_sector_degrades_cleanly(tmp_path: object) -> 
         market=Market.TW,
         as_of=_RUN_DATE,
         profile=ScoreProfile.POSITION,
+        symbol_type=SymbolType.STOCK,
         breakdown=breakdown,
     )
     assert result.composite is None  # nothing available at all -> honest None, not a fake neutral

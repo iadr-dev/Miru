@@ -33,7 +33,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analytics.models import ScoreProfile, ScoreResult
-from analytics.scoring_store import LeaderboardDirection, get_cached_score, get_leaderboard
+from analytics.scoring_store import (
+    LeaderboardDirection,
+    LeaderboardUniverse,
+    get_cached_score,
+    get_leaderboard,
+)
 from schemas.enums import DataClass, Market
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
@@ -127,6 +132,12 @@ class GetScoreLeaderboardInput(BaseModel):
         default="bullish",
         description="'bullish' — strongest composite first; 'bearish' — weakest composite first.",
     )
+    universe: LeaderboardUniverse = Field(
+        default="stock",
+        description="'stock' (default) — plain equities only; 'etf' — ETFs only (passive/"
+        "active/leveraged/inverse). A stock and an ETF are scored on different factor sets, so "
+        "they are never ranked together in one list.",
+    )
     limit: int = Field(
         default=_DEFAULT_LEADERBOARD_LIMIT,
         ge=1,
@@ -146,6 +157,7 @@ class GetScoreLeaderboardOutput(BaseModel):
     market: Market
     profile: ScoreProfile
     direction: LeaderboardDirection
+    universe: LeaderboardUniverse
     as_of: date_ | None = None
     results: tuple[ScoreResult, ...] = Field(default_factory=tuple)
     message: str = ""
@@ -157,9 +169,10 @@ class GetScoreLeaderboardTool(BaseTool):
 
     name = "get_score_leaderboard"
     description = (
-        "Get the top-N (max 50) strongest ('bullish') or weakest ('bearish') stocks/ETFs by "
-        "cached multi-factor composite score across the whole TW universe, for a given horizon "
-        "profile. Descriptive ranking only, never a buy/sell/hold recommendation list."
+        "Get the top-N (max 50) strongest ('bullish') or weakest ('bearish') stocks OR ETFs "
+        "(never mixed — pick universe='stock' or 'etf') by cached multi-factor composite score "
+        "across the whole TW universe, for a given horizon profile. Descriptive ranking only, "
+        "never a buy/sell/hold recommendation list."
     )
     input_model: type[BaseModel] = GetScoreLeaderboardInput
     output_model: type[BaseModel] = GetScoreLeaderboardOutput
@@ -179,18 +192,20 @@ class GetScoreLeaderboardTool(BaseTool):
                 profile=typed.profile,
                 direction=typed.direction,
                 limit=typed.limit,
+                universe=typed.universe,
                 as_of=typed.as_of,
             )
         message = (
             ""
             if results
-            else f"No scored rows on file yet for {typed.market.value} ({typed.profile.value} "
-            "profile) — the daily scoring batch has not yet run."
+            else f"No scored rows on file yet for {typed.market.value} {typed.universe} "
+            f"({typed.profile.value} profile) — the daily scoring batch has not yet run."
         )
         return GetScoreLeaderboardOutput(
             market=typed.market,
             profile=typed.profile,
             direction=typed.direction,
+            universe=typed.universe,
             as_of=results[0].as_of if results else typed.as_of,
             results=results,
             message=message,

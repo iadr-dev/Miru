@@ -59,6 +59,26 @@ _DOT_DATE_PARTS = 3  # YYYY.MM.DD
 type _UntypedList = list[object]
 
 
+_ROC_COMPACT_MIN_LEN = 6  # ROC yyyMMdd is 6-7 digits (e.g. 1150330); reject shorter garbage
+_ROC_YEAR_OFFSET = 1911  # ROC year + 1911 = Gregorian year
+
+
+def _parse_roc_compact_date(value: str) -> date | None:
+    """`t187ap47_L` dates are ROC-compact digit strings (e.g. `1150330` = ROC 115/03/30 =
+    2026-03-30): last 4 digits are MMDD, the remainder is the ROC year. Distinct from the
+    `YYYY.MM.DD` dotted form the ETF-list source uses (`_parse_roc_or_dot_date`)."""
+    digits = value.strip()
+    if not digits.isdigit() or len(digits) < _ROC_COMPACT_MIN_LEN:
+        return None
+    try:
+        year = int(digits[:-4]) + _ROC_YEAR_OFFSET
+        month = int(digits[-4:-2])
+        day = int(digits[-2:])
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
 def _parse_roc_or_dot_date(value: str) -> date | None:
     """TWSE `fund/list` dates are `YYYY.MM.DD` (Gregorian); dual-listing rows (e.g. a
     NTD/RMB share class pair) embed `<br>`-joined values — take the first."""
@@ -146,7 +166,12 @@ def _build_fund_info(
     )
     fund_type = str(fund_info.get("基金類型", "")) if fund_info else "unknown"
     units = _as_int_or_none(fund_info.get("發行單位數/轉換數")) if fund_info else None
-    manager = str(fund_info.get("基金經理人", "")) if fund_info else None
+    # `基金經理人` is the manager PERSON (e.g. 梁恩溢), not the investment-trust company — a real
+    # mislabel this now corrects: it populates manager_name, and manager_company stays None since
+    # t187ap47_L carries no clean company column (only inside 基金中文名稱).
+    manager_name = str(fund_info.get("基金經理人", "")) if fund_info else None
+    inception = _parse_roc_compact_date(str(fund_info.get("成立日期", ""))) if fund_info else None
+    custodian = str(fund_info.get("保管機構", "")) if fund_info else None
     return EtfFundInfo(
         symbol=sym.id,
         market=sym.market,
@@ -155,7 +180,9 @@ def _build_fund_info(
         tracked_index=(listing.tracked_index if listing else None) or None,
         units_outstanding=units,
         listed_date=listing.listed_date if listing else None,
-        manager_company=manager or None,
+        inception_date=inception,
+        manager_name=manager_name or None,
+        custodian_bank=custodian or None,
     )
 
 

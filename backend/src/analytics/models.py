@@ -11,6 +11,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from analytics.symbol_universe import SymbolType
 from schemas.enums import Market
 
 # -- indicator series -----------------------------------------------------------------------
@@ -141,7 +142,11 @@ class FactorScore(BaseModel):
     unavailable_reason: str | None = None
 
 
-class ScoreBreakdown(BaseModel):
+class StockScoreBreakdown(BaseModel):
+    """The 5-factor breakdown for a plain equity. Company-fundamentals-based (value/quality) and
+    price-technical (momentum/trend) factors — meaningless for an ETF, which has no earnings/
+    balance sheet of its own (see `EtfScoreBreakdown` for the ETF-specific factor set)."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     momentum: FactorScore
@@ -151,11 +156,44 @@ class ScoreBreakdown(BaseModel):
     revenue_flow: FactorScore
 
 
+class EtfScoreBreakdown(BaseModel):
+    """The 4-factor breakdown for an ETF — deliberately NOT `StockScoreBreakdown`'s value/
+    quality/trend-template factors, which are either meaningless (an ETF has no ROE/EV-EBITDA of
+    its own) or actively misleading (the Minervini trend template misreads a stretched
+    leveraged/inverse ETF as bullish exactly when its daily-rebalancing decay risk peaks) for a
+    fund rather than an operating company.
+
+    - `momentum`: same 12-1 calculation as the stock breakdown — meaningful as fund performance.
+    - `premium_discount`: TWSE's own published 預估折溢價幅度 (estimated premium/discount to
+      NAV) — the textbook ETF-quality metric with no stock equivalent.
+    - `cost`: SITCA-disclosed expense ratio percentile (lower cost ranks higher) — every ETF has
+      one; no stock does.
+    - `management_activity`: holdings-turnover-derived, ACTIVE ETFs only — genuinely unavailable
+      (not fabricated) for passive/leveraged/inverse ETFs, which have no holdings data ingested.
+    - `liquidity_flow`: 三大法人 institutional net-buy trend — the same chip sub-signal the stock
+      breakdown's `revenue_flow` uses, without the (ETF-inapplicable) 月營收 half.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    momentum: FactorScore
+    premium_discount: FactorScore
+    cost: FactorScore
+    management_activity: FactorScore
+    liquidity_flow: FactorScore
+
+
 class ScoreResult(BaseModel):
     """The composite's full, transparent output: the number, the band, and the factor
     breakdown behind it — the number is never surfaced without its basis (governance's "show
     the work" rule). Nothing here is, or may become, buy/sell/hold/price-target/position-sizing
-    language."""
+    language.
+
+    `breakdown` is `StockScoreBreakdown` for a plain equity, `EtfScoreBreakdown` for any ETF
+    (plain/active/leveraged/inverse) — the two shapes have different factor names by design
+    (see each breakdown's own docstring for why the factor sets genuinely differ, not just a
+    naming variation). Callers branch on `isinstance(result.breakdown, EtfScoreBreakdown)` (or
+    check `symbol_type`) rather than assuming one fixed shape."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -163,9 +201,10 @@ class ScoreResult(BaseModel):
     market: Market
     as_of: date_
     profile: ScoreProfile
+    symbol_type: SymbolType
     composite: float | None = Field(default=None, ge=0.0, le=100.0)
     band: ScoreBand
-    breakdown: ScoreBreakdown
+    breakdown: StockScoreBreakdown | EtfScoreBreakdown
     partial_factors: tuple[str, ...] = Field(
         default=(),
         description="Names of factors that were unavailable and excluded from the composite — "
@@ -186,6 +225,7 @@ __all__ = [
     "AtrResult",
     "BollingerResult",
     "EmaResult",
+    "EtfScoreBreakdown",
     "FactorScore",
     "KdResult",
     "MacdResult",
@@ -193,9 +233,9 @@ __all__ = [
     "ObvResult",
     "RsiResult",
     "ScoreBand",
-    "ScoreBreakdown",
     "ScoreProfile",
     "ScoreResult",
     "SmaResult",
+    "StockScoreBreakdown",
     "VwapResult",
 ]

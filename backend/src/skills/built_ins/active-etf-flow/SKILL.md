@@ -20,13 +20,14 @@ inputs:
 tools: [get_canonical_context, get_source_health, get_active_etf_report, get_etf_money_flow]
 output_structure:
   - '操作日報: 新增/刪除/加碼/減碼 持股與權重變化 (單一 ETF)'
-  - '基金規模: 較前日變化 (折溢價說明為何無法提供)'
+  - '基金規模: 較前日變化'
+  - '估算折溢價: 估算淨值(=持股市值÷發行單位數)對比市價，須標注為估算值、非發行商公告 NAV'
   - '跨 ETF 資金流向: 本 ETF 主要持股在同類 ETF 間的流入/流出排行'
   - '多空共識: 買超/賣超 ETF 檔數對比 (描述，非買賣訊號)'
 freshness_rule: 操作日報與資金流向皆須標明資料日期範圍；跨 ETF 彙總限制在 30 天內的區間。
 boundaries:
   - 僅描述持股與資金流變化，不提供進出場價位。
-  - 折溢價欄位目前無法提供時，明確說明原因，不得憑空估算。
+  - 折溢價為估算值(未計現金/應收股利/應計費用/匯率，以收盤價計)，須明確標注非官方 NAV/IOPV；估算所需欄位缺漏時明確說明，不得憑空補值。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []
 outputs: markdown
@@ -43,8 +44,11 @@ outputs: markdown
    wall-clock time.
 2. Call `get_active_etf_report(etf_id, market, trade_date)` (omit `trade_date` for "latest
    available"). Report per-holding 新增/刪除/加碼/減碼 status and the fund-size change vs the
-   prior day. This tool's `premium_discount_pct` is always `None` today — when present, surface
-   its `premium_discount_unavailable_reason` verbatim rather than omitting the field silently.
+   prior day. The official `premium_discount_pct` is always `None` (no NAV/IOPV source); the tool
+   instead returns an ESTIMATED `estimated_premium_discount_pct` + `estimated_nav_per_unit` with
+   an `estimation_caveat` — surface those only together WITH that caveat (an estimate, never the
+   issuer's official NAV), and when they're `None` say the estimate's inputs were unavailable
+   rather than omitting silently.
 3. Call `get_etf_money_flow(market, start_date, end_date, top_n)` for a bounded window
    (≤30 days — the tool itself enforces this) covering the same period, to place this ETF's
    constituent moves in the context of cross-ETF consensus (how many other active ETFs are
