@@ -6,7 +6,12 @@ here may return, or be renamed to imply, a buy/sell/hold word, a price target, o
 size. `ScoreResult`/`ScoreBand`/`FactorScore` (analytics/models.py) are the only shapes this
 module produces, and none of their fields can hold that kind of value.
 
-**Factor coverage this pass** (five-factor design):
+**Two factor sets, branched by `SymbolType`** (a plain equity vs. any ETF need genuinely
+different factors, not the same five metrics applied uniformly and hoping the inapplicable ones
+degrade to unavailable — see `analytics/models.py`'s `StockScoreBreakdown`/`EtfScoreBreakdown`
+docstrings for the full reasoning):
+
+**Stock factor coverage** (five-factor design):
 
 - **Momentum / RS** — computable; `price_eod` is ingested daily. Measured as the verified 12-1
   convention: the trailing twelve-month total return excluding the most recent month, so a
@@ -24,12 +29,23 @@ module produces, and none of their fields can hold that kind of value.
   yet). The factor is reported from the chip sub-signal alone, with that gap disclosed in its
   description — never silently backfilled.
 
+**ETF factor coverage** (four-factor design — see `compute_etf_factor_breakdown`):
+
+- **Momentum** — same 12-1 calculation as the stock breakdown, meaningful as fund performance.
+- **Premium/discount** — TWSE's own published 預估折溢價幅度 (`sources/twse_etf_nav.py`), the
+  textbook ETF-quality metric with no stock equivalent.
+- **Cost** — SITCA-disclosed expense ratio percentile (lower cost ranks higher).
+- **Management activity** — holdings-turnover-derived, active ETFs only; genuinely unavailable
+  for passive/leveraged/inverse ETFs, which have no holdings data ingested.
+- **Liquidity/flow** — 三大法人 net-buy trend, the same chip sub-signal the stock breakdown's
+  `revenue_flow` uses.
+
 **Composite construction.** Momentum and the chip sub-signal rank cross-sectionally as winsorized
-percentiles; value and quality are built the way real factor products build composites —
-winsorize each raw metric, z-score it against a comparison universe (sector peers where an
-ingested sector classification exists, else the whole universe with that disclosed), equal-weight
-the available sub-metric z-scores within the factor, and map the combined z-score onto the same
-0-100 axis the blend already speaks.
+percentiles; value and quality (stock-only) are built the way real factor products build
+composites — winsorize each raw metric, z-score it against a comparison universe (sector peers
+where an ingested sector classification exists, else the whole universe with that disclosed),
+equal-weight the available sub-metric z-scores within the factor, and map the combined z-score
+onto the same 0-100 axis the blend already speaks.
 
 An unavailable factor is `FactorScore(percentile=None, unavailable_reason=...)` — it is dropped
 from the composite blend (weights renormalized over the factors that *are* available) and its
@@ -46,13 +62,15 @@ from datetime import date as date_
 
 from analytics.fundamentals import FundamentalMetrics
 from analytics.models import (
+    EtfScoreBreakdown,
     FactorScore,
     ScoreBand,
-    ScoreBreakdown,
     ScoreProfile,
     ScoreResult,
+    StockScoreBreakdown,
 )
 from analytics.normalization import combine_zscores, zscore, zscore_to_percentile
+from analytics.symbol_universe import SymbolType
 from schemas.capabilities import EODBar, InstitutionalFlowRow
 from schemas.enums import Market
 
@@ -68,7 +86,7 @@ _REGIME_CAVEAT_NO_MARKET_DATA = (
 
 # Horizon-aware weight profiles — weights sum to 1.0 within each profile before any
 # renormalization for missing factors.
-_WEIGHTS: dict[ScoreProfile, dict[str, float]] = {
+_STOCK_WEIGHTS: dict[ScoreProfile, dict[str, float]] = {
     ScoreProfile.SWING: {
         "momentum": 0.35,
         "trend_quality": 0.25,
@@ -82,6 +100,27 @@ _WEIGHTS: dict[ScoreProfile, dict[str, float]] = {
         "value_guard": 0.25,
         "quality": 0.30,
         "revenue_flow": 0.15,
+    },
+}
+
+# ETF weight profiles — no value/quality/trend-template (see the module docstring's ETF section
+# for why those stock factors are dropped rather than left to degrade to unavailable). Swing
+# leans on momentum/liquidity (the fastest-moving signals for a fund); position leans on
+# cost/premium-discount (structural cost drag and mispricing matter more over a longer hold).
+_ETF_WEIGHTS: dict[ScoreProfile, dict[str, float]] = {
+    ScoreProfile.SWING: {
+        "momentum": 0.40,
+        "premium_discount": 0.20,
+        "cost": 0.10,
+        "management_activity": 0.10,
+        "liquidity_flow": 0.20,
+    },
+    ScoreProfile.POSITION: {
+        "momentum": 0.20,
+        "premium_discount": 0.25,
+        "cost": 0.25,
+        "management_activity": 0.15,
+        "liquidity_flow": 0.15,
     },
 }
 
@@ -220,20 +259,24 @@ def band_from_composite(composite: float | None) -> ScoreBand:
     return ScoreBand.NEUTRAL
 
 
+def _factors_by_name(
+    breakdown: StockScoreBreakdown | EtfScoreBreakdown,
+) -> dict[str, FactorScore]:
+    """Every named factor on `breakdown`, keyed by its own field name — the one place that maps
+    a breakdown model's fields to a plain dict, so `blend_composite`/`build_score_result` work
+    identically over either shape instead of hand-listing five attribute names twice."""
+    return dict(breakdown)
+
+
 def blend_composite(
-    breakdown: ScoreBreakdown, profile: ScoreProfile
+    breakdown: StockScoreBreakdown | EtfScoreBreakdown, profile: ScoreProfile
 ) -> tuple[float | None, tuple[str, ...]]:
     """Weighted blend over *available* factors only, renormalized so the available weights sum
     to 1.0 — computed over whichever factors are present, with the gap always disclosed rather
     than silently degraded. Returns `(composite_or_None, names_of_unavailable_factors)`."""
-    weights = _WEIGHTS[profile]
-    factors = {
-        "momentum": breakdown.momentum,
-        "trend_quality": breakdown.trend_quality,
-        "value_guard": breakdown.value_guard,
-        "quality": breakdown.quality,
-        "revenue_flow": breakdown.revenue_flow,
-    }
+    weight_profiles = _ETF_WEIGHTS if isinstance(breakdown, EtfScoreBreakdown) else _STOCK_WEIGHTS
+    weights = weight_profiles[profile]
+    factors = _factors_by_name(breakdown)
     available = {name: f for name, f in factors.items() if f.percentile is not None}
     partial = tuple(name for name in factors if name not in available)
     if not available:
@@ -287,7 +330,8 @@ def build_score_result(  # noqa: PLR0913 — one keyword-only field per result d
     market: Market,
     as_of: date_,
     profile: ScoreProfile,
-    breakdown: ScoreBreakdown,
+    symbol_type: SymbolType,
+    breakdown: StockScoreBreakdown | EtfScoreBreakdown,
     sector_context: SectorContext | None = None,
 ) -> ScoreResult:
     """Assemble the final, fully-caveated `ScoreResult` — the one place composite + band +
@@ -295,7 +339,11 @@ def build_score_result(  # noqa: PLR0913 — one keyword-only field per result d
     others."""
     composite, partial_factors = blend_composite(breakdown, profile)
     band = band_from_composite(composite)
-    has_fundamentals = (
+    # Sector-relative z-scoring only ever applies to the stock breakdown's value/quality factors
+    # — every ETF factor is a winsorized percentile (like momentum), never a sector-normalized
+    # z-score, so an ETF result always reports "no fundamental comparison universe" rather than
+    # a sector/whole-universe caveat that would misleadingly imply one was attempted.
+    has_fundamentals = isinstance(breakdown, StockScoreBreakdown) and (
         breakdown.value_guard.percentile is not None or breakdown.quality.percentile is not None
     )
     sector = sector_context or SectorContext()
@@ -304,6 +352,7 @@ def build_score_result(  # noqa: PLR0913 — one keyword-only field per result d
         market=market,
         as_of=as_of,
         profile=profile,
+        symbol_type=symbol_type,
         composite=composite,
         band=band,
         breakdown=breakdown,
@@ -449,12 +498,12 @@ def _fundamental_factor(
     )
 
 
-def compute_factor_breakdown(inputs: FactorInputs) -> ScoreBreakdown:
-    """Build the five-factor breakdown from `inputs`. Pure computation — no I/O, no dependency
-    on the ingest store."""
-    closes = inputs.closes
-    ma_series = inputs.ma_series
-    raw_momentum = twelve_minus_one_momentum(closes)
+def _momentum_factor(inputs: FactorInputs) -> tuple[FactorScore, float | None]:
+    """The 12-1 momentum factor — identical calculation for both the stock and ETF breakdowns
+    (see the module docstring's ETF section: momentum is meaningful as fund performance too).
+    Returns `(factor, momentum_percentile)` since the stock breakdown's trend-template also
+    needs the raw percentile for its own RS condition (#8)."""
+    raw_momentum = twelve_minus_one_momentum(inputs.closes)
     momentum_percentile = (
         winsorized_percentile(raw_momentum, inputs.momentum_universe)
         if raw_momentum is not None
@@ -478,6 +527,37 @@ def compute_factor_breakdown(inputs: FactorInputs) -> ScoreBreakdown:
             "momentum", "fewer than 12 months of price history ingested for this symbol"
         )
     )
+    return momentum, momentum_percentile
+
+
+def _liquidity_flow_factor(inputs: FactorInputs) -> FactorScore:
+    """三大法人 net-buy trend, the same chip sub-signal the stock breakdown's `revenue_flow` uses
+    — shared verbatim by the ETF breakdown's `liquidity_flow`, since it's the same real,
+    ETF-applicable signal either way (see the module docstring's ETF section)."""
+    flow_percentile = (
+        winsorized_percentile(inputs.flow_value, inputs.flow_universe)
+        if inputs.flow_value is not None
+        else None
+    )
+    return (
+        FactorScore(
+            name="liquidity_flow",
+            percentile=flow_percentile,
+            description="三大法人 20-day net-buy trend percentile",
+        )
+        if flow_percentile is not None
+        else unavailable_factor(
+            "liquidity_flow", "no institutional-flow rows ingested for this symbol/window"
+        )
+    )
+
+
+def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
+    """Build the five-factor stock breakdown from `inputs`. Pure computation — no I/O, no
+    dependency on the ingest store."""
+    closes = inputs.closes
+    ma_series = inputs.ma_series
+    momentum, momentum_percentile = _momentum_factor(inputs)
 
     raw_trend = trend_template_score(closes, ma_series, rs_percentile=momentum_percentile)
     trend_quality = (
@@ -527,12 +607,164 @@ def compute_factor_breakdown(inputs: FactorInputs) -> ScoreBreakdown:
         )
     )
 
-    return ScoreBreakdown(
+    return StockScoreBreakdown(
         momentum=momentum,
         trend_quality=trend_quality,
         value_guard=value_guard,
         quality=quality,
         revenue_flow=revenue_flow,
+    )
+
+
+# Premium/discount is not cross-sectionally ranked the way momentum/flow are — TWSE's own
+# published 預估折溢價幅度 is already a bounded, directly-comparable percentage, so mapping it to
+# a 0-100 factor score is a fixed linear scale (closer to 0% deviation = higher score) rather
+# than a percentile-against-the-day's-universe rank. `_PREMIUM_DISCOUNT_SCALE_PCT` bounds the
+# scale: a deviation at or beyond this magnitude (either direction) maps to the worst score (0);
+# exact NAV parity (0% deviation) maps to the best score (100). 5% comfortably covers ordinary
+# TW ETF premium/discount ranges (most trade within ~1-2%) while still discriminating a genuinely
+# mispriced fund, without needing a cross-sectional universe (a single ETF's own deviation is a
+# self-contained, absolute measure — nothing about it depends on ranking against other ETFs).
+_PREMIUM_DISCOUNT_SCALE_PCT = 5.0
+
+
+def _premium_discount_factor(premium_discount_pct: float | None) -> FactorScore:
+    """Score TWSE's own published premium/discount % on a fixed [0, 5]% deviation scale — see
+    `_PREMIUM_DISCOUNT_SCALE_PCT`'s own comment for why this is a fixed scale, not a
+    cross-sectional percentile."""
+    if premium_discount_pct is None:
+        return unavailable_factor(
+            "premium_discount",
+            "no ETF NAV/premium-discount row ingested for this symbol/date "
+            "(sources/twse_etf_nav.py)",
+        )
+    deviation = abs(premium_discount_pct)
+    score = max(0.0, 100.0 * (1.0 - deviation / _PREMIUM_DISCOUNT_SCALE_PCT))
+    if premium_discount_pct > 0:
+        direction = "premium"
+    elif premium_discount_pct < 0:
+        direction = "discount"
+    else:
+        direction = "parity"
+    return FactorScore(
+        name="premium_discount",
+        percentile=score,
+        description=(
+            f"{abs(premium_discount_pct):.2f}% {direction} to NAV (TWSE-published estimate), "
+            f"scored on a fixed 0-{_PREMIUM_DISCOUNT_SCALE_PCT:.0f}% deviation scale — closer to "
+            "NAV parity scores higher; never ranked against other ETFs"
+        ),
+    )
+
+
+def _cost_factor(expense_ratio_pct: float | None, universe: Sequence[float]) -> FactorScore:
+    """Lower expense ratio scores higher — a cross-sectional percentile like momentum/flow,
+    since "cheap relative to other ETFs" is exactly the comparison an investor makes."""
+    if expense_ratio_pct is None:
+        return unavailable_factor(
+            "cost",
+            "no SITCA expense-ratio disclosure ingested for this symbol "
+            "(tools/etf_pcf_tools.py::get_etf_expense_ratio)",
+        )
+    # Lower is better: winsorized_percentile ranks ascending, so negate to rank descending.
+    percentile = winsorized_percentile(-expense_ratio_pct, [-v for v in universe])
+    if percentile is None:
+        return unavailable_factor("cost", "fewer than 2 ETFs with a disclosed expense ratio today")
+    return FactorScore(
+        name="cost",
+        percentile=percentile,
+        description=f"{expense_ratio_pct:.2f}% expense ratio, ranked ascending against today's "
+        "ETF universe (lower cost scores higher)",
+    )
+
+
+def _management_activity_factor(
+    turnover_value: float | None, universe: Sequence[float], *, is_active: bool
+) -> FactorScore:
+    """Holdings-turnover-derived — ACTIVE ETFs only. A passive/leveraged/inverse ETF has no
+    holdings data ingested (`ActiveEtfHoldingChangeRow` is an active-ETF-only FinMind capability),
+    so this is genuinely unavailable for them, never fabricated from a proxy."""
+    if not is_active:
+        return unavailable_factor(
+            "management_activity",
+            "not an active ETF — no holdings-turnover data is ingested for passive/leveraged/"
+            "inverse ETFs (ActiveEtfHoldingChangeRow is an active-ETF-only capability)",
+        )
+    if turnover_value is None:
+        return unavailable_factor(
+            "management_activity", "no active-ETF holdings-change rows ingested for this symbol"
+        )
+    percentile = winsorized_percentile(turnover_value, universe)
+    if percentile is None:
+        return unavailable_factor(
+            "management_activity", "fewer than 2 active ETFs with holdings-turnover data today"
+        )
+    return FactorScore(
+        name="management_activity",
+        percentile=percentile,
+        description="holdings-turnover percentile against today's active-ETF universe",
+    )
+
+
+@dataclass(frozen=True)
+class EtfFactorInputs:
+    """The raw, already-computed per-symbol series + cross-sectional universes
+    `compute_etf_factor_breakdown` needs — the ETF-breakdown counterpart to `FactorInputs`.
+    `closes`/`momentum_universe`/`price`/`ma50`/`flow_value`/`flow_universe` are the same shape
+    momentum/liquidity-flow already use for stocks; the remaining fields are ETF-specific."""
+
+    closes: Sequence[float]
+    momentum_universe: Sequence[float]
+    flow_value: float | None
+    flow_universe: Sequence[float]
+    price: float | None
+    ma50: float | None
+    premium_discount_pct: float | None = None
+    expense_ratio_pct: float | None = None
+    expense_ratio_universe: Sequence[float] = field(default_factory=tuple)
+    is_active_etf: bool = False
+    holdings_turnover: float | None = None
+    holdings_turnover_universe: Sequence[float] = field(default_factory=tuple)
+
+
+def compute_etf_factor_breakdown(inputs: EtfFactorInputs) -> EtfScoreBreakdown:
+    """Build the four-factor ETF breakdown from `inputs`. Pure computation — no I/O, no
+    dependency on the ingest store. See the module docstring's ETF section for why these four
+    factors (not the stock breakdown's five) are the right set for a fund rather than an
+    operating company."""
+    momentum, _momentum_percentile = _momentum_factor(
+        FactorInputs(
+            closes=inputs.closes,
+            ma_series={},
+            momentum_universe=inputs.momentum_universe,
+            flow_value=inputs.flow_value,
+            flow_universe=inputs.flow_universe,
+            price=inputs.price,
+            ma50=inputs.ma50,
+        )
+    )
+    liquidity_flow = _liquidity_flow_factor(
+        FactorInputs(
+            closes=inputs.closes,
+            ma_series={},
+            momentum_universe=inputs.momentum_universe,
+            flow_value=inputs.flow_value,
+            flow_universe=inputs.flow_universe,
+            price=inputs.price,
+            ma50=inputs.ma50,
+        )
+    )
+    premium_discount = _premium_discount_factor(inputs.premium_discount_pct)
+    cost = _cost_factor(inputs.expense_ratio_pct, inputs.expense_ratio_universe)
+    management_activity = _management_activity_factor(
+        inputs.holdings_turnover, inputs.holdings_turnover_universe, is_active=inputs.is_active_etf
+    )
+    return EtfScoreBreakdown(
+        momentum=momentum,
+        premium_discount=premium_discount,
+        cost=cost,
+        management_activity=management_activity,
+        liquidity_flow=liquidity_flow,
     )
 
 
@@ -543,13 +775,15 @@ def eod_bars_to_closes(bars: Sequence[EODBar]) -> list[float]:
 
 
 __all__ = [
+    "EtfFactorInputs",
     "FactorInputs",
     "SectorContext",
     "apply_over_extension_cap",
     "band_from_composite",
     "blend_composite",
     "build_score_result",
-    "compute_factor_breakdown",
+    "compute_etf_factor_breakdown",
+    "compute_stock_factor_breakdown",
     "eod_bars_to_closes",
     "net_buy_20d_trend",
     "normalization_caveat",

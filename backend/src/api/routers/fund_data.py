@@ -139,6 +139,35 @@ async def fund_holdings(
     return await _dispatch(state, "get_fund_holdings", {"id": symbol, "market": market.value}, ctx)
 
 
+@router.get("/funds/{symbol}/fund-info")
+async def etf_fund_info(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Fund-level reference info for one TW listed ETF (issuer, tracked index, units outstanding,
+    listed/inception dates, manager person, custodian bank) — not per-constituent holdings or
+    NAV/IOPV. Backed by `get_etf_fund_info` over TWSE's fund-basic-data disclosure."""
+    return await _dispatch(state, "get_etf_fund_info", {"id": symbol, "market": market.value}, ctx)
+
+
+@router.get("/funds/{symbol}/expense-ratio")
+async def etf_expense_ratio(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Internal-fee (內扣費用) disclosure for one TW fund/ETF: management fee, custody fee,
+    custodian bank, and an approximate TER floor (management + custody). Backed by
+    `get_etf_expense_ratio` over the SITCA monthly fee report — see that tool's caveat on why the
+    TER is a floor, not the audited total-expense-ratio."""
+    return await _dispatch(
+        state, "get_etf_expense_ratio", {"id": symbol, "market": market.value}, ctx
+    )
+
+
 # ---- multi-symbol overlap / comparison -----------------------------------------------------
 
 

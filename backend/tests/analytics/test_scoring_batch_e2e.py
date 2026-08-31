@@ -30,7 +30,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from analytics.models import ScoreBreakdown
+from analytics.models import StockScoreBreakdown
 from analytics.scoring_batch import (
     INSTITUTIONAL_FLOW_DATASET,
     PRICE_EOD_DATASET,
@@ -208,7 +208,7 @@ async def test_stock_score_tool_reads_back_cached_row(
     assert data["result"]["symbol"] == "STRO"
     assert data["result"]["composite"] is not None
     breakdown = data["result"]["breakdown"]
-    for factor_name in ScoreBreakdown.model_fields:
+    for factor_name in StockScoreBreakdown.model_fields:
         assert factor_name in breakdown
 
     # A symbol the batch never scored returns found=False, never a fabricated row.

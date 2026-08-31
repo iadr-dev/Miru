@@ -17,18 +17,23 @@ from ingest.jobs import (
     DIVIDENDS_JOB,
     FINANCIALS_JOB,
     MARKET_VALUE_JOB,
+    MARKET_VALUE_WEIGHT_JOB,
     PRICE_EOD_JOB,
+    STOCK_INFO_JOB,
     job_active_etf_holding_changes,
     job_balance_sheet,
     job_cash_flow,
     job_dividends,
     job_financials,
     job_market_value,
+    job_market_value_weight,
     job_price_eod,
+    job_stock_info,
 )
 from ingest.journal import RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
+from schemas.capabilities import StockInfoRow
 from schemas.enums import TLSPolicy
 from sources.finmind import FinMindAdapter
 from tests.sources.conftest import load_fixture, make_json_client_factory
@@ -327,6 +332,113 @@ async def test_market_value_non_trading_day_is_skipped_with_no_fetch(
 
     assert run.status is RunStatus.SKIPPED
     assert not ctx.store.has_partition(MARKET_VALUE_JOB.dataset, "TW", saturday)
+
+
+async def test_market_value_weight_leader_writes_and_reads_back(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = load_fixture("finmind", "market_value_weight_2330.json")
+    _patch_client(monkeypatch, body)
+    ctx = _ctx(tmp_path, leader=AlwaysLeader())
+    trading_day = date(2024, 1, 2)
+
+    run = await job_market_value_weight(trading_day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert ctx.store.has_partition(MARKET_VALUE_WEIGHT_JOB.dataset, "TW", trading_day)
+
+
+async def test_market_value_weight_non_trading_day_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(**_kwargs: object) -> object:
+        raise AssertionError("must not construct an HTTP client on a non-trading day")
+
+    monkeypatch.setattr(finmind_module, "build_async_client", _boom)
+    ctx = _ctx(tmp_path)
+    saturday = date(2024, 1, 6)
+
+    run = await job_market_value_weight(saturday, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert not ctx.store.has_partition(MARKET_VALUE_WEIGHT_JOB.dataset, "TW", saturday)
+
+
+async def test_stock_info_leader_writes_and_reads_back(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = load_fixture("finmind", "stock_info_whole_market.json")
+    _patch_client(monkeypatch, body)
+    ctx = _ctx(tmp_path, leader=AlwaysLeader())
+    trading_day = date(2024, 1, 2)
+
+    run = await job_stock_info(trading_day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert ctx.store.has_partition(STOCK_INFO_JOB.dataset, "TW", trading_day)
+
+
+async def test_stock_info_non_trading_day_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(**_kwargs: object) -> object:
+        raise AssertionError("must not construct an HTTP client on a non-trading day")
+
+    monkeypatch.setattr(finmind_module, "build_async_client", _boom)
+    ctx = _ctx(tmp_path)
+    saturday = date(2024, 1, 6)
+
+    run = await job_stock_info(saturday, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert not ctx.store.has_partition(STOCK_INFO_JOB.dataset, "TW", saturday)
+
+
+async def test_stock_info_drops_row_with_null_date_before_writing(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reproduces a real incident: one upstream row with `date: null` must be validated and
+    dropped BEFORE `write_partition`, never persisted — a `StockInfoRow` requires a real
+    `as_of` date, and a `None` sitting in a mixed-type pandas column has previously round-
+    tripped through Parquet as the literal string `"None"`, which then failed validation on
+    every subsequent READ. The fix validates at write time so this can never reach disk."""
+    body = {
+        "msg": "success",
+        "status": 200,
+        "data": [
+            {
+                "industry_category": "半導體業",
+                "stock_id": "2330",
+                "stock_name": "台積電",
+                "type": "twse",
+                "date": "2024-01-02",
+            },
+            {
+                "industry_category": "半導體業",
+                "stock_id": "9999",
+                "stock_name": "有問題的股票",
+                "type": "twse",
+                "date": None,  # the malformed row — must be dropped, never written
+            },
+        ],
+    }
+    _patch_client(monkeypatch, body)
+    ctx = _ctx(tmp_path, leader=AlwaysLeader())
+    trading_day = date(2024, 1, 2)
+
+    run = await job_stock_info(trading_day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 1  # the good row only — the bad row was dropped, not written
+    raw_rows = ctx.store.read_partition(STOCK_INFO_JOB.dataset, "TW", trading_day)
+    assert len(raw_rows) == 1
+    assert raw_rows[0]["symbol"] == "2330"
+    # Read the written partition back through the real schema (dropping the storage-bookkeeping
+    # columns `read_partition` resurfaces, exactly as `_rows_from_store` does) — proves the
+    # write-time filter actually prevents the original crash (StockInfoRow.model_validate
+    # raising on the string "None").
+    field_names = set(StockInfoRow.model_fields)
+    StockInfoRow.model_validate({k: v for k, v in raw_rows[0].items() if k in field_names})
 
 
 async def test_active_etf_holding_changes_non_trading_day_is_skipped_with_no_fetch(

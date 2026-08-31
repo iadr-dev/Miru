@@ -47,18 +47,29 @@ from analytics.fundamentals import (
     parse_statement_lines,
 )
 from analytics.indicators import PriceBar, sma
-from analytics.models import ScoreProfile, ScoreResult
+from analytics.models import EtfScoreBreakdown, ScoreProfile, ScoreResult, StockScoreBreakdown
 from analytics.score import (
+    EtfFactorInputs,
     FactorInputs,
     build_score_result,
-    compute_factor_breakdown,
+    compute_etf_factor_breakdown,
+    compute_stock_factor_breakdown,
     net_buy_20d_trend,
     twelve_minus_one_momentum,
 )
 from analytics.scoring_store import upsert_score
+from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_mask
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
-from schemas.capabilities import FinancialStatementLine, InstitutionalFlowRow, MarketValueRow
+from schemas.capabilities import (
+    ActiveEtfHoldingChangeRow,
+    ActiveEtfHoldingRow,
+    EtfExpenseInfo,
+    EtfNavRow,
+    FinancialStatementLine,
+    InstitutionalFlowRow,
+    MarketValueRow,
+)
 from schemas.enums import Market
 
 logger = structlog.get_logger(__name__)
@@ -71,6 +82,14 @@ STOCK_SCORE_DATASET = "stock_scores"
 # scheduler's wiring.
 PRICE_EOD_DATASET = "TaiwanStockPrice"
 INSTITUTIONAL_FLOW_DATASET = "TaiwanStockInstitutionalInvestorsBuySell"
+# The three ETF-specific derived datasets (`ingest/jobs.py`'s own dataset-name constants,
+# duplicated here as local read-key constants rather than imported — same decoupling convention
+# `PRICE_EOD_DATASET`/`INSTITUTIONAL_FLOW_DATASET` above already use, so this compute layer
+# never binds to the scheduler's wiring).
+ETF_NAV_DATASET = "etf_nav"
+ETF_EXPENSE_RATIO_DATASET = "etf_expense_ratio"
+ACTIVE_ETF_HOLDING_DATASET = "TaiwanStockActiveETFHolding"
+ACTIVE_ETF_HOLDING_CHANGE_DATASET = "TaiwanStockActiveETFHoldingChange"
 
 # FinMind investor-category labels the revenue/flow factor's chip sub-signal sums.
 _FLOW_INVESTORS = ("Foreign_Investor", "Investment_Trust")
@@ -89,6 +108,16 @@ _FINANCIALS_LOOKBACK_DAYS = 400
 # The market-cap snapshot is a daily whole-market pull; a short lookback absorbs an occasional
 # missed/gapped day without reading a long history for what is really "yesterday's number".
 _MARKET_VALUE_LOOKBACK_DAYS = 10
+# `etf_nav`/active-ETF-holding snapshots are also daily whole-market pulls — same short-lookback
+# reasoning as `_MARKET_VALUE_LOOKBACK_DAYS`.
+_ETF_NAV_LOOKBACK_DAYS = 10
+_ACTIVE_ETF_HOLDING_LOOKBACK_DAYS = 10
+# SITCA's fee report only refreshes monthly (`job_etf_expense_ratio`'s own docstring) — this
+# window must comfortably span a full month so "yesterday's number" is still available even
+# right before the next monthly pull lands.
+_ETF_EXPENSE_RATIO_LOOKBACK_DAYS = 40
+# `net_buy_20d_trend`'s own convention, reused for the holdings-turnover proxy.
+_HOLDINGS_TURNOVER_LOOKBACK_DAYS = 20
 
 # The `FundamentalMetrics` attribute names the quality/value factors z-score — kept as local
 # tuples (not imported from `analytics.score`'s private `_QUALITY_SUB_METRICS`/
@@ -133,26 +162,8 @@ def _as_int(value: object) -> int:
 # leverage-derivative warrant series — and scoring the full warrant-inclusive universe is also
 # what pushes this batch's per-symbol working set (bars/MA-series/signal dicts held for the
 # whole universe at once, see `_score_and_persist_universe`) past the ~7.6GB it OOM-killed at.
-# Confirmed live against a single day's `TaiwanStockPrice` partition: plain equities are 4-digit
-# numeric codes (~2.3K/day); ETFs are `00`-prefixed 5-6-digit codes (~350/day, e.g. `0050`,
-# `006201`, `00631L`); warrants are 6-digit numeric codes NOT starting with `00` (~17.1K/day —
-# the dominant driver of both the universe size and the OOM) plus a residual few hundred 5-char
-# preferred-share/other exotic codes not starting with `00`. A plain length cutoff alone is not
-# enough: some real preferred-share codes ARE 5 characters (e.g. `2881B`), same length as the
-# 5-char ETF codes, but a warrant is never `00`-prefixed — hence the two-part rule below.
-_MAX_PLAIN_EQUITY_LENGTH = 4
-_MAX_ETF_LENGTH = 6
-_ETF_PREFIX = "00"
-
-
-def _scoreable_symbol_mask(symbols: pd.Series) -> pd.Series:
-    lengths = cast("pd.Series", symbols.str.len())
-    is_plain_equity = cast("pd.Series", lengths <= _MAX_PLAIN_EQUITY_LENGTH)
-    starts_with_etf_prefix = cast("pd.Series", symbols.str.startswith(_ETF_PREFIX))
-    is_etf = cast("pd.Series", (lengths <= _MAX_ETF_LENGTH) & starts_with_etf_prefix)
-    return cast("pd.Series", is_plain_equity | is_etf)
-
-
+# The classification rule (and its measured split) lives in `analytics/symbol_universe.py`,
+# shared with every other reader of the raw `TaiwanStockPrice` universe.
 _PRICE_FRAME_COLUMNS: tuple[str, ...] = (
     "symbol",
     "trade_date",
@@ -176,9 +187,10 @@ def _bars_by_symbol(price_frame: pd.DataFrame) -> dict[str, tuple[PriceBar, ...]
     bars_by_symbol: dict[str, tuple[PriceBar, ...]] = {}
     projected = cast("pd.DataFrame", price_frame.loc[:, list(_PRICE_FRAME_COLUMNS)])
     # Drop warrant/derivative codes before any per-symbol grouping — a vectorized mask over the
-    # whole frame, not a per-row Python check, so the excluded ~90% of rows (`_scoreable_symbol_
-    # mask`'s own comment has the measured split) never reach `PriceBar` construction at all.
-    scoreable = _scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
+    # whole frame, not a per-row Python check, so the excluded ~90% of rows
+    # (`analytics.symbol_universe`'s own comment has the measured split) never reach
+    # `PriceBar` construction at all.
+    scoreable = scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
     ordered = cast("pd.DataFrame", projected.loc[scoreable].sort_values("trade_date"))
     by_symbol: dict[str, list[PriceBar]] = defaultdict(list)
     # Positional-tuple unpacking (`name=None`), not attribute access: pandas' `itertuples()`
@@ -220,7 +232,7 @@ def _flow_rows_by_symbol(
     by_symbol: dict[str, list[InstitutionalFlowRow]] = defaultdict(list)
     projected = cast("pd.DataFrame", flow_frame.loc[:, list(_FLOW_FRAME_COLUMNS)])
     # Same warrant/derivative exclusion as `_bars_by_symbol` — see that function's docstring.
-    scoreable = _scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
+    scoreable = scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
     ordered = cast("pd.DataFrame", projected.loc[scoreable])
     # Positional unpacking — see `_bars_by_symbol`'s docstring for why.
     flow_tuples = cast(
@@ -261,6 +273,94 @@ def _latest_market_value_by_symbol(rows: Sequence[dict[str, object]]) -> dict[st
         if current is None or row.trade_date > current.trade_date:
             latest[row.symbol] = row
     return {symbol: float(row.market_value) for symbol, row in latest.items()}
+
+
+def _split_universe_by_symbol_type(universe: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Every symbol's scoring branch is decided purely by its code shape (`classify_symbol_type`
+    needs no store lookup) — the one place `job_scoring_batch` chooses which of the two factor
+    sets (`StockScoreBreakdown` vs `EtfScoreBreakdown`) a symbol gets. `ETF_LEVERAGED`/
+    `ETF_INVERSE` are grouped with plain `ETF` here (all three use the same `EtfScoreBreakdown`
+    shape — see that model's own docstring)."""
+    stock_symbols: list[str] = []
+    etf_symbols: list[str] = []
+    for symbol in universe:
+        if classify_symbol_type(symbol) is SymbolType.STOCK:
+            stock_symbols.append(symbol)
+        else:
+            etf_symbols.append(symbol)
+    return stock_symbols, etf_symbols
+
+
+def _latest_etf_nav_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, float]:
+    """This symbol's most recent published premium/discount %, from whatever `etf_nav` rows
+    fell in the read window — `None`-valued rows (TWSE published no estimate that day) are
+    dropped, never treated as a 0% deviation."""
+    latest: dict[str, EtfNavRow] = {}
+    for raw in rows:
+        try:
+            row = EtfNavRow.model_validate(raw)
+        except ValueError:
+            continue
+        current = latest.get(row.symbol)
+        if current is None or row.as_of > current.as_of:
+            latest[row.symbol] = row
+    return {
+        symbol: row.premium_discount_pct
+        for symbol, row in latest.items()
+        if row.premium_discount_pct is not None
+    }
+
+
+def _latest_etf_expense_ratio_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, float]:
+    """This symbol's most recent SITCA-disclosed approximate TER — SITCA's report only refreshes
+    monthly, so `as_of` may be `None` on some upstream rows; a row with `as_of` set always wins
+    over one without, and among dated rows the newer one wins."""
+    latest: dict[str, EtfExpenseInfo] = {}
+    for raw in rows:
+        try:
+            row = EtfExpenseInfo.model_validate(raw)
+        except ValueError:
+            continue
+        current = latest.get(row.symbol)
+        if current is None or (
+            row.as_of is not None and (current.as_of is None or row.as_of > current.as_of)
+        ):
+            latest[row.symbol] = row
+    return {
+        symbol: row.total_expense_ratio_pct_approx
+        for symbol, row in latest.items()
+        if row.total_expense_ratio_pct_approx is not None
+    }
+
+
+def _active_etf_symbols(rows: Sequence[dict[str, object]]) -> set[str]:
+    """Which ETF symbols had a constituent-holdings snapshot at all in the read window — the only
+    ground truth for "is this an active ETF" (`ActiveEtfHoldingRow` is an active-ETF-only FinMind
+    capability; a passive/leveraged/inverse ETF is never present here, see
+    `_management_activity_factor`'s own docstring)."""
+    symbols: set[str] = set()
+    for raw in rows:
+        try:
+            row = ActiveEtfHoldingRow.model_validate(raw)
+        except ValueError:
+            continue
+        symbols.add(row.symbol)
+    return symbols
+
+
+def _holdings_turnover_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, float]:
+    """Each active ETF's holdings-turnover proxy over the read window: the sum of every
+    constituent buy/sell share count's magnitude across every row for that ETF — a magnitude
+    (how much the portfolio moved), not a net direction, since "management activity" is about
+    how actively the fund trades, not which way."""
+    turnover: dict[str, float] = defaultdict(float)
+    for raw in rows:
+        try:
+            row = ActiveEtfHoldingChangeRow.model_validate(raw)
+        except ValueError:
+            continue
+        turnover[row.symbol] += abs(row.buy) + abs(row.sell)
+    return dict(turnover)
 
 
 def _ma_series_for(bars: Sequence[PriceBar]) -> dict[str, tuple[float | None, ...]]:
@@ -365,43 +465,122 @@ def _assemble_signals_and_universes(
     return signals, universes
 
 
+@dataclass(frozen=True)
+class _EtfSignals:
+    """The ETF-only per-symbol raw inputs `compute_etf_factor_breakdown` needs, mirroring
+    `_PerSymbolSignals`'s stock-side shape — kept as its own dataclass rather than folded into
+    `_PerSymbolSignals` since these fields (NAV/expense-ratio/holdings-turnover) are meaningless
+    for a plain stock and would otherwise sit empty on every stock symbol's signals."""
+
+    premium_discount_by_symbol: dict[str, float]
+    expense_ratio_by_symbol: dict[str, float]
+    active_etf_symbols: set[str]
+    holdings_turnover_by_symbol: dict[str, float]
+
+
+@dataclass(frozen=True)
+class _EtfCrossSectionalUniverses:
+    """The ETF-only comparison universes — cost and management-activity rank cross-sectionally
+    against other ETFs, never against the stock universe (mirrors `_CrossSectionalUniverses`'s
+    stock-side shape)."""
+
+    expense_ratio: list[float]
+    holdings_turnover: list[float]
+
+
+def _score_stock_symbol(
+    symbol: str, *, signals: _PerSymbolSignals, universes: _CrossSectionalUniverses
+) -> StockScoreBreakdown:
+    bars = signals.bars_by_symbol.get(symbol, ())
+    closes = [bar.close for bar in bars]
+    inputs = FactorInputs(
+        closes=closes,
+        ma_series=signals.ma_series_by_symbol[symbol],
+        momentum_universe=universes.momentum,
+        flow_value=signals.flow_value_by_symbol[symbol],
+        flow_universe=universes.flow,
+        price=signals.price_by_symbol[symbol],
+        ma50=signals.ma50_by_symbol[symbol],
+        fundamentals=signals.metrics_by_symbol[symbol],
+        quality_universe=universes.quality,
+        value_universe=universes.value,
+    )
+    return compute_stock_factor_breakdown(inputs)
+
+
+def _score_etf_symbol(
+    symbol: str,
+    *,
+    signals: _PerSymbolSignals,
+    universes: _CrossSectionalUniverses,
+    etf_signals: _EtfSignals,
+    etf_universes: _EtfCrossSectionalUniverses,
+) -> EtfScoreBreakdown:
+    bars = signals.bars_by_symbol.get(symbol, ())
+    closes = [bar.close for bar in bars]
+    inputs = EtfFactorInputs(
+        closes=closes,
+        momentum_universe=universes.momentum,
+        flow_value=signals.flow_value_by_symbol[symbol],
+        flow_universe=universes.flow,
+        price=signals.price_by_symbol[symbol],
+        ma50=signals.ma50_by_symbol[symbol],
+        premium_discount_pct=etf_signals.premium_discount_by_symbol.get(symbol),
+        expense_ratio_pct=etf_signals.expense_ratio_by_symbol.get(symbol),
+        expense_ratio_universe=etf_universes.expense_ratio,
+        is_active_etf=symbol in etf_signals.active_etf_symbols,
+        holdings_turnover=etf_signals.holdings_turnover_by_symbol.get(symbol),
+        holdings_turnover_universe=etf_universes.holdings_turnover,
+    )
+    return compute_etf_factor_breakdown(inputs)
+
+
 async def _score_and_persist_universe(  # noqa: PLR0913 — one keyword-only field per pass-2 input
     session_factory: async_sessionmaker[AsyncSession],
     *,
-    universe: Sequence[str],
+    stock_symbols: Sequence[str],
+    etf_symbols: Sequence[str],
     market: Market,
     run_date: date_,
     signals: _PerSymbolSignals,
     universes: _CrossSectionalUniverses,
+    etf_signals: _EtfSignals,
+    etf_universes: _EtfCrossSectionalUniverses,
 ) -> int:
-    """Pass 2: build each symbol's breakdown against the now-complete cross-sectional universes,
-    blend both horizon profiles, and upsert every row in one transaction. Returns the number of
-    rows written (symbols x 2 profiles)."""
+    """Pass 2: build each symbol's breakdown (stock or ETF branch, by symbol type) against the
+    now-complete cross-sectional universes, blend both horizon profiles, and upsert every row in
+    one transaction. Returns the number of rows written (symbols x 2 profiles)."""
     rows_written = 0
     async with session_factory() as session:
-        for symbol in universe:
-            bars = signals.bars_by_symbol.get(symbol, ())
-            closes = [bar.close for bar in bars]
-            inputs = FactorInputs(
-                closes=closes,
-                ma_series=signals.ma_series_by_symbol[symbol],
-                momentum_universe=universes.momentum,
-                flow_value=signals.flow_value_by_symbol[symbol],
-                flow_universe=universes.flow,
-                price=signals.price_by_symbol[symbol],
-                ma50=signals.ma50_by_symbol[symbol],
-                fundamentals=signals.metrics_by_symbol[symbol],
-                quality_universe=universes.quality,
-                value_universe=universes.value,
-            )
-            breakdown = compute_factor_breakdown(inputs)
+        for symbol in stock_symbols:
+            breakdown = _score_stock_symbol(symbol, signals=signals, universes=universes)
             for profile in (ScoreProfile.SWING, ScoreProfile.POSITION):
                 result: ScoreResult = build_score_result(
                     symbol=symbol,
                     market=market,
                     as_of=run_date,
                     profile=profile,
+                    symbol_type=SymbolType.STOCK,
                     breakdown=breakdown,
+                )
+                await upsert_score(session, result)
+                rows_written += 1
+        for symbol in etf_symbols:
+            etf_breakdown = _score_etf_symbol(
+                symbol,
+                signals=signals,
+                universes=universes,
+                etf_signals=etf_signals,
+                etf_universes=etf_universes,
+            )
+            for profile in (ScoreProfile.SWING, ScoreProfile.POSITION):
+                result = build_score_result(
+                    symbol=symbol,
+                    market=market,
+                    as_of=run_date,
+                    profile=profile,
+                    symbol_type=classify_symbol_type(symbol),
+                    breakdown=etf_breakdown,
                 )
                 await upsert_score(session, result)
                 rows_written += 1
@@ -414,8 +593,11 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     fundamental data covers, for both `ScoreProfile.SWING` and `ScoreProfile.POSITION`. Leader-
     and calendar-gated exactly like `job_screener_flags`: a non-trading day is a journaled skip;
     a non-leader pass writes nothing. Idempotent — a re-run for the same date upserts the same
-    `(symbol, market, profile, as_of)` rows rather than accumulating history."""
-    if not ctx.calendar.is_trading_day(run_date):
+    `(symbol, market, profile, as_of)` rows rather than accumulating history. Uses the
+    extrapolating check since `run_date` is almost always "today", which is always beyond
+    `ctx.calendar`'s known range until today's own whole-market pulls have landed — see
+    `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
         return journal_run(
             STOCK_SCORE_DATASET,
             run_date,
@@ -440,6 +622,16 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     flow_window = _trailing_trading_days(ctx, run_date, _FLOW_LOOKBACK_DAYS)
     financials_window = _trailing_trading_days(ctx, run_date, _FINANCIALS_LOOKBACK_DAYS)
     market_value_window = _trailing_trading_days(ctx, run_date, _MARKET_VALUE_LOOKBACK_DAYS)
+    etf_nav_window = _trailing_trading_days(ctx, run_date, _ETF_NAV_LOOKBACK_DAYS)
+    etf_expense_ratio_window = _trailing_trading_days(
+        ctx, run_date, _ETF_EXPENSE_RATIO_LOOKBACK_DAYS
+    )
+    active_etf_holding_window = _trailing_trading_days(
+        ctx, run_date, _ACTIVE_ETF_HOLDING_LOOKBACK_DAYS
+    )
+    holdings_turnover_window = _trailing_trading_days(
+        ctx, run_date, _HOLDINGS_TURNOVER_LOOKBACK_DAYS
+    )
 
     price_frame = ctx.store.read_range_frame(
         PRICE_EOD_DATASET, market_str, price_window, columns=_PRICE_FRAME_COLUMNS
@@ -453,22 +645,46 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         + ctx.store.read_range(CASH_FLOW_DATASET, market_str, financials_window)
     )
     market_value_rows = ctx.store.read_range(MARKET_VALUE_DATASET, market_str, market_value_window)
+    etf_nav_rows = ctx.store.read_range(ETF_NAV_DATASET, market_str, etf_nav_window)
+    etf_expense_ratio_rows = ctx.store.read_range(
+        ETF_EXPENSE_RATIO_DATASET, market_str, etf_expense_ratio_window
+    )
+    active_etf_holding_rows = ctx.store.read_range(
+        ACTIVE_ETF_HOLDING_DATASET, market_str, active_etf_holding_window
+    )
+    active_etf_holding_change_rows = ctx.store.read_range(
+        ACTIVE_ETF_HOLDING_CHANGE_DATASET, market_str, holdings_turnover_window
+    )
 
     bars_by_symbol = _bars_by_symbol(price_frame)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
     lines_by_symbol = _statement_lines_by_symbol(statement_rows)
     market_value_by_symbol = _latest_market_value_by_symbol(market_value_rows)
+    premium_discount_by_symbol = _latest_etf_nav_by_symbol(etf_nav_rows)
+    expense_ratio_by_symbol = _latest_etf_expense_ratio_by_symbol(etf_expense_ratio_rows)
+    active_etf_symbols = _active_etf_symbols(active_etf_holding_rows)
+    holdings_turnover_by_symbol = _holdings_turnover_by_symbol(active_etf_holding_change_rows)
 
-    universe = sorted(bars_by_symbol.keys() | flow_by_symbol.keys() | lines_by_symbol.keys())
+    universe = sorted(
+        bars_by_symbol.keys()
+        | flow_by_symbol.keys()
+        | lines_by_symbol.keys()
+        | premium_discount_by_symbol.keys()
+        | expense_ratio_by_symbol.keys()
+        | active_etf_symbols
+        | holdings_turnover_by_symbol.keys()
+    )
     if not universe:
         return journal_run(
             STOCK_SCORE_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.SUCCESS,
-            detail="no upstream price/flow/fundamental history in the read window — nothing "
-            "to score",
+            detail="no upstream price/flow/fundamental/ETF history in the read window — "
+            "nothing to score",
         )
+
+    stock_symbols, etf_symbols = _split_universe_by_symbol_type(universe)
 
     signals, universes = _assemble_signals_and_universes(
         universe,
@@ -477,13 +693,30 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         lines_by_symbol=lines_by_symbol,
         market_value_by_symbol=market_value_by_symbol,
     )
+    etf_signals = _EtfSignals(
+        premium_discount_by_symbol=premium_discount_by_symbol,
+        expense_ratio_by_symbol=expense_ratio_by_symbol,
+        active_etf_symbols=active_etf_symbols,
+        holdings_turnover_by_symbol=holdings_turnover_by_symbol,
+    )
+    etf_universes = _EtfCrossSectionalUniverses(
+        expense_ratio=list(expense_ratio_by_symbol.values()),
+        holdings_turnover=[
+            value
+            for symbol, value in holdings_turnover_by_symbol.items()
+            if symbol in active_etf_symbols
+        ],
+    )
     rows_written = await _score_and_persist_universe(
         ctx.session_factory,
-        universe=universe,
+        stock_symbols=stock_symbols,
+        etf_symbols=etf_symbols,
         market=market,
         run_date=run_date,
         signals=signals,
         universes=universes,
+        etf_signals=etf_signals,
+        etf_universes=etf_universes,
     )
 
     logger.info(
@@ -491,6 +724,8 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         market=market_str,
         run_date=run_date.isoformat(),
         symbols=len(universe),
+        stock_symbols=len(stock_symbols),
+        etf_symbols=len(etf_symbols),
         rows_written=rows_written,
     )
     return journal_run(
@@ -498,12 +733,16 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         run_date,
         rows_written=rows_written,
         status=RunStatus.SUCCESS,
-        detail=f"scored {len(universe)} symbols x 2 profiles over {market_str} "
-        "price/flow/fundamental history",
+        detail=f"scored {len(stock_symbols)} stocks + {len(etf_symbols)} ETFs x 2 profiles "
+        f"over {market_str} price/flow/fundamental/ETF history",
     )
 
 
 __all__ = [
+    "ACTIVE_ETF_HOLDING_CHANGE_DATASET",
+    "ACTIVE_ETF_HOLDING_DATASET",
+    "ETF_EXPENSE_RATIO_DATASET",
+    "ETF_NAV_DATASET",
     "INSTITUTIONAL_FLOW_DATASET",
     "PRICE_EOD_DATASET",
     "STOCK_SCORE_DATASET",

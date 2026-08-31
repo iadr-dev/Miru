@@ -66,6 +66,13 @@ async def test_fetch_merges_list_and_fund_info(monkeypatch: pytest.MonkeyPatch) 
     assert info["tracked_index"] == "富時臺灣證券交易所臺灣50指數"
     assert info["units_outstanding"] == 5827000000
     assert info["listed_date"] == "2003-06-30"
+    # `基金經理人` is the manager PERSON — populates manager_name, NOT manager_company (which stays
+    # None since t187ap47_L has no clean company column). This is the mislabel-fix assertion.
+    assert info["manager_name"] == "王勝陽"
+    assert info["manager_company"] is None
+    assert info["custodian_bank"] == "台灣集中保管結算所股份有限公司"
+    # 成立日期 "0920630" = ROC 92/06/30 = 2003-06-30, parsed via the ROC-compact date helper.
+    assert info["inception_date"] == "2003-06-30"
 
 
 async def test_fetch_handles_dual_listing_row(monkeypatch: pytest.MonkeyPatch) -> None:

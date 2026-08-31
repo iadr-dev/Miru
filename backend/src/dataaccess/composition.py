@@ -24,6 +24,7 @@ from sources.finmind import FinMindAdapter
 from sources.mops import MopsAdapter
 from sources.ncdr_closure import NcdrClosureAdapter
 from sources.news import NewsAdapter
+from sources.sitca import SitcaAdapter
 from sources.taifex_openapi import TaifexOpenApiAdapter
 from sources.tdcc import TdccAdapter
 from sources.twse_mis import TwseMisAdapter
@@ -52,6 +53,7 @@ def build_default_adapters(
         "yfinance": YFinanceAdapter(),
         "news": NewsAdapter(resolved),
         "etf_pcf": EtfPcfAdapter(),
+        "sitca": SitcaAdapter(),
         "mops": MopsAdapter(),
         "ncdr_closure": NcdrClosureAdapter(),
         "tdcc": TdccAdapter(),

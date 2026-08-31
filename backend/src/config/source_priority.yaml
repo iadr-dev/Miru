@@ -17,6 +17,7 @@ TW:
   sector_class: [yfinance] # English cross-market label only; FinMind remains TW authority
   news: [news] # RSS + GDELT + Finnhub aggregator; keyless/near-keyless, all-market capable
   etf_holdings: [etf_pcf] # fund-level metadata only — see sources/etf_pcf.py for the gap it does NOT cover
+  etf_expense_ratio: [sitca] # 內扣費用 (經理費/保管費/保管機構) from SITCA monthly fee disclosure
   corporate_actions: [mops] # 重大訊息 material-announcement disclosure stream
   shareholding: [mops] # 董監事持股 monthly director/supervisor shareholding filing
   profile: [mops] # 基本資料 company-identity fields (chairman/capital/spokesperson/auditor/...)

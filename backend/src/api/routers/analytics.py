@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from accounts.models import User
 from analytics.models import ScoreProfile
-from analytics.scoring_store import LeaderboardDirection
+from analytics.scoring_store import LeaderboardDirection, LeaderboardUniverse
 from api.dependencies import AppState, get_state, optional_user, tool_context_for
 from api.errors import ApiError
 from schemas.enums import Market
@@ -70,6 +70,7 @@ async def score_rankings(
     market: Market = Query(Market.TW),
     profile: ScoreProfile = Query(ScoreProfile.SWING),
     direction: LeaderboardDirection = Query("bullish"),
+    universe: LeaderboardUniverse = Query("stock"),
     limit: int = Query(20, ge=1, le=50),
     as_of: date_ | None = Query(None),
     state: AppState = Depends(get_state),
@@ -77,7 +78,9 @@ async def score_rankings(
 ) -> dict[str, object]:
     """The whole-TW-universe leaderboard: top-N strongest (`direction=bullish`) or weakest
     (`direction=bearish`) cached composite scores — a sort-and-slice read of the nightly batch's
-    cache, never a live rescan."""
+    cache, never a live rescan. `universe=stock` (default) or `universe=etf` — a stock and an ETF
+    are scored on different factor sets, so they are never ranked in one combined list (see
+    `analytics/scoring_store.py::get_leaderboard`'s own docstring)."""
     return await _dispatch(
         state,
         "get_score_leaderboard",
@@ -85,6 +88,7 @@ async def score_rankings(
             "market": market.value,
             "profile": profile.value,
             "direction": direction,
+            "universe": universe,
             "limit": limit,
             "as_of": as_of.isoformat() if as_of is not None else None,
         },
