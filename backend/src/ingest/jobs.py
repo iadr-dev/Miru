@@ -22,6 +22,7 @@ Every job function enforces, in code (not just doc), the same six governance con
 
 from __future__ import annotations
 
+import asyncio
 from calendar.trading_days import TradingDayCalendar
 from dataclasses import dataclass
 from datetime import date as date_
@@ -38,6 +39,7 @@ from schemas.capabilities import (
     ActiveEtfHoldingRow,
     DividendEvent,
     EODBar,
+    EtfAumRow,
     EtfExpenseInfo,
     EtfNavRow,
     FinancialStatementLine,
@@ -49,6 +51,7 @@ from schemas.capabilities import (
     StockInfoRow,
 )
 from schemas.enums import Capability
+from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceResult
 from sources.sitca import fetch_whole_market_etf_fees
 from sources.twse_etf_nav import fetch_whole_market_etf_nav
@@ -764,6 +767,126 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
     )
 
 
+ETF_AUM_DATASET = "etf_aum"
+
+# yfinance has no whole-market ETF endpoint (same gap `ingest/us_jobs.py::job_us_fundamentals`
+# documents for US fundamentals) — this job's per-symbol loop is the accepted fan-out exception,
+# paced identically to that job's own throttle to avoid the same rate-limiting failure mode
+# (455 "Too Many Requests" in under 4 minutes, confirmed empirically there with no delay).
+_YFINANCE_THROTTLE_SECONDS = 0.5
+
+
+def _latest_etf_nav_symbols(ctx: IngestContext) -> tuple[str, ...]:
+    """The ETF universe to loop AUM over — read from the already-ingested `etf_nav` partition
+    (TWSE's own whole-market ETF roster, `job_etf_nav`) rather than a hardcoded list, mirroring
+    `ingest/us_universe.py::latest_us_symbols`'s "read a roster ingest already wrote" pattern.
+    Empty (never a crash) if `job_etf_nav` hasn't run yet."""
+    dates = ctx.store.list_partition_dates(ETF_NAV_DATASET, ctx.market.value)
+    if not dates:
+        return ()
+    raw_rows = ctx.store.read_partition(ETF_NAV_DATASET, ctx.market.value, max(dates))
+    field_names = set(EtfNavRow.model_fields)
+    symbols = {
+        str(row["symbol"]) for row in raw_rows if "symbol" in {k for k in row if k in field_names}
+    }
+    return tuple(sorted(symbols))
+
+
+async def _fetch_one_etf_aum(ctx: IngestContext, symbol: str) -> dict[str, object] | None:
+    """One symbol's AUM fetch, classified into a row-to-keep or `None` (a real failure the
+    caller should count) — mirrors `ingest/us_jobs.py::_fetch_one_fundamental`'s classification:
+    a raised exception and a degraded (never-raised) `UNREACHABLE`/`UNAVAILABLE_TIER` result
+    both count as failures, never silently reported as a zero-row SUCCESS."""
+    sym = Symbol(id=symbol, market=ctx.market)
+    try:
+        result = await ctx.yfinance.fetch(  # type: ignore[union-attr]
+            Capability.ETF_AUM, sym, tls_policy=ctx.tls_policy
+        )
+    except Exception as exc:  # one symbol's failure never aborts the batch
+        logger.warning("etf_aum_fetch_failed", symbol=symbol, error=str(exc))
+        return None
+    if result.health.status in (HealthStatus.UNREACHABLE, HealthStatus.UNAVAILABLE_TIER):
+        logger.warning(
+            "etf_aum_fetch_degraded",
+            symbol=symbol,
+            status=result.health.status.value,
+            detail=result.health.detail,
+        )
+        return None
+    row = result.payload.get("aum")
+    return cast("dict[str, object]", row) if isinstance(row, dict) else None
+
+
+async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily-late` — ETF total-net-assets (資產規模) whole-market snapshot, per-symbol
+    fan-out over `YFinanceAdapter` (see module-level `_YFINANCE_THROTTLE_SECONDS`'s docstring for
+    why this is the accepted exception, not a violation of the "whole-market by-date, never
+    per-symbol" rule — yfinance genuinely has no bulk ETF form).
+
+    Symbol universe comes from `_latest_etf_nav_symbols` (the already-ingested `etf_nav` roster),
+    never a hardcoded list — an empty universe (that job hasn't run yet) is a graceful skip.
+    One symbol's failure never aborts the run: it's counted, journaled as `PARTIAL` if any
+    symbol failed but some rows still landed, `FAILED` only if none did."""
+    if not ctx.leader.is_leader():
+        return journal_run(
+            ETF_AUM_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+    if ctx.yfinance is None:
+        return journal_run(
+            ETF_AUM_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="no YFinanceAdapter wired on this IngestContext",
+        )
+
+    symbols = _latest_etf_nav_symbols(ctx)
+    if not symbols:
+        return journal_run(
+            ETF_AUM_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="no etf_nav roster yet — run job_etf_nav first",
+        )
+
+    raw_rows: list[dict[str, object]] = []
+    failures = 0
+    for index, symbol in enumerate(symbols):
+        if index > 0:
+            # Paced, not concurrent — see `_YFINANCE_THROTTLE_SECONDS`'s own docstring.
+            await asyncio.sleep(_YFINANCE_THROTTLE_SECONDS)
+        row = await _fetch_one_etf_aum(ctx, symbol)
+        if row is None:
+            failures += 1
+            continue
+        raw_rows.append(row)
+
+    rows = _validate_rows_against(EtfAumRow, ETF_AUM_DATASET, raw_rows, run_date)
+    rows_written = ctx.store.write_partition(ETF_AUM_DATASET, ctx.market.value, run_date, rows)
+    if rows_written:
+        await ctx.data_update_publisher.publish_data_updated(
+            capability=Capability.ETF_AUM,
+            market=ctx.market,
+            as_of=run_date.isoformat(),
+            scope="whole-market",
+        )
+    status = RunStatus.SUCCESS
+    if failures:
+        status = RunStatus.FAILED if rows_written == 0 else RunStatus.PARTIAL
+    return journal_run(
+        ETF_AUM_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=status,
+        detail=f"{failures} symbol fetch(es) failed" if failures else "ok",
+    )
+
+
 __all__ = [
     "ACTIVE_ETF_HOLDING_CHANGE_JOB",
     "ACTIVE_ETF_HOLDING_JOB",
@@ -772,6 +895,7 @@ __all__ = [
     "CASH_FLOW_JOB",
     "DAILY_WHOLE_MARKET_JOBS",
     "DIVIDENDS_JOB",
+    "ETF_AUM_DATASET",
     "ETF_EXPENSE_RATIO_DATASET",
     "ETF_NAV_DATASET",
     "FINANCIALS_JOB",
@@ -789,6 +913,7 @@ __all__ = [
     "job_balance_sheet",
     "job_cash_flow",
     "job_dividends",
+    "job_etf_aum",
     "job_etf_expense_ratio",
     "job_etf_nav",
     "job_financials",

@@ -89,7 +89,12 @@
       "tw": "台股",
       "us": "美股",
       "etf": "ETF",
-      "comingSoon": "{tab} 尚未支援。"
+      "comingSoon": "{tab} 尚未支援。",
+      "etfSub": {
+        "label": "ETF 檢視",
+        "leaderboard": "AI 多空排行",
+        "list": "ETF 列表"
+      }
     },
     "cards": {
       "institutionalRanking": {
@@ -225,6 +230,22 @@
         "negative": "負貢獻前幾名",
         "unavailable": "今日查無指數貢獻資料。",
         "updatedAt": "資料日期：{date}"
+      },
+      "etfList": {
+        "title": "ETF 列表",
+        "columnName": "ETF",
+        "columnPrice": "股價",
+        "columnChange": "漲跌幅",
+        "columnVolume": "成交金額",
+        "columnWeeklyReturn": "近1週報酬",
+        "columnYield": "配息率(近12月)",
+        "columnAum": "資產規模",
+        "columnExpense": "費用率",
+        "leveraged": "槓桿",
+        "inverse": "反向",
+        "noChangeData": "無漲跌資料",
+        "empty": "此市場查無 ETF 資料。",
+        "unavailable": "今日查無 ETF 資料。"
       },
       "loading": "資料載入中…",
       "empty": "此範圍內查無資料。",

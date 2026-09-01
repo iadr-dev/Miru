@@ -29,7 +29,7 @@ from schemas.source import HealthStatus, SourceHealth, SourceResult
 
 from ._blocking import _fetch_info_blocking, _fetch_ticker_frames_blocking
 from ._shared import _NON_TW_MARKETS, _NON_TW_SUPPORTED, _TW_SUPPORTED, _result, _yahoo_symbol
-from .analyst import _analyst_consensus, _esg, _sector_class
+from .analyst import _analyst_consensus, _esg, _etf_aum, _sector_class
 from .discovery import (
     _earnings_calendar,
     _economic_calendar,
@@ -141,7 +141,13 @@ class YFinanceAdapter:
         self, cap: Capability, sym: Symbol, yahoo_symbol: str
     ) -> dict[str, Any]:
         if (
-            cap in (Capability.ANALYST_CONSENSUS, Capability.ESG, Capability.SECTOR_CLASS)
+            cap
+            in (
+                Capability.ANALYST_CONSENSUS,
+                Capability.ESG,
+                Capability.SECTOR_CLASS,
+                Capability.ETF_AUM,
+            )
             and sym.market is Market.TW
         ):
             # TW's original narrow path only ever needed `.info` — kept as its own
@@ -158,6 +164,7 @@ class YFinanceAdapter:
             Capability.ANALYST_CONSENSUS: lambda: _analyst_consensus(sym, info, frames),
             Capability.ESG: lambda: _esg(sym, info),
             Capability.SECTOR_CLASS: lambda: _sector_class(sym, info),
+            Capability.ETF_AUM: lambda: _etf_aum(sym, info),
             Capability.PRICE_EOD: lambda: _price_eod(sym, frames),
             Capability.FINANCIALS: lambda: _financial_statement(
                 sym, frames, "financials", "income_statement"

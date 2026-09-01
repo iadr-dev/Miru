@@ -7,12 +7,7 @@ import { Sparkline } from "@/components/market/sparkline";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
-import type {
-  LeaderboardDirection,
-  LeaderboardUniverse,
-  ScoreBand,
-  ScoreResult,
-} from "@/types/market";
+import type { LeaderboardDirection, ScoreBand, ScoreResult } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 const COLLAPSED_ROW_COUNT = 13;
@@ -35,23 +30,21 @@ type Quote = ReturnType<typeof useSymbolQuotes>["quotes"][number];
  * cover that symbol (e.g. a delisted or newly-listed one absent from the roster). `direction`
  * toggles the real API query (bullish/bearish), never a client-side re-sort of one fetched
  * direction. "展開完整" opens the full list in a modal (`ExpandModal`) rather than growing this
- * card inline — keeps the card's own height stable regardless of result count.
- */
+ * card inline — keeps the card's own height stable regardless of result count. The stock/ETF
+ * universe toggle that used to live here moved out once the ETF tab got its own leaderboard
+ * sub-tab (`EtfLeaderboardPanel`) — each caller now owns a fixed universe, so this card no
+ * longer renders a universe switcher at all. */
 export function LeaderboardCard({
   results,
   asOf,
   direction,
   onDirectionChange,
-  universe,
-  onUniverseChange,
   market,
 }: {
   results: readonly ScoreResult[];
   asOf: string | null;
   direction: LeaderboardDirection;
   onDirectionChange: (direction: LeaderboardDirection) => void;
-  universe: LeaderboardUniverse;
-  onUniverseChange: (universe: LeaderboardUniverse) => void;
   market: Market;
 }): ReactNode {
   const t = useTranslations("market.cards.leaderboard");
@@ -76,27 +69,6 @@ export function LeaderboardCard({
           <p className="mt-0.5 text-[12px] text-[var(--text-muted)]">{t("subtitle")}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-          {/* A stock and an ETF are scored on different factor sets (see analytics/scoring_store.py
-           * ::get_leaderboard's own docstring) — never one combined ranking, so this toggle picks
-           * which whole-universe cache to read, same shape as the bullish/bearish toggle beside it. */}
-          <div className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
-            {(["stock", "etf"] as const).map((u) => (
-              <button
-                key={u}
-                type="button"
-                onClick={() => onUniverseChange(u)}
-                aria-pressed={universe === u}
-                className={cn(
-                  "rounded-[var(--radius-pill)] px-3.5 py-1 text-[12px] transition-colors",
-                  universe === u
-                    ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text)]",
-                )}
-              >
-                {t(u === "stock" ? "universeStock" : "universeEtf")}
-              </button>
-            ))}
-          </div>
           <div className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
             {(["bullish", "bearish"] as const).map((d) => (
               <button

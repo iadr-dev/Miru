@@ -1819,6 +1819,22 @@ class EtfNavRow(BaseModel):
     prior_day_nav: float | None = None  # 前一營業日單位淨值
 
 
+class EtfAumRow(BaseModel):
+    """`etf_aum` — one listed TW ETF's total net assets (資產規模), sourced from Yahoo's own
+    `totalAssets` figure (`sources/yfinance/analyst.py::_etf_aum`) rather than derived locally
+    from `EtfNavRow.units_outstanding x estimated_nav` — an issuer/exchange-adjacent figure
+    Yahoo itself computes, preferred over a locally-multiplied approximation once ingested.
+    Per-symbol fan-out (yfinance has no whole-market ETF form), same accepted exception
+    `ingest/us_jobs.py::job_us_fundamentals` documents — paced, never a live per-request call."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    as_of: date_
+    aum: float | None = None  # 資產規模 (NTD), None when Yahoo has no totalAssets for this fund
+
+
 # --- yfinance-native capabilities (non-TW primary; no existing FinMind/gov equivalent) ---
 
 

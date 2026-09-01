@@ -27,11 +27,12 @@ _CAVEAT = (
     "symbol list; per-symbol calls here run in a threadpool for isolated fetch)."
 )
 
-# TW keeps the original narrow set — analyst/ESG/sector gap-filling only.
+# TW keeps the original narrow set — analyst/ESG/sector/AUM gap-filling only.
 _TW_SUPPORTED = {
     Capability.ANALYST_CONSENSUS,
     Capability.ESG,
     Capability.SECTOR_CLASS,
+    Capability.ETF_AUM,
 }
 
 # Non-TW markets: yfinance is primary for the shared capabilities other adapters also serve,

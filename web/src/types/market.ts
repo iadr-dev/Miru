@@ -664,3 +664,63 @@ export const marginShortBalanceResponseSchema = z.union([
   maskedTeaserSchema,
 ]);
 export type MarginShortBalanceResponse = z.infer<typeof marginShortBalanceResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 16. GET /market/etf-list — get_etf_list (public whole-market ETF list). Every field
+//     mirrors `EtfListRow` (backend/src/tools/market_tools.py) field-for-field — a backend
+//     rename becomes a compile error here, not a silent runtime mismatch.
+// ---------------------------------------------------------------------------
+
+export const ETF_DISTRIBUTION_FREQUENCIES = ["月配", "季配", "半年配", "年配", "不配息"] as const;
+export const etfDistributionFrequencySchema = z.enum(ETF_DISTRIBUTION_FREQUENCIES).nullable();
+export type EtfDistributionFrequency = z.infer<typeof etfDistributionFrequencySchema>;
+
+export const etfListRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  name: z.string(),
+  close: z.number().nullable(),
+  change_abs: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  volume: z.number().nullable(),
+  turnover: z.number().nullable(),
+  return_1w_pct: z.number().nullable(),
+  distribution_yield_ttm_pct: z.number().nullable(),
+  distribution_frequency: etfDistributionFrequencySchema,
+  aum: z.number().nullable(),
+  expense_ratio_pct_approx: z.number().nullable(),
+  symbol_type: symbolTypeSchema,
+});
+export type EtfListRow = z.infer<typeof etfListRowSchema>;
+
+export const etfListDataSchema = z.object({
+  market: z.string(),
+  trade_date: z.string().nullable(),
+  prior_trade_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  currentness_caveat: z.string(),
+  aum_caveat: z.string(),
+  expense_ratio_caveat: z.string(),
+  distribution_caveat: z.string(),
+  rows: z.array(etfListRowSchema).default([]),
+});
+export type EtfListData = z.infer<typeof etfListDataSchema>;
+// Public — never Sponsor-masked, matching `priceMomentumResponseSchema`'s own un-unioned shape.
+export const etfListResponseSchema = etfListDataSchema;
+export type EtfListResponse = z.infer<typeof etfListResponseSchema>;
+
+// Frontend-invented UI-only shape (no backend citation needed, web/CLAUDE.md §2) — the
+// sortable columns `EtfListTable` lets a caller sort by, and the current sort direction.
+export const ETF_SORT_KEYS = [
+  "name",
+  "close",
+  "change_pct",
+  "turnover",
+  "return_1w_pct",
+  "distribution_yield_ttm_pct",
+  "aum",
+  "expense_ratio_pct_approx",
+] as const;
+export type EtfSortKey = (typeof ETF_SORT_KEYS)[number];
+export type SortDirection = "asc" | "desc";

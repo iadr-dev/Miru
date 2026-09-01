@@ -13,7 +13,7 @@ import {
   getScoreLeaderboard,
   MarketApiError,
 } from "@/lib/api/market";
-import type { LeaderboardDirection, LeaderboardUniverse } from "@/types/market";
+import type { LeaderboardDirection } from "@/types/market";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -35,12 +35,11 @@ function oneYearWindow(): { startDate: string; endDate: string } {
 export function TopSplit({ market }: { market: Market }): ReactNode {
   const t = useTranslations("market.cards");
   const [direction, setDirection] = useState<LeaderboardDirection>("bullish");
-  const [universe, setUniverse] = useState<LeaderboardUniverse>("stock");
   const marginWindow = oneYearWindow();
 
   const leaderboardQuery = useQuery({
-    queryKey: ["score_leaderboard", market, direction, universe],
-    queryFn: () => getScoreLeaderboard(market, direction, "swing", 50, universe),
+    queryKey: ["score_leaderboard", market, direction, "stock"],
+    queryFn: () => getScoreLeaderboard(market, direction, "swing", 50, "stock"),
   });
 
   const marginQuery = useQuery({
@@ -63,8 +62,6 @@ export function TopSplit({ market }: { market: Market }): ReactNode {
               asOf={data.as_of}
               direction={direction}
               onDirectionChange={setDirection}
-              universe={universe}
-              onUniverseChange={setUniverse}
               market={market}
             />
           </RainbowBorderCard>

@@ -129,4 +129,29 @@ def _sector_class(sym: Symbol, info: dict[str, Any]) -> SourceResult:
     )
 
 
-__all__ = ["_analyst_consensus", "_analyst_consensus_extended", "_esg", "_sector_class"]
+def _etf_aum(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    """`etf_aum` — a TW-only gap-filler alongside the analyst/ESG/sector trio: Yahoo's own
+    `totalAssets` figure for a listed ETF, confirmed live against 0050/00685L/00403A (plain,
+    leveraged, and active ETF code shapes) to return a real NTD figure Yahoo itself computes —
+    distinct from this codebase's own `etf_nav`-derived `units_outstanding x NAV` estimate,
+    which `get_etf_list` prefers this field over once ingested (the issuer/exchange-adjacent
+    figure over a locally-multiplied one). `region`/`category` on this same `.info` payload are
+    NOT surfaced here — confirmed live they report `"US"` for every TW-listed ETF regardless of
+    actual listing venue (a yfinance data-quality gap for non-US instruments, not a real value),
+    so exposing them would display false data rather than an honest gap."""
+    total_assets = _get(info, "totalAssets")
+    if total_assets is None:
+        return _result(
+            payload={},
+            health=SourceHealth(status=HealthStatus.STALE, detail="no totalAssets for this fund"),
+        )
+    aum = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "as_of": date.today().isoformat(),
+        "aum": _as_float(total_assets),
+    }
+    return _result(payload={"aum": aum}, health=SourceHealth(status=HealthStatus.OK, detail="ok"))
+
+
+__all__ = ["_analyst_consensus", "_analyst_consensus_extended", "_esg", "_etf_aum", "_sector_class"]

@@ -54,6 +54,7 @@ from ingest.jobs import (
     job_balance_sheet,
     job_cash_flow,
     job_dividends,
+    job_etf_aum,
     job_etf_expense_ratio,
     job_etf_nav,
     job_financials,
@@ -148,9 +149,13 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # refreshes monthly (same reasoning as the `theme_industry_seed`/`theme_tier_seed` monthly
     # jobs above); not trading-day-gated for the same reason those aren't. Fires in the same
     # 21:xx window as `etf_nav` so both ETF-specific pulls land before `scoring_batch` (23:55).
-    ScheduledIngestJob(
-        "etf_expense_ratio", time_(21, 25), job_etf_expense_ratio, Cadence.MONTHLY
-    ),
+    ScheduledIngestJob("etf_expense_ratio", time_(21, 25), job_etf_expense_ratio, Cadence.MONTHLY),
+    # ETF total-net-assets (資產規模) — Yahoo's own `totalAssets` per symbol, paced fan-out over
+    # the whole `etf_nav` roster (yfinance has no bulk ETF form; see jobs.py's own docstring for
+    # why this is the accepted per-symbol exception). AUM changes far slower than daily price, so
+    # weekly is enough — same reasoning `us_fundamentals` uses for its own weekly cadence. Fires
+    # after `etf_nav` (21:20) since it reads that job's roster, before `scoring_batch` (23:55).
+    ScheduledIngestJob("etf_aum", time_(21, 27), job_etf_aum, Cadence.WEEKLY),
     ScheduledIngestJob("financials", time_(21, 30), job_financials),
     ScheduledIngestJob("dividends", time_(21, 30), job_dividends),
     # Balance-sheet/cash-flow share FINANCIALS_JOB's own irregular-per-filing cadence and fire
