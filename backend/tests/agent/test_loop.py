@@ -42,6 +42,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_holder_accumulation": "holder_accumulation",
     "get_symbol_info": "symbol_info",
     "get_price_history": "price_history",
+    "get_etf_list": "etf_list",
     # chip_tools.py
     "get_margin_short": "margin_short",
     "get_margin_short_total_market": "margin_short_total_market",
