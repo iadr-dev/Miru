@@ -37,6 +37,7 @@ import time
 
 import structlog
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from config.settings import Settings
 from schemas.enums import Capability, Market, TimingClass, TLSPolicy
@@ -124,10 +125,28 @@ class CachingSourceAdapter:
         **params: object,
     ) -> SourceResult:
         key = _cache_key(self._prefix, cap, sym.market, sym, params)
-        cached = await self._redis.get(key)
+        try:
+            cached = await self._redis.get(key)
+        except RedisError:
+            # Redis being unreachable/slow is a cache-tier outage, not a request failure — the
+            # whole point of this wrapper is to sit in front of a real source, so a broken cache
+            # degrades to "always miss" (a direct live fetch, no single-flight lock since that
+            # itself needs Redis) rather than propagating as a 500 to every caller. Confirmed real
+            # incident: an unguarded `redis.get()` here turned a few seconds of Redis connection
+            # jitter into unhandled `TimeoutError`s surfacing as 500s on every route that happened
+            # to poll during the window, while routes lucky enough to hit an already-warm
+            # connection kept working — same code path, outcome purely down to timing.
+            logger.warning("cache_unavailable_falling_through_to_live_fetch", cap=cap.value)
+            return await self._wrapped.fetch(cap, sym, tls_policy=tls_policy, **params)
         if cached is not None:
             return _deserialize(cached)
-        return await self._fetch_with_single_flight(key, cap, sym, tls_policy=tls_policy, **params)
+        try:
+            return await self._fetch_with_single_flight(
+                key, cap, sym, tls_policy=tls_policy, **params
+            )
+        except RedisError:
+            logger.warning("cache_unavailable_falling_through_to_live_fetch", cap=cap.value)
+            return await self._wrapped.fetch(cap, sym, tls_policy=tls_policy, **params)
 
     # -- single-flight-on-miss -------------------------------------------------------------
 
