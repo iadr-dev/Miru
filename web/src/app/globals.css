@@ -84,3 +84,59 @@ body {
     backdrop-filter: none !important;
   }
 }
+
+/**
+ * Explicit exception to design-system.md §8 ("no gradients/neon-glow") — every card on the
+ * /market page gets an animated rainbow gradient ring, a deliberate visual-identity choice for
+ * this one surface rather than a governance violation. `isolation: isolate` traps the ring's
+ * `::before` pseudo-element in its own stacking context (see `ExpandModal`'s own docstring for
+ * the modal-portal bug this caused and how it was fixed). `padding: 2px` is load-bearing — the
+ * child card's opaque `--surface` background otherwise fills the wrapper edge-to-edge and
+ * completely covers the ring underneath.
+ */
+.market-rainbow-border {
+  position: relative;
+  isolation: isolate;
+  padding: 2px;
+}
+
+.market-rainbow-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--rainbow-angle, 0deg),
+    #ff4d4d,
+    #ffb84d,
+    #ffe14d,
+    #4dff88,
+    #4dd2ff,
+    #4d6bff,
+    #b84dff,
+    #ff4d4d
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: market-rainbow-spin 6s linear infinite;
+}
+
+@property --rainbow-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes market-rainbow-spin {
+  to {
+    --rainbow-angle: 360deg;
+  }
+}

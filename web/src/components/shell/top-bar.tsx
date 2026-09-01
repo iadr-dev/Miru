@@ -10,19 +10,22 @@ import {
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { MarketTabSwitcher } from "@/components/market/market-tabs";
 import { LanguageSwitcher } from "@/components/shell/language-switcher";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
-import { useRouter } from "@/i18n/navigation";
+import { usePathname, useRouter } from "@/i18n/navigation";
 import { logout } from "@/lib/api/auth";
 import { cn } from "@/lib/cn";
 import type { MeResponse, Tier } from "@/types/account";
 
 /**
  * Sticky glass top bar (README §9, design-system §6.2). Carries the 搜尋股票 command-palette
- * placeholder (visual only — stock search is future Stock/Screener work), a static notifications
- * bell, the real tier badge (from `/me`), the account menu (real sign-out via `logout()`), plus the
- * existing theme + language controls and the watchlist rail toggle. Glass falls back to solid
- * `--surface` under `prefers-reduced-transparency` (globals.css `.glass`).
+ * placeholder (visual only — stock search is future Stock/Screener work), the 台股/美股/ETF
+ * market-tab switcher (only on `/market` — everywhere else it would be a dead control, since
+ * only the Market page reads its selection), a static notifications bell, the real tier badge
+ * (from `/me`), the account menu (real sign-out via `logout()`), plus the existing theme +
+ * language controls and the watchlist rail toggle. Glass falls back to solid `--surface` under
+ * `prefers-reduced-transparency` (globals.css `.glass`).
  */
 export function TopBar({
   me,
@@ -32,6 +35,8 @@ export function TopBar({
   onToggleWatchlist: () => void;
 }): ReactNode {
   const t = useTranslations("shell");
+  const pathname = usePathname();
+  const onMarketPage = pathname === "/market";
 
   return (
     <header
@@ -42,6 +47,7 @@ export function TopBar({
       )}
     >
       <SearchPlaceholder />
+      {onMarketPage ? <MarketTabSwitcher /> : null}
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
         <NotificationsBell />

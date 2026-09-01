@@ -407,3 +407,244 @@ export type BusinessIndicatorResponse = z.infer<typeof businessIndicatorResponse
 export function isMaskedTeaser(value: { locked?: true } | object): value is MaskedTeaser {
   return "locked" in value && value.locked === true;
 }
+
+// ---------------------------------------------------------------------------
+// 9. GET /market/symbol-info + /market/price-history — the shared batched
+//    per-symbol enrichment `useSymbolQuotes` reads (public).
+// ---------------------------------------------------------------------------
+
+export const symbolInfoRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  name: z.string(),
+  industry_category: z.string().nullable(),
+});
+export type SymbolInfoRow = z.infer<typeof symbolInfoRowSchema>;
+
+export const symbolInfoResponseSchema = rowsOutputSchema(symbolInfoRowSchema);
+export type SymbolInfoResponse = z.infer<typeof symbolInfoResponseSchema>;
+
+export const priceHistoryBarSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  open: z.number(),
+  high: z.number(),
+  low: z.number(),
+  close: z.number(),
+  volume: z.number(),
+});
+export type PriceHistoryBar = z.infer<typeof priceHistoryBarSchema>;
+
+export const priceHistoryResponseSchema = rowsOutputSchema(priceHistoryBarSchema);
+export type PriceHistoryResponse = z.infer<typeof priceHistoryResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 10. GET /analytics/rankings — get_score_leaderboard (public composite AI score)
+// ---------------------------------------------------------------------------
+
+export const SCORE_BANDS = ["偏多", "中性", "偏空"] as const;
+export const scoreBandSchema = z.enum(SCORE_BANDS);
+export type ScoreBand = z.infer<typeof scoreBandSchema>;
+
+export const LEADERBOARD_DIRECTIONS = ["bullish", "bearish"] as const;
+export const leaderboardDirectionSchema = z.enum(LEADERBOARD_DIRECTIONS);
+export type LeaderboardDirection = z.infer<typeof leaderboardDirectionSchema>;
+
+export const LEADERBOARD_UNIVERSES = ["stock", "etf"] as const;
+export const leaderboardUniverseSchema = z.enum(LEADERBOARD_UNIVERSES);
+export type LeaderboardUniverse = z.infer<typeof leaderboardUniverseSchema>;
+
+export const SYMBOL_TYPES = ["stock", "etf", "etf_leveraged", "etf_inverse"] as const;
+export const symbolTypeSchema = z.enum(SYMBOL_TYPES);
+export type SymbolType = z.infer<typeof symbolTypeSchema>;
+
+/** Every per-factor sub-score is optional — a stock and an ETF are scored on disjoint factor
+ * sets (`analytics/score.py`'s `StockScoreBreakdown`/`EtfScoreBreakdown`), so a result of one
+ * `symbol_type` simply omits the other universe's fields rather than sending a fabricated 0. */
+export const scoreBreakdownSchema = z.object({
+  momentum: z.number().nullable().optional(),
+  trend_quality: z.number().nullable().optional(),
+  value_guard: z.number().nullable().optional(),
+  quality: z.number().nullable().optional(),
+  revenue_flow: z.number().nullable().optional(),
+  premium_discount: z.number().nullable().optional(),
+  cost: z.number().nullable().optional(),
+  management_activity: z.number().nullable().optional(),
+  liquidity_flow: z.number().nullable().optional(),
+});
+export type ScoreBreakdown = z.infer<typeof scoreBreakdownSchema>;
+
+export const scoreResultSchema = z.object({
+  symbol: z.string(),
+  symbol_type: symbolTypeSchema.nullable().optional(),
+  composite: z.number().nullable(),
+  band: scoreBandSchema,
+  breakdown: scoreBreakdownSchema.nullable().optional(),
+});
+export type ScoreResult = z.infer<typeof scoreResultSchema>;
+
+export const scoreLeaderboardDataSchema = z.object({
+  market: z.string(),
+  as_of: z.string().nullable(),
+  results: z.array(scoreResultSchema).default([]),
+});
+export type ScoreLeaderboardData = z.infer<typeof scoreLeaderboardDataSchema>;
+
+// ---------------------------------------------------------------------------
+// 11. GET /market/price-momentum — get_price_momentum (public single-factor ranking)
+// ---------------------------------------------------------------------------
+
+export const MOMENTUM_PERIODS = ["day", "week", "month"] as const;
+export const momentumPeriodSchema = z.enum(MOMENTUM_PERIODS);
+export type MomentumPeriod = z.infer<typeof momentumPeriodSchema>;
+
+export const priceMomentumRowSchema = z.object({
+  symbol: z.string(),
+  stock_name: z.string(),
+  pct_change: z.number(),
+});
+export type PriceMomentumRow = z.infer<typeof priceMomentumRowSchema>;
+
+export const priceMomentumDataSchema = z.object({
+  market: z.string(),
+  period: momentumPeriodSchema,
+  as_of: z.string().nullable(),
+  data_available: z.boolean(),
+  top_gainers: z.array(priceMomentumRowSchema).default([]),
+  top_losers: z.array(priceMomentumRowSchema).default([]),
+});
+export type PriceMomentumData = z.infer<typeof priceMomentumDataSchema>;
+// Public, single-factor ranking — never Sponsor-masked (unlike `holderAccumulationResponseSchema`
+// below), matching `market-panel.tsx`'s own un-branched render of this query's data.
+export const priceMomentumResponseSchema = priceMomentumDataSchema;
+export type PriceMomentumResponse = z.infer<typeof priceMomentumResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 12. GET /market/holder-accumulation — get_holder_accumulation (Sponsor-tier)
+// ---------------------------------------------------------------------------
+
+export const HOLDER_THRESHOLDS = [200, 400, 800, 1000] as const;
+export const holderThresholdSchema = z.union([
+  z.literal(200),
+  z.literal(400),
+  z.literal(800),
+  z.literal(1000),
+]);
+export type HolderThreshold = z.infer<typeof holderThresholdSchema>;
+
+export const HOLDER_WINDOWS = [1, 2, 3, 4] as const;
+export const holderWindowSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
+export type HolderWindow = z.infer<typeof holderWindowSchema>;
+
+export const holderAccumulationRowSchema = z.object({
+  symbol: z.string(),
+  stock_name: z.string(),
+  latest_close: z.number().nullable(),
+  percent_of_custody_before: z.number(),
+  percent_of_custody_after: z.number(),
+  percent_of_custody_change: z.number(),
+  shares_change: z.number(),
+});
+export type HolderAccumulationRow = z.infer<typeof holderAccumulationRowSchema>;
+
+export const holderAccumulationDataSchema = z.object({
+  market: z.string(),
+  threshold: holderThresholdSchema,
+  window: holderWindowSchema,
+  as_of: z.string().nullable(),
+  period_ago: z.string().nullable(),
+  data_available: z.boolean(),
+  rows: z.array(holderAccumulationRowSchema).default([]),
+});
+export type HolderAccumulationData = z.infer<typeof holderAccumulationDataSchema>;
+export const holderAccumulationResponseSchema = z.union([
+  holderAccumulationDataSchema,
+  maskedTeaserSchema,
+]);
+export type HolderAccumulationResponse = z.infer<typeof holderAccumulationResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 13. GET /market/advance-decline — get_advance_decline (public breadth histogram)
+// ---------------------------------------------------------------------------
+
+export const advanceDeclineBucketsSchema = z.object({
+  down_over_5pct: z.number(),
+  down_3_to_5pct: z.number(),
+  down_2_to_3pct: z.number(),
+  down_1_to_2pct: z.number(),
+  down_0_to_1pct: z.number(),
+  unchanged: z.number(),
+  up_0_to_1pct: z.number(),
+  up_1_to_2pct: z.number(),
+  up_2_to_3pct: z.number(),
+  up_3_to_5pct: z.number(),
+  up_over_5pct: z.number(),
+});
+export type AdvanceDeclineBuckets = z.infer<typeof advanceDeclineBucketsSchema>;
+
+export const advanceDeclineResponseSchema = z.object({
+  market: z.string(),
+  trade_date: z.string().nullable(),
+  data_available: z.boolean(),
+  advancing_count: z.number(),
+  declining_count: z.number(),
+  unchanged_count: z.number(),
+  buckets: advanceDeclineBucketsSchema,
+});
+export type AdvanceDeclineResponse = z.infer<typeof advanceDeclineResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 14. GET /market/index-contribution — get_index_contribution (Sponsor-tier,
+//     APPROXIMATE market-cap-weight x price-change estimate — never TWSE's official
+//     float-adjusted figure; see `contribution_caveat`).
+// ---------------------------------------------------------------------------
+
+export const indexContributionRowSchema = z.object({
+  symbol: z.string(),
+  stock_name: z.string(),
+  weight_per: z.number(),
+  pct_change: z.number(),
+  contribution_estimate: z.number(),
+});
+export type IndexContributionRow = z.infer<typeof indexContributionRowSchema>;
+
+export const indexContributionDataSchema = z.object({
+  market: z.string(),
+  trade_date: z.string().nullable(),
+  prior_trade_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable(),
+  contribution_caveat: z.string(),
+  positive_contributors: z.array(indexContributionRowSchema).default([]),
+  negative_contributors: z.array(indexContributionRowSchema).default([]),
+});
+export type IndexContributionData = z.infer<typeof indexContributionDataSchema>;
+export const indexContributionResponseSchema = z.union([
+  indexContributionDataSchema,
+  maskedTeaserSchema,
+]);
+export type IndexContributionResponse = z.infer<typeof indexContributionResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 15. GET /market/margin-short-balance — get_margin_short_total_market (Sponsor-tier)
+// ---------------------------------------------------------------------------
+
+export const marginShortTotalMarketRowSchema = z.object({
+  market: z.string(),
+  trade_date: z.string(),
+  name: z.string(),
+  buy: z.number(),
+  sell: z.number(),
+  today_balance: z.number(),
+  // FinMind's own field name — trailing underscore avoids shadowing the JS reserved word.
+  return_: z.number(),
+});
+export type MarginShortTotalMarketRow = z.infer<typeof marginShortTotalMarketRowSchema>;
+
+export const marginShortBalanceDataSchema = rowsOutputSchema(marginShortTotalMarketRowSchema);
+export const marginShortBalanceResponseSchema = z.union([
+  marginShortBalanceDataSchema,
+  maskedTeaserSchema,
+]);
+export type MarginShortBalanceResponse = z.infer<typeof marginShortBalanceResponseSchema>;
