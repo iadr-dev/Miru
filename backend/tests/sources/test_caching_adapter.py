@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 import fakeredis.aioredis
 import pytest
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
@@ -94,6 +95,47 @@ async def test_cache_miss_calls_through_and_populates(fake_redis: Redis) -> None
     assert result.payload["calls"] == 1
     key = "marketdata:cache:test:TW:price_eod:2330"
     assert await fake_redis.get(key) is not None
+
+
+async def test_redis_unreachable_on_get_falls_through_to_live_fetch(
+    fake_redis: Redis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reproduces a real incident: an unguarded `redis.get()` turned a few seconds of Redis
+    connection jitter into an unhandled `TimeoutError` surfacing as a 500 on every route that
+    happened to poll during the window. A Redis-tier outage on the read must degrade to a direct
+    live fetch (the same outcome as a cache miss), never propagate to the caller."""
+    wrapped = _CountingStubAdapter()
+    adapter = _caching_adapter(wrapped, fake_redis)
+
+    async def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RedisError("Timeout reading from redis:6379")
+
+    monkeypatch.setattr(fake_redis, "get", _boom)
+
+    result = await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
+
+    assert wrapped.calls == 1
+    assert result.payload["calls"] == 1
+
+
+async def test_redis_unreachable_on_single_flight_falls_through_to_live_fetch(
+    fake_redis: Redis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same degrade-to-live-fetch contract, but for a Redis failure during the single-flight
+    lock acquire/store path (not just the initial `get`) — e.g. Redis drops mid-request after
+    the cache-miss check already succeeded."""
+    wrapped = _CountingStubAdapter()
+    adapter = _caching_adapter(wrapped, fake_redis)
+
+    async def _boom(*_args: object, **_kwargs: object) -> None:
+        raise RedisError("Timeout connecting to server")
+
+    monkeypatch.setattr(fake_redis, "set", _boom)
+
+    result = await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
+
+    assert wrapped.calls == 1
+    assert result.payload["calls"] == 1
 
 
 async def test_cache_hit_avoids_wrapped_fetch(fake_redis: Redis) -> None:
