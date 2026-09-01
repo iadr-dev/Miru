@@ -459,19 +459,29 @@ export const SYMBOL_TYPES = ["stock", "etf", "etf_leveraged", "etf_inverse"] as 
 export const symbolTypeSchema = z.enum(SYMBOL_TYPES);
 export type SymbolType = z.infer<typeof symbolTypeSchema>;
 
-/** Every per-factor sub-score is optional — a stock and an ETF are scored on disjoint factor
- * sets (`analytics/score.py`'s `StockScoreBreakdown`/`EtfScoreBreakdown`), so a result of one
- * `symbol_type` simply omits the other universe's fields rather than sending a fabricated 0. */
+/** One named factor's cross-sectional standing — `percentile`/`unavailable_reason` are mutually
+ * exclusive (a factor missing its inputs reports why, never a fabricated percentile). */
+export const factorScoreSchema = z.object({
+  name: z.string(),
+  percentile: z.number().nullable(),
+  description: z.string(),
+  unavailable_reason: z.string().nullable(),
+});
+export type FactorScore = z.infer<typeof factorScoreSchema>;
+
+/** Every per-factor key is optional — a stock and an ETF are scored on disjoint factor sets
+ * (`analytics/score.py`'s `StockScoreBreakdown`/`EtfScoreBreakdown`), so a result of one
+ * `symbol_type` simply omits the other universe's keys rather than sending a fabricated one. */
 export const scoreBreakdownSchema = z.object({
-  momentum: z.number().nullable().optional(),
-  trend_quality: z.number().nullable().optional(),
-  value_guard: z.number().nullable().optional(),
-  quality: z.number().nullable().optional(),
-  revenue_flow: z.number().nullable().optional(),
-  premium_discount: z.number().nullable().optional(),
-  cost: z.number().nullable().optional(),
-  management_activity: z.number().nullable().optional(),
-  liquidity_flow: z.number().nullable().optional(),
+  momentum: factorScoreSchema.optional(),
+  trend_quality: factorScoreSchema.optional(),
+  value_guard: factorScoreSchema.optional(),
+  quality: factorScoreSchema.optional(),
+  revenue_flow: factorScoreSchema.optional(),
+  premium_discount: factorScoreSchema.optional(),
+  cost: factorScoreSchema.optional(),
+  management_activity: factorScoreSchema.optional(),
+  liquidity_flow: factorScoreSchema.optional(),
 });
 export type ScoreBreakdown = z.infer<typeof scoreBreakdownSchema>;
 
@@ -481,6 +491,10 @@ export const scoreResultSchema = z.object({
   composite: z.number().nullable(),
   band: scoreBandSchema,
   breakdown: scoreBreakdownSchema.nullable().optional(),
+  partial_factors: z.array(z.string()).optional(),
+  regime_caveat: z.string().optional(),
+  non_trading_caveat: z.string().optional(),
+  normalization_caveat: z.string().optional(),
 });
 export type ScoreResult = z.infer<typeof scoreResultSchema>;
 
@@ -509,8 +523,10 @@ export type PriceMomentumRow = z.infer<typeof priceMomentumRowSchema>;
 export const priceMomentumDataSchema = z.object({
   market: z.string(),
   period: momentumPeriodSchema,
-  as_of: z.string().nullable(),
+  trade_date: z.string().nullable(),
+  period_ago_trade_date: z.string().nullable(),
   data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
   top_gainers: z.array(priceMomentumRowSchema).default([]),
   top_losers: z.array(priceMomentumRowSchema).default([]),
 });
