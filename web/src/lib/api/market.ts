@@ -8,6 +8,8 @@ import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 import { apiErrorSchema } from "@/lib/api/schemas";
 import {
+  type AdvanceDeclineResponse,
+  advanceDeclineResponseSchema,
   type BusinessIndicatorResponse,
   businessIndicatorResponseSchema,
   type DayTradingResponse,
@@ -16,14 +18,33 @@ import {
   derivativesResponseSchema,
   type EtfMoneyFlowResponse,
   etfMoneyFlowResponseSchema,
+  type HolderAccumulationResponse,
+  type HolderThreshold,
+  type HolderWindow,
+  holderAccumulationResponseSchema,
+  type IndexContributionResponse,
   type IndustryFlowResponse,
   type InstitutionalRankingResponse,
+  indexContributionResponseSchema,
   industryFlowResponseSchema,
   institutionalRankingResponseSchema,
+  type LeaderboardDirection,
+  type LeaderboardUniverse,
   type MacroIndicatorsResponse,
   type MarginMaintenanceResponse,
+  type MarginShortBalanceResponse,
+  type MomentumPeriod,
   macroIndicatorsResponseSchema,
   marginMaintenanceResponseSchema,
+  marginShortBalanceResponseSchema,
+  type PriceHistoryResponse,
+  type PriceMomentumResponse,
+  priceHistoryResponseSchema,
+  priceMomentumResponseSchema,
+  type ScoreLeaderboardData,
+  type SymbolInfoResponse,
+  scoreLeaderboardDataSchema,
+  symbolInfoResponseSchema,
 } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -194,4 +215,137 @@ export async function getBusinessIndicator(
   search.set("market", market);
   const raw = await requestJson(`/macro/business-indicator?${search.toString()}`);
   return businessIndicatorResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 9. GET /market/symbol-info + /market/price-history (public, batched ≤20 symbols)
+// ---------------------------------------------------------------------------
+
+const MAX_BATCH_SYMBOLS = 20;
+
+function symbolsSearchParams(symbols: readonly string[], market: Market): URLSearchParams {
+  if (symbols.length > MAX_BATCH_SYMBOLS) {
+    throw new Error(`getSymbolInfo/getPriceHistory accept at most ${MAX_BATCH_SYMBOLS} symbols`);
+  }
+  const search = new URLSearchParams({ market });
+  search.set("symbols", symbols.join(","));
+  return search;
+}
+
+export async function getSymbolInfo(
+  symbols: readonly string[],
+  market: Market,
+): Promise<SymbolInfoResponse> {
+  const search = symbolsSearchParams(symbols, market);
+  const raw = await requestJson(`/market/symbol-info?${search.toString()}`);
+  return symbolInfoResponseSchema.parse(raw);
+}
+
+export async function getPriceHistory(
+  symbols: readonly string[],
+  market: Market,
+  days: number,
+): Promise<PriceHistoryResponse> {
+  const search = symbolsSearchParams(symbols, market);
+  search.set("days", String(days));
+  const raw = await requestJson(`/market/price-history?${search.toString()}`);
+  return priceHistoryResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 10. GET /analytics/rankings — get_score_leaderboard (public composite AI score)
+// ---------------------------------------------------------------------------
+
+export async function getScoreLeaderboard(
+  market: Market,
+  direction: LeaderboardDirection,
+  profile: string,
+  limit: number,
+  universe: LeaderboardUniverse,
+): Promise<ScoreLeaderboardData> {
+  const search = new URLSearchParams({
+    market,
+    direction,
+    profile,
+    limit: String(limit),
+    universe,
+  });
+  const raw = await requestJson(`/analytics/rankings?${search.toString()}`);
+  return scoreLeaderboardDataSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 11. GET /market/price-momentum (public single-factor ranking)
+// ---------------------------------------------------------------------------
+
+export async function getPriceMomentum(
+  market: Market,
+  period: MomentumPeriod,
+  asOf: string | undefined,
+  topN: number,
+): Promise<PriceMomentumResponse> {
+  const search = new URLSearchParams({ market, period, top_n: String(topN) });
+  if (asOf) search.set("as_of", asOf);
+  const raw = await requestJson(`/market/price-momentum?${search.toString()}`);
+  return priceMomentumResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 12. GET /market/holder-accumulation (Sponsor-tier)
+// ---------------------------------------------------------------------------
+
+export async function getHolderAccumulation(
+  market: Market,
+  threshold: HolderThreshold,
+  window: HolderWindow,
+  asOf: string | undefined,
+  topN: number,
+): Promise<HolderAccumulationResponse> {
+  const search = new URLSearchParams({
+    market,
+    threshold: String(threshold),
+    window: String(window),
+    top_n: String(topN),
+  });
+  if (asOf) search.set("as_of", asOf);
+  const raw = await requestJson(`/market/holder-accumulation?${search.toString()}`);
+  return holderAccumulationResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 13. GET /market/advance-decline (public breadth histogram)
+// ---------------------------------------------------------------------------
+
+export async function getAdvanceDecline(
+  market: Market,
+  asOf?: string,
+): Promise<AdvanceDeclineResponse> {
+  const search = new URLSearchParams({ market });
+  if (asOf) search.set("as_of", asOf);
+  const raw = await requestJson(`/market/advance-decline?${search.toString()}`);
+  return advanceDeclineResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14. GET /market/index-contribution (Sponsor-tier, approximate estimate)
+// ---------------------------------------------------------------------------
+
+export async function getIndexContribution(
+  market: Market,
+  tradeDate?: string,
+): Promise<IndexContributionResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  const raw = await requestJson(`/market/index-contribution?${search.toString()}`);
+  return indexContributionResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 15. GET /market/margin-short-balance (Sponsor-tier)
+// ---------------------------------------------------------------------------
+
+export async function getMarginShortBalance(market: Market): Promise<MarginShortBalanceResponse> {
+  const search = new URLSearchParams({ market });
+  const raw = await requestJson(`/market/margin-short-balance?${search.toString()}`);
+  return marginShortBalanceResponseSchema.parse(raw);
 }

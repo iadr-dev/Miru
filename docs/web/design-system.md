@@ -440,6 +440,12 @@ No AI-purple gradients or neon outer-glows. No pure black/white. No generic glas
 three-equal-cards feature rows. No emoji in product chrome (Phosphor icons instead). No hand-rolled
 SVG icons. Motion is motivated (feedback / streaming life / state change) — never decoration.
 
+> **Explicit exception — `/market` page cards.** Every card on the Market dashboard is wrapped in
+> an animated rainbow-gradient conic border (`.market-rainbow-border`, `RainbowBorderCard`) — a
+> deliberate visual-identity choice scoped to that one page, made and confirmed with the user
+> despite conflicting with the anti-gradient rule above. Do not extend this treatment to any other
+> page without the same explicit confirmation.
+
 ---
 
 ## 9. Full states (never ship happy-path only)
