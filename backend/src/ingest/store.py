@@ -203,50 +203,58 @@ class ParquetStore:
         return (key.path(self.root) / _MANIFEST_NAME).exists()
 
     def list_partition_dates(self, dataset: str, market: str) -> tuple[date_, ...]:
-        """Every date under `dataset=<dataset>/market=<market>/` that has a real, non-empty
-        partition — the ground truth `ingest/daemon.py::_build_calendar` builds its real
-        trading-day calendar from, and `ingest/backfill_cli.py`'s weekly shareholding sweep
-        checks before re-fetching an already-covered week.
+        """Every date this `(dataset, market)` has a real, non-empty, fully-written partition
+        for — ground truth for "was this a trading day", since a whole-market EOD job only
+        writes actual rows on a real trading day (`ingest/jobs.py`'s calendar gate) — see
+        `calendar_from_known_dates` for the intended consumer.
 
-        Must distinguish a genuinely-empty placeholder partition (`write_partition`'s own
-        single-`_empty`-column write for a legitimate zero-row day, e.g. a market holiday that
-        slipped past the calendar gate) from a real data day — counting the former would make an
-        empty day look like ground truth for "the market traded that day" (`_build_calendar`'s
-        whole reason for existing) or "this week is already covered" (the shareholding skip
-        check), when neither is true. A manifest that exists but whose version dir/parquet file
-        is missing (a crash between the rename and the manifest flip, or a partially-swept
-        directory) is skipped rather than raising — this is a read-side survey, not a write-path
-        invariant check.
-        """
+        A manifest existing is not sufficient on its own: a job that ran under a stale/naive
+        calendar gate on a real holiday still writes a *valid*, manifest-pointed partition
+        whose frame is the zero-row `_empty`-placeholder `write_partition` uses for a
+        genuinely empty write (its own docstring: DuckDB's `COPY` rejects a zero-column
+        frame, so an empty day still needs one placeholder column). Counting that placeholder
+        partition as a trading day is exactly the bug this method exists to avoid — confirmed
+        empirically: `TaiwanStockPrice`'s 2025-10-10 (Double Ten) partition has a valid manifest
+        but zero real rows. Only a partition whose Parquet file has a column other than
+        `_empty` counts."""
         base = self.root / f"dataset={dataset}" / f"market={market}"
         if not base.is_dir():
             return ()
-
         dates: list[date_] = []
+        for child in base.iterdir():
+            if not child.name.startswith("date="):
+                continue
+            manifest_path = child / _MANIFEST_NAME
+            if not manifest_path.exists():
+                continue
+            try:
+                run_date = date_.fromisoformat(child.name.removeprefix("date="))
+            except ValueError:  # pragma: no cover — malformed dirname would be an ingest bug
+                continue
+            if self._partition_has_real_rows(manifest_path):
+                dates.append(run_date)
+        return tuple(sorted(dates))
+
+    def _partition_has_real_rows(self, manifest_path: Path) -> bool:
+        """`read_parquet` auto-detects this file's own Hive-style parent directories
+        (`dataset=`/`market=`/`date=`/`v=`) and injects them as extra columns even without an
+        explicit `hive_partitioning=true` — so a genuinely empty placeholder frame's actual
+        on-disk column set is `["_empty", "dataset", "date", "market", "v"]`, never just
+        `["_empty"]` alone. Checking for `"_empty" in columns` (rather than an exact-list
+        match) is what actually detects the placeholder frame `write_partition` writes for a
+        zero-row day."""
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        version_dir = manifest_path.parent / f"v={manifest['version']}"
+        parquet_glob = str(version_dir / "*.parquet")
         con = duckdb.connect()
         try:
-            for date_dir in sorted(base.iterdir()):
-                if not date_dir.is_dir() or not date_dir.name.startswith("date="):
-                    continue
-                manifest_path = date_dir / _MANIFEST_NAME
-                if not manifest_path.exists():
-                    continue
-                try:
-                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                    version_dir = date_dir / f"v={manifest['version']}"
-                    parquet_glob = str(version_dir / "*.parquet")
-                    description = con.execute(
-                        "SELECT * FROM read_parquet(?) LIMIT 0", [parquet_glob]
-                    ).description
-                except (OSError, ValueError, KeyError, duckdb.Error):
-                    continue
-                columns = {d[0] for d in description or []}
-                if "_empty" in columns:
-                    continue
-                dates.append(date_.fromisoformat(date_dir.name.removeprefix("date=")))
+            relation = con.execute(
+                "SELECT * FROM read_parquet(?) LIMIT 0", [parquet_glob]
+            )
+            columns = [d[0] for d in relation.description or []]
+            return "_empty" not in columns
         finally:
             con.close()
-        return tuple(dates)
 
     def read_range(
         self,

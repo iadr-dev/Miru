@@ -53,14 +53,16 @@ from schemas.source import HealthStatus, SourceResult
 from sources.sitca import fetch_whole_market_etf_fees
 from sources.twse_etf_nav import fetch_whole_market_etf_nav
 
-# Dataset-name constants for the two non-FinMind ETF-specific whole-market pulls in this module
-# (`job_etf_nav`/`job_etf_expense_ratio`) — `analytics/scoring_batch.py` duplicates these same
-# literal strings as its own local read-key constants rather than importing them (that module's
-# own comment: a deliberate decoupling convention so the derived-compute layer never binds to
-# this scheduler-facing module's wiring). Keep the two literal strings identical if either ever
-# changes.
-ETF_NAV_DATASET = "etf_nav"
-ETF_EXPENSE_RATIO_DATASET = "etf_expense_ratio"
+# `TaiwanStockInfo` is a reference roster (stock/ETF universe + `industry_category` per symbol),
+# `TimingClass.REFERENCE` (`sources/finmind/technical.py`'s own `_DatasetConfig` caveat: "no
+# `data_id` is ever meaningful — the full list always comes back"), not a clock-time daily EOD
+# publish. Distinct wording from `_IRREGULAR_PER_FILING_UPDATE_TIME` above (that's per-filing
+# statutory cadence; this is a slow-changing universe listing) so a reader doesn't conflate the
+# two different "no fixed clock" reasons.
+_REFERENCE_ROSTER_UPDATE_TIME = (
+    "reference roster (stock/warrant universe); no fixed daily publish clock — the roster "
+    "changes only on new listings/delistings/industry-reclassification, not a daily refresh"
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -76,18 +78,25 @@ _IRREGULAR_PER_FILING_UPDATE_TIME = (
 @dataclass(frozen=True)
 class WholeMarketJobSpec:
     """One cron-job-group entry. `cron_hint` documents the intended fire time for a future
-    scheduler to use — this phase does not schedule anything."""
+    scheduler to use — this phase does not schedule anything.
+
+    `row_model` is the canonical `schemas.capabilities` row shape for this dataset — the same
+    model any reader (`_rows_from_store` in `tools/market_tools.py`, `fetch_rows` in
+    `tools/_rows.py`) validates a read-back row against. `run_whole_market_job` validates every
+    row against it BEFORE writing, so a malformed upstream row (a `None`/missing field FinMind's
+    raw JSON happens to carry for one row of one day) is caught and dropped at the one ingest
+    chokepoint, never persisted to Parquet to crash a reader days or months later. This is the
+    fix for a real incident: an unvalidated `TaiwanStockInfo` row with `date: null` was written
+    as-is, and a `pandas.DataFrame` with a mixed None/str `date` column serialized that `None` as
+    the literal text `"None"` on its way through Parquet — which then failed `StockInfoRow`
+    validation on every subsequent read. Validating here, once, before any write, is the correct
+    fix — not a defensive read-side workaround, since the derived store can be rebuilt from
+    scratch at any time and must never receive bad rows again."""
 
     dataset: str  # FinMind dataset name, for the journal — human-identifiable, not a Capability
     capability: Capability
     finmind_update_time: str  # documented FinMind `Update:` time, TW time
     cron_hint: str  # update time + ~10min buffer, so the cron always fires after FinMind publishes
-    # The pydantic model every normalized row must validate against before `write_partition` ever
-    # sees it — the one write-time chokepoint `run_whole_market_job` enforces for every spec (see
-    # `test_stock_info_drops_row_with_null_date_before_writing`'s own incident history: a `date:
-    # null` upstream row previously round-tripped through Parquet as the literal string `"None"`,
-    # which then failed validation on every subsequent READ instead of being dropped at write
-    # time). A row failing this model is dropped, never written, never counted in `rows_written`.
     row_model: type[BaseModel]
 
 
@@ -187,8 +196,13 @@ MARKET_VALUE_JOB = WholeMarketJobSpec(
 )
 
 # `TaiwanStockMarketValueWeight` — the paired FinMind publish alongside `TaiwanStockMarketValue`
-# above (same ~23:30 Sponsor-tier publish clock); feeds the derived value factor's index-weight
-# context the same way MARKET_VALUE_JOB feeds market cap.
+# above: same Sponsor tier, same omit-data_id whole-table form, same Mon-Fri ~23:30 publish
+# clock (both halves of the same daily market-cap snapshot land together). `MarketValue` carries
+# raw market cap; `MarketValueWeight` carries each symbol's weight-of-index share, which is the
+# input `get_index_contribution` needs to estimate a symbol's contribution to an index move
+# (weight x price change) — market cap alone cannot back that without also knowing the index's
+# total float-adjusted base, which this dataset does not carry either (see the tool's
+# `contribution_caveat` field for the resulting approximation this implies).
 MARKET_VALUE_WEIGHT_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockMarketValueWeight",
     capability=Capability.MARKET_VALUE_WEIGHT,
@@ -221,35 +235,48 @@ ACTIVE_ETF_HOLDING_CHANGE_JOB = WholeMarketJobSpec(
     row_model=ActiveEtfHoldingChangeRow,
 )
 
-# `TaiwanStockInfo` — the whole-roster reference table (stock universe: industry classification,
-# security type). Daily cadence (not monthly like most reference tables) — same-day listings/
-# reclassifications must not sit stale for up to a month, and `get_sector_heatmap`'s industry
-# join against the same day's `price_eod` partition needs a fresh roster every trading day.
+# `TaiwanStockInfo` — the stock/ETF universe roster (`symbol`/`name`/`industry_category`/
+# `security_type`), `whole_market_ok=True`, PUBLIC tier (`sources/finmind/technical.py`'s own
+# `_DatasetConfig`). Ingested so `get_sector_heatmap` can join each symbol's industry
+# classification against the already-ingested `PRICE_EOD_JOB` closes without a per-symbol live
+# fetch — the same "whole-market dataset, read back not fetched live" rationale
+# `MARKET_VALUE_JOB`/`MARKET_VALUE_WEIGHT_JOB` document above. Cron slot: no other
+# `TimingClass.REFERENCE` FinMind dataset is on a scheduled cron today (`theme_industry_seed`/
+# `theme_tier_seed`/`us_symbol_universe` are the only precedents, all monthly) — a roster this
+# slow-changing (new listings/delistings/industry reclassification) does not need daily
+# refresh, but "once daily, off-peak" is chosen over monthly so a same-day new listing's
+# industry classification is available to `get_sector_heatmap` the very next post-close read,
+# not up to a month later. Scheduled once daily at 06:00 Asia/Taipei — well before the trading
+# day's own 17:40+ post-close pulls, so it never competes with them for FinMind quota, and any
+# reclassification lands before the day's `get_sector_heatmap` calls need it.
 STOCK_INFO_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockInfo",
     capability=Capability.STOCK_INFO,
-    finmind_update_time="once-daily, off-peak",
-    cron_hint="06:00 Asia/Taipei",
+    finmind_update_time=_REFERENCE_ROSTER_UPDATE_TIME,
+    cron_hint="06:00 Asia/Taipei (once daily, off-peak — see job docstring for cadence rationale)",
     row_model=StockInfoRow,
 )
 
-# `TaiwanStockHoldingSharesPer` — Backer/Sponsor-tier weekly 股權持股分級表. Unlike every other
-# `WholeMarketJobSpec` here, its own `job_shareholding_distribution` wrapper does NOT call
-# `run_whole_market_job` directly with `run_date` — see that function's own docstring for why the
-# exact weekly publish date must be resolved by backward search first. Still declared as a
-# `WholeMarketJobSpec` (dataset/capability/row_model) so it participates in `ALL_WHOLE_MARKET_JOBS`
-# and the daemon's completeness test, even though its own job function's control flow differs.
+# `TaiwanStockHoldingSharesPer` (股權持股分級表) — Sponsor-tier, `whole_market_ok=True`
+# (`sources/finmind/chip_institutional.py`'s own `_DatasetConfig`), documented weekly cadence
+# (published for each week's final trading day, mirroring TDCC's own free 集保戶股權分散表 the
+# same underlying figures ultimately come from). Ingested so a large-holder-tier accumulation
+# ranking (大戶加碼股: which symbols grew their >=200/400/800/1,000-張 tier share fastest over
+# 1-4 weeks) can be computed by diffing several weeks' already-ingested snapshots, never a
+# per-symbol live fan-out across the whole ~2,700-symbol universe for a ranking read. Previously
+# listed in `STUBBED_DATASETS` as "ingest-weekly" — this is that dataset's actual wiring.
 SHAREHOLDING_DISTRIBUTION_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockHoldingSharesPer",
     capability=Capability.SHAREHOLDING_DISTRIBUTION,
-    finmind_update_time="weekly (published for each week's final trading day)",
-    cron_hint="06:05 Asia/Taipei",
+    finmind_update_time="weekly, published for each week's final trading day (Sponsor)",
+    cron_hint="06:00 Asia/Taipei, weekly (Cadence.WEEKLY in the daemon — see ingest/daemon.py)",
     row_model=ShareholdingDistributionRow,
 )
 
 # Every whole-market job spec this phase wires end-to-end, in the same order the daemon fires
-# them — the canonical list a caller (the backfill CLI, tests asserting completeness) walks
-# instead of hand-copying the specs above, so a newly added spec is picked up automatically.
+# them — the canonical list a caller (the daemon-completeness test, `DAILY_WHOLE_MARKET_JOBS`
+# below) walks instead of hand-copying the specs above, so a newly added spec is picked up
+# automatically.
 ALL_WHOLE_MARKET_JOBS: tuple[WholeMarketJobSpec, ...] = (
     PRICE_EOD_JOB,
     INSTITUTIONAL_FLOW_JOB,
@@ -266,11 +293,13 @@ ALL_WHOLE_MARKET_JOBS: tuple[WholeMarketJobSpec, ...] = (
     SHAREHOLDING_DISTRIBUTION_JOB,
 )
 
-# The subset of `ALL_WHOLE_MARKET_JOBS` the backfill CLI's generic per-calendar-day sweep
-# (`run_backfill_cli`) walks — every spec EXCEPT `SHAREHOLDING_DISTRIBUTION_JOB`, whose weekly
-# publish-date-search control flow (`job_shareholding_distribution`'s own docstring) does not fit
-# the generic "one date per day in range" sweep `run_preflight_if_enabled`/`backfill_range` walk;
-# it is backfilled separately by `_backfill_shareholding_distribution`.
+# `ALL_WHOLE_MARKET_JOBS` minus `SHAREHOLDING_DISTRIBUTION_JOB` — the subset actually safe to
+# backfill with the generic one-call-per-calendar-day loop (`ingest/backfill.py::backfill_range`,
+# `ingest/preflight.py::run_preflight_if_enabled`). `SHAREHOLDING_DISTRIBUTION_JOB` is weekly and
+# only ever returns rows for the EXACT Friday publish date (see `job_shareholding_distribution`'s
+# own docstring) — running it through the daily loop means ~5 empty FinMind calls for every 1 real
+# one across a multi-year backfill window. `ingest.backfill_cli` uses this subset for its generic
+# per-spec sweep and calls `job_shareholding_distribution` directly, once per week, instead.
 DAILY_WHOLE_MARKET_JOBS: tuple[WholeMarketJobSpec, ...] = tuple(
     spec for spec in ALL_WHOLE_MARKET_JOBS if spec is not SHAREHOLDING_DISTRIBUTION_JOB
 )
@@ -279,7 +308,7 @@ DAILY_WHOLE_MARKET_JOBS: tuple[WholeMarketJobSpec, ...] = tuple(
 # checklist, and so "what's covered" is explicit rather than silently partial.
 # Each needs either a new `_DatasetConfig.whole_market_ok=True` entry in `sources/finmind.py`
 # (for FinMind whole-market datasets not yet modeled in `schemas.enums.Capability`) or a
-# gov-OpenAPI same-day-authoritative adapter (處置/注意股) that doesn't exist yet.
+# gov-OpenAPI same-day-authoritative adapter (處置/注意股, ETF NAV) that doesn't exist yet.
 # `chip_broker` (`TaiwanStockTradingDailyReport`) is deliberately NOT here as a to-do: its
 # special endpoint only accepts a request keyed by *either* a stock id *or* a broker id, never
 # neither — there is no documented omit-both whole-market form for the request mechanism this
@@ -292,6 +321,7 @@ STUBBED_DATASETS: tuple[str, ...] = (
     "PER/PBR/殖利率, 漲跌停 (18:10)",
     "處置/注意股 + TaiwanOptionVix (18:00-18:10)",
     "TaiwanFuturesDaily/TaiwanOptionDaily + regular 期選法人 (20:10)",
+    "ETF NAV/IOPV/折溢價 (etf_pcf scrape, 15:30+20:00)",
     "ingest-daily-late: 融資融券/外資持股/信用總量/大盤維持率 (21:05)",
     "ingest-daily-late: 當沖 values TaiwanStockDayTrading (21:40)",
     "ingest-daily-late Sponsor: 分點/八大官股/產業鏈資金流 (chip_broker — no whole-market "
@@ -310,43 +340,15 @@ def _fetch_error_status(result: SourceResult) -> RunStatus:
     return RunStatus.FAILED
 
 
-def _validate_rows_against(
-    rows: list[dict[str, object]], row_model: type[BaseModel], *, dataset: str
-) -> list[dict[str, object]]:
-    """Validate every normalized row against `row_model` and drop any that fail — the one
-    write-time chokepoint that stands between a malformed upstream row and `write_partition`.
-
-    A row failing validation here is silently dropped, never written, never counted in
-    `rows_written` — logged once at `warning` so a systematic upstream shape change is still
-    visible, without failing the whole day's ingest over one bad row. Confirmed real incident
-    (`test_stock_info_drops_row_with_null_date_before_writing`): a `date: null` row previously
-    round-tripped through Parquet as the literal string `"None"`, which then failed validation
-    on every subsequent READ instead of being caught once, here, at write time."""
-    valid: list[dict[str, object]] = []
-    dropped = 0
-    for row in rows:
-        try:
-            row_model.model_validate(row)
-        except ValidationError:
-            dropped += 1
-            continue
-        valid.append(row)
-    if dropped:
-        logger.warning(
-            "ingest_row_validation_dropped",
-            dataset=dataset,
-            dropped=dropped,
-            kept=len(valid),
-        )
-    return valid
-
-
 def _run_if_trading_day(
     calendar: TradingDayCalendar, run_date: date_, dataset: str
 ) -> JobRun | None:
     """Calendar gate: return a SKIPPED journal entry and do nothing else if `run_date` is not
-    a trading day — no fetch is even attempted."""
-    if calendar.is_trading_day(run_date):
+    a trading day — no fetch is even attempted. Uses the extrapolating check (not the strict
+    allow-list one) since `run_date` is almost always "today", which is always beyond the
+    calendar's known range until this very call writes its own partition — see
+    `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
+    if calendar.is_trading_day_extrapolating(run_date):
         return None
     return journal_run(
         dataset,
@@ -355,6 +357,46 @@ def _run_if_trading_day(
         status=RunStatus.SKIPPED,
         detail="non-trading day (calendar-gated)",
     )
+
+
+def _validate_rows_against(
+    row_model: type[BaseModel],
+    dataset: str,
+    raw_rows: list[dict[str, object]],
+    run_date: date_,
+) -> list[dict[str, object]]:
+    """Validate every raw row against `row_model` BEFORE it ever reaches `write_partition` — the
+    one ingest chokepoint every whole-market dataset passes through, so a malformed upstream row
+    (a `None`/missing required field the upstream's raw JSON happens to carry for one row of one
+    day) is dropped and logged here, never persisted to Parquet to crash a reader days or months
+    later (see `WholeMarketJobSpec.row_model`'s own docstring for the real incident this fixes).
+    A dropped row is not silently lost — `ingest_row_validation_failed` is logged per row with
+    the dataset/date/error, and the journal's `rows_written` count already reflects the
+    post-filter length, so a systematic upstream schema change becomes visible as a sudden drop
+    in written-row counts, not a silent corruption."""
+    valid_rows: list[dict[str, object]] = []
+    for raw_row in raw_rows:
+        try:
+            row_model.model_validate(raw_row)
+        except ValidationError as exc:
+            logger.warning(
+                "ingest_row_validation_failed",
+                dataset=dataset,
+                run_date=run_date.isoformat(),
+                row_model=row_model.__name__,
+                error=str(exc),
+            )
+            continue
+        valid_rows.append(raw_row)
+    return valid_rows
+
+
+def _validate_rows(
+    spec: WholeMarketJobSpec, raw_rows: list[dict[str, object]], run_date: date_
+) -> list[dict[str, object]]:
+    """`_validate_rows_against` bound to a `WholeMarketJobSpec`'s own `(row_model, dataset)` —
+    the FinMind-sourced call sites' convenience wrapper."""
+    return _validate_rows_against(spec.row_model, spec.dataset, raw_rows, run_date)
 
 
 async def run_whole_market_job(
@@ -408,10 +450,10 @@ async def run_whole_market_job(
 
     row_key = next(iter(result.payload), None)
     rows_obj: object = result.payload.get(row_key, []) if row_key else []
-    rows: list[dict[str, object]] = (
+    raw_rows: list[dict[str, object]] = (
         cast("list[dict[str, object]]", rows_obj) if isinstance(rows_obj, list) else []
     )
-    rows = _validate_rows_against(rows, spec.row_model, dataset=spec.dataset)
+    rows = _validate_rows(spec, raw_rows, run_date)
     rows_written = ctx.store.write_partition(spec.dataset, ctx.market.value, run_date, rows)
     # The partition has landed atomically — signal it so a subscribed client revalidates exactly
     # the affected keys now, rather than waiting out a fixed time boundary. Leader-only: this line
@@ -481,6 +523,13 @@ async def job_market_value(run_date: date_, ctx: IngestContext) -> JobRun:
     return await run_whole_market_job(MARKET_VALUE_JOB, run_date, ctx)
 
 
+async def job_market_value_weight(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily-late` Sponsor group — paired with `job_market_value` above (same FinMind
+    ~23:30 publish clock, same Sponsor tier): daily whole-market index-weight-per-symbol
+    snapshot, cron **23:40**."""
+    return await run_whole_market_job(MARKET_VALUE_WEIGHT_JOB, run_date, ctx)
+
+
 async def job_active_etf_holdings(run_date: date_, ctx: IngestContext) -> JobRun:
     """`ingest-daily-late` Sponsor group — 主動ETF daily constituent snapshot, cron **21:15**."""
     return await run_whole_market_job(ACTIVE_ETF_HOLDING_JOB, run_date, ctx)
@@ -491,119 +540,126 @@ async def job_active_etf_holding_changes(run_date: date_, ctx: IngestContext) ->
     return await run_whole_market_job(ACTIVE_ETF_HOLDING_CHANGE_JOB, run_date, ctx)
 
 
-async def job_market_value_weight(run_date: date_, ctx: IngestContext) -> JobRun:
-    """`ingest-daily-late` Sponsor group — market-cap-weight ranking, cron **23:40**, paired
-    with `job_market_value` at the same FinMind publish clock."""
-    return await run_whole_market_job(MARKET_VALUE_WEIGHT_JOB, run_date, ctx)
-
-
 async def job_stock_info(run_date: date_, ctx: IngestContext) -> JobRun:
-    """`ingest-daily-early` reference roster — daily (not monthly), cron **06:00**, so same-day
-    listings/reclassifications never sit stale for up to a month (see `STOCK_INFO_JOB`'s own
-    comment) and `get_sector_heatmap`'s industry join against the same day's `price_eod`
-    partition always has a fresh roster."""
+    """Reference-roster group — stock/ETF universe + industry classification, cron **06:00**
+    (see `STOCK_INFO_JOB`'s own comment for the cadence rationale). Still calendar-gated like
+    every other `run_whole_market_job` caller — a non-trading day is a legitimate no-op even for
+    reference data, since there is no reason to spend a FinMind call on a day nothing else in
+    the pipeline runs either."""
     return await run_whole_market_job(STOCK_INFO_JOB, run_date, ctx)
 
 
-# How many calendar days to search backward from the caller's `run_date` for the real weekly
-# publish date, in `job_shareholding_distribution` below — a full week plus a couple of days'
-# margin, so a caller passing any day of the following week (the daemon always calls with
-# "today", not necessarily the Friday the dataset actually published on) still finds the prior
-# week's real publish date within the window.
-WEEKLY_PUBLISH_SEARCH_DAYS = 7
+# How many trading days back `job_shareholding_distribution` searches for the week's real
+# publish date before giving up — confirmed live that FinMind only returns rows for the exact
+# Friday `start_date` (any other weekday in that week returns zero rows), and a market holiday
+# can push the week's actual last trading day earlier than Friday. 5 covers a full trading week
+# plus one day of slack for an unusually early holiday-shortened week.
+_WEEKLY_PUBLISH_SEARCH_DAYS = 5
+_ONE_DAY = timedelta(days=1)
 
 
 async def job_shareholding_distribution(run_date: date_, ctx: IngestContext) -> JobRun:
-    """`ingest-weekly` Sponsor group — 股權持股分級表 (`TaiwanStockHoldingSharesPer`), cron
-    **06:05**. NOT trading-day-gated (same reasoning as the monthly reference-data jobs the
-    daemon's own `Cadence.WEEKLY` docstring cites) — this dataset's own publish cadence, not the
-    daily trading calendar, governs when a fresh row exists.
+    """`ingest-weekly` — TDCC/FinMind 股權持股分級表 (`SHAREHOLDING_DISTRIBUTION_JOB`), cron
+    **06:00 weekly** (`Cadence.WEEKLY` in `ingest/daemon.py`, same cadence family as
+    `job_us_fundamentals`).
 
-    Confirmed live: FinMind's `start_date` for this dataset must be the EXACT date the report
-    was published (a Friday) — any other day in that week returns zero rows, unlike every other
-    whole-market dataset in this module where `start_date` is just a lookback anchor. The
-    scheduler always calls this job with "today" (whatever weekday the cron fires on), so this
-    function itself searches backward from `run_date` — trying `run_date`, then `run_date - 1
-    day`, … down to `run_date - WEEKLY_PUBLISH_SEARCH_DAYS` — for the first candidate date that
-    actually returns rows, and writes the partition under THAT resolved date, not `run_date`.
-    A caller that wants "this week's data" must read back by the dataset's own resolved
-    publish-date partitions (`ctx.store.list_partition_dates`), not assume a fixed weekday.
+    Unlike every other `run_whole_market_job` caller, this dataset's upstream `start_date` is
+    not "any trading day, possibly empty" — confirmed live it must be the EXACT date the week's
+    snapshot was published (every other day in that week returns zero rows, not a smaller/
+    partial result). Since the daemon always calls this with `today` (whatever day its cadence
+    gate let through, not necessarily the publish day itself), this function searches backward
+    from `run_date` for the first date that actually has rows, rather than trusting `run_date`
+    directly the way a daily-cadence job safely can.
 
-    If no candidate in the search window returns rows, this is SKIPPED, not FAILED — a genuine
-    gap (e.g. the daemon was down for the whole window) is reported the same way a non-trading
-    day is elsewhere in this module, and the next scheduled run's own backward search naturally
-    retries the whole window again."""
-    spec = SHAREHOLDING_DISTRIBUTION_JOB
+    Idempotent and safe to re-run: `ParquetStore.write_partition` is keyed by the *resolved*
+    publish date, not `run_date` — a re-run that resolves the same publish date overwrites the
+    same partition rather than duplicating it."""
     if not ctx.leader.is_leader():
         return journal_run(
-            spec.dataset,
+            SHAREHOLDING_DISTRIBUTION_JOB.dataset,
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
             detail="not the leader — write skipped",
         )
-
-    for offset in range(WEEKLY_PUBLISH_SEARCH_DAYS + 1):
-        candidate = run_date - timedelta(days=offset)
+    candidate = run_date
+    for _ in range(_WEEKLY_PUBLISH_SEARCH_DAYS):
         result = await ctx.finmind.fetch_whole_market(
-            spec.capability, tls_policy=ctx.tls_policy, start_date=candidate.isoformat()
+            SHAREHOLDING_DISTRIBUTION_JOB.capability,
+            tls_policy=ctx.tls_policy,
+            start_date=candidate.isoformat(),
         )
-        if _fetch_error_status(result) is RunStatus.FAILED:
-            logger.warning(
-                "ingest_whole_market_fetch_failed",
-                dataset=spec.dataset,
-                run_date=candidate.isoformat(),
-                detail=result.health.detail,
+        if _fetch_error_status(result) is RunStatus.SUCCESS:
+            row_key = next(iter(result.payload), None)
+            rows_obj: object = result.payload.get(row_key, []) if row_key else []
+            raw_rows: list[dict[str, object]] = (
+                cast("list[dict[str, object]]", rows_obj) if isinstance(rows_obj, list) else []
             )
-            continue
-        rows_obj: object = result.payload.get("rows", [])
-        rows: list[dict[str, object]] = (
-            cast("list[dict[str, object]]", rows_obj) if isinstance(rows_obj, list) else []
-        )
-        if not rows:
-            continue
-
-        rows = _validate_rows_against(rows, spec.row_model, dataset=spec.dataset)
-        rows_written = ctx.store.write_partition(spec.dataset, ctx.market.value, candidate, rows)
-        await ctx.data_update_publisher.publish_data_updated(
-            capability=spec.capability,
-            market=ctx.market,
-            as_of=candidate.isoformat(),
-            scope="whole-market",
-        )
-        return journal_run(
-            spec.dataset,
-            candidate,
-            rows_written=rows_written,
-            status=RunStatus.SUCCESS,
-            detail=result.health.detail,
-        )
-
+            if raw_rows:
+                rows = _validate_rows(SHAREHOLDING_DISTRIBUTION_JOB, raw_rows, candidate)
+                rows_written = ctx.store.write_partition(
+                    SHAREHOLDING_DISTRIBUTION_JOB.dataset,
+                    ctx.market.value,
+                    candidate,
+                    rows,
+                )
+                await ctx.data_update_publisher.publish_data_updated(
+                    capability=SHAREHOLDING_DISTRIBUTION_JOB.capability,
+                    market=ctx.market,
+                    as_of=candidate.isoformat(),
+                    scope="whole-market",
+                )
+                return journal_run(
+                    SHAREHOLDING_DISTRIBUTION_JOB.dataset,
+                    candidate,
+                    rows_written=rows_written,
+                    status=RunStatus.SUCCESS,
+                    detail=f"resolved publish date {candidate.isoformat()} (searched back "
+                    f"from {run_date.isoformat()})",
+                )
+        candidate -= _ONE_DAY
+    logger.warning(
+        "ingest_weekly_publish_date_not_found",
+        dataset=SHAREHOLDING_DISTRIBUTION_JOB.dataset,
+        run_date=run_date.isoformat(),
+        searched_days=_WEEKLY_PUBLISH_SEARCH_DAYS,
+    )
     return journal_run(
-        spec.dataset,
+        SHAREHOLDING_DISTRIBUTION_JOB.dataset,
         run_date,
         rows_written=0,
         status=RunStatus.SKIPPED,
-        detail=(
-            f"no publish found within {WEEKLY_PUBLISH_SEARCH_DAYS}-day backward search window"
-        ),
+        detail=f"no publish found within {_WEEKLY_PUBLISH_SEARCH_DAYS} days back from "
+        f"{run_date.isoformat()}",
     )
 
 
-async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
-    """ETF premium/discount-to-NAV daily snapshot, cron **21:20** — TWSE MIS's `all_etf.txt`
-    (`sources/twse_etf_nav.py`), not FinMind, so this job calls its own dedicated whole-market
-    fetch function directly rather than `run_whole_market_job`'s FinMind-specific path. Still
-    the same calendar-gate / leader-gate / validate-then-write / FAILED-on-bad-health shape
-    every other job in this module follows."""
-    dataset = ETF_NAV_DATASET
-    skipped = _run_if_trading_day(ctx.calendar, run_date, dataset)
-    if skipped is not None:
-        return skipped
+ETF_NAV_DATASET = "etf_nav"
 
+
+async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily` — ETF premium/discount-to-NAV snapshot (`sources/twse_etf_nav.py`), cron
+    **daily, off-peak** (see `ingest/daemon.py`'s `SCHEDULED_JOBS`).
+
+    Not FinMind-sourced (unlike every other job in this module) — `fetch_whole_market_etf_nav`
+    is `sources/twse_etf_nav.py`'s own dedicated whole-market fetch function, the same
+    ingest-layer whole-market carve-out `FinMindAdapter.fetch_whole_market` provides for FinMind
+    datasets, just for a different upstream (TWSE MIS's free `all_etf.txt`).
+
+    Calendar-gated exactly like every other daily job: a non-trading day is a journaled skip,
+    no network call. Uses the extrapolating check for the same reason `_run_if_trading_day`
+    does — see its own docstring."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            ETF_NAV_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
     if not ctx.leader.is_leader():
         return journal_run(
-            dataset,
+            ETF_NAV_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
@@ -612,26 +668,20 @@ async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
 
     result = await fetch_whole_market_etf_nav(tls_policy=ctx.tls_policy)
     if _fetch_error_status(result) is RunStatus.FAILED:
-        logger.warning(
-            "ingest_whole_market_fetch_failed",
-            dataset=dataset,
-            run_date=run_date.isoformat(),
-            detail=result.health.detail,
-        )
         return journal_run(
-            dataset,
+            ETF_NAV_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.FAILED,
             detail=result.health.detail,
         )
 
-    rows_obj: object = result.payload.get("rows", [])
-    rows: list[dict[str, object]] = (
-        cast("list[dict[str, object]]", rows_obj) if isinstance(rows_obj, list) else []
+    raw_rows_obj = result.payload.get("rows", [])
+    raw_rows: list[dict[str, object]] = (
+        cast("list[dict[str, object]]", raw_rows_obj) if isinstance(raw_rows_obj, list) else []
     )
-    rows = _validate_rows_against(rows, EtfNavRow, dataset=dataset)
-    rows_written = ctx.store.write_partition(dataset, ctx.market.value, run_date, rows)
+    rows = _validate_rows_against(EtfNavRow, ETF_NAV_DATASET, raw_rows, run_date)
+    rows_written = ctx.store.write_partition(ETF_NAV_DATASET, ctx.market.value, run_date, rows)
     await ctx.data_update_publisher.publish_data_updated(
         capability=Capability.ETF_NAV,
         market=ctx.market,
@@ -639,7 +689,7 @@ async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
         scope="whole-market",
     )
     return journal_run(
-        dataset,
+        ETF_NAV_DATASET,
         run_date,
         rows_written=rows_written,
         status=RunStatus.SUCCESS,
@@ -647,16 +697,34 @@ async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
     )
 
 
+ETF_EXPENSE_RATIO_DATASET = "etf_expense_ratio"
+
+
 async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
-    """ETF/fund internal-fee (內扣費用) whole-market snapshot, cron **21:25**, monthly cadence —
-    SITCA's own fee report (`sources/sitca.py`) only refreshes monthly, so a fresh call more
-    often than that would just re-read the same disclosed month. Not FinMind, and not
-    trading-day-gated (same reasoning as the daemon's other `Cadence.MONTHLY` reference-data
-    jobs) — only the leader gate applies."""
-    dataset = ETF_EXPENSE_RATIO_DATASET
+    """`ingest-monthly` — ETF/fund internal-fee (內扣費用) whole-market snapshot
+    (`sources/sitca.py`), cron **monthly, off-peak** (see `ingest/daemon.py`'s `SCHEDULED_JOBS`).
+
+    Not FinMind-sourced — `fetch_whole_market_etf_fees` is `sources/sitca.py`'s own dedicated
+    whole-market fetch function, the same ingest-layer whole-market carve-out `job_etf_nav` uses
+    for its own non-FinMind upstream (SITCA's monthly IN2105 fee report, rather than a
+    per-symbol live fetch on every `get_etf_expense_ratio` tool call).
+
+    Calendar-gated exactly like every other daily-cadence job in this module — a non-trading
+    day is a journaled skip, no network call. SITCA's own report only refreshes monthly, but the
+    scheduler's monthly cadence gate (not this function) is what limits actual fetch frequency;
+    this function itself is a plain calendar+leader-gated whole-market pull, same shape as
+    `job_etf_nav`."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            ETF_EXPENSE_RATIO_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
     if not ctx.leader.is_leader():
         return journal_run(
-            dataset,
+            ETF_EXPENSE_RATIO_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
@@ -665,26 +733,22 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
 
     result = await fetch_whole_market_etf_fees(tls_policy=ctx.tls_policy)
     if _fetch_error_status(result) is RunStatus.FAILED:
-        logger.warning(
-            "ingest_whole_market_fetch_failed",
-            dataset=dataset,
-            run_date=run_date.isoformat(),
-            detail=result.health.detail,
-        )
         return journal_run(
-            dataset,
+            ETF_EXPENSE_RATIO_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.FAILED,
             detail=result.health.detail,
         )
 
-    rows_obj: object = result.payload.get("rows", [])
-    rows: list[dict[str, object]] = (
-        cast("list[dict[str, object]]", rows_obj) if isinstance(rows_obj, list) else []
+    raw_rows_obj = result.payload.get("rows", [])
+    raw_rows: list[dict[str, object]] = (
+        cast("list[dict[str, object]]", raw_rows_obj) if isinstance(raw_rows_obj, list) else []
     )
-    rows = _validate_rows_against(rows, EtfExpenseInfo, dataset=dataset)
-    rows_written = ctx.store.write_partition(dataset, ctx.market.value, run_date, rows)
+    rows = _validate_rows_against(EtfExpenseInfo, ETF_EXPENSE_RATIO_DATASET, raw_rows, run_date)
+    rows_written = ctx.store.write_partition(
+        ETF_EXPENSE_RATIO_DATASET, ctx.market.value, run_date, rows
+    )
     await ctx.data_update_publisher.publish_data_updated(
         capability=Capability.ETF_EXPENSE_RATIO,
         market=ctx.market,
@@ -692,7 +756,7 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
         scope="whole-market",
     )
     return journal_run(
-        dataset,
+        ETF_EXPENSE_RATIO_DATASET,
         run_date,
         rows_written=rows_written,
         status=RunStatus.SUCCESS,
@@ -719,7 +783,6 @@ __all__ = [
     "SHAREHOLDING_DISTRIBUTION_JOB",
     "STOCK_INFO_JOB",
     "STUBBED_DATASETS",
-    "WEEKLY_PUBLISH_SEARCH_DAYS",
     "WholeMarketJobSpec",
     "job_active_etf_holding_changes",
     "job_active_etf_holdings",

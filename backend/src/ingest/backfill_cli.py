@@ -43,7 +43,6 @@ from ingest.jobs import (
     WholeMarketJobSpec,
     job_shareholding_distribution,
 )
-from ingest.jobs import WEEKLY_PUBLISH_SEARCH_DAYS as _SHAREHOLDING_SEARCH_DAYS
 from ingest.journal import JobRun, RunStatus
 from ingest.preflight import last_available_trading_day, run_preflight_if_enabled
 from ingest.us_jobs import backfill_us_price_range
@@ -124,11 +123,12 @@ async def run_backfill_cli(
     `JobRun` batch lands. One failing spec is logged and does not stop the remaining specs —
     mirroring `backfill_range`'s own per-date resumability philosophy.
 
-    `specs` defaults to `DAILY_WHOLE_MARKET_JOBS` (every whole-market job EXCEPT the weekly
-    `SHAREHOLDING_DISTRIBUTION_JOB`) — that one dataset's own weekly publish-date-search control
-    flow doesn't fit the generic "one date per calendar day in range" sweep every other spec
-    here goes through, so it is backfilled separately, right after this generic loop, via
-    `_backfill_shareholding_distribution`."""
+    `specs` defaults to `DAILY_WHOLE_MARKET_JOBS` (every whole-market spec EXCEPT
+    `SHAREHOLDING_DISTRIBUTION_JOB`) — that one dataset is weekly and only ever returns rows for
+    the exact Friday publish date, so running it through this generic one-call-per-calendar-day
+    loop wastes ~5 empty FinMind calls for every 1 real one across a multi-year window.
+    `_backfill_shareholding_distribution` below covers it with the same weekly-aware search
+    `job_shareholding_distribution` itself already uses for the daily cron path."""
     _check_not_production(settings)
     ingest_on_startup = override or settings.ingest_on_startup
     if not ingest_on_startup:
@@ -167,47 +167,32 @@ async def run_backfill_cli(
 async def _backfill_shareholding_distribution(
     ctx: IngestContext, *, years: int
 ) -> tuple[JobRun, ...]:
-    """The weekly counterpart to the generic per-calendar-day sweep above, for
-    `SHAREHOLDING_DISTRIBUTION_JOB` — `job_shareholding_distribution` resolves its own real
-    publish date via a backward search (see that function's own docstring), so this walks
-    backward one week at a time from `last_available_trading_day` over the same bounded
-    `years`-sized window the other jobs use, calling the job once per week rather than once per
-    calendar day.
+    """Gap-fill `SHAREHOLDING_DISTRIBUTION_JOB` — one call per WEEK (not per calendar day) over
+    the same `[target - years*250 trading days, target]` window `run_preflight_if_enabled` uses
+    for every other spec, calling `job_shareholding_distribution` directly so each week gets its
+    own backward-search-for-the-exact-Friday-publish-date instead of the generic daily loop's
+    ~5-empty-calls-per-1-real-one waste.
 
-    Skips a week whose resolved publish-date partition already exists — checked via
-    `ctx.store.list_partition_dates`, which only reports partitions with real (non-empty) data,
-    never a placeholder — so a re-run over an already-covered window makes no FinMind calls at
-    all. The check must be against the set of RESOLVED dates already on disk, not the weekly
-    cursor itself: the cursor and the dataset's own resolved publish date (a Friday) can differ
-    by up to `WEEKLY_PUBLISH_SEARCH_DAYS` days, so a naive `has_partition(cursor)` check would
-    never match and would re-fetch every already-covered week."""
-    spec = SHAREHOLDING_DISTRIBUTION_JOB
-    known_dates = set(ctx.store.list_partition_dates(spec.dataset, ctx.market.value))
+    `only_missing`-equivalent: a week already covered by a real, already-ingested partition is
+    skipped without a FinMind call. `job_shareholding_distribution` writes under the RESOLVED
+    publish date, not the `cursor` date passed in (a Fri publish date can resolve from a
+    Sat/Sun/Mon cursor within `_WEEKLY_PUBLISH_SEARCH_DAYS`) — so the skip check is "does any
+    known partition date fall within a week of `cursor`", not a single `has_partition(cursor)`
+    lookup, which would always miss and re-fetch every already-covered week."""
     target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
     start = ctx.calendar.shift_business_days(target, -(years * 250))
-
+    known_dates = ctx.store.list_partition_dates(
+        SHAREHOLDING_DISTRIBUTION_JOB.dataset, ctx.market.value
+    )
     runs: list[JobRun] = []
-    cursor = start
-    while cursor <= target:
-        # A week is "already covered" if ANY known resolved-publish-date partition falls within
-        # the job's own backward-search window behind this cursor — the same window
-        # `job_shareholding_distribution` itself searches, so this skip check and that search
-        # agree on what counts as "this week".
-        already_covered = any(
-            cursor - timedelta(days=_SHAREHOLDING_SEARCH_DAYS) <= known <= cursor
-            for known in known_dates
-        )
-        if not already_covered:
-            run = await job_shareholding_distribution(cursor, ctx)
-            runs.append(run)
-            logger.info(
-                "ingest_backfill_cli_run",
-                dataset=run.dataset,
-                run_date=run.run_date.isoformat(),
-                rows_written=run.rows_written,
-                status=run.status.value,
-            )
-        cursor += timedelta(weeks=1)
+    cursor = target
+    while cursor >= start:
+        window_start = cursor - timedelta(days=6)
+        if any(window_start <= d <= cursor for d in known_dates):
+            cursor -= timedelta(days=7)
+            continue
+        runs.append(await job_shareholding_distribution(cursor, ctx))
+        cursor -= timedelta(days=7)
     return tuple(runs)
 
 
@@ -216,7 +201,7 @@ async def run_derived_compute_catchup(
     ctx: IngestContext,
     *,
     override: bool,
-    years: int = 1,
+    years: int,
 ) -> tuple[JobRun, ...]:
     """The derived-compute counterpart to `run_backfill_cli`: `job_scoring_batch` and
     `job_screener_flags` are not `WholeMarketJobSpec`s (they read back the partitions the whole-
@@ -225,14 +210,13 @@ async def run_derived_compute_catchup(
     their 23:55/20:30 Taipei fire time permanently skips that day's compute with no catch-up,
     unlike every whole-market pull.
 
-    Walks every trading day in `[target - years*250 trading days, target]` and computes both
-    jobs for each one that is still missing its `screener_flags` partition — not just the single
-    most recent day — so a dev box down across a multi-day gap (a long weekend plus a rebuild)
-    gets every in-between day covered, not permanently stuck once the underlying whole-market
-    data for it is later backfilled. Both jobs are idempotent (`upsert_score` replaces the row,
-    `write_partition` overwrites the partition), so re-running for an already-computed day is a
-    same-answer no-op, not a correctness risk — the missing-partition check is purely to avoid
-    needless recompute over the whole window on every catch-up run."""
+    Runs for EVERY trading day in `[target - years*250 trading days, target]` missing a
+    `screener_flags` partition (mirroring `ingest/backfill.py::detect_missing_trading_days`'s own
+    gap-diff) — not just the single most recent day. A dev box down across a multi-day window
+    (e.g. a long weekend plus a rebuild) needs every one of those days computed, not only the
+    latest; both jobs are idempotent (`upsert_score` replaces the row, `write_partition`
+    overwrites the partition), so re-running for a day whose compute already landed is a
+    same-answer no-op, not a correctness risk."""
     _check_not_production(settings)
     ingest_on_startup = override or settings.ingest_on_startup
     if not ingest_on_startup:
@@ -244,24 +228,23 @@ async def run_derived_compute_catchup(
 
     target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
     start = ctx.calendar.shift_business_days(target, -(years * 250))
-
+    missing = tuple(
+        d
+        for d in ctx.calendar.business_days_between(start, target)
+        if not ctx.store.has_partition(SCREENER_FLAGS_DATASET, ctx.market.value, d)
+    )
     runs: list[JobRun] = []
-    for day in ctx.calendar.business_days_between(start, target):
-        if ctx.store.has_partition(SCREENER_FLAGS_DATASET, ctx.market.value, day):
-            continue
-        day_runs = (
-            await job_screener_flags(day, ctx),
-            await job_scoring_batch(day, ctx),
+    for run_date in missing:
+        runs.append(await job_screener_flags(run_date, ctx))
+        runs.append(await job_scoring_batch(run_date, ctx))
+    for run in runs:
+        logger.info(
+            "ingest_backfill_cli_run",
+            dataset=run.dataset,
+            run_date=run.run_date.isoformat(),
+            rows_written=run.rows_written,
+            status=run.status.value,
         )
-        for run in day_runs:
-            logger.info(
-                "ingest_backfill_cli_run",
-                dataset=run.dataset,
-                run_date=run.run_date.isoformat(),
-                rows_written=run.rows_written,
-                status=run.status.value,
-            )
-        runs.extend(day_runs)
     return tuple(runs)
 
 
@@ -302,8 +285,8 @@ async def run_us_backfill_cli(
     if universe_run.status is RunStatus.FAILED:
         return (universe_run,)
 
-    target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
-    start = ctx.calendar.shift_business_days(target, -(years * 250))
+    target = last_available_trading_day(ctx.us_calendar, now=datetime.now(UTC))
+    start = ctx.us_calendar.shift_business_days(target, -(years * 250))
     logger.info(
         "ingest_backfill_cli_started",
         market="us",
