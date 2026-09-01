@@ -73,9 +73,16 @@ _TEST_TTL_BY_CLASS = {
 }
 
 
+_TEST_FAILURE_TTL_SECONDS = 30
+
+
 def _caching_adapter(wrapped: _CountingStubAdapter, redis: Redis) -> CachingSourceAdapter:
     return CachingSourceAdapter(
-        wrapped, redis, key_prefix="marketdata:cache:test", ttl_by_class=_TEST_TTL_BY_CLASS
+        wrapped,
+        redis,
+        key_prefix="marketdata:cache:test",
+        ttl_by_class=_TEST_TTL_BY_CLASS,
+        failure_ttl_seconds=_TEST_FAILURE_TTL_SECONDS,
     )
 
 
@@ -186,6 +193,7 @@ async def test_single_flight_guard_against_real_redis() -> None:
             client,
             key_prefix="marketdata:cache:test:real",
             ttl_by_class=_TEST_TTL_BY_CLASS,
+            failure_ttl_seconds=_TEST_FAILURE_TTL_SECONDS,
         )
         sym = _sym()
         results = await asyncio.gather(

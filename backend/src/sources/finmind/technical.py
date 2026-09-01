@@ -61,6 +61,14 @@ def _map_reference_roster(
     infos: list[dict[str, object]] = []
     for row in rows:
         row_sym = _row_symbol(row, None)
+        if not row_sym.id[:1].isdigit():
+            # Same FinMind whole-market-dump contamination `_map_eod_bars` already filters:
+            # `TaiwanStockInfo` mixes in aggregate rows (`TAIEX`, TWSE's ~30 named industry
+            # sectors) with `industry_category="Index"`/"大盤" and no real `date` — a literal
+            # `None` that previously round-tripped through Parquet as the string `"None"` and
+            # failed `StockInfoRow` validation on every read. Every real TW security code starts
+            # with a digit; an aggregate label never does.
+            continue
         infos.append(
             {
                 "symbol": row_sym.id,

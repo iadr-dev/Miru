@@ -8,7 +8,10 @@ Read-through, not write-through: `fetch()` checks Redis first (hit -> return, no
 on miss it calls through to the wrapped adapter's real `fetch()`, writes the result back with a
 TTL keyed off the *result's own* `timing_class` (not the adapter's class attribute — several
 adapters, e.g. `FinMindAdapter`/`MopsAdapter`, return a different `timing_class` per dataset than
-their own class-level default), then returns it.
+their own class-level default), then returns it. A result whose `health.status` isn't `OK` (a
+transient upstream failure, e.g. `ConnectTimeout`) is cached with a short fixed TTL instead of
+the timing_class TTL — otherwise a few-second network blip gets replayed as "no data" for a full
+timing_class TTL (hours, for `OFFICIAL_EOD`) even after the upstream recovers.
 
 Single-flight-on-miss (stampede guard): the first request to miss a key takes a per-key Redis
 lock (`SET key value NX EX ttl`) and fetches; concurrent misses for the same key poll for either
@@ -38,7 +41,7 @@ from redis.asyncio import Redis
 from config.settings import Settings
 from schemas.enums import Capability, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
-from schemas.source import SourceResult
+from schemas.source import HealthStatus, SourceResult
 from sources.base import SourceAdapter
 
 logger = structlog.get_logger(__name__)
@@ -90,11 +93,13 @@ class CachingSourceAdapter:
         *,
         key_prefix: str,
         ttl_by_class: dict[TimingClass, int],
+        failure_ttl_seconds: int,
     ) -> None:
         self._wrapped = wrapped
         self._redis = redis
         self._prefix = key_prefix
         self._ttl_by_class = ttl_by_class
+        self._failure_ttl_seconds = failure_ttl_seconds
         # Plain attributes (not properties) — `SourceAdapter`'s Protocol declares these mutable,
         # which makes pyright treat them invariantly; a `property` isn't assignable to that.
         # Mirroring the wrapped adapter's values once at construction is equivalent (adapters
@@ -184,7 +189,15 @@ class CachingSourceAdapter:
         **params: object,
     ) -> SourceResult:
         result = await self._wrapped.fetch(cap, sym, tls_policy=tls_policy, **params)
-        ttl = self._ttl_by_class.get(result.timing_class, self._ttl_by_class[TimingClass.REFERENCE])
+        if result.health.status is HealthStatus.OK:
+            ttl = self._ttl_by_class.get(
+                result.timing_class, self._ttl_by_class[TimingClass.REFERENCE]
+            )
+        else:
+            # A failed/unreachable result is cached only briefly — long enough to absorb a
+            # thundering-herd retry, short enough that the next real request re-tries the
+            # source instead of replaying the same failure for a full timing_class TTL.
+            ttl = self._failure_ttl_seconds
         await self._redis.set(key, _serialize(result), ex=ttl)
         return result
 
@@ -204,6 +217,7 @@ def build_caching_adapter(
             TimingClass.OFFICIAL_EOD: settings.market_data_cache_ttl_official_eod_seconds,
             TimingClass.EVENT_DRIVEN: settings.market_data_cache_ttl_event_driven_seconds,
         },
+        failure_ttl_seconds=settings.market_data_cache_ttl_failure_seconds,
     )
 
 

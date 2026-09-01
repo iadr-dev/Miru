@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataaccess.router import DataAccessRouter
 from schemas.capabilities import (
     DayTradingRow,
+    DayTradingSuspensionRow,
     Index5sSnapshotRow,
     KBarRow,
     OrderBookStatsRow,
@@ -603,9 +604,9 @@ class GetTradingHaltsOutput(_RowsOutput):
 
 class GetTradingHaltsTool(BaseTool):
     """`get_trading_halts` — wraps `Capability.TRADING_SUSPENSION` (暫停交易 announcement
-    stream). `DAY_TRADING_SUSPENSION` (先賣後買當沖 suspension) is not separately wrapped this
-    pass — same shape, narrower audience, deliberately left unwrapped (documented in the
-    coverage report as a niche skip)."""
+    stream). `DAY_TRADING_SUSPENSION` (先賣後買當沖 suspension) has its own sibling tool,
+    `GetDayTradingSuspensionTool` below — same shape, distinct dataset, kept separate since the
+    two announcement streams cover different suspension reasons."""
 
     name = "get_trading_halts"
     description = "Get 暫停交易 (trading-halt) announcement rows for one stock (Sponsor-tier)."
@@ -628,6 +629,46 @@ class GetTradingHaltsTool(BaseTool):
             params=typed.date_params(),
         )
         return GetTradingHaltsOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            suspensions=rows,
+        )
+
+
+class GetDayTradingSuspensionOutput(_RowsOutput):
+    suspensions: tuple[DayTradingSuspensionRow, ...] = Field(default_factory=tuple)
+
+
+class GetDayTradingSuspensionTool(BaseTool):
+    """`get_day_trading_suspension` — wraps `Capability.DAY_TRADING_SUSPENSION` (暫停先賣後買
+    當沖 announcement stream) — the sell-first-day-trading-specific sibling of
+    `GetTradingHaltsTool`'s general 暫停交易 stream."""
+
+    name = "get_day_trading_suspension"
+    description = (
+        "Get 暫停先賣後買當沖 (sell-first day-trading suspension) announcement rows for one "
+        "stock (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetDayTradingSuspensionOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.DAY_TRADING_SUSPENSION,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=DayTradingSuspensionRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetDayTradingSuspensionOutput(
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
@@ -689,12 +730,15 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetPriceMultiTfTool(router), False),
         (GetIndexSnapshotsTool(router), False),
         (GetTradingHaltsTool(router), False),
+        (GetDayTradingSuspensionTool(router), False),
         (GetPriceLimitTool(router), False),
     ]
 
 
 __all__ = [
     "GetDayTradingOutput",
+    "GetDayTradingSuspensionOutput",
+    "GetDayTradingSuspensionTool",
     "GetDayTradingTool",
     "GetIndexSnapshotsOutput",
     "GetIndexSnapshotsTool",

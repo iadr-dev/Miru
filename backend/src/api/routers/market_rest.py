@@ -6,15 +6,27 @@ through `tools.base.dispatch_tool` exactly as `market.py`'s `/quote` does — ne
 masked-teaser shape at HTTP 200 for an unentitled caller, real data for a Premium/Pro one.
 `optional_user` supplies the (possibly anonymous) entitlement.
 
-Four routes the consolidated interface reference lists here are deliberately absent: their named
-backing tools (`get_market_context`, `get_advance_decline`, `get_index_contribution`,
-`get_sector_indices`) were never built — no adapter/capability backs them — so wiring a route
-that dispatched a nonexistent tool would 500 by construction. They are omitted rather than faked.
+One route the consolidated interface reference lists here is deliberately absent: its named
+backing tool (`get_market_context`) was never built — no adapter/capability backs it — so wiring
+a route that dispatched a nonexistent tool would 500 by construction. It is omitted rather than
+faked. `get_advance_decline`, `get_index_contribution`, and `get_sector_heatmap` (產業別漲跌熱力圖)
+— previously in the same absent list (`get_sector_indices` was the placeholder name for the
+heatmap concept before its two real ingredients — `STOCK_INFO_JOB`'s industry roster and
+`PRICE_EOD_JOB`'s closes — were identified) — are now real, derived-store-backed tools
+(`tools/market_tools.py`) and have routes below (`/market/advance-decline`,
+`/market/index-contribution`, `/market/sector-heatmap`). `get_taiex_vix`
+(`/derivatives/taiex-vix`) and `get_international_stock` (`/market/international-index`) are
+likewise real, already-built tools that simply lacked routes before this pass — never listed in
+this module's own "never built"
+absent-list above (that claim would have been stale/wrong). `run_tag_screener`/`get_tag_catalog`
+(`/market/tag-screener`, `/market/tag-catalog`) are likewise real, already-built tools that simply
+lacked routes before this pass.
 """
 
 from __future__ import annotations
 
 from datetime import date as date_
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, status
 
@@ -23,6 +35,7 @@ from api.dependencies import AppState, get_state, optional_user, tool_context_fo
 from api.errors import ApiError
 from schemas.enums import Market
 from tools.base import ToolContext, dispatch_tool
+from tools.international_tools import FinMindInternationalMarket
 
 router = APIRouter(tags=["market-data"])
 
@@ -104,6 +117,32 @@ async def day_trading(
     return await _dispatch(state, "get_day_trading", args, ctx)
 
 
+@router.get("/market/dividend-schedule")
+async def dividend_schedule(
+    symbol: str = Query(
+        ..., min_length=1, description="Stock/ETF id — backing tool is per-symbol."
+    ),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Announced dividend/ex-dividend (除權息) schedule for one stock/ETF symbol. The named
+    backing tool (`get_dividend_schedule`) is per-symbol; no whole-market dividend-calendar tool
+    exists, so this route takes a required `symbol`, mirroring `/market/day-trading`'s and
+    `/market/active-etf-report`'s required-`symbol` route shape. A frontend building a
+    market-wide-looking calendar view fans this out client-side, once per symbol (e.g. every ETF
+    in `get_active_etf_roster`'s roster) — that fan-out is not a whole-market backend capability
+    and needs no server-side change here."""
+    args: dict[str, object] = {"id": symbol, "market": market.value}
+    if start_date is not None:
+        args["start_date"] = start_date.isoformat()
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_dividend_schedule", args, ctx)
+
+
 @router.get("/market/etf-money-flow")
 async def etf_money_flow(
     start_date: date_ = Query(...),
@@ -141,7 +180,329 @@ async def industry_flow(
     )
 
 
+@router.get("/market/margin-short-balance")
+async def margin_short_balance(
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market margin-purchase/short-sale total by category."""
+    return await _dispatch(
+        state,
+        "get_margin_short_total_market",
+        _market_args(market, start_date, end_date),
+        ctx,
+    )
+
+
+@router.get("/market/advance-decline")
+async def advance_decline(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market advance/decline breadth for one trading day (defaults to the latest
+    available day) — the backing tool's input is a single `trade_date`, not a start/end range,
+    so this route does not reuse `_market_args`."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_advance_decline", args, ctx)
+
+
+@router.get("/market/order-book-stats")
+async def order_book_stats(
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-exchange 5-second order-book/trade aggregate (委買委賣統計) — upstream is single-day
+    per request, so only `start_date`/`end_date` (via `_market_args`) narrow to one day; a wider
+    range is rejected upstream, not silently truncated here."""
+    return await _dispatch(
+        state, "get_order_book_stats", _market_args(market, start_date, end_date), ctx
+    )
+
+
+@router.get("/market/price-momentum")
+async def price_momentum(
+    market: Market = Query(Market.TW),
+    period: Literal["day", "week", "month"] = Query("week"),
+    trade_date: date_ | None = Query(None),
+    top_n: int = Query(10, ge=1, le=50),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market top-N gainers/losers by pure close-to-close percentage change over a chosen
+    lookback period (day/week/month trading days) — single-factor price momentum, distinct from
+    `/analytics/rankings`' multi-factor composite score. Same single-`trade_date` shape as
+    `/advance-decline`."""
+    args: dict[str, object] = {"market": market.value, "period": period, "top_n": top_n}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_price_momentum", args, ctx)
+
+
+@router.get("/market/holder-accumulation")
+async def holder_accumulation(
+    market: Market = Query(Market.TW),
+    threshold: int = Query(
+        400, description="Holding-size threshold in 張: 200/400/800/1000 (validated by the tool)."
+    ),
+    window: int = Query(2, description="Weekly snapshots back to compare against: 1/2/3/4."),
+    as_of: date_ | None = Query(None),
+    top_n: int = Query(20, ge=1, le=50),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """大戶加碼股 — whole-market ranking of which stocks grew a chosen large-holder tier
+    (>=200/400/800/1,000張) share-of-custody the most over 1-4 weekly 集保戶股權分散表 snapshots
+    (Sponsor-tier). Distinct from `/market/big-holder-accumulation`, which wraps the per-symbol
+    `get_shareholder_dispersion` tool — this route is the whole-market ranking counterpart,
+    backed by `get_holder_accumulation`.
+
+    `threshold`/`window` are plain `int` here (not a route-level `Literal[int, ...]`): FastAPI's
+    query-string coercion validates a `Literal` against the RAW string before int-casting it,
+    so a real request like `?threshold=400` fails validation despite `400` being a legal
+    choice — confirmed live, not a hypothetical. The tool's own `HolderThreshold`/`HolderWindow`
+    enums (already-int-typed) still reject an out-of-set value, just after FastAPI's own
+    int-coercion has already run once."""
+    args: dict[str, object] = {
+        "market": market.value,
+        "threshold": threshold,
+        "window": window,
+        "top_n": top_n,
+    }
+    if as_of is not None:
+        args["as_of"] = as_of.isoformat()
+    return await _dispatch(state, "get_holder_accumulation", args, ctx)
+
+
+@router.get("/market/index-contribution")
+async def index_contribution(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """APPROXIMATE per-symbol index-contribution estimate for one trading day (market-cap
+    weight x price change) — not TWSE's official float-adjusted figure; see the response's own
+    `contribution_caveat` (Sponsor-tier). Same single-`trade_date` shape as `/advance-decline`,
+    not a start/end range."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_index_contribution", args, ctx)
+
+
+@router.get("/market/sector-heatmap")
+async def sector_heatmap(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market industry/sector heatmap (產業別漲跌熱力圖) for one trading day (defaults to
+    the latest available day): each industry's average close-to-close percentage change
+    (trading-value-weighted when available) and constituent stock count — the backing tool's
+    input is a single `trade_date`, not a start/end range, same shape as `/advance-decline` and
+    `/index-contribution`."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_sector_heatmap", args, ctx)
+
+
+@router.get("/market/big-holder-accumulation")
+async def big_holder_accumulation(
+    symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """股權分散 shareholding-level distribution (千張大戶比率) for one stock — a chip-concentration
+    signal (Sponsor-tier). The named backing tool (`get_shareholder_dispersion`) is per-symbol;
+    mirrors `/market/day-trading`'s required-`symbol` route shape."""
+    args: dict[str, object] = {"id": symbol, "market": market.value}
+    if start_date is not None:
+        args["start_date"] = start_date.isoformat()
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_shareholder_dispersion", args, ctx)
+
+
+@router.get("/market/active-etf-report")
+async def active_etf_report(
+    symbol: str = Query(
+        ..., min_length=1, description="Active ETF id — backing tool is per-symbol."
+    ),
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """主動式ETF 操作日報 for one active-management ETF — required `symbol`, plus an optional
+    single `trade_date` (the backing tool's own field name; not a start/end range), mirroring
+    `/market/day-trading`'s required-`symbol` route shape (Sponsor-tier)."""
+    args: dict[str, object] = {"id": symbol, "market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_active_etf_report", args, ctx)
+
+
+@router.get("/market/international-index")
+async def international_index(
+    symbol: str = Query(
+        ..., min_length=1, description="The market's own quote symbol, e.g. '^DJI'."
+    ),
+    market: FinMindInternationalMarket = Query(...),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """FinMind's own roster-info + EOD-price bundle for one US/GB/EU/JP quote symbol — a
+    distinct dataset family from the yfinance-primary `price_eod` path for the same markets (see
+    `tools/international_tools.py`'s own docstring). `market` reuses
+    `FinMindInternationalMarket` (only the four non-TW markets FinMind carries this family for),
+    not the full `schemas.enums.Market` set `_market_args` elsewhere in this file uses."""
+    args: dict[str, object] = {"id": symbol, "market": market.value}
+    if start_date is not None:
+        args["start_date"] = start_date.isoformat()
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_international_stock", args, ctx)
+
+
+@router.get("/market/material-announcements")
+async def material_announcements(
+    symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Today's MOPS material-announcement (重大訊息) disclosures for one stock. The named
+    backing tool (`get_material_announcements`) serves the MOPS adapter's current whole-market
+    dump filtered to one company with no date-range param upstream — this route deliberately
+    takes no `start_date`/`end_date`, since the tool ignores them (see that tool's own
+    docstring)."""
+    return await _dispatch(
+        state, "get_material_announcements", {"id": symbol, "market": market.value}, ctx
+    )
+
+
+@router.get("/market/tag-catalog")
+async def tag_catalog(
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The discoverable tap-tile screener tag list, grouped by category with bilingual labels —
+    `get_tag_catalog` takes no input, so this route dispatches with an empty args dict."""
+    return await _dispatch(state, "get_tag_catalog", {}, ctx)
+
+
+@router.get("/market/tag-screener")
+async def tag_screener(
+    tags: list[str] = Query(
+        default=[],
+        description="Tag keys to require (see /market/tag-catalog), e.g. 外資連3買.",
+    ),
+    negate_tags: list[str] = Query(
+        default=[],
+        description="Tag keys to require the ABSENCE of — combined with `tags` under `match`.",
+    ),
+    match: Literal["AND", "OR"] = Query("AND"),
+    market: Market = Query(Market.TW),
+    as_of: date_ | None = Query(None),
+    size: int = Query(50, ge=1, le=250),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Tap-tile tag screener over the nightly-computed flag partition. `run_tag_screener`'s own
+    input nests a `tags: tuple[TagCondition]` (each `{tag, negate}`) that doesn't flatten
+    trivially into GET query params, so this route instead accepts two flat repeated-key lists —
+    plain tag keys in `tags` and their negated counterparts in `negate_tags` — and builds the
+    `TagCondition` tuple server-side; this keeps the route a plain GET (matching every other route
+    in this file) with no nested-object query-string encoding for the caller to get right."""
+    conditions: list[dict[str, object]] = [{"tag": tag, "negate": False} for tag in tags]
+    conditions.extend({"tag": tag, "negate": True} for tag in negate_tags)
+    if not conditions:
+        raise ApiError(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            code="invalid_request",
+            message="At least one of `tags` or `negate_tags` is required.",
+            retryable=False,
+        )
+    args: dict[str, object] = {
+        "market": market.value,
+        "tags": conditions,
+        "match": match,
+        "size": size,
+    }
+    if as_of is not None:
+        args["as_of"] = as_of.isoformat()
+    return await _dispatch(state, "run_tag_screener", args, ctx)
+
+
+@router.get("/market/symbol-info")
+async def symbol_info(
+    symbols: list[str] = Query(
+        ..., min_length=1, max_length=20, description="Up to 20 symbol ids, e.g. '2330'."
+    ),
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Batched symbol->name (+ industry/security-type) lookup, e.g. to enrich a bare-symbol
+    ranking (`get_score_leaderboard`) with a display name. A symbol absent from the returned
+    `rows` is not in the current whole-market roster — never a fabricated name in its place."""
+    args: dict[str, object] = {"symbols": symbols, "market": market.value}
+    return await _dispatch(state, "get_symbol_info", args, ctx)
+
+
+@router.get("/market/price-history")
+async def price_history(
+    symbols: list[str] = Query(
+        ..., min_length=1, max_length=20, description="Up to 20 symbol ids, e.g. '2330'."
+    ),
+    market: Market = Query(Market.TW),
+    days: int = Query(20, ge=2, le=60, description="Trailing trading-day count, 2-60."),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """A bounded trailing-day OHLCV window for up to 20 symbols — the data behind a sparkline
+    or a client-computed %-change, for any bare-symbol list (leaderboard, watchlist, ETF
+    roster). `get_price_quote`/`/quote` stay latest-bar-only; this is the separate bounded-
+    history capability those callers need instead."""
+    return await _dispatch(
+        state, "get_price_history", {"symbols": symbols, "market": market.value, "days": days}, ctx
+    )
+
+
 # ---- derivatives ---------------------------------------------------------------------------
+
+
+@router.get("/derivatives/taiex-vix")
+async def taiex_vix(
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """臺指選擇權波動率指數 (TAIEX option VIX) reading series — whole-market, Sponsor-tier.
+    Backed by `get_taiex_vix` (`MarketOnlyInput`, no per-contract `id`), a separate concern
+    from `/derivatives/{contract}`'s per-contract bundle below. Declared BEFORE
+    `/derivatives/{contract}` — FastAPI matches path routes in registration order, and a
+    dynamic `{contract}` segment would otherwise swallow this literal `taiex-vix` path."""
+    return await _dispatch(state, "get_taiex_vix", _market_args(market, start_date, end_date), ctx)
 
 
 @router.get("/derivatives/{contract}")

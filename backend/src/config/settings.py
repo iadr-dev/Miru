@@ -172,6 +172,10 @@ class Settings(BaseSettings):
     market_data_cache_ttl_live_ish_seconds: int = 15
     market_data_cache_ttl_official_eod_seconds: int = 3_600
     market_data_cache_ttl_event_driven_seconds: int = 300
+    # A failed/unreachable SourceResult gets this short TTL regardless of timing_class, so a
+    # transient upstream blip self-heals on the next request instead of freezing a card empty
+    # for hours (the timing_class TTL is only appropriate for a genuinely successful fetch).
+    market_data_cache_ttl_failure_seconds: int = 30
 
     # ---- Scheduler / ingest ----
     scheduler_poll_interval_seconds: float = 60.0

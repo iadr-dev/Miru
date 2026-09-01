@@ -14,6 +14,7 @@ from schemas.capabilities import (
     BlockTradeBrokerReportRow,
     BlockTradeRow,
     ChipBrokerAggRow,
+    ChipBrokerRow,
     DailyShortSaleBalancesRow,
     DispositionSecuritiesRow,
     ForeignShareholdingRow,
@@ -461,6 +462,50 @@ class GetGovernmentBankFlowsTool(BaseTool):
         )
 
 
+class GetWarrantChipBrokerOutput(_RowsOutput):
+    rows: tuple[ChipBrokerRow, ...] = Field(default_factory=tuple)
+
+
+class GetWarrantChipBrokerTool(BaseTool):
+    """`get_warrant_chip_broker` — wraps `Capability.WARRANT_CHIP_BROKER`
+    (`TaiwanStockWarrantTradingDailyReport`, 權證分點進出, Sponsor-tier). The warrant-side
+    counterpart to `market_tools.GetChipFlowsTool`'s equity 分點 report — same row shape
+    (`ChipBrokerRow`), different underlying dataset, kept as its own tool rather than folded
+    into `get_chip_flows` since a warrant code and an equity code are never interchangeable
+    inputs to the same call. Single trading day per request upstream — `no_end_date_param=True`
+    in the source config (confirmed empirically: 400s with `end_date` present at all)."""
+
+    name = "get_warrant_chip_broker"
+    description = (
+        "Get branch(分點)/broker-level buy-sell trading rows for one warrant, one trading day "
+        "at a time (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetWarrantChipBrokerOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.WARRANT_CHIP_BROKER,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=ChipBrokerRow,
+            key="rows",
+            params=typed.date_params(),
+        )
+        return GetWarrantChipBrokerOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            rows=rows,
+        )
+
+
 class GetMarginMaintenanceOutput(_RowsOutput):
     rows: tuple[MarginMaintenanceRatioRow, ...] = Field(default_factory=tuple)
 
@@ -783,6 +828,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetDailyShortSaleBalancesTool(router), False),
         (GetSecuritiesTraderInfoTool(router), False),
         (GetGovernmentBankFlowsTool(router), False),
+        (GetWarrantChipBrokerTool(router), False),
         (GetMarginMaintenanceTool(router), False),
         (GetChipBrokerAggTool(router), False),
         (GetBlockTradeBrokerReportTool(router), False),
@@ -833,5 +879,7 @@ __all__ = [
     "GetSecuritiesTraderInfoTool",
     "GetShareholderDispersionOutput",
     "GetShareholderDispersionTool",
+    "GetWarrantChipBrokerOutput",
+    "GetWarrantChipBrokerTool",
     "build_registration_table",
 ]
