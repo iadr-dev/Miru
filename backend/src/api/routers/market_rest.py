@@ -318,6 +318,23 @@ async def sector_heatmap(
     return await _dispatch(state, "get_sector_heatmap", args, ctx)
 
 
+@router.get("/market/etf-list")
+async def etf_list(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market Taiwan-listed ETF list for one trading day (defaults to the latest
+    available day): price/change/volume/1-week-return, AUM, expense-ratio floor, and
+    trailing-12-month distribution yield/frequency for every listed ETF — same single-
+    `trade_date` shape as `/advance-decline`/`/sector-heatmap`, not a start/end range."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_etf_list", args, ctx)
+
+
 @router.get("/market/big-holder-accumulation")
 async def big_holder_accumulation(
     symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),

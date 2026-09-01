@@ -16,7 +16,9 @@ import {
   type DerivativesResponse,
   dayTradingResponseSchema,
   derivativesResponseSchema,
+  type EtfListResponse,
   type EtfMoneyFlowResponse,
+  etfListResponseSchema,
   etfMoneyFlowResponseSchema,
   type HolderAccumulationResponse,
   type HolderThreshold,
@@ -348,4 +350,15 @@ export async function getMarginShortBalance(market: Market): Promise<MarginShort
   const search = new URLSearchParams({ market });
   const raw = await requestJson(`/market/margin-short-balance?${search.toString()}`);
   return marginShortBalanceResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 16. GET /market/etf-list (public whole-market ETF list)
+// ---------------------------------------------------------------------------
+
+export async function getEtfList(market: Market, tradeDate?: string): Promise<EtfListResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  const raw = await requestJson(`/market/etf-list?${search.toString()}`);
+  return etfListResponseSchema.parse(raw);
 }

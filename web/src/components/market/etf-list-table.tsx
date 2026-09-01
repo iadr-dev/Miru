@@ -1,0 +1,282 @@
+"use client";
+
+import { useLocale, useTranslations } from "next-intl";
+import { type ReactNode, useMemo, useState } from "react";
+import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
+import { cn } from "@/lib/cn";
+import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
+
+const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr]";
+
+// 槓桿/反向 badges use distinct categorical tokens (--chart-1/--chart-2), never --up/--down —
+// leveraged/inverse is a fund-structure fact, not a price/%/score signal (web/CLAUDE.md §4).
+const SYMBOL_TYPE_BADGE: Record<string, { labelKey: string; color: string }> = {
+  etf_leveraged: { labelKey: "leveraged", color: "var(--chart-1)" },
+  etf_inverse: { labelKey: "inverse", color: "var(--chart-2)" },
+};
+
+// desc for every numeric column (largest-first, matching the reference app's own default
+// ordering); asc for name (alphabetical is the natural default there, not "largest name").
+export const DEFAULT_SORT_DIRECTION: Record<EtfSortKey, SortDirection> = {
+  name: "asc",
+  close: "desc",
+  change_pct: "desc",
+  turnover: "desc",
+  return_1w_pct: "desc",
+  distribution_yield_ttm_pct: "desc",
+  aum: "desc",
+  expense_ratio_pct_approx: "desc",
+};
+
+type SortValue = string | number | null;
+
+function sortValueFor(row: EtfListRow, key: EtfSortKey): SortValue {
+  switch (key) {
+    case "name":
+      return row.name;
+    case "close":
+      return row.close;
+    case "change_pct":
+      return row.change_pct;
+    case "turnover":
+      return row.turnover;
+    case "return_1w_pct":
+      return row.return_1w_pct;
+    case "distribution_yield_ttm_pct":
+      return row.distribution_yield_ttm_pct;
+    case "aum":
+      return row.aum;
+    case "expense_ratio_pct_approx":
+      return row.expense_ratio_pct_approx;
+    default:
+      return null;
+  }
+}
+
+/** Nulls always sort last regardless of direction — a missing value is never "smallest"/
+ * "largest", it's simply not comparable, so it never competes for the top of either order. */
+export function compareRows(
+  a: EtfListRow,
+  b: EtfListRow,
+  key: EtfSortKey,
+  direction: SortDirection,
+): number {
+  const av = sortValueFor(a, key);
+  const bv = sortValueFor(b, key);
+  if (av === null && bv === null) return 0;
+  if (av === null) return 1;
+  if (bv === null) return -1;
+  const sign = direction === "asc" ? 1 : -1;
+  if (typeof av === "string" || typeof bv === "string") {
+    return sign * String(av).localeCompare(String(bv), "zh-TW");
+  }
+  return sign * (av - bv);
+}
+
+/**
+ * 主動式ETF-style sortable ETF list — every column's header is a real `<button>` (click to
+ * sort, click again to flip direction), matching the reference app's own ▲▼-on-every-column
+ * convention. No sortable-column table existed anywhere in this codebase before this one — the
+ * mechanism (header buttons + `aria-sort` + a plain ▲/▼ glyph) is built from scratch here,
+ * modeled on the existing pill-toggle button styling every other market card already uses.
+ *
+ * This tab IS the full list (not a dashboard preview card), so there is no collapse-to-N/
+ * `ExpandModal` — every row renders in one plain scrollable container, the same "just render
+ * it" convention this codebase's other ~200-row expanded views already use (no virtualization
+ * library exists here, and ~300 bounded rows doesn't call for introducing one).
+ */
+export function EtfListTable({
+  rows,
+  currentnessCaveat,
+  aumCaveat,
+  expenseRatioCaveat,
+  distributionCaveat,
+}: {
+  rows: readonly EtfListRow[];
+  currentnessCaveat: string;
+  aumCaveat: string;
+  expenseRatioCaveat: string;
+  distributionCaveat: string;
+}): ReactNode {
+  const t = useTranslations("market.cards.etfList");
+  const locale = useLocale();
+  const [sortKey, setSortKey] = useState<EtfSortKey>("aum");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  const sortedRows = useMemo(
+    () => [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDirection)),
+    [rows, sortKey, sortDirection],
+  );
+
+  const toggleSort = (key: EtfSortKey): void => {
+    if (key === sortKey) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setSortDirection(DEFAULT_SORT_DIRECTION[key]);
+  };
+
+  if (rows.length === 0) {
+    return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+  }
+
+  return (
+    <div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[820px]">
+          <EtfListHeaderRow
+            sortKey={sortKey}
+            sortDirection={sortDirection}
+            onToggleSort={toggleSort}
+            t={t}
+          />
+          <ul className="max-h-[640px] divide-y divide-[var(--border)] overflow-y-auto">
+            {sortedRows.map((row) => (
+              <EtfListRowItem key={row.symbol} row={row} locale={locale} t={t} />
+            ))}
+          </ul>
+        </div>
+      </div>
+      <Caveat text={currentnessCaveat} />
+      <Caveat text={aumCaveat} />
+      <Caveat text={expenseRatioCaveat} />
+      <Caveat text={distributionCaveat} />
+    </div>
+  );
+}
+
+function EtfListHeaderRow({
+  sortKey,
+  sortDirection,
+  onToggleSort,
+  t,
+}: {
+  sortKey: EtfSortKey;
+  sortDirection: SortDirection;
+  onToggleSort: (key: EtfSortKey) => void;
+  t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  const columns: Array<{ key: EtfSortKey; labelKey: string; align: "left" | "right" }> = [
+    { key: "name", labelKey: "columnName", align: "left" },
+    { key: "close", labelKey: "columnPrice", align: "right" },
+    { key: "change_pct", labelKey: "columnChange", align: "right" },
+    { key: "turnover", labelKey: "columnVolume", align: "right" },
+    { key: "return_1w_pct", labelKey: "columnWeeklyReturn", align: "right" },
+    { key: "distribution_yield_ttm_pct", labelKey: "columnYield", align: "right" },
+    { key: "aum", labelKey: "columnAum", align: "right" },
+    { key: "expense_ratio_pct_approx", labelKey: "columnExpense", align: "right" },
+  ];
+
+  return (
+    <div
+      className={cn(
+        "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5",
+        ETF_ROW_GRID_COLS,
+      )}
+    >
+      {columns.map((col) => {
+        const active = sortKey === col.key;
+        const ariaSort = active ? (sortDirection === "asc" ? "ascending" : "descending") : "none";
+        return (
+          // aria-sort is only valid on a columnheader-role element, not on the interactive
+          // <button> itself — this grid isn't a real <table>, so the role is applied by hand.
+          <div key={col.key} role="columnheader" aria-sort={ariaSort} tabIndex={-1}>
+            <button
+              type="button"
+              onClick={() => onToggleSort(col.key)}
+              className={cn(
+                "flex min-h-11 w-full items-center gap-1 text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text)]",
+                col.align === "right" && "justify-end",
+                active && "text-[var(--text)]",
+              )}
+            >
+              <span>{t(col.labelKey)}</span>
+              {active ? (
+                // Sort caret is chrome, not price/%/score data — never `--up`/`--down`
+                // (web/CLAUDE.md §4 reserves those tokens for real 紅漲綠跌 signals).
+                <span aria-hidden className="text-[10px] text-[var(--text-muted)]">
+                  {sortDirection === "asc" ? "▲" : "▼"}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EtfListRowItem({
+  row,
+  locale,
+  t,
+}: {
+  row: EtfListRow;
+  locale: string;
+  t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  const up = (row.change_pct ?? 0) >= 0;
+  const color = row.change_pct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";
+  const badge = SYMBOL_TYPE_BADGE[row.symbol_type];
+
+  return (
+    <li
+      role="group"
+      aria-label={`${row.name} ${row.symbol} ${
+        row.change_pct !== null
+          ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+          : t("noChangeData")
+      }`}
+      className={cn("grid items-center gap-2.5 py-2", ETF_ROW_GRID_COLS)}
+    >
+      <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+        {row.name}
+        <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
+        {badge ? (
+          <span
+            className="ml-1.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 font-medium text-[10px]"
+            style={{ color: badge.color }}
+          >
+            {t(badge.labelKey)}
+          </span>
+        ) : null}
+      </span>
+      <span aria-hidden className="text-right font-num text-[13px] text-[var(--text)] tabular-nums">
+        {row.close !== null ? formatNumber(row.close, locale, { decimals: 2 }) : "—"}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
+        {row.change_pct !== null
+          ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+          : "—"}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
+        {row.turnover !== null ? formatNumber(row.turnover, locale, { decimals: 0 }) : "—"}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
+        {row.return_1w_pct !== null
+          ? `${row.return_1w_pct >= 0 ? "▲" : "▼"}${formatNumber(Math.abs(row.return_1w_pct), locale, { decimals: 2 })}%`
+          : "—"}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
+        {row.distribution_yield_ttm_pct !== null
+          ? `${formatNumber(row.distribution_yield_ttm_pct, locale, { decimals: 2 })}%`
+          : "-"}
+        {row.distribution_frequency ? (
+          <span className="ml-1 text-[10px] text-[var(--text-muted)]">
+            ({row.distribution_frequency})
+          </span>
+        ) : null}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
+        {row.aum !== null ? formatNumber(row.aum, locale, { decimals: 0 }) : "—"}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
+        {row.expense_ratio_pct_approx !== null
+          ? `${formatNumber(row.expense_ratio_pct_approx, locale, { decimals: 2 })}%`
+          : "—"}
+      </span>
+    </li>
+  );
+}

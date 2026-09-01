@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { BreadthOrderBookCard } from "@/components/market/breadth-order-book-card";
+import { EtfTabContent } from "@/components/market/etf-tab-content";
 import { HolderAccumulationCard } from "@/components/market/holder-accumulation-card";
 import { InstitutionalFlowCard } from "@/components/market/institutional-flow-card";
 import { MarketTabPanels } from "@/components/market/market-tabs";
@@ -160,6 +161,7 @@ export function MarketPanel(): ReactNode {
             </div>
           </div>
         )}
+        renderEtf={() => <EtfTabContent market={DEFAULT_MARKET} />}
       />
     </div>
   );
@@ -168,7 +170,7 @@ export function MarketPanel(): ReactNode {
 /** Shared loading/empty/error branching for every card's query (web/CLAUDE.md §6) — a shaped
  * skeleton while loading, a calm inline error with retry on failure, and the caller's own render
  * function once data is present (which itself may still show a masked teaser or an empty state). */
-function QueryState<T>({
+export function QueryState<T>({
   query,
   children,
 }: {

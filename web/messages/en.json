@@ -89,7 +89,12 @@
       "tw": "Taiwan",
       "us": "US",
       "etf": "ETF",
-      "comingSoon": "{tab} isn't supported yet."
+      "comingSoon": "{tab} isn't supported yet.",
+      "etfSub": {
+        "label": "ETF views",
+        "leaderboard": "AI Score Leaderboard",
+        "list": "ETF List"
+      }
     },
     "cards": {
       "institutionalRanking": {
@@ -225,6 +230,22 @@
         "negative": "Top negative",
         "unavailable": "No contribution data for today.",
         "updatedAt": "As of {date}"
+      },
+      "etfList": {
+        "title": "ETF List",
+        "columnName": "ETF",
+        "columnPrice": "Price",
+        "columnChange": "Chg %",
+        "columnVolume": "Turnover",
+        "columnWeeklyReturn": "1W Return",
+        "columnYield": "Yield (TTM)",
+        "columnAum": "AUM",
+        "columnExpense": "Expense Ratio",
+        "leveraged": "Leveraged",
+        "inverse": "Inverse",
+        "noChangeData": "no change data",
+        "empty": "No ETFs found for this market.",
+        "unavailable": "No ETF data for today."
       },
       "loading": "Loading data…",
       "empty": "No data for this range.",

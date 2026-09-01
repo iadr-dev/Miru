@@ -248,9 +248,7 @@ class ParquetStore:
         parquet_glob = str(version_dir / "*.parquet")
         con = duckdb.connect()
         try:
-            relation = con.execute(
-                "SELECT * FROM read_parquet(?) LIMIT 0", [parquet_glob]
-            )
+            relation = con.execute("SELECT * FROM read_parquet(?) LIMIT 0", [parquet_glob])
             columns = [d[0] for d in relation.description or []]
             return "_empty" not in columns
         finally:
