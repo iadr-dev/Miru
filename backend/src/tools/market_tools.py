@@ -12,12 +12,12 @@ reshape.
 from __future__ import annotations
 
 import asyncio
-from calendar.trading_days import TradingDayCalendar
+from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import timedelta
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -29,9 +29,17 @@ from analytics.fundamentals import (
     load_symbol_market_value,
     load_symbol_month_revenue,
 )
+from analytics.symbol_universe import is_scoreable_symbol
 from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
-from ingest.jobs import ACTIVE_ETF_HOLDING_CHANGE_JOB, ACTIVE_ETF_HOLDING_JOB, PRICE_EOD_JOB
+from ingest.jobs import (
+    ACTIVE_ETF_HOLDING_CHANGE_JOB,
+    ACTIVE_ETF_HOLDING_JOB,
+    MARKET_VALUE_WEIGHT_JOB,
+    PRICE_EOD_JOB,
+    SHAREHOLDING_DISTRIBUTION_JOB,
+    STOCK_INFO_JOB,
+)
 from ingest.store import ParquetStore
 from schemas.capabilities import (
     ActiveEtfHoldingChangeRow,
@@ -41,7 +49,9 @@ from schemas.capabilities import (
     EODBar,
     InstitutionalFlowRow,
     MarketValueRow,
+    MarketValueWeightRow,
     SectorClassification,
+    StockInfoRow,
     ValuationRatiosRow,
 )
 from schemas.enums import Capability, DataClass, Market
@@ -376,6 +386,11 @@ _PREMIUM_DISCOUNT_UNAVAILABLE_REASON = (
     "HoldingChange datasets carry constituent-level shares/weight/market-value only, never the "
     "fund's own NAV vs market-price comparison; this field is never fabricated in its place."
 )
+_ESTIMATED_NAV_CAVEAT = (
+    "估算淨值 = 持股市值(持股張數 x 當日收盤價) ÷ 發行單位數，"
+    "未計入現金、應收股利、應計費用或匯率，且以收盤價估算，"
+    "非發行商公告 NAV 亦非即時 IOPV；折溢價亦為此估算值與市價之比較，僅供參考。"
+)
 
 
 class HoldingStatus(StrEnum):
@@ -485,8 +500,14 @@ class GetActiveEtfReportOutput(BaseModel):
     fund_size: float | None = None  # 基金規模 — sum of constituent market_value on report_date
     fund_size_prior: float | None = None
     fund_size_change_pct: float | None = None  # 基金規模較前日
-    premium_discount_pct: float | None = None  # 折溢價 — always None, see unavailable_reason
+    premium_discount_pct: float | None = None  # 折溢價 (official NAV) — always None, see reason
     premium_discount_unavailable_reason: str | None = _PREMIUM_DISCOUNT_UNAVAILABLE_REASON
+    # 估算淨值/折溢價 — self-computed from holdings x close ÷ units_outstanding, NOT official NAV;
+    # carries _ESTIMATED_NAV_CAVEAT whenever either is non-None. None when units_outstanding or
+    # the ETF's own close is unavailable (never fabricated).
+    estimated_nav_per_unit: float | None = None
+    estimated_premium_discount_pct: float | None = None
+    estimation_caveat: str | None = None
     rows: tuple[ActiveEtfReportRow, ...] = Field(default_factory=tuple)
 
 
@@ -543,17 +564,43 @@ def _active_etf_report_rows(
     return rows
 
 
+def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
+    """The real trading-day calendar for `market`, built from `PRICE_EOD_JOB`'s own
+    already-ingested partition dates — same reasoning and construction as
+    `ingest/daemon.py::_build_calendar`, duplicated here rather than imported because `tools/`
+    may not import `ingest/` (the DEPENDENCY RULE only allows `tools -> context -> dataaccess ->
+    sources`; `ingest` is a sibling ingestion-side module, not a lower layer this one may pull
+    from). A plain `TradingDayCalendar()` (naive Mon-Fri weekday math) previously used at every
+    call site here would miscount real TW holidays as trading days, corrupting the "prior
+    trading day" every close-to-close calculation in this module depends on — the same class of
+    bug fixed in the ingest daemon's own calendar construction."""
+    known_dates = store.list_partition_dates(PRICE_EOD_JOB.dataset, market)
+    if not known_dates:
+        return TradingDayCalendar()
+    return calendar_from_known_dates(known_dates)
+
+
 def _closes_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, float]:
-    """Every symbol's closing price on `trade_date`, read from the whole-market
+    """Every real equity/ETF symbol's closing price on `trade_date`, read from the whole-market
     `TaiwanStockPrice` partition the daily ingest job already wrote — the same derived-store
     read `GetEtfMoneyFlowTool` uses, not a per-symbol live fetch (`_active_etf_holding_value`'s
-    own docstring explains why this beats trusting FinMind's own `market_value` field)."""
+    own docstring explains why this beats trusting FinMind's own `market_value` field).
+
+    Filtered through `analytics.symbol_universe.is_scoreable_symbol`: the raw partition is
+    dominated by warrant/derivative codes (~17K/day vs. ~2.65K real equities/ETFs — see that
+    module's docstring for the measured split), which would otherwise inflate every
+    breadth/contribution/heatmap calculation built from this map with thousands of warrant rows
+    that don't belong in "how many real stocks moved today"."""
     raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
     closes: dict[str, float] = {}
     for row in raw_bars:
         symbol = row.get("symbol")
         close = row.get("close")
-        if isinstance(symbol, str) and isinstance(close, (int, float)):
+        if (
+            isinstance(symbol, str)
+            and is_scoreable_symbol(symbol)
+            and isinstance(close, (int, float))
+        ):
             closes[symbol] = float(close)
     return closes
 
@@ -611,6 +658,32 @@ def _active_etf_fund_size_fields(
         else None
     )
     return fund_size, fund_size_prior, fund_size_change_pct
+
+
+def _estimated_nav_fields(
+    store: ParquetStore,
+    etf_symbol: Symbol,
+    report_date: date_,
+    derived: tuple[float | None, int | None],
+) -> tuple[float | None, float | None]:
+    """`(estimated_nav_per_unit, estimated_premium_discount_pct)` for an active ETF, self-computed
+    from the already-derived `fund_size` (持股市值) ÷ `units_outstanding` (發行單位數) — passed
+    paired as `derived=(fund_size, units_outstanding)` to stay under the argument-count budget —
+    with the premium/discount taken against the ETF's own closing market price on `report_date`.
+    This is an approximation, never the issuer's official NAV/IOPV: it omits cash, receivables,
+    accrued fees and FX, and uses EOD close rather than an intraday indicative value — the caller
+    stamps `_ESTIMATED_NAV_CAVEAT` whenever a value is returned. Every output is `None` (never
+    fabricated) when its inputs are missing: no `fund_size`, no/zero `units_outstanding`, or the
+    ETF's own close absent from the ingested `TaiwanStockPrice` partition."""
+    fund_size, units_outstanding = derived
+    if fund_size is None or not units_outstanding:
+        return None, None
+    nav_per_unit = fund_size / units_outstanding
+    market_price = _closes_by_symbol(store, etf_symbol.market.value, report_date).get(etf_symbol.id)
+    premium_discount_pct = (
+        market_price / nav_per_unit - 1.0 if market_price is not None and nav_per_unit else None
+    )
+    return nav_per_unit, premium_discount_pct
 
 
 class GetActiveEtfReportTool(BaseTool):
@@ -694,6 +767,19 @@ class GetActiveEtfReportTool(BaseTool):
             (report_holdings, prior_holdings),
         )
 
+        units_outstanding = await self._fetch_units_outstanding(symbol, ctx)
+        estimated_nav_per_unit, estimated_premium_discount_pct = _estimated_nav_fields(
+            self._store,
+            symbol,
+            report_date,
+            (fund_size, units_outstanding),
+        )
+        estimation_caveat = (
+            _ESTIMATED_NAV_CAVEAT
+            if estimated_nav_per_unit is not None or estimated_premium_discount_pct is not None
+            else None
+        )
+
         return GetActiveEtfReportOutput(
             source_id=holding_result.source_id,
             currentness_caveat=holding_result.currentness_caveat,
@@ -705,8 +791,28 @@ class GetActiveEtfReportTool(BaseTool):
             fund_size=fund_size,
             fund_size_prior=fund_size_prior,
             fund_size_change_pct=fund_size_change_pct,
+            estimated_nav_per_unit=estimated_nav_per_unit,
+            estimated_premium_discount_pct=estimated_premium_discount_pct,
+            estimation_caveat=estimation_caveat,
             rows=tuple(rows),
         )
+
+    async def _fetch_units_outstanding(self, symbol: Symbol, ctx: ToolContext) -> int | None:
+        """`units_outstanding` (發行單位數) from the ETF fund-info slice — the denominator for the
+        estimated-NAV computation. A best-effort read: any fetch failure or missing field yields
+        `None`, which propagates to `estimated_nav_per_unit=None` rather than raising, so the core
+        holdings report is never blocked by the fund-info source being unavailable."""
+        try:
+            info_result = await self._router.fetch(
+                Capability.ETF_HOLDINGS, symbol, tls_policy=ctx.tls_policy
+            )
+        except Exception:
+            return None
+        raw_info = info_result.payload.get("info")
+        if not isinstance(raw_info, dict):
+            return None
+        units = cast(_UntypedDict, raw_info).get("units_outstanding")
+        return units if isinstance(units, int) else None
 
 
 class GetEtfMoneyFlowInput(BaseModel):
@@ -795,7 +901,7 @@ class GetEtfMoneyFlowTool(BaseTool):
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetEtfMoneyFlowInput, args)
-        calendar = TradingDayCalendar()
+        calendar = _real_calendar(self._store, typed.market.value)
         window_dates = calendar.business_days_between(typed.start_date, typed.end_date)
 
         raw_changes = self._store.read_range(
@@ -867,6 +973,990 @@ class GetEtfMoneyFlowTool(BaseTool):
             data_available=True,
             inflow_ranking=inflow,
             outflow_ranking=outflow,
+        )
+
+
+_INDEX_CONTRIBUTION_TOP_N = 10
+_CONTRIBUTION_CAVEAT = (
+    "Estimated from market-cap weight x price change; not TWSE's official float-adjusted "
+    "index-contribution figure — this codebase has no float-adjusted-divisor data."
+)
+
+
+def _latest_dataset_date(store: ParquetStore, dataset: str, market: str) -> date_ | None:
+    """The newest date `dataset`+`market` has an actually-written partition for, found by
+    scanning the Hive-partitioned directory tree — mirrors
+    `analytics.screener.store._latest_partition_date`'s own scan, generalized to any
+    whole-market dataset rather than just `screener_flags`. Never assumes "today" has landed;
+    the daily ingest job may not have run yet, so "latest" always means "latest actually
+    written", never a naive `date.today()`."""
+    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
+    if not market_dir.exists():
+        return None
+    candidates: list[date_] = []
+    for child in market_dir.iterdir():
+        if not child.is_dir() or not child.name.startswith("date="):
+            continue
+        try:
+            day = date_.fromisoformat(child.name.removeprefix("date="))
+        except ValueError:
+            continue
+        if store.has_partition(dataset, market, day):
+            candidates.append(day)
+    return max(candidates) if candidates else None
+
+
+def _two_day_window(
+    store: ParquetStore,
+    dataset: str,
+    market: str,
+    calendar: TradingDayCalendar,
+    requested: date_ | None,
+) -> tuple[date_, date_] | None:
+    """Resolve `(trade_date, prior_trade_date)` against `dataset`+`market`: `trade_date` is
+    `requested` if given, else the latest partition this dataset actually has written;
+    `prior_trade_date` is the trading day immediately before it. Returns `None` if either
+    day's partition is missing — the caller reports `data_available=False` rather than
+    fabricating a window the ingest job hasn't actually landed yet."""
+    trade_date = requested or _latest_dataset_date(store, dataset, market)
+    if trade_date is None or not store.has_partition(dataset, market, trade_date):
+        return None
+    prior_date = calendar.shift_business_days(trade_date, -1)
+    if not store.has_partition(dataset, market, prior_date):
+        return None
+    return trade_date, prior_date
+
+
+class GetAdvanceDeclineInput(BaseModel):
+    """A market + an optional trading day; omitted/`None` means "latest available"."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    trade_date: date_ | None = Field(
+        default=None,
+        description="Trading day to report breadth for (ISO date). Omitted or null means the "
+        "latest available trading day.",
+    )
+
+
+class AdvanceDeclineBuckets(BaseModel):
+    """Symbol counts bucketed by close-to-close percentage change. `unchanged` is exactly
+    `pct_change == 0`; every other symbol falls into exactly one up- or down-side bucket."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    up_over_5pct: int = 0
+    up_3_to_5pct: int = 0
+    up_2_to_3pct: int = 0
+    up_1_to_2pct: int = 0
+    up_0_to_1pct: int = 0
+    unchanged: int = 0
+    down_0_to_1pct: int = 0
+    down_1_to_2pct: int = 0
+    down_2_to_3pct: int = 0
+    down_3_to_5pct: int = 0
+    down_over_5pct: int = 0
+
+
+class GetAdvanceDeclineOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    trade_date: date_ | None = None
+    prior_trade_date: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    advancing_count: int = 0
+    declining_count: int = 0
+    unchanged_count: int = 0
+    buckets: AdvanceDeclineBuckets = Field(default_factory=AdvanceDeclineBuckets)
+
+
+_BUCKET_THRESHOLD_5PCT = 5
+_BUCKET_THRESHOLD_3PCT = 3
+_BUCKET_THRESHOLD_2PCT = 2
+_BUCKET_THRESHOLD_1PCT = 1
+
+
+def _advance_decline_bucket_name(pct: float) -> str:
+    """Which `AdvanceDeclineBuckets` field one symbol's close-to-close percentage change
+    (already `x100` — a whole-number percent, not a fraction) belongs in."""
+    if pct == 0:
+        return "unchanged"
+    magnitude, sign = abs(pct), 1 if pct > 0 else -1
+    if magnitude > _BUCKET_THRESHOLD_5PCT:
+        step = "over_5pct"
+    elif magnitude > _BUCKET_THRESHOLD_3PCT:
+        step = "3_to_5pct"
+    elif magnitude > _BUCKET_THRESHOLD_2PCT:
+        step = "2_to_3pct"
+    elif magnitude > _BUCKET_THRESHOLD_1PCT:
+        step = "1_to_2pct"
+    else:
+        step = "0_to_1pct"
+    return f"{'up' if sign > 0 else 'down'}_{step}"
+
+
+def _unavailable_reason_for_window(
+    dataset_label: str, market: str, trade_date: date_ | None
+) -> str:
+    """The shared "no partition (yet)" message every two-day-window tool in this module
+    surfaces when `_two_day_window` returns `None` — one wording, not one per tool."""
+    when = f" on {trade_date.isoformat()}" if trade_date else ""
+    return (
+        f"No ingested {dataset_label} partition (and/or its prior trading day) found for "
+        f"{market}{when} — the whole-market ingest job may not have run yet for this date."
+    )
+
+
+class GetAdvanceDeclineTool(BaseTool):
+    """`get_advance_decline` — whole-market advance/decline breadth for one trading day: every
+    symbol's close-to-close percentage change, bucketed into >5%/3-5%/2-3%/1-2%/0-1% on both
+    the up- and down-side plus `unchanged`, read from the already-ingested `PRICE_EOD_JOB`
+    Parquet partition (the same derived-store read `_closes_by_symbol` backs for
+    `GetActiveEtfReportTool`) — never a per-symbol live fan-out, since this is a genuinely
+    whole-market aggregate and reading the ingest-owned store back is the one legitimate path
+    for that shape of read (see `GetEtfMoneyFlowTool`'s own docstring for the same reasoning).
+
+    Public tier: this reads `Capability.PRICE_EOD`'s own already-public whole-market dataset
+    (`sources/finmind/technical.py`'s `_DatasetConfig.data_class` for `PRICE_EOD` is `PUBLIC`),
+    not a Sponsor-gated one — unlike `get_index_contribution` alongside it, which reads a
+    genuinely Sponsor-tier dataset and is gated accordingly."""
+
+    name = "get_advance_decline"
+    description = (
+        "Get the whole-market advance/decline breadth for one trading day (defaults to the "
+        "latest available day): counts of advancing/declining/unchanged symbols, bucketed by "
+        "close-to-close percentage change."
+    )
+    input_model: type[BaseModel] = GetAdvanceDeclineInput
+    output_model: type[BaseModel] = GetAdvanceDeclineOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "advance_decline"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetAdvanceDeclineInput, args)
+        market = typed.market.value
+        calendar = _real_calendar(self._store, market)
+        window = _two_day_window(
+            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+        )
+        if window is None:
+            return GetAdvanceDeclineOutput(
+                market=market,
+                trade_date=typed.trade_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "price_eod", market, typed.trade_date
+                ),
+            )
+        trade_date, prior_date = window
+        today_closes = _closes_by_symbol(self._store, market, trade_date)
+        prior_closes = _closes_by_symbol(self._store, market, prior_date)
+
+        bucket_counts: dict[str, int] = {}
+        advancing = declining = unchanged = 0
+        for symbol, close in today_closes.items():
+            prior_close = prior_closes.get(symbol)
+            if not prior_close:  # missing or legitimately-zero prior close — never divide by it
+                continue
+            pct = (close - prior_close) / prior_close * 100
+            if pct > 0:
+                advancing += 1
+            elif pct < 0:
+                declining += 1
+            else:
+                unchanged += 1
+            bucket = _advance_decline_bucket_name(pct)
+            bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
+
+        return GetAdvanceDeclineOutput(
+            market=market,
+            trade_date=trade_date,
+            prior_trade_date=prior_date,
+            data_available=True,
+            advancing_count=advancing,
+            declining_count=declining,
+            unchanged_count=unchanged,
+            buckets=AdvanceDeclineBuckets(**bucket_counts),
+        )
+
+
+_MOMENTUM_TOP_N = 10
+# Trading-day lookback per period — never a calendar-day offset (`TradingDayCalendar.
+# shift_business_days`). "month" is 21 trading days (~1 calendar month at 5 sessions/week),
+# the same convention `analytics/score.py`'s own trend-quality window uses.
+_MOMENTUM_PERIOD_TRADING_DAYS: dict[str, int] = {"day": 1, "week": 5, "month": 21}
+
+
+class MomentumPeriod(StrEnum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+
+
+class GetPriceMomentumInput(BaseModel):
+    """A market + a lookback period + an optional trading day (the window's end, defaults to
+    latest available) + a top-N cap — mirrors `GetIndexContributionInput`'s date/top_n shape."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    period: MomentumPeriod = Field(
+        default=MomentumPeriod.WEEK,
+        description="Lookback window: 'day' (1 trading day), 'week' (5 trading days), or "
+        "'month' (21 trading days).",
+    )
+    trade_date: date_ | None = Field(
+        default=None,
+        description="End of the momentum window (ISO date). Omitted or null means the latest "
+        "available trading day.",
+    )
+    top_n: int = Field(default=_MOMENTUM_TOP_N, ge=1, le=50)
+
+
+class PriceMomentumRow(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    stock_name: str
+    pct_change: float  # (close - period_ago_close) / period_ago_close x 100, a whole percent
+
+
+class GetPriceMomentumOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    period: MomentumPeriod = MomentumPeriod.WEEK
+    trade_date: date_ | None = None
+    period_ago_trade_date: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    top_gainers: tuple[PriceMomentumRow, ...] = Field(default_factory=tuple)
+    top_losers: tuple[PriceMomentumRow, ...] = Field(default_factory=tuple)
+
+
+class GetPriceMomentumTool(BaseTool):
+    """`get_price_momentum` — 本日/本週/本月強勢股/弱勢股: pure close-to-close percentage change
+    over a caller-chosen trading-day lookback (1/5/21 trading days — never a calendar-day
+    offset, `TradingDayCalendar.shift_business_days`), ranked independently from
+    `get_score_leaderboard`'s multi-factor composite score. Where the leaderboard blends
+    momentum/trend_quality/value_guard/quality/revenue_flow (see `analytics/score.py`), this
+    tool is single-factor: raw price return only, the same "who moved the most over period X" a
+    trader means by that phrase, not a multi-factor AI opinion. Reads the same already-ingested
+    `PRICE_EOD_JOB`/`STOCK_INFO_JOB` Parquet partitions `GetAdvanceDeclineTool`/
+    `GetSectorHeatmapTool` do — never a per-symbol live fan-out, same whole-market-aggregate
+    reasoning as those tools' own docstrings.
+
+    Public tier: both `Capability.PRICE_EOD` and `Capability.STOCK_INFO` are `DataClass.PUBLIC`
+    (`sources/finmind/technical.py`), the same tier reasoning `GetAdvanceDeclineTool` gives."""
+
+    name = "get_price_momentum"
+    description = (
+        "Get the whole-market top-N gainers/losers by pure close-to-close percentage change "
+        "over a chosen lookback period (day/week/month, defaults to week, ending at the "
+        "latest available day) — a single-factor price-momentum ranking, distinct from "
+        "get_score_leaderboard's multi-factor composite score."
+    )
+    input_model: type[BaseModel] = GetPriceMomentumInput
+    output_model: type[BaseModel] = GetPriceMomentumOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "price_momentum"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetPriceMomentumInput, args)
+        market = typed.market.value
+        calendar = _real_calendar(self._store, market)
+        trade_date = typed.trade_date or _latest_dataset_date(
+            self._store, PRICE_EOD_JOB.dataset, market
+        )
+        if trade_date is None or not self._store.has_partition(
+            PRICE_EOD_JOB.dataset, market, trade_date
+        ):
+            return GetPriceMomentumOutput(
+                market=market,
+                period=typed.period,
+                trade_date=typed.trade_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "price_eod", market, typed.trade_date
+                ),
+            )
+        period_ago_date = calendar.shift_business_days(
+            trade_date, -_MOMENTUM_PERIOD_TRADING_DAYS[typed.period.value]
+        )
+        if not self._store.has_partition(PRICE_EOD_JOB.dataset, market, period_ago_date):
+            return GetPriceMomentumOutput(
+                market=market,
+                period=typed.period,
+                trade_date=trade_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("price_eod", market, trade_date),
+            )
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        if roster_date is None:
+            return GetPriceMomentumOutput(
+                market=market,
+                period=typed.period,
+                trade_date=trade_date,
+                period_ago_trade_date=period_ago_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
+            )
+
+        today_closes = _closes_by_symbol(self._store, market, trade_date)
+        period_ago_closes = _closes_by_symbol(self._store, market, period_ago_date)
+        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        roster = _rows_from_store(StockInfoRow, raw_roster)
+        names_by_symbol = {row.symbol: row.name for row in roster}
+
+        rows: list[PriceMomentumRow] = []
+        for symbol, close in today_closes.items():
+            period_ago_close = period_ago_closes.get(symbol)
+            name = names_by_symbol.get(symbol)
+            if not period_ago_close or not name:
+                continue
+            pct = (close - period_ago_close) / period_ago_close * 100
+            rows.append(PriceMomentumRow(symbol=symbol, stock_name=name, pct_change=pct))
+
+        ranked = sorted(rows, key=lambda r: r.pct_change, reverse=True)
+        top_gainers = tuple(ranked[: typed.top_n])
+        top_losers = tuple(sorted(ranked, key=lambda r: r.pct_change)[: typed.top_n])
+
+        return GetPriceMomentumOutput(
+            market=market,
+            period=typed.period,
+            trade_date=trade_date,
+            period_ago_trade_date=period_ago_date,
+            data_available=True,
+            top_gainers=top_gainers,
+            top_losers=top_losers,
+        )
+
+
+# The tier scheme confirmed live against the real upstream — both TDCC's own web query form
+# (https://www.tdcc.com.tw/portal/zh/smWeb/qryStock, symbol 2330, 2026-08-21 snapshot) and
+# FinMind's Sponsor-tier `TaiwanStockHoldingSharesPer` return the IDENTICAL 17-row tier table
+# with these exact upstream label strings — never a guessed/assumed boundary. Tier 16
+# ("差異數調整") and 17 ("合計") are bookkeeping rows, not real holding-size tiers, and are
+# deliberately excluded from every threshold sum below.
+_HOLDER_TIER_LABELS: tuple[str, ...] = (
+    "1-999",
+    "1,000-5,000",
+    "5,001-10,000",
+    "10,001-15,000",
+    "15,001-20,000",
+    "20,001-30,000",
+    "30,001-40,000",
+    "40,001-50,000",
+    "50,001-100,000",
+    "100,001-200,000",
+    "200,001-400,000",
+    "400,001-600,000",
+    "600,001-800,000",
+    "800,001-1,000,000",
+    "1,000,001以上",
+)
+
+# Threshold (張, 1張 = 1,000 shares) -> the tier labels whose shares sum to "holds at least this
+# many張". Each threshold is every tier whose lower bound is >= that many shares — e.g. "400張"
+# includes tier 12 (400,001-600,000) through the open-ended top tier, matching how the TDCC/
+# goodinfo convention for "X張以上持股比例" is computed (a cumulative lower-bound sum, not one
+# isolated bucket).
+_HOLDER_THRESHOLDS: dict[int, tuple[str, ...]] = {
+    200: _HOLDER_TIER_LABELS[10:],  # 200,001-400,000 and every tier above
+    400: _HOLDER_TIER_LABELS[11:],  # 400,001-600,000 and every tier above
+    800: _HOLDER_TIER_LABELS[13:],  # 800,001-1,000,000 and every tier above
+    1000: _HOLDER_TIER_LABELS[14:],  # 1,000,001以上 only
+}
+
+_HOLDER_ACCUMULATION_TOP_N = 20
+
+
+class HolderThreshold(IntEnum):
+    TIER_200 = 200
+    TIER_400 = 400
+    TIER_800 = 800
+    TIER_1000 = 1000
+
+
+class HolderWindow(IntEnum):
+    WEEK_1 = 1
+    WEEK_2 = 2
+    WEEK_3 = 3
+    WEEK_4 = 4
+
+
+class GetHolderAccumulationInput(BaseModel):
+    """A market + which holding-size threshold to rank by + how many weekly snapshots back to
+    compare against. `window` counts *snapshots*, not calendar weeks — this dataset publishes
+    at most once per real trading week, so `window=2` means "2 snapshots ago", which is
+    ordinarily ~2 calendar weeks but can stretch further across a holiday-shortened week with
+    no snapshot at all (an honest gap, not silently treated as "no such week")."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    threshold: HolderThreshold = Field(
+        default=HolderThreshold.TIER_400,
+        description="Holding-size threshold in 張 (1,000 shares): 200/400/800/1000, cumulative "
+        "(e.g. 400 sums every tier holding >= 400,001 shares).",
+    )
+    window: HolderWindow = Field(
+        default=HolderWindow.WEEK_2,
+        description="How many weekly snapshots back to compare against: 1/2/3/4.",
+    )
+    as_of: date_ | None = Field(
+        default=None,
+        description="The snapshot date to rank as of (ISO date). Omitted or null means the "
+        "latest ingested snapshot.",
+    )
+    top_n: int = Field(default=_HOLDER_ACCUMULATION_TOP_N, ge=1, le=50)
+
+
+class HolderAccumulationRow(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    stock_name: str
+    latest_close: float | None = None  # None if no PRICE_EOD_JOB bar exists for `as_of`
+    percent_of_custody_before: float  # this threshold's summed 占集保庫存數比例% at `period_ago`
+    percent_of_custody_after: float  # this threshold's summed 占集保庫存數比例% at `as_of`
+    percent_of_custody_change: float  # after - before, in percentage points
+    shares_change: int  # this threshold's summed shares, after - before
+
+
+class GetHolderAccumulationOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    threshold: HolderThreshold = HolderThreshold.TIER_400
+    window: HolderWindow = HolderWindow.WEEK_2
+    as_of: date_ | None = None
+    period_ago: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    rows: tuple[HolderAccumulationRow, ...] = Field(default_factory=tuple)
+
+
+class GetHolderAccumulationTool(BaseTool):
+    """`get_holder_accumulation` — 大戶加碼股: which symbols grew a chosen large-holder tier's
+    share-of-custody the most over 1-4 weekly snapshots, computed from the already-ingested
+    `SHAREHOLDING_DISTRIBUTION_JOB` partitions (`ingest/jobs.py`) — never a per-symbol live
+    fan-out across the whole ~2,700-symbol universe (see that job's own docstring for why a
+    ranking read specifically needed a whole-market ingest path rather than reusing the
+    Sponsor-tier per-symbol `get_shareholder_dispersion`/TDCC `get_tdcc_shareholding_distribution`
+    tools' existing per-symbol shape).
+
+    Tier scheme confirmed live against both TDCC's own web query tool and FinMind's
+    `TaiwanStockHoldingSharesPer` (`_HOLDER_TIER_LABELS`'s own docstring) — never guessed.
+
+    History caveat: `SHAREHOLDING_DISTRIBUTION_JOB` only started ingesting from whenever its
+    daemon entry first ran; `window` snapshots further back than that simply are not available
+    yet, disclosed via `unavailable_reason` rather than silently returning zero-width deltas.
+
+    Sponsor tier: `Capability.SHAREHOLDING_DISTRIBUTION`'s underlying FinMind dataset
+    (`TaiwanStockHoldingSharesPer`) is documented Backer/Sponsor-only (`sources/finmind/
+    chip_institutional.py`'s own `_DatasetConfig.data_class`) — reading it back from the
+    already-ingested derived store does not lift that gate, the same reasoning
+    `GetIndexContributionTool` gives for its own Sponsor-tier ingested dataset."""
+
+    name = "get_holder_accumulation"
+    description = (
+        "Get the whole-market ranking of which stocks grew a chosen large-holder tier "
+        "(>=200/400/800/1,000張) share-of-custody the most over 1-4 weekly snapshots "
+        "(Sponsor-tier; 集保戶股權分散表 week-over-week accumulation)."
+    )
+    input_model: type[BaseModel] = GetHolderAccumulationInput
+    output_model: type[BaseModel] = GetHolderAccumulationOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "holder_accumulation"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    def _tier_totals_by_symbol(
+        self, market: str, snapshot_date: date_, threshold: HolderThreshold
+    ) -> dict[str, tuple[float, int]] | None:
+        """This threshold's summed `(percent_of_custody, shares)` per symbol at `snapshot_date`,
+        or `None` if that snapshot has never been ingested."""
+        if not self._store.has_partition(
+            SHAREHOLDING_DISTRIBUTION_JOB.dataset, market, snapshot_date
+        ):
+            return None
+        raw_rows = self._store.read_partition(
+            SHAREHOLDING_DISTRIBUTION_JOB.dataset, market, snapshot_date
+        )
+        wanted_labels = set(_HOLDER_THRESHOLDS[threshold.value])
+        totals: dict[str, tuple[float, int]] = {}
+        for row in raw_rows:
+            symbol = row.get("symbol")
+            level = row.get("holding_shares_level")
+            if not isinstance(symbol, str) or level not in wanted_labels:
+                continue
+            percent = row.get("percent")
+            unit = row.get("unit")
+            if not isinstance(percent, (int, float)) or not isinstance(unit, (int, float)):
+                continue
+            prior_percent, prior_shares = totals.get(symbol, (0.0, 0))
+            totals[symbol] = (prior_percent + float(percent), prior_shares + int(unit))
+        return totals
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetHolderAccumulationInput, args)
+        market = typed.market.value
+
+        snapshot_dates = self._store.list_partition_dates(
+            SHAREHOLDING_DISTRIBUTION_JOB.dataset, market
+        )
+        if not snapshot_dates:
+            return GetHolderAccumulationOutput(
+                market=market,
+                threshold=typed.threshold,
+                window=typed.window,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "shareholding_distribution", market, typed.as_of
+                ),
+            )
+        as_of = typed.as_of or snapshot_dates[-1]
+        eligible = [d for d in snapshot_dates if d <= as_of]
+        if not eligible or eligible[-1] != as_of:
+            # `as_of` was explicitly requested but has no ingested snapshot — never silently
+            # substitute a different date the caller did not ask for.
+            return GetHolderAccumulationOutput(
+                market=market,
+                threshold=typed.threshold,
+                window=typed.window,
+                as_of=typed.as_of,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "shareholding_distribution", market, typed.as_of
+                ),
+            )
+        idx = eligible.index(as_of)
+        if idx < typed.window.value:
+            return GetHolderAccumulationOutput(
+                market=market,
+                threshold=typed.threshold,
+                window=typed.window,
+                as_of=as_of,
+                data_available=False,
+                unavailable_reason=(
+                    f"Only {idx} weekly shareholding-distribution snapshot(s) ingested before "
+                    f"{as_of.isoformat()} — need at least {typed.window.value} for a "
+                    f"{typed.window.value}-week comparison. This history grows by one real "
+                    "snapshot per week; no bulk backfill exists for this dataset."
+                ),
+            )
+        period_ago = eligible[idx - typed.window.value]
+
+        after = self._tier_totals_by_symbol(market, as_of, typed.threshold)
+        before = self._tier_totals_by_symbol(market, period_ago, typed.threshold)
+        if after is None or before is None:
+            return GetHolderAccumulationOutput(
+                market=market,
+                threshold=typed.threshold,
+                window=typed.window,
+                as_of=as_of,
+                period_ago=period_ago,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "shareholding_distribution", market, as_of
+                ),
+            )
+
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        names_by_symbol: dict[str, str] = {}
+        if roster_date is not None:
+            raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+            roster_rows = _rows_from_store(StockInfoRow, raw_roster)
+            names_by_symbol = {row.symbol: row.name for row in roster_rows}
+        closes = _closes_by_symbol(self._store, market, as_of)
+
+        rows: list[HolderAccumulationRow] = []
+        for symbol, (percent_after, shares_after) in after.items():
+            percent_before, shares_before = before.get(symbol, (0.0, 0))
+            name = names_by_symbol.get(symbol)
+            if not name:
+                continue
+            rows.append(
+                HolderAccumulationRow(
+                    symbol=symbol,
+                    stock_name=name,
+                    latest_close=closes.get(symbol),
+                    percent_of_custody_before=percent_before,
+                    percent_of_custody_after=percent_after,
+                    percent_of_custody_change=percent_after - percent_before,
+                    shares_change=shares_after - shares_before,
+                )
+            )
+        ranked = sorted(rows, key=lambda r: r.percent_of_custody_change, reverse=True)
+        return GetHolderAccumulationOutput(
+            market=market,
+            threshold=typed.threshold,
+            window=typed.window,
+            as_of=as_of,
+            period_ago=period_ago,
+            data_available=True,
+            rows=tuple(ranked[: typed.top_n]),
+        )
+
+
+class GetIndexContributionInput(BaseModel):
+    """A market + an optional trading day + a top-N cap on each side of the ranking — mirrors
+    `GetAdvanceDeclineInput`'s date semantics and `GetEtfMoneyFlowInput.top_n`'s ranking cap."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    trade_date: date_ | None = Field(
+        default=None,
+        description="Trading day to estimate contribution for (ISO date). Omitted or null "
+        "means the latest available trading day.",
+    )
+    top_n: int = Field(default=_INDEX_CONTRIBUTION_TOP_N, ge=1, le=100)
+
+
+class IndexContributionRow(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    stock_name: str
+    weight_per: float  # 市值比重 (%) on trade_date, from MarketValueWeightRow
+    pct_change: float  # (close - prior_close) / prior_close, a fraction not a percent
+    contribution_estimate: float  # weight_per * pct_change — see contribution_caveat
+
+
+class GetIndexContributionOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    trade_date: date_ | None = None
+    prior_trade_date: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    contribution_caveat: str = Field(default=_CONTRIBUTION_CAVEAT, min_length=1)
+    positive_contributors: tuple[IndexContributionRow, ...] = Field(default_factory=tuple)
+    negative_contributors: tuple[IndexContributionRow, ...] = Field(default_factory=tuple)
+
+
+class GetIndexContributionTool(BaseTool):
+    """`get_index_contribution` — an APPROXIMATE per-symbol index-contribution estimate,
+    `weight_per x pct_change` (close-to-close), joining the already-ingested
+    `MARKET_VALUE_WEIGHT_JOB` weight partition against `PRICE_EOD_JOB` closes for the same
+    two-day window `GetAdvanceDeclineTool` resolves (`_two_day_window`) — never a per-symbol
+    live fan-out, for the same whole-market-aggregate reasoning as that tool.
+
+    This is **not** TWSE's real index-contribution methodology, which uses a float-adjusted
+    divisor this codebase has no data for (`MarketValueWeightRow`'s own `weight_per` is a raw
+    market-cap-weight ranking, not a float-adjusted one) — `contribution_caveat` is therefore
+    always populated (never empty, `Field(min_length=1)`) with that disclosure rather than
+    only living in this docstring, mirroring how `currentness_caveat` is enforced elsewhere.
+
+    Sponsor tier: `Capability.MARKET_VALUE_WEIGHT`'s underlying FinMind dataset
+    (`TaiwanStockMarketValueWeight`) is documented Backer/Sponsor-only with no free per-symbol
+    tier (`sources/finmind/fundamental.py`'s own `_DatasetConfig.data_class` for that
+    capability). Reading it back from the already-ingested derived store does not lift that
+    gate — the same reasoning `GetActiveEtfReportTool`/`GetEtfMoneyFlowTool` apply to their own
+    Sponsor-tier ingested datasets (`ACTIVE_ETF_HOLDING`/`ACTIVE_ETF_HOLDING_CHANGE`): the
+    entitlement tier tracks the underlying capability/dataset, not which code path reads it."""
+
+    name = "get_index_contribution"
+    description = (
+        "Get an APPROXIMATE per-symbol estimate of contribution to a market-cap-weighted "
+        "index's move for one trading day (market-cap weight x price change) — not TWSE's "
+        "official float-adjusted contribution figure; see `contribution_caveat` (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = GetIndexContributionInput
+    output_model: type[BaseModel] = GetIndexContributionOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "index_contribution"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetIndexContributionInput, args)
+        market = typed.market.value
+        calendar = _real_calendar(self._store, market)
+        window = _two_day_window(
+            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+        )
+        if window is None:
+            return GetIndexContributionOutput(
+                market=market,
+                trade_date=typed.trade_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "price_eod", market, typed.trade_date
+                ),
+            )
+        trade_date, prior_date = window
+        if not self._store.has_partition(MARKET_VALUE_WEIGHT_JOB.dataset, market, trade_date):
+            return GetIndexContributionOutput(
+                market=market,
+                trade_date=trade_date,
+                prior_trade_date=prior_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "market_value_weight", market, trade_date
+                ),
+            )
+
+        raw_weights = self._store.read_partition(
+            MARKET_VALUE_WEIGHT_JOB.dataset, market, trade_date
+        )
+        weight_rows = _rows_from_store(MarketValueWeightRow, raw_weights)
+        today_closes = _closes_by_symbol(self._store, market, trade_date)
+        prior_closes = _closes_by_symbol(self._store, market, prior_date)
+
+        rows: list[IndexContributionRow] = []
+        for weight_row in weight_rows:
+            close = today_closes.get(weight_row.symbol)
+            prior_close = prior_closes.get(weight_row.symbol)
+            if close is None or not prior_close:  # missing/zero prior close — never divide by it
+                continue
+            pct_change = (close - prior_close) / prior_close
+            rows.append(
+                IndexContributionRow(
+                    symbol=weight_row.symbol,
+                    stock_name=weight_row.stock_name,
+                    weight_per=weight_row.weight_per,
+                    pct_change=pct_change,
+                    contribution_estimate=weight_row.weight_per * pct_change,
+                )
+            )
+
+        ranked = sorted(rows, key=lambda r: abs(r.contribution_estimate), reverse=True)
+        positive = tuple(r for r in ranked if r.contribution_estimate > 0)[: typed.top_n]
+        negative = tuple(r for r in ranked if r.contribution_estimate < 0)[: typed.top_n]
+
+        return GetIndexContributionOutput(
+            market=market,
+            trade_date=trade_date,
+            prior_trade_date=prior_date,
+            data_available=True,
+            positive_contributors=positive,
+            negative_contributors=negative,
+        )
+
+
+def _turnovers_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, float]:
+    """Every real equity/ETF symbol's trading-value (`turnover`, NT$) on `trade_date` from the
+    same `PRICE_EOD_JOB` partition `_closes_by_symbol` reads (same warrant-exclusion reasoning —
+    see that function's docstring) — `get_sector_heatmap`'s optional trading-value weighting
+    input. `EODBar.turnover` is `None` on some rows (TWSE OpenAPI's own single-latest-snapshot
+    shape never carries it, only FinMind's whole-market pull does) — a row with no turnover is
+    simply absent from this map, never coerced to a fabricated `0.0` that would silently
+    zero-weight it in the weighted average."""
+    raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+    turnovers: dict[str, float] = {}
+    for row in raw_bars:
+        symbol = row.get("symbol")
+        turnover = row.get("turnover")
+        if (
+            isinstance(symbol, str)
+            and is_scoreable_symbol(symbol)
+            and isinstance(turnover, (int, float))
+        ):
+            turnovers[symbol] = float(turnover)
+    return turnovers
+
+
+class SectorHeatmapRow(BaseModel):
+    """One industry's aggregate tile — colored by `avg_pct_change`, sized by `stock_count` (or
+    `total_turnover`, when trading-value weighting was available for this industry)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    industry: str
+    avg_pct_change: float  # a whole-number percent (already `x100`), matching AdvanceDeclineBuckets
+    stock_count: int
+    advancing_count: int
+    declining_count: int
+    total_turnover: float | None = None  # sum of this industry's trading value on trade_date, when
+    # every one of its members' `turnover` was available; `None` (never partially-summed) if any
+    # member's `turnover` was missing, so a caller never mistakes a partial sum for the industry's
+    # real total.
+    weighted_by_turnover: bool  # whether avg_pct_change was trading-value-weighted (True) or a
+    # simple per-stock average (False) — see class docstring for when each applies.
+
+
+class GetSectorHeatmapInput(BaseModel):
+    """A market + an optional trading day; omitted/`None` means "latest available" — same
+    semantics as `GetAdvanceDeclineInput`/`GetIndexContributionInput`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    trade_date: date_ | None = Field(
+        default=None,
+        description="Trading day to report the sector heatmap for (ISO date). Omitted or null "
+        "means the latest available trading day.",
+    )
+
+
+class GetSectorHeatmapOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    trade_date: date_ | None = None
+    prior_trade_date: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    industries: tuple[SectorHeatmapRow, ...] = Field(default_factory=tuple)
+
+
+def _sector_heatmap_rows(
+    *,
+    industry_by_symbol: dict[str, str],
+    today_closes: dict[str, float],
+    prior_closes: dict[str, float],
+    turnovers: dict[str, float],
+) -> list[SectorHeatmapRow]:
+    """Join the roster's `industry_category` against each symbol's close-to-close pct change,
+    group by industry, and aggregate — trading-value-weighted when every member of that industry
+    has a `turnover` figure for `trade_date`, else a simple per-stock average (never a partial
+    weighted average silently mixing weighted and unweighted members)."""
+    by_industry: dict[str, list[tuple[str, float]]] = {}
+    for symbol, industry in industry_by_symbol.items():
+        close = today_closes.get(symbol)
+        prior_close = prior_closes.get(symbol)
+        if close is None or not prior_close:
+            # missing/legitimately-zero prior close — skip this symbol, never divide by it.
+            continue
+        pct = (close - prior_close) / prior_close * 100
+        by_industry.setdefault(industry, []).append((symbol, pct))
+
+    rows: list[SectorHeatmapRow] = []
+    for industry, members in by_industry.items():
+        pct_changes = [pct for _, pct in members]
+        advancing = sum(1 for pct in pct_changes if pct > 0)
+        declining = sum(1 for pct in pct_changes if pct < 0)
+        member_turnovers = [turnovers.get(symbol) for symbol, _ in members]
+        weighted = (
+            all(t is not None for t in member_turnovers)
+            and sum(cast("list[float]", member_turnovers)) > 0
+        )
+        if weighted:
+            typed_turnovers = cast("list[float]", member_turnovers)
+            total_turnover = sum(typed_turnovers)
+            avg_pct_change = (
+                sum(pct * t for (_, pct), t in zip(members, typed_turnovers, strict=True))
+                / total_turnover
+            )
+        else:
+            total_turnover = None
+            avg_pct_change = sum(pct_changes) / len(pct_changes)
+        rows.append(
+            SectorHeatmapRow(
+                industry=industry,
+                avg_pct_change=avg_pct_change,
+                stock_count=len(members),
+                advancing_count=advancing,
+                declining_count=declining,
+                total_turnover=total_turnover,
+                weighted_by_turnover=weighted,
+            )
+        )
+    return rows
+
+
+class GetSectorHeatmapTool(BaseTool):
+    """`get_sector_heatmap` — 產業別漲跌熱力圖: joins the already-ingested `STOCK_INFO_JOB` roster
+    (each symbol's `industry_category`) against the same two-day `PRICE_EOD_JOB` close window
+    `GetAdvanceDeclineTool`/`GetIndexContributionTool` resolve (`_two_day_window`), grouping each
+    symbol's close-to-close percentage change by industry — never a per-symbol live fan-out, for
+    the same whole-market-aggregate reasoning those two tools document. `avg_pct_change` is
+    trading-value-weighted (via `PRICE_EOD_JOB`'s own `turnover` field) when every member of an
+    industry has one for `trade_date`, else a simple per-stock average — see `SectorHeatmapRow`'s
+    `weighted_by_turnover` flag, never silently mixed.
+
+    Public tier: both `Capability.STOCK_INFO` and `Capability.PRICE_EOD` are `DataClass.PUBLIC`
+    in their own `_DatasetConfig` (`sources/finmind/technical.py`) — the same tier reasoning
+    `GetAdvanceDeclineTool`'s own docstring gives for reading a PUBLIC-tier ingested dataset back
+    from the derived store."""
+
+    name = "get_sector_heatmap"
+    description = (
+        "Get the whole-market industry/sector heatmap for one trading day (defaults to the "
+        "latest available day): each industry's average close-to-close percentage change "
+        "(trading-value-weighted when available) and constituent stock count."
+    )
+    input_model: type[BaseModel] = GetSectorHeatmapInput
+    output_model: type[BaseModel] = GetSectorHeatmapOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "sector_heatmap"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetSectorHeatmapInput, args)
+        market = typed.market.value
+        calendar = _real_calendar(self._store, market)
+        window = _two_day_window(
+            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+        )
+        if window is None:
+            return GetSectorHeatmapOutput(
+                market=market,
+                trade_date=typed.trade_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "price_eod", market, typed.trade_date
+                ),
+            )
+        trade_date, prior_date = window
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        if roster_date is None:
+            return GetSectorHeatmapOutput(
+                market=market,
+                trade_date=trade_date,
+                prior_trade_date=prior_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
+            )
+
+        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        roster = _rows_from_store(StockInfoRow, raw_roster)
+        industry_by_symbol = {
+            row.symbol: row.industry_category for row in roster if row.industry_category
+        }
+        today_closes = _closes_by_symbol(self._store, market, trade_date)
+        prior_closes = _closes_by_symbol(self._store, market, prior_date)
+        turnovers = _turnovers_by_symbol(self._store, market, trade_date)
+
+        rows = _sector_heatmap_rows(
+            industry_by_symbol=industry_by_symbol,
+            today_closes=today_closes,
+            prior_closes=prior_closes,
+            turnovers=turnovers,
+        )
+        # Every industry present, ranked by move (not top-N truncated) — a heatmap tile list is
+        # meant to show the whole market's industry breadth, unlike `get_index_contribution`'s
+        # deliberately-capped ranking of individual symbols.
+        ranked = tuple(sorted(rows, key=lambda r: r.avg_pct_change, reverse=True))
+
+        return GetSectorHeatmapOutput(
+            market=market,
+            trade_date=trade_date,
+            prior_trade_date=prior_date,
+            data_available=True,
+            industries=ranked,
         )
 
 
@@ -1014,7 +2104,7 @@ class GetCompanyProfileTool(BaseTool):
         `compute_fundamental_metrics` uses; `month_revenue_rows` backs `revenue_yoy` via
         `compute_revenue_yoy`. Both degrade to `None` independently when their own store read has
         no rows for this symbol yet (not-yet-ingested/no-filing), never a fabricated number."""
-        calendar = TradingDayCalendar()
+        calendar = _real_calendar(self._store, market.value)
         today = date_.today()
         financials_window = calendar.business_days_between(
             calendar.shift_business_days(today, -(_FINANCIALS_STORE_LOOKBACK_DAYS - 1)), today
@@ -1125,6 +2215,148 @@ class GetCompanyProfileTool(BaseTool):
         )
 
 
+_MAX_BATCH_SYMBOLS = 20  # mirrors agent.guardrails._MAX_SYMBOLS_PER_CALL — one bounded call, never
+# a full-market scan; also matches the AI-leaderboard's own max row count (10 default/20 expanded)
+_MAX_PRICE_HISTORY_DAYS = 60  # bounded lookback window for a sparkline — never an open-ended range
+
+
+class GetSymbolInfoInput(BaseModel):
+    """A bounded symbol list (≤20) + market — never an "all symbols" shape; the same bound
+    `agent.guardrails.check_tool_call` enforces on every list-valued tool argument."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbols: tuple[str, ...] = Field(min_length=1, max_length=_MAX_BATCH_SYMBOLS)
+    market: Market = Market.TW
+
+
+class GetSymbolInfoOutput(BaseModel):
+    """One row per symbol that exists in the latest ingested roster — a symbol not found there
+    (delisted, mistyped, or not yet in an ETF/warrant roster this dataset covers) is simply
+    absent from `rows`, never a fabricated placeholder name."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    roster_date: date_ | None = None
+    data_available: bool = True
+    unavailable_reason: str | None = None
+    rows: tuple[StockInfoRow, ...] = Field(default_factory=tuple)
+
+
+class GetSymbolInfoTool(BaseTool):
+    """`get_symbol_info` — batched symbol->name (+ industry/security-type) lookup against the
+    whole-market `STOCK_INFO_JOB` roster the ingest layer already writes daily. This is the one
+    real gap the AI leaderboard (and any other bare-symbol list) has today: `ScoreResult`/
+    `ActiveEtfInfoRow`/etc. all carry a `symbol` but no name, and until now nothing surfaced
+    `StockInfoRow.name` outside `get_sector_heatmap`'s internal join. Reads the ingest-owned
+    Parquet store directly (no router fetch) — the exact same roster-read pattern
+    `GetSectorHeatmapTool` already uses, just exposed as its own tool instead of staying
+    internal to one caller."""
+
+    name = "get_symbol_info"
+    description = (
+        "Get the company/fund name, industry category, and security type for up to 20 "
+        "stock/ETF symbols in one bounded call, from the whole-market reference roster."
+    )
+    input_model: type[BaseModel] = GetSymbolInfoInput
+    output_model: type[BaseModel] = GetSymbolInfoOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "symbol_info"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — reads the ingest-owned Parquet store directly
+        typed = parse_args(GetSymbolInfoInput, args)
+        market = typed.market.value
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        if roster_date is None:
+            return GetSymbolInfoOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, None),
+            )
+        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        roster = _rows_from_store(StockInfoRow, raw_roster)
+        wanted = set(typed.symbols)
+        rows = tuple(row for row in roster if row.symbol in wanted)
+        return GetSymbolInfoOutput(market=market, roster_date=roster_date, rows=rows)
+
+
+class GetPriceHistoryInput(BaseModel):
+    """A bounded symbol list (≤20) + market + a bounded trailing-day count — the sparkline/chg%
+    read. `days` counts trading days, not calendar days, and is capped well short of a "give me
+    everything" range."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbols: tuple[str, ...] = Field(min_length=1, max_length=_MAX_BATCH_SYMBOLS)
+    market: Market = Market.TW
+    days: int = Field(default=20, ge=2, le=_MAX_PRICE_HISTORY_DAYS)
+
+
+class GetPriceHistoryOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    start_date: date_ | None = None
+    end_date: date_ | None = None
+    data_available: bool = True
+    unavailable_reason: str | None = None
+    # One EODBar per (symbol, trading day) actually ingested — a caller derives its own sparkline
+    # (the close series) and %-change (latest vs. first/previous close) from this; this tool
+    # never computes or asserts a percentage itself, so there is exactly one place that math
+    # lives, not one copy per caller.
+    rows: tuple[EODBar, ...] = Field(default_factory=tuple)
+
+
+class GetPriceHistoryTool(BaseTool):
+    """`get_price_history` — a bounded multi-day OHLCV window for up to 20 symbols, read from the
+    already-ingested `PRICE_EOD_JOB` partitions (never a per-symbol live fetch). Backs a
+    sparkline and a client-computed chg% for any symbol list (leaderboard rows, a watchlist, an
+    ETF roster) — `get_price_quote` deliberately stays latest-bar-only (see its own docstring);
+    this is the separate bounded-history capability those callers need instead of widening that
+    narrow tool's contract."""
+
+    name = "get_price_history"
+    description = (
+        "Get a bounded trailing window (2-60 trading days) of daily OHLCV bars for up to 20 "
+        "stock/ETF symbols in one call — the data behind a sparkline or a %-change figure."
+    )
+    input_model: type[BaseModel] = GetPriceHistoryInput
+    output_model: type[BaseModel] = GetPriceHistoryOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "price_history"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — reads the ingest-owned Parquet store directly
+        typed = parse_args(GetPriceHistoryInput, args)
+        market = typed.market.value
+        latest = _latest_dataset_date(self._store, PRICE_EOD_JOB.dataset, market)
+        if latest is None:
+            return GetPriceHistoryOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("price_eod", market, None),
+            )
+        calendar = _real_calendar(self._store, market)
+        start = calendar.shift_business_days(latest, -(typed.days - 1))
+        dates = calendar.business_days_between(start, latest)
+        raw_rows = self._store.read_range(PRICE_EOD_JOB.dataset, market, dates)
+        wanted = set(typed.symbols)
+        rows = tuple(
+            row
+            for row in _rows_from_store(EODBar, raw_rows)
+            if row.symbol in wanted and row.market.value == market
+        )
+        return GetPriceHistoryOutput(market=market, start_date=start, end_date=latest, rows=rows)
+
+
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
     """This module's `(tool, immediate)` registration table.
 
@@ -1135,7 +2367,9 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     `get_etf_money_flow` (and, for its `revenue_yoy`/`margins` fields only, `get_company_profile`)
     read the ingest-owned Parquet store directly (see their class docstrings for why) rather than
     the router, so this function builds its own `ParquetStore` from `config.settings` here rather
-    than the router this function otherwise only threads through.
+    than the router this function otherwise only threads through. `get_advance_decline`,
+    `get_index_contribution`, and `get_sector_heatmap` are the same store-reading family — see
+    their own class docstrings.
     """
     store = ParquetStore(root=get_settings().parquet_root)
     tools: list[tuple[Tool, bool]] = [
@@ -1146,16 +2380,27 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetChipFlowsTool(router), False),
         (GetActiveEtfReportTool(router, store), False),
         (GetEtfMoneyFlowTool(store), False),
+        (GetAdvanceDeclineTool(store), False),
+        (GetPriceMomentumTool(store), False),
+        (GetHolderAccumulationTool(store), False),
+        (GetIndexContributionTool(store), False),
+        (GetSectorHeatmapTool(store), False),
+        (GetSymbolInfoTool(store), False),
+        (GetPriceHistoryTool(store), False),
     ]
     return tools
 
 
 __all__ = [
     "ActiveEtfReportRow",
+    "AdvanceDeclineBuckets",
     "EtfMoneyFlowRow",
     "GetActiveEtfReportInput",
     "GetActiveEtfReportOutput",
     "GetActiveEtfReportTool",
+    "GetAdvanceDeclineInput",
+    "GetAdvanceDeclineOutput",
+    "GetAdvanceDeclineTool",
     "GetChipFlowsOutput",
     "GetChipFlowsTool",
     "GetCompanyProfileOutput",
@@ -1165,10 +2410,35 @@ __all__ = [
     "GetEtfMoneyFlowInput",
     "GetEtfMoneyFlowOutput",
     "GetEtfMoneyFlowTool",
+    "GetHolderAccumulationInput",
+    "GetHolderAccumulationOutput",
+    "GetHolderAccumulationTool",
+    "GetIndexContributionInput",
+    "GetIndexContributionOutput",
+    "GetIndexContributionTool",
     "GetInstitutionalFlowOutput",
     "GetInstitutionalFlowTool",
+    "GetPriceHistoryInput",
+    "GetPriceHistoryOutput",
+    "GetPriceHistoryTool",
+    "GetPriceMomentumInput",
+    "GetPriceMomentumOutput",
+    "GetPriceMomentumTool",
     "GetPriceQuoteOutput",
     "GetPriceQuoteTool",
+    "GetSectorHeatmapInput",
+    "GetSectorHeatmapOutput",
+    "GetSectorHeatmapTool",
+    "GetSymbolInfoInput",
+    "GetSymbolInfoOutput",
+    "GetSymbolInfoTool",
+    "HolderAccumulationRow",
+    "HolderThreshold",
+    "HolderWindow",
     "HoldingStatus",
+    "IndexContributionRow",
+    "MomentumPeriod",
+    "PriceMomentumRow",
+    "SectorHeatmapRow",
     "build_registration_table",
 ]

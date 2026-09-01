@@ -32,9 +32,16 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_chip_flows": "chip_flows",
     "get_active_etf_report": "active_etf_report",
     "get_etf_money_flow": "etf_money_flow",
+    "get_advance_decline": "advance_decline",
+    "get_index_contribution": "index_contribution",
+    "get_sector_heatmap": "sector_heatmap",
     "get_company_profile": "company_profile",
     "get_dividend_schedule": "dividend_schedule",
     "get_institutional_flow": "institutional_flow",
+    "get_price_momentum": "price_momentum",
+    "get_holder_accumulation": "holder_accumulation",
+    "get_symbol_info": "symbol_info",
+    "get_price_history": "price_history",
     # chip_tools.py
     "get_margin_short": "margin_short",
     "get_margin_short_total_market": "margin_short_total_market",
@@ -95,6 +102,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_business_indicator": "business_indicator",
     # etf_pcf_tools.py
     "get_etf_fund_info": "etf_fund_info",
+    "get_etf_expense_ratio": "etf_expense_ratio",
     # etf_overlap_tools.py
     "get_etf_overlap": "etf_overlap",
     "get_fund_comparison": "fund_comparison",

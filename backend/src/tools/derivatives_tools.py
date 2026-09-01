@@ -5,10 +5,11 @@
 `MarketOnlyInput`; everything scoped to one contract is `DateRangeInput`.
 
 Tick-level datasets (`futures_tick`/`futures_spread_tick`/`option_tick`) and the two after-
-hours institutional-flow variants are deliberately left unwrapped this pass — niche,
-high-volume, low-marginal-value over the already-wrapped day-session flow and EOD price tools;
-documented here rather than silently dropped.
-"""
+hours institutional-flow variants now have their own tools below (`get_futures_tick`/
+`get_futures_spread_tick`/`get_option_tick`/`get_futures_institutional_flow_after_hours`/
+`get_option_institutional_flow_after_hours`) — each mirrors `technical_tools.GetPriceTickTool`'s
+own single-trading-day-per-request shape (plain `DateRangeInput`, the "one day only" constraint
+is an upstream caveat, not something this layer enforces)."""
 
 from __future__ import annotations
 
@@ -22,13 +23,18 @@ from schemas.capabilities import (
     FutOptInfoRow,
     FuturesDailyRow,
     FuturesDealerVolumeRow,
+    FuturesInstitutionalFlowAfterHoursRow,
     FuturesInstitutionalFlowRow,
     FuturesOiLargeTradersRow,
+    FuturesSpreadTickRow,
     FuturesSpreadTradingRow,
+    FuturesTickRow,
     OptionDailyRow,
     OptionDealerVolumeRow,
+    OptionInstitutionalFlowAfterHoursRow,
     OptionInstitutionalFlowRow,
     OptionOiLargeTradersRow,
+    OptionTickRow,
     OptionVixRow,
 )
 from schemas.enums import Capability, DataClass
@@ -485,6 +491,181 @@ class GetAssetSwapDailyTool(BaseTool):
         )
 
 
+class GetFuturesTickOutput(_RowsOutput):
+    ticks: tuple[FuturesTickRow, ...] = Field(default_factory=tuple)
+
+
+class GetFuturesTickTool(BaseTool):
+    """`get_futures_tick` — wraps `Capability.FUTURES_TICK` (futures per-trade tick; single
+    trading day per request upstream, Sponsor-tier). Tick volume is double-sided — see
+    `FuturesTickRow`'s own docstring."""
+
+    name = "get_futures_tick"
+    description = (
+        "Get tick-level per-trade history for one futures contract, one trading day at a "
+        "time (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetFuturesTickOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.FUTURES_TICK,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=FuturesTickRow,
+            key="ticks",
+            params=typed.date_params(),
+        )
+        return GetFuturesTickOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            ticks=rows,
+        )
+
+
+class GetFuturesSpreadTickOutput(_RowsOutput):
+    ticks: tuple[FuturesSpreadTickRow, ...] = Field(default_factory=tuple)
+
+
+class GetFuturesSpreadTickTool(BaseTool):
+    """`get_futures_spread_tick` — wraps `Capability.FUTURES_SPREAD_TICK` (futures
+    calendar-spread per-trade tick; single trading day per request upstream, Sponsor-tier)."""
+
+    name = "get_futures_spread_tick"
+    description = (
+        "Get tick-level per-trade history for one futures calendar-spread product, one "
+        "trading day at a time (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetFuturesSpreadTickOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.FUTURES_SPREAD_TICK,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=FuturesSpreadTickRow,
+            key="ticks",
+            params=typed.date_params(),
+        )
+        return GetFuturesSpreadTickOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            ticks=rows,
+        )
+
+
+class GetOptionTickOutput(_RowsOutput):
+    ticks: tuple[OptionTickRow, ...] = Field(default_factory=tuple)
+
+
+class GetOptionTickTool(BaseTool):
+    """`get_option_tick` — wraps `Capability.OPTION_TICK` (option per-trade tick; single
+    trading day per request upstream, Sponsor-tier)."""
+
+    name = "get_option_tick"
+    description = (
+        "Get tick-level per-trade history for one option contract, one trading day at a "
+        "time (Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetOptionTickOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        result, rows = await fetch_rows(
+            self._router,
+            Capability.OPTION_TICK,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=OptionTickRow,
+            key="ticks",
+            params=typed.date_params(),
+        )
+        return GetOptionTickOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            ticks=rows,
+        )
+
+
+class GetDerivativesInstitutionalAfterHoursOutput(_RowsOutput):
+    futures: tuple[FuturesInstitutionalFlowAfterHoursRow, ...] = Field(default_factory=tuple)
+    options: tuple[OptionInstitutionalFlowAfterHoursRow, ...] = Field(default_factory=tuple)
+
+
+class GetDerivativesInstitutionalAfterHoursTool(BaseTool):
+    """`get_derivatives_institutional_after_hours` — the night-session counterpart to
+    `get_derivatives_institutional`'s day-session futures/option flow halves
+    (`FUTURES_INSTITUTIONAL_FLOW_AFTER_HOURS`/`OPTION_INSTITUTIONAL_FLOW_AFTER_HOURS`, both
+    Sponsor-tier — unlike the day-session dataset, which is public). No open-interest-balance
+    breakdown exists for the night session (see each row model's own docstring), so this tool's
+    output is narrower than the day-session bundle, not a stripped-down duplicate of it."""
+
+    name = "get_derivatives_institutional_after_hours"
+    description = (
+        "Get night-session three-major-institutional-investor futures/option buy/sell flow "
+        "for one contract code (Sponsor-tier; no open-interest-balance breakdown, unlike the "
+        "day-session dataset)."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetDerivativesInstitutionalAfterHoursOutput
+    data_class = DataClass.SPONSOR
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        symbol = typed.to_symbol()
+        params = typed.date_params()
+        futures_result, futures_rows = await fetch_rows(
+            self._router,
+            Capability.FUTURES_INSTITUTIONAL_FLOW_AFTER_HOURS,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=FuturesInstitutionalFlowAfterHoursRow,
+            key="rows",
+            params=params,
+        )
+        _options_result, options_rows = await fetch_rows(
+            self._router,
+            Capability.OPTION_INSTITUTIONAL_FLOW_AFTER_HOURS,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=OptionInstitutionalFlowAfterHoursRow,
+            key="rows",
+            params=params,
+        )
+        return GetDerivativesInstitutionalAfterHoursOutput(
+            source_id=futures_result.source_id,
+            currentness_caveat=futures_result.currentness_caveat,
+            health_status=futures_result.health.status,
+            futures=futures_rows,
+            options=options_rows,
+        )
+
+
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
     return [
         (GetFutOptRosterTool(router), False),
@@ -496,6 +677,10 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetFuturesSpreadTradingTool(router), False),
         (GetFinalSettlementPriceTool(router), False),
         (GetAssetSwapDailyTool(router), False),
+        (GetFuturesTickTool(router), False),
+        (GetFuturesSpreadTickTool(router), False),
+        (GetOptionTickTool(router), False),
+        (GetDerivativesInstitutionalAfterHoursTool(router), False),
     ]
 
 
@@ -504,6 +689,8 @@ __all__ = [
     "GetAssetSwapDailyTool",
     "GetDealerVolumeOutput",
     "GetDealerVolumeTool",
+    "GetDerivativesInstitutionalAfterHoursOutput",
+    "GetDerivativesInstitutionalAfterHoursTool",
     "GetDerivativesInstitutionalOutput",
     "GetDerivativesInstitutionalTool",
     "GetFinalSettlementPriceOutput",
@@ -512,8 +699,14 @@ __all__ = [
     "GetFutOptRosterTool",
     "GetFuturesOptionsDailyOutput",
     "GetFuturesOptionsDailyTool",
+    "GetFuturesSpreadTickOutput",
+    "GetFuturesSpreadTickTool",
     "GetFuturesSpreadTradingOutput",
     "GetFuturesSpreadTradingTool",
+    "GetFuturesTickOutput",
+    "GetFuturesTickTool",
+    "GetOptionTickOutput",
+    "GetOptionTickTool",
     "GetPutCallRatioOutput",
     "GetPutCallRatioTool",
     "GetTaiexVixOutput",
