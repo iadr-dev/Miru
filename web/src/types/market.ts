@@ -732,6 +732,35 @@ export type EtfListData = z.infer<typeof etfListDataSchema>;
 export const etfListResponseSchema = etfListDataSchema;
 export type EtfListResponse = z.infer<typeof etfListResponseSchema>;
 
+// ---------------------------------------------------------------------------
+// 18. GET /market/dividend-calendar — get_dividend_calendar (public, ETF-only 股息日曆). Every
+//     field mirrors `DividendCalendarEventRow` (backend/src/tools/market_tools.py) field-for-
+//     field — a backend rename becomes a compile error here, not a silent runtime mismatch.
+// ---------------------------------------------------------------------------
+
+export const dividendCalendarEventRowSchema = z.object({
+  symbol: z.string(),
+  name: z.string(),
+  ex_dividend_date: z.string(),
+  last_buy_date: z.string(),
+  payment_date: z.string().nullable(),
+  cash_dividend: z.number(),
+});
+export type DividendCalendarEventRow = z.infer<typeof dividendCalendarEventRowSchema>;
+
+export const dividendCalendarDataSchema = z.object({
+  market: z.string(),
+  year: z.number(),
+  month: z.number(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  events: z.array(dividendCalendarEventRowSchema).default([]),
+});
+export type DividendCalendarData = z.infer<typeof dividendCalendarDataSchema>;
+// Public — never Sponsor-masked, matching `etfListResponseSchema`'s own un-unioned shape.
+export const dividendCalendarResponseSchema = dividendCalendarDataSchema;
+export type DividendCalendarResponse = z.infer<typeof dividendCalendarResponseSchema>;
+
 // Frontend-invented UI-only shape (no backend citation needed, web/CLAUDE.md §2) — the
 // sortable columns `EtfListTable` lets a caller sort by, and the current sort direction.
 export const ETF_SORT_KEYS = [
