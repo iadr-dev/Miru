@@ -118,7 +118,9 @@ export function LeaderboardCard({
           <p className="mt-2 text-[11px] text-[var(--text-muted)]">{t("priceNotBasis")}</p>
         ) : null}
         {asOf ? (
-          <p className="mt-2 text-[11px] text-[var(--text-muted)]">{t("asOf", { date: asOf })}</p>
+          <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+            {t("asOf", { date: asOf })} · {t("nextUpdate")}
+          </p>
         ) : null}
       </div>
 
