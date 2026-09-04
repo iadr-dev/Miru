@@ -421,7 +421,17 @@ export const symbolInfoRowSchema = z.object({
 });
 export type SymbolInfoRow = z.infer<typeof symbolInfoRowSchema>;
 
-export const symbolInfoResponseSchema = rowsOutputSchema(symbolInfoRowSchema);
+// `GetSymbolInfoOutput`/`GetPriceHistoryOutput` are `{market, ..., data_available,
+// unavailable_reason, rows}` — a distinct shape from `rowsOutputSchema`'s
+// `{source_id, currentness_caveat, health_status, rows}` (those two backend tools never route
+// through a `SourceResult`, they read the ingest-owned Parquet store directly).
+export const symbolInfoResponseSchema = z.object({
+  market: z.string(),
+  roster_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(symbolInfoRowSchema).default([]),
+});
 export type SymbolInfoResponse = z.infer<typeof symbolInfoResponseSchema>;
 
 export const priceHistoryBarSchema = z.object({
@@ -436,7 +446,14 @@ export const priceHistoryBarSchema = z.object({
 });
 export type PriceHistoryBar = z.infer<typeof priceHistoryBarSchema>;
 
-export const priceHistoryResponseSchema = rowsOutputSchema(priceHistoryBarSchema);
+export const priceHistoryResponseSchema = z.object({
+  market: z.string(),
+  start_date: z.string().nullable(),
+  end_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(priceHistoryBarSchema).default([]),
+});
 export type PriceHistoryResponse = z.infer<typeof priceHistoryResponseSchema>;
 
 // ---------------------------------------------------------------------------
