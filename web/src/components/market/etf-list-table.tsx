@@ -91,7 +91,7 @@ export function compareRows(
  * the same collapse-to-N convention `LeaderboardCard`/`HolderAccumulationCard` already use, so
  * this card's height stays comparable to its dashboard neighbors instead of growing to ~300 rows.
  */
-export function EtfListTable({ rows }: { rows: readonly EtfListRow[] }): ReactNode {
+export function EtfListTable({ rows }: { readonly rows: readonly EtfListRow[] }): ReactNode {
   const t = useTranslations("market.cards.etfList");
   const locale = useLocale();
   const [sortKey, setSortKey] = useState<EtfSortKey>("aum");
@@ -176,13 +176,13 @@ function EtfListBody({
   t,
   maxHeightClassName,
 }: {
-  rows: readonly EtfListRow[];
-  sortKey: EtfSortKey;
-  sortDirection: SortDirection;
-  onToggleSort: (key: EtfSortKey) => void;
-  locale: string;
-  t: ReturnType<typeof useTranslations>;
-  maxHeightClassName: string;
+  readonly rows: readonly EtfListRow[];
+  readonly sortKey: EtfSortKey;
+  readonly sortDirection: SortDirection;
+  readonly onToggleSort: (key: EtfSortKey) => void;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly maxHeightClassName: string;
 }): ReactNode {
   return (
     <div className="overflow-x-auto">
@@ -209,10 +209,10 @@ function EtfListHeaderRow({
   onToggleSort,
   t,
 }: {
-  sortKey: EtfSortKey;
-  sortDirection: SortDirection;
-  onToggleSort: (key: EtfSortKey) => void;
-  t: ReturnType<typeof useTranslations>;
+  readonly sortKey: EtfSortKey;
+  readonly sortDirection: SortDirection;
+  readonly onToggleSort: (key: EtfSortKey) => void;
+  readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const columns: Array<{ key: EtfSortKey; labelKey: string; align: "left" | "right" }> = [
     { key: "name", labelKey: "columnName", align: "left" },
@@ -269,9 +269,9 @@ function EtfListRowItem({
   locale,
   t,
 }: {
-  row: EtfListRow;
-  locale: string;
-  t: ReturnType<typeof useTranslations>;
+  readonly row: EtfListRow;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const up = (row.change_pct ?? 0) >= 0;
   const color = row.change_pct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";

@@ -125,11 +125,11 @@ export function DividendCalendarTable({
   onPrevMonth,
   onNextMonth,
 }: {
-  year: number;
-  month: number;
-  events: readonly DividendCalendarEventRow[];
-  onPrevMonth: () => void;
-  onNextMonth: () => void;
+  readonly year: number;
+  readonly month: number;
+  readonly events: readonly DividendCalendarEventRow[];
+  readonly onPrevMonth: () => void;
+  readonly onNextMonth: () => void;
 }): ReactNode {
   const t = useTranslations("market.cards.dividendCalendar");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -182,95 +182,17 @@ export function DividendCalendarTable({
       <div className="grid grid-cols-7 gap-1">
         {grid.map(({ date, inMonth }) => {
           const iso = toIsoDate(date);
-          const marks = dayMarks.get(iso);
-          const isToday = iso === todayIso;
-          const isSelected = iso === selectedDay;
-          const shownSymbols = marks?.symbols.slice(0, MAX_CHIPS_PER_DAY) ?? [];
-          const overflowCount = marks ? marks.totalCount - shownSymbols.length : 0;
           return (
-            <button
+            <CalendarDayCell
               key={iso}
-              type="button"
-              disabled={!inMonth}
-              onClick={() => setSelectedDay((prev) => (prev === iso ? null : iso))}
-              aria-pressed={isSelected}
-              aria-label={
-                marks
-                  ? t("dayAriaWithEvents", { day: date.getDate() })
-                  : t("dayAria", { day: date.getDate() })
-              }
-              className={cn(
-                "flex min-h-14 flex-col items-start gap-0.5 rounded-[var(--radius-input)] px-1 py-1.5 text-[13px] transition-colors sm:min-h-24",
-                !inMonth && "text-[var(--text-muted)] opacity-40",
-                inMonth && !isSelected && "text-[var(--text)] hover:bg-[var(--surface-2)]",
-                isSelected && "bg-[var(--accent)] font-semibold text-[color:#06231F]",
-                isToday && !isSelected && "ring-1 ring-[var(--accent)]",
-              )}
-            >
-              <span className="w-full text-center font-num tabular-nums">{date.getDate()}</span>
-
-              {/* Chip-in-cell + "+N more" overflow — desktop/wide-card only (Outlook-inspired,
-                  see the component docstring); collapses to the dot-only summary below `sm` since
-                  a real ETF symbol string doesn't fit legibly in a narrow cell. */}
-              {shownSymbols.length > 0 ? (
-                <span className="hidden w-full flex-col gap-0.5 sm:flex" aria-hidden>
-                  {shownSymbols.map((symbolMarks) => (
-                    <span
-                      key={symbolMarks.symbol}
-                      className="flex items-center gap-0.5 truncate text-[10px] leading-tight"
-                    >
-                      {symbolMarks.ex ? (
-                        <span
-                          className="size-1 shrink-0 rounded-full"
-                          style={{ backgroundColor: DOT_COLOR.ex }}
-                        />
-                      ) : null}
-                      {symbolMarks.lastBuy ? (
-                        <span
-                          className="size-1 shrink-0 rounded-full"
-                          style={{ backgroundColor: DOT_COLOR.lastBuy }}
-                        />
-                      ) : null}
-                      {symbolMarks.payment ? (
-                        <span
-                          className="size-1 shrink-0 rounded-full"
-                          style={{ backgroundColor: DOT_COLOR.payment }}
-                        />
-                      ) : null}
-                      <span className="truncate">{symbolMarks.symbol}</span>
-                    </span>
-                  ))}
-                  {overflowCount > 0 ? (
-                    <span className="text-[10px] text-[var(--text-muted)] leading-tight">
-                      {t("moreCount", { count: overflowCount })}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-
-              {marks ? (
-                <span className="flex gap-0.5 sm:hidden" aria-hidden>
-                  {marks.symbols.some((s) => s.ex) ? (
-                    <span
-                      className="size-1.5 rounded-full"
-                      style={{ backgroundColor: DOT_COLOR.ex }}
-                    />
-                  ) : null}
-                  {marks.symbols.some((s) => s.lastBuy) ? (
-                    <span
-                      className="size-1.5 rounded-full"
-                      style={{ backgroundColor: DOT_COLOR.lastBuy }}
-                    />
-                  ) : null}
-                  {marks.symbols.some((s) => s.payment) ? (
-                    <span
-                      className="size-1.5 rounded-full"
-                      style={{ backgroundColor: DOT_COLOR.payment }}
-                    />
-                  ) : null}
-                </span>
-              ) : null}
-            </button>
+              date={date}
+              inMonth={inMonth}
+              isToday={iso === todayIso}
+              isSelected={iso === selectedDay}
+              marks={dayMarks.get(iso)}
+              onSelect={() => setSelectedDay((prev) => (prev === iso ? null : iso))}
+              t={t}
+            />
           );
         })}
       </div>
@@ -304,13 +226,138 @@ export function DividendCalendarTable({
   );
 }
 
+/** Which of the 3 date-type dots to render for one `SymbolMarks` — shared by both the
+ * chip-in-cell dots (desktop) and the day-summary dots (mobile fallback) below, so the
+ * dot-color-per-flag mapping lives in exactly one place. `size` differs only because the two
+ * contexts use different dot sizes (`size-1` inline in a chip vs. `size-1.5` standalone). */
+function DotFlags({
+  ex,
+  lastBuy,
+  payment,
+  size,
+}: {
+  readonly ex: boolean;
+  readonly lastBuy: boolean;
+  readonly payment: boolean;
+  readonly size: string;
+}): ReactNode {
+  return (
+    <>
+      {ex ? (
+        <span
+          className={cn(size, "shrink-0 rounded-full")}
+          style={{ backgroundColor: DOT_COLOR.ex }}
+        />
+      ) : null}
+      {lastBuy ? (
+        <span
+          className={cn(size, "shrink-0 rounded-full")}
+          style={{ backgroundColor: DOT_COLOR.lastBuy }}
+        />
+      ) : null}
+      {payment ? (
+        <span
+          className={cn(size, "shrink-0 rounded-full")}
+          style={{ backgroundColor: DOT_COLOR.payment }}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** One calendar day cell — chip-in-cell + "+N more" overflow on wide viewports (Outlook-inspired,
+ * see `DividendCalendarTable`'s own docstring), a dot-only summary below `sm`. Pulled out of
+ * `DividendCalendarTable`'s own grid-`map` purely to keep that component's branching under the
+ * project's cognitive-complexity budget — this cell owns no state of its own, `onSelect` is the
+ * only callback. */
+function CalendarDayCell({
+  date,
+  inMonth,
+  isToday,
+  isSelected,
+  marks,
+  onSelect,
+  t,
+}: {
+  readonly date: Date;
+  readonly inMonth: boolean;
+  readonly isToday: boolean;
+  readonly isSelected: boolean;
+  readonly marks: DayMarks | undefined;
+  readonly onSelect: () => void;
+  readonly t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  const shownSymbols = marks?.symbols.slice(0, MAX_CHIPS_PER_DAY) ?? [];
+  const overflowCount = marks ? marks.totalCount - shownSymbols.length : 0;
+
+  return (
+    <button
+      type="button"
+      disabled={!inMonth}
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      aria-label={
+        marks
+          ? t("dayAriaWithEvents", { day: date.getDate() })
+          : t("dayAria", { day: date.getDate() })
+      }
+      className={cn(
+        "flex min-h-14 flex-col items-start gap-0.5 rounded-[var(--radius-input)] px-1 py-1.5 text-[13px] transition-colors sm:min-h-24",
+        !inMonth && "text-[var(--text-muted)] opacity-40",
+        inMonth && !isSelected && "text-[var(--text)] hover:bg-[var(--surface-2)]",
+        isSelected && "bg-[var(--accent)] font-semibold text-[color:#06231F]",
+        isToday && !isSelected && "ring-1 ring-[var(--accent)]",
+      )}
+    >
+      <span className="w-full text-center font-num tabular-nums">{date.getDate()}</span>
+
+      {/* Chip-in-cell + "+N more" overflow — desktop/wide-card only; collapses to the dot-only
+          summary below `sm` since a real ETF symbol string doesn't fit legibly in a narrow cell. */}
+      {shownSymbols.length > 0 ? (
+        <span className="hidden w-full flex-col gap-0.5 sm:flex" aria-hidden>
+          {shownSymbols.map((symbolMarks) => (
+            <span
+              key={symbolMarks.symbol}
+              className="flex items-center gap-0.5 truncate text-[10px] leading-tight"
+            >
+              <DotFlags
+                ex={symbolMarks.ex}
+                lastBuy={symbolMarks.lastBuy}
+                payment={symbolMarks.payment}
+                size="size-1"
+              />
+              <span className="truncate">{symbolMarks.symbol}</span>
+            </span>
+          ))}
+          {overflowCount > 0 ? (
+            <span className="text-[10px] text-[var(--text-muted)] leading-tight">
+              {t("moreCount", { count: overflowCount })}
+            </span>
+          ) : null}
+        </span>
+      ) : null}
+
+      {marks ? (
+        <span className="flex gap-0.5 sm:hidden" aria-hidden>
+          <DotFlags
+            ex={marks.symbols.some((s) => s.ex)}
+            lastBuy={marks.symbols.some((s) => s.lastBuy)}
+            payment={marks.symbols.some((s) => s.payment)}
+            size="size-1.5"
+          />
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 /** Shared row-rendering path for both the inline (sliced) preview and the `ExpandModal`'s full
  * list — so the two never drift in columns/formatting, the same convention
  * `daily-signal-panel.tsx`'s own `filterDailySignalRows` render path uses. */
 function DividendCalendarEventList({
   events,
 }: {
-  events: readonly DividendCalendarEventRow[];
+  readonly events: readonly DividendCalendarEventRow[];
 }): ReactNode {
   const t = useTranslations("market.cards.dividendCalendar");
   const locale = useLocale();
@@ -357,7 +404,13 @@ function DividendCalendarEventList({
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }): ReactNode {
+function LegendDot({
+  color,
+  label,
+}: {
+  readonly color: string;
+  readonly label: string;
+}): ReactNode {
   return (
     <span className="flex items-center gap-1.5">
       <span className="size-2 rounded-full" style={{ backgroundColor: color }} aria-hidden />
@@ -371,9 +424,9 @@ function DateChip({
   label,
   date,
 }: {
-  color: string;
-  label: string;
-  date: string;
+  readonly color: string;
+  readonly label: string;
+  readonly date: string;
 }): ReactNode {
   return (
     <span className="flex items-center gap-1">

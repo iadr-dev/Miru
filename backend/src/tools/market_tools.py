@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import timedelta
 from enum import IntEnum, StrEnum
-from typing import cast
+from typing import NamedTuple, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -666,31 +666,46 @@ def _shares_outstanding_by_symbol(
     return shares_outstanding
 
 
+_DATE_PARTITION_PREFIX = "date="
+
+
+def _ingested_dates(
+    store: ParquetStore, dataset: str, market: str, *, on_or_before: date_ | None = None
+) -> list[date_]:
+    """Every date `dataset`+`market` has an actually-written partition for, found by scanning
+    the whole Hive-partitioned directory tree — shared by every "latest real date" helper below
+    (`_latest_dataset_date`, `_latest_ingested_date_on_or_before`,
+    `_two_latest_ingested_dates_on_or_before`) so the scan+`has_partition` check exists exactly
+    once. `on_or_before`, when given, drops any later date before returning — a slower-cadence
+    dataset like `ACTIVE_ETF_HOLDING_JOB` can lag the `PRICE_EOD_JOB`-derived trading-day
+    calendar by more than one day, so its latest real partition may sit entirely outside a short
+    requested window."""
+    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
+    if not market_dir.exists():
+        return []
+    candidates: list[date_] = []
+    for child in market_dir.iterdir():
+        if not child.is_dir() or not child.name.startswith(_DATE_PARTITION_PREFIX):
+            continue
+        try:
+            day = date_.fromisoformat(child.name.removeprefix(_DATE_PARTITION_PREFIX))
+        except ValueError:
+            continue
+        if on_or_before is not None and day > on_or_before:
+            continue
+        if store.has_partition(dataset, market, day):
+            candidates.append(day)
+    return candidates
+
+
 def _latest_ingested_date_on_or_before(
     store: ParquetStore, dataset: str, market: str, on_or_before: date_
 ) -> date_ | None:
     """The latest date `dataset`+`market` has an actually-written partition for, at or before
-    `on_or_before` — scans the whole Hive-partitioned directory tree (like `_latest_dataset_date`)
-    rather than only the requested query window, because a slower-cadence dataset like
-    `ACTIVE_ETF_HOLDING_JOB` can lag the `PRICE_EOD_JOB`-derived trading-day calendar
-    (`_real_calendar`) by more than one day — its latest real partition may sit entirely outside
-    a short requested window. Reading a not-yet-ingested partition for the calendar's own last
-    business day would otherwise silently return empty rows instead of falling back to the most
-    recent real one. `None` (never a guessed date) when nothing at or before `on_or_before` has
-    landed."""
-    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
-    if not market_dir.exists():
-        return None
-    candidates: list[date_] = []
-    for child in market_dir.iterdir():
-        if not child.is_dir() or not child.name.startswith("date="):
-            continue
-        try:
-            day = date_.fromisoformat(child.name.removeprefix("date="))
-        except ValueError:
-            continue
-        if day <= on_or_before and store.has_partition(dataset, market, day):
-            candidates.append(day)
+    `on_or_before`. Reading a not-yet-ingested partition for the calendar's own last business day
+    would otherwise silently return empty rows instead of falling back to the most recent real
+    one. `None` (never a guessed date) when nothing at or before `on_or_before` has landed."""
+    candidates = _ingested_dates(store, dataset, market, on_or_before=on_or_before)
     return max(candidates) if candidates else None
 
 
@@ -698,24 +713,12 @@ def _two_latest_ingested_dates_on_or_before(
     store: ParquetStore, dataset: str, market: str, on_or_before: date_
 ) -> tuple[date_ | None, date_ | None]:
     """`(latest, prior)` — the two most recent dates `dataset`+`market` has an actually-written
-    partition for, at or before `on_or_before`, found by the same directory-tree scan
+    partition for, at or before `on_or_before`, found by the same `_ingested_dates` scan
     `_latest_ingested_date_on_or_before` uses (kept as a separate function rather than a
     refactor of that one, since a day-over-day report needs both dates from one scan, but every
     existing single-date caller of that function doesn't). Either or both are `None` (never a
     guessed date) when fewer than 2 dates have landed."""
-    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
-    if not market_dir.exists():
-        return None, None
-    candidates: list[date_] = []
-    for child in market_dir.iterdir():
-        if not child.is_dir() or not child.name.startswith("date="):
-            continue
-        try:
-            day = date_.fromisoformat(child.name.removeprefix("date="))
-        except ValueError:
-            continue
-        if day <= on_or_before and store.has_partition(dataset, market, day):
-            candidates.append(day)
+    candidates = _ingested_dates(store, dataset, market, on_or_before=on_or_before)
     if not candidates:
         return None, None
     ordered = sorted(candidates, reverse=True)
@@ -1201,17 +1204,23 @@ class _DailySignalContext:
     prior_closes: dict[str, float]
 
 
-def _daily_signal_rows(
+class _DailySignalAggregates(NamedTuple):
+    """Per-stock aggregates across every ETF's change row for one day — split out of
+    `_daily_signal_rows` purely to keep that function's own branching under the project's
+    cognitive-complexity budget; this half is a single pass with no classification logic."""
+
+    buy_by_stock: dict[str, int]
+    sell_by_stock: dict[str, int]
+    name_by_stock: dict[str, str]
+    buying_etfs: dict[str, set[str]]
+    selling_etfs: dict[str, set[str]]
+
+
+def _aggregate_daily_signal_changes(
     changes: Sequence[ActiveEtfHoldingChangeRow],
-    ctx: _DailySignalContext,
-    *,
-    has_prior_day: bool,
-) -> list[DailySignalRow]:
-    """One row per stock with a nonzero aggregate buy/sell today, mirroring
-    `_active_etf_report_rows`'s own per-ETF version — `buy`/`sell` are summed across every ETF's
-    change row for that stock first, then classified with the same `_classify_holding_status`
-    the single-ETF report uses, just against the cross-ETF aggregate shares instead of one ETF's
-    own weight."""
+) -> _DailySignalAggregates:
+    """`buy`/`sell` summed across every ETF's change row for each stock, plus which ETFs
+    contributed a buy/sell — the raw-aggregation half of `_daily_signal_rows`."""
     buy_by_stock: dict[str, int] = {}
     sell_by_stock: dict[str, int] = {}
     name_by_stock: dict[str, str] = {}
@@ -1226,40 +1235,75 @@ def _daily_signal_rows(
             buying_etfs.setdefault(stock_id, set()).add(change.symbol)
         if change.sell > 0:
             selling_etfs.setdefault(stock_id, set()).add(change.symbol)
+    return _DailySignalAggregates(
+        buy_by_stock=buy_by_stock,
+        sell_by_stock=sell_by_stock,
+        name_by_stock=name_by_stock,
+        buying_etfs=buying_etfs,
+        selling_etfs=selling_etfs,
+    )
 
+
+def _daily_signal_row_for_stock(
+    stock_id: str,
+    name: str,
+    aggregates: _DailySignalAggregates,
+    ctx: _DailySignalContext,
+    *,
+    has_prior_day: bool,
+) -> DailySignalRow | None:
+    """One stock's `DailySignalRow`, classified with the same `_classify_holding_status` the
+    single-ETF report uses (just against the cross-ETF aggregate shares instead of one ETF's own
+    weight) — `None` for a stock with zero net buy/sell (defensive; every stock here came from a
+    nonzero-buy-or-sell change row, so this should never actually trigger)."""
+    buy = aggregates.buy_by_stock.get(stock_id, 0)
+    sell = aggregates.sell_by_stock.get(stock_id, 0)
+    if buy == 0 and sell == 0:
+        return None
+    prior_shares = ctx.prior_aggregate_shares.get(stock_id)
+    current_shares = ctx.report_aggregate_shares.get(stock_id)
+    status = _classify_holding_status(
+        buy=buy,
+        sell=sell,
+        prior_weight=float(prior_shares) if prior_shares is not None else None,
+        current_weight=float(current_shares) if current_shares is not None else None,
+        has_prior_day=has_prior_day,
+    )
+    shares_delta = buy - sell
+    pct_change = shares_delta / prior_shares if prior_shares else None
+    close = ctx.closes.get(stock_id)
+    prior_close = ctx.prior_closes.get(stock_id)
+    change_pct = (close / prior_close - 1) * 100 if close is not None and prior_close else None
+    return DailySignalRow(
+        component_stock_id=stock_id,
+        component_stock_name=name,
+        close=close,
+        change_pct=change_pct,
+        status=status,
+        shares_delta=shares_delta,
+        pct_change=pct_change,
+        buying_etf_count=len(aggregates.buying_etfs.get(stock_id, ())),
+        selling_etf_count=len(aggregates.selling_etfs.get(stock_id, ())),
+    )
+
+
+def _daily_signal_rows(
+    changes: Sequence[ActiveEtfHoldingChangeRow],
+    ctx: _DailySignalContext,
+    *,
+    has_prior_day: bool,
+) -> list[DailySignalRow]:
+    """One row per stock with a nonzero aggregate buy/sell today, mirroring
+    `_active_etf_report_rows`'s own per-ETF version — see `_aggregate_daily_signal_changes`/
+    `_daily_signal_row_for_stock` for the two halves this delegates to."""
+    aggregates = _aggregate_daily_signal_changes(changes)
     rows: list[DailySignalRow] = []
-    for stock_id, name in name_by_stock.items():
-        buy = buy_by_stock.get(stock_id, 0)
-        sell = sell_by_stock.get(stock_id, 0)
-        if buy == 0 and sell == 0:
-            continue  # defensive — every stock here came from a nonzero-buy-or-sell change row
-        prior_shares = ctx.prior_aggregate_shares.get(stock_id)
-        current_shares = ctx.report_aggregate_shares.get(stock_id)
-        status = _classify_holding_status(
-            buy=buy,
-            sell=sell,
-            prior_weight=float(prior_shares) if prior_shares is not None else None,
-            current_weight=float(current_shares) if current_shares is not None else None,
-            has_prior_day=has_prior_day,
+    for stock_id, name in aggregates.name_by_stock.items():
+        row = _daily_signal_row_for_stock(
+            stock_id, name, aggregates, ctx, has_prior_day=has_prior_day
         )
-        shares_delta = buy - sell
-        pct_change = shares_delta / prior_shares if prior_shares else None
-        close = ctx.closes.get(stock_id)
-        prior_close = ctx.prior_closes.get(stock_id)
-        change_pct = (close / prior_close - 1) * 100 if close is not None and prior_close else None
-        rows.append(
-            DailySignalRow(
-                component_stock_id=stock_id,
-                component_stock_name=name,
-                close=close,
-                change_pct=change_pct,
-                status=status,
-                shares_delta=shares_delta,
-                pct_change=pct_change,
-                buying_etf_count=len(buying_etfs.get(stock_id, ())),
-                selling_etf_count=len(selling_etfs.get(stock_id, ())),
-            )
-        )
+        if row is not None:
+            rows.append(row)
     return rows
 
 
@@ -1273,6 +1317,28 @@ def _daily_signal_highlight(
         buying_etf_count=row.buying_etf_count,
         selling_etf_count=row.selling_etf_count,
     )
+
+
+def _daily_signal_highlight_if_significant(
+    row: DailySignalRow | None,
+    *,
+    closes: dict[str, float],
+    wants_positive_delta: bool,
+) -> DailySignalHighlight | None:
+    """`_daily_signal_highlight` for `row`, but only when it's actually a real inflow (positive
+    `shares_delta`) or outflow (negative) — `top_inflow_row`/`top_outflow_row` are just the
+    max/min of `rows`, which can legitimately be a net-sell or net-buy respectively when every
+    stock moved the same direction today, and a highlight in the wrong direction would mislead a
+    reader glancing at "焦點股". `None` when `row` is `None` (no rows at all) or wrong-signed."""
+    if row is None:
+        return None
+    if wants_positive_delta and row.shares_delta <= 0:
+        return None
+    if not wants_positive_delta and row.shares_delta >= 0:
+        return None
+    close = closes.get(row.component_stock_id)
+    held_market_value_delta = row.shares_delta * close if close is not None else None
+    return _daily_signal_highlight(row, held_market_value_delta=held_market_value_delta)
 
 
 class GetDailySignalTool(BaseTool):
@@ -1370,29 +1436,11 @@ class GetDailySignalTool(BaseTool):
 
         top_inflow_row = max(rows, key=lambda r: r.shares_delta, default=None)
         top_outflow_row = min(rows, key=lambda r: r.shares_delta, default=None)
-        top_inflow = (
-            _daily_signal_highlight(
-                top_inflow_row,
-                held_market_value_delta=(
-                    top_inflow_row.shares_delta * closes[top_inflow_row.component_stock_id]
-                    if top_inflow_row.component_stock_id in closes
-                    else None
-                ),
-            )
-            if top_inflow_row is not None and top_inflow_row.shares_delta > 0
-            else None
+        top_inflow = _daily_signal_highlight_if_significant(
+            top_inflow_row, closes=closes, wants_positive_delta=True
         )
-        top_outflow = (
-            _daily_signal_highlight(
-                top_outflow_row,
-                held_market_value_delta=(
-                    top_outflow_row.shares_delta * closes[top_outflow_row.component_stock_id]
-                    if top_outflow_row.component_stock_id in closes
-                    else None
-                ),
-            )
-            if top_outflow_row is not None and top_outflow_row.shares_delta < 0
-            else None
+        top_outflow = _daily_signal_highlight_if_significant(
+            top_outflow_row, closes=closes, wants_positive_delta=False
         )
 
         return GetDailySignalOutput(
@@ -1419,25 +1467,12 @@ _CONTRIBUTION_CAVEAT = (
 
 
 def _latest_dataset_date(store: ParquetStore, dataset: str, market: str) -> date_ | None:
-    """The newest date `dataset`+`market` has an actually-written partition for, found by
-    scanning the Hive-partitioned directory tree — mirrors
-    `analytics.screener.store._latest_partition_date`'s own scan, generalized to any
-    whole-market dataset rather than just `screener_flags`. Never assumes "today" has landed;
-    the daily ingest job may not have run yet, so "latest" always means "latest actually
-    written", never a naive `date.today()`."""
-    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
-    if not market_dir.exists():
-        return None
-    candidates: list[date_] = []
-    for child in market_dir.iterdir():
-        if not child.is_dir() or not child.name.startswith("date="):
-            continue
-        try:
-            day = date_.fromisoformat(child.name.removeprefix("date="))
-        except ValueError:
-            continue
-        if store.has_partition(dataset, market, day):
-            candidates.append(day)
+    """The newest date `dataset`+`market` has an actually-written partition for, via the shared
+    `_ingested_dates` scan (mirrors `analytics.screener.store._latest_partition_date`'s own
+    scan, generalized to any whole-market dataset rather than just `screener_flags`). Never
+    assumes "today" has landed; the daily ingest job may not have run yet, so "latest" always
+    means "latest actually written", never a naive `date.today()`."""
+    candidates = _ingested_dates(store, dataset, market)
     return max(candidates) if candidates else None
 
 

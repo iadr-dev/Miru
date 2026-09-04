@@ -31,7 +31,7 @@ function recentWindow(): { startDate: string; endDate: string } {
  * caller gets the `{locked, required_tier, preview}` envelope at HTTP 200 (never an error), which
  * this wraps in `SponsorTeaser` exactly like `TopSplit`/`BreadthOrderBookCard` already do — a
  * plain shaped skeleton `<div>` as the blurred child, never a live component fed empty data. */
-export function EtfMoneyFlowPanel({ market }: { market: Market }): ReactNode {
+export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.etfMoneyFlow");
   const [direction, setDirection] = useState<FlowDirection>("inflow");
   const flowWindow = recentWindow();

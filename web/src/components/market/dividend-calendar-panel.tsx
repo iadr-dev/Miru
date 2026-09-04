@@ -18,7 +18,7 @@ const DECEMBER = 12;
  * per-window query-key pattern). `DividendCalendarTable` is keyed by `${year}-${month}` so its
  * own day-selection state resets when the visible month changes — otherwise a day selected in
  * August would silently carry over as a (meaningless) filter into September. */
-export function DividendCalendarPanel({ market }: { market: Market }): ReactNode {
+export function DividendCalendarPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.dividendCalendar");
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() + 1 });

@@ -10,6 +10,12 @@ import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_1fr_0.8fr_0.9fr]";
 
+/** A boolean "is this an upward move" flag's `--up`/`--down` color — pulled out of
+ * `EtfMoneyFlowRowItem`'s own ternary chain purely to avoid a nested ternary. */
+function signedColorForUp(up: boolean): string {
+  return up ? "var(--up)" : "var(--down)";
+}
+
 /**
  * 資金持股 ranked list — one direction (inflow or outflow) at a time, picked by the caller via
  * `rows` (never both rendered together, mirroring the reference app's single active ranking).
@@ -22,8 +28,8 @@ export function EtfMoneyFlowTable({
   rows,
   market,
 }: {
-  rows: readonly EtfMoneyFlowRow[];
-  market: Market;
+  readonly rows: readonly EtfMoneyFlowRow[];
+  readonly market: Market;
 }): ReactNode {
   const t = useTranslations("market.cards.etfMoneyFlow");
   const locale = useLocale();
@@ -75,14 +81,14 @@ function EtfMoneyFlowRowItem({
   locale,
   t,
 }: {
-  row: EtfMoneyFlowRow;
-  quote: ReturnType<typeof useSymbolQuotes>["quotes"][number] | undefined;
-  locale: string;
-  t: ReturnType<typeof useTranslations>;
+  readonly row: EtfMoneyFlowRow;
+  readonly quote: ReturnType<typeof useSymbolQuotes>["quotes"][number] | undefined;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const changePct = quote?.changePct ?? null;
   const up = (changePct ?? 0) >= 0;
-  const color = changePct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";
+  const color = changePct === null ? "var(--text-muted)" : signedColorForUp(up);
   const hasHeldValue = row.held_market_value !== null && row.held_market_value !== undefined;
   const hasHeldShares = row.held_shares !== null && row.held_shares !== undefined;
 

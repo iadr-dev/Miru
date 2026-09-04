@@ -26,7 +26,7 @@ const STATUS_FILTERS: readonly HoldingStatus[] = ["新增", "刪除", "加碼", 
  * 減碼 filter-chip row above `DailySignalTable`. Sponsor-tier masking follows the same
  * `SponsorTeaser` convention `EtfMoneyFlowPanel` already uses.
  */
-export function DailySignalPanel({ market }: { market: Market }): ReactNode {
+export function DailySignalPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.dailySignal");
   const [statusFilter, setStatusFilter] = useState<HoldingStatus | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -158,10 +158,10 @@ function StatusChip({
   count,
   onClick,
 }: {
-  active: boolean;
-  label: string;
-  count: number;
-  onClick: () => void;
+  readonly active: boolean;
+  readonly label: string;
+  readonly count: number;
+  readonly onClick: () => void;
 }): ReactNode {
   return (
     <button
@@ -186,8 +186,8 @@ function HighlightCard({
   kind,
   highlight,
 }: {
-  kind: "inflow" | "outflow";
-  highlight: DailySignalHighlight;
+  readonly kind: "inflow" | "outflow";
+  readonly highlight: DailySignalHighlight;
 }): ReactNode {
   const t = useTranslations("market.cards.dailySignal");
   const locale = useLocale();

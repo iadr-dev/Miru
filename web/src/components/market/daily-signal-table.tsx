@@ -37,8 +37,8 @@ export function DailySignalTable({
   rows,
   statusFilter,
 }: {
-  rows: readonly DailySignalRow[];
-  statusFilter: HoldingStatus | null;
+  readonly rows: readonly DailySignalRow[];
+  readonly statusFilter: HoldingStatus | null;
 }): ReactNode {
   const t = useTranslations("market.cards.dailySignal");
   const locale = useLocale();
@@ -88,25 +88,34 @@ export function filterDailySignalRows(
   return statusFilter ? rows.filter((row) => row.status === statusFilter) : rows;
 }
 
+/** A signed value's `--up`/`--down` color, or `--text-muted` when the value itself is `null`
+ * (no data) — the one place `DailySignalRowItem`'s per-column sign-to-token mapping lives, so
+ * that component's own branching stays under the project's cognitive-complexity budget. */
+function signedColor(value: number | null): string {
+  if (value === null) return "var(--text-muted)";
+  return value >= 0 ? "var(--up)" : "var(--down)";
+}
+
 function DailySignalRowItem({
   row,
   locale,
   t,
 }: {
-  row: DailySignalRow;
-  locale: string;
-  t: ReturnType<typeof useTranslations>;
+  readonly row: DailySignalRow;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const up = (row.change_pct ?? 0) >= 0;
-  const color = row.change_pct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";
+  const color = signedColor(row.change_pct);
   const statusColor = STATUS_TOKEN[row.status];
   const statusLabel = row.status === "no_prior_data" ? t("noPriorData") : row.status;
   // 變動張數/變動幅度 are real signed holdings-change figures (like 股數變化/比例變化 in
   // `HolderAccumulationCard`), not the categorical status classification — they get --up/--down
   // colored by their own sign, distinct from the status pill's fixed STATUS_TOKEN color.
-  const sharesDeltaColor = row.shares_delta > 0 ? "var(--up)" : "var(--down)";
+  const sharesDeltaColor =
+    row.shares_delta === 0 ? "var(--text-muted)" : signedColor(row.shares_delta);
   const pctUp = (row.pct_change ?? 0) >= 0;
-  const pctChangeColor = pctUp ? "var(--up)" : "var(--down)";
+  const pctChangeColor = signedColor(row.pct_change);
 
   return (
     <li
@@ -148,7 +157,7 @@ function DailySignalRowItem({
       <span
         aria-hidden
         className="text-right font-num text-[12px] tabular-nums"
-        style={{ color: row.shares_delta === 0 ? "var(--text-muted)" : sharesDeltaColor }}
+        style={{ color: sharesDeltaColor }}
       >
         {row.shares_delta > 0 ? "+" : ""}
         {formatNumber(row.shares_delta, locale, { decimals: 0 })}
@@ -156,7 +165,7 @@ function DailySignalRowItem({
       <span
         aria-hidden
         className="text-right font-num text-[12px] tabular-nums"
-        style={{ color: row.pct_change === null ? "var(--text-muted)" : pctChangeColor }}
+        style={{ color: pctChangeColor }}
       >
         {row.pct_change !== null
           ? `${pctUp ? "▲" : "▼"}${formatNumber(Math.abs(row.pct_change) * 100, locale, { decimals: 1 })}%`
