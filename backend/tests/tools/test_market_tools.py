@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
+
 from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
@@ -15,6 +17,8 @@ from tools.market_tools import (
     GetActiveEtfReportTool,
     GetChipFlowsTool,
     GetCompanyProfileTool,
+    GetDailySignalInput,
+    GetDailySignalTool,
     GetDividendScheduleTool,
     GetEtfMoneyFlowInput,
     GetEtfMoneyFlowTool,
@@ -709,9 +713,34 @@ async def test_get_etf_money_flow_aggregates_across_etfs_and_ranks_flows(tmp_pat
                 "asset_type": "stock",
                 "shares": 120000,
                 "weight": 9.2,
-                "market_value": 71160000.0,
+                # FinMind hardcodes this field to 0.0 for every row of this dataset — the tool
+                # must never trust it; this value is deliberately wrong to prove that.
+                "market_value": 0.0,
                 "currency": "TWD",
             },
+        ],
+    )
+    # `_closes_by_symbol`/`_shares_outstanding_by_symbol` read from these two ingested datasets —
+    # 2330's real close (600) recomputes `held_market_value` (never FinMind's own broken field),
+    # and 2330's market cap (600,000,000) ÷ that close recovers a 1,000,000-share outstanding
+    # count, so `stock_shares_held_pct` = 120,000 ÷ 1,000,000 = 12%.
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        trading_day,
+        [{"symbol": "2330", "trade_date": "2025-05-07", "close": 600.0}],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValue",
+        "TW",
+        trading_day,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "market_value": 600_000_000,
+            }
         ],
     )
     tool = GetEtfMoneyFlowTool(store)
@@ -722,14 +751,279 @@ async def test_get_etf_money_flow_aggregates_across_etfs_and_ranks_flows(tmp_pat
     )
 
     assert output.data_available is True
+    assert output.total_stock_count == 2
     by_stock = {row.component_stock_id: row for row in output.inflow_ranking}
     assert by_stock["2330"].net_shares_flow == 30000
     assert by_stock["2330"].buying_etf_count == 2
     assert by_stock["2330"].selling_etf_count == 0
     assert by_stock["2330"].active_etf_holder_count == 1
+    assert by_stock["2330"].held_shares == 120000
+    assert by_stock["2330"].held_market_value == pytest.approx(120000 * 600.0)
+    assert by_stock["2330"].stock_shares_held_pct == pytest.approx(12.0)
     assert by_stock["2454"].net_shares_flow == -50000
+    # 2454 has no `TaiwanStockActiveETFHolding` row in this fixture — every holding-derived field
+    # must stay `None`, never a fabricated `0`/estimate.
+    assert by_stock["2454"].held_shares is None
+    assert by_stock["2454"].held_market_value is None
+    assert by_stock["2454"].stock_shares_held_pct is None
     outflow_ids = [row.component_stock_id for row in output.outflow_ranking]
     assert outflow_ids[0] == "2454"
+
+
+async def test_get_etf_money_flow_falls_back_to_latest_ingested_holding_day(
+    tmp_path: Path,
+) -> None:
+    """`ACTIVE_ETF_HOLDING_JOB` lagging one day behind the price/holding-change calendar (a
+    normal, frequent ingest state) must not silently zero out every holding-derived field —
+    the tool should fall back to the latest day that dataset actually has, not the calendar's
+    own last business day."""
+    store = ParquetStore(root=tmp_path)
+    lagging_day = date(2025, 5, 7)  # holding-change + price ingested for this day too
+    latest_holding_day = date(2025, 5, 6)  # ACTIVE_ETF_HOLDING only ingested through here
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        lagging_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 20000,
+                "sell": 0,
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        lagging_day,
+        [{"symbol": "2330", "trade_date": "2025-05-07", "close": 610.0}],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        latest_holding_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 100000,
+                "weight": 8.5,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        latest_holding_day,
+        [{"symbol": "2330", "trade_date": "2025-05-06", "close": 600.0}],
+    )
+    tool = GetEtfMoneyFlowTool(store)
+
+    output = await tool.run(
+        GetEtfMoneyFlowInput(market=Market.TW, start_date=lagging_day, end_date=lagging_day),
+        ToolContext(),
+    )
+
+    assert output.data_available is True
+    row = output.inflow_ranking[0]
+    assert row.component_stock_id == "2330"
+    # Falls back to `latest_holding_day`'s real 100,000 shares x 600.0 close — never `None`
+    # just because `lagging_day` itself has no `ACTIVE_ETF_HOLDING_JOB` partition yet.
+    assert row.held_shares == 100000
+    assert row.held_market_value == pytest.approx(100000 * 600.0)
+    assert row.active_etf_holder_count == 1
+
+
+async def test_get_daily_signal_reports_unavailable_when_store_has_no_partition(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    tool = GetDailySignalTool(store)
+    assert tool.data_class is DataClass.SPONSOR
+
+    output = await tool.run(
+        GetDailySignalInput(market=Market.TW, trade_date=date(2025, 5, 7)), ToolContext()
+    )
+
+    assert output.data_available is False
+    assert output.unavailable_reason is not None
+    assert output.rows == ()
+
+
+async def test_get_daily_signal_classifies_status_across_all_etfs_combined(
+    tmp_path: Path,
+) -> None:
+    """2330 is held by 00980A (prior day) and gets bought by BOTH 00980A and 00981A today — the
+    aggregate status must be 加碼 (already held in aggregate, net buy), never 新增, even though
+    it's a first-time holding for 00981A specifically. 2454 has no prior-day holding anywhere and
+    gets bought today — aggregate 新增. 9999 was held prior but sold out of everywhere today —
+    aggregate 刪除."""
+    store = ParquetStore(root=tmp_path)
+    prior_day = date(2025, 5, 6)
+    report_day = date(2025, 5, 7)
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        prior_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 100000,
+                "weight": 8.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "9999",
+                "component_stock_name": "測試股",
+                "asset_type": "stock",
+                "shares": 5000,
+                "weight": 1.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        report_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 110000,
+                "weight": 8.5,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 20000,
+                "weight": 3.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2454",
+                "component_stock_name": "聯發科",
+                "asset_type": "stock",
+                "shares": 8000,
+                "weight": 2.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        report_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 10000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 20000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2454",
+                "component_stock_name": "聯發科",
+                "buy": 8000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "9999",
+                "component_stock_name": "測試股",
+                "buy": 0,
+                "sell": 5000,
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        report_day,
+        [
+            {"symbol": "2330", "trade_date": "2025-05-07", "close": 600.0},
+            {"symbol": "2454", "trade_date": "2025-05-07", "close": 900.0},
+        ],
+    )
+    tool = GetDailySignalTool(store)
+
+    output = await tool.run(
+        GetDailySignalInput(market=Market.TW, trade_date=report_day), ToolContext()
+    )
+
+    assert output.data_available is True
+    assert output.report_date == report_day
+    assert output.prior_date == prior_day
+    assert output.total_stock_count == 3
+    by_stock = {row.component_stock_id: row for row in output.rows}
+    assert by_stock["2330"].status == HoldingStatus.INCREASED
+    assert by_stock["2330"].shares_delta == 30000
+    assert by_stock["2330"].buying_etf_count == 2
+    assert by_stock["2454"].status == HoldingStatus.NEW
+    assert by_stock["9999"].status == HoldingStatus.REMOVED
+    assert output.increased_count == 1
+    assert output.new_count == 1
+    assert output.removed_count == 1
+    assert output.decreased_count == 0
+    # 2330's aggregate net-buy (+30,000) is the largest inflow; its held-value delta uses the
+    # real close (600.0), never FinMind's own broken market_value field.
+    assert output.top_inflow is not None
+    assert output.top_inflow.component_stock_id == "2330"
+    assert output.top_inflow.held_market_value_delta == pytest.approx(30000 * 600.0)
+    assert output.top_outflow is not None
+    assert output.top_outflow.component_stock_id == "9999"
 
 
 def _profile_result() -> SourceResult:

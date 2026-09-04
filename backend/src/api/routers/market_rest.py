@@ -187,6 +187,21 @@ async def etf_money_flow(
     )
 
 
+@router.get("/market/daily-signal")
+async def daily_signal(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """今日訊號 — whole-market, single-day active-ETF operations signal aggregated across every
+    active ETF (Sponsor-tier). Per-stock 新增/刪除/加碼/減碼 status + 焦點股 highlights."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_daily_signal", args, ctx)
+
+
 @router.get("/market/industry-flow")
 async def industry_flow(
     market: Market = Query(Market.TW),
