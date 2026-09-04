@@ -18,6 +18,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from fastapi import Depends, Request, status
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from accounts.auth import InvalidAccessTokenError, decode_access_token
@@ -34,7 +35,7 @@ from events.rate_limit import AsyncRateLimiter
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry
 from skills.registry import SkillRegistry
-from tools.base import ToolContext
+from tools.base import ToolContext, dispatch_tool
 from tools.registry import ToolRegistry
 from usage.store import UsageStore
 
@@ -156,9 +157,48 @@ def tool_context_for(
     return state.entitlement_resolver.tool_context_for(user)
 
 
+# The numeric literal, matching `api/errors.py`'s own convention — the `status.HTTP_422_*`
+# constant's name churns across Starlette versions (entity → content) and emits a deprecation
+# warning; the code is stable.
+_HTTP_422_UNPROCESSABLE = 422
+
+
+async def dispatch_validated_tool(
+    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
+) -> dict[str, object]:
+    """Look up `tool_name`, validate `args` against its `input_model`, dispatch it, and return
+    the JSON-ready result — the one `_dispatch` body every REST router (`market_rest.py`,
+    `fund_data.py`, ...) used to duplicate verbatim. A bad tool arg that fails a cross-field
+    validator (as opposed to a bad query PARAM, which FastAPI's own `RequestValidationError`
+    handler already renders as 422) becomes a 422 `invalid_request` `ApiError`, never falls
+    through to the catch-all 500 handler."""
+    tool = state.tool_registry.get_tool(tool_name)
+    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
+        raise ApiError(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            code="tool_unavailable",
+            message=f"Tool {tool_name} is not registered.",
+            retryable=False,
+        )
+    try:
+        validated = tool.input_model.model_validate(args)
+    except ValidationError as exc:
+        raise ApiError(
+            status_code=_HTTP_422_UNPROCESSABLE,
+            code="invalid_request",
+            message=f"Request failed validation: {exc.errors()[0]['msg']}"
+            if exc.errors()
+            else "Request failed validation.",
+            retryable=False,
+        ) from exc
+    result = await dispatch_tool(tool, validated, ctx)
+    return result.model_dump(mode="json")
+
+
 __all__ = [
     "ACCESS_TOKEN_COOKIE",
     "AppState",
+    "dispatch_validated_tool",
     "get_session",
     "get_settings_dep",
     "get_state",

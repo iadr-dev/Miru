@@ -96,6 +96,12 @@ function signedColor(value: number | null): string {
   return value >= 0 ? "var(--up)" : "var(--down)";
 }
 
+/** ▲/▼ for a boolean "is this an upward move" flag — split out so the `${up ? "▲" : "▼"} ...`
+ * template-literal ternary never nests inside an outer null-check ternary. */
+function upDownArrow(up: boolean): string {
+  return up ? "▲" : "▼";
+}
+
 function DailySignalRowItem({
   row,
   locale,
@@ -122,7 +128,7 @@ function DailySignalRowItem({
       role="group"
       aria-label={`${row.component_stock_name} ${row.component_stock_id} ${statusLabel} ${
         row.change_pct !== null
-          ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+          ? `${upDownArrow(up)} ${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
           : t("noChangeData")
       }`}
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
@@ -140,7 +146,7 @@ function DailySignalRowItem({
           style={{ color: row.change_pct === null ? undefined : color }}
         >
           {row.change_pct !== null
-            ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+            ? `${upDownArrow(up)}${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
             : ""}
         </span>
       </span>
@@ -168,7 +174,7 @@ function DailySignalRowItem({
         style={{ color: pctChangeColor }}
       >
         {row.pct_change !== null
-          ? `${pctUp ? "▲" : "▼"}${formatNumber(Math.abs(row.pct_change) * 100, locale, { decimals: 1 })}%`
+          ? `${upDownArrow(pctUp)}${formatNumber(Math.abs(row.pct_change) * 100, locale, { decimals: 1 })}%`
           : "—"}
       </span>
     </li>

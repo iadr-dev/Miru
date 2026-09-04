@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
+import { isMaskedTeaser, type MaskedTeaser } from "@/types/market";
 
 /**
  * 馬賽克 (mosaic) teaser for a Sponsor-tier tool result the caller isn't entitled to — the
@@ -63,4 +64,43 @@ export function SponsorTeaser({
       </div>
     </div>
   );
+}
+
+/**
+ * The masked-teaser + not-available branch pair every Sponsor-tier panel repeats before its own
+ * real content (`DailySignalPanel`/`EtfMoneyFlowPanel` both had this verbatim) — one place for
+ * that 3-way branch so a panel-specific component only has to supply its title/unavailable copy
+ * and the render function for the real, entitled, data-available case.
+ */
+export function SponsorGatedBody<
+  T extends { data_available: boolean; unavailable_reason?: string | null },
+>({
+  data,
+  title,
+  unavailableCopy,
+  children,
+}: {
+  readonly data: T | MaskedTeaser;
+  readonly title: string;
+  readonly unavailableCopy: string;
+  readonly children: (data: T) => ReactNode;
+}): ReactNode {
+  if (isMaskedTeaser(data)) {
+    return (
+      <SponsorTeaser headline={title} preview={data.preview} requiredTier={data.required_tier}>
+        <div className="h-64 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
+      </SponsorTeaser>
+    );
+  }
+  if (!data.data_available) {
+    return (
+      <>
+        <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{title}</h2>
+        <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+          {data.unavailable_reason ?? unavailableCopy}
+        </p>
+      </>
+    );
+  }
+  return children(data);
 }

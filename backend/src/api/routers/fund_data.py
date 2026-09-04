@@ -27,20 +27,26 @@ an out-of-bounds symbol count never 500s.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, status
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, Query
 
 from accounts.models import User
-from api.dependencies import AppState, get_state, optional_user, tool_context_for
+from api.dependencies import (
+    AppState,
+    dispatch_validated_tool,
+    get_state,
+    optional_user,
+    tool_context_for,
+)
 from api.errors import ApiError
 from schemas.enums import Market
-from tools.base import ToolContext, dispatch_tool
+from tools.base import ToolContext
 
 router = APIRouter(tags=["fund-data"])
 
 # The numeric literal, matching `api/errors.py`'s own convention — the `status.HTTP_422_*`
 # constant's name churns across Starlette versions (entity → content) and emits a deprecation
-# warning; the code is stable.
+# warning; the code is stable. Still needed in this file for the list-bounded-symbol-count 422s
+# below, even though `_dispatch` itself now delegates to the shared `dispatch_validated_tool`.
 _HTTP_422_UNPROCESSABLE = 422
 
 _MIN_OVERLAP_SYMBOLS = 3
@@ -56,30 +62,9 @@ def _context(
     return tool_context_for(user, state)
 
 
-async def _dispatch(
-    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
-) -> dict[str, object]:
-    tool = state.tool_registry.get_tool(tool_name)
-    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
-        raise ApiError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            code="tool_unavailable",
-            message=f"Tool {tool_name} is not registered.",
-            retryable=False,
-        )
-    try:
-        validated = tool.input_model.model_validate(args)
-    except ValidationError as exc:
-        raise ApiError(
-            status_code=_HTTP_422_UNPROCESSABLE,
-            code="invalid_request",
-            message=f"Request failed validation: {exc.errors()[0]['msg']}"
-            if exc.errors()
-            else "Request failed validation.",
-            retryable=False,
-        ) from exc
-    result = await dispatch_tool(tool, validated, ctx)
-    return result.model_dump(mode="json")
+# `GetEtfOverlapInput`/`GetFundComparisonInput`'s own min/max-symbol-count validators are what
+# actually trips `dispatch_validated_tool`'s 422 path here (see this module's own docstring).
+_dispatch = dispatch_validated_tool
 
 
 # ---- per-symbol analyst-data reads (non-TW) ------------------------------------------------

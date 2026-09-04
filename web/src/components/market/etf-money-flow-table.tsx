@@ -16,6 +16,13 @@ function signedColorForUp(up: boolean): string {
   return up ? "var(--up)" : "var(--down)";
 }
 
+/** ▲/▼ for a boolean "is this an upward move" flag — same purpose as `signedColorForUp`, split
+ * out so the `${up ? "▲" : "▼"} ...` template-literal ternary never nests inside the outer
+ * `changePct !== null ? ... : ...` check. */
+function upDownArrow(up: boolean): string {
+  return up ? "▲" : "▼";
+}
+
 /**
  * 資金持股 ranked list — one direction (inflow or outflow) at a time, picked by the caller via
  * `rows` (never both rendered together, mirroring the reference app's single active ranking).
@@ -97,7 +104,7 @@ function EtfMoneyFlowRowItem({
       role="group"
       aria-label={`${quote?.name ?? row.component_stock_name} ${row.component_stock_id} ${
         changePct !== null
-          ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
+          ? `${upDownArrow(up)} ${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
           : t("noChangeData")
       }`}
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
@@ -110,7 +117,7 @@ function EtfMoneyFlowRowItem({
       </span>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
         {changePct !== null
-          ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
+          ? `${upDownArrow(up)}${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
           : "—"}
       </span>
       <span aria-hidden className="flex flex-col items-end text-right">

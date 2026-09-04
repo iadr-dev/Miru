@@ -93,7 +93,7 @@ function buildMonthGrid(year: number, month: number): { date: Date; inMonth: boo
     cells.push({ date: new Date(year, month - 1, day), inMonth: true });
   }
   while (cells.length % 7 !== 0) {
-    const last = cells[cells.length - 1];
+    const last = cells.at(-1);
     const nextDay = (last ? last.date.getDate() : 0) + 1;
     cells.push({ date: new Date(year, month, nextDay), inMonth: false });
   }

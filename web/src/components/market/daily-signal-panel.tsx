@@ -10,12 +10,11 @@ import {
   DailySignalTable,
   filterDailySignalRows,
 } from "@/components/market/daily-signal-table";
-import { SponsorTeaser } from "@/components/market/sponsor-teaser";
+import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getDailySignal } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import type { DailySignalHighlight, HoldingStatus } from "@/types/market";
-import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 const STATUS_FILTERS: readonly HoldingStatus[] = ["新增", "刪除", "加碼", "減碼"];
@@ -39,114 +38,98 @@ export function DailySignalPanel({ market }: { readonly market: Market }): React
   return (
     <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <QueryState query={query}>
-        {(data) => {
-          if (isMaskedTeaser(data)) {
-            return (
-              <SponsorTeaser
-                headline={t("title")}
-                preview={data.preview}
-                requiredTier={data.required_tier}
-              >
-                <div className="h-64 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-              </SponsorTeaser>
-            );
-          }
-          if (!data.data_available) {
-            return (
-              <>
-                <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
-                <p className="mt-3 text-[13px] text-[var(--text-muted)]">
-                  {data.unavailable_reason ?? t("unavailable")}
-                </p>
-              </>
-            );
-          }
-          const statusCounts: Record<HoldingStatus, number> = {
-            新增: data.new_count,
-            刪除: data.removed_count,
-            加碼: data.increased_count,
-            減碼: data.decreased_count,
-            no_prior_data: 0,
-          };
-          // Filtered here (not left to `DailySignalTable` alone) so the inline preview can slice
-          // AFTER filtering — slicing `data.rows` first, then letting the table filter internally,
-          // would show fewer than `DAILY_SIGNAL_COLLAPSED_ROW_COUNT` rows whenever a status chip
-          // is active and its matches aren't all within the first N unfiltered rows.
-          const filteredRows = filterDailySignalRows(data.rows, statusFilter);
-          return (
-            <>
-              <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">
-                {t("title")}
-                {data.report_date ? (
-                  <span className="ml-2 font-normal text-[12px] text-[var(--text-muted)]">
-                    {t("reportDate", { date: data.report_date })} · {t("nextUpdate")}
-                  </span>
-                ) : null}
-              </h2>
+        {(data) => (
+          <SponsorGatedBody data={data} title={t("title")} unavailableCopy={t("unavailable")}>
+            {(data) => {
+              const statusCounts: Record<HoldingStatus, number> = {
+                新增: data.new_count,
+                刪除: data.removed_count,
+                加碼: data.increased_count,
+                減碼: data.decreased_count,
+                no_prior_data: 0,
+              };
+              // Filtered here (not left to `DailySignalTable` alone) so the inline preview can
+              // slice AFTER filtering — slicing `data.rows` first, then letting the table filter
+              // internally, would show fewer than `DAILY_SIGNAL_COLLAPSED_ROW_COUNT` rows
+              // whenever a status chip is active and its matches aren't all within the first N
+              // unfiltered rows.
+              const filteredRows = filterDailySignalRows(data.rows, statusFilter);
+              return (
+                <>
+                  <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">
+                    {t("title")}
+                    {data.report_date ? (
+                      <span className="ml-2 font-normal text-[12px] text-[var(--text-muted)]">
+                        {t("reportDate", { date: data.report_date })} · {t("nextUpdate")}
+                      </span>
+                    ) : null}
+                  </h2>
 
-              {data.top_inflow || data.top_outflow ? (
-                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {data.top_inflow ? (
-                    <HighlightCard kind="inflow" highlight={data.top_inflow} />
+                  {data.top_inflow || data.top_outflow ? (
+                    <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      {data.top_inflow ? (
+                        <HighlightCard kind="inflow" highlight={data.top_inflow} />
+                      ) : null}
+                      {data.top_outflow ? (
+                        <HighlightCard kind="outflow" highlight={data.top_outflow} />
+                      ) : null}
+                    </div>
                   ) : null}
-                  {data.top_outflow ? (
-                    <HighlightCard kind="outflow" highlight={data.top_outflow} />
+
+                  <p className="mt-3 text-[12px] text-[var(--text-muted)]">
+                    {t("totalCount", { count: data.total_stock_count })}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <StatusChip
+                      active={statusFilter === null}
+                      label={t("all")}
+                      count={data.total_stock_count}
+                      onClick={() => setStatusFilter(null)}
+                    />
+                    {STATUS_FILTERS.map((status) => (
+                      <StatusChip
+                        key={status}
+                        active={statusFilter === status}
+                        label={status}
+                        count={statusCounts[status]}
+                        onClick={() => setStatusFilter(status)}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="mt-3">
+                    <DailySignalTable
+                      rows={filteredRows.slice(0, DAILY_SIGNAL_COLLAPSED_ROW_COUNT)}
+                      statusFilter={null}
+                    />
+                  </div>
+
+                  {filteredRows.length > DAILY_SIGNAL_COLLAPSED_ROW_COUNT ? (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(true)}
+                      className={cn(
+                        "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                        "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                      )}
+                    >
+                      <span>{t("expandTo", { count: filteredRows.length })}</span>
+                    </button>
                   ) : null}
-                </div>
-              ) : null}
 
-              <p className="mt-3 text-[12px] text-[var(--text-muted)]">
-                {t("totalCount", { count: data.total_stock_count })}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <StatusChip
-                  active={statusFilter === null}
-                  label={t("all")}
-                  count={data.total_stock_count}
-                  onClick={() => setStatusFilter(null)}
-                />
-                {STATUS_FILTERS.map((status) => (
-                  <StatusChip
-                    key={status}
-                    active={statusFilter === status}
-                    label={status}
-                    count={statusCounts[status]}
-                    onClick={() => setStatusFilter(status)}
-                  />
-                ))}
-              </div>
-
-              <div className="mt-3">
-                <DailySignalTable
-                  rows={filteredRows.slice(0, DAILY_SIGNAL_COLLAPSED_ROW_COUNT)}
-                  statusFilter={null}
-                />
-              </div>
-
-              {filteredRows.length > DAILY_SIGNAL_COLLAPSED_ROW_COUNT ? (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(true)}
-                  className={cn(
-                    "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                    "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                  )}
-                >
-                  <span>{t("expandTo", { count: filteredRows.length })}</span>
-                </button>
-              ) : null}
-
-              <ExpandModal
-                open={expanded}
-                title={t("title")}
-                closeLabel={t("collapse")}
-                onClose={() => setExpanded(false)}
-              >
-                <DailySignalTable rows={filteredRows} statusFilter={null} />
-              </ExpandModal>
-            </>
-          );
-        }}
+                  <ExpandModal
+                    open={expanded}
+                    title={t("title")}
+                    closeLabel={t("collapse")}
+                    onClose={() => setExpanded(false)}
+                  >
+                    <DailySignalTable rows={filteredRows} statusFilter={null} />
+                  </ExpandModal>
+                </>
+              );
+            }}
+          </SponsorGatedBody>
+        )}
       </QueryState>
     </section>
   );
