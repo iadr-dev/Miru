@@ -28,11 +28,15 @@ x-app-env: &app-env
   PARQUET_ROOT: /app/data/parquet
   ENV: development
   # Dev-only startup gap-fill (ingest/__main__.py's `_startup_gap_fill`, docs/backend/
-  # modules/22-data-ingest.md §6a) — every `docker compose up` self-heals whatever gap
-  # accumulated while the stack was down, instead of requiring the operator to remember
-  # `dev-backend.sh --backfill`. `run_backfill_cli` hard-refuses regardless of this flag when
-  # `ENV=production`, so this default is safe even if a prod compose file forgot to override it.
-  INGEST_ON_STARTUP: ${INGEST_ON_STARTUP:-true}
+  # modules/22-data-ingest.md §6a). Defaults to OFF: an unattended `docker compose up`/
+  # `dev-backend.sh` restart should never silently kick off a multi-year backfill sweep (it
+  # previously did, and starved the `api` container's CPU/RAM on a shared dev host for minutes).
+  # Seed data explicitly via `dev-backend.sh --backfill` (`run_backfill_cli`) instead — an
+  # operator-visible, one-time action, not a hidden side effect of every restart. Set
+  # `INGEST_ON_STARTUP=true` in the shell/.env to opt back into auto-catch-up.
+  # `run_backfill_cli` hard-refuses regardless of this flag when `ENV=production`, so this
+  # default is safe even if a prod compose file forgot to override it.
+  INGEST_ON_STARTUP: ${INGEST_ON_STARTUP:-false}
   # A dev JWT secret so auth-required routes work locally; override via the shell for anything real.
   JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-not-a-real-secret-change-me}
   # OAuth sign-in (auth.py) — unset = that provider's begin-flow 503s `provider_unconfigured`
