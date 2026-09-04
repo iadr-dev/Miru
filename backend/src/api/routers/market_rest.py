@@ -371,6 +371,25 @@ async def etf_list(
     return await _dispatch(state, "get_etf_list", args, ctx)
 
 
+@router.get("/market/dividend-calendar")
+async def dividend_calendar(
+    market: Market = Query(Market.TW),
+    year: int | None = Query(None),
+    month: int | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """股息日曆 — every Taiwan-listed ETF's 除息日/最後購買日/股利發放日 landing within one
+    requested calendar month (defaults to the current month). `year`/`month` must both be
+    given or both omitted."""
+    args: dict[str, object] = {"market": market.value}
+    if year is not None:
+        args["year"] = year
+    if month is not None:
+        args["month"] = month
+    return await _dispatch(state, "get_dividend_calendar", args, ctx)
+
+
 @router.get("/market/big-holder-accumulation")
 async def big_holder_accumulation(
     symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),

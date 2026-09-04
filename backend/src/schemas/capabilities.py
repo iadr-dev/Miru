@@ -44,6 +44,12 @@ class DividendEvent(BaseModel):
     stock_dividend: float | None = None
     cash_ex_dividend_date: date_ | None = None
     stock_ex_dividend_date: date_ | None = None
+    # FinMind's own `CashDividendPaymentDate` (股利發放日) — when the cash distribution actually
+    # lands, distinct from `cash_ex_dividend_date` (除息日). `None` when FinMind has not yet
+    # published a payment date for this event (common for a recently-announced dividend whose
+    # ex-date has passed but payment date hasn't been confirmed yet), never fabricated as
+    # ex-date + N days.
+    cash_dividend_payment_date: date_ | None = None
 
 
 class FinancialStatementLine(BaseModel):

@@ -60,6 +60,7 @@ def _map_dividends(rows: list[dict[str, object]], sym: Symbol | None) -> list[di
                 "stock_dividend": row.get("StockEarningsDistribution"),
                 "cash_ex_dividend_date": row.get("CashExDividendTradingDate") or None,
                 "stock_ex_dividend_date": row.get("StockExDividendTradingDate") or None,
+                "cash_dividend_payment_date": row.get("CashDividendPaymentDate") or None,
             }
         )
     return events
