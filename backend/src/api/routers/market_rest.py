@@ -489,11 +489,20 @@ async def tag_screener(
     return await _dispatch(state, "run_tag_screener", args, ctx)
 
 
+def _split_symbols(symbols: str) -> list[str]:
+    """Splits the frontend's single comma-joined `symbols` value (`lib/api/market.ts`'s
+    `symbolsSearchParams` sends `symbols=2330,2454`, never repeated `symbols=` params) into a
+    list — `list[str] = Query(...)` only populates from repeated query keys, so declaring these
+    routes that way silently accepted a single-symbol request and matched nothing for every
+    multi-symbol batch call (every comma-joined value became one unmatched literal string).
+    Empty segments (a trailing comma, `""`) are dropped rather than passed through as a bogus
+    symbol id."""
+    return [s for s in symbols.split(",") if s]
+
+
 @router.get("/market/symbol-info")
 async def symbol_info(
-    symbols: list[str] = Query(
-        ..., min_length=1, max_length=20, description="Up to 20 symbol ids, e.g. '2330'."
-    ),
+    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -501,15 +510,13 @@ async def symbol_info(
     """Batched symbol->name (+ industry/security-type) lookup, e.g. to enrich a bare-symbol
     ranking (`get_score_leaderboard`) with a display name. A symbol absent from the returned
     `rows` is not in the current whole-market roster — never a fabricated name in its place."""
-    args: dict[str, object] = {"symbols": symbols, "market": market.value}
+    args: dict[str, object] = {"symbols": _split_symbols(symbols), "market": market.value}
     return await _dispatch(state, "get_symbol_info", args, ctx)
 
 
 @router.get("/market/price-history")
 async def price_history(
-    symbols: list[str] = Query(
-        ..., min_length=1, max_length=20, description="Up to 20 symbol ids, e.g. '2330'."
-    ),
+    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),
     days: int = Query(20, ge=2, le=60, description="Trailing trading-day count, 2-60."),
     state: AppState = Depends(get_state),
@@ -520,7 +527,10 @@ async def price_history(
     roster). `get_price_quote`/`/quote` stay latest-bar-only; this is the separate bounded-
     history capability those callers need instead."""
     return await _dispatch(
-        state, "get_price_history", {"symbols": symbols, "market": market.value, "days": days}, ctx
+        state,
+        "get_price_history",
+        {"symbols": _split_symbols(symbols), "market": market.value, "days": days},
+        ctx,
     )
 
 
