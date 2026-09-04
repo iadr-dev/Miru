@@ -93,7 +93,10 @@
       "etfSub": {
         "label": "ETF views",
         "leaderboard": "AI Score Leaderboard",
-        "list": "ETF List"
+        "list": "ETF List",
+        "signal": "Daily Signal",
+        "flow": "Money Flow",
+        "calendar": "Dividend Calendar"
       }
     },
     "cards": {
@@ -141,7 +144,41 @@
       "etfMoneyFlow": {
         "title": "ETF Money Flow",
         "inflow": "Top inflow",
-        "outflow": "Top outflow"
+        "outflow": "Top outflow",
+        "totalCount": "{count} stocks tracked",
+        "asOf": "As of {date}",
+        "nextUpdate": "Updates daily at 21:15 (trading days)",
+        "columnStock": "Stock",
+        "columnChange": "Chg %",
+        "columnHeldValue": "Held Value",
+        "columnHolderCount": "Active ETFs",
+        "columnSharesHeldPct": "% of Shares",
+        "lots": " lots",
+        "noChangeData": "no change data",
+        "empty": "No cross-ETF holdings data for this window.",
+        "unavailable": "No ETF money-flow data for this window."
+      },
+      "dailySignal": {
+        "title": "Daily Signal",
+        "reportDate": "As of {date}",
+        "nextUpdate": "Updates daily at 21:15 (trading days)",
+        "topInflow": "Top inflow",
+        "topOutflow": "Top outflow",
+        "moneyDirection": "Money flow",
+        "consensus": "Buy:Sell ETFs",
+        "totalCount": "{count} stocks changed today",
+        "all": "All",
+        "columnStock": "Stock",
+        "columnPrice": "Price",
+        "columnStatus": "Status",
+        "columnSharesDelta": "Lots Chg",
+        "columnPctChange": "% Chg",
+        "noPriorData": "No prior data",
+        "noChangeData": "no change data",
+        "empty": "No holdings changed for this filter.",
+        "unavailable": "No daily-signal data for today.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
       },
       "industryFlow": {
         "title": "Industry Chain Money Flow"
@@ -173,7 +210,8 @@
         "expandTo": "Show all {count}",
         "collapse": "Close",
         "priceNotBasis": "Price/trend shown for context only — not the basis of this score.",
-        "asOf": "As of {date}"
+        "asOf": "As of {date}",
+        "nextUpdate": "Updates daily at 23:55 (trading days)"
       },
       "priceMomentum": {
         "title": "Gainers / Losers",
@@ -233,6 +271,8 @@
       },
       "etfList": {
         "title": "ETF List",
+        "asOf": "As of {date}",
+        "nextUpdate": "Updates daily at 17:40 (trading days)",
         "columnName": "ETF",
         "columnPrice": "Price",
         "columnChange": "Chg %",
@@ -245,7 +285,36 @@
         "inverse": "Inverse",
         "noChangeData": "no change data",
         "empty": "No ETFs found for this market.",
-        "unavailable": "No ETF data for today."
+        "unavailable": "No ETF data for today.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
+      },
+      "dividendCalendar": {
+        "title": "Dividend Calendar",
+        "prevMonth": "Previous month",
+        "nextMonth": "Next month",
+        "monthTitle": "{year} / {month}",
+        "weekday": {
+          "sun": "Sun",
+          "mon": "Mon",
+          "tue": "Tue",
+          "wed": "Wed",
+          "thu": "Thu",
+          "fri": "Fri",
+          "sat": "Sat"
+        },
+        "dayAria": "{day}",
+        "dayAriaWithEvents": "{day}, has dividend events",
+        "legendExDate": "Ex-dividend date",
+        "legendLastBuyDate": "Last buy date",
+        "legendPaymentDate": "Payment date",
+        "cashDividend": "${amount} / unit",
+        "noPaymentDate": "Not yet published",
+        "empty": "No ETF dividend events for this month.",
+        "unavailable": "No ETF dividend calendar data for today.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse",
+        "moreCount": "+{count} more"
       },
       "loading": "Loading data…",
       "empty": "No data for this range.",

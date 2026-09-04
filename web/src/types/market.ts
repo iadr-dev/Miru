@@ -100,7 +100,9 @@ export const etfMoneyFlowRowSchema = z.object({
   component_stock_id: z.string(),
   component_stock_name: z.string(),
   active_etf_holder_count: z.number().nullable().optional(),
+  held_shares: z.number().nullable().optional(),
   held_market_value: z.number().nullable().optional(),
+  stock_shares_held_pct: z.number().nullable().optional(),
   net_shares_flow: z.number(),
   buying_etf_count: z.number(),
   selling_etf_count: z.number(),
@@ -111,8 +113,11 @@ export const etfMoneyFlowDataSchema = z.object({
   market: z.string(),
   start_date: z.string(),
   end_date: z.string(),
+  holding_as_of: z.string().nullable().optional(),
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable().optional(),
+  total_stock_count: z.number().default(0),
+  stock_shares_held_pct_caveat: z.string(),
   inflow_ranking: z.array(etfMoneyFlowRowSchema).default([]),
   outflow_ranking: z.array(etfMoneyFlowRowSchema).default([]),
 });
@@ -741,3 +746,53 @@ export const ETF_SORT_KEYS = [
 ] as const;
 export type EtfSortKey = (typeof ETF_SORT_KEYS)[number];
 export type SortDirection = "asc" | "desc";
+
+// ---------------------------------------------------------------------------
+// 17. GET /market/daily-signal — get_daily_signal (Sponsor-tier). Mirrors
+//     `DailySignalRow`/`DailySignalHighlight`/`GetDailySignalOutput`
+//     (backend/src/tools/market_tools.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const HOLDING_STATUSES = ["新增", "刪除", "加碼", "減碼", "no_prior_data"] as const;
+export const holdingStatusSchema = z.enum(HOLDING_STATUSES);
+export type HoldingStatus = z.infer<typeof holdingStatusSchema>;
+
+export const dailySignalRowSchema = z.object({
+  component_stock_id: z.string(),
+  component_stock_name: z.string(),
+  close: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  status: holdingStatusSchema,
+  shares_delta: z.number(),
+  pct_change: z.number().nullable(),
+  buying_etf_count: z.number(),
+  selling_etf_count: z.number(),
+});
+export type DailySignalRow = z.infer<typeof dailySignalRowSchema>;
+
+export const dailySignalHighlightSchema = z.object({
+  component_stock_id: z.string(),
+  component_stock_name: z.string(),
+  held_market_value_delta: z.number().nullable(),
+  buying_etf_count: z.number(),
+  selling_etf_count: z.number(),
+});
+export type DailySignalHighlight = z.infer<typeof dailySignalHighlightSchema>;
+
+export const dailySignalDataSchema = z.object({
+  market: z.string(),
+  report_date: z.string().nullable(),
+  prior_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  total_stock_count: z.number().default(0),
+  new_count: z.number().default(0),
+  removed_count: z.number().default(0),
+  increased_count: z.number().default(0),
+  decreased_count: z.number().default(0),
+  top_inflow: dailySignalHighlightSchema.nullable(),
+  top_outflow: dailySignalHighlightSchema.nullable(),
+  rows: z.array(dailySignalRowSchema).default([]),
+});
+export const dailySignalResponseSchema = z.union([dailySignalDataSchema, maskedTeaserSchema]);
+export type DailySignalResponse = z.infer<typeof dailySignalResponseSchema>;

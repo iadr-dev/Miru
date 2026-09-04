@@ -93,7 +93,10 @@
       "etfSub": {
         "label": "ETF 檢視",
         "leaderboard": "AI 多空排行",
-        "list": "ETF 列表"
+        "list": "ETF 列表",
+        "signal": "今日訊號",
+        "flow": "資金持股",
+        "calendar": "股息日曆"
       }
     },
     "cards": {
@@ -141,7 +144,41 @@
       "etfMoneyFlow": {
         "title": "ETF 資金流向",
         "inflow": "資金流入排行",
-        "outflow": "資金流出排行"
+        "outflow": "資金流出排行",
+        "totalCount": "共 {count} 檔",
+        "asOf": "資料日期：{date}",
+        "nextUpdate": "每日 21:15 更新（交易日）",
+        "columnStock": "股票",
+        "columnChange": "漲跌幅",
+        "columnHeldValue": "持有市值",
+        "columnHolderCount": "主動式檔數",
+        "columnSharesHeldPct": "佔個股比重",
+        "lots": "張",
+        "noChangeData": "無漲跌資料",
+        "empty": "此區間查無跨 ETF 持股資料。",
+        "unavailable": "此區間查無 ETF 資金流向資料。"
+      },
+      "dailySignal": {
+        "title": "今日訊號",
+        "reportDate": "資料日期：{date}",
+        "nextUpdate": "每日 21:15 更新（交易日）",
+        "topInflow": "資金流入最多",
+        "topOutflow": "資金流出最多",
+        "moneyDirection": "資金動向",
+        "consensus": "多空共識",
+        "totalCount": "共 {count} 檔",
+        "all": "全部",
+        "columnStock": "標的",
+        "columnPrice": "股價",
+        "columnStatus": "狀態",
+        "columnSharesDelta": "變動張數",
+        "columnPctChange": "變動幅度",
+        "noPriorData": "無前日資料",
+        "noChangeData": "無漲跌資料",
+        "empty": "此篩選條件查無持股異動。",
+        "unavailable": "今日查無訊號資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
       },
       "industryFlow": {
         "title": "產業鏈資金流向"
@@ -173,7 +210,8 @@
         "expandTo": "展開完整 {count} 筆",
         "collapse": "收合",
         "priceNotBasis": "價格/走勢僅供參考，非本評分依據。",
-        "asOf": "資料日期：{date}"
+        "asOf": "資料日期：{date}",
+        "nextUpdate": "每日 23:55 更新（交易日）"
       },
       "priceMomentum": {
         "title": "漲跌幅排行",
@@ -233,6 +271,8 @@
       },
       "etfList": {
         "title": "ETF 列表",
+        "asOf": "資料日期：{date}",
+        "nextUpdate": "每日 17:40 更新（交易日）",
         "columnName": "ETF",
         "columnPrice": "股價",
         "columnChange": "漲跌幅",
@@ -245,7 +285,36 @@
         "inverse": "反向",
         "noChangeData": "無漲跌資料",
         "empty": "此市場查無 ETF 資料。",
-        "unavailable": "今日查無 ETF 資料。"
+        "unavailable": "今日查無 ETF 資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
+      },
+      "dividendCalendar": {
+        "title": "股息日曆",
+        "prevMonth": "上個月",
+        "nextMonth": "下個月",
+        "monthTitle": "{year}年 {month}月",
+        "weekday": {
+          "sun": "日",
+          "mon": "一",
+          "tue": "二",
+          "wed": "三",
+          "thu": "四",
+          "fri": "五",
+          "sat": "六"
+        },
+        "dayAria": "{day}日",
+        "dayAriaWithEvents": "{day}日，有股息事件",
+        "legendExDate": "除息日",
+        "legendLastBuyDate": "最後購買日",
+        "legendPaymentDate": "股利發放日",
+        "cashDividend": "配發金額 ${amount}",
+        "noPaymentDate": "尚未公布",
+        "empty": "此月份查無 ETF 股息事件。",
+        "unavailable": "今日查無 ETF 股息日曆資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合",
+        "moreCount": "+{count} 更多"
       },
       "loading": "資料載入中…",
       "empty": "此範圍內查無資料。",
