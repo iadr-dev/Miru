@@ -83,6 +83,14 @@ class ParquetStore:
 
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
+        # `list_partition_dates` cache, keyed by (dataset, market) -> (dir_mtime_ns, dates).
+        # Invalidated by directory mtime rather than a blind TTL: `write_partition`'s `mkdir`
+        # for a new `date=` child bumps its parent `market=` dir's mtime immediately, so a
+        # freshly-ingested partition is visible on the very next call in this process — no
+        # staleness window to tune, unlike a fixed-TTL cache. This matters because the api and
+        # ingest containers are separate processes; each api worker's own cache self-invalidates
+        # from the filesystem, it never needs a cross-process signal from ingest.
+        self._partition_dates_cache: dict[tuple[str, str], tuple[float, tuple[date_, ...]]] = {}
 
     # -- write path -----------------------------------------------------------------
 
@@ -220,6 +228,21 @@ class ParquetStore:
         base = self.root / f"dataset={dataset}" / f"market={market}"
         if not base.is_dir():
             return ()
+
+        # A new `date=` partition's `mkdir` (`write_partition`) bumps `base`'s own mtime, so
+        # comparing it against the cached mtime is enough to detect "ingest wrote something new
+        # since we last scanned" without re-opening every partition's Parquet file again. This
+        # is the fix for a real measured cost: scanning ~750+ date partitions (each its own
+        # DuckDB `connect()` + Parquet-metadata read in `_partition_has_real_rows`) took ~11s per
+        # call once the store held a few years of backfilled history — and this method is called
+        # on every `_real_calendar()`/price-history/ETF-flow tool invocation, so that cost was
+        # paid on every single API request, not once.
+        cache_key = (dataset, market)
+        current_mtime = base.stat().st_mtime_ns
+        cached = self._partition_dates_cache.get(cache_key)
+        if cached is not None and cached[0] == current_mtime:
+            return cached[1]
+
         dates: list[date_] = []
         for child in base.iterdir():
             if not child.name.startswith("date="):
@@ -233,7 +256,9 @@ class ParquetStore:
                 continue
             if self._partition_has_real_rows(manifest_path):
                 dates.append(run_date)
-        return tuple(sorted(dates))
+        result = tuple(sorted(dates))
+        self._partition_dates_cache[cache_key] = (current_mtime, result)
+        return result
 
     def _partition_has_real_rows(self, manifest_path: Path) -> bool:
         """`read_parquet` auto-detects this file's own Hive-style parent directories
@@ -259,6 +284,8 @@ class ParquetStore:
         dataset: str,
         market: str,
         run_dates: Sequence[date_],
+        *,
+        symbols: Sequence[str] | None = None,
     ) -> list[dict[str, object]]:
         """Read and concatenate several date partitions, in the given order, skipping any
         date that has never been written (a gap is silently omitted here — callers that need
@@ -266,15 +293,62 @@ class ParquetStore:
         themselves; this helper is for downstream compute that only needs whatever rows
         already exist).
 
-        Every partition is still resolved through its own manifest (never a mid-write glob
-        across the whole tree), so this is just `read_partition` applied per date, not a new
-        read mechanism — kept here rather than in a caller so there is exactly one Parquet-
-        reading code path for the whole derived store.
+        `symbols`, when given, filters at the DuckDB SQL layer (`WHERE symbol IN (...)`)
+        rather than in Python after every row is read+boxed — a caller asking for 1-20 symbols
+        (e.g. `get_price_history`'s ≤20-symbol batch contract) would otherwise pull and box
+        every symbol in the whole market for each date just to discard nearly all of it: a
+        measured 20-day/one-market window is ~445K rows market-wide vs. ~20-260 rows for a
+        typical ≤20-symbol request. Falls back to the unfiltered `read_partition`-per-date path
+        when `symbols` is `None`, since not every caller (e.g. a whole-market screener batch)
+        wants a symbol filter at all.
         """
-        rows: list[dict[str, object]] = []
+        if symbols is None:
+            rows: list[dict[str, object]] = []
+            for run_date in run_dates:
+                rows.extend(self.read_partition(dataset, market, run_date))
+            return rows
+        return self._read_range_filtered(dataset, market, run_dates, symbols=symbols)
+
+    def _read_range_filtered(
+        self,
+        dataset: str,
+        market: str,
+        run_dates: Sequence[date_],
+        *,
+        symbols: Sequence[str],
+    ) -> list[dict[str, object]]:
+        """One batched multi-glob DuckDB query (mirrors `read_range_frame`'s own batching, see
+        its docstring) with the symbol filter pushed into SQL via a bound parameter list —
+        never string-interpolated, even though these are trusted internal capability names, to
+        keep exactly one query-construction pattern across this module."""
+        globs: list[str] = []
         for run_date in run_dates:
-            rows.extend(self.read_partition(dataset, market, run_date))
-        return rows
+            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
+            partition_dir = key.path(self.root)
+            manifest_path = partition_dir / _MANIFEST_NAME
+            if not manifest_path.exists():
+                continue
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            version_dir = partition_dir / f"v={manifest['version']}"
+            globs.append(str(version_dir / "*.parquet"))
+        if not globs or not symbols:
+            return []
+
+        # `placeholders` is only ever a run of `?, ?, ...` (one per `symbols` item) — never
+        # interpolated user data; every actual value is still bound via `execute`'s parameter
+        # list below, so this is not the injection pattern ruff's S608 flags.
+        placeholders = ", ".join("?" for _ in symbols)
+        con = duckdb.connect()
+        try:
+            relation = con.execute(
+                f"SELECT * FROM read_parquet(?, union_by_name => true) "  # noqa: S608
+                f"WHERE symbol IN ({placeholders})",
+                [globs, *symbols],
+            )
+            columns = [d[0] for d in relation.description or []]
+            return [dict(zip(columns, row, strict=True)) for row in relation.fetchall()]
+        finally:
+            con.close()
 
     def read_range_frame(
         self,

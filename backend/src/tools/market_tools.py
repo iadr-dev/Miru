@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import timedelta
 from enum import IntEnum, StrEnum
-from typing import cast
+from typing import NamedTuple, cast
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -39,6 +39,7 @@ from ingest.jobs import (
     ETF_AUM_DATASET,
     ETF_EXPENSE_RATIO_DATASET,
     ETF_NAV_DATASET,
+    MARKET_VALUE_JOB,
     MARKET_VALUE_WEIGHT_JOB,
     PRICE_EOD_JOB,
     SHAREHOLDING_DISTRIBUTION_JOB,
@@ -397,6 +398,10 @@ _ESTIMATED_NAV_CAVEAT = (
     "未計入現金、應收股利、應計費用或匯率，且以收盤價估算，"
     "非發行商公告 NAV 亦非即時 IOPV；折溢價亦為此估算值與市價之比較，僅供參考。"
 )
+_STOCK_SHARES_HELD_PCT_CAVEAT = (
+    "佔個股比重為估算值：以市值(TaiwanStockMarketValue) ÷ 當日收盤價 反推流通股數，"
+    "非發行公司公告的實際流通股數。"
+)
 
 
 class HoldingStatus(StrEnum):
@@ -427,7 +432,10 @@ def _classify_holding_status(
         return HoldingStatus.NEW
     if current_weight is None and sell > 0:
         return HoldingStatus.REMOVED
-    if buy > 0:
+    # `buy > sell` (not `buy > 0`) because callers aggregating across multiple ETFs (daily-signal)
+    # can have both nonzero at once — one ETF buying while another sells the same stock — where a
+    # single ETF's own change row never does (exactly one of buy/sell is nonzero, per above).
+    if buy > sell:
         return HoldingStatus.INCREASED
     return HoldingStatus.DECREASED
 
@@ -634,6 +642,89 @@ def _holdings_market_value(
         if h.component_stock_id in closes
     ]
     return sum(values) if values else None
+
+
+def _shares_outstanding_by_symbol(
+    store: ParquetStore, market: str, trade_date: date_
+) -> dict[str, float]:
+    """Every symbol's shares-outstanding on `trade_date`, derived as `MarketValueRow.market_value
+    ÷ that day's close` — market cap is shares-outstanding x price by definition, so this
+    recovers a real share count (to rounding) from two already-ingested whole-market datasets
+    (`MARKET_VALUE_JOB` + `PRICE_EOD_JOB`), never a live per-symbol fetch. Read from the same
+    Parquet partition tree `_closes_by_symbol` already reads for the analogous close-price map.
+    Skips a symbol entirely (rather than a fabricated `0`/`None` sentinel in the map) when either
+    its market-value row or its close is missing on this date."""
+    closes = _closes_by_symbol(store, market, trade_date)
+    if not store.has_partition(MARKET_VALUE_JOB.dataset, market, trade_date):
+        return {}
+    raw_values = store.read_partition(MARKET_VALUE_JOB.dataset, market, trade_date)
+    shares_outstanding: dict[str, float] = {}
+    for row in _rows_from_store(MarketValueRow, raw_values):
+        close = closes.get(row.symbol)
+        if close:
+            shares_outstanding[row.symbol] = row.market_value / close
+    return shares_outstanding
+
+
+_DATE_PARTITION_PREFIX = "date="
+
+
+def _ingested_dates(
+    store: ParquetStore, dataset: str, market: str, *, on_or_before: date_ | None = None
+) -> list[date_]:
+    """Every date `dataset`+`market` has an actually-written partition for, found by scanning
+    the whole Hive-partitioned directory tree — shared by every "latest real date" helper below
+    (`_latest_dataset_date`, `_latest_ingested_date_on_or_before`,
+    `_two_latest_ingested_dates_on_or_before`) so the scan+`has_partition` check exists exactly
+    once. `on_or_before`, when given, drops any later date before returning — a slower-cadence
+    dataset like `ACTIVE_ETF_HOLDING_JOB` can lag the `PRICE_EOD_JOB`-derived trading-day
+    calendar by more than one day, so its latest real partition may sit entirely outside a short
+    requested window."""
+    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
+    if not market_dir.exists():
+        return []
+    candidates: list[date_] = []
+    for child in market_dir.iterdir():
+        if not child.is_dir() or not child.name.startswith(_DATE_PARTITION_PREFIX):
+            continue
+        try:
+            day = date_.fromisoformat(child.name.removeprefix(_DATE_PARTITION_PREFIX))
+        except ValueError:
+            continue
+        if on_or_before is not None and day > on_or_before:
+            continue
+        if store.has_partition(dataset, market, day):
+            candidates.append(day)
+    return candidates
+
+
+def _latest_ingested_date_on_or_before(
+    store: ParquetStore, dataset: str, market: str, on_or_before: date_
+) -> date_ | None:
+    """The latest date `dataset`+`market` has an actually-written partition for, at or before
+    `on_or_before`. Reading a not-yet-ingested partition for the calendar's own last business day
+    would otherwise silently return empty rows instead of falling back to the most recent real
+    one. `None` (never a guessed date) when nothing at or before `on_or_before` has landed."""
+    candidates = _ingested_dates(store, dataset, market, on_or_before=on_or_before)
+    return max(candidates) if candidates else None
+
+
+def _two_latest_ingested_dates_on_or_before(
+    store: ParquetStore, dataset: str, market: str, on_or_before: date_
+) -> tuple[date_ | None, date_ | None]:
+    """`(latest, prior)` — the two most recent dates `dataset`+`market` has an actually-written
+    partition for, at or before `on_or_before`, found by the same `_ingested_dates` scan
+    `_latest_ingested_date_on_or_before` uses (kept as a separate function rather than a
+    refactor of that one, since a day-over-day report needs both dates from one scan, but every
+    existing single-date caller of that function doesn't). Either or both are `None` (never a
+    guessed date) when fewer than 2 dates have landed."""
+    candidates = _ingested_dates(store, dataset, market, on_or_before=on_or_before)
+    if not candidates:
+        return None, None
+    ordered = sorted(candidates, reverse=True)
+    latest = ordered[0]
+    prior = ordered[1] if len(ordered) > 1 else None
+    return latest, prior
 
 
 def _active_etf_fund_size_fields(
@@ -850,7 +941,13 @@ class EtfMoneyFlowRow(BaseModel):
     component_stock_id: str
     component_stock_name: str
     active_etf_holder_count: int | None = None  # 主動式檔數 — None if no holding snapshot found
+    held_shares: int | None = None  # 持有張數 — None if no holding snapshot found
     held_market_value: float | None = None  # 持有市值 — None if no holding snapshot found
+    # 佔個股比重 (estimated) — held_shares ÷ shares-outstanding, where shares-outstanding is
+    # itself derived as MarketValueRow.market_value ÷ that day's close (see
+    # `_stock_shares_held_pct`'s own docstring for why this is exact-by-definition, not a rough
+    # guess). `None` when either the stock's market-cap or its close is missing from the store.
+    stock_shares_held_pct: float | None = None
     net_shares_flow: int  # sum(buy - sell) across every active ETF over the window
     buying_etf_count: int  # 買 — distinct ETFs net-buying this stock over the window
     selling_etf_count: int  # 賣 — distinct ETFs net-selling this stock over the window
@@ -862,8 +959,16 @@ class GetEtfMoneyFlowOutput(BaseModel):
     market: str
     start_date: date_
     end_date: date_
+    # The real date the holdings snapshot behind `inflow_ranking`/`outflow_ranking`/
+    # `held_market_value` reflects — resolved via `_latest_ingested_date_on_or_before`, which can
+    # lag `end_date` when the holdings ingest job hasn't caught up to the price calendar yet (the
+    # bug `_latest_ingested_date_on_or_before` itself was added to fix). `None` only alongside
+    # `data_available=False`, since a successful read always resolves a holding date.
+    holding_as_of: date_ | None = None
     data_available: bool
     unavailable_reason: str | None = None
+    total_stock_count: int = 0  # 共N檔 — every distinct constituent aggregated, not just top_n
+    stock_shares_held_pct_caveat: str = _STOCK_SHARES_HELD_PCT_CAVEAT
     inflow_ranking: tuple[EtfMoneyFlowRow, ...] = Field(default_factory=tuple)
     outflow_ranking: tuple[EtfMoneyFlowRow, ...] = Field(default_factory=tuple)
 
@@ -938,31 +1043,58 @@ class GetEtfMoneyFlowTool(BaseTool):
             agg.per_etf_net[change.symbol] = agg.per_etf_net.get(change.symbol, 0) + net
             agg.net_shares_flow += net
 
-        holding_end_date = window_dates[-1] if window_dates else typed.end_date
-        raw_holdings = self._store.read_partition(
-            ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, holding_end_date
+        holding_end_date = _latest_ingested_date_on_or_before(
+            self._store, ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, typed.end_date
+        )
+        raw_holdings = (
+            self._store.read_partition(
+                ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, holding_end_date
+            )
+            if holding_end_date is not None
+            else []
         )
         holdings = _rows_from_store(ActiveEtfHoldingRow, raw_holdings)
+        # `holding.market_value` is FinMind's own field, hardcoded `0.0` for every row of this
+        # dataset (see `_holdings_market_value`'s docstring) — recompute from shares x that day's
+        # real close instead, the same fix `GetActiveEtfReportTool` already applies.
+        closes = (
+            _closes_by_symbol(self._store, typed.market.value, holding_end_date)
+            if holding_end_date is not None
+            else {}
+        )
+        shares_outstanding = (
+            _shares_outstanding_by_symbol(self._store, typed.market.value, holding_end_date)
+            if holding_end_date is not None
+            else {}
+        )
         holder_counts: dict[str, int] = {}
+        held_shares: dict[str, int] = {}
         held_values: dict[str, float] = {}
         for holding in holdings:
-            holder_counts[holding.component_stock_id] = (
-                holder_counts.get(holding.component_stock_id, 0) + 1
-            )
-            held_values[holding.component_stock_id] = (
-                held_values.get(holding.component_stock_id, 0.0) + holding.market_value
-            )
+            stock_id = holding.component_stock_id
+            holder_counts[stock_id] = holder_counts.get(stock_id, 0) + 1
+            held_shares[stock_id] = held_shares.get(stock_id, 0) + holding.shares
+            close = closes.get(stock_id)
+            if close is not None:
+                held_values[stock_id] = held_values.get(stock_id, 0.0) + holding.shares * close
 
         rows: list[EtfMoneyFlowRow] = []
         for stock_id, agg in aggregates.items():
             buying = sum(1 for net in agg.per_etf_net.values() if net > 0)
             selling = sum(1 for net in agg.per_etf_net.values() if net < 0)
+            shares = held_shares.get(stock_id)
+            outstanding = shares_outstanding.get(stock_id)
+            shares_held_pct = (
+                shares / outstanding * 100 if shares is not None and outstanding else None
+            )
             rows.append(
                 EtfMoneyFlowRow(
                     component_stock_id=stock_id,
                     component_stock_name=agg.component_stock_name,
                     active_etf_holder_count=holder_counts.get(stock_id),
+                    held_shares=shares,
                     held_market_value=held_values.get(stock_id),
+                    stock_shares_held_pct=shares_held_pct,
                     net_shares_flow=agg.net_shares_flow,
                     buying_etf_count=buying,
                     selling_etf_count=selling,
@@ -976,9 +1108,354 @@ class GetEtfMoneyFlowTool(BaseTool):
             market=typed.market.value,
             start_date=typed.start_date,
             end_date=typed.end_date,
+            holding_as_of=holding_end_date,
             data_available=True,
+            total_stock_count=len(aggregates),
             inflow_ranking=inflow,
             outflow_ranking=outflow,
+        )
+
+
+class GetDailySignalInput(BaseModel):
+    """A market scope + an optional trading day; omitted/`None` means "latest available"."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    trade_date: date_ | None = Field(
+        default=None,
+        description="Trading day to report on (ISO date). Omitted or null means the latest "
+        "available trading day.",
+    )
+
+
+class DailySignalRow(BaseModel):
+    """One constituent stock's day-over-day status across EVERY active ETF combined — the same
+    新增/刪除/加碼/減碼 classification `ActiveEtfReportRow` uses for one ETF, applied to the
+    aggregate (sum of shares held across all active ETFs) instead. Only stocks with a nonzero
+    aggregate change appear (mirrors `ActiveEtfReportRow`'s own "only changed rows" contract)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    component_stock_id: str
+    component_stock_name: str
+    close: float | None = None  # 股價 — None if the store has no price bar for this symbol
+    change_pct: float | None = None  # 漲跌幅 vs. the prior trading day
+    status: HoldingStatus
+    shares_delta: int  # 變動張數 — aggregate net buy-sell across every active ETF, today
+    pct_change: float | None = None  # 變動幅度 — shares_delta ÷ prior-day aggregate shares
+    buying_etf_count: int  # distinct ETFs net-buying this stock today
+    selling_etf_count: int  # distinct ETFs net-selling this stock today
+
+
+class DailySignalHighlight(BaseModel):
+    """One 焦點股 highlight card — the single stock with the largest aggregate inflow/outflow
+    for the day, plus the 多空共識 (buying-vs-selling ETF count) for that same stock."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    component_stock_id: str
+    component_stock_name: str
+    held_market_value_delta: float | None = None  # 資金動向 (NTD) — None if no close was found
+    buying_etf_count: int
+    selling_etf_count: int
+
+
+class GetDailySignalOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    report_date: date_ | None = None
+    prior_date: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    total_stock_count: int = 0  # 共N檔 — every stock with a nonzero aggregate change today
+    new_count: int = 0  # 新增
+    removed_count: int = 0  # 刪除
+    increased_count: int = 0  # 加碼
+    decreased_count: int = 0  # 減碼
+    top_inflow: DailySignalHighlight | None = None
+    top_outflow: DailySignalHighlight | None = None
+    rows: tuple[DailySignalRow, ...] = Field(default_factory=tuple)
+
+
+def _aggregate_shares_by_stock(
+    holdings: Sequence[ActiveEtfHoldingRow],
+) -> dict[str, int]:
+    """Sum of `shares` held across every active ETF, per constituent stock — the aggregate
+    analog of one ETF's own per-stock `shares` field, on a single day's holding snapshot."""
+    totals: dict[str, int] = {}
+    for holding in holdings:
+        totals[holding.component_stock_id] = (
+            totals.get(holding.component_stock_id, 0) + holding.shares
+        )
+    return totals
+
+
+@dataclass(frozen=True)
+class _DailySignalContext:
+    """Bundles the four per-symbol maps `_daily_signal_rows` needs — pulled into one dataclass
+    purely to stay under the project's argument-count lint budget, same reasoning
+    `_active_etf_fund_size_fields`'s own `dates`/`holdings` tuple params use."""
+
+    prior_aggregate_shares: dict[str, int]
+    report_aggregate_shares: dict[str, int]
+    closes: dict[str, float]
+    prior_closes: dict[str, float]
+
+
+class _DailySignalAggregates(NamedTuple):
+    """Per-stock aggregates across every ETF's change row for one day — split out of
+    `_daily_signal_rows` purely to keep that function's own branching under the project's
+    cognitive-complexity budget; this half is a single pass with no classification logic."""
+
+    buy_by_stock: dict[str, int]
+    sell_by_stock: dict[str, int]
+    name_by_stock: dict[str, str]
+    buying_etfs: dict[str, set[str]]
+    selling_etfs: dict[str, set[str]]
+
+
+def _aggregate_daily_signal_changes(
+    changes: Sequence[ActiveEtfHoldingChangeRow],
+) -> _DailySignalAggregates:
+    """`buy`/`sell` summed across every ETF's change row for each stock, plus which ETFs
+    contributed a buy/sell — the raw-aggregation half of `_daily_signal_rows`."""
+    buy_by_stock: dict[str, int] = {}
+    sell_by_stock: dict[str, int] = {}
+    name_by_stock: dict[str, str] = {}
+    buying_etfs: dict[str, set[str]] = {}
+    selling_etfs: dict[str, set[str]] = {}
+    for change in changes:
+        stock_id = change.component_stock_id
+        name_by_stock[stock_id] = change.component_stock_name
+        buy_by_stock[stock_id] = buy_by_stock.get(stock_id, 0) + change.buy
+        sell_by_stock[stock_id] = sell_by_stock.get(stock_id, 0) + change.sell
+        if change.buy > 0:
+            buying_etfs.setdefault(stock_id, set()).add(change.symbol)
+        if change.sell > 0:
+            selling_etfs.setdefault(stock_id, set()).add(change.symbol)
+    return _DailySignalAggregates(
+        buy_by_stock=buy_by_stock,
+        sell_by_stock=sell_by_stock,
+        name_by_stock=name_by_stock,
+        buying_etfs=buying_etfs,
+        selling_etfs=selling_etfs,
+    )
+
+
+def _daily_signal_row_for_stock(
+    stock_id: str,
+    name: str,
+    aggregates: _DailySignalAggregates,
+    ctx: _DailySignalContext,
+    *,
+    has_prior_day: bool,
+) -> DailySignalRow | None:
+    """One stock's `DailySignalRow`, classified with the same `_classify_holding_status` the
+    single-ETF report uses (just against the cross-ETF aggregate shares instead of one ETF's own
+    weight) — `None` for a stock with zero net buy/sell (defensive; every stock here came from a
+    nonzero-buy-or-sell change row, so this should never actually trigger)."""
+    buy = aggregates.buy_by_stock.get(stock_id, 0)
+    sell = aggregates.sell_by_stock.get(stock_id, 0)
+    if buy == 0 and sell == 0:
+        return None
+    prior_shares = ctx.prior_aggregate_shares.get(stock_id)
+    current_shares = ctx.report_aggregate_shares.get(stock_id)
+    status = _classify_holding_status(
+        buy=buy,
+        sell=sell,
+        prior_weight=float(prior_shares) if prior_shares is not None else None,
+        current_weight=float(current_shares) if current_shares is not None else None,
+        has_prior_day=has_prior_day,
+    )
+    shares_delta = buy - sell
+    pct_change = shares_delta / prior_shares if prior_shares else None
+    close = ctx.closes.get(stock_id)
+    prior_close = ctx.prior_closes.get(stock_id)
+    change_pct = (close / prior_close - 1) * 100 if close is not None and prior_close else None
+    return DailySignalRow(
+        component_stock_id=stock_id,
+        component_stock_name=name,
+        close=close,
+        change_pct=change_pct,
+        status=status,
+        shares_delta=shares_delta,
+        pct_change=pct_change,
+        buying_etf_count=len(aggregates.buying_etfs.get(stock_id, ())),
+        selling_etf_count=len(aggregates.selling_etfs.get(stock_id, ())),
+    )
+
+
+def _daily_signal_rows(
+    changes: Sequence[ActiveEtfHoldingChangeRow],
+    ctx: _DailySignalContext,
+    *,
+    has_prior_day: bool,
+) -> list[DailySignalRow]:
+    """One row per stock with a nonzero aggregate buy/sell today, mirroring
+    `_active_etf_report_rows`'s own per-ETF version — see `_aggregate_daily_signal_changes`/
+    `_daily_signal_row_for_stock` for the two halves this delegates to."""
+    aggregates = _aggregate_daily_signal_changes(changes)
+    rows: list[DailySignalRow] = []
+    for stock_id, name in aggregates.name_by_stock.items():
+        row = _daily_signal_row_for_stock(
+            stock_id, name, aggregates, ctx, has_prior_day=has_prior_day
+        )
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def _daily_signal_highlight(
+    row: DailySignalRow, *, held_market_value_delta: float | None
+) -> DailySignalHighlight:
+    return DailySignalHighlight(
+        component_stock_id=row.component_stock_id,
+        component_stock_name=row.component_stock_name,
+        held_market_value_delta=held_market_value_delta,
+        buying_etf_count=row.buying_etf_count,
+        selling_etf_count=row.selling_etf_count,
+    )
+
+
+def _daily_signal_highlight_if_significant(
+    row: DailySignalRow | None,
+    *,
+    closes: dict[str, float],
+    wants_positive_delta: bool,
+) -> DailySignalHighlight | None:
+    """`_daily_signal_highlight` for `row`, but only when it's actually a real inflow (positive
+    `shares_delta`) or outflow (negative) — `top_inflow_row`/`top_outflow_row` are just the
+    max/min of `rows`, which can legitimately be a net-sell or net-buy respectively when every
+    stock moved the same direction today, and a highlight in the wrong direction would mislead a
+    reader glancing at "焦點股". `None` when `row` is `None` (no rows at all) or wrong-signed."""
+    if row is None:
+        return None
+    if wants_positive_delta and row.shares_delta <= 0:
+        return None
+    if not wants_positive_delta and row.shares_delta >= 0:
+        return None
+    close = closes.get(row.component_stock_id)
+    held_market_value_delta = row.shares_delta * close if close is not None else None
+    return _daily_signal_highlight(row, held_market_value_delta=held_market_value_delta)
+
+
+class GetDailySignalTool(BaseTool):
+    """`get_daily_signal` — 今日訊號: whole-market, single-day 操作日報 aggregated across EVERY
+    active ETF (never one ETF — that per-symbol drill-down is `get_active_etf_report`, used on
+    the stock/ETF detail page). For each stock with a nonzero cross-ETF share change today:
+    新增/刪除/加碼/減碼 status, 變動張數/幅度, and 多空共識 (買/賣 ETF count) — plus 焦點股
+    highlights (the single largest inflow/outflow stock) and status-count summaries (新增/刪除/
+    加碼/減碼 totals for the filter chips).
+
+    Sourced from the same **ingest-owned Parquet store** derived-read pattern
+    `GetEtfMoneyFlowTool` uses — never a live per-symbol router fan-out. `held_market_value_delta`
+    on each highlight reuses `_closes_by_symbol`/real EOD closes, never FinMind's own broken
+    `market_value` field (see `_holdings_market_value`'s docstring)."""
+
+    name = "get_daily_signal"
+    description = (
+        "Get today's whole-market active-ETF operations signal: per-stock 新增/刪除/加碼/減碼 "
+        "status aggregated across every active ETF, share-count/percentage change, buying/"
+        "selling ETF consensus, top inflow/outflow highlights, and status-count summary "
+        "(Sponsor-tier)."
+    )
+    input_model: type[BaseModel] = GetDailySignalInput
+    output_model: type[BaseModel] = GetDailySignalOutput
+    data_class = DataClass.SPONSOR
+    card_type: str | None = "daily_signal"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(GetDailySignalInput, args)
+        market = typed.market.value
+        target = typed.trade_date or date_.today()
+
+        report_date = _latest_ingested_date_on_or_before(
+            self._store, ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset, market, target
+        )
+        if report_date is None:
+            return GetDailySignalOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=(
+                    "No ingested active-ETF holding-change partition found for "
+                    f"{market} on or before {target.isoformat()} — the whole-market ingest job "
+                    "may not have run yet."
+                ),
+            )
+        # The prior HOLDING snapshot strictly before `report_date` — never the same-dataset scan
+        # `_two_latest_ingested_dates_on_or_before` would give against `HoldingChange` (a daily
+        # diff dataset, not a snapshot; its own "prior" partition date has no holdings meaning).
+        _, prior_date = _two_latest_ingested_dates_on_or_before(
+            self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market, report_date
+        )
+
+        raw_changes = self._store.read_partition(
+            ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset, market, report_date
+        )
+        changes = _rows_from_store(ActiveEtfHoldingChangeRow, raw_changes)
+
+        report_holdings = _rows_from_store(
+            ActiveEtfHoldingRow,
+            self._store.read_partition(ACTIVE_ETF_HOLDING_JOB.dataset, market, report_date),
+        )
+        prior_holdings = (
+            _rows_from_store(
+                ActiveEtfHoldingRow,
+                self._store.read_partition(ACTIVE_ETF_HOLDING_JOB.dataset, market, prior_date),
+            )
+            if prior_date is not None
+            else ()
+        )
+        report_aggregate_shares = _aggregate_shares_by_stock(report_holdings)
+        prior_aggregate_shares = _aggregate_shares_by_stock(prior_holdings)
+
+        closes = _closes_by_symbol(self._store, market, report_date)
+        prior_closes = (
+            _closes_by_symbol(self._store, market, prior_date) if prior_date is not None else {}
+        )
+        rows = _daily_signal_rows(
+            changes,
+            _DailySignalContext(
+                prior_aggregate_shares=prior_aggregate_shares,
+                report_aggregate_shares=report_aggregate_shares,
+                closes=closes,
+                prior_closes=prior_closes,
+            ),
+            has_prior_day=prior_date is not None,
+        )
+
+        counts = dict.fromkeys(HoldingStatus, 0)
+        for row in rows:
+            counts[row.status] += 1
+
+        top_inflow_row = max(rows, key=lambda r: r.shares_delta, default=None)
+        top_outflow_row = min(rows, key=lambda r: r.shares_delta, default=None)
+        top_inflow = _daily_signal_highlight_if_significant(
+            top_inflow_row, closes=closes, wants_positive_delta=True
+        )
+        top_outflow = _daily_signal_highlight_if_significant(
+            top_outflow_row, closes=closes, wants_positive_delta=False
+        )
+
+        return GetDailySignalOutput(
+            market=market,
+            report_date=report_date,
+            prior_date=prior_date,
+            data_available=True,
+            total_stock_count=len(rows),
+            new_count=counts[HoldingStatus.NEW],
+            removed_count=counts[HoldingStatus.REMOVED],
+            increased_count=counts[HoldingStatus.INCREASED],
+            decreased_count=counts[HoldingStatus.DECREASED],
+            top_inflow=top_inflow,
+            top_outflow=top_outflow,
+            rows=tuple(rows),
         )
 
 
@@ -990,25 +1467,12 @@ _CONTRIBUTION_CAVEAT = (
 
 
 def _latest_dataset_date(store: ParquetStore, dataset: str, market: str) -> date_ | None:
-    """The newest date `dataset`+`market` has an actually-written partition for, found by
-    scanning the Hive-partitioned directory tree — mirrors
-    `analytics.screener.store._latest_partition_date`'s own scan, generalized to any
-    whole-market dataset rather than just `screener_flags`. Never assumes "today" has landed;
-    the daily ingest job may not have run yet, so "latest" always means "latest actually
-    written", never a naive `date.today()`."""
-    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
-    if not market_dir.exists():
-        return None
-    candidates: list[date_] = []
-    for child in market_dir.iterdir():
-        if not child.is_dir() or not child.name.startswith("date="):
-            continue
-        try:
-            day = date_.fromisoformat(child.name.removeprefix("date="))
-        except ValueError:
-            continue
-        if store.has_partition(dataset, market, day):
-            candidates.append(day)
+    """The newest date `dataset`+`market` has an actually-written partition for, via the shared
+    `_ingested_dates` scan (mirrors `analytics.screener.store._latest_partition_date`'s own
+    scan, generalized to any whole-market dataset rather than just `screener_flags`). Never
+    assumes "today" has landed; the daily ingest job may not have run yet, so "latest" always
+    means "latest actually written", never a naive `date.today()`."""
+    candidates = _ingested_dates(store, dataset, market)
     return max(candidates) if candidates else None
 
 
@@ -2346,6 +2810,164 @@ class GetEtfListTool(BaseTool):
         )
 
 
+_DECEMBER = 12
+
+
+def _month_bounds(year: int, month: int) -> tuple[date_, date_]:
+    """The first and last calendar day of `(year, month)` — computed via date arithmetic
+    rather than importing the stdlib `calendar` module, which this file's own
+    `calendar.trading_days` import would shadow."""
+    first_day = date_(year, month, 1)
+    next_month_first = date_(year + 1, 1, 1) if month == _DECEMBER else date_(year, month + 1, 1)
+    return first_day, next_month_first - timedelta(days=1)
+
+
+class DividendCalendarEventRow(BaseModel):
+    """One ETF's dividend event landing within the requested month, on any of its three
+    dates (`ex_dividend_date`/`last_buy_date`/`payment_date`) — the same row appears under
+    each date it actually has, so the calendar view can group by day without re-deriving
+    which dates belong to which event."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    name: str
+    ex_dividend_date: date_
+    # 最後購買日 — the last trading day an investor can still buy and capture this
+    # distribution, i.e. the trading day strictly before `ex_dividend_date`. Derived via
+    # `TradingDayCalendar.previous_trading_day`, never FinMind's own field (it doesn't
+    # publish one).
+    last_buy_date: date_
+    # 股利發放日 — `None` when FinMind hasn't published a payment date yet for this event
+    # (see `DividendEvent.cash_dividend_payment_date`'s own docstring), never derived.
+    payment_date: date_ | None = None
+    cash_dividend: float
+
+
+class GetDividendCalendarInput(BaseModel):
+    """A market + calendar year/month; omitted year/month means the current calendar month."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    year: int | None = Field(default=None, ge=2000, le=2100)
+    month: int | None = Field(default=None, ge=1, le=12)
+
+    @model_validator(mode="after")
+    def _year_and_month_together(self) -> GetDividendCalendarInput:
+        if (self.year is None) != (self.month is None):
+            raise ValueError("year and month must both be set or both omitted")
+        return self
+
+
+class GetDividendCalendarOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    year: int
+    month: int
+    data_available: bool
+    unavailable_reason: str | None = None
+    events: tuple[DividendCalendarEventRow, ...] = Field(default_factory=tuple)
+
+
+class GetDividendCalendarTool(BaseTool):
+    """`get_dividend_calendar` — 股息日曆: every TW-listed ETF's 除息日/最後購買日/股利發放日
+    landing within one requested calendar month, read from the already-ingested `dividends`
+    (`TaiwanStockDividend`) partition tree (`DIVIDENDS_JOB`) — never a live per-symbol fetch.
+
+    Filtered to ETF-shaped symbols only (`classify_symbol_type`), matching every other
+    ETF-tab feature's scope (`GetEtfListTool`/`GetEtfMoneyFlowTool`/`GetDailySignalTool`) — a
+    whole-market (stock+ETF) calendar was considered and rejected: this tool backs the ETF
+    tab's own 5th sub-tab specifically, not a general-purpose calendar.
+
+    Scans the FULL `dividends` partition history (not a bounded recent window) because an
+    event announced months ago can still have an ex-dividend/payment date landing in a
+    FUTURE requested month — unlike `_etf_ttm_distribution_by_symbol`'s trailing-12-month
+    yield calc (which only cares about past events), a calendar must find every event whose
+    date falls in the target month regardless of when it was announced."""
+
+    name = "get_dividend_calendar"
+    description = (
+        "Get every Taiwan-listed ETF's dividend calendar events (ex-dividend date, last "
+        "buy date, payment date, cash amount) landing within one requested calendar month "
+        "(defaults to the current month)."
+    )
+    input_model: type[BaseModel] = GetDividendCalendarInput
+    output_model: type[BaseModel] = GetDividendCalendarOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "dividend_calendar"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(GetDividendCalendarInput, args)
+        market = typed.market.value
+        today = date_.today()
+        year = typed.year if typed.year is not None else today.year
+        month = typed.month if typed.month is not None else today.month
+        month_start, month_end = _month_bounds(year, month)
+
+        known_dates = self._store.list_partition_dates(DIVIDENDS_JOB.dataset, market)
+        if not known_dates:
+            return GetDividendCalendarOutput(
+                market=market,
+                year=year,
+                month=month,
+                data_available=False,
+                unavailable_reason=(
+                    f"No ingested dividend partition found for {market} — the whole-market "
+                    "ingest job may not have run yet."
+                ),
+            )
+        raw_rows = self._store.read_range(DIVIDENDS_JOB.dataset, market, known_dates)
+        all_events = _rows_from_store(DividendEvent, raw_rows)
+
+        calendar = _real_calendar(self._store, market)
+        names = _etf_nav_names(self._store, market)
+
+        rows: list[DividendCalendarEventRow] = []
+        for event in all_events:
+            if classify_symbol_type(event.symbol) is SymbolType.STOCK:
+                continue
+            ex_date = event.cash_ex_dividend_date
+            cash = event.cash_dividend
+            if ex_date is None or cash is None or cash <= 0:
+                continue
+            payment_date = event.cash_dividend_payment_date
+            in_month = month_start <= ex_date <= month_end or (
+                payment_date is not None and month_start <= payment_date <= month_end
+            )
+            if not in_month:
+                continue
+            rows.append(
+                DividendCalendarEventRow(
+                    symbol=event.symbol,
+                    # Falls back to the symbol itself when `etf_nav` has no name for it — the
+                    # same "never drop a row for a missing enrichment field" convention
+                    # `_etf_list_row`'s own `inputs.names.get(symbol, symbol)` uses. `dividends`
+                    # and `etf_nav` are two independent ingest jobs; one being behind (or, in a
+                    # fresh/partially-backfilled store, having zero partitions at all) must
+                    # never silently empty out an otherwise-real calendar event.
+                    name=names.get(event.symbol, event.symbol),
+                    ex_dividend_date=ex_date,
+                    last_buy_date=calendar.previous_trading_day(ex_date),
+                    payment_date=payment_date,
+                    cash_dividend=cash,
+                )
+            )
+
+        return GetDividendCalendarOutput(
+            market=market,
+            year=year,
+            month=month,
+            data_available=True,
+            events=tuple(rows),
+        )
+
+
 def _latest_eps(payload: dict[str, object]) -> float | None:
     """`financials`' payload is `{"lines": [...]}` — one row per (period, statement line);
     the most recent `item == "EPS"` row's `value` is the latest reported EPS."""
@@ -2733,12 +3355,15 @@ class GetPriceHistoryTool(BaseTool):
         calendar = _real_calendar(self._store, market)
         start = calendar.shift_business_days(latest, -(typed.days - 1))
         dates = calendar.business_days_between(start, latest)
-        raw_rows = self._store.read_range(PRICE_EOD_JOB.dataset, market, dates)
-        wanted = set(typed.symbols)
+        # Symbol filter pushed into the DuckDB read itself (`read_range`'s `symbols=`) rather
+        # than validating every symbol in the market for this window and discarding almost all
+        # of it in Python — this tool's own contract caps `symbols` at 20, so the filtered read
+        # is at most 20 symbols x `days` rows, not the whole market's.
+        raw_rows = self._store.read_range(
+            PRICE_EOD_JOB.dataset, market, dates, symbols=typed.symbols
+        )
         rows = tuple(
-            row
-            for row in _rows_from_store(EODBar, raw_rows)
-            if row.symbol in wanted and row.market.value == market
+            row for row in _rows_from_store(EODBar, raw_rows) if row.market.value == market
         )
         return GetPriceHistoryOutput(market=market, start_date=start, end_date=latest, rows=rows)
 
@@ -2766,6 +3391,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetChipFlowsTool(router), False),
         (GetActiveEtfReportTool(router, store), False),
         (GetEtfMoneyFlowTool(store), False),
+        (GetDailySignalTool(store), False),
         (GetAdvanceDeclineTool(store), False),
         (GetPriceMomentumTool(store), False),
         (GetHolderAccumulationTool(store), False),
@@ -2774,6 +3400,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetSymbolInfoTool(store), False),
         (GetPriceHistoryTool(store), False),
         (GetEtfListTool(store), False),
+        (GetDividendCalendarTool(store), False),
     ]
     return tools
 
@@ -2781,6 +3408,9 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
 __all__ = [
     "ActiveEtfReportRow",
     "AdvanceDeclineBuckets",
+    "DailySignalHighlight",
+    "DailySignalRow",
+    "DividendCalendarEventRow",
     "EtfListRow",
     "EtfMoneyFlowRow",
     "GetActiveEtfReportInput",
@@ -2793,6 +3423,12 @@ __all__ = [
     "GetChipFlowsTool",
     "GetCompanyProfileOutput",
     "GetCompanyProfileTool",
+    "GetDailySignalInput",
+    "GetDailySignalOutput",
+    "GetDailySignalTool",
+    "GetDividendCalendarInput",
+    "GetDividendCalendarOutput",
+    "GetDividendCalendarTool",
     "GetDividendScheduleOutput",
     "GetDividendScheduleTool",
     "GetEtfListInput",

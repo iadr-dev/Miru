@@ -31,10 +31,16 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, status
 
 from accounts.models import User
-from api.dependencies import AppState, get_state, optional_user, tool_context_for
+from api.dependencies import (
+    AppState,
+    dispatch_validated_tool,
+    get_state,
+    optional_user,
+    tool_context_for,
+)
 from api.errors import ApiError
 from schemas.enums import Market
-from tools.base import ToolContext, dispatch_tool
+from tools.base import ToolContext
 from tools.international_tools import FinMindInternationalMarket
 
 router = APIRouter(tags=["market-data"])
@@ -47,20 +53,11 @@ def _context(
     return tool_context_for(user, state)
 
 
-async def _dispatch(
-    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
-) -> dict[str, object]:
-    tool = state.tool_registry.get_tool(tool_name)
-    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
-        raise ApiError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            code="tool_unavailable",
-            message=f"Tool {tool_name} is not registered.",
-            retryable=False,
-        )
-    validated = tool.input_model.model_validate(args)
-    result = await dispatch_tool(tool, validated, ctx)
-    return result.model_dump(mode="json")
+# `GetDividendCalendarInput`'s `year`/`month`-together validator is the first cross-field
+# constraint in this router that can actually trip `dispatch_validated_tool`'s 422 path — a bad
+# tool arg (as opposed to a bad query PARAM, which FastAPI's own `RequestValidationError` handler
+# already renders as 422) must not fall through to the catch-all 500 handler.
+_dispatch = dispatch_validated_tool
 
 
 # ---- market-level reads --------------------------------------------------------------------
@@ -164,6 +161,21 @@ async def etf_money_flow(
         },
         ctx,
     )
+
+
+@router.get("/market/daily-signal")
+async def daily_signal(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """今日訊號 — whole-market, single-day active-ETF operations signal aggregated across every
+    active ETF (Sponsor-tier). Per-stock 新增/刪除/加碼/減碼 status + 焦點股 highlights."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_daily_signal", args, ctx)
 
 
 @router.get("/market/industry-flow")
@@ -335,6 +347,25 @@ async def etf_list(
     return await _dispatch(state, "get_etf_list", args, ctx)
 
 
+@router.get("/market/dividend-calendar")
+async def dividend_calendar(
+    market: Market = Query(Market.TW),
+    year: int | None = Query(None),
+    month: int | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """股息日曆 — every Taiwan-listed ETF's 除息日/最後購買日/股利發放日 landing within one
+    requested calendar month (defaults to the current month). `year`/`month` must both be
+    given or both omitted."""
+    args: dict[str, object] = {"market": market.value}
+    if year is not None:
+        args["year"] = year
+    if month is not None:
+        args["month"] = month
+    return await _dispatch(state, "get_dividend_calendar", args, ctx)
+
+
 @router.get("/market/big-holder-accumulation")
 async def big_holder_accumulation(
     symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
@@ -468,11 +499,20 @@ async def tag_screener(
     return await _dispatch(state, "run_tag_screener", args, ctx)
 
 
+def _split_symbols(symbols: str) -> list[str]:
+    """Splits the frontend's single comma-joined `symbols` value (`lib/api/market.ts`'s
+    `symbolsSearchParams` sends `symbols=2330,2454`, never repeated `symbols=` params) into a
+    list — `list[str] = Query(...)` only populates from repeated query keys, so declaring these
+    routes that way silently accepted a single-symbol request and matched nothing for every
+    multi-symbol batch call (every comma-joined value became one unmatched literal string).
+    Empty segments (a trailing comma, `""`) are dropped rather than passed through as a bogus
+    symbol id."""
+    return [s for s in symbols.split(",") if s]
+
+
 @router.get("/market/symbol-info")
 async def symbol_info(
-    symbols: list[str] = Query(
-        ..., min_length=1, max_length=20, description="Up to 20 symbol ids, e.g. '2330'."
-    ),
+    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -480,15 +520,13 @@ async def symbol_info(
     """Batched symbol->name (+ industry/security-type) lookup, e.g. to enrich a bare-symbol
     ranking (`get_score_leaderboard`) with a display name. A symbol absent from the returned
     `rows` is not in the current whole-market roster — never a fabricated name in its place."""
-    args: dict[str, object] = {"symbols": symbols, "market": market.value}
+    args: dict[str, object] = {"symbols": _split_symbols(symbols), "market": market.value}
     return await _dispatch(state, "get_symbol_info", args, ctx)
 
 
 @router.get("/market/price-history")
 async def price_history(
-    symbols: list[str] = Query(
-        ..., min_length=1, max_length=20, description="Up to 20 symbol ids, e.g. '2330'."
-    ),
+    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),
     days: int = Query(20, ge=2, le=60, description="Trailing trading-day count, 2-60."),
     state: AppState = Depends(get_state),
@@ -499,7 +537,10 @@ async def price_history(
     roster). `get_price_quote`/`/quote` stay latest-bar-only; this is the separate bounded-
     history capability those callers need instead."""
     return await _dispatch(
-        state, "get_price_history", {"symbols": symbols, "market": market.value, "days": days}, ctx
+        state,
+        "get_price_history",
+        {"symbols": _split_symbols(symbols), "market": market.value, "days": days},
+        ctx,
     )
 
 

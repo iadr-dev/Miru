@@ -32,6 +32,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_chip_flows": "chip_flows",
     "get_active_etf_report": "active_etf_report",
     "get_etf_money_flow": "etf_money_flow",
+    "get_daily_signal": "daily_signal",
     "get_advance_decline": "advance_decline",
     "get_index_contribution": "index_contribution",
     "get_sector_heatmap": "sector_heatmap",
@@ -43,6 +44,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_symbol_info": "symbol_info",
     "get_price_history": "price_history",
     "get_etf_list": "etf_list",
+    "get_dividend_calendar": "dividend_calendar",
     # chip_tools.py
     "get_margin_short": "margin_short",
     "get_margin_short_total_market": "margin_short_total_market",

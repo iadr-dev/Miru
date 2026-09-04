@@ -100,7 +100,9 @@ export const etfMoneyFlowRowSchema = z.object({
   component_stock_id: z.string(),
   component_stock_name: z.string(),
   active_etf_holder_count: z.number().nullable().optional(),
+  held_shares: z.number().nullable().optional(),
   held_market_value: z.number().nullable().optional(),
+  stock_shares_held_pct: z.number().nullable().optional(),
   net_shares_flow: z.number(),
   buying_etf_count: z.number(),
   selling_etf_count: z.number(),
@@ -111,8 +113,11 @@ export const etfMoneyFlowDataSchema = z.object({
   market: z.string(),
   start_date: z.string(),
   end_date: z.string(),
+  holding_as_of: z.string().nullable().optional(),
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable().optional(),
+  total_stock_count: z.number().default(0),
+  stock_shares_held_pct_caveat: z.string(),
   inflow_ranking: z.array(etfMoneyFlowRowSchema).default([]),
   outflow_ranking: z.array(etfMoneyFlowRowSchema).default([]),
 });
@@ -421,7 +426,17 @@ export const symbolInfoRowSchema = z.object({
 });
 export type SymbolInfoRow = z.infer<typeof symbolInfoRowSchema>;
 
-export const symbolInfoResponseSchema = rowsOutputSchema(symbolInfoRowSchema);
+// `GetSymbolInfoOutput`/`GetPriceHistoryOutput` are `{market, ..., data_available,
+// unavailable_reason, rows}` — a distinct shape from `rowsOutputSchema`'s
+// `{source_id, currentness_caveat, health_status, rows}` (those two backend tools never route
+// through a `SourceResult`, they read the ingest-owned Parquet store directly).
+export const symbolInfoResponseSchema = z.object({
+  market: z.string(),
+  roster_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(symbolInfoRowSchema).default([]),
+});
 export type SymbolInfoResponse = z.infer<typeof symbolInfoResponseSchema>;
 
 export const priceHistoryBarSchema = z.object({
@@ -436,7 +451,14 @@ export const priceHistoryBarSchema = z.object({
 });
 export type PriceHistoryBar = z.infer<typeof priceHistoryBarSchema>;
 
-export const priceHistoryResponseSchema = rowsOutputSchema(priceHistoryBarSchema);
+export const priceHistoryResponseSchema = z.object({
+  market: z.string(),
+  start_date: z.string().nullable(),
+  end_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(priceHistoryBarSchema).default([]),
+});
 export type PriceHistoryResponse = z.infer<typeof priceHistoryResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -710,6 +732,35 @@ export type EtfListData = z.infer<typeof etfListDataSchema>;
 export const etfListResponseSchema = etfListDataSchema;
 export type EtfListResponse = z.infer<typeof etfListResponseSchema>;
 
+// ---------------------------------------------------------------------------
+// 18. GET /market/dividend-calendar — get_dividend_calendar (public, ETF-only 股息日曆). Every
+//     field mirrors `DividendCalendarEventRow` (backend/src/tools/market_tools.py) field-for-
+//     field — a backend rename becomes a compile error here, not a silent runtime mismatch.
+// ---------------------------------------------------------------------------
+
+export const dividendCalendarEventRowSchema = z.object({
+  symbol: z.string(),
+  name: z.string(),
+  ex_dividend_date: z.string(),
+  last_buy_date: z.string(),
+  payment_date: z.string().nullable(),
+  cash_dividend: z.number(),
+});
+export type DividendCalendarEventRow = z.infer<typeof dividendCalendarEventRowSchema>;
+
+export const dividendCalendarDataSchema = z.object({
+  market: z.string(),
+  year: z.number(),
+  month: z.number(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  events: z.array(dividendCalendarEventRowSchema).default([]),
+});
+export type DividendCalendarData = z.infer<typeof dividendCalendarDataSchema>;
+// Public — never Sponsor-masked, matching `etfListResponseSchema`'s own un-unioned shape.
+export const dividendCalendarResponseSchema = dividendCalendarDataSchema;
+export type DividendCalendarResponse = z.infer<typeof dividendCalendarResponseSchema>;
+
 // Frontend-invented UI-only shape (no backend citation needed, web/CLAUDE.md §2) — the
 // sortable columns `EtfListTable` lets a caller sort by, and the current sort direction.
 export const ETF_SORT_KEYS = [
@@ -724,3 +775,53 @@ export const ETF_SORT_KEYS = [
 ] as const;
 export type EtfSortKey = (typeof ETF_SORT_KEYS)[number];
 export type SortDirection = "asc" | "desc";
+
+// ---------------------------------------------------------------------------
+// 17. GET /market/daily-signal — get_daily_signal (Sponsor-tier). Mirrors
+//     `DailySignalRow`/`DailySignalHighlight`/`GetDailySignalOutput`
+//     (backend/src/tools/market_tools.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const HOLDING_STATUSES = ["新增", "刪除", "加碼", "減碼", "no_prior_data"] as const;
+export const holdingStatusSchema = z.enum(HOLDING_STATUSES);
+export type HoldingStatus = z.infer<typeof holdingStatusSchema>;
+
+export const dailySignalRowSchema = z.object({
+  component_stock_id: z.string(),
+  component_stock_name: z.string(),
+  close: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  status: holdingStatusSchema,
+  shares_delta: z.number(),
+  pct_change: z.number().nullable(),
+  buying_etf_count: z.number(),
+  selling_etf_count: z.number(),
+});
+export type DailySignalRow = z.infer<typeof dailySignalRowSchema>;
+
+export const dailySignalHighlightSchema = z.object({
+  component_stock_id: z.string(),
+  component_stock_name: z.string(),
+  held_market_value_delta: z.number().nullable(),
+  buying_etf_count: z.number(),
+  selling_etf_count: z.number(),
+});
+export type DailySignalHighlight = z.infer<typeof dailySignalHighlightSchema>;
+
+export const dailySignalDataSchema = z.object({
+  market: z.string(),
+  report_date: z.string().nullable(),
+  prior_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  total_stock_count: z.number().default(0),
+  new_count: z.number().default(0),
+  removed_count: z.number().default(0),
+  increased_count: z.number().default(0),
+  decreased_count: z.number().default(0),
+  top_inflow: dailySignalHighlightSchema.nullable(),
+  top_outflow: dailySignalHighlightSchema.nullable(),
+  rows: z.array(dailySignalRowSchema).default([]),
+});
+export const dailySignalResponseSchema = z.union([dailySignalDataSchema, maskedTeaserSchema]);
+export type DailySignalResponse = z.infer<typeof dailySignalResponseSchema>;

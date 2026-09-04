@@ -12,10 +12,14 @@ import {
   advanceDeclineResponseSchema,
   type BusinessIndicatorResponse,
   businessIndicatorResponseSchema,
+  type DailySignalResponse,
   type DayTradingResponse,
   type DerivativesResponse,
+  type DividendCalendarResponse,
+  dailySignalResponseSchema,
   dayTradingResponseSchema,
   derivativesResponseSchema,
+  dividendCalendarResponseSchema,
   type EtfListResponse,
   type EtfMoneyFlowResponse,
   etfListResponseSchema,
@@ -361,4 +365,34 @@ export async function getEtfList(market: Market, tradeDate?: string): Promise<Et
   if (tradeDate) search.set("trade_date", tradeDate);
   const raw = await requestJson(`/market/etf-list?${search.toString()}`);
   return etfListResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 17. GET /market/daily-signal (Sponsor-tier, 今日訊號)
+// ---------------------------------------------------------------------------
+
+export async function getDailySignal(
+  market: Market,
+  tradeDate?: string,
+): Promise<DailySignalResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  const raw = await requestJson(`/market/daily-signal?${search.toString()}`);
+  return dailySignalResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 18. GET /market/dividend-calendar (public, ETF-only 股息日曆)
+// ---------------------------------------------------------------------------
+
+export async function getDividendCalendar(
+  market: Market,
+  year?: number,
+  month?: number,
+): Promise<DividendCalendarResponse> {
+  const search = new URLSearchParams({ market });
+  if (year !== undefined) search.set("year", String(year));
+  if (month !== undefined) search.set("month", String(month));
+  const raw = await requestJson(`/market/dividend-calendar?${search.toString()}`);
+  return dividendCalendarResponseSchema.parse(raw);
 }

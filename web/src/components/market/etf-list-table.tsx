@@ -3,11 +3,16 @@
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
+import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
 
 const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr]";
+// Same collapsed-row-count convention `HolderAccumulationCard`/`LeaderboardCard` use — enough
+// rows to be useful inline while keeping this card's height comparable to its dashboard
+// neighbors; "展開完整{count}筆" opens the full sorted list (unbounded, still scrollable) in
+// `ExpandModal` instead of growing this card past the rest of the ETF tab.
+const COLLAPSED_ROW_COUNT = 10;
 
 // 槓桿/反向 badges use distinct categorical tokens (--chart-1/--chart-2), never --up/--down —
 // leveraged/inverse is a fund-structure fact, not a price/%/score signal (web/CLAUDE.md §4).
@@ -81,28 +86,17 @@ export function compareRows(
  * mechanism (header buttons + `aria-sort` + a plain ▲/▼ glyph) is built from scratch here,
  * modeled on the existing pill-toggle button styling every other market card already uses.
  *
- * This tab IS the full list (not a dashboard preview card), so there is no collapse-to-N/
- * `ExpandModal` — every row renders in one plain scrollable container, the same "just render
- * it" convention this codebase's other ~200-row expanded views already use (no virtualization
- * library exists here, and ~300 bounded rows doesn't call for introducing one).
+ * Sort state lives here, but only the top `COLLAPSED_ROW_COUNT` of the sorted list renders
+ * inline — "展開完整{count}筆" opens the identical sorted list (unbounded) inside `ExpandModal`,
+ * the same collapse-to-N convention `LeaderboardCard`/`HolderAccumulationCard` already use, so
+ * this card's height stays comparable to its dashboard neighbors instead of growing to ~300 rows.
  */
-export function EtfListTable({
-  rows,
-  currentnessCaveat,
-  aumCaveat,
-  expenseRatioCaveat,
-  distributionCaveat,
-}: {
-  rows: readonly EtfListRow[];
-  currentnessCaveat: string;
-  aumCaveat: string;
-  expenseRatioCaveat: string;
-  distributionCaveat: string;
-}): ReactNode {
+export function EtfListTable({ rows }: { readonly rows: readonly EtfListRow[] }): ReactNode {
   const t = useTranslations("market.cards.etfList");
   const locale = useLocale();
   const [sortKey, setSortKey] = useState<EtfSortKey>("aum");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [expanded, setExpanded] = useState(false);
 
   const sortedRows = useMemo(
     () => [...rows].sort((a, b) => compareRows(a, b, sortKey, sortDirection)),
@@ -122,27 +116,89 @@ export function EtfListTable({
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
   }
 
+  const previewRows = sortedRows.slice(0, COLLAPSED_ROW_COUNT);
+
   return (
     <div>
-      <div className="overflow-x-auto">
-        <div className="min-w-[820px]">
-          <EtfListHeaderRow
-            sortKey={sortKey}
-            sortDirection={sortDirection}
-            onToggleSort={toggleSort}
-            t={t}
-          />
-          <ul className="max-h-[640px] divide-y divide-[var(--border)] overflow-y-auto">
-            {sortedRows.map((row) => (
-              <EtfListRowItem key={row.symbol} row={row} locale={locale} t={t} />
-            ))}
-          </ul>
-        </div>
+      <EtfListBody
+        rows={previewRows}
+        sortKey={sortKey}
+        sortDirection={sortDirection}
+        onToggleSort={toggleSort}
+        locale={locale}
+        t={t}
+        maxHeightClassName="max-h-[420px]"
+      />
+
+      {sortedRows.length > COLLAPSED_ROW_COUNT ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className={cn(
+            "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+            "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+          )}
+        >
+          <span>{t("expandTo", { count: sortedRows.length })}</span>
+        </button>
+      ) : null}
+
+      <ExpandModal
+        open={expanded}
+        title={t("title")}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      >
+        <EtfListBody
+          rows={sortedRows}
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          onToggleSort={toggleSort}
+          locale={locale}
+          t={t}
+          maxHeightClassName="max-h-[640px]"
+        />
+      </ExpandModal>
+    </div>
+  );
+}
+
+/** The scrollable header+rows block, shared verbatim between the card's inline preview and the
+ * full list inside `ExpandModal` — one render path, so the two never drift in columns/sort
+ * behavior. `maxHeightClassName` differs only because the modal has more vertical room than the
+ * inline card does. */
+function EtfListBody({
+  rows,
+  sortKey,
+  sortDirection,
+  onToggleSort,
+  locale,
+  t,
+  maxHeightClassName,
+}: {
+  readonly rows: readonly EtfListRow[];
+  readonly sortKey: EtfSortKey;
+  readonly sortDirection: SortDirection;
+  readonly onToggleSort: (key: EtfSortKey) => void;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly maxHeightClassName: string;
+}): ReactNode {
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[820px]">
+        <EtfListHeaderRow
+          sortKey={sortKey}
+          sortDirection={sortDirection}
+          onToggleSort={onToggleSort}
+          t={t}
+        />
+        <ul className={cn("divide-y divide-[var(--border)] overflow-y-auto", maxHeightClassName)}>
+          {rows.map((row) => (
+            <EtfListRowItem key={row.symbol} row={row} locale={locale} t={t} />
+          ))}
+        </ul>
       </div>
-      <Caveat text={currentnessCaveat} />
-      <Caveat text={aumCaveat} />
-      <Caveat text={expenseRatioCaveat} />
-      <Caveat text={distributionCaveat} />
     </div>
   );
 }
@@ -153,10 +209,10 @@ function EtfListHeaderRow({
   onToggleSort,
   t,
 }: {
-  sortKey: EtfSortKey;
-  sortDirection: SortDirection;
-  onToggleSort: (key: EtfSortKey) => void;
-  t: ReturnType<typeof useTranslations>;
+  readonly sortKey: EtfSortKey;
+  readonly sortDirection: SortDirection;
+  readonly onToggleSort: (key: EtfSortKey) => void;
+  readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const columns: Array<{ key: EtfSortKey; labelKey: string; align: "left" | "right" }> = [
     { key: "name", labelKey: "columnName", align: "left" },
@@ -213,9 +269,9 @@ function EtfListRowItem({
   locale,
   t,
 }: {
-  row: EtfListRow;
-  locale: string;
-  t: ReturnType<typeof useTranslations>;
+  readonly row: EtfListRow;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const up = (row.change_pct ?? 0) >= 0;
   const color = row.change_pct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";
