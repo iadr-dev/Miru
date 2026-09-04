@@ -29,6 +29,7 @@ from datetime import date as date_
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import ValidationError
 
 from accounts.models import User
 from api.dependencies import AppState, get_state, optional_user, tool_context_for
@@ -38,6 +39,11 @@ from tools.base import ToolContext, dispatch_tool
 from tools.international_tools import FinMindInternationalMarket
 
 router = APIRouter(tags=["market-data"])
+
+# The numeric literal, matching `api/errors.py`'s/`fund_data.py`'s own convention — the
+# `status.HTTP_422_*` constant's name churns across Starlette versions (entity → content) and
+# emits a deprecation warning; the code is stable.
+_HTTP_422_UNPROCESSABLE = 422
 
 
 def _context(
@@ -58,7 +64,22 @@ async def _dispatch(
             message=f"Tool {tool_name} is not registered.",
             retryable=False,
         )
-    validated = tool.input_model.model_validate(args)
+    try:
+        validated = tool.input_model.model_validate(args)
+    except ValidationError as exc:
+        # Matches `fund_data.py`'s own `_dispatch` convention (see its docstring): a bad tool
+        # arg (as opposed to a bad query PARAM, which FastAPI's own `RequestValidationError`
+        # handler already renders as 422) must not fall through to the catch-all 500 handler —
+        # `GetDividendCalendarInput`'s `year`/`month`-together validator is the first
+        # cross-field constraint in this router that can actually trip this path.
+        raise ApiError(
+            status_code=_HTTP_422_UNPROCESSABLE,
+            code="invalid_request",
+            message=f"Request failed validation: {exc.errors()[0]['msg']}"
+            if exc.errors()
+            else "Request failed validation.",
+            retryable=False,
+        ) from exc
     result = await dispatch_tool(tool, validated, ctx)
     return result.model_dump(mode="json")
 
