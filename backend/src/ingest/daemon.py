@@ -51,16 +51,20 @@ from ingest.jobs import (
     PRICE_EOD_JOB,
     job_active_etf_holding_changes,
     job_active_etf_holdings,
+    job_attention_stocks,
     job_balance_sheet,
     job_cash_flow,
+    job_disposition_events,
     job_dividends,
     job_etf_aum,
     job_etf_expense_ratio,
     job_etf_nav,
     job_financials,
+    job_insider_transfer_declaration,
     job_institutional_flow,
     job_market_value,
     job_market_value_weight,
+    job_material_announcements,
     job_month_revenue,
     job_price_eod,
     job_shareholding_distribution,
@@ -167,6 +171,21 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # Monthly-revenue filings — same irregular per-filing cadence as the statement family above;
     # feeds `revenue_yoy`'s `analytics/fundamentals.py` compute in `get_company_profile`.
     ScheduledIngestJob("month_revenue", time_(21, 30), job_month_revenue),
+    # MOPS whole-market disclosure feeds — not FinMind-sourced (jobs.py's own `job_etf_nav`-style
+    # carve-out); no fixed publish clock (disclosures land throughout the trading day and
+    # after-hours), so this slot is a plain daily snapshot time, not a "just after publish"
+    # buffer the way most other slots above are. See `job_material_announcements`'s own
+    # docstring for why these two ALSO run from `ingest/__main__.py`'s startup gap-fill path.
+    ScheduledIngestJob("material_announcements", time_(21, 35), job_material_announcements),
+    ScheduledIngestJob(
+        "insider_transfer_declaration", time_(21, 35), job_insider_transfer_declaration
+    ),
+    # TWSE+TPEX 注意股/處置 whole-market announcement feeds — the 處置王 board's data source. Not
+    # FinMind-sourced (same non-FinMind carve-out as the MOPS pair above); no fixed publish clock
+    # either, so this slot is likewise a plain daily snapshot time. See `job_attention_stocks`'s
+    # own docstring for why these two ALSO run from `ingest/__main__.py`'s startup gap-fill path.
+    ScheduledIngestJob("attention_stocks", time_(21, 35), job_attention_stocks),
+    ScheduledIngestJob("disposition_events", time_(21, 35), job_disposition_events),
     # Market cap — Mon-Fri ~23:30 FinMind publish clock (MARKET_VALUE_JOB's own cron_hint).
     ScheduledIngestJob("market_value", time_(23, 40), job_market_value),
     # Market-cap index weight — the paired FinMind publish alongside market_value above (same

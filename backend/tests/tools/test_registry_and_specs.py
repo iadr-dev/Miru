@@ -53,7 +53,7 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
     # `_router()` passes no `session_factory`/`market_data_reader`, so `theme_tools`/
     # `score_tools`/`screener_tools` (which require one) are never registered here — this
     # count/sample covers only the router-backed groups this fixture actually builds.
-    assert len(deferred_names) == 116
+    assert len(deferred_names) == 120
     # The pre-existing core, still deferred:
     assert {
         "run_bounded_observation",
@@ -70,6 +70,9 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
     assert {
         "get_material_announcements",  # mops_tools
         "get_insider_shareholding",  # mops_tools
+        "get_material_announcement_feed",  # mops_tools
+        "get_insider_transfer_declarations",  # mops_tools
+        "get_self_assessed_earnings",  # mops_tools
         "get_calendar_events",  # calendar_tools
         "get_live_quote_snapshot",  # live_tools
         "get_derivatives_settlement",  # gov_api_tools
@@ -103,17 +106,19 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
         "get_futures_snapshot",  # realtime_tools
         "get_options_snapshot",  # realtime_tools
         "get_market_index_strip",  # market_index_strip_tools
+        "get_disposition_board",  # disposition_board_tools
     } <= deferred_names
 
 
 def test_total_tool_count_reflects_the_coverage_expansion() -> None:
-    """5 immediate + 116 deferred = 121, across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/
-    web-search/yfinance/TDCC/ask_user/market_tools/realtime_tools/market_index_strip_tools —
+    """5 immediate + 120 deferred = 125, across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/
+    web-search/yfinance/TDCC/ask_user/market_tools/realtime_tools/market_index_strip_tools/
+    disposition_board_tools —
     `_router()` builds no `session_factory`/`market_data_reader`, so theme/score/screener tools
     (which require one) are excluded from this count."""
     registry = build_default_tool_registry(_router())
 
-    assert len(registry.all_tools()) == 121
+    assert len(registry.all_tools()) == 125
 
 
 def test_get_tool_reaches_both_immediate_and_deferred_tools() -> None:

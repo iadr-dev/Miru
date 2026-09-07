@@ -15,10 +15,12 @@ import {
   type DailySignalResponse,
   type DayTradingResponse,
   type DerivativesResponse,
+  type DispositionBoardResponse,
   type DividendCalendarResponse,
   dailySignalResponseSchema,
   dayTradingResponseSchema,
   derivativesResponseSchema,
+  dispositionBoardResponseSchema,
   dividendCalendarResponseSchema,
   type EtfListResponse,
   type EtfMoneyFlowResponse,
@@ -32,9 +34,11 @@ import {
   holderAccumulationResponseSchema,
   type IndexContributionResponse,
   type IndustryFlowResponse,
+  type InsiderTransferDeclarationResponse,
   type InstitutionalRankingResponse,
   indexContributionResponseSchema,
   industryFlowResponseSchema,
+  insiderTransferDeclarationResponseSchema,
   institutionalRankingResponseSchema,
   type LeaderboardDirection,
   type LeaderboardUniverse,
@@ -42,11 +46,13 @@ import {
   type MarginMaintenanceResponse,
   type MarginShortBalanceResponse,
   type MarketIndexStripResponse,
+  type MaterialAnnouncementFeedResponse,
   type MomentumPeriod,
   macroIndicatorsResponseSchema,
   marginMaintenanceResponseSchema,
   marginShortBalanceResponseSchema,
   marketIndexStripResponseSchema,
+  materialAnnouncementFeedResponseSchema,
   type OptionVixResponse,
   optionVixResponseSchema,
   type PriceHistoryResponse,
@@ -448,4 +454,47 @@ export async function getTaiexVix(params: DateRangeParams = {}): Promise<OptionV
   const search = dateRangeSearchParams(params);
   const raw = await requestJson(`/derivatives/taiex-vix?${search.toString()}`);
   return optionVixResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 19. GET /market/material-announcement-feed (public, whole-market 重大訊息 feed)
+// ---------------------------------------------------------------------------
+
+export async function getMaterialAnnouncementFeed(
+  market: Market,
+  tradeDate?: string,
+  category?: string,
+): Promise<MaterialAnnouncementFeedResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  if (category) search.set("category", category);
+  const raw = await requestJson(`/market/material-announcement-feed?${search.toString()}`);
+  return materialAnnouncementFeedResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 20. GET /market/insider-transfer-declarations (public, whole-market 內部人股權轉讓事前申報
+//     feed, t187ap12_L only)
+// ---------------------------------------------------------------------------
+
+export async function getInsiderTransferDeclarations(
+  market: Market,
+  tradeDate?: string,
+): Promise<InsiderTransferDeclarationResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  const raw = await requestJson(`/market/insider-transfer-declarations?${search.toString()}`);
+  return insiderTransferDeclarationResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 25. GET /market/disposition-board (Sponsor-tier, 處置王-style board)
+// ---------------------------------------------------------------------------
+
+export async function getDispositionBoard(
+  market: Market = "TW",
+): Promise<DispositionBoardResponse> {
+  const search = new URLSearchParams({ market });
+  const raw = await requestJson(`/market/disposition-board?${search.toString()}`);
+  return dispositionBoardResponseSchema.parse(raw);
 }

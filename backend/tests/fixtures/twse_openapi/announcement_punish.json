@@ -1,0 +1,26 @@
+[
+  {
+    "Number": "1",
+    "Date": "1150902",
+    "Code": "3008",
+    "Name": "大立光",
+    "NumberOfAnnouncement": "1",
+    "ReasonsOfDisposition": "連續三次",
+    "DispositionPeriod": "115/09/03～115/09/09",
+    "DispositionMeasures": "第一次處置",
+    "Detail": "處置原因：該有價證券之交易，連續三個營業日達本公司「公布注意交易資訊」標準。",
+    "LinkInformation": "提供處置有價證券連結資訊"
+  },
+  {
+    "Number": "2",
+    "Date": "1150901",
+    "Code": "3406",
+    "Name": "玉晶光",
+    "NumberOfAnnouncement": "1",
+    "ReasonsOfDisposition": "連續三次",
+    "DispositionPeriod": "115/09/02～115/09/08",
+    "DispositionMeasures": "第一次處置",
+    "Detail": "處置原因：該有價證券之交易，連續三個營業日達本公司「公布注意交易資訊」標準。",
+    "LinkInformation": "提供處置有價證券連結資訊"
+  }
+]

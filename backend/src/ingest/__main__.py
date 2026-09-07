@@ -18,6 +18,15 @@ self-heals whatever gap accumulated, with no flag to remember. `run_backfill_cli
 if `settings.env == "production"` regardless of this flag, so a mis-set env var can never turn
 into an accidental prod backfill burst.
 
+`_tw_gap_fill` also directly re-runs the two MOPS whole-market jobs
+(`job_material_announcements`/`job_insider_transfer_declaration`) AND the two 處置王-board
+whole-market jobs (`job_attention_stocks`/`job_disposition_events`) for today, the same
+direct-call treatment `_us_gap_fill` already gives `job_us_fundamentals` — none of these four are
+a `WholeMarketJobSpec`, so `run_backfill_cli`'s own gap-fill loop never reaches them. This matters
+more for these four: their upstreams have no date parameter at all, so a day missed at the
+daemon's own cron fire time (`ingest/daemon.py`'s `21:35` slot) cannot be recovered any other way
+— there is nothing upstream to backfill from later.
+
 Graceful shutdown (SIGTERM/SIGINT): a whole-market pull is a bounded batch write (fetch one
 dataset by date, bulk-COPY the partition atomically, flip the manifest pointer) — not an unbounded
 stream. So the first signal stops starting new passes immediately but lets an in-flight pass finish
@@ -44,16 +53,37 @@ from ingest.backfill_cli import (
 )
 from ingest.context import IngestContext
 from ingest.daemon import IngestDaemon, build_ingest_context_from_settings
+from ingest.jobs import (
+    job_attention_stocks,
+    job_disposition_events,
+    job_insider_transfer_declaration,
+    job_material_announcements,
+)
 from ingest.us_jobs import job_us_fundamentals
 
 logger = structlog.get_logger(__name__)
 
 
-async def _tw_gap_fill(settings: Settings, ctx: IngestContext) -> tuple[int, int]:
+async def _tw_gap_fill(
+    settings: Settings, ctx: IngestContext
+) -> tuple[int, int, str, str, str, str]:
     """The TW chain: whole-market pulls, THEN derived-compute — sequential because
     `screener_flags`/`stock_scores` read back the price/flow partitions the whole-market pulls
     just wrote, so derived-compute for a given day cannot run before that day's own TW data has
-    landed."""
+    landed.
+
+    Also runs the two MOPS whole-market jobs (`job_material_announcements`/
+    `job_insider_transfer_declaration`) AND the two 處置王-board whole-market jobs
+    (`job_attention_stocks`/`job_disposition_events`) directly for today, mirroring
+    `_us_gap_fill`'s own `job_us_fundamentals(datetime.now(UTC).date(), ctx)` precedent — none of
+    these four are `WholeMarketJobSpec`-shaped, so `run_backfill_cli`'s own per-spec gap-fill
+    above never reaches them, same class of gap `job_us_fundamentals` needed this treatment for.
+    It matters MORE for these four than for `job_us_fundamentals`: their upstreams are
+    snapshot-only with no backfill possible at all (see `job_material_announcements`'s own
+    docstring) — a day missed because the container was down at the cron fire time
+    (`ingest/daemon.py`'s `21:35` slot) is otherwise permanently, unrecoverably lost. Idempotent
+    (`write_partition` always rewrites the whole date partition), so calling these unconditionally
+    here is always safe even if today's cron slot already ran this session."""
     tw_runs = await run_backfill_cli(
         settings, ctx, override=False, years=settings.dev_backfill_years
     )
@@ -63,7 +93,19 @@ async def _tw_gap_fill(settings: Settings, ctx: IngestContext) -> tuple[int, int
     derived_runs = await run_derived_compute_catchup(
         settings, ctx, override=False, years=settings.dev_backfill_years
     )
-    return len(tw_runs), len(derived_runs)
+    today = datetime.now(UTC).date()
+    announcements_run = await job_material_announcements(today, ctx)
+    insider_transfer_run = await job_insider_transfer_declaration(today, ctx)
+    attention_stocks_run = await job_attention_stocks(today, ctx)
+    disposition_events_run = await job_disposition_events(today, ctx)
+    return (
+        len(tw_runs),
+        len(derived_runs),
+        announcements_run.status.value,
+        insider_transfer_run.status.value,
+        attention_stocks_run.status.value,
+        disposition_events_run.status.value,
+    )
 
 
 async def _us_gap_fill(settings: Settings, ctx: IngestContext) -> tuple[int, str]:
@@ -104,7 +146,17 @@ async def _startup_gap_fill(settings: Settings, ctx: IngestContext) -> None:
         return
     logger.info("ingest_startup_gap_fill_started")
     try:
-        (tw_runs, derived_runs), (us_price_runs, fundamentals_status) = await asyncio.gather(
+        (
+            (
+                tw_runs,
+                derived_runs,
+                announcements_status,
+                insider_transfer_status,
+                attention_stocks_status,
+                disposition_events_status,
+            ),
+            (us_price_runs, fundamentals_status),
+        ) = await asyncio.gather(
             _tw_gap_fill(settings, ctx),
             _us_gap_fill(settings, ctx),
         )
@@ -115,6 +167,10 @@ async def _startup_gap_fill(settings: Settings, ctx: IngestContext) -> None:
         "ingest_startup_gap_fill_complete",
         tw_runs=tw_runs,
         derived_runs=derived_runs,
+        mops_announcements_status=announcements_status,
+        mops_insider_transfer_status=insider_transfer_status,
+        attention_stocks_status=attention_stocks_status,
+        disposition_events_status=disposition_events_status,
         us_price_runs=us_price_runs,
         us_fundamentals_status=fundamentals_status,
     )

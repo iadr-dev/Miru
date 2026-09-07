@@ -111,6 +111,9 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_fund_comparison": "fund_comparison",
     # mops_tools.py
     "get_insider_shareholding": "insider_shareholding",
+    "get_material_announcement_feed": "material_announcement_feed",
+    "get_insider_transfer_declarations": "insider_transfer_declaration",
+    "get_self_assessed_earnings": "self_assessed_earnings",
     # live_tools.py
     "get_live_quote_snapshot": "live_quote_snapshot",
     # international_tools.py
@@ -130,6 +133,8 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "ask_user": "ask_user",
     # market_index_strip_tools.py
     "get_market_index_strip": "market_index_strip",
+    # disposition_board_tools.py
+    "get_disposition_board": "disposition_board",
 }
 
 

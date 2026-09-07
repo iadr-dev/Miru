@@ -37,15 +37,19 @@ from ingest.journal import JobRun, RunStatus, journal_run
 from schemas.capabilities import (
     ActiveEtfHoldingChangeRow,
     ActiveEtfHoldingRow,
+    AttentionStockRow,
+    DispositionEventRow,
     DividendEvent,
     EODBar,
     EtfAumRow,
     EtfExpenseInfo,
     EtfNavRow,
     FinancialStatementLine,
+    InsiderTransferDeclarationRow,
     InstitutionalFlowRow,
     MarketValueRow,
     MarketValueWeightRow,
+    MaterialAnnouncementRow,
     MonthRevenueRow,
     ShareholdingDistributionRow,
     StockInfoRow,
@@ -53,8 +57,20 @@ from schemas.capabilities import (
 from schemas.enums import Capability
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceResult
+from sources.mops import (
+    fetch_whole_market_insider_transfer_declarations,
+    fetch_whole_market_material_announcements,
+)
 from sources.sitca import fetch_whole_market_etf_fees
+from sources.tpex_openapi import (
+    fetch_whole_market_attention_stocks_tpex,
+    fetch_whole_market_disposition_events_tpex,
+)
 from sources.twse_etf_nav import fetch_whole_market_etf_nav
+from sources.twse_openapi import (
+    fetch_whole_market_attention_stocks,
+    fetch_whole_market_disposition_events,
+)
 
 # `TaiwanStockInfo` is a reference roster (stock/ETF universe + `industry_category` per symbol),
 # `TimingClass.REFERENCE` (`sources/finmind/technical.py`'s own `_DatasetConfig` caveat: "no
@@ -331,7 +347,8 @@ STUBBED_DATASETS: tuple[str, ...] = (
     "request form; per-symbol/per-broker only)",
     "ingest-reconcile (~08:30 next-morning re-pull)",
     "ingest-monthly: 景氣信號",
-    "ingest-event: MOPS/news/PTT/rebalance/macro/IPO/yfinance",
+    "ingest-event: news/PTT/rebalance/macro/IPO/yfinance (MOPS 重大訊息/內部人股權轉讓事前申報 now "
+    "wired as job_material_announcements/job_insider_transfer_declaration below)",
 )
 
 
@@ -764,6 +781,287 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
         rows_written=rows_written,
         status=RunStatus.SUCCESS,
         detail=result.health.detail,
+    )
+
+
+MATERIAL_ANNOUNCEMENTS_DATASET = "material_announcements"
+
+
+async def job_material_announcements(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily` — MOPS 重大訊息 (material announcement) whole-market feed
+    (`sources/mops.py`), cron **daily, off-peak** (see `ingest/daemon.py`'s `SCHEDULED_JOBS`).
+
+    Not FinMind-sourced — `fetch_whole_market_material_announcements` is `sources/mops.py`'s own
+    dedicated whole-market fetch function, the same ingest-layer whole-market carve-out
+    `job_etf_nav` uses for its own non-FinMind upstream.
+
+    **Forward-only — no backfill is possible.** MOPS's own upstream has no date parameter; every
+    call returns only today's live dump (`sources/mops.py::_ANNOUNCEMENTS_CAVEAT`: "not a
+    historical archive; announcements roll off the upstream dataset over time"). This job's
+    first successful run seeds day 1 of history; there is no historical range to walk backward
+    over the way `run_backfill_cli` does for FinMind datasets. See `ingest/__main__.py`'s
+    `_tw_gap_fill` for why this job is ALSO called directly from the startup gap-fill path, not
+    only from its own daily cron slot — a day missed because the ingest container was down at
+    the cron fire time is otherwise permanently lost, since there is nothing upstream to recover
+    it from later."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            MATERIAL_ANNOUNCEMENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
+    if not ctx.leader.is_leader():
+        return journal_run(
+            MATERIAL_ANNOUNCEMENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+
+    result = await fetch_whole_market_material_announcements(tls_policy=ctx.tls_policy)
+    if _fetch_error_status(result) is RunStatus.FAILED:
+        return journal_run(
+            MATERIAL_ANNOUNCEMENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.FAILED,
+            detail=result.health.detail,
+        )
+
+    raw_rows_obj = result.payload.get("rows", [])
+    raw_rows: list[dict[str, object]] = (
+        cast("list[dict[str, object]]", raw_rows_obj) if isinstance(raw_rows_obj, list) else []
+    )
+    rows = _validate_rows_against(
+        MaterialAnnouncementRow, MATERIAL_ANNOUNCEMENTS_DATASET, raw_rows, run_date
+    )
+    rows_written = ctx.store.write_partition(
+        MATERIAL_ANNOUNCEMENTS_DATASET, ctx.market.value, run_date, rows
+    )
+    await ctx.data_update_publisher.publish_data_updated(
+        capability=Capability.CORPORATE_ACTIONS,
+        market=ctx.market,
+        as_of=run_date.isoformat(),
+        scope="whole-market",
+    )
+    return journal_run(
+        MATERIAL_ANNOUNCEMENTS_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=RunStatus.SUCCESS,
+        detail=result.health.detail,
+    )
+
+
+INSIDER_TRANSFER_DECLARATION_DATASET = "insider_transfer_declaration"
+
+
+async def job_insider_transfer_declaration(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily` — MOPS 內部人股權轉讓事前申報 (insider advance-transfer-plan declaration)
+    whole-market feed (`sources/mops.py`, `t187ap12_L` only — see
+    `InsiderTransferDeclarationRow`'s own docstring for why `t187ap13_L` is out of scope), cron
+    **daily, off-peak** (see `ingest/daemon.py`'s `SCHEDULED_JOBS`). Same forward-only-no-backfill
+    and startup-gap-fill reasoning as `job_material_announcements` above — see its docstring."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            INSIDER_TRANSFER_DECLARATION_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
+    if not ctx.leader.is_leader():
+        return journal_run(
+            INSIDER_TRANSFER_DECLARATION_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+
+    result = await fetch_whole_market_insider_transfer_declarations(tls_policy=ctx.tls_policy)
+    if _fetch_error_status(result) is RunStatus.FAILED:
+        return journal_run(
+            INSIDER_TRANSFER_DECLARATION_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.FAILED,
+            detail=result.health.detail,
+        )
+
+    raw_rows_obj = result.payload.get("rows", [])
+    raw_rows: list[dict[str, object]] = (
+        cast("list[dict[str, object]]", raw_rows_obj) if isinstance(raw_rows_obj, list) else []
+    )
+    rows = _validate_rows_against(
+        InsiderTransferDeclarationRow, INSIDER_TRANSFER_DECLARATION_DATASET, raw_rows, run_date
+    )
+    rows_written = ctx.store.write_partition(
+        INSIDER_TRANSFER_DECLARATION_DATASET, ctx.market.value, run_date, rows
+    )
+    await ctx.data_update_publisher.publish_data_updated(
+        capability=Capability.INSIDER_TRANSFER_DECLARATION,
+        market=ctx.market,
+        as_of=run_date.isoformat(),
+        scope="whole-market",
+    )
+    return journal_run(
+        INSIDER_TRANSFER_DECLARATION_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=RunStatus.SUCCESS,
+        detail=result.health.detail,
+    )
+
+
+ATTENTION_STOCKS_DATASET = "attention_stocks"
+
+
+async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily` — 注意股 (attention-stock) whole-market feed, TWSE `announcement/notice`
+    plus TPEX `tpex_trading_warning_information` (`sources/twse_openapi.py`/
+    `sources/tpex_openapi.py`), cron **daily, off-peak** (see `ingest/daemon.py`'s
+    `SCHEDULED_JOBS`). Not FinMind-sourced — both fetch functions are ingest-only whole-market
+    carve-outs, same shape `job_material_announcements` uses for its own non-FinMind upstream.
+
+    **Forward-only — no backfill is possible**, same MOPS caveat: neither upstream takes a date
+    parameter, so this job's daily runs are themselves the only history that ever accumulates.
+    Both exchanges' rows land in ONE partition per day (`security_type` distinguishes them) —
+    the 處置王 board's rolling-window attention-flag count reads this partition series back, so a
+    day missed at the scheduled cron fire time is permanently lost, same reasoning
+    `ingest/__main__.py`'s `_tw_gap_fill` already gives for the two MOPS jobs — this job is
+    called directly from that startup gap-fill path too, not only its own daily cron slot."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            ATTENTION_STOCKS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
+    if not ctx.leader.is_leader():
+        return journal_run(
+            ATTENTION_STOCKS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+
+    twse_result = await fetch_whole_market_attention_stocks(tls_policy=ctx.tls_policy)
+    tpex_result = await fetch_whole_market_attention_stocks_tpex(tls_policy=ctx.tls_policy)
+    twse_failed = _fetch_error_status(twse_result) is RunStatus.FAILED
+    tpex_failed = _fetch_error_status(tpex_result) is RunStatus.FAILED
+    if twse_failed and tpex_failed:
+        return journal_run(
+            ATTENTION_STOCKS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.FAILED,
+            detail=f"twse={twse_result.health.detail}; tpex={tpex_result.health.detail}",
+        )
+
+    raw_rows: list[dict[str, object]] = []
+    for result, failed in ((twse_result, twse_failed), (tpex_result, tpex_failed)):
+        if failed:
+            continue
+        rows_obj = result.payload.get("rows", [])
+        if isinstance(rows_obj, list):
+            raw_rows.extend(cast("list[dict[str, object]]", rows_obj))
+
+    rows = _validate_rows_against(AttentionStockRow, ATTENTION_STOCKS_DATASET, raw_rows, run_date)
+    rows_written = ctx.store.write_partition(
+        ATTENTION_STOCKS_DATASET, ctx.market.value, run_date, rows
+    )
+    await ctx.data_update_publisher.publish_data_updated(
+        capability=Capability.ATTENTION_STOCKS,
+        market=ctx.market,
+        as_of=run_date.isoformat(),
+        scope="whole-market",
+    )
+    status = RunStatus.PARTIAL if (twse_failed or tpex_failed) else RunStatus.SUCCESS
+    detail = (
+        f"twse={twse_result.health.detail}; tpex={tpex_result.health.detail}"
+        if (twse_failed or tpex_failed)
+        else "ok"
+    )
+    return journal_run(
+        ATTENTION_STOCKS_DATASET, run_date, rows_written=rows_written, status=status, detail=detail
+    )
+
+
+DISPOSITION_EVENTS_DATASET = "disposition_events"
+
+
+async def job_disposition_events(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily` — 處置 (disposition) whole-market feed, TWSE `announcement/punish` plus
+    TPEX `tpex_disposal_information`. Same shape, same forward-only/gap-fill reasoning as
+    `job_attention_stocks` above — see its docstring."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            DISPOSITION_EVENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
+    if not ctx.leader.is_leader():
+        return journal_run(
+            DISPOSITION_EVENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+
+    twse_result = await fetch_whole_market_disposition_events(tls_policy=ctx.tls_policy)
+    tpex_result = await fetch_whole_market_disposition_events_tpex(tls_policy=ctx.tls_policy)
+    twse_failed = _fetch_error_status(twse_result) is RunStatus.FAILED
+    tpex_failed = _fetch_error_status(tpex_result) is RunStatus.FAILED
+    if twse_failed and tpex_failed:
+        return journal_run(
+            DISPOSITION_EVENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.FAILED,
+            detail=f"twse={twse_result.health.detail}; tpex={tpex_result.health.detail}",
+        )
+
+    raw_rows: list[dict[str, object]] = []
+    for result, failed in ((twse_result, twse_failed), (tpex_result, tpex_failed)):
+        if failed:
+            continue
+        rows_obj = result.payload.get("rows", [])
+        if isinstance(rows_obj, list):
+            raw_rows.extend(cast("list[dict[str, object]]", rows_obj))
+
+    rows = _validate_rows_against(
+        DispositionEventRow, DISPOSITION_EVENTS_DATASET, raw_rows, run_date
+    )
+    rows_written = ctx.store.write_partition(
+        DISPOSITION_EVENTS_DATASET, ctx.market.value, run_date, rows
+    )
+    await ctx.data_update_publisher.publish_data_updated(
+        capability=Capability.DISPOSITION_EVENTS,
+        market=ctx.market,
+        as_of=run_date.isoformat(),
+        scope="whole-market",
+    )
+    status = RunStatus.PARTIAL if (twse_failed or tpex_failed) else RunStatus.SUCCESS
+    detail = (
+        f"twse={twse_result.health.detail}; tpex={tpex_result.health.detail}"
+        if (twse_failed or tpex_failed)
+        else "ok"
+    )
+    return journal_run(
+        DISPOSITION_EVENTS_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=status,
+        detail=detail,
     )
 
 

@@ -483,6 +483,56 @@ async def material_announcements(
     )
 
 
+@router.get("/market/material-announcement-feed")
+async def material_announcement_feed(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    category: str | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """重大訊息 whole-market feed for one day (defaults to the latest day MOPS ingest has
+    captured), optionally filtered to one derived category bucket, with a per-category count
+    breakdown — read from the ingest-owned Parquet store, never a live fetch. Distinct from
+    `/market/material-announcements` above (still per-symbol, required `symbol`, live-fetched).
+    Public — no Sponsor gating."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    if category is not None:
+        args["category"] = category
+    return await _dispatch(state, "get_material_announcement_feed", args, ctx)
+
+
+@router.get("/market/insider-transfer-declarations")
+async def insider_transfer_declarations(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """內部人股權轉讓事前申報 (insider advance-transfer-plan declaration) whole-market feed for
+    one day (defaults to the latest day MOPS ingest has captured) — `t187ap12_L` only, read from
+    the ingest-owned Parquet store, never a live fetch. Public — no Sponsor gating."""
+    args: dict[str, object] = {"market": market.value}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_insider_transfer_declarations", args, ctx)
+
+
+@router.get("/market/disposition-board")
+async def disposition_board(
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """處置王-style disposition board: 風險股/處置中/即將出關 buckets, read from the ingest-owned
+    `attention_stocks`/`disposition_events` partitions plus already-ingested price/institutional
+    -flow joins and a bounded per-symbol margin fan-out. Sponsor-gated (masked teaser for an
+    unentitled caller)."""
+    return await _dispatch(state, "get_disposition_board", {"market": market.value}, ctx)
+
+
 @router.get("/market/tag-catalog")
 async def tag_catalog(
     state: AppState = Depends(get_state),

@@ -316,6 +316,60 @@
         "collapse": "Collapse",
         "moreCount": "+{count} more"
       },
+      "materialAnnouncementFeed": {
+        "title": "Material Announcements",
+        "all": "All",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse",
+        "empty": "No material announcements for this filter.",
+        "unavailable": "No material-announcement data yet — MOPS ingest only accumulates history from today forward, past disclosures cannot be backfilled."
+      },
+      "insiderTransferDeclaration": {
+        "title": "Insider Advance-Transfer Declarations",
+        "shares": "shares",
+        "transferWindow": "Transfer window",
+        "currentShares": "Current shares",
+        "projectedShares": "Shares after transfer",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse",
+        "empty": "No insider advance-transfer declarations for this day.",
+        "unavailable": "No insider advance-transfer declaration data yet — MOPS ingest only accumulates history from today forward, past filings cannot be backfilled."
+      },
+      "dispositionBoard": {
+        "title": "Disposition Board",
+        "bucket": {
+          "at_risk": "At Risk",
+          "in_disposition": "In Disposition",
+          "exiting_soon": "Exiting Soon"
+        },
+        "flag": {
+          "資": "Margin",
+          "券": "Short",
+          "沖": "Day-trade",
+          "警": "Warning",
+          "處": "Disposition",
+          "注": "Attention"
+        },
+        "search": "Search symbol or name",
+        "volume": "Volume",
+        "turnover": "Turnover",
+        "lots": " lots",
+        "institutionalNet": "Institutional net",
+        "marginRatio": "Short/margin ratio %",
+        "dayTradingRatio": "Day-trading ratio %",
+        "dispositionPeriod": "Disposition period",
+        "attentionFlagsRemaining": "As few as {count} more attention flags until disposition",
+        "estimatedDaysUntilDisposition": "Estimated ~{days} trading days until disposition ({count} more attention flags)",
+        "daysUntilExiting": "{days} trading days remaining until exit",
+        "exitingToday": "Exits today",
+        "matchingInterval": "Matches roughly every {minutes} minute(s)",
+        "projectionCaveat": "Both the flag-count and day estimates are this site's own rule-based projection — accumulating {flags} attention flags within a rolling {window}-trading-day window is treated as entering disposition; the day estimate further extrapolates from this stock's own observed flag rate, an estimate on top of an estimate, not an official TWSE-published figure, and bounded by however much attention-flag history has accumulated since this feature launched.",
+        "marginDegradedCaveat": "Margin/short data is delayed or temporarily unavailable — the short/margin ratio below may not be current.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse",
+        "empty": "No stocks in this bucket right now.",
+        "unavailable": "No disposition-board data yet — ingest only accumulates history from today forward, past data cannot be backfilled."
+      },
       "indexStrip": {
         "scrollLeft": "Scroll left",
         "scrollRight": "Scroll right",
