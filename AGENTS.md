@@ -105,6 +105,24 @@ make code, a test, or a feature pass:
   (`@pytest.mark.governance`) passes for it.
 - **Never read secrets aloud or echo `.env` values.** Treat `backend/.env` as exposed/rotate-worthy;
   reference variable *names*, never values.
+- **Splitting one working tree into multiple PRs: patch the index, never overwrite the working
+  tree.** When several independent features share uncommitted edits in the same file (e.g. two
+  features both touch `capabilities.py` or a shared test's assertion counts), staging one
+  feature's slice must never destroy the other pending edits sitting in that same file:
+  - **Never `cp`/`Write` a hand-built "final" version of a file that has other unrelated
+    uncommitted changes on it.** A full-file overwrite can't tell "the part I meant to change"
+    from "the part someone else (or an earlier turn) already changed and hasn't committed yet"
+    — it silently deletes the latter. This is real destructive side-effect risk, the same class
+    of harm as `git checkout`/`git reset` on a file with pending work.
+  - **Stage a slice with `git apply --cached <patch>`** (a hand-built or `git diff`-extracted
+    hunk) — this mutates the index only and leaves the working tree completely untouched, so the
+    remaining PRs' pending edits stay exactly where they were.
+  - **After every stage/restore step, verify both sides**: `git diff --cached` (what will be
+    committed) and `git diff` (what's still pending) — before moving on, not after the user
+    notices something's missing.
+  - **If a mistake happens anyway** (e.g. a `cp` overwrote pending edits), reconstruct from the
+    diff already captured earlier in the conversation/terminal output rather than guessing —
+    diff text is the source of truth for what was lost.
 
 ## Quick pointers
 
