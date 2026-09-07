@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
+import { CardSkeleton } from "@/components/market/card-skeleton";
 import { LeaderboardCard } from "@/components/market/leaderboard-card";
 import { getScoreLeaderboard } from "@/lib/api/market";
 import type { LeaderboardDirection } from "@/types/market";
@@ -23,7 +24,7 @@ export function EtfLeaderboardPanel({ market }: { market: Market }): ReactNode {
   });
 
   return (
-    <QueryState query={query}>
+    <QueryState query={query} skeleton={<CardSkeleton height={430} />}>
       {(data) => (
         <LeaderboardCard
           results={data.results}

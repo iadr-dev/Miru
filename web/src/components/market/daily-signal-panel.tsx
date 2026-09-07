@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatCompactNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
+import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   DAILY_SIGNAL_COLLAPSED_ROW_COUNT,
   DailySignalTable,
@@ -37,7 +38,7 @@ export function DailySignalPanel({ market }: { readonly market: Market }): React
 
   return (
     <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-      <QueryState query={query}>
+      <QueryState query={query} skeleton={<CardSkeletonBody height={600} />}>
         {(data) => (
           <SponsorGatedBody data={data} title={t("title")} unavailableCopy={t("unavailable")}>
             {(data) => {

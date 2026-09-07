@@ -51,9 +51,10 @@ const BUCKET_LABEL_KEY: Record<(typeof BUCKET_ORDER)[number], string> = {
   up_over_5pct: "bucketUpOver5",
 };
 
-// Matches the reference layout: 3 rows visible per side (positive/negative), "Show all" expands
+// 5 rows visible per side (positive/negative) fills this card's natural height against its
+// taller `AI 多空排行` row-sibling instead of leaving blank space below; "Show all" still expands
 // to the full top-10 (`_INDEX_CONTRIBUTION_TOP_N` on the backend) in a modal.
-const COLLAPSED_CONTRIBUTOR_COUNT = 3;
+const COLLAPSED_CONTRIBUTOR_COUNT = 5;
 
 /** 漲跌家數 histogram (`get_advance_decline`'s real bucket counts, never fabricated) + 指數貢獻排行
  * (`get_index_contribution`'s APPROXIMATE per-symbol contribution estimate) stacked in one card —
@@ -150,6 +151,7 @@ export function BreadthOrderBookCard({
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <AdvanceDeclineSummaryBar breadth={breadth} locale={locale} />
         </>
       ) : (
         <p className="text-[13px] text-[var(--text-muted)]">{t("breadthUnavailable")}</p>
@@ -233,6 +235,44 @@ export function BreadthOrderBookCard({
   );
 }
 
+/** Proportional advancing/unchanged/declining summary bar — segment widths reflect each
+ * count's share of the whole market, mirroring the reference design's stacked total-breadth
+ * bar underneath the per-bucket histogram (the histogram alone doesn't convey the overall
+ * up-vs-down split at a glance). */
+function AdvanceDeclineSummaryBar({
+  breadth,
+  locale,
+}: {
+  breadth: AdvanceDeclineResponse;
+  locale: string;
+}): ReactNode {
+  const total = breadth.advancing_count + breadth.declining_count + breadth.unchanged_count;
+  if (total === 0) {
+    return null;
+  }
+  const advancingPct = (breadth.advancing_count / total) * 100;
+  const decliningPct = (breadth.declining_count / total) * 100;
+  const unchangedPct = 100 - advancingPct - decliningPct;
+
+  return (
+    <div className="mt-4">
+      <div className="flex h-2 w-full overflow-hidden rounded-[var(--radius-pill)]">
+        <div style={{ width: `${advancingPct}%`, backgroundColor: "var(--up)" }} />
+        <div style={{ width: `${unchangedPct}%`, backgroundColor: "var(--text-muted)" }} />
+        <div style={{ width: `${decliningPct}%`, backgroundColor: "var(--down)" }} />
+      </div>
+      <div className="mt-1.5 flex items-center justify-between font-num text-[13px] tabular-nums">
+        <span style={{ color: "var(--up)" }}>
+          ▲ {formatNumber(breadth.advancing_count, locale)}
+        </span>
+        <span style={{ color: "var(--down)" }}>
+          ▼ {formatNumber(breadth.declining_count, locale)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function IndexContributionColumns({
   positiveContributors,
   negativeContributors,
@@ -280,7 +320,10 @@ function IndexContributionColumn({
             style={{ backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)` }}
           >
             <span className="w-4 shrink-0 text-[12px] text-[var(--text-muted)]">{index + 1}</span>
-            <span className="flex-1 truncate text-[13px] text-[var(--text)]">{row.stock_name}</span>
+            <span className="flex-1 truncate text-[13px] text-[var(--text)]">
+              {row.stock_name}
+              <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
+            </span>
             <span className="shrink-0 font-num text-[13px] tabular-nums" style={{ color }}>
               {row.contribution_estimate >= 0 ? "+" : ""}
               {formatNumber(row.contribution_estimate, "zh-TW", { decimals: 2 })}

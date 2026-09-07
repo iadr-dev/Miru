@@ -97,6 +97,12 @@
         "signal": "今日訊號",
         "flow": "資金持股",
         "calendar": "股息日曆"
+      },
+      "twSub": {
+        "label": "台股 檢視",
+        "focus": "每日焦點",
+        "chip": "籌碼",
+        "disposition": "處置"
       }
     },
     "cards": {

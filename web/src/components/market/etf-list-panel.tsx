@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
+import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { EtfListTable } from "@/components/market/etf-list-table";
 import { getEtfList } from "@/lib/api/market";
 import type { Market } from "@/types/settings";
@@ -22,7 +23,7 @@ export function EtfListPanel({ market }: { market: Market }): ReactNode {
 
   return (
     <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-      <QueryState query={query}>
+      <QueryState query={query} skeleton={<CardSkeletonBody height={700} />}>
         {(data) => {
           if (!data.data_available) {
             return (

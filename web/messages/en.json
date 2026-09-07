@@ -97,6 +97,12 @@
         "signal": "Daily Signal",
         "flow": "Money Flow",
         "calendar": "Dividend Calendar"
+      },
+      "twSub": {
+        "label": "TW views",
+        "focus": "Daily Focus",
+        "chip": "Chip Data",
+        "disposition": "Disposition"
       }
     },
     "cards": {

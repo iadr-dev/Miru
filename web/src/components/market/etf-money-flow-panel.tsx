@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
+import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { EtfMoneyFlowTable } from "@/components/market/etf-money-flow-table";
 import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
 import { getEtfMoneyFlow } from "@/lib/api/market";
@@ -42,7 +43,7 @@ export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): Reac
 
   return (
     <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-      <QueryState query={query}>
+      <QueryState query={query} skeleton={<CardSkeletonBody height={560} />}>
         {(data) => (
           <SponsorGatedBody data={data} title={t("title")} unavailableCopy={t("unavailable")}>
             {(data) => {
