@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
+import sources.finmind as finmind_module
 from schemas.enums import Capability, DataClass, Market, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus
@@ -221,6 +223,33 @@ async def test_fetch_taiex_5s_index(monkeypatch: pytest.MonkeyPatch) -> None:
     rows = result.payload["rows"]
     assert isinstance(rows, list)
     assert len(rows) == 2
+
+
+async def test_fetch_taiex_5s_index_never_sends_end_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Confirmed live against the real FinMind endpoint: `TaiwanVariousIndicators5Seconds` 400s
+    ("size is too large, we only send one day data, so end_date parameter need be none") if
+    `end_date` is present at all — even when a caller never named a range and the adapter's own
+    default-range fill-in would otherwise attach one. `no_end_date_param=True` on this dataset's
+    `_DatasetConfig` must keep `end_date` out of the request in that default-fill case too."""
+    body = load_fixture("finmind", "taiex_5s_index.json")
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(request.url.params)
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="2330", market=Market.TW)
+
+    result = await adapter.fetch(Capability.TAIEX_5S_INDEX, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert "end_date" not in captured
+    assert "start_date" in captured
+    assert result.health.status is HealthStatus.OK
 
 
 async def test_fetch_day_trading_buy_after_sale_marker(monkeypatch: pytest.MonkeyPatch) -> None:

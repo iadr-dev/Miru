@@ -500,6 +500,11 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         row_key="rows",
         row_mapper=_map_taiex_5s_index,
         whole_market_ok=True,
+        # Confirmed empirically: 400s ("size is too large, we only send one day data, so
+        # end_date parameter need be none") if `end_date` is present at all, even when a caller
+        # never named a range and the adapter's own default-range fill-in attaches one —
+        # matches this dataset's own upstream doc ("single trading day per request").
+        no_end_date_param=True,
     ),
     Capability.DAY_TRADING: _DatasetConfig(
         dataset="TaiwanStockDayTrading",
