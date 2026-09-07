@@ -8,7 +8,12 @@ from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
 from tools.base import ToolContext
 from tools.common import SymbolInput
-from tools.mops_tools import GetInsiderShareholdingTool, GetMaterialAnnouncementsTool
+from tools.mops_tools import (
+    GetInsiderShareholdingTool,
+    GetMaterialAnnouncementsTool,
+    GetSelfAssessedEarningsInput,
+    GetSelfAssessedEarningsTool,
+)
 
 
 def _result(payload: dict[str, object]) -> SourceResult:
@@ -67,3 +72,35 @@ async def test_get_insider_shareholding_delegates_and_parses() -> None:
 
     assert adapter.calls[0][0] is Capability.SHAREHOLDING
     assert output.holdings[0].pledged_ratio == "0.00%"
+
+
+async def test_get_self_assessed_earnings_delegates_and_passes_period_and_security_type() -> None:
+    symbol = Symbol(id="2330", market=Market.TW)
+    row = {
+        "symbol": "2330",
+        "market": "TW",
+        "company_name": "台積電",
+        "revenue_period": "2025-07",
+        "consolidated": True,
+        "monthly_operating_profit": 100,
+        "ytd_operating_profit": 200,
+        "monthly_pretax_profit": 300,
+        "ytd_pretax_profit": 400,
+        "variance_note": None,
+    }
+    router, adapter = make_router(
+        symbol, {Capability.SELF_ASSESSED_EARNINGS: _result({"rows": [row]})}
+    )
+    tool = GetSelfAssessedEarningsTool(router)
+    assert tool.data_class is DataClass.PUBLIC
+
+    output = await tool.run(
+        GetSelfAssessedEarningsInput(
+            id="2330", market=Market.TW, period="2025-07", security_type="twse"
+        ),
+        ToolContext(),
+    )
+
+    assert adapter.calls[0][0] is Capability.SELF_ASSESSED_EARNINGS
+    assert adapter.calls[0][2] == {"period": "2025-07", "security_type": "twse"}
+    assert output.rows[0].monthly_pretax_profit == 300

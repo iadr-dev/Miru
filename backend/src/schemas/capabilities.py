@@ -212,6 +212,60 @@ class DirectorShareholding(BaseModel):
     pledged_ratio: str | None = None  # upstream keeps this as a percentage-string, e.g. "0.00%"
 
 
+class MaterialAnnouncementRow(BaseModel):
+    """`corporate_actions` — one 重大訊息 row from the WHOLE-MARKET dump (ingest-owned, one
+    partition per day), distinct from `MaterialAnnouncement` (the per-symbol live-fetch shape
+    `get_material_announcements` still serves). `category` is a derived bucket computed at
+    ingest time (`sources/mops.py::_announcement_category`) from `qualifying_clause` — TWSE's own
+    disclosure-rule clause citation (e.g. "第51款"), meaningless to a reader as a raw number, so
+    never exposed un-bucketed to a whole-market list view. `qualifying_clause` itself is kept
+    alongside `category` rather than dropped, for anyone who wants the raw citation."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    company_name: str
+    announced_date: date_
+    announced_time: str  # "HH:MM:SS"
+    subject: str
+    detail: str
+    qualifying_clause: str | None = None
+    category: str
+
+
+class InsiderTransferDeclarationRow(BaseModel):
+    """`insider_transfer_declaration` — one 內部人股權轉讓事前申報 (insider advance-transfer-plan
+    declaration) row from TWSE MOPS's `t187ap12_L` whole-market dump. Advance notice of an
+    intended insider share transfer/sale, filed before it happens — distinct from
+    `DirectorShareholding` (a monthly holdings snapshot, not an event) and from
+    `Capability.INSIDER_ACTIVITY` (yfinance/US Form-4-derived, never TW).
+
+    Scoped to `t187ap12_L` only. `t187ap13_L` (a related but distinct "reason not transferred"
+    filing) is intentionally not covered by this model — a real, separate MOPS dataset, deferred
+    rather than silently dropped."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    company_name: str
+    filer_role: str  # upstream "申報人身分"
+    person_name: str  # upstream "姓名"
+    transfer_method: str  # upstream "預定轉讓方式及股數-轉讓方式"
+    transfer_shares: int  # upstream "預定轉讓方式及股數-轉讓股數"
+    max_daily_exchange_shares: int | None = None  # upstream "每日於盤中交易最大得轉讓股數"
+    transferee: str | None = None  # upstream "受讓人" — set for a 贈與, blank for open-market sale
+    current_shares_own: int  # upstream "目前持有股數-自有持股"
+    current_shares_trust: int  # upstream "目前持有股數-保留運用決定權信託股數"
+    planned_shares_own: int  # upstream "預定轉讓總股數-自有持股"
+    planned_shares_trust: int  # upstream "預定轉讓總股數-保留運用決定權信託股數"
+    projected_shares_own_after: int  # upstream "預定轉讓後持股-自有持股"
+    projected_shares_trust_after: int  # upstream "預定轉讓後持股-保留運用決定權信託股數"
+    transfer_window_start: date_  # upstream "有效轉讓期間", first half of "YYYMMDD~YYYMMDD"
+    transfer_window_end: date_  # upstream "有效轉讓期間", second half
+
+
 class ActiveEtfInfoRow(BaseModel):
     """`active_etf_info` — one active-ETF roster row (free tier; list/basic info only)."""
 
@@ -833,6 +887,155 @@ class DispositionSecuritiesRow(BaseModel):
     measure: str
     period_start: date_
     period_end: date_
+
+
+class AttentionStockRow(BaseModel):
+    """`attention_stocks` — one 注意股 (attention-stock) flag for one stock, whole-market,
+    sourced from TWSE's `announcement/notice` and TPEX's `tpex_trading_warning_information`
+    OpenAPI feeds (`sources/twse_openapi.py`/`sources/tpex_openapi.py`). `security_type`
+    distinguishes exchange (`"twse"`/`"tpex"`) — both model as `Market.TW`, which has no
+    exchange split (`schemas/enums.py`). Forward-only: no date parameter upstream, so this is
+    the current day's flags only — accumulating daily partitions over time is what backs the
+    處置王 board's rolling-window attention-flag count, not a queryable history on its own."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    company_name: str
+    flagged_date: date_
+    reason: str
+    close: float | None = None
+    pe: float | None = None
+    security_type: str  # "twse" / "tpex"
+
+
+class DispositionEventRow(BaseModel):
+    """`disposition_events` — one 處置 (disposition) announcement for one stock, whole-market,
+    sourced from TWSE's `announcement/punish` and TPEX's `tpex_disposal_information` OpenAPI
+    feeds. Distinct from `DispositionSecuritiesRow` above (FinMind's per-symbol
+    `TaiwanStockDispositionSecuritiesPeriod`) — this is the whole-market feed the 處置王 board's
+    bucket classification reads back from the derived store, not a per-symbol live fetch.
+    `security_type` distinguishes exchange (`"twse"`/`"tpex"`); `reason`/`measure` carry each
+    exchange's own free-text field (TWSE: `ReasonsOfDisposition`/`DispositionMeasures`; TPEX:
+    `DispositionReasons`/`DisposalCondition` — TPEX has no measures/reasons split, so `measure`
+    holds `DisposalCondition`'s full text for that exchange). Forward-only, same as
+    `AttentionStockRow`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    company_name: str
+    announced_date: date_
+    reason: str
+    period_start: date_
+    period_end: date_
+    measure: str
+    detail: str | None = None
+    security_type: str  # "twse" / "tpex"
+
+
+class SelfAssessedEarningsRow(BaseModel):
+    """`self_assessed_earnings` — one 自結損益公告 (self-assessed/preliminary P&L) row for one
+    stock, from MOPS's `t138sb01` monthly-summary report (`sources/mops.py`). Unlike
+    `AttentionStockRow`/`DispositionEventRow`, this is fetched bounded per-symbol (the upstream
+    form has no whole-market date-range query — only one market/period combination per POST,
+    still whole-market for THAT period, but with no way to ask "every period a company has ever
+    filed" in one call) — see `fetch_self_assessed_earnings`'s own docstring. `consolidated`
+    distinguishes an individual-statement row (`個別`) from a consolidated one (`合併`); a company
+    filing both submits two rows for the same period. `revenue_period` is the ISO "YYYY-MM" (for
+    a monthly filing) the filing covers — NOT the filing/announcement date, which this report
+    does not carry per-row (MOPS's own summary table has no per-row announcement timestamp)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    company_name: str
+    revenue_period: str  # ISO "YYYY-MM"
+    consolidated: bool
+    monthly_operating_profit: int | None = None  # 仟元 (thousand-NTD), upstream unit
+    ytd_operating_profit: int | None = None
+    monthly_pretax_profit: int | None = None
+    ytd_pretax_profit: int | None = None
+    variance_note: str | None = None  # upstream 差異原因說明
+
+
+class DispositionBoardCardRow(BaseModel):
+    """`disposition_board` — one 處置王-style card, `GetDispositionBoardTool`'s output row.
+    Joins `AttentionStockRow`/`DispositionEventRow` (bucket classification + projection) against
+    `PRICE_EOD_JOB` closes and `INSTITUTIONAL_FLOW_JOB` flow (both already-ingested, whole-
+    market) plus a bounded per-symbol `get_margin_short` fan-out (never a live whole-market
+    scan). `projection_caveat` is always populated — states plainly that
+    `days_until_next_disposition` is this codebase's own rule-based encoding of TWSE's publicly
+    stated escalation pattern, not a verbatim TWSE-published number, and is bounded by however
+    much attention-flag history has accumulated since this feature's ingest jobs first ran.
+    Three buckets (風險股/處置中/即將出關); 自結發布 is not a 4th bucket — it's a per-card
+    enrichment (`self_assessed_*` fields below), since a company's preliminary-earnings filing
+    is orthogonal to its attention/disposition status, not a bucket of its own."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    company_name: str
+    security_type: str  # "twse" (上市) / "tpex" (上櫃)
+    close: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+    turnover: float | None = None
+    institutional_net: int | None = None
+    margin_ratio: float | None = None
+    # `margin_ratio` comes from a live/cached per-symbol `get_margin_short`-equivalent fetch
+    # (never a whole-market ingest), so its own `SourceResult.currentness_caveat`/`health_status`
+    # must travel with it here, not be discarded at fetch time — this is the only field on this
+    # row not read straight back from an ingest-owned Parquet partition.
+    margin_caveat: str | None = None
+    margin_health_status: str | None = None
+    bucket: str  # "at_risk" / "in_disposition" / "exiting_soon"
+    disposition_measure: str | None = None
+    disposition_period_start: date_ | None = None
+    disposition_period_end: date_ | None = None
+    # The real-world 撮合終端機 cadence TWSE/TPEx's own free-text `detail`/`measure` states for
+    # this disposition (e.g. "約每2分鐘撮合一次") — minutes, not a fixed 5/20 enum; TWSE's
+    # published examples cluster around ~2min and ~45min but the actual number is per-announcement
+    # free text, so this is parsed, not a closed set.
+    matching_interval_minutes: int | None = None
+    flags: tuple[str, ...] = Field(default_factory=tuple)
+    # A COUNT, not a day figure despite how it reads — how many more 注意股 flags (occurrences,
+    # not calendar/trading days) this at_risk symbol needs before this codebase's own rule
+    # treats it as escalating to disposition. Named `_remaining` (not `days_until_...`) so the
+    # field itself doesn't lie about its own unit — see `projection_caveat`.
+    attention_flags_remaining: int | None = None
+    # A REAL trading-day estimate: `attention_flags_remaining` extrapolated against this
+    # symbol's own observed flag rate over the rolling window (`flags_so_far / observed_days`),
+    # rounded up. `None` whenever the rate is zero/undefined (no flags observed yet — can't
+    # divide by zero, and a rate-less symbol has no basis for a day estimate) or the symbol is
+    # already disposed. This is an estimate layered on top of `attention_flags_remaining`'s own
+    # already-approximate rule — see `projection_caveat`, which states both explicitly.
+    estimated_days_until_disposition: int | None = None
+    # Distinct from `attention_flags_remaining` (which projects a NOT-yet-disposed symbol's
+    # escalation) — this IS a real day count: `period_end - today` for a symbol CURRENTLY
+    # disposed (in_disposition/exiting_soon), i.e. "days remaining in the active disposition
+    # period", `None` for at_risk.
+    days_until_exiting: int | None = None
+    # Day-trading (當沖) volume ÷ total volume for the report date, from a bounded per-symbol
+    # `get_day_trading`-equivalent fetch (same fan-out shape as margin — never a whole-market
+    # scan). `None` when no day-trading row exists for this symbol/date.
+    day_trading_ratio: float | None = None
+    # 自結發布 (自結損益) — a bounded per-symbol `get_self_assessed_earnings`-equivalent fetch,
+    # same fan-out shape as margin/day-trading (never a whole-market scan; the upstream form has
+    # no whole-history query anyway — see `SelfAssessedEarningsRow`'s own docstring). `None`
+    # whenever this symbol has no filing for the checked period (most stocks, most months — this
+    # is a voluntary disclosure). `self_assessed_period`/`self_assessed_consolidated` state
+    # exactly which filing (period, individual-vs-consolidated) the profit figures below came
+    # from, since a company may file both for the same month.
+    self_assessed_period: str | None = None
+    self_assessed_consolidated: bool | None = None
+    self_assessed_monthly_pretax_profit: int | None = None
+    self_assessed_ytd_pretax_profit: int | None = None
+    projection_caveat: str = Field(min_length=1)
 
 
 class DividendResultRow(BaseModel):

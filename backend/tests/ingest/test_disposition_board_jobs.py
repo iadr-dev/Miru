@@ -1,0 +1,306 @@
+"""`job_attention_stocks`/`job_disposition_events` — the two 處置王-board whole-market ingest
+jobs. Not FinMind-sourced (same `job_etf_nav`-shaped carve-out — see `test_etf_nav_job.py` for
+the template this mirrors); each job calls BOTH a TWSE and a TPEX whole-market fetch function
+(`sources.twse_openapi`/`sources.tpex_openapi`), concatenating their rows into one partition.
+"""
+
+from __future__ import annotations
+
+from calendar.trading_days import TradingDayCalendar
+from datetime import UTC, date, datetime
+
+import pytest
+
+import ingest.jobs as jobs_module
+from config.settings import Settings
+from ingest.context import IngestContext
+from ingest.jobs import (
+    ATTENTION_STOCKS_DATASET,
+    DISPOSITION_EVENTS_DATASET,
+    job_attention_stocks,
+    job_disposition_events,
+)
+from ingest.journal import RunStatus
+from ingest.leader import AlwaysLeader, NeverLeader
+from ingest.store import ParquetStore
+from schemas.enums import DataClass, Market, TimingClass, TLSPolicy
+from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.finmind import FinMindAdapter
+
+_RUN_DATE = date(2026, 8, 28)
+_ATTENTION_ROW_TWSE = {
+    "symbol": "3081",
+    "market": "TW",
+    "company_name": "聯亞",
+    "flagged_date": "2026-08-28",
+    "reason": "當日本益比為272.81(第六款)",
+    "close": 3170.0,
+    "pe": 272.81,
+    "security_type": "twse",
+}
+_ATTENTION_ROW_TPEX = {
+    "symbol": "2061",
+    "market": "TW",
+    "company_name": "風青",
+    "flagged_date": "2026-08-28",
+    "reason": "最近九十個營業日(含當日)起迄兩個營業日之最後成交價漲幅達181.25%(第二款)",
+    "close": 54.0,
+    "pe": 47.79,
+    "security_type": "tpex",
+}
+_DISPOSITION_ROW_TWSE = {
+    "symbol": "3008",
+    "market": "TW",
+    "company_name": "大立光",
+    "announced_date": "2026-09-02",
+    "reason": "連續三次",
+    "period_start": "2026-09-03",
+    "period_end": "2026-09-09",
+    "measure": "第一次處置",
+    "detail": "處置原因：該有價證券之交易，連續三個營業日達本公司「公布注意交易資訊」標準。",
+    "security_type": "twse",
+}
+_DISPOSITION_ROW_TPEX = {
+    "symbol": "24552",
+    "market": "TW",
+    "company_name": "全新二",
+    "announced_date": "2026-09-04",
+    "reason": "轉(交)換公司債之標的證券經本中心或臺灣證券交易所發布處置",
+    "period_start": "2026-09-07",
+    "period_end": "2026-09-15",
+    "measure": "上市公司全新光電科技股份有限公司股票經臺灣證券交易所發布第二次處置",
+    "detail": None,
+    "security_type": "tpex",
+}
+
+
+def _settings() -> Settings:
+    return Settings(finmind_api_key="test-token")
+
+
+def _ctx(tmp_path: object, *, leader: object = None) -> IngestContext:
+    return IngestContext(
+        finmind=FinMindAdapter(settings=_settings()),
+        store=ParquetStore(root=tmp_path),  # type: ignore[arg-type]
+        leader=leader or AlwaysLeader(),  # type: ignore[arg-type]
+        calendar=TradingDayCalendar(),
+        tls_policy=TLSPolicy.STRICT,
+    )
+
+
+def _fake_result(*, rows: list[dict[str, object]], status: HealthStatus) -> SourceResult:
+    return SourceResult(
+        source_id="TWSE_OPENAPI",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.EVENT_DRIVEN,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="test caveat",
+        payload={"rows": rows},
+        health=SourceHealth(status=status, detail="ok" if status is HealthStatus.OK else "fail"),
+    )
+
+
+async def test_attention_stocks_success_writes_partition_from_both_exchanges(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TWSE], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TPEX], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 2
+    assert ctx.store.has_partition(ATTENTION_STOCKS_DATASET, Market.TW.value, _RUN_DATE)
+
+
+async def test_attention_stocks_malformed_row_is_dropped(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad_row = {"symbol": "0000"}  # missing every other required field
+
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TWSE, bad_row], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 1
+
+
+async def test_attention_stocks_one_exchange_failing_is_partial_not_failed(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TWSE], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[], status=HealthStatus.UNREACHABLE)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.PARTIAL
+    assert run.rows_written == 1
+
+
+async def test_attention_stocks_both_exchanges_failing_is_failed(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_fail(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[], status=HealthStatus.UNREACHABLE)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_fail)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_fail)
+    ctx = _ctx(tmp_path)
+
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.FAILED
+    assert not ctx.store.has_partition(ATTENTION_STOCKS_DATASET, Market.TW.value, _RUN_DATE)
+
+
+async def test_attention_stocks_not_leader_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _boom(*, tls_policy: object) -> SourceResult:
+        raise AssertionError("must not fetch when not the leader")
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _boom)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _boom)
+    ctx = _ctx(tmp_path, leader=NeverLeader())
+
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert run.rows_written == 0
+
+
+async def test_attention_stocks_non_trading_day_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _boom(*, tls_policy: object) -> SourceResult:
+        raise AssertionError("must not fetch on a non-trading day")
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _boom)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _boom)
+    ctx = _ctx(tmp_path)
+    saturday = date(2026, 8, 29)
+
+    run = await job_attention_stocks(saturday, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert run.rows_written == 0
+
+
+async def test_attention_stocks_idempotent_rerun_does_not_duplicate(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TWSE], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TPEX], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    first = await job_attention_stocks(_RUN_DATE, ctx)
+    second = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert first.status is second.status is RunStatus.SUCCESS
+    assert first.rows_written == second.rows_written == 2
+
+
+async def test_disposition_events_success_writes_partition_from_both_exchanges(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_DISPOSITION_ROW_TWSE], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_DISPOSITION_ROW_TPEX], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    run = await job_disposition_events(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 2
+    assert ctx.store.has_partition(DISPOSITION_EVENTS_DATASET, Market.TW.value, _RUN_DATE)
+
+
+async def test_disposition_events_malformed_row_is_dropped(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad_row = {"symbol": "0000"}  # missing every other required field
+
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_DISPOSITION_ROW_TWSE, bad_row], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    run = await job_disposition_events(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 1
+
+
+async def test_disposition_events_not_leader_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _boom(*, tls_policy: object) -> SourceResult:
+        raise AssertionError("must not fetch when not the leader")
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events", _boom)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events_tpex", _boom)
+    ctx = _ctx(tmp_path, leader=NeverLeader())
+
+    run = await job_disposition_events(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert run.rows_written == 0
+
+
+async def test_disposition_events_idempotent_rerun_does_not_duplicate(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_DISPOSITION_ROW_TWSE], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_DISPOSITION_ROW_TPEX], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_disposition_events_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    first = await job_disposition_events(_RUN_DATE, ctx)
+    second = await job_disposition_events(_RUN_DATE, ctx)
+
+    assert first.status is second.status is RunStatus.SUCCESS
+    assert first.rows_written == second.rows_written == 2

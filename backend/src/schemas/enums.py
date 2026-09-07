@@ -84,6 +84,9 @@ class Capability(StrEnum):
     TRADING_SUSPENSION = "trading_suspension"
     DAY_TRADING_SUSPENSION = "day_trading_suspension"
     INSIDER_ACTIVITY = "insider_activity"
+    # TW MOPS 內部人股權轉讓事前申報 (t187ap12_L, advance-transfer-plan declaration only) — distinct
+    # from INSIDER_ACTIVITY, which is yfinance/US Form-4-derived and never serves Market.TW.
+    INSIDER_TRANSFER_DECLARATION = "insider_transfer_declaration"
 
     # --- Institutional flow / chip data ---
     INSTITUTIONAL_FLOW = "institutional_flow"
@@ -107,6 +110,16 @@ class Capability(StrEnum):
     SECURITIES_LENDING = "securities_lending"
     LOAN_COLLATERAL_BALANCE = "loan_collateral_balance"
     DISPOSITION_SECURITIES = "disposition_securities"
+    # TWSE/TPEX 注意股+處置 whole-market announcement feeds (sources/twse_openapi.py,
+    # sources/tpex_openapi.py) — distinct from DISPOSITION_SECURITIES above (FinMind's
+    # per-symbol TaiwanStockDispositionSecuritiesPeriod). Backs the 處置王 board.
+    ATTENTION_STOCKS = "attention_stocks"
+    DISPOSITION_EVENTS = "disposition_events"
+    # MOPS 自結損益公告 (t138sb01, self-assessed preliminary P&L) — bounded per-symbol only (the
+    # upstream form has no whole-market date-range query, only one market/period at a time), used
+    # by the 處置王 board's own roster, never a live whole-market scan. Backs the board's 4th
+    # bucket (自結發布).
+    SELF_ASSESSED_EARNINGS = "self_assessed_earnings"
 
     # --- Shareholding / distribution ---
     SHAREHOLDING = "shareholding"

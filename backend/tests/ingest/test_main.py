@@ -32,7 +32,8 @@ async def test_disabled_flag_never_calls_any_gap_fill_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`ingest_on_startup=False` (the production default) must skip every gap-fill path
-    entirely — no TW call, no US call, no derived-compute call, no fundamentals call."""
+    entirely — no TW call, no US call, no derived-compute call, no fundamentals call, no MOPS
+    calls."""
     settings = _settings()  # ingest_on_startup defaults to False
     called: list[str] = []
 
@@ -48,6 +49,10 @@ async def test_disabled_flag_never_calls_any_gap_fill_path(
     monkeypatch.setattr(main_module, "run_derived_compute_catchup", _fail_if_called)
     monkeypatch.setattr(main_module, "run_us_backfill_cli", _fail_if_called)
     monkeypatch.setattr(main_module, "job_us_fundamentals", _fail_if_called_job)
+    monkeypatch.setattr(main_module, "job_material_announcements", _fail_if_called_job)
+    monkeypatch.setattr(main_module, "job_insider_transfer_declaration", _fail_if_called_job)
+    monkeypatch.setattr(main_module, "job_attention_stocks", _fail_if_called_job)
+    monkeypatch.setattr(main_module, "job_disposition_events", _fail_if_called_job)
 
     await _startup_gap_fill(settings, ctx=object())  # type: ignore[arg-type]
 
@@ -86,6 +91,10 @@ async def test_tw_chain_and_us_chain_run_concurrently(
     monkeypatch.setattr(main_module, "run_derived_compute_catchup", _fake_derived_catchup)
     monkeypatch.setattr(main_module, "run_us_backfill_cli", _fake_us_backfill)
     monkeypatch.setattr(main_module, "job_us_fundamentals", _fake_fundamentals)
+    monkeypatch.setattr(main_module, "job_material_announcements", _fake_fundamentals)
+    monkeypatch.setattr(main_module, "job_insider_transfer_declaration", _fake_fundamentals)
+    monkeypatch.setattr(main_module, "job_attention_stocks", _fake_fundamentals)
+    monkeypatch.setattr(main_module, "job_disposition_events", _fake_fundamentals)
 
     # No timeout/deadlock — each side's wait resolves only because the other genuinely started
     # concurrently, not after it, which a sequential (non-`gather`) implementation could not do.
@@ -115,14 +124,75 @@ async def test_us_chain_runs_fundamentals_catchup_after_price_backfill(
         fundamentals_calls.append(run_date)
         return _job_run()
 
+    async def _ok_job(*_args: object, **_kwargs: object) -> JobRun:
+        return _job_run()
+
     monkeypatch.setattr(main_module, "run_backfill_cli", _ok)
     monkeypatch.setattr(main_module, "run_derived_compute_catchup", _ok)
     monkeypatch.setattr(main_module, "run_us_backfill_cli", _ok)
     monkeypatch.setattr(main_module, "job_us_fundamentals", _fake_fundamentals)
+    monkeypatch.setattr(main_module, "job_material_announcements", _ok_job)
+    monkeypatch.setattr(main_module, "job_insider_transfer_declaration", _ok_job)
+    monkeypatch.setattr(main_module, "job_attention_stocks", _ok_job)
+    monkeypatch.setattr(main_module, "job_disposition_events", _ok_job)
 
     await _startup_gap_fill(settings, ctx=object())  # type: ignore[arg-type]
 
     assert len(fundamentals_calls) == 1
+
+
+async def test_tw_chain_runs_mops_and_disposition_board_jobs_directly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`job_material_announcements`/`job_insider_transfer_declaration`/`job_attention_stocks`/
+    `job_disposition_events` must all be called as part of the TW gap-fill chain — none is a
+    `WholeMarketJobSpec`, so `run_backfill_cli`'s own per-spec gap-fill never reaches them (same
+    class of gap `job_us_fundamentals`'s own direct call closes for the US chain). This matters
+    more for these four than for US fundamentals: none has a backfill path at all, so a day
+    missed at the daemon's own cron fire time is otherwise permanently lost."""
+    settings = _settings(ingest_on_startup=True)
+    announcement_calls: list[date] = []
+    insider_transfer_calls: list[date] = []
+    attention_stocks_calls: list[date] = []
+    disposition_events_calls: list[date] = []
+
+    async def _ok(*_args: object, **_kwargs: object) -> tuple[object, ...]:
+        return ()
+
+    async def _fake_fundamentals(*_args: object, **_kwargs: object) -> JobRun:
+        return _job_run()
+
+    async def _fake_announcements(run_date: date, _ctx: object) -> JobRun:
+        announcement_calls.append(run_date)
+        return _job_run()
+
+    async def _fake_insider_transfer(run_date: date, _ctx: object) -> JobRun:
+        insider_transfer_calls.append(run_date)
+        return _job_run()
+
+    async def _fake_attention_stocks(run_date: date, _ctx: object) -> JobRun:
+        attention_stocks_calls.append(run_date)
+        return _job_run()
+
+    async def _fake_disposition_events(run_date: date, _ctx: object) -> JobRun:
+        disposition_events_calls.append(run_date)
+        return _job_run()
+
+    monkeypatch.setattr(main_module, "run_backfill_cli", _ok)
+    monkeypatch.setattr(main_module, "run_derived_compute_catchup", _ok)
+    monkeypatch.setattr(main_module, "run_us_backfill_cli", _ok)
+    monkeypatch.setattr(main_module, "job_us_fundamentals", _fake_fundamentals)
+    monkeypatch.setattr(main_module, "job_material_announcements", _fake_announcements)
+    monkeypatch.setattr(main_module, "job_insider_transfer_declaration", _fake_insider_transfer)
+    monkeypatch.setattr(main_module, "job_attention_stocks", _fake_attention_stocks)
+    monkeypatch.setattr(main_module, "job_disposition_events", _fake_disposition_events)
+
+    await _startup_gap_fill(settings, ctx=object())  # type: ignore[arg-type]
+
+    assert len(announcement_calls) == 1
+    assert len(insider_transfer_calls) == 1
+    assert len(attention_stocks_calls) == 1
+    assert len(disposition_events_calls) == 1
 
 
 async def test_startup_gap_fill_failure_is_never_fatal(
@@ -145,6 +215,10 @@ async def test_startup_gap_fill_failure_is_never_fatal(
     monkeypatch.setattr(main_module, "run_derived_compute_catchup", _ok)
     monkeypatch.setattr(main_module, "run_us_backfill_cli", _ok)
     monkeypatch.setattr(main_module, "job_us_fundamentals", _ok_job)
+    monkeypatch.setattr(main_module, "job_material_announcements", _ok_job)
+    monkeypatch.setattr(main_module, "job_insider_transfer_declaration", _ok_job)
+    monkeypatch.setattr(main_module, "job_attention_stocks", _ok_job)
+    monkeypatch.setattr(main_module, "job_disposition_events", _ok_job)
 
     # Must not raise.
     await _startup_gap_fill(settings, ctx=object())  # type: ignore[arg-type]

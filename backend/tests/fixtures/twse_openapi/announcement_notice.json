@@ -1,0 +1,22 @@
+[
+  {
+    "Number": "1",
+    "Code": "3081",
+    "Name": "聯亞",
+    "NumberOfAnnouncement": "1",
+    "TradingInfoForAttention": "當日本益比為272.81、股價淨值比為62.14且為其所屬產業類別股價淨值比之7.98倍(第六款)",
+    "Date": "1150904",
+    "ClosingPrice": "3170.00",
+    "PE": "272.81"
+  },
+  {
+    "Number": "2",
+    "Code": "30371",
+    "Name": "欣興一",
+    "NumberOfAnnouncement": "1",
+    "TradingInfoForAttention": "最近六個營業日(含當日)累積之最後成交價跌幅達26.81%(第一款)",
+    "Date": "1150904",
+    "ClosingPrice": "552.00",
+    "PE": "N/A"
+  }
+]

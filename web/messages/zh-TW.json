@@ -316,6 +316,60 @@
         "collapse": "收合",
         "moreCount": "+{count} 更多"
       },
+      "materialAnnouncementFeed": {
+        "title": "重大訊息",
+        "all": "全部",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合",
+        "empty": "此篩選條件查無重大訊息。",
+        "unavailable": "尚無重大訊息資料 — MOPS 每日擷取自今日起累積歷史，無法回補過去資料。"
+      },
+      "insiderTransferDeclaration": {
+        "title": "內部人股權轉讓事前申報",
+        "shares": "股",
+        "transferWindow": "轉讓期間",
+        "currentShares": "目前持股",
+        "projectedShares": "轉讓後持股",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合",
+        "empty": "此日查無內部人股權轉讓事前申報。",
+        "unavailable": "尚無內部人股權轉讓事前申報資料 — MOPS 每日擷取自今日起累積歷史，無法回補過去資料。"
+      },
+      "dispositionBoard": {
+        "title": "處置王看板",
+        "bucket": {
+          "at_risk": "風險股",
+          "in_disposition": "處置中",
+          "exiting_soon": "即將出關"
+        },
+        "flag": {
+          "資": "資",
+          "券": "券",
+          "沖": "沖",
+          "警": "警",
+          "處": "處",
+          "注": "注"
+        },
+        "search": "搜尋代號或名稱",
+        "volume": "成交張數",
+        "turnover": "成交值",
+        "lots": "張",
+        "institutionalNet": "三大法人買賣超",
+        "marginRatio": "券資率%",
+        "dayTradingRatio": "當沖率%",
+        "dispositionPeriod": "處置期間",
+        "attentionFlagsRemaining": "最快再 {count} 次注意股即進入處置",
+        "estimatedDaysUntilDisposition": "預估約 {days} 個交易日後進入處置（還差 {count} 次注意股）",
+        "daysUntilExiting": "剩餘 {days} 個交易日出關",
+        "exitingToday": "本日出關",
+        "matchingInterval": "約每 {minutes} 分鐘撮合一次",
+        "projectionCaveat": "「還差N次進入處置」與「預估約N個交易日後進入處置」皆為本站自訂規則估算 — 滾動 {window} 個交易日內累積 {flags} 次注意股即視為進入處置；交易日數字是再依該股自身觀察到的注意股頻率外推換算，屬於估算之上的估算，並非台灣證交所公告之官方數字，且僅涵蓋本功能上線後累積的注意股歷史。",
+        "marginDegradedCaveat": "融資融劵資料延遲或暫時無法取得，以下券資率可能非最新。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合",
+        "empty": "此分類目前查無個股。",
+        "unavailable": "尚無處置王看板資料 — 每日擷取自今日起累積歷史，無法回補過去資料。"
+      },
       "indexStrip": {
         "scrollLeft": "向左捲動",
         "scrollRight": "向右捲動",
