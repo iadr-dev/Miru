@@ -146,6 +146,11 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "(91 documented codes spanning broad-market/sector/themed/leverage indices).",
         row_key="rows",
         row_mapper=_map_tick_snapshot,
+        # Confirmed live: this dataset is NOT in the generic `/data` endpoint's `dataset` enum
+        # (422 "Input should be ...") — FinMind serves every Real-Time-category dataset off its
+        # own dedicated path instead, same `special_endpoint` mechanism
+        # `chip_institutional.py`'s `taiwan_stock_trading_daily_report` already uses.
+        special_endpoint="/taiwan_stock_tick_snapshot",
     ),
     Capability.FUTOPT_TICK_INFO: _DatasetConfig(
         dataset="TaiwanFutOptTickInfo",
@@ -165,6 +170,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "never a live tick stream.",
         row_key="rows",
         row_mapper=_map_futures_snapshot,
+        # Same dedicated-endpoint quirk as `TICK_SNAPSHOT` above — confirmed live.
+        special_endpoint="/taiwan_futures_snapshot",
     ),
     Capability.OPTIONS_SNAPSHOT: _DatasetConfig(
         dataset="taiwan_options_snapshot",
@@ -174,6 +181,8 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "never a live tick stream.",
         row_key="rows",
         row_mapper=_map_options_snapshot,
+        # Same dedicated-endpoint quirk as `TICK_SNAPSHOT` above — confirmed live.
+        special_endpoint="/taiwan_options_snapshot",
     ),
 }
 
