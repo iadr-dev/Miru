@@ -24,6 +24,8 @@ import {
   type EtfMoneyFlowResponse,
   etfListResponseSchema,
   etfMoneyFlowResponseSchema,
+  type FuturesSnapshotResponse,
+  futuresSnapshotResponseSchema,
   type HolderAccumulationResponse,
   type HolderThreshold,
   type HolderWindow,
@@ -39,10 +41,14 @@ import {
   type MacroIndicatorsResponse,
   type MarginMaintenanceResponse,
   type MarginShortBalanceResponse,
+  type MarketIndexStripResponse,
   type MomentumPeriod,
   macroIndicatorsResponseSchema,
   marginMaintenanceResponseSchema,
   marginShortBalanceResponseSchema,
+  marketIndexStripResponseSchema,
+  type OptionVixResponse,
+  optionVixResponseSchema,
   type PriceHistoryResponse,
   type PriceMomentumResponse,
   priceHistoryResponseSchema,
@@ -51,6 +57,8 @@ import {
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
   symbolInfoResponseSchema,
+  type TickSnapshotResponse,
+  tickSnapshotResponseSchema,
 } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -395,4 +403,49 @@ export async function getDividendCalendar(
   if (month !== undefined) search.set("month", String(month));
   const raw = await requestJson(`/market/dividend-calendar?${search.toString()}`);
   return dividendCalendarResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 21. GET /market/index-strip (public, TW-tab ticker strip: 加權指數/櫃買指數/美元/黃金/原油)
+// ---------------------------------------------------------------------------
+
+export async function getMarketIndexStrip(): Promise<MarketIndexStripResponse> {
+  const raw = await requestJson("/market/index-strip");
+  return marketIndexStripResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 22. GET /market/tick-snapshot (Sponsor-tier, one stock/ETF/index-code snapshot)
+// ---------------------------------------------------------------------------
+
+export async function getTickSnapshot(
+  symbol: string,
+  market: Market = "TW",
+): Promise<TickSnapshotResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  const raw = await requestJson(`/market/tick-snapshot?${search.toString()}`);
+  return tickSnapshotResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 23. GET /market/futures-snapshot (Sponsor-tier, one futures-contract snapshot)
+// ---------------------------------------------------------------------------
+
+export async function getFuturesSnapshot(
+  symbol: string,
+  market: Market = "TW",
+): Promise<FuturesSnapshotResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  const raw = await requestJson(`/market/futures-snapshot?${search.toString()}`);
+  return futuresSnapshotResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 24. GET /derivatives/taiex-vix (Sponsor-tier, 臺指選擇權波動率指數)
+// ---------------------------------------------------------------------------
+
+export async function getTaiexVix(params: DateRangeParams = {}): Promise<OptionVixResponse> {
+  const search = dateRangeSearchParams(params);
+  const raw = await requestJson(`/derivatives/taiex-vix?${search.toString()}`);
+  return optionVixResponseSchema.parse(raw);
 }

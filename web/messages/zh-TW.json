@@ -316,6 +316,13 @@
         "collapse": "收合",
         "moreCount": "+{count} 更多"
       },
+      "indexStrip": {
+        "scrollLeft": "向左捲動",
+        "scrollRight": "向右捲動",
+        "semiconductorIndex": "半導體業",
+        "taiexFutures": "台指期",
+        "vix": "VIX"
+      },
       "loading": "資料載入中…",
       "empty": "此範圍內查無資料。",
       "error": "載入失敗，請重試。",

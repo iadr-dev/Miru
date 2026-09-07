@@ -1730,6 +1730,26 @@ class CrudeOilPricesRow(BaseModel):
     price: float
 
 
+class MarketIndexStripItemRow(BaseModel):
+    """`market_index_strip` — one item in the TW-tab ticker strip
+    (加權指數/櫃買指數/美元/黃金/原油). Free tier only — every underlying dataset this row draws
+    from (`TAIEX_5S_INDEX`/`TOTAL_RETURN_INDEX`/`EXCHANGE_RATE`/`GOLD_PRICE`/`CRUDE_OIL_PRICES`)
+    is already `DataClass.PUBLIC` at its own dataset declaration; this row never represents a
+    Sponsor-tier reading (those render through their own existing tools — `get_tick_snapshot`/
+    `get_futures_snapshot`/`get_taiex_vix` — masked like any other Sponsor card, not folded into
+    this bundle). `change`/`change_pct` are `None` when only one day's reading is available (no
+    prior day to diff against), never a fabricated zero."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str  # stable id: taiex / otc / usd_twd / gold / crude_oil_wti
+    label: str
+    value: float
+    change: float | None = None
+    change_pct: float | None = None
+    as_of: date_
+
+
 class GovernmentBondYieldRow(BaseModel):
     """`government_bond_yield` — one day's US Treasury yield reading for one maturity tenor
     (`symbol` e.g. "United States 10-Year"). Free tier. Modeled `Market.US` — unlike

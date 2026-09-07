@@ -128,6 +128,8 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_tdcc_evoting_schedule": "tdcc_evoting_schedule",
     # ask_user_tools.py
     "ask_user": "ask_user",
+    # market_index_strip_tools.py
+    "get_market_index_strip": "market_index_strip",
 }
 
 
