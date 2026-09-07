@@ -825,3 +825,114 @@ export const dailySignalDataSchema = z.object({
 });
 export const dailySignalResponseSchema = z.union([dailySignalDataSchema, maskedTeaserSchema]);
 export type DailySignalResponse = z.infer<typeof dailySignalResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 21. GET /market/index-strip — get_market_index_strip (public). Mirrors
+//     `MarketIndexStripItemRow`/`GetMarketIndexStripOutput`
+//     (backend/src/tools/market_index_strip_tools.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const marketIndexStripItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  value: z.number(),
+  change: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  as_of: z.string(),
+});
+export type MarketIndexStripItem = z.infer<typeof marketIndexStripItemSchema>;
+
+export const marketIndexStripDataSchema = z.object({
+  rows: z.array(marketIndexStripItemSchema).default([]),
+});
+// Public — never Sponsor-masked, same un-unioned convention as `dividendCalendarResponseSchema`.
+export const marketIndexStripResponseSchema = marketIndexStripDataSchema;
+export type MarketIndexStripResponse = z.infer<typeof marketIndexStripResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 22. GET /market/tick-snapshot — get_tick_snapshot (Sponsor-tier). Mirrors
+//     `TickSnapshotRow` (backend/src/schemas/capabilities.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const tickSnapshotRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  amount: z.number(),
+  average_price: z.number(),
+  buy_price: z.number(),
+  buy_volume: z.number(),
+  change_price: z.number(),
+  change_rate: z.number(),
+  close: z.number(),
+  high: z.number(),
+  low: z.number(),
+  open: z.number(),
+  sell_price: z.number(),
+  sell_volume: z.number(),
+  total_amount: z.number(),
+  total_volume: z.number(),
+  volume: z.number(),
+  volume_ratio: z.number(),
+  yesterday_volume: z.number(),
+  tick_type: z.string(),
+});
+export type TickSnapshotRow = z.infer<typeof tickSnapshotRowSchema>;
+
+export const tickSnapshotDataSchema = rowsOutputSchema(tickSnapshotRowSchema);
+export const tickSnapshotResponseSchema = z.union([tickSnapshotDataSchema, maskedTeaserSchema]);
+export type TickSnapshotResponse = z.infer<typeof tickSnapshotResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 23. GET /market/futures-snapshot — get_futures_snapshot (Sponsor-tier). Mirrors
+//     `FuturesSnapshotRow` (backend/src/schemas/capabilities.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const futuresSnapshotRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  open: z.number(),
+  high: z.number(),
+  low: z.number(),
+  close: z.number(),
+  change_price: z.number(),
+  change_rate: z.number(),
+  average_price: z.number(),
+  volume: z.number(),
+  total_volume: z.number(),
+  amount: z.number(),
+  total_amount: z.number(),
+  yesterday_volume: z.number(),
+  buy_price: z.number(),
+  buy_volume: z.number(),
+  sell_price: z.number(),
+  sell_volume: z.number(),
+  volume_ratio: z.number(),
+  tick_type: z.string(),
+});
+export type FuturesSnapshotRow = z.infer<typeof futuresSnapshotRowSchema>;
+
+export const futuresSnapshotDataSchema = rowsOutputSchema(futuresSnapshotRowSchema);
+export const futuresSnapshotResponseSchema = z.union([
+  futuresSnapshotDataSchema,
+  maskedTeaserSchema,
+]);
+export type FuturesSnapshotResponse = z.infer<typeof futuresSnapshotResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 24. GET /derivatives/taiex-vix — get_taiex_vix (Sponsor-tier). Mirrors
+//     `OptionVixRow` (backend/src/schemas/capabilities.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const optionVixRowSchema = z.object({
+  market: z.string(),
+  trade_date: z.string(),
+  time: z.string(),
+  vix: z.number(),
+});
+export type OptionVixRow = z.infer<typeof optionVixRowSchema>;
+
+export const optionVixDataSchema = rowsOutputSchema(optionVixRowSchema);
+export const optionVixResponseSchema = z.union([optionVixDataSchema, maskedTeaserSchema]);
+export type OptionVixResponse = z.infer<typeof optionVixResponseSchema>;

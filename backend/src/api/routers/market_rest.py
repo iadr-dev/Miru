@@ -60,6 +60,43 @@ def _context(
 _dispatch = dispatch_validated_tool
 
 
+@router.get("/market/index-strip")
+async def index_strip(
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """TW-tab ticker-strip public items (加權指數/櫃買指數/美元/黃金/原油) — backed by
+    `get_market_index_strip`, `DataClass.PUBLIC`."""
+    return await _dispatch(state, "get_market_index_strip", {}, ctx)
+
+
+@router.get("/market/tick-snapshot")
+async def tick_snapshot(
+    symbol: str = Query(..., min_length=1, description="4-digit stock id or 3-digit index code."),
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One bounded intraday tick-level snapshot for one stock/ETF or index code (Sponsor-tier) —
+    backed by `get_tick_snapshot`. The ticker strip uses this for sector-index items (e.g. `036`
+    半導體業); an unentitled caller gets the masked-teaser envelope, never an error."""
+    return await _dispatch(state, "get_tick_snapshot", {"id": symbol, "market": market.value}, ctx)
+
+
+@router.get("/market/futures-snapshot")
+async def futures_snapshot(
+    symbol: str = Query(..., min_length=1, description="Futures contract code, e.g. TXF."),
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One bounded intraday futures-contract snapshot (Sponsor-tier) — backed by
+    `get_futures_snapshot`. The ticker strip uses this for 台指期 (`id=TXF`)."""
+    return await _dispatch(
+        state, "get_futures_snapshot", {"id": symbol, "market": market.value}, ctx
+    )
+
+
 # ---- market-level reads --------------------------------------------------------------------
 
 

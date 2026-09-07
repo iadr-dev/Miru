@@ -316,6 +316,13 @@
         "collapse": "Collapse",
         "moreCount": "+{count} more"
       },
+      "indexStrip": {
+        "scrollLeft": "Scroll left",
+        "scrollRight": "Scroll right",
+        "semiconductorIndex": "Semiconductor Index",
+        "taiexFutures": "TAIEX Futures",
+        "vix": "VIX"
+      },
       "loading": "Loading data…",
       "empty": "No data for this range.",
       "error": "Failed to load. Please retry.",
