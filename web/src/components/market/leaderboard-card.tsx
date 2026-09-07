@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import type { LeaderboardDirection, ScoreBand, ScoreResult } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const COLLAPSED_ROW_COUNT = 13;
+const COLLAPSED_ROW_COUNT = 10;
 
 const BAND_TOKEN: Record<ScoreBand, string> = {
   偏多: "var(--up)",

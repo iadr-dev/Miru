@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
+import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DividendCalendarTable } from "@/components/market/dividend-calendar-table";
 import { getDividendCalendar } from "@/lib/api/market";
 import type { Market } from "@/types/settings";
@@ -46,7 +47,7 @@ export function DividendCalendarPanel({ market }: { readonly market: Market }): 
   return (
     <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
-      <QueryState query={query}>
+      <QueryState query={query} skeleton={<CardSkeletonBody height={480} />}>
         {(data) => {
           if (!data.data_available) {
             return (

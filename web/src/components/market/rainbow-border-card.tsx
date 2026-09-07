@@ -17,7 +17,7 @@ export function RainbowBorderCard({
   className?: string;
 }): ReactNode {
   return (
-    <div className={cn("market-rainbow-border rounded-[var(--radius-card)]", className)}>
+    <div className={cn("market-rainbow-border w-full rounded-[var(--radius-card)]", className)}>
       {children}
     </div>
   );

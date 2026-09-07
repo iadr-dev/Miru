@@ -77,7 +77,7 @@ export function InstitutionalFlowCard({
   });
 
   const chart = (
-    <div style={{ width: "100%", height: 220 }}>
+    <div className="min-h-[220px] flex-1" style={{ width: "100%" }}>
       <ResponsiveContainer>
         <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
           <CartesianGrid stroke="var(--grid)" vertical={false} />
@@ -149,7 +149,7 @@ export function InstitutionalFlowCard({
   );
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex h-full w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{tCard("title")}</h2>
       {chartData.length > 0 ? chart : null}
 
@@ -197,7 +197,7 @@ export function InstitutionalFlowCard({
           type="button"
           onClick={() => setExpanded(true)}
           className={cn(
-            "mt-3 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+            "mt-auto flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
             "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
           )}
         >

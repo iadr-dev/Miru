@@ -74,22 +74,25 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
 
               {data.available_dates.length > 0 ? (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {data.available_dates.map((date) => (
-                    <button
-                      key={date}
-                      type="button"
-                      onClick={() => setTradeDate(date)}
-                      aria-pressed={(tradeDate ?? data.report_date) === date}
-                      className={cn(
-                        "rounded-[var(--radius-pill)] px-2.5 py-1 font-num text-[11px] tabular-nums transition-colors",
-                        (tradeDate ?? data.report_date) === date
-                          ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
-                          : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
-                      )}
-                    >
-                      {date}
-                    </button>
-                  ))}
+                  {[...data.available_dates]
+                    .sort()
+                    .reverse()
+                    .map((date) => (
+                      <button
+                        key={date}
+                        type="button"
+                        onClick={() => setTradeDate(date)}
+                        aria-pressed={(tradeDate ?? data.report_date) === date}
+                        className={cn(
+                          "rounded-[var(--radius-pill)] px-2.5 py-1 font-num text-[11px] tabular-nums transition-colors",
+                          (tradeDate ?? data.report_date) === date
+                            ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                            : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
+                        )}
+                      >
+                        {date}
+                      </button>
+                    ))}
                 </div>
               ) : null}
 

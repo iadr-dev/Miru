@@ -1,166 +1,23 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
-import { BreadthOrderBookCard } from "@/components/market/breadth-order-book-card";
+import type { ReactNode } from "react";
 import { EtfTabContent } from "@/components/market/etf-tab-content";
-import { HolderAccumulationCard } from "@/components/market/holder-accumulation-card";
-import { InstitutionalFlowCard } from "@/components/market/institutional-flow-card";
 import { MarketTabPanels } from "@/components/market/market-tabs";
-import { PriceMomentumCard } from "@/components/market/price-momentum-card";
-import { RainbowBorderCard } from "@/components/market/rainbow-border-card";
-import { SponsorTeaser } from "@/components/market/sponsor-teaser";
-import { TopSplit } from "@/components/market/top-split";
+import { TwTabContent } from "@/components/market/tw-tab-content";
 import { useDataUpdates } from "@/hooks/use-data-updates";
-import {
-  getAdvanceDecline,
-  getHolderAccumulation,
-  getIndexContribution,
-  getInstitutionalRanking,
-  getPriceMomentum,
-  MarketApiError,
-} from "@/lib/api/market";
-import type {
-  HolderThreshold,
-  HolderWindow,
-  LeaderboardDirection,
-  MomentumPeriod,
-} from "@/types/market";
-import { isMaskedTeaser } from "@/types/market";
+import { MarketApiError } from "@/lib/api/market";
 import type { Market } from "@/types/settings";
 
 const DEFAULT_MARKET: Market = "TW";
-// The backend caps top_n at 50 for both `/market/price-momentum` and
-// `/market/holder-accumulation` — fetch the full cap so `PriceMomentumCard`/
-// `HolderAccumulationCard` can show 50 via their own collapse-to-10/expand-modal pattern
-// (mirrors `LeaderboardCard`'s own "Show all 50", the same limit `/analytics/rankings` caps at).
-const MAX_TOP_N = 50;
-
-/** A bounded 90-day window ending today for the institutional-flow chart's multi-day bar
- * history — long enough for a meaningful trend, never an unbounded "all history" fetch. */
-function institutionalFlowWindow(): { startDate: string; endDate: string } {
-  const end = new Date();
-  const start = new Date(end);
-  start.setDate(start.getDate() - 90);
-  return { startDate: start.toISOString().slice(0, 10), endDate: end.toISOString().slice(0, 10) };
-}
 
 export function MarketPanel(): ReactNode {
   useDataUpdates();
-  const tCards = useTranslations("market.cards");
-  const [momentumDirection, setMomentumDirection] = useState<LeaderboardDirection>("bullish");
-  const [momentumPeriod, setMomentumPeriod] = useState<MomentumPeriod>("week");
-  const [holderThreshold, setHolderThreshold] = useState<HolderThreshold>(400);
-  const [holderWindow, setHolderWindow] = useState<HolderWindow>(2);
-  const flowWindow = institutionalFlowWindow();
-
-  const institutionalQuery = useQuery({
-    queryKey: [
-      "institutional_flow_total_market",
-      DEFAULT_MARKET,
-      flowWindow.startDate,
-      flowWindow.endDate,
-    ],
-    queryFn: () => getInstitutionalRanking(DEFAULT_MARKET, flowWindow),
-  });
-
-  const breadthQuery = useQuery({
-    queryKey: ["advance_decline", DEFAULT_MARKET],
-    queryFn: () => getAdvanceDecline(DEFAULT_MARKET),
-  });
-
-  const indexContributionQuery = useQuery({
-    queryKey: ["index_contribution", DEFAULT_MARKET],
-    queryFn: () => getIndexContribution(DEFAULT_MARKET),
-  });
-
-  const priceMomentumQuery = useQuery({
-    queryKey: ["price_momentum", DEFAULT_MARKET, momentumPeriod],
-    queryFn: () => getPriceMomentum(DEFAULT_MARKET, momentumPeriod, undefined, MAX_TOP_N),
-  });
-
-  const holderAccumulationQuery = useQuery({
-    queryKey: ["holder_accumulation", DEFAULT_MARKET, holderThreshold, holderWindow],
-    queryFn: () =>
-      getHolderAccumulation(DEFAULT_MARKET, holderThreshold, holderWindow, undefined, MAX_TOP_N),
-  });
 
   return (
     <div className="p-6">
       <MarketTabPanels
-        renderTw={() => (
-          <div className="flex flex-col gap-4">
-            <TopSplit market={DEFAULT_MARKET} />
-
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <QueryState query={institutionalQuery}>
-                {(data) => (
-                  <RainbowBorderCard>
-                    <InstitutionalFlowCard rows={data.rows} />
-                  </RainbowBorderCard>
-                )}
-              </QueryState>
-
-              <QueryState query={breadthQuery}>
-                {(breadth) => (
-                  <QueryState query={indexContributionQuery}>
-                    {(contribution) => (
-                      <RainbowBorderCard>
-                        <BreadthOrderBookCard breadth={breadth} indexContribution={contribution} />
-                      </RainbowBorderCard>
-                    )}
-                  </QueryState>
-                )}
-              </QueryState>
-
-              <QueryState query={priceMomentumQuery}>
-                {(data) => (
-                  <RainbowBorderCard className="flex h-full">
-                    <PriceMomentumCard
-                      gainers={data.top_gainers}
-                      losers={data.top_losers}
-                      direction={momentumDirection}
-                      onDirectionChange={setMomentumDirection}
-                      period={momentumPeriod}
-                      onPeriodChange={setMomentumPeriod}
-                      market={DEFAULT_MARKET}
-                    />
-                  </RainbowBorderCard>
-                )}
-              </QueryState>
-
-              <QueryState query={holderAccumulationQuery}>
-                {(data) => {
-                  if (isMaskedTeaser(data)) {
-                    return (
-                      <SponsorTeaser
-                        headline={tCards("holderAccumulation.title")}
-                        preview={data.preview}
-                        requiredTier={data.required_tier}
-                      >
-                        <div className="h-52 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-                      </SponsorTeaser>
-                    );
-                  }
-                  return (
-                    <RainbowBorderCard className="flex h-full">
-                      <HolderAccumulationCard
-                        rows={data.rows}
-                        threshold={holderThreshold}
-                        onThresholdChange={setHolderThreshold}
-                        window={holderWindow}
-                        onWindowChange={setHolderWindow}
-                        asOf={data.as_of}
-                        periodAgo={data.period_ago}
-                      />
-                    </RainbowBorderCard>
-                  );
-                }}
-              </QueryState>
-            </div>
-          </div>
-        )}
+        renderTw={() => <TwTabContent market={DEFAULT_MARKET} />}
         renderEtf={() => <EtfTabContent market={DEFAULT_MARKET} />}
       />
     </div>

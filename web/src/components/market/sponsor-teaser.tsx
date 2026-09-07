@@ -31,7 +31,7 @@ export function SponsorTeaser({
   const t = useTranslations("market.teaser");
 
   return (
-    <div className="relative overflow-hidden rounded-[var(--radius-card)]">
+    <div className="relative w-full overflow-hidden rounded-[var(--radius-card)]">
       <p className="mb-2 font-medium text-[14px] text-[var(--text)]">{headline}</p>
       <div aria-hidden className="pointer-events-none blur-[6px]">
         {children}
