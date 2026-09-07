@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
+import sources.finmind as finmind_module
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from sources.finmind import FinMindAdapter
@@ -86,3 +88,37 @@ async def test_fetch_options_snapshot_is_live_ish(monkeypatch: pytest.MonkeyPatc
     rows = result.payload["rows"]
     assert isinstance(rows, list)
     assert rows[0]["symbol"] == "TXO"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    ("cap", "expected_path"),
+    [
+        (Capability.TICK_SNAPSHOT, "/taiwan_stock_tick_snapshot"),
+        (Capability.FUTURES_SNAPSHOT, "/taiwan_futures_snapshot"),
+        (Capability.OPTIONS_SNAPSHOT, "/taiwan_options_snapshot"),
+    ],
+)
+async def test_realtime_snapshots_hit_their_own_dedicated_endpoint(
+    monkeypatch: pytest.MonkeyPatch, cap: Capability, expected_path: str
+) -> None:
+    """Confirmed live: none of `taiwan_stock_tick_snapshot`/`taiwan_futures_snapshot`/
+    `taiwan_options_snapshot` are in the generic `/data` endpoint's `dataset` enum (422 "Input
+    should be ..."); FinMind serves every Real-Time-category dataset off its own dedicated path
+    instead, the same `special_endpoint` mechanism `chip_institutional.py`'s
+    `taiwan_stock_trading_daily_report` already uses."""
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        return httpx.Response(200, json={"data": []})
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    adapter = FinMindAdapter(settings=settings())
+    sym = Symbol(id="TXF", market=Market.TW)
+
+    await adapter.fetch(cap, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert captured["path"].endswith(expected_path)
