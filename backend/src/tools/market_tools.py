@@ -2896,9 +2896,7 @@ class GetStockHeatmapTool(BaseTool):
         raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
         roster = _rows_from_store(StockInfoRow, raw_roster)
         names_and_industry = {
-            row.symbol: (row.name, row.industry_category)
-            for row in roster
-            if row.industry_category
+            row.symbol: (row.name, row.industry_category) for row in roster if row.industry_category
         }
         today_closes = _closes_by_symbol(self._store, market, trade_date)
         prior_closes = _closes_by_symbol(self._store, market, prior_date)
