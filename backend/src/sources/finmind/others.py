@@ -81,8 +81,7 @@ def _map_active_etf_holding_change(
 
 def _map_stock_news(rows: list[dict[str, object]], sym: Symbol | None) -> list[dict[str, object]]:
     """`TaiwanStockNews` — FinMind's own news dataset, distinct from `sources/news.py`'s
-    RSS/GDELT/Finnhub aggregator. Third-party content: cite, never restate as our own
-    analysis."""
+    RSS/Finnhub aggregator. Third-party content: cite, never restate as our own analysis."""
     rows_out: list[dict[str, object]] = []
     for row in rows:
         row_sym = _row_symbol(row, sym)
@@ -179,7 +178,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         dataset="TaiwanStockNews",
         data_class=DataClass.PUBLIC,
         timing_class=TimingClass.REFERENCE,
-        caveat="FinMind's own news dataset, distinct from the RSS/GDELT/Finnhub news "
+        caveat="FinMind's own news dataset, distinct from the RSS/Finnhub news "
         "aggregator; single trading day per request upstream.",
         row_key="rows",
         row_mapper=_map_stock_news,

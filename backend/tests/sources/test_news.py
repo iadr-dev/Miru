@@ -1,4 +1,8 @@
-"""News adapter tests — recorded RSS/GDELT/Finnhub fixtures, no live network (default profile)."""
+"""News adapter tests — recorded RSS/Finnhub fixtures, no live network (default profile).
+
+GDELT was removed from `NewsAdapter` (2026-09, see `sources/news.py`'s own docstring) after live
+verification found its public endpoint persistently rate-limited — these tests no longer exercise
+it."""
 
 from __future__ import annotations
 
@@ -22,15 +26,9 @@ def _settings(finnhub_key: str | None = None) -> Settings:
     return Settings(finnhub_key=finnhub_key)
 
 
-def _client_factory(
-    rss_body: bytes, gdelt_body: dict[str, object] | None, finnhub_body: object | None
-) -> object:
+def _client_factory(rss_body: bytes, finnhub_body: object | None) -> object:
     def handler(request: httpx.Request) -> httpx.Response:
         url = str(request.url)
-        if "gdeltproject.org" in url:
-            if gdelt_body is None:
-                return httpx.Response(429, text="rate limited")
-            return httpx.Response(200, json=gdelt_body)
         if "finnhub.io" in url:
             if finnhub_body is None:
                 return httpx.Response(200, json=[])
@@ -56,15 +54,14 @@ def test_validate_rejects_missing_items() -> None:
         adapter.validate({})
 
 
-async def test_fetch_news_merges_rss_gdelt_and_finnhub(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_fetch_news_merges_rss_and_finnhub(monkeypatch: pytest.MonkeyPatch) -> None:
     rss_body = (FIXTURES / "cnyes_rss.xml").read_bytes()
-    gdelt_body = json.loads((FIXTURES / "gdelt.json").read_text(encoding="utf-8"))
     finnhub_body = json.loads((FIXTURES / "finnhub.json").read_text(encoding="utf-8"))
 
     monkeypatch.setattr(
         news_module,
         "build_async_client",
-        _client_factory(rss_body, gdelt_body, finnhub_body),
+        _client_factory(rss_body, finnhub_body),
     )
     adapter = NewsAdapter(
         settings=_settings(finnhub_key="test-key"),
@@ -81,7 +78,6 @@ async def test_fetch_news_merges_rss_gdelt_and_finnhub(monkeypatch: pytest.Monke
     assert isinstance(items, list)
     sources = {item["source"] for item in items}  # type: ignore[index]
     assert "cnyes_tw_stock" in sources
-    assert any(s.startswith("gdelt:") for s in sources)
     assert any(s.startswith("finnhub:") for s in sources)
     # Sorted newest-first.
     published = [item["published_at"] for item in items]  # type: ignore[index]
@@ -90,11 +86,8 @@ async def test_fetch_news_merges_rss_gdelt_and_finnhub(monkeypatch: pytest.Monke
 
 async def test_fetch_news_skips_finnhub_without_token(monkeypatch: pytest.MonkeyPatch) -> None:
     rss_body = (FIXTURES / "cnyes_rss.xml").read_bytes()
-    gdelt_body = json.loads((FIXTURES / "gdelt.json").read_text(encoding="utf-8"))
 
-    monkeypatch.setattr(
-        news_module, "build_async_client", _client_factory(rss_body, gdelt_body, None)
-    )
+    monkeypatch.setattr(news_module, "build_async_client", _client_factory(rss_body, None))
     adapter = NewsAdapter(
         settings=_settings(finnhub_key=None),
         rss_feeds=(RssFeed(source="cnyes_tw_stock", url="https://news.cnyes.com/fake"),),
@@ -130,7 +123,7 @@ async def test_fetch_news_degrades_honestly_when_all_feeds_fail(
 
 async def test_fetch_dispatches_via_capability(monkeypatch: pytest.MonkeyPatch) -> None:
     rss_body = (FIXTURES / "cnyes_rss.xml").read_bytes()
-    monkeypatch.setattr(news_module, "build_async_client", _client_factory(rss_body, None, None))
+    monkeypatch.setattr(news_module, "build_async_client", _client_factory(rss_body, None))
     adapter = NewsAdapter(
         settings=_settings(),
         rss_feeds=(RssFeed(source="cnyes_tw_stock", url="https://news.cnyes.com/fake"),),

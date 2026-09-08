@@ -6,9 +6,10 @@ each group module's own `build_registration_table(router)` via `registry.build_d
 so adding a new tool group later is a one-line addition here, not a re-derivation of the
 immediate/deferred split.
 
-`web_search_tools` is the one group here not parameterized by `router` (its `WebSearchGateway`
-seam bypasses the router entirely — see that module's docstring), so it takes no argument.
-`theme_tools` is the one group parameterized by the DB session factory rather than the router: it
+`web_search_tools`/`news_tools`/`ptt_tools` are the groups here not parameterized by `router`
+(their `WebSearchGateway`/`NewsAdapter`/`PttAdapter` seams bypass the router entirely — see each
+module's own docstring), so they take no argument. `theme_tools` is the one group parameterized
+by the DB session factory rather than the router: it
 reads the already-ingested relational theme store, not a live source. The session factory is
 optional so a caller wiring only the router-backed set (e.g. a narrow test) still works; when it
 is omitted, the theme group is simply not registered. `score_tools` shares this same shape — it
@@ -42,7 +43,9 @@ from tools import (
     market_index_strip_tools,
     market_tools,
     mops_tools,
+    news_tools,
     others_tools,
+    ptt_tools,
     realtime_tools,
     score_tools,
     screener_tools,
@@ -88,6 +91,8 @@ def build_default_tool_registry(
         etf_pcf_tools.build_registration_table(router),
         etf_overlap_tools.build_registration_table(router),
         web_search_tools.build_registration_table(),
+        news_tools.build_registration_table(),
+        ptt_tools.build_registration_table(),
         analyst_tools.build_registration_table(router),
         chip_tools.build_registration_table(router),
         technical_tools.build_registration_table(router),

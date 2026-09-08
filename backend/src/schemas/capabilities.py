@@ -149,8 +149,8 @@ class SectorClassification(BaseModel):
 
 
 class NewsItem(BaseModel):
-    """`news` — one normalized news item from RSS/GDELT/Finnhub. Third-party content: cite,
-    never restate as our own analysis."""
+    """`news` — one normalized news item from RSS/Finnhub. Third-party content: cite, never
+    restate as our own analysis."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -165,12 +165,12 @@ class PttPost(BaseModel):
     """One PTT board-index listing row — title/author/push-count/tag only (MVP scope: the
     index listing, not full post bodies/comments). `board_tag` of `offtopic` marks
     Beauty/Gossiping so downstream guardrails can exclude it from any market claim; `unverified
-    retail opinion` boards (Stock/Tech_Job) carry `stock_buzz`."""
+    retail opinion` boards (Stock/Tech_Job/Warrant) carry `stock_buzz`."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     board: str
-    board_tag: str  # "stock_buzz" (Stock/Tech_Job) | "offtopic" (Beauty/Gossiping)
+    board_tag: str  # "stock_buzz" (Stock/Tech_Job/Warrant) | "offtopic" (Beauty/Gossiping)
     title: str
     post_tag: str | None = None  # e.g. "[標的]"/"[新聞]"/"[心得]" parsed from the title
     author: str
@@ -1774,7 +1774,7 @@ class ConvertibleBondPutProvisionRow(BaseModel):
 
 class StockNewsRow(BaseModel):
     """`stock_news` — one FinMind-sourced news item for one stock. Third-party content: cite,
-    never restate as our own analysis. Distinct from the `news` capability's RSS/GDELT/Finnhub
+    never restate as our own analysis. Distinct from the `news` capability's RSS/Finnhub
     aggregator (`sources/news.py`) — this is FinMind's own dataset, wired the same as every
     other FinMind capability. Free tier; single trading day per request upstream."""
 

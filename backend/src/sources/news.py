@@ -1,12 +1,15 @@
 """News adapter — the near-real-time news freshness layer.
 
-Aggregates three keyless/near-keyless sources into one normalized `NewsItem` list:
+Aggregates two keyless/near-keyless sources into one normalized `NewsItem` list:
 
-- **Financial RSS** — 鉅亨網 cnyes (台股/頭條), 經濟日報 udn money, TechNews, iThome, BlockTempo.
-  No auth. Faster than a daily-batch aggregator but still a pull, never a push/stream.
-- **GDELT Doc 2.0** — keyless global news search by phrase/ticker.
+- **Financial RSS** — 鉅亨網 cnyes (台股/頭條), 經濟日報 udn money, TechNews, iThome, BlockTempo,
+  Yahoo股市. No auth. Faster than a daily-batch aggregator but still a pull, never a push/stream.
 - **Finnhub** — company news, token via `Settings().finnhub_key`; skipped (not a hard failure)
   when the token isn't configured.
+
+GDELT Doc 2.0 (keyless global news search) was removed 2026-09 after live verification found its
+public endpoint persistently rate-limiting (HTTP 429) regardless of request spacing — see
+`fetch_news`'s own docstring before re-adding it.
 
 Third-party content: every `NewsItem` is cited by `link`/`source`, never restated as our own
 analysis or a trading signal — the non-trading guardrail is the backstop, but this adapter never
@@ -45,7 +48,6 @@ _CAVEAT = (
 # (a coarse scheduler refresh, not this adapter, owns any periodic cadence).
 MIN_SECONDS_BETWEEN_REQUESTS = 30.0
 
-_GDELT_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 _FINNHUB_URL = "https://finnhub.io/api/v1/company-news"
 
 # The two cast() target types every raw JSON list/dict-of-unknowns value below uses.
@@ -68,6 +70,7 @@ _RSS_FEEDS: tuple[_RssFeed, ...] = (
     _RssFeed(source="technews", url="https://technews.tw/feed/"),
     _RssFeed(source="ithome", url="https://www.ithome.com.tw/rss"),
     _RssFeed(source="blocktempo", url="https://www.blocktempo.com/feed/"),
+    _RssFeed(source="yahoo_tw_stock", url="https://tw.stock.yahoo.com/rss?category=news"),
 )
 
 
@@ -114,41 +117,6 @@ def _parse_rss_body(source: str, body: bytes) -> list[NewsItem]:
     return items
 
 
-def _parse_gdelt_body(raw: dict[str, object]) -> list[NewsItem]:
-    articles = raw.get("articles")
-    if not isinstance(articles, list):
-        return []
-    items: list[NewsItem] = []
-    for raw_article in cast(_UntypedList, articles):
-        if not isinstance(raw_article, dict):
-            continue
-        article = cast(_UntypedDict, raw_article)
-        title = str(article.get("title", "")).strip()
-        link = str(article.get("url", "")).strip()
-        if not title or not link:
-            continue
-        seendate = article.get("seendate")
-        published = _parse_gdelt_date(seendate) if isinstance(seendate, str) else datetime.now(UTC)
-        items.append(
-            NewsItem(
-                title=title,
-                link=link,
-                source=f"gdelt:{article.get('domain', 'unknown')}",
-                published_at=published,
-                summary=None,
-            )
-        )
-    return items
-
-
-def _parse_gdelt_date(value: str) -> datetime:
-    # GDELT's `seendate` is `YYYYMMDDHHMMSS` UTC.
-    try:
-        return datetime.strptime(value, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
-    except ValueError:
-        return datetime.now(UTC)
-
-
 def _parse_finnhub_body(raw: object) -> list[NewsItem]:
     if not isinstance(raw, list):
         return []
@@ -181,7 +149,7 @@ def _parse_finnhub_body(raw: object) -> list[NewsItem]:
 
 
 class NewsAdapter:
-    """The `NEWS` source adapter — RSS + GDELT + Finnhub, merged into one `NewsItem` list."""
+    """The `NEWS` source adapter — RSS + Finnhub, merged into one `NewsItem` list."""
 
     source_id = "NEWS"
     timing_class = TimingClass.REFERENCE
@@ -226,9 +194,13 @@ class NewsAdapter:
     async def fetch_news(
         self, *, query: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
     ) -> SourceResult:
-        """Aggregate RSS + GDELT + (optional) Finnhub for `query`. RSS feeds are fetched
-        whole (they are not query-filterable) — filtering by symbol/keyword is a caller
-        concern over the returned items; GDELT/Finnhub are genuinely query-scoped."""
+        """Aggregate RSS + (optional) Finnhub for `query`. RSS feeds are fetched whole (they
+        are not query-filterable) — filtering by symbol/keyword is a caller concern over the
+        returned items; Finnhub is genuinely query-scoped. GDELT Doc 2.0 was dropped from this
+        aggregator (2026-09) after live verification found its public endpoint persistently
+        rate-limiting (HTTP 429) regardless of request spacing — not a transient blip, so it
+        isn't worth the added failure surface; re-add only after confirming the upstream quota
+        issue has actually cleared."""
         items: list[NewsItem] = []
         errors: list[str] = []
 
@@ -239,12 +211,6 @@ class NewsAdapter:
             except httpx.HTTPError as exc:
                 errors.append(f"{feed.source}: {type(exc).__name__}")
                 logger.warning("news_rss_fetch_failed", source=feed.source, error=str(exc))
-
-        try:
-            items.extend(await self._fetch_gdelt(query, tls_policy))
-        except httpx.HTTPError as exc:
-            errors.append(f"gdelt: {type(exc).__name__}")
-            logger.warning("news_gdelt_fetch_failed", error=str(exc))
 
         finnhub_key = self._settings.finnhub_key
         if finnhub_key:
@@ -275,19 +241,6 @@ class NewsAdapter:
             response = await client.get(feed.url)
             response.raise_for_status()
             return _parse_rss_body(feed.source, response.content)
-
-    async def _fetch_gdelt(self, query: str, tls_policy: TLSPolicy) -> list[NewsItem]:
-        params = {"query": query, "mode": "artlist", "format": "json", "maxrecords": "20"}
-        async with build_async_client(tls_policy=tls_policy) as client:
-            response = await client.get(_GDELT_URL, params=params)
-            response.raise_for_status()
-            try:
-                raw: dict[str, object] = response.json()
-            except ValueError:
-                # GDELT answers rate-limit/error conditions with a plain-text body, not JSON —
-                # treat as an empty result rather than a crash.
-                return []
-            return _parse_gdelt_body(raw)
 
     async def _fetch_finnhub(self, query: str, token: str, tls_policy: TLSPolicy) -> list[NewsItem]:
         today = datetime.now(UTC).date()
