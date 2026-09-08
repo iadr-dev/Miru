@@ -102,7 +102,8 @@
         "label": "台股 檢視",
         "focus": "每日焦點",
         "chip": "籌碼",
-        "disposition": "處置"
+        "disposition": "處置",
+        "heatmap": "熱力圖"
       }
     },
     "cards": {
@@ -187,7 +188,17 @@
         "collapse": "收合"
       },
       "industryFlow": {
-        "title": "產業鏈資金流向"
+        "title": "產業鏈資金流向",
+        "stockCount": "{count} 檔",
+        "empty": "今日查無產業鏈資金流向資料。"
+      },
+      "sectorHeatmap": {
+        "title": "產業熱力圖",
+        "unavailable": "今日查無產業熱力圖資料。",
+        "stockCount": "{count} 檔",
+        "up": "上漲",
+        "down": "下跌",
+        "flat": "持平"
       },
       "macro": {
         "title": "宏觀指標",
