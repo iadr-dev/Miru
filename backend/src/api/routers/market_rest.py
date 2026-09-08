@@ -353,18 +353,82 @@ async def index_contribution(
 async def sector_heatmap(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
+    period: Literal[
+        "immediate", "week", "two_weeks", "month", "quarter", "half_year", "year"
+    ] = Query("immediate"),
+    size_by: Literal["turnover", "market_value", "volume"] = Query("turnover"),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
     """Whole-market industry/sector heatmap (產業別漲跌熱力圖) for one trading day (defaults to
-    the latest available day): each industry's average close-to-close percentage change
-    (trading-value-weighted when available) and constituent stock count — the backing tool's
-    input is a single `trade_date`, not a start/end range, same shape as `/advance-decline` and
+    the latest available day): each industry's average percentage change over `period`
+    (trading-value-weighted when available), constituent stock count, and total turnover/
+    market-value/volume for `size_by`'s tile-sizing — the backing tool's date input is a single
+    `trade_date`, not a start/end range, same shape as `/advance-decline` and
     `/index-contribution`."""
-    args: dict[str, object] = {"market": market.value}
+    args: dict[str, object] = {"market": market.value, "period": period, "size_by": size_by}
     if trade_date is not None:
         args["trade_date"] = trade_date.isoformat()
     return await _dispatch(state, "get_sector_heatmap", args, ctx)
+
+
+@router.get("/market/stock-heatmap")
+async def stock_heatmap(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    period: Literal[
+        "immediate", "week", "two_weeks", "month", "quarter", "half_year", "year"
+    ] = Query("immediate"),
+    size_by: Literal["turnover", "market_value", "volume"] = Query("turnover"),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market flat per-stock heatmap (股票熱力圖) for one trading day (defaults to the
+    latest available day): the top-ranked stocks' own percentage change over `period`, close,
+    turnover/market-value/volume for `size_by`'s tile-sizing, and industry — the per-ticker
+    counterpart to `/market/sector-heatmap`'s per-industry aggregate tiles. Same single-
+    `trade_date` shape as `/sector-heatmap`, not a start/end range."""
+    args: dict[str, object] = {"market": market.value, "period": period, "size_by": size_by}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_stock_heatmap", args, ctx)
+
+
+@router.get("/market/sector-constituents")
+async def sector_constituents(
+    market: Market = Query(Market.TW),
+    industry: str | None = Query(
+        None, description="Restrict to one get_sector_heatmap industry value."
+    ),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Per-stock drill-down (close-to-close % change, close, volume, turnover) for one
+    `/market/sector-heatmap` industry tile, or every symbol ranked together if `industry` is
+    omitted — same single-`trade_date` shape as `/sector-heatmap`."""
+    args: dict[str, object] = {"market": market.value}
+    if industry is not None:
+        args["industry"] = industry
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_sector_constituents", args, ctx)
+
+
+@router.get("/market/sector-rotation")
+async def sector_rotation(
+    market: Market = Query(Market.TW),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Daily industry ranking by net institutional flow over the last 10 trading days ending at
+    `end_date` (defaults to the latest available day) — the data behind a sector-rotation
+    rank-bump chart, backed by `get_sector_rotation`."""
+    args: dict[str, object] = {"market": market.value}
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_sector_rotation", args, ctx)
 
 
 @router.get("/market/etf-list")

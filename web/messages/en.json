@@ -102,7 +102,8 @@
         "label": "TW views",
         "focus": "Daily Focus",
         "chip": "Chip Data",
-        "disposition": "Disposition"
+        "disposition": "Disposition",
+        "heatmap": "Heatmap"
       }
     },
     "cards": {
@@ -187,7 +188,74 @@
         "collapse": "Collapse"
       },
       "industryFlow": {
-        "title": "Industry Chain Money Flow"
+        "title": "Industry Chain Money Flow",
+        "stockCount": "{count} stocks",
+        "empty": "No industry-chain money-flow data available today.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
+      },
+      "sectorHeatmap": {
+        "title": "Sector Heatmap",
+        "unavailable": "No sector heatmap data available today.",
+        "stockCount": "{count} stocks",
+        "turnover": "Turnover NT$ {value} × 100M",
+        "up": "up",
+        "down": "down",
+        "flat": "flat",
+        "collapse": "Close",
+        "constituentsEmpty": "No per-stock data available for this industry.",
+        "columnStock": "Stock",
+        "columnClose": "Close",
+        "columnChange": "Change",
+        "columnVolume": "Volume",
+        "columnTurnover": "Turnover",
+        "columnStockCount": "Stocks",
+        "viewToggleLabel": "Switch view",
+        "viewHeatmap": "Sector Heatmap",
+        "viewStockHeatmap": "Stock Heatmap",
+        "viewRotation": "Sector Rotation",
+        "rotationTitle": "Sector Rotation",
+        "rotationUnavailable": "No recent institutional-flow data available — sector rotation can't be shown.",
+        "rotationViewToggleLabel": "Switch sector-rotation visualization",
+        "rotationViewBar": "Bar Chart",
+        "rotationViewSphere": "Particle Sphere",
+        "netFlowLabel": "Net Flow",
+        "barTableCaption": "Each industry's net money flow that day, ranked",
+        "rankAxisLabel": "Rank",
+        "rankTooltip": "Rank {rank}",
+        "legendLabel": "Industry legend",
+        "tableCaption": "Each industry's daily money-flow rank",
+        "columnIndustry": "Industry",
+        "expandTo": "Show all {count}",
+        "sizeByLabel": "Size by",
+        "sizeBy": {
+          "turnover": "Turnover",
+          "market_value": "Market cap",
+          "volume": "Volume"
+        },
+        "periodLabel": "Performance",
+        "period": {
+          "immediate": "Live",
+          "week": "1 Week",
+          "two_weeks": "2 Weeks",
+          "month": "1 Month",
+          "quarter": "1 Quarter",
+          "half_year": "6 Months",
+          "year": "1 Year"
+        },
+        "volume": "Volume {value} lots",
+        "marketValue": "Market cap NT$ {value} × 100M"
+      },
+      "stockHeatmap": {
+        "title": "Stock Heatmap",
+        "unavailable": "No stock heatmap data available today.",
+        "up": "up",
+        "down": "down",
+        "flat": "flat",
+        "close": "Close",
+        "volume": "Volume {value} lots",
+        "marketValue": "Market cap NT$ {value} × 100M",
+        "turnover": "Turnover NT$ {value} × 100M"
       },
       "macro": {
         "title": "Macro Indicators",

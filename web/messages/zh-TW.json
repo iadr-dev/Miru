@@ -102,7 +102,8 @@
         "label": "台股 檢視",
         "focus": "每日焦點",
         "chip": "籌碼",
-        "disposition": "處置"
+        "disposition": "處置",
+        "heatmap": "熱力圖"
       }
     },
     "cards": {
@@ -187,7 +188,74 @@
         "collapse": "收合"
       },
       "industryFlow": {
-        "title": "產業鏈資金流向"
+        "title": "產業鏈資金流向",
+        "stockCount": "{count} 檔",
+        "empty": "今日查無產業鏈資金流向資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
+      },
+      "sectorHeatmap": {
+        "title": "產業熱力圖",
+        "unavailable": "今日查無產業熱力圖資料。",
+        "stockCount": "{count} 檔",
+        "turnover": "成交值 {value} 億",
+        "up": "上漲",
+        "down": "下跌",
+        "flat": "持平",
+        "collapse": "關閉",
+        "constituentsEmpty": "此產業查無個股資料。",
+        "columnStock": "股票",
+        "columnClose": "收盤",
+        "columnChange": "漲跌幅",
+        "columnVolume": "成交量",
+        "columnTurnover": "成交值",
+        "columnStockCount": "檔數",
+        "viewToggleLabel": "切換檢視",
+        "viewHeatmap": "產業熱力圖",
+        "viewStockHeatmap": "股票熱力圖",
+        "viewRotation": "板塊輪動",
+        "rotationTitle": "板塊輪動",
+        "rotationUnavailable": "近期查無法人資金流向資料，無法顯示板塊輪動。",
+        "rotationViewToggleLabel": "切換板塊輪動視覺化",
+        "rotationViewBar": "柱狀圖",
+        "rotationViewSphere": "球體粒子",
+        "netFlowLabel": "資金流向",
+        "barTableCaption": "各產業當日資金流向排名",
+        "rankAxisLabel": "排名",
+        "rankTooltip": "第 {rank} 名",
+        "legendLabel": "產業圖例",
+        "tableCaption": "各產業每日資金流向排名",
+        "columnIndustry": "產業",
+        "expandTo": "展開完整 {count} 筆",
+        "sizeByLabel": "排序方式",
+        "sizeBy": {
+          "turnover": "成交額",
+          "market_value": "市值",
+          "volume": "成交量"
+        },
+        "periodLabel": "漲跌績效",
+        "period": {
+          "immediate": "即時",
+          "week": "週",
+          "two_weeks": "二週",
+          "month": "月",
+          "quarter": "季",
+          "half_year": "半年",
+          "year": "年"
+        },
+        "volume": "成交量 {value} 張",
+        "marketValue": "市值 {value} 億"
+      },
+      "stockHeatmap": {
+        "title": "股票熱力圖",
+        "unavailable": "今日查無股票熱力圖資料。",
+        "up": "上漲",
+        "down": "下跌",
+        "flat": "持平",
+        "close": "收盤",
+        "volume": "成交量 {value} 張",
+        "marketValue": "市值 {value} 億",
+        "turnover": "成交值 {value} 億"
       },
       "macro": {
         "title": "宏觀指標",
