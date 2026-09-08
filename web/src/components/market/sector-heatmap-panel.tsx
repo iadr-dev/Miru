@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SectorHeatmapTreemap } from "@/components/market/sector-heatmap-treemap";
@@ -19,7 +18,6 @@ import type { Market } from "@/types/settings";
  */
 export function SectorHeatmapPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.sectorHeatmap");
-  const tCaveat = useTranslations("chat.caveat");
   const [selected, setSelected] = useState<string | null>(null);
 
   const query = useQuery({
@@ -37,6 +35,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
               rows={data.industries}
               selected={selected}
               onSelect={setSelected}
+              updatedAt={query.dataUpdatedAt}
             />
           ) : (
             <p className="text-[13px] text-[var(--text-muted)]">
@@ -45,7 +44,6 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
           )
         }
       </QueryState>
-      <Caveat text={tCaveat("nonTrading")} />
     </section>
   );
 }

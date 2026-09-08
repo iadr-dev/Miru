@@ -1,7 +1,8 @@
 "use client";
 
+import { motion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
 import type { SectorHeatmapRow } from "@/types/market";
@@ -131,6 +132,17 @@ export function squarify(
   return tiles;
 }
 
+/** Picks a text-size tier from a tile's rendered area (in layout-box units) — a small industry
+ * tile showing its full label+% at the same font size as a huge one either overflows or wastes
+ * space, so the label scales with the tile the way finviz's own map does. */
+function tileTextSize(tile: HeatmapTile): { label: string; pct: string } {
+  const area = tile.width * tile.height;
+  if (area > 400) return { label: "text-[20px]", pct: "text-[15px]" };
+  if (area > 120) return { label: "text-[14px]", pct: "text-[12px]" };
+  if (area > 40) return { label: "text-[11px]", pct: "text-[10px]" };
+  return { label: "text-[9px]", pct: "text-[8px]" };
+}
+
 /** Maps `avg_pct_change` to an `--up`/`--down` intensity — weak tint near zero, full-strength
  * token past ±3% (a calm, non-magnitude-scaled clamp, not a per-tile computed hex: only the
  * *mix ratio* between the two existing tokens varies, never a new color). */
@@ -153,20 +165,34 @@ export function SectorHeatmapTreemap({
   rows,
   selected,
   onSelect,
+  updatedAt,
 }: {
   readonly rows: readonly SectorHeatmapRow[];
   readonly selected: string | null;
   readonly onSelect: (industry: string | null) => void;
+  /** `query.dataUpdatedAt` from the caller — every tile flashes once, at the SAME duration,
+   * whenever fresh data lands (web/CLAUDE.md §4 "non-trading motion": a bigger % move never
+   * gets a bigger/faster animation, so this is keyed only on "did data just update", never on
+   * `avg_pct_change`'s magnitude). */
+  readonly updatedAt?: number;
 }): ReactNode {
   const locale = useLocale();
   const t = useTranslations("market.cards.sectorHeatmap");
   const containerRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [flashKey, setFlashKey] = useState(0);
 
   // Fixed layout box in an arbitrary unit square — rendered as percentages, so the actual pixel
   // size is whatever the surrounding card gives it (a real `ResizeObserver`-driven layout isn't
   // needed since percentages already reflow with the container).
   const tiles = useMemo(() => squarify(rows, LAYOUT_WIDTH, LAYOUT_HEIGHT), [rows]);
+
+  // Bumps once per real data refresh (not on every render) so every tile's flash animation
+  // below re-triggers together — `motion/react`'s `key` prop restarts the animation from its
+  // `initial` state, which is how a uniform, non-looping one-shot flash is expressed here.
+  useEffect(() => {
+    if (updatedAt !== undefined) setFlashKey((k) => k + 1);
+  }, [updatedAt]);
 
   if (tiles.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>;
@@ -218,6 +244,7 @@ export function SectorHeatmapTreemap({
         const pctLabel = `${sign}${formatNumber(row.avg_pct_change, locale, { decimals: 2 })}%`;
         const direction = up ? t("up") : row.avg_pct_change < 0 ? t("down") : t("flat");
         const isSelected = selected === row.industry;
+        const textSize = tileTextSize(tile);
         return (
           <div
             key={row.industry}
@@ -256,9 +283,9 @@ export function SectorHeatmapTreemap({
               }
             }}
             className={cn(
-              "absolute flex cursor-pointer flex-col justify-between overflow-hidden rounded-[4px] p-1.5 text-left",
-              "border transition-[outline-color] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]",
-              isSelected ? "border-[var(--accent)]" : "border-[var(--surface)]",
+              "absolute flex cursor-pointer flex-col items-center justify-center gap-0.5 overflow-hidden p-1 text-center",
+              "border-2 border-[var(--bg)] transition-[outline-color] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]",
+              isSelected ? "ring-2 ring-[var(--accent)] ring-inset" : null,
             )}
             style={{
               left: `${(tile.x / LAYOUT_WIDTH) * 100}%`,
@@ -268,32 +295,34 @@ export function SectorHeatmapTreemap({
               backgroundColor: tileColor(row.avg_pct_change),
             }}
           >
-            <span className="truncate font-medium text-[11px] text-[color:#0e1319]">
+            <span
+              className={cn(
+                "max-w-full truncate font-semibold text-[color:#0e1319] leading-tight",
+                textSize.label,
+              )}
+            >
               {row.industry}
             </span>
-            <div className="flex items-end justify-between gap-1">
-              <span className="font-num text-[12px] text-[color:#0e1319] tabular-nums">
-                {arrow}
-                {pctLabel}
-              </span>
-              <span className="font-num text-[10px] text-[color:#0e1319]/70 tabular-nums">
-                {row.stock_count}
-              </span>
-            </div>
-            <div className="flex h-1 w-full overflow-hidden rounded-full bg-[color:#0e1319]/15">
-              <div
-                className="h-full bg-[var(--up)]"
-                style={{
-                  width: `${(row.advancing_count / Math.max(row.advancing_count + row.declining_count, 1)) * 100}%`,
-                }}
-              />
-              <div
-                className="h-full bg-[var(--down)]"
-                style={{
-                  width: `${(row.declining_count / Math.max(row.advancing_count + row.declining_count, 1)) * 100}%`,
-                }}
-              />
-            </div>
+            <span
+              className={cn(
+                "font-num text-[color:#0e1319]/85 tabular-nums leading-tight",
+                textSize.pct,
+              )}
+            >
+              {arrow}
+              {pctLabel}
+            </span>
+            <motion.div
+              key={flashKey}
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-[var(--surface)]"
+              initial={{ opacity: 0 }}
+              // Same two-phase timing for every tile regardless of avg_pct_change — flash in
+              // (dur.tick, ~140ms) then fade back out (dur.tick-fade, ~600ms), per
+              // docs/web/interaction-spec.md's live-tick flash contract.
+              animate={{ opacity: [0, 0.35, 0] }}
+              transition={{ duration: 0.74, times: [0, 0.19, 1], ease: "easeOut" }}
+            />
           </div>
         );
       })}
