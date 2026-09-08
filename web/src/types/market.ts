@@ -668,6 +668,22 @@ export type IndexContributionResponse = z.infer<typeof indexContributionResponse
 // 14b. GET /market/sector-heatmap — get_sector_heatmap (public, 產業別漲跌熱力圖)
 // ---------------------------------------------------------------------------
 
+export const SECTOR_HEATMAP_PERIODS = [
+  "immediate",
+  "week",
+  "two_weeks",
+  "month",
+  "quarter",
+  "half_year",
+  "year",
+] as const;
+export const sectorHeatmapPeriodSchema = z.enum(SECTOR_HEATMAP_PERIODS);
+export type SectorHeatmapPeriod = z.infer<typeof sectorHeatmapPeriodSchema>;
+
+export const SECTOR_HEATMAP_SIZE_BY_OPTIONS = ["turnover", "market_value", "volume"] as const;
+export const sectorHeatmapSizeBySchema = z.enum(SECTOR_HEATMAP_SIZE_BY_OPTIONS);
+export type SectorHeatmapSizeBy = z.infer<typeof sectorHeatmapSizeBySchema>;
+
 export const sectorHeatmapRowSchema = z.object({
   industry: z.string(),
   avg_pct_change: z.number(),
@@ -676,6 +692,8 @@ export const sectorHeatmapRowSchema = z.object({
   declining_count: z.number(),
   total_turnover: z.number().nullable(),
   weighted_by_turnover: z.boolean(),
+  total_volume: z.number(),
+  total_market_value: z.number().nullable(),
 });
 export type SectorHeatmapRow = z.infer<typeof sectorHeatmapRowSchema>;
 
@@ -683,6 +701,8 @@ export const sectorHeatmapDataSchema = z.object({
   market: z.string(),
   trade_date: z.string().nullable(),
   prior_trade_date: z.string().nullable(),
+  period: sectorHeatmapPeriodSchema.default("immediate"),
+  size_by: sectorHeatmapSizeBySchema.default("turnover"),
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable().optional(),
   industries: z.array(sectorHeatmapRowSchema).default([]),

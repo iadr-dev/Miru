@@ -11,6 +11,8 @@ function row(overrides: Partial<SectorHeatmapRow>): SectorHeatmapRow {
     declining_count: 4,
     total_turnover: 1_000_000,
     weighted_by_turnover: true,
+    total_volume: 500_000,
+    total_market_value: 10_000_000,
     ...overrides,
   };
 }

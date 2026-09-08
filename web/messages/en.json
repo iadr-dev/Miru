@@ -190,7 +190,9 @@
       "industryFlow": {
         "title": "Industry Chain Money Flow",
         "stockCount": "{count} stocks",
-        "empty": "No industry-chain money-flow data available today."
+        "empty": "No industry-chain money-flow data available today.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
       },
       "sectorHeatmap": {
         "title": "Sector Heatmap",
@@ -216,7 +218,26 @@
         "rankTooltip": "Rank {rank}",
         "legendLabel": "Industry legend",
         "tableCaption": "Each industry's daily money-flow rank",
-        "columnIndustry": "Industry"
+        "columnIndustry": "Industry",
+        "expandTo": "Show all {count}",
+        "sizeByLabel": "Size by",
+        "sizeBy": {
+          "turnover": "Turnover",
+          "market_value": "Market cap",
+          "volume": "Volume"
+        },
+        "periodLabel": "Performance",
+        "period": {
+          "immediate": "Live",
+          "week": "1 Week",
+          "two_weeks": "2 Weeks",
+          "month": "1 Month",
+          "quarter": "1 Quarter",
+          "half_year": "6 Months",
+          "year": "1 Year"
+        },
+        "volume": "Volume {value} lots",
+        "marketValue": "Market cap NT$ {value} × 100M"
       },
       "macro": {
         "title": "Macro Indicators",

@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
-import type { SectorHeatmapRow } from "@/types/market";
+import type { SectorHeatmapRow, SectorHeatmapSizeBy } from "@/types/market";
 
 /** One laid-out tile: the source row plus a normalized [0,1] rectangle within the treemap's own
  * content box (converted to percentages at render time so the layout is pure CSS, no fixed px). */
@@ -73,22 +73,40 @@ function layoutRow(
   }
 }
 
-/** A squarified-treemap layout (Bruls et al.) over `total_turnover` (falling back to
- * `stock_count` when turnover weighting wasn't available for every industry that day —
- * `SectorHeatmapRow.total_turnover` is `null` in that case, never partially summed). At each
- * step it grows the current row one item at a time along the box's shorter side, stopping the
- * instant the worst aspect ratio in that row would get worse by adding another item — the
- * standard squarify recursion, not a fixed-threshold heuristic (a naive threshold degenerates
- * into one giant stacked-bar row for a power-law-shaped distribution, which real turnover data
- * is). Self-rolled rather than pulling in a treemap-charting dependency: every other visual
- * (color scale, tile chrome, a11y) here is bespoke to this design anyway. */
+/** Picks the tile-size value for `sizeBy` — falls back to `stock_count` whenever the requested
+ * metric is `null` for this industry (turnover-weighting/market-value coverage gaps, same
+ * never-partially-summed reasoning `SectorHeatmapRow.total_turnover`'s own docstring gives),
+ * never silently zero-sizing a tile just because one metric was unavailable. */
+function tileSizeValue(row: SectorHeatmapRow, sizeBy: SectorHeatmapSizeBy): number {
+  switch (sizeBy) {
+    case "market_value":
+      return row.total_market_value ?? row.stock_count;
+    case "volume":
+      return row.total_volume || row.stock_count;
+    case "turnover":
+      return row.total_turnover ?? row.stock_count;
+    default:
+      return row.stock_count;
+  }
+}
+
+/** A squarified-treemap layout (Bruls et al.) over the caller's chosen `sizeBy` metric (falling
+ * back to `stock_count` per-tile when that metric is unavailable for an industry — see
+ * `tileSizeValue`). At each step it grows the current row one item at a time along the box's
+ * shorter side, stopping the instant the worst aspect ratio in that row would get worse by
+ * adding another item — the standard squarify recursion, not a fixed-threshold heuristic (a
+ * naive threshold degenerates into one giant stacked-bar row for a power-law-shaped
+ * distribution, which real turnover/market-value data is). Self-rolled rather than pulling in a
+ * treemap-charting dependency: every other visual (color scale, tile chrome, a11y) here is
+ * bespoke to this design anyway. */
 export function squarify(
   rows: readonly SectorHeatmapRow[],
   width: number,
   height: number,
+  sizeBy: SectorHeatmapSizeBy = "turnover",
 ): HeatmapTile[] {
   const sized: SizedItem[] = rows
-    .map((row) => ({ row, size: Math.max(row.total_turnover ?? row.stock_count, 0.0001) }))
+    .map((row) => ({ row, size: Math.max(tileSizeValue(row, sizeBy), 0.0001) }))
     .sort((a, b) => b.size - a.size);
   const total = sized.reduce((sum, item) => sum + item.size, 0);
   if (total <= 0 || sized.length === 0) return [];
@@ -143,6 +161,42 @@ function tileTextSize(tile: HeatmapTile): { label: string; pct: string } {
   return { label: "text-[9px]", pct: "text-[8px]" };
 }
 
+/** The tooltip's size-metric line — shows whichever metric `sizeBy` actually sizes the tile by
+ * (成交額/成交量/市值), never always turnover regardless of the selector, and only when that
+ * metric has a real value for this industry (never a fabricated 0). */
+function sizeMetricLabel(
+  row: SectorHeatmapRow,
+  sizeBy: SectorHeatmapSizeBy,
+  t: ReturnType<typeof useTranslations>,
+  locale: string,
+): ReactNode {
+  if (sizeBy === "volume") {
+    return (
+      <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
+        {t("volume", { value: formatNumber(row.total_volume, locale, { decimals: 0 }) })}
+      </p>
+    );
+  }
+  if (sizeBy === "market_value") {
+    if (row.total_market_value === null) return null;
+    return (
+      <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
+        {t("marketValue", {
+          value: formatNumber(row.total_market_value / 1_0000_0000, locale, { decimals: 1 }),
+        })}
+      </p>
+    );
+  }
+  if (row.total_turnover === null) return null;
+  return (
+    <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
+      {t("turnover", {
+        value: formatNumber(row.total_turnover / 1_0000_0000, locale, { decimals: 1 }),
+      })}
+    </p>
+  );
+}
+
 /** Maps `avg_pct_change` to an `--up`/`--down` intensity — weak tint near zero, full-strength
  * token past ±3% (a calm, non-magnitude-scaled clamp, not a per-tile computed hex: only the
  * *mix ratio* between the two existing tokens varies, never a new color). */
@@ -163,11 +217,15 @@ function tileColor(pctChange: number): string {
  */
 export function SectorHeatmapTreemap({
   rows,
+  sizeBy = "turnover",
   selected,
   onSelect,
   updatedAt,
 }: {
   readonly rows: readonly SectorHeatmapRow[];
+  /** Which metric sizes each tile — mirrors `get_sector_heatmap`'s own `size_by` input, defaults
+   * to `"turnover"` (this component's original, only behavior before the 排序方式 selector). */
+  readonly sizeBy?: SectorHeatmapSizeBy;
   readonly selected: string | null;
   readonly onSelect: (industry: string | null) => void;
   /** `query.dataUpdatedAt` from the caller — every tile flashes once, at the SAME duration,
@@ -186,7 +244,7 @@ export function SectorHeatmapTreemap({
   // Fixed layout box in an arbitrary unit square — rendered as percentages, so the actual pixel
   // size is whatever the surrounding card gives it (a real `ResizeObserver`-driven layout isn't
   // needed since percentages already reflow with the container).
-  const tiles = useMemo(() => squarify(rows, LAYOUT_WIDTH, LAYOUT_HEIGHT), [rows]);
+  const tiles = useMemo(() => squarify(rows, LAYOUT_WIDTH, LAYOUT_HEIGHT, sizeBy), [rows, sizeBy]);
 
   // Bumps once per real data refresh (not on every render) so every tile's flash animation
   // below re-triggers together — `motion/react`'s `key` prop restarts the animation from its
@@ -362,15 +420,7 @@ export function SectorHeatmapTreemap({
                     ▼{formatNumber(row.declining_count, locale)}
                   </span>
                 </div>
-                {row.total_turnover !== null ? (
-                  <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
-                    {t("turnover", {
-                      value: formatNumber(row.total_turnover / 1_0000_0000, locale, {
-                        decimals: 1,
-                      }),
-                    })}
-                  </p>
-                ) : null}
+                {sizeMetricLabel(row, sizeBy, t, locale)}
               </div>
             ) : null}
           </div>

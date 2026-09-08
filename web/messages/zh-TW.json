@@ -190,7 +190,9 @@
       "industryFlow": {
         "title": "產業鏈資金流向",
         "stockCount": "{count} 檔",
-        "empty": "今日查無產業鏈資金流向資料。"
+        "empty": "今日查無產業鏈資金流向資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
       },
       "sectorHeatmap": {
         "title": "產業熱力圖",
@@ -216,7 +218,26 @@
         "rankTooltip": "第 {rank} 名",
         "legendLabel": "產業圖例",
         "tableCaption": "各產業每日資金流向排名",
-        "columnIndustry": "產業"
+        "columnIndustry": "產業",
+        "expandTo": "展開完整 {count} 筆",
+        "sizeByLabel": "排序方式",
+        "sizeBy": {
+          "turnover": "成交額",
+          "market_value": "市值",
+          "volume": "成交量"
+        },
+        "periodLabel": "漲跌績效",
+        "period": {
+          "immediate": "即時",
+          "week": "週",
+          "two_weeks": "二週",
+          "month": "月",
+          "quarter": "季",
+          "half_year": "半年",
+          "year": "年"
+        },
+        "volume": "成交量 {value} 張",
+        "marketValue": "市值 {value} 億"
       },
       "macro": {
         "title": "宏觀指標",

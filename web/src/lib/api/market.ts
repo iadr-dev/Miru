@@ -61,7 +61,9 @@ import {
   priceMomentumResponseSchema,
   type ScoreLeaderboardData,
   type SectorConstituentsResponse,
+  type SectorHeatmapPeriod,
   type SectorHeatmapResponse,
+  type SectorHeatmapSizeBy,
   type SectorRotationResponse,
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
@@ -373,9 +375,13 @@ export async function getIndexContribution(
 export async function getSectorHeatmap(
   market: Market,
   tradeDate?: string,
+  period?: SectorHeatmapPeriod,
+  sizeBy?: SectorHeatmapSizeBy,
 ): Promise<SectorHeatmapResponse> {
   const search = new URLSearchParams({ market });
   if (tradeDate) search.set("trade_date", tradeDate);
+  if (period) search.set("period", period);
+  if (sizeBy) search.set("size_by", sizeBy);
   const raw = await requestJson(`/market/sector-heatmap?${search.toString()}`);
   return sectorHeatmapResponseSchema.parse(raw);
 }
