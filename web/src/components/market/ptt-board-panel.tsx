@@ -8,6 +8,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getPttBoard } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { PTT_BOARDS, type PttBoardName, type PttPost } from "@/types/market";
 
 // This sub-tab has no sibling card next to it, so its own post list needs to fill the tab's
@@ -118,37 +119,49 @@ function PttPostList({ posts }: { readonly posts: readonly PttPost[] }): ReactNo
 
 function PttPostRow({ post }: { readonly post: PttPost }): ReactNode {
   const isHot = post.push_count === "爆" || Number(post.push_count) >= 10;
+  // `post.link` is third-party PTT content, never trusted as-is (web/CLAUDE.md §8) — reject a
+  // `javascript:`/`data:` URI before it ever reaches an `href`.
+  const href = safeHttpUrl(post.link);
+  const body = (
+    <>
+      <span
+        className={cn(
+          "mt-0.5 w-fit justify-self-start truncate rounded-[var(--radius-pill)] px-1.5 py-0.5 text-center font-num text-[11px] tabular-nums",
+          isHot
+            ? "bg-[var(--chart-3)]/15 font-semibold text-[var(--chart-3)]"
+            : "bg-[var(--surface-2)] text-[var(--text-muted)]",
+        )}
+      >
+        {post.push_count}
+      </span>
+      <span className="min-w-0">
+        <span className="line-clamp-1 truncate text-[13px] text-[var(--text)] hover:underline">
+          {post.post_tag ? (
+            <span className="text-[var(--text-muted)]">[{post.post_tag}] </span>
+          ) : null}
+          {post.title}
+        </span>
+        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+          {post.author}
+        </span>
+      </span>
+    </>
+  );
 
   return (
     <li className="border-b border-[var(--border)] py-2.5">
-      <a
-        href={post.link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="grid min-h-11 w-full grid-cols-[40px_1fr] items-start gap-2"
-      >
-        <span
-          className={cn(
-            "mt-0.5 w-fit justify-self-start truncate rounded-[var(--radius-pill)] px-1.5 py-0.5 text-center font-num text-[11px] tabular-nums",
-            isHot
-              ? "bg-[var(--chart-3)]/15 font-semibold text-[var(--chart-3)]"
-              : "bg-[var(--surface-2)] text-[var(--text-muted)]",
-          )}
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="grid min-h-11 w-full grid-cols-[40px_1fr] items-start gap-2"
         >
-          {post.push_count}
-        </span>
-        <span className="min-w-0">
-          <span className="line-clamp-1 truncate text-[13px] text-[var(--text)] hover:underline">
-            {post.post_tag ? (
-              <span className="text-[var(--text-muted)]">[{post.post_tag}] </span>
-            ) : null}
-            {post.title}
-          </span>
-          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-            {post.author}
-          </span>
-        </span>
-      </a>
+          {body}
+        </a>
+      ) : (
+        <span className="grid min-h-11 w-full grid-cols-[40px_1fr] items-start gap-2">{body}</span>
+      )}
     </li>
   );
 }

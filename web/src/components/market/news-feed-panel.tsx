@@ -9,6 +9,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getNewsFeed } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
+import { safeHttpUrl } from "@/lib/safe-url";
 import { sourceLogoUrl } from "@/lib/source-logo";
 import type { NewsFeedItem } from "@/types/market";
 
@@ -92,25 +93,38 @@ function NewsFeedList({ items }: { readonly items: readonly NewsFeedItem[] }): R
 }
 
 function NewsFeedRow({ item }: { readonly item: NewsFeedItem }): ReactNode {
+  // `item.link` is third-party RSS/Finnhub content, never trusted as-is (web/CLAUDE.md §8) —
+  // reject a `javascript:`/`data:` URI before it ever reaches an `href`.
+  const href = safeHttpUrl(item.link);
+  const body = (
+    <>
+      <NewsSourceLogo url={item.link} />
+      <span className="min-w-0">
+        <span className="line-clamp-2 text-[13px] text-[var(--text)] hover:underline">
+          {item.title}
+        </span>
+        <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+          {item.source}
+          <span className="font-num tabular-nums">{item.published_at}</span>
+        </span>
+      </span>
+    </>
+  );
+
   return (
     <li className="border-b border-[var(--border)] py-2.5">
-      <a
-        href={item.link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="grid min-h-11 w-full grid-cols-[20px_1fr] items-start gap-2"
-      >
-        <NewsSourceLogo url={item.link} />
-        <span className="min-w-0">
-          <span className="line-clamp-2 text-[13px] text-[var(--text)] hover:underline">
-            {item.title}
-          </span>
-          <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-            {item.source}
-            <span className="font-num tabular-nums">{item.published_at}</span>
-          </span>
-        </span>
-      </a>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="grid min-h-11 w-full grid-cols-[20px_1fr] items-start gap-2"
+        >
+          {body}
+        </a>
+      ) : (
+        <span className="grid min-h-11 w-full grid-cols-[20px_1fr] items-start gap-2">{body}</span>
+      )}
     </li>
   );
 }
