@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from pathlib import Path
 
+from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -9,6 +11,7 @@ from tests.tools.conftest import make_router
 from tools.base import MaskedTeaser, ToolContext, dispatch_tool
 from tools.chip_tools import (
     GetGovernmentBankFlowsTool,
+    GetIndustryMoneyFlowTool,
     GetInstitutionalFlowTotalMarketTool,
     GetMarginShortTool,
     GetSecuritiesTraderInfoTool,
@@ -79,6 +82,59 @@ async def test_get_institutional_flow_total_market_is_market_only_input() -> Non
 
     assert adapter.calls[0][0] is Capability.INSTITUTIONAL_FLOW_TOTAL_MARKET
     assert output.rows[0].name == "Foreign_Investor"
+
+
+async def test_get_industry_money_flow_resolves_real_latest_trading_day_when_omitted(
+    tmp_path: Path,
+) -> None:
+    """Regression guard for the FinMind adapter's 30-day-lookback default silently starving
+    `TaiwanStockIndustryChainMoneyFlow` (single-day-only upstream semantics) — the tool must
+    resolve an omitted `start_date` to `PRICE_EOD_JOB`'s own latest ingested partition date,
+    never leave it for the router/adapter's own generic default to fill in."""
+    store = ParquetStore(root=tmp_path)
+    latest = date(2026, 9, 7)
+    store.write_partition(
+        "TaiwanStockPrice", "TW", latest, [{"symbol": "2330", "trade_date": "2026-09-07"}]
+    )
+    symbol = Symbol(id="", market=Market.TW)
+    row = {
+        "market": "TW",
+        "trade_date": "2026-09-07",
+        "industry": "半導體業",
+        "sub_industry": "",
+        "stock_count": 10,
+        "trading_volume": 100,
+        "trading_money": 1000.0,
+        "trading_money_pct": 5.0,
+    }
+    router, adapter = make_router(
+        symbol, {Capability.INDUSTRY_CHAIN_MONEY_FLOW: _result({"rows": [row]})}
+    )
+    tool = GetIndustryMoneyFlowTool(router, store)
+
+    output = await tool.run(MarketOnlyInput(market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][2]["start_date"] == "2026-09-07"
+    assert "end_date" not in adapter.calls[0][2]
+    assert output.rows[0].industry == "半導體業"
+
+
+async def test_get_industry_money_flow_never_overrides_an_explicit_start_date(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    store.write_partition(
+        "TaiwanStockPrice", "TW", date(2026, 9, 7), [{"symbol": "2330", "trade_date": "2026-09-07"}]
+    )
+    symbol = Symbol(id="", market=Market.TW)
+    router, adapter = make_router(
+        symbol, {Capability.INDUSTRY_CHAIN_MONEY_FLOW: _result({"rows": []})}
+    )
+    tool = GetIndustryMoneyFlowTool(router, store)
+
+    await tool.run(MarketOnlyInput(market=Market.TW, start_date=date(2026, 9, 4)), ToolContext())
+
+    assert adapter.calls[0][2]["start_date"] == "2026-09-04"
 
 
 async def test_get_securities_trader_info_reads_market_level_roster() -> None:

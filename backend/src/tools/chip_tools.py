@@ -7,9 +7,14 @@ several of these are Sponsor-tier and must stay gated.
 
 from __future__ import annotations
 
+from datetime import date as date_
+
 from pydantic import BaseModel, ConfigDict, Field
 
+from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
+from ingest.jobs import PRICE_EOD_JOB
+from ingest.store import ParquetStore
 from schemas.capabilities import (
     BlockTradeBrokerReportRow,
     BlockTradeRow,
@@ -700,7 +705,16 @@ class GetIndustryMoneyFlowOutput(_RowsOutput):
 
 class GetIndustryMoneyFlowTool(BaseTool):
     """`get_industry_money_flow` — wraps `Capability.INDUSTRY_CHAIN_MONEY_FLOW` (產業鏈資金流;
-    market-level, single trading day per request)."""
+    market-level, single trading day per request).
+
+    `TaiwanStockIndustryChainMoneyFlow` upstream treats `start_date` as the literal ONE day to
+    fetch, not a range start (confirmed empirically: `start_date=<30 days ago>` — the FinMind
+    adapter's own generic default-lookback fill-in for an omitted date — silently returns zero
+    rows every time, while `start_date=<the real latest trading day>` returns real rows). A
+    caller that omits `start_date` must therefore get an explicit, real trading day resolved
+    HERE — `PRICE_EOD_JOB`'s own latest already-ingested partition date, never the adapter's
+    30-day-back default, which this dataset's own single-day semantics turns into a guaranteed
+    empty result."""
 
     name = "get_industry_money_flow"
     description = (
@@ -711,11 +725,28 @@ class GetIndustryMoneyFlowTool(BaseTool):
     data_class = DataClass.SPONSOR
     card_type: str | None = "industry_money_flow"
 
-    def __init__(self, router: DataAccessRouter) -> None:
+    def __init__(self, router: DataAccessRouter, store: ParquetStore) -> None:
         self._router = router
+        self._store = store
+
+    def _resolve_trade_date(self, market: str, requested: date_ | None) -> date_ | None:
+        if requested is not None:
+            return requested
+        known_dates = self._store.list_partition_dates(PRICE_EOD_JOB.dataset, market)
+        if not known_dates:
+            return None
+        # `PRICE_EOD_JOB`'s own latest ingested partition date is itself always a real trading
+        # day (the ingest job never writes a partition for a non-trading day), so no further
+        # calendar/previous-trading-day shift is needed on top of it.
+        return max(known_dates)
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(MarketOnlyInput, args)
+        trade_date = self._resolve_trade_date(typed.market.value, typed.start_date)
+        params = dict(typed.date_params())
+        if trade_date is not None:
+            params["start_date"] = trade_date.isoformat()
+            params.pop("end_date", None)  # this dataset 400s if end_date is present at all
         result, rows = await fetch_rows(
             self._router,
             Capability.INDUSTRY_CHAIN_MONEY_FLOW,
@@ -723,7 +754,7 @@ class GetIndustryMoneyFlowTool(BaseTool):
             tls_policy=ctx.tls_policy,
             model=IndustryChainMoneyFlowRow,
             key="rows",
-            params=typed.date_params(),
+            params=params,
         )
         return GetIndustryMoneyFlowOutput(
             source_id=result.source_id,
@@ -815,7 +846,14 @@ class GetIndustryChainClassificationTool(BaseTool):
 
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
     """This module's `(tool, immediate)` registration table — every tool here is a real,
-    deferred capability (none are part of the named immediate core)."""
+    deferred capability (none are part of the named immediate core). `get_industry_money_flow`
+    additionally needs a `ParquetStore` — see its own class docstring for why (resolving the
+    real latest trading day from `PRICE_EOD_JOB`'s own ingested calendar, since the FinMind
+    adapter's generic 30-day-lookback default silently breaks this dataset's single-day
+    semantics) — built here from `config.settings` rather than threaded through this function's
+    own signature, same self-contained-store pattern `market_tools.build_registration_table`
+    already uses for its own store-reading tools."""
+    store = ParquetStore(root=get_settings().parquet_root)
     return [
         (GetMarginShortTool(router), False),
         (GetMarginShortTotalMarketTool(router), False),
@@ -834,7 +872,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetBlockTradeBrokerReportTool(router), False),
         (GetBlockTradeTool(router), False),
         (GetLoanCollateralBalanceTool(router), False),
-        (GetIndustryMoneyFlowTool(router), False),
+        (GetIndustryMoneyFlowTool(router, store), False),
         (GetDispositionSecuritiesTool(router), False),
         (GetIndustryChainClassificationTool(router), False),
     ]
