@@ -2263,11 +2263,51 @@ class SectorHeatmapRow(BaseModel):
     # real total.
     weighted_by_turnover: bool  # whether avg_pct_change was trading-value-weighted (True) or a
     # simple per-stock average (False) — see class docstring for when each applies.
+    total_volume: int  # sum of this industry's PRICE_EOD_JOB share volume on trade_date — the
+    # 成交量 size_by option.
+    total_market_value: float | None = None  # sum of this industry's shares-outstanding x close
+    # on trade_date (`_shares_outstanding_by_symbol`), the 市值 size_by option; `None` when any
+    # member's market-value row was missing on this date (never a partial sum silently passed
+    # off as the industry's real total, same reasoning as `total_turnover`).
+
+
+# Heatmap lookback period -> trading-day offset for the "prior" side of the pct-change window,
+# same convention `_MOMENTUM_PERIOD_TRADING_DAYS` uses for `get_price_momentum`. "immediate" is
+# the tool's original single-prior-trading-day behavior; the others let a caller compare against
+# a week/two-weeks/month/quarter/half-year/year ago, mirroring the reference app's 漲跌績效
+# selector (即時/週/二週/月/季/半年/年).
+_SECTOR_HEATMAP_PERIOD_TRADING_DAYS: dict[str, int] = {
+    "immediate": 1,
+    "week": 5,
+    "two_weeks": 10,
+    "month": 21,
+    "quarter": 63,
+    "half_year": 126,
+    "year": 252,
+}
+
+
+class SectorHeatmapPeriod(StrEnum):
+    IMMEDIATE = "immediate"
+    WEEK = "week"
+    TWO_WEEKS = "two_weeks"
+    MONTH = "month"
+    QUARTER = "quarter"
+    HALF_YEAR = "half_year"
+    YEAR = "year"
+
+
+class SectorHeatmapSizeBy(StrEnum):
+    TURNOVER = "turnover"
+    MARKET_VALUE = "market_value"
+    VOLUME = "volume"
 
 
 class GetSectorHeatmapInput(BaseModel):
-    """A market + an optional trading day; omitted/`None` means "latest available" — same
-    semantics as `GetAdvanceDeclineInput`/`GetIndexContributionInput`."""
+    """A market + an optional trading day + a lookback period + a size-by metric; omitted
+    `trade_date` means "latest available" — same semantics as `GetAdvanceDeclineInput`/
+    `GetIndexContributionInput`. `period`/`size_by` mirror the reference 熱力圖 app's own
+    漲跌績效/排序方式 selectors."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -2277,6 +2317,17 @@ class GetSectorHeatmapInput(BaseModel):
         description="Trading day to report the sector heatmap for (ISO date). Omitted or null "
         "means the latest available trading day.",
     )
+    period: SectorHeatmapPeriod = Field(
+        default=SectorHeatmapPeriod.IMMEDIATE,
+        description="Lookback window for the pct-change color: 'immediate' (1 trading day), "
+        "'week' (5), 'two_weeks' (10), 'month' (21), 'quarter' (63), 'half_year' (126), or "
+        "'year' (252 trading days).",
+    )
+    size_by: SectorHeatmapSizeBy = Field(
+        default=SectorHeatmapSizeBy.TURNOVER,
+        description="Tile-size metric: 'turnover' (成交額), 'market_value' (市值), or 'volume' "
+        "(成交量).",
+    )
 
 
 class GetSectorHeatmapOutput(BaseModel):
@@ -2285,26 +2336,38 @@ class GetSectorHeatmapOutput(BaseModel):
     market: str
     trade_date: date_ | None = None
     prior_trade_date: date_ | None = None
+    period: SectorHeatmapPeriod = SectorHeatmapPeriod.IMMEDIATE
+    size_by: SectorHeatmapSizeBy = SectorHeatmapSizeBy.TURNOVER
     data_available: bool
     unavailable_reason: str | None = None
     industries: tuple[SectorHeatmapRow, ...] = Field(default_factory=tuple)
 
 
+@dataclass(frozen=True)
+class _SectorHeatmapMetrics:
+    """Every per-symbol map `_sector_heatmap_rows` joins against the roster — bundled into one
+    object so that function takes one metrics arg instead of five (ruff PLR0913)."""
+
+    today_closes: dict[str, float]
+    prior_closes: dict[str, float]
+    turnovers: dict[str, float]
+    volumes: dict[str, int]
+    market_values: dict[str, float]
+
+
 def _sector_heatmap_rows(
-    *,
-    industry_by_symbol: dict[str, str],
-    today_closes: dict[str, float],
-    prior_closes: dict[str, float],
-    turnovers: dict[str, float],
+    industry_by_symbol: dict[str, str], metrics: _SectorHeatmapMetrics
 ) -> list[SectorHeatmapRow]:
     """Join the roster's `industry_category` against each symbol's close-to-close pct change,
     group by industry, and aggregate — trading-value-weighted when every member of that industry
     has a `turnover` figure for `trade_date`, else a simple per-stock average (never a partial
-    weighted average silently mixing weighted and unweighted members)."""
+    weighted average silently mixing weighted and unweighted members). `total_volume`/
+    `total_market_value` are plain sums over the same member set, for the `size_by` options that
+    don't need weighting."""
     by_industry: dict[str, list[tuple[str, float]]] = {}
     for symbol, industry in industry_by_symbol.items():
-        close = today_closes.get(symbol)
-        prior_close = prior_closes.get(symbol)
+        close = metrics.today_closes.get(symbol)
+        prior_close = metrics.prior_closes.get(symbol)
         if close is None or not prior_close:
             # missing/legitimately-zero prior close — skip this symbol, never divide by it.
             continue
@@ -2316,7 +2379,7 @@ def _sector_heatmap_rows(
         pct_changes = [pct for _, pct in members]
         advancing = sum(1 for pct in pct_changes if pct > 0)
         declining = sum(1 for pct in pct_changes if pct < 0)
-        member_turnovers = [turnovers.get(symbol) for symbol, _ in members]
+        member_turnovers = [metrics.turnovers.get(symbol) for symbol, _ in members]
         weighted = (
             all(t is not None for t in member_turnovers)
             and sum(cast("list[float]", member_turnovers)) > 0
@@ -2331,6 +2394,13 @@ def _sector_heatmap_rows(
         else:
             total_turnover = None
             avg_pct_change = sum(pct_changes) / len(pct_changes)
+        total_volume = sum(metrics.volumes.get(symbol, 0) for symbol, _ in members)
+        member_market_values = [metrics.market_values.get(symbol) for symbol, _ in members]
+        total_market_value = (
+            sum(cast("list[float]", member_market_values))
+            if all(v is not None for v in member_market_values)
+            else None
+        )
         rows.append(
             SectorHeatmapRow(
                 industry=industry,
@@ -2340,9 +2410,46 @@ def _sector_heatmap_rows(
                 declining_count=declining,
                 total_turnover=total_turnover,
                 weighted_by_turnover=weighted,
+                total_volume=total_volume,
+                total_market_value=total_market_value,
             )
         )
     return rows
+
+
+def _volumes_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, int]:
+    """Every real equity/ETF symbol's share volume on `trade_date`, from the same `PRICE_EOD_JOB`
+    partition `_closes_by_symbol`/`_turnovers_by_symbol` read (same warrant-exclusion reasoning —
+    see `_closes_by_symbol`'s own docstring) — `get_sector_heatmap`'s 成交量 size_by option."""
+    raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+    volumes: dict[str, int] = {}
+    for row in raw_bars:
+        symbol = row.get("symbol")
+        volume = row.get("volume")
+        if (
+            isinstance(symbol, str)
+            and is_scoreable_symbol(symbol)
+            and isinstance(volume, (int, float))
+        ):
+            volumes[symbol] = int(volume)
+    return volumes
+
+
+def _market_values_by_symbol(
+    store: ParquetStore, market: str, trade_date: date_
+) -> dict[str, float]:
+    """Every real equity/ETF symbol's market capitalization on `trade_date`, read directly from
+    `MARKET_VALUE_JOB`'s own already-ingested partition (never recomputed from shares-outstanding
+    x close the way `_shares_outstanding_by_symbol` does it the other direction) —
+    `get_sector_heatmap`'s 市值 size_by option."""
+    if not store.has_partition(MARKET_VALUE_JOB.dataset, market, trade_date):
+        return {}
+    raw_values = store.read_partition(MARKET_VALUE_JOB.dataset, market, trade_date)
+    market_values: dict[str, float] = {}
+    for row in _rows_from_store(MarketValueRow, raw_values):
+        if is_scoreable_symbol(row.symbol):
+            market_values[row.symbol] = float(row.market_value)
+    return market_values
 
 
 class GetSectorHeatmapTool(BaseTool):
@@ -2363,8 +2470,9 @@ class GetSectorHeatmapTool(BaseTool):
     name = "get_sector_heatmap"
     description = (
         "Get the whole-market industry/sector heatmap for one trading day (defaults to the "
-        "latest available day): each industry's average close-to-close percentage change "
-        "(trading-value-weighted when available) and constituent stock count."
+        "latest available day): each industry's average percentage change over a chosen "
+        "lookback period (trading-value-weighted when available), constituent stock count, "
+        "and total turnover/volume/market-value (for the size_by tile-sizing options)."
     )
     input_model: type[BaseModel] = GetSectorHeatmapInput
     output_model: type[BaseModel] = GetSectorHeatmapOutput
@@ -2379,25 +2487,42 @@ class GetSectorHeatmapTool(BaseTool):
         typed = parse_args(GetSectorHeatmapInput, args)
         market = typed.market.value
         calendar = _real_calendar(self._store, market)
-        window = _two_day_window(
-            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+        trade_date = typed.trade_date or _latest_dataset_date(
+            self._store, PRICE_EOD_JOB.dataset, market
         )
-        if window is None:
+        if trade_date is None or not self._store.has_partition(
+            PRICE_EOD_JOB.dataset, market, trade_date
+        ):
             return GetSectorHeatmapOutput(
                 market=market,
                 trade_date=typed.trade_date,
+                period=typed.period,
+                size_by=typed.size_by,
                 data_available=False,
                 unavailable_reason=_unavailable_reason_for_window(
                     "price_eod", market, typed.trade_date
                 ),
             )
-        trade_date, prior_date = window
+        prior_date = calendar.shift_business_days(
+            trade_date, -_SECTOR_HEATMAP_PERIOD_TRADING_DAYS[typed.period.value]
+        )
+        if not self._store.has_partition(PRICE_EOD_JOB.dataset, market, prior_date):
+            return GetSectorHeatmapOutput(
+                market=market,
+                trade_date=trade_date,
+                period=typed.period,
+                size_by=typed.size_by,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("price_eod", market, trade_date),
+            )
         roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
         if roster_date is None:
             return GetSectorHeatmapOutput(
                 market=market,
                 trade_date=trade_date,
                 prior_trade_date=prior_date,
+                period=typed.period,
+                size_by=typed.size_by,
                 data_available=False,
                 unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
             )
@@ -2410,12 +2535,18 @@ class GetSectorHeatmapTool(BaseTool):
         today_closes = _closes_by_symbol(self._store, market, trade_date)
         prior_closes = _closes_by_symbol(self._store, market, prior_date)
         turnovers = _turnovers_by_symbol(self._store, market, trade_date)
+        volumes = _volumes_by_symbol(self._store, market, trade_date)
+        market_values = _market_values_by_symbol(self._store, market, trade_date)
 
         rows = _sector_heatmap_rows(
-            industry_by_symbol=industry_by_symbol,
-            today_closes=today_closes,
-            prior_closes=prior_closes,
-            turnovers=turnovers,
+            industry_by_symbol,
+            _SectorHeatmapMetrics(
+                today_closes=today_closes,
+                prior_closes=prior_closes,
+                turnovers=turnovers,
+                volumes=volumes,
+                market_values=market_values,
+            ),
         )
         # Every industry present, ranked by move (not top-N truncated) — a heatmap tile list is
         # meant to show the whole market's industry breadth, unlike `get_index_contribution`'s
@@ -2426,6 +2557,8 @@ class GetSectorHeatmapTool(BaseTool):
             market=market,
             trade_date=trade_date,
             prior_trade_date=prior_date,
+            period=typed.period,
+            size_by=typed.size_by,
             data_available=True,
             industries=ranked,
         )
@@ -3806,7 +3939,9 @@ __all__ = [
     "MomentumPeriod",
     "PriceMomentumRow",
     "SectorConstituentRow",
+    "SectorHeatmapPeriod",
     "SectorHeatmapRow",
+    "SectorHeatmapSizeBy",
     "SectorRotationDayRow",
     "build_registration_table",
 ]
