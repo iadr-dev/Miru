@@ -335,8 +335,13 @@ export function SectorHeatmapTreemap({
                 className={cn(
                   "pointer-events-none absolute z-20 w-44 rounded-[var(--radius-input)] border border-[var(--border)]",
                   "bg-[var(--surface)] p-2.5 text-left shadow-lg",
-                  tile.y < LAYOUT_HEIGHT / 2 ? "top-full mt-1.5" : "bottom-full mb-1.5",
-                  tile.x < LAYOUT_WIDTH / 2 ? "left-0" : "right-0",
+                  // Anchored to a small fixed corner of the TILE itself (never `top-full`/
+                  // `bottom-full`, which measure from the tile's own — sometimes huge — edge:
+                  // for a large tile like 電子工業 that placed the tooltip hundreds of px off
+                  // the visible treemap). Flips corner based on which half of the layout box
+                  // the tile sits in, so the tooltip stays inside the treemap's own bounds.
+                  tile.y < LAYOUT_HEIGHT / 2 ? "top-2" : "bottom-2",
+                  tile.x < LAYOUT_WIDTH / 2 ? "left-2" : "right-2",
                 )}
               >
                 <p className="font-semibold text-[12px] text-[var(--text)]">{row.industry}</p>
