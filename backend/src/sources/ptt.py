@@ -2,8 +2,8 @@
 
 Boards are tagged by purpose, never mixed:
 
-- `Stock` (股票版), `Tech_Job` (科技業板) → `stock_buzz` — retail/industry chatter usable in
-  analysis, always caveated **unverified retail opinion**.
+- `Stock` (股票版), `Tech_Job` (科技業板), `Warrant` (權證版) → `stock_buzz` — retail/industry
+  chatter usable in analysis, always caveated **unverified retail opinion**.
 - `Beauty` (表特版), `Gossiping` (八卦版) → `offtopic` — general-buzz for a whimsy/mascot
   surface, explicitly excluded from any market claim by the `offtopic` tag downstream
   guardrails key on.
@@ -51,6 +51,7 @@ _OFFTOPIC_TAG = "offtopic"
 _BOARD_TAGS: dict[str, str] = {
     "Stock": _STOCK_BUZZ_TAG,
     "Tech_Job": _STOCK_BUZZ_TAG,
+    "Warrant": _STOCK_BUZZ_TAG,
     "Beauty": _OFFTOPIC_TAG,
     "Gossiping": _OFFTOPIC_TAG,
 }

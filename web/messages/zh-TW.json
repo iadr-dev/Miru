@@ -103,7 +103,9 @@
         "focus": "每日焦點",
         "chip": "籌碼",
         "disposition": "處置",
-        "heatmap": "熱力圖"
+        "heatmap": "熱力圖",
+        "news": "新聞",
+        "ptt": "PTT"
       }
     },
     "cards": {
@@ -443,6 +445,29 @@
         "collapse": "收合",
         "empty": "此分類目前查無個股。",
         "unavailable": "尚無處置王看板資料 — 每日擷取自今日起累積歷史，無法回補過去資料。"
+      },
+      "newsFeed": {
+        "title": "新聞",
+        "empty": "目前沒有新聞。",
+        "unavailable": "新聞來源目前無法取得。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
+      },
+      "pttBoard": {
+        "title": "PTT",
+        "board": {
+          "Stock": "股票版",
+          "Tech_Job": "科技業板",
+          "Warrant": "權證版",
+          "Beauty": "表特版",
+          "Gossiping": "八卦版"
+        },
+        "offtopicCaveat": "此版為閒聊性質（表特/八卦），不視為市場相關內容。",
+        "buzzCaveat": "未經驗證的散戶/業界討論 — 僅為熱度/關注度參考，非交易建議。",
+        "empty": "目前沒有貼文。",
+        "unavailable": "PTT 版面目前無法取得。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
       },
       "indexStrip": {
         "scrollLeft": "向左捲動",

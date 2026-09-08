@@ -1,0 +1,90 @@
+"""`get_news_feed` — the RSS/Finnhub news aggregator (`sources/news.py`'s `NewsAdapter`), wrapped
+as its own tool rather than routed through `DataAccessRouter.fetch()`: `NEWS` has no
+`(capability, market)` entry in `source_priority.yaml` (a query string isn't `(capability,
+symbol)`-shaped), the same non-router-fetch pattern `web_search_tools.py` already establishes for
+`WEB`. Reaches the adapter via `dataaccess/news.py`'s `NewsGateway` — the layering rule ("`tools/`
+never imports `sources/` directly") still applies even to this non-router seam. Distinct from
+`others_tools.py`'s `get_finmind_stock_news` (FinMind's own per-symbol news dataset) — the two are
+separate real datasets, never merged into one row shape.
+"""
+
+from __future__ import annotations
+
+from typing import cast
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from dataaccess.news import NewsGateway
+from schemas.enums import DataClass
+from tools.base import BaseTool, Tool, ToolContext, parse_args
+
+
+class GetNewsFeedInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    query: str = Field(
+        default="台股",
+        min_length=1,
+        description="Search phrase/ticker — RSS feeds are fetched whole regardless (they are "
+        "not query-filterable upstream); this only scopes the Finnhub company-news call.",
+    )
+
+
+class NewsFeedItemOut(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str
+    link: str
+    source: str
+    published_at: str
+    summary: str | None = None
+
+
+class GetNewsFeedOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    currentness_caveat: str = Field(min_length=1)
+    items: tuple[NewsFeedItemOut, ...] = Field(default_factory=tuple)
+
+
+class GetNewsFeedTool(BaseTool):
+    """`get_news_feed` — near-real-time news aggregated from financial RSS (cnyes/udn/technews/
+    ithome/blocktempo/Yahoo股市) plus Finnhub company news when a token is configured
+    (`Settings().finnhub_key`; silently skipped otherwise, never a hard failure). Third-party
+    content: every item is cited by `link`/`source`, never restated as analysis."""
+
+    name = "get_news_feed"
+    description = (
+        "Get near-real-time news aggregated from financial RSS feeds and (if configured) "
+        "Finnhub company news. Third-party content — cite, never restate as analysis or a "
+        "trading signal."
+    )
+    input_model: type[BaseModel] = GetNewsFeedInput
+    output_model: type[BaseModel] = GetNewsFeedOutput
+    data_class = DataClass.PUBLIC
+
+    def __init__(self, gateway: NewsGateway | None = None) -> None:
+        self._gateway = gateway or NewsGateway()
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(GetNewsFeedInput, args)
+        result = await self._gateway.fetch_news(query=typed.query, tls_policy=ctx.tls_policy)
+        raw_items = result.payload.get("items")
+        items: tuple[NewsFeedItemOut, ...] = ()
+        if isinstance(raw_items, list):
+            typed_items = cast("list[dict[str, object]]", raw_items)
+            items = tuple(NewsFeedItemOut.model_validate(item) for item in typed_items)
+        return GetNewsFeedOutput(currentness_caveat=result.currentness_caveat, items=items)
+
+
+def build_registration_table(gateway: NewsGateway | None = None) -> list[tuple[Tool, bool]]:
+    return [(GetNewsFeedTool(gateway), False)]
+
+
+__all__ = [
+    "GetNewsFeedInput",
+    "GetNewsFeedOutput",
+    "GetNewsFeedTool",
+    "NewsFeedItemOut",
+    "build_registration_table",
+]

@@ -783,4 +783,29 @@ def _market_args(
     return args
 
 
+@router.get("/market/news-feed")
+async def news_feed(
+    query: str = Query("台股"),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub, backed by
+    `get_news_feed`, `DataClass.PUBLIC`. `query` only scopes the Finnhub call; RSS feeds are
+    always fetched whole (not query-filterable upstream)."""
+    return await _dispatch(state, "get_news_feed", {"query": query}, ctx)
+
+
+@router.get("/market/ptt-board")
+async def ptt_board(
+    board: str = Query("Stock"),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """PTT — one board's current index-listing (title/author/push-count/post-tag), backed by
+    `get_ptt_board`, `DataClass.PUBLIC`. `board` must be one of `tools.ptt_tools.PTT_BOARDS`
+    ('Stock' 股票版, 'Tech_Job' 科技業板, 'Warrant' 權證版 — usable in analysis; 'Beauty' 表特版,
+    'Gossiping' 八卦版 — offtopic, never a market claim)."""
+    return await _dispatch(state, "get_ptt_board", {"board": board}, ctx)
+
+
 __all__ = ["router"]

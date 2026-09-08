@@ -1,7 +1,7 @@
 ---
 name: finmind-stock-news
 version: 1.0.0
-description: FinMind's own news dataset for one stock, one trading day at a time — distinct from the excluded RSS/GDELT/Finnhub news aggregator and PTT buzz tools (neither of which has a tool in this registry).
+description: FinMind's own news dataset for one stock, one trading day at a time — distinct from the RSS/Finnhub news aggregator (get_news_feed) and PTT buzz tool (get_ptt_board).
 triggers: [finmind新聞, 個股新聞, stock news, finmind news]
 design_pattern: tool_wrapper
 inputs:
@@ -17,7 +17,7 @@ output_structure:
   - '引用提醒: 每則新聞皆為第三方內容，需標明來源'
 freshness_rule: get_finmind_stock_news 一次僅服務一個交易日；每則新聞須標明其發布日期。
 boundaries:
-  - 這不是一個多來源新聞聚合器 — 沒有 category 篩選、沒有 RSS/GDELT/Finnhub 彙整，也沒有 PTT 聲量資料，這些皆刻意排除在工具化範圍之外。
+  - 這不是一個多來源新聞聚合器 — 沒有 category 篩選、沒有 RSS/Finnhub 彙整。多來源即時新聞請改用 get_news_feed；PTT 聲量資料請改用 get_ptt_board。
   - 每則新聞內容視為第三方資料，僅可引用/摘要並標明來源，不得改寫為本平台的分析結論或投資判斷。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []

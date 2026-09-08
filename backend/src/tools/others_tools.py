@@ -1,10 +1,8 @@
 """Remaining FinMind Others-category tools not already covered elsewhere —
 `active_etf_info` (the free-tier ETF roster; the sponsor-tier holdings/holding-change side is
-`get_active_etf_report`/`get_etf_money_flow` in `market_tools.py`) and `get_stock_news`'s
-FinMind-native counterpart, distinct from `sources/news.py`'s RSS/GDELT/Finnhub aggregator
-(that aggregator has no tool this pass per the explicit news/PTT scope decision — this dataset
-is a different FinMind capability, not the news aggregator, and stays in scope).
-"""
+`get_active_etf_report`/`get_etf_money_flow` in `market_tools.py`) and `get_finmind_stock_news`,
+FinMind's own per-symbol news dataset — distinct from `sources/news.py`'s RSS/Finnhub aggregator,
+which `tools/news_tools.py` wraps separately (`get_news_feed`)."""
 
 from __future__ import annotations
 
@@ -70,10 +68,9 @@ class GetFinmindStockNewsOutput(_RowsOutput):
 
 class GetFinmindStockNewsTool(BaseTool):
     """`get_finmind_stock_news` — wraps `Capability.STOCK_NEWS` (FinMind's own news dataset;
-    single trading day per request). Named distinctly from the design's aggregator-backed
-    `get_stock_news` (RSS/GDELT/Finnhub + this same FinMind history), which is not built this
-    pass — no `news` aggregator tool exists yet per the explicit scope decision to skip
-    `sources/news.py`/`sources/ptt.py` entirely."""
+    single trading day per request, per-symbol). Named distinctly from `tools/news_tools.py`'s
+    `get_news_feed` (the RSS/Finnhub aggregator over `sources/news.py`'s `NEWS` capability) —
+    the two are separate real datasets, never merged into one row shape."""
 
     name = "get_finmind_stock_news"
     description = (

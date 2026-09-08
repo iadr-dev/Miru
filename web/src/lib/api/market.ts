@@ -53,12 +53,17 @@ import {
   marginShortBalanceResponseSchema,
   marketIndexStripResponseSchema,
   materialAnnouncementFeedResponseSchema,
+  type NewsFeedResponse,
+  newsFeedResponseSchema,
   type OptionVixResponse,
   optionVixResponseSchema,
   type PriceHistoryResponse,
   type PriceMomentumResponse,
+  type PttBoardName,
+  type PttBoardResponse,
   priceHistoryResponseSchema,
   priceMomentumResponseSchema,
+  pttBoardResponseSchema,
   type ScoreLeaderboardData,
   type SectorConstituentsResponse,
   type SectorHeatmapPeriod,
@@ -573,4 +578,24 @@ export async function getDispositionBoard(
   const search = new URLSearchParams({ market });
   const raw = await requestJson(`/market/disposition-board?${search.toString()}`);
   return dispositionBoardResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 26. GET /market/news-feed (public, RSS/Finnhub 即時新聞 aggregator)
+// ---------------------------------------------------------------------------
+
+export async function getNewsFeed(query = "台股"): Promise<NewsFeedResponse> {
+  const search = new URLSearchParams({ query });
+  const raw = await requestJson(`/market/news-feed?${search.toString()}`);
+  return newsFeedResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 27. GET /market/ptt-board (public, one PTT board's current index-listing)
+// ---------------------------------------------------------------------------
+
+export async function getPttBoard(board: PttBoardName = "Stock"): Promise<PttBoardResponse> {
+  const search = new URLSearchParams({ board });
+  const raw = await requestJson(`/market/ptt-board?${search.toString()}`);
+  return pttBoardResponseSchema.parse(raw);
 }

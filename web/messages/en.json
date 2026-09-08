@@ -103,7 +103,9 @@
         "focus": "Daily Focus",
         "chip": "Chip Data",
         "disposition": "Disposition",
-        "heatmap": "Heatmap"
+        "heatmap": "Heatmap",
+        "news": "News",
+        "ptt": "PTT"
       }
     },
     "cards": {
@@ -443,6 +445,29 @@
         "collapse": "Collapse",
         "empty": "No stocks in this bucket right now.",
         "unavailable": "No disposition-board data yet — ingest only accumulates history from today forward, past data cannot be backfilled."
+      },
+      "newsFeed": {
+        "title": "News",
+        "empty": "No news items right now.",
+        "unavailable": "News feed unavailable right now.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
+      },
+      "pttBoard": {
+        "title": "PTT",
+        "board": {
+          "Stock": "Stock",
+          "Tech_Job": "Tech_Job",
+          "Warrant": "Warrant",
+          "Beauty": "Beauty",
+          "Gossiping": "Gossiping"
+        },
+        "offtopicCaveat": "This board is off-topic chatter (Beauty/Gossiping) — never treated as market content.",
+        "buzzCaveat": "Unverified retail/industry chatter — buzz/attention signal only, never a trading recommendation.",
+        "empty": "No posts right now.",
+        "unavailable": "PTT board unavailable right now.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
       },
       "indexStrip": {
         "scrollLeft": "Scroll left",
