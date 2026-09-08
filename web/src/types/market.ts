@@ -692,6 +692,34 @@ export const sectorHeatmapResponseSchema = sectorHeatmapDataSchema;
 export type SectorHeatmapResponse = z.infer<typeof sectorHeatmapResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 14c. GET /market/sector-constituents — get_sector_constituents (public, per-stock drill-down)
+// ---------------------------------------------------------------------------
+
+export const sectorConstituentRowSchema = z.object({
+  symbol: z.string(),
+  stock_name: z.string(),
+  industry: z.string(),
+  pct_change: z.number(),
+  close: z.number(),
+  volume: z.number(),
+  turnover: z.number().nullable(),
+});
+export type SectorConstituentRow = z.infer<typeof sectorConstituentRowSchema>;
+
+export const sectorConstituentsDataSchema = z.object({
+  market: z.string(),
+  industry: z.string().nullable().optional(),
+  trade_date: z.string().nullable(),
+  prior_trade_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(sectorConstituentRowSchema).default([]),
+});
+export type SectorConstituentsData = z.infer<typeof sectorConstituentsDataSchema>;
+export const sectorConstituentsResponseSchema = sectorConstituentsDataSchema;
+export type SectorConstituentsResponse = z.infer<typeof sectorConstituentsResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 15. GET /market/margin-short-balance — get_margin_short_total_market (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

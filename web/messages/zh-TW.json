@@ -199,7 +199,14 @@
         "turnover": "成交值 {value} 億",
         "up": "上漲",
         "down": "下跌",
-        "flat": "持平"
+        "flat": "持平",
+        "collapse": "關閉",
+        "constituentsEmpty": "此產業查無個股資料。",
+        "columnStock": "股票",
+        "columnClose": "收盤",
+        "columnChange": "漲跌幅",
+        "columnVolume": "成交量",
+        "columnTurnover": "成交值"
       },
       "macro": {
         "title": "宏觀指標",

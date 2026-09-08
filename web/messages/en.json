@@ -199,7 +199,14 @@
         "turnover": "Turnover NT$ {value} × 100M",
         "up": "up",
         "down": "down",
-        "flat": "flat"
+        "flat": "flat",
+        "collapse": "Close",
+        "constituentsEmpty": "No per-stock data available for this industry.",
+        "columnStock": "Stock",
+        "columnClose": "Close",
+        "columnChange": "Change",
+        "columnVolume": "Volume",
+        "columnTurnover": "Turnover"
       },
       "macro": {
         "title": "Macro Indicators",

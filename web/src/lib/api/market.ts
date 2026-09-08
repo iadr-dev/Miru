@@ -60,9 +60,11 @@ import {
   priceHistoryResponseSchema,
   priceMomentumResponseSchema,
   type ScoreLeaderboardData,
+  type SectorConstituentsResponse,
   type SectorHeatmapResponse,
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
+  sectorConstituentsResponseSchema,
   sectorHeatmapResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
@@ -374,6 +376,22 @@ export async function getSectorHeatmap(
   if (tradeDate) search.set("trade_date", tradeDate);
   const raw = await requestJson(`/market/sector-heatmap?${search.toString()}`);
   return sectorHeatmapResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14c. GET /market/sector-constituents (public, per-stock drill-down)
+// ---------------------------------------------------------------------------
+
+export async function getSectorConstituents(
+  market: Market,
+  industry?: string,
+  tradeDate?: string,
+): Promise<SectorConstituentsResponse> {
+  const search = new URLSearchParams({ market });
+  if (industry) search.set("industry", industry);
+  if (tradeDate) search.set("trade_date", tradeDate);
+  const raw = await requestJson(`/market/sector-constituents?${search.toString()}`);
+  return sectorConstituentsResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
