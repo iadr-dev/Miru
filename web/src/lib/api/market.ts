@@ -60,8 +60,10 @@ import {
   priceHistoryResponseSchema,
   priceMomentumResponseSchema,
   type ScoreLeaderboardData,
+  type SectorHeatmapResponse,
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
+  sectorHeatmapResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
   tickSnapshotResponseSchema,
@@ -358,6 +360,20 @@ export async function getIndexContribution(
   if (tradeDate) search.set("trade_date", tradeDate);
   const raw = await requestJson(`/market/index-contribution?${search.toString()}`);
   return indexContributionResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14b. GET /market/sector-heatmap (public, 產業別漲跌熱力圖)
+// ---------------------------------------------------------------------------
+
+export async function getSectorHeatmap(
+  market: Market,
+  tradeDate?: string,
+): Promise<SectorHeatmapResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  const raw = await requestJson(`/market/sector-heatmap?${search.toString()}`);
+  return sectorHeatmapResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

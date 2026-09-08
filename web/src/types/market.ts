@@ -665,6 +665,33 @@ export const indexContributionResponseSchema = z.union([
 export type IndexContributionResponse = z.infer<typeof indexContributionResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 14b. GET /market/sector-heatmap — get_sector_heatmap (public, 產業別漲跌熱力圖)
+// ---------------------------------------------------------------------------
+
+export const sectorHeatmapRowSchema = z.object({
+  industry: z.string(),
+  avg_pct_change: z.number(),
+  stock_count: z.number(),
+  advancing_count: z.number(),
+  declining_count: z.number(),
+  total_turnover: z.number().nullable(),
+  weighted_by_turnover: z.boolean(),
+});
+export type SectorHeatmapRow = z.infer<typeof sectorHeatmapRowSchema>;
+
+export const sectorHeatmapDataSchema = z.object({
+  market: z.string(),
+  trade_date: z.string().nullable(),
+  prior_trade_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  industries: z.array(sectorHeatmapRowSchema).default([]),
+});
+export type SectorHeatmapData = z.infer<typeof sectorHeatmapDataSchema>;
+export const sectorHeatmapResponseSchema = sectorHeatmapDataSchema;
+export type SectorHeatmapResponse = z.infer<typeof sectorHeatmapResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 15. GET /market/margin-short-balance — get_margin_short_total_market (Sponsor-tier)
 // ---------------------------------------------------------------------------
 
