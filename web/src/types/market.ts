@@ -720,6 +720,29 @@ export const sectorConstituentsResponseSchema = sectorConstituentsDataSchema;
 export type SectorConstituentsResponse = z.infer<typeof sectorConstituentsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 14d. GET /market/sector-rotation — get_sector_rotation (public, rank-bump chart data)
+// ---------------------------------------------------------------------------
+
+export const sectorRotationDayRowSchema = z.object({
+  trade_date: z.string(),
+  industry: z.string(),
+  net_flow: z.number(),
+  rank: z.number(),
+});
+export type SectorRotationDayRow = z.infer<typeof sectorRotationDayRowSchema>;
+
+export const sectorRotationDataSchema = z.object({
+  market: z.string(),
+  trade_dates: z.array(z.string()).default([]),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(sectorRotationDayRowSchema).default([]),
+});
+export type SectorRotationData = z.infer<typeof sectorRotationDataSchema>;
+export const sectorRotationResponseSchema = sectorRotationDataSchema;
+export type SectorRotationResponse = z.infer<typeof sectorRotationResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 15. GET /market/margin-short-balance — get_margin_short_total_market (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

@@ -206,7 +206,17 @@
         "columnClose": "Close",
         "columnChange": "Change",
         "columnVolume": "Volume",
-        "columnTurnover": "Turnover"
+        "columnTurnover": "Turnover",
+        "viewToggleLabel": "Switch view",
+        "viewHeatmap": "Heatmap",
+        "viewRotation": "Sector Rotation",
+        "rotationTitle": "Sector Rotation",
+        "rotationUnavailable": "No recent institutional-flow data available — sector rotation can't be shown.",
+        "rankAxisLabel": "Rank",
+        "rankTooltip": "Rank {rank}",
+        "legendLabel": "Industry legend",
+        "tableCaption": "Each industry's daily money-flow rank",
+        "columnIndustry": "Industry"
       },
       "macro": {
         "title": "Macro Indicators",

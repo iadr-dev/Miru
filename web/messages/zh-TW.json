@@ -206,7 +206,17 @@
         "columnClose": "收盤",
         "columnChange": "漲跌幅",
         "columnVolume": "成交量",
-        "columnTurnover": "成交值"
+        "columnTurnover": "成交值",
+        "viewToggleLabel": "切換檢視",
+        "viewHeatmap": "熱力圖",
+        "viewRotation": "板塊輪動",
+        "rotationTitle": "板塊輪動",
+        "rotationUnavailable": "近期查無法人資金流向資料，無法顯示板塊輪動。",
+        "rankAxisLabel": "排名",
+        "rankTooltip": "第 {rank} 名",
+        "legendLabel": "產業圖例",
+        "tableCaption": "各產業每日資金流向排名",
+        "columnIndustry": "產業"
       },
       "macro": {
         "title": "宏觀指標",

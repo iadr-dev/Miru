@@ -62,10 +62,12 @@ import {
   type ScoreLeaderboardData,
   type SectorConstituentsResponse,
   type SectorHeatmapResponse,
+  type SectorRotationResponse,
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
   sectorConstituentsResponseSchema,
   sectorHeatmapResponseSchema,
+  sectorRotationResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
   tickSnapshotResponseSchema,
@@ -392,6 +394,20 @@ export async function getSectorConstituents(
   if (tradeDate) search.set("trade_date", tradeDate);
   const raw = await requestJson(`/market/sector-constituents?${search.toString()}`);
   return sectorConstituentsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14d. GET /market/sector-rotation (public, rank-bump chart data)
+// ---------------------------------------------------------------------------
+
+export async function getSectorRotation(
+  market: Market,
+  endDate?: string,
+): Promise<SectorRotationResponse> {
+  const search = new URLSearchParams({ market });
+  if (endDate) search.set("end_date", endDate);
+  const raw = await requestJson(`/market/sector-rotation?${search.toString()}`);
+  return sectorRotationResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
