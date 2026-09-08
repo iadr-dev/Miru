@@ -36,6 +36,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_advance_decline": "advance_decline",
     "get_index_contribution": "index_contribution",
     "get_sector_heatmap": "sector_heatmap",
+    "get_sector_constituents": "sector_constituents",
     "get_company_profile": "company_profile",
     "get_dividend_schedule": "dividend_schedule",
     "get_institutional_flow": "institutional_flow",

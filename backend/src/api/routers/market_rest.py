@@ -367,6 +367,27 @@ async def sector_heatmap(
     return await _dispatch(state, "get_sector_heatmap", args, ctx)
 
 
+@router.get("/market/sector-constituents")
+async def sector_constituents(
+    market: Market = Query(Market.TW),
+    industry: str | None = Query(
+        None, description="Restrict to one get_sector_heatmap industry value."
+    ),
+    trade_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Per-stock drill-down (close-to-close % change, close, volume, turnover) for one
+    `/market/sector-heatmap` industry tile, or every symbol ranked together if `industry` is
+    omitted — same single-`trade_date` shape as `/sector-heatmap`."""
+    args: dict[str, object] = {"market": market.value}
+    if industry is not None:
+        args["industry"] = industry
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_sector_constituents", args, ctx)
+
+
 @router.get("/market/etf-list")
 async def etf_list(
     market: Market = Query(Market.TW),

@@ -2430,6 +2430,178 @@ class GetSectorHeatmapTool(BaseTool):
         )
 
 
+# Ranked output truncated to this many symbols — never a full-market symbol dump. A single
+# `industry`'s own roster (the whole point of this tool) can still run past a few hundred names
+# for the biggest categories (電子工業 has 260+ members today), so a cap is needed even scoped to
+# one industry, mirroring `GetIndexContributionTool`'s/`GetPriceMomentumTool`'s own top-N caps.
+_SECTOR_CONSTITUENTS_TOP_N = 100
+
+
+class SectorConstituentRow(BaseModel):
+    """One stock within a `get_sector_heatmap` industry tile — the per-symbol breakdown a
+    treemap drill-down needs, which `SectorHeatmapRow` itself deliberately only aggregates."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    stock_name: str
+    industry: str
+    pct_change: float  # close-to-close, a whole-number percent (matches SectorHeatmapRow's own)
+    close: float
+    volume: int
+    turnover: float | None = None  # None when PRICE_EOD_JOB's own row carried no turnover figure
+
+
+class GetSectorConstituentsInput(BaseModel):
+    """A market + an optional industry filter (one of `SectorHeatmapRow.industry`'s own values)
+    + an optional trading day — same single-`trade_date` semantics as `GetSectorHeatmapInput`.
+    `industry` is a plain scalar filter, never an array, so this can't be turned into a
+    full-market scan by passing every industry name at once."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    industry: str | None = Field(
+        default=None,
+        description="Restrict to one industry (exact match against get_sector_heatmap's own "
+        "`industry` values). Omitted or null returns every industry's constituents, ranked "
+        "together and capped at the same top-N.",
+    )
+    trade_date: date_ | None = Field(
+        default=None,
+        description="Trading day to report constituents for (ISO date). Omitted or null means "
+        "the latest available trading day.",
+    )
+
+
+class GetSectorConstituentsOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    industry: str | None = None
+    trade_date: date_ | None = None
+    prior_trade_date: date_ | None = None
+    data_available: bool
+    unavailable_reason: str | None = None
+    rows: tuple[SectorConstituentRow, ...] = Field(default_factory=tuple)
+
+
+class GetSectorConstituentsTool(BaseTool):
+    """`get_sector_constituents` — the per-stock drill-down for one `get_sector_heatmap` tile:
+    every member symbol's own close-to-close percentage change, close, volume, and turnover for
+    a chosen industry (or, if `industry` is omitted, every symbol ranked together). Reads the
+    exact same two already-ingested partitions `GetSectorHeatmapTool` joins
+    (`STOCK_INFO_JOB`'s roster + `PRICE_EOD_JOB`'s closes/volumes/turnovers) — never a per-symbol
+    live fan-out, same whole-market-aggregate reasoning as that tool's own docstring. Ranked by
+    `pct_change` descending and capped at `_SECTOR_CONSTITUENTS_TOP_N` (governance §9c: bounded
+    output, not an unbounded whole-market dump, even though the *input* is a single scalar
+    industry filter rather than a symbol array).
+
+    Public tier: same `Capability.STOCK_INFO`/`Capability.PRICE_EOD` PUBLIC-tier reasoning
+    `GetSectorHeatmapTool` documents."""
+
+    name = "get_sector_constituents"
+    description = (
+        "Get the per-stock breakdown (close-to-close % change, close, volume, turnover) for "
+        "one sector-heatmap industry tile, or every symbol ranked together if no industry is "
+        "given, for one trading day (defaults to the latest available day)."
+    )
+    input_model: type[BaseModel] = GetSectorConstituentsInput
+    output_model: type[BaseModel] = GetSectorConstituentsOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "sector_constituents"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetSectorConstituentsInput, args)
+        market = typed.market.value
+        calendar = _real_calendar(self._store, market)
+        window = _two_day_window(
+            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+        )
+        if window is None:
+            return GetSectorConstituentsOutput(
+                market=market,
+                industry=typed.industry,
+                trade_date=typed.trade_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "price_eod", market, typed.trade_date
+                ),
+            )
+        trade_date, prior_date = window
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        if roster_date is None:
+            return GetSectorConstituentsOutput(
+                market=market,
+                industry=typed.industry,
+                trade_date=trade_date,
+                prior_trade_date=prior_date,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
+            )
+
+        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        roster = _rows_from_store(StockInfoRow, raw_roster)
+        names_by_symbol = {row.symbol: row.name for row in roster}
+        industry_by_symbol = {
+            row.symbol: row.industry_category for row in roster if row.industry_category
+        }
+        today_closes = _closes_by_symbol(self._store, market, trade_date)
+        prior_closes = _closes_by_symbol(self._store, market, prior_date)
+        turnovers = _turnovers_by_symbol(self._store, market, trade_date)
+        raw_bars = self._store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+        volumes_by_symbol: dict[str, int] = {}
+        for bar_row in raw_bars:
+            bar_symbol = bar_row.get("symbol")
+            volume = bar_row.get("volume")
+            if (
+                isinstance(bar_symbol, str)
+                and is_scoreable_symbol(bar_symbol)
+                and isinstance(volume, (int, float))
+            ):
+                volumes_by_symbol[bar_symbol] = int(volume)
+
+        rows: list[SectorConstituentRow] = []
+        for symbol, industry in industry_by_symbol.items():
+            if typed.industry is not None and industry != typed.industry:
+                continue
+            close = today_closes.get(symbol)
+            prior_close = prior_closes.get(symbol)
+            name = names_by_symbol.get(symbol)
+            volume = volumes_by_symbol.get(symbol)
+            if close is None or not prior_close or name is None or volume is None:
+                continue
+            pct = (close - prior_close) / prior_close * 100
+            rows.append(
+                SectorConstituentRow(
+                    symbol=symbol,
+                    stock_name=name,
+                    industry=industry,
+                    pct_change=pct,
+                    close=close,
+                    volume=volume,
+                    turnover=turnovers.get(symbol),
+                )
+            )
+
+        ranked = tuple(
+            sorted(rows, key=lambda r: r.pct_change, reverse=True)[:_SECTOR_CONSTITUENTS_TOP_N]
+        )
+
+        return GetSectorConstituentsOutput(
+            market=market,
+            industry=typed.industry,
+            trade_date=trade_date,
+            prior_trade_date=prior_date,
+            data_available=True,
+            rows=ranked,
+        )
+
+
 _ETF_DISTRIBUTION_FREQUENCY_BY_EVENT_COUNT: dict[int, str] = {
     12: "月配",
     4: "季配",
@@ -3397,6 +3569,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetHolderAccumulationTool(store), False),
         (GetIndexContributionTool(store), False),
         (GetSectorHeatmapTool(store), False),
+        (GetSectorConstituentsTool(store), False),
         (GetSymbolInfoTool(store), False),
         (GetPriceHistoryTool(store), False),
         (GetEtfListTool(store), False),
@@ -3453,6 +3626,9 @@ __all__ = [
     "GetPriceMomentumTool",
     "GetPriceQuoteOutput",
     "GetPriceQuoteTool",
+    "GetSectorConstituentsInput",
+    "GetSectorConstituentsOutput",
+    "GetSectorConstituentsTool",
     "GetSectorHeatmapInput",
     "GetSectorHeatmapOutput",
     "GetSectorHeatmapTool",
@@ -3466,6 +3642,7 @@ __all__ = [
     "IndexContributionRow",
     "MomentumPeriod",
     "PriceMomentumRow",
+    "SectorConstituentRow",
     "SectorHeatmapRow",
     "build_registration_table",
 ]
