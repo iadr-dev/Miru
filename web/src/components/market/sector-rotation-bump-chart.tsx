@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type { SectorRotationDayRow } from "@/types/market";
 
@@ -29,6 +30,11 @@ const CHART_COLORS = [
 // own top-N-not-whole-market reasoning for a ranked visual, not a data-completeness cut (the
 // data-table fallback below still lists every industry actually present).
 const MAX_PLOTTED_INDUSTRIES = 8;
+
+// Same collapsed-row-count convention every other market card in this dashboard uses — the
+// fallback table lists every industry (often 40+), so it collapses to the top 10 by latest rank
+// inline with a "展開完整 N 筆" `ExpandModal`, just like `IndustryMoneyFlowCard`'s own list.
+const TABLE_COLLAPSED_ROW_COUNT = 10;
 
 interface BumpChartPoint {
   trade_date: string;
@@ -78,6 +84,7 @@ export function SectorRotationBumpChart({
   const locale = useLocale();
   const t = useTranslations("market.cards.sectorHeatmap");
   const [highlighted, setHighlighted] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const latestDate = tradeDates.at(-1);
   const allIndustries = useMemo(() => {
@@ -188,50 +195,94 @@ export function SectorRotationBumpChart({
 
       {/* Screen-reader / keyboard fallback: every industry actually present, not just the
        * `MAX_PLOTTED_INDUSTRIES` that got a chart line — a table conveys the same rank-over-time
-       * data the chart does, without depending on hover/color perception. */}
-      <div className="mt-3 overflow-x-auto">
-        <table className="min-w-full text-[12px]">
-          <caption className="sr-only">{t("tableCaption")}</caption>
-          <thead>
-            <tr>
-              <th scope="col" className="px-2 py-1 text-left text-[var(--text-muted)]">
-                {t("columnIndustry")}
+       * data the chart does, without depending on hover/color perception. Collapses to the top
+       * `TABLE_COLLAPSED_ROW_COUNT` inline, same "展開完整 N 筆" pattern every other ranked-list
+       * market card in this dashboard uses. */}
+      <SectorRotationTable
+        rows={rows}
+        tradeDates={tradeDates}
+        industries={allIndustries.slice(0, TABLE_COLLAPSED_ROW_COUNT)}
+      />
+      {allIndustries.length > TABLE_COLLAPSED_ROW_COUNT ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className={cn(
+            "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+            "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+          )}
+        >
+          <span>{t("expandTo", { count: allIndustries.length })}</span>
+        </button>
+      ) : null}
+      <ExpandModal
+        open={expanded}
+        title={t("rotationTitle")}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      >
+        <SectorRotationTable rows={rows} tradeDates={tradeDates} industries={allIndustries} />
+      </ExpandModal>
+    </div>
+  );
+}
+
+/** The rank-over-time data table, shared verbatim between the card's inline (sliced) preview
+ * and the `ExpandModal` full list. */
+function SectorRotationTable({
+  rows,
+  tradeDates,
+  industries,
+}: {
+  readonly rows: readonly SectorRotationDayRow[];
+  readonly tradeDates: readonly string[];
+  readonly industries: readonly string[];
+}): ReactNode {
+  const t = useTranslations("market.cards.sectorHeatmap");
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="min-w-full text-[12px]">
+        <caption className="sr-only">{t("tableCaption")}</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="px-2 py-1 text-left text-[var(--text-muted)]">
+              {t("columnIndustry")}
+            </th>
+            {tradeDates.map((date) => (
+              <th
+                key={date}
+                scope="col"
+                className="px-2 py-1 text-right font-num text-[var(--text-muted)] tabular-nums"
+              >
+                {date}
               </th>
-              {tradeDates.map((date) => (
-                <th
-                  key={date}
-                  scope="col"
-                  className="px-2 py-1 text-right font-num text-[var(--text-muted)] tabular-nums"
-                >
-                  {date}
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {industries.map((industry) => {
+            const byDate = new Map(
+              rows.filter((r) => r.industry === industry).map((r) => [r.trade_date, r.rank]),
+            );
+            return (
+              <tr key={industry} className="border-[var(--border)] border-t">
+                <th scope="row" className="px-2 py-1 text-left font-normal text-[var(--text)]">
+                  {industry}
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {allIndustries.map((industry) => {
-              const byDate = new Map(
-                rows.filter((r) => r.industry === industry).map((r) => [r.trade_date, r.rank]),
-              );
-              return (
-                <tr key={industry} className="border-[var(--border)] border-t">
-                  <th scope="row" className="px-2 py-1 text-left font-normal text-[var(--text)]">
-                    {industry}
-                  </th>
-                  {tradeDates.map((date) => (
-                    <td
-                      key={date}
-                      className="px-2 py-1 text-right font-num text-[var(--text)] tabular-nums"
-                    >
-                      {byDate.get(date) ?? "—"}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+                {tradeDates.map((date) => (
+                  <td
+                    key={date}
+                    className="px-2 py-1 text-right font-num text-[var(--text)] tabular-nums"
+                  >
+                    {byDate.get(date) ?? "—"}
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
