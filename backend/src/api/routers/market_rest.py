@@ -388,6 +388,22 @@ async def sector_constituents(
     return await _dispatch(state, "get_sector_constituents", args, ctx)
 
 
+@router.get("/market/sector-rotation")
+async def sector_rotation(
+    market: Market = Query(Market.TW),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Daily industry ranking by net institutional flow over the last 10 trading days ending at
+    `end_date` (defaults to the latest available day) — the data behind a sector-rotation
+    rank-bump chart, backed by `get_sector_rotation`."""
+    args: dict[str, object] = {"market": market.value}
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_sector_rotation", args, ctx)
+
+
 @router.get("/market/etf-list")
 async def etf_list(
     market: Market = Query(Market.TW),

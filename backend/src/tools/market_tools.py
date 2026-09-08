@@ -39,6 +39,7 @@ from ingest.jobs import (
     ETF_AUM_DATASET,
     ETF_EXPENSE_RATIO_DATASET,
     ETF_NAV_DATASET,
+    INSTITUTIONAL_FLOW_JOB,
     MARKET_VALUE_JOB,
     MARKET_VALUE_WEIGHT_JOB,
     PRICE_EOD_JOB,
@@ -2602,6 +2603,164 @@ class GetSectorConstituentsTool(BaseTool):
         )
 
 
+# How many recent trading days `get_sector_rotation` plots — a rank-bump chart needs enough
+# points to show real crossings but stays readable on one screen; 10 matches this dashboard's
+# other short-window reads (`_ROLLING_WINDOW_TRADING_DAYS`-style constants elsewhere in this
+# codebase) rather than RRG's usual weekly-over-months span, which this daily-flow dataset has
+# no natural analog for (see the design research this tool followed: a rank-bump chart, not an
+# RRG, is the right fit for "N days of net institutional flow ranked by industry").
+_SECTOR_ROTATION_WINDOW_TRADING_DAYS = 10
+
+
+class SectorRotationDayRow(BaseModel):
+    """One industry's rank + net institutional flow for one trading day within the rotation
+    window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    trade_date: date_
+    industry: str
+    net_flow: float  # sum(buy - sell) shares across every investor category, this industry
+    rank: int  # 1 = most net inflow that day; ties broken by industry name for a stable order
+
+
+class GetSectorRotationInput(BaseModel):
+    """A market + an optional end date (defaults to the latest day `INSTITUTIONAL_FLOW_JOB` has
+    actually ingested) — the window always runs backward from there for
+    `_SECTOR_ROTATION_WINDOW_TRADING_DAYS` real trading days, never a caller-chosen length (this
+    is a fixed short rotation window, not an open-ended range query)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market = Market.TW
+    end_date: date_ | None = Field(
+        default=None,
+        description="Last trading day of the rotation window (ISO date). Omitted or null "
+        "means the latest available trading day.",
+    )
+
+
+class GetSectorRotationOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    trade_dates: tuple[date_, ...] = Field(default_factory=tuple)
+    data_available: bool
+    unavailable_reason: str | None = None
+    rows: tuple[SectorRotationDayRow, ...] = Field(default_factory=tuple)
+
+
+def _net_flow_by_symbol_for_date(
+    store: ParquetStore, market: str, trade_date: date_
+) -> dict[str, int]:
+    """Sum of `buy - sell` across every investor category, per symbol, for `trade_date` — read
+    back from `INSTITUTIONAL_FLOW_JOB`'s already-ingested partition, never fetched live. Same
+    shape as `disposition_board_tools._institutional_net_by_symbol`, duplicated rather than
+    imported: no tool module in this package imports another (each stays self-contained over the
+    store/router it's handed)."""
+    if not store.has_partition(INSTITUTIONAL_FLOW_JOB.dataset, market, trade_date):
+        return {}
+    raw_rows = store.read_partition(INSTITUTIONAL_FLOW_JOB.dataset, market, trade_date)
+    net: dict[str, int] = {}
+    for row in _rows_from_store(InstitutionalFlowRow, raw_rows):
+        net[row.symbol] = net.get(row.symbol, 0) + (row.buy - row.sell)
+    return net
+
+
+class GetSectorRotationTool(BaseTool):
+    """`get_sector_rotation` — daily industry ranking by net institutional flow (`buy - sell`
+    summed across every investor category) over the last `_SECTOR_ROTATION_WINDOW_TRADING_DAYS`
+    trading days, the data a rank-bump chart plots (one line per industry, Y = daily rank).
+    Joins the already-ingested `STOCK_INFO_JOB` roster against `INSTITUTIONAL_FLOW_JOB`'s
+    per-symbol buy/sell rows, summed per industry per day — never a per-symbol live fan-out,
+    same whole-market-aggregate reasoning `GetSectorHeatmapTool`'s own docstring gives.
+
+    Deliberately NOT an RRG (Relative Rotation Graph): RRG needs a benchmark index to compute a
+    relative-strength ratio and is tuned for weekly-over-months smoothing; a daily net-flow
+    figure has no natural "ratio against a benchmark," and 10 days of daily data has neither the
+    volume nor the right shape for RRG's own smoothing math. A rank-bump chart needs only an
+    orderable value per entity per day, which net flow already is.
+
+    Public tier: both `Capability.STOCK_INFO` and `Capability.INSTITUTIONAL_FLOW` are
+    `DataClass.PUBLIC` in their own `_DatasetConfig` — same tier reasoning
+    `GetSectorHeatmapTool`'s docstring gives for reading a PUBLIC-tier ingested dataset back from
+    the derived store."""
+
+    name = "get_sector_rotation"
+    description = (
+        "Get each industry's daily rank by net institutional flow (buy - sell) over the last "
+        f"{_SECTOR_ROTATION_WINDOW_TRADING_DAYS} trading days (defaults to ending at the "
+        "latest available day) — the data behind a sector-rotation rank-bump chart."
+    )
+    input_model: type[BaseModel] = GetSectorRotationInput
+    output_model: type[BaseModel] = GetSectorRotationOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "sector_rotation"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
+        typed = parse_args(GetSectorRotationInput, args)
+        market = typed.market.value
+
+        flow_dates = _ingested_dates(
+            self._store, INSTITUTIONAL_FLOW_JOB.dataset, market, on_or_before=typed.end_date
+        )
+        if not flow_dates:
+            return GetSectorRotationOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "institutional_flow", market, typed.end_date
+                ),
+            )
+        window_dates = tuple(sorted(flow_dates)[-_SECTOR_ROTATION_WINDOW_TRADING_DAYS:])
+
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        if roster_date is None:
+            return GetSectorRotationOutput(
+                market=market,
+                trade_dates=window_dates,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window(
+                    "stock_info", market, typed.end_date
+                ),
+            )
+        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        roster = _rows_from_store(StockInfoRow, raw_roster)
+        industry_by_symbol = {
+            row.symbol: row.industry_category for row in roster if row.industry_category
+        }
+
+        rows: list[SectorRotationDayRow] = []
+        for trade_date in window_dates:
+            net_by_symbol = _net_flow_by_symbol_for_date(self._store, market, trade_date)
+            net_by_industry: dict[str, float] = {}
+            for symbol, net in net_by_symbol.items():
+                industry = industry_by_symbol.get(symbol)
+                if industry is None:
+                    continue
+                net_by_industry[industry] = net_by_industry.get(industry, 0.0) + net
+            ranked_industries = sorted(
+                net_by_industry.items(), key=lambda item: (-item[1], item[0])
+            )
+            for rank, (industry, net_flow) in enumerate(ranked_industries, start=1):
+                rows.append(
+                    SectorRotationDayRow(
+                        trade_date=trade_date, industry=industry, net_flow=net_flow, rank=rank
+                    )
+                )
+
+        return GetSectorRotationOutput(
+            market=market,
+            trade_dates=window_dates,
+            data_available=True,
+            rows=tuple(rows),
+        )
+
+
 _ETF_DISTRIBUTION_FREQUENCY_BY_EVENT_COUNT: dict[int, str] = {
     12: "月配",
     4: "季配",
@@ -3570,6 +3729,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetIndexContributionTool(store), False),
         (GetSectorHeatmapTool(store), False),
         (GetSectorConstituentsTool(store), False),
+        (GetSectorRotationTool(store), False),
         (GetSymbolInfoTool(store), False),
         (GetPriceHistoryTool(store), False),
         (GetEtfListTool(store), False),
@@ -3632,6 +3792,9 @@ __all__ = [
     "GetSectorHeatmapInput",
     "GetSectorHeatmapOutput",
     "GetSectorHeatmapTool",
+    "GetSectorRotationInput",
+    "GetSectorRotationOutput",
+    "GetSectorRotationTool",
     "GetSymbolInfoInput",
     "GetSymbolInfoOutput",
     "GetSymbolInfoTool",
@@ -3644,5 +3807,6 @@ __all__ = [
     "PriceMomentumRow",
     "SectorConstituentRow",
     "SectorHeatmapRow",
+    "SectorRotationDayRow",
     "build_registration_table",
 ]

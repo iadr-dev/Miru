@@ -53,7 +53,7 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
     # `_router()` passes no `session_factory`/`market_data_reader`, so `theme_tools`/
     # `score_tools`/`screener_tools` (which require one) are never registered here — this
     # count/sample covers only the router-backed groups this fixture actually builds.
-    assert len(deferred_names) == 121
+    assert len(deferred_names) == 122
     # The pre-existing core, still deferred:
     assert {
         "run_bounded_observation",
@@ -98,6 +98,7 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
         "get_index_contribution",  # market_tools
         "get_sector_heatmap",  # market_tools
         "get_sector_constituents",  # market_tools
+        "get_sector_rotation",  # market_tools
         "get_price_momentum",  # market_tools
         "get_holder_accumulation",  # market_tools
         "get_symbol_info",  # market_tools
@@ -119,7 +120,7 @@ def test_total_tool_count_reflects_the_coverage_expansion() -> None:
     (which require one) are excluded from this count."""
     registry = build_default_tool_registry(_router())
 
-    assert len(registry.all_tools()) == 126
+    assert len(registry.all_tools()) == 127
 
 
 def test_get_tool_reaches_both_immediate_and_deferred_tools() -> None:
