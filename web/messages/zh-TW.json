@@ -196,6 +196,7 @@
         "title": "產業熱力圖",
         "unavailable": "今日查無產業熱力圖資料。",
         "stockCount": "{count} 檔",
+        "turnover": "成交值 {value} 億",
         "up": "上漲",
         "down": "下跌",
         "flat": "持平"

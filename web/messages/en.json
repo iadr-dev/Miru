@@ -196,6 +196,7 @@
         "title": "Sector Heatmap",
         "unavailable": "No sector heatmap data available today.",
         "stockCount": "{count} stocks",
+        "turnover": "Turnover NT$ {value} × 100M",
         "up": "up",
         "down": "down",
         "flat": "flat"

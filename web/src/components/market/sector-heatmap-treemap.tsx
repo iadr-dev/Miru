@@ -181,6 +181,7 @@ export function SectorHeatmapTreemap({
   const containerRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [flashKey, setFlashKey] = useState(0);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Fixed layout box in an arbitrary unit square — rendered as percentages, so the actual pixel
   // size is whatever the surrounding card gives it (a real `ResizeObserver`-driven layout isn't
@@ -254,6 +255,8 @@ export function SectorHeatmapTreemap({
             aria-pressed={isSelected}
             aria-label={`${row.industry} ${direction} ${pctLabel}，${t("stockCount", { count: row.stock_count })}`}
             onFocus={() => setFocusedIndex(index)}
+            onMouseEnter={() => setHoveredIndex(index)}
+            onMouseLeave={() => setHoveredIndex((current) => (current === index ? null : current))}
             onClick={() => onSelect(isSelected ? null : row.industry)}
             onKeyDown={(event) => {
               switch (event.key) {
@@ -283,8 +286,11 @@ export function SectorHeatmapTreemap({
               }
             }}
             className={cn(
-              "absolute flex cursor-pointer flex-col items-center justify-center gap-0.5 overflow-hidden p-1 text-center",
+              "absolute flex cursor-pointer flex-col items-center justify-center gap-0.5 p-1 text-center",
               "border-2 border-[var(--bg)] transition-[outline-color] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]",
+              hoveredIndex === index
+                ? "z-10 ring-2 ring-[var(--text)] ring-inset"
+                : "overflow-hidden",
               isSelected ? "ring-2 ring-[var(--accent)] ring-inset" : null,
             )}
             style={{
@@ -323,6 +329,45 @@ export function SectorHeatmapTreemap({
               animate={{ opacity: [0, 0.35, 0] }}
               transition={{ duration: 0.74, times: [0, 0.19, 1], ease: "easeOut" }}
             />
+            {hoveredIndex === index ? (
+              <div
+                role="tooltip"
+                className={cn(
+                  "pointer-events-none absolute z-20 w-44 rounded-[var(--radius-input)] border border-[var(--border)]",
+                  "bg-[var(--surface)] p-2.5 text-left shadow-lg",
+                  tile.y < LAYOUT_HEIGHT / 2 ? "top-full mt-1.5" : "bottom-full mb-1.5",
+                  tile.x < LAYOUT_WIDTH / 2 ? "left-0" : "right-0",
+                )}
+              >
+                <p className="font-semibold text-[12px] text-[var(--text)]">{row.industry}</p>
+                <p className="mt-1 font-num text-[13px] text-[color:var(--text)] tabular-nums">
+                  <span style={{ color: up ? "var(--up)" : "var(--down)" }}>
+                    {arrow}
+                    {pctLabel}
+                  </span>
+                </p>
+                <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                  {t("stockCount", { count: row.stock_count })}
+                </p>
+                <div className="mt-1.5 flex items-center gap-2 text-[11px]">
+                  <span style={{ color: "var(--up)" }}>
+                    ▲{formatNumber(row.advancing_count, locale)}
+                  </span>
+                  <span style={{ color: "var(--down)" }}>
+                    ▼{formatNumber(row.declining_count, locale)}
+                  </span>
+                </div>
+                {row.total_turnover !== null ? (
+                  <p className="mt-1.5 font-num text-[10.5px] text-[var(--text-muted)] tabular-nums">
+                    {t("turnover", {
+                      value: formatNumber(row.total_turnover / 1_0000_0000, locale, {
+                        decimals: 1,
+                      }),
+                    })}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         );
       })}
