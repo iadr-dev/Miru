@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeleton } from "@/components/market/card-skeleton";
 import { HolderAccumulationCard } from "@/components/market/holder-accumulation-card";
+import { IndustryMoneyFlowCard } from "@/components/market/industry-money-flow-card";
 import { InsiderTransferDeclarationPanel } from "@/components/market/insider-transfer-declaration-panel";
 import { InstitutionalFlowCard } from "@/components/market/institutional-flow-card";
 import { MarginMaintenanceCard } from "@/components/market/margin-maintenance-card";
@@ -13,6 +14,7 @@ import { RainbowBorderCard } from "@/components/market/rainbow-border-card";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import {
   getHolderAccumulation,
+  getIndustryFlow,
   getInstitutionalRanking,
   getMarginMaintenance,
   getMarginShortBalance,
@@ -45,11 +47,10 @@ function oneYearWindow(): { startDate: string; endDate: string } {
 }
 
 /**
- * 籌碼 — the TW tab's chip-data sub-tab: 三大法人買賣超, 融資維持率 (+ 融資券餘額), and
- * 大戶加碼股. These three cards previously rendered directly in `MarketPanel`'s `renderTw`
- * (the margin-maintenance card lived in the sibling `TopSplit`) — relocated here as the TW tab
- * grows real sub-tabs (`docs/web/market.md`'s Row-2 view-tab spec: 每日焦點/熱力圖/籌碼/產業/
- * 新聞/處置/名人), mirroring `EtfTabContent`'s own per-sub-tab panel split.
+ * 籌碼 — the TW tab's chip-data sub-tab: 三大法人買賣超, 融資維持率 (+ 融資券餘額), 大戶加碼股,
+ * and 產業鏈資金流向 (moved here from 熱力圖 — a chip/institutional-flow read, the same family
+ * as this sub-tab's other cards). 內部人股權轉讓事前申報 renders below the grid as its own
+ * full-width row. Mirrors `EtfTabContent`'s own per-sub-tab panel split.
  */
 export function ChipDataPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards");
@@ -77,6 +78,11 @@ export function ChipDataPanel({ market }: { readonly market: Market }): ReactNod
     queryKey: ["holder_accumulation", market, holderThreshold, holderWindow],
     queryFn: () =>
       getHolderAccumulation(market, holderThreshold, holderWindow, undefined, MAX_TOP_N),
+  });
+
+  const industryFlowQuery = useQuery({
+    queryKey: ["industry_money_flow", market],
+    queryFn: () => getIndustryFlow(market),
   });
 
   return (
@@ -145,12 +151,30 @@ export function ChipDataPanel({ market }: { readonly market: Market }): ReactNod
           </QueryState>
         </RainbowBorderCard>
 
-        {/* Fills the grid cell to 大戶加碼股's right — the grid has 3 cards on a 2-col layout,
-            leaving that cell empty otherwise. */}
+        {/* Fills the grid cell to 大戶加碼股's right — the grid has 4 cards on a 2-col layout. */}
         <RainbowBorderCard className="flex h-full">
-          <InsiderTransferDeclarationPanel market={market} />
+          <QueryState query={industryFlowQuery} skeleton={<CardSkeleton height={470} />}>
+            {(data) => {
+              if (isMaskedTeaser(data)) {
+                return (
+                  <SponsorTeaser
+                    headline={t("industryFlow.title")}
+                    preview={data.preview}
+                    requiredTier={data.required_tier}
+                  >
+                    <div className="h-52 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
+                  </SponsorTeaser>
+                );
+              }
+              return <IndustryMoneyFlowCard rows={data.rows} />;
+            }}
+          </QueryState>
         </RainbowBorderCard>
       </div>
+
+      <RainbowBorderCard>
+        <InsiderTransferDeclarationPanel market={market} />
+      </RainbowBorderCard>
     </div>
   );
 }

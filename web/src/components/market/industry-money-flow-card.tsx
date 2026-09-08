@@ -1,20 +1,25 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type { IndustryChainMoneyFlowRow } from "@/types/market";
 
 const MAX_BAR_PCT = 40; // clamps the bar-length scale so one dominant chain doesn't flatten the rest
+// Same collapsed-row-count convention every other market card in this dashboard uses.
+const INDUSTRY_MONEY_FLOW_COLLAPSED_ROW_COUNT = 10;
 
 /**
- * 產業鏈資金流向 ranked list — one row per industry-chain TOTAL (`sub_industry === ""`; excludes
- * sub-industry rows, which don't sum to the chain total — see `IndustryChainMoneyFlowRow`'s own
- * docstring), ranked by `trading_money_pct` descending. Bar fill uses `--chart-1` rather than
- * `--up`/`--down`: `trading_money_pct` is a non-signed share-of-market-turnover figure, not a
- * price/% change, so the signed 紅漲綠跌 tokens don't apply — this is exactly the "categorical,
- * never signed" case `--chart-1..6` exists for.
+ * 產業鏈資金流向 card — title + ranked list. One row per industry-chain TOTAL
+ * (`sub_industry === ""`; excludes sub-industry rows, which don't sum to the chain total — see
+ * `IndustryChainMoneyFlowRow`'s own docstring), ranked by `trading_money_pct` descending. Bar
+ * fill uses `--chart-1` rather than `--up`/`--down`: `trading_money_pct` is a non-signed
+ * share-of-market-turnover figure, not a price/% change, so the signed 紅漲綠跌 tokens don't
+ * apply — this is exactly the "categorical, never signed" case `--chart-1..6` exists for.
+ * Collapses to the top 10 inline, same "展開完整 N 筆" `ExpandModal` pattern every other
+ * ranked-list market card in this dashboard follows.
  */
 export function IndustryMoneyFlowCard({
   rows,
@@ -22,18 +27,58 @@ export function IndustryMoneyFlowCard({
   readonly rows: readonly IndustryChainMoneyFlowRow[];
 }): ReactNode {
   const t = useTranslations("market.cards.industryFlow");
-  const locale = useLocale();
+  const [expanded, setExpanded] = useState(false);
   const totals = [...rows]
     .filter((row) => row.sub_industry === "")
     .sort((a, b) => b.trading_money_pct - a.trading_money_pct);
 
-  if (totals.length === 0) {
-    return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
-  }
+  return (
+    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
+      {totals.length === 0 ? (
+        <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
+      ) : (
+        <>
+          <IndustryMoneyFlowRows rows={totals.slice(0, INDUSTRY_MONEY_FLOW_COLLAPSED_ROW_COUNT)} />
+          {totals.length > INDUSTRY_MONEY_FLOW_COLLAPSED_ROW_COUNT ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className={cn(
+                "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+              )}
+            >
+              <span>{t("expandTo", { count: totals.length })}</span>
+            </button>
+          ) : null}
+          <ExpandModal
+            open={expanded}
+            title={t("title")}
+            closeLabel={t("collapse")}
+            onClose={() => setExpanded(false)}
+          >
+            <IndustryMoneyFlowRows rows={totals} />
+          </ExpandModal>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** The row list itself, shared verbatim between the card's inline (sliced) preview and the
+ * `ExpandModal` full list. */
+function IndustryMoneyFlowRows({
+  rows,
+}: {
+  readonly rows: readonly IndustryChainMoneyFlowRow[];
+}): ReactNode {
+  const t = useTranslations("market.cards.industryFlow");
+  const locale = useLocale();
 
   return (
     <ul className="flex flex-col gap-2.5">
-      {totals.map((row) => {
+      {rows.map((row) => {
         const barWidth = Math.min((row.trading_money_pct / MAX_BAR_PCT) * 100, 100);
         return (
           <li
