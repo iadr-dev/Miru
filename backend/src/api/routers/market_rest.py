@@ -372,6 +372,28 @@ async def sector_heatmap(
     return await _dispatch(state, "get_sector_heatmap", args, ctx)
 
 
+@router.get("/market/stock-heatmap")
+async def stock_heatmap(
+    market: Market = Query(Market.TW),
+    trade_date: date_ | None = Query(None),
+    period: Literal[
+        "immediate", "week", "two_weeks", "month", "quarter", "half_year", "year"
+    ] = Query("immediate"),
+    size_by: Literal["turnover", "market_value", "volume"] = Query("turnover"),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Whole-market flat per-stock heatmap (股票熱力圖) for one trading day (defaults to the
+    latest available day): the top-ranked stocks' own percentage change over `period`, close,
+    turnover/market-value/volume for `size_by`'s tile-sizing, and industry — the per-ticker
+    counterpart to `/market/sector-heatmap`'s per-industry aggregate tiles. Same single-
+    `trade_date` shape as `/sector-heatmap`, not a start/end range."""
+    args: dict[str, object] = {"market": market.value, "period": period, "size_by": size_by}
+    if trade_date is not None:
+        args["trade_date"] = trade_date.isoformat()
+    return await _dispatch(state, "get_stock_heatmap", args, ctx)
+
+
 @router.get("/market/sector-constituents")
 async def sector_constituents(
     market: Market = Query(Market.TW),

@@ -65,11 +65,13 @@ import {
   type SectorHeatmapResponse,
   type SectorHeatmapSizeBy,
   type SectorRotationResponse,
+  type StockHeatmapResponse,
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
   sectorConstituentsResponseSchema,
   sectorHeatmapResponseSchema,
   sectorRotationResponseSchema,
+  stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
   tickSnapshotResponseSchema,
@@ -414,6 +416,24 @@ export async function getSectorRotation(
   if (endDate) search.set("end_date", endDate);
   const raw = await requestJson(`/market/sector-rotation?${search.toString()}`);
   return sectorRotationResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14e. GET /market/stock-heatmap (public, flat per-stock 股票熱力圖)
+// ---------------------------------------------------------------------------
+
+export async function getStockHeatmap(
+  market: Market,
+  tradeDate?: string,
+  period?: SectorHeatmapPeriod,
+  sizeBy?: SectorHeatmapSizeBy,
+): Promise<StockHeatmapResponse> {
+  const search = new URLSearchParams({ market });
+  if (tradeDate) search.set("trade_date", tradeDate);
+  if (period) search.set("period", period);
+  if (sizeBy) search.set("size_by", sizeBy);
+  const raw = await requestJson(`/market/stock-heatmap?${search.toString()}`);
+  return stockHeatmapResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

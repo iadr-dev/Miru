@@ -763,6 +763,36 @@ export const sectorRotationResponseSchema = sectorRotationDataSchema;
 export type SectorRotationResponse = z.infer<typeof sectorRotationResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 14e. GET /market/stock-heatmap — get_stock_heatmap (public, flat per-stock 股票熱力圖)
+// ---------------------------------------------------------------------------
+
+export const stockHeatmapRowSchema = z.object({
+  symbol: z.string(),
+  stock_name: z.string(),
+  industry: z.string(),
+  pct_change: z.number(),
+  close: z.number(),
+  turnover: z.number().nullable(),
+  volume: z.number(),
+  market_value: z.number().nullable(),
+});
+export type StockHeatmapRow = z.infer<typeof stockHeatmapRowSchema>;
+
+export const stockHeatmapDataSchema = z.object({
+  market: z.string(),
+  trade_date: z.string().nullable(),
+  prior_trade_date: z.string().nullable(),
+  period: sectorHeatmapPeriodSchema.default("immediate"),
+  size_by: sectorHeatmapSizeBySchema.default("turnover"),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  stocks: z.array(stockHeatmapRowSchema).default([]),
+});
+export type StockHeatmapData = z.infer<typeof stockHeatmapDataSchema>;
+export const stockHeatmapResponseSchema = stockHeatmapDataSchema;
+export type StockHeatmapResponse = z.infer<typeof stockHeatmapResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 15. GET /market/margin-short-balance — get_margin_short_total_market (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

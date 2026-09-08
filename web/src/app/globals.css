@@ -140,3 +140,15 @@ body {
     --rainbow-angle: 360deg;
   }
 }
+
+/* 板塊輪動 particle-sphere view (sector-rotation-particle-sphere.tsx) — a fixed-speed 3D rotation
+ * around the Y axis, never magnitude-scaled by any node's data (web/CLAUDE.md §4). Duration is
+ * set inline per-instance via `animationDuration`; this keyframe only defines the motion path. */
+@keyframes sector-sphere-spin {
+  from {
+    transform: rotateY(0deg);
+  }
+  to {
+    transform: rotateY(360deg);
+  }
+}
