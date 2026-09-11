@@ -90,30 +90,41 @@ async def fetch_feed_events(
 ) -> tuple[tuple[CalendarEvent, ...], SourceResult]:
     """Layer 2/3 — fetch `calendar_events` for one `(symbol, market)` over `[start, end]`.
 
-    Returns both the parsed events (possibly empty) and the raw `SourceResult` so the caller
-    can surface source health/currentness — degrades gracefully when no adapter is configured
-    for this capability/market (the router's own `unavailable` result, never a hard failure).
+    Merges EVERY configured adapter's contribution (`router.fetch_all`), not just the first
+    healthy one — `calendar_events` today composes NCDR closure alerts and TWSE AGM/ex-rights
+    schedules, two disjoint feeds that both apply to a stock's calendar at once rather than one
+    superseding the other (see `config/source_priority.yaml`'s own comment on this capability).
+    Returns both the parsed events (possibly empty) and one representative `SourceResult` (the
+    first healthy adapter's, or the last adapter's if none were healthy) so the caller can still
+    surface source health/currentness — degrades gracefully when no adapter is configured for
+    this capability/market (the router's own `unavailable` result, never a hard failure).
     """
-    result = await router.fetch(
+    results = await router.fetch_all(
         Capability.CALENDAR_EVENTS,
         symbol,
         tls_policy=tls_policy,
         start_date=start_date.isoformat(),
         end_date=end_date.isoformat(),
     )
-    if result.health.status is not HealthStatus.OK:
+    if not results:
+        result = await router.fetch(Capability.CALENDAR_EVENTS, symbol, tls_policy=tls_policy)
         return (), result
 
-    rows = result.payload.get(_FEED_ROW_KEY)
-    if not isinstance(rows, list):
-        return (), result
-    typed_rows = cast(_UntypedRows, rows)
-    events = tuple(
-        event
-        for row in typed_rows
-        if (event := _feed_event_from_row(row, symbol, result.source_id)) is not None
-    )
-    return events, result
+    events: list[CalendarEvent] = []
+    for result in results:
+        if result.health.status is not HealthStatus.OK:
+            continue
+        rows = result.payload.get(_FEED_ROW_KEY)
+        if not isinstance(rows, list):
+            continue
+        typed_rows = cast(_UntypedRows, rows)
+        events.extend(
+            event
+            for row in typed_rows
+            if (event := _feed_event_from_row(row, symbol, result.source_id)) is not None
+        )
+    representative = next((r for r in results if r.health.status is HealthStatus.OK), results[-1])
+    return tuple(events), representative
 
 
 def _dividend_event_from_row(

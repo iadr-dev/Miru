@@ -22,9 +22,23 @@ class PttGateway:
         self._adapter = adapter or PttAdapter()
 
     async def fetch_board(
-        self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+        self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT, lookback_days: int = 1
     ) -> SourceResult:
-        return await self._adapter.fetch_board(board=board, tls_policy=tls_policy)
+        return await self._adapter.fetch_board(
+            board=board, tls_policy=tls_policy, lookback_days=lookback_days
+        )
+
+    async def search_boards(
+        self,
+        *,
+        boards: list[str],
+        needles: list[str],
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
+        lookback_days: int = 7,
+    ) -> SourceResult:
+        return await self._adapter.search_boards(
+            boards=boards, needles=needles, tls_policy=tls_policy, lookback_days=lookback_days
+        )
 
 
 __all__ = ["PttGateway"]

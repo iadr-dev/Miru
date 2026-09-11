@@ -22,9 +22,30 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, body: object) -> None:
     monkeypatch.setattr(twse_module, "build_async_client", make_json_client_factory(body))
 
 
-def test_supports_price_eod_tw_only() -> None:
+def _patch_client_by_url(
+    monkeypatch: pytest.MonkeyPatch, bodies_by_suffix: dict[str, object]
+) -> None:
+    """Route each request by URL suffix to its own fixture body — needed for
+    `_fetch_calendar_events`, which makes two independent GETs (AGM + ex-rights) per call."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        for suffix, body in bodies_by_suffix.items():
+            if str(request.url).endswith(suffix):
+                return httpx.Response(200, json=body)
+        raise AssertionError(f"unexpected URL in test: {request.url}")
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(twse_module, "build_async_client", factory)
+
+
+def test_supports_price_eod_and_calendar_events_tw_only() -> None:
     adapter = TwseOpenApiAdapter()
-    assert adapter.supports() == {(Capability.PRICE_EOD, Market.TW)}
+    assert adapter.supports() == {
+        (Capability.PRICE_EOD, Market.TW),
+        (Capability.CALENDAR_EVENTS, Market.TW),
+    }
 
 
 def test_validate_rejects_non_list_rows() -> None:
@@ -168,3 +189,102 @@ async def test_fetch_whole_market_disposition_events_drops_row_with_bad_period(
     assert isinstance(rows, list)
     assert len(rows) == 1
     assert rows[0]["symbol"] == "3406"  # type: ignore[index]
+
+
+_AGM_ROW = {
+    "出表日期": "1150908",
+    "公司代號": "2330",
+    "公司名稱": "台積電",
+    "公司地址": "新竹科學園區力行六路8號",
+    "股東常(臨時)會": "常會",
+    "開會日期": "1150528",
+    "開會地點": "新竹",
+    "是否改選董監": "否",
+    "聯絡電話": "",
+    "股務單位": "",
+    "股務單位電話": "",
+    "是否採電子投票": "強制",
+}
+_AGM_ROW_OTHER_SYMBOL = {**_AGM_ROW, "公司代號": "1101", "公司名稱": "台泥"}
+_EX_RIGHTS_ROW_DIVIDEND_ONLY = {
+    "Date": "1150907",
+    "Code": "2330",
+    "Name": "台積電",
+    "Exdividend": "息",
+    "StockDividendRatio": "",
+    "SubscriptionRatio": "",
+    "SubscriptionPricePerShare": "",
+    "CashDividend": "7.000001",
+    "SharesOffered": "",
+    "SharesEmpOwner": "",
+    "SharesholderOwner": "",
+    "StockHoldingRatio": "",
+}
+_EX_RIGHTS_ROW_WITH_CASH_INCREASE = {
+    **_EX_RIGHTS_ROW_DIVIDEND_ONLY,
+    "SubscriptionRatio": "0.05",
+}
+_EX_RIGHTS_ROW_OTHER_SYMBOL = {**_EX_RIGHTS_ROW_DIVIDEND_ONLY, "Code": "1101", "Name": "台泥"}
+
+
+async def test_fetch_calendar_events_filters_to_requested_symbol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_client_by_url(
+        monkeypatch,
+        {
+            "t187ap41_L": [_AGM_ROW, _AGM_ROW_OTHER_SYMBOL],
+            "TWT48U_ALL": [_EX_RIGHTS_ROW_DIVIDEND_ONLY, _EX_RIGHTS_ROW_OTHER_SYMBOL],
+        },
+    )
+    adapter = TwseOpenApiAdapter()
+    sym = Symbol(id="2330", market=Market.TW)
+
+    result = await adapter.fetch(Capability.CALENDAR_EVENTS, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.OK
+    events = result.payload["events"]
+    assert isinstance(events, list)
+    assert len(events) == 2
+    types = {e["type"] for e in events}  # type: ignore[union-attr]
+    assert types == {"agm", "dividend_ex_rights"}
+
+
+async def test_fetch_calendar_events_splits_dividend_and_cash_increase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A row with both `Exdividend` and a non-empty `SubscriptionRatio` yields two distinct
+    events — the ex-rights price adjustment and the separate cash-capital-increase
+    subscription entitlement, not one merged row."""
+    _patch_client_by_url(
+        monkeypatch,
+        {"t187ap41_L": [], "TWT48U_ALL": [_EX_RIGHTS_ROW_WITH_CASH_INCREASE]},
+    )
+    adapter = TwseOpenApiAdapter()
+    sym = Symbol(id="2330", market=Market.TW)
+
+    result = await adapter.fetch(Capability.CALENDAR_EVENTS, sym, tls_policy=TLSPolicy.STRICT)
+
+    events = result.payload["events"]
+    assert isinstance(events, list)
+    types = {e["type"] for e in events}  # type: ignore[union-attr]
+    assert types == {"dividend_ex_rights", "cash_capital_increase_rights"}
+
+
+async def test_fetch_calendar_events_both_feeds_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("boom")
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(twse_module, "build_async_client", factory)
+    adapter = TwseOpenApiAdapter()
+    sym = Symbol(id="2330", market=Market.TW)
+
+    result = await adapter.fetch(Capability.CALENDAR_EVENTS, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert result.payload == {}

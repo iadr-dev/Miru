@@ -146,3 +146,94 @@ class TestInsiderTransferDeclarationRoute:
         assert body["report_date"] == "2026-09-03"
         assert sorted(body["available_dates"]) == ["2026-09-01", "2026-09-03"]
         assert body["rows"][0]["symbol"] == "2884"
+
+
+class TestStockInsiderTransferDeclarationRoute:
+    """基本資料's 董監事持股 card, 持股轉讓 sub-tab — the new `/stock/*` route, same whole-market
+    feed as above but filtered server-side to one `symbol`."""
+
+    def test_filters_to_the_requested_symbol_only(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = ParquetStore(root=tmp_path)
+        store.write_partition(
+            "insider_transfer_declaration",
+            "TW",
+            date_(2026, 9, 3),
+            [
+                _row(),
+                _row(
+                    symbol="6603",
+                    company_name="聯友金屬-創",
+                    person_name="王小明",
+                    transferee="張又仁",
+                ),
+            ],
+        )
+        client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get(
+            "/api/v1/stock/insider-transfer-declarations",
+            params={"symbol": "2884", "market": "TW", "trade_date": "2026-09-03"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is True
+        assert len(body["rows"]) == 1
+        assert body["rows"][0]["symbol"] == "2884"
+        assert body["rows"][0]["person_name"] == "鄭恩融"
+
+    def test_no_rows_for_symbol_returns_empty_list_not_unavailable(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A day with real data, just none for THIS symbol, must stay `data_available: true`
+        with an empty `rows` — never re-labeled as "unavailable" (that's reserved for "ingest
+        has no partition for this day at all," a different, honest condition)."""
+        store = ParquetStore(root=tmp_path)
+        store.write_partition(
+            "insider_transfer_declaration", "TW", date_(2026, 9, 3), [_row(symbol="6603")]
+        )
+        client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get(
+            "/api/v1/stock/insider-transfer-declarations",
+            params={"symbol": "2884", "market": "TW", "trade_date": "2026-09-03"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is True
+        assert body["rows"] == []
+
+    def test_reports_unavailable_when_no_partition_at_all(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get(
+            "/api/v1/stock/insider-transfer-declarations",
+            params={"symbol": "2884", "market": "TW"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is False
+        assert body["rows"] == []
+
+    def test_requires_symbol(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        resp = client.get("/api/v1/stock/insider-transfer-declarations")
+        assert resp.status_code == 422

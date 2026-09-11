@@ -31,6 +31,23 @@ from sources.finmind import FinMindAdapter
 from tests.sources.conftest import load_fixture, make_json_client_factory
 
 
+def _stub_non_finmind_daily_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`run_backfill_cli` also calls `_run_non_finmind_forward_only_jobs_for_today` (six real
+    network-hitting jobs — MOPS/TWSE/TPEX/yfinance) and `_backfill_etf_expense_ratio` (SITCA,
+    also real network). Every test exercising `run_backfill_cli`'s generic per-spec loop stubs
+    both out so neither contributes a `JobRun` or makes a network call, keeping this file's own
+    assertions scoped to the behavior each test actually means to exercise."""
+
+    async def _noop(_ctx: IngestContext) -> tuple[JobRun, ...]:
+        return ()
+
+    async def _noop_with_years(_ctx: IngestContext, *, years: int) -> tuple[JobRun, ...]:
+        return ()
+
+    monkeypatch.setattr(backfill_cli_module, "_run_non_finmind_forward_only_jobs_for_today", _noop)
+    monkeypatch.setattr(backfill_cli_module, "_backfill_etf_expense_ratio", _noop_with_years)
+
+
 def _settings(**overrides: object) -> Settings:
     # `_env_file=None` so a developer's local `.env` (which may set `INGEST_ON_STARTUP=true`
     # for their own dev workflow) can never leak into these tests' expectations.
@@ -136,6 +153,7 @@ async def test_override_runs_every_spec_and_one_failure_does_not_block_the_rest(
 
     monkeypatch.setattr(backfill_cli_module, "run_preflight_if_enabled", _fake_preflight)
     monkeypatch.setattr(backfill_cli_module, "job_shareholding_distribution", _fake_shareholding)
+    _stub_non_finmind_daily_jobs(monkeypatch)
 
     runs = await run_backfill_cli(settings, ctx, override=True, years=1)
 
@@ -206,6 +224,141 @@ async def test_shareholding_backfill_skips_weeks_already_covered_by_a_known_part
     # The one week in range was already covered by the 2024-01-05 partition — no FinMind call.
     assert called == []
     assert runs == ()
+
+
+async def test_non_finmind_forward_only_jobs_all_run_for_today_and_land_in_the_aggregate(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard for the gap a live audit found: `etf_nav`/`etf_aum` (and the four MOPS/
+    TWSE/TPEX forward-only jobs) are not `WholeMarketJobSpec`s, so the generic per-spec loop
+    never reaches them — `run_backfill_cli` must call `_run_non_finmind_forward_only_jobs_for_
+    today` itself and fold its six runs into the returned tuple, or a stale gap in exactly these
+    six datasets is invisible to an operator reading the CLI's own summary."""
+    body = load_fixture("finmind", "price_eod_whole_market_2024-01-02.json")
+    monkeypatch.setattr(finmind_module, "build_async_client", make_json_client_factory(body))
+    settings = _settings()
+    ctx = _ctx(tmp_path)
+
+    async def _fake_preflight(
+        spec: WholeMarketJobSpec,
+        _ctx: IngestContext,
+        *,
+        ingest_on_startup: bool,
+        dev_backfill_years: int,
+        now: object | None = None,
+    ) -> tuple[JobRun, ...]:
+        return ()
+
+    async def _fake_shareholding(run_date: date, _ctx: IngestContext) -> JobRun:
+        return JobRun(
+            dataset=SHAREHOLDING_DISTRIBUTION_JOB.dataset,
+            run_date=run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+        )
+
+    async def _noop_expense_ratio_backfill(
+        _ctx: IngestContext, *, years: int
+    ) -> tuple[JobRun, ...]:
+        return ()
+
+    called: list[str] = []
+
+    def _fake_job(name: str) -> object:
+        async def _job(run_date: date, _ctx: IngestContext) -> JobRun:
+            called.append(name)
+            return JobRun(dataset=name, run_date=run_date, rows_written=1, status=RunStatus.SUCCESS)
+
+        return _job
+
+    monkeypatch.setattr(backfill_cli_module, "run_preflight_if_enabled", _fake_preflight)
+    monkeypatch.setattr(backfill_cli_module, "job_shareholding_distribution", _fake_shareholding)
+    monkeypatch.setattr(
+        backfill_cli_module, "_backfill_etf_expense_ratio", _noop_expense_ratio_backfill
+    )
+    monkeypatch.setattr(backfill_cli_module, "job_etf_nav", _fake_job("etf_nav"))
+    monkeypatch.setattr(backfill_cli_module, "job_etf_aum", _fake_job("etf_aum"))
+    monkeypatch.setattr(
+        backfill_cli_module, "job_material_announcements", _fake_job("material_announcements")
+    )
+    monkeypatch.setattr(
+        backfill_cli_module,
+        "job_insider_transfer_declaration",
+        _fake_job("insider_transfer_declaration"),
+    )
+    monkeypatch.setattr(backfill_cli_module, "job_attention_stocks", _fake_job("attention_stocks"))
+    monkeypatch.setattr(
+        backfill_cli_module, "job_disposition_events", _fake_job("disposition_events")
+    )
+
+    runs = await run_backfill_cli(settings, ctx, override=True, years=1)
+
+    assert called == [
+        "etf_nav",
+        "etf_aum",
+        "material_announcements",
+        "insider_transfer_declaration",
+        "attention_stocks",
+        "disposition_events",
+    ]
+    non_finmind_runs = {r.dataset for r in runs} & set(called)
+    assert non_finmind_runs == set(called)
+
+
+async def test_etf_expense_ratio_backfill_walks_months_and_skips_known_ones(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard for `_backfill_etf_expense_ratio`: unlike the six forward-only jobs
+    above, SITCA's own report accepts a past month, so this one gets a real monthly walk over
+    `years` — and a month already covered by a known partition must be skipped, mirroring
+    `_backfill_shareholding_distribution`'s own skip-if-known-date behavior at weekly grain."""
+    ctx = _ctx(tmp_path)
+
+    # 2024-02 already has a real partition — must be skipped. 2024-01 and 2024-03 do not.
+    ctx.store.write_partition(
+        "etf_expense_ratio",
+        ctx.market.value,
+        date(2024, 2, 15),
+        [
+            {
+                "symbol": "0050",
+                "market": "TW",
+                "as_of": "2024-02-15",
+                "management_fee_pct": 0.32,
+                "custody_fee_pct": 0.035,
+                "total_expense_ratio_pct_approx": 0.355,
+                "custodian_bank": "台灣集中保管結算所股份有限公司",
+            }
+        ],
+    )
+
+    called: list[date] = []
+
+    async def _fake_job(run_date: date, _ctx: IngestContext) -> JobRun:
+        called.append(run_date)
+        return JobRun(
+            dataset="etf_expense_ratio", run_date=run_date, rows_written=1, status=RunStatus.SUCCESS
+        )
+
+    monkeypatch.setattr(backfill_cli_module, "job_etf_expense_ratio", _fake_job)
+    monkeypatch.setattr(
+        backfill_cli_module,
+        "last_available_trading_day",
+        lambda _calendar, *, now: date(2024, 3, 29),
+    )
+    monkeypatch.setattr(
+        TradingDayCalendar,
+        "shift_business_days",
+        lambda self, day, offset: date(2024, 1, 2),
+    )
+
+    runs = await backfill_cli_module._backfill_etf_expense_ratio(ctx, years=1)
+
+    # January and March were fetched (resolved to their first real trading day); February,
+    # already covered by the known partition above, made no call at all.
+    assert called == [date(2024, 3, 1), date(2024, 1, 1)]
+    assert len(runs) == 2
+    assert all(r.status is RunStatus.SUCCESS for r in runs)
 
 
 async def test_derived_compute_catchup_covers_every_missing_day_not_just_the_latest(

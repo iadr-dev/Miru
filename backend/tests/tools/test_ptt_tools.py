@@ -15,7 +15,7 @@ class _FakePttGateway:
         self.calls: list[str] = []
 
     async def fetch_board(
-        self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+        self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT, lookback_days: int = 1
     ) -> SourceResult:
         self.calls.append(board)
         board_tag = "offtopic" if board in ("Beauty", "Gossiping") else "stock_buzz"
@@ -78,7 +78,7 @@ async def test_get_ptt_board_passes_through_offtopic_tag() -> None:
 async def test_get_ptt_board_handles_no_posts() -> None:
     class _EmptyGateway:
         async def fetch_board(
-            self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+            self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT, lookback_days: int = 1
         ) -> SourceResult:
             return SourceResult(
                 source_id="PTT",

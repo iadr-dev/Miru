@@ -176,6 +176,8 @@ class PttPost(BaseModel):
     author: str
     push_count: str  # raw upstream token: an int-like string, "爆", or "X87" (net negative)
     link: str
+    posted_date: str | None = None  # ISO "YYYY-MM-DD", resolved from the index's bare "M/D" —
+    # None only if that resolution itself fails (never fabricated)
 
 
 class MaterialAnnouncement(BaseModel):

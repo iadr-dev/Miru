@@ -134,5 +134,28 @@ class DataAccessRouter:
             return last_result
         return _unavailable_result(cap, sym)
 
+    async def fetch_all(
+        self,
+        cap: Capability,
+        sym: Symbol,
+        *,
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
+        **params: object,
+    ) -> list[SourceResult]:
+        """Call every configured adapter for `(market, capability)` and return each one's
+        result, never stopping at the first healthy one.
+
+        Distinct from `fetch()`'s priority-fallback semantics on purpose: some capabilities
+        (`calendar_events`) legitimately have multiple adapters that each contribute a disjoint
+        slice of the same logical feed (NCDR closures + TWSE AGM/ex-rights schedules both apply
+        to a stock's calendar at once) rather than one adapter superseding another. A caller
+        that wants first-healthy-wins semantics still uses `fetch()`; a caller that wants to
+        merge every adapter's contribution uses this instead."""
+        adapters = self.resolve(sym.market, cap)
+        results: list[SourceResult] = []
+        for adapter in adapters:
+            results.append(await adapter.fetch(cap, sym, tls_policy=tls_policy, **params))
+        return results
+
 
 __all__ = ["DataAccessRouter", "load_priority_config"]

@@ -62,10 +62,22 @@ _LOCK_WAIT_TIMEOUT_SECONDS = 10.0
 
 
 def _cache_key(
-    prefix: str, cap: Capability, market: Market, sym: Symbol, params: dict[str, object]
+    prefix: str,
+    source_id: str,
+    cap: Capability,
+    sym: Symbol,
+    *,
+    params: dict[str, object],
 ) -> str:
-    """`(capability, market, symbol[, date])` per spec — multi-market data never collides."""
-    parts = [prefix, market.value, cap.value, sym.id]
+    """`(source, capability, market, symbol[, date])` — `source_id` is required, not cosmetic:
+    two distinct adapters can be registered for the same `(capability, market)` pair (e.g.
+    `ncdr_closure` + `twse_openapi` both serve `calendar_events` for TW, merged rather than
+    priority-fallback — see `calendar/events.py::fetch_feed_events`) and each wraps its own
+    `CachingSourceAdapter` instance. Without `source_id` in the key, both wrappers would read/
+    write the identical Redis key for the same symbol, so one adapter's cached result would be
+    silently served back for the other's `fetch()` call — confirmed as a real bug this way, not
+    a hypothetical."""
+    parts = [prefix, source_id, sym.market.value, cap.value, sym.id]
     for name in _DATE_PARAM_NAMES:
         value = params.get(name)
         if value is not None:
@@ -124,7 +136,7 @@ class CachingSourceAdapter:
         tls_policy: TLSPolicy,
         **params: object,
     ) -> SourceResult:
-        key = _cache_key(self._prefix, cap, sym.market, sym, params)
+        key = _cache_key(self._prefix, self.source_id, cap, sym, params=params)
         try:
             cached = await self._redis.get(key)
         except RedisError:

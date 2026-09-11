@@ -20,6 +20,24 @@ score/screener batches are derived-compute passes over those pulls' own output, 
 `WholeMarketJobSpec`s, so `run_preflight_if_enabled`'s per-spec gap-fill never reaches them — see
 that function's own docstring for why a dev restart otherwise leaves them permanently stuck at
 "not yet computed" until the next scheduled fire time.
+
+`run_backfill_cli` also runs `_run_non_finmind_forward_only_jobs_for_today` — six more TW jobs
+that are not `WholeMarketJobSpec`s either (`job_etf_nav`/`job_etf_aum`, the two MOPS jobs, the
+two TWSE+TPEX 處置王-board jobs). A live audit this session found these six sitting stale for
+days while `run_backfill_cli` reported a clean `failed_runs=0` — the CLI's own per-spec loop
+simply never walks them, so a stale gap was invisible in its own summary. All six hit upstream
+endpoints with no date parameter at all (confirmed live, one by one) — see that function's own
+docstring for why they're called for today only, not walked back over `years` of history the way
+FinMind specs are; the function is named for that forward-only constraint specifically, not
+"non-FinMind" in general, since `job_etf_expense_ratio` below is also non-FinMind but does NOT
+share that constraint.
+
+A seventh non-`WholeMarketJobSpec` TW job, `job_etf_expense_ratio` (SITCA fee disclosure), is
+walked separately by `_backfill_etf_expense_ratio` — unlike the six above, SITCA's own report
+form genuinely accepts a past month (confirmed live this session: real per-fund rows for
+non-latest months, not just "now"), so it gets a real monthly backfill over `years` with a
+skip-if-already-ingested check, the same shape `_backfill_shareholding_distribution` uses for its
+own weekly cadence.
 """
 
 from __future__ import annotations
@@ -39,8 +57,16 @@ from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings
 from ingest.jobs import (
     DAILY_WHOLE_MARKET_JOBS,
+    ETF_EXPENSE_RATIO_DATASET,
     SHAREHOLDING_DISTRIBUTION_JOB,
     WholeMarketJobSpec,
+    job_attention_stocks,
+    job_disposition_events,
+    job_etf_aum,
+    job_etf_expense_ratio,
+    job_etf_nav,
+    job_insider_transfer_declaration,
+    job_material_announcements,
     job_shareholding_distribution,
 )
 from ingest.journal import JobRun, RunStatus
@@ -161,7 +187,57 @@ async def run_backfill_cli(
         all_runs.extend(runs)
 
     all_runs.extend(await _backfill_shareholding_distribution(ctx, years=years))
+    all_runs.extend(await _backfill_etf_expense_ratio(ctx, years=years))
+    all_runs.extend(await _run_non_finmind_forward_only_jobs_for_today(ctx))
     return tuple(all_runs)
+
+
+async def _run_non_finmind_forward_only_jobs_for_today(ctx: IngestContext) -> tuple[JobRun, ...]:
+    """Six TW jobs `DAILY_WHOLE_MARKET_JOBS`'s generic per-spec loop never reaches, run directly
+    for TODAY only — the same direct-call treatment `ingest/__main__.py::_tw_gap_fill` already
+    gives four of them (mirrored here so the CLI operator path and the daemon startup path can't
+    silently drift apart). Named for the constraint every one of these six shares — their
+    upstream endpoint has no date parameter at all, confirmed live one by one, so "today" is the
+    only value that could ever be fetched — not "non-FinMind" in general: `job_etf_expense_ratio`
+    is also non-FinMind but is walked separately by `_backfill_etf_expense_ratio` below, since
+    its upstream (SITCA) genuinely does accept a past month.
+
+    - `job_etf_nav`/`job_etf_aum` (TWSE/yfinance-sourced ETF NAV + AUM, not a `WholeMarketJobSpec`
+      — confirmed missing from a live backfill run this session: both sat stale for days with
+      `run_backfill_cli` reporting a clean `failed_runs=0` the whole time, since a spec it never
+      walks can't be gap-filled by it). `job_etf_aum` depends on `job_etf_nav`'s own
+      already-ingested roster (`_latest_etf_nav_symbols`), so NAV must run first.
+    - `job_material_announcements`/`job_insider_transfer_declaration` (MOPS) and
+      `job_attention_stocks`/`job_disposition_events` (TWSE+TPEX) — all four forward-only, no
+      date parameter upstream, so unlike every FinMind spec above there is no historical window
+      to walk back over; today's call is the only backfill that is possible at all for a day
+      this process was down at the original cron fire time.
+
+    Deliberately NOT walked back over `years` of history the way
+    `_backfill_shareholding_distribution` walks weeks: `job_etf_aum` fans out one yfinance call
+    per ETF symbol (confirmed ~2-3 minutes for a single day against the current ~250-symbol
+    roster live) — a multi-year daily walk would take hours and is not what an operator invoking
+    this CLI for a routine gap-fill is asking for. `_tw_gap_fill`'s own "call unconditionally,
+    idempotent" reasoning applies here too: `write_partition` always replaces the whole day's
+    partition, so re-running for a day that already succeeded is a same-answer no-op."""
+    today = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    runs = (
+        await job_etf_nav(today, ctx),
+        await job_etf_aum(today, ctx),
+        await job_material_announcements(today, ctx),
+        await job_insider_transfer_declaration(today, ctx),
+        await job_attention_stocks(today, ctx),
+        await job_disposition_events(today, ctx),
+    )
+    for run in runs:
+        logger.info(
+            "ingest_backfill_cli_run",
+            dataset=run.dataset,
+            run_date=run.run_date.isoformat(),
+            rows_written=run.rows_written,
+            status=run.status.value,
+        )
+    return runs
 
 
 async def _backfill_shareholding_distribution(
@@ -193,6 +269,36 @@ async def _backfill_shareholding_distribution(
             continue
         runs.append(await job_shareholding_distribution(cursor, ctx))
         cursor -= timedelta(days=7)
+    return tuple(runs)
+
+
+async def _backfill_etf_expense_ratio(ctx: IngestContext, *, years: int) -> tuple[JobRun, ...]:
+    """Gap-fill `job_etf_expense_ratio` (SITCA fee disclosure) — one call per MONTH over
+    `years` of history, unlike the six forward-only jobs `_run_non_finmind_forward_only_jobs_
+    for_today` limits to "today" only: SITCA's own report form genuinely accepts a past month
+    (confirmed live this session — real per-fund rows for non-latest months, not just "now"), so
+    a real historical walk is possible here, not just a today-only snapshot.
+
+    `only_missing`-equivalent: a month already covered by a real, already-ingested partition is
+    skipped without a network call — mirrors `_backfill_shareholding_distribution`'s own
+    skip-if-known-date check, just keyed by calendar month instead of week. `job_etf_expense_
+    ratio` writes under `run_date` directly (unlike the weekly job above, no separate "resolved
+    publish date" to search for) and calendar-gates on `is_trading_day_extrapolating`, so the
+    1st of the month is resolved forward to the month's first real trading day via
+    `next_trading_day` before the job is called — the 1st itself may be a weekend/holiday, which
+    the job would otherwise silently SKIP rather than fetch."""
+    target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    start = ctx.calendar.shift_business_days(target, -(years * 250))
+    known_dates = ctx.store.list_partition_dates(ETF_EXPENSE_RATIO_DATASET, ctx.market.value)
+    known_months = {(d.year, d.month) for d in known_dates}
+    runs: list[JobRun] = []
+    cursor = target.replace(day=1)
+    start_month = start.replace(day=1)
+    while cursor >= start_month:
+        if (cursor.year, cursor.month) not in known_months:
+            run_date = ctx.calendar.next_trading_day(cursor, inclusive=True)
+            runs.append(await job_etf_expense_ratio(run_date, ctx))
+        cursor = (cursor - timedelta(days=1)).replace(day=1)
     return tuple(runs)
 
 

@@ -85,17 +85,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if taiex_rows:
-            latest = taiex_rows[-1]
-            prior = taiex_rows[-2].taiex if len(taiex_rows) > 1 else None
-            change, change_pct = _change(latest.taiex, prior)
+            latest_taiex = taiex_rows[-1]
+            prior_taiex = taiex_rows[-2].taiex if len(taiex_rows) > 1 else None
+            change, change_pct = _change(latest_taiex.taiex, prior_taiex)
             rows.append(
                 MarketIndexStripItemRow(
                     key="taiex",
                     label="加權指數",
-                    value=latest.taiex,
+                    value=latest_taiex.taiex,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.trade_date,
+                    as_of=latest_taiex.trade_date,
                 )
             )
 
@@ -108,17 +108,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if otc_rows:
-            latest = otc_rows[-1]
-            prior = otc_rows[-2].price if len(otc_rows) > 1 else None
-            change, change_pct = _change(latest.price, prior)
+            latest_otc = otc_rows[-1]
+            prior_otc = otc_rows[-2].price if len(otc_rows) > 1 else None
+            change, change_pct = _change(latest_otc.price, prior_otc)
             rows.append(
                 MarketIndexStripItemRow(
                     key="otc",
                     label="櫃買指數",
-                    value=latest.price,
+                    value=latest_otc.price,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.trade_date,
+                    as_of=latest_otc.trade_date,
                 )
             )
 
@@ -131,17 +131,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if fx_rows:
-            latest = fx_rows[-1]
-            prior = fx_rows[-2].spot_buy if len(fx_rows) > 1 else None
-            change, change_pct = _change(latest.spot_buy, prior)
+            latest_fx = fx_rows[-1]
+            prior_fx = fx_rows[-2].spot_buy if len(fx_rows) > 1 else None
+            change, change_pct = _change(latest_fx.spot_buy, prior_fx)
             rows.append(
                 MarketIndexStripItemRow(
                     key="usd_twd",
                     label="美元/台幣",
-                    value=latest.spot_buy,
+                    value=latest_fx.spot_buy,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.trade_date,
+                    as_of=latest_fx.trade_date,
                 )
             )
 
@@ -154,17 +154,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if jpy_rows:
-            latest = jpy_rows[-1]
-            prior = jpy_rows[-2].spot_buy if len(jpy_rows) > 1 else None
-            change, change_pct = _change(latest.spot_buy, prior)
+            latest_jpy = jpy_rows[-1]
+            prior_jpy = jpy_rows[-2].spot_buy if len(jpy_rows) > 1 else None
+            change, change_pct = _change(latest_jpy.spot_buy, prior_jpy)
             rows.append(
                 MarketIndexStripItemRow(
                     key="jpy_twd",
                     label="日圓/台幣",
-                    value=latest.spot_buy,
+                    value=latest_jpy.spot_buy,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.trade_date,
+                    as_of=latest_jpy.trade_date,
                 )
             )
 
@@ -177,17 +177,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if gold_rows:
-            latest = gold_rows[-1]
-            prior = gold_rows[-2].price if len(gold_rows) > 1 else None
-            change, change_pct = _change(latest.price, prior)
+            latest_gold = gold_rows[-1]
+            prior_gold = gold_rows[-2].price if len(gold_rows) > 1 else None
+            change, change_pct = _change(latest_gold.price, prior_gold)
             rows.append(
                 MarketIndexStripItemRow(
                     key="gold",
                     label="黃金",
-                    value=latest.price,
+                    value=latest_gold.price,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.date,
+                    as_of=latest_gold.date,
                 )
             )
 
@@ -200,17 +200,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if wti_rows:
-            latest = wti_rows[-1]
-            prior = wti_rows[-2].price if len(wti_rows) > 1 else None
-            change, change_pct = _change(latest.price, prior)
+            latest_wti = wti_rows[-1]
+            prior_wti = wti_rows[-2].price if len(wti_rows) > 1 else None
+            change, change_pct = _change(latest_wti.price, prior_wti)
             rows.append(
                 MarketIndexStripItemRow(
                     key="crude_oil_wti",
                     label="原油 WTI",
-                    value=latest.price,
+                    value=latest_wti.price,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.date,
+                    as_of=latest_wti.date,
                 )
             )
 
@@ -223,17 +223,17 @@ class GetMarketIndexStripTool(BaseTool):
             key="rows",
         )
         if brent_rows:
-            latest = brent_rows[-1]
-            prior = brent_rows[-2].price if len(brent_rows) > 1 else None
-            change, change_pct = _change(latest.price, prior)
+            latest_brent = brent_rows[-1]
+            prior_brent = brent_rows[-2].price if len(brent_rows) > 1 else None
+            change, change_pct = _change(latest_brent.price, prior_brent)
             rows.append(
                 MarketIndexStripItemRow(
                     key="crude_oil_brent",
                     label="原油 Brent",
-                    value=latest.price,
+                    value=latest_brent.price,
                     change=change,
                     change_pct=change_pct,
-                    as_of=latest.date,
+                    as_of=latest_brent.date,
                 )
             )
 

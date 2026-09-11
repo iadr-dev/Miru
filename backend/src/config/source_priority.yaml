@@ -21,7 +21,7 @@ TW:
   corporate_actions: [mops] # 重大訊息 material-announcement disclosure stream
   shareholding: [mops] # 董監事持股 monthly director/supervisor shareholding filing
   profile: [mops] # 基本資料 company-identity fields (chairman/capital/spokesperson/auditor/...)
-  calendar_events: [ncdr_closure] # 停班停課 typhoon/disaster closure alerts; TW only
+  calendar_events: [ncdr_closure, twse_openapi] # 停班停課 (NCDR) + 股東會/除權息/現增認購 (TWSE); merged, not fallback — see calendar/events.py::fetch_feed_events
   price_intraday: [twse_mis] # bounded live-ish snapshot; the only adapter that serves this capability
   derivatives_oi: [taifex_openapi] # official EOD settlement/volume/OI per contract; no FinMind equivalent
   active_etf_info: [finmind] # free-tier active-ETF roster

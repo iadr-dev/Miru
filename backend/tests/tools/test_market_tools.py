@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from dataaccess.router import DataAccessRouter
 from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
@@ -13,6 +14,7 @@ from tests.tools.conftest import make_router
 from tools.base import ToolContext
 from tools.common import DateRangeInput, SymbolInput
 from tools.market_tools import (
+    _CHIP_BROKER_MAX_TRADING_DAYS,
     GetActiveEtfReportInput,
     GetActiveEtfReportTool,
     GetChipFlowsTool,
@@ -377,6 +379,105 @@ async def test_get_chip_flows_top_brokers_ranks_by_net_magnitude_across_branches
     assert by_broker["1002"].net == 100 - 50  # 50 — still present, just ranked last
     # Ranked by |net| descending: Big Buyer (16,000) > Big Seller (-8,500) > Small Fry (50).
     assert [b.broker_id for b in output.top_brokers] == ["1001", "1003", "1002"]
+
+
+class _PerDateChipBrokerAdapter:
+    """A stub `SourceAdapter` whose `CHIP_BROKER` response depends on the `date=` kwarg it's
+    called with — `StubAdapter` (the shared test helper) always returns the same canned result
+    regardless of params, which can't exercise `GetChipFlowsTool`'s new per-trading-day fan-out
+    (one `router.fetch(..., date=X)` call per day, merged)."""
+
+    source_id = "STUB"
+    timing_class = TimingClass.OFFICIAL_EOD
+
+    def __init__(self, rows_by_date: dict[str, list[dict[str, object]]]) -> None:
+        self._rows_by_date = rows_by_date
+        self.calls: list[dict[str, object]] = []
+
+    def supports(self) -> set[tuple[Capability, Market]]:
+        return {(Capability.CHIP_BROKER, Market.TW)}
+
+    async def fetch(
+        self, cap: Capability, sym: Symbol, *, tls_policy, **params: object
+    ) -> SourceResult:
+        self.calls.append(params)
+        day = str(params.get("date"))
+        return SourceResult(
+            source_id=self.source_id,
+            data_class=DataClass.SPONSOR,
+            timing_class=self.timing_class,
+            fetched_at=datetime.now(UTC),
+            currentness_caveat="chip caveat",
+            payload={"rows": self._rows_by_date.get(day, [])},
+            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+        )
+
+    def validate(self, raw: dict[str, object]) -> dict[str, object]:
+        return raw
+
+
+async def test_get_chip_flows_multi_day_range_fans_out_and_merges_per_trading_day() -> None:
+    """`CHIP_BROKER`'s upstream is single-day-per-call — a `start_date`/`end_date` range must
+    issue one `router.fetch(..., date=X)` per trading day in the window and merge every day's
+    rows, not just fetch the single most recent day."""
+
+    def _row(trade_date: str, buy: int, sell: int) -> dict[str, object]:
+        return {
+            "symbol": "2330",
+            "market": "TW",
+            "trade_date": trade_date,
+            "broker_id": "1020",
+            "broker_name": "Fubon",
+            "price": 100.0,
+            "buy": buy,
+            "sell": sell,
+        }
+
+    # 2026-08-03/04 are a Mon/Tue — both real trading days under plain weekday math.
+    adapter = _PerDateChipBrokerAdapter(
+        {
+            "2026-08-03": [_row("2026-08-03", 500, 100)],
+            "2026-08-04": [_row("2026-08-04", 200, 50)],
+        }
+    )
+    router = DataAccessRouter(
+        {"STUB": adapter},
+        priority_config={"TW": {"chip_broker": ["STUB"]}},
+    )
+    tool = GetChipFlowsTool(router)
+
+    output = await tool.run(
+        DateRangeInput(
+            id="2330", market=Market.TW, start_date=date(2026, 8, 3), end_date=date(2026, 8, 4)
+        ),
+        ToolContext(),
+    )
+
+    called_dates = {str(call.get("date")) for call in adapter.calls}
+    assert called_dates == {"2026-08-03", "2026-08-04"}
+    assert {row.trade_date.isoformat() for row in output.rows} == {"2026-08-03", "2026-08-04"}
+    assert output.top_brokers[0].net == (500 - 100) + (200 - 50)
+
+
+async def test_get_chip_flows_wide_range_caps_at_max_trading_days() -> None:
+    """A window wider than `_CHIP_BROKER_MAX_TRADING_DAYS` must not fan out to every trading day
+    in it — capped, most-recent-first, so one page load never issues an unbounded number of
+    Sponsor-tier FinMind calls."""
+    adapter = _PerDateChipBrokerAdapter({})
+    router = DataAccessRouter(
+        {"STUB": adapter},
+        priority_config={"TW": {"chip_broker": ["STUB"]}},
+    )
+    tool = GetChipFlowsTool(router)
+
+    await tool.run(
+        DateRangeInput(
+            id="2330", market=Market.TW, start_date=date(2025, 1, 1), end_date=date(2026, 1, 1)
+        ),
+        ToolContext(),
+    )
+
+    assert len(adapter.calls) == _CHIP_BROKER_MAX_TRADING_DAYS
 
 
 def _active_etf_holding_result(*, health_status: HealthStatus = HealthStatus.OK) -> SourceResult:

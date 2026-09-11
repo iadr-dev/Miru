@@ -680,6 +680,10 @@
         "buy": "Buy",
         "sell": "Sell",
         "net": "Net Buy/Sell",
+        "investor": "Investor",
+        "net_5d": "5D Net",
+        "net_10d": "10D Net",
+        "net_20d": "20D Net",
         "investor_totals": "Investor Category",
         "foreign_investor": "Foreign Investors",
         "investment_trust": "Investment Trusts",
@@ -707,6 +711,7 @@
         "sell_price": "Sell Price",
         "trade_type": "Trade Type",
         "trading_money": "Trading Value",
+        "turnover_share": "Turnover Share",
         "fee_rate": "Lending Fee Rate",
         "original_return_date": "Original Return Date",
         "original_lending_period": "Original Lending Period",
@@ -1380,6 +1385,159 @@
           "entity_note": "Note"
         }
       }
+    }
+  },
+  "stock": {
+    "assetHeader": {
+      "addToWatchlist": "Add to watchlist",
+      "watchlistComingSoon": "Watchlist coming soon",
+      "askMiru": "Ask Miru",
+      "open": "Open",
+      "high": "High",
+      "low": "Low",
+      "volume": "Volume",
+      "eodOnly": "EOD only",
+      "dataDelayed": "Data delayed"
+    },
+    "tabs": {
+      "label": "Stock detail views",
+      "basicInfo": "Basic Info",
+      "industry": "Industry",
+      "financials": "Financials",
+      "chipAnalysis": "Chip Analysis",
+      "technical": "Technical",
+      "summary": "Summary",
+      "news": "News",
+      "research": "Research",
+      "realtime": "Real-time",
+      "comingSoonBody": "This tab isn't built yet — its backend data source doesn't exist."
+    },
+    "basicInfo": {
+      "profileTitle": "Company Profile",
+      "identityTitle": "Company Info",
+      "marketValue": "Market Value",
+      "per": "P/E",
+      "dividendYield": "Dividend Yield",
+      "eps": "EPS",
+      "revenueYoy": "Revenue YoY",
+      "chairman": "Chairman",
+      "auditor": "Auditor",
+      "headquarters": "Headquarters",
+      "capital": "Capital",
+      "spokesperson": "Spokesperson",
+      "foundingDate": "Founded",
+      "themesTitle": "Related Themes",
+      "insiderTitle": "Director/Supervisor Shareholding",
+      "insiderDetailTab": "Detail",
+      "insiderTransferTab": "Share Transfers",
+      "insiderTransferEmpty": "No recent declarations.",
+      "insiderTransferee": "Transferee: {name}",
+      "announcementsTitle": "Announcements",
+      "announcementsEmpty": "No announcements today.",
+      "esgTitle": "ESG Risk",
+      "percentile": "Percentile {value}",
+      "dispositionTitle": "Disposition",
+      "dispositionFlag": "Disposition flag",
+      "expandTo": "Show all {count}",
+      "collapse": "Collapse",
+      "viewList": "List",
+      "viewCalendar": "Calendar",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "monthTitle": "{month}/{year}"
+    },
+    "news": {
+      "label": "Related news tabs",
+      "news": "News",
+      "ptt": "PTT",
+      "latest": "Latest",
+      "hot": "Hot",
+      "newsEmpty": "No related news yet.",
+      "pttEmpty": "No related posts yet.",
+      "pttApproximateCaveat": "Matched by symbol/name in the post body — an approximate result, not a complete per-stock discussion list.",
+      "expandTo": "Show all {count}",
+      "collapse": "Collapse"
+    },
+    "financials": {
+      "monthRevenueTitle": "Monthly Revenue",
+      "monthRevenueRange": {
+        "3m": "3M",
+        "6m": "6M",
+        "1y": "1Y"
+      },
+      "dividendResultTitle": "Dividend Policy",
+      "dividendResultRange": {
+        "3m": "3M",
+        "6m": "6M",
+        "1y": "1Y"
+      },
+      "statementTitle": "Financial Statement",
+      "statementType": {
+        "income_statement": "Income Statement",
+        "balance_sheet": "Balance Sheet",
+        "cash_flow": "Cash Flow"
+      },
+      "empty": "No data available."
+    },
+    "chipAnalysis": {
+      "title": "Chip Analysis",
+      "column": {
+        "summary": "Summary",
+        "brokers": "Brokers",
+        "institutional": "Institutional Investors",
+        "marginShort": "Margin/Short"
+      },
+      "summarySection": {
+        "institutional": "Institutional Flow",
+        "marginShort": "Margin/Short"
+      },
+      "rollingNetWindow": {
+        "5d": "5D",
+        "10d": "10D",
+        "20d": "20D"
+      },
+      "institutionalSubTab": {
+        "flow": "Flow",
+        "holdings": "Holdings",
+        "summary": "Summary"
+      },
+      "institutionalCombined": "Institutional (Combined)",
+      "marginSubTab": {
+        "margin": "Margin",
+        "short": "Short",
+        "ratio": "Short/Margin Ratio",
+        "dayTrading": "Day Trading",
+        "lending": "Lending"
+      },
+      "foreignRatio": "Foreign Ownership %",
+      "shortToMarginRatio": "Short/Margin Ratio",
+      "marginBalance": "Margin Balance",
+      "shortBalance": "Short Balance",
+      "marginChange": "Margin Change",
+      "shortChange": "Short Change",
+      "marginUsage": "Margin Usage",
+      "shortUsage": "Short Usage",
+      "dayTradingVolume": "Day-Trading Volume",
+      "lendingSellVolume": "Lending Sell Volume",
+      "brokerLookbackWindow": {
+        "recent": "Recent",
+        "5d": "5D",
+        "10d": "10D"
+      },
+      "mainForceNet": "Main-Force Net",
+      "mainForceConcentration": "Main-Force Concentration %",
+      "sharesOfCapital": "% of Issued Shares",
+      "concentrationDays": "Concentration Days %",
+      "buyTop15": "Top 15 Net Buy",
+      "sellTop15": "Top 15 Net Sell",
+      "broker": "Broker Branch",
+      "netFlow": "Net Flow",
+      "buyLots": "Buy (lots)",
+      "sellLots": "Sell (lots)",
+      "turnoverShare": "Turnover Share",
+      "expandTo": "Show all {count} rows",
+      "collapse": "Collapse",
+      "empty": "No data available."
     }
   }
 }

@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
+import { buildMonthGrid, toIsoDate } from "@/lib/month-grid";
 import type { DividendCalendarEventRow } from "@/types/market";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -74,34 +75,6 @@ function buildDayMarks(events: readonly DividendCalendarEventRow[]): Map<string,
     marks.set(isoDate, { symbols, totalCount: symbols.length });
   }
   return marks;
-}
-
-/** Every calendar cell for one month view, including the leading/trailing days from the
- * adjacent months that fill the grid — `inMonth: false` cells render dimmed and are never
- * selectable, matching the reference app's own faded-adjacent-month convention. */
-function buildMonthGrid(year: number, month: number): { date: Date; inMonth: boolean }[] {
-  const firstOfMonth = new Date(year, month - 1, 1);
-  const firstWeekday = firstOfMonth.getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const daysInPrevMonth = new Date(year, month - 1, 0).getDate();
-
-  const cells: { date: Date; inMonth: boolean }[] = [];
-  for (let i = firstWeekday - 1; i >= 0; i--) {
-    cells.push({ date: new Date(year, month - 2, daysInPrevMonth - i), inMonth: false });
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    cells.push({ date: new Date(year, month - 1, day), inMonth: true });
-  }
-  while (cells.length % 7 !== 0) {
-    const last = cells.at(-1);
-    const nextDay = (last ? last.date.getDate() : 0) + 1;
-    cells.push({ date: new Date(year, month, nextDay), inMonth: false });
-  }
-  return cells;
-}
-
-function toIsoDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 /**
