@@ -103,6 +103,61 @@ const TOOLTIP_STYLE = {
   color: "var(--text)",
 };
 
+/** One `<Line>` series over `trade_date`, wrapped in `ChartWithDataSheet` — the shared shape
+ * every single-line 籌碼分析 chart (外資持股比, 融資券 3 of its 4 views) reduces to, differing
+ * only in the plotted field, its color/name, and the Y-axis tick/tooltip formatter. Pulled out
+ * once so these views can't drift on the chart shell as more get added. */
+function SimpleLineChartBody<TPoint extends { trade_date: string }>({
+  points,
+  dataKey,
+  name,
+  stroke,
+  yAxisTickFormatter,
+  tooltipFormatter,
+}: {
+  readonly points: readonly TPoint[];
+  readonly dataKey: keyof TPoint & string;
+  readonly name: string;
+  readonly stroke: string;
+  readonly yAxisTickFormatter: (value: number) => string;
+  readonly tooltipFormatter: (value: unknown) => string;
+}): ReactNode {
+  return (
+    <ChartWithDataSheet rows={points as Record<string, unknown>[]}>
+      <div style={{ width: "100%", height: 220 }}>
+        <ResponsiveContainer>
+          <LineChart
+            data={points as Record<string, unknown>[]}
+            margin={{ left: 8, right: 8, bottom: 8 }}
+          >
+            <CartesianGrid vertical={false} stroke="var(--grid)" />
+            <XAxis
+              dataKey="trade_date"
+              tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+              stroke="var(--border)"
+            />
+            <YAxis
+              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+              tickFormatter={yAxisTickFormatter}
+              width={48}
+              stroke="var(--border)"
+            />
+            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={tooltipFormatter} />
+            <Line
+              type="monotone"
+              dataKey={dataKey}
+              name={name}
+              stroke={stroke}
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWithDataSheet>
+  );
+}
+
 /**
  * 籌碼分析 tab — 4 permanent cards, 2 stacked 2-column rows (no top-level pill switcher —
  * every card renders at once, per explicit direction): 摘要 (`get_institutional_flow`'s own
@@ -699,38 +754,14 @@ function ForeignShareholdingBody({
   }));
 
   return (
-    <ChartWithDataSheet rows={points}>
-      <div style={{ width: "100%", height: 220 }}>
-        <ResponsiveContainer>
-          <LineChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
-            <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis
-              dataKey="trade_date"
-              tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-              stroke="var(--border)"
-            />
-            <YAxis
-              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-              tickFormatter={(v: number) => `${v.toFixed(1)}%`}
-              width={48}
-              stroke="var(--border)"
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              formatter={(value) => `${Number(value).toFixed(2)}%`}
-            />
-            <Line
-              type="monotone"
-              dataKey="foreign_ratio"
-              name={t("foreignRatio")}
-              stroke="var(--chart-2)"
-              strokeWidth={2}
-              dot={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </ChartWithDataSheet>
+    <SimpleLineChartBody
+      points={points}
+      dataKey="foreign_ratio"
+      name={t("foreignRatio")}
+      stroke="var(--chart-2)"
+      yAxisTickFormatter={(v) => `${v.toFixed(1)}%`}
+      tooltipFormatter={(value) => `${Number(value).toFixed(2)}%`}
+    />
   );
 }
 
@@ -813,38 +844,14 @@ function MarginShortBody({
           : 0,
     }));
     return (
-      <ChartWithDataSheet rows={points}>
-        <div style={{ width: "100%", height: 220 }}>
-          <ResponsiveContainer>
-            <LineChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
-              <CartesianGrid vertical={false} stroke="var(--grid)" />
-              <XAxis
-                dataKey="trade_date"
-                tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-                stroke="var(--border)"
-              />
-              <YAxis
-                tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                tickFormatter={(v: number) => `${v.toFixed(1)}%`}
-                width={48}
-                stroke="var(--border)"
-              />
-              <Tooltip
-                contentStyle={TOOLTIP_STYLE}
-                formatter={(value) => `${Number(value).toFixed(2)}%`}
-              />
-              <Line
-                type="monotone"
-                dataKey="ratio"
-                name={t("shortToMarginRatio")}
-                stroke="var(--chart-5)"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </ChartWithDataSheet>
+      <SimpleLineChartBody
+        points={points}
+        dataKey="ratio"
+        name={t("shortToMarginRatio")}
+        stroke="var(--chart-5)"
+        yAxisTickFormatter={(v) => `${v.toFixed(1)}%`}
+        tooltipFormatter={(value) => `${Number(value).toFixed(2)}%`}
+      />
     );
   }
 
@@ -856,38 +863,14 @@ function MarginShortBody({
   }));
 
   return (
-    <ChartWithDataSheet rows={points}>
-      <div style={{ width: "100%", height: 220 }}>
-        <ResponsiveContainer>
-          <LineChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
-            <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis
-              dataKey="trade_date"
-              tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-              stroke="var(--border)"
-            />
-            <YAxis
-              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-              tickFormatter={(v: number) => formatCompactNumber(v, locale)}
-              width={48}
-              stroke="var(--border)"
-            />
-            <Tooltip
-              contentStyle={TOOLTIP_STYLE}
-              formatter={(value) => formatNumber(Number(value), locale)}
-            />
-            <Line
-              type="monotone"
-              dataKey={dataKey}
-              name={view === "short" ? t("shortBalance") : t("marginBalance")}
-              stroke={view === "short" ? "var(--chart-4)" : "var(--chart-1)"}
-              strokeWidth={2}
-              dot={false}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-    </ChartWithDataSheet>
+    <SimpleLineChartBody
+      points={points}
+      dataKey={dataKey}
+      name={view === "short" ? t("shortBalance") : t("marginBalance")}
+      stroke={view === "short" ? "var(--chart-4)" : "var(--chart-1)"}
+      yAxisTickFormatter={(v) => formatCompactNumber(v, locale)}
+      tooltipFormatter={(value) => formatNumber(Number(value), locale)}
+    />
   );
 }
 

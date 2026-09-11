@@ -20,6 +20,7 @@ import {
 } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
+import { buildMonthGrid, toIsoDate } from "@/lib/month-grid";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type {
@@ -52,35 +53,6 @@ function isoDaysFromToday(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
-}
-
-function toIsoDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
-/** Every cell for one month view, incl. leading/trailing adjacent-month days that fill the
- * 7-column grid — mirrors `DividendCalendarTable::buildMonthGrid`'s exact shape (that
- * component is multi-symbol/whole-market and not reused directly here since this card is
- * single-symbol: announcements + calendar events for one stock, not a cross-symbol feed). */
-function buildMonthGrid(year: number, month: number): { date: Date; inMonth: boolean }[] {
-  const firstOfMonth = new Date(year, month - 1, 1);
-  const firstWeekday = firstOfMonth.getDay();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const daysInPrevMonth = new Date(year, month - 1, 0).getDate();
-
-  const cells: { date: Date; inMonth: boolean }[] = [];
-  for (let i = firstWeekday - 1; i >= 0; i--) {
-    cells.push({ date: new Date(year, month - 2, daysInPrevMonth - i), inMonth: false });
-  }
-  for (let day = 1; day <= daysInMonth; day++) {
-    cells.push({ date: new Date(year, month - 1, day), inMonth: true });
-  }
-  while (cells.length % 7 !== 0) {
-    const last = cells.at(-1);
-    const nextDay = (last ? last.date.getDate() : 0) + 1;
-    cells.push({ date: new Date(year, month, nextDay), inMonth: false });
-  }
-  return cells;
 }
 
 /**

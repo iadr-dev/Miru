@@ -30,6 +30,54 @@ const TOOLTIP_STYLE = {
   color: "var(--text)",
 };
 
+/** The bar-chart body `MonthRevenueCard` and `DividendResultCard` both wrap in a
+ * `ChartWithDataSheet` — identical axis/grid/tooltip shape, differing only in which
+ * numeric field to plot, its bar color, and the Y-axis width/tick formatter. Pulled out
+ * once so the two cards can't drift on the chart shell as more range toggles get added. */
+function SimpleBarChartBody<TPoint extends { label: string }>({
+  points,
+  dataKey,
+  fill,
+  yAxisWidth,
+  yAxisTickFormatter,
+  tooltipFormatter,
+}: {
+  readonly points: readonly TPoint[];
+  readonly dataKey: keyof TPoint & string;
+  readonly fill: string;
+  readonly yAxisWidth: number;
+  readonly yAxisTickFormatter?: (value: number) => string;
+  readonly tooltipFormatter: (value: unknown) => string;
+}): ReactNode {
+  return (
+    <ChartWithDataSheet rows={points as Record<string, unknown>[]}>
+      <div style={{ width: "100%", height: 240 }}>
+        <ResponsiveContainer>
+          <BarChart
+            data={points as Record<string, unknown>[]}
+            margin={{ left: 8, right: 8, bottom: 8 }}
+          >
+            <CartesianGrid vertical={false} stroke="var(--grid)" />
+            <XAxis
+              dataKey="label"
+              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+              stroke="var(--border)"
+            />
+            <YAxis
+              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+              tickFormatter={yAxisTickFormatter}
+              width={yAxisWidth}
+              stroke="var(--border)"
+            />
+            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={tooltipFormatter} />
+            <Bar dataKey={dataKey as string} fill={fill} radius={4} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartWithDataSheet>
+  );
+}
+
 /** Neither `get_month_revenue` nor `get_dividend_result` return more than a few recent rows
  * when called with no `start_date` — the router/adapter's own default window is narrower than
  * either range toggle needs, so the 6M/1Y control must pass an explicit cutoff rather than
@@ -128,31 +176,14 @@ function MonthRevenueCard({
       {points.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       ) : (
-        <ChartWithDataSheet rows={points}>
-          <div style={{ width: "100%", height: 240 }}>
-            <ResponsiveContainer>
-              <BarChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
-                <CartesianGrid vertical={false} stroke="var(--grid)" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                  stroke="var(--border)"
-                />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                  tickFormatter={(v: number) => formatCompactNumber(v, locale)}
-                  width={48}
-                  stroke="var(--border)"
-                />
-                <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(value) => formatNumber(Number(value), locale)}
-                />
-                <Bar dataKey="revenue" fill="var(--chart-1)" radius={4} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartWithDataSheet>
+        <SimpleBarChartBody
+          points={points}
+          dataKey="revenue"
+          fill="var(--chart-1)"
+          yAxisWidth={48}
+          yAxisTickFormatter={(v) => formatCompactNumber(v, locale)}
+          tooltipFormatter={(value) => formatNumber(Number(value), locale)}
+        />
       )}
     </section>
   );
@@ -206,30 +237,13 @@ function DividendResultCard({
       {points.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       ) : (
-        <ChartWithDataSheet rows={points}>
-          <div style={{ width: "100%", height: 240 }}>
-            <ResponsiveContainer>
-              <BarChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
-                <CartesianGrid vertical={false} stroke="var(--grid)" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                  stroke="var(--border)"
-                />
-                <YAxis
-                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                  width={40}
-                  stroke="var(--border)"
-                />
-                <Tooltip
-                  contentStyle={TOOLTIP_STYLE}
-                  formatter={(value) => formatNumber(Number(value), locale, { decimals: 2 })}
-                />
-                <Bar dataKey="dividend" fill="var(--chart-2)" radius={4} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </ChartWithDataSheet>
+        <SimpleBarChartBody
+          points={points}
+          dataKey="dividend"
+          fill="var(--chart-2)"
+          yAxisWidth={40}
+          tooltipFormatter={(value) => formatNumber(Number(value), locale, { decimals: 2 })}
+        />
       )}
     </section>
   );
