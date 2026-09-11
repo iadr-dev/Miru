@@ -680,6 +680,10 @@
         "buy": "買進",
         "sell": "賣出",
         "net": "買賣超",
+        "investor": "投資人",
+        "net_5d": "5日買賣超",
+        "net_10d": "10日買賣超",
+        "net_20d": "20日買賣超",
         "investor_totals": "投資人類別",
         "foreign_investor": "外資",
         "investment_trust": "投信",
@@ -707,6 +711,7 @@
         "sell_price": "賣出價",
         "trade_type": "交易類型",
         "trading_money": "交易金額",
+        "turnover_share": "成交比重",
         "fee_rate": "借券費率",
         "original_return_date": "原始還券日",
         "original_lending_period": "原始借券天數",
@@ -1380,6 +1385,159 @@
           "entity_note": "備註"
         }
       }
+    }
+  },
+  "stock": {
+    "assetHeader": {
+      "addToWatchlist": "加入自選",
+      "watchlistComingSoon": "自選功能即將推出",
+      "askMiru": "問 Miru",
+      "open": "開",
+      "high": "高",
+      "low": "低",
+      "volume": "量",
+      "eodOnly": "僅收盤資料",
+      "dataDelayed": "資料延遲"
+    },
+    "tabs": {
+      "label": "個股頁籤",
+      "basicInfo": "基本資料",
+      "industry": "產業分析",
+      "financials": "財務分析",
+      "chipAnalysis": "籌碼分析",
+      "technical": "技術分析",
+      "summary": "智能摘要",
+      "news": "相關新聞",
+      "research": "研究圖表",
+      "realtime": "即時",
+      "comingSoonBody": "此頁籤尚未建置 — 其後端資料來源尚不存在。"
+    },
+    "basicInfo": {
+      "profileTitle": "個股資訊",
+      "identityTitle": "公司資訊",
+      "marketValue": "市值",
+      "per": "本益比",
+      "dividendYield": "殖利率",
+      "eps": "EPS",
+      "revenueYoy": "營收年增率",
+      "chairman": "董事長",
+      "auditor": "簽證會計師",
+      "headquarters": "總部",
+      "capital": "資本額",
+      "spokesperson": "發言人",
+      "foundingDate": "成立日期",
+      "themesTitle": "相關概念股",
+      "insiderTitle": "董監事持股",
+      "insiderDetailTab": "明細",
+      "insiderTransferTab": "持股轉讓",
+      "insiderTransferEmpty": "近期無申報資料。",
+      "insiderTransferee": "受讓人：{name}",
+      "announcementsTitle": "公告/事件",
+      "announcementsEmpty": "今日無公告。",
+      "esgTitle": "ESG 風險",
+      "percentile": "百分位 {value}",
+      "dispositionTitle": "處置",
+      "dispositionFlag": "處置標記",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
+      "viewList": "清單",
+      "viewCalendar": "日曆",
+      "prevMonth": "上個月",
+      "nextMonth": "下個月",
+      "monthTitle": "{year} 年 {month} 月"
+    },
+    "news": {
+      "label": "相關新聞頁籤",
+      "news": "新聞",
+      "ptt": "PTT",
+      "latest": "最新",
+      "hot": "熱門",
+      "newsEmpty": "目前沒有相關新聞。",
+      "pttEmpty": "目前沒有相關貼文。",
+      "pttApproximateCaveat": "依貼文內文比對股票代號/名稱，僅為概略結果，非完整的個股討論列表。",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合"
+    },
+    "financials": {
+      "monthRevenueTitle": "月營收趨勢",
+      "monthRevenueRange": {
+        "3m": "三個月",
+        "6m": "半年",
+        "1y": "一年"
+      },
+      "dividendResultTitle": "股利政策",
+      "dividendResultRange": {
+        "3m": "三個月",
+        "6m": "半年",
+        "1y": "一年"
+      },
+      "statementTitle": "財務報表",
+      "statementType": {
+        "income_statement": "損益表",
+        "balance_sheet": "資產負債表",
+        "cash_flow": "現金流量表"
+      },
+      "empty": "暫無資料。"
+    },
+    "chipAnalysis": {
+      "title": "籌碼分析",
+      "column": {
+        "summary": "摘要",
+        "brokers": "分點",
+        "institutional": "三大法人",
+        "marginShort": "融資券"
+      },
+      "summarySection": {
+        "institutional": "法人籌碼",
+        "marginShort": "融資券"
+      },
+      "rollingNetWindow": {
+        "5d": "5日",
+        "10d": "10日",
+        "20d": "20日"
+      },
+      "institutionalSubTab": {
+        "flow": "進出",
+        "holdings": "持股",
+        "summary": "摘要"
+      },
+      "institutionalCombined": "三大法人",
+      "marginSubTab": {
+        "margin": "融資",
+        "short": "融券",
+        "ratio": "券資比",
+        "dayTrading": "當沖",
+        "lending": "借券"
+      },
+      "foreignRatio": "外資持股比",
+      "shortToMarginRatio": "券資比",
+      "marginBalance": "融資餘額",
+      "shortBalance": "融券餘額",
+      "marginChange": "融資增減",
+      "shortChange": "融券增減",
+      "marginUsage": "融資使用率",
+      "shortUsage": "融券使用率",
+      "dayTradingVolume": "當沖總和",
+      "lendingSellVolume": "借券賣出",
+      "brokerLookbackWindow": {
+        "recent": "近日",
+        "5d": "5日",
+        "10d": "10日"
+      },
+      "mainForceNet": "主力進出",
+      "mainForceConcentration": "主力集中%",
+      "sharesOfCapital": "佔股本比重",
+      "concentrationDays": "集中天數%",
+      "buyTop15": "買超Top15",
+      "sellTop15": "賣超Top15",
+      "broker": "券商分點",
+      "netFlow": "買賣超",
+      "buyLots": "買張",
+      "sellLots": "賣張",
+      "turnoverShare": "成交比重",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
+      "empty": "暫無資料。"
     }
   }
 }

@@ -1238,6 +1238,7 @@ export const pttPostSchema = z.object({
   author: z.string(),
   push_count: z.string(),
   link: z.string(),
+  posted_date: z.string().nullable().optional(),
 });
 export type PttPost = z.infer<typeof pttPostSchema>;
 

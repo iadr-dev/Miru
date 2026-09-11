@@ -8,10 +8,12 @@ Boards are tagged by purpose, never mixed:
   surface, explicitly excluded from any market claim by the `offtopic` tag downstream
   guardrails key on.
 
-Scope is deliberately the board-index listing only (title, author, push-count, post tag) —
-not a full push/boo-count-per-comment scrape of every post body, which is a heavier follow-up.
-The upstream HTML is parsed into `PttPost` immediately; no raw HTML crosses this module's
-boundary.
+Scope is the board-index listing (title, author, push-count, post tag) for `fetch_board`, plus
+a per-post BODY fetch for `search_boards` (the per-symbol best-effort search — title-only
+matching misses most real posts, since PTT posts rarely name a stock in the title). Comment
+threads (`div.push`) are excluded from the body text `search_boards` checks — pushes are reader
+reactions, not the article's own content. The upstream HTML is parsed immediately in both
+paths; no raw HTML crosses this module's boundary.
 
 Not wired into `config/source_priority.yaml`'s `(market, capability)` priority table — a board
 name is a required per-call parameter, so this isn't a drop-in fallback for the `news`
@@ -23,8 +25,11 @@ capability the way `twse_openapi` is a fallback for `finmind`. Callers (a dedica
 
 from __future__ import annotations
 
+import asyncio
+import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
+from typing import cast
 
 import httpx
 import structlog
@@ -44,6 +49,28 @@ _BASE_URL = "https://www.ptt.cc"
 # not poll a single board more often than this. Enforcement is the caller's responsibility;
 # this constant documents the contract.
 MIN_SECONDS_BETWEEN_REQUESTS = 60.0
+
+# A caller asking for N days of history walks back at most this many index pages before giving
+# up — a hard ceiling so a quiet board (few posts/day) can't turn one request into dozens of
+# sequential upstream fetches. ~20 posts/page on Stock is typical, so 12 pages covers a week
+# even on a slow news day; a board that's still short of the requested window at this ceiling
+# just returns whatever it found (never blocks indefinitely chasing a full week).
+MAX_INDEX_PAGES_PER_FETCH = 12
+
+# `search_boards` (per-symbol PTT best-effort match) fetches each candidate post's own page to
+# search its BODY text, not just the title — most real posts about a stock never name it in the
+# title (confirmed empirically: a week of Stock/Tech_Job/Warrant index titles for 2330/台積電
+# had zero title hits despite real market chatter existing). This is one extra request PER
+# candidate post, so it is hard-capped regardless of how many posts the lookback window
+# contains — a quiet week costs a handful of fetches, a busy one still costs at most this many,
+# never an unbounded fan-out across 3 boards x 12 pages each.
+MAX_BODY_FETCHES_PER_SEARCH = 60
+# How many body-fetches run concurrently — bounded so a search doesn't open 60 simultaneous
+# connections to ptt.cc at once (impolite and likely to trip rate limiting).
+BODY_FETCH_CONCURRENCY = 6
+
+_PREV_PAGE_LABEL = "上頁"
+_DATE_RE = re.compile(r"(\d{1,2})/(\d{1,2})")
 
 _STOCK_BUZZ_TAG = "stock_buzz"
 _OFFTOPIC_TAG = "offtopic"
@@ -70,9 +97,28 @@ _OFFTOPIC_CAVEAT = (
 class _BoardParseResult:
     posts: list[PttPost]
     deleted_count: int
+    prev_page_href: str | None  # relative href of the "上頁" (older posts) nav link, if present
 
 
-def _parse_entry(entry: Node, *, board: str, tag: str) -> tuple[PttPost | None, bool]:
+def _resolve_posted_date(raw_date: str, *, now: datetime) -> str | None:
+    """PTT's index carries a bare `M/D` with no year — resolve against `now`: a month greater
+    than the current month must be last year (an index page never shows a future date), same
+    disambiguation every PTT scraper needs. Returns `None` (never a guess) if the text doesn't
+    match the expected shape at all."""
+    match = _DATE_RE.search(raw_date)
+    if match is None:
+        return None
+    month, day = int(match.group(1)), int(match.group(2))
+    year = now.year - 1 if month > now.month else now.year
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
+
+
+def _parse_entry(
+    entry: Node, *, board: str, tag: str, now: datetime
+) -> tuple[PttPost | None, bool]:
     """One `div.r-ent` listing row -> `(post, is_deleted)`. `is_deleted=True` only for a
     removed/self-deleted post (still occupies a row but has no title/link node — never
     fabricate a record for it); a row with a link but empty title text yields
@@ -92,6 +138,8 @@ def _parse_entry(entry: Node, *, board: str, tag: str) -> tuple[PttPost | None, 
     author = author_node.text(strip=True) if author_node is not None else ""
     push_node = entry.css_first("div.nrec")
     push_count = push_node.text(strip=True) if push_node is not None else ""
+    date_node = entry.css_first("div.date")
+    posted_date = _resolve_posted_date(date_node.text(strip=True), now=now) if date_node else None
     post = PttPost(
         board=board,
         board_tag=tag,
@@ -100,22 +148,32 @@ def _parse_entry(entry: Node, *, board: str, tag: str) -> tuple[PttPost | None, 
         author=author,
         push_count=push_count or "0",
         link=link,
+        posted_date=posted_date,
     )
     return post, False
 
 
-def _parse_index_html(board: str, html: str) -> _BoardParseResult:
+def _find_prev_page_href(tree: HTMLParser) -> str | None:
+    for node in tree.css("a.btn.wide"):
+        if node.text(strip=True) == _PREV_PAGE_LABEL:
+            return node.attributes.get("href")
+    return None
+
+
+def _parse_index_html(board: str, html: str, *, now: datetime) -> _BoardParseResult:
     tag = _BOARD_TAGS.get(board, _OFFTOPIC_TAG)
     tree = HTMLParser(html)
     posts: list[PttPost] = []
     deleted = 0
     for entry in tree.css("div.r-ent"):
-        post, is_deleted = _parse_entry(entry, board=board, tag=tag)
+        post, is_deleted = _parse_entry(entry, board=board, tag=tag, now=now)
         if is_deleted:
             deleted += 1
         if post is not None:
             posts.append(post)
-    return _BoardParseResult(posts=posts, deleted_count=deleted)
+    return _BoardParseResult(
+        posts=posts, deleted_count=deleted, prev_page_href=_find_prev_page_href(tree)
+    )
 
 
 def _extract_post_tag(title: str) -> str | None:
@@ -158,12 +216,21 @@ class PttAdapter:
                 ),
             )
         board = str(params.get("board") or "Stock")
-        return await self.fetch_board(board=board, tls_policy=tls_policy)
+        lookback_days = params.get("lookback_days")
+        return await self.fetch_board(
+            board=board,
+            tls_policy=tls_policy,
+            lookback_days=int(lookback_days) if isinstance(lookback_days, int) else 1,
+        )
 
     async def fetch_board(
-        self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+        self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT, lookback_days: int = 1
     ) -> SourceResult:
-        """Fetch one board's index-listing page (page 1 = the newest listing)."""
+        """Fetch one board's index listing, walking back through older pages (via each page's
+        own "上頁" nav link) until every remaining post on the current page is older than
+        `lookback_days` — `lookback_days=1` (the default) stops after page 1, matching the
+        original single-page behavior exactly. Bounded by `MAX_INDEX_PAGES_PER_FETCH` so a quiet
+        board can't turn a wide lookback into an unbounded fetch chain."""
         tag = _BOARD_TAGS.get(board)
         if tag is None:
             return _result(
@@ -174,36 +241,143 @@ class PttAdapter:
                     detail=f"board {board!r} is not one of the declared PTT boards",
                 ),
             )
-        url = f"{_BASE_URL}/bbs/{board}/index.html"
-        try:
-            async with build_async_client(tls_policy=tls_policy) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                html = response.text
-        except httpx.HTTPError as exc:
-            return _result(
-                board_tag=tag,
-                payload={},
-                health=SourceHealth(
-                    status=HealthStatus.UNREACHABLE, detail=f"transport error: {type(exc).__name__}"
-                ),
+
+        now = datetime.now(UTC)
+        cutoff = (now - timedelta(days=lookback_days)).date().isoformat()
+        all_posts: list[PttPost] = []
+        deleted_total = 0
+        next_url: str | None = f"{_BASE_URL}/bbs/{board}/index.html"
+
+        for _ in range(MAX_INDEX_PAGES_PER_FETCH):
+            if next_url is None:
+                break
+            try:
+                async with build_async_client(tls_policy=tls_policy) as client:
+                    response = await client.get(next_url)
+                    response.raise_for_status()
+                    html = response.text
+            except httpx.HTTPError as exc:
+                if all_posts:
+                    # Already have at least one page's worth — a later page failing mid-walk
+                    # degrades to "here's what we got," never discards the earlier pages.
+                    break
+                return _result(
+                    board_tag=tag,
+                    payload={},
+                    health=SourceHealth(
+                        status=HealthStatus.UNREACHABLE,
+                        detail=f"transport error: {type(exc).__name__}",
+                    ),
+                )
+
+            parsed = _parse_index_html(board, html, now=now)
+            deleted_total += parsed.deleted_count
+            all_posts.extend(parsed.posts)
+
+            in_window = [
+                p for p in parsed.posts if p.posted_date is None or p.posted_date >= cutoff
+            ]
+            reached_cutoff = len(in_window) < len(parsed.posts)
+            if reached_cutoff or lookback_days <= 1:
+                break
+            next_url = (
+                f"{_BASE_URL}{parsed.prev_page_href}"
+                if parsed.prev_page_href and parsed.prev_page_href.startswith("/")
+                else parsed.prev_page_href
             )
 
-        parsed = _parse_index_html(board, html)
-        if not parsed.posts:
+        if not all_posts:
             return _result(
                 board_tag=tag,
                 payload={},
                 health=SourceHealth(
                     status=HealthStatus.STALE,
-                    detail=f"no posts parsed from {board} index (deleted={parsed.deleted_count})",
+                    detail=f"no posts parsed from {board} index (deleted={deleted_total})",
                 ),
             )
+        # `lookback_days<=1` is the original single-page behavior verbatim — no date filter at
+        # all (some real posts carry no parseable date; filtering them out would be a
+        # regression for the plain "today's index" caller this tool has always served). A wider
+        # lookback DOES filter, since its whole point is bounding the multi-page walk to a window.
+        out_posts = (
+            all_posts
+            if lookback_days <= 1
+            else [p for p in all_posts if p.posted_date is None or p.posted_date >= cutoff]
+        )
         return _result(
             board_tag=tag,
-            payload={"posts": [post.model_dump(mode="json") for post in parsed.posts]},
+            payload={"posts": [post.model_dump(mode="json") for post in out_posts]},
             health=SourceHealth(status=HealthStatus.OK, detail="ok"),
         )
+
+    async def search_boards(
+        self,
+        *,
+        boards: list[str],
+        needles: list[str],
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
+        lookback_days: int = 7,
+    ) -> SourceResult:
+        """Best-effort per-symbol PTT search across `boards`: fetch each board's index for
+        `lookback_days` (via `fetch_board`), then fetch EVERY candidate post's own page and
+        check whether its body text contains any of `needles` (a symbol id/company name) —
+        title-only matching misses most real posts, since PTT posts rarely name a stock in the
+        title itself. Bounded by `MAX_BODY_FETCHES_PER_SEARCH` total across all boards combined
+        (not per-board) so a caller can't turn a 3-board x 7-day search into an unbounded fetch
+        chain; posts past that cap are simply not checked (never silently claimed as "no
+        match" — the caller sees `health` still `ok`, this is a coverage limit, not a failure).
+        Still explicitly a best-effort match, never a claim of complete coverage — a post whose
+        body text uses a company nickname or only refers to the stock indirectly is missed same
+        as before, just far fewer of them than title-only matching missed.
+        """
+        board_results = await asyncio.gather(
+            *(
+                self.fetch_board(board=b, tls_policy=tls_policy, lookback_days=lookback_days)
+                for b in boards
+            )
+        )
+        candidates: list[PttPost] = []
+        for result in board_results:
+            raw_posts = result.payload.get("posts")
+            if isinstance(raw_posts, list):
+                typed_posts = cast("list[dict[str, object]]", raw_posts)
+                candidates.extend(PttPost.model_validate(p) for p in typed_posts)
+        candidates = candidates[:MAX_BODY_FETCHES_PER_SEARCH]
+
+        semaphore = asyncio.Semaphore(BODY_FETCH_CONCURRENCY)
+
+        async def _check(post: PttPost) -> PttPost | None:
+            async with semaphore:
+                body = await self._fetch_post_body(post.link, tls_policy=tls_policy)
+            if body is None:
+                return None
+            return post if any(needle in body for needle in needles) else None
+
+        checked = await asyncio.gather(*(_check(post) for post in candidates))
+        matched = [post for post in checked if post is not None]
+        return _result(
+            board_tag=_STOCK_BUZZ_TAG,
+            payload={"posts": [post.model_dump(mode="json") for post in matched]},
+            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+        )
+
+    async def _fetch_post_body(self, url: str, *, tls_policy: TLSPolicy) -> str | None:
+        """One post's article body text, comments (`div.push`) excluded — `None` on any
+        transport failure (a single unreachable post must not fail the whole search)."""
+        try:
+            async with build_async_client(tls_policy=tls_policy) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                html = response.text
+        except httpx.HTTPError:
+            return None
+        tree = HTMLParser(html)
+        main = tree.css_first("#main-content")
+        if main is None:
+            return None
+        for push in main.css("div.push"):
+            push.decompose()
+        return main.text(strip=True)
 
 
 def _result(*, board_tag: str, payload: dict[str, object], health: SourceHealth) -> SourceResult:

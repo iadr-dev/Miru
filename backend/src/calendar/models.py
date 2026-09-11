@@ -44,6 +44,9 @@ class EventType(StrEnum):
     MACRO_RELEASE = "macro_release"  # DGBAS/央行/FOMC (gap-scraper, Layer 3 — not built yet)
     CB_PUT_OR_MATURITY = "cb_put_or_maturity"  # CB 賣回權/到期 (feed-sourced, FinMind)
     MARKET_CLOSURE = "market_closure"  # 停班停課 typhoon/disaster closure (feed-sourced, NCDR)
+    CASH_CAPITAL_INCREASE_RIGHTS = (
+        "cash_capital_increase_rights"  # 現增認購基準日 (feed-sourced, TWSE)
+    )
 
 
 class CalendarEvent(BaseModel):

@@ -64,7 +64,13 @@ const LABELED_FIELDS = new Set([
   "buy",
   "sell",
   "net",
+  "investor",
   "investor_totals",
+  // institutional_flow's rolling_net — 籌碼分析's 摘要 card ChartWithDataSheet expanded rows
+  // (InstitutionalFlowRollingNet)
+  "net_5d",
+  "net_10d",
+  "net_20d",
   // institutional_flow_wide / institutional_flow_total_market — DivergingBarChart category axis
   "foreign_investor",
   "investment_trust",
@@ -86,6 +92,11 @@ const LABELED_FIELDS = new Set([
   "price",
   "buy_volume",
   "sell_volume",
+  // chip_flows — 籌碼分析's 分點 買賣超 Top15 tables' ChartWithDataSheet expanded rows
+  // (aggregated per-broker over the fetched window, computed client-side in
+  // chip-analysis-panel.tsx, not a raw backend field — still routed through this shared map so
+  // its data-sheet column header isn't a raw snake_case key)
+  "turnover_share",
   "buy_price",
   "sell_price",
   "trade_type",

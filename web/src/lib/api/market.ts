@@ -96,7 +96,9 @@ export class MarketApiError extends Error {
   }
 }
 
-async function requestJson(path: string): Promise<unknown> {
+// Exported so `lib/api/stock-detail.ts` (a separate feature file, per-symbol shaped rather than
+// whole-market) reuses this exact error-handling seam instead of duplicating it.
+export async function requestJson(path: string): Promise<unknown> {
   const response = await fetchWithRefresh(apiUrl(path), {
     credentials: "include",
     headers: { accept: "application/json" },
@@ -594,8 +596,11 @@ export async function getNewsFeed(query = "台股"): Promise<NewsFeedResponse> {
 // 27. GET /market/ptt-board (public, one PTT board's current index-listing)
 // ---------------------------------------------------------------------------
 
-export async function getPttBoard(board: PttBoardName = "Stock"): Promise<PttBoardResponse> {
-  const search = new URLSearchParams({ board });
+export async function getPttBoard(
+  board: PttBoardName = "Stock",
+  lookbackDays = 1,
+): Promise<PttBoardResponse> {
+  const search = new URLSearchParams({ board, lookback_days: String(lookbackDays) });
   const raw = await requestJson(`/market/ptt-board?${search.toString()}`);
   return pttBoardResponseSchema.parse(raw);
 }

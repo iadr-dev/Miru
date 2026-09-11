@@ -93,8 +93,36 @@ async def test_cache_miss_calls_through_and_populates(fake_redis: Redis) -> None
     result = await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
     assert wrapped.calls == 1
     assert result.payload["calls"] == 1
-    key = "marketdata:cache:test:TW:price_eod:2330"
+    key = "marketdata:cache:test:stub:TW:price_eod:2330"
     assert await fake_redis.get(key) is not None
+
+
+async def test_two_adapters_same_capability_and_symbol_do_not_collide(fake_redis: Redis) -> None:
+    """Real bug this guards against: `calendar_events` for TW is served by two adapters
+    (`ncdr_closure` + `twse_openapi`) merged together (`calendar/events.py::fetch_feed_events`),
+    each wrapped in its own `CachingSourceAdapter`. Before `source_id` joined the cache key, both
+    wrappers read/wrote the identical Redis key for `(TW, calendar_events, 2330)`, so the second
+    adapter's `fetch()` silently returned the first adapter's cached payload."""
+
+    class _OtherStubAdapter(_CountingStubAdapter):
+        source_id = "stub_2"
+
+    first = _CountingStubAdapter()
+    second = _OtherStubAdapter()
+    first_wrapper = _caching_adapter(first, fake_redis)
+    second_wrapper = _caching_adapter(second, fake_redis)
+
+    first_result = await first_wrapper.fetch(
+        Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT
+    )
+    second_result = await second_wrapper.fetch(
+        Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT
+    )
+
+    assert first.calls == 1
+    assert second.calls == 1  # not served from the first adapter's cache entry
+    assert first_result.source_id == "stub"
+    assert second_result.source_id == "stub_2"
 
 
 async def test_redis_unreachable_on_get_falls_through_to_live_fetch(
@@ -151,7 +179,7 @@ async def test_ttl_set_per_timing_class(fake_redis: Redis) -> None:
     wrapped = _CountingStubAdapter(timing_class=TimingClass.LIVE_ISH)
     adapter = _caching_adapter(wrapped, fake_redis)
     await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
-    key = "marketdata:cache:test:TW:price_eod:2330"
+    key = "marketdata:cache:test:stub:TW:price_eod:2330"
     ttl = await fake_redis.ttl(key)
     assert 0 < ttl <= 5
 
@@ -160,7 +188,7 @@ async def test_official_eod_gets_long_ttl(fake_redis: Redis) -> None:
     wrapped = _CountingStubAdapter(timing_class=TimingClass.OFFICIAL_EOD)
     adapter = _caching_adapter(wrapped, fake_redis)
     await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
-    key = "marketdata:cache:test:TW:price_eod:2330"
+    key = "marketdata:cache:test:stub:TW:price_eod:2330"
     ttl = await fake_redis.ttl(key)
     assert ttl > 3600  # comfortably beyond a `reference`/`live-ish` TTL
 

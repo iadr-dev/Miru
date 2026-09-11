@@ -141,6 +141,63 @@ async def test_get_calendar_events_surfaces_real_ncdr_closure_rows(
     assert {event.event_date for event in events} == {date(2024, 7, 24)}
 
 
+class _SecondFeedStubAdapter:
+    source_id = "STUB_FEED_2"
+    timing_class = TimingClass.EVENT_DRIVEN
+
+    def supports(self) -> set[tuple[Capability, Market]]:
+        return {(Capability.CALENDAR_EVENTS, Market.TW)}
+
+    async def fetch(
+        self, cap: Capability, sym: Symbol, *, tls_policy: object, **params: object
+    ) -> SourceResult:
+        return SourceResult(
+            source_id=self.source_id,
+            data_class=DataClass.PUBLIC,
+            timing_class=TimingClass.EVENT_DRIVEN,
+            fetched_at=datetime.now(UTC),
+            currentness_caveat="second feed caveat",
+            payload={
+                "events": [
+                    {
+                        "id": "exrights-2330-2024",
+                        "type": "dividend_ex_rights",
+                        "title_zh": "除息",
+                        "title_en": "Ex-Dividend Date",
+                        "event_date": "2024-07-15",
+                        "state": "scheduled",
+                    }
+                ]
+            },
+            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+        )
+
+    def validate(self, raw: dict[str, object]) -> dict[str, object]:
+        return raw
+
+
+async def test_get_calendar_events_merges_two_disjoint_adapters_not_first_wins() -> None:
+    """Two adapters configured for the same capability (mirrors NCDR closures + TWSE AGM/
+    ex-rights in the real config) must both contribute events — this is the behavior
+    `router.fetch_all` exists for, distinct from `router.fetch`'s priority-fallback."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    router = DataAccessRouter(
+        {"STUB_FEED": _FeedStubAdapter(), "STUB_FEED_2": _SecondFeedStubAdapter()},
+        priority_config={"TW": {"calendar_events": ["STUB_FEED", "STUB_FEED_2"]}},
+    )
+
+    events, result = await get_calendar_events(
+        router, symbol, start_date=date(2024, 1, 1), end_date=date(2024, 12, 31)
+    )
+
+    types = {event.type for event in events}
+    assert types == {EventType.AGM, EventType.DIVIDEND_EX_RIGHTS}
+    assert len(events) == 2
+    # Representative result is the first healthy adapter's — still enough for the caller to
+    # surface *a* source id/caveat even though events came from more than one adapter.
+    assert result.source_id == "STUB_FEED"
+
+
 async def test_get_calendar_events_filters_to_requested_window() -> None:
     symbol = Symbol(id="2330", market=Market.TW)
     router = DataAccessRouter({}, priority_config={"TW": {}})

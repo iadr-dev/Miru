@@ -154,6 +154,32 @@ def _as_int_or_none(value: object) -> int | None:
         return None
 
 
+async def fetch_ticker_tax_id_map(*, tls_policy: TLSPolicy) -> dict[str, str]:
+    """`基金代號` (TWSE-listed ticker) -> `基金統一編號` (tax ID), from `t187ap47_L` alone (no
+    `ETF/list` call needed). The one place a ticker and a tax ID are linked in this codebase —
+    `sources/sitca.py` uses this to resolve a ticker to the tax ID SITCA's own fee report keys
+    funds by (`基金統編`, the same tax ID, not a ticker at all), since SITCA carries no ticker
+    column. Empty dict (never raises) on any transport/shape failure — callers treat an
+    unresolvable ticker as "not found", not a hard error."""
+    try:
+        async with build_async_client(tls_policy=tls_policy) as client:
+            response = await client.get(_FUND_INFO_URL)
+            response.raise_for_status()
+            body = response.json()
+    except httpx.HTTPError:
+        return {}
+    try:
+        fund_info_rows = _parse_fund_info_rows(body)
+    except ValueError:
+        return {}
+    result: dict[str, str] = {}
+    for code, row in fund_info_rows.items():
+        tax_id = str(row.get("基金統一編號", "")).strip()
+        if tax_id:
+            result[code] = tax_id
+    return result
+
+
 def _build_fund_info(
     sym: Symbol, listing: _ListRow | None, fund_info: dict[str, object] | None
 ) -> EtfFundInfo:
@@ -271,4 +297,4 @@ def _result(*, payload: dict[str, object], health: SourceHealth) -> SourceResult
     )
 
 
-__all__ = ["EtfPcfAdapter"]
+__all__ = ["EtfPcfAdapter", "fetch_ticker_tax_id_map"]

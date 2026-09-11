@@ -343,6 +343,26 @@ def _top_broker_net_summary(rows: Sequence[ChipBrokerRow]) -> tuple[ChipBrokerNe
     )
 
 
+_CHIP_BROKER_MAX_TRADING_DAYS = 10  # FinMind's TaiwanStockTradingDailyReport is single-day-per-
+# call upstream (`date_param="date"` in chip_institutional.py's own _DatasetConfig — confirmed
+# empirically, the endpoint has no start/end-range form) — a multi-day `get_chip_flows` request
+# fans out to one concurrent router.fetch() per trading day. Bounded to 10 (not the full 250+
+# trading days a "一年" window would imply) so one page load never issues more than 10 sequential
+# Sponsor-tier FinMind calls; the frontend's own period selector caps its widest option to match.
+
+
+def _candidate_trading_days(start: date_, end: date_, *, limit: int) -> tuple[date_, ...]:
+    """Trading days in `[start, end]`, most-recent-first, capped at `limit` — a plain
+    `TradingDayCalendar()` (weekday math, no holiday allow-list) is deliberately used rather than
+    `_real_calendar` (needs a `ParquetStore`, a layer `tools/` may fetch through but that this
+    small bounded probe doesn't warrant pulling in): a real TW holiday in the window just comes
+    back as an empty per-day fetch, which downstream health/row handling already treats as a
+    normal "no rows this day" case, not an error."""
+    calendar = TradingDayCalendar()
+    all_days = calendar.business_days_between(start, end)
+    return tuple(reversed(all_days[-limit:]))
+
+
 class GetChipFlowsTool(BaseTool):
     """`get_chip_flows` — wraps `Capability.CHIP_BROKER` (FinMind Sponsor-tier 分點進出).
 
@@ -355,7 +375,10 @@ class GetChipFlowsTool(BaseTool):
     description = (
         "Get branch(分點)/broker-level buy-sell trading rows for one stock (Sponsor-tier), plus "
         "a pre-computed `top_brokers` summary of the largest net buy/sell positions across the "
-        "whole range — cite `top_brokers` directly rather than summing `rows` yourself."
+        "whole range — cite `top_brokers` directly rather than summing `rows` yourself. The "
+        f"upstream report is single-day-per-call, so a `start_date`/`end_date` range fans out to "
+        f"one call per trading day, capped at {_CHIP_BROKER_MAX_TRADING_DAYS} days (most recent "
+        "first) — a wider range silently returns only the newest days within that cap."
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetChipFlowsOutput
@@ -367,22 +390,42 @@ class GetChipFlowsTool(BaseTool):
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(DateRangeInput, args)
-        result = await self._router.fetch(
-            Capability.CHIP_BROKER,
-            typed.to_symbol(),
-            tls_policy=ctx.tls_policy,
-            **typed.date_params(),
+        sym = typed.to_symbol()
+        end = typed.end_date or date_.today()
+        start = typed.start_date or end
+
+        if start == end:
+            days: tuple[date_, ...] = (start,)
+        else:
+            days = _candidate_trading_days(start, end, limit=_CHIP_BROKER_MAX_TRADING_DAYS) or (
+                end,
+            )
+
+        results = await asyncio.gather(
+            *(
+                self._router.fetch(
+                    Capability.CHIP_BROKER, sym, tls_policy=ctx.tls_policy, date=day.isoformat()
+                )
+                for day in days
+            )
         )
-        raw_rows = result.payload.get("rows")
-        rows: tuple[ChipBrokerRow, ...] = ()
-        if isinstance(raw_rows, list):
-            typed_rows = cast(_RowList, raw_rows)
-            rows = tuple(ChipBrokerRow.model_validate(row) for row in typed_rows)
+
+        rows: list[ChipBrokerRow] = []
+        for result in results:
+            raw_rows = result.payload.get("rows")
+            if isinstance(raw_rows, list):
+                typed_rows = cast(_RowList, raw_rows)
+                rows.extend(ChipBrokerRow.model_validate(row) for row in typed_rows)
+
+        # Every per-day fetch shares the same `source_id`/`currentness_caveat` (one adapter, one
+        # dataset) — the last result's health represents the most recent day's own fetch outcome,
+        # which is what a caller checking "is today's report available" actually wants to see.
+        representative = results[-1]
         return GetChipFlowsOutput(
-            source_id=result.source_id,
-            currentness_caveat=result.currentness_caveat,
-            health_status=result.health.status,
-            rows=rows,
+            source_id=representative.source_id,
+            currentness_caveat=representative.currentness_caveat,
+            health_status=representative.health.status,
+            rows=tuple(rows),
             top_brokers=_top_broker_net_summary(rows),
         )
 

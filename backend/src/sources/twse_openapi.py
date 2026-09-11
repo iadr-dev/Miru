@@ -32,6 +32,8 @@ _BASE_URL = "https://openapi.twse.com.tw/v1"
 _STOCK_DAY_ALL = f"{_BASE_URL}/exchangeReport/STOCK_DAY_ALL"
 _ATTENTION_STOCKS = f"{_BASE_URL}/announcement/notice"
 _DISPOSITION_EVENTS = f"{_BASE_URL}/announcement/punish"
+_AGM_SCHEDULE = f"{_BASE_URL}/opendata/t187ap41_L"
+_EX_RIGHTS_SCHEDULE = f"{_BASE_URL}/exchangeReport/TWT48U_ALL"
 
 _CAVEAT = (
     "TWSE OpenAPI is the official latest end-of-day snapshot only — no parameters, no "
@@ -47,6 +49,12 @@ _DISPOSITION_EVENTS_CAVEAT = (
     "today — no date parameter, not a historical archive; same forward-only shape as the "
     "attention-stock feed above."
 )
+_CALENDAR_EVENTS_CAVEAT = (
+    "TWSE open-data 股東常(臨時)會/除權息/現金增資認購 schedule — the current whole-market dump "
+    "as published today, filtered client-side to one symbol; no date-range parameter upstream, "
+    "so this call always returns whatever TWSE currently has on file (past AND future rows in "
+    "the same dump), not a bounded window."
+)
 
 _ROC_DATE_LEN = 7
 _ROC_DATE_RANGE_PARTS = 2
@@ -59,7 +67,7 @@ class TwseOpenApiAdapter:
     timing_class = TimingClass.OFFICIAL_EOD
 
     def supports(self) -> set[tuple[Capability, Market]]:
-        return {(Capability.PRICE_EOD, Market.TW)}
+        return {(Capability.PRICE_EOD, Market.TW), (Capability.CALENDAR_EVENTS, Market.TW)}
 
     def validate(self, raw: dict[str, object]) -> dict[str, object]:
         if "rows" not in raw:
@@ -81,9 +89,15 @@ class TwseOpenApiAdapter:
         tls_policy: TLSPolicy,
         **params: object,
     ) -> SourceResult:
-        if cap is not Capability.PRICE_EOD or sym.market is not Market.TW:
+        if sym.market is not Market.TW:
             return _unavailable(cap, sym)
+        if cap is Capability.CALENDAR_EVENTS:
+            return await self._fetch_calendar_events(sym, tls_policy=tls_policy)
+        if cap is not Capability.PRICE_EOD:
+            return _unavailable(cap, sym)
+        return await self._fetch_price_eod(sym, tls_policy=tls_policy)
 
+    async def _fetch_price_eod(self, sym: Symbol, *, tls_policy: TLSPolicy) -> SourceResult:
         try:
             async with build_async_client(tls_policy=tls_policy) as client:
                 response = await client.get(_STOCK_DAY_ALL)
@@ -131,6 +145,110 @@ class TwseOpenApiAdapter:
         return _result(
             payload={"bar": bar}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
         )
+
+    async def _fetch_calendar_events(self, sym: Symbol, *, tls_policy: TLSPolicy) -> SourceResult:
+        """Two independent TWSE open-data dumps — 股東常(臨時)會 (`t187ap41_L`) and 除權息/現金
+        增資認購 (`TWT48U_ALL`) — fetched separately and merged into one `events` list (the shape
+        `calendar/events.py::_feed_event_from_row` reads). Neither endpoint takes a symbol
+        param; both are whole-market and filtered client-side, same pattern as this module's
+        `_map_attention_stock_row`/`_map_disposition_event_row` above. A transport failure on
+        either call degrades that half to an empty list rather than failing the combined fetch —
+        one flaky feed must not blank a stock's whole calendar."""
+        agm_rows, agm_health = await _fetch_whole_market_rows(_AGM_SCHEDULE, tls_policy=tls_policy)
+        rights_rows, rights_health = await _fetch_whole_market_rows(
+            _EX_RIGHTS_SCHEDULE, tls_policy=tls_policy
+        )
+
+        events: list[dict[str, object]] = []
+        for row in agm_rows:
+            if row.get("公司代號") != sym.id:
+                continue
+            mapped = _map_agm_row(row)
+            if mapped is not None:
+                events.append(mapped)
+        for row in rights_rows:
+            if row.get("Code") != sym.id:
+                continue
+            events.extend(_map_ex_rights_row(row))
+
+        if agm_health is not None and rights_health is not None:
+            # Both upstream calls failed outright — surface as unreachable rather than a
+            # quietly-empty "ok" result.
+            return SourceResult(
+                source_id=TwseOpenApiAdapter.source_id,
+                data_class=DataClass.PUBLIC,
+                timing_class=TimingClass.EVENT_DRIVEN,
+                fetched_at=datetime.now(UTC),
+                currentness_caveat=_CALENDAR_EVENTS_CAVEAT,
+                payload={},
+                health=SourceHealth(
+                    status=HealthStatus.UNREACHABLE,
+                    detail=f"agm: {agm_health.detail}; ex-rights: {rights_health.detail}",
+                ),
+            )
+        return SourceResult(
+            source_id=TwseOpenApiAdapter.source_id,
+            data_class=DataClass.PUBLIC,
+            timing_class=TimingClass.EVENT_DRIVEN,
+            fetched_at=datetime.now(UTC),
+            currentness_caveat=_CALENDAR_EVENTS_CAVEAT,
+            payload={"events": events},
+            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+        )
+
+
+def _map_agm_row(row: dict[str, object]) -> dict[str, object] | None:
+    """One `t187ap41_L` row -> a `agm` calendar event. `開會日期` is a 7-digit ROC date;
+    `股東常(臨時)會` distinguishes 常會 (AGM) from 臨時會 (EGM) — both surfaced under the same
+    `EventType.AGM` (the reference-app screenshot this feature was built from shows one 股東會
+    row, not a separate AGM/EGM split)."""
+    meeting_date = _roc_to_iso_date(str(row.get("開會日期", "")))
+    if meeting_date is None:
+        return None
+    meeting_kind = str(row.get("股東常(臨時)會", "")) or "股東會"
+    return {
+        "id": f"TWSE_OPENAPI-{row.get('公司代號')}-agm-{meeting_date.isoformat()}",
+        "type": "agm",
+        "state": "scheduled",
+        "event_date": meeting_date.isoformat(),
+        "title_zh": meeting_kind,
+        "title_en": "Shareholders' Meeting",
+    }
+
+
+def _map_ex_rights_row(row: dict[str, object]) -> list[dict[str, object]]:
+    """One `TWT48U_ALL` row -> zero, one, or two calendar events: `dividend_ex_rights` (息/權,
+    from the upstream's own `Exdividend` marker) and/or `cash_capital_increase_rights` (when
+    `SubscriptionRatio` is non-empty — the same ex-date can carry both a price adjustment and a
+    separate cash-capital-increase subscription entitlement a holder must decide on)."""
+    ex_date = _roc_to_iso_date(str(row.get("Date", "")))
+    if ex_date is None:
+        return []
+    events: list[dict[str, object]] = []
+    exdividend_marker = str(row.get("Exdividend", ""))
+    if exdividend_marker:
+        events.append(
+            {
+                "id": f"TWSE_OPENAPI-{row.get('Code')}-exrights-{ex_date.isoformat()}",
+                "type": "dividend_ex_rights",
+                "state": "scheduled",
+                "event_date": ex_date.isoformat(),
+                "title_zh": f"除{exdividend_marker}",
+                "title_en": "Ex-Dividend/Ex-Rights Date",
+            }
+        )
+    if str(row.get("SubscriptionRatio", "")).strip():
+        events.append(
+            {
+                "id": f"TWSE_OPENAPI-{row.get('Code')}-cashincrease-{ex_date.isoformat()}",
+                "type": "cash_capital_increase_rights",
+                "state": "scheduled",
+                "event_date": ex_date.isoformat(),
+                "title_zh": "現金增資認購基準日",
+                "title_en": "Cash Capital Increase Subscription Date",
+            }
+        )
+    return events
 
 
 def _to_float(value: object) -> float:

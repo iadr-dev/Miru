@@ -15,9 +15,18 @@ from sources.sitca import SitcaAdapter, fetch_whole_market_etf_fees
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "sitca"
 
+# SITCA's own report carries no ticker, only 基金統編 (tax ID) — every test stubs
+# `fetch_ticker_tax_id_map` (the TWSE-sourced resolver `sitca.py` imports from `etf_pcf.py`) with
+# this fixed map instead of hitting TWSE, mirroring the real tax IDs in `fee_result.html`.
+_TAX_ID_MAP = {"00981A": "38619904", "0050": "98764389"}
+
 
 def _load(name: str) -> str:
     return (FIXTURES / name).read_text(encoding="utf-8")
+
+
+async def _fake_tax_id_map(**_kwargs: object) -> dict[str, str]:
+    return dict(_TAX_ID_MAP)
 
 
 def _client_factory(form_html: str, result_html: str) -> object:
@@ -55,6 +64,7 @@ async def test_fetch_parses_fee_row(monkeypatch: pytest.MonkeyPatch) -> None:
         "build_async_client",
         _client_factory(_load("fee_form.html"), _load("fee_result.html")),
     )
+    monkeypatch.setattr(sitca_module, "fetch_ticker_tax_id_map", _fake_tax_id_map)
     adapter = SitcaAdapter()
     sym = Symbol(id="00981A", market=Market.TW)
 
@@ -82,6 +92,7 @@ async def test_fetch_unknown_fund_is_stale_not_fabricated(
         "build_async_client",
         _client_factory(_load("fee_form.html"), _load("fee_result.html")),
     )
+    monkeypatch.setattr(sitca_module, "fetch_ticker_tax_id_map", _fake_tax_id_map)
     adapter = SitcaAdapter()
     sym = Symbol(id="9999X", market=Market.TW)
 
@@ -125,6 +136,7 @@ async def test_fetch_whole_market_returns_every_fund_row(monkeypatch: pytest.Mon
         "build_async_client",
         _client_factory(_load("fee_form.html"), _load("fee_result.html")),
     )
+    monkeypatch.setattr(sitca_module, "fetch_ticker_tax_id_map", _fake_tax_id_map)
 
     result = await fetch_whole_market_etf_fees(tls_policy=TLSPolicy.STRICT)
 

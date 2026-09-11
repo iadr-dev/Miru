@@ -729,6 +729,14 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
     for its own non-FinMind upstream (SITCA's monthly IN2105 fee report, rather than a
     per-symbol live fetch on every `get_etf_expense_ratio` tool call).
 
+    Unlike `job_etf_nav`/`job_etf_aum`/the four MOPS+TWSE/TPEX jobs it shares
+    `_run_non_finmind_forward_only_jobs_for_today`'s treatment with, SITCA's report genuinely
+    supports a historical query — its postback form's month dropdown serves real per-fund rows
+    for any past month, confirmed live, not just the latest. This job passes `run_date`'s
+    `YYYYMM` straight through to `fetch_whole_market_etf_fees`, so a backfill caller walking
+    multiple months writes
+    each one under its own real disclosure month rather than always overwriting with "latest.\"
+
     Calendar-gated exactly like every other daily-cadence job in this module — a non-trading
     day is a journaled skip, no network call. SITCA's own report only refreshes monthly, but the
     scheduler's monthly cadence gate (not this function) is what limits actual fetch frequency;
@@ -751,7 +759,9 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="not the leader — write skipped",
         )
 
-    result = await fetch_whole_market_etf_fees(tls_policy=ctx.tls_policy)
+    result = await fetch_whole_market_etf_fees(
+        tls_policy=ctx.tls_policy, year_month=run_date.strftime("%Y%m")
+    )
     if _fetch_error_status(result) is RunStatus.FAILED:
         return journal_run(
             ETF_EXPENSE_RATIO_DATASET,
