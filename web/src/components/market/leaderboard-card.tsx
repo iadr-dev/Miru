@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
+import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
@@ -93,7 +94,12 @@ export function LeaderboardCard({
       {results.length === 0 ? (
         <p className="mt-4 text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       ) : (
-        <LeaderboardRows results={previewResults} quoteBySymbol={previewQuoteBySymbol} t={t} />
+        <LeaderboardRows
+          results={previewResults}
+          quoteBySymbol={previewQuoteBySymbol}
+          market={market}
+          t={t}
+        />
       )}
 
       {/* `mt-auto` pins this footer group to the card's bottom edge regardless of row count, so
@@ -130,7 +136,7 @@ export function LeaderboardCard({
         closeLabel={t("collapse")}
         onClose={() => setExpanded(false)}
       >
-        <LeaderboardRows results={results} quoteBySymbol={allQuoteBySymbol} t={t} />
+        <LeaderboardRows results={results} quoteBySymbol={allQuoteBySymbol} market={market} t={t} />
       </ExpandModal>
     </section>
   );
@@ -141,10 +147,12 @@ export function LeaderboardCard({
 function LeaderboardRows({
   results,
   quoteBySymbol,
+  market,
   t,
 }: {
   results: readonly ScoreResult[];
   quoteBySymbol: Map<string, Quote>;
+  market: Market;
   t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   return (
@@ -152,7 +160,7 @@ function LeaderboardRows({
       <div
         aria-hidden
         className={cn(
-          "grid items-center gap-2.5 border-b border-[var(--border)] pb-1.5 text-[11px] text-[var(--text-muted)]",
+          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
           ROW_GRID_COLS,
         )}
       >
@@ -182,12 +190,16 @@ function LeaderboardRows({
               <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
                 {index + 1}
               </span>
-              <span aria-hidden className="truncate text-[14px] text-[var(--text)]">
+              <SymbolLink
+                symbol={result.symbol}
+                market={market}
+                className="truncate text-[14px] text-[var(--text)] hover:underline"
+              >
                 {quote?.name ?? result.symbol}
                 <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">
                   {result.symbol}
                 </span>
-              </span>
+              </SymbolLink>
               <span
                 aria-hidden
                 className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"

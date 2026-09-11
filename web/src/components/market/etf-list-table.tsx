@@ -3,9 +3,12 @@
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-list-sort";
+import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
+import type { Market } from "@/types/settings";
 
 const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr]";
 // Same collapsed-row-count convention `HolderAccumulationCard`/`LeaderboardCard` use — enough
@@ -21,64 +24,6 @@ const SYMBOL_TYPE_BADGE: Record<string, { labelKey: string; color: string }> = {
   etf_inverse: { labelKey: "inverse", color: "var(--chart-2)" },
 };
 
-// desc for every numeric column (largest-first, matching the reference app's own default
-// ordering); asc for name (alphabetical is the natural default there, not "largest name").
-export const DEFAULT_SORT_DIRECTION: Record<EtfSortKey, SortDirection> = {
-  name: "asc",
-  close: "desc",
-  change_pct: "desc",
-  turnover: "desc",
-  return_1w_pct: "desc",
-  distribution_yield_ttm_pct: "desc",
-  aum: "desc",
-  expense_ratio_pct_approx: "desc",
-};
-
-type SortValue = string | number | null;
-
-function sortValueFor(row: EtfListRow, key: EtfSortKey): SortValue {
-  switch (key) {
-    case "name":
-      return row.name;
-    case "close":
-      return row.close;
-    case "change_pct":
-      return row.change_pct;
-    case "turnover":
-      return row.turnover;
-    case "return_1w_pct":
-      return row.return_1w_pct;
-    case "distribution_yield_ttm_pct":
-      return row.distribution_yield_ttm_pct;
-    case "aum":
-      return row.aum;
-    case "expense_ratio_pct_approx":
-      return row.expense_ratio_pct_approx;
-    default:
-      return null;
-  }
-}
-
-/** Nulls always sort last regardless of direction — a missing value is never "smallest"/
- * "largest", it's simply not comparable, so it never competes for the top of either order. */
-export function compareRows(
-  a: EtfListRow,
-  b: EtfListRow,
-  key: EtfSortKey,
-  direction: SortDirection,
-): number {
-  const av = sortValueFor(a, key);
-  const bv = sortValueFor(b, key);
-  if (av === null && bv === null) return 0;
-  if (av === null) return 1;
-  if (bv === null) return -1;
-  const sign = direction === "asc" ? 1 : -1;
-  if (typeof av === "string" || typeof bv === "string") {
-    return sign * String(av).localeCompare(String(bv), "zh-TW");
-  }
-  return sign * (av - bv);
-}
-
 /**
  * 主動式ETF-style sortable ETF list — every column's header is a real `<button>` (click to
  * sort, click again to flip direction), matching the reference app's own ▲▼-on-every-column
@@ -91,7 +36,13 @@ export function compareRows(
  * the same collapse-to-N convention `LeaderboardCard`/`HolderAccumulationCard` already use, so
  * this card's height stays comparable to its dashboard neighbors instead of growing to ~300 rows.
  */
-export function EtfListTable({ rows }: { readonly rows: readonly EtfListRow[] }): ReactNode {
+export function EtfListTable({
+  rows,
+  market,
+}: {
+  readonly rows: readonly EtfListRow[];
+  readonly market: Market;
+}): ReactNode {
   const t = useTranslations("market.cards.etfList");
   const locale = useLocale();
   const [sortKey, setSortKey] = useState<EtfSortKey>("aum");
@@ -125,6 +76,7 @@ export function EtfListTable({ rows }: { readonly rows: readonly EtfListRow[] })
         sortKey={sortKey}
         sortDirection={sortDirection}
         onToggleSort={toggleSort}
+        market={market}
         locale={locale}
         t={t}
         maxHeightClassName="max-h-[420px]"
@@ -154,6 +106,7 @@ export function EtfListTable({ rows }: { readonly rows: readonly EtfListRow[] })
           sortKey={sortKey}
           sortDirection={sortDirection}
           onToggleSort={toggleSort}
+          market={market}
           locale={locale}
           t={t}
           maxHeightClassName="max-h-[640px]"
@@ -172,6 +125,7 @@ function EtfListBody({
   sortKey,
   sortDirection,
   onToggleSort,
+  market,
   locale,
   t,
   maxHeightClassName,
@@ -180,6 +134,7 @@ function EtfListBody({
   readonly sortKey: EtfSortKey;
   readonly sortDirection: SortDirection;
   readonly onToggleSort: (key: EtfSortKey) => void;
+  readonly market: Market;
   readonly locale: string;
   readonly t: ReturnType<typeof useTranslations>;
   readonly maxHeightClassName: string;
@@ -195,7 +150,7 @@ function EtfListBody({
         />
         <ul className={cn("divide-y divide-[var(--border)] overflow-y-auto", maxHeightClassName)}>
           {rows.map((row) => (
-            <EtfListRowItem key={row.symbol} row={row} locale={locale} t={t} />
+            <EtfListRowItem key={row.symbol} row={row} market={market} locale={locale} t={t} />
           ))}
         </ul>
       </div>
@@ -266,10 +221,12 @@ function EtfListHeaderRow({
 
 function EtfListRowItem({
   row,
+  market,
   locale,
   t,
 }: {
   readonly row: EtfListRow;
+  readonly market: Market;
   readonly locale: string;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
@@ -287,7 +244,11 @@ function EtfListRowItem({
       }`}
       className={cn("grid items-center gap-2.5 py-2", ETF_ROW_GRID_COLS)}
     >
-      <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+      <SymbolLink
+        symbol={row.symbol}
+        market={market}
+        className="truncate text-[13px] text-[var(--text)] hover:underline"
+      >
         {row.name}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
         {badge ? (
@@ -298,7 +259,7 @@ function EtfListRowItem({
             {t(badge.labelKey)}
           </span>
         ) : null}
-      </span>
+      </SymbolLink>
       <span aria-hidden className="text-right font-num text-[13px] text-[var(--text)] tabular-nums">
         {row.close !== null ? formatNumber(row.close, locale, { decimals: 2 }) : "—"}
       </span>

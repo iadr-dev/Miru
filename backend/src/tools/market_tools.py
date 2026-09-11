@@ -710,35 +710,23 @@ def _shares_outstanding_by_symbol(
     return shares_outstanding
 
 
-_DATE_PARTITION_PREFIX = "date="
-
-
 def _ingested_dates(
     store: ParquetStore, dataset: str, market: str, *, on_or_before: date_ | None = None
 ) -> list[date_]:
-    """Every date `dataset`+`market` has an actually-written partition for, found by scanning
-    the whole Hive-partitioned directory tree — shared by every "latest real date" helper below
-    (`_latest_dataset_date`, `_latest_ingested_date_on_or_before`,
-    `_two_latest_ingested_dates_on_or_before`) so the scan+`has_partition` check exists exactly
-    once. `on_or_before`, when given, drops any later date before returning — a slower-cadence
-    dataset like `ACTIVE_ETF_HOLDING_JOB` can lag the `PRICE_EOD_JOB`-derived trading-day
-    calendar by more than one day, so its latest real partition may sit entirely outside a short
-    requested window."""
-    market_dir = store.root / f"dataset={dataset}" / f"market={market}"
-    if not market_dir.exists():
-        return []
-    candidates: list[date_] = []
-    for child in market_dir.iterdir():
-        if not child.is_dir() or not child.name.startswith(_DATE_PARTITION_PREFIX):
-            continue
-        try:
-            day = date_.fromisoformat(child.name.removeprefix(_DATE_PARTITION_PREFIX))
-        except ValueError:
-            continue
-        if on_or_before is not None and day > on_or_before:
-            continue
-        if store.has_partition(dataset, market, day):
-            candidates.append(day)
+    """Every date `dataset`+`market` has a real, non-empty partition for — shared by every
+    "latest real date" helper below (`_latest_dataset_date`, `_latest_ingested_date_on_or_
+    before`, `_two_latest_ingested_dates_on_or_before`) so the real-partition check exists
+    exactly once. Delegates to `store.list_partition_dates`, NOT `store.has_partition` (that
+    only confirms a manifest exists, not that the partition has real rows — confirmed live this
+    session: a stale zero-row placeholder partition made this return a "latest" date whose
+    `read_partition` then silently came back empty, blanking every ETF's 費用率 column). `on_or_
+    before`, when given, drops any later date before returning — a slower-cadence dataset like
+    `ACTIVE_ETF_HOLDING_JOB` can lag the `PRICE_EOD_JOB`-derived trading-day calendar by more
+    than one day, so its latest real partition may sit entirely outside a short requested
+    window."""
+    candidates = list(store.list_partition_dates(dataset, market))
+    if on_or_before is not None:
+        candidates = [day for day in candidates if day <= on_or_before]
     return candidates
 
 
@@ -3302,7 +3290,11 @@ def _etf_week_closes(
     for row in week_raw:
         symbol = row.get("symbol")
         close = row.get("close")
-        row_date_raw = row.get("date")
+        # `trade_date` (a string) is the row's own field; `date` is `read_range`'s partition
+        # metadata column and is already a `datetime.date`, not a string — reading `date` here
+        # instead of `trade_date` silently dropped every row (`isinstance(..., str)` never
+        # matched a `date` object), so `return_1w_pct` came back `None` for every ETF.
+        row_date_raw = row.get("trade_date")
         if not (
             isinstance(symbol, str)
             and symbol in etf_symbols

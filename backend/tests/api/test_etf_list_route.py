@@ -249,3 +249,101 @@ class TestEtfListRoute:
         row = next(r for r in resp.json()["rows"] if r["symbol"] == "0056")
         assert row["distribution_frequency"] == "季配"
         assert row["distribution_yield_ttm_pct"] == pytest.approx(0.5 * 4 / 40.0 * 100)
+
+    def test_return_1w_pct_from_a_real_trailing_week_of_closes(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Regression guard: `_etf_week_closes` must read a row's `trade_date` field (a string),
+        not `read_range`'s own `date` metadata column (a `datetime.date` object) — reading the
+        latter silently dropped every row (an `isinstance(..., str)` check never matched a
+        `date` object), so `return_1w_pct` came back `None` for every ETF. `2025-05-07`'s
+        trailing 5-trading-day window (naive Mon-Fri calendar, no holiday overlay) is
+        `2025-04-30 .. 2025-05-07`; first close 100.0, last close 110.0 -> +10%."""
+        store = ParquetStore(root=tmp_path)
+        week_closes = {
+            date_(2025, 4, 30): 100.0,
+            date_(2025, 5, 1): 102.0,
+            date_(2025, 5, 2): 104.0,
+            date_(2025, 5, 5): 106.0,
+            date_(2025, 5, 6): 108.0,
+            date_(2025, 5, 7): 110.0,
+        }
+        for day, close in week_closes.items():
+            store.write_partition(
+                "TaiwanStockPrice",
+                "TW",
+                day,
+                [{"symbol": "0050", "trade_date": day.isoformat(), "close": close}],
+            )
+        client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get(
+            "/api/v1/market/etf-list",
+            params={"trade_date": "2025-05-07"},
+        )
+
+        assert resp.status_code == 200
+        row = next(r for r in resp.json()["rows"] if r["symbol"] == "0050")
+        assert row["return_1w_pct"] == pytest.approx(10.0)
+
+    def test_expense_ratio_falls_back_past_a_stale_empty_partition(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Regression guard: the "latest dataset date" scan must skip a date whose partition
+        manifest exists but carries zero real rows (a placeholder from a run that found nothing
+        to write) and fall back to the most recent date that actually has rows — confirmed live
+        this session against a real stale SITCA `etf_expense_ratio` placeholder, which made
+        every ETF's `expense_ratio_pct_approx` come back `None` even though a real, older
+        expense-ratio partition existed. `write_partition` with an empty row list produces
+        exactly this shape (the `_empty`-placeholder column `list_partition_dates` excludes)."""
+        store = ParquetStore(root=tmp_path)
+        real_day = date_(2025, 4, 1)
+        empty_day = date_(2025, 5, 1)
+        prior_day = date_(2025, 5, 6)
+        trading_day = date_(2025, 5, 7)
+        store.write_partition(
+            "TaiwanStockPrice",
+            "TW",
+            prior_day,
+            [{"symbol": "0050", "trade_date": "2025-05-06", "close": 100.0}],
+        )
+        store.write_partition(
+            "TaiwanStockPrice",
+            "TW",
+            trading_day,
+            [{"symbol": "0050", "trade_date": "2025-05-07", "close": 110.0}],
+        )
+        store.write_partition(
+            "etf_expense_ratio",
+            "TW",
+            real_day,
+            [
+                {
+                    "symbol": "0050",
+                    "market": "TW",
+                    "as_of": "2025-04-01",
+                    "management_fee_pct": 0.3,
+                    "custody_fee_pct": 0.035,
+                    "total_expense_ratio_pct_approx": 0.335,
+                }
+            ],
+        )
+        store.write_partition("etf_expense_ratio", "TW", empty_day, [])  # the stale placeholder
+        client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get(
+            "/api/v1/market/etf-list",
+            params={"trade_date": trading_day.isoformat()},
+        )
+
+        assert resp.status_code == 200
+        row = next(r for r in resp.json()["rows"] if r["symbol"] == "0050")
+        assert row["expense_ratio_pct_approx"] == pytest.approx(0.335)

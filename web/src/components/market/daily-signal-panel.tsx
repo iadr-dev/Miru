@@ -102,6 +102,7 @@ export function DailySignalPanel({ market }: { readonly market: Market }): React
                     <DailySignalTable
                       rows={filteredRows.slice(0, DAILY_SIGNAL_COLLAPSED_ROW_COUNT)}
                       statusFilter={null}
+                      market={market}
                     />
                   </div>
 
@@ -124,7 +125,7 @@ export function DailySignalPanel({ market }: { readonly market: Market }): React
                     closeLabel={t("collapse")}
                     onClose={() => setExpanded(false)}
                   >
-                    <DailySignalTable rows={filteredRows} statusFilter={null} />
+                    <DailySignalTable rows={filteredRows} statusFilter={null} market={market} />
                   </ExpandModal>
                 </>
               );
