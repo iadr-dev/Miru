@@ -245,15 +245,15 @@ class GetDispositionBoardTool(BaseTool):
             if not self._store.has_partition(ATTENTION_STOCKS_DATASET, market, day):
                 continue
             observed_days += 1
-            for row in _rows_from_store(
+            for attention_row in _rows_from_store(
                 AttentionStockRow, self._store.read_partition(ATTENTION_STOCKS_DATASET, market, day)
             ):
-                flag_counts[row.symbol] = flag_counts.get(row.symbol, 0) + 1
-                flag_names.setdefault(row.symbol, set()).add("注意")
+                flag_counts[attention_row.symbol] = flag_counts.get(attention_row.symbol, 0) + 1
+                flag_names.setdefault(attention_row.symbol, set()).add("注意")
                 # Latest flag's own name/exchange wins — a symbol's company name/listing never
                 # actually changes within a 10-day window, but `day` walks oldest-to-newest here
                 # so this naturally keeps the most recent snapshot without extra bookkeeping.
-                attention_info[row.symbol] = row
+                attention_info[attention_row.symbol] = attention_row
 
         at_risk_symbols = set(flag_counts) - set(by_symbol_disposition)
         roster = sorted(set(by_symbol_disposition) | at_risk_symbols)
