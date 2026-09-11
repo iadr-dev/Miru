@@ -188,6 +188,17 @@ export function ChipAnalysisPanel({
   );
 }
 
+// Shared row min-heights — 摘要/分點 and 三大法人/融資券 are each two fully independent cards
+// with their OWN sub-tab switcher, so their real content height varies with whatever sub-tab
+// that card currently has selected (a compact stat block vs. a full chart). Without a shared
+// floor the two cards in a row visibly mismatch height whenever their sub-tabs land on very
+// different content shapes — confirmed live via screenshot (三大法人's 摘要 stat block at 217px
+// next to 融資券's 借券 chart at 459px). Sized to each row's tallest realistic chart-shaped
+// sub-tab (observed live); a sub-tab whose own content exceeds this still grows the card
+// normally — this is a floor, never a clamp.
+const SUMMARY_ROW_MIN_HEIGHT = "min-h-[560px]";
+const INSTITUTIONAL_ROW_MIN_HEIGHT = "min-h-[460px]";
+
 function SummaryColumn({
   symbol,
   market,
@@ -197,7 +208,12 @@ function SummaryColumn({
 }): ReactNode {
   const t = useTranslations("stock.chipAnalysis");
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section
+      className={cn(
+        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
+        SUMMARY_ROW_MIN_HEIGHT,
+      )}
+    >
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("column.summary")}</h2>
       <h3 className="mb-2 font-medium text-[13px] text-[var(--text-muted)]">
         {t("summarySection.institutional")}
@@ -220,7 +236,12 @@ function BrokersColumn({
 }): ReactNode {
   const t = useTranslations("stock.chipAnalysis");
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section
+      className={cn(
+        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
+        SUMMARY_ROW_MIN_HEIGHT,
+      )}
+    >
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("column.brokers")}</h2>
       <ChipFlowsBody symbol={symbol} market={market} />
     </section>
@@ -271,7 +292,12 @@ function InstitutionalColumn({
   const [subTab, setSubTab] = useState<InstitutionalSubTab>("flow");
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section
+      className={cn(
+        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
+        INSTITUTIONAL_ROW_MIN_HEIGHT,
+      )}
+    >
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">
         {t("column.institutional")}
       </h2>
@@ -299,7 +325,12 @@ function MarginShortColumn({
   const [subTab, setSubTab] = useState<MarginSubTab>("margin");
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section
+      className={cn(
+        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
+        INSTITUTIONAL_ROW_MIN_HEIGHT,
+      )}
+    >
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">
         {t("column.marginShort")}
       </h2>
@@ -986,7 +1017,12 @@ function ChipFlowsBody({
     queryFn: () => getForeignShareholding(symbol, market),
   });
 
-  if (query.isLoading) return <CardSkeletonBody height={280} />;
+  // 摘要's sibling column (`SummaryColumn`) stacks two skeletons while loading (`Institutional
+  // SummaryBody` 200px + `MarginShortSnapshot` 160px, plus their own subheaders) — this column
+  // has only one body under its header, so its skeleton must be taller than its own eventual
+  // content height alone or the two cards visibly mismatch height during load (flagged live via
+  // screenshot: 分點's card fell short of 摘要's bottom edge).
+  if (query.isLoading) return <CardSkeletonBody height={440} />;
   if (!query.data) return null;
   if (isMaskedTeaser(query.data)) {
     return (

@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
+import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
@@ -108,6 +109,7 @@ export function PriceMomentumCard({
         <PriceMomentumRows
           rows={previewRows}
           quoteBySymbol={previewQuoteBySymbol}
+          market={market}
           t={t}
           tLeaderboard={tLeaderboard}
         />
@@ -139,6 +141,7 @@ export function PriceMomentumCard({
         <PriceMomentumRows
           rows={rows}
           quoteBySymbol={allQuoteBySymbol}
+          market={market}
           t={t}
           tLeaderboard={tLeaderboard}
         />
@@ -153,11 +156,13 @@ export function PriceMomentumCard({
 function PriceMomentumRows({
   rows,
   quoteBySymbol,
+  market,
   t,
   tLeaderboard,
 }: {
   rows: readonly PriceMomentumRow[];
   quoteBySymbol: Map<string, ReturnType<typeof useSymbolQuotes>["quotes"][number]>;
+  market: Market;
   t: ReturnType<typeof useTranslations>;
   tLeaderboard: ReturnType<typeof useTranslations>;
 }): ReactNode {
@@ -166,7 +171,7 @@ function PriceMomentumRows({
       <div
         aria-hidden
         className={cn(
-          "grid items-center gap-2.5 border-b border-[var(--border)] pb-1.5 text-[11px] text-[var(--text-muted)]",
+          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
           ROW_GRID_COLS,
         )}
       >
@@ -191,10 +196,14 @@ function PriceMomentumRows({
               <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
                 {index + 1}
               </span>
-              <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+              <SymbolLink
+                symbol={row.symbol}
+                market={market}
+                className="truncate text-[13px] text-[var(--text)] hover:underline"
+              >
                 {row.stock_name}
                 <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
-              </span>
+              </SymbolLink>
               <span
                 aria-hidden
                 className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"

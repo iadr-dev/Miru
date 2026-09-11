@@ -45,7 +45,7 @@ export function EtfListPanel({ market }: { market: Market }): ReactNode {
                   </span>
                 ) : null}
               </h2>
-              <EtfListTable rows={data.rows} />
+              <EtfListTable rows={data.rows} market={market} />
             </>
           );
         }}

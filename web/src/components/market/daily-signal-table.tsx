@@ -3,8 +3,10 @@
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { SymbolLink } from "@/components/market/symbol-link";
 import { cn } from "@/lib/cn";
 import type { DailySignalRow, HoldingStatus } from "@/types/market";
+import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_0.9fr]";
 
@@ -36,9 +38,11 @@ const STATUS_TOKEN: Record<HoldingStatus, string> = {
 export function DailySignalTable({
   rows,
   statusFilter,
+  market,
 }: {
   readonly rows: readonly DailySignalRow[];
   readonly statusFilter: HoldingStatus | null;
+  readonly market: Market;
 }): ReactNode {
   const t = useTranslations("market.cards.dailySignal");
   const locale = useLocale();
@@ -66,7 +70,13 @@ export function DailySignalTable({
         </div>
         <ul className="divide-y divide-[var(--border)]">
           {filtered.map((row) => (
-            <DailySignalRowItem key={row.component_stock_id} row={row} locale={locale} t={t} />
+            <DailySignalRowItem
+              key={row.component_stock_id}
+              row={row}
+              market={market}
+              locale={locale}
+              t={t}
+            />
           ))}
         </ul>
       </div>
@@ -104,10 +114,12 @@ function upDownArrow(up: boolean): string {
 
 function DailySignalRowItem({
   row,
+  market,
   locale,
   t,
 }: {
   readonly row: DailySignalRow;
+  readonly market: Market;
   readonly locale: string;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
@@ -133,12 +145,16 @@ function DailySignalRowItem({
       }`}
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
     >
-      <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+      <SymbolLink
+        symbol={row.component_stock_id}
+        market={market}
+        className="truncate text-[13px] text-[var(--text)] hover:underline"
+      >
         {row.component_stock_name}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">
           {row.component_stock_id}
         </span>
-      </span>
+      </SymbolLink>
       <span aria-hidden className="text-right font-num text-[13px] text-[var(--text)] tabular-nums">
         {row.close !== null ? formatNumber(row.close, locale, { decimals: 2 }) : "—"}
         <span
