@@ -357,6 +357,17 @@ const STATEMENT_LOOKBACK_MONTHS = 30;
 // most-recent quarters as chart+table columns inline, "展開完整" opens the rest in `ExpandModal`.
 const STATEMENT_COLLAPSED_PERIOD_COUNT = 8;
 
+/** `Legend`'s `formatter` for the 財務報表 line-item click-to-toggle legend — a named function
+ * rather than an inline arrow so it isn't redefined on every render of `FinancialStatementCard`. */
+function statementLegendFormatter(
+  value: string,
+  isItemVisible: (item: string) => boolean,
+): ReactNode {
+  return (
+    <span style={{ cursor: "pointer", opacity: isItemVisible(value) ? 1 : 0.4 }}>{value}</span>
+  );
+}
+
 /** 財務結構/獲利趨勢 sub-tabs — a multi-quarter line chart (top-10 line items by the latest
  * period's |value|, one categorical color per item, legend click-to-toggle same as
  * `DividendPolicyCard`'s chart) plus a 項目 × 季別 grid table below, matching the reference app's
@@ -397,7 +408,7 @@ function FinancialStatementCard({
   // swapping some periods' plotted value for that item between the real figure and a 0-100
   // percentage.
   const lines = (query.data?.lines ?? []).filter((l) => !l.item.endsWith("_per"));
-  const periods = [...new Set(lines.map((l) => l.period_end))].sort();
+  const periods = [...new Set(lines.map((l) => l.period_end))].sort((a, b) => a.localeCompare(b));
   const latestPeriod = periods.at(-1);
   const topItems = [...lines]
     .filter((l) => l.period_end === latestPeriod)
@@ -422,6 +433,92 @@ function FinancialStatementCard({
     }
     return point;
   });
+
+  let statementBody: ReactNode;
+  if (query.isLoading) {
+    statementBody = <CardSkeletonBody height={280} />;
+  } else if (topItems.length === 0) {
+    statementBody = <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+  } else {
+    statementBody = (
+      <>
+        <div style={{ width: "100%", height: 300 }}>
+          <ResponsiveContainer>
+            <ComposedChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
+              <CartesianGrid vertical={false} stroke="var(--grid)" />
+              <XAxis
+                dataKey="period"
+                tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+                stroke="var(--border)"
+              />
+              <YAxis
+                tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+                width={48}
+                stroke="var(--border)"
+              />
+              <Tooltip
+                contentStyle={TOOLTIP_STYLE}
+                formatter={(value) => formatNumber(Number(value), locale)}
+              />
+              <Legend
+                onClick={(entry) => {
+                  const item = entry.dataKey as string;
+                  setToggledItems((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(item)) {
+                      next.delete(item);
+                    } else {
+                      next.add(item);
+                    }
+                    return next;
+                  });
+                }}
+                formatter={(value) => statementLegendFormatter(value, isItemVisible)}
+                wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
+              />
+              {topItems.map((item, i) => (
+                <Line
+                  key={item}
+                  type="monotone"
+                  dataKey={item}
+                  name={item}
+                  stroke={STATEMENT_LINE_COLORS[i % STATEMENT_LINE_COLORS.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                  hide={!isItemVisible(item)}
+                />
+              ))}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="mt-4">
+          <FinancialStatementTable
+            items={topItems}
+            periods={chartPeriods}
+            valueByItemAndPeriod={valueByItemAndPeriod}
+            locale={locale}
+            t={t}
+          />
+        </div>
+
+        {periods.length > STATEMENT_COLLAPSED_PERIOD_COUNT ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className={cn(
+              "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+              "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+            )}
+          >
+            <span>{t("expandTo", { count: periods.length })}</span>
+          </button>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
@@ -453,94 +550,7 @@ function FinancialStatementCard({
         ))}
       </div>
 
-      <div className="mt-3">
-        {query.isLoading ? (
-          <CardSkeletonBody height={280} />
-        ) : topItems.length === 0 ? (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
-        ) : (
-          <>
-            <div style={{ width: "100%", height: 300 }}>
-              <ResponsiveContainer>
-                <ComposedChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
-                  <CartesianGrid vertical={false} stroke="var(--grid)" />
-                  <XAxis
-                    dataKey="period"
-                    tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-                    stroke="var(--border)"
-                  />
-                  <YAxis
-                    tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                    tickFormatter={(v: number) => formatCompactNumber(v, locale)}
-                    width={48}
-                    stroke="var(--border)"
-                  />
-                  <Tooltip
-                    contentStyle={TOOLTIP_STYLE}
-                    formatter={(value) => formatNumber(Number(value), locale)}
-                  />
-                  <Legend
-                    onClick={(entry) => {
-                      const item = entry.dataKey as string;
-                      setToggledItems((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(item)) {
-                          next.delete(item);
-                        } else {
-                          next.add(item);
-                        }
-                        return next;
-                      });
-                    }}
-                    formatter={(value) => (
-                      <span style={{ cursor: "pointer", opacity: isItemVisible(value) ? 1 : 0.4 }}>
-                        {value}
-                      </span>
-                    )}
-                    wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
-                  />
-                  {topItems.map((item, i) => (
-                    <Line
-                      key={item}
-                      type="monotone"
-                      dataKey={item}
-                      name={item}
-                      stroke={STATEMENT_LINE_COLORS[i % STATEMENT_LINE_COLORS.length]}
-                      strokeWidth={2}
-                      dot={false}
-                      connectNulls
-                      hide={!isItemVisible(item)}
-                    />
-                  ))}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="mt-4">
-              <FinancialStatementTable
-                items={topItems}
-                periods={chartPeriods}
-                valueByItemAndPeriod={valueByItemAndPeriod}
-                locale={locale}
-                t={t}
-              />
-            </div>
-
-            {periods.length > STATEMENT_COLLAPSED_PERIOD_COUNT ? (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className={cn(
-                  "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                  "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                )}
-              >
-                <span>{t("expandTo", { count: periods.length })}</span>
-              </button>
-            ) : null}
-          </>
-        )}
-      </div>
+      <div className="mt-3">{statementBody}</div>
 
       <ExpandModal
         open={expanded}

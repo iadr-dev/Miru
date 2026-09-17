@@ -60,6 +60,25 @@ function formatPct(value: number | null | undefined): string {
  */
 type DividendSeriesKey = "cash" | "stock";
 
+/** `Legend`'s `formatter` for the 現金/股票股利 click-to-toggle legend — a named function rather
+ * than an inline arrow so it isn't redefined on every render of `DividendPolicyCard`. */
+function dividendLegendFormatter(
+  value: string,
+  hiddenSeries: ReadonlySet<DividendSeriesKey>,
+  t: ReturnType<typeof useTranslations>,
+): ReactNode {
+  return (
+    <span
+      style={{
+        cursor: "pointer",
+        opacity: hiddenSeries.has(value as DividendSeriesKey) ? 0.4 : 1,
+      }}
+    >
+      {value === "cash" ? t("cashDividendLegend") : t("stockDividendLegend")}
+    </span>
+  );
+}
+
 export function DividendPolicyCard({
   symbol,
   market,
@@ -152,16 +171,7 @@ export function DividendPolicyCard({
                       return next;
                     });
                   }}
-                  formatter={(value) => (
-                    <span
-                      style={{
-                        cursor: "pointer",
-                        opacity: hiddenSeries.has(value as DividendSeriesKey) ? 0.4 : 1,
-                      }}
-                    >
-                      {value === "cash" ? t("cashDividendLegend") : t("stockDividendLegend")}
-                    </span>
-                  )}
+                  formatter={(value) => dividendLegendFormatter(value, hiddenSeries, t)}
                   wrapperStyle={{ fontSize: 12, color: "var(--text-muted)" }}
                 />
                 <Bar

@@ -38,6 +38,12 @@ function isNumericColumn(rows: Record<string, unknown>[], col: string): boolean 
   return !rows.some((row) => typeof row[col] === "string");
 }
 
+function cellText(value: unknown, locale: string, numeric: boolean): string {
+  if (typeof value === "number") return formatNumber(asNumber(value), locale);
+  if (numeric) return "—";
+  return asString(value) ?? "—";
+}
+
 /** Wraps a chart with its own underlying rows, shown as a collapsible data table directly below
  * it in the same card — a chart alone leaves the exact numbers behind a hover tooltip; the
  * expandable table (same `TableWithActions` copy/download/expand row every other rich-card table
@@ -111,11 +117,7 @@ export function ChartWithDataSheet({
                             numeric ? "text-right font-num tabular-nums" : "text-left",
                           )}
                         >
-                          {typeof value === "number"
-                            ? formatNumber(asNumber(value), locale)
-                            : numeric
-                              ? "—"
-                              : (asString(value) ?? "—")}
+                          {cellText(value, locale, numeric)}
                         </td>
                       );
                     })}

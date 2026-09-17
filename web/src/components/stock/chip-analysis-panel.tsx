@@ -38,6 +38,7 @@ import {
 import { cn } from "@/lib/cn";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
+import type { DayTradingRow, MarginShortRow } from "@/types/stock-detail";
 
 const INSTITUTIONAL_SUB_TABS = ["flow", "holdings", "summary"] as const;
 type InstitutionalSubTab = (typeof INSTITUTIONAL_SUB_TABS)[number];
@@ -376,6 +377,52 @@ const INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS = 30; // matches get_institutional_
 // most-recent days inline, "展開完整" opens the rest in `ExpandModal`.
 const INSTITUTIONAL_FLOW_TABLE_COLLAPSED_ROW_COUNT = 6;
 
+/** 進出 chart's click-to-toggle legend (3 buckets + price) — a named module-level component
+ * rather than an inline closure passed to `Legend`'s `content` prop, so it isn't redefined on
+ * every render of its parent. */
+function FlowLegend({
+  hiddenSeries,
+  toggleSeries,
+  t,
+  tFields,
+}: {
+  readonly hiddenSeries: ReadonlySet<string>;
+  readonly toggleSeries: (series: string) => void;
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly tFields: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  return (
+    <ul className="mt-2 flex flex-wrap justify-center gap-3">
+      {[...INSTITUTIONAL_BUCKETS, "price"].map((series) => {
+        const isHidden = hiddenSeries.has(series);
+        const color =
+          series === "price" ? "var(--chart-9)" : BUCKET_COLORS[series as InstitutionalBucket];
+        const label =
+          series === "price"
+            ? tFields("fields.close")
+            : bucketLabel(t, series as InstitutionalBucket);
+        return (
+          <li key={series}>
+            <button
+              type="button"
+              onClick={() => toggleSeries(series)}
+              className="inline-flex items-center gap-1.5 text-[11px]"
+              style={{ color: isHidden ? "var(--text-muted)" : "var(--text)" }}
+            >
+              <span
+                aria-hidden
+                className="inline-block size-2.5 rounded-sm"
+                style={{ backgroundColor: isHidden ? "var(--text-muted)" : color }}
+              />
+              {label}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** 三大法人's 進出 chart — 3 separately-colored bars per day (外資/投信/自營商 net, bucketed from
  * `get_institutional_flow`'s 5 real categories via `bucketedFlowByDate`) with a price-line
  * overlay on a secondary axis, plus a 紅漲綠跌-colored 日期/外資/投信/自營商/合計 table below —
@@ -430,7 +477,7 @@ function InstitutionalFlowBody({
     priceByDate.set(bar.trade_date, bar.close);
   }
 
-  const datesAsc = [...byDate.keys()].sort();
+  const datesAsc = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
   const points = datesAsc.map((trade_date) => {
     const bucket = byDate.get(trade_date);
     return {
@@ -482,36 +529,12 @@ function InstitutionalFlowBody({
             />
             <Legend
               content={() => (
-                <ul className="mt-2 flex flex-wrap justify-center gap-3">
-                  {[...INSTITUTIONAL_BUCKETS, "price"].map((series) => {
-                    const isHidden = hiddenSeries.has(series);
-                    const color =
-                      series === "price"
-                        ? "var(--chart-9)"
-                        : BUCKET_COLORS[series as InstitutionalBucket];
-                    const label =
-                      series === "price"
-                        ? tFields("fields.close")
-                        : bucketLabel(t, series as InstitutionalBucket);
-                    return (
-                      <li key={series}>
-                        <button
-                          type="button"
-                          onClick={() => toggleSeries(series)}
-                          className="inline-flex items-center gap-1.5 text-[11px]"
-                          style={{ color: isHidden ? "var(--text-muted)" : "var(--text)" }}
-                        >
-                          <span
-                            aria-hidden
-                            className="inline-block size-2.5 rounded-sm"
-                            style={{ backgroundColor: isHidden ? "var(--text-muted)" : color }}
-                          />
-                          {label}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <FlowLegend
+                  hiddenSeries={hiddenSeries}
+                  toggleSeries={toggleSeries}
+                  t={t}
+                  tFields={tFields}
+                />
               )}
             />
             {INSTITUTIONAL_BUCKETS.map((bucket) => (
@@ -698,7 +721,7 @@ function InstitutionalTotalsBody({
   }
 
   const byDate = bucketedFlowByDate(flowRows);
-  const datesAsc = [...byDate.keys()].sort();
+  const datesAsc = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
   const cumulativeTotals = datesAsc.reduce(
     (acc, date) => {
       const bucket = byDate.get(date);
@@ -937,7 +960,7 @@ function governmentBankRollingNet(
   for (const row of rows) {
     byDate.set(row.trade_date, (byDate.get(row.trade_date) ?? 0) + row.buy - row.sell);
   }
-  const orderedDates = [...byDate.keys()].sort();
+  const orderedDates = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
   if (orderedDates.length < window) return null;
   return orderedDates.slice(-window).reduce((sum, date) => sum + (byDate.get(date) ?? 0), 0);
 }
@@ -1340,7 +1363,9 @@ function ForeignShareholdingBody({
     priceByDate.set(bar.trade_date, bar.close);
   }
 
-  const dates = [...new Set([...foreignByDate.keys(), ...flowByDate.keys()])].sort();
+  const dates = [...new Set([...foreignByDate.keys(), ...flowByDate.keys()])].sort((a, b) =>
+    a.localeCompare(b),
+  );
   let trustCumulative = 0;
   let dealerCumulative = 0;
   const trustEstimateByDate = new Map<string, number>();
@@ -1718,26 +1743,6 @@ function MarginShortChartShell<TRow extends { trade_date: string }>({
   );
 }
 
-/** Signed-change cell (▲ red / ▼ green, 紅漲綠跌) shared by every 融資券 table — same convention
- * `NetFlowCell` already applies to the 三大法人 tables above. */
-function SignedCell({
-  value,
-  locale,
-}: {
-  readonly value: number;
-  readonly locale: string;
-}): ReactNode {
-  const up = value >= 0;
-  return (
-    <td
-      className="px-2 py-1.5 text-right font-num tabular-nums"
-      style={{ color: up ? "var(--up)" : "var(--down)" }}
-    >
-      {up ? "▲" : "▼"} {formatNumber(Math.abs(value), locale)}
-    </td>
-  );
-}
-
 function MarginShortBody({
   symbol,
   market,
@@ -1774,44 +1779,13 @@ function MarginShortBody({
 
   if (view === "dayTrading") {
     if (dayTradingQuery.isLoading) return <CardSkeletonBody height={220} />;
-    const rows = [...(dayTradingQuery.data?.rows ?? [])].sort((a, b) =>
+    const dayTradingRows = [...(dayTradingQuery.data?.rows ?? [])].sort((a, b) =>
       a.trade_date.localeCompare(b.trade_date),
     );
-    if (rows.length === 0) {
+    if (dayTradingRows.length === 0) {
       return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
     }
-    return (
-      <MarginShortChartShell
-        rows={rows}
-        barKey="volume"
-        barColor="var(--chart-6)"
-        barName={t("dayTradingVolume")}
-        barTickFormatter={(v) => formatCompactNumber(v, locale)}
-        priceByDate={priceByDate}
-        tableHeaders={[
-          t("flowTable.date"),
-          t("dayTradingVolume"),
-          t("dayTradingBuyAmount"),
-          t("dayTradingSellAmount"),
-        ]}
-        renderRow={(row) => (
-          <tr key={row.trade_date}>
-            <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">
-              {row.trade_date}
-            </td>
-            <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-              {formatNumber(row.volume, locale)}
-            </td>
-            <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-              {formatNumber(row.buy_amount, locale)}
-            </td>
-            <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-              {formatNumber(row.sell_amount, locale)}
-            </td>
-          </tr>
-        )}
-      />
-    );
+    return <DayTradingBody rows={dayTradingRows} priceByDate={priceByDate} t={t} locale={locale} />;
   }
 
   if (marginShortQuery.isLoading) return <CardSkeletonBody height={220} />;
@@ -1823,66 +1797,23 @@ function MarginShortBody({
   }
 
   if (view === "ratio") {
-    const points = rows.map((row) => ({
-      trade_date: row.trade_date,
-      // No separate 券資比 tool exists — this is the client-computed ratio of the same
-      // `get_margin_short` row's own two balance fields, per this component's own docstring.
-      ratio:
-        row.margin_purchase_today_balance > 0
-          ? (row.short_sale_today_balance / row.margin_purchase_today_balance) * 100
-          : 0,
-      margin_balance: row.margin_purchase_today_balance,
-      short_balance: row.short_sale_today_balance,
-    }));
-    return (
-      <MarginShortChartShell
-        rows={points}
-        barKey="ratio"
-        barColor="var(--chart-5)"
-        barName={t("shortToMarginRatio")}
-        barTickFormatter={(v) => `${v.toFixed(1)}%`}
-        priceByDate={priceByDate}
-        tableHeaders={[
-          t("flowTable.date"),
-          t("shortToMarginRatio"),
-          t("marginBalance"),
-          t("shortBalance"),
-        ]}
-        renderRow={(row) => (
-          <tr key={row.trade_date}>
-            <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">
-              {row.trade_date}
-            </td>
-            <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-              {row.ratio.toFixed(2)}%
-            </td>
-            <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-              {formatNumber(row.margin_balance, locale)}
-            </td>
-            <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-              {formatNumber(row.short_balance, locale)}
-            </td>
-          </tr>
-        )}
-      />
-    );
+    return <ShortToMarginRatioBody rows={rows} priceByDate={priceByDate} t={t} locale={locale} />;
   }
 
   const isShort = view === "short";
-  const points = rows.map((row) => ({
-    trade_date: row.trade_date,
-    balance: isShort ? row.short_sale_today_balance : row.margin_purchase_today_balance,
-    change: isShort
-      ? row.short_sale_today_balance - row.short_sale_yesterday_balance
-      : row.margin_purchase_today_balance - row.margin_purchase_yesterday_balance,
-    usage:
-      (isShort ? row.short_sale_limit : row.margin_purchase_limit) > 0
-        ? ((isShort ? row.short_sale_today_balance : row.margin_purchase_today_balance) /
-            (isShort ? row.short_sale_limit : row.margin_purchase_limit)) *
-          100
-        : null,
-    cashRepayment: isShort ? row.short_sale_cash_repayment : row.margin_purchase_cash_repayment,
-  }));
+  const points = rows.map((row) => {
+    const balance = isShort ? row.short_sale_today_balance : row.margin_purchase_today_balance;
+    const limit = isShort ? row.short_sale_limit : row.margin_purchase_limit;
+    return {
+      trade_date: row.trade_date,
+      balance,
+      change: isShort
+        ? row.short_sale_today_balance - row.short_sale_yesterday_balance
+        : row.margin_purchase_today_balance - row.margin_purchase_yesterday_balance,
+      usage: limit > 0 ? (balance / limit) * 100 : null,
+      cashRepayment: isShort ? row.short_sale_cash_repayment : row.margin_purchase_cash_repayment,
+    };
+  });
 
   return (
     <MarginShortChartShell
@@ -1905,12 +1836,113 @@ function MarginShortBody({
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
             {formatNumber(row.balance, locale)}
           </td>
-          <SignedCell value={row.change} locale={locale} />
+          <NetFlowCell value={row.change} locale={locale} />
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
             {row.usage != null ? `${row.usage.toFixed(2)}%` : "—"}
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
             {formatNumber(row.cashRepayment, locale)}
+          </td>
+        </tr>
+      )}
+    />
+  );
+}
+
+/** 融資券's 當沖 sub-tab — pulled out of `MarginShortBody` (same reason `SecuritiesLendingBody`
+ * already is its own function) purely to keep that switch-on-`view` function's own cognitive
+ * complexity under the linter's threshold; no behavior change from when this was inline. */
+function DayTradingBody({
+  rows,
+  priceByDate,
+  t,
+  locale,
+}: {
+  readonly rows: readonly DayTradingRow[];
+  readonly priceByDate: ReadonlyMap<string, number>;
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly locale: string;
+}): ReactNode {
+  return (
+    <MarginShortChartShell
+      rows={rows}
+      barKey="volume"
+      barColor="var(--chart-6)"
+      barName={t("dayTradingVolume")}
+      barTickFormatter={(v) => formatCompactNumber(v, locale)}
+      priceByDate={priceByDate}
+      tableHeaders={[
+        t("flowTable.date"),
+        t("dayTradingVolume"),
+        t("dayTradingBuyAmount"),
+        t("dayTradingSellAmount"),
+      ]}
+      renderRow={(row) => (
+        <tr key={row.trade_date}>
+          <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{row.trade_date}</td>
+          <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+            {formatNumber(row.volume, locale)}
+          </td>
+          <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+            {formatNumber(row.buy_amount, locale)}
+          </td>
+          <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+            {formatNumber(row.sell_amount, locale)}
+          </td>
+        </tr>
+      )}
+    />
+  );
+}
+
+/** 融資券's 券資比 sub-tab — pulled out of `MarginShortBody` for the same cognitive-complexity
+ * reason `DayTradingBody` above is. No separate 券資比 tool exists — `ratio` is the
+ * client-computed ratio of the same `get_margin_short` row's own two balance fields. */
+function ShortToMarginRatioBody({
+  rows,
+  priceByDate,
+  t,
+  locale,
+}: {
+  readonly rows: readonly MarginShortRow[];
+  readonly priceByDate: ReadonlyMap<string, number>;
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly locale: string;
+}): ReactNode {
+  const points = rows.map((row) => ({
+    trade_date: row.trade_date,
+    ratio:
+      row.margin_purchase_today_balance > 0
+        ? (row.short_sale_today_balance / row.margin_purchase_today_balance) * 100
+        : 0,
+    margin_balance: row.margin_purchase_today_balance,
+    short_balance: row.short_sale_today_balance,
+  }));
+  return (
+    <MarginShortChartShell
+      rows={points}
+      barKey="ratio"
+      barColor="var(--chart-5)"
+      barName={t("shortToMarginRatio")}
+      barTickFormatter={(v) => `${v.toFixed(1)}%`}
+      priceByDate={priceByDate}
+      tableHeaders={[
+        t("flowTable.date"),
+        t("shortToMarginRatio"),
+        t("marginBalance"),
+        t("shortBalance"),
+      ]}
+      renderRow={(row) => (
+        <tr key={row.trade_date}>
+          <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{row.trade_date}</td>
+          <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+            {row.ratio.toFixed(2)}%
+          </td>
+          <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+            {formatNumber(row.margin_balance, locale)}
+          </td>
+          <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+            {formatNumber(row.short_balance, locale)}
           </td>
         </tr>
       )}
@@ -1953,7 +1985,7 @@ function SecuritiesLendingBody({
     entry.feeRateCount += 1;
     byDate.set(row.trade_date, entry);
   }
-  const datesAsc = [...byDate.keys()].sort();
+  const datesAsc = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
   // 借券成交 has no running-balance field on this side (每筆為單日成交量, not a balance) — the
   // reference app's own 借券 view plots a cumulative sell-balance line; this mirrors that via a
   // running sum of daily `volume`, the same real-flow-summed-into-a-balance pattern
@@ -2029,6 +2061,79 @@ function aggregateBrokers(
   return [...byBroker.entries()].map(([broker_id, v]) => ({ broker_id, ...v }));
 }
 
+/** `ChipFlowsBody`'s own derived-stat block, pulled into a pure function purely to keep that
+ * component's cognitive complexity under the linter's threshold — same inputs/outputs, no
+ * behavior change from when this was inline. See `ChipFlowsBody`'s own docstring for what each
+ * of these figures means and why. */
+function computeChipFlowStats(
+  rows: readonly {
+    trade_date: string;
+    broker_id: string;
+    broker_name: string;
+    buy: number;
+    sell: number;
+  }[],
+  sharesIssued: number | undefined,
+): {
+  brokers: ReturnType<typeof aggregateBrokers>;
+  totalVolume: number;
+  mainForceNet: number;
+  sharesOfCapital: number | null;
+  turnoverRatio: number | null;
+  latestTradeDate: string | undefined;
+  concentrationDaysPct: number | null;
+  buyTop: ReturnType<typeof aggregateBrokers>;
+  sellTop: ReturnType<typeof aggregateBrokers>;
+} {
+  const brokers = aggregateBrokers(rows);
+  const totalVolume = brokers.reduce((sum, b) => sum + b.buy + b.sell, 0);
+  const topByMagnitude = [...brokers]
+    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
+    .slice(0, TOP_BROKER_ROW_COUNT);
+  const mainForceNet = topByMagnitude.reduce((sum, b) => sum + b.net, 0);
+  const overallNet = brokers.reduce((sum, b) => sum + b.net, 0);
+
+  const sharesOfCapital =
+    sharesIssued && sharesIssued > 0 ? (mainForceNet / sharesIssued) * 100 : null;
+  const turnoverRatio =
+    sharesIssued && sharesIssued > 0 ? (totalVolume / sharesIssued) * 100 : null;
+  const latestTradeDate = [...new Set(rows.map((row) => row.trade_date))]
+    .sort((a, b) => a.localeCompare(b))
+    .at(-1);
+
+  const byDateNet = new Map<string, number>();
+  for (const row of rows) {
+    byDateNet.set(row.trade_date, (byDateNet.get(row.trade_date) ?? 0) + row.buy - row.sell);
+  }
+  const dailyNets = [...byDateNet.values()];
+  const sameSignedDays = dailyNets.filter(
+    (net) => (net >= 0 && overallNet >= 0) || (net < 0 && overallNet < 0),
+  ).length;
+  const concentrationDaysPct =
+    dailyNets.length > 0 ? (sameSignedDays / dailyNets.length) * 100 : null;
+
+  const buyTop = [...brokers]
+    .filter((b) => b.net > 0)
+    .sort((a, b) => b.net - a.net)
+    .slice(0, TOP_BROKER_ROW_COUNT);
+  const sellTop = [...brokers]
+    .filter((b) => b.net < 0)
+    .sort((a, b) => a.net - b.net)
+    .slice(0, TOP_BROKER_ROW_COUNT);
+
+  return {
+    brokers,
+    totalVolume,
+    mainForceNet,
+    sharesOfCapital,
+    turnoverRatio,
+    latestTradeDate,
+    concentrationDaysPct,
+    buyTop,
+    sellTop,
+  };
+}
+
 /** 分點's 買賣超 tab — period selector (近日/5日/10日, bounded to the backend's per-trading-day
  * fan-out cap — see `BROKER_LOOKBACK_WINDOWS`'s own docstring), a 主力籌碼 stat block, and a
  * 買超Top15/賣超Top15 toggle (one table visible at a time, matching the reference app's own
@@ -2088,41 +2193,19 @@ function ChipFlowsBody({
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
   }
 
-  const brokers = aggregateBrokers(rows);
-  const totalVolume = brokers.reduce((sum, b) => sum + b.buy + b.sell, 0);
-  const rankedByMagnitude = [...brokers].sort((a, b) => Math.abs(b.net) - Math.abs(a.net));
-  const topByMagnitude = rankedByMagnitude.slice(0, TOP_BROKER_ROW_COUNT);
-  const mainForceNet = topByMagnitude.reduce((sum, b) => sum + b.net, 0);
-  const overallNet = brokers.reduce((sum, b) => sum + b.net, 0);
-
   const sharesIssued = [...(shareholdingQuery.data?.rows ?? [])]
     .sort((a, b) => a.trade_date.localeCompare(b.trade_date))
     .at(-1)?.number_of_shares_issued;
-  const sharesOfCapital =
-    sharesIssued && sharesIssued > 0 ? (mainForceNet / sharesIssued) * 100 : null;
-  const turnoverRatio =
-    sharesIssued && sharesIssued > 0 ? (totalVolume / sharesIssued) * 100 : null;
-  const latestTradeDate = [...new Set(rows.map((row) => row.trade_date))].sort().at(-1);
-
-  const byDateNet = new Map<string, number>();
-  for (const row of rows) {
-    byDateNet.set(row.trade_date, (byDateNet.get(row.trade_date) ?? 0) + row.buy - row.sell);
-  }
-  const dailyNets = [...byDateNet.values()];
-  const sameSignedDays = dailyNets.filter(
-    (net) => (net >= 0 && overallNet >= 0) || (net < 0 && overallNet < 0),
-  ).length;
-  const concentrationDaysPct =
-    dailyNets.length > 0 ? (sameSignedDays / dailyNets.length) * 100 : null;
-
-  const buyTop = [...brokers]
-    .filter((b) => b.net > 0)
-    .sort((a, b) => b.net - a.net)
-    .slice(0, TOP_BROKER_ROW_COUNT);
-  const sellTop = [...brokers]
-    .filter((b) => b.net < 0)
-    .sort((a, b) => a.net - b.net)
-    .slice(0, TOP_BROKER_ROW_COUNT);
+  const {
+    totalVolume,
+    mainForceNet,
+    sharesOfCapital,
+    turnoverRatio,
+    latestTradeDate,
+    concentrationDaysPct,
+    buyTop,
+    sellTop,
+  } = computeChipFlowStats(rows, sharesIssued);
 
   return (
     <div>
