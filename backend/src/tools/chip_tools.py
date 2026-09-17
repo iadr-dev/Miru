@@ -469,9 +469,9 @@ class GetGovernmentBankFlowsTool(BaseTool):
         if start == end:
             days: tuple[date_, ...] = (start,)
         else:
-            days = candidate_trading_days(
-                start, end, limit=_GOVERNMENT_BANK_MAX_TRADING_DAYS
-            ) or (end,)
+            days = candidate_trading_days(start, end, limit=_GOVERNMENT_BANK_MAX_TRADING_DAYS) or (
+                end,
+            )
 
         results = await asyncio.gather(
             *(
