@@ -3293,6 +3293,57 @@ def _rs_momentum_series(rs_ratio: Sequence[float | None], period: int) -> list[f
     return [100 + ((v - mean) / stdev) * 100 if v is not None else None for v in roc]
 
 
+def _sector_rrg_points(
+    sector_series: Sequence[float],
+    benchmark_series: Sequence[float],
+    common_weeks: Sequence[date_],
+    plotted_weeks: set[date_],
+) -> list[SectorRrgWeekPoint]:
+    """One sector's plotted `SectorRrgWeekPoint`s — the per-sector RS-Ratio/RS-Momentum
+    computation and week-filtering `GetSectorRotationRrgTool.run` used to do inline in its own
+    per-sector loop, pulled out to keep that method's cognitive complexity within the linter's
+    limit."""
+    rs_ratio = _rs_ratio_series(sector_series, benchmark_series, _SECTOR_RRG_RS_RATIO_PERIOD_WEEKS)
+    rs_momentum = _rs_momentum_series(rs_ratio, _SECTOR_RRG_RS_MOMENTUM_PERIOD_WEEKS)
+    points: list[SectorRrgWeekPoint] = []
+    for i, week in enumerate(common_weeks):
+        if week not in plotted_weeks:
+            continue
+        ratio = rs_ratio[i]
+        momentum = rs_momentum[i]
+        if ratio is None or momentum is None:
+            continue
+        prior_close = sector_series[i - 1] if i > 0 else None
+        weekly_change_pct = (
+            (sector_series[i] / prior_close - 1) * 100
+            if prior_close is not None and prior_close != 0
+            else 0.0
+        )
+        points.append(
+            SectorRrgWeekPoint(
+                week_ending=week,
+                rs_ratio=ratio,
+                rs_momentum=momentum,
+                weekly_change_pct=weekly_change_pct,
+            )
+        )
+    return points
+
+
+def _weighted_by_latest_abs_change(
+    sectors: Sequence[SectorRrgSeries],
+) -> tuple[SectorRrgSeries, ...]:
+    """Each sector's `weight` = its latest weekly |% change| as a share of the total across every
+    plotted sector — the only cross-sector figure in this tool's output, computed once every
+    sector's own points are known rather than inline in `run`."""
+    latest_abs_change = {s.industry_id: abs(s.points[-1].weekly_change_pct) for s in sectors}
+    total_abs_change = sum(latest_abs_change.values()) or 1.0
+    return tuple(
+        s.model_copy(update={"weight": latest_abs_change[s.industry_id] / total_abs_change})
+        for s in sectors
+    )
+
+
 class GetSectorRotationRrgTool(BaseTool):
     """`get_sector_rotation_rrg` — a real Relative Rotation Graph (RS-Ratio x RS-Momentum,
     weekly) for TWSE's published industry sub-indices against TAIEX, the classic JdK RRG
@@ -3369,6 +3420,7 @@ class GetSectorRotationRrgTool(BaseTool):
                 "RS-Ratio/RS-Momentum window.",
             )
         plotted_weeks = common_weeks[-(_SECTOR_RRG_HISTORY_WEEKS):]
+        plotted_weeks_set = set(plotted_weeks)
         benchmark_series = [benchmark_closes_by_week[w] for w in common_weeks]
 
         sectors: list[SectorRrgSeries] = []
@@ -3377,32 +3429,9 @@ class GetSectorRotationRrgTool(BaseTool):
             if not closes_by_week:
                 continue
             sector_series = [closes_by_week[w] for w in common_weeks]
-            rs_ratio = _rs_ratio_series(
-                sector_series, benchmark_series, _SECTOR_RRG_RS_RATIO_PERIOD_WEEKS
+            points = _sector_rrg_points(
+                sector_series, benchmark_series, common_weeks, plotted_weeks_set
             )
-            rs_momentum = _rs_momentum_series(rs_ratio, _SECTOR_RRG_RS_MOMENTUM_PERIOD_WEEKS)
-            points: list[SectorRrgWeekPoint] = []
-            for i, week in enumerate(common_weeks):
-                if week not in plotted_weeks:
-                    continue
-                ratio = rs_ratio[i]
-                momentum = rs_momentum[i]
-                if ratio is None or momentum is None:
-                    continue
-                prior_close = sector_series[i - 1] if i > 0 else None
-                weekly_change_pct = (
-                    (sector_series[i] / prior_close - 1) * 100
-                    if prior_close is not None and prior_close != 0
-                    else 0.0
-                )
-                points.append(
-                    SectorRrgWeekPoint(
-                        week_ending=week,
-                        rs_ratio=ratio,
-                        rs_momentum=momentum,
-                        weekly_change_pct=weekly_change_pct,
-                    )
-                )
             if points:
                 sectors.append(
                     SectorRrgSeries(
@@ -3420,22 +3449,11 @@ class GetSectorRotationRrgTool(BaseTool):
                 unavailable_reason="No sector had enough overlapping weekly history to plot.",
             )
 
-        latest_abs_change = {
-            s.industry_id: abs(s.points[-1].weekly_change_pct) for s in sectors if s.points
-        }
-        total_abs_change = sum(latest_abs_change.values()) or 1.0
-        weighted_sectors = tuple(
-            s.model_copy(
-                update={"weight": latest_abs_change.get(s.industry_id, 0.0) / total_abs_change}
-            )
-            for s in sectors
-        )
-
         return GetSectorRotationRrgOutput(
             market=market,
             week_endings=tuple(plotted_weeks),
             data_available=True,
-            sectors=weighted_sectors,
+            sectors=_weighted_by_latest_abs_change(sectors),
         )
 
 

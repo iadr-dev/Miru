@@ -8,6 +8,7 @@ return different close series."
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, date, datetime, timedelta
 
 from dataaccess.router import DataAccessRouter
@@ -145,7 +146,8 @@ async def test_computes_real_rs_ratio_and_momentum_over_enough_weekly_history() 
     # window (the z-score construction means this is relative to the sector's own recent history,
     # not a fixed universal threshold) — assert it's a finite real number, not NaN/inf, and that
     # the weekly_change_pct is positive (the series is monotonically increasing).
-    assert latest.rs_ratio == latest.rs_ratio  # not NaN
+    assert not math.isnan(latest.rs_ratio)
+    assert math.isfinite(latest.rs_ratio)
     assert latest.weekly_change_pct > 0
 
     # Every configured (data_id, display_name) pair that had series data appears with its own
