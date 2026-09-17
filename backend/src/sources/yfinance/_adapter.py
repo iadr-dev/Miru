@@ -141,17 +141,16 @@ class YFinanceAdapter:
         self, cap: Capability, sym: Symbol, yahoo_symbol: str
     ) -> dict[str, Any]:
         if (
-            cap
-            in (
-                Capability.ANALYST_CONSENSUS,
-                Capability.ESG,
-                Capability.SECTOR_CLASS,
-                Capability.ETF_AUM,
-            )
+            cap in (Capability.ESG, Capability.SECTOR_CLASS, Capability.ETF_AUM)
             and sym.market is Market.TW
         ):
             # TW's original narrow path only ever needed `.info` — kept as its own
-            # lighter-weight fetch rather than the full non-TW frame bundle.
+            # lighter-weight fetch rather than the full non-TW frame bundle. `ANALYST_CONSENSUS`
+            # is NOT included here (even for TW): its extended fields (recommendations tally,
+            # upgrade/downgrade, EPS/revenue estimate, growth) live in the same recommendations/
+            # earnings/revenue/growth frames as every other market, confirmed live against
+            # `2330.TW` that those frames ARE populated for TW tickers — the lightweight
+            # `.info`-only path would silently starve those fields of the data they need.
             info = await anyio.to_thread.run_sync(_fetch_info_blocking, yahoo_symbol)
             return {"info": info}
         return await anyio.to_thread.run_sync(_fetch_ticker_frames_blocking, yahoo_symbol)

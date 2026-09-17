@@ -1,9 +1,14 @@
 """Analyst-consensus / ESG / sector-classification capability domain.
 
 Covers the original narrow TW gap-filling trio (`analyst_consensus`, `esg`, `sector_class`)
-plus the richer non-TW-only analyst fields (recommendations tally, latest rating action,
-forward EPS/revenue estimate, long-term growth) layered on top of the same
-`analyst_consensus` capability when the symbol isn't TW.
+plus the richer analyst fields (recommendations tally, latest rating action, forward EPS/
+revenue estimate, long-term growth) layered on top of the same `analyst_consensus` capability
+for every market, TW included — confirmed live against `2330.TW` that yfinance's
+`recommendations_summary`/`earnings_estimate`/`revenue_estimate`/`growth_estimates` frames are
+populated for TW tickers exactly like any other market (an earlier "non-TW-only" gate here was
+wrong: it discarded real data that fetch time already had in hand, not a genuine upstream gap).
+Each field degrades to `None` independently when its own sub-frame is empty/missing (e.g. no
+upgrades/downgrades history that day), never withheld market-wide.
 """
 
 from __future__ import annotations
@@ -13,7 +18,6 @@ from typing import Any, cast
 
 import pandas as pd
 
-from schemas.enums import Market
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 
@@ -44,8 +48,7 @@ def _analyst_consensus(sym: Symbol, info: dict[str, Any], frames: dict[str, Any]
         "number_of_analysts": n_analysts,
         "recommendation_key": _get(info, "recommendationKey"),
     }
-    if sym.market is not Market.TW:
-        consensus.update(_analyst_consensus_extended(frames))
+    consensus.update(_analyst_consensus_extended(frames))
     return _result(
         payload={"consensus": consensus},
         health=SourceHealth(status=HealthStatus.OK, detail="ok"),

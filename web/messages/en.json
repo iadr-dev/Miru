@@ -1508,6 +1508,55 @@
       },
       "empty": "No data available."
     },
+    "research": {
+      "valuationRiverTitle": "Valuation River",
+      "valuationRange": {
+        "1y": "1Y",
+        "3y": "3Y",
+        "5y": "5Y"
+      },
+      "perStat": "P/E Ratio",
+      "pbrStat": "P/B Ratio",
+      "dividendYieldStat": "Dividend Yield",
+      "bandRangeLabel": "Range {range}",
+      "valuationTable": {
+        "date": "Date",
+        "per": "PER",
+        "pbr": "PBR",
+        "dividendYield": "Yield"
+      },
+      "analystConsensusTitle": "Analyst Consensus",
+      "attribution": "{count} analysts · as of {date}",
+      "ratingTargetTitle": "Rating & Target Price",
+      "meanTargetLabel": "Mean Target",
+      "targetRangeLabel": "Range {low} - {high}",
+      "estimatesTitle": "Estimates",
+      "forwardEpsLabel": "Forward EPS",
+      "forwardRevenueLabel": "Forward Revenue",
+      "longTermGrowthLabel": "Long-Term Growth",
+      "upgradeDowngradeTitle": "Latest Rating Change",
+      "upgradeDowngradeAction": {
+        "up": "Upgrade",
+        "down": "Downgrade",
+        "main": "Maintain",
+        "init": "Initiated"
+      },
+      "eventsTitle": "Stock Events",
+      "eventsEmpty": "No recent events.",
+      "viewList": "List",
+      "viewCalendar": "Calendar",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "monthTitle": "{month}/{year}",
+      "eventType": {
+        "dividend_ex_rights": "Ex-Dividend",
+        "cash_capital_increase_rights": "Cash Capital Increase",
+        "agm": "Shareholders' Meeting"
+      },
+      "expandTo": "Show all {count} rows",
+      "collapse": "Collapse",
+      "empty": "No data available."
+    },
     "chipAnalysis": {
       "title": "Chip Analysis",
       "column": {

@@ -1,5 +1,7 @@
-"""Tests for the analyst-consensus/ESG/sector-class capability domain — the TW narrow path
-plus the non-TW extended analyst fields. Recorded fixtures, no live network."""
+"""Tests for the analyst-consensus/ESG/sector-class capability domain — ESG/sector-class stay on
+TW's lightweight `.info`-only path, while `ANALYST_CONSENSUS` (TW included) fetches the full
+frame bundle so its extended fields populate the same way for every market. Recorded fixtures,
+no live network."""
 
 from __future__ import annotations
 
@@ -16,8 +18,17 @@ from ._helpers import empty_frames, patch_info, patch_run_sync
 
 
 async def test_fetch_analyst_consensus(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = load_fixture("yfinance", "info_2330_tw.json")
-    patch_info(monkeypatch, body)
+    """TW symbols get the same extended fields as any other market — `2330.TW`'s
+    `recommendations_summary`/`earnings_estimate`/etc. frames are populated on yfinance exactly
+    like a non-TW ticker (confirmed live); an earlier "TW never gets extended fields" gate here
+    was simply wrong, not a real upstream limitation."""
+    frames = empty_frames()
+    frames["info"] = load_fixture("yfinance", "info_2330_tw.json")
+    frames["recommendations_summary"] = pd.DataFrame(
+        [{"period": "0m", "strongBuy": 9, "buy": 24, "hold": 1, "sell": 0, "strongSell": 0}]
+    )
+    frames["earnings_estimate"] = pd.DataFrame({"avg": [107.65]}, index=["0y"])
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
     adapter = YFinanceAdapter()
     sym = Symbol(id="2330", market=Market.TW, yahoo="2330.TW")
 
@@ -28,8 +39,8 @@ async def test_fetch_analyst_consensus(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.health.status is HealthStatus.OK
     consensus = result.payload["consensus"]
     assert consensus["number_of_analysts"] == 28  # type: ignore[index]
-    # TW payloads never carry the non-TW-only extended fields.
-    assert "strong_buy" not in consensus  # type: ignore[operator]
+    assert consensus["strong_buy"] == 9  # type: ignore[index]
+    assert consensus["forward_eps_estimate"] == pytest.approx(107.65)  # type: ignore[index]
 
 
 async def test_fetch_analyst_consensus_gates_on_zero_analysts(

@@ -8,15 +8,16 @@ import { ComingSoon } from "@/components/shell/coming-soon";
 import { BasicInfoPanel } from "@/components/stock/basic-info-panel";
 import { ChipAnalysisPanel } from "@/components/stock/chip-analysis-panel";
 import { FinancialsPanel } from "@/components/stock/financials-panel";
+import { ResearchChartsPanel } from "@/components/stock/research-charts-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
-// The 9 tabs `docs/web/stock-detail.md` §2 specs for a TW STOCK. Only 基本資料/財務分析/籌碼分析
-// have real backing this phase (see the approved plan's Phase-1 scope) — the rest render a calm
-// "尚未支援" state via `ComingSoon` rather than being hidden, so the roadmap stays visible without
-// faking content for tabs whose backend (AI-summary/SWOT, company-relationships, computed
-// indicators) doesn't exist yet.
+// The 9 tabs `docs/web/stock-detail.md` §2 specs for a TW STOCK. 基本資料/財務分析/籌碼分析/
+// 相關新聞/研究圖表 have real backing — the rest render a calm "尚未支援" state via `ComingSoon`
+// rather than being hidden, so the roadmap stays visible without faking content for tabs whose
+// backend (AI-summary/SWOT, company-relationships, computed technical indicators) doesn't exist
+// yet.
 const STOCK_TABS = [
   "basicInfo",
   "industry",
@@ -34,6 +35,7 @@ const BUILT_TABS: ReadonlySet<StockTab> = new Set([
   "financials",
   "chipAnalysis",
   "news",
+  "research",
 ]);
 
 export function StockTabBar({
@@ -89,6 +91,7 @@ export function StockTabBar({
       {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
       {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
+      {tab === "research" ? <ResearchChartsPanel symbol={symbol} market={market} /> : null}
       {!BUILT_TABS.has(tab) ? (
         <ComingSoon icon={ChartLineIcon} title={t(tab)} body={t("comingSoonBody")} />
       ) : null}
