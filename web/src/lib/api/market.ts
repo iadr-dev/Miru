@@ -70,12 +70,14 @@ import {
   type SectorHeatmapResponse,
   type SectorHeatmapSizeBy,
   type SectorRotationResponse,
+  type SectorRotationRrgResponse,
   type StockHeatmapResponse,
   type SymbolInfoResponse,
   scoreLeaderboardDataSchema,
   sectorConstituentsResponseSchema,
   sectorHeatmapResponseSchema,
   sectorRotationResponseSchema,
+  sectorRotationRrgResponseSchema,
   stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
@@ -423,6 +425,20 @@ export async function getSectorRotation(
   if (endDate) search.set("end_date", endDate);
   const raw = await requestJson(`/market/sector-rotation?${search.toString()}`);
   return sectorRotationResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14d-2. GET /market/sector-rotation-rrg (public, real weekly RRG)
+// ---------------------------------------------------------------------------
+
+export async function getSectorRotationRrg(
+  market: Market,
+  endDate?: string,
+): Promise<SectorRotationRrgResponse> {
+  const search = new URLSearchParams({ market });
+  if (endDate) search.set("end_date", endDate);
+  const raw = await requestJson(`/market/sector-rotation-rrg?${search.toString()}`);
+  return sectorRotationRrgResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

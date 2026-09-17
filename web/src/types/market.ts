@@ -763,6 +763,39 @@ export const sectorRotationResponseSchema = sectorRotationDataSchema;
 export type SectorRotationResponse = z.infer<typeof sectorRotationResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 14d-2. GET /market/sector-rotation-rrg — get_sector_rotation_rrg (public, real weekly RRG)
+// ---------------------------------------------------------------------------
+
+export const sectorRrgWeekPointSchema = z.object({
+  week_ending: z.string(),
+  rs_ratio: z.number(),
+  rs_momentum: z.number(),
+  weekly_change_pct: z.number(),
+});
+export type SectorRrgWeekPoint = z.infer<typeof sectorRrgWeekPointSchema>;
+
+export const sectorRrgSeriesSchema = z.object({
+  industry_id: z.string(),
+  industry_name: z.string(),
+  weight: z.number(),
+  points: z.array(sectorRrgWeekPointSchema).default([]),
+});
+export type SectorRrgSeries = z.infer<typeof sectorRrgSeriesSchema>;
+
+export const sectorRotationRrgDataSchema = z.object({
+  market: z.string(),
+  benchmark_id: z.string(),
+  benchmark_name: z.string(),
+  week_endings: z.array(z.string()).default([]),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  sectors: z.array(sectorRrgSeriesSchema).default([]),
+});
+export type SectorRotationRrgData = z.infer<typeof sectorRotationRrgDataSchema>;
+export const sectorRotationRrgResponseSchema = sectorRotationRrgDataSchema;
+export type SectorRotationRrgResponse = z.infer<typeof sectorRotationRrgResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 14e. GET /market/stock-heatmap — get_stock_heatmap (public, flat per-stock 股票熱力圖)
 // ---------------------------------------------------------------------------
 

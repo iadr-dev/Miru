@@ -431,6 +431,22 @@ async def sector_rotation(
     return await _dispatch(state, "get_sector_rotation", args, ctx)
 
 
+@router.get("/market/sector-rotation-rrg")
+async def sector_rotation_rrg(
+    market: Market = Query(Market.TW),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Real weekly Relative Rotation Graph (RS-Ratio x RS-Momentum, JdK construction) for TWSE's
+    published industry sub-indices against TAIEX, ending at `end_date` (defaults to the latest
+    available day) — backed by `get_sector_rotation_rrg`."""
+    args: dict[str, object] = {"market": market.value}
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_sector_rotation_rrg", args, ctx)
+
+
 @router.get("/market/etf-list")
 async def etf_list(
     market: Market = Query(Market.TW),

@@ -27,7 +27,7 @@ def _map_eod_bars(rows: list[dict[str, object]], sym: Symbol | None) -> list[dic
             # TaiwanStockPrice publishes 0 for no-trade days — filter on close, not volume.
             continue
         row_sym = _row_symbol(row, sym)
-        if not row_sym.id[:1].isdigit():
+        if sym is None and not row_sym.id[:1].isdigit():
             # The whole-market pull's `stock_id` occasionally carries a FinMind index/sector
             # aggregate label instead of a real security code — confirmed live: `TAIEX`,
             # `TPEx`, and TWSE's ~30 named industry sectors (`Semiconductor`, `Textiles`, …)
@@ -35,6 +35,11 @@ def _map_eod_bars(rows: list[dict[str, object]], sym: Symbol | None) -> list[dic
             # filter above since it isn't a no-trade day for the aggregate. Every real TW
             # security code (stock/ETF/warrant/bond) starts with a digit; an aggregate label
             # never does — cheap, exact discriminator, no hardcoded label list to maintain.
+            # Gated on `sym is None` (the ingest-only whole-market path): a per-symbol fetch
+            # (`sym` set) echoes the caller's own `sym.id` back as `row_sym.id` regardless of
+            # what the row itself carried, so this same digit check previously rejected every
+            # row when a caller explicitly requested a non-numeric id like "Semiconductor" —
+            # exactly the TWSE industry sub-index ids `get_sector_rotation_rrg` fetches.
             continue
         bars.append(
             {
