@@ -7,6 +7,7 @@ several of these are Sponsor-tier and must stay gated.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,7 +42,7 @@ from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
 from tools._rows import fetch_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
-from tools.common import DateRangeInput, MarketOnlyInput
+from tools.common import DateRangeInput, MarketOnlyInput, candidate_trading_days
 
 
 class _RowsOutput(BaseModel):
@@ -433,12 +434,23 @@ class GetGovernmentBankFlowsOutput(_RowsOutput):
     rows: tuple[GovernmentBankBuySellRow, ...] = Field(default_factory=tuple)
 
 
+_GOVERNMENT_BANK_MAX_TRADING_DAYS = 10  # Same upstream shape as `chip_broker` (see
+# `market_tools.py::_CHIP_BROKER_MAX_TRADING_DAYS`'s own docstring): `TaiwanStockGovernmentBank
+# BuySell` 400s if `end_date` is present at all (confirmed empirically — the dataset's own
+# `no_end_date_param=True` in chip_institutional.py), so a multi-day request fans out to one
+# call per trading day here, capped the same way 分點's own fan-out is.
+
+
 class GetGovernmentBankFlowsTool(BaseTool):
     """`get_government_bank_flows` — wraps `Capability.GOVERNMENT_BANK_BUYSELL` (八大行庫)."""
 
     name = "get_government_bank_flows"
     description = (
-        "Get daily eight-government-bank(八大行庫) buy/sell rows for one stock (Sponsor-tier)."
+        "Get eight-government-bank(八大行庫) buy/sell rows for one stock over an optional date "
+        "range (Sponsor-tier). The upstream report is single-day-per-call, so a `start_date`/"
+        f"`end_date` range fans out to one call per trading day, capped at "
+        f"{_GOVERNMENT_BANK_MAX_TRADING_DAYS} days (most recent first) — a wider range silently "
+        "returns only the newest days within that cap."
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetGovernmentBankFlowsOutput
@@ -450,20 +462,49 @@ class GetGovernmentBankFlowsTool(BaseTool):
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(DateRangeInput, args)
-        result, rows = await fetch_rows(
-            self._router,
-            Capability.GOVERNMENT_BANK_BUYSELL,
-            typed.to_symbol(),
-            tls_policy=ctx.tls_policy,
-            model=GovernmentBankBuySellRow,
-            key="rows",
-            params=typed.date_params(),
+        sym = typed.to_symbol()
+        end = typed.end_date or date_.today()
+        start = typed.start_date or end
+
+        if start == end:
+            days: tuple[date_, ...] = (start,)
+        else:
+            days = candidate_trading_days(
+                start, end, limit=_GOVERNMENT_BANK_MAX_TRADING_DAYS
+            ) or (end,)
+
+        results = await asyncio.gather(
+            *(
+                fetch_rows(
+                    self._router,
+                    Capability.GOVERNMENT_BANK_BUYSELL,
+                    sym,
+                    tls_policy=ctx.tls_policy,
+                    model=GovernmentBankBuySellRow,
+                    key="rows",
+                    # `start_date` (with no `end_date`) is the real single-day param this
+                    # dataset's upstream expects — confirmed empirically against the live
+                    # endpoint (see `_DATASETS[Capability.GOVERNMENT_BANK_BUYSELL]`'s own
+                    # comment in chip_institutional.py); `date` 400s outright.
+                    params={"start_date": day.isoformat()},
+                )
+                for day in days
+            )
         )
+
+        rows: list[GovernmentBankBuySellRow] = []
+        for _result, day_rows in results:
+            rows.extend(day_rows)
+
+        # Every per-day fetch shares the same `source_id`/`currentness_caveat` (one adapter, one
+        # dataset) — the last result's health represents the most recent day's own fetch outcome,
+        # same convention `GetChipFlowsTool` (market_tools.py) already uses for its own fan-out.
+        representative, _ = results[-1]
         return GetGovernmentBankFlowsOutput(
-            source_id=result.source_id,
-            currentness_caveat=result.currentness_caveat,
-            health_status=result.health.status,
-            rows=rows,
+            source_id=representative.source_id,
+            currentness_caveat=representative.currentness_caveat,
+            health_status=representative.health.status,
+            rows=tuple(rows),
         )
 
 

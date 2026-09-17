@@ -23,6 +23,8 @@ import type { Market } from "@/types/settings";
  * **History grows day by day** — see `MaterialAnnouncementFeedPanel`'s own docstring for why;
  * same forward-only-no-backfill reasoning applies here.
  */
+const INSIDER_TRANSFER_DECLARATION_DATE_TAB_COUNT = 7;
+
 export function InsiderTransferDeclarationPanel({
   market,
 }: {
@@ -56,6 +58,7 @@ export function InsiderTransferDeclarationPanel({
                   {[...data.available_dates]
                     .sort()
                     .reverse()
+                    .slice(0, INSIDER_TRANSFER_DECLARATION_DATE_TAB_COUNT)
                     .map((date) => (
                       <button
                         key={date}

@@ -16,9 +16,11 @@ import {
   companyProfileSchema,
   type DayTradingResponse,
   type DispositionSecuritiesResponse,
+  type DividendPolicySummaryResponse,
   type DividendResultResponse,
   dayTradingResponseSchema,
   dispositionSecuritiesResponseSchema,
+  dividendPolicySummaryResponseSchema,
   dividendResultResponseSchema,
   type EsgScoreResponse,
   esgScoreResponseSchema,
@@ -29,6 +31,8 @@ import {
   financialStatementResponseSchema,
   finmindStockNewsResponseSchema,
   foreignShareholdingResponseSchema,
+  type GovernmentBankFlowsResponse,
+  governmentBankFlowsResponseSchema,
   type InsiderShareholdingResponse,
   type InstitutionalFlowResponse,
   insiderShareholdingResponseSchema,
@@ -171,6 +175,20 @@ export async function getDividendResult(
 }
 
 // ---------------------------------------------------------------------------
+// 6c. GET /stock/dividend-policy-summary (public)
+// ---------------------------------------------------------------------------
+
+export async function getDividendPolicySummary(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<DividendPolicySummaryResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/dividend-policy-summary?${search.toString()}`);
+  return dividendPolicySummaryResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
 // 7. GET /stock/month-revenue (public)
 // ---------------------------------------------------------------------------
 
@@ -254,6 +272,20 @@ export async function getStockChipFlows(
   const search = symbolDateSearchParams(symbol, market, params);
   const raw = await requestJson(`/stock/chip-flows?${search.toString()}`);
   return chipFlowsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 12b. GET /stock/government-bank-flows (Sponsor-tier)
+// ---------------------------------------------------------------------------
+
+export async function getGovernmentBankFlows(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<GovernmentBankFlowsResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/government-bank-flows?${search.toString()}`);
+  return governmentBankFlowsResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

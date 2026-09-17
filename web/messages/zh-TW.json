@@ -691,6 +691,7 @@
         "dealer_self": "自營商（自行買賣）",
         "dealer_hedging": "自營商（避險）",
         "foreign_dealer_self": "外資自行買賣",
+        "governmentbank": "八大行庫",
         "margin_purchase_today_balance": "融資餘額",
         "short_sale_today_balance": "融券餘額",
         "call_volume": "買權成交量",
@@ -1461,21 +1462,48 @@
     "financials": {
       "monthRevenueTitle": "月營收趨勢",
       "monthRevenueRange": {
-        "3m": "三個月",
-        "6m": "半年",
-        "1y": "一年"
+        "1y": "一年",
+        "3y": "三年",
+        "5y": "五年"
       },
-      "dividendResultTitle": "股利政策",
-      "dividendResultRange": {
-        "3m": "三個月",
-        "6m": "半年",
-        "1y": "一年"
+      "monthRevenueLegend": "月營收",
+      "priceLegend": "股價",
+      "monthRevenueTable": {
+        "period": "年月",
+        "revenue": "月營收",
+        "mom": "月增率",
+        "yoy": "年增率",
+        "cumulativeYoy": "累計年增%"
       },
+      "dividendPolicyTitle": "股利政策",
+      "dividendPolicyRange": {
+        "5y": "近5年",
+        "10y": "近10年",
+        "all": "全部"
+      },
+      "cashDividendLegend": "現金股利",
+      "stockDividendLegend": "股票股利",
+      "totalDividendStat": "綜合股利(元)",
+      "cashYieldStat": "現金殖利率",
+      "payoutRatioStat": "配息率",
+      "fillRateStat": "填息成功率",
+      "dividendTable": {
+        "fiscalYear": "年季",
+        "exDate": "除權息日期",
+        "cash": "現金股利",
+        "stock": "股票股利",
+        "total": "合計"
+      },
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
       "statementTitle": "財務報表",
       "statementType": {
         "income_statement": "損益表",
         "balance_sheet": "資產負債表",
         "cash_flow": "現金流量表"
+      },
+      "statementTable": {
+        "item": "項目"
       },
       "empty": "暫無資料。"
     },
@@ -1502,6 +1530,21 @@
         "summary": "摘要"
       },
       "institutionalCombined": "三大法人",
+      "bucket": {
+        "foreign": "外資",
+        "trust": "投信",
+        "dealer": "自營商"
+      },
+      "flowTable": {
+        "date": "日期",
+        "total": "合計"
+      },
+      "estimateLegend": "{label}（估算）",
+      "summaryPeriod": {
+        "day": "日",
+        "week": "週",
+        "month": "月"
+      },
       "marginSubTab": {
         "margin": "融資",
         "short": "融券",
@@ -1517,8 +1560,14 @@
       "shortChange": "融券增減",
       "marginUsage": "融資使用率",
       "shortUsage": "融券使用率",
+      "marginCashRepayment": "融資現金償還",
+      "shortCashRepayment": "融券現券償還",
       "dayTradingVolume": "當沖總和",
-      "lendingSellVolume": "借券賣出",
+      "dayTradingBuyAmount": "當沖買進金額",
+      "dayTradingSellAmount": "當沖賣出金額",
+      "lendingSellVolume": "借券賣出餘額",
+      "lendingDailyVolume": "借券賣出",
+      "lendingFeeRate": "借券費率",
       "brokerLookbackWindow": {
         "recent": "近日",
         "5d": "5日",
@@ -1528,6 +1577,9 @@
       "mainForceConcentration": "主力集中%",
       "sharesOfCapital": "佔股本比重",
       "concentrationDays": "集中天數%",
+      "brokerTotalVolume": "成交量(張)",
+      "turnoverRatio": "區間周轉率(%)",
+      "asOfDate": "~ {date}",
       "buyTop15": "買超Top15",
       "sellTop15": "賣超Top15",
       "broker": "券商分點",

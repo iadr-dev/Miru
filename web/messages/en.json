@@ -691,6 +691,7 @@
         "dealer_self": "Dealers (Self)",
         "dealer_hedging": "Dealers (Hedging)",
         "foreign_dealer_self": "Foreign Dealers (Self)",
+        "governmentbank": "Government Banks",
         "margin_purchase_today_balance": "Margin Balance",
         "short_sale_today_balance": "Short-Sale Balance",
         "call_volume": "Call Volume",
@@ -1461,21 +1462,48 @@
     "financials": {
       "monthRevenueTitle": "Monthly Revenue",
       "monthRevenueRange": {
-        "3m": "3M",
-        "6m": "6M",
-        "1y": "1Y"
+        "1y": "1Y",
+        "3y": "3Y",
+        "5y": "5Y"
       },
-      "dividendResultTitle": "Dividend Policy",
-      "dividendResultRange": {
-        "3m": "3M",
-        "6m": "6M",
-        "1y": "1Y"
+      "monthRevenueLegend": "Revenue",
+      "priceLegend": "Price",
+      "monthRevenueTable": {
+        "period": "Period",
+        "revenue": "Revenue",
+        "mom": "MoM",
+        "yoy": "YoY",
+        "cumulativeYoy": "Cum. YoY"
       },
+      "dividendPolicyTitle": "Dividend Policy",
+      "dividendPolicyRange": {
+        "5y": "5Y",
+        "10y": "10Y",
+        "all": "All"
+      },
+      "cashDividendLegend": "Cash Dividend",
+      "stockDividendLegend": "Stock Dividend",
+      "totalDividendStat": "Total Dividend",
+      "cashYieldStat": "Cash Yield",
+      "payoutRatioStat": "Payout Ratio",
+      "fillRateStat": "Fill-Rate",
+      "dividendTable": {
+        "fiscalYear": "Fiscal Period",
+        "exDate": "Ex-Dividend Date",
+        "cash": "Cash",
+        "stock": "Stock",
+        "total": "Total"
+      },
+      "expandTo": "Show all {count} rows",
+      "collapse": "Collapse",
       "statementTitle": "Financial Statement",
       "statementType": {
         "income_statement": "Income Statement",
         "balance_sheet": "Balance Sheet",
         "cash_flow": "Cash Flow"
+      },
+      "statementTable": {
+        "item": "Item"
       },
       "empty": "No data available."
     },
@@ -1502,6 +1530,21 @@
         "summary": "Summary"
       },
       "institutionalCombined": "Institutional (Combined)",
+      "bucket": {
+        "foreign": "Foreign",
+        "trust": "Trust",
+        "dealer": "Dealer"
+      },
+      "flowTable": {
+        "date": "Date",
+        "total": "Total"
+      },
+      "estimateLegend": "{label} (Est.)",
+      "summaryPeriod": {
+        "day": "Day",
+        "week": "Week",
+        "month": "Month"
+      },
       "marginSubTab": {
         "margin": "Margin",
         "short": "Short",
@@ -1517,8 +1560,14 @@
       "shortChange": "Short Change",
       "marginUsage": "Margin Usage",
       "shortUsage": "Short Usage",
+      "marginCashRepayment": "Margin Cash Repayment",
+      "shortCashRepayment": "Short Stock Repayment",
       "dayTradingVolume": "Day-Trading Volume",
-      "lendingSellVolume": "Lending Sell Volume",
+      "dayTradingBuyAmount": "Day-Trading Buy Amount",
+      "dayTradingSellAmount": "Day-Trading Sell Amount",
+      "lendingSellVolume": "Lending Sell Balance",
+      "lendingDailyVolume": "Daily Lending Volume",
+      "lendingFeeRate": "Lending Fee Rate",
       "brokerLookbackWindow": {
         "recent": "Recent",
         "5d": "5D",
@@ -1528,6 +1577,9 @@
       "mainForceConcentration": "Main-Force Concentration %",
       "sharesOfCapital": "% of Issued Shares",
       "concentrationDays": "Concentration Days %",
+      "brokerTotalVolume": "Volume (lots)",
+      "turnoverRatio": "Turnover Ratio (%)",
+      "asOfDate": "~ {date}",
       "buyTop15": "Top 15 Net Buy",
       "sellTop15": "Top 15 Net Sell",
       "broker": "Broker Branch",

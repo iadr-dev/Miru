@@ -938,6 +938,27 @@ async def dividend_result(
     )
 
 
+@router.get("/stock/dividend-policy-summary")
+async def dividend_policy_summary(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """財務分析's 股利政策 card — the one-call composite report (announced events, per-year
+    cash+stock totals, 現金殖利率/配息率/填息成功率 stats, per-event fill results), backed by
+    `get_dividend_policy_summary`, `DataClass.PUBLIC`. `start_date` bounds how far back the
+    per-year chart/table go (the frontend's 計算區間 selector), not a fixed server default."""
+    return await _dispatch(
+        state,
+        "get_dividend_policy_summary",
+        _symbol_date_args(symbol, market, start_date, end_date),
+        ctx,
+    )
+
+
 @router.get("/stock/month-revenue")
 async def month_revenue(
     symbol: str = Query(..., min_length=1),
@@ -1042,6 +1063,26 @@ async def chip_flows(
     `DataClass.SPONSOR` → masked-teaser envelope for an unentitled caller."""
     return await _dispatch(
         state, "get_chip_flows", _symbol_date_args(symbol, market, start_date, end_date), ctx
+    )
+
+
+@router.get("/stock/government-bank-flows")
+async def government_bank_flows(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """籌碼分析's 摘要 sub-tab's 4th 法人籤碼 category — 八大行庫 (eight government-bank)
+    buy/sell rows, backed by `get_government_bank_flows`, `DataClass.SPONSOR` → masked-teaser
+    envelope for an unentitled caller (same gating `chip_flows`'s own 分點 route uses above)."""
+    return await _dispatch(
+        state,
+        "get_government_bank_flows",
+        _symbol_date_args(symbol, market, start_date, end_date),
+        ctx,
     )
 
 

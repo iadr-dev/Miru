@@ -87,6 +87,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     # fundamental_tools.py
     "get_financial_statement": "financial_statement",
     "get_dividend_result": "dividend_result",
+    "get_dividend_policy_summary": "dividend_policy_summary",
     "get_month_revenue": "month_revenue",
     "get_market_value": "market_value",
     "get_market_value_weight": "market_value_weight",

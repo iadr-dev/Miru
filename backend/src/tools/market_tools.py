@@ -67,7 +67,7 @@ from schemas.market import Symbol
 from schemas.source import HealthStatus
 from tools._rows import validate_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
-from tools.common import DateRangeInput, SymbolInput
+from tools.common import DateRangeInput, SymbolInput, candidate_trading_days
 
 # The untyped edges every `cast(...)` below narrows a `SourceResult.payload` value from — PEP-695
 # local aliases instead of repeating the same cast-target strings at every call site.
@@ -351,18 +351,6 @@ _CHIP_BROKER_MAX_TRADING_DAYS = 10  # FinMind's TaiwanStockTradingDailyReport is
 # Sponsor-tier FinMind calls; the frontend's own period selector caps its widest option to match.
 
 
-def _candidate_trading_days(start: date_, end: date_, *, limit: int) -> tuple[date_, ...]:
-    """Trading days in `[start, end]`, most-recent-first, capped at `limit` — a plain
-    `TradingDayCalendar()` (weekday math, no holiday allow-list) is deliberately used rather than
-    `_real_calendar` (needs a `ParquetStore`, a layer `tools/` may fetch through but that this
-    small bounded probe doesn't warrant pulling in): a real TW holiday in the window just comes
-    back as an empty per-day fetch, which downstream health/row handling already treats as a
-    normal "no rows this day" case, not an error."""
-    calendar = TradingDayCalendar()
-    all_days = calendar.business_days_between(start, end)
-    return tuple(reversed(all_days[-limit:]))
-
-
 class GetChipFlowsTool(BaseTool):
     """`get_chip_flows` — wraps `Capability.CHIP_BROKER` (FinMind Sponsor-tier 分點進出).
 
@@ -397,7 +385,7 @@ class GetChipFlowsTool(BaseTool):
         if start == end:
             days: tuple[date_, ...] = (start,)
         else:
-            days = _candidate_trading_days(start, end, limit=_CHIP_BROKER_MAX_TRADING_DAYS) or (
+            days = candidate_trading_days(start, end, limit=_CHIP_BROKER_MAX_TRADING_DAYS) or (
                 end,
             )
 

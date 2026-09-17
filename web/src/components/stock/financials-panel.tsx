@@ -5,23 +5,73 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
-  ReferenceLine,
+  ComposedChart,
+  Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { DividendPolicyCard } from "@/components/stock/dividend-policy-card";
 import { RangeSelect } from "@/components/stock/range-select";
-import { getDividendResult, getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
+import { ExpandModal } from "@/components/ui/expand-modal";
+import { getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
-import { FINANCIAL_STATEMENT_TYPES, type FinancialStatementType } from "@/types/stock-detail";
+import {
+  FINANCIAL_STATEMENT_TYPES,
+  type FinancialStatementType,
+  type MonthRevenueTrendPoint,
+} from "@/types/stock-detail";
+
+// The extended `--chart-1..10` categorical set (tokens.css) — 10 slots so this chart's 10
+// tracked line items never repeat a color, indexed directly (not hashed) so the Nth item always
+// gets the Nth token and the legend order matches the color order — a hash-based pick
+// (`lib/chart-token-hash.ts`) is for a single arbitrary label per component instance; this needs
+// N stable, distinct colors within ONE chart instance instead. `MAX_STATEMENT_LINE_ITEMS` (the
+// top-N cutoff below) is capped at this array's length so `STATEMENT_LINE_COLORS[i]` is always
+// defined — never derive one from the other, or a future "top 12" change would silently start
+// recycling colors here.
+const STATEMENT_LINE_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--chart-6)",
+  "var(--chart-7)",
+  "var(--chart-8)",
+  "var(--chart-9)",
+  "var(--chart-10)",
+] as const;
+const MAX_STATEMENT_LINE_ITEMS = STATEMENT_LINE_COLORS.length;
+
+// The reference design's own 3-4-headline-metric chart (營業毛利/營業淨利/稅後淨利 for 損益表) —
+// items in these sets start visible when present in `topItems`; the remaining tracked items
+// still list in the legend (never dropped from the chart's data), just start toggled off so 10
+// simultaneous lines don't read as visual noise. Each statement type needs its own headline set
+// since 損益表/資產負債表/現金流量表 track entirely different line items — labels are this
+// dataset's own line-item names (`sources/finmind/fundamental.py`'s naming), not hand-picked
+// guesses; a label absent from a given quarter's `topItems` simply never renders (no-op, not an
+// error) since `topItems` is intersected against this set at render time.
+const STATEMENT_DEFAULT_VISIBLE_ITEMS: Record<FinancialStatementType, ReadonlySet<string>> = {
+  income_statement: new Set([
+    "營業收入",
+    "營業毛利（毛損）",
+    "營業利益（損失）",
+    "本期淨利（淨損）",
+  ]),
+  balance_sheet: new Set(["資產總額", "負債總額", "權益總額", "現金及約當現金"]),
+  cash_flow: new Set([
+    "營業活動之淨現金流入（流出）",
+    "投資活動之淨現金流入（流出）",
+    "本期現金及約當現金增加（減少）數",
+  ]),
+};
 
 const TOOLTIP_STYLE = {
   background: "var(--surface-2)",
@@ -30,58 +80,10 @@ const TOOLTIP_STYLE = {
   color: "var(--text)",
 };
 
-/** The bar-chart body `MonthRevenueCard` and `DividendResultCard` both wrap in a
- * `ChartWithDataSheet` — identical axis/grid/tooltip shape, differing only in which
- * numeric field to plot, its bar color, and the Y-axis width/tick formatter. Pulled out
- * once so the two cards can't drift on the chart shell as more range toggles get added. */
-function SimpleBarChartBody<TPoint extends { label: string }>({
-  points,
-  dataKey,
-  fill,
-  yAxisWidth,
-  yAxisTickFormatter,
-  tooltipFormatter,
-}: {
-  readonly points: readonly TPoint[];
-  readonly dataKey: keyof TPoint & string;
-  readonly fill: string;
-  readonly yAxisWidth: number;
-  readonly yAxisTickFormatter?: (value: number) => string;
-  readonly tooltipFormatter: (value: unknown) => string;
-}): ReactNode {
-  return (
-    <ChartWithDataSheet rows={points as Record<string, unknown>[]}>
-      <div style={{ width: "100%", height: 240 }}>
-        <ResponsiveContainer>
-          <BarChart
-            data={points as Record<string, unknown>[]}
-            margin={{ left: 8, right: 8, bottom: 8 }}
-          >
-            <CartesianGrid vertical={false} stroke="var(--grid)" />
-            <XAxis
-              dataKey="label"
-              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-              stroke="var(--border)"
-            />
-            <YAxis
-              tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-              tickFormatter={yAxisTickFormatter}
-              width={yAxisWidth}
-              stroke="var(--border)"
-            />
-            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={tooltipFormatter} />
-            <Bar dataKey={dataKey as string} fill={fill} radius={4} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </ChartWithDataSheet>
-  );
-}
-
-/** Neither `get_month_revenue` nor `get_dividend_result` return more than a few recent rows
- * when called with no `start_date` — the router/adapter's own default window is narrower than
- * either range toggle needs, so the 6M/1Y control must pass an explicit cutoff rather than
- * slicing a fixed-size response client-side. */
+/** `get_month_revenue` doesn't return more than a few recent rows when called with no
+ * `start_date` — the router/adapter's own default window is narrower than the range toggle
+ * needs, so the 6M/1Y control must pass an explicit cutoff rather than slicing a fixed-size
+ * response client-side. */
 function monthsAgoIso(months: number): string {
   const d = new Date();
   d.setMonth(d.getMonth() - months);
@@ -89,12 +91,13 @@ function monthsAgoIso(months: number): string {
 }
 
 /**
- * 財務分析 tab — Phase-1 scope, chart-enriched: 月營收趨勢 (`get_month_revenue`, bar chart citing
- * the pre-computed `trend` MoM/YoY directly, ▲▼-tinted YoY badge on the latest month) 股利政策
- * (`get_dividend_result`, bar chart of settled cash+stock dividend per ex-date), 財務結構/獲利趨勢
- * sub-tabs (損益表/資產負債表/現金流, `get_financial_statement` per `statement_type`, top-N line
- * items as a horizontal bar). Every chart wraps in `ChartWithDataSheet` (the same primitive chat
- * rich-cards use) for a collapsible raw-rows table under the plot — never just a bare table.
+ * 財務分析 tab — 月營收趨勢 (`get_month_revenue`, combo revenue+price chart, ▲▼-tinted YoY badge on
+ * the latest month), 股利政策 (`DividendPolicyCard`, backed by the composite
+ * `get_dividend_policy_summary` — stats strip, stacked cash+stock chart by year, 年季 table),
+ * 財務結構/獲利趨勢 sub-tabs (損益表/資產負債表/現金流, `get_financial_statement` per
+ * `statement_type`, multi-quarter line chart of the latest period's top-10 line items). Every
+ * card's own richer colored table sits directly below its chart — none wrap in
+ * `ChartWithDataSheet`'s raw-rows sheet, which would just duplicate the same data less legibly.
  */
 export function FinancialsPanel({
   symbol,
@@ -106,16 +109,27 @@ export function FinancialsPanel({
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <MonthRevenueCard symbol={symbol} market={market} />
-      <DividendResultCard symbol={symbol} market={market} />
+      <DividendPolicyCard symbol={symbol} market={market} />
       <FinancialStatementCard symbol={symbol} market={market} />
     </div>
   );
 }
 
-const REVENUE_RANGE_MONTHS = { "3m": 3, "6m": 6, "1y": 12 } as const;
+const REVENUE_RANGE_MONTHS = { "1y": 12, "3y": 36, "5y": 60 } as const;
 type RevenueRange = keyof typeof REVENUE_RANGE_MONTHS;
 const REVENUE_RANGE_OPTIONS = Object.keys(REVENUE_RANGE_MONTHS) as RevenueRange[];
 
+// Same collapsed-row-count convention `DIVIDEND_EVENT_COLLAPSED_ROW_COUNT` uses — a handful of
+// most-recent months inline, "展開完整" opens the rest in `ExpandModal`.
+const MONTH_REVENUE_COLLAPSED_ROW_COUNT = 6;
+
+/** 月營收趨勢 — a combo chart (monthly-revenue bars + period-end stock-price line on a secondary
+ * axis, same dual-`yAxisId` `ComposedChart` shape `InstitutionalFlowBody` already uses) plus a
+ * 紅漲綠跌-colored 年月/月營收/月增率/年增率/累計年增% table below it, matching the reference TW
+ * finance app's own 月營收 view. Replaces the old bare single-series revenue bar chart, which had
+ * no price context and no table — every figure (MoM/YoY/cumulative-YoY/period-high/period-end
+ * close) is pre-computed server-side in `trend` (`get_month_revenue`'s own docstring), never
+ * re-derived client-side from raw rows. */
 function MonthRevenueCard({
   symbol,
   market,
@@ -126,31 +140,44 @@ function MonthRevenueCard({
   const t = useTranslations("stock.financials");
   const locale = useLocale();
   const [range, setRange] = useState<RevenueRange>("1y");
-  const startDate = monthsAgoIso(REVENUE_RANGE_MONTHS[range]);
+  const [expanded, setExpanded] = useState(false);
+  // Fetch one extra trailing year beyond the displayed range — `yoy_pct`/`cumulative_yoy_pct`
+  // need the same calendar month(s) from the prior year to diff against, so a "1y" display
+  // window needs 24 months of fetched history or every row's YoY comes back `None` (the prior
+  // year's row for the earliest displayed months would simply never have been fetched).
+  const fetchStartDate = monthsAgoIso(REVENUE_RANGE_MONTHS[range] + 12);
   const query = useQuery({
     queryKey: ["month_revenue", symbol, market, range],
-    queryFn: () => getMonthRevenue(symbol, market, { startDate }),
+    queryFn: () => getMonthRevenue(symbol, market, { startDate: fetchStartDate }),
   });
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-        <CardSkeletonBody height={320} />
+      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+        <CardSkeletonBody height={420} />
       </section>
     );
   }
-  const trend = query.data?.trend ?? [];
+  const displayStartDate = monthsAgoIso(REVENUE_RANGE_MONTHS[range]);
+  const trend = [...(query.data?.trend ?? [])]
+    .sort((a, b) => a.revenue_year - b.revenue_year || a.revenue_month - b.revenue_month)
+    .filter(
+      (point) =>
+        `${point.revenue_year}-${String(point.revenue_month).padStart(2, "0")}-01` >=
+        displayStartDate,
+    );
   const latest = trend.at(-1);
   const latestUp = (latest?.yoy_pct ?? 0) >= 0;
 
   const points = trend.map((point) => ({
     label: `${point.revenue_year}-${String(point.revenue_month).padStart(2, "0")}`,
     revenue: point.revenue,
-    yoy_pct: point.yoy_pct,
+    price: point.period_end_close,
   }));
+  const rowsDesc = [...trend].reverse();
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("monthRevenueTitle")}</h2>
         <div className="flex items-center gap-2">
@@ -176,79 +203,167 @@ function MonthRevenueCard({
       {points.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       ) : (
-        <SimpleBarChartBody
-          points={points}
-          dataKey="revenue"
-          fill="var(--chart-1)"
-          yAxisWidth={48}
-          yAxisTickFormatter={(v) => formatCompactNumber(v, locale)}
-          tooltipFormatter={(value) => formatNumber(Number(value), locale)}
-        />
+        <>
+          <div style={{ width: "100%", height: 260 }}>
+            <ResponsiveContainer>
+              <ComposedChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
+                <CartesianGrid vertical={false} stroke="var(--grid)" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+                  stroke="var(--border)"
+                />
+                <YAxis
+                  yAxisId="revenue"
+                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                  tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+                  width={48}
+                  stroke="var(--border)"
+                />
+                <YAxis
+                  yAxisId="price"
+                  orientation="right"
+                  tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                  tickFormatter={(v: number) => formatNumber(v, locale)}
+                  width={48}
+                  stroke="var(--border)"
+                />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  formatter={(value) => formatNumber(Number(value), locale)}
+                />
+                <Bar
+                  yAxisId="revenue"
+                  dataKey="revenue"
+                  name={t("monthRevenueLegend")}
+                  fill="var(--chart-1)"
+                  radius={2}
+                />
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="price"
+                  name={t("priceLegend")}
+                  stroke="var(--chart-5)"
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="mt-4">
+            <MonthRevenueTable
+              rows={rowsDesc.slice(0, MONTH_REVENUE_COLLAPSED_ROW_COUNT)}
+              t={t}
+              locale={locale}
+            />
+          </div>
+
+          {rowsDesc.length > MONTH_REVENUE_COLLAPSED_ROW_COUNT ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className={cn(
+                "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+              )}
+            >
+              <span>{t("expandTo", { count: rowsDesc.length })}</span>
+            </button>
+          ) : null}
+        </>
       )}
+
+      <ExpandModal
+        open={expanded}
+        title={t("monthRevenueTitle")}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      >
+        <MonthRevenueTable rows={rowsDesc} t={t} locale={locale} />
+      </ExpandModal>
     </section>
   );
 }
 
-const DIVIDEND_RANGE_MONTHS = { "3m": 3, "6m": 6, "1y": 12 } as const;
-type DividendRange = keyof typeof DIVIDEND_RANGE_MONTHS;
-const DIVIDEND_RANGE_OPTIONS = Object.keys(DIVIDEND_RANGE_MONTHS) as DividendRange[];
-
-function DividendResultCard({
-  symbol,
-  market,
+function MonthRevenueTable({
+  rows,
+  t,
+  locale,
 }: {
-  readonly symbol: string;
-  readonly market: Market;
+  readonly rows: readonly MonthRevenueTrendPoint[];
+  readonly t: ReturnType<typeof useTranslations>;
+  readonly locale: string;
 }): ReactNode {
-  const t = useTranslations("stock.financials");
-  const locale = useLocale();
-  const [range, setRange] = useState<DividendRange>("1y");
-  const startDate = monthsAgoIso(DIVIDEND_RANGE_MONTHS[range]);
-  const query = useQuery({
-    queryKey: ["dividend_result", symbol, market, range],
-    queryFn: () => getDividendResult(symbol, market, { startDate }),
-  });
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="border-[var(--border)] border-b text-[11px] text-[var(--text-muted)]">
+            <th className="px-2 py-1.5 text-left font-medium">{t("monthRevenueTable.period")}</th>
+            <th className="px-2 py-1.5 text-right font-medium">{t("monthRevenueTable.revenue")}</th>
+            <th className="px-2 py-1.5 text-right font-medium">{t("monthRevenueTable.mom")}</th>
+            <th className="px-2 py-1.5 text-right font-medium">{t("monthRevenueTable.yoy")}</th>
+            <th className="px-2 py-1.5 text-right font-medium">
+              {t("monthRevenueTable.cumulativeYoy")}
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--border)]">
+          {rows.map((point) => (
+            <tr key={`${point.revenue_year}-${point.revenue_month}`}>
+              <td className="px-2 py-1.5 text-[var(--text)]">
+                {point.revenue_year}/{String(point.revenue_month).padStart(2, "0")}
+              </td>
+              <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+                {formatCompactNumber(point.revenue, locale)}
+              </td>
+              <PctCell value={point.mom_pct} />
+              <PctCell value={point.yoy_pct} />
+              <PctCell value={point.cumulative_yoy_pct} />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-  if (query.isLoading) {
+/** One 紅漲綠跌-colored percentage cell — shared by every column in `MonthRevenueTable` so
+ * 月增率/年增率/累計年增% never drift on the sign→color/▲▼ mapping. */
+function PctCell({ value }: { readonly value: number | null | undefined }): ReactNode {
+  if (value == null) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-        <CardSkeletonBody height={320} />
-      </section>
+      <td className="px-2 py-1.5 text-right font-num text-[var(--text-muted)] tabular-nums">—</td>
     );
   }
-  const rows = query.data?.rows ?? [];
-  const points = rows.map((row) => ({
-    label: row.trade_date,
-    dividend: row.stock_and_cache_dividend,
-  }));
-
+  const up = value >= 0;
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("dividendResultTitle")}</h2>
-        <RangeSelect
-          value={range}
-          onChange={setRange}
-          options={DIVIDEND_RANGE_OPTIONS}
-          labelFor={(key) => t(`dividendResultRange.${key}`)}
-          ariaLabel={t("dividendResultTitle")}
-        />
-      </div>
-      {points.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
-      ) : (
-        <SimpleBarChartBody
-          points={points}
-          dataKey="dividend"
-          fill="var(--chart-2)"
-          yAxisWidth={40}
-          tooltipFormatter={(value) => formatNumber(Number(value), locale, { decimals: 2 })}
-        />
-      )}
-    </section>
+    <td
+      className="px-2 py-1.5 text-right font-num tabular-nums"
+      style={{ color: up ? "var(--up)" : "var(--down)" }}
+    >
+      {up ? "▲" : "▼"} {Math.abs(value * 100).toFixed(1)}%
+    </td>
   );
 }
 
+// Same ~3.5-year lookback the reference design's own 8-quarter window needs (quarterly filings,
+// so 8 quarters back is ~24 months; a little slack for a quarter landing just before the cutoff).
+const STATEMENT_LOOKBACK_MONTHS = 30;
+// Same collapsed-row-count convention `MONTH_REVENUE_COLLAPSED_ROW_COUNT` uses — a handful of
+// most-recent quarters as chart+table columns inline, "展開完整" opens the rest in `ExpandModal`.
+const STATEMENT_COLLAPSED_PERIOD_COUNT = 8;
+
+/** 財務結構/獲利趨勢 sub-tabs — a multi-quarter line chart (top-10 line items by the latest
+ * period's |value|, one categorical color per item, legend click-to-toggle same as
+ * `DividendPolicyCard`'s chart) plus a 項目 × 季別 grid table below, matching the reference app's
+ * own 損益表 trend view but keeping all 10 items this app already surfaces (the reference only
+ * tracks 3). The top-10 set is fixed from the latest period so the same 10 lines track across
+ * every quarter — picking each quarter's own top-10 independently would let items drop in and
+ * out of the chart as their rank shifts, producing broken/discontinuous lines. */
 function FinancialStatementCard({
   symbol,
   market,
@@ -259,20 +374,54 @@ function FinancialStatementCard({
   const t = useTranslations("stock.financials");
   const locale = useLocale();
   const [statementType, setStatementType] = useState<FinancialStatementType>("income_statement");
+  const [expanded, setExpanded] = useState(false);
+  // Tracks which items have been clicked away from their *default* visibility
+  // (`STATEMENT_DEFAULT_VISIBLE_ITEMS`) — never the visibility set directly, since `topItems`
+  // isn't known until the query resolves; XORing a toggle set against the fixed default means no
+  // effect/derived-state dance is needed to seed it once data arrives.
+  const [toggledItems, setToggledItems] = useState<ReadonlySet<string>>(new Set());
+  const isItemVisible = (item: string): boolean =>
+    STATEMENT_DEFAULT_VISIBLE_ITEMS[statementType].has(item) !== toggledItems.has(item);
+  const startDate = monthsAgoIso(STATEMENT_LOOKBACK_MONTHS);
   const query = useQuery({
-    queryKey: ["financial_statement", symbol, market, statementType],
-    queryFn: () => getFinancialStatement(symbol, market, statementType),
+    queryKey: ["financial_statement", symbol, market, statementType, startDate],
+    queryFn: () => getFinancialStatement(symbol, market, statementType, { startDate }),
   });
 
-  const lines = [...(query.data?.lines ?? [])].sort((a, b) =>
-    b.period_end.localeCompare(a.period_end),
-  );
-  const latestPeriod = lines[0]?.period_end;
-  const latestLines = lines
+  // `balance_sheet` reports each line twice under the same `origin_name` — the absolute value
+  // (`item`, e.g. "TotalAssets") and a same-period percent-of-total (`item + "_per"`, e.g.
+  // "TotalAssets_per") — both sharing one `origin_name` (`sources/finmind/fundamental.py`'s own
+  // `_per`-suffix convention). `income_statement`/`cash_flow` never emit this suffix, so this
+  // filter is a no-op for those, but is load-bearing for `balance_sheet`: without it, the two
+  // same-named rows collide in `valueByItemAndPeriod` below (last-write-wins), silently
+  // swapping some periods' plotted value for that item between the real figure and a 0-100
+  // percentage.
+  const lines = (query.data?.lines ?? []).filter((l) => !l.item.endsWith("_per"));
+  const periods = [...new Set(lines.map((l) => l.period_end))].sort();
+  const latestPeriod = periods.at(-1);
+  const topItems = [...lines]
     .filter((l) => l.period_end === latestPeriod)
     .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
-    .slice(0, 10);
-  const points = latestLines.map((line) => ({ label: line.origin_name, value: line.value }));
+    .slice(0, MAX_STATEMENT_LINE_ITEMS)
+    .map((l) => l.origin_name);
+
+  const valueByItemAndPeriod = new Map<string, Map<string, number>>();
+  for (const line of lines) {
+    if (!topItems.includes(line.origin_name)) continue;
+    const byPeriod = valueByItemAndPeriod.get(line.origin_name) ?? new Map<string, number>();
+    byPeriod.set(line.period_end, line.value);
+    valueByItemAndPeriod.set(line.origin_name, byPeriod);
+  }
+
+  const chartPeriods = periods.slice(-STATEMENT_COLLAPSED_PERIOD_COUNT);
+  const points = chartPeriods.map((period) => {
+    const point: Record<string, string | number> = { period };
+    for (const item of topItems) {
+      const value = valueByItemAndPeriod.get(item)?.get(period);
+      if (value != null) point[item] = value;
+    }
+    return point;
+  });
 
   return (
     <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
@@ -307,51 +456,163 @@ function FinancialStatementCard({
       <div className="mt-3">
         {query.isLoading ? (
           <CardSkeletonBody height={280} />
-        ) : points.length === 0 ? (
+        ) : topItems.length === 0 ? (
           <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
         ) : (
-          <ChartWithDataSheet rows={points}>
-            <div style={{ width: "100%", height: Math.max(200, points.length * 32) }}>
+          <>
+            <div style={{ width: "100%", height: 300 }}>
               <ResponsiveContainer>
-                <BarChart data={points} layout="vertical" margin={{ left: 8, right: 24 }}>
-                  <CartesianGrid horizontal={false} stroke="var(--grid)" />
+                <ComposedChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
+                  <CartesianGrid vertical={false} stroke="var(--grid)" />
                   <XAxis
-                    type="number"
-                    tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                    tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+                    dataKey="period"
+                    tick={{ fill: "var(--text-muted)", fontSize: 10 }}
                     stroke="var(--border)"
                   />
                   <YAxis
-                    type="category"
-                    dataKey="label"
                     tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                    width={140}
+                    tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+                    width={48}
                     stroke="var(--border)"
                   />
-                  <ReferenceLine x={0} stroke="var(--border)" />
                   <Tooltip
                     contentStyle={TOOLTIP_STYLE}
                     formatter={(value) => formatNumber(Number(value), locale)}
                   />
-                  <Bar dataKey="value" radius={4}>
-                    {points.map((point) => (
-                      <Cell
-                        key={point.label}
-                        fill={point.value >= 0 ? "var(--up)" : "var(--down)"}
-                        aria-label={
-                          point.value >= 0
-                            ? `${point.label} ▲ ${formatNumber(point.value, locale)}`
-                            : `${point.label} ▼ ${formatNumber(point.value, locale)}`
+                  <Legend
+                    onClick={(entry) => {
+                      const item = entry.dataKey as string;
+                      setToggledItems((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(item)) {
+                          next.delete(item);
+                        } else {
+                          next.add(item);
                         }
-                      />
-                    ))}
-                  </Bar>
-                </BarChart>
+                        return next;
+                      });
+                    }}
+                    formatter={(value) => (
+                      <span style={{ cursor: "pointer", opacity: isItemVisible(value) ? 1 : 0.4 }}>
+                        {value}
+                      </span>
+                    )}
+                    wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
+                  />
+                  {topItems.map((item, i) => (
+                    <Line
+                      key={item}
+                      type="monotone"
+                      dataKey={item}
+                      name={item}
+                      stroke={STATEMENT_LINE_COLORS[i % STATEMENT_LINE_COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                      hide={!isItemVisible(item)}
+                    />
+                  ))}
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
-          </ChartWithDataSheet>
+
+            <div className="mt-4">
+              <FinancialStatementTable
+                items={topItems}
+                periods={chartPeriods}
+                valueByItemAndPeriod={valueByItemAndPeriod}
+                locale={locale}
+                t={t}
+              />
+            </div>
+
+            {periods.length > STATEMENT_COLLAPSED_PERIOD_COUNT ? (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className={cn(
+                  "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                  "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                )}
+              >
+                <span>{t("expandTo", { count: periods.length })}</span>
+              </button>
+            ) : null}
+          </>
         )}
       </div>
+
+      <ExpandModal
+        open={expanded}
+        title={t("statementTitle")}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      >
+        <FinancialStatementTable
+          items={topItems}
+          periods={periods}
+          valueByItemAndPeriod={valueByItemAndPeriod}
+          locale={locale}
+          t={t}
+        />
+      </ExpandModal>
     </section>
+  );
+}
+
+/** 項目 × 季別 grid — line items as rows, periods as columns, so all 10 tracked items and every
+ * fetched quarter are visible without a 10-column-per-quarter table (a quarter-per-row layout
+ * would need one column per line item instead, same information, worse fit for 10 items). */
+function FinancialStatementTable({
+  items,
+  periods,
+  valueByItemAndPeriod,
+  locale,
+  t,
+}: {
+  readonly items: readonly string[];
+  readonly periods: readonly string[];
+  readonly valueByItemAndPeriod: ReadonlyMap<string, ReadonlyMap<string, number>>;
+  readonly locale: string;
+  readonly t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="border-[var(--border)] border-b text-[11px] text-[var(--text-muted)]">
+            <th className="px-2 py-1.5 text-left font-medium">{t("statementTable.item")}</th>
+            {periods.map((period) => (
+              <th key={period} className="px-2 py-1.5 text-right font-medium">
+                {period}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--border)]">
+          {items.map((item, i) => (
+            <tr key={item}>
+              <td
+                className="px-2 py-1.5"
+                style={{ color: STATEMENT_LINE_COLORS[i % STATEMENT_LINE_COLORS.length] }}
+              >
+                {item}
+              </td>
+              {periods.map((period) => {
+                const value = valueByItemAndPeriod.get(item)?.get(period);
+                return (
+                  <td
+                    key={period}
+                    className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums"
+                  >
+                    {value != null ? formatCompactNumber(value, locale) : "—"}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
