@@ -10,9 +10,9 @@ import type { HolderAccumulationRow, HolderThreshold, HolderWindow } from "@/typ
 const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_1.1fr_0.9fr]";
 const THRESHOLDS = [200, 400, 800, 1000] as const satisfies readonly HolderThreshold[];
 const WINDOWS = [1, 2, 3, 4] as const satisfies readonly HolderWindow[];
-// Same collapsed-row-count convention `LeaderboardCard` uses — 10 rows visible inline, "Show all"
+// Same collapsed-row-count convention `LeaderboardCard` uses — 15 rows visible inline, "Show all"
 // opens the full ranking in a modal rather than growing this card past its neighbors' height.
-const COLLAPSED_ROW_COUNT = 10;
+const COLLAPSED_ROW_COUNT = 15;
 
 const THRESHOLD_KEYS: Record<HolderThreshold, string> = {
   200: "threshold200",
@@ -165,7 +165,7 @@ function HolderAccumulationRows({
       <div
         aria-hidden
         className={cn(
-          "grid items-center gap-2.5 border-b border-[var(--border)] pb-1.5 text-[11px] text-[var(--text-muted)]",
+          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
           ROW_GRID_COLS,
         )}
       >

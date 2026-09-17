@@ -9,15 +9,20 @@ reduction, delisting, split, par-value change) are bundled into `get_corporate_a
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from datetime import date as date_
+from datetime import timedelta
 from enum import StrEnum
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.router import DataAccessRouter
 from schemas.capabilities import (
     CapitalReductionReferencePriceRow,
+    DividendEvent,
     DividendResultRow,
+    EODBar,
     FinancialStatementLine,
     MarketValueRow,
     MarketValueWeightRow,
@@ -142,14 +147,269 @@ class GetDividendResultTool(BaseTool):
         )
 
 
+# `fiscal_year` on `DividendEvent` is FinMind's own free-text label — plain "104年" for a
+# whole-year dividend or "108年第1季" for a quarterly one (see `get_dividend_schedule`'s live
+# payload). The leading 3-digit ROC year is always present and always the first token; the
+# calendar year it maps to (`roc + 1911`) is what `_dividend_year_summary` buckets by, since the
+# 股利政策 chart groups by calendar year, not by the ROC label verbatim.
+def _roc_fiscal_year_to_calendar_year(fiscal_year: str) -> int | None:
+    digits = ""
+    for ch in fiscal_year:
+        if ch.isdigit():
+            digits += ch
+        else:
+            break
+    if not digits:
+        return None
+    return int(digits) + 1911
+
+
+class DividendYearSummary(BaseModel):
+    """One calendar year's dividend total — the 股利政策 chart's per-year bar (cash+stock
+    stacked) and the stats-strip's "latest year" figures, both derived from the same bucketing
+    so the chart and the headline numbers can never disagree."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    year: int
+    cash_dividend: float
+    stock_dividend: float
+    total_dividend: float
+
+
+def _dividend_year_summary(events: Sequence[DividendEvent]) -> tuple[DividendYearSummary, ...]:
+    totals: dict[int, list[float]] = {}
+    for event in events:
+        year = _roc_fiscal_year_to_calendar_year(event.fiscal_year)
+        if year is None:
+            continue
+        cash, stock = totals.setdefault(year, [0.0, 0.0])
+        totals[year] = [cash + (event.cash_dividend or 0.0), stock + (event.stock_dividend or 0.0)]
+    return tuple(
+        DividendYearSummary(
+            year=year, cash_dividend=cash, stock_dividend=stock, total_dividend=cash + stock
+        )
+        for year, (cash, stock) in sorted(totals.items())
+    )
+
+
+class DividendFillResult(BaseModel):
+    """Whether one settled ex-dividend event's price recovered to `before_price` — 填息
+    (cash/combined ex-dividend) or 填權 (stock-only) — before the stock's *next* ex-dividend
+    event, or (for the most recent event) as of the latest available close. `filled` is `None`,
+    never `False`, when there is not yet enough later price history to answer either way (the
+    next event hasn't happened yet AND no later close has reached `before_price`) — an unresolved
+    event is not the same fact as a failed one."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    trade_date: date_
+    before_price: float
+    filled: bool | None
+    filled_date: date_ | None = None
+
+
+def _dividend_fill_results(
+    dividend_result_rows: Sequence[DividendResultRow], bars: Sequence[EODBar]
+) -> tuple[DividendFillResult, ...]:
+    ordered_rows = sorted(dividend_result_rows, key=lambda r: r.trade_date)
+    ordered_bars = sorted(bars, key=lambda b: b.trade_date)
+    results: list[DividendFillResult] = []
+    for idx, row in enumerate(ordered_rows):
+        window_end = ordered_rows[idx + 1].trade_date if idx + 1 < len(ordered_rows) else date_.max
+        filled = False
+        filled_date: date_ | None = None
+        for bar in ordered_bars:
+            if bar.trade_date <= row.trade_date or bar.trade_date >= window_end:
+                continue
+            if bar.close >= row.before_price:
+                filled = True
+                filled_date = bar.trade_date
+                break
+        # No later bar at all within the window (the next event hasn't happened yet and no
+        # price history reaches past this event) means "not yet resolved", not "failed" —
+        # surfaced as `None` per this model's own docstring.
+        has_later_bar = any(row.trade_date < bar.trade_date < window_end for bar in ordered_bars)
+        results.append(
+            DividendFillResult(
+                trade_date=row.trade_date,
+                before_price=row.before_price,
+                filled=filled if (filled or has_later_bar) else None,
+                filled_date=filled_date,
+            )
+        )
+    return tuple(results)
+
+
+class DividendPolicyStats(BaseModel):
+    """The stats-strip figures above the 股利政策 chart — 綜合股利/現金殖利率/配息率/填息成功率,
+    all pre-computed server-side from `events`/`fill_results`/`latest_eps`/`latest_close` so the
+    frontend never re-derives a payout ratio or fill-rate from raw rows itself (same "cite the
+    pre-computed figure directly" convention `MonthRevenueTrendPoint` documents). Any figure is
+    `None`, never a fabricated 0, when its own inputs are missing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    latest_year: int | None = None
+    latest_year_total_dividend: float | None = None
+    cash_dividend_yield_pct: float | None = None
+    payout_ratio_pct: float | None = None
+    fill_rate_pct: float | None = None
+    fill_rate_sample_size: int = 0
+
+
+def _dividend_policy_stats(
+    year_summaries: Sequence[DividendYearSummary],
+    fill_results: Sequence[DividendFillResult],
+    latest_close: float | None,
+    annual_eps_by_year: dict[int, float],
+) -> DividendPolicyStats:
+    if not year_summaries:
+        return DividendPolicyStats()
+    latest = year_summaries[-1]
+    cash_yield = (
+        (latest.cash_dividend / latest_close) * 100 if latest_close and latest_close > 0 else None
+    )
+    latest_eps = annual_eps_by_year.get(latest.year)
+    payout_ratio = (
+        (latest.total_dividend / latest_eps) * 100 if latest_eps and latest_eps > 0 else None
+    )
+    resolved = [r for r in fill_results if r.filled is not None]
+    fill_rate = (sum(1 for r in resolved if r.filled) / len(resolved)) * 100 if resolved else None
+    return DividendPolicyStats(
+        latest_year=latest.year,
+        latest_year_total_dividend=latest.total_dividend,
+        cash_dividend_yield_pct=cash_yield,
+        payout_ratio_pct=payout_ratio,
+        fill_rate_pct=fill_rate,
+        fill_rate_sample_size=len(resolved),
+    )
+
+
+class GetDividendPolicySummaryOutput(BaseModel):
+    """A composite report bundling everything the 股利政策 card needs — the announced-schedule
+    events (table rows), the per-year chart bars, the stats-strip figures, and the per-event
+    fill results — in one call, rather than the frontend fanning out to `get_dividend_schedule`
+    + `get_financial_statement` + a long-range price fetch and re-deriving payout/fill-rate
+    itself. Mirrors `GetCorporateActionEventsOutput`'s bundling precedent (multiple capability
+    fetches, one composite tool) and `MonthRevenueTrendPoint`'s "pre-compute, cite directly"
+    convention."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: str
+    currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
+    events: tuple[DividendEvent, ...] = Field(default_factory=tuple)
+    year_summaries: tuple[DividendYearSummary, ...] = Field(default_factory=tuple)
+    fill_results: tuple[DividendFillResult, ...] = Field(default_factory=tuple)
+    stats: DividendPolicyStats = Field(default_factory=DividendPolicyStats)
+
+
+class GetDividendPolicySummaryTool(BaseTool):
+    """`get_dividend_policy_summary` — the 股利政策 card's one-call composite: announced dividend
+    events (`Capability.DIVIDENDS`), annual EPS (`Capability.FINANCIALS`, `基本每股盈餘`), and a
+    live bounded-range `Capability.PRICE_EOD` fetch (same live-per-symbol pattern
+    `etf_overlap_tools.py`'s fund-comparison return calc already uses — not the ingest store's
+    60-trading-day-capped `get_price_history`, since 填息成功率 needs the settled-result's own
+    `trade_date` window, which can span years, not just the last 60 sessions). All three fetches
+    share one bounded `[start_date, end_date]` window from `DateRangeInput` — callers pass e.g.
+    a 10-year window to match the screenshot-reference design's "計算區間" selector; there is no
+    server-side default range beyond what the underlying capabilities themselves return."""
+
+    name = "get_dividend_policy_summary"
+    description = (
+        "Get a composite 股利政策 report for one stock: announced dividend events, per-year "
+        "cash+stock totals, 現金殖利率/配息率/填息成功率 stats, and per-event fill results."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetDividendPolicySummaryOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "dividend_policy_summary"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        symbol = typed.to_symbol()
+        params = typed.date_params()
+
+        schedule_result, events = await fetch_rows(
+            self._router,
+            Capability.DIVIDENDS,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=DividendEvent,
+            key="events",
+            params=params,
+        )
+        _dividend_result_result, dividend_result_rows = await fetch_rows(
+            self._router,
+            Capability.DIVIDEND_RESULT,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=DividendResultRow,
+            key="rows",
+            params=params,
+        )
+        _financials_result, statement_lines = await fetch_rows(
+            self._router,
+            Capability.FINANCIALS,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=FinancialStatementLine,
+            key="lines",
+            params=params,
+        )
+        _price_result, bars = await fetch_rows(
+            self._router,
+            Capability.PRICE_EOD,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=EODBar,
+            key="bars",
+            params=params,
+        )
+
+        annual_eps_by_year: dict[int, float] = {}
+        for line in statement_lines:
+            if line.item != "EPS":
+                continue
+            annual_eps_by_year[line.period_end.year] = (
+                annual_eps_by_year.get(line.period_end.year, 0.0) + line.value
+            )
+
+        year_summaries = _dividend_year_summary(events)
+        fill_results = _dividend_fill_results(dividend_result_rows, bars)
+        latest_close = max(bars, key=lambda b: b.trade_date).close if bars else None
+        stats = _dividend_policy_stats(
+            year_summaries, fill_results, latest_close, annual_eps_by_year
+        )
+
+        return GetDividendPolicySummaryOutput(
+            source_id=schedule_result.source_id,
+            currentness_caveat=schedule_result.currentness_caveat,
+            health_status=schedule_result.health.status,
+            events=events,
+            year_summaries=year_summaries,
+            fill_results=fill_results,
+            stats=stats,
+        )
+
+
 class MonthRevenueTrendPoint(BaseModel):
-    """One filed month's revenue plus its pre-computed MoM/YoY change — so a skill asking for a
-    "近期月營收趨勢" never forces the model to manually diff adjacent rows itself (the same
-    failure class as `InstitutionalFlowRollingNet`: a live `earnings-quality` turn's reasoning
-    trace showed the model hand-transcribing raw month-revenue rows into a markdown table and
-    running out of response budget before writing any prose — the final answer had zero
-    analysis). `mom_pct`/`yoy_pct` are `None` when the comparison month is absent from `rows`,
-    never a fabricated figure from a mismatched month."""
+    """One filed month's revenue plus its pre-computed MoM/YoY change, cumulative-YoY, a
+    same-calendar-month record flag, and (when available) that month's period-end closing price
+    — so a skill asking for a "近期月營收趨勢" never forces the model to manually diff adjacent
+    rows itself (the same failure class as `InstitutionalFlowRollingNet`: a live
+    `earnings-quality` turn's reasoning trace showed the model hand-transcribing raw
+    month-revenue rows into a markdown table and running out of response budget before writing
+    any prose — the final answer had zero analysis). `mom_pct`/`yoy_pct`/`cumulative_yoy_pct` are
+    `None` when the comparison month(s) are absent from `rows`, never a fabricated figure from a
+    mismatched month. `period_end_close` is `None` when no `PRICE_EOD` bar exists on or before
+    this month's last filed trading day (e.g. a symbol whose price history doesn't reach this far
+    back) — never fabricated as an interpolated/estimated price."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -158,6 +418,16 @@ class MonthRevenueTrendPoint(BaseModel):
     revenue: int
     mom_pct: float | None = None
     yoy_pct: float | None = None
+    # Year-to-date cumulative revenue (Jan..this month) vs. the same YTD span last year — FinMind/
+    # TW-retail convention's own "累計年增%" column (see the reference design this mirrors).
+    # `None` before every month from January through this one has a filed row for both years.
+    cumulative_yoy_pct: float | None = None
+    # Whether `revenue` is a new high for this calendar month across every prior year `rows`
+    # covers (the reference design's "同期新高" badge) — computed only within the fetched
+    # window, so a narrower `start_date` naturally narrows the comparison history, same as every
+    # other window-bounded figure in this tool.
+    is_period_high: bool = False
+    period_end_close: float | None = None
 
 
 def _safe_pct_change(current: int, prior: int | None) -> float | None:
@@ -170,15 +440,55 @@ def _prior_calendar_month(year: int, month: int) -> tuple[int, int]:
     return (year - 1, 12) if month == 1 else (year, month - 1)
 
 
-def _month_revenue_trend(rows: Sequence[MonthRevenueRow]) -> tuple[MonthRevenueTrendPoint, ...]:
+def _cumulative_yoy(
+    by_year_month: Mapping[tuple[int, int], int], year: int, month: int
+) -> float | None:
+    """`sum(Jan..month, year)` vs. the same Jan..month span the year before — `None` if any month
+    in either span is missing from `by_year_month` (a partial YTD sum compared against a full one
+    would silently understate/overstate the real cumulative change)."""
+    months = range(1, month + 1)
+    current_months = [by_year_month.get((year, m)) for m in months]
+    prior_months = [by_year_month.get((year - 1, m)) for m in months]
+    if any(v is None for v in current_months) or any(v is None for v in prior_months):
+        return None
+    current_sum = sum(cast("list[int]", current_months))
+    prior_sum = sum(cast("list[int]", prior_months))
+    return _safe_pct_change(current_sum, prior_sum)
+
+
+def _period_end_close(bars: Sequence[EODBar], on_or_before: date_) -> float | None:
+    """The latest `PRICE_EOD` close at or before `on_or_before` — the price line's one point per
+    filed month, matching that month's own last trading day rather than the filing date (which
+    lands the following month, per `MonthRevenueRow.trade_date`'s own FinMind convention)."""
+    candidates = [bar for bar in bars if bar.trade_date <= on_or_before]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda bar: bar.trade_date).close
+
+
+def _month_revenue_trend(
+    rows: Sequence[MonthRevenueRow], bars: Sequence[EODBar]
+) -> tuple[MonthRevenueTrendPoint, ...]:
     ordered = sorted(rows, key=lambda row: (row.revenue_year, row.revenue_month))
     by_year_month = {(row.revenue_year, row.revenue_month): row.revenue for row in ordered}
+    revenue_by_month: dict[int, list[tuple[int, int]]] = {}
+    for row in ordered:
+        revenue_by_month.setdefault(row.revenue_month, []).append((row.revenue_year, row.revenue))
     points: list[MonthRevenueTrendPoint] = []
     for row in ordered:
         prior_month_revenue = by_year_month.get(
             _prior_calendar_month(row.revenue_year, row.revenue_month)
         )
         prior_year_revenue = by_year_month.get((row.revenue_year - 1, row.revenue_month))
+        same_calendar_month_years = revenue_by_month[row.revenue_month]
+        is_period_high = row.revenue >= max(
+            revenue for year, revenue in same_calendar_month_years if year <= row.revenue_year
+        )
+        # A month's own last filed trading day is one day before the next revenue period's
+        # `trade_date` (the filing date FinMind stamps on the *following* month's 1st) — this
+        # tool never assumes a fixed calendar-month-end, since `trade_date` is the real anchor
+        # every other `MonthRevenueRow` reader in this codebase uses.
+        month_end_anchor = row.trade_date - timedelta(days=1)
         points.append(
             MonthRevenueTrendPoint(
                 revenue_year=row.revenue_year,
@@ -186,6 +496,11 @@ def _month_revenue_trend(rows: Sequence[MonthRevenueRow]) -> tuple[MonthRevenueT
                 revenue=row.revenue,
                 mom_pct=_safe_pct_change(row.revenue, prior_month_revenue),
                 yoy_pct=_safe_pct_change(row.revenue, prior_year_revenue),
+                cumulative_yoy_pct=_cumulative_yoy(
+                    by_year_month, row.revenue_year, row.revenue_month
+                ),
+                is_period_high=is_period_high,
+                period_end_close=_period_end_close(bars, month_end_anchor),
             )
         )
     return tuple(points)
@@ -200,14 +515,18 @@ class GetMonthRevenueOutput(_RowsOutput):
 
 
 class GetMonthRevenueTool(BaseTool):
-    """`get_month_revenue` — wraps `Capability.MONTH_REVENUE` (月營收 filing). Also returns
-    `trend` — server-side pre-computed MoM/YoY change per filed month (see
-    `MonthRevenueTrendPoint`'s own docstring for why)."""
+    """`get_month_revenue` — wraps `Capability.MONTH_REVENUE` (月營收 filing) plus a live bounded-
+    range `Capability.PRICE_EOD` fetch (same live-per-symbol pattern
+    `get_dividend_policy_summary`/`etf_overlap_tools.py` already use) for the price-line overlay.
+    Also returns `trend` — server-side pre-computed MoM/YoY/cumulative-YoY change, same-period-
+    high flag, and period-end close per filed month (see `MonthRevenueTrendPoint`'s own docstring
+    for why)."""
 
     name = "get_month_revenue"
     description = (
-        "Get monthly revenue (月營收) filing rows for one stock, plus a pre-computed MoM/YoY "
-        "change per month — cite `trend`'s figures directly rather than diffing `rows` yourself."
+        "Get monthly revenue (月營收) filing rows for one stock, plus a pre-computed MoM/YoY/"
+        "cumulative-YoY change, same-period-high flag, and period-end closing price per month — "
+        "cite `trend`'s figures directly rather than diffing `rows` yourself."
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetMonthRevenueOutput
@@ -219,21 +538,32 @@ class GetMonthRevenueTool(BaseTool):
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(DateRangeInput, args)
+        symbol = typed.to_symbol()
+        params = typed.date_params()
         result, rows = await fetch_rows(
             self._router,
             Capability.MONTH_REVENUE,
-            typed.to_symbol(),
+            symbol,
             tls_policy=ctx.tls_policy,
             model=MonthRevenueRow,
             key="rows",
-            params=typed.date_params(),
+            params=params,
+        )
+        _price_result, bars = await fetch_rows(
+            self._router,
+            Capability.PRICE_EOD,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=EODBar,
+            key="bars",
+            params=params,
         )
         return GetMonthRevenueOutput(
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
-            trend=_month_revenue_trend(rows),
+            trend=_month_revenue_trend(rows, bars),
         )
 
 
@@ -403,6 +733,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     return [
         (GetFinancialStatementTool(router), False),
         (GetDividendResultTool(router), False),
+        (GetDividendPolicySummaryTool(router), False),
         (GetMonthRevenueTool(router), False),
         (GetMarketValueTool(router), False),
         (GetMarketValueWeightTool(router), False),
@@ -411,9 +742,14 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
 
 
 __all__ = [
+    "DividendFillResult",
+    "DividendPolicyStats",
+    "DividendYearSummary",
     "FinancialStatementType",
     "GetCorporateActionEventsOutput",
     "GetCorporateActionEventsTool",
+    "GetDividendPolicySummaryOutput",
+    "GetDividendPolicySummaryTool",
     "GetDividendResultOutput",
     "GetDividendResultTool",
     "GetFinancialStatementInput",

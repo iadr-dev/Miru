@@ -310,8 +310,19 @@ def _map_chip_broker(rows: list[dict[str, object]], sym: Symbol | None) -> list[
 def _map_government_bank_buysell(
     rows: list[dict[str, object]], sym: Symbol | None
 ) -> list[dict[str, object]]:
+    """`no_data_id_param=True` (confirmed empirically — the endpoint 400s if `data_id` is
+    present at all) means even a per-symbol `fetch()` call gets EVERY stock's row back for the
+    requested day — there is no server-side symbol filter to lean on. `_row_symbol` alone
+    (as every other whole-market-capable mapper in this module uses it) would mislabel every
+    row as the caller's `sym` instead of filtering, which is exactly the bug a live symbol/date
+    probe caught (a per-symbol request always returning the same ~13k-row whole-market count
+    regardless of which symbol or date was asked for). Filter to the caller's own `stock_id`
+    first — same real per-row field `_row_symbol`'s own whole-market (`sym=None`) branch reads
+    off each row already, just applied as a predicate here instead of a label."""
     rows_out: list[dict[str, object]] = []
     for row in rows:
+        if sym is not None and str(row.get("stock_id", "")) != sym.id:
+            continue
         row_sym = _row_symbol(row, sym)
         rows_out.append(
             {
@@ -685,9 +696,15 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         "~23:30, not live.",
         row_key="rows",
         row_mapper=_map_government_bank_buysell,
-        # Confirmed empirically: 400s ("size too large, we only send one day data") if
-        # end_date is present at all — single trading day per request only. Also 400s
-        # ("data_id don't provide") if data_id is present at all — no per-stock filter exists.
+        # Confirmed empirically against the live endpoint: this dataset uses `start_date`
+        # (the `_DatasetConfig` default `date_param`), NOT `date` — the FinMind docs describe
+        # it as single-day-scoped, but the real 400 body when `date` is sent instead
+        # ("start_date parameter is missing") proves `start_date` is the one real upstream
+        # param name. `end_date` still 400s if present at all ("size too large, we only send
+        # one day data") — so a single `start_date` with no `end_date` is what scopes the
+        # response to that one day. `data_id` (a per-stock filter) also 400s if present at
+        # all — this dataset returns EVERY symbol's row for the requested day, whole-market,
+        # filtered client-side by `GetGovernmentBankFlowsTool`'s own row-mapper/caller instead.
         no_end_date_param=True,
         no_data_id_param=True,
         whole_market_ok=True,

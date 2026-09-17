@@ -26,6 +26,8 @@ import type { Market } from "@/types/settings";
  * this ships, growing by one entry per successful daily ingest run. No padded/disabled
  * placeholder tabs; this is not a bug, see the backing tool's own docstring.
  */
+const MATERIAL_ANNOUNCEMENT_FEED_DATE_TAB_COUNT = 7;
+
 export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.materialAnnouncementFeed");
   const [tradeDate, setTradeDate] = useState<string | undefined>(undefined);
@@ -77,6 +79,7 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
                   {[...data.available_dates]
                     .sort()
                     .reverse()
+                    .slice(0, MATERIAL_ANNOUNCEMENT_FEED_DATE_TAB_COUNT)
                     .map((date) => (
                       <button
                         key={date}

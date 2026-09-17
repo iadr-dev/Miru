@@ -30,6 +30,20 @@ function columnsFor(rows: Record<string, unknown>[]): string[] {
   return [...columns];
 }
 
+/** A column renders right-aligned (numbers, incl. `—` gaps) unless some row holds a real string
+ * value for it — a genuinely mixed/text column stays left-aligned. The header cell must match
+ * this exactly, not default to `text-left`: a live screenshot caught headers sitting flush-left
+ * over right-aligned numeric columns below them, visibly unaligned. */
+function isNumericColumn(rows: Record<string, unknown>[], col: string): boolean {
+  return !rows.some((row) => typeof row[col] === "string");
+}
+
+function cellText(value: unknown, locale: string, numeric: boolean): string {
+  if (typeof value === "number") return formatNumber(asNumber(value), locale);
+  if (numeric) return "—";
+  return asString(value) ?? "—";
+}
+
 /** Wraps a chart with its own underlying rows, shown as a collapsible data table directly below
  * it in the same card — a chart alone leaves the exact numbers behind a hover tooltip; the
  * expandable table (same `TableWithActions` copy/download/expand row every other rich-card table
@@ -79,7 +93,10 @@ export function ChartWithDataSheet({
                   {columns.map((col) => (
                     <th
                       key={col}
-                      className="border-[var(--border)] border-b px-3 py-2 text-left font-medium text-[var(--text-muted)]"
+                      className={cn(
+                        "border-[var(--border)] border-b px-3 py-2 font-medium text-[var(--text-muted)]",
+                        isNumericColumn(rows, col) ? "text-right" : "text-left",
+                      )}
                     >
                       {fieldLabel(t, col)}
                     </th>
@@ -91,18 +108,16 @@ export function ChartWithDataSheet({
                   <tr key={columns.map((col) => String(row[col] ?? "")).join("|") || i}>
                     {columns.map((col) => {
                       const value = row[col];
+                      const numeric = isNumericColumn(rows, col);
                       return (
                         <td
                           key={col}
-                          className={
-                            typeof value === "number"
-                              ? "border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums"
-                              : "border-[var(--border)] border-b px-3 py-2 text-[var(--text)]"
-                          }
+                          className={cn(
+                            "border-[var(--border)] border-b px-3 py-2 text-[var(--text)]",
+                            numeric ? "text-right font-num tabular-nums" : "text-left",
+                          )}
                         >
-                          {typeof value === "number"
-                            ? formatNumber(asNumber(value), locale)
-                            : (asString(value) ?? "—")}
+                          {cellText(value, locale, numeric)}
                         </td>
                       );
                     })}

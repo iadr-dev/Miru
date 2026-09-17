@@ -7,6 +7,7 @@ in a single input base class rather than being re-derived per tool module.
 
 from __future__ import annotations
 
+from calendar.trading_days import TradingDayCalendar
 from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -81,4 +82,18 @@ class MarketOnlyInput(BaseModel):
         return params
 
 
-__all__ = ["DateRangeInput", "MarketOnlyInput", "SymbolInput"]
+def candidate_trading_days(start: date_, end: date_, *, limit: int) -> tuple[date_, ...]:
+    """Trading days in `[start, end]`, most-recent-first, capped at `limit` — shared by every
+    tool whose upstream report is single-day-per-call (`chip_broker`/分點,
+    `government_bank_buysell`/八大行庫) and therefore fans out to one `router.fetch()` per
+    trading day rather than a single ranged call. A plain `TradingDayCalendar()` (weekday math,
+    no holiday allow-list) is deliberately used rather than a real ingested calendar (needs a
+    `ParquetStore`, a layer this small bounded probe doesn't warrant pulling in): a real TW
+    holiday in the window just comes back as an empty per-day fetch, which downstream health/row
+    handling already treats as a normal "no rows this day" case, not an error."""
+    calendar = TradingDayCalendar()
+    all_days = calendar.business_days_between(start, end)
+    return tuple(reversed(all_days[-limit:]))
+
+
+__all__ = ["DateRangeInput", "MarketOnlyInput", "SymbolInput", "candidate_trading_days"]

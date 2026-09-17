@@ -78,6 +78,7 @@ const LABELED_FIELDS = new Set([
   "dealer_self",
   "dealer_hedging",
   "foreign_dealer_self",
+  "governmentbank",
   // margin_short — GroupedBarChart legend
   "margin_purchase_today_balance",
   "short_sale_today_balance",

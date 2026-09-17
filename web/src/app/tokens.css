@@ -35,6 +35,14 @@
   --chart-4: #4fd1c5;
   --chart-5: #e06c9f;
   --chart-6: #93a3b8;
+  /* Extended categorical set for a chart tracking more than 6 simultaneous series (e.g. the
+     financial-statement trend chart's 10 tracked line items) — same categorical-only rule as
+     --chart-1..6 (never signed, never --up/--down), just four more distinct hues so a
+     10-series chart never has to repeat a color. */
+  --chart-7: #7dd3fc;
+  --chart-8: #fb923c;
+  --chart-9: #a3e635;
+  --chart-10: #f472b6;
   --grid: #1a1f28;
   --crosshair: #8a93a3;
   /* --chart-4 as body *text* needs the 4.5:1 text threshold, not the 3:1 graphical-element
@@ -75,6 +83,12 @@
   --chart-4: #0e9e8e;
   --chart-5: #c64c7e;
   --chart-6: #64748b;
+  /* Light-theme counterparts of the extended set above — same hues, darkened for the light
+     surface (same convention every --chart-1..6 pair already follows). */
+  --chart-7: #0284c7;
+  --chart-8: #c2410c;
+  --chart-9: #4d7c0f;
+  --chart-10: #be185d;
   --grid: #e2e6ec;
   --crosshair: #5b6472;
   /* --chart-4 (#0e9e8e) measures ~3.33:1 on white — meets the 3:1 graphical-element threshold

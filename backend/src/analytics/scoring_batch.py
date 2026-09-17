@@ -69,6 +69,7 @@ from schemas.capabilities import (
     FinancialStatementLine,
     InstitutionalFlowRow,
     MarketValueRow,
+    StockInfoRow,
 )
 from schemas.enums import Market
 
@@ -90,6 +91,15 @@ ETF_NAV_DATASET = "etf_nav"
 ETF_EXPENSE_RATIO_DATASET = "etf_expense_ratio"
 ACTIVE_ETF_HOLDING_DATASET = "TaiwanStockActiveETFHolding"
 ACTIVE_ETF_HOLDING_CHANGE_DATASET = "TaiwanStockActiveETFHoldingChange"
+# `STOCK_INFO_JOB`'s dataset — same local-read-key-constant decoupling convention as the others
+# above. Read back here so a symbol whose trailing price/flow history is still in the lookback
+# window but has dropped out of the *current* reference roster (a real corporate action — merger,
+# cash-out, delisting; e.g. 2888 新光金控's 2025 merger into 台新新光金控) never reaches the score
+# universe. Without this, `job_scoring_batch` keeps producing a `ScoreResult` for a symbol
+# `get_symbol_info` can no longer name, since that tool's roster join is the only place "still
+# listed" is ever checked (`tools/market_tools.py::GetSymbolInfoTool`'s own docstring) — the
+# leaderboard would show a bare code with no name forever, not just for one stale day.
+STOCK_INFO_DATASET = "TaiwanStockInfo"
 
 # FinMind investor-category labels the revenue/flow factor's chip sub-signal sums.
 _FLOW_INVESTORS = ("Foreign_Investor", "Investment_Trust")
@@ -132,6 +142,27 @@ _QUALITY_ATTRS: tuple[str, ...] = (
 _VALUE_ATTRS: tuple[str, ...] = ("ev_ebitda", "fcf_yield", "pe", "pb")
 
 _MA_WINDOWS: tuple[int, ...] = (50, 150, 200)
+
+
+def _active_roster_symbols(ctx: IngestContext, market_str: str) -> frozenset[str] | None:
+    """Every symbol the *latest* `STOCK_INFO_JOB` roster partition actually lists — the same
+    "latest real date" lookup `tools/market_tools.py::_latest_dataset_date` performs, inlined here
+    rather than imported since `analytics/` may not depend on `tools/` (dependency rule, backend/
+    CLAUDE.md §3). Returns `None`, not an empty set, when the roster has never been ingested for
+    this market — the caller must treat that as "no roster to filter against" and skip filtering,
+    never as "the roster is empty" (which would silently drop every symbol from the score
+    universe)."""
+    partition_dates = ctx.store.list_partition_dates(STOCK_INFO_DATASET, market_str)
+    if not partition_dates:
+        return None
+    roster_date = max(partition_dates)
+    raw_roster = ctx.store.read_partition(STOCK_INFO_DATASET, market_str, roster_date)
+    field_names = set(StockInfoRow.model_fields)
+    roster = [
+        StockInfoRow.model_validate({k: v for k, v in row.items() if k in field_names})
+        for row in raw_roster
+    ]
+    return frozenset(row.symbol for row in roster)
 
 
 def _trailing_trading_days(ctx: IngestContext, run_date: date_, count: int) -> tuple[date_, ...]:
@@ -665,7 +696,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     active_etf_symbols = _active_etf_symbols(active_etf_holding_rows)
     holdings_turnover_by_symbol = _holdings_turnover_by_symbol(active_etf_holding_change_rows)
 
-    universe = sorted(
+    raw_universe = (
         bars_by_symbol.keys()
         | flow_by_symbol.keys()
         | lines_by_symbol.keys()
@@ -674,6 +705,8 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         | active_etf_symbols
         | holdings_turnover_by_symbol.keys()
     )
+    active_roster = _active_roster_symbols(ctx, market_str)
+    universe = sorted(raw_universe if active_roster is None else raw_universe & active_roster)
     if not universe:
         return journal_run(
             STOCK_SCORE_DATASET,

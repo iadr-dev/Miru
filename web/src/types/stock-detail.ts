@@ -241,6 +241,47 @@ export const dividendResultResponseSchema = z.object({
 export type DividendResultResponse = z.infer<typeof dividendResultResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 6b. GET /stock/dividend-policy-summary — get_dividend_policy_summary (public)
+// ---------------------------------------------------------------------------
+
+export const dividendYearSummarySchema = z.object({
+  year: z.number(),
+  cash_dividend: z.number(),
+  stock_dividend: z.number(),
+  total_dividend: z.number(),
+});
+export type DividendYearSummary = z.infer<typeof dividendYearSummarySchema>;
+
+export const dividendFillResultSchema = z.object({
+  trade_date: z.string(),
+  before_price: z.number(),
+  filled: z.boolean().nullable(),
+  filled_date: z.string().nullable().optional(),
+});
+export type DividendFillResult = z.infer<typeof dividendFillResultSchema>;
+
+export const dividendPolicyStatsSchema = z.object({
+  latest_year: z.number().nullable().optional(),
+  latest_year_total_dividend: z.number().nullable().optional(),
+  cash_dividend_yield_pct: z.number().nullable().optional(),
+  payout_ratio_pct: z.number().nullable().optional(),
+  fill_rate_pct: z.number().nullable().optional(),
+  fill_rate_sample_size: z.number().default(0),
+});
+export type DividendPolicyStats = z.infer<typeof dividendPolicyStatsSchema>;
+
+export const dividendPolicySummaryResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  events: z.array(dividendEventSchema).default([]),
+  year_summaries: z.array(dividendYearSummarySchema).default([]),
+  fill_results: z.array(dividendFillResultSchema).default([]),
+  stats: dividendPolicyStatsSchema,
+});
+export type DividendPolicySummaryResponse = z.infer<typeof dividendPolicySummaryResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 7. GET /stock/month-revenue — get_month_revenue (public)
 // ---------------------------------------------------------------------------
 
@@ -262,6 +303,9 @@ export const monthRevenueTrendPointSchema = z.object({
   revenue: z.number(),
   mom_pct: z.number().nullable().optional(),
   yoy_pct: z.number().nullable().optional(),
+  cumulative_yoy_pct: z.number().nullable().optional(),
+  is_period_high: z.boolean().default(false),
+  period_end_close: z.number().nullable().optional(),
 });
 export type MonthRevenueTrendPoint = z.infer<typeof monthRevenueTrendPointSchema>;
 
@@ -426,6 +470,37 @@ export const chipFlowsDataSchema = z.object({
 export type ChipFlowsData = z.infer<typeof chipFlowsDataSchema>;
 export const chipFlowsResponseSchema = z.union([chipFlowsDataSchema, maskedTeaserSchema]);
 export type ChipFlowsResponse = z.infer<typeof chipFlowsResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 12b. GET /stock/government-bank-flows — get_government_bank_flows (Sponsor-tier). 籌碼分析's
+//      摘要 sub-tab's 4th 法人籤碼 category (八大行庫), same masked-teaser union `chip-flows`
+//      above already uses.
+// ---------------------------------------------------------------------------
+
+export const governmentBankFlowRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  buy_amount: z.number(),
+  sell_amount: z.number(),
+  buy: z.number(),
+  sell: z.number(),
+  bank_name: z.string(),
+});
+export type GovernmentBankFlowRow = z.infer<typeof governmentBankFlowRowSchema>;
+
+export const governmentBankFlowsDataSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  rows: z.array(governmentBankFlowRowSchema).default([]),
+});
+export type GovernmentBankFlowsData = z.infer<typeof governmentBankFlowsDataSchema>;
+export const governmentBankFlowsResponseSchema = z.union([
+  governmentBankFlowsDataSchema,
+  maskedTeaserSchema,
+]);
+export type GovernmentBankFlowsResponse = z.infer<typeof governmentBankFlowsResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // 13. GET /stock/valuation-ratios — get_valuation_ratios (public)
