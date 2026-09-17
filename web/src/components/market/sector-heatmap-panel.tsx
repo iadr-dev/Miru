@@ -8,15 +8,14 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SectorConstituentsTable } from "@/components/market/sector-constituents-table";
 import { SectorHeatmapTable } from "@/components/market/sector-heatmap-table";
 import { SectorHeatmapTreemap } from "@/components/market/sector-heatmap-treemap";
-import { SectorRotationBarChart } from "@/components/market/sector-rotation-bar-chart";
-import { SectorRotationParticleSphere } from "@/components/market/sector-rotation-particle-sphere";
+import { SectorRotationScene } from "@/components/market/sector-rotation-scene";
 import { StockHeatmapTable } from "@/components/market/stock-heatmap-table";
 import { StockHeatmapTreemap } from "@/components/market/stock-heatmap-treemap";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import {
   getSectorConstituents,
   getSectorHeatmap,
-  getSectorRotation,
+  getSectorRotationRrg,
   getStockHeatmap,
 } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
@@ -45,15 +44,6 @@ const INDUSTRY_HEATMAP_COLLAPSED_COUNT = 24;
 // stock-row slice could all land in the same 2-3 industries).
 const STOCK_HEATMAP_COLLAPSED_INDUSTRIES = 24;
 
-/** 板塊輪動's own 2-way toggle between its bar-chart and particle-sphere visualizations — a rank
- * bump-chart previously lived here too but was dropped entirely (not kept as a 3rd option), so
- * this is intentionally just these two. */
-type RotationVisualization = "bar" | "sphere";
-const ROTATION_VISUALIZATIONS = [
-  "bar",
-  "sphere",
-] as const satisfies readonly RotationVisualization[];
-
 /**
  * 產業熱力圖 / 股票熱力圖 / 板塊輪動 — a 3-way view toggle over the same industry/stock universe:
  * "heatmap" is `get_sector_heatmap` rendered as a per-industry treemap (tile size = `sizeBy`,
@@ -78,7 +68,6 @@ const ROTATION_VISUALIZATIONS = [
 export function SectorHeatmapPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.sectorHeatmap");
   const [view, setView] = useState<SectorView>("heatmap");
-  const [rotationVisualization, setRotationVisualization] = useState<RotationVisualization>("bar");
   const [period, setPeriod] = useState<SectorHeatmapPeriod>("immediate");
   const [sizeBy, setSizeBy] = useState<SectorHeatmapSizeBy>("turnover");
   const [selected, setSelected] = useState<string | null>(null);
@@ -97,9 +86,9 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
     enabled: view === "stock",
   });
 
-  const rotationQuery = useQuery({
-    queryKey: ["sector_rotation", market],
-    queryFn: () => getSectorRotation(market),
+  const rotationRrgQuery = useQuery({
+    queryKey: ["sector_rotation_rrg", market],
+    queryFn: () => getSectorRotationRrg(market),
     enabled: view === "rotation",
   });
 
@@ -275,47 +264,17 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
           )}
         </>
       ) : (
-        <>
-          <div className="mb-3 flex justify-start">
-            <div
-              role="group"
-              aria-label={t("rotationViewToggleLabel")}
-              className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]"
-            >
-              {ROTATION_VISUALIZATIONS.map((viz) => (
-                <button
-                  key={viz}
-                  type="button"
-                  onClick={() => setRotationVisualization(viz)}
-                  aria-pressed={rotationVisualization === viz}
-                  className={cn(
-                    "rounded-[var(--radius-pill)] px-3 py-1 text-[12px] transition-colors",
-                    rotationVisualization === viz
-                      ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
-                      : "text-[var(--text-muted)] hover:text-[var(--text)]",
-                  )}
-                >
-                  {t(viz === "bar" ? "rotationViewBar" : "rotationViewSphere")}
-                </button>
-              ))}
-            </div>
-          </div>
-          <QueryState query={rotationQuery} skeleton={<CardSkeletonBody height={360} />}>
-            {(data) =>
-              data.data_available ? (
-                rotationVisualization === "bar" ? (
-                  <SectorRotationBarChart rows={data.rows} tradeDates={data.trade_dates} />
-                ) : (
-                  <SectorRotationParticleSphere rows={data.rows} tradeDates={data.trade_dates} />
-                )
-              ) : (
-                <p className="text-[13px] text-[var(--text-muted)]">
-                  {data.unavailable_reason ?? t("rotationUnavailable")}
-                </p>
-              )
-            }
-          </QueryState>
-        </>
+        <QueryState query={rotationRrgQuery} skeleton={<CardSkeletonBody height={640} />}>
+          {(data) =>
+            data.data_available ? (
+              <SectorRotationScene sectors={data.sectors} weekCount={data.week_endings.length} />
+            ) : (
+              <p className="text-[13px] text-[var(--text-muted)]">
+                {data.unavailable_reason ?? t("rotationUnavailable")}
+              </p>
+            )
+          }
+        </QueryState>
       )}
 
       <ExpandModal

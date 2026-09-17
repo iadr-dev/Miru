@@ -53,7 +53,7 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
     # `_router()` passes no `session_factory`/`market_data_reader`, so `theme_tools`/
     # `score_tools`/`screener_tools` (which require one) are never registered here — this
     # count/sample covers only the router-backed groups this fixture actually builds.
-    assert len(deferred_names) == 127
+    assert len(deferred_names) == 128
     # The pre-existing core, still deferred:
     assert {
         "run_bounded_observation",
@@ -101,6 +101,7 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
         "get_sector_constituents",  # market_tools
         "get_stock_heatmap",  # market_tools
         "get_sector_rotation",  # market_tools
+        "get_sector_rotation_rrg",  # market_tools
         "get_price_momentum",  # market_tools
         "get_holder_accumulation",  # market_tools
         "get_symbol_info",  # market_tools
@@ -118,14 +119,14 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
 
 
 def test_total_tool_count_reflects_the_coverage_expansion() -> None:
-    """5 immediate + 127 deferred = 132, across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/
+    """5 immediate + 128 deferred = 133, across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/
     web-search/yfinance/TDCC/ask_user/market_tools/realtime_tools/market_index_strip_tools/
     disposition_board_tools/news_tools/ptt_tools —
     `_router()` builds no `session_factory`/`market_data_reader`, so theme/score/screener tools
     (which require one) are excluded from this count."""
     registry = build_default_tool_registry(_router())
 
-    assert len(registry.all_tools()) == 132
+    assert len(registry.all_tools()) == 133
 
 
 def test_get_tool_reaches_both_immediate_and_deferred_tools() -> None:
