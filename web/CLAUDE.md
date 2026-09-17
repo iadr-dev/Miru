@@ -166,7 +166,20 @@
 166	- **No `// @ts-ignore`** — use `// @ts-expect-error — <reason>` (fails when the error is fixed, so it
 167	  self-cleans); `ban-ts-comment` is on.
 168	
-169	**Consequences of the strict flags (§1):** `noUncheckedIndexedAccess` means `arr[i]` / `record[k]` is
+169	**SonarCloud gate (CI, in addition to Biome/tsc):**
+- **No global-regex `.replace()` for a literal substring `→` `String#replaceAll()`** (`S7781`) —
+  `.replace(/_/g, " ")` → `.replaceAll("_", " ")`.
+- **No nested ternary `→` extract to a named function or if/else-if chain** (`S3358`) — a
+  ternary whose branch is itself a ternary is a review reject; pull the inner branch into a
+  small named function (e.g. `upgradeDowngradeColor(action)`) or use `let x; if (...) ... else if
+  (...) ...` instead.
+- **Duplication-density gate** (`new_duplicated_lines_density`, must stay ≤3%) — a byte-identical
+  block of markup/logic shared across two components (e.g. a calendar month-grid) trips this even
+  with zero open Sonar issues. Extract the shared visual/logic contract into one component in
+  `components/ui/` (data plumbing stays local to each caller) rather than duplicating it — see
+  `components/ui/month-grid-calendar.tsx` for the pattern.
+
+**Consequences of the strict flags (§1):** `noUncheckedIndexedAccess` means `arr[i]` / `record[k]` is
 170	`T | undefined` — **handle the `undefined`**, don't `!` it away. `exactOptionalPropertyTypes` (enable
 171	if not on): don't pass `undefined` to an optional prop; omit it.
 172	

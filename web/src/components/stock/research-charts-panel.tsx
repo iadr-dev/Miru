@@ -1,6 +1,5 @@
 "use client";
 
-import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react/dist/ssr";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
@@ -19,13 +18,13 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import {
   getAnalystConsensus,
   getStockCalendarEvents,
   getStockValuationRatios,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
-import { buildMonthGrid, toIsoDate } from "@/lib/month-grid";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { AnalystConsensus, CalendarEventOut, ValuationRatiosRow } from "@/types/stock-detail";
@@ -775,15 +774,11 @@ function StockEventsTimeline({
   );
 }
 
-/** Same month-grid + colored-dot calendar `AnnouncementsCalendarView` (basic-info-panel.tsx)
- * established — one grid cell per day, a dot per event that lands on it, click a day to filter
- * the event list. Kept as a sibling implementation rather than a shared export since the two
- * callers filter/attribute different row shapes (announcements+events vs. events only); the
- * visual contract (grid/dot/selection) is what's shared, not the data plumbing.
- *
- * Two-column layout — the filtered event list sits to the LEFT of the grid (not stacked below
- * it), per explicit design direction: the grid itself stays this component's original full-size
- * 7-column month view (no separate mini-picker), the list is what moved beside it. */
+/** Two-column layout — the filtered event list sits to the LEFT of the shared `MonthGridCalendar`
+ * grid (not stacked below it), per explicit design direction. The grid/dot/selection surface
+ * itself is `MonthGridCalendar` (components/ui/), shared verbatim with basic-info-panel.tsx's
+ * `AnnouncementsCalendarView` — this component only owns the events-specific dot-color mapping
+ * and the two-column arrangement. */
 function StockEventsCalendarView({
   year,
   month,
@@ -799,8 +794,6 @@ function StockEventsCalendarView({
 }): ReactNode {
   const t = useTranslations("stock.research");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const grid = useMemo(() => buildMonthGrid(year, month), [year, month]);
-  const todayIso = useMemo(() => toIsoDate(new Date()), []);
 
   const dotsByDay = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -826,64 +819,18 @@ function StockEventsCalendarView({
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="mb-3 flex items-center justify-center gap-4">
-          <button
-            type="button"
-            onClick={onPrevMonth}
-            aria-label={t("prevMonth")}
-            className="flex size-8 items-center justify-center rounded-[var(--radius-button)] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
-          >
-            <CaretLeftIcon size={16} weight="regular" />
-          </button>
-          <span className="font-semibold text-[15px] text-[var(--text)]">
-            {t("monthTitle", { year, month })}
-          </span>
-          <button
-            type="button"
-            onClick={onNextMonth}
-            aria-label={t("nextMonth")}
-            className="flex size-8 items-center justify-center rounded-[var(--radius-button)] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
-          >
-            <CaretRightIcon size={16} weight="regular" />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1">
-          {grid.map(({ date, inMonth }) => {
-            const iso = toIsoDate(date);
-            const dots = dotsByDay.get(iso) ?? [];
-            const isSelected = iso === selectedDay;
-            return (
-              <button
-                key={iso}
-                type="button"
-                disabled={!inMonth}
-                onClick={() => setSelectedDay((prev) => (prev === iso ? null : iso))}
-                aria-pressed={isSelected}
-                className={cn(
-                  "flex min-h-12 flex-col items-center gap-1 rounded-[var(--radius-input)] py-1.5 text-[12px] transition-colors",
-                  !inMonth && "text-[var(--text-muted)] opacity-40",
-                  inMonth && !isSelected && "text-[var(--text)] hover:bg-[var(--surface-2)]",
-                  isSelected && "bg-[var(--accent)] font-semibold text-[color:#06231F]",
-                  iso === todayIso && !isSelected && "ring-1 ring-[var(--accent)]",
-                )}
-              >
-                <span className="font-num tabular-nums">{date.getDate()}</span>
-                {dots.length > 0 ? (
-                  <span className="flex gap-0.5" aria-hidden>
-                    {dots.slice(0, 3).map((color) => (
-                      <span
-                        key={color}
-                        className="size-1.5 rounded-full"
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
+        <MonthGridCalendar
+          year={year}
+          month={month}
+          dotsByDay={dotsByDay}
+          selectedDay={selectedDay}
+          onSelectDay={setSelectedDay}
+          onPrevMonth={onPrevMonth}
+          onNextMonth={onNextMonth}
+          prevMonthLabel={t("prevMonth")}
+          nextMonthLabel={t("nextMonth")}
+          monthTitle={t("monthTitle", { year, month })}
+        />
       </div>
     </div>
   );
