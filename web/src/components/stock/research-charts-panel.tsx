@@ -445,7 +445,7 @@ function RatingTargetCard({
             color: RATING_BUCKET_COLOR[consensus.recommendation_key] ?? "var(--text)",
           }}
         >
-          {consensus.recommendation_key.replace(/_/g, " ")}
+          {consensus.recommendation_key.replaceAll("_", " ")}
         </p>
       ) : null}
       {total > 0 ? (
@@ -548,6 +548,14 @@ function EstimateRow({
   );
 }
 
+/** `latest_upgrade_downgrade_action`'s color — a 3-way sign lookup pulled out of
+ * `UpgradeDowngradeCard` as a named function rather than a nested ternary. */
+function upgradeDowngradeColor(action: string | null | undefined): string {
+  if (action === "up") return "var(--up)";
+  if (action === "down") return "var(--down)";
+  return "var(--text-muted)";
+}
+
 function UpgradeDowngradeCard({
   consensus,
   t,
@@ -557,8 +565,7 @@ function UpgradeDowngradeCard({
 }): ReactNode {
   const action = consensus.latest_upgrade_downgrade_action;
   const firm = consensus.latest_upgrade_downgrade_firm;
-  const color =
-    action === "up" ? "var(--up)" : action === "down" ? "var(--down)" : "var(--text-muted)";
+  const color = upgradeDowngradeColor(action);
   return (
     <div
       className="flex flex-col gap-3 rounded-[var(--radius-input)] border p-3 backdrop-blur-md"
@@ -659,6 +666,31 @@ function StockEventsCard({
     )
     .sort((a, b) => (b.event_date ?? "").localeCompare(a.event_date ?? ""));
 
+  let eventsBody: ReactNode;
+  if (events.length === 0) {
+    eventsBody = <p className="text-[13px] text-[var(--text-muted)]">{t("eventsEmpty")}</p>;
+  } else if (view === "list") {
+    eventsBody = <StockEventsTimeline events={events} />;
+  } else {
+    eventsBody = (
+      <StockEventsCalendarView
+        year={cursor.year}
+        month={cursor.month}
+        events={events}
+        onPrevMonth={() =>
+          setCursor(({ year, month }) =>
+            month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 },
+          )
+        }
+        onNextMonth={() =>
+          setCursor(({ year, month }) =>
+            month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 },
+          )
+        }
+      />
+    );
+  }
+
   return (
     <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between">
@@ -678,27 +710,7 @@ function StockEventsCard({
           </div>
         ) : null}
       </div>
-      {events.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("eventsEmpty")}</p>
-      ) : view === "list" ? (
-        <StockEventsTimeline events={events} />
-      ) : (
-        <StockEventsCalendarView
-          year={cursor.year}
-          month={cursor.month}
-          events={events}
-          onPrevMonth={() =>
-            setCursor(({ year, month }) =>
-              month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 },
-            )
-          }
-          onNextMonth={() =>
-            setCursor(({ year, month }) =>
-              month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 },
-            )
-          }
-        />
-      )}
+      {eventsBody}
     </section>
   );
 }
