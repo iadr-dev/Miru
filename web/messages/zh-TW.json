@@ -1508,6 +1508,55 @@
       },
       "empty": "暫無資料。"
     },
+    "research": {
+      "valuationRiverTitle": "估值河流圖",
+      "valuationRange": {
+        "1y": "一年",
+        "3y": "三年",
+        "5y": "五年"
+      },
+      "perStat": "本益比 (PER)",
+      "pbrStat": "股價淨值比 (PBR)",
+      "dividendYieldStat": "殖利率",
+      "bandRangeLabel": "區間 {range}",
+      "valuationTable": {
+        "date": "日期",
+        "per": "PER",
+        "pbr": "PBR",
+        "dividendYield": "殖利率"
+      },
+      "analystConsensusTitle": "分析師深度",
+      "attribution": "{count} 位分析師 · 資料日期 {date}",
+      "ratingTargetTitle": "評等與目標價",
+      "meanTargetLabel": "平均目標價",
+      "targetRangeLabel": "區間 {low} - {high}",
+      "estimatesTitle": "預估值",
+      "forwardEpsLabel": "預估EPS",
+      "forwardRevenueLabel": "預估營收",
+      "longTermGrowthLabel": "長期成長率",
+      "upgradeDowngradeTitle": "最新評等調整",
+      "upgradeDowngradeAction": {
+        "up": "調升",
+        "down": "調降",
+        "main": "維持",
+        "init": "新增覆蓋"
+      },
+      "eventsTitle": "個股事件",
+      "eventsEmpty": "近期無相關事件。",
+      "viewList": "清單",
+      "viewCalendar": "日曆",
+      "prevMonth": "上個月",
+      "nextMonth": "下個月",
+      "monthTitle": "{year} 年 {month} 月",
+      "eventType": {
+        "dividend_ex_rights": "除權息",
+        "cash_capital_increase_rights": "現金增資",
+        "agm": "股東會"
+      },
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
+      "empty": "暫無資料。"
+    },
     "chipAnalysis": {
       "title": "籌碼分析",
       "column": {
