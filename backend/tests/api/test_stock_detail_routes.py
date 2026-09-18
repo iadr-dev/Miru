@@ -289,9 +289,12 @@ class TestStockDayTradingRoute:
 
 @pytest.mark.governance
 class TestSponsorMaskedRoutes:
-    """`get_disposition_securities`/`get_chip_flows`/`get_shareholder_dispersion`-adjacent
-    `get_calendar_events` are all `DataClass.SPONSOR` — a Free/anonymous caller must get the
-    masked-teaser envelope at HTTP 200, never real data, over these new routes too."""
+    """`get_disposition_securities`/`get_shareholder_dispersion`-adjacent `get_calendar_events`
+    are `DataClass.SPONSOR` with no row-preview opt-in — a Free/anonymous caller must get the
+    whole-tool masked-teaser envelope at HTTP 200, never real data, over these routes.
+    `get_chip_flows` is also `DataClass.SPONSOR` but HAS opted into the governance.md §4
+    row-preview exception (see `test_chip_flows_row_masked_for_free` below) — its Free-caller
+    response is real, just with individually-masked ranked rows, not a `MaskedTeaser`."""
 
     def test_disposition_securities_masked_for_free(
         self, client: TestClient, signed_in_user
@@ -305,7 +308,10 @@ class TestSponsorMaskedRoutes:
         assert resp.status_code == 200
         assert resp.json()["locked"] is True
 
-    def test_chip_flows_masked_for_free(self, client: TestClient, signed_in_user) -> None:
+    def test_chip_flows_row_masked_for_free(self, client: TestClient, signed_in_user) -> None:
+        """`get_chip_flows` opted into the governance.md §4 row-level preview exception
+        (`supports_row_preview=True`) — a Free caller gets HTTP 200 with a real (never `locked`)
+        body whose ranked rows are individually masked, not the whole-tool teaser envelope."""
         headers, _ = signed_in_user
         resp = client.get(
             "/api/v1/stock/chip-flows",
@@ -313,7 +319,10 @@ class TestSponsorMaskedRoutes:
             headers=headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["locked"] is True
+        body = resp.json()
+        assert "locked" not in body
+        assert body["rows"] == []
+        assert body["top_brokers"] == []
 
     def test_calendar_events_masked_for_free(self, client: TestClient, signed_in_user) -> None:
         headers, _ = signed_in_user

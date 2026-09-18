@@ -321,19 +321,86 @@ async def test_get_institutional_flow_computes_rolling_net_per_investor() -> Non
     assert by_investor["Investment_Trust"].net_5d == 200 + (-50) + 300 + (-50) + 100
 
 
-async def test_get_chip_flows_run_returns_real_sponsor_data_when_called_directly() -> None:
-    """`run()` itself never gates — proves entitlement is the dispatcher's job, not the tool's."""
+async def test_get_chip_flows_run_returns_real_sponsor_data_for_an_entitled_caller() -> None:
+    """`run()` itself computes the row-preview mask from `ctx.tier` (governance.md §4
+    top-N-preview exception) — an entitled caller's `run()` call gets every row real."""
     symbol = Symbol(id="2330", market=Market.TW)
     router, adapter = make_router(symbol, {Capability.CHIP_BROKER: _chip_broker_result()})
     tool = GetChipFlowsTool(router)
     assert tool.data_class is DataClass.SPONSOR
+    assert tool.supports_row_preview is True
 
-    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+    output = await tool.run(
+        DateRangeInput(id="2330", market=Market.TW), ToolContext(tier=Tier.PREMIUM)
+    )
 
     assert adapter.calls[0][0] is Capability.CHIP_BROKER
     assert output.rows[0].broker_name == "Fubon"
     assert output.top_brokers[0].broker_name == "Fubon"
     assert output.top_brokers[0].net == 500 - 100
+    assert output.buy_top[0].broker_name == "Fubon"
+    assert output.buy_top[0].locked is False
+
+
+async def test_get_chip_flows_masks_broker_top_rows_beyond_free_preview_for_unentitled_caller() -> (
+    None
+):
+    """governance.md §4 top-N-preview exception: an unentitled (`Tier.FREE`) caller still gets
+    real aggregate stats (`total_volume`/`main_force_net`) and the top rows of `buy_top`, but
+    every row beyond the free preview has its identity AND value fields nulled — and `rows`/
+    `top_brokers` (the raw per-day feed) are empty entirely."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    rows = [
+        {
+            "symbol": "2330",
+            "market": "TW",
+            "trade_date": "2026-08-01",
+            "broker_id": broker_id,
+            "broker_name": name,
+            "price": 100.0,
+            "buy": buy,
+            "sell": sell,
+        }
+        for broker_id, name, buy, sell in [
+            ("1001", "Big Buyer", 10_000, 1_000),
+            ("1002", "Mid Buyer", 3_000, 1_000),
+            ("1003", "Small Buyer", 1_000, 900),
+        ]
+    ]
+    result = SourceResult(
+        source_id="STUB",
+        data_class=DataClass.SPONSOR,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="chip caveat",
+        payload={"rows": rows},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, _adapter = make_router(symbol, {Capability.CHIP_BROKER: result})
+    tool = GetChipFlowsTool(router)
+    input_args = DateRangeInput(id="2330", market=Market.TW)
+
+    free_output = await tool.run(input_args, ToolContext(tier=Tier.FREE))
+    assert free_output.free_row_count == 2
+    # total_volume/main_force_net are always real (never masked) even for an unentitled caller.
+    assert free_output.total_volume == (10_000 + 1_000) + (3_000 + 1_000) + (1_000 + 900)
+    assert free_output.main_force_net == (10_000 - 1_000) + (3_000 - 1_000) + (1_000 - 900)
+    assert free_output.rows == ()
+    assert free_output.top_brokers == ()
+    assert free_output.buy_top[0].locked is False
+    assert free_output.buy_top[0].broker_id == "1001"
+    assert free_output.buy_top[1].locked is False
+    locked_row = free_output.buy_top[2]
+    assert locked_row.locked is True
+    assert locked_row.rank == 3
+    assert locked_row.broker_id is None
+    assert locked_row.broker_name is None
+    assert locked_row.net is None
+
+    premium_output = await tool.run(input_args, ToolContext(tier=Tier.PREMIUM))
+    assert premium_output.free_row_count == 3
+    assert all(not row.locked for row in premium_output.buy_top)
+    assert premium_output.rows != ()
 
 
 async def test_get_chip_flows_top_brokers_ranks_by_net_magnitude_across_branches() -> None:
@@ -373,7 +440,9 @@ async def test_get_chip_flows_top_brokers_ranks_by_net_magnitude_across_branches
     router, _adapter = make_router(symbol, {Capability.CHIP_BROKER: result})
     tool = GetChipFlowsTool(router)
 
-    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+    output = await tool.run(
+        DateRangeInput(id="2330", market=Market.TW), ToolContext(tier=Tier.PREMIUM)
+    )
 
     by_broker = {b.broker_id: b for b in output.top_brokers}
     assert by_broker["1001"].net == (10_000 - 1_000) + (8_000 - 1_000)  # 16,000
@@ -452,7 +521,7 @@ async def test_get_chip_flows_multi_day_range_fans_out_and_merges_per_trading_da
         DateRangeInput(
             id="2330", market=Market.TW, start_date=date(2026, 8, 3), end_date=date(2026, 8, 4)
         ),
-        ToolContext(),
+        ToolContext(tier=Tier.PREMIUM),
     )
 
     called_dates = {str(call.get("date")) for call in adapter.calls}

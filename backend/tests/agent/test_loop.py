@@ -290,9 +290,13 @@ async def test_run_turn_fires_pre_tool_hooks_even_for_a_call_governance_goes_on_
 
 
 async def test_run_turn_dispatches_sponsor_tool_through_entitlement_gate_free_tier() -> None:
-    """A scripted proposal for the sponsor-tier `get_chip_flows` worked example is masked for
-    a FREE-tier caller — proving the entitlement gate fires *inside the loop*, not just when
-    `dispatch_tool` is called in isolation."""
+    """`get_chip_flows` opted into the governance.md §4 row-level preview exception
+    (`supports_row_preview=True`) — a scripted proposal for a FREE-tier caller still gets a real
+    (never `MaskedTeaser`) result, with its ranked rows individually masked, proving the
+    entitlement gate's row-preview branch fires *inside the loop*, not just when `dispatch_tool`
+    is called in isolation. The sponsor tool is also card-opted, and — unlike a non-opted-in
+    sponsor tool — its row-masked-but-real result DOES reach the caller as a card, matching the
+    stock-detail page's own row-masked card for the same tool."""
     tool = _make_chip_flows_tool()
     llm = StubLLMClient(
         script=[
@@ -311,10 +315,11 @@ async def test_run_turn_dispatches_sponsor_tool_through_entitlement_gate_free_ti
     )
 
     tool_result_message = result.steps[0].tool_messages[0]
-    assert "MaskedTeaser" in tool_result_message.tool_results[0].content
-    # The sponsor tool is card-opted, but a FREE caller's dispatch is masked *before* a card is
-    # ever built — so no card carrying real sponsor data can reach the unentitled caller.
-    assert result.rich_cards == ()
+    content = tool_result_message.tool_results[0].content
+    assert "MaskedTeaser" not in content
+    assert '"rows":[]' in content
+    assert '"top_brokers":[]' in content
+    assert len(result.rich_cards) == 1
 
 
 async def test_run_turn_dispatches_sponsor_tool_for_entitled_tier() -> None:

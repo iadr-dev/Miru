@@ -156,11 +156,80 @@ class TestRichCardStream:
             block_types = [m["type"] for m in assistant["messages"]]
             assert "rich_card" in block_types
 
-    def test_unentitled_sponsor_tool_yields_no_real_data_card(self, settings, agent_answer) -> None:
-        """A `sponsor` card-opted tool called by a Free (unentitled) caller must never surface the
-        real underlying data as a card — the card is built strictly after `dispatch_tool`'s
-        masking, and a masked teaser never becomes a card. Here the scripted client calls
-        `get_chip_flows` (sponsor + card-opted); a Free caller must get no `rich_card` frame."""
+    def test_unentitled_sponsor_tool_without_row_preview_yields_no_real_data_card(
+        self, settings, agent_answer
+    ) -> None:
+        """A `sponsor` card-opted tool that has NOT opted into the governance.md §4 row-preview
+        exception (`supports_row_preview` stays `False`) must never surface real underlying data
+        as a card for a Free (unentitled) caller — the card is built strictly after
+        `dispatch_tool`'s masking, and a whole-tool masked teaser never becomes a card. Here the
+        scripted client calls `get_shareholder_dispersion` (sponsor + card-opted, no row
+        preview); a Free caller must get no `rich_card` frame."""
+
+        class _ScriptedDispersionClient(_ScriptedToolThenAnswerClient):
+            async def chat(
+                self,
+                messages: list[Message],
+                tools: list[ToolSpec] | None = None,
+                *,
+                native_web_search: bool = False,
+            ) -> LLMResponse:
+                del tools, native_web_search
+                already_called = any(msg.tool_results for msg in messages)
+                usage = TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10)
+                if already_called:
+                    return LLMResponse(
+                        text=agent_answer,
+                        tool_calls=(),
+                        stop_reason=StopReason.END_TURN,
+                        usage=usage,
+                    )
+                return LLMResponse(
+                    text=None,
+                    tool_calls=(
+                        ToolCall(
+                            id="call-1",
+                            name="get_shareholder_dispersion",
+                            arguments={"id": "2330", "market": "TW"},
+                        ),
+                    ),
+                    stop_reason=StopReason.TOOL_USE,
+                    usage=usage,
+                )
+
+        class _DispersionSkillClassifier(IntentClassifier):
+            async def _classify_inner(
+                self, message: str, *, history: tuple[Message, ...] = ()
+            ) -> Routing:
+                del message, history
+                return Routing(
+                    framework="single",
+                    skills=("margin-and-short-interest",),
+                    reason="test sponsor card masking",
+                )
+
+        client = build_test_client(
+            settings,
+            agent_answer=agent_answer,
+            agent_client=_ScriptedDispersionClient(agent_answer),
+            classifier=_DispersionSkillClassifier(None),
+        )
+        with client:
+            headers, _ = sign_in(client, settings, tier=Tier.FREE)
+            resp = client.post("/api/v1/agent/query", json={"message": "股權分散"}, headers=headers)
+            frames = _parse_sse(resp.text)
+            card_frames = [f for f in frames if f["event"] == "rich_card"]
+            assert card_frames == [], "an unentitled sponsor call must not surface a real-data card"
+
+    def test_unentitled_row_preview_sponsor_tool_still_yields_a_card(
+        self, settings, agent_answer
+    ) -> None:
+        """A `sponsor` tool that HAS opted into the governance.md §4 row-preview exception
+        (`supports_row_preview=True`) still runs for a Free (unentitled) caller and returns a
+        real (never `MaskedTeaser`) result with its ranked rows individually locked — so this
+        DOES surface as a `rich_card`, with `data.locked`/masked fields inside it, matching the
+        stock-detail page's own row-masked card for the same tool. Here the scripted client calls
+        `get_chip_flows`."""
 
         class _ScriptedChipFlowsClient(_ScriptedToolThenAnswerClient):
             async def chat(
@@ -201,7 +270,7 @@ class TestRichCardStream:
                 return Routing(
                     framework="single",
                     skills=("chip-flow-review",),
-                    reason="test sponsor card masking",
+                    reason="test row-preview card still renders",
                 )
 
         client = build_test_client(
@@ -215,4 +284,7 @@ class TestRichCardStream:
             resp = client.post("/api/v1/agent/query", json={"message": "分點"}, headers=headers)
             frames = _parse_sse(resp.text)
             card_frames = [f for f in frames if f["event"] == "rich_card"]
-            assert card_frames == [], "an unentitled sponsor call must not surface a real-data card"
+            assert len(card_frames) == 1, "a row-preview sponsor tool must still surface a card"
+            assert card_frames[0]["data"]["card_type"] == "chip_flows"
+            assert card_frames[0]["data"]["data"]["rows"] == []
+            assert card_frames[0]["data"]["data"]["top_brokers"] == []

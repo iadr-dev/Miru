@@ -38,7 +38,7 @@ import {
 import { cn } from "@/lib/cn";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
-import type { DayTradingRow, MarginShortRow } from "@/types/stock-detail";
+import type { ChipBrokerTopRow, DayTradingRow, MarginShortRow } from "@/types/stock-detail";
 
 const INSTITUTIONAL_SUB_TABS = ["flow", "holdings", "summary"] as const;
 type InstitutionalSubTab = (typeof INSTITUTIONAL_SUB_TABS)[number];
@@ -71,8 +71,6 @@ const BROKER_LOOKBACK_DAYS: Record<BrokerLookbackWindow, number> = {
 
 const BROKER_TOP_DIRECTIONS = ["buy", "sell"] as const;
 type BrokerTopDirection = (typeof BROKER_TOP_DIRECTIONS)[number];
-
-const TOP_BROKER_ROW_COUNT = 15;
 
 function isoDaysAgo(days: number): string {
   const ms = Date.now() - days * 24 * 60 * 60 * 1000;
@@ -2035,118 +2033,21 @@ function SecuritiesLendingBody({
   );
 }
 
-/** Per-broker aggregate over the fetched window — `net`/`buy`/`sell` summed across every day
- * that broker appears in `rows`, plus its share of the window's total reported 分點 volume
- * (`成交比重`). Computed client-side from `ChipBrokerRow`'s real per-day fields — never a
- * separate fetch, since `get_chip_flows` already returns every row for the whole range. */
-function aggregateBrokers(
-  rows: readonly { broker_id: string; broker_name: string; buy: number; sell: number }[],
-): { broker_id: string; broker_name: string; net: number; buy: number; sell: number }[] {
-  const byBroker = new Map<
-    string,
-    { broker_name: string; net: number; buy: number; sell: number }
-  >();
-  for (const row of rows) {
-    const entry = byBroker.get(row.broker_id) ?? {
-      broker_name: row.broker_name,
-      net: 0,
-      buy: 0,
-      sell: 0,
-    };
-    entry.net += row.buy - row.sell;
-    entry.buy += row.buy;
-    entry.sell += row.sell;
-    byBroker.set(row.broker_id, entry);
-  }
-  return [...byBroker.entries()].map(([broker_id, v]) => ({ broker_id, ...v }));
-}
-
-/** `ChipFlowsBody`'s own derived-stat block, pulled into a pure function purely to keep that
- * component's cognitive complexity under the linter's threshold — same inputs/outputs, no
- * behavior change from when this was inline. See `ChipFlowsBody`'s own docstring for what each
- * of these figures means and why. */
-function computeChipFlowStats(
-  rows: readonly {
-    trade_date: string;
-    broker_id: string;
-    broker_name: string;
-    buy: number;
-    sell: number;
-  }[],
-  sharesIssued: number | undefined,
-): {
-  brokers: ReturnType<typeof aggregateBrokers>;
-  totalVolume: number;
-  mainForceNet: number;
-  sharesOfCapital: number | null;
-  turnoverRatio: number | null;
-  latestTradeDate: string | undefined;
-  concentrationDaysPct: number | null;
-  buyTop: ReturnType<typeof aggregateBrokers>;
-  sellTop: ReturnType<typeof aggregateBrokers>;
-} {
-  const brokers = aggregateBrokers(rows);
-  const totalVolume = brokers.reduce((sum, b) => sum + b.buy + b.sell, 0);
-  const topByMagnitude = [...brokers]
-    .sort((a, b) => Math.abs(b.net) - Math.abs(a.net))
-    .slice(0, TOP_BROKER_ROW_COUNT);
-  const mainForceNet = topByMagnitude.reduce((sum, b) => sum + b.net, 0);
-  const overallNet = brokers.reduce((sum, b) => sum + b.net, 0);
-
-  const sharesOfCapital =
-    sharesIssued && sharesIssued > 0 ? (mainForceNet / sharesIssued) * 100 : null;
-  const turnoverRatio =
-    sharesIssued && sharesIssued > 0 ? (totalVolume / sharesIssued) * 100 : null;
-  const latestTradeDate = [...new Set(rows.map((row) => row.trade_date))]
-    .sort((a, b) => a.localeCompare(b))
-    .at(-1);
-
-  const byDateNet = new Map<string, number>();
-  for (const row of rows) {
-    byDateNet.set(row.trade_date, (byDateNet.get(row.trade_date) ?? 0) + row.buy - row.sell);
-  }
-  const dailyNets = [...byDateNet.values()];
-  const sameSignedDays = dailyNets.filter(
-    (net) => (net >= 0 && overallNet >= 0) || (net < 0 && overallNet < 0),
-  ).length;
-  const concentrationDaysPct =
-    dailyNets.length > 0 ? (sameSignedDays / dailyNets.length) * 100 : null;
-
-  const buyTop = [...brokers]
-    .filter((b) => b.net > 0)
-    .sort((a, b) => b.net - a.net)
-    .slice(0, TOP_BROKER_ROW_COUNT);
-  const sellTop = [...brokers]
-    .filter((b) => b.net < 0)
-    .sort((a, b) => a.net - b.net)
-    .slice(0, TOP_BROKER_ROW_COUNT);
-
-  return {
-    brokers,
-    totalVolume,
-    mainForceNet,
-    sharesOfCapital,
-    turnoverRatio,
-    latestTradeDate,
-    concentrationDaysPct,
-    buyTop,
-    sellTop,
-  };
-}
-
 /** 分點's 買賣超 tab — period selector (近日/5日/10日, bounded to the backend's per-trading-day
  * fan-out cap — see `BROKER_LOOKBACK_WINDOWS`'s own docstring), a 主力籌碼 stat block, and a
  * 買超Top15/賣超Top15 toggle (one table visible at a time, matching the reference app's own
- * red-highlighted-pill pattern — not both stacked) with 買賣超/買張/賣張/成交比重 columns. 成交
- * 比重 is each broker's share of the window's TOTAL REPORTED 分點 volume (sum of every broker's
- * buy+sell in `rows`), not exchange-wide turnover — `get_chip_flows` only carries branch-level
- * rows, no whole-market volume figure, so this is the honest denominator available. 主力集中% is
- * the top-`TOP_BROKER_ROW_COUNT`-by-magnitude brokers' combined net ÷ that same reported-volume
- * total; 佔股本比重 divides by `get_foreign_shareholding`'s `number_of_shares_issued` (already
- * fetched elsewhere in this panel, real issued-share count); 集中天數 is the % of days within
- * the window where the top-magnitude broker's net stayed same-signed as the window's overall
- * net — a defensible "how consistent was the dominant flow" figure, not a claim of replicating
- * any vendor's proprietary formula. */
+ * red-highlighted-pill pattern — not both stacked) with 買賣超/買張/賣張/成交比重 columns.
+ * `total_volume`/`main_force_net`/`concentration_days_pct`/`buy_top`/`sell_top` are all computed
+ * server-side now (`GetChipFlowsTool.run`, not this component) — governance.md §4's row-level
+ * preview exception (`supports_row_preview=True`) needs the ranking to happen backend-side so
+ * the mask applies to the SAME rows this table renders, not to the raw per-day feed underneath
+ * them; see `market_tools.py`'s own `_broker_top_rows`/`_mask_broker_top_rows_beyond`. 成交比重
+ * is each broker's share of the window's TOTAL REPORTED 分點 volume (`total_volume`), not
+ * exchange-wide turnover — `get_chip_flows` only carries branch-level rows, no whole-market
+ * volume figure, so this is the honest denominator available. 主力集中% divides `main_force_net`
+ * by that same `total_volume`; 佔股本比重 divides `main_force_net` by
+ * `get_foreign_shareholding`'s `number_of_shares_issued` (a SEPARATE public capability, still
+ * fetched client-side — not masked, no reason to move it server-side). */
 function ChipFlowsBody({
   symbol,
   market,
@@ -2188,24 +2089,18 @@ function ChipFlowsBody({
       </SponsorTeaser>
     );
   }
-  const rows = query.data.rows;
-  if (rows.length === 0) {
+  const data = query.data;
+  if (data.buy_top.length === 0 && data.sell_top.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
   }
 
   const sharesIssued = [...(shareholdingQuery.data?.rows ?? [])]
     .sort((a, b) => a.trade_date.localeCompare(b.trade_date))
     .at(-1)?.number_of_shares_issued;
-  const {
-    totalVolume,
-    mainForceNet,
-    sharesOfCapital,
-    turnoverRatio,
-    latestTradeDate,
-    concentrationDaysPct,
-    buyTop,
-    sellTop,
-  } = computeChipFlowStats(rows, sharesIssued);
+  const sharesOfCapital =
+    sharesIssued && sharesIssued > 0 ? (data.main_force_net / sharesIssued) * 100 : null;
+  const turnoverRatio =
+    sharesIssued && sharesIssued > 0 ? (data.total_volume / sharesIssued) * 100 : null;
 
   return (
     <div>
@@ -2218,12 +2113,16 @@ function ChipFlowsBody({
       <div className="mb-4 grid grid-cols-2 gap-3 font-num text-[13px] tabular-nums">
         <SnapshotStat
           label={t("mainForceNet")}
-          value={formatSignedNumber(mainForceNet, locale)}
-          tone={mainForceNet >= 0 ? "up" : "down"}
+          value={formatSignedNumber(data.main_force_net, locale)}
+          tone={data.main_force_net >= 0 ? "up" : "down"}
         />
         <SnapshotStat
           label={t("mainForceConcentration")}
-          value={totalVolume > 0 ? `${((mainForceNet / totalVolume) * 100).toFixed(2)}%` : "—"}
+          value={
+            data.total_volume > 0
+              ? `${((data.main_force_net / data.total_volume) * 100).toFixed(2)}%`
+              : "—"
+          }
         />
         <SnapshotStat
           label={t("sharesOfCapital")}
@@ -2231,9 +2130,14 @@ function ChipFlowsBody({
         />
         <SnapshotStat
           label={t("concentrationDays")}
-          value={concentrationDaysPct != null ? `${concentrationDaysPct.toFixed(0)}%` : "—"}
+          value={
+            data.concentration_days_pct != null ? `${data.concentration_days_pct.toFixed(0)}%` : "—"
+          }
         />
-        <SnapshotStat label={t("brokerTotalVolume")} value={formatNumber(totalVolume, locale)} />
+        <SnapshotStat
+          label={t("brokerTotalVolume")}
+          value={formatNumber(data.total_volume, locale)}
+        />
         <SnapshotStat
           label={t("turnoverRatio")}
           value={turnoverRatio != null ? `${turnoverRatio.toFixed(2)}%` : "—"}
@@ -2246,31 +2150,38 @@ function ChipFlowsBody({
           onChange={setDirection}
           labelFor={(d) => t(d === "buy" ? "buyTop15" : "sellTop15")}
         />
-        {latestTradeDate ? (
+        {data.latest_trade_date ? (
           <span className="text-[11px] text-[var(--text-muted)]">
-            {t("asOfDate", { date: latestTradeDate })}
+            {t("asOfDate", { date: data.latest_trade_date })}
           </span>
         ) : null}
       </div>
       <BrokerTopTable
         title={t(direction === "buy" ? "buyTop15" : "sellTop15")}
-        rows={direction === "buy" ? buyTop : sellTop}
-        totalVolume={totalVolume}
+        rows={direction === "buy" ? data.buy_top : data.sell_top}
+        totalVolume={data.total_volume}
         locale={locale}
       />
     </div>
   );
 }
 
-type BrokerTopRow = {
-  broker_id: string;
-  broker_name: string;
-  net: number;
-  buy: number;
-  sell: number;
-};
-
 const BROKER_TOP_COLLAPSED_ROW_COUNT = 8;
+
+/** governance.md §4 row-level preview exception's locked-row placeholder — the row's own value
+ * is never sent for a `locked` row (nulled server-side in `market_tools.py`), so this renders a
+ * fixed placeholder + lock icon rather than reading any field, mirroring
+ * `tracker-panel.tsx`'s own `LockedValueCell`. */
+function LockedBrokerCell(): ReactNode {
+  return (
+    <span className="inline-flex items-center justify-end gap-1 text-[var(--text-muted)]">
+      <LockIcon size={11} weight="regular" aria-hidden />
+      <span aria-hidden className="tabular-nums">
+        ••••
+      </span>
+    </span>
+  );
+}
 
 /** 買超Top15/賣超Top15 table — collapsed to `BROKER_TOP_COLLAPSED_ROW_COUNT` rows with an
  * `ExpandModal` for the rest, mirroring `basic-info-panel.tsx`'s own 董監事持股/公告 collapse
@@ -2284,7 +2195,7 @@ function BrokerTopTable({
   locale,
 }: {
   readonly title: string;
-  readonly rows: readonly BrokerTopRow[];
+  readonly rows: readonly ChipBrokerTopRow[];
   readonly totalVolume: number;
   readonly locale: string;
 }): ReactNode {
@@ -2338,7 +2249,7 @@ function BrokerTopTableBody({
   totalVolume,
   locale,
 }: {
-  readonly rows: readonly BrokerTopRow[];
+  readonly rows: readonly ChipBrokerTopRow[];
   readonly totalVolume: number;
   readonly locale: string;
 }): ReactNode {
@@ -2358,6 +2269,31 @@ function BrokerTopTableBody({
         </thead>
         <tbody>
           {rows.map((row) => {
+            if (row.locked || row.net === null || row.buy === null || row.sell === null) {
+              return (
+                <tr key={`locked-${row.rank}`} className="border-[var(--border)] border-b">
+                  <td className="py-1.5 text-[var(--text-muted)]">
+                    <span className="inline-flex items-center gap-1.5">
+                      <LockIcon size={11} weight="regular" aria-hidden />
+                      <span aria-hidden>••••</span>
+                      <span className="font-num text-[11px] tabular-nums">#{row.rank}</span>
+                    </span>
+                  </td>
+                  <td className="py-1.5 text-right font-num tabular-nums">
+                    <LockedBrokerCell />
+                  </td>
+                  <td className="py-1.5 text-right font-num tabular-nums">
+                    <LockedBrokerCell />
+                  </td>
+                  <td className="py-1.5 text-right font-num tabular-nums">
+                    <LockedBrokerCell />
+                  </td>
+                  <td className="py-1.5 text-right font-num tabular-nums">
+                    <LockedBrokerCell />
+                  </td>
+                </tr>
+              );
+            }
             const share = totalVolume > 0 ? ((row.buy + row.sell) / totalVolume) * 100 : 0;
             return (
               <tr key={row.broker_id} className="border-[var(--border)] border-b">

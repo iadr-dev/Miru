@@ -460,10 +460,28 @@ export const chipBrokerNetSummarySchema = z.object({
 });
 export type ChipBrokerNetSummary = z.infer<typeof chipBrokerNetSummarySchema>;
 
+export const chipBrokerTopRowSchema = z.object({
+  rank: z.number(),
+  broker_id: z.string().nullable(),
+  broker_name: z.string().nullable(),
+  net: z.number().nullable(),
+  buy: z.number().nullable(),
+  sell: z.number().nullable(),
+  locked: z.boolean().default(false),
+});
+export type ChipBrokerTopRow = z.infer<typeof chipBrokerTopRowSchema>;
+
 export const chipFlowsDataSchema = z.object({
   source_id: z.string(),
   currentness_caveat: z.string(),
   health_status: healthStatusSchema,
+  total_volume: z.number().default(0),
+  main_force_net: z.number().default(0),
+  concentration_days_pct: z.number().nullable().optional(),
+  latest_trade_date: z.string().nullable().optional(),
+  free_row_count: z.number().default(0),
+  buy_top: z.array(chipBrokerTopRowSchema).default([]),
+  sell_top: z.array(chipBrokerTopRowSchema).default([]),
   top_brokers: z.array(chipBrokerNetSummarySchema).default([]),
   rows: z.array(chipBrokerRowSchema).default([]),
 });
