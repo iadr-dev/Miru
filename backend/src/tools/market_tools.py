@@ -1647,6 +1647,60 @@ def _mask_position_events_beyond(
     )
 
 
+def _stock_capital_pcts(
+    store: ParquetStore,
+    market: str,
+    symbol: str,
+    dates: tuple[date_, date_ | None],
+    holdings: tuple[Sequence[ActiveEtfHoldingRow], Sequence[ActiveEtfHoldingRow]],
+) -> tuple[float | None, float | None]:
+    """`(stock_capital_pct, prior_stock_capital_pct)` — the target stock's combined active-ETF
+    holding as a % of its own shares-outstanding, on `dates[0]` (report) and `dates[1]` (prior).
+    Extracted from `GetEtfsHoldingStockTool.run` purely to keep that method's own cognitive
+    complexity down; has no state of its own."""
+    report_date, prior_date = dates
+    report_holdings, prior_holdings = holdings
+    shares_outstanding = _shares_outstanding_by_symbol(store, market, report_date)
+    prior_shares_outstanding = (
+        _shares_outstanding_by_symbol(store, market, prior_date) if prior_date is not None else {}
+    )
+    outstanding = shares_outstanding.get(symbol)
+    prior_outstanding = prior_shares_outstanding.get(symbol)
+    report_total_shares = sum(h.shares for h in report_holdings)
+    prior_total_shares = sum(h.shares for h in prior_holdings) if prior_holdings else None
+    stock_capital_pct = report_total_shares / outstanding * 100 if outstanding else None
+    prior_stock_capital_pct = (
+        prior_total_shares / prior_outstanding * 100
+        if prior_total_shares is not None and prior_outstanding
+        else None
+    )
+    return stock_capital_pct, prior_stock_capital_pct
+
+
+def _apply_row_preview_gate(
+    *,
+    entitled: bool,
+    holding_rank: tuple[EtfHoldingRankRow, ...],
+    weight_rank: tuple[EtfWeightRankRow, ...],
+    position_events: tuple[EtfPositionEvent, ...],
+) -> tuple[
+    int, tuple[EtfHoldingRankRow, ...], tuple[EtfWeightRankRow, ...], tuple[EtfPositionEvent, ...]
+]:
+    """governance.md §4 top-N-preview exception, applied once for all three ranked lists: an
+    entitled caller's `free_row_count` equals each list's own length (nothing masked); an
+    unentitled caller's is capped at the fixed preview size and every row past it is masked
+    server-side, right here — never a client-side-only blur."""
+    if entitled:
+        free_row_count = max(len(holding_rank), len(weight_rank), len(position_events))
+        return free_row_count, holding_rank, weight_rank, position_events
+    return (
+        _ETFS_HOLDING_STOCK_FREE_ROW_COUNT,
+        _mask_holding_rank_rows_beyond(holding_rank, _ETFS_HOLDING_STOCK_FREE_ROW_COUNT),
+        _mask_weight_rank_rows_beyond(weight_rank, _ETFS_HOLDING_STOCK_FREE_ROW_COUNT),
+        _mask_position_events_beyond(position_events, _ETFS_HOLDING_STOCK_FREE_ROW_COUNT),
+    )
+
+
 def _etf_holding_rank_rows(
     *,
     report_holdings: Sequence[ActiveEtfHoldingRow],
@@ -1790,11 +1844,59 @@ class GetEtfsHoldingStockTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
+    def _holdings_of_stock(
+        self, market: str, symbol: str, as_of_date: date_
+    ) -> tuple[ActiveEtfHoldingRow, ...]:
+        raw = self._store.read_partition(ACTIVE_ETF_HOLDING_JOB.dataset, market, as_of_date)
+        return tuple(
+            h for h in _rows_from_store(ActiveEtfHoldingRow, raw) if h.component_stock_id == symbol
+        )
+
+    def _quarter_holdings_by_etf(
+        self, market: str, symbol: str, report_date: date_
+    ) -> tuple[list[date_], dict[str, list[ActiveEtfHoldingRow]]]:
+        """Every ingested date in the trailing `_ETFS_HOLDING_STOCK_QUARTER_DAYS` window, plus
+        the same holdings grouped by ETF — backs both `_etf_weight_rank_rows`' 近一季 range and
+        the event-lookback window below."""
+        quarter_dates = [
+            d
+            for d in _ingested_dates(self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market)
+            if d <= report_date
+        ][-_ETFS_HOLDING_STOCK_QUARTER_DAYS:]
+        by_etf: dict[str, list[ActiveEtfHoldingRow]] = {}
+        for quarter_date in quarter_dates:
+            for holding in self._holdings_of_stock(market, symbol, quarter_date):
+                by_etf.setdefault(holding.symbol, []).append(holding)
+        return quarter_dates, by_etf
+
+    def _position_events_for(
+        self, market: str, symbol: str, report_date: date_, quarter_dates: Sequence[date_]
+    ) -> tuple[EtfPositionEvent, ...]:
+        """Bounded 建清倉 event history: every ingested date within the event-lookback window
+        (falling back to the last 2 quarter dates if that window is empty), diffed via
+        `_etf_position_events`."""
+        event_start = report_date - timedelta(days=_ETFS_HOLDING_STOCK_EVENT_LOOKBACK_DAYS)
+        event_dates = [d for d in quarter_dates if d >= event_start] or list(quarter_dates[-2:])
+        changes_by_date: dict[date_, tuple[ActiveEtfHoldingChangeRow, ...]] = {}
+        holdings_by_date_and_etf: dict[date_, dict[str, ActiveEtfHoldingRow]] = {}
+        for event_date in event_dates:
+            raw_changes = self._store.read_partition(
+                ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset, market, event_date
+            )
+            changes_by_date[event_date] = tuple(
+                c
+                for c in _rows_from_store(ActiveEtfHoldingChangeRow, raw_changes)
+                if c.component_stock_id == symbol
+            )
+            holdings_by_date_and_etf[event_date] = {
+                h.symbol: h for h in self._holdings_of_stock(market, symbol, event_date)
+            }
+        return _etf_position_events(changes_by_date, holdings_by_date_and_etf, event_dates)
+
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetEtfsHoldingStockInput, args)
         market = typed.market.value
         target = typed.as_of or date_.today()
-        entitled = is_entitled(self.data_class, ctx.tier)
 
         report_date = _latest_ingested_date_on_or_before(
             self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market, target
@@ -1809,20 +1911,8 @@ class GetEtfsHoldingStockTool(BaseTool):
                     f"{target.isoformat()} — the whole-market ingest job may not have run yet."
                 ),
             )
-        prior_date = _prior_report_date(
-            list(_ingested_dates(self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market)),
-            report_date,
-        )
 
-        def _holdings_of_stock(as_of_date: date_) -> tuple[ActiveEtfHoldingRow, ...]:
-            raw = self._store.read_partition(ACTIVE_ETF_HOLDING_JOB.dataset, market, as_of_date)
-            return tuple(
-                h
-                for h in _rows_from_store(ActiveEtfHoldingRow, raw)
-                if h.component_stock_id == typed.id
-            )
-
-        report_holdings = _holdings_of_stock(report_date)
+        report_holdings = self._holdings_of_stock(market, typed.id, report_date)
         if not report_holdings:
             return GetEtfsHoldingStockOutput(
                 symbol=typed.id,
@@ -1833,56 +1923,28 @@ class GetEtfsHoldingStockTool(BaseTool):
                     f"No active ETF held {typed.id} as of {report_date.isoformat()}."
                 ),
             )
-        prior_holdings = _holdings_of_stock(prior_date) if prior_date is not None else ()
+
+        prior_date = _prior_report_date(
+            list(_ingested_dates(self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market)),
+            report_date,
+        )
+        prior_holdings = (
+            self._holdings_of_stock(market, typed.id, prior_date) if prior_date is not None else ()
+        )
         prior_holdings_by_etf = {h.symbol: h for h in prior_holdings}
-
-        shares_outstanding = _shares_outstanding_by_symbol(self._store, market, report_date)
-        prior_shares_outstanding = (
-            _shares_outstanding_by_symbol(self._store, market, prior_date)
-            if prior_date is not None
-            else {}
-        )
-        outstanding = shares_outstanding.get(typed.id)
-        prior_outstanding = prior_shares_outstanding.get(typed.id)
-        report_total_shares = sum(h.shares for h in report_holdings)
-        prior_total_shares = sum(h.shares for h in prior_holdings) if prior_holdings else None
-        stock_capital_pct = report_total_shares / outstanding * 100 if outstanding else None
-        prior_stock_capital_pct = (
-            prior_total_shares / prior_outstanding * 100
-            if prior_total_shares is not None and prior_outstanding
-            else None
+        stock_capital_pct, prior_stock_capital_pct = _stock_capital_pcts(
+            self._store,
+            market,
+            typed.id,
+            (report_date, prior_date),
+            (report_holdings, prior_holdings),
         )
 
-        quarter_dates = [
-            d
-            for d in _ingested_dates(self._store, ACTIVE_ETF_HOLDING_JOB.dataset, market)
-            if d <= report_date
-        ][-_ETFS_HOLDING_STOCK_QUARTER_DAYS:]
-        quarter_holdings_by_etf: dict[str, list[ActiveEtfHoldingRow]] = {}
-        for quarter_date in quarter_dates:
-            for holding in _holdings_of_stock(quarter_date):
-                quarter_holdings_by_etf.setdefault(holding.symbol, []).append(holding)
-
-        event_start = report_date - timedelta(days=_ETFS_HOLDING_STOCK_EVENT_LOOKBACK_DAYS)
-        event_dates = [d for d in quarter_dates if d >= event_start] or quarter_dates[-2:]
-        changes_by_date: dict[date_, tuple[ActiveEtfHoldingChangeRow, ...]] = {}
-        holdings_by_date_and_etf: dict[date_, dict[str, ActiveEtfHoldingRow]] = {}
-        for event_date in event_dates:
-            raw_changes = self._store.read_partition(
-                ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset, market, event_date
-            )
-            changes_by_date[event_date] = tuple(
-                c
-                for c in _rows_from_store(ActiveEtfHoldingChangeRow, raw_changes)
-                if c.component_stock_id == typed.id
-            )
-            holdings_by_date_and_etf[event_date] = {
-                h.symbol: h for h in _holdings_of_stock(event_date)
-            }
-
-        position_events = _etf_position_events(
-            changes_by_date, holdings_by_date_and_etf, event_dates
+        quarter_dates, quarter_holdings_by_etf = self._quarter_holdings_by_etf(
+            market, typed.id, report_date
         )
+        position_events = self._position_events_for(market, typed.id, report_date, quarter_dates)
+
         holding_rank = _etf_holding_rank_rows(
             report_holdings=report_holdings,
             prior_holdings_by_etf=prior_holdings_by_etf,
@@ -1895,24 +1957,12 @@ class GetEtfsHoldingStockTool(BaseTool):
             quarter_holdings_by_etf=quarter_holdings_by_etf,
         )[:_ETFS_HOLDING_STOCK_TOP_N]
 
-        # governance.md §4 top-N-preview exception: an entitled caller's `free_row_count` equals
-        # each list's own length (nothing masked); an unentitled caller's is capped at the fixed
-        # preview size and every row past it is masked server-side, right here.
-        free_row_count = (
-            max(len(holding_rank), len(weight_rank), len(position_events))
-            if entitled
-            else _ETFS_HOLDING_STOCK_FREE_ROW_COUNT
+        free_row_count, holding_rank, weight_rank, position_events = _apply_row_preview_gate(
+            entitled=is_entitled(self.data_class, ctx.tier),
+            holding_rank=holding_rank,
+            weight_rank=weight_rank,
+            position_events=position_events,
         )
-        if not entitled:
-            holding_rank = _mask_holding_rank_rows_beyond(
-                holding_rank, _ETFS_HOLDING_STOCK_FREE_ROW_COUNT
-            )
-            weight_rank = _mask_weight_rank_rows_beyond(
-                weight_rank, _ETFS_HOLDING_STOCK_FREE_ROW_COUNT
-            )
-            position_events = _mask_position_events_beyond(
-                position_events, _ETFS_HOLDING_STOCK_FREE_ROW_COUNT
-            )
 
         return GetEtfsHoldingStockOutput(
             symbol=typed.id,
