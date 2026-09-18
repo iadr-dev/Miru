@@ -853,3 +853,76 @@ export const shareholderDispersionResponseSchema = z.union([
   maskedTeaserSchema,
 ]);
 export type ShareholderDispersionResponse = z.infer<typeof shareholderDispersionResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stock/etfs-holding-stock — get_etfs_holding_stock (Sponsor-tier). Mirrors
+// `GetEtfsHoldingStockOutput`/`market_tools.py` field-for-field. 追蹤 tab's ETF持有 card
+// (active-management ETFs only).
+// ---------------------------------------------------------------------------
+
+export const etfHoldingRankRowSchema = z.object({
+  rank: z.number(),
+  etf_symbol: z.string().nullable(),
+  etf_name: z.string().nullable(),
+  shares: z.number().nullable(),
+  shares_delta: z.number().nullable().optional(),
+  stock_capital_pct: z.number().nullable().optional(),
+  stock_capital_pct_delta: z.number().nullable().optional(),
+  locked: z.boolean().default(false),
+});
+export type EtfHoldingRankRow = z.infer<typeof etfHoldingRankRowSchema>;
+
+export const etfWeightRankRowSchema = z.object({
+  rank: z.number(),
+  etf_symbol: z.string().nullable(),
+  etf_name: z.string().nullable(),
+  weight_pct: z.number().nullable(),
+  weight_pct_delta: z.number().nullable().optional(),
+  quarter_min_weight_pct: z.number().nullable().optional(),
+  quarter_max_weight_pct: z.number().nullable().optional(),
+  locked: z.boolean().default(false),
+});
+export type EtfWeightRankRow = z.infer<typeof etfWeightRankRowSchema>;
+
+export const etfPositionEventSchema = z.object({
+  event_date: z.string(),
+  etf_symbol: z.string().nullable(),
+  etf_name: z.string().nullable(),
+  event: z.enum(["新增", "刪除", "加碼", "減碼", "no_prior_data"]),
+  shares_delta: z.number().nullable(),
+  locked: z.boolean().default(false),
+});
+export type EtfPositionEvent = z.infer<typeof etfPositionEventSchema>;
+
+export const etfPositionEventCountsSchema = z.object({
+  new_count: z.number().default(0),
+  removed_count: z.number().default(0),
+  increased_count: z.number().default(0),
+  decreased_count: z.number().default(0),
+});
+export type EtfPositionEventCounts = z.infer<typeof etfPositionEventCountsSchema>;
+
+export const etfsHoldingStockDataSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  as_of: z.string().nullable().optional(),
+  prior_date: z.string().nullable().optional(),
+  data_available: z.boolean().default(true),
+  unavailable_reason: z.string().nullable().optional(),
+  etf_count: z.number().default(0),
+  free_row_count: z.number().default(0),
+  holding_rank: z.array(etfHoldingRankRowSchema).default([]),
+  weight_rank: z.array(etfWeightRankRowSchema).default([]),
+  position_event_counts: etfPositionEventCountsSchema.default({
+    new_count: 0,
+    removed_count: 0,
+    increased_count: 0,
+    decreased_count: 0,
+  }),
+  position_events: z.array(etfPositionEventSchema).default([]),
+});
+export const etfsHoldingStockResponseSchema = z.union([
+  etfsHoldingStockDataSchema,
+  maskedTeaserSchema,
+]);
+export type EtfsHoldingStockResponse = z.infer<typeof etfsHoldingStockResponseSchema>;

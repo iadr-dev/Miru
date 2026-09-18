@@ -1408,6 +1408,7 @@
       "financials": "財務分析",
       "chipAnalysis": "籌碼分析",
       "technical": "技術分析",
+      "tracker": "追蹤",
       "summary": "智能摘要",
       "news": "相關新聞",
       "research": "研究圖表",
@@ -1616,6 +1617,55 @@
       "empty": "此區間無資料。",
       "collapse": "收合",
       "nonTradingCaveat": "技術指標與型態為圖表描述，非買賣建議。"
+    },
+    "tracker": {
+      "title": "ETF持有",
+      "sponsorLocked": "ETF 持有明細為贊助方案專屬資料",
+      "empty": "目前無主動式ETF持有此股票的資料。",
+      "asOfLabel": "資料日期：{date}",
+      "lotUnit": "張",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
+      "subTab": {
+        "holdingRank": "持有張數排行",
+        "weightRank": "權重排行",
+        "positionEvents": "建清倉"
+      },
+      "holdingRank": {
+        "etf": "ETF",
+        "shares": "持有張數",
+        "sharesDelta": "張數增減",
+        "stockCapitalPct": "股本比重",
+        "stockCapitalPctDelta": "股本比重增減"
+      },
+      "weightRank": {
+        "etf": "ETF",
+        "weightPct": "權重%",
+        "weightPctDelta": "權重增減%",
+        "quarterRange": "近一季權重區間",
+        "distributionTitle": "權重分佈",
+        "bucket": {
+          "0_2_5": "0-2.5%",
+          "2_5_5": "2.5-5%",
+          "5_7_5": "5-7.5%",
+          "7_5_10": "7.5-10%",
+          "10_plus": "10%以上"
+        }
+      },
+      "positionEvents": {
+        "new": "建倉",
+        "removed": "清倉",
+        "increased": "加碼",
+        "decreased": "減碼",
+        "countNew": "新增",
+        "countRemoved": "刪除",
+        "date": "日期",
+        "etf": "ETF",
+        "sharesDelta": "張數增減",
+        "empty": "近期無建倉/清倉/加碼/減碼事件。",
+        "countUnit": "檔"
+      },
+      "etfCount": "被 {count} 支 ETF 持有"
     },
     "chipAnalysis": {
       "title": "籌碼分析",

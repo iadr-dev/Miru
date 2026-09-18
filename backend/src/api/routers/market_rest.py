@@ -1251,6 +1251,23 @@ async def shareholder_dispersion(
     )
 
 
+@router.get("/stock/etfs-holding-stock")
+async def etfs_holding_stock(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    as_of: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """追蹤 tab's ETF持有 card — every active-management ETF holding one
+    stock, with 持有張數排行/權重排行/建清倉 sub-views, backed by `get_etfs_holding_stock`,
+    `DataClass.SPONSOR` → masked-teaser envelope for an unentitled caller."""
+    args: dict[str, object] = {"id": symbol, "market": market.value}
+    if as_of is not None:
+        args["as_of"] = as_of.isoformat()
+    return await _dispatch(state, "get_etfs_holding_stock", args, ctx)
+
+
 @router.get("/stock/ptt-search")
 async def ptt_stock_search(
     symbol: str = Query(..., min_length=1),

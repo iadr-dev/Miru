@@ -88,6 +88,7 @@ class Tool(Protocol):
     output_model: type[BaseModel]
     data_class: DataClass
     card_type: str | None
+    supports_row_preview: bool
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         """Execute the tool. Always runnable — no approval/confirmation gate."""
@@ -115,6 +116,13 @@ class BaseTool:
     # left at None (the default for every tool) it stays prose-only, so opting a tool in is an
     # explicit, per-tool decision with no behavior change for the rest.
     card_type: str | None = None
+    # Opt-in row-level preview (governance.md §4 "top-N-preview exception"): a `sponsor` tool
+    # whose output is a ranked row list may set this `True` to receive `ctx` at `run()` time
+    # even when the caller is unentitled, so it can null out each row's value fields itself
+    # beyond its own `free_row_count` — see `dispatch_tool` below. Left `False` (the default),
+    # a `sponsor` tool never runs at all for an unentitled caller; opting in is per-tool and
+    # never changes behavior for an entitled caller (who always gets every row, unmasked).
+    supports_row_preview: bool = False
 
     def to_tool_spec(self) -> ToolSpec:
         return ToolSpec(
@@ -170,6 +178,13 @@ async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseMo
     per tool call, not cached for the turn — the *caller* re-resolves it each call).
     """
     if tool.data_class is DataClass.SPONSOR and not is_entitled(tool.data_class, ctx.tier):
+        if tool.supports_row_preview:
+            # Row-preview opt-in (governance.md §4 "top-N-preview exception"): the tool itself
+            # runs and is responsible for nulling every row's value fields beyond its own
+            # `free_row_count` — `ctx.tier` (still unentitled) is passed through unchanged so
+            # the tool can make that call; this function never inspects the tool's own output.
+            logger.info("tool_entitlement_row_preview", tool=tool.name, tier=ctx.tier.value)
+            return await tool.run(args, ctx)
         logger.info("tool_entitlement_masked", tool=tool.name, tier=ctx.tier.value)
         return MaskedTeaser(
             required_tier=Tier.PREMIUM,
