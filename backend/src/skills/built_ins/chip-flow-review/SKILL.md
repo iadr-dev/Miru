@@ -47,12 +47,14 @@ outputs: markdown
    the foreign(外資)/investment-trust(投信)/dealer(自營) rows separately — do not average them
    into one number, they answer different questions.
 4. Call `get_chip_flows(stock_id, market, start_date, end_date)` for branch(分點)-level rows.
-   This is a Sponsor-tier tool — if the caller is unentitled, the dispatch layer already
-   substitutes a masked teaser; report around the masked section rather than treating the
-   absence as "no data". The tool's own `top_brokers` field already carries the largest net
-   buy/sell branches pre-summed across the whole range — cite those directly for "主力進出".
-   Never manually scan/sum the raw `rows` (this can be thousands of per-day per-branch rows);
-   doing so burns the whole response budget on arithmetic and leaves nothing for prose.
+   This is a Sponsor-tier tool with a row-level preview: an unentitled caller still gets real
+   `total_volume`/`main_force_net`/`concentration_days_pct` stats plus the top few real rows of
+   `buy_top`/`sell_top` (rest row-locked, `locked: true` with null fields) — report around any
+   locked rows rather than treating them as "no data". `main_force_net`/`buy_top`/`sell_top` are
+   already ranked/pre-summed server-side — cite those directly for "主力進出". Never manually
+   scan/sum the raw `rows`/`top_brokers` (both empty for an unentitled caller, and can be
+   thousands of per-day per-branch rows even for an entitled one); doing so burns the whole
+   response budget on arithmetic and leaves nothing for prose.
 5. Synthesize using the `output_structure` sections above, in order. Every number must carry
    the trading date it is as-of. Close every response with a currentness caveat if it does
    not already carry one — this must never be dropped even when the rest of the answer is

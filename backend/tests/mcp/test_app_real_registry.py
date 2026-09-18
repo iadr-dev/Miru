@@ -62,7 +62,11 @@ def test_real_execute_tool_round_trips_a_real_deferred_tool() -> None:
     asyncio.run(run())
 
 
-def test_real_sponsor_tool_via_execute_tool_is_masked_for_anonymous_caller() -> None:
+def test_real_sponsor_tool_via_execute_tool_is_row_masked_for_anonymous_caller() -> None:
+    """`get_chip_flows` opted into the governance.md §4 row-level preview exception
+    (`supports_row_preview=True`) — an anonymous MCP caller gets a real (never `locked`) result
+    with its ranked rows individually masked, not the whole-tool `MaskedTeaser` envelope a
+    non-opted-in sponsor tool would return."""
     registry = build_real_registry()
     server = build_mcp_server(registry)
 
@@ -72,8 +76,9 @@ def test_real_sponsor_tool_via_execute_tool_is_masked_for_anonymous_caller() -> 
             {"id": "get_chip_flows", "args": {"id": "2330", "market": "TW"}},
         )
         assert not result.is_error
-        assert result.structured_content["locked"] is True
-        assert result.structured_content["tool_name"] == "get_chip_flows"
+        assert "locked" not in result.structured_content
+        assert result.structured_content["rows"] == []
+        assert result.structured_content["top_brokers"] == []
 
     asyncio.run(run())
 

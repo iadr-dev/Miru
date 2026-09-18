@@ -1,5 +1,7 @@
-"""Proves `dispatch_tool` masks `get_chip_flows` for FREE and passes through real data for
-PREMIUM/PRO — the sponsor-tier worked example of entitlement enforcement."""
+"""Proves `dispatch_tool`'s entitlement enforcement: `get_chip_flows` opted into the
+governance.md §4 row-level preview exception (`supports_row_preview=True`), so a FREE caller
+gets a row-masked `GetChipFlowsOutput` (never a whole-tool `MaskedTeaser`) while PREMIUM/PRO get
+every row real."""
 
 from __future__ import annotations
 
@@ -26,7 +28,7 @@ def _chip_broker_result() -> SourceResult:
     )
 
 
-async def test_dispatch_masks_chip_flows_for_free_tier() -> None:
+async def test_dispatch_row_masks_chip_flows_for_free_tier() -> None:
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(symbol, {Capability.CHIP_BROKER: _chip_broker_result()})
     tool = GetChipFlowsTool(router)
@@ -34,9 +36,10 @@ async def test_dispatch_masks_chip_flows_for_free_tier() -> None:
 
     result = await dispatch_tool(tool, args, ToolContext(tier=Tier.FREE))
 
-    assert isinstance(result, MaskedTeaser)
-    assert result.locked is True
-    assert result.tool_name == "get_chip_flows"
+    assert not isinstance(result, MaskedTeaser)
+    assert isinstance(result, GetChipFlowsOutput)
+    assert result.rows == ()
+    assert result.top_brokers == ()
 
 
 async def test_dispatch_returns_real_data_for_premium_and_pro() -> None:

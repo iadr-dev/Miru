@@ -305,20 +305,49 @@ class ChipBrokerNetSummary(BaseModel):
     net: int
 
 
+class ChipBrokerTopRow(BaseModel):
+    """One broker's row in the 買超Top15/賣超Top15 table (`chip-analysis-panel.tsx`'s own
+    `BrokerTopRow`, now computed here instead of client-side so an unentitled caller's
+    row-preview mask (governance.md §4 top-N-preview exception) can apply to the SAME ranked
+    rows the frontend renders, not to the raw per-day feed underneath them). `rank` (1-based,
+    within this row's own buy-top or sell-top list) is the only field that survives masking."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    rank: int
+    broker_id: str | None  # null only when locked
+    broker_name: str | None  # null only when locked
+    net: int | None  # null only when locked
+    buy: int | None  # null only when locked
+    sell: int | None  # null only when locked
+    locked: bool = False
+
+
 class GetChipFlowsOutput(BaseModel):
-    """Sponsor-tier 分點 branch trading rows. Returned as-is by `run()` — `dispatch_tool` (not
-    this class) is what substitutes the `MaskedTeaser` for an unentitled caller."""
+    """Sponsor-tier 分點 branch trading rows. `dispatch_tool` runs this tool even for an
+    unentitled caller (`supports_row_preview=True` — governance.md §4 top-N-preview exception);
+    `run()` itself is what nulls `buy_top`/`sell_top` rows beyond `free_row_count` and empties
+    `rows`/`top_brokers` for that caller — `dispatch_tool` never inspects this output's fields."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     source_id: str
     currentness_caveat: str = Field(min_length=1)
     health_status: HealthStatus
+    total_volume: int = 0  # 分點成交量 — sum(buy + sell) across every branch in the fetched range
+    main_force_net: int = 0  # 主力籌碼淨額 — combined net of the _TOP_BROKER_COUNT largest movers
+    concentration_days_pct: float | None = None  # 集中天數% — see `_concentration_days_pct`
+    latest_trade_date: date_ | None = None
+    free_row_count: int = 0  # governance.md §4 — real rows at the front of EACH of buy_top/sell_top
+    buy_top: tuple[ChipBrokerTopRow, ...] = Field(default_factory=tuple)
+    sell_top: tuple[ChipBrokerTopRow, ...] = Field(default_factory=tuple)
     # `top_brokers` declared BEFORE `rows` for the same reason as `InstitutionalFlowOutput`'s
     # `rolling_net` field ordering — see that field's comment. `rows` here is the worse offender
     # in practice: a live repro against 鴻海/2317 returned 10,000+ rows, guaranteeing `rows`
     # alone exceeds `agent.loop._MAX_MODEL_RESULT_CHARS` and would silently drop `top_brokers`
-    # from what the model ever sees if it were declared second.
+    # from what the model ever sees if it were declared second. Both are empty (never truncated
+    # to a `MaskedTeaser`-shaped stub) for an unentitled caller — `buy_top`/`sell_top`/the always-
+    # real stats above are that caller's whole preview; the raw feed is Sponsor-only regardless.
     top_brokers: tuple[ChipBrokerNetSummary, ...] = Field(default_factory=tuple)
     rows: tuple[ChipBrokerRow, ...] = Field(default_factory=tuple)
 
@@ -349,29 +378,126 @@ _CHIP_BROKER_MAX_TRADING_DAYS = 10  # FinMind's TaiwanStockTradingDailyReport is
 # fans out to one concurrent router.fetch() per trading day. Bounded to 10 (not the full 250+
 # trading days a "一年" window would imply) so one page load never issues more than 10 sequential
 # Sponsor-tier FinMind calls; the frontend's own period selector caps its widest option to match.
+_TOP_BROKER_ROW_COUNT = 15  # matches chip-analysis-panel.tsx's own 買超Top15/賣超Top15 tables
+_CHIP_FLOWS_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception — see market_tools.py's
+# get_etfs_holding_stock section for the same convention applied to a different ranked-row tool.
+
+
+class _BrokerAgg(NamedTuple):
+    broker_id: str
+    broker_name: str
+    net: int
+    buy: int
+    sell: int
+
+
+def _aggregate_brokers(rows: Sequence[ChipBrokerRow]) -> tuple[_BrokerAgg, ...]:
+    """Sums `buy`/`sell`/`net` per broker/branch across every row in the fetched range — the
+    backend port of `chip-analysis-panel.tsx`'s own (now-removed) client-side `aggregateBrokers`,
+    moved server-side so the row-level preview mask below applies to the SAME ranked rows the
+    frontend renders, not to the raw per-day feed underneath them."""
+    by_broker: dict[str, _BrokerAgg] = {}
+    for row in rows:
+        prior = by_broker.get(row.broker_id)
+        by_broker[row.broker_id] = _BrokerAgg(
+            broker_id=row.broker_id,
+            broker_name=row.broker_name,
+            net=(prior.net if prior else 0) + row.buy - row.sell,
+            buy=(prior.buy if prior else 0) + row.buy,
+            sell=(prior.sell if prior else 0) + row.sell,
+        )
+    return tuple(by_broker.values())
+
+
+def _broker_top_rows(
+    aggregates: Sequence[_BrokerAgg], *, positive_net: bool
+) -> tuple[ChipBrokerTopRow, ...]:
+    """買超Top15 (`positive_net=True`) or 賣超Top15 (`positive_net=False`) — ranked by `net`
+    magnitude among same-signed brokers only, capped at `_TOP_BROKER_ROW_COUNT`, `rank` assigned
+    post-sort (1-based)."""
+    side = [agg for agg in aggregates if (agg.net > 0) is positive_net]
+    ranked = sorted(side, key=lambda agg: agg.net, reverse=positive_net)[:_TOP_BROKER_ROW_COUNT]
+    return tuple(
+        ChipBrokerTopRow(
+            rank=i + 1,
+            broker_id=agg.broker_id,
+            broker_name=agg.broker_name,
+            net=agg.net,
+            buy=agg.buy,
+            sell=agg.sell,
+        )
+        for i, agg in enumerate(ranked)
+    )
+
+
+def _mask_broker_top_rows_beyond(
+    rows: tuple[ChipBrokerTopRow, ...], free_row_count: int
+) -> tuple[ChipBrokerTopRow, ...]:
+    """governance.md §4 top-N-preview exception — see `_mask_holding_rank_rows_beyond`'s own
+    docstring for the shared rationale (never a client-side-only blur)."""
+    return tuple(
+        row
+        if i < free_row_count
+        else row.model_copy(
+            update={
+                "broker_id": None,
+                "broker_name": None,
+                "net": None,
+                "buy": None,
+                "sell": None,
+                "locked": True,
+            }
+        )
+        for i, row in enumerate(rows)
+    )
+
+
+def _concentration_days_pct(rows: Sequence[ChipBrokerRow], overall_net: int) -> float | None:
+    """集中天數% — the % of trading days within the fetched range where that day's own net
+    buy/sell stayed same-signed as the range's overall net; a defensible "how consistent was the
+    dominant flow" figure (see `ChipFlowsBody`'s own docstring in the frontend for what this
+    is/isn't a claim of)."""
+    by_date_net: dict[date_, int] = {}
+    for row in rows:
+        by_date_net[row.trade_date] = by_date_net.get(row.trade_date, 0) + row.buy - row.sell
+    daily_nets = list(by_date_net.values())
+    if not daily_nets:
+        return None
+    same_signed = sum(
+        1 for net in daily_nets if (net >= 0 and overall_net >= 0) or (net < 0 and overall_net < 0)
+    )
+    return same_signed / len(daily_nets) * 100
 
 
 class GetChipFlowsTool(BaseTool):
     """`get_chip_flows` — wraps `Capability.CHIP_BROKER` (FinMind Sponsor-tier 分點進出).
 
-    The sponsor-tier worked example: this tool's own `run()` has no entitlement logic at all —
-    it always fetches and returns real data. Gating happens exactly once, in
-    `tools.base.dispatch_tool`, which checks `data_class` before ever calling `run()`.
+    `supports_row_preview=True` (governance.md §4 top-N-preview exception): an unentitled
+    caller still gets this tool's real ranked buy_top/sell_top row shape/rank, with every row
+    past `_CHIP_FLOWS_FREE_ROW_COUNT` having its value AND identity fields (`broker_id`/
+    `broker_name`) nulled in `run()` itself, mirroring `get_etfs_holding_stock`'s own row-preview
+    masking exactly. `total_volume`/`main_force_net`/`concentration_days_pct`/`latest_trade_date`
+    are always real (never masked) — the same "aggregate stays real, only individual rows lock"
+    split `get_etfs_holding_stock`'s `etf_count`/`position_event_counts` already use. `rows`/
+    `top_brokers` (the raw per-day feed) are emptied entirely for an unentitled caller — there is
+    nothing in them an entitled caller doesn't already get via `buy_top`/`sell_top`.
     """
 
     name = "get_chip_flows"
     description = (
-        "Get branch(分點)/broker-level buy-sell trading rows for one stock (Sponsor-tier), plus "
-        "a pre-computed `top_brokers` summary of the largest net buy/sell positions across the "
-        "whole range — cite `top_brokers` directly rather than summing `rows` yourself. The "
-        f"upstream report is single-day-per-call, so a `start_date`/`end_date` range fans out to "
-        f"one call per trading day, capped at {_CHIP_BROKER_MAX_TRADING_DAYS} days (most recent "
-        "first) — a wider range silently returns only the newest days within that cap."
+        "Get branch(分點)/broker-level buy-sell trading rows for one stock (Sponsor-tier; top "
+        "rows of buy_top/sell_top free, rest row-locked), plus backend-ranked buy_top/sell_top "
+        "Top15 tables and total_volume/main_force_net/concentration_days_pct stats — cite those "
+        "fields directly rather than summing `rows` yourself. The upstream report is "
+        f"single-day-per-call, so a `start_date`/`end_date` range fans out to one call per "
+        f"trading day, capped at {_CHIP_BROKER_MAX_TRADING_DAYS} days (most recent first) — a "
+        "wider range silently returns only the newest days within that cap."
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetChipFlowsOutput
     card_type: str | None = "chip_flows"
     data_class = DataClass.SPONSOR
+    supports_row_preview: bool = True
 
     def __init__(self, router: DataAccessRouter) -> None:
         self._router = router
@@ -407,12 +533,46 @@ class GetChipFlowsTool(BaseTool):
         # dataset) — the last result's health represents the most recent day's own fetch outcome,
         # which is what a caller checking "is today's report available" actually wants to see.
         representative = results[-1]
+
+        aggregates = _aggregate_brokers(rows)
+        overall_net = sum(agg.net for agg in aggregates)
+        top_by_magnitude = sorted(aggregates, key=lambda agg: abs(agg.net), reverse=True)[
+            :_TOP_BROKER_COUNT
+        ]
+        # These four stats are always real (never masked) — the same "aggregate stays real, only
+        # individual rows lock" split `get_etfs_holding_stock`'s `etf_count`/
+        # `position_event_counts` already use — so they're computed from the full `rows` BEFORE
+        # any entitlement-conditional truncation below.
+        total_volume = sum(agg.buy + agg.sell for agg in aggregates)
+        main_force_net = sum(agg.net for agg in top_by_magnitude)
+        concentration_days_pct = _concentration_days_pct(rows, overall_net)
+        latest_trade_date = max((row.trade_date for row in rows), default=None)
+
+        buy_top = _broker_top_rows(aggregates, positive_net=True)
+        sell_top = _broker_top_rows(aggregates, positive_net=False)
+
+        entitled = is_entitled(self.data_class, ctx.tier)
+        free_row_count = (
+            max(len(buy_top), len(sell_top)) if entitled else _CHIP_FLOWS_FREE_ROW_COUNT
+        )
+        raw_rows = rows if entitled else []
+        if not entitled:
+            buy_top = _mask_broker_top_rows_beyond(buy_top, _CHIP_FLOWS_FREE_ROW_COUNT)
+            sell_top = _mask_broker_top_rows_beyond(sell_top, _CHIP_FLOWS_FREE_ROW_COUNT)
+
         return GetChipFlowsOutput(
             source_id=representative.source_id,
             currentness_caveat=representative.currentness_caveat,
             health_status=representative.health.status,
-            rows=tuple(rows),
-            top_brokers=_top_broker_net_summary(rows),
+            total_volume=total_volume,
+            main_force_net=main_force_net,
+            concentration_days_pct=concentration_days_pct,
+            latest_trade_date=latest_trade_date,
+            free_row_count=free_row_count,
+            buy_top=buy_top,
+            sell_top=sell_top,
+            top_brokers=_top_broker_net_summary(raw_rows),
+            rows=tuple(raw_rows),
         )
 
 
