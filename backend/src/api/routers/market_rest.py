@@ -1211,6 +1211,46 @@ async def stock_day_trading(
     )
 
 
+@router.get("/stock/technical-indicators")
+async def technical_indicators(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels, and
+    candlestick-pattern hits over a date range, backed by `get_technical_indicators`,
+    `DataClass.PUBLIC`."""
+    return await _dispatch(
+        state,
+        "get_technical_indicators",
+        _symbol_date_args(symbol, market, start_date, end_date),
+        ctx,
+    )
+
+
+@router.get("/stock/shareholder-dispersion")
+async def shareholder_dispersion(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """技術分析/籌碼分析's 散戶 副圖 overlay — 股東人數/千張大戶比率 concentration series, backed
+    by `get_shareholder_dispersion`, `DataClass.SPONSOR` → masked-teaser envelope for an
+    unentitled caller (same gating `chip_flows`'s own 分點 route uses)."""
+    return await _dispatch(
+        state,
+        "get_shareholder_dispersion",
+        _symbol_date_args(symbol, market, start_date, end_date),
+        ctx,
+    )
+
+
 @router.get("/stock/ptt-search")
 async def ptt_stock_search(
     symbol: str = Query(..., min_length=1),

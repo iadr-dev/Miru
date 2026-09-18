@@ -69,6 +69,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_intraday_kbar": "intraday_kbar",
     "get_ten_year_price": "ten_year_price",
     "get_price_multi_tf": "price_multi_tf",
+    "get_technical_indicators": "technical_indicators",
     "get_price_tick": "price_tick",
     "get_valuation_ratios": "valuation_ratios",
     "get_order_book_stats": "order_book_stats",

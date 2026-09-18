@@ -11,6 +11,7 @@ from tools.common import DateRangeInput, MarketOnlyInput
 from tools.technical_tools import (
     GetPriceLimitTool,
     GetPriceTickTool,
+    GetTechnicalIndicatorsTool,
     GetTradingCalendarTool,
     GetValuationRatiosTool,
     GetWarrantUnderlyingTool,
@@ -137,3 +138,63 @@ async def test_get_warrant_underlying_is_sponsor() -> None:
     assert tool.data_class is DataClass.SPONSOR
     output = await tool.run(DateRangeInput(id="038001", market=Market.TW), ToolContext())
     assert output.rows == ()
+
+
+def _eod_bar(day: str, *, open_: float, high: float, low: float, close: float) -> dict[str, object]:
+    return {
+        "symbol": "2330",
+        "market": "TW",
+        "trade_date": day,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "volume": 1000,
+    }
+
+
+async def test_get_technical_indicators_computes_series() -> None:
+    """A 65-bar rising series is enough to warm up MA60 (but not MA120/240, which stay all-`None`
+    — never fabricated) and to exercise KD/MACD/Bollinger/support-resistance/pattern scanning
+    over the same fetched window."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    bars = [
+        _eod_bar(
+            f"2026-{1 + (i // 28):02d}-{1 + (i % 28):02d}",
+            open_=100.0 + i,
+            high=101.0 + i,
+            low=99.0 + i,
+            close=100.5 + i,
+        )
+        for i in range(65)
+    ]
+    router, adapter = make_router(symbol, {Capability.PRICE_EOD: _result({"bars": bars})})
+    tool = GetTechnicalIndicatorsTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.PRICE_EOD
+    assert output.data_available is True
+    assert len(output.bars) == 65
+    assert len(output.trade_dates) == 65
+    assert output.moving_averages is not None
+    assert output.moving_averages.ma60.values[-1] is not None
+    assert output.moving_averages.ma120.values[-1] is None
+    assert output.bollinger is not None
+    assert output.kd is not None
+    assert output.macd is not None
+    assert output.support_resistance is not None
+    # A monotonically-rising series has no interior swing-low/high pivot.
+    assert output.support_resistance.levels == ()
+
+
+async def test_get_technical_indicators_no_bars_is_unavailable() -> None:
+    symbol = Symbol(id="9999", market=Market.TW)
+    router, _ = make_router(symbol, {Capability.PRICE_EOD: _result({"bars": []})})
+    tool = GetTechnicalIndicatorsTool(router)
+
+    output = await tool.run(DateRangeInput(id="9999", market=Market.TW), ToolContext())
+
+    assert output.data_available is False
+    assert output.moving_averages is None
+    assert output.unavailable_reason is not None

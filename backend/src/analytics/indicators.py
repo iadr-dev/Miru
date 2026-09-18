@@ -109,12 +109,14 @@ def ema(bars: Sequence[PriceBar], window: int) -> EmaResult:
 
 
 def moving_average_bundle(bars: Sequence[PriceBar]) -> MovingAverageBundle:
-    """MA5/10/20/60 together — 均線排列, read as a stack rather than one line at a time."""
+    """MA5/10/20/60/120/240 together — 均線排列, read as a stack rather than one line at a time."""
     return MovingAverageBundle(
         ma5=sma(bars, 5),
         ma10=sma(bars, 10),
         ma20=sma(bars, 20),
         ma60=sma(bars, 60),
+        ma120=sma(bars, 120),
+        ma240=sma(bars, 240),
     )
 
 

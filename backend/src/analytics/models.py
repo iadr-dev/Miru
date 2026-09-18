@@ -36,8 +36,10 @@ class EmaResult(BaseModel):
 
 
 class MovingAverageBundle(BaseModel):
-    """MA5/10/20/60 together — 均線排列 (the moving-average stack) is read as a set, not one
-    line at a time."""
+    """MA5/10/20/60/120/240 together — 均線排列 (the moving-average stack) is read as a set, not
+    one line at a time. MA120/240 were added for the K線 chart's overlay chips
+    (`docs/web/stock-detail/技術分析.md`); the score/screener callers that predate them only ever
+    read `ma5..ma60`, so their existing behavior is unaffected."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -45,6 +47,8 @@ class MovingAverageBundle(BaseModel):
     ma10: SmaResult
     ma20: SmaResult
     ma60: SmaResult
+    ma120: SmaResult
+    ma240: SmaResult
 
 
 class RsiResult(BaseModel):
@@ -106,6 +110,42 @@ class VwapResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     values: tuple[float | None, ...]
+
+
+class SupportResistanceLevel(BaseModel):
+    """One 支撐/壓力 price level — a swing pivot's price plus which bar index it pivoted at, so
+    a caller can place the level's h-line/label from `bar_index` alone rather than re-deriving
+    an offset from `len(bars)`. `kind` is a plain descriptive label ("support"/"resistance"),
+    never a trading instruction."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str
+    price: float
+    bar_index: int = Field(ge=0)
+
+
+class SupportResistanceResult(BaseModel):
+    """支撐/壓力 levels detected over the supplied bar window — see
+    `analytics/structure.py::support_resistance_levels` for the swing-pivot detection rule.
+    Levels are ordered by `bar_index` ascending (oldest pivot first)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    levels: tuple[SupportResistanceLevel, ...] = Field(default_factory=tuple)
+
+
+class CandlestickPatternHit(BaseModel):
+    """One completed candlestick-pattern match (`analytics/patterns.py`) at a given bar.
+    `direction` is a plain descriptive label — `+1` (看多/bullish-leaning), `-1`
+    (看空/bearish-leaning), or `0` (doji — no directional read) — never a buy/sell instruction
+    (governance §7 non-trading)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bar_index: int = Field(ge=0)
+    pattern: str
+    direction: int = Field(ge=-1, le=1)
 
 
 # -- multi-factor descriptive score ----------------------------------------------------------
@@ -224,6 +264,7 @@ class ScoreResult(BaseModel):
 __all__ = [
     "AtrResult",
     "BollingerResult",
+    "CandlestickPatternHit",
     "EmaResult",
     "EtfScoreBreakdown",
     "FactorScore",
@@ -237,5 +278,7 @@ __all__ = [
     "ScoreResult",
     "SmaResult",
     "StockScoreBreakdown",
+    "SupportResistanceLevel",
+    "SupportResistanceResult",
     "VwapResult",
 ]

@@ -21,9 +21,10 @@ are disclosed here as a known gap rather than shipped as guesses.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from analytics.indicators import PriceBar
+from analytics.models import CandlestickPatternHit
 
 # A doji's real body is negligible next to the day's range. 10% of the high-low span is a
 # conservative cutoff for "open and close are essentially equal": below it the candle reads as
@@ -218,6 +219,44 @@ def is_three_falling(bars: Sequence[PriceBar]) -> bool:
     return bearish and bodies and falling
 
 
+# `(recognizer, direction, min_window)` — `direction` is the plain descriptive label this
+# pattern gets when it completes (+1 看多/bullish-leaning, -1 看空/bearish-leaning, 0 for the
+# doji's genuine indecision read), `min_window` the trailing bar count the recognizer needs
+# (mirrors each function's own length guard) so `scan_patterns` only calls a recognizer once
+# enough history exists rather than relying on the recognizer's own early-`False` return.
+_PatternRecognizer = Callable[[Sequence[PriceBar]], bool]
+_PATTERN_TABLE: tuple[tuple[str, _PatternRecognizer, int, int], ...] = (
+    ("doji", is_doji, 0, 1),  # min_window=1: is_doji reads only bars[-1]
+    ("bullish_engulfing", is_bullish_engulfing, 1, _MIN_ENGULFING),
+    ("bearish_engulfing", is_bearish_engulfing, -1, _MIN_ENGULFING),
+    ("bullish_cannon", is_bullish_cannon, 1, _MIN_CANNON),
+    ("bearish_cannon", is_bearish_cannon, -1, _MIN_CANNON),
+    ("v_reversal", is_v_reversal, 1, _V_WINDOW),
+    ("inverse_v_reversal", is_inverse_v_reversal, -1, _V_WINDOW),
+    ("three_rising", is_three_rising, 1, _MIN_SOLDIERS),
+    ("three_falling", is_three_falling, -1, _MIN_SOLDIERS),
+)
+
+
+def scan_patterns(bars: Sequence[PriceBar]) -> tuple[CandlestickPatternHit, ...]:
+    """Runs every recognizer in this module against each bar index (as-of that bar, using only
+    its trailing window) and returns every completed match, oldest first. A single bar can
+    complete more than one pattern (e.g. a doji that is also the pivot of a V-reversal) — every
+    match is reported, never deduplicated to "the" pattern for that bar."""
+    hits: list[CandlestickPatternHit] = []
+    for i in range(len(bars)):
+        for name, recognizer, direction, min_window in _PATTERN_TABLE:
+            if i + 1 < min_window:
+                continue
+            # Every recognizer only reads its own trailing `min_window` bars (each function's
+            # own `bars[-k:]` slicing) — bounding the window passed in here keeps this scan
+            # O(n), not O(n^2), for a multi-year daily series.
+            window = bars[i + 1 - min_window : i + 1]
+            if recognizer(window):
+                hits.append(CandlestickPatternHit(bar_index=i, pattern=name, direction=direction))
+    return tuple(hits)
+
+
 __all__ = [
     "is_bearish_cannon",
     "is_bearish_engulfing",
@@ -228,4 +267,5 @@ __all__ = [
     "is_three_falling",
     "is_three_rising",
     "is_v_reversal",
+    "scan_patterns",
 ]

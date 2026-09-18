@@ -142,3 +142,25 @@ def test_short_or_openless_input_is_false() -> None:
     openless = PriceBar(high=2.0, low=1.0, close=1.5, volume=0)
     assert patterns.is_doji([openless]) is False
     assert patterns.is_three_rising([openless, openless, openless]) is False
+
+
+def test_scan_patterns_finds_bullish_engulfing_at_its_bar_index() -> None:
+    bars = [
+        _bar(105.0, 106.0, 99.0, 100.0),
+        _bar(99.0, 107.0, 98.0, 106.0),
+    ]
+    hits = patterns.scan_patterns(bars)
+    engulfing_hits = [h for h in hits if h.pattern == "bullish_engulfing"]
+    assert len(engulfing_hits) == 1
+    assert engulfing_hits[0].bar_index == 1
+    assert engulfing_hits[0].direction == 1
+
+
+def test_scan_patterns_empty_series_yields_no_hits() -> None:
+    assert patterns.scan_patterns([]) == ()
+
+
+def test_scan_patterns_single_doji_bar_yields_only_the_doji_hit() -> None:
+    doji_bar = _bar(100.0, 101.0, 99.0, 100.05)
+    hits = patterns.scan_patterns([doji_bar])
+    assert hits == (patterns.CandlestickPatternHit(bar_index=0, pattern="doji", direction=0),)
