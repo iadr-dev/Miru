@@ -44,17 +44,21 @@ import {
   type PttStockSearchResponse,
   pttStockSearchResponseSchema,
   type SecuritiesLendingResponse,
+  type ShareholderDispersionResponse,
   type StockCalendarEventsResponse,
   type StockInsiderTransferDeclarationResponse,
   type StockMaterialAnnouncementsResponse,
   type StockScoreResponse,
   type SymbolThemesResponse,
   securitiesLendingResponseSchema,
+  shareholderDispersionResponseSchema,
   stockCalendarEventsResponseSchema,
   stockInsiderTransferDeclarationResponseSchema,
   stockMaterialAnnouncementsResponseSchema,
   stockScoreResponseSchema,
   symbolThemesResponseSchema,
+  type TechnicalIndicatorsResponse,
+  technicalIndicatorsResponseSchema,
   type ValuationRatiosResponse,
   valuationRatiosResponseSchema,
 } from "@/types/stock-detail";
@@ -400,4 +404,32 @@ export async function getStockDayTrading(
   const search = symbolDateSearchParams(symbol, market, params);
   const raw = await requestJson(`/stock/day-trading?${search.toString()}`);
   return dayTradingResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 21. GET /stock/technical-indicators (public) — 技術分析's K線 chart data source
+// ---------------------------------------------------------------------------
+
+export async function getTechnicalIndicators(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<TechnicalIndicatorsResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/technical-indicators?${search.toString()}`);
+  return technicalIndicatorsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 22. GET /stock/shareholder-dispersion (Sponsor-tier) — 技術分析's 散戶 副圖 overlay
+// ---------------------------------------------------------------------------
+
+export async function getShareholderDispersion(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<ShareholderDispersionResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/shareholder-dispersion?${search.toString()}`);
+  return shareholderDispersionResponseSchema.parse(raw);
 }

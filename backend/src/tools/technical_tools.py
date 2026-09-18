@@ -11,10 +11,22 @@ from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from analytics.indicators import PriceBar, bollinger, kd, macd, moving_average_bundle
+from analytics.models import (
+    BollingerResult,
+    CandlestickPatternHit,
+    KdResult,
+    MacdResult,
+    MovingAverageBundle,
+    SupportResistanceResult,
+)
+from analytics.patterns import scan_patterns
+from analytics.structure import support_resistance_levels
 from dataaccess.router import DataAccessRouter
 from schemas.capabilities import (
     DayTradingRow,
     DayTradingSuspensionRow,
+    EODBar,
     Index5sSnapshotRow,
     KBarRow,
     OrderBookStatsRow,
@@ -559,6 +571,110 @@ class GetPriceMultiTfTool(BaseTool):
         )
 
 
+def _bars_from_eod(rows: Sequence[EODBar]) -> tuple[PriceBar, ...]:
+    """Ascending-by-`trade_date` `PriceBar` series from raw `EODBar` rows — every indicator/
+    pattern/structure function in `analytics/` requires ascending order and never re-sorts
+    itself (each module's own docstring), so this is the one place that sort happens for this
+    tool rather than relying on the store already returning rows in date order."""
+    ordered = sorted(rows, key=lambda b: b.trade_date)
+    return tuple(
+        PriceBar(open=b.open, high=b.high, low=b.low, close=b.close, volume=b.volume)
+        for b in ordered
+    )
+
+
+class GetTechnicalIndicatorsOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: str
+    data_available: bool = True
+    unavailable_reason: str | None = None
+    # The raw OHLCV bars this call's indicators/patterns/levels were computed FROM (ascending by
+    # `trade_date`) — the candlestick chart's own price series, so the frontend needs exactly one
+    # call for both the candles and every derived overlay/subpane rather than a second live
+    # `Capability.PRICE_EOD` fetch of its own.
+    bars: tuple[EODBar, ...] = Field(default_factory=tuple)
+    # One `trade_date` per bar, ascending — the index every indicator series below (and every
+    # `bar_index` a structure/pattern hit carries) lines up against. Redundant with `bars[i]
+    # .trade_date` but kept as its own field so a caller reading only the indicator series (not
+    # the bars) still has the date axis without cross-referencing `bars`.
+    trade_dates: tuple[date_, ...] = Field(default_factory=tuple)
+    moving_averages: MovingAverageBundle | None = None
+    bollinger: BollingerResult | None = None
+    kd: KdResult | None = None
+    macd: MacdResult | None = None
+    support_resistance: SupportResistanceResult | None = None
+    candlestick_patterns: tuple[CandlestickPatternHit, ...] = Field(default_factory=tuple)
+    non_trading_caveat: str = Field(
+        default="技術指標與型態為圖表描述，非買賣建議 — indicators/patterns describe the chart, "
+        "they are not a trading instruction."
+    )
+
+
+class GetTechnicalIndicatorsTool(BaseTool):
+    """`get_technical_indicators` — the K線 chart's ONE data source: the raw OHLCV `bars`
+    themselves plus MA5/10/20/60/120/240, Bollinger(20,2), KD(9,3,3), MACD(12,26,9), 支撐/壓力
+    swing-pivot levels, and completed candlestick-pattern hits — all computed from one
+    `Capability.PRICE_EOD` fetch over the requested `[start_date, end_date]` window (the same
+    live per-symbol range fetch `get_dividend_policy_summary`/`get_month_revenue` already use —
+    NOT the ingest store's 60-trading-day-capped `get_price_history`, since a 1Y/5Y chart range
+    needs a window that tool's cap can't serve). The frontend never needs a second price fetch
+    alongside this one for the candlestick series itself.
+
+    All public compute over `Capability.PRICE_EOD`'s own PUBLIC-tier data — no Sponsor gate."""
+
+    name = "get_technical_indicators"
+    description = (
+        "Get MA/Bollinger/KD/MACD indicator series, 支撐/壓力 levels, and candlestick-pattern "
+        "hits for one stock over a date range — the technical-analysis chart's data source. "
+        "Every value is a chart description, never a buy/sell instruction."
+    )
+    input_model: type[BaseModel] = DateRangeInput
+    output_model: type[BaseModel] = GetTechnicalIndicatorsOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "technical_indicators"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(DateRangeInput, args)
+        symbol = typed.to_symbol()
+        _result, rows = await fetch_rows(
+            self._router,
+            Capability.PRICE_EOD,
+            symbol,
+            tls_policy=ctx.tls_policy,
+            model=EODBar,
+            key="bars",
+            params=typed.date_params(),
+        )
+        if not rows:
+            return GetTechnicalIndicatorsOutput(
+                symbol=typed.id,
+                market=typed.market.value,
+                data_available=False,
+                unavailable_reason=f"No {Capability.PRICE_EOD.value} bars found for "
+                f"{typed.id} ({typed.market.value}) in the requested window.",
+            )
+        sorted_rows = tuple(sorted(rows, key=lambda b: b.trade_date))
+        bars = _bars_from_eod(sorted_rows)
+        trade_dates = tuple(b.trade_date for b in sorted_rows)
+        return GetTechnicalIndicatorsOutput(
+            symbol=typed.id,
+            market=typed.market.value,
+            bars=sorted_rows,
+            trade_dates=trade_dates,
+            moving_averages=moving_average_bundle(bars),
+            bollinger=bollinger(bars),
+            kd=kd(bars),
+            macd=macd(bars),
+            support_resistance=support_resistance_levels(bars),
+            candlestick_patterns=scan_patterns(bars),
+        )
+
+
 class GetIndexSnapshotsOutput(_RowsOutput):
     rows: tuple[Index5sSnapshotRow, ...] = Field(default_factory=tuple)
 
@@ -728,6 +844,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetTenYearPriceTool(router), False),
         (GetIntradayKbarTool(router), False),
         (GetPriceMultiTfTool(router), False),
+        (GetTechnicalIndicatorsTool(router), False),
         (GetIndexSnapshotsTool(router), False),
         (GetTradingHaltsTool(router), False),
         (GetDayTradingSuspensionTool(router), False),
@@ -756,6 +873,8 @@ __all__ = [
     "GetStockRosterTool",
     "GetTaiexIndexSnapshotOutput",
     "GetTaiexIndexSnapshotTool",
+    "GetTechnicalIndicatorsOutput",
+    "GetTechnicalIndicatorsTool",
     "GetTenYearPriceOutput",
     "GetTenYearPriceTool",
     "GetTotalReturnIndexOutput",
