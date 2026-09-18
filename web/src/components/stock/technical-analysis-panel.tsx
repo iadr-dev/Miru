@@ -430,7 +430,7 @@ function bucketBars(bars: readonly EodBar[], timeframe: Timeframe): EodBar[] {
     .map(([, group]) => {
       const sorted = [...group].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
       const first = sorted[0];
-      const last = sorted[sorted.length - 1];
+      const last = sorted.at(-1);
       if (!first || !last) {
         throw new Error("bucketBars: empty group");
       }
@@ -452,6 +452,131 @@ function isoWeekKey(date: Date): string {
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() - dayNum + 1);
   return d.toISOString().slice(0, 10);
+}
+
+/** A bearish pattern pins ABOVE the bar it completed on, bullish BELOW, neutral (doji) ON the
+ * bar — position (not color) carries the direction, per the non-trading governance rule. */
+function patternMarkerPosition(direction: number): "aboveBar" | "belowBar" | "inBar" {
+  if (direction === -1) return "aboveBar";
+  if (direction === 1) return "belowBar";
+  return "inBar";
+}
+
+function drawMovingAverages(
+  chart: IChartApi,
+  visibleMa: ReadonlySet<MaWindow>,
+  maSeriesByWindow: Record<MaWindow, { time: Time; value: number }[]>,
+): void {
+  for (const window of MA_WINDOWS) {
+    if (!visibleMa.has(window)) continue;
+    const points = maSeriesByWindow[window];
+    if (!points || points.length === 0) continue;
+    const line = chart.addSeries(LineSeries, {
+      color: resolveToken(MA_COLOR[window]),
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    line.setData(points);
+  }
+}
+
+/** 支撐/壓力 as dashed muted h-lines with a label — never colored as signed price. Capped to the
+ * most recent pivots: a multi-year daily window can carry dozens of swing pivots, and drawing
+ * every one turns the chart into a stack of overlapping h-lines nobody can read — only the most
+ * recent (most currently-relevant) handful renders. */
+function drawSupportResistance(
+  candleSeries: ISeriesApi<"Candlestick">,
+  indicators: TechnicalIndicatorsResponse,
+  t: ReturnType<typeof useTranslations>,
+): void {
+  const srLevels = (indicators.support_resistance?.levels ?? []).slice(-SR_LEVEL_LIMIT);
+  for (const level of srLevels) {
+    candleSeries.createPriceLine({
+      price: level.price,
+      color: resolveToken("var(--text-muted)"),
+      lineWidth: 1,
+      lineStyle: 2, // Dashed
+      axisLabelVisible: true,
+      title: level.kind === "support" ? t("supportLabel") : t("resistanceLabel"),
+    });
+  }
+}
+
+/** K線型態 hits as small accent-hairline pins — never colored by direction alone (position
+ * above/below the bar carries +1看多/-1看空 instead, per the non-trading governance rule). One
+ * marker per bar (a bar completing several patterns only shows the first, avoiding stacked
+ * same-timestamp markers) and capped to the most recent few — a long daily window completes
+ * dozens of short-lived patterns, and drawing every one is unreadable. */
+function drawPatternMarkers(
+  candleSeries: ISeriesApi<"Candlestick">,
+  indicators: TechnicalIndicatorsResponse,
+  t: ReturnType<typeof useTranslations>,
+): void {
+  const hitsByBar = new Map<number, (typeof indicators.candlestick_patterns)[number]>();
+  for (const hit of indicators.candlestick_patterns) {
+    if (!hitsByBar.has(hit.bar_index)) hitsByBar.set(hit.bar_index, hit);
+  }
+  const hits = [...hitsByBar.values()]
+    .sort((a, b) => a.bar_index - b.bar_index)
+    .slice(-PATTERN_MARKER_LIMIT);
+  if (hits.length === 0) return;
+
+  const markers: SeriesMarker<Time>[] = [];
+  for (const hit of hits) {
+    const date = indicators.trade_dates[hit.bar_index];
+    if (!date) continue;
+    markers.push({
+      time: date as Time,
+      position: patternMarkerPosition(hit.direction),
+      color: resolveToken("var(--accent)"),
+      shape: "circle",
+      text: t(`pattern.${hit.pattern}` as `pattern.${string}`),
+    });
+  }
+  createSeriesMarkers(candleSeries, markers);
+}
+
+/** 布林通道 (Bollinger Bands) draws directly on the MAIN candle pane, not a separate subpane —
+ * it's a price-scale overlay (upper/mid/lower bands sit on the same axis as the candles
+ * themselves), unlike KD/MACD which are their own oscillator scale. */
+function drawBollinger(chart: IChartApi, indicators: TechnicalIndicatorsResponse): void {
+  const boll = indicators.bollinger;
+  if (!boll) return;
+  const dates = indicators.trade_dates;
+  for (const [key, color] of [
+    ["upper", "var(--chart-3)"],
+    ["mid", "var(--chart-2)"],
+    ["lower", "var(--chart-4)"],
+  ] as const) {
+    const line = chart.addSeries(LineSeries, {
+      color: resolveToken(color),
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+    });
+    const points = dates
+      .map((date, i) => ({ time: date as Time, value: boll[key][i] }))
+      .filter((p): p is { time: Time; value: number } => p.value !== null && p.value !== undefined);
+    line.setData(points);
+  }
+}
+
+/** Volume renders in its OWN pane (paneIndex 1) below the price pane — sharing this chart's time
+ * axis/crosshair rather than being squeezed onto the price pane's own price-scale via
+ * `scaleMargins` (that approach visually collapsed the bars to a near-invisible strip at the
+ * very bottom of the candle pane). Matches the reference design's separate volume band. */
+function drawVolumePane(chart: IChartApi, bars: readonly EodBar[]): void {
+  const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" } }, 1);
+  volumeSeries.setData(
+    bars.map((b) => ({
+      time: b.trade_date as Time,
+      value: b.volume,
+      color: b.close < b.open ? resolveToken("var(--down)") : resolveToken("var(--up)"),
+    })),
+  );
+  chart.panes()[0]?.setStretchFactor(3);
+  chart.panes()[1]?.setStretchFactor(1);
 }
 
 function KLineChart({
@@ -552,123 +677,17 @@ function KLineChart({
       })),
     );
 
-    const maSeriesRefs: ISeriesApi<"Line">[] = [];
-    for (const window of MA_WINDOWS) {
-      if (!visibleMa.has(window)) continue;
-      const points = maSeriesByWindow[window];
-      if (!points || points.length === 0) continue;
-      const line = chart.addSeries(LineSeries, {
-        color: resolveToken(MA_COLOR[window]),
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      line.setData(points);
-      maSeriesRefs.push(line);
-    }
-
-    // 支撐/壓力 as dashed muted h-lines with a label — never colored as signed price. Capped to
-    // the most recent pivots: a multi-year daily window can carry dozens of swing pivots, and
-    // drawing every one turns the chart into a stack of overlapping h-lines nobody can read —
-    // only the most recent (most currently-relevant) handful renders. Gated on the user's own
-    // toggle rather than always-on, alongside the K線型態 toggle below.
-    if (showSupportResistance) {
-      const srLevels = (indicators.support_resistance?.levels ?? []).slice(-SR_LEVEL_LIMIT);
-      for (const level of srLevels) {
-        candleSeries.createPriceLine({
-          price: level.price,
-          color: resolveToken("var(--text-muted)"),
-          lineWidth: 1,
-          lineStyle: 2, // Dashed
-          axisLabelVisible: true,
-          title: level.kind === "support" ? t("supportLabel") : t("resistanceLabel"),
-        });
-      }
-    }
-
-    // K線型態 hits as small accent-hairline pins — never colored by direction alone (position
-    // above/below the bar carries +1看多/-1看空 instead, per the non-trading governance rule:
-    // a bearish pattern pins ABOVE the bar it completed on, bullish BELOW, neutral (doji) ON
-    // the bar). One marker per bar (the most recent limited set below can still complete
-    // several patterns on the same bar; only the first is shown, avoiding stacked
-    // same-timestamp markers) and capped to the most recent few — a long daily window
-    // completes dozens of short-lived patterns, and drawing every one is unreadable.
-    if (showPatterns) {
-      const hitsByBar = new Map<number, (typeof indicators.candlestick_patterns)[number]>();
-      for (const hit of indicators.candlestick_patterns) {
-        if (!hitsByBar.has(hit.bar_index)) hitsByBar.set(hit.bar_index, hit);
-      }
-      const hits = [...hitsByBar.values()]
-        .sort((a, b) => a.bar_index - b.bar_index)
-        .slice(-PATTERN_MARKER_LIMIT);
-      if (hits.length > 0) {
-        const markers: SeriesMarker<Time>[] = [];
-        for (const hit of hits) {
-          const date = indicators.trade_dates[hit.bar_index];
-          if (!date) continue;
-          const position =
-            hit.direction === -1 ? "aboveBar" : hit.direction === 1 ? "belowBar" : "inBar";
-          const patternLabel = t(`pattern.${hit.pattern}` as `pattern.${string}`);
-          markers.push({
-            time: date as Time,
-            position,
-            color: resolveToken("var(--accent)"),
-            shape: "circle",
-            text: patternLabel,
-          });
-        }
-        createSeriesMarkers(candleSeries, markers);
-      }
-    }
-
-    // 布林通道 (Bollinger Bands) draws directly on the MAIN candle pane, not a separate subpane
-    // — it's a price-scale overlay (upper/mid/lower bands sit on the same axis as the candles
-    // themselves), unlike KD/MACD which are their own oscillator scale.
-    if (subOverlays.has("bollinger") && indicators.bollinger) {
-      const boll = indicators.bollinger;
-      const dates = indicators.trade_dates;
-      for (const [key, color] of [
-        ["upper", "var(--chart-3)"],
-        ["mid", "var(--chart-2)"],
-        ["lower", "var(--chart-4)"],
-      ] as const) {
-        const line = chart.addSeries(LineSeries, {
-          color: resolveToken(color),
-          lineWidth: 1,
-          priceLineVisible: false,
-          lastValueVisible: false,
-        });
-        const points = dates
-          .map((date, i) => ({ time: date as Time, value: boll[key][i] }))
-          .filter(
-            (p): p is { time: Time; value: number } => p.value !== null && p.value !== undefined,
-          );
-        line.setData(points);
-        maSeriesRefs.push(line);
-      }
-    }
-
-    // Volume renders in its OWN pane (paneIndex 1) below the price pane — sharing this chart's
-    // time axis/crosshair rather than being squeezed onto the price pane's own price-scale via
-    // `scaleMargins` (that approach visually collapsed the bars to a near-invisible strip at
-    // the very bottom of the candle pane). Matches the reference design's separate volume band.
-    const volumeSeries = chart.addSeries(HistogramSeries, { priceFormat: { type: "volume" } }, 1);
-    volumeSeries.setData(
-      bars.map((b) => ({
-        time: b.trade_date as Time,
-        value: b.volume,
-        color: b.close < b.open ? resolveToken("var(--down)") : resolveToken("var(--up)"),
-      })),
-    );
-    chart.panes()[0]?.setStretchFactor(3);
-    chart.panes()[1]?.setStretchFactor(1);
+    drawMovingAverages(chart, visibleMa, maSeriesByWindow);
+    if (showSupportResistance) drawSupportResistance(candleSeries, indicators, t);
+    if (showPatterns) drawPatternMarkers(candleSeries, indicators, t);
+    if (subOverlays.has("bollinger") && indicators.bollinger) drawBollinger(chart, indicators);
+    drawVolumePane(chart, bars);
 
     chart.timeScale().fitContent();
 
     return () => {
       chart.remove();
       chartRef.current = null;
-      maSeriesRefs.length = 0;
     };
   }, [
     bars,
@@ -1028,14 +1047,15 @@ function RetailDispersionPane({
 // `BUCKET_BY_INVESTOR`/`bucketedFlowByDate` use, duplicated here rather than imported since
 // that module doesn't export them and this is the one other place in the app plotting the same
 // 三大法人 buckets.
-const INSTITUTIONAL_BUCKET_BY_INVESTOR: Record<string, "foreign" | "trust" | "dealer"> = {
+type InstitutionalBucket = "foreign" | "trust" | "dealer";
+const INSTITUTIONAL_BUCKET_BY_INVESTOR: Record<string, InstitutionalBucket> = {
   Foreign_Investor: "foreign",
   Foreign_Dealer_Self: "foreign",
   Investment_Trust: "trust",
   Dealer_self: "dealer",
   Dealer_Hedging: "dealer",
 };
-const INSTITUTIONAL_BUCKET_COLOR: Record<"foreign" | "trust" | "dealer", string> = {
+const INSTITUTIONAL_BUCKET_COLOR: Record<InstitutionalBucket, string> = {
   foreign: "var(--chart-1)",
   trust: "var(--chart-2)",
   dealer: "var(--chart-3)",
@@ -1067,7 +1087,7 @@ function InstitutionalFlowPane({
   // is too noisy day-to-day to read as a trend line; the reference design's 三大法人 line reads
   // as an accumulated position, not a daily net.
   const byDate = useMemo(() => {
-    const dayTotals = new Map<string, Record<"foreign" | "trust" | "dealer", number>>();
+    const dayTotals = new Map<string, Record<InstitutionalBucket, number>>();
     for (const row of rows) {
       const bucket = INSTITUTIONAL_BUCKET_BY_INVESTOR[row.investor];
       if (!bucket) continue;
@@ -1196,7 +1216,7 @@ function BigHoldersPane({
       ? data.rows
           .filter((r) => {
             const lower = Number.parseInt(
-              r.holding_shares_level.split("-")[0]?.replace(/,/g, "") ?? "",
+              r.holding_shares_level.split("-")[0]?.replaceAll(",", "") ?? "",
               10,
             );
             return Number.isFinite(lower) && lower >= 400_001;
@@ -1241,6 +1261,14 @@ function BigHoldersPane({
   }
   if (byDate.length === 0) return null;
   return <div ref={containerRef} className="h-32 w-full" />;
+}
+
+function formatChangePercent(changePct: number, up: boolean, down: boolean): string {
+  let arrow = "";
+  if (up) arrow = "▲";
+  else if (down) arrow = "▼";
+  const sign = changePct >= 0 ? "+" : "";
+  return `${arrow}${sign}${changePct.toFixed(2)}%`;
 }
 
 function Datasheet({
@@ -1298,9 +1326,7 @@ function Datasheet({
                     !up && !down && "text-[var(--text-muted)]",
                   )}
                 >
-                  {changePct === null
-                    ? "—"
-                    : `${up ? "▲" : down ? "▼" : ""}${changePct >= 0 ? "+" : ""}${changePct.toFixed(2)}%`}
+                  {changePct === null ? "—" : formatChangePercent(changePct, up, down)}
                 </td>
                 <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
                   {formatNumber(Math.round(bar.volume / 1000), locale)}
