@@ -35,15 +35,26 @@ from tests.api.test_routes import _parse_sse
 
 
 class _ScriptedToolThenAnswerClient:
-    """A stub `LLMClient` that calls `get_price_quote` on its first turn, then returns a final
-    answer once the tool result is in the transcript — deterministic, no network."""
+    """A stub `LLMClient` that calls one named tool on its first turn, then returns a final
+    answer once the tool result is in the transcript — deterministic, no network. Defaults to
+    `get_price_quote` (this file's original single-tool scenario); other test cases pass their
+    own `tool_name`/`tool_arguments` instead of subclassing to override `chat()`, which is what
+    caused this class's two `chat()`-overriding subclasses to duplicate each other verbatim."""
 
     provider_id = "stub"
     model_id = "stub-model"
     capabilities = ModelCapabilities()
 
-    def __init__(self, answer: str) -> None:
+    def __init__(
+        self,
+        answer: str,
+        *,
+        tool_name: str = "get_price_quote",
+        tool_arguments: dict[str, object] | None = None,
+    ) -> None:
         self._answer = answer
+        self._tool_name = tool_name
+        self._tool_arguments = tool_arguments or {"id": "2330", "market": "TW"}
 
     async def chat(
         self,
@@ -65,9 +76,7 @@ class _ScriptedToolThenAnswerClient:
         return LLMResponse(
             text=None,
             tool_calls=(
-                ToolCall(
-                    id="call-1", name="get_price_quote", arguments={"id": "2330", "market": "TW"}
-                ),
+                ToolCall(id="call-1", name=self._tool_name, arguments=self._tool_arguments),
             ),
             stop_reason=StopReason.TOOL_USE,
             usage=usage,
@@ -91,26 +100,30 @@ class _ScriptedToolThenAnswerClient:
         return sum(len(m.content or "") for m in messages) // 4 or 1
 
 
-class _SingleQuoteSkillClassifier(IntentClassifier):
-    """Routes every message to `single` with the `daily-context-brief` skill, whose tool
-    allowlist includes the card-opted `get_price_quote` — so the common one-shot path runs a
-    card-eligible tool."""
+class _SingleSkillClassifier(IntentClassifier):
+    """Routes every message to `single` with one named skill — shared by every test case below
+    that just needs "route to `single` with skill X", parameterized instead of each declaring
+    its own near-identical `IntentClassifier` subclass."""
+
+    def __init__(self, skill: str) -> None:
+        super().__init__(None)  # registry unused by this override
+        self._skill = skill
 
     async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
         del message, history
         return Routing(
-            framework="single",
-            skills=("daily-context-brief",),
-            reason="test single-framework route to a card-opted tool",
+            framework="single", skills=(self._skill,), reason=f"test route to {self._skill}"
         )
 
 
 def _client(settings, agent_answer: str) -> TestClient:
+    # `daily-context-brief`'s tool allowlist includes the card-opted `get_price_quote` — so the
+    # common one-shot path runs a card-eligible tool.
     return build_test_client(
         settings,
         agent_answer=agent_answer,
         agent_client=_ScriptedToolThenAnswerClient(agent_answer),
-        classifier=_SingleQuoteSkillClassifier(None),  # registry unused by the override
+        classifier=_SingleSkillClassifier("daily-context-brief"),
     )
 
 
@@ -166,53 +179,13 @@ class TestRichCardStream:
         scripted client calls `get_shareholder_dispersion` (sponsor + card-opted, no row
         preview); a Free caller must get no `rich_card` frame."""
 
-        class _ScriptedDispersionClient(_ScriptedToolThenAnswerClient):
-            async def chat(
-                self,
-                messages: list[Message],
-                tools: list[ToolSpec] | None = None,
-                *,
-                native_web_search: bool = False,
-            ) -> LLMResponse:
-                del tools, native_web_search
-                already_called = any(msg.tool_results for msg in messages)
-                usage = TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10)
-                if already_called:
-                    return LLMResponse(
-                        text=agent_answer,
-                        tool_calls=(),
-                        stop_reason=StopReason.END_TURN,
-                        usage=usage,
-                    )
-                return LLMResponse(
-                    text=None,
-                    tool_calls=(
-                        ToolCall(
-                            id="call-1",
-                            name="get_shareholder_dispersion",
-                            arguments={"id": "2330", "market": "TW"},
-                        ),
-                    ),
-                    stop_reason=StopReason.TOOL_USE,
-                    usage=usage,
-                )
-
-        class _DispersionSkillClassifier(IntentClassifier):
-            async def _classify_inner(
-                self, message: str, *, history: tuple[Message, ...] = ()
-            ) -> Routing:
-                del message, history
-                return Routing(
-                    framework="single",
-                    skills=("margin-and-short-interest",),
-                    reason="test sponsor card masking",
-                )
-
         client = build_test_client(
             settings,
             agent_answer=agent_answer,
-            agent_client=_ScriptedDispersionClient(agent_answer),
-            classifier=_DispersionSkillClassifier(None),
+            agent_client=_ScriptedToolThenAnswerClient(
+                agent_answer, tool_name="get_shareholder_dispersion"
+            ),
+            classifier=_SingleSkillClassifier("margin-and-short-interest"),
         )
         with client:
             headers, _ = sign_in(client, settings, tier=Tier.FREE)
@@ -231,53 +204,11 @@ class TestRichCardStream:
         stock-detail page's own row-masked card for the same tool. Here the scripted client calls
         `get_chip_flows`."""
 
-        class _ScriptedChipFlowsClient(_ScriptedToolThenAnswerClient):
-            async def chat(
-                self,
-                messages: list[Message],
-                tools: list[ToolSpec] | None = None,
-                *,
-                native_web_search: bool = False,
-            ) -> LLMResponse:
-                del tools, native_web_search
-                already_called = any(msg.tool_results for msg in messages)
-                usage = TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10)
-                if already_called:
-                    return LLMResponse(
-                        text=agent_answer,
-                        tool_calls=(),
-                        stop_reason=StopReason.END_TURN,
-                        usage=usage,
-                    )
-                return LLMResponse(
-                    text=None,
-                    tool_calls=(
-                        ToolCall(
-                            id="call-1",
-                            name="get_chip_flows",
-                            arguments={"id": "2330", "market": "TW"},
-                        ),
-                    ),
-                    stop_reason=StopReason.TOOL_USE,
-                    usage=usage,
-                )
-
-        class _ChipFlowsSkillClassifier(IntentClassifier):
-            async def _classify_inner(
-                self, message: str, *, history: tuple[Message, ...] = ()
-            ) -> Routing:
-                del message, history
-                return Routing(
-                    framework="single",
-                    skills=("chip-flow-review",),
-                    reason="test row-preview card still renders",
-                )
-
         client = build_test_client(
             settings,
             agent_answer=agent_answer,
-            agent_client=_ScriptedChipFlowsClient(agent_answer),
-            classifier=_ChipFlowsSkillClassifier(None),
+            agent_client=_ScriptedToolThenAnswerClient(agent_answer, tool_name="get_chip_flows"),
+            classifier=_SingleSkillClassifier("chip-flow-review"),
         )
         with client:
             headers, _ = sign_in(client, settings, tier=Tier.FREE)
