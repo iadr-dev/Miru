@@ -27,6 +27,7 @@ import {
   getTechnicalIndicators,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { resolveToken } from "@/lib/resolve-css-token";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { EodBar, TechnicalIndicatorsResponse } from "@/types/stock-detail";
@@ -63,6 +64,15 @@ type SubOverlay =
 const SR_LEVEL_LIMIT = 10;
 const PATTERN_MARKER_LIMIT = 8;
 
+/** The one `(symbol, market, startDate, endDate)` prop shape every date-ranged 副圖 data pane
+ * below shares — declared once so it isn't retyped identically at every pane's own props type. */
+interface RangedPaneProps {
+  readonly symbol: string;
+  readonly market: Market;
+  readonly startDate: string;
+  readonly endDate: string;
+}
+
 function rangeStartDate(range: RangeKey, today: Date): string {
   const d = new Date(today);
   switch (range) {
@@ -87,23 +97,6 @@ function rangeStartDate(range: RangeKey, today: Date): string {
       break;
   }
   return d.toISOString().slice(0, 10);
-}
-
-/** Resolves a CSS custom property to its computed color — `lightweight-charts` draws to canvas
- * and can't read `var(--chart-1)` itself (same technique `timeseries-chart.tsx` uses). */
-function resolveToken(token: string): string {
-  if (typeof window === "undefined") {
-    return "#8a93a3";
-  }
-  const match = /var\((--[a-z0-9-]+)\)/.exec(token);
-  if (!match) {
-    return token;
-  }
-  const varName = match[1];
-  if (!varName) {
-    return token;
-  }
-  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || token;
 }
 
 export function TechnicalAnalysisPanel({
@@ -884,17 +877,7 @@ function useLineChartPane(
   }, deps);
 }
 
-function MarginShortPane({
-  symbol,
-  market,
-  startDate,
-  endDate,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-  readonly startDate: string;
-  readonly endDate: string;
-}): ReactNode {
+function MarginShortPane({ symbol, market, startDate, endDate }: RangedPaneProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["margin_short", symbol, market, startDate, endDate],
@@ -932,17 +915,7 @@ function MarginShortPane({
   return <div ref={containerRef} className="h-32 w-full" />;
 }
 
-function SecuritiesLendingPane({
-  symbol,
-  market,
-  startDate,
-  endDate,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-  readonly startDate: string;
-  readonly endDate: string;
-}): ReactNode {
+function SecuritiesLendingPane({ symbol, market, startDate, endDate }: RangedPaneProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["securities_lending", symbol, market, startDate, endDate],
@@ -985,13 +958,7 @@ function RetailDispersionPane({
   startDate,
   endDate,
   t,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-  readonly startDate: string;
-  readonly endDate: string;
-  readonly t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}: RangedPaneProps & { readonly t: ReturnType<typeof useTranslations> }): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["shareholder_dispersion", symbol, market, startDate, endDate],
@@ -1067,13 +1034,7 @@ function InstitutionalFlowPane({
   startDate,
   endDate,
   t,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-  readonly startDate: string;
-  readonly endDate: string;
-  readonly t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}: RangedPaneProps & { readonly t: ReturnType<typeof useTranslations> }): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["stock_institutional_flow", symbol, market],
@@ -1148,17 +1109,7 @@ function InstitutionalFlowPane({
   );
 }
 
-function ForeignHoldingPane({
-  symbol,
-  market,
-  startDate,
-  endDate,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-  readonly startDate: string;
-  readonly endDate: string;
-}): ReactNode {
+function ForeignHoldingPane({ symbol, market, startDate, endDate }: RangedPaneProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["stock_foreign_shareholding", symbol, market, startDate, endDate],
@@ -1194,13 +1145,7 @@ function BigHoldersPane({
   startDate,
   endDate,
   t,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-  readonly startDate: string;
-  readonly endDate: string;
-  readonly t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}: RangedPaneProps & { readonly t: ReturnType<typeof useTranslations> }): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
     queryKey: ["shareholder_dispersion_big_holders", symbol, market, startDate, endDate],

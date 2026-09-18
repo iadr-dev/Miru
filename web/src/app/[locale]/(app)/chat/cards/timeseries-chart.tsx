@@ -29,6 +29,7 @@ import {
 } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
 import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { resolveToken } from "@/lib/resolve-css-token";
 
 /** Field-name aliases each OHLC corner accepts, checked in order — covers every price-bearing
  * card type's own naming, not just the plain `open`/`high`/`low`/`close` most EOD-bar rows use.
@@ -141,24 +142,6 @@ const LINE_COLORS = [
   "var(--chart-5)",
   "var(--chart-6)",
 ];
-
-/** Resolves a CSS custom property to its computed color — `lightweight-charts` draws to canvas
- * and can't read `var(--chart-1)` itself, so the token has to be resolved to a real color string
- * before being handed to the chart's options. */
-function resolveToken(token: string): string {
-  if (typeof window === "undefined") {
-    return "#8a93a3";
-  }
-  const match = /var\((--[a-z0-9-]+)\)/.exec(token);
-  if (!match) {
-    return token;
-  }
-  const varName = match[1];
-  if (!varName) {
-    return token;
-  }
-  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || token;
-}
 
 /** Renders a candlestick-eligible timeseries card as a real price chart via `lightweight-charts`
  * (the one place in the chat surface that isn't plain React-rendered DOM, mirroring how the
