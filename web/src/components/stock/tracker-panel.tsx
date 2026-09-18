@@ -288,6 +288,28 @@ function LockedIdentityCell({ rank }: { readonly rank: number }): ReactNode {
   );
 }
 
+/** The masked-row's 4-column `<td>` set (identity + 3 locked values) — shared between
+ * `HoldingRankTable`/`WeightRankView` since both tables have the same "identity + 3 numeric
+ * columns" shape, just with different real-data columns when unlocked. */
+function LockedRowCells({ rank }: { readonly rank: number }): ReactNode {
+  return (
+    <>
+      <td className="px-2 py-1.5 text-[var(--text)]">
+        <LockedIdentityCell rank={rank} />
+      </td>
+      <td className="px-2 py-1.5 text-right font-num tabular-nums">
+        <LockedValueCell />
+      </td>
+      <td className="px-2 py-1.5 text-right font-num tabular-nums">
+        <LockedValueCell />
+      </td>
+      <td className="px-2 py-1.5 text-right font-num tabular-nums">
+        <LockedValueCell />
+      </td>
+    </>
+  );
+}
+
 function HoldingRankTable({
   rows,
   t,
@@ -317,20 +339,7 @@ function HoldingRankTable({
           {rows.map((row) => (
             <tr key={row.locked ? `locked-${row.rank}` : row.etf_symbol}>
               {row.locked || row.etf_symbol === null || row.shares === null ? (
-                <>
-                  <td className="px-2 py-1.5 text-[var(--text)]">
-                    <LockedIdentityCell rank={row.rank} />
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-num tabular-nums">
-                    <LockedValueCell />
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-num tabular-nums">
-                    <LockedValueCell />
-                  </td>
-                  <td className="px-2 py-1.5 text-right font-num tabular-nums">
-                    <LockedValueCell />
-                  </td>
-                </>
+                <LockedRowCells rank={row.rank} />
               ) : (
                 <>
                   <td className="px-2 py-1.5 text-[var(--text)]">
@@ -446,20 +455,7 @@ function WeightRankView({
             {rows.map((row) => (
               <tr key={row.locked ? `locked-${row.rank}` : row.etf_symbol}>
                 {row.locked || row.etf_symbol === null || row.weight_pct === null ? (
-                  <>
-                    <td className="px-2 py-1.5 text-[var(--text)]">
-                      <LockedIdentityCell rank={row.rank} />
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-num tabular-nums">
-                      <LockedValueCell />
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-num tabular-nums">
-                      <LockedValueCell />
-                    </td>
-                    <td className="px-2 py-1.5 text-right font-num tabular-nums">
-                      <LockedValueCell />
-                    </td>
-                  </>
+                  <LockedRowCells rank={row.rank} />
                 ) : (
                   <>
                     <td className="px-2 py-1.5 text-[var(--text)]">

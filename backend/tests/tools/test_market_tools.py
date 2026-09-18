@@ -1431,6 +1431,31 @@ async def test_get_etfs_holding_stock_ranks_by_shares_and_weight_with_deltas(
     assert output.weight_rank[1].weight_pct_delta is None
 
 
+def _write_2330_price_and_market_value(store: ParquetStore, day: date) -> None:
+    """The `TaiwanStockPrice`/`TaiwanStockMarketValue` partitions `_shares_outstanding_by_symbol`
+    reads to compute 2330's `stock_capital_pct` — shared by every `get_etfs_holding_stock` event
+    test below, none of which asserts on this figure directly."""
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        day,
+        [{"symbol": "2330", "trade_date": day.isoformat(), "close": 600.0}],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValue",
+        "TW",
+        day,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "trade_date": day.isoformat(),
+                "market_value": 600_000_000,
+            }
+        ],
+    )
+
+
 async def test_get_etfs_holding_stock_reports_position_open_and_close_events(
     tmp_path: Path,
 ) -> None:
@@ -1502,25 +1527,7 @@ async def test_get_etfs_holding_stock_reports_position_open_and_close_events(
             },
         ],
     )
-    store.write_partition(
-        "TaiwanStockPrice",
-        "TW",
-        day2,
-        [{"symbol": "2330", "trade_date": "2025-05-06", "close": 600.0}],
-    )
-    store.write_partition(
-        "TaiwanStockMarketValue",
-        "TW",
-        day2,
-        [
-            {
-                "symbol": "2330",
-                "market": "TW",
-                "trade_date": "2025-05-06",
-                "market_value": 600_000_000,
-            }
-        ],
-    )
+    _write_2330_price_and_market_value(store, day2)
     tool = GetEtfsHoldingStockTool(store)
 
     output = await tool.run(
@@ -1635,25 +1642,7 @@ async def test_get_etfs_holding_stock_reports_increase_and_decrease_events(
             },
         ],
     )
-    store.write_partition(
-        "TaiwanStockPrice",
-        "TW",
-        day2,
-        [{"symbol": "2330", "trade_date": "2025-05-06", "close": 600.0}],
-    )
-    store.write_partition(
-        "TaiwanStockMarketValue",
-        "TW",
-        day2,
-        [
-            {
-                "symbol": "2330",
-                "market": "TW",
-                "trade_date": "2025-05-06",
-                "market_value": 600_000_000,
-            }
-        ],
-    )
+    _write_2330_price_and_market_value(store, day2)
     tool = GetEtfsHoldingStockTool(store)
 
     output = await tool.run(
