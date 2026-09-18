@@ -32,6 +32,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_chip_flows": "chip_flows",
     "get_active_etf_report": "active_etf_report",
     "get_etf_money_flow": "etf_money_flow",
+    "get_etfs_holding_stock": "etfs_holding_stock",
     "get_daily_signal": "daily_signal",
     "get_advance_decline": "advance_decline",
     "get_index_contribution": "index_contribution",

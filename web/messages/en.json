@@ -1408,6 +1408,7 @@
       "financials": "Financials",
       "chipAnalysis": "Chip Analysis",
       "technical": "Technical",
+      "tracker": "Tracker",
       "summary": "Summary",
       "news": "News",
       "research": "Research",
@@ -1616,6 +1617,55 @@
       "empty": "No data for this range.",
       "collapse": "Collapse",
       "nonTradingCaveat": "Indicators and patterns describe the chart — not a trading instruction."
+    },
+    "tracker": {
+      "title": "ETF Holdings",
+      "sponsorLocked": "ETF holding detail is Sponsor-tier data",
+      "empty": "No active-management ETF currently holds this stock.",
+      "asOfLabel": "As of {date}",
+      "lotUnit": "lots",
+      "expandTo": "Show all {count}",
+      "collapse": "Collapse",
+      "subTab": {
+        "holdingRank": "Holding Rank",
+        "weightRank": "Weight Rank",
+        "positionEvents": "Position Events"
+      },
+      "holdingRank": {
+        "etf": "ETF",
+        "shares": "Shares Held",
+        "sharesDelta": "Change",
+        "stockCapitalPct": "% of Float",
+        "stockCapitalPctDelta": "% of Float Δ"
+      },
+      "weightRank": {
+        "etf": "ETF",
+        "weightPct": "Weight %",
+        "weightPctDelta": "Weight Δ%",
+        "quarterRange": "Trailing-Quarter Range",
+        "distributionTitle": "Weight Distribution",
+        "bucket": {
+          "0_2_5": "0-2.5%",
+          "2_5_5": "2.5-5%",
+          "5_7_5": "5-7.5%",
+          "7_5_10": "7.5-10%",
+          "10_plus": "10%+"
+        }
+      },
+      "positionEvents": {
+        "new": "New Position",
+        "removed": "Position Closed",
+        "increased": "Added",
+        "decreased": "Trimmed",
+        "countNew": "New",
+        "countRemoved": "Removed",
+        "date": "Date",
+        "etf": "ETF",
+        "sharesDelta": "Shares",
+        "empty": "No recent position-open/close/add/trim events.",
+        "countUnit": "ETFs"
+      },
+      "etfCount": "Held by {count} ETFs"
     },
     "chipAnalysis": {
       "title": "Chip Analysis",

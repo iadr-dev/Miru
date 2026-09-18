@@ -7,11 +7,11 @@ import pytest
 
 from dataaccess.router import DataAccessRouter
 from ingest.store import ParquetStore
-from schemas.enums import Capability, DataClass, Market, TimingClass
+from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
-from tools.base import ToolContext
+from tools.base import MaskedTeaser, ToolContext, dispatch_tool
 from tools.common import DateRangeInput, SymbolInput
 from tools.market_tools import (
     _CHIP_BROKER_MAX_TRADING_DAYS,
@@ -24,6 +24,8 @@ from tools.market_tools import (
     GetDividendScheduleTool,
     GetEtfMoneyFlowInput,
     GetEtfMoneyFlowTool,
+    GetEtfsHoldingStockInput,
+    GetEtfsHoldingStockTool,
     GetInstitutionalFlowTool,
     GetPriceQuoteTool,
     HoldingStatus,
@@ -1274,3 +1276,507 @@ async def test_get_company_profile_lists_field_missing_when_its_capability_fetch
     # The other enriched fields still succeeded and must not be dragged into missing_fields too.
     assert "per" not in output.missing_fields
     assert "eps" not in output.missing_fields
+
+
+async def test_get_etfs_holding_stock_reports_unavailable_when_store_has_no_partition(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    tool = GetEtfsHoldingStockTool(store)
+    assert tool.data_class is DataClass.SPONSOR
+
+    output = await tool.run(
+        GetEtfsHoldingStockInput(id="2330", market=Market.TW, as_of=date(2025, 5, 7)),
+        ToolContext(),
+    )
+
+    assert output.data_available is False
+    assert output.unavailable_reason is not None
+    assert output.holding_rank == ()
+
+
+async def test_get_etfs_holding_stock_reports_unavailable_when_no_etf_holds_it(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    trading_day = date(2025, 5, 7)
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        trading_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2454",
+                "component_stock_name": "聯發科",
+                "asset_type": "stock",
+                "shares": 1000,
+                "weight": 5.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    tool = GetEtfsHoldingStockTool(store)
+
+    output = await tool.run(
+        GetEtfsHoldingStockInput(id="2330", market=Market.TW, as_of=trading_day),
+        ToolContext(),
+    )
+
+    assert output.data_available is False
+    assert output.unavailable_reason is not None
+    assert "2330" in (output.unavailable_reason or "")
+
+
+async def test_get_etfs_holding_stock_ranks_by_shares_and_weight_with_deltas(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    prior_day = date(2025, 5, 6)
+    report_day = date(2025, 5, 7)
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        prior_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 100000,
+                "weight": 8.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        report_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 120000,
+                "weight": 9.2,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 50000,
+                "weight": 3.5,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        report_day,
+        [{"symbol": "2330", "trade_date": "2025-05-07", "close": 600.0}],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValue",
+        "TW",
+        report_day,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "market_value": 600_000_000,
+            }
+        ],
+    )
+    tool = GetEtfsHoldingStockTool(store)
+
+    output = await tool.run(
+        GetEtfsHoldingStockInput(id="2330", market=Market.TW, as_of=report_day),
+        ToolContext(),
+    )
+
+    assert output.data_available is True
+    assert output.as_of == report_day
+    assert output.prior_date == prior_day
+    # Holding rank sorted descending by shares — 00980A (120,000) before 00981A (50,000).
+    assert [row.etf_symbol for row in output.holding_rank] == ["00980A", "00981A"]
+    top = output.holding_rank[0]
+    assert top.shares == 120000
+    assert top.shares_delta == 20000  # 120,000 - 100,000 vs. the prior snapshot
+    # 170,000 combined shares / 1,000,000 shares-outstanding (600,000,000 market_value / 600 close)
+    assert top.stock_capital_pct == pytest.approx(17.0)
+    # Weight rank sorted descending by weight_pct — same two ETFs, weight order matches shares here.
+    assert [row.etf_symbol for row in output.weight_rank] == ["00980A", "00981A"]
+    assert output.weight_rank[0].weight_pct == pytest.approx(9.2)
+    assert output.weight_rank[0].weight_pct_delta == pytest.approx(1.2)  # 9.2 - 8.0
+    # 00981A has no prior-day row for 2330 — its delta must be None, never a fabricated 0.
+    assert output.weight_rank[1].weight_pct_delta is None
+
+
+async def test_get_etfs_holding_stock_reports_position_open_and_close_events(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    day1 = date(2025, 5, 5)
+    day2 = date(2025, 5, 6)
+    # Day 1: 00980A already holds 2330; 00981A does not exist for 2330 yet.
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        day1,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-05",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 100000,
+                "weight": 8.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    # Day 2: 00980A fully exits (清倉); 00981A newly opens a position (建倉).
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        day2,
+        [
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 30000,
+                "weight": 2.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        day2,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 0,
+                "sell": 100000,
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 30000,
+                "sell": 0,
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        day2,
+        [{"symbol": "2330", "trade_date": "2025-05-06", "close": 600.0}],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValue",
+        "TW",
+        day2,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "market_value": 600_000_000,
+            }
+        ],
+    )
+    tool = GetEtfsHoldingStockTool(store)
+
+    output = await tool.run(
+        GetEtfsHoldingStockInput(id="2330", market=Market.TW, as_of=day2),
+        ToolContext(),
+    )
+
+    assert output.data_available is True
+    events_by_etf = {e.etf_symbol: e for e in output.position_events}
+    assert events_by_etf["00980A"].event is HoldingStatus.REMOVED
+    assert events_by_etf["00980A"].shares_delta == -100000
+    assert events_by_etf["00981A"].event is HoldingStatus.NEW
+    assert events_by_etf["00981A"].shares_delta == 30000
+    assert output.position_event_counts.removed_count == 1
+    assert output.position_event_counts.new_count == 1
+    assert output.position_event_counts.increased_count == 0
+    assert output.position_event_counts.decreased_count == 0
+
+
+async def test_get_etfs_holding_stock_reports_increase_and_decrease_events(
+    tmp_path: Path,
+) -> None:
+    store = ParquetStore(root=tmp_path)
+    day1 = date(2025, 5, 5)
+    day2 = date(2025, 5, 6)
+    # Day 1: both ETFs already hold 2330.
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        day1,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-05",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 100000,
+                "weight": 8.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-05",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 50000,
+                "weight": 5.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    # Day 2: 00980A adds (加碼); 00981A trims (減碼) — both still held, no zero-crossing.
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        day2,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 120000,
+                "weight": 9.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 40000,
+                "weight": 4.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        day2,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 20000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 0,
+                "sell": 10000,
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        day2,
+        [{"symbol": "2330", "trade_date": "2025-05-06", "close": 600.0}],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValue",
+        "TW",
+        day2,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "trade_date": "2025-05-06",
+                "market_value": 600_000_000,
+            }
+        ],
+    )
+    tool = GetEtfsHoldingStockTool(store)
+
+    output = await tool.run(
+        GetEtfsHoldingStockInput(id="2330", market=Market.TW, as_of=day2),
+        ToolContext(),
+    )
+
+    assert output.data_available is True
+    assert output.etf_count == 2
+    events_by_etf = {e.etf_symbol: e for e in output.position_events}
+    assert events_by_etf["00980A"].event is HoldingStatus.INCREASED
+    assert events_by_etf["00980A"].shares_delta == 20000
+    assert events_by_etf["00981A"].event is HoldingStatus.DECREASED
+    assert events_by_etf["00981A"].shares_delta == -10000
+    assert output.position_event_counts.increased_count == 1
+    assert output.position_event_counts.decreased_count == 1
+    assert output.position_event_counts.new_count == 0
+    assert output.position_event_counts.removed_count == 0
+
+
+async def test_get_etfs_holding_stock_masks_rows_beyond_free_preview_for_unentitled_caller(
+    tmp_path: Path,
+) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (`Tier.FREE`) caller still gets
+    every row's real `etf_symbol`/`etf_name`/rank, but every row past the fixed free-preview
+    count has its value fields nulled server-side — the real number must never reach this
+    caller, not even inside the JSON body."""
+    store = ParquetStore(root=tmp_path)
+    day = date(2025, 5, 7)
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 300000,
+                "weight": 9.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00981A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 200000,
+                "weight": 7.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+            {
+                "symbol": "00982A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 100000,
+                "weight": 5.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        day,
+        [{"symbol": "2330", "trade_date": "2025-05-07", "close": 600.0}],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValue",
+        "TW",
+        day,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "market_value": 600_000_000,
+            }
+        ],
+    )
+    tool = GetEtfsHoldingStockTool(store)
+    input_args = GetEtfsHoldingStockInput(id="2330", market=Market.TW, as_of=day)
+
+    free_output = await tool.run(input_args, ToolContext(tier=Tier.FREE))
+    assert free_output.free_row_count == 2
+    assert free_output.etf_count == 3
+    # Top 2 rows (by shares) stay real, including identity; the 3rd is fully masked.
+    assert free_output.holding_rank[0].locked is False
+    assert free_output.holding_rank[0].etf_symbol == "00980A"
+    assert free_output.holding_rank[0].shares == 300000
+    assert free_output.holding_rank[1].locked is False
+    assert free_output.holding_rank[1].etf_symbol == "00981A"
+    assert free_output.holding_rank[1].shares == 200000
+    locked_row = free_output.holding_rank[2]
+    assert locked_row.locked is True
+    assert locked_row.rank == 3  # rank survives masking — the only thing that does
+    assert locked_row.etf_symbol is None  # identity is masked too, not just the value
+    assert locked_row.etf_name is None
+    assert locked_row.shares is None
+    assert locked_row.stock_capital_pct is None
+    assert free_output.weight_rank[2].locked is True
+    assert free_output.weight_rank[2].etf_symbol is None
+    assert free_output.weight_rank[2].weight_pct is None
+
+    premium_output = await tool.run(input_args, ToolContext(tier=Tier.PREMIUM))
+    assert premium_output.free_row_count == 3
+    assert all(not row.locked for row in premium_output.holding_rank)
+    assert premium_output.holding_rank[2].etf_symbol == "00982A"
+    assert premium_output.holding_rank[2].shares == 100000
+
+    # Through the real `dispatch_tool` gate: `supports_row_preview=True` means an unentitled
+    # caller gets the row-masked output above, never the whole-tool `MaskedTeaser` envelope.
+    dispatched = await dispatch_tool(tool, input_args, ToolContext(tier=Tier.FREE))
+    assert not isinstance(dispatched, MaskedTeaser)
+    assert dispatched.free_row_count == 2

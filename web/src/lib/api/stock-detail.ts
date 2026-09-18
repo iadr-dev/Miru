@@ -23,7 +23,9 @@ import {
   dividendPolicySummaryResponseSchema,
   dividendResultResponseSchema,
   type EsgScoreResponse,
+  type EtfsHoldingStockResponse,
   esgScoreResponseSchema,
+  etfsHoldingStockResponseSchema,
   type FinancialStatementResponse,
   type FinancialStatementType,
   type FinmindStockNewsResponse,
@@ -432,4 +434,19 @@ export async function getShareholderDispersion(
   const search = symbolDateSearchParams(symbol, market, params);
   const raw = await requestJson(`/stock/shareholder-dispersion?${search.toString()}`);
   return shareholderDispersionResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 23. GET /stock/etfs-holding-stock (Sponsor-tier) — 追蹤 tab's ETF持有 card
+// ---------------------------------------------------------------------------
+
+export async function getEtfsHoldingStock(
+  symbol: string,
+  market: Market,
+  asOf?: string,
+): Promise<EtfsHoldingStockResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  if (asOf) search.set("as_of", asOf);
+  const raw = await requestJson(`/stock/etfs-holding-stock?${search.toString()}`);
+  return etfsHoldingStockResponseSchema.parse(raw);
 }

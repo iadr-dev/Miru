@@ -11,19 +11,24 @@ import { FinancialsPanel } from "@/components/stock/financials-panel";
 import { ResearchChartsPanel } from "@/components/stock/research-charts-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
+import { TrackerPanel } from "@/components/stock/tracker-panel";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
-// The 9 tabs `docs/web/stock-detail.md` §2 specs for a TW STOCK. 基本資料/財務分析/籌碼分析/
-// 技術分析/相關新聞/研究圖表 have real backing — the rest render a calm "尚未支援" state via
-// `ComingSoon` rather than being hidden, so the roadmap stays visible without faking content for
-// tabs whose backend (AI-summary/SWOT, company-relationships) doesn't exist yet.
+// The 9 tabs `docs/web/stock-detail.md` §2 specs for a TW STOCK, plus 追蹤 (not in that doc —
+// added per a later reference-app-driven request; see `tracker-panel.tsx`'s own docstring for
+// the discrepancy with `docs/web/stock-detail/基本資料.md`'s smaller `EtfHoldersCard` plan).
+// 基本資料/財務分析/籌碼分析/技術分析/相關新聞/研究圖表/追蹤 have real backing — the rest render
+// a calm "尚未支援" state via `ComingSoon` rather than being hidden, so the roadmap stays visible
+// without faking content for tabs whose backend (AI-summary/SWOT, company-relationships)
+// doesn't exist yet.
 const STOCK_TABS = [
   "basicInfo",
   "industry",
   "financials",
   "chipAnalysis",
   "technical",
+  "tracker",
   "summary",
   "news",
   "research",
@@ -35,6 +40,7 @@ const BUILT_TABS: ReadonlySet<StockTab> = new Set([
   "financials",
   "chipAnalysis",
   "technical",
+  "tracker",
   "news",
   "research",
 ]);
@@ -92,6 +98,7 @@ export function StockTabBar({
       {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
       {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "technical" ? <TechnicalAnalysisPanel symbol={symbol} market={market} /> : null}
+      {tab === "tracker" ? <TrackerPanel symbol={symbol} market={market} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
       {tab === "research" ? <ResearchChartsPanel symbol={symbol} market={market} /> : null}
       {!BUILT_TABS.has(tab) ? (

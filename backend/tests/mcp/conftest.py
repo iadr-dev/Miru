@@ -50,6 +50,8 @@ class FakeTool:
         self.input_model: type[BaseModel] = FakeToolInput
         self.output_model: type[BaseModel] = FakeToolOutput
         self.data_class = data_class
+        self.card_type: str | None = None
+        self.supports_row_preview = False
         self._raises = raises
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:

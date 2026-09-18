@@ -60,6 +60,16 @@ adapter edge. It is a static property of the *data's provenance*, not a per-user
   (`{locked: true, required_tier, preview}`) — the frontend renders it **blurred/馬賽克 with
   an "upgrade to Premium/Pro" CTA badge**, never a hard error. See
   [modules/12](modules/12-multi-user-tiers.md).
+- **Top-N-preview exception (row-level, not tool-level):** a `sponsor` tool whose output is a
+  ranked row list (e.g. `get_etfs_holding_stock`) may declare a small `free_row_count` of its
+  own top rows as `public`-visible in the SAME response, with every row beyond that count
+  having its value fields nulled server-side (never the real number sent and merely hidden by
+  CSS) — the row's label/rank/shape stays real so the list still reads as a legitimate preview.
+  This is the `12-multi-user-tiers.md` §"top-N rows + a locked strip for a Sponsor table"
+  pattern; it is an explicit, per-tool, row-scoped exception to the otherwise all-or-nothing
+  masked-teaser gate above — a tool opts into it deliberately in its own output model, it is
+  never the default, and the *whole-tool* masked-teaser envelope still applies to any `sponsor`
+  tool that hasn't opted in.
 - `public` data (including live-ish/real-time from *free* sources and gov `*_MIS`) is freely
   callable by everyone and over MCP. Live observation no longer requires any approval.
 - `sponsor` tools are still exposed over MCP, but return the masked teaser unless the MCP
