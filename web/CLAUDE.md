@@ -178,6 +178,21 @@
   with zero open Sonar issues. Extract the shared visual/logic contract into one component in
   `components/ui/` (data plumbing stays local to each caller) rather than duplicating it — see
   `components/ui/month-grid-calendar.tsx` for the pattern.
+- **Cognitive-complexity cap, 15** (`S3776`) — a `useEffect`/function that draws N chart
+  series/overlays inline (e.g. a `lightweight-charts` setup effect) will blow past this fast.
+  Extract each independent drawing concern (moving averages, markers, a subpane, volume) into
+  its own named `draw*(chart, ...)` function called from the effect body, rather than one long
+  effect with a branch per overlay.
+- **No write-only collections** (`S4030`) — don't build up an array/ref across a function only to
+  clear its length or otherwise never read its contents; if nothing downstream inspects it, delete
+  the collection and the pushes into it.
+- **Prefer `.at(-1)` / `.at(n)` over `arr[arr.length - 1]`** (`S7755`).
+- **Extract a repeated inline union into a named `type` alias** (`S4323`) — e.g.
+  `"foreign" | "trust" | "dealer"` appearing in more than one `Record<...>`/param position should
+  become `type FooBucket = "foreign" | "trust" | "dealer"` once, reused everywhere.
+- **Apply these proactively while writing new code, not just when CI flags them** — every rule
+  above was first caught by a Sonar failure on a real PR; treat this list as a pre-submit
+  checklist for any new component, not a reactive fix-up after the gate fails.
 
 **Consequences of the strict flags (§1):** `noUncheckedIndexedAccess` means `arr[i]` / `record[k]` is
 170	`T | undefined` — **handle the `undefined`**, don't `!` it away. `exactOptionalPropertyTypes` (enable
