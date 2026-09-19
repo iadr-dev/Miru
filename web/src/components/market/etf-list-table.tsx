@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-list-sort";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -269,7 +269,7 @@ function EtfListRowItem({
           : "—"}
       </span>
       <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
-        {row.turnover !== null ? formatNumber(row.turnover, locale, { decimals: 0 }) : "—"}
+        {row.turnover !== null ? formatCompactNumber(row.turnover, locale) : "—"}
       </span>
       <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
         {row.return_1w_pct !== null
@@ -287,7 +287,7 @@ function EtfListRowItem({
         ) : null}
       </span>
       <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
-        {row.aum !== null ? formatNumber(row.aum, locale, { decimals: 0 }) : "—"}
+        {row.aum !== null ? formatCompactNumber(row.aum, locale) : "—"}
       </span>
       <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
         {row.expense_ratio_pct_approx !== null

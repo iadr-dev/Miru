@@ -1,5 +1,6 @@
 "use client";
 
+import { LockIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
@@ -50,6 +51,43 @@ export function DispositionStockCard({
   const ma5 = movingAverage(sparkline, 5);
   const ma10 = movingAverage(sparkline, 10);
   const ma20 = movingAverage(sparkline, 20);
+
+  if (card.locked) {
+    return (
+      <div className="flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+            <LockIcon size={13} weight="regular" aria-hidden />
+            <span aria-hidden>••••</span>
+            <span className="font-num text-[11px] tabular-nums">#{card.rank}</span>
+          </span>
+          <span
+            className={cn(
+              "shrink-0 rounded-[var(--radius-pill)] px-2 py-0.5 font-medium text-[11px]",
+              card.bucket === "at_risk" && "bg-[var(--surface-2)] text-[var(--warn)]",
+              card.bucket === "in_disposition" && "bg-[var(--surface-2)] text-[var(--down)]",
+              card.bucket === "exiting_soon" && "bg-[var(--surface-2)] text-[var(--up)]",
+            )}
+          >
+            {t(`bucket.${card.bucket}`)}
+          </span>
+        </div>
+        <dl className="mt-3 grid grid-cols-2 gap-y-1.5 text-[12px]">
+          <StatRow label={t("volume")} value="••••" />
+          <StatRow label={t("turnover")} value="••••" />
+          <StatRow label={t("institutionalNet")} value="••••" />
+          <StatRow label={t("marginRatio")} value="••••" />
+          <StatRow label={t("dayTradingRatio")} value="••••" />
+        </dl>
+        <p className="mt-1.5 text-[10.5px] text-[var(--text-muted)] leading-relaxed">
+          {t("projectionCaveat", {
+            window: ROLLING_WINDOW_TRADING_DAYS,
+            flags: ATTENTION_FLAGS_TO_DISPOSITION,
+          })}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">

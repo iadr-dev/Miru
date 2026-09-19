@@ -6,7 +6,6 @@ import { type ReactNode, useMemo, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DispositionStockCard } from "@/components/market/disposition-stock-card";
-import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { getDispositionBoard } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
@@ -37,21 +36,29 @@ export function DispositionBoardPanel({ market }: { readonly market: Market }): 
   return (
     <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <QueryState query={query} skeleton={<CardSkeletonBody height={420} />}>
-        {(data) => (
-          <SponsorGatedBody data={data} title={t("title")} unavailableCopy={t("unavailable")}>
-            {(data) => (
-              <DispositionBoardBody
-                bucket={bucket}
-                onBucketChange={setBucket}
-                search={search}
-                onSearchChange={setSearch}
-                bucketCounts={data.bucket_counts}
-                cards={data.cards}
-                market={market}
-              />
-            )}
-          </SponsorGatedBody>
-        )}
+        {(data) => {
+          if (!data.data_available) {
+            return (
+              <>
+                <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
+                <p className="mt-3 text-[13px] text-[var(--text-muted)]">
+                  {data.unavailable_reason ?? t("unavailable")}
+                </p>
+              </>
+            );
+          }
+          return (
+            <DispositionBoardBody
+              bucket={bucket}
+              onBucketChange={setBucket}
+              search={search}
+              onSearchChange={setSearch}
+              bucketCounts={data.bucket_counts}
+              cards={data.cards}
+              market={market}
+            />
+          );
+        }}
       </QueryState>
     </section>
   );
@@ -79,14 +86,16 @@ function DispositionBoardBody({
   const filteredCards = useMemo(() => {
     return cards.filter((card) => {
       if (card.bucket !== bucket) return false;
+      if (card.locked) return true;
       if (!query) return true;
       return (
-        card.symbol.toLowerCase().includes(query) || card.company_name.toLowerCase().includes(query)
+        (card.symbol?.toLowerCase().includes(query) ?? false) ||
+        (card.company_name?.toLowerCase().includes(query) ?? false)
       );
     });
   }, [cards, bucket, query]);
   const { quotes } = useSymbolQuotes(
-    filteredCards.map((card) => card.symbol),
+    filteredCards.map((card) => card.symbol).filter((s): s is string => s !== null),
     market,
   );
   const quoteBySymbol = new Map(quotes.map((q) => [q.code, q]));
@@ -133,9 +142,9 @@ function DispositionBoardBody({
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {filteredCards.map((card) => (
             <DispositionStockCard
-              key={card.symbol}
+              key={card.symbol ?? `locked-${card.bucket}-${card.rank}`}
               card={card}
-              sparkline={quoteBySymbol.get(card.symbol)?.sparkline ?? []}
+              sparkline={(card.symbol && quoteBySymbol.get(card.symbol)?.sparkline) || []}
             />
           ))}
         </div>

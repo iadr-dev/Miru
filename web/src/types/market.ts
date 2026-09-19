@@ -97,15 +97,17 @@ export type DayTradingResponse = z.infer<typeof dayTradingResponseSchema>;
 // ---------------------------------------------------------------------------
 
 export const etfMoneyFlowRowSchema = z.object({
-  component_stock_id: z.string(),
-  component_stock_name: z.string(),
+  rank: z.number().default(0),
+  component_stock_id: z.string().nullable(),
+  component_stock_name: z.string().nullable(),
   active_etf_holder_count: z.number().nullable().optional(),
   held_shares: z.number().nullable().optional(),
   held_market_value: z.number().nullable().optional(),
   stock_shares_held_pct: z.number().nullable().optional(),
-  net_shares_flow: z.number(),
-  buying_etf_count: z.number(),
-  selling_etf_count: z.number(),
+  net_shares_flow: z.number().nullable(),
+  buying_etf_count: z.number().nullable(),
+  selling_etf_count: z.number().nullable(),
+  locked: z.boolean().default(false),
 });
 export type EtfMoneyFlowRow = z.infer<typeof etfMoneyFlowRowSchema>;
 
@@ -118,10 +120,14 @@ export const etfMoneyFlowDataSchema = z.object({
   unavailable_reason: z.string().nullable().optional(),
   total_stock_count: z.number().default(0),
   stock_shares_held_pct_caveat: z.string(),
+  free_row_count: z.number().default(0),
   inflow_ranking: z.array(etfMoneyFlowRowSchema).default([]),
   outflow_ranking: z.array(etfMoneyFlowRowSchema).default([]),
 });
-export const etfMoneyFlowResponseSchema = z.union([etfMoneyFlowDataSchema, maskedTeaserSchema]);
+// No longer unioned with `maskedTeaserSchema` — `get_etf_money_flow` opted into governance.md
+// §4's row-preview exception (`supports_row_preview=True`), so an unentitled caller gets this
+// shape directly with `locked` rows, never a whole-tool `MaskedTeaser`.
+export const etfMoneyFlowResponseSchema = etfMoneyFlowDataSchema;
 export type EtfMoneyFlowResponse = z.infer<typeof etfMoneyFlowResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -129,19 +135,27 @@ export type EtfMoneyFlowResponse = z.infer<typeof etfMoneyFlowResponseSchema>;
 // ---------------------------------------------------------------------------
 
 export const industryChainMoneyFlowRowSchema = z.object({
+  rank: z.number().default(0),
   market: z.string(),
   trade_date: z.string(),
-  industry: z.string(),
-  sub_industry: z.string(),
-  stock_count: z.number(),
-  trading_volume: z.number(),
-  trading_money: z.number(),
-  trading_money_pct: z.number(),
+  is_total: z.boolean().default(false),
+  industry: z.string().nullable(),
+  sub_industry: z.string().nullable(),
+  stock_count: z.number().nullable(),
+  trading_volume: z.number().nullable(),
+  trading_money: z.number().nullable(),
+  trading_money_pct: z.number().nullable(),
+  locked: z.boolean().default(false),
 });
 export type IndustryChainMoneyFlowRow = z.infer<typeof industryChainMoneyFlowRowSchema>;
 
-export const industryFlowDataSchema = rowsOutputSchema(industryChainMoneyFlowRowSchema);
-export const industryFlowResponseSchema = z.union([industryFlowDataSchema, maskedTeaserSchema]);
+export const industryFlowDataSchema = rowsOutputSchema(industryChainMoneyFlowRowSchema).extend({
+  free_row_count: z.number().default(0),
+});
+// No longer unioned with `maskedTeaserSchema` — `get_industry_money_flow` opted into
+// governance.md §4's row-preview exception (`supports_row_preview=True`), so an unentitled
+// caller gets this shape directly with `locked` rows, never a whole-tool `MaskedTeaser`.
+export const industryFlowResponseSchema = industryFlowDataSchema;
 export type IndustryFlowResponse = z.infer<typeof industryFlowResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -576,13 +590,15 @@ export const holderWindowSchema = z.union([z.literal(1), z.literal(2), z.literal
 export type HolderWindow = z.infer<typeof holderWindowSchema>;
 
 export const holderAccumulationRowSchema = z.object({
-  symbol: z.string(),
-  stock_name: z.string(),
+  rank: z.number().default(0),
+  symbol: z.string().nullable(),
+  stock_name: z.string().nullable(),
   latest_close: z.number().nullable(),
-  percent_of_custody_before: z.number(),
-  percent_of_custody_after: z.number(),
-  percent_of_custody_change: z.number(),
-  shares_change: z.number(),
+  percent_of_custody_before: z.number().nullable(),
+  percent_of_custody_after: z.number().nullable(),
+  percent_of_custody_change: z.number().nullable(),
+  shares_change: z.number().nullable(),
+  locked: z.boolean().default(false),
 });
 export type HolderAccumulationRow = z.infer<typeof holderAccumulationRowSchema>;
 
@@ -593,13 +609,15 @@ export const holderAccumulationDataSchema = z.object({
   as_of: z.string().nullable(),
   period_ago: z.string().nullable(),
   data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  free_row_count: z.number().default(0),
   rows: z.array(holderAccumulationRowSchema).default([]),
 });
 export type HolderAccumulationData = z.infer<typeof holderAccumulationDataSchema>;
-export const holderAccumulationResponseSchema = z.union([
-  holderAccumulationDataSchema,
-  maskedTeaserSchema,
-]);
+// No longer unioned with `maskedTeaserSchema` — `get_holder_accumulation` opted into
+// governance.md §4's row-preview exception (`supports_row_preview=True`), so an unentitled
+// caller gets this shape directly with `locked` rows, never a whole-tool `MaskedTeaser`.
+export const holderAccumulationResponseSchema = holderAccumulationDataSchema;
 export type HolderAccumulationResponse = z.infer<typeof holderAccumulationResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -639,11 +657,13 @@ export type AdvanceDeclineResponse = z.infer<typeof advanceDeclineResponseSchema
 // ---------------------------------------------------------------------------
 
 export const indexContributionRowSchema = z.object({
-  symbol: z.string(),
-  stock_name: z.string(),
-  weight_per: z.number(),
-  pct_change: z.number(),
-  contribution_estimate: z.number(),
+  rank: z.number().default(0),
+  symbol: z.string().nullable(),
+  stock_name: z.string().nullable(),
+  weight_per: z.number().nullable(),
+  pct_change: z.number().nullable(),
+  contribution_estimate: z.number().nullable(),
+  locked: z.boolean().default(false),
 });
 export type IndexContributionRow = z.infer<typeof indexContributionRowSchema>;
 
@@ -654,14 +674,15 @@ export const indexContributionDataSchema = z.object({
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable(),
   contribution_caveat: z.string(),
+  free_row_count: z.number().default(0),
   positive_contributors: z.array(indexContributionRowSchema).default([]),
   negative_contributors: z.array(indexContributionRowSchema).default([]),
 });
 export type IndexContributionData = z.infer<typeof indexContributionDataSchema>;
-export const indexContributionResponseSchema = z.union([
-  indexContributionDataSchema,
-  maskedTeaserSchema,
-]);
+// No longer unioned with `maskedTeaserSchema` — `get_index_contribution` opted into
+// governance.md §4's row-preview exception (`supports_row_preview=True`), so an unentitled
+// caller gets this shape directly with `locked` rows, never a whole-tool `MaskedTeaser`.
+export const indexContributionResponseSchema = indexContributionDataSchema;
 export type IndexContributionResponse = z.infer<typeof indexContributionResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -1029,24 +1050,27 @@ export const holdingStatusSchema = z.enum(HOLDING_STATUSES);
 export type HoldingStatus = z.infer<typeof holdingStatusSchema>;
 
 export const dailySignalRowSchema = z.object({
-  component_stock_id: z.string(),
-  component_stock_name: z.string(),
+  rank: z.number().default(0),
+  component_stock_id: z.string().nullable(),
+  component_stock_name: z.string().nullable(),
   close: z.number().nullable(),
   change_pct: z.number().nullable(),
   status: holdingStatusSchema,
-  shares_delta: z.number(),
+  shares_delta: z.number().nullable(),
   pct_change: z.number().nullable(),
-  buying_etf_count: z.number(),
-  selling_etf_count: z.number(),
+  buying_etf_count: z.number().nullable(),
+  selling_etf_count: z.number().nullable(),
+  locked: z.boolean().default(false),
 });
 export type DailySignalRow = z.infer<typeof dailySignalRowSchema>;
 
 export const dailySignalHighlightSchema = z.object({
-  component_stock_id: z.string(),
-  component_stock_name: z.string(),
+  component_stock_id: z.string().nullable(),
+  component_stock_name: z.string().nullable(),
   held_market_value_delta: z.number().nullable(),
-  buying_etf_count: z.number(),
-  selling_etf_count: z.number(),
+  buying_etf_count: z.number().nullable(),
+  selling_etf_count: z.number().nullable(),
+  locked: z.boolean().default(false),
 });
 export type DailySignalHighlight = z.infer<typeof dailySignalHighlightSchema>;
 
@@ -1061,11 +1085,15 @@ export const dailySignalDataSchema = z.object({
   removed_count: z.number().default(0),
   increased_count: z.number().default(0),
   decreased_count: z.number().default(0),
+  free_row_count: z.number().default(0),
   top_inflow: dailySignalHighlightSchema.nullable(),
   top_outflow: dailySignalHighlightSchema.nullable(),
   rows: z.array(dailySignalRowSchema).default([]),
 });
-export const dailySignalResponseSchema = z.union([dailySignalDataSchema, maskedTeaserSchema]);
+// No longer unioned with `maskedTeaserSchema` — `get_daily_signal` opted into governance.md §4's
+// row-preview exception (`supports_row_preview=True`), so an unentitled caller gets this shape
+// directly with `locked` rows/highlights, never a whole-tool `MaskedTeaser`.
+export const dailySignalResponseSchema = dailySignalDataSchema;
 export type DailySignalResponse = z.infer<typeof dailySignalResponseSchema>;
 
 // ---------------------------------------------------------------------------
@@ -1192,10 +1220,11 @@ export const dispositionBucketSchema = z.enum(DISPOSITION_BUCKETS);
 export type DispositionBucket = z.infer<typeof dispositionBucketSchema>;
 
 export const dispositionBoardCardRowSchema = z.object({
-  symbol: z.string(),
+  rank: z.number().default(0),
+  symbol: z.string().nullable(),
   market: z.string(),
-  company_name: z.string(),
-  security_type: z.string(),
+  company_name: z.string().nullable(),
+  security_type: z.string().nullable(),
   close: z.number().nullable(),
   change_pct: z.number().nullable(),
   volume: z.number().nullable(),
@@ -1215,6 +1244,7 @@ export const dispositionBoardCardRowSchema = z.object({
   estimated_days_until_disposition: z.number().nullable(),
   days_until_exiting: z.number().nullable(),
   projection_caveat: z.string(),
+  locked: z.boolean().default(false),
 });
 export type DispositionBoardCardRow = z.infer<typeof dispositionBoardCardRowSchema>;
 
@@ -1224,13 +1254,14 @@ export const dispositionBoardDataSchema = z.object({
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable().optional(),
   bucket_counts: z.record(z.string(), z.number()).default({}),
+  free_row_count: z.number().default(0),
   cards: z.array(dispositionBoardCardRowSchema).default([]),
 });
 export type DispositionBoardData = z.infer<typeof dispositionBoardDataSchema>;
-export const dispositionBoardResponseSchema = z.union([
-  dispositionBoardDataSchema,
-  maskedTeaserSchema,
-]);
+// No longer unioned with `maskedTeaserSchema` — `get_disposition_board` opted into
+// governance.md §4's row-preview exception (`supports_row_preview=True`), so an unentitled
+// caller gets this shape directly with `locked` cards, never a whole-tool `MaskedTeaser`.
+export const dispositionBoardResponseSchema = dispositionBoardDataSchema;
 export type DispositionBoardResponse = z.infer<typeof dispositionBoardResponseSchema>;
 
 // ---------------------------------------------------------------------------

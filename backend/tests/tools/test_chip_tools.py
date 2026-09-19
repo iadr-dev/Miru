@@ -119,6 +119,53 @@ async def test_get_industry_money_flow_resolves_real_latest_trading_day_when_omi
     assert output.rows[0].industry == "半導體業"
 
 
+async def test_get_industry_money_flow_masks_rows_beyond_free_preview_for_free_tier(
+    tmp_path: Path,
+) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
+    `_INDUSTRY_MONEY_FLOW_FREE_ROW_COUNT` chain-TOTAL rows real, everything else with identity/
+    value fields nulled and `locked=True` — chain totals and sub-industry breakdown rows rank
+    (and mask) as two separate groups, distinguished by the masking-surviving `is_total` flag."""
+    store = ParquetStore(root=tmp_path)
+    store.write_partition(
+        "TaiwanStockPrice", "TW", date(2026, 9, 7), [{"symbol": "2330", "trade_date": "2026-09-07"}]
+    )
+    symbol = Symbol(id="", market=Market.TW)
+    rows = [
+        {
+            "market": "TW",
+            "trade_date": "2026-09-07",
+            "industry": industry,
+            "sub_industry": "",
+            "stock_count": 10,
+            "trading_volume": 100,
+            "trading_money": 1000.0,
+            "trading_money_pct": pct,
+        }
+        for industry, pct in [("半導體業", 30.0), ("電腦及週邊設備業", 20.0), ("通信網路業", 10.0)]
+    ]
+    router, _ = make_router(symbol, {Capability.INDUSTRY_CHAIN_MONEY_FLOW: _result({"rows": rows})})
+    tool = GetIndustryMoneyFlowTool(router, store)
+    assert tool.supports_row_preview is True
+
+    output = await tool.run(MarketOnlyInput(market=Market.TW), ToolContext(tier=Tier.FREE))
+
+    assert output.free_row_count == 2
+    assert len(output.rows) == 3
+    free_rows = [row for row in output.rows if row.rank <= 2]
+    locked_rows = [row for row in output.rows if row.rank > 2]
+    assert len(free_rows) == 2
+    assert len(locked_rows) == 1
+    for row in free_rows:
+        assert row.locked is False
+        assert row.industry is not None
+    locked_row = locked_rows[0]
+    assert locked_row.locked is True
+    assert locked_row.industry is None
+    assert locked_row.is_total is True
+    assert locked_row.trading_money_pct is None
+
+
 async def test_get_industry_money_flow_never_overrides_an_explicit_start_date(
     tmp_path: Path,
 ) -> None:

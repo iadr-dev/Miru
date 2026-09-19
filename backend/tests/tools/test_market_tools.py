@@ -26,6 +26,10 @@ from tools.market_tools import (
     GetEtfMoneyFlowTool,
     GetEtfsHoldingStockInput,
     GetEtfsHoldingStockTool,
+    GetHolderAccumulationInput,
+    GetHolderAccumulationTool,
+    GetIndexContributionInput,
+    GetIndexContributionTool,
     GetInstitutionalFlowTool,
     GetPriceQuoteTool,
     HoldingStatus,
@@ -826,7 +830,7 @@ async def test_get_etf_money_flow_reports_unavailable_when_store_has_no_partitio
         GetEtfMoneyFlowInput(
             market=Market.TW, start_date=date(2025, 5, 5), end_date=date(2025, 5, 7)
         ),
-        ToolContext(),
+        ToolContext(tier=Tier.PREMIUM),
     )
 
     assert output.data_available is False
@@ -919,7 +923,7 @@ async def test_get_etf_money_flow_aggregates_across_etfs_and_ranks_flows(tmp_pat
 
     output = await tool.run(
         GetEtfMoneyFlowInput(market=Market.TW, start_date=trading_day, end_date=trading_day),
-        ToolContext(),
+        ToolContext(tier=Tier.PREMIUM),
     )
 
     assert output.data_available is True
@@ -1003,7 +1007,7 @@ async def test_get_etf_money_flow_falls_back_to_latest_ingested_holding_day(
 
     output = await tool.run(
         GetEtfMoneyFlowInput(market=Market.TW, start_date=lagging_day, end_date=lagging_day),
-        ToolContext(),
+        ToolContext(tier=Tier.PREMIUM),
     )
 
     assert output.data_available is True
@@ -1016,6 +1020,72 @@ async def test_get_etf_money_flow_falls_back_to_latest_ingested_holding_day(
     assert row.active_etf_holder_count == 1
 
 
+async def test_get_etf_money_flow_masks_rows_beyond_free_preview_for_free_tier(
+    tmp_path: Path,
+) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
+    `_ETF_MONEY_FLOW_FREE_ROW_COUNT` rows of each ranking real, everything else with identity/
+    value fields nulled and `locked=True`."""
+    store = ParquetStore(root=tmp_path)
+    trading_day = date(2025, 5, 7)
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        trading_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 30000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2454",
+                "component_stock_name": "聯發科",
+                "buy": 20000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2317",
+                "component_stock_name": "鴻海",
+                "buy": 10000,
+                "sell": 0,
+            },
+        ],
+    )
+    tool = GetEtfMoneyFlowTool(store)
+    assert tool.supports_row_preview is True
+
+    output = await tool.run(
+        GetEtfMoneyFlowInput(market=Market.TW, start_date=trading_day, end_date=trading_day),
+        ToolContext(tier=Tier.FREE),
+    )
+
+    assert output.data_available is True
+    assert output.free_row_count == 2
+    assert len(output.inflow_ranking) == 3
+    free_rows = [row for row in output.inflow_ranking if row.rank <= 2]
+    locked_rows = [row for row in output.inflow_ranking if row.rank > 2]
+    assert len(free_rows) == 2
+    assert len(locked_rows) == 1
+    for row in free_rows:
+        assert row.locked is False
+        assert row.component_stock_id is not None
+    locked_row = locked_rows[0]
+    assert locked_row.locked is True
+    assert locked_row.component_stock_id is None
+    assert locked_row.net_shares_flow is None
+
+
 async def test_get_daily_signal_reports_unavailable_when_store_has_no_partition(
     tmp_path: Path,
 ) -> None:
@@ -1024,7 +1094,8 @@ async def test_get_daily_signal_reports_unavailable_when_store_has_no_partition(
     assert tool.data_class is DataClass.SPONSOR
 
     output = await tool.run(
-        GetDailySignalInput(market=Market.TW, trade_date=date(2025, 5, 7)), ToolContext()
+        GetDailySignalInput(market=Market.TW, trade_date=date(2025, 5, 7)),
+        ToolContext(tier=Tier.PREMIUM),
     )
 
     assert output.data_available is False
@@ -1172,7 +1243,8 @@ async def test_get_daily_signal_classifies_status_across_all_etfs_combined(
     tool = GetDailySignalTool(store)
 
     output = await tool.run(
-        GetDailySignalInput(market=Market.TW, trade_date=report_day), ToolContext()
+        GetDailySignalInput(market=Market.TW, trade_date=report_day),
+        ToolContext(tier=Tier.PREMIUM),
     )
 
     assert output.data_available is True
@@ -1196,6 +1268,115 @@ async def test_get_daily_signal_classifies_status_across_all_etfs_combined(
     assert output.top_inflow.held_market_value_delta == pytest.approx(30000 * 600.0)
     assert output.top_outflow is not None
     assert output.top_outflow.component_stock_id == "9999"
+
+
+async def test_get_daily_signal_masks_rows_and_highlights_beyond_free_preview_for_free_tier(
+    tmp_path: Path,
+) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
+    `_DAILY_SIGNAL_FREE_ROW_COUNT` rows real, everything else with identity/value fields nulled
+    and `locked=True` — and both 焦點股 highlights locked entirely, never counted against the
+    free-row budget."""
+    store = ParquetStore(root=tmp_path)
+    prior_day = date(2025, 6, 2)
+    report_day = date(2025, 6, 3)
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        prior_day,
+        [
+            {
+                "symbol": "00982A",
+                "market": "TW",
+                "trade_date": "2025-06-02",
+                "component_stock_id": "2308",
+                "component_stock_name": "台達電",
+                "asset_type": "stock",
+                "shares": 60000,
+                "weight": 4.0,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHolding",
+        "TW",
+        report_day,
+        [
+            {
+                "symbol": "00982A",
+                "market": "TW",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "2308",
+                "component_stock_name": "台達電",
+                "asset_type": "stock",
+                "shares": 70000,
+                "weight": 4.5,
+                "market_value": 0.0,
+                "currency": "TWD",
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        report_day,
+        [
+            {
+                "symbol": "00982A",
+                "market": "TW",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "2308",
+                "component_stock_name": "台達電",
+                "buy": 10000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00982A",
+                "market": "TW",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "3034",
+                "component_stock_name": "聯詠",
+                "buy": 8000,
+                "sell": 0,
+            },
+            {
+                "symbol": "00982A",
+                "market": "TW",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "2379",
+                "component_stock_name": "瑞昱",
+                "buy": 5000,
+                "sell": 0,
+            },
+        ],
+    )
+    tool = GetDailySignalTool(store)
+    assert tool.supports_row_preview is True
+
+    output = await tool.run(
+        GetDailySignalInput(market=Market.TW, trade_date=report_day), ToolContext(tier=Tier.FREE)
+    )
+
+    assert output.data_available is True
+    assert output.free_row_count == 2
+    assert len(output.rows) == 3
+    free_rows = [row for row in output.rows if row.rank <= 2]
+    locked_rows = [row for row in output.rows if row.rank > 2]
+    assert len(free_rows) == 2
+    assert len(locked_rows) == 1
+    for row in free_rows:
+        assert row.locked is False
+        assert row.component_stock_id is not None
+    locked_row = locked_rows[0]
+    assert locked_row.locked is True
+    assert locked_row.component_stock_id is None
+    assert locked_row.component_stock_name is None
+    assert locked_row.shares_delta is None
+    assert output.top_inflow is not None
+    assert output.top_inflow.locked is True
+    assert output.top_inflow.component_stock_id is None
 
 
 def _profile_result() -> SourceResult:
@@ -1838,3 +2019,180 @@ async def test_get_etfs_holding_stock_masks_rows_beyond_free_preview_for_unentit
     dispatched = await dispatch_tool(tool, input_args, ToolContext(tier=Tier.FREE))
     assert not isinstance(dispatched, MaskedTeaser)
     assert dispatched.free_row_count == 2
+
+
+async def test_get_holder_accumulation_masks_rows_beyond_free_preview_for_free_tier(
+    tmp_path: Path,
+) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
+    `_HOLDER_ACCUMULATION_FREE_ROW_COUNT` rows real, everything else with identity/value fields
+    nulled and `locked=True`."""
+    store = ParquetStore(root=tmp_path)
+    week_ago = date(2026, 8, 14)
+    this_week = date(2026, 8, 21)
+    store.write_partition(
+        "TaiwanStockHoldingSharesPer",
+        "TW",
+        week_ago,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "holding_shares_level": "400,001-600,000",
+                "people": 1,
+                "percent": 10.0,
+                "unit": 500_000,
+            }
+            for symbol in ("2330", "2454", "2317")
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockHoldingSharesPer",
+        "TW",
+        this_week,
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "holding_shares_level": "400,001-600,000",
+                "people": 1,
+                "percent": 30.0,
+                "unit": 700_000,
+            },
+            {
+                "symbol": "2454",
+                "market": "TW",
+                "holding_shares_level": "400,001-600,000",
+                "people": 1,
+                "percent": 20.0,
+                "unit": 650_000,
+            },
+            {
+                "symbol": "2317",
+                "market": "TW",
+                "holding_shares_level": "400,001-600,000",
+                "people": 1,
+                "percent": 15.0,
+                "unit": 600_000,
+            },
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockInfo",
+        "TW",
+        this_week,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "name": name,
+                "industry_category": "半導體業",
+                "security_type": "twse",
+                "as_of": "2026-08-21",
+            }
+            for symbol, name in [("2330", "台積電"), ("2454", "聯發科"), ("2317", "鴻海")]
+        ],
+    )
+    tool = GetHolderAccumulationTool(store)
+    assert tool.supports_row_preview is True
+
+    output = await tool.run(
+        GetHolderAccumulationInput(market=Market.TW, threshold=400, window=1, as_of=this_week),
+        ToolContext(tier=Tier.FREE),
+    )
+
+    assert output.data_available is True
+    assert output.free_row_count == 2
+    assert len(output.rows) == 3
+    free_rows = [row for row in output.rows if row.rank <= 2]
+    locked_rows = [row for row in output.rows if row.rank > 2]
+    assert len(free_rows) == 2
+    assert len(locked_rows) == 1
+    for row in free_rows:
+        assert row.locked is False
+        assert row.symbol is not None
+    locked_row = locked_rows[0]
+    assert locked_row.locked is True
+    assert locked_row.symbol is None
+    assert locked_row.percent_of_custody_change is None
+
+
+async def test_get_index_contribution_masks_rows_beyond_free_preview_for_free_tier(
+    tmp_path: Path,
+) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
+    `_INDEX_CONTRIBUTION_FREE_ROW_COUNT` rows of each side (positive/negative) real, everything
+    else with identity/value fields nulled and `locked=True` — the budget is per side."""
+    store = ParquetStore(root=tmp_path)
+    trade_day = date(2025, 5, 7)
+    prior_day = date(2025, 5, 6)
+    positives = [
+        ("2330", "台積電", 600.0, 500.0),
+        ("2454", "聯發科", 900.0, 800.0),
+        ("2303", "聯電", 160.0, 150.0),
+    ]
+    negatives = [
+        ("2317", "鴻海", 100.0, 120.0),
+        ("2308", "台達電", 200.0, 250.0),
+        ("2891", "中信金", 30.0, 40.0),
+    ]
+    all_symbols = positives + negatives
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        trade_day,
+        [
+            {"symbol": sym, "trade_date": trade_day.isoformat(), "close": close}
+            for sym, _, close, _ in all_symbols
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        prior_day,
+        [
+            {"symbol": sym, "trade_date": prior_day.isoformat(), "close": prior_close}
+            for sym, _, _, prior_close in all_symbols
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockMarketValueWeight",
+        "TW",
+        trade_day,
+        [
+            {
+                "symbol": sym,
+                "market": "TW",
+                "trade_date": trade_day.isoformat(),
+                "rank": i,
+                "stock_name": name,
+                "weight_per": 5.0,
+                "listing_type": "twse",
+            }
+            for i, (sym, name, _, _) in enumerate(all_symbols, start=1)
+        ],
+    )
+    tool = GetIndexContributionTool(store)
+    assert tool.supports_row_preview is True
+
+    output = await tool.run(
+        GetIndexContributionInput(market=Market.TW, trade_date=trade_day),
+        ToolContext(tier=Tier.FREE),
+    )
+
+    assert output.data_available is True
+    assert output.free_row_count == 2
+    assert len(output.positive_contributors) == 3
+    assert len(output.negative_contributors) == 3
+    for contributors in (output.positive_contributors, output.negative_contributors):
+        free_rows = [row for row in contributors if row.rank <= 2]
+        locked_rows = [row for row in contributors if row.rank > 2]
+        assert len(free_rows) == 2
+        assert len(locked_rows) == 1
+        for row in free_rows:
+            assert row.locked is False
+            assert row.symbol is not None
+        locked_row = locked_rows[0]
+        assert locked_row.locked is True
+        assert locked_row.symbol is None
+        assert locked_row.contribution_estimate is None

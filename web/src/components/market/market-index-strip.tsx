@@ -1,11 +1,10 @@
 "use client";
 
-import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, CaretRightIcon, LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useRef } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import {
   getFuturesSnapshot,
   getMarketIndexStrip,
@@ -32,9 +31,10 @@ type SponsorItem =
  * TW-tab ticker strip — 加權指數/櫃買指數/美元/黃金/原油 (public, `get_market_index_strip`) plus
  * 半導體業/台指期/VIX (Sponsor-tier, existing `get_tick_snapshot`/`get_futures_snapshot`/
  * `get_taiex_vix` tools) in one horizontal scrollable row, mirroring a market-data ticker strip
- * (name + value + change/%change per item). The 3 Sponsor items render through `SponsorTeaser`
- * when unentitled — masked individually, never the whole strip — the same mixed public/masked
- * pattern `BreadthOrderBookCard` already uses for its own two sub-sections.
+ * (name + value + change/%change per item). The 3 Sponsor items render a compact locked chip
+ * (`LockedStripItem`) when unentitled — masked individually, never the whole strip — sized to fit
+ * this row's ~128px chips rather than `SponsorTeaser`'s panel-sized lock+preview+CTA layout,
+ * which overflowed this narrow a container.
  */
 export function MarketIndexStrip(): ReactNode {
   const t = useTranslations("market.cards.indexStrip");
@@ -196,21 +196,29 @@ function SponsorStripItem({
     );
   }
   if (isMaskedTeaser(item)) {
-    return (
-      <div className="min-w-[128px] shrink-0">
-        <SponsorTeaser headline={label} preview={item.preview} requiredTier={item.required_tier}>
-          <div className="flex flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
-            <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
-            <span className="font-num text-[15px] text-[var(--text)] tabular-nums">— —</span>
-          </div>
-        </SponsorTeaser>
-      </div>
-    );
+    return <LockedStripItem label={label} />;
   }
   return (
     <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
       <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
       <StripItemValue value={item.value} changePct={item.changePct} />
+    </div>
+  );
+}
+
+/** Compact locked chip for one Sponsor-tier ticker item — same footprint as `PublicStripItem`/
+ * the real `SponsorStripItem` body (label + one value line), just with a lock icon + "••••" in
+ * place of the real value, never `SponsorTeaser`'s panel-sized lock+preview+CTA layout. */
+function LockedStripItem({ label }: { readonly label: string }): ReactNode {
+  return (
+    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+      <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
+      <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
+        <LockIcon size={11} weight="regular" aria-hidden />
+        <span aria-hidden className="font-num text-[15px] tabular-nums">
+          ••••
+        </span>
+      </span>
     </div>
   );
 }

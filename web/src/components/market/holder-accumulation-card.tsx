@@ -1,5 +1,6 @@
 "use client";
 
+import { LockIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
@@ -176,55 +177,83 @@ function HolderAccumulationRows({
         <span className="text-right">{t("percentChange")}</span>
       </div>
       <ul className="divide-y divide-[var(--border)]">
-        {rows.map((row, index) => {
-          const up = row.percent_of_custody_change >= 0;
-          const color = up ? "var(--up)" : "var(--down)";
-          return (
-            <li
-              key={row.symbol}
-              role="group"
-              aria-label={`${row.stock_name} ${row.symbol} ${up ? "▲" : "▼"} ${formatNumber(Math.abs(row.percent_of_custody_change), "zh-TW", { decimals: 2 })} pp`}
-              className={cn("grid items-center gap-2.5 py-1.5", ROW_GRID_COLS)}
-            >
-              <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
-                {index + 1}
-              </span>
-              <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
-                {row.stock_name}
-                <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
-                {row.latest_close !== null ? (
-                  <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">
-                    {formatNumber(row.latest_close, "zh-TW", { decimals: 1 })}
-                  </span>
-                ) : null}
-              </span>
-              <span aria-hidden className="text-right font-num text-[12px] tabular-nums">
-                <span className="text-[var(--text-muted)]">
-                  {row.percent_of_custody_before.toFixed(2)}%
-                </span>
-                <span className="text-[var(--text-muted)]"> → </span>
-                <span style={{ color }}>{row.percent_of_custody_after.toFixed(2)}%</span>
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[12px] tabular-nums"
-                style={{ color }}
-              >
-                {up ? "+" : ""}
-                {formatNumber(row.shares_change / 1000, "zh-TW", { decimals: 1 })}萬張
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[13px] tabular-nums"
-                style={{ color }}
-              >
-                {up ? "▲" : "▼"}
-                {formatNumber(Math.abs(row.percent_of_custody_change), "zh-TW", { decimals: 2 })}%
-              </span>
-            </li>
-          );
-        })}
+        {rows.map((row) =>
+          row.locked ? (
+            <LockedHolderAccumulationRow key={row.rank} rank={row.rank} />
+          ) : (
+            <HolderAccumulationRowItem key={row.symbol} row={row} />
+          ),
+        )}
       </ul>
     </>
+  );
+}
+
+/** governance.md §4 top-N-preview exception's row-level lock: every field but `rank` is nulled
+ * server-side for a `locked` row — mirrors `daily-signal-table.tsx`'s own locked-row pattern for
+ * this card's 5-column grid. */
+function LockedHolderAccumulationRow({ rank }: { readonly rank: number }): ReactNode {
+  return (
+    <li className={cn("grid items-center gap-2.5 py-1.5", ROW_GRID_COLS)}>
+      <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
+        {rank}
+      </span>
+      <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+        <LockIcon size={11} weight="regular" aria-hidden />
+        <span aria-hidden>••••</span>
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span aria-hidden className="text-right text-[13px] text-[var(--text-muted)]">
+        ••••
+      </span>
+    </li>
+  );
+}
+
+/** One real (never-locked) row — split out of `HolderAccumulationRows` so that component's own
+ * `.map` stays a simple locked/unlocked branch. */
+function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRow }): ReactNode {
+  const change = row.percent_of_custody_change ?? 0;
+  const up = change >= 0;
+  const color = up ? "var(--up)" : "var(--down)";
+  return (
+    <li
+      role="group"
+      aria-label={`${row.stock_name} ${row.symbol} ${up ? "▲" : "▼"} ${formatNumber(Math.abs(change), "zh-TW", { decimals: 2 })} pp`}
+      className={cn("grid items-center gap-2.5 py-1.5", ROW_GRID_COLS)}
+    >
+      <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
+        {row.rank}
+      </span>
+      <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+        {row.stock_name}
+        <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
+        {row.latest_close !== null ? (
+          <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">
+            {formatNumber(row.latest_close, "zh-TW", { decimals: 1 })}
+          </span>
+        ) : null}
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] tabular-nums">
+        <span className="text-[var(--text-muted)]">
+          {(row.percent_of_custody_before ?? 0).toFixed(2)}%
+        </span>
+        <span className="text-[var(--text-muted)]"> → </span>
+        <span style={{ color }}>{(row.percent_of_custody_after ?? 0).toFixed(2)}%</span>
+      </span>
+      <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
+        {up ? "+" : ""}
+        {formatNumber((row.shares_change ?? 0) / 1000, "zh-TW", { decimals: 1 })}萬張
+      </span>
+      <span aria-hidden className="text-right font-num text-[13px] tabular-nums" style={{ color }}>
+        {up ? "▲" : "▼"}
+        {formatNumber(Math.abs(change), "zh-TW", { decimals: 2 })}%
+      </span>
+    </li>
   );
 }

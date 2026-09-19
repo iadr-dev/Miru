@@ -860,18 +860,26 @@ class IndustryChainMoneyFlowRow(BaseModel):
     scope. `sub_industry` empty means an industry-chain total row — these do NOT equal the sum
     of that chain's sub-industry rows (a stock can belong to multiple sub-industries), and a
     stock can belong to multiple chains, so `trading_money_pct` across chains sums to more than
-    100%."""
+    100%.
+
+    `locked=True` rows (governance.md §4 top-N-preview exception) have every field but `rank`/
+    `market`/`trade_date`/`is_total` nulled server-side — `sub_industry` itself is nulled, so
+    `is_total` (not `sub_industry == ""`) is how a caller/renderer tells a locked chain-total
+    row from a locked sub-industry breakdown row."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    rank: int = 0  # 1-based position within its own group (total vs. breakdown) — real if locked
     market: Market
     trade_date: date_
-    industry: str
-    sub_industry: str
-    stock_count: int
-    trading_volume: int
-    trading_money: float
-    trading_money_pct: float
+    is_total: bool = False  # mirrors `sub_industry == ""` at construction; survives masking
+    industry: str | None
+    sub_industry: str | None
+    stock_count: int | None
+    trading_volume: int | None
+    trading_money: float | None
+    trading_money_pct: float | None
+    locked: bool = False
 
 
 class DispositionSecuritiesRow(BaseModel):
@@ -979,10 +987,11 @@ class DispositionBoardCardRow(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    symbol: str
+    rank: int = 0  # 1-based position within this card's bucket — real even when locked
+    symbol: str | None
     market: Market
-    company_name: str
-    security_type: str  # "twse" (上市) / "tpex" (上櫃)
+    company_name: str | None
+    security_type: str | None  # "twse" (上市) / "tpex" (上櫃)
     close: float | None = None
     change_pct: float | None = None
     volume: int | None = None
@@ -1038,6 +1047,12 @@ class DispositionBoardCardRow(BaseModel):
     self_assessed_monthly_pretax_profit: int | None = None
     self_assessed_ytd_pretax_profit: int | None = None
     projection_caveat: str = Field(min_length=1)
+    # governance.md §4 top-N-preview exception: `True` only for a card beyond
+    # `GetDispositionBoardOutput.free_row_count` within its own bucket, shown to an unentitled
+    # caller with every field but `rank`/`bucket`/`market`/`projection_caveat` nulled server-side
+    # (`flags` becomes empty) — `bucket` survives since it's the tab filter itself (categorical,
+    # not identifying), and `projection_caveat` is static copy, not this card's own data.
+    locked: bool = False
 
 
 class DividendResultRow(BaseModel):

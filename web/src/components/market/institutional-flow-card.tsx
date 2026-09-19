@@ -173,17 +173,17 @@ export function InstitutionalFlowCard({
                     {fieldLabel(t, CATEGORY_FIELD_KEY[row.name] ?? row.name)}
                   </span>
                   <span className="text-right font-num text-[var(--text)] tabular-nums">
-                    {formatNumber(row.buy, locale)}
+                    {formatCompactNumber(row.buy, locale)}
                   </span>
                   <span className="text-right font-num text-[var(--text)] tabular-nums">
-                    {formatNumber(row.sell, locale)}
+                    {formatCompactNumber(row.sell, locale)}
                   </span>
                   <span
                     className="text-right font-num tabular-nums"
                     style={{ color: net >= 0 ? "var(--up)" : "var(--down)" }}
                   >
                     {net >= 0 ? "▲" : "▼"}
-                    {formatNumber(Math.abs(net), locale)}
+                    {formatCompactNumber(Math.abs(net), locale)}
                   </span>
                 </li>
               );
@@ -246,17 +246,17 @@ export function InstitutionalFlowCard({
                       {fieldLabel(t, CATEGORY_FIELD_KEY[row.name] ?? row.name)}
                     </td>
                     <td className="border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums">
-                      {formatNumber(row.buy, locale)}
+                      {formatCompactNumber(row.buy, locale)}
                     </td>
                     <td className="border-[var(--border)] border-b px-3 py-2 text-right font-num text-[var(--text)] tabular-nums">
-                      {formatNumber(row.sell, locale)}
+                      {formatCompactNumber(row.sell, locale)}
                     </td>
                     <td
                       className="border-[var(--border)] border-b px-3 py-2 text-right font-num tabular-nums"
                       style={{ color: net >= 0 ? "var(--up)" : "var(--down)" }}
                     >
                       {net >= 0 ? "▲" : "▼"}
-                      {formatNumber(Math.abs(net), locale)}
+                      {formatCompactNumber(Math.abs(net), locale)}
                     </td>
                   </tr>
                 );

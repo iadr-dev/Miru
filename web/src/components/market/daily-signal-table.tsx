@@ -1,5 +1,6 @@
 "use client";
 
+import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
@@ -69,15 +70,19 @@ export function DailySignalTable({
           <span className="text-right">{t("columnPctChange")}</span>
         </div>
         <ul className="divide-y divide-[var(--border)]">
-          {filtered.map((row) => (
-            <DailySignalRowItem
-              key={row.component_stock_id}
-              row={row}
-              market={market}
-              locale={locale}
-              t={t}
-            />
-          ))}
+          {filtered.map((row) =>
+            row.locked ? (
+              <LockedDailySignalRowItem key={row.rank} rank={row.rank} />
+            ) : (
+              <DailySignalRowItem
+                key={row.component_stock_id}
+                row={row}
+                market={market}
+                locale={locale}
+                t={t}
+              />
+            ),
+          )}
         </ul>
       </div>
     </div>
@@ -110,6 +115,34 @@ function signedColor(value: number | null): string {
  * template-literal ternary never nests inside an outer null-check ternary. */
 function upDownArrow(up: boolean): string {
   return up ? "▲" : "▼";
+}
+
+/** governance.md §4 top-N-preview exception's row-level lock: every field but `rank`/`status`
+ * is nulled server-side for a `locked` row, so this renders a fixed placeholder + lock icon
+ * rather than reading any real field — mirrors `tracker-panel.tsx`'s `LockedRowCells` pattern
+ * for this table's own 5-column grid. */
+function LockedDailySignalRowItem({ rank }: { readonly rank: number }): ReactNode {
+  return (
+    <li className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}>
+      <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+        <LockIcon size={12} weight="regular" aria-hidden />
+        <span aria-hidden>••••</span>
+        <span className="font-num text-[11px] tabular-nums">#{rank}</span>
+      </span>
+      <span aria-hidden className="text-right text-[13px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span aria-hidden className="mx-auto text-center text-[11px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+    </li>
+  );
 }
 
 function DailySignalRowItem({
@@ -146,7 +179,7 @@ function DailySignalRowItem({
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
     >
       <SymbolLink
-        symbol={row.component_stock_id}
+        symbol={row.component_stock_id ?? ""}
         market={market}
         className="truncate text-[13px] text-[var(--text)] hover:underline"
       >
@@ -181,8 +214,8 @@ function DailySignalRowItem({
         className="text-right font-num text-[12px] tabular-nums"
         style={{ color: sharesDeltaColor }}
       >
-        {row.shares_delta > 0 ? "+" : ""}
-        {formatNumber(row.shares_delta, locale, { decimals: 0 })}
+        {(row.shares_delta ?? 0) > 0 ? "+" : ""}
+        {formatNumber(row.shares_delta ?? 0, locale, { decimals: 0 })}
       </span>
       <span
         aria-hidden

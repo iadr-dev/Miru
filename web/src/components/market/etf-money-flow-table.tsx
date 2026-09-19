@@ -1,5 +1,6 @@
 "use client";
 
+import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
@@ -41,7 +42,7 @@ export function EtfMoneyFlowTable({
   const t = useTranslations("market.cards.etfMoneyFlow");
   const locale = useLocale();
   const { quotes } = useSymbolQuotes(
-    rows.map((r) => r.component_stock_id),
+    rows.map((r) => r.component_stock_id).filter((id): id is string => id !== null),
     market,
   );
   const quoteBySymbol = new Map(quotes.map((q) => [q.code, q]));
@@ -67,18 +68,54 @@ export function EtfMoneyFlowTable({
           <span className="text-right">{t("columnSharesHeldPct")}</span>
         </div>
         <ul className="divide-y divide-[var(--border)]">
-          {rows.map((row) => (
-            <EtfMoneyFlowRowItem
-              key={row.component_stock_id}
-              row={row}
-              quote={quoteBySymbol.get(row.component_stock_id)}
-              locale={locale}
-              t={t}
-            />
-          ))}
+          {rows.map((row) =>
+            row.locked ? (
+              <LockedEtfMoneyFlowRowItem key={row.rank} rank={row.rank} />
+            ) : (
+              <EtfMoneyFlowRowItem
+                key={row.component_stock_id}
+                row={row}
+                quote={
+                  row.component_stock_id ? quoteBySymbol.get(row.component_stock_id) : undefined
+                }
+                locale={locale}
+                t={t}
+              />
+            ),
+          )}
         </ul>
       </div>
     </div>
+  );
+}
+
+/** governance.md §4 top-N-preview exception's row-level lock: every field but `rank` is nulled
+ * server-side for a `locked` row — mirrors `daily-signal-table.tsx`'s own locked-row pattern for
+ * this table's 5-column grid. */
+function LockedEtfMoneyFlowRowItem({ rank }: { readonly rank: number }): ReactNode {
+  return (
+    <li className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}>
+      <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+        <LockIcon size={12} weight="regular" aria-hidden />
+        <span aria-hidden>••••</span>
+        <span className="font-num text-[11px] tabular-nums">#{rank}</span>
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span
+        aria-hidden
+        className="flex flex-col items-end text-right text-[12px] text-[var(--text-muted)]"
+      >
+        ••••
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+      <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
+        ••••
+      </span>
+    </li>
   );
 }
 
