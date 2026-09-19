@@ -1278,22 +1278,22 @@ async def test_get_daily_signal_masks_rows_and_highlights_beyond_free_preview_fo
     and `locked=True` — and both 焦點股 highlights locked entirely, never counted against the
     free-row budget."""
     store = ParquetStore(root=tmp_path)
-    prior_day = date(2025, 5, 6)
-    report_day = date(2025, 5, 7)
+    prior_day = date(2025, 6, 2)
+    report_day = date(2025, 6, 3)
     store.write_partition(
         "TaiwanStockActiveETFHolding",
         "TW",
         prior_day,
         [
             {
-                "symbol": "00980A",
+                "symbol": "00982A",
                 "market": "TW",
-                "trade_date": "2025-05-06",
-                "component_stock_id": "2330",
-                "component_stock_name": "台積電",
+                "trade_date": "2025-06-02",
+                "component_stock_id": "2308",
+                "component_stock_name": "台達電",
                 "asset_type": "stock",
-                "shares": 100000,
-                "weight": 8.0,
+                "shares": 60000,
+                "weight": 4.0,
                 "market_value": 0.0,
                 "currency": "TWD",
             },
@@ -1305,14 +1305,14 @@ async def test_get_daily_signal_masks_rows_and_highlights_beyond_free_preview_fo
         report_day,
         [
             {
-                "symbol": "00980A",
+                "symbol": "00982A",
                 "market": "TW",
-                "trade_date": "2025-05-07",
-                "component_stock_id": "2330",
-                "component_stock_name": "台積電",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "2308",
+                "component_stock_name": "台達電",
                 "asset_type": "stock",
-                "shares": 110000,
-                "weight": 8.5,
+                "shares": 70000,
+                "weight": 4.5,
                 "market_value": 0.0,
                 "currency": "TWD",
             },
@@ -1324,29 +1324,29 @@ async def test_get_daily_signal_masks_rows_and_highlights_beyond_free_preview_fo
         report_day,
         [
             {
-                "symbol": "00980A",
+                "symbol": "00982A",
                 "market": "TW",
-                "trade_date": "2025-05-07",
-                "component_stock_id": "2330",
-                "component_stock_name": "台積電",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "2308",
+                "component_stock_name": "台達電",
                 "buy": 10000,
                 "sell": 0,
             },
             {
-                "symbol": "00980A",
+                "symbol": "00982A",
                 "market": "TW",
-                "trade_date": "2025-05-07",
-                "component_stock_id": "2454",
-                "component_stock_name": "聯發科",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "3034",
+                "component_stock_name": "聯詠",
                 "buy": 8000,
                 "sell": 0,
             },
             {
-                "symbol": "00980A",
+                "symbol": "00982A",
                 "market": "TW",
-                "trade_date": "2025-05-07",
-                "component_stock_id": "2317",
-                "component_stock_name": "鴻海",
+                "trade_date": "2025-06-03",
+                "component_stock_id": "2379",
+                "component_stock_name": "瑞昱",
                 "buy": 5000,
                 "sell": 0,
             },
