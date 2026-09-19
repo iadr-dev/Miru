@@ -2,9 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { Sparkline } from "@/components/market/sparkline";
-import { SymbolLink } from "@/components/market/symbol-link";
+import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
@@ -110,8 +108,6 @@ export function PriceMomentumCard({
           rows={previewRows}
           quoteBySymbol={previewQuoteBySymbol}
           market={market}
-          t={t}
-          tLeaderboard={tLeaderboard}
         />
       )}
 
@@ -138,95 +134,35 @@ export function PriceMomentumCard({
         closeLabel={tLeaderboard("collapse")}
         onClose={() => setExpanded(false)}
       >
-        <PriceMomentumRows
-          rows={rows}
-          quoteBySymbol={allQuoteBySymbol}
-          market={market}
-          t={t}
-          tLeaderboard={tLeaderboard}
-        />
+        <PriceMomentumRows rows={rows} quoteBySymbol={allQuoteBySymbol} market={market} />
       </ExpandModal>
     </section>
   );
 }
 
 /** The header row + data rows, shared verbatim between the card's inline preview and the full
- * list inside `ExpandModal` — one render path, mirroring `LeaderboardCard`'s own
- * `LeaderboardRows` so the two never drift in columns/formatting. */
+ * list inside `ExpandModal` — one render path, built on `SymbolQuoteRows`' shared base. Unlike
+ * `LeaderboardRows`, this ranking has no extra column at all — `pct_change` itself is the row's
+ * own real period return (`get_price_momentum`), passed via `changePctFor` so it's used instead
+ * of the quote's own shorter default-window `changePct`; `stock_name` is the row's own real name
+ * from that same source, passed as `name` so it's preferred over the roster-derived one. */
 function PriceMomentumRows({
   rows,
   quoteBySymbol,
   market,
-  t,
-  tLeaderboard,
 }: {
   rows: readonly PriceMomentumRow[];
-  quoteBySymbol: Map<string, ReturnType<typeof useSymbolQuotes>["quotes"][number]>;
+  quoteBySymbol: ReadonlyMap<string, ReturnType<typeof useSymbolQuotes>["quotes"][number]>;
   market: Market;
-  t: ReturnType<typeof useTranslations>;
-  tLeaderboard: ReturnType<typeof useTranslations>;
 }): ReactNode {
   return (
-    <>
-      <div
-        aria-hidden
-        className={cn(
-          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
-          ROW_GRID_COLS,
-        )}
-      >
-        <span />
-        <span>{tLeaderboard("columnName")}</span>
-        <span className="text-right">{tLeaderboard("columnPrice")}</span>
-        <span className="text-right">{t("change")}</span>
-        <span className="text-center">{tLeaderboard("columnSparkline")}</span>
-      </div>
-      <ul className="divide-y divide-[var(--border)]">
-        {rows.map((row, index) => {
-          const quote = quoteBySymbol.get(row.symbol);
-          const up = row.pct_change >= 0;
-          const color = up ? "var(--up)" : "var(--down)";
-          return (
-            <li
-              key={row.symbol}
-              role="group"
-              aria-label={`${row.stock_name} ${row.symbol} ${up ? "▲" : "▼"} ${formatNumber(Math.abs(row.pct_change), "zh-TW", { decimals: 2 })}%`}
-              className={cn("grid items-center gap-2.5 py-1.5", ROW_GRID_COLS)}
-            >
-              <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
-                {index + 1}
-              </span>
-              <SymbolLink
-                symbol={row.symbol}
-                market={market}
-                className="truncate text-[13px] text-[var(--text)] hover:underline"
-              >
-                {row.stock_name}
-                <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
-              </SymbolLink>
-              <span
-                aria-hidden
-                className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
-              >
-                {quote?.price !== null && quote?.price !== undefined
-                  ? formatNumber(quote.price, "zh-TW", { decimals: 1 })
-                  : "—"}
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[12px] tabular-nums"
-                style={{ color }}
-              >
-                {up ? "▲" : "▼"}
-                {formatNumber(Math.abs(row.pct_change), "zh-TW", { decimals: 2 })}%
-              </span>
-              <span aria-hidden className="h-[24px]">
-                <Sparkline values={quote?.sparkline ?? []} color={color} />
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </>
+    <SymbolQuoteRows
+      rows={rows.map((row) => ({ ...row, name: row.stock_name }))}
+      quoteBySymbol={quoteBySymbol}
+      market={market}
+      gridCols={ROW_GRID_COLS}
+      showRank
+      changePctFor={(row) => row.pct_change}
+    />
   );
 }

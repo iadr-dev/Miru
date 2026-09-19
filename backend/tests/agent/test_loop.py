@@ -130,6 +130,8 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_theme_members": "theme_members",
     "get_symbol_themes": "symbol_themes",
     "get_theme_tiers": "theme_tiers",
+    "get_supply_chain_edges": "supply_chain_edges",
+    "get_theme_tier_heatmap": "theme_tier_heatmap",
     # score_tools.py
     "get_stock_score": "stock_score",
     "get_score_leaderboard": "score_leaderboard",

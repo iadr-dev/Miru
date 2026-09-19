@@ -76,4 +76,30 @@ async def symbol_themes(
     return await _dispatch(state, "get_symbol_themes", {"id": symbol, "market": market.value}, ctx)
 
 
+@router.get("/themes/{key}/tier-heatmap")
+async def theme_tier_heatmap(
+    key: str,
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """個股 > 產業分析's 產業鏈 tier-tile view — a theme's upstream/midstream/downstream
+    sub-industry tiles, each colored by that sub-industry's own members' real average price
+    change over the latest trading day."""
+    return await _dispatch(state, "get_theme_tier_heatmap", {"theme_key": key}, ctx)
+
+
+@router.get("/symbols/{symbol}/supply-chain")
+async def symbol_supply_chain(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """個股 > 產業分析's 供應鏈關係圖 card — every supply/customer/competitor edge involving one
+    symbol, from either side."""
+    return await _dispatch(
+        state, "get_supply_chain_edges", {"id": symbol, "market": market.value}, ctx
+    )
+
+
 __all__ = ["router"]

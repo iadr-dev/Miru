@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -116,7 +116,7 @@ function ProfileCard({
   // `--chart-1..6` hue (categorical, not signed) so the row reads as differentiated data points
   // rather than a flat grey list.
   const stats: [string, string, string][] = [
-    [t("marketValue"), formatNumber(p.market_value ?? null, locale), "var(--chart-1)"],
+    [t("marketValue"), formatCompactNumber(p.market_value ?? null, locale), "var(--chart-1)"],
     [t("per"), formatNumber(p.per ?? null, locale, { decimals: 1 }), "var(--chart-2)"],
     [
       t("dividendYield"),

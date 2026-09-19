@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { heatColor } from "@/lib/heat-color";
 import { squarifyGeneric, type TreemapTile } from "@/lib/treemap";
 import type { SectorHeatmapSizeBy, StockHeatmapRow } from "@/types/market";
 
@@ -129,18 +130,6 @@ function tileTextSize(tile: TreemapTile<StockHeatmapRow>): {
   if (area > 120) return { name: "text-[14px]", symbol: "text-[11px]", pct: "text-[12px]" };
   if (area > 40) return { name: "text-[11px]", symbol: "text-[9px]", pct: "text-[10px]" };
   return { name: "text-[9px]", symbol: "text-[7.5px]", pct: "text-[8px]" };
-}
-
-/** Maps `pct_change` to an `--up`/`--down` intensity — identical clamp
- * `sector-heatmap-treemap.tsx`'s own `tileColor` uses (weak tint near zero, full-strength token
- * past ±3%), so a stock tile and an industry tile read the same color scale for the same %
- * move. */
-function tileColor(pctChange: number): string {
-  const magnitude = Math.min(Math.abs(pctChange) / 3, 1);
-  const token = pctChange >= 0 ? "--up" : "--down";
-  const weakToken = pctChange >= 0 ? "--up-weak" : "--down-weak";
-  const pct = Math.round(30 + magnitude * 70);
-  return `color-mix(in srgb, var(${token}) ${pct}%, var(${weakToken}))`;
 }
 
 function sizeMetricLabel(
@@ -313,7 +302,7 @@ export function StockHeatmapTreemap({
               top: `${(tile.y / LAYOUT_HEIGHT) * 100}%`,
               width: `${(tile.width / LAYOUT_WIDTH) * 100}%`,
               height: `${(tile.height / LAYOUT_HEIGHT) * 100}%`,
-              backgroundColor: tileColor(row.pct_change),
+              backgroundColor: heatColor(row.pct_change),
             }}
           >
             <span

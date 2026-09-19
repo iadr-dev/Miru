@@ -287,6 +287,155 @@ class TestStockDayTradingRoute:
         assert resp.status_code == 422
 
 
+class TestLiveQuoteRoute:
+    """即時 tab's 五檔 ladder — `get_live_quote_snapshot` is `DataClass.PUBLIC` (TWSE MIS, the
+    one free keyless intraday source), so it is never masked regardless of caller tier."""
+
+    def test_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_capability(
+            settings,
+            agent_answer,
+            Capability.PRICE_INTRADAY,
+            {
+                "snapshot": {
+                    "symbol": "2330",
+                    "market": "TW",
+                    "name": "台積電",
+                    "last_price": 900.0,
+                    "open": 895.0,
+                    "high": 905.0,
+                    "low": 890.0,
+                    "volume": 12345,
+                    "best_bid": "899.0_898.5_898.0_897.5_897.0",
+                    "best_ask": "900.0_900.5_901.0_901.5_902.0",
+                    "best_bid_volume": "10_20_30_40_50",
+                    "best_ask_volume": "5_15_25_35_45",
+                    "observed_at": "13:30:00",
+                }
+            },
+        )
+        resp = client.get("/api/v1/stock/live-quote", params={"symbol": "2330", "market": "TW"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "locked" not in body
+        assert body["snapshot"]["last_price"] == 900.0
+        assert body["snapshot"]["best_bid"] == "899.0_898.5_898.0_897.5_897.0"
+
+    def test_requires_symbol(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        resp = client.get("/api/v1/stock/live-quote")
+        assert resp.status_code == 422
+
+
+class TestPriceLimitRoute:
+    """看盤 tab's 詳細 stats row — `get_price_limit` is `DataClass.PUBLIC`, so it is never
+    masked regardless of caller tier."""
+
+    def test_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_capability(
+            settings,
+            agent_answer,
+            Capability.PRICE_LIMIT,
+            {
+                "rows": [
+                    {
+                        "symbol": "2330",
+                        "market": "TW",
+                        "trade_date": "2026-09-18",
+                        "reference_price": 2420.0,
+                        "limit_up": 2660.0,
+                        "limit_down": 2180.0,
+                    }
+                ]
+            },
+        )
+        resp = client.get("/api/v1/stock/price-limit", params={"symbol": "2330", "market": "TW"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "locked" not in body
+        assert body["rows"][0]["reference_price"] == 2420.0
+
+    def test_requires_symbol(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        resp = client.get("/api/v1/stock/price-limit")
+        assert resp.status_code == 422
+
+
+class TestIntradayKbarRoute:
+    """即時 tab's 分K chart — `get_intraday_kbar` is `DataClass.SPONSOR`; an unentitled caller
+    gets the whole-tool masked-teaser envelope, never real bars."""
+
+    def test_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_capability(
+            settings,
+            agent_answer,
+            Capability.INTRADAY_KBAR,
+            {
+                "bars": [
+                    {
+                        "symbol": "2330",
+                        "market": "TW",
+                        "trade_date": "2026-09-08",
+                        "minute": "09:00",
+                        "open": 895.0,
+                        "high": 896.0,
+                        "low": 894.0,
+                        "close": 895.5,
+                        "volume": 100.0,
+                    }
+                ]
+            },
+        )
+        resp = client.get("/api/v1/stock/intraday-kbar", params={"symbol": "2330", "market": "TW"})
+        assert resp.status_code == 200
+        body = resp.json()
+        if body.get("locked"):
+            return  # unentitled test session — the masked-teaser envelope is a valid 200 too
+        assert body["rows"][0]["minute"] == "09:00"
+
+    def test_requires_symbol(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        resp = client.get("/api/v1/stock/intraday-kbar")
+        assert resp.status_code == 422
+
+
+class TestPriceTickRoute:
+    """即時 tab's 逐筆 list — `get_price_tick` is `DataClass.SPONSOR`; an unentitled caller
+    gets the whole-tool masked-teaser envelope, never real ticks. Upstream is an EOD replay
+    (~15:30 publish), never a live-ticking stream."""
+
+    def test_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_capability(
+            settings,
+            agent_answer,
+            Capability.PRICE_TICK,
+            {
+                "ticks": [
+                    {
+                        "symbol": "2330",
+                        "market": "TW",
+                        "trade_date": "2026-09-08",
+                        "time": "09:00:01",
+                        "deal_price": 895.0,
+                        "volume": 10,
+                        "tick_type": "1",
+                    }
+                ]
+            },
+        )
+        resp = client.get("/api/v1/stock/price-tick", params={"symbol": "2330", "market": "TW"})
+        assert resp.status_code == 200
+        body = resp.json()
+        if body.get("locked"):
+            return  # unentitled test session — the masked-teaser envelope is a valid 200 too
+        assert body["rows"][0]["deal_price"] == 895.0
+
+    def test_requires_symbol(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        resp = client.get("/api/v1/stock/price-tick")
+        assert resp.status_code == 422
+
+
 @pytest.mark.governance
 class TestSponsorMaskedRoutes:
     """`get_disposition_securities`/`get_shareholder_dispersion`-adjacent `get_calendar_events`

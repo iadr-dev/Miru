@@ -3,8 +3,7 @@
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { Sparkline } from "@/components/market/sparkline";
-import { SymbolLink } from "@/components/market/symbol-link";
+import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
@@ -20,8 +19,6 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
 };
 
 const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr_1.3fr]";
-
-type Quote = ReturnType<typeof useSymbolQuotes>["quotes"][number];
 
 /**
  * AI 多空排行 — the real `get_score_leaderboard` composite ranking, enriched via
@@ -143,7 +140,9 @@ export function LeaderboardCard({
 }
 
 /** The header row + data rows, shared verbatim between the card's inline preview and the full
- * list inside `ExpandModal` — one render path, so the two never drift in columns/formatting. */
+ * list inside `ExpandModal` — one render path, so the two never drift in columns/formatting.
+ * Built on `SymbolQuoteRows`' shared 4-column base, adding only the one column this ranking
+ * has that a plain symbol list doesn't: the AI composite-score pill. */
 function LeaderboardRows({
   results,
   quoteBySymbol,
@@ -151,97 +150,43 @@ function LeaderboardRows({
   t,
 }: {
   results: readonly ScoreResult[];
-  quoteBySymbol: Map<string, Quote>;
+  quoteBySymbol: ReadonlyMap<string, ReturnType<typeof useSymbolQuotes>["quotes"][number]>;
   market: Market;
   t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   return (
-    <>
-      <div
-        aria-hidden
-        className={cn(
-          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
-          ROW_GRID_COLS,
-        )}
-      >
-        <span />
-        <span>{t("columnName")}</span>
-        <span className="text-right">{t("columnPrice")}</span>
-        <span className="text-right">{t("columnChange")}</span>
-        <span className="text-center">{t("columnSparkline")}</span>
-        <span className="text-center">{t("columnScore")}</span>
-      </div>
-      <ul className="divide-y divide-[var(--border)]">
-        {results.map((result, index) => {
-          const quote = quoteBySymbol.get(result.symbol);
-          const changeUp = quote?.changePct !== null && (quote?.changePct ?? 0) >= 0;
-          const changeColor = changeUp ? "var(--up)" : "var(--down)";
-          return (
-            <li
-              key={result.symbol}
-              role="group"
-              aria-label={`${quote?.name ?? result.symbol} ${result.symbol} ${result.band} ${t(
-                "scoreAria",
-              )} ${
-                result.composite !== null ? formatNumber(result.composite, "zh-TW") : t("empty")
-              }`}
-              className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
-            >
-              <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
-                {index + 1}
-              </span>
-              <SymbolLink
-                symbol={result.symbol}
-                market={market}
-                className="truncate text-[14px] text-[var(--text)] hover:underline"
-              >
-                {quote?.name ?? result.symbol}
-                <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">
-                  {result.symbol}
-                </span>
-              </SymbolLink>
-              <span
-                aria-hidden
-                className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
-              >
-                {quote?.price !== null && quote?.price !== undefined
-                  ? formatNumber(quote.price, "zh-TW", { decimals: 1 })
-                  : "—"}
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[11.5px] tabular-nums"
-                style={{ color: quote?.changePct !== null ? changeColor : "var(--text-muted)" }}
-              >
-                {quote?.changePct !== null && quote?.changePct !== undefined
-                  ? `${changeUp ? "▲" : "▼"}${formatNumber(Math.abs(quote.changePct), "zh-TW", { decimals: 2 })}%`
-                  : "—"}
-              </span>
-              <span aria-hidden className="h-[26px]">
-                <Sparkline values={quote?.sparkline ?? []} color={changeColor} />
-              </span>
-              <span
-                aria-hidden
-                className="relative flex h-5 items-center justify-center overflow-hidden rounded-[var(--radius-pill)] bg-[var(--surface-2)]"
-              >
-                <span
-                  className="absolute inset-y-0 left-0 rounded-[var(--radius-pill)] opacity-25"
-                  style={{
-                    width: `${result.composite ?? 0}%`,
-                    backgroundColor: BAND_TOKEN[result.band],
-                  }}
-                />
-                <span
-                  className="relative font-bold font-num text-[12px] tabular-nums"
-                  style={{ color: BAND_TOKEN[result.band] }}
-                >
-                  {result.composite !== null ? formatNumber(result.composite, "zh-TW") : "—"}
-                </span>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </>
+    <SymbolQuoteRows
+      rows={results}
+      quoteBySymbol={quoteBySymbol}
+      market={market}
+      gridCols={ROW_GRID_COLS}
+      showRank
+      extraHeader={<span className="text-center">{t("columnScore")}</span>}
+      extraAriaLabel={(result) =>
+        `${result.band} ${t("scoreAria")} ${
+          result.composite !== null ? formatNumber(result.composite, "zh-TW") : t("empty")
+        }`
+      }
+      extraCell={(result) => (
+        <span
+          aria-hidden
+          className="relative flex h-5 items-center justify-center overflow-hidden rounded-[var(--radius-pill)] bg-[var(--surface-2)]"
+        >
+          <span
+            className="absolute inset-y-0 left-0 rounded-[var(--radius-pill)] opacity-25"
+            style={{
+              width: `${result.composite ?? 0}%`,
+              backgroundColor: BAND_TOKEN[result.band],
+            }}
+          />
+          <span
+            className="relative font-bold font-num text-[12px] tabular-nums"
+            style={{ color: BAND_TOKEN[result.band] }}
+          >
+            {result.composite !== null ? formatNumber(result.composite, "zh-TW") : "—"}
+          </span>
+        </span>
+      )}
+    />
   );
 }

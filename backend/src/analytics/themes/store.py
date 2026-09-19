@@ -96,6 +96,8 @@ class ThemeStore(Protocol):
 
     async def get_edges_from(self, *, from_symbol: str) -> list[SupplyChainEdge]: ...
 
+    async def get_edges_to(self, *, to_symbol: str) -> list[SupplyChainEdge]: ...
+
     async def record_change(self, *, entry: ThemeChangeEntry) -> None: ...
 
 
@@ -430,6 +432,31 @@ class SqlAlchemyThemeStore:
             select(SupplyChainEdgeRow)
             .where(SupplyChainEdgeRow.from_symbol == from_symbol)
             .order_by(SupplyChainEdgeRow.to_symbol)
+        )
+        rows = (await self._session.scalars(stmt)).all()
+        return [
+            SupplyChainEdge(
+                from_symbol=row.from_symbol,
+                to_symbol=row.to_symbol,
+                market=row.market,
+                edge_type=EdgeType(row.edge_type),
+                confidence=EdgeConfidence(row.confidence),
+                revenue_pct=row.revenue_pct,
+                source=EdgeSource(row.source),
+                from_name=row.from_name,
+                to_name=row.to_name,
+            )
+            for row in rows
+        ]
+
+    async def get_edges_to(self, *, to_symbol: str) -> list[SupplyChainEdge]:
+        """The edges terminating at a symbol, resolved through the `to_symbol` index — the
+        reverse of `get_edges_from`, needed so a focus symbol's graph shows edges where it's
+        either the supplier or the customer/competitor side."""
+        stmt = (
+            select(SupplyChainEdgeRow)
+            .where(SupplyChainEdgeRow.to_symbol == to_symbol)
+            .order_by(SupplyChainEdgeRow.from_symbol)
         )
         rows = (await self._session.scalars(stmt)).all()
         return [

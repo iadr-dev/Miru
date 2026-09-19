@@ -502,7 +502,10 @@ function InstitutionalFlowBody({
             <YAxis
               yAxisId="flow"
               tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-              tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+              // `flow` bars are the raw-shares bucket sums (`points[bucket]`) — /1000 + 張 suffix
+              // inline, matching every other axis-tick formatter in this file that doesn't use
+              // i18n for chart-axis labels either.
+              tickFormatter={(v: number) => `${formatCompactNumber(v / 1000, locale)}張`}
               width={48}
               stroke="var(--border)"
             />
@@ -518,7 +521,9 @@ function InstitutionalFlowBody({
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               formatter={(value, name) => [
-                formatNumber(Number(value), locale),
+                name === "price"
+                  ? formatNumber(Number(value), locale)
+                  : t("lotUnit", { value: formatNumber(Number(value) / 1000, locale) }),
                 name === "price"
                   ? tFields("fields.close")
                   : bucketLabel(t, name as InstitutionalBucket),
@@ -626,10 +631,15 @@ function InstitutionalFlowTable({
             return (
               <tr key={date}>
                 <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{date}</td>
-                <NetFlowCell value={bucket.foreign} locale={locale} />
-                <NetFlowCell value={bucket.trust} locale={locale} />
-                <NetFlowCell value={bucket.dealer} locale={locale} />
-                <NetFlowCell value={total} locale={locale} />
+                {/* `get_institutional_flow`'s `buy`/`sell` (and this bucket sum derived from
+                 * them) are raw SHARES — confirmed against TWSE's own T86 三大法人買賣超日報
+                 * feed, whose own `hints` field states "單位：股" for these exact buy/sell-shares
+                 * columns. Divided to 張 (board lots) here, matching the reference app's own
+                 * "-4,460張" display. */}
+                <NetFlowCell value={bucket.foreign / 1000} locale={locale} />
+                <NetFlowCell value={bucket.trust / 1000} locale={locale} />
+                <NetFlowCell value={bucket.dealer / 1000} locale={locale} />
+                <NetFlowCell value={total / 1000} locale={locale} />
               </tr>
             );
           })}
@@ -640,7 +650,12 @@ function InstitutionalFlowTable({
 }
 
 /** One 紅漲綠跌-colored net-flow cell (▲ red for net buy, ▼ green for net sell) — shared by every
- * 三大法人 table in this panel so the sign→color/▲▼ mapping never drifts between them. */
+ * 三大法人/融資券 table in this panel so the sign→color/▲▼ mapping never drifts between them.
+ * `value` is always ALREADY in 張 (board lots) by the time it reaches here — callers backed by
+ * raw-shares data (`institutional_flow`) divide by 1000 before passing in; callers backed by
+ * data FinMind/TWSE already publish in 張 (`margin_short`'s own balance fields, confirmed against
+ * TWSE's `MI_MARGN` feed, whose own column header reads "融資(交易單位)") pass the value through
+ * unchanged. This keeps the 張 unit suffix rendered here honest for either source. */
 function NetFlowCell({
   value,
   locale,
@@ -648,13 +663,14 @@ function NetFlowCell({
   readonly value: number;
   readonly locale: string;
 }): ReactNode {
+  const t = useTranslations("stock.chipAnalysis");
   const up = value >= 0;
   return (
     <td
       className="px-2 py-1.5 text-right font-num tabular-nums"
       style={{ color: up ? "var(--up)" : "var(--down)" }}
     >
-      {up ? "▲" : "▼"} {formatNumber(Math.abs(value), locale)}
+      {up ? "▲" : "▼"} {t("lotUnit", { value: formatNumber(Math.abs(value), locale) })}
     </td>
   );
 }
@@ -824,7 +840,11 @@ function InstitutionalTotalsBody({
                 className="font-num text-[14px] tabular-nums"
                 style={{ color: isHidden ? "var(--text-muted)" : card.color }}
               >
-                {formatCompactNumber(card.shares, locale)}
+                {/* `card.shares` is `bucketedFlowByDate`'s cumulative net (raw SHARES off
+                 * `get_institutional_flow`'s own `buy`/`sell`, see `NetFlowCell`'s own docstring
+                 * for the TWSE T86 confirmation) — divide to 張 before formatting, same as every
+                 * other institutional-flow number in this card. */}
+                {t("lotUnit", { value: formatCompactNumber(card.shares / 1000, locale) })}
               </p>
               <p className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">
                 {card.pct != null ? `佔${card.pct.toFixed(2)}%` : "—"}
@@ -872,7 +892,9 @@ function InstitutionalTotalsBody({
           <SnapshotStat
             key={bucket}
             label={bucketLabel(t, bucket)}
-            value={formatSignedNumber(periodTotals[bucket], locale)}
+            // `periodTotals[bucket]` is a raw-shares sum off `get_institutional_flow` (same as
+            // `card.shares` above) — divide to 張 before formatting.
+            value={t("lotUnit", { value: formatSignedNumber(periodTotals[bucket] / 1000, locale) })}
             tone={periodTotals[bucket] >= 0 ? "up" : "down"}
           />
         ))}
@@ -889,7 +911,8 @@ function InstitutionalTotalsBody({
             <YAxis
               yAxisId="flow"
               tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-              tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+              // Same raw-shares bucket sums as the 進出 chart above — /1000 + inline 張 suffix.
+              tickFormatter={(v: number) => `${formatCompactNumber(v / 1000, locale)}張`}
               width={40}
               stroke="var(--border)"
             />
@@ -905,7 +928,9 @@ function InstitutionalTotalsBody({
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               formatter={(value, name) => [
-                formatNumber(Number(value), locale),
+                name === "price"
+                  ? formatNumber(Number(value), locale)
+                  : t("lotUnit", { value: formatNumber(Number(value) / 1000, locale) }),
                 name === "price"
                   ? tFields("fields.close")
                   : bucketLabel(t, name as InstitutionalBucket),
@@ -1025,14 +1050,20 @@ function InstitutionalSummaryBody({
     (row.net_5d == null || row.net_5d === 0) &&
     (row.net_10d == null || row.net_10d === 0) &&
     (row.net_20d == null || row.net_20d === 0);
+  // `rolling_net`'s `net_5d`/`net_10d`/`net_20d` are pre-summed server-side from
+  // `get_institutional_flow`'s own raw-shares `buy`/`sell` (`_net_over_trailing`,
+  // market_tools.py) — same TWSE T86-confirmed shares unit as `bucketedFlowByDate`'s bucket sums
+  // elsewhere in this panel (see `NetFlowCell`'s own docstring); `governmentBankRollingNet`'s
+  // client-side mirror sums the same raw-shares `buy`/`sell` off `get_government_bank_flows`.
+  // Converted to 張 here, once, before either the chart or its data sheet renders a number.
   const points = allRollingNet
     .filter((row) => !isEmptyRow(row) && netForWindow(row) != null)
     .map((row) => ({
       investor: row.investor,
-      net: netForWindow(row) ?? 0,
-      net_5d: row.net_5d,
-      net_10d: row.net_10d,
-      net_20d: row.net_20d,
+      net: (netForWindow(row) ?? 0) / 1000,
+      net_5d: row.net_5d != null ? row.net_5d / 1000 : row.net_5d,
+      net_10d: row.net_10d != null ? row.net_10d / 1000 : row.net_10d,
+      net_20d: row.net_20d != null ? row.net_20d / 1000 : row.net_20d,
     }));
   if (points.length === 0 && !bankLocked) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
@@ -1070,14 +1101,15 @@ function InstitutionalSummaryBody({
               />
               <YAxis
                 tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-                tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+                // `points`/`net` is already converted to 張 above — just the inline suffix here.
+                tickFormatter={(v: number) => `${formatCompactNumber(v, locale)}張`}
                 width={48}
                 stroke="var(--border)"
               />
               <ReferenceLine y={0} stroke="var(--border)" />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
-                formatter={(value) => formatNumber(Number(value), locale)}
+                formatter={(value) => t("lotUnit", { value: formatNumber(Number(value), locale) })}
                 labelFormatter={(label) => investorLabel(tFields, String(label))}
               />
               <Bar dataKey="net" radius={3}>
@@ -1087,8 +1119,8 @@ function InstitutionalSummaryBody({
                     fill={INVESTOR_CATEGORY_COLORS[point.investor] ?? "var(--chart-6)"}
                     aria-label={
                       point.net >= 0
-                        ? `${investorLabel(tFields, point.investor)} ▲ ${formatNumber(point.net, locale)}`
-                        : `${investorLabel(tFields, point.investor)} ▼ ${formatNumber(point.net, locale)}`
+                        ? `${investorLabel(tFields, point.investor)} ▲ ${t("lotUnit", { value: formatNumber(point.net, locale) })}`
+                        : `${investorLabel(tFields, point.investor)} ▼ ${t("lotUnit", { value: formatNumber(point.net, locale) })}`
                     }
                   />
                 ))}
@@ -1225,23 +1257,35 @@ function MarginShortSnapshot({
 
   return (
     <div className="grid grid-cols-2 gap-3 font-num text-[13px] tabular-nums">
+      {/* `margin_purchase_today_balance`/`short_sale_today_balance` (and the day-over-day
+       * `*_change` diffed from them) are already 張-scaled — confirmed by diffing FinMind's own
+       * `MarginPurchaseTodayBalance`/`ShortSaleTodayBalance` against TWSE's `MI_MARGN` feed for
+       * the same stock/date: identical values, and TWSE's own column header there reads
+       * "融資(交易單位)" (trading units = 張), not 股. Only the missing unit label is added, no
+       * division. `day_trading.volume`/`securities_lending.volume` ARE raw 股 (confirmed against
+       * TWSE's own TWTB4U 當日沖銷交易總成交股數 and the 借券 借券餘額股 feeds, both "單位:股") —
+       * those two divide by 1000 before formatting. */}
       <SnapshotStat
         label={t("marginChange")}
-        value={formatSignedNumber(marginChange, locale)}
+        value={t("lotUnit", { value: formatSignedNumber(marginChange, locale) })}
         tone={marginChange >= 0 ? "up" : "down"}
       />
       <SnapshotStat
         label={t("shortChange")}
-        value={formatSignedNumber(shortChange, locale)}
+        value={t("lotUnit", { value: formatSignedNumber(shortChange, locale) })}
         tone={shortChange >= 0 ? "up" : "down"}
       />
       <SnapshotStat
         label={t("marginBalance")}
-        value={formatNumber(latestMargin.margin_purchase_today_balance, locale)}
+        value={t("lotUnit", {
+          value: formatNumber(latestMargin.margin_purchase_today_balance, locale),
+        })}
       />
       <SnapshotStat
         label={t("shortBalance")}
-        value={formatNumber(latestMargin.short_sale_today_balance, locale)}
+        value={t("lotUnit", {
+          value: formatNumber(latestMargin.short_sale_today_balance, locale),
+        })}
       />
       <SnapshotStat
         label={t("marginUsage")}
@@ -1253,7 +1297,11 @@ function MarginShortSnapshot({
       />
       <SnapshotStat
         label={t("dayTradingVolume")}
-        value={latestDayTrading ? formatNumber(latestDayTrading.volume, locale) : "—"}
+        value={
+          latestDayTrading
+            ? t("lotUnit", { value: formatNumber(latestDayTrading.volume / 1000, locale) })
+            : "—"
+        }
       />
       <SnapshotStat
         label={t("shortToMarginRatio")}
@@ -1261,7 +1309,11 @@ function MarginShortSnapshot({
       />
       <SnapshotStat
         label={t("lendingSellVolume")}
-        value={latestLending ? formatNumber(latestLending.volume, locale) : "—"}
+        value={
+          latestLending
+            ? t("lotUnit", { value: formatNumber(latestLending.volume / 1000, locale) })
+            : "—"
+        }
       />
     </div>
   );
@@ -1376,13 +1428,22 @@ function ForeignShareholdingBody({
     dealerEstimateByDate.set(date, dealerCumulative);
   }
 
-  const points = dates.map((trade_date) => ({
-    trade_date,
-    foreign_shares: foreignByDate.get(trade_date)?.shares ?? null,
-    trust_estimate: trustEstimateByDate.get(trade_date) ?? null,
-    dealer_estimate: dealerEstimateByDate.get(trade_date) ?? null,
-    price: priceByDate.get(trade_date) ?? null,
-  }));
+  // `foreign_investment_shares` (confirmed 股 — TWSE's own MI_QFIIS feed labels this exact
+  // column "單位:股") and the 投信/自營商 cumulative-net estimate (raw shares off
+  // `bucketedFlowByDate`, same TWSE T86-confirmed unit as everywhere else in this panel) are both
+  // converted to 張 here, once, for the chart's own series.
+  const points = dates.map((trade_date) => {
+    const foreignShares = foreignByDate.get(trade_date)?.shares;
+    const trustEstimate = trustEstimateByDate.get(trade_date);
+    const dealerEstimate = dealerEstimateByDate.get(trade_date);
+    return {
+      trade_date,
+      foreign_shares: foreignShares != null ? foreignShares / 1000 : null,
+      trust_estimate: trustEstimate != null ? trustEstimate / 1000 : null,
+      dealer_estimate: dealerEstimate != null ? dealerEstimate / 1000 : null,
+      price: priceByDate.get(trade_date) ?? null,
+    };
+  });
   const tableDatesDesc = [...dates].reverse();
 
   return (
@@ -1399,7 +1460,9 @@ function ForeignShareholdingBody({
             <YAxis
               yAxisId="holdings"
               tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-              tickFormatter={(v: number) => formatCompactNumber(v, locale)}
+              // `holdings` series (`foreign_shares`/`trust_estimate`/`dealer_estimate`) are
+              // already converted to 張 in `points` above — inline suffix only.
+              tickFormatter={(v: number) => `${formatCompactNumber(v, locale)}張`}
               width={48}
               stroke="var(--border)"
             />
@@ -1413,7 +1476,18 @@ function ForeignShareholdingBody({
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
-              formatter={(value) => formatNumber(Number(value), locale)}
+              formatter={(value, name) => [
+                name === "price"
+                  ? formatNumber(Number(value), locale)
+                  : t("lotUnit", { value: formatNumber(Number(value), locale) }),
+                name === "price"
+                  ? tFields("fields.close")
+                  : name === "foreign_shares"
+                    ? bucketLabel(t, "foreign")
+                    : name === "trust_estimate"
+                      ? t("estimateLegend", { label: bucketLabel(t, "trust") })
+                      : t("estimateLegend", { label: bucketLabel(t, "dealer") }),
+              ]}
             />
             <Legend
               formatter={(value) => {
@@ -1511,15 +1585,22 @@ function ForeignShareholdingBody({
   );
 }
 
+/** `cumulativeNet` is the raw-shares 投信/自營商 cumulative-net estimate (`bucketedFlowByDate`'s
+ * bucket sums, same TWSE T86-confirmed shares unit as everywhere else in this panel) — converted
+ * to 張 here before formatting; the %-of-shares-outstanding denominator (`sharesIssued`, itself a
+ * real share count) is unaffected by the unit change since both sides of that ratio must stay in
+ * the same unit (shares ÷ shares), so it's applied to `cumulativeNet` before the /1000 lot
+ * conversion, not after. */
 function estimatedSharesCell(
   cumulativeNet: number | undefined,
   sharesIssued: number | undefined,
   locale: string,
+  lotUnit: (value: string) => string,
 ): string {
   if (cumulativeNet == null) return "—";
-  const sharesText = formatNumber(cumulativeNet, locale);
-  if (!sharesIssued || sharesIssued <= 0) return sharesText;
-  return `${sharesText} (${((cumulativeNet / sharesIssued) * 100).toFixed(2)}%)`;
+  const lotsText = lotUnit(formatNumber(cumulativeNet / 1000, locale));
+  if (!sharesIssued || sharesIssued <= 0) return lotsText;
+  return `${lotsText} (${((cumulativeNet / sharesIssued) * 100).toFixed(2)}%)`;
 }
 
 function HoldingsTable({
@@ -1571,15 +1652,21 @@ function HoldingsTable({
               <tr key={date}>
                 <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{date}</td>
                 <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+                  {/* `foreign.shares` is `foreign_investment_shares` — confirmed 股 against
+                   * TWSE's own MI_QFIIS feed ("單位:股") — /1000 to 張 before formatting. */}
                   {foreign
-                    ? `${formatNumber(foreign.shares, locale)} (${foreign.ratio.toFixed(2)}%)`
+                    ? `${t("lotUnit", { value: formatNumber(foreign.shares / 1000, locale) })} (${foreign.ratio.toFixed(2)}%)`
                     : "—"}
                 </td>
                 <td className="px-2 py-1.5 text-right font-num text-[var(--text-muted)] tabular-nums">
-                  {estimatedSharesCell(trustEstimateByDate.get(date), sharesIssued, locale)}
+                  {estimatedSharesCell(trustEstimateByDate.get(date), sharesIssued, locale, (v) =>
+                    t("lotUnit", { value: v }),
+                  )}
                 </td>
                 <td className="px-2 py-1.5 text-right font-num text-[var(--text-muted)] tabular-nums">
-                  {estimatedSharesCell(dealerEstimateByDate.get(date), sharesIssued, locale)}
+                  {estimatedSharesCell(dealerEstimateByDate.get(date), sharesIssued, locale, (v) =>
+                    t("lotUnit", { value: v }),
+                  )}
                 </td>
               </tr>
             );
@@ -1819,7 +1906,10 @@ function MarginShortBody({
       barKey="balance"
       barColor={isShort ? "var(--chart-4)" : "var(--chart-1)"}
       barName={isShort ? t("shortBalance") : t("marginBalance")}
-      barTickFormatter={(v) => formatCompactNumber(v, locale)}
+      // `balance`/`cashRepayment` are `margin_purchase_*`/`short_sale_*` — already 張-scaled
+      // (see `SnapshotStat`'s own comment above for the TWSE MI_MARGN cross-check); inline
+      // suffix only, no division.
+      barTickFormatter={(v) => `${formatCompactNumber(v, locale)}張`}
       priceByDate={priceByDate}
       tableHeaders={[
         t("flowTable.date"),
@@ -1832,14 +1922,14 @@ function MarginShortBody({
         <tr key={row.trade_date}>
           <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{row.trade_date}</td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.balance, locale)}
+            {t("lotUnit", { value: formatNumber(row.balance, locale) })}
           </td>
           <NetFlowCell value={row.change} locale={locale} />
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
             {row.usage != null ? `${row.usage.toFixed(2)}%` : "—"}
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.cashRepayment, locale)}
+            {t("lotUnit", { value: formatNumber(row.cashRepayment, locale) })}
           </td>
         </tr>
       )}
@@ -1861,13 +1951,17 @@ function DayTradingBody({
   readonly t: ReturnType<typeof useTranslations>;
   readonly locale: string;
 }): ReactNode {
+  // `volume` is raw SHARES — confirmed against TWSE's own TWTB4U 當日沖銷交易統計資訊 feed
+  // (當日沖銷交易總成交股數, "股" in the field name itself). `buy_amount`/`sell_amount` are TWD
+  // money amounts, not a share count — left as-is (no 張 conversion applies to a currency value).
+  const points = rows.map((row) => ({ ...row, volume: row.volume / 1000 }));
   return (
     <MarginShortChartShell
-      rows={rows}
+      rows={points}
       barKey="volume"
       barColor="var(--chart-6)"
       barName={t("dayTradingVolume")}
-      barTickFormatter={(v) => formatCompactNumber(v, locale)}
+      barTickFormatter={(v) => `${formatCompactNumber(v, locale)}張`}
       priceByDate={priceByDate}
       tableHeaders={[
         t("flowTable.date"),
@@ -1879,7 +1973,7 @@ function DayTradingBody({
         <tr key={row.trade_date}>
           <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{row.trade_date}</td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.volume, locale)}
+            {t("lotUnit", { value: formatNumber(row.volume, locale) })}
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
             {formatNumber(row.buy_amount, locale)}
@@ -1937,10 +2031,10 @@ function ShortToMarginRatioBody({
             {row.ratio.toFixed(2)}%
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.margin_balance, locale)}
+            {t("lotUnit", { value: formatNumber(row.margin_balance, locale) })}
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.short_balance, locale)}
+            {t("lotUnit", { value: formatNumber(row.short_balance, locale) })}
           </td>
         </tr>
       )}
@@ -1988,10 +2082,14 @@ function SecuritiesLendingBody({
   // reference app's own 借券 view plots a cumulative sell-balance line; this mirrors that via a
   // running sum of daily `volume`, the same real-flow-summed-into-a-balance pattern
   // `ForeignShareholdingBody`'s 投信/自營商 estimate lines already use elsewhere in this panel.
+  // `volume` (and the `balance` running sum of it) is raw SHARES — confirmed against TWSE's own
+  // 借券系統與證商/證金營業處所借券餘額合計表 feed, whose own field names carry "股"
+  // (前日借券餘額(1)股 etc.) — divided to 張 here, once, before either the chart or table renders
+  // a number.
   let cumulative = 0;
   const points = datesAsc.map((trade_date) => {
     const entry = byDate.get(trade_date);
-    const volume = entry?.volume ?? 0;
+    const volume = (entry?.volume ?? 0) / 1000;
     cumulative += volume;
     return {
       trade_date,
@@ -2007,7 +2105,7 @@ function SecuritiesLendingBody({
       barKey="balance"
       barColor="var(--chart-5)"
       barName={t("lendingSellVolume")}
-      barTickFormatter={(v) => formatCompactNumber(v, locale)}
+      barTickFormatter={(v) => `${formatCompactNumber(v, locale)}張`}
       priceByDate={priceByDate}
       tableHeaders={[
         t("flowTable.date"),
@@ -2019,10 +2117,10 @@ function SecuritiesLendingBody({
         <tr key={row.trade_date}>
           <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">{row.trade_date}</td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.balance, locale)}
+            {t("lotUnit", { value: formatNumber(row.balance, locale) })}
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-            {formatNumber(row.volume, locale)}
+            {t("lotUnit", { value: formatNumber(row.volume, locale) })}
           </td>
           <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
             {row.fee_rate.toFixed(2)}%
@@ -2111,9 +2209,16 @@ function ChipFlowsBody({
         labelFor={(w) => t(`brokerLookbackWindow.${w}`)}
       />
       <div className="mb-4 grid grid-cols-2 gap-3 font-num text-[13px] tabular-nums">
+        {/* `main_force_net`/`total_volume` are both sums of `get_chip_flows`'s (`get_chip_broker`
+         * → FinMind `TaiwanStockTradingDailyReport`) own `buy`/`sell` — that dataset's own doc
+         * note states plainly "buy/sell share counts are still correct" (raw 股), same as every
+         * other 分點/三大法人 shares field in this panel — divided to 張 before formatting.
+         * `sharesOfCapital`/`mainForceConcentration`/`turnoverRatio`/`concentrationDays` are all
+         * %, unaffected by the unit change (both sides of each ratio are shares, so the ratio
+         * itself doesn't change when both are scaled by the same 1000). */}
         <SnapshotStat
           label={t("mainForceNet")}
-          value={formatSignedNumber(data.main_force_net, locale)}
+          value={t("lotUnit", { value: formatSignedNumber(data.main_force_net / 1000, locale) })}
           tone={data.main_force_net >= 0 ? "up" : "down"}
         />
         <SnapshotStat
@@ -2136,7 +2241,7 @@ function ChipFlowsBody({
         />
         <SnapshotStat
           label={t("brokerTotalVolume")}
-          value={formatNumber(data.total_volume, locale)}
+          value={t("lotUnit", { value: formatNumber(data.total_volume / 1000, locale) })}
         />
         <SnapshotStat
           label={t("turnoverRatio")}
@@ -2302,14 +2407,18 @@ function BrokerTopTableBody({
                   className="py-1.5 text-right font-num tabular-nums"
                   style={{ color: row.net >= 0 ? "var(--up)" : "var(--down)" }}
                 >
+                  {/* `net`/`buy`/`sell` here are `ChipBrokerTopRow`'s backend-ranked figures,
+                   * computed server-side from `ChipBrokerRow`'s own raw-shares `buy`/`sell` (see
+                   * `ChipFlowsBody`'s own comment above for the FinMind-doc confirmation) —
+                   * divided to 張 here to match this table's own 買張/賣張 header labels. */}
                   {row.net >= 0 ? "▲ " : "▼ "}
-                  {formatNumber(Math.abs(row.net), locale)}
+                  {t("lotUnit", { value: formatNumber(Math.abs(row.net) / 1000, locale) })}
                 </td>
                 <td className="py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(row.buy, locale)}
+                  {t("lotUnit", { value: formatNumber(row.buy / 1000, locale) })}
                 </td>
                 <td className="py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(row.sell, locale)}
+                  {t("lotUnit", { value: formatNumber(row.sell / 1000, locale) })}
                 </td>
                 <td className="py-1.5 text-right font-num text-[var(--text)] tabular-nums">
                   {share.toFixed(2)}%
