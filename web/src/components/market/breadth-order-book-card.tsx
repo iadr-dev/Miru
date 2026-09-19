@@ -1,5 +1,6 @@
 "use client";
 
+import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
@@ -13,7 +14,6 @@ import {
   YAxis,
 } from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type {
@@ -21,7 +21,6 @@ import type {
   IndexContributionResponse,
   IndexContributionRow,
 } from "@/types/market";
-import { isMaskedTeaser } from "@/types/market";
 
 const BUCKET_ORDER = [
   "down_over_5pct",
@@ -59,10 +58,10 @@ const COLLAPSED_CONTRIBUTOR_COUNT = 5;
 /** 漲跌家數 histogram (`get_advance_decline`'s real bucket counts, never fabricated) + 指數貢獻排行
  * (`get_index_contribution`'s APPROXIMATE per-symbol contribution estimate) stacked in one card —
  * both are whole-market breadth/contribution reads for the same trading day, so they share one
- * card rather than each getting their own (mirrors the reference design). Only the contribution
- * half is Sponsor-tier, so the masked-teaser branch is handled HERE (blurring only that
- * sub-section via `SponsorTeaser`), not by the caller — the breadth histogram above it is public
- * and must never be blurred along with it. */
+ * card rather than each getting their own (mirrors the reference design). The contribution half
+ * is Sponsor-tier but opted into governance.md §4's row-preview exception
+ * (`supports_row_preview=True`), so an unentitled caller gets real rows with individually
+ * `locked` entries beyond `free_row_count` — never a whole-section masked teaser. */
 export function BreadthOrderBookCard({
   breadth,
   indexContribution,
@@ -80,9 +79,8 @@ export function BreadthOrderBookCard({
     count: breadth.data_available ? breadth.buckets[key] : 0,
   }));
 
-  const locked = isMaskedTeaser(indexContribution);
-  const positiveContributors = locked ? [] : indexContribution.positive_contributors;
-  const negativeContributors = locked ? [] : indexContribution.negative_contributors;
+  const positiveContributors = indexContribution.positive_contributors;
+  const negativeContributors = indexContribution.negative_contributors;
   const hasContributors = positiveContributors.length > 0 || negativeContributors.length > 0;
   const hasMoreContributors =
     positiveContributors.length > COLLAPSED_CONTRIBUTOR_COUNT ||
@@ -165,71 +163,59 @@ export function BreadthOrderBookCard({
           </span>
         </div>
 
-        {locked ? (
-          <SponsorTeaser
-            headline={tContribution("title")}
-            preview={indexContribution.preview}
-            requiredTier={indexContribution.required_tier}
-          >
-            <div className="h-40 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-          </SponsorTeaser>
-        ) : (
+        <p className="mb-3 text-[11px] text-[var(--text-muted)]">
+          {indexContribution.contribution_caveat}
+        </p>
+
+        {hasContributors ? (
           <>
-            <p className="mb-3 text-[11px] text-[var(--text-muted)]">
-              {indexContribution.contribution_caveat}
-            </p>
+            <IndexContributionColumns
+              positiveContributors={positiveContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+              negativeContributors={negativeContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+              positiveLabel={tContribution("positive")}
+              negativeLabel={tContribution("negative")}
+            />
 
-            {hasContributors ? (
-              <>
-                <IndexContributionColumns
-                  positiveContributors={positiveContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
-                  negativeContributors={negativeContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
-                  positiveLabel={tContribution("positive")}
-                  negativeLabel={tContribution("negative")}
-                />
-
-                {hasMoreContributors ? (
-                  <button
-                    type="button"
-                    onClick={() => setExpanded(true)}
-                    className={cn(
-                      "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                      "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                    )}
-                  >
-                    <span>
-                      {t("expandContribution", {
-                        count: Math.max(positiveContributors.length, negativeContributors.length),
-                      })}
-                    </span>
-                  </button>
-                ) : null}
-              </>
-            ) : (
-              <p className="text-[13px] text-[var(--text-muted)]">{tContribution("unavailable")}</p>
-            )}
-
-            {indexContribution.trade_date ? (
-              <p className="mt-3 text-[11px] text-[var(--text-muted)]">
-                {tContribution("updatedAt", { date: indexContribution.trade_date })}
-              </p>
+            {hasMoreContributors ? (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className={cn(
+                  "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                  "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                )}
+              >
+                <span>
+                  {t("expandContribution", {
+                    count: Math.max(positiveContributors.length, negativeContributors.length),
+                  })}
+                </span>
+              </button>
             ) : null}
-
-            <ExpandModal
-              open={expanded}
-              title={tContribution("title")}
-              closeLabel={t("collapseContribution")}
-              onClose={() => setExpanded(false)}
-            >
-              <IndexContributionColumns
-                positiveContributors={positiveContributors}
-                negativeContributors={negativeContributors}
-                positiveLabel={tContribution("positive")}
-                negativeLabel={tContribution("negative")}
-              />
-            </ExpandModal>
           </>
+        ) : (
+          <p className="text-[13px] text-[var(--text-muted)]">{tContribution("unavailable")}</p>
         )}
+
+        {indexContribution.trade_date ? (
+          <p className="mt-3 text-[11px] text-[var(--text-muted)]">
+            {tContribution("updatedAt", { date: indexContribution.trade_date })}
+          </p>
+        ) : null}
+
+        <ExpandModal
+          open={expanded}
+          title={tContribution("title")}
+          closeLabel={t("collapseContribution")}
+          onClose={() => setExpanded(false)}
+        >
+          <IndexContributionColumns
+            positiveContributors={positiveContributors}
+            negativeContributors={negativeContributors}
+            positiveLabel={tContribution("positive")}
+            negativeLabel={tContribution("negative")}
+          />
+        </ExpandModal>
       </div>
     </section>
   );
@@ -313,24 +299,72 @@ function IndexContributionColumn({
     <div>
       <p className="mb-2 text-[11px] text-[var(--text-muted)]">{label}</p>
       <ul className="flex flex-col gap-1.5">
-        {rows.map((row, index) => (
-          <li
-            key={row.symbol}
-            className="flex items-center gap-2 rounded-[var(--radius-input)] px-3 py-2"
-            style={{ backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)` }}
-          >
-            <span className="w-4 shrink-0 text-[12px] text-[var(--text-muted)]">{index + 1}</span>
-            <span className="flex-1 truncate text-[13px] text-[var(--text)]">
-              {row.stock_name}
-              <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
-            </span>
-            <span className="shrink-0 font-num text-[13px] tabular-nums" style={{ color }}>
-              {row.contribution_estimate >= 0 ? "+" : ""}
-              {formatNumber(row.contribution_estimate, "zh-TW", { decimals: 2 })}
-            </span>
-          </li>
-        ))}
+        {rows.map((row) =>
+          row.locked ? (
+            <LockedIndexContributionRow key={row.rank} rank={row.rank} color={color} />
+          ) : (
+            <IndexContributionRowItem key={row.symbol} row={row} color={color} />
+          ),
+        )}
       </ul>
     </div>
+  );
+}
+
+/** governance.md §4 top-N-preview exception's row-level lock: every field but `rank` is nulled
+ * server-side for a `locked` row — mirrors `daily-signal-table.tsx`'s own locked-row pattern for
+ * this column's row shape. */
+function LockedIndexContributionRow({
+  rank,
+  color,
+}: {
+  readonly rank: number;
+  readonly color: string;
+}): ReactNode {
+  return (
+    <li
+      className="flex items-center gap-2 rounded-[var(--radius-input)] px-3 py-2"
+      style={{ backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)` }}
+    >
+      <span className="w-4 shrink-0 text-[12px] text-[var(--text-muted)]">{rank}</span>
+      <span className="flex flex-1 items-center gap-1.5 truncate text-[13px] text-[var(--text-muted)]">
+        <LockIcon size={11} weight="regular" aria-hidden />
+        <span aria-hidden>••••</span>
+      </span>
+      <span
+        aria-hidden
+        className="shrink-0 font-num text-[13px] text-[var(--text-muted)] tabular-nums"
+      >
+        ••••
+      </span>
+    </li>
+  );
+}
+
+/** One real (never-locked) row — split out of `IndexContributionColumn` so that component's own
+ * `.map` stays a simple locked/unlocked branch. */
+function IndexContributionRowItem({
+  row,
+  color,
+}: {
+  readonly row: IndexContributionRow;
+  readonly color: string;
+}): ReactNode {
+  const value = row.contribution_estimate ?? 0;
+  return (
+    <li
+      className="flex items-center gap-2 rounded-[var(--radius-input)] px-3 py-2"
+      style={{ backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)` }}
+    >
+      <span className="w-4 shrink-0 text-[12px] text-[var(--text-muted)]">{row.rank}</span>
+      <span className="flex-1 truncate text-[13px] text-[var(--text)]">
+        {row.stock_name}
+        <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
+      </span>
+      <span className="shrink-0 font-num text-[13px] tabular-nums" style={{ color }}>
+        {value >= 0 ? "+" : ""}
+        {formatNumber(value, "zh-TW", { decimals: 2 })}
+      </span>
+    </li>
   );
 }

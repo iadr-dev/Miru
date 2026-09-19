@@ -1,5 +1,8 @@
 """The `/market/holder-accumulation` REST route, driven through the REAL FastAPI route via
-`TestClient` — same pattern as `test_price_momentum_route.py`.
+`TestClient` — same pattern as `test_price_momentum_route.py`. `get_holder_accumulation` is
+`DataClass.SPONSOR` but opted into the governance.md §4 row-level preview exception
+(`supports_row_preview=True`), so an unentitled caller gets this shape directly (row-masked
+`locked=True` rows beyond `free_row_count`), never a whole-tool masked-teaser envelope.
 """
 
 from __future__ import annotations
@@ -47,8 +50,6 @@ class TestHolderAccumulationRoute:
 
         assert resp.status_code == 200
         body = resp.json()
-        if body.get("locked"):
-            return  # unentitled test session — the masked-teaser envelope is a valid 200 too
         assert body["data_available"] is False
         assert body["unavailable_reason"]
         assert body["rows"] == []
@@ -141,8 +142,8 @@ class TestHolderAccumulationRoute:
 
         assert resp.status_code == 200
         body = resp.json()
-        if body.get("locked"):
-            return  # unentitled test session — the masked-teaser envelope is a valid 200 too
         assert body["data_available"] is True
+        # Anonymous/Free caller: 2 rows total, both within `free_row_count` — stay real.
         assert body["rows"][0]["symbol"] == "2330"
+        assert body["rows"][0]["locked"] is False
         assert body["rows"][0]["percent_of_custody_change"] == pytest.approx(5.0)

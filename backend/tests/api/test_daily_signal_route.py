@@ -1,8 +1,9 @@
 """The `/market/daily-signal` REST route (今日訊號), driven through the REAL FastAPI route via
-`TestClient` — same stub-router-swap pattern as `test_etf_list_route.py`. `get_daily_signal`'s
-tool is `DataClass.SPONSOR`; this test session may resolve as unentitled (the masked-teaser
-envelope is a valid HTTP 200 too), so each test bails early on `body.get("locked")` — same
-convention `test_holder_accumulation_route.py` uses for its own Sponsor-tier route."""
+`TestClient` — same stub-router-swap pattern as `test_etf_list_route.py`. `get_daily_signal` is
+`DataClass.SPONSOR` but opted into the governance.md §4 row-level preview exception
+(`supports_row_preview=True`), so an unentitled test session gets this shape directly (row-masked
+`locked=True` rows/highlights beyond `free_row_count`), never a whole-tool masked-teaser
+envelope."""
 
 from __future__ import annotations
 
@@ -49,8 +50,6 @@ class TestDailySignalRoute:
 
         assert resp.status_code == 200
         body = resp.json()
-        if body.get("locked"):
-            return  # unentitled test session — the masked-teaser envelope is a valid 200 too
         assert body["data_available"] is False
         assert body["unavailable_reason"]
         assert body["rows"] == []
@@ -133,13 +132,18 @@ class TestDailySignalRoute:
 
         assert resp.status_code == 200
         body = resp.json()
-        if body.get("locked"):
-            return  # unentitled test session — the masked-teaser envelope is a valid 200 too
         assert body["data_available"] is True
         assert body["report_date"] == report_day.isoformat()
         assert body["prior_date"] == prior_day.isoformat()
         assert body["increased_count"] == 1
         row = body["rows"][0]
+        # Anonymous/Free caller (governance.md §4 row-preview exception): the single stock here
+        # is rank 1, within `free_row_count`, so it stays real — never `locked`.
         assert row["component_stock_id"] == "2330"
         assert row["status"] == "加碼"
-        assert body["top_inflow"]["component_stock_id"] == "2330"
+        assert row["locked"] is False
+        # 焦點股 highlights are locked entirely for an unentitled caller (governance.md §4) —
+        # they're never counted against `free_row_count` since a single highlight concentrates
+        # the whole card's most valuable signal into one figure.
+        assert body["top_inflow"]["locked"] is True
+        assert body["top_inflow"]["component_stock_id"] is None

@@ -434,3 +434,72 @@ def test_data_class_is_sponsor(tmp_path: object) -> None:
     store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
 
     assert _tool(store).data_class == DataClass.SPONSOR
+
+
+async def test_masks_cards_beyond_free_preview_per_bucket_for_free_tier(tmp_path: object) -> None:
+    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
+    `_DISPOSITION_BOARD_FREE_ROW_COUNT` cards of each BUCKET real, everything else with identity/
+    value fields nulled and `locked=True` — the budget is per bucket, not global."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    # `list_partition_dates` ignores a genuinely-empty write (see its own docstring) — a real
+    # row (for a symbol distinct from the at_risk roster below) is needed to make this date
+    # resolve as the report date at all.
+    store.write_partition(
+        DISPOSITION_EVENTS_DATASET,
+        "TW",
+        _REPORT_DATE,
+        [
+            {
+                "symbol": "9999",
+                "market": "TW",
+                "company_name": "測試股",
+                "announced_date": "2026-09-02",
+                "reason": "連續三次",
+                "period_start": "2026-09-03",
+                "period_end": "2026-09-20",
+                "measure": "第一次處置",
+                "detail": None,
+                "security_type": "twse",
+            }
+        ],
+    )
+    store.write_partition(
+        ATTENTION_STOCKS_DATASET,
+        "TW",
+        _REPORT_DATE,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "company_name": name,
+                "flagged_date": _REPORT_DATE.isoformat(),
+                "reason": "當日本益比為272.81(第六款)",
+                "close": 100.0,
+                "pe": 20.0,
+                "security_type": "twse",
+            }
+            for symbol, name in [("1101", "台泥"), ("1102", "亞泥"), ("1103", "嘉泥")]
+        ],
+    )
+    tool = _tool(store)
+    assert tool.supports_row_preview is True
+
+    output = await tool.run(GetDispositionBoardInput(market=_MARKET), ToolContext())
+
+    assert output.data_available is True
+    assert output.free_row_count == 2
+    at_risk_cards = [c for c in output.cards if c.bucket == "at_risk"]
+    assert len(at_risk_cards) == 3
+    free_cards = [c for c in at_risk_cards if c.rank <= 2]
+    locked_cards = [c for c in at_risk_cards if c.rank > 2]
+    assert len(free_cards) == 2
+    assert len(locked_cards) == 1
+    for card in free_cards:
+        assert card.locked is False
+        assert card.symbol is not None
+    locked_card = locked_cards[0]
+    assert locked_card.locked is True
+    assert locked_card.symbol is None
+    assert locked_card.company_name is None
+    assert locked_card.bucket == "at_risk"
+    assert locked_card.projection_caveat

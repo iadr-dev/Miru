@@ -154,20 +154,7 @@ export function ChipDataPanel({ market }: { readonly market: Market }): ReactNod
         {/* Fills the grid cell to 大戶加碼股's right — the grid has 4 cards on a 2-col layout. */}
         <RainbowBorderCard className="flex h-full">
           <QueryState query={industryFlowQuery} skeleton={<CardSkeleton height={470} />}>
-            {(data) => {
-              if (isMaskedTeaser(data)) {
-                return (
-                  <SponsorTeaser
-                    headline={t("industryFlow.title")}
-                    preview={data.preview}
-                    requiredTier={data.required_tier}
-                  >
-                    <div className="h-52 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-                  </SponsorTeaser>
-                );
-              }
-              return <IndustryMoneyFlowCard rows={data.rows} />;
-            }}
+            {(data) => <IndustryMoneyFlowCard rows={data.rows} />}
           </QueryState>
         </RainbowBorderCard>
       </div>

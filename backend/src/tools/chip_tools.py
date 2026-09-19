@@ -8,6 +8,7 @@ several of these are Sponsor-tier and must stay gated.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -41,7 +42,7 @@ from schemas.capabilities import (
 from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
 from tools._rows import fetch_rows
-from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.base import BaseTool, Tool, ToolContext, is_entitled, parse_args
 from tools.common import DateRangeInput, MarketOnlyInput, candidate_trading_days
 
 
@@ -740,7 +741,57 @@ class GetLoanCollateralBalanceTool(BaseTool):
         )
 
 
+_INDUSTRY_MONEY_FLOW_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception
+
+
+def _ranked_industry_money_flow_rows(
+    rows: Sequence[IndustryChainMoneyFlowRow],
+) -> tuple[IndustryChainMoneyFlowRow, ...]:
+    """Stamps each row with a 1-based `rank`, ordered by `trading_money_pct` descending — the
+    same order the frontend card itself sorts by, so the free-preview rows are the most
+    prominent ones a caller would see first. Chain-total rows (`sub_industry == ""`) and
+    sub-industry breakdown rows are ranked as two SEPARATE lists (mirroring
+    `_ranked_cards_by_bucket`'s per-bucket approach) — they're two distinct rankings, not one
+    combined list, so a sub-industry row's rank must not depend on how many chain totals exist."""
+    totals = [r for r in rows if r.is_total]
+    breakdown = [r for r in rows if not r.is_total]
+    ranked: list[IndustryChainMoneyFlowRow] = []
+    for group in (totals, breakdown):
+        ordered = sorted(group, key=lambda r: r.trading_money_pct or 0.0, reverse=True)
+        ranked.extend(row.model_copy(update={"rank": i}) for i, row in enumerate(ordered, start=1))
+    return tuple(ranked)
+
+
+def _mask_industry_money_flow_rows_beyond(
+    rows: Sequence[IndustryChainMoneyFlowRow], free_row_count: int
+) -> tuple[IndustryChainMoneyFlowRow, ...]:
+    """Rows beyond `free_row_count` get every identity/value field nulled server-side — `rank`/
+    `market`/`trade_date` survive, matching `_mask_broker_top_rows_beyond`'s contract."""
+    masked: list[IndustryChainMoneyFlowRow] = []
+    for row in rows:
+        if row.rank <= free_row_count:
+            masked.append(row)
+            continue
+        masked.append(
+            IndustryChainMoneyFlowRow(
+                rank=row.rank,
+                market=row.market,
+                trade_date=row.trade_date,
+                is_total=row.is_total,
+                industry=None,
+                sub_industry=None,
+                stock_count=None,
+                trading_volume=None,
+                trading_money=None,
+                trading_money_pct=None,
+                locked=True,
+            )
+        )
+    return tuple(masked)
+
+
 class GetIndustryMoneyFlowOutput(_RowsOutput):
+    free_row_count: int = 0  # governance.md §4 top-N-preview exception
     rows: tuple[IndustryChainMoneyFlowRow, ...] = Field(default_factory=tuple)
 
 
@@ -765,6 +816,7 @@ class GetIndustryMoneyFlowTool(BaseTool):
     output_model: type[BaseModel] = GetIndustryMoneyFlowOutput
     data_class = DataClass.SPONSOR
     card_type: str | None = "industry_money_flow"
+    supports_row_preview: bool = True
 
     def __init__(self, router: DataAccessRouter, store: ParquetStore) -> None:
         self._router = router
@@ -797,11 +849,23 @@ class GetIndustryMoneyFlowTool(BaseTool):
             key="rows",
             params=params,
         )
+        # `fetch_rows` validates straight from the upstream payload, which has no `is_total`
+        # field of its own — derive it here (once, before ranking/masking) from `sub_industry`.
+        classified_rows = tuple(
+            row.model_copy(update={"is_total": row.sub_industry == ""}) for row in rows
+        )
+        ranked = _ranked_industry_money_flow_rows(classified_rows)
+        output_rows = (
+            ranked
+            if is_entitled(self.data_class, ctx.tier)
+            else _mask_industry_money_flow_rows_beyond(ranked, _INDUSTRY_MONEY_FLOW_FREE_ROW_COUNT)
+        )
         return GetIndustryMoneyFlowOutput(
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
-            rows=rows,
+            free_row_count=_INDUSTRY_MONEY_FLOW_FREE_ROW_COUNT,
+            rows=output_rows,
         )
 
 

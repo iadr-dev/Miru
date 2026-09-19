@@ -13,6 +13,7 @@ from __future__ import annotations
 import math
 import re
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
+from collections.abc import Sequence
 from datetime import date as date_
 from typing import NamedTuple
 
@@ -40,7 +41,7 @@ from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceResult
 from tools._rows import fetch_rows
-from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.base import BaseTool, Tool, ToolContext, is_entitled, parse_args
 
 # TWSE's own publicly-cited escalation pattern is "repeat 注意股 flags within a rolling window
 # escalate to 處置" (examples seen live: "連續三次"/"連續五次及當日沖銷標準") — no single official
@@ -62,6 +63,61 @@ _PROJECTION_CAVEAT = (
 _BUCKET_IN_DISPOSITION = "in_disposition"
 _BUCKET_EXITING_SOON = "exiting_soon"
 _BUCKET_AT_RISK = "at_risk"
+
+_DISPOSITION_BOARD_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception — per bucket
+
+
+def _ranked_cards_by_bucket(
+    cards: Sequence[DispositionBoardCardRow],
+) -> tuple[DispositionBoardCardRow, ...]:
+    """Stamps each card with a 1-based `rank` WITHIN its own bucket (roster order — already
+    sorted by symbol) — the top-N-preview exception's free-row budget is per bucket, not global,
+    since a caller viewing the 即將出關 tab shouldn't see zero free rows just because 處置中 used
+    up the whole-board budget."""
+    counters: dict[str, int] = {}
+    ranked: list[DispositionBoardCardRow] = []
+    for card in cards:
+        counters[card.bucket] = counters.get(card.bucket, 0) + 1
+        ranked.append(card.model_copy(update={"rank": counters[card.bucket]}))
+    return tuple(ranked)
+
+
+def _apply_row_preview_gate(
+    cards: Sequence[DispositionBoardCardRow], *, entitled: bool
+) -> tuple[DispositionBoardCardRow, ...]:
+    """Ranks every card within its own bucket, then masks beyond the free-row budget for an
+    unentitled caller — split out of `GetDispositionBoardTool.run` purely to keep that method
+    under ruff's statement cap (this is pure post-processing, no I/O of its own)."""
+    ranked = _ranked_cards_by_bucket(cards)
+    if entitled:
+        return ranked
+    return _mask_disposition_cards_beyond(ranked, _DISPOSITION_BOARD_FREE_ROW_COUNT)
+
+
+def _mask_disposition_cards_beyond(
+    cards: Sequence[DispositionBoardCardRow], free_row_count: int
+) -> tuple[DispositionBoardCardRow, ...]:
+    """Cards beyond `free_row_count` (within their own bucket) get every identity/value field
+    nulled server-side — `rank`/`bucket`/`market`/`projection_caveat` survive, matching
+    `_mask_daily_signal_rows_beyond`'s contract."""
+    masked: list[DispositionBoardCardRow] = []
+    for card in cards:
+        if card.rank <= free_row_count:
+            masked.append(card)
+            continue
+        masked.append(
+            DispositionBoardCardRow(
+                rank=card.rank,
+                symbol=None,
+                market=card.market,
+                company_name=None,
+                security_type=None,
+                bucket=card.bucket,
+                projection_caveat=card.projection_caveat,
+                locked=True,
+            )
+        )
+    return tuple(masked)
 
 
 class _SymbolEnrichment(NamedTuple):
@@ -172,6 +228,7 @@ class GetDispositionBoardOutput(BaseModel):
     data_available: bool
     unavailable_reason: str | None = None
     bucket_counts: dict[str, int] = Field(default_factory=dict)
+    free_row_count: int = 0  # governance.md §4 top-N-preview exception
     cards: tuple[DispositionBoardCardRow, ...] = Field(default_factory=tuple)
 
 
@@ -205,6 +262,7 @@ class GetDispositionBoardTool(BaseTool):
     output_model: type[BaseModel] = GetDispositionBoardOutput
     data_class = DataClass.SPONSOR
     card_type: str | None = "disposition_board"
+    supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore, router: DataAccessRouter) -> None:
         self._store = store
@@ -319,12 +377,17 @@ class GetDispositionBoardTool(BaseTool):
             bucket_counts[card.bucket] = bucket_counts.get(card.bucket, 0) + 1
             cards.append(card)
 
+        output_cards = _apply_row_preview_gate(
+            cards, entitled=is_entitled(self.data_class, ctx.tier)
+        )
+
         return GetDispositionBoardOutput(
             market=market,
             report_date=report_date,
             data_available=True,
             bucket_counts=bucket_counts,
-            cards=tuple(cards),
+            free_row_count=_DISPOSITION_BOARD_FREE_ROW_COUNT,
+            cards=output_cards,
         )
 
     async def _fetch_symbol_enrichment(  # noqa: PLR0913, PLR0917 — every arg is one

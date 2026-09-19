@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import timedelta
@@ -1112,12 +1112,15 @@ class GetEtfMoneyFlowInput(BaseModel):
 
 
 class EtfMoneyFlowRow(BaseModel):
-    """One constituent stock's cross-ETF aggregation row."""
+    """One constituent stock's cross-ETF aggregation row. `locked=True` rows (governance.md §4
+    top-N-preview exception) have every field but `rank` nulled server-side — an unentitled
+    caller must not learn which stock a locked row even names."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    component_stock_id: str
-    component_stock_name: str
+    rank: int = 0  # 1-based position in the emitted ranking — real even when locked
+    component_stock_id: str | None
+    component_stock_name: str | None
     active_etf_holder_count: int | None = None  # 主動式檔數 — None if no holding snapshot found
     held_shares: int | None = None  # 持有張數 — None if no holding snapshot found
     held_market_value: float | None = None  # 持有市值 — None if no holding snapshot found
@@ -1126,9 +1129,10 @@ class EtfMoneyFlowRow(BaseModel):
     # `_stock_shares_held_pct`'s own docstring for why this is exact-by-definition, not a rough
     # guess). `None` when either the stock's market-cap or its close is missing from the store.
     stock_shares_held_pct: float | None = None
-    net_shares_flow: int  # sum(buy - sell) across every active ETF over the window
-    buying_etf_count: int  # 買 — distinct ETFs net-buying this stock over the window
-    selling_etf_count: int  # 賣 — distinct ETFs net-selling this stock over the window
+    net_shares_flow: int | None  # sum(buy - sell) across every active ETF over the window
+    buying_etf_count: int | None  # 買 — distinct ETFs net-buying this stock over the window
+    selling_etf_count: int | None  # 賣 — distinct ETFs net-selling this stock over the window
+    locked: bool = False
 
 
 class GetEtfMoneyFlowOutput(BaseModel):
@@ -1147,6 +1151,7 @@ class GetEtfMoneyFlowOutput(BaseModel):
     unavailable_reason: str | None = None
     total_stock_count: int = 0  # 共N檔 — every distinct constituent aggregated, not just top_n
     stock_shares_held_pct_caveat: str = _STOCK_SHARES_HELD_PCT_CAVEAT
+    free_row_count: int = 0  # governance.md §4 top-N-preview exception
     inflow_ranking: tuple[EtfMoneyFlowRow, ...] = Field(default_factory=tuple)
     outflow_ranking: tuple[EtfMoneyFlowRow, ...] = Field(default_factory=tuple)
 
@@ -1159,6 +1164,43 @@ class _StockAgg:
     component_stock_name: str
     net_shares_flow: int = 0
     per_etf_net: dict[str, int] = field(default_factory=dict[str, int])
+
+
+_ETF_MONEY_FLOW_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception
+
+
+def _ranked_etf_money_flow_rows(rows: Sequence[EtfMoneyFlowRow]) -> tuple[EtfMoneyFlowRow, ...]:
+    """Stamps each already-sorted row with its 1-based `rank` — the value that survives
+    masking, mirroring `_daily_signal_rows`'s own ranking contract."""
+    return tuple(row.model_copy(update={"rank": i}) for i, row in enumerate(rows, start=1))
+
+
+def _mask_etf_money_flow_rows_beyond(
+    rows: Sequence[EtfMoneyFlowRow], free_row_count: int
+) -> tuple[EtfMoneyFlowRow, ...]:
+    """Rows beyond `free_row_count` get every identity/value field nulled server-side — only
+    `rank` survives, matching `_mask_broker_top_rows_beyond`'s contract."""
+    masked: list[EtfMoneyFlowRow] = []
+    for row in rows:
+        if row.rank <= free_row_count:
+            masked.append(row)
+            continue
+        masked.append(
+            EtfMoneyFlowRow(
+                rank=row.rank,
+                component_stock_id=None,
+                component_stock_name=None,
+                active_etf_holder_count=None,
+                held_shares=None,
+                held_market_value=None,
+                stock_shares_held_pct=None,
+                net_shares_flow=None,
+                buying_etf_count=None,
+                selling_etf_count=None,
+                locked=True,
+            )
+        )
+    return tuple(masked)
 
 
 class GetEtfMoneyFlowTool(BaseTool):
@@ -1184,6 +1226,7 @@ class GetEtfMoneyFlowTool(BaseTool):
     output_model: type[BaseModel] = GetEtfMoneyFlowOutput
     data_class = DataClass.SPONSOR
     card_type: str | None = "etf_money_flow"
+    supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
@@ -1279,8 +1322,17 @@ class GetEtfMoneyFlowTool(BaseTool):
                 )
             )
 
-        inflow = tuple(sorted(rows, key=lambda r: r.net_shares_flow, reverse=True)[: typed.top_n])
-        outflow = tuple(sorted(rows, key=lambda r: r.net_shares_flow)[: typed.top_n])
+        inflow = _ranked_etf_money_flow_rows(
+            sorted(rows, key=lambda r: r.net_shares_flow or 0, reverse=True)[: typed.top_n]
+        )
+        outflow = _ranked_etf_money_flow_rows(
+            sorted(rows, key=lambda r: r.net_shares_flow or 0)[: typed.top_n]
+        )
+
+        entitled = is_entitled(self.data_class, ctx.tier)
+        if not entitled:
+            inflow = _mask_etf_money_flow_rows_beyond(inflow, _ETF_MONEY_FLOW_FREE_ROW_COUNT)
+            outflow = _mask_etf_money_flow_rows_beyond(outflow, _ETF_MONEY_FLOW_FREE_ROW_COUNT)
 
         return GetEtfMoneyFlowOutput(
             market=typed.market.value,
@@ -1289,6 +1341,7 @@ class GetEtfMoneyFlowTool(BaseTool):
             holding_as_of=holding_end_date,
             data_available=True,
             total_stock_count=len(aggregates),
+            free_row_count=_ETF_MONEY_FLOW_FREE_ROW_COUNT,
             inflow_ranking=inflow,
             outflow_ranking=outflow,
         )
@@ -1311,32 +1364,43 @@ class DailySignalRow(BaseModel):
     """One constituent stock's day-over-day status across EVERY active ETF combined — the same
     新增/刪除/加碼/減碼 classification `ActiveEtfReportRow` uses for one ETF, applied to the
     aggregate (sum of shares held across all active ETFs) instead. Only stocks with a nonzero
-    aggregate change appear (mirrors `ActiveEtfReportRow`'s own "only changed rows" contract)."""
+    aggregate change appear (mirrors `ActiveEtfReportRow`'s own "only changed rows" contract).
+    `locked=True` rows (governance.md §4 top-N-preview exception) have every field but `status`/
+    `rank` nulled server-side, including `component_stock_id`/`component_stock_name` — an
+    unentitled caller must not learn which stock a locked row even names."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    component_stock_id: str
-    component_stock_name: str
+    rank: int = 0  # 1-based position in the emitted list — real even when locked
+    component_stock_id: str | None
+    component_stock_name: str | None
     close: float | None = None  # 股價 — None if the store has no price bar for this symbol
     change_pct: float | None = None  # 漲跌幅 vs. the prior trading day
     status: HoldingStatus
-    shares_delta: int  # 變動張數 — aggregate net buy-sell across every active ETF, today
+    shares_delta: int | None  # 變動張數 — aggregate net buy-sell across every active ETF, today
     pct_change: float | None = None  # 變動幅度 — shares_delta ÷ prior-day aggregate shares
-    buying_etf_count: int  # distinct ETFs net-buying this stock today
-    selling_etf_count: int  # distinct ETFs net-selling this stock today
+    buying_etf_count: int | None  # distinct ETFs net-buying this stock today
+    selling_etf_count: int | None  # distinct ETFs net-selling this stock today
+    locked: bool = False
 
 
 class DailySignalHighlight(BaseModel):
     """One 焦點股 highlight card — the single stock with the largest aggregate inflow/outflow
-    for the day, plus the 多空共識 (buying-vs-selling ETF count) for that same stock."""
+    for the day, plus the 多空共識 (buying-vs-selling ETF count) for that same stock. Unlike
+    `DailySignalRow`, this is never part of the "top N free rows" budget — governance.md §4's
+    row-preview exception locks it entirely (`locked=True`, every field but that flag nulled)
+    for an unentitled caller, since a single 焦點股 highlight concentrates the whole card's most
+    valuable signal into one card and giving it away for free would defeat the point of gating
+    the rest of the list."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    component_stock_id: str
-    component_stock_name: str
+    component_stock_id: str | None
+    component_stock_name: str | None
     held_market_value_delta: float | None = None  # 資金動向 (NTD) — None if no close was found
-    buying_etf_count: int
-    selling_etf_count: int
+    buying_etf_count: int | None = None
+    selling_etf_count: int | None = None
+    locked: bool = False
 
 
 class GetDailySignalOutput(BaseModel):
@@ -1352,6 +1416,7 @@ class GetDailySignalOutput(BaseModel):
     removed_count: int = 0  # 刪除
     increased_count: int = 0  # 加碼
     decreased_count: int = 0  # 減碼
+    free_row_count: int = 0  # governance.md §4 — real rows at the front of `rows`
     top_inflow: DailySignalHighlight | None = None
     top_outflow: DailySignalHighlight | None = None
     rows: tuple[DailySignalRow, ...] = Field(default_factory=tuple)
@@ -1471,18 +1536,72 @@ def _daily_signal_rows(
     *,
     has_prior_day: bool,
 ) -> list[DailySignalRow]:
-    """One row per stock with a nonzero aggregate buy/sell today, mirroring
-    `_active_etf_report_rows`'s own per-ETF version — see `_aggregate_daily_signal_changes`/
-    `_daily_signal_row_for_stock` for the two halves this delegates to."""
+    """One row per stock with a nonzero aggregate buy/sell today, ranked by `abs(shares_delta)`
+    descending (largest-magnitude signal first) and stamped with a 1-based `rank` — mirrors
+    `_active_etf_report_rows`'s own per-ETF version, see `_aggregate_daily_signal_changes`/
+    `_daily_signal_row_for_stock` for the two halves this delegates to. The ranking exists so the
+    governance.md §4 top-N-preview exception's free rows are the most-informative ones, not an
+    arbitrary iteration order over a dict."""
     aggregates = _aggregate_daily_signal_changes(changes)
-    rows: list[DailySignalRow] = []
+    unranked: list[DailySignalRow] = []
     for stock_id, name in aggregates.name_by_stock.items():
         row = _daily_signal_row_for_stock(
             stock_id, name, aggregates, ctx, has_prior_day=has_prior_day
         )
         if row is not None:
-            rows.append(row)
-    return rows
+            unranked.append(row)
+    unranked.sort(key=lambda r: abs(r.shares_delta or 0), reverse=True)
+    return [row.model_copy(update={"rank": i}) for i, row in enumerate(unranked, start=1)]
+
+
+_DAILY_SIGNAL_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception
+
+
+def _mask_daily_signal_rows_beyond(
+    rows: Sequence[DailySignalRow], free_row_count: int
+) -> tuple[DailySignalRow, ...]:
+    """Rows beyond `free_row_count` get every identity/value field nulled server-side — `rank`
+    and `status` survive (a bare ordinal + categorical bucket aren't individually identifying),
+    matching `_mask_broker_top_rows_beyond`'s contract."""
+    masked: list[DailySignalRow] = []
+    for row in rows:
+        if row.rank <= free_row_count:
+            masked.append(row)
+            continue
+        masked.append(
+            DailySignalRow(
+                rank=row.rank,
+                component_stock_id=None,
+                component_stock_name=None,
+                close=None,
+                change_pct=None,
+                status=row.status,
+                shares_delta=None,
+                pct_change=None,
+                buying_etf_count=None,
+                selling_etf_count=None,
+                locked=True,
+            )
+        )
+    return tuple(masked)
+
+
+_DAILY_SIGNAL_LOCKED_HIGHLIGHT = DailySignalHighlight(
+    component_stock_id=None,
+    component_stock_name=None,
+    held_market_value_delta=None,
+    buying_etf_count=None,
+    selling_etf_count=None,
+    locked=True,
+)
+
+
+def _mask_daily_signal_highlight(
+    highlight: DailySignalHighlight | None,
+) -> DailySignalHighlight | None:
+    """A 焦點股 highlight concentrates the whole card's single most valuable signal — locked
+    entirely for an unentitled caller rather than counted against `free_row_count`."""
+    return _DAILY_SIGNAL_LOCKED_HIGHLIGHT if highlight is not None else None
 
 
 def _daily_signal_highlight(
@@ -1508,7 +1627,10 @@ def _daily_signal_highlight_if_significant(
     max/min of `rows`, which can legitimately be a net-sell or net-buy respectively when every
     stock moved the same direction today, and a highlight in the wrong direction would mislead a
     reader glancing at "焦點股". `None` when `row` is `None` (no rows at all) or wrong-signed."""
-    if row is None:
+    # `row` always comes from the real (pre-mask) `rows` list built by `_daily_signal_rows` —
+    # `shares_delta`/`component_stock_id` are only ever `None` on a row already masked for an
+    # unentitled caller, which never happens before this point in `run()`.
+    if row is None or row.shares_delta is None or row.component_stock_id is None:
         return None
     if wants_positive_delta and row.shares_delta <= 0:
         return None
@@ -1543,12 +1665,12 @@ class GetDailySignalTool(BaseTool):
     output_model: type[BaseModel] = GetDailySignalOutput
     data_class = DataClass.SPONSOR
     card_type: str | None = "daily_signal"
+    supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(GetDailySignalInput, args)
         market = typed.market.value
         target = typed.trade_date or date_.today()
@@ -1612,14 +1734,25 @@ class GetDailySignalTool(BaseTool):
         for row in rows:
             counts[row.status] += 1
 
-        top_inflow_row = max(rows, key=lambda r: r.shares_delta, default=None)
-        top_outflow_row = min(rows, key=lambda r: r.shares_delta, default=None)
+        # `rows` here is always the real (pre-mask) list — `shares_delta` is never `None` on it.
+        top_inflow_row = max(rows, key=lambda r: r.shares_delta or 0, default=None)
+        top_outflow_row = min(rows, key=lambda r: r.shares_delta or 0, default=None)
         top_inflow = _daily_signal_highlight_if_significant(
             top_inflow_row, closes=closes, wants_positive_delta=True
         )
         top_outflow = _daily_signal_highlight_if_significant(
             top_outflow_row, closes=closes, wants_positive_delta=False
         )
+
+        entitled = is_entitled(self.data_class, ctx.tier)
+        if entitled:
+            output_rows: tuple[DailySignalRow, ...] = tuple(rows)
+            output_top_inflow = top_inflow
+            output_top_outflow = top_outflow
+        else:
+            output_rows = _mask_daily_signal_rows_beyond(rows, _DAILY_SIGNAL_FREE_ROW_COUNT)
+            output_top_inflow = _mask_daily_signal_highlight(top_inflow)
+            output_top_outflow = _mask_daily_signal_highlight(top_outflow)
 
         return GetDailySignalOutput(
             market=market,
@@ -1631,9 +1764,10 @@ class GetDailySignalTool(BaseTool):
             removed_count=counts[HoldingStatus.REMOVED],
             increased_count=counts[HoldingStatus.INCREASED],
             decreased_count=counts[HoldingStatus.DECREASED],
-            top_inflow=top_inflow,
-            top_outflow=top_outflow,
-            rows=tuple(rows),
+            free_row_count=_DAILY_SIGNAL_FREE_ROW_COUNT,
+            top_inflow=output_top_inflow,
+            top_outflow=output_top_outflow,
+            rows=output_rows,
         )
 
 
@@ -2574,15 +2708,57 @@ class GetHolderAccumulationInput(BaseModel):
 
 
 class HolderAccumulationRow(BaseModel):
+    """`locked=True` rows (governance.md §4 top-N-preview exception) have every field but
+    `rank` nulled server-side — an unentitled caller must not learn which stock a locked row
+    even names."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    symbol: str
-    stock_name: str
+    rank: int = 0  # 1-based position in the ranked list — real even when locked
+    symbol: str | None
+    stock_name: str | None
     latest_close: float | None = None  # None if no PRICE_EOD_JOB bar exists for `as_of`
-    percent_of_custody_before: float  # this threshold's summed 占集保庫存數比例% at `period_ago`
-    percent_of_custody_after: float  # this threshold's summed 占集保庫存數比例% at `as_of`
-    percent_of_custody_change: float  # after - before, in percentage points
-    shares_change: int  # this threshold's summed shares, after - before
+    percent_of_custody_before: float | None  # this threshold's summed 占集保庫存數比例% at
+    # `period_ago`
+    percent_of_custody_after: float | None  # this threshold's summed 占集保庫存數比例% at `as_of`
+    percent_of_custody_change: float | None  # after - before, in percentage points
+    shares_change: int | None  # this threshold's summed shares, after - before
+    locked: bool = False
+
+
+_HOLDER_ACCUMULATION_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception
+
+
+def _ranked_holder_accumulation_rows(
+    rows: Sequence[HolderAccumulationRow],
+) -> tuple[HolderAccumulationRow, ...]:
+    return tuple(row.model_copy(update={"rank": i}) for i, row in enumerate(rows, start=1))
+
+
+def _mask_holder_accumulation_rows_beyond(
+    rows: Sequence[HolderAccumulationRow], free_row_count: int
+) -> tuple[HolderAccumulationRow, ...]:
+    """Rows beyond `free_row_count` get every identity/value field nulled server-side — only
+    `rank` survives, matching `_mask_broker_top_rows_beyond`'s contract."""
+    masked: list[HolderAccumulationRow] = []
+    for row in rows:
+        if row.rank <= free_row_count:
+            masked.append(row)
+            continue
+        masked.append(
+            HolderAccumulationRow(
+                rank=row.rank,
+                symbol=None,
+                stock_name=None,
+                latest_close=None,
+                percent_of_custody_before=None,
+                percent_of_custody_after=None,
+                percent_of_custody_change=None,
+                shares_change=None,
+                locked=True,
+            )
+        )
+    return tuple(masked)
 
 
 class GetHolderAccumulationOutput(BaseModel):
@@ -2595,6 +2771,7 @@ class GetHolderAccumulationOutput(BaseModel):
     period_ago: date_ | None = None
     data_available: bool
     unavailable_reason: str | None = None
+    free_row_count: int = 0  # governance.md §4 top-N-preview exception
     rows: tuple[HolderAccumulationRow, ...] = Field(default_factory=tuple)
 
 
@@ -2630,6 +2807,7 @@ class GetHolderAccumulationTool(BaseTool):
     output_model: type[BaseModel] = GetHolderAccumulationOutput
     data_class = DataClass.SPONSOR
     card_type: str | None = "holder_accumulation"
+    supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
@@ -2662,7 +2840,6 @@ class GetHolderAccumulationTool(BaseTool):
         return totals
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetHolderAccumulationInput, args)
         market = typed.market.value
 
@@ -2751,7 +2928,12 @@ class GetHolderAccumulationTool(BaseTool):
                     shares_change=shares_after - shares_before,
                 )
             )
-        ranked = sorted(rows, key=lambda r: r.percent_of_custody_change, reverse=True)
+        ranked = sorted(rows, key=lambda r: r.percent_of_custody_change or 0.0, reverse=True)
+        output_rows = _ranked_holder_accumulation_rows(ranked[: typed.top_n])
+        if not is_entitled(self.data_class, ctx.tier):
+            output_rows = _mask_holder_accumulation_rows_beyond(
+                output_rows, _HOLDER_ACCUMULATION_FREE_ROW_COUNT
+            )
         return GetHolderAccumulationOutput(
             market=market,
             threshold=typed.threshold,
@@ -2759,7 +2941,8 @@ class GetHolderAccumulationTool(BaseTool):
             as_of=as_of,
             period_ago=period_ago,
             data_available=True,
-            rows=tuple(ranked[: typed.top_n]),
+            free_row_count=_HOLDER_ACCUMULATION_FREE_ROW_COUNT,
+            rows=output_rows,
         )
 
 
@@ -2778,14 +2961,52 @@ class GetIndexContributionInput(BaseModel):
     top_n: int = Field(default=_INDEX_CONTRIBUTION_TOP_N, ge=1, le=100)
 
 
+_INDEX_CONTRIBUTION_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception — per side
+
+
+def _ranked_index_contribution_rows(
+    rows: Iterable[IndexContributionRow],
+) -> tuple[IndexContributionRow, ...]:
+    return tuple(row.model_copy(update={"rank": i}) for i, row in enumerate(rows, start=1))
+
+
+def _mask_index_contribution_rows_beyond(
+    rows: Sequence[IndexContributionRow], free_row_count: int
+) -> tuple[IndexContributionRow, ...]:
+    """Rows beyond `free_row_count` get every identity/value field nulled server-side — only
+    `rank` survives, matching `_mask_broker_top_rows_beyond`'s contract."""
+    masked: list[IndexContributionRow] = []
+    for row in rows:
+        if row.rank <= free_row_count:
+            masked.append(row)
+            continue
+        masked.append(
+            IndexContributionRow(
+                rank=row.rank,
+                symbol=None,
+                stock_name=None,
+                weight_per=None,
+                pct_change=None,
+                contribution_estimate=None,
+                locked=True,
+            )
+        )
+    return tuple(masked)
+
+
 class IndexContributionRow(BaseModel):
+    """`locked=True` rows (governance.md §4 top-N-preview exception) have every field but `rank`
+    nulled server-side."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    symbol: str
-    stock_name: str
-    weight_per: float  # 市值比重 (%) on trade_date, from MarketValueWeightRow
-    pct_change: float  # (close - prior_close) / prior_close, a fraction not a percent
-    contribution_estimate: float  # weight_per * pct_change — see contribution_caveat
+    rank: int = 0  # 1-based position within its own side (positive/negative) — real when locked
+    symbol: str | None
+    stock_name: str | None
+    weight_per: float | None  # 市值比重 (%) on trade_date, from MarketValueWeightRow
+    pct_change: float | None  # (close - prior_close) / prior_close, a fraction not a percent
+    contribution_estimate: float | None  # weight_per * pct_change — see contribution_caveat
+    locked: bool = False
 
 
 class GetIndexContributionOutput(BaseModel):
@@ -2797,6 +3018,7 @@ class GetIndexContributionOutput(BaseModel):
     data_available: bool
     unavailable_reason: str | None = None
     contribution_caveat: str = Field(default=_CONTRIBUTION_CAVEAT, min_length=1)
+    free_row_count: int = 0  # governance.md §4 top-N-preview exception
     positive_contributors: tuple[IndexContributionRow, ...] = Field(default_factory=tuple)
     negative_contributors: tuple[IndexContributionRow, ...] = Field(default_factory=tuple)
 
@@ -2832,12 +3054,12 @@ class GetIndexContributionTool(BaseTool):
     output_model: type[BaseModel] = GetIndexContributionOutput
     data_class = DataClass.SPONSOR
     card_type: str | None = "index_contribution"
+    supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetIndexContributionInput, args)
         market = typed.market.value
         calendar = _real_calendar(self._store, market)
@@ -2889,15 +3111,29 @@ class GetIndexContributionTool(BaseTool):
                 )
             )
 
-        ranked = sorted(rows, key=lambda r: abs(r.contribution_estimate), reverse=True)
-        positive = tuple(r for r in ranked if r.contribution_estimate > 0)[: typed.top_n]
-        negative = tuple(r for r in ranked if r.contribution_estimate < 0)[: typed.top_n]
+        ranked = sorted(rows, key=lambda r: abs(r.contribution_estimate or 0.0), reverse=True)
+        positive = _ranked_index_contribution_rows(
+            r for r in ranked if (r.contribution_estimate or 0.0) > 0
+        )[: typed.top_n]
+        negative = _ranked_index_contribution_rows(
+            r for r in ranked if (r.contribution_estimate or 0.0) < 0
+        )[: typed.top_n]
+
+        entitled = is_entitled(self.data_class, ctx.tier)
+        if not entitled:
+            positive = _mask_index_contribution_rows_beyond(
+                positive, _INDEX_CONTRIBUTION_FREE_ROW_COUNT
+            )
+            negative = _mask_index_contribution_rows_beyond(
+                negative, _INDEX_CONTRIBUTION_FREE_ROW_COUNT
+            )
 
         return GetIndexContributionOutput(
             market=market,
             trade_date=trade_date,
             prior_trade_date=prior_date,
             data_available=True,
+            free_row_count=_INDEX_CONTRIBUTION_FREE_ROW_COUNT,
             positive_contributors=positive,
             negative_contributors=negative,
         )
