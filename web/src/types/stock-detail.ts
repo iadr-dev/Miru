@@ -944,3 +944,212 @@ export const etfsHoldingStockResponseSchema = z.union([
   maskedTeaserSchema,
 ]);
 export type EtfsHoldingStockResponse = z.infer<typeof etfsHoldingStockResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stock/live-quote — get_live_quote_snapshot (public — TWSE MIS, never Sponsor-gated).
+// Mirrors `LiveQuoteSnapshot`/`GetLiveQuoteSnapshotOutput` (backend/src/tools/live_tools.py)
+// field-for-field. 即時 tab's 五檔 ladder. `best_bid`/`best_ask`/`best_bid_volume`/
+// `best_ask_volume` are `_`-delimited 5-tier strings (see that module's own docstring) — split
+// client-side, never re-parsed on the backend into a typed array (the raw upstream shape).
+// ---------------------------------------------------------------------------
+
+export const liveQuoteSnapshotSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  name: z.string().nullable().optional(),
+  last_price: z.number(),
+  open: z.number(),
+  high: z.number(),
+  low: z.number(),
+  volume: z.number(),
+  best_bid: z.string().nullable().optional(),
+  best_ask: z.string().nullable().optional(),
+  best_bid_volume: z.string().nullable().optional(),
+  best_ask_volume: z.string().nullable().optional(),
+  observed_at: z.string().nullable().optional(),
+});
+export type LiveQuoteSnapshot = z.infer<typeof liveQuoteSnapshotSchema>;
+
+export const liveQuoteResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  snapshot: liveQuoteSnapshotSchema.nullable(),
+});
+export type LiveQuoteResponse = z.infer<typeof liveQuoteResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stock/price-limit — get_price_limit (public). Mirrors `PriceLimitRow`
+// (backend/src/schemas/capabilities.py) field-for-field. 看盤 tab's 詳細 stats row — daily
+// 參考/漲停/跌停 price. A `limit_up`/`limit_down` of 0 means no price-change limit applies
+// (leveraged/inverse ETFs, emerging-board stocks), not missing data.
+// ---------------------------------------------------------------------------
+
+export const priceLimitRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  reference_price: z.number(),
+  limit_up: z.number(),
+  limit_down: z.number(),
+});
+export type PriceLimitRow = z.infer<typeof priceLimitRowSchema>;
+
+export const priceLimitResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  rows: z.array(priceLimitRowSchema).default([]),
+});
+export type PriceLimitResponse = z.infer<typeof priceLimitResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stock/intraday-kbar — get_intraday_kbar (Sponsor-tier). Mirrors `KBarRow`
+// (backend/src/schemas/capabilities.py) field-for-field. 即時 tab's 分K chart — one trading
+// day of minute bars, published ~15:50 the same day (not a live feed during market hours).
+// ---------------------------------------------------------------------------
+
+export const intradayKbarRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  minute: z.string(),
+  open: z.number(),
+  high: z.number(),
+  low: z.number(),
+  close: z.number(),
+  volume: z.number(),
+});
+export type IntradayKbarRow = z.infer<typeof intradayKbarRowSchema>;
+
+export const intradayKbarDataSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  rows: z.array(intradayKbarRowSchema).default([]),
+});
+export const intradayKbarResponseSchema = z.union([intradayKbarDataSchema, maskedTeaserSchema]);
+export type IntradayKbarResponse = z.infer<typeof intradayKbarResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stock/price-tick — get_price_tick (Sponsor-tier). Mirrors `PriceTickRow`
+// (backend/src/schemas/capabilities.py) field-for-field. 即時 tab's 逐筆 list — one trading
+// day's tick-by-tick trades, published ~15:30 the same day: an END-OF-DAY REPLAY, never a
+// live-ticking stream — render copy must say so, not imply real-time.
+// ---------------------------------------------------------------------------
+
+export const priceTickRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  trade_date: z.string(),
+  time: z.string(),
+  deal_price: z.number(),
+  volume: z.number(),
+  tick_type: z.string(),
+});
+export type PriceTickRow = z.infer<typeof priceTickRowSchema>;
+
+export const priceTickDataSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  rows: z.array(priceTickRowSchema).default([]),
+});
+export const priceTickResponseSchema = z.union([priceTickDataSchema, maskedTeaserSchema]);
+export type PriceTickResponse = z.infer<typeof priceTickResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /symbols/{symbol}/supply-chain — get_supply_chain_edges (public). Mirrors
+// `SupplyChainEdge`/`GetSupplyChainEdgesOutput` (backend/src/tools/theme_tools.py) field-for-
+// field. 產業分析 tab's 供應鏈關係圖 card — every supply/customer/competitor edge involving one
+// symbol, from either side; `from_symbol`/`to_symbol` disambiguate direction per edge.
+// ---------------------------------------------------------------------------
+
+export const EDGE_TYPES = ["supplies", "customer", "competes"] as const;
+export const edgeTypeSchema = z.enum(EDGE_TYPES);
+export type EdgeType = z.infer<typeof edgeTypeSchema>;
+
+export const EDGE_CONFIDENCES = ["high", "medium", "low"] as const;
+export const edgeConfidenceSchema = z.enum(EDGE_CONFIDENCES);
+export type EdgeConfidence = z.infer<typeof edgeConfidenceSchema>;
+
+export const supplyChainEdgeSchema = z.object({
+  from_symbol: z.string(),
+  to_symbol: z.string(),
+  market: z.string(),
+  edge_type: edgeTypeSchema,
+  confidence: edgeConfidenceSchema,
+  revenue_pct: z.number().nullable().optional(),
+  source: z.enum(["seed", "llm_extraction"]),
+  from_name: z.string(),
+  to_name: z.string(),
+});
+export type SupplyChainEdge = z.infer<typeof supplyChainEdgeSchema>;
+
+export const supplyChainEdgesResponseSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  edge_count: z.number().default(0),
+  edges: z.array(supplyChainEdgeSchema).default([]),
+});
+export type SupplyChainEdgesResponse = z.infer<typeof supplyChainEdgesResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /themes/{key}/tier-heatmap — get_theme_tier_heatmap (public). Mirrors
+// `SubIndustryHeat`/`GetThemeTierHeatmapOutput` (backend/src/tools/theme_tools.py) field-for-
+// field. 產業分析 tab's 產業鏈 tier-tile view — a theme's upstream/midstream/downstream sub-
+// industry tiles, each colored by that sub-industry's own members' real average price change.
+// A `null` `pct_change` means no member had a real close on both days (never a fabricated 0%).
+// ---------------------------------------------------------------------------
+
+export const subIndustryHeatSchema = z.object({
+  sub_industry: z.string(),
+  tier: z.enum(["upstream", "midstream", "downstream"]),
+  tier_source: z.enum(["curated", "heuristic"]),
+  pct_change: z.number().nullable().optional(),
+  member_count: z.number().default(0),
+  priced_member_count: z.number().default(0),
+});
+export type SubIndustryHeat = z.infer<typeof subIndustryHeatSchema>;
+
+export const themeTierHeatmapResponseSchema = z.object({
+  theme_key: z.string(),
+  found: z.boolean(),
+  trade_date: z.string().nullable().optional(),
+  prior_trade_date: z.string().nullable().optional(),
+  data_available: z.boolean().default(true),
+  unavailable_reason: z.string().nullable().optional(),
+  upstream: z.array(subIndustryHeatSchema).default([]),
+  midstream: z.array(subIndustryHeatSchema).default([]),
+  downstream: z.array(subIndustryHeatSchema).default([]),
+  message: z.string().default(""),
+});
+export type ThemeTierHeatmapResponse = z.infer<typeof themeTierHeatmapResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /themes/{key} — get_theme_members (public). Mirrors `ThemeMember`/
+// `GetThemeMembersOutput` (backend/src/tools/theme_tools.py) field-for-field. 產業分析 tab's
+// 產業鏈 tier-tile click-through — the member symbols of one sub-industry, filtered client-side
+// from the theme's full member list (this route has no server-side sub_industry filter).
+// ---------------------------------------------------------------------------
+
+export const themeMemberSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  sub_industry: z.string().default(""),
+  confidence: z.number().default(1),
+  source: z.string(),
+});
+export type ThemeMember = z.infer<typeof themeMemberSchema>;
+
+export const themeMembersResponseSchema = z.object({
+  theme_key: z.string(),
+  found: z.boolean(),
+  name_zh: z.string().default(""),
+  name_en: z.string().default(""),
+  kind: z.string().nullable().optional(),
+  member_count: z.number().default(0),
+  members: z.array(themeMemberSchema).default([]),
+  message: z.string().default(""),
+});
+export type ThemeMembersResponse = z.infer<typeof themeMembersResponseSchema>;

@@ -37,13 +37,21 @@ import {
   governmentBankFlowsResponseSchema,
   type InsiderShareholdingResponse,
   type InstitutionalFlowResponse,
+  type IntradayKbarResponse,
   insiderShareholdingResponseSchema,
   institutionalFlowResponseSchema,
+  intradayKbarResponseSchema,
+  type LiveQuoteResponse,
+  liveQuoteResponseSchema,
   type MarginShortResponse,
   type MonthRevenueResponse,
   marginShortResponseSchema,
   monthRevenueResponseSchema,
+  type PriceLimitResponse,
+  type PriceTickResponse,
   type PttStockSearchResponse,
+  priceLimitResponseSchema,
+  priceTickResponseSchema,
   pttStockSearchResponseSchema,
   type SecuritiesLendingResponse,
   type ShareholderDispersionResponse,
@@ -51,6 +59,7 @@ import {
   type StockInsiderTransferDeclarationResponse,
   type StockMaterialAnnouncementsResponse,
   type StockScoreResponse,
+  type SupplyChainEdgesResponse,
   type SymbolThemesResponse,
   securitiesLendingResponseSchema,
   shareholderDispersionResponseSchema,
@@ -58,9 +67,14 @@ import {
   stockInsiderTransferDeclarationResponseSchema,
   stockMaterialAnnouncementsResponseSchema,
   stockScoreResponseSchema,
+  supplyChainEdgesResponseSchema,
   symbolThemesResponseSchema,
   type TechnicalIndicatorsResponse,
+  type ThemeMembersResponse,
+  type ThemeTierHeatmapResponse,
   technicalIndicatorsResponseSchema,
+  themeMembersResponseSchema,
+  themeTierHeatmapResponseSchema,
   type ValuationRatiosResponse,
   valuationRatiosResponseSchema,
 } from "@/types/stock-detail";
@@ -449,4 +463,88 @@ export async function getEtfsHoldingStock(
   if (asOf) search.set("as_of", asOf);
   const raw = await requestJson(`/stock/etfs-holding-stock?${search.toString()}`);
   return etfsHoldingStockResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /stock/live-quote (public) — 即時 tab's 五檔 ladder
+// ---------------------------------------------------------------------------
+
+export async function getLiveQuote(symbol: string, market: Market): Promise<LiveQuoteResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  const raw = await requestJson(`/stock/live-quote?${search.toString()}`);
+  return liveQuoteResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /stock/price-limit (public) — 看盤 tab's 詳細 stats row
+// ---------------------------------------------------------------------------
+
+export async function getPriceLimit(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<PriceLimitResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/price-limit?${search.toString()}`);
+  return priceLimitResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /stock/intraday-kbar (Sponsor-tier) — 即時 tab's 分K chart
+// ---------------------------------------------------------------------------
+
+export async function getIntradayKbar(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<IntradayKbarResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/intraday-kbar?${search.toString()}`);
+  return intradayKbarResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /stock/price-tick (Sponsor-tier) — 即時 tab's 逐筆 list (EOD replay, not live)
+// ---------------------------------------------------------------------------
+
+export async function getPriceTick(
+  symbol: string,
+  market: Market,
+  params: DateRangeParams = {},
+): Promise<PriceTickResponse> {
+  const search = symbolDateSearchParams(symbol, market, params);
+  const raw = await requestJson(`/stock/price-tick?${search.toString()}`);
+  return priceTickResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /symbols/{symbol}/supply-chain (public) — 產業分析's 供應鏈關係圖 card
+// ---------------------------------------------------------------------------
+
+export async function getSupplyChainEdges(
+  symbol: string,
+  market: Market,
+): Promise<SupplyChainEdgesResponse> {
+  const search = new URLSearchParams({ market });
+  const raw = await requestJson(`/symbols/${symbol}/supply-chain?${search.toString()}`);
+  return supplyChainEdgesResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /themes/{key}/tier-heatmap (public) — 產業分析's 產業鏈 tier-tile view
+// ---------------------------------------------------------------------------
+
+export async function getThemeTierHeatmap(themeKey: string): Promise<ThemeTierHeatmapResponse> {
+  const raw = await requestJson(`/themes/${encodeURIComponent(themeKey)}/tier-heatmap`);
+  return themeTierHeatmapResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /themes/{key} (public) — 產業分析's 產業鏈 tier-tile click-through member list
+// ---------------------------------------------------------------------------
+
+export async function getThemeMembers(themeKey: string): Promise<ThemeMembersResponse> {
+  const search = new URLSearchParams({ limit: "1000" });
+  const raw = await requestJson(`/themes/${encodeURIComponent(themeKey)}?${search.toString()}`);
+  return themeMembersResponseSchema.parse(raw);
 }

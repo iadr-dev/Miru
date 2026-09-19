@@ -1268,6 +1268,79 @@ async def etfs_holding_stock(
     return await _dispatch(state, "get_etfs_holding_stock", args, ctx)
 
 
+@router.get("/stock/live-quote")
+async def live_quote(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """即時 tab's 五檔 ladder — one bounded TWSE MIS best-5 bid/ask + last-trade snapshot,
+    backed by `get_live_quote_snapshot`, `DataClass.PUBLIC` (never Sponsor-gated; TWSE MIS is
+    the one free, keyless intraday source). The client re-polls this route on an interval —
+    the tool itself makes exactly one upstream call per invocation, never a loop."""
+    return await _dispatch(
+        state, "get_live_quote_snapshot", {"id": symbol, "market": market.value}, ctx
+    )
+
+
+@router.get("/stock/price-limit")
+async def price_limit(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """看盤 tab's 詳細 stats row — daily 參考/漲停/跌停 price, backed by `get_price_limit`,
+    `DataClass.PUBLIC`."""
+    return await _dispatch(
+        state, "get_price_limit", _symbol_date_args(symbol, market, start_date, end_date), ctx
+    )
+
+
+@router.get("/stock/intraday-kbar")
+async def intraday_kbar(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """即時 tab's 分K chart — minute-bar series for one trading day, backed by
+    `get_intraday_kbar`, `DataClass.SPONSOR` → masked-teaser envelope for an unentitled
+    caller. Upstream publishes ~15:50 the same day, not a live feed during market hours."""
+    return await _dispatch(
+        state,
+        "get_intraday_kbar",
+        _symbol_date_args(symbol, market, start_date, end_date),
+        ctx,
+    )
+
+
+@router.get("/stock/price-tick")
+async def price_tick(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """即時 tab's 逐筆 list — tick-by-tick trade history for one trading day, backed by
+    `get_price_tick`, `DataClass.SPONSOR` → masked-teaser envelope for an unentitled caller.
+    Upstream publishes ~15:30 the same day (an end-of-day replay of the day's ticks), never a
+    live-ticking stream — the frontend must not present this as real-time."""
+    return await _dispatch(
+        state,
+        "get_price_tick",
+        _symbol_date_args(symbol, market, start_date, end_date),
+        ctx,
+    )
+
+
 @router.get("/stock/ptt-search")
 async def ptt_stock_search(
     symbol: str = Query(..., min_length=1),

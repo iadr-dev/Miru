@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { heatColor } from "@/lib/heat-color";
 import type { SectorHeatmapRow, SectorHeatmapSizeBy } from "@/types/market";
 
 /** One laid-out tile: the source row plus a normalized [0,1] rectangle within the treemap's own
@@ -197,17 +198,6 @@ function sizeMetricLabel(
   );
 }
 
-/** Maps `avg_pct_change` to an `--up`/`--down` intensity — weak tint near zero, full-strength
- * token past ±3% (a calm, non-magnitude-scaled clamp, not a per-tile computed hex: only the
- * *mix ratio* between the two existing tokens varies, never a new color). */
-function tileColor(pctChange: number): string {
-  const magnitude = Math.min(Math.abs(pctChange) / 3, 1);
-  const token = pctChange >= 0 ? "--up" : "--down";
-  const weakToken = pctChange >= 0 ? "--up-weak" : "--down-weak";
-  const pct = Math.round(30 + magnitude * 70);
-  return `color-mix(in srgb, var(${token}) ${pct}%, var(${weakToken}))`;
-}
-
 /**
  * 產業熱力圖 — one tile per industry, sized by `total_turnover` (or `stock_count` when turnover
  * weighting was unavailable) and colored by `avg_pct_change` via the `--up`/`--down` scale
@@ -356,7 +346,7 @@ export function SectorHeatmapTreemap({
               top: `${(tile.y / LAYOUT_HEIGHT) * 100}%`,
               width: `${(tile.width / LAYOUT_WIDTH) * 100}%`,
               height: `${(tile.height / LAYOUT_HEIGHT) * 100}%`,
-              backgroundColor: tileColor(row.avg_pct_change),
+              backgroundColor: heatColor(row.avg_pct_change),
             }}
           >
             <span

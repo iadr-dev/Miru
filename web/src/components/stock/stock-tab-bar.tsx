@@ -8,6 +8,8 @@ import { ComingSoon } from "@/components/shell/coming-soon";
 import { BasicInfoPanel } from "@/components/stock/basic-info-panel";
 import { ChipAnalysisPanel } from "@/components/stock/chip-analysis-panel";
 import { FinancialsPanel } from "@/components/stock/financials-panel";
+import { IndustryPanel } from "@/components/stock/industry-panel";
+import { RealtimeTab } from "@/components/stock/realtime-panel";
 import { ResearchChartsPanel } from "@/components/stock/research-charts-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
@@ -37,12 +39,14 @@ const STOCK_TABS = [
 type StockTab = (typeof STOCK_TABS)[number];
 const BUILT_TABS: ReadonlySet<StockTab> = new Set([
   "basicInfo",
+  "industry",
   "financials",
   "chipAnalysis",
   "technical",
   "tracker",
   "news",
   "research",
+  "realtime",
 ]);
 
 export function StockTabBar({
@@ -79,9 +83,6 @@ export function StockTabBar({
               )}
             >
               {t(key)}
-              {key === "realtime" ? (
-                <span className="text-[10px] text-[var(--text-muted)]">🔒</span>
-              ) : null}
               {active ? (
                 <motion.span
                   layoutId="stock-tab-underline"
@@ -95,12 +96,14 @@ export function StockTabBar({
       </div>
 
       {tab === "basicInfo" ? <BasicInfoPanel symbol={symbol} market={market} /> : null}
+      {tab === "industry" ? <IndustryPanel symbol={symbol} market={market} /> : null}
       {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
       {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "technical" ? <TechnicalAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "tracker" ? <TrackerPanel symbol={symbol} market={market} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
       {tab === "research" ? <ResearchChartsPanel symbol={symbol} market={market} /> : null}
+      {tab === "realtime" ? <RealtimeTab symbol={symbol} market={market} /> : null}
       {!BUILT_TABS.has(tab) ? (
         <ComingSoon icon={ChartLineIcon} title={t(tab)} body={t("comingSoonBody")} />
       ) : null}
