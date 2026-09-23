@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import sources.finmind as finmind_module
-from analytics.scoring_batch import job_scoring_batch
+from analytics.scoring_batch import job_scoring_batch, job_trend_score_batch
 from analytics.screener.batch import job_screener_flags
 from config.settings import Settings
 from ingest.context import IngestContext
@@ -259,7 +259,9 @@ def test_derived_compute_batches_are_scheduled() -> None:
     can't see them — this is the guard for that category instead."""
     scheduled_run_fns = {job.run for job in SCHEDULED_JOBS}
     missing = [
-        fn.__name__ for fn in (job_screener_flags, job_scoring_batch) if fn not in scheduled_run_fns
+        fn.__name__
+        for fn in (job_screener_flags, job_scoring_batch, job_trend_score_batch)
+        if fn not in scheduled_run_fns
     ]
     assert not missing, (
         f"Derived-compute batch job(s) not wired into SCHEDULED_JOBS — their cache is never "

@@ -40,7 +40,7 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
-from analytics.scoring_batch import job_scoring_batch
+from analytics.scoring_batch import job_scoring_batch, job_trend_score_batch
 from analytics.screener.batch import job_screener_flags
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
@@ -198,6 +198,12 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # day — `job_scoring_batch`'s own docstring: idempotent, leader- and calendar-gated like every
     # other batch here.
     ScheduledIngestJob("scoring_batch", time_(23, 55), job_scoring_batch),
+    # 趨勢評分 (trend score) — a second, independent derived-compute pass over the same landed
+    # price/flow/margin-short partitions plus a live TAIEX read (`get_trend_score`'s cache-backed
+    # five-dimension read; the sixth, broker_concentration, is computed on demand by that tool, not
+    # this batch — see `job_trend_score_batch`'s own docstring). Fires right after `scoring_batch`
+    # since both are derived-compute passes over the same day's already-ingested inputs.
+    ScheduledIngestJob("trend_score_batch", time_(23, 57), job_trend_score_batch),
     # US symbol universe — monthly reference data (not trading-day-gated, mirrors the
     # industry-chain theme seed's own cadence reasoning); must land before the price/fundamentals
     # pulls below have anything to fetch, so it fires earliest in the Taipei morning.

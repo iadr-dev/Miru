@@ -47,7 +47,14 @@ from analytics.fundamentals import (
     parse_statement_lines,
 )
 from analytics.indicators import PriceBar, sma
-from analytics.models import EtfScoreBreakdown, ScoreProfile, ScoreResult, StockScoreBreakdown
+from analytics.models import (
+    EtfScoreBreakdown,
+    ScoreProfile,
+    ScoreResult,
+    StockScoreBreakdown,
+    TrendDimensionResult,
+    TrendScoreResult,
+)
 from analytics.score import (
     EtfFactorInputs,
     FactorInputs,
@@ -59,6 +66,16 @@ from analytics.score import (
 )
 from analytics.scoring_store import upsert_score
 from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_mask
+from analytics.trend_score import (
+    TrendDimension,
+    blend_trend_composite,
+    chip_flow_trend_score,
+    margin_credit_trend_score,
+    sector_rotation_trend_score,
+    taiex_correlation_score,
+    technical_trend_score,
+)
+from analytics.trend_score_store import upsert_trend_score
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 from schemas.capabilities import (
@@ -68,10 +85,12 @@ from schemas.capabilities import (
     EtfNavRow,
     FinancialStatementLine,
     InstitutionalFlowRow,
+    MarginShortRow,
     MarketValueRow,
     StockInfoRow,
 )
-from schemas.enums import Market
+from schemas.enums import Capability, Market
+from schemas.source import HealthStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -128,6 +147,51 @@ _ACTIVE_ETF_HOLDING_LOOKBACK_DAYS = 10
 _ETF_EXPENSE_RATIO_LOOKBACK_DAYS = 40
 # `net_buy_20d_trend`'s own convention, reused for the holdings-turnover proxy.
 _HOLDINGS_TURNOVER_LOOKBACK_DAYS = 20
+
+# ---------------------------------------------------------------------------------------------
+# 趨勢評分 (trend score) batch — reads the SAME price/flow frames above plus two more datasets,
+# and writes `analytics/trend_score_store.py`'s `trend_scores` table. See
+# `job_trend_score_batch`'s own docstring for the full read-path design (which of the six
+# dimensions are batch-computed here vs. deferred to the tool's on-demand `run()`).
+# ---------------------------------------------------------------------------------------------
+
+TREND_SCORE_DATASET = "trend_scores"
+
+# `Capability.MARGIN_SHORT`'s FinMind dataset (`sources/finmind/chip_institutional.py`'s own
+# `_DatasetConfig`) — confirmed `whole_market_ok=True` there, i.e. it DOES have a documented
+# omit-`data_id` whole-market request form, unlike `chip_broker` below. The `ingest/jobs.py`
+# `STUBBED_DATASETS` comment ("ingest-daily-late: 融資融券/... 21:05") only means no
+# `WholeMarketJobSpec`/cron entry has been wired for it yet — the adapter-level capability is
+# real and whole-market-capable. Rather than wait on a scheduler-wiring phase, this batch reads
+# it directly via `ctx.finmind.fetch_whole_market` itself (the same call `run_whole_market_job`
+# would make), mirroring `run_whole_market_job`'s validate-then-read-back shape but writing
+# straight into this batch's own per-symbol grouping instead of a `ParquetStore` partition —
+# a deliberate scope narrowing (this batch's own trailing read window, not a persisted
+# whole-market partition another reader could reuse) since standing up the full ingest job/cron
+# wiring is out of this batch's scope.
+MARGIN_SHORT_DATASET = "TaiwanStockMarginPurchaseShortSale"
+
+# `net_buy_20d_trend`'s own convention — margin/short balance is read over the same trailing
+# window so `margin_credit_trend_score`'s day-over-day delta always has at least 2 rows to diff.
+_MARGIN_SHORT_LOOKBACK_DAYS = 5
+# `price_change_pct`'s own minimum: at least 2 closes (today + one prior day) to diff a change.
+_PRICE_CHANGE_MIN_BARS = 2
+
+# TAIEX's own daily closes, from the SAME whole-market `PRICE_EOD_DATASET` partition
+# (`sources/finmind/technical.py::_map_eod_bars` confirms `TAIEX` rides along in the raw
+# whole-market payload) — but `scoreable_symbol_mask` (four-digit-or-00-prefixed) excludes it, so
+# it must be read back unfiltered, separately from `_bars_by_symbol`'s per-stock grouping.
+_TAIEX_SYMBOL = "TAIEX"
+_TAIEX_CORRELATION_LOOKBACK_DAYS = 60  # comfortably above `taiex_correlation_score`'s own
+# `_TAIEX_CORR_MIN_POINTS + 1` (11) floor, without re-reading the full 260-day momentum window
+# this dimension has no use for.
+
+# `_SECTOR_ROTATION_WINDOW_TRADING_DAYS` in `tools/market_tools.py::GetSectorRotationTool` — kept
+# as a local duplicate constant per this codebase's stated convention (see the module-level
+# rationale in `job_trend_score_batch`'s own docstring: `analytics/` may not import `tools/`,
+# the dependency-rule direction backend/CLAUDE.md §3 enforces, so the small rank-computation
+# arithmetic that tool performs is duplicated here rather than imported).
+_SECTOR_ROTATION_WINDOW_TRADING_DAYS = 10
 
 # The `FundamentalMetrics` attribute names the quality/value factors z-score — kept as local
 # tuples (not imported from `analytics.score`'s private `_QUALITY_SUB_METRICS`/
@@ -771,13 +835,371 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     )
 
 
+# ---------------------------------------------------------------------------------------------
+# 趨勢評分 (trend score) batch
+# ---------------------------------------------------------------------------------------------
+
+
+async def _margin_short_rows_by_symbol(
+    ctx: IngestContext, market: Market, margin_window: Sequence[date_]
+) -> dict[str, list[MarginShortRow]]:
+    """Every symbol's margin/short balance rows over `margin_window`, fetched directly through
+    `ctx.finmind.fetch_whole_market` (see `MARGIN_SHORT_DATASET`'s own module-level comment for
+    why this batch calls the adapter itself rather than reading back a `ParquetStore` partition
+    `run_whole_market_job` would have written — no `WholeMarketJobSpec`/cron entry exists for
+    `Capability.MARGIN_SHORT` yet, only the adapter-level whole-market capability). One call per
+    day in the window, same cadence discipline `run_whole_market_job` itself follows (one call
+    per dataset per day, no retry loop) — a day whose fetch fails is logged and skipped, never
+    retried in a tight loop; the day's rows are simply absent from the returned mapping."""
+    by_symbol: dict[str, list[MarginShortRow]] = defaultdict(list)
+    for run_date in margin_window:
+        result = await ctx.finmind.fetch_whole_market(
+            Capability.MARGIN_SHORT, tls_policy=ctx.tls_policy, start_date=run_date.isoformat()
+        )
+        if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
+            logger.warning(
+                "trend_score_margin_short_fetch_failed",
+                market=market.value,
+                run_date=run_date.isoformat(),
+                detail=result.health.detail,
+            )
+            continue
+        raw_rows = result.payload.get("rows")
+        if not isinstance(raw_rows, list):
+            continue
+        for raw_row in cast("list[dict[str, object]]", raw_rows):
+            try:
+                row = MarginShortRow.model_validate(raw_row)
+            except ValueError:
+                continue
+            by_symbol[row.symbol].append(row)
+    return dict(by_symbol)
+
+
+def _taiex_closes(price_frame: pd.DataFrame) -> tuple[float, ...]:
+    """TAIEX's own daily closes from the SAME whole-market `PRICE_EOD_DATASET` frame
+    `_bars_by_symbol` reads — read back separately because `scoreable_symbol_mask` (the
+    four-digit-or-`00`-prefixed equity/ETF filter) deliberately excludes the non-numeric `TAIEX`
+    aggregate label (see that mask's own docstring), so the same projected frame is filtered a
+    second time here for the one row this dimension needs, ascending by trade date."""
+    projected = cast("pd.DataFrame", price_frame.loc[:, ["symbol", "trade_date", "close"]])
+    taiex_rows = cast(
+        "pd.DataFrame",
+        projected.loc[projected["symbol"] == _TAIEX_SYMBOL].sort_values("trade_date"),
+    )
+    closes: list[float] = []
+    for close in taiex_rows["close"]:
+        close_f = _as_float(close)
+        if close_f is not None:
+            closes.append(close_f)
+    return tuple(closes)
+
+
+def _industry_by_symbol(ctx: IngestContext, market_str: str) -> dict[str, str]:
+    """The latest `STOCK_INFO_JOB` roster's `symbol -> industry_category` map — the same roster
+    read `_active_roster_symbols` already performs, duplicated here (not refactored to share)
+    because that function returns a `frozenset` of symbols for a membership filter, a genuinely
+    different shape than this `dict` a caller does a per-symbol lookup against."""
+    partition_dates = ctx.store.list_partition_dates(STOCK_INFO_DATASET, market_str)
+    if not partition_dates:
+        return {}
+    roster_date = max(partition_dates)
+    raw_roster = ctx.store.read_partition(STOCK_INFO_DATASET, market_str, roster_date)
+    field_names = set(StockInfoRow.model_fields)
+    roster = [
+        StockInfoRow.model_validate({k: v for k, v in row.items() if k in field_names})
+        for row in raw_roster
+    ]
+    return {row.symbol: row.industry_category for row in roster if row.industry_category}
+
+
+def _sector_rotation_ranks_by_industry(
+    flow_by_symbol: Mapping[str, list[InstitutionalFlowRow]],
+    industry_by_symbol: Mapping[str, str],
+) -> dict[str, list[int]]:
+    """Duplicates `tools/market_tools.py::GetSectorRotationTool`'s own daily-industry-rank
+    arithmetic (sum `buy - sell` across every investor category, per industry, per day; rank
+    industries by that sum, most-inflow-first) rather than importing it — that tool lives in
+    `tools/`, a HIGHER layer than `analytics/` (backend/CLAUDE.md §3's one-way dependency rule),
+    so `analytics/` may never import from it. This is the "pull the small computation DOWN into
+    `analytics/`" resolution the task brief called for, not the "duplicate across `tools/`
+    modules" convention `tools/theme_tools.py` describes for peer-to-peer tool duplication (that
+    convention is about `tools/` modules not importing each other, not about crossing the
+    `tools/` -> `analytics/` boundary).
+
+    Returns `{industry -> [rank_day1, rank_day2, ...]}` in chronological order (oldest first),
+    over whatever trading days `flow_by_symbol`'s rows actually cover — the same trailing window
+    `job_trend_score_batch` already read for `chip_flow_trend_score`, reused here rather than a
+    second fetch."""
+    net_by_industry_by_date: dict[date_, dict[str, float]] = defaultdict(dict)
+    for symbol, rows in flow_by_symbol.items():
+        industry = industry_by_symbol.get(symbol)
+        if industry is None:
+            continue
+        for row in rows:
+            bucket = net_by_industry_by_date[row.trade_date]
+            bucket[industry] = bucket.get(industry, 0.0) + (row.buy - row.sell)
+    ranks_by_industry: dict[str, list[int]] = defaultdict(list)
+    for trade_date in sorted(net_by_industry_by_date):
+        net_by_industry = net_by_industry_by_date[trade_date]
+        ranked = sorted(net_by_industry.items(), key=lambda item: (-item[1], item[0]))
+        for rank, (industry, _net) in enumerate(ranked, start=1):
+            ranks_by_industry[industry].append(rank)
+    return dict(ranks_by_industry)
+
+
+_NON_TRADING_TREND_CAVEAT = (
+    "Descriptive trend-strength read across technical/chip/credit/concentration/rotation/"
+    "co-movement evidence only — not a buy, sell, hold, or price recommendation; computed at "
+    "last post-close and may not reflect intraday moves. 分點集中度 (broker concentration) is "
+    "computed on demand per symbol at request time (Sponsor-tier, per-symbol-fetch-only data — "
+    "see `job_trend_score_batch`'s own docstring), not by this nightly batch."
+)
+
+_BROKER_CONCENTRATION_BATCH_UNAVAILABLE = TrendDimension(
+    name="broker_concentration",
+    value=None,
+    description="broker_concentration unavailable",
+    unavailable_reason="分點 (chip_broker) has no whole-market request form (per-symbol/"
+    "per-broker only, Sponsor-tier) — computed on demand by the get_trend_score tool for the "
+    "one requested symbol, not by this nightly whole-universe batch.",
+)
+
+
+def _align_closes(
+    symbol_closes: Sequence[float], taiex_closes: Sequence[float]
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """`taiex_correlation_score` requires same-length aligned series — this batch's own
+    `symbol_closes`/`taiex_closes` come from independent per-symbol/whole-market reads over the
+    same trailing window, so they align by taking the shortest common trailing slice of each
+    (both are already ascending-by-date), rather than a real date-keyed join. Good enough for a
+    descriptive co-movement read; a caller needing exact per-date alignment (unlikely to differ,
+    since both come from the same trading-day window) would need a date-keyed join instead."""
+    length = min(len(symbol_closes), len(taiex_closes))
+    if length == 0:
+        return (), ()
+    return tuple(symbol_closes[-length:]), tuple(taiex_closes[-length:])
+
+
+def _build_trend_result(  # noqa: PLR0913 — one keyword-only field per dimension's own raw input
+    symbol: str,
+    *,
+    market: Market,
+    run_date: date_,
+    bars: Sequence[PriceBar],
+    flow_value: float | None,
+    flow_universe: Sequence[float],
+    margin_rows: Sequence[MarginShortRow],
+    price_change_pct: float | None,
+    industry_ranks: Sequence[int],
+    symbol_closes: Sequence[float],
+    taiex_closes: Sequence[float],
+) -> TrendScoreResult:
+    """Blends the FIVE whole-market-ingested-data dimensions this batch can compute
+    (`technical`/`chip_flow`/`margin_credit`/`sector_rotation`/`taiex_correlation`) plus a
+    disclosed-unavailable placeholder for `broker_concentration` — see the module's
+    `job_trend_score_batch` docstring for why that sixth dimension is deliberately never
+    batch-computed (always disclosed unavailable here, on the same "never fabricate, always
+    disclose" terms every other genuinely missing dimension gets), with the tool layer blending
+    it in on demand at request time instead."""
+    dimensions: list[TrendDimension] = [
+        technical_trend_score(bars),
+        chip_flow_trend_score(flow_value, flow_universe),
+        margin_credit_trend_score(margin_rows, price_change_pct=price_change_pct),
+        _BROKER_CONCENTRATION_BATCH_UNAVAILABLE,
+        sector_rotation_trend_score(industry_ranks),
+        taiex_correlation_score(symbol_closes, taiex_closes),
+    ]
+    composite, unavailable = blend_trend_composite(dimensions)
+    dimension_results = tuple(
+        TrendDimensionResult(
+            name=d.name,
+            value=d.value,
+            description=d.description,
+            unavailable_reason=d.unavailable_reason,
+        )
+        for d in dimensions
+    )
+    return TrendScoreResult(
+        symbol=symbol,
+        market=market,
+        as_of=run_date,
+        composite=composite,
+        dimensions=dimension_results,
+        unavailable_dimensions=unavailable,
+        non_trading_caveat=_NON_TRADING_TREND_CAVEAT,
+    )
+
+
+async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
+    """Compute and cache 5 of the 6 趨勢評分 (trend score) dimensions for every TW stock/ETF
+    symbol that day's ingested price/flow/margin-short/roster data covers, and upsert every row
+    into the relational `trend_scores` history table (`analytics/trend_score_store.py`).
+    Leader- and calendar-gated exactly like `job_scoring_batch`.
+
+    **Why only 5 of 6 dimensions, and which one is missing:** `broker_concentration_trend_score`
+    needs `Capability.CHIP_BROKER` (分點) rows, and that dataset has NO documented whole-market
+    request form — `ingest/jobs.py`'s own `STUBBED_DATASETS` comment confirms it: the upstream
+    endpoint "only accepts a request keyed by *either* a stock id *or* a broker id, never
+    neither" (per-symbol/per-broker only, Sponsor-tier). Computing it for the whole universe
+    nightly would mean one live per-symbol fetch per stock — exactly the "per-symbol trap" this
+    codebase's whole-market-ingest discipline exists to forbid (backend/CLAUDE.md §4's "No
+    full-market scan" rule: ingest is the *only* whole-market path, and even ingest itself has no
+    legitimate whole-market form for this one dataset). The clean fix, and the one this batch
+    takes: score the other five dimensions here nightly (all backed by genuinely whole-market-
+    ingested `price_eod`/`institutional_flow`/`margin_short`/`stock_info` data), and leave
+    `broker_concentration` a disclosed-unavailable placeholder in every row this batch writes —
+    the tool layer's own `get_trend_score` `run()` computes that sixth dimension on demand for
+    just the ONE requested symbol (a single-symbol Sponsor-tier fetch, not a batch concern) and
+    re-blends the full six-dimension composite at request time, never persisting that on-demand
+    value back into this table. This mirrors no other exact precedent in this codebase (no other
+    card mixes a batch-computed value with an on-demand one), so the split is a `job_trend_score_
+    batch`-and-`get_trend_score`-owned decision, documented here and at the tool layer, not a
+    project-wide pattern.
+
+    **Sector rotation's rank-computation logic** is duplicated from
+    `tools/market_tools.py::GetSectorRotationTool` into `_sector_rotation_ranks_by_industry`
+    above, rather than imported — `tools/` sits ABOVE `analytics/` in the one-way dependency
+    order (backend/CLAUDE.md §3), so `analytics/` may never import it; pulling the small
+    arithmetic down into `analytics/` (not leaving it only in `tools/`) is the correct-direction
+    fix, not the peer-to-peer "duplicate rather than cross-import" convention `tools/
+    theme_tools.py` documents for tool-to-tool duplication (a different scenario — that
+    convention never licenses an upward import in the first place).
+
+    **Margin/short (`Capability.MARGIN_SHORT`) IS whole-market-capable** at the adapter level
+    (`sources/finmind/chip_institutional.py`'s own `_DatasetConfig` sets `whole_market_ok=True`)
+    even though no `WholeMarketJobSpec`/cron entry exists for it yet in `ingest/jobs.py` (its
+    `STUBBED_DATASETS` entry documents only the missing *scheduler wiring*, not a missing
+    adapter capability) — this batch calls `ctx.finmind.fetch_whole_market` for it directly
+    (`_margin_short_rows_by_symbol`) rather than waiting on that separate scheduler-wiring phase.
+
+    Scores BOTH stock and ETF symbols with the same five dimensions (no ETF-specific branching,
+    per the task brief: the five factors here are mostly stock-agnostic)."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            TREND_SCORE_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
+    if not ctx.leader.is_leader():
+        return journal_run(
+            TREND_SCORE_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="not the leader — write skipped",
+        )
+    if ctx.session_factory is None:
+        raise RuntimeError("trend score batch requires IngestContext.session_factory to be wired")
+
+    market = ctx.market
+    market_str = market.value
+    price_window = _trailing_trading_days(ctx, run_date, _PRICE_LOOKBACK_DAYS)
+    flow_window = _trailing_trading_days(ctx, run_date, _FLOW_LOOKBACK_DAYS)
+    margin_window = _trailing_trading_days(ctx, run_date, _MARGIN_SHORT_LOOKBACK_DAYS)
+
+    price_frame = ctx.store.read_range_frame(
+        PRICE_EOD_DATASET, market_str, price_window, columns=_PRICE_FRAME_COLUMNS
+    )
+    flow_frame = ctx.store.read_range_frame(
+        INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
+    )
+    bars_by_symbol = _bars_by_symbol(price_frame)
+    flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
+    margin_by_symbol = await _margin_short_rows_by_symbol(ctx, market, margin_window)
+    taiex_closes_full = _taiex_closes(price_frame)
+    industry_by_symbol = _industry_by_symbol(ctx, market_str)
+    industry_ranks_by_industry = _sector_rotation_ranks_by_industry(
+        flow_by_symbol, industry_by_symbol
+    )
+
+    raw_universe = bars_by_symbol.keys() | flow_by_symbol.keys() | margin_by_symbol.keys()
+    active_roster = _active_roster_symbols(ctx, market_str)
+    universe = sorted(raw_universe if active_roster is None else raw_universe & active_roster)
+    if not universe:
+        return journal_run(
+            TREND_SCORE_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SUCCESS,
+            detail="no upstream price/flow/margin-short history in the read window — "
+            "nothing to score",
+        )
+
+    # Cross-sectional chip-flow universe — same `net_buy_20d_trend` sub-signal
+    # `job_scoring_batch` already ranks, rebuilt here since `chip_flow_trend_score` needs its own
+    # day's comparison universe and this batch does not share `job_scoring_batch`'s in-memory
+    # pass (see the module docstring's "a second bounded read is acceptable" note).
+    flow_value_by_symbol: dict[str, float | None] = {}
+    for symbol in universe:
+        symbol_flow_rows = [
+            row for row in flow_by_symbol.get(symbol, ()) if row.investor in _FLOW_INVESTORS
+        ]
+        flow_value_by_symbol[symbol] = net_buy_20d_trend(
+            symbol_flow_rows, investors=_FLOW_INVESTORS
+        )
+    flow_universe = _cross_sectional_universe(flow_value_by_symbol)
+
+    rows_written = 0
+    async with ctx.session_factory() as session:
+        for symbol in universe:
+            bars = bars_by_symbol.get(symbol, ())
+            closes = [bar.close for bar in bars]
+            price_change_pct = (
+                (closes[-1] - closes[-2]) / closes[-2]
+                if len(closes) >= _PRICE_CHANGE_MIN_BARS and closes[-2] != 0
+                else None
+            )
+            industry = industry_by_symbol.get(symbol)
+            industry_ranks = industry_ranks_by_industry.get(industry, []) if industry else []
+            symbol_closes, aligned_taiex_closes = _align_closes(closes, taiex_closes_full)
+            result = _build_trend_result(
+                symbol,
+                market=market,
+                run_date=run_date,
+                bars=bars,
+                flow_value=flow_value_by_symbol.get(symbol),
+                flow_universe=flow_universe,
+                margin_rows=margin_by_symbol.get(symbol, []),
+                price_change_pct=price_change_pct,
+                industry_ranks=industry_ranks,
+                symbol_closes=symbol_closes,
+                taiex_closes=aligned_taiex_closes,
+            )
+            await upsert_trend_score(session, result)
+            rows_written += 1
+        await session.commit()
+
+    logger.info(
+        "trend_score_batch_computed",
+        market=market_str,
+        run_date=run_date.isoformat(),
+        symbols=len(universe),
+        rows_written=rows_written,
+    )
+    return journal_run(
+        TREND_SCORE_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=RunStatus.SUCCESS,
+        detail=f"scored {len(universe)} symbols (5 of 6 dimensions; broker_concentration "
+        f"deferred to on-demand tool-layer compute) over {market_str} price/flow/margin-short "
+        "history",
+    )
+
+
 __all__ = [
     "ACTIVE_ETF_HOLDING_CHANGE_DATASET",
     "ACTIVE_ETF_HOLDING_DATASET",
     "ETF_EXPENSE_RATIO_DATASET",
     "ETF_NAV_DATASET",
     "INSTITUTIONAL_FLOW_DATASET",
+    "MARGIN_SHORT_DATASET",
     "PRICE_EOD_DATASET",
     "STOCK_SCORE_DATASET",
+    "TREND_SCORE_DATASET",
     "job_scoring_batch",
+    "job_trend_score_batch",
 ]

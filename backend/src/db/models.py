@@ -1005,6 +1005,128 @@ class StockScoreRow(Base):
     )
 
 
+# ---- AI stock summary cache (platform reference data — no user scope) ----------------------
+
+
+class StockSummaryRow(Base):
+    """One symbol's cached AI-generated headline + narrative + SWOT — the write target of
+    `analytics/summary_generation.py::generate_stock_summary` and the read target of the
+    stock-detail-page `get_stock_summary` tool.
+
+    `trade_date` is deliberately the *score's own* `ScoreResult.as_of` this summary was
+    generated from, not "today" — matching `analytics.summary_store.get_cached_summary`'s point
+    lookup by that exact date (never a "latest" fallback), so a summary generated against a
+    still-cached prior day's score is never silently treated as fresh-today. Unlike
+    `StockScoreRow`, this table carries no `market IN ('TW','US')` composite reuse concern beyond
+    the same check, and no factor columns — the SWOT quadrants are portable JSON arrays of short
+    strings (this project's SQLite/Postgres-portable JSON convention), not flat per-item columns,
+    because the bullet count per quadrant varies call to call. No `user_id`: like the score cache,
+    this is platform-wide derived content, not per-user state."""
+
+    __tablename__ = "stock_summaries"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    symbol: Mapped[str]
+    market: Mapped[str]
+    trade_date: Mapped[str]  # ISO date string — the ScoreResult.as_of this summary is grounded in
+    headline: Mapped[str]
+    narrative: Mapped[str]
+    swot_strengths: Mapped[list[str]] = mapped_column(JSON, default=list)
+    swot_weaknesses: Mapped[list[str]] = mapped_column(JSON, default=list)
+    swot_opportunities: Mapped[list[str]] = mapped_column(JSON, default=list)
+    swot_threats: Mapped[list[str]] = mapped_column(JSON, default=list)
+    non_trading_caveat: Mapped[str] = mapped_column(default="")
+    generated_at: Mapped[datetime] = mapped_column(_UTC)
+
+    __table_args__ = (
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_stock_summaries_market"),
+        UniqueConstraint(
+            "symbol", "market", "trade_date", name="uq_stock_summaries_symbol_market_trade_date"
+        ),
+    )
+
+
+# ---- Trend score (six-dimension composite — a real time series, unlike stock_scores) -------
+
+
+class TrendScoreRow(Base):
+    """One symbol's 趨勢評分 (trend score) composite for one trading day — the write target of
+    `analytics/scoring_batch.py::job_trend_score_batch` and the read target of both the
+    detail-page point lookup and the chart's ranged history read.
+
+    Unlike `StockScoreRow` (a same-day snapshot cache the batch *replaces* daily), this table
+    genuinely needs history: a caller reads a date RANGE for a chart
+    (`analytics/trend_score_store.py::get_trend_score_history`), so every day's row is kept, not
+    overwritten — `upsert_trend_score` still upserts by `(symbol, market, as_of)` so a same-day
+    re-run doesn't accumulate duplicate rows for that one day, but distinct `as_of` days
+    genuinely coexist.
+
+    Flat per-dimension columns (`technical_*`/`chip_flow_*`/`margin_credit_*`/
+    `broker_concentration_*`/`sector_rotation_*`/`taiex_correlation_*`, each a value/description/
+    unavailable_reason triplet) — same flat-column reasoning `StockScoreRow`'s own docstring
+    gives: each dimension is independently point-looked-up-shaped, never a variable set, so flat
+    columns are simpler and index-free reads faster than unpacking JSON on every read.
+    `unavailable_dimensions` (a short list of dimension names) is a JSON array per this project's
+    SQLite/Postgres-portable JSON convention (backend/CLAUDE.md §6).
+
+    Indexing: `uq_trend_scores_symbol_market_as_of` is the write-side upsert key and also serves
+    the detail-page point lookup; `ix_trend_scores_symbol_market_as_of` (non-unique) serves the
+    chart's `WHERE symbol=? AND market=? ORDER BY as_of` range scan directly off the index."""
+
+    __tablename__ = "trend_scores"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    symbol: Mapped[str]
+    market: Mapped[str]
+    as_of: Mapped[str]  # ISO date string — portable, matches stock_scores' own as_of convention
+    composite: Mapped[float | None] = mapped_column(default=None)
+
+    technical_value: Mapped[float | None] = mapped_column(default=None)
+    technical_description: Mapped[str] = mapped_column(default="")
+    technical_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    chip_flow_value: Mapped[float | None] = mapped_column(default=None)
+    chip_flow_description: Mapped[str] = mapped_column(default="")
+    chip_flow_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    margin_credit_value: Mapped[float | None] = mapped_column(default=None)
+    margin_credit_description: Mapped[str] = mapped_column(default="")
+    margin_credit_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    broker_concentration_value: Mapped[float | None] = mapped_column(default=None)
+    broker_concentration_description: Mapped[str] = mapped_column(default="")
+    broker_concentration_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    sector_rotation_value: Mapped[float | None] = mapped_column(default=None)
+    sector_rotation_description: Mapped[str] = mapped_column(default="")
+    sector_rotation_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    taiex_correlation_value: Mapped[float | None] = mapped_column(default=None)
+    taiex_correlation_description: Mapped[str] = mapped_column(default="")
+    taiex_correlation_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    unavailable_dimensions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    non_trading_caveat: Mapped[str] = mapped_column(default="")
+
+    computed_at: Mapped[datetime] = mapped_column(_UTC)
+
+    __table_args__ = (
+        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_trend_scores_market"),
+        UniqueConstraint(
+            "symbol",
+            "market",
+            "as_of",
+            name="uq_trend_scores_symbol_market_as_of",
+        ),
+        Index(
+            "ix_trend_scores_symbol_market_as_of",
+            "symbol",
+            "market",
+            "as_of",
+        ),
+    )
+
+
 __all__ = [
     "AlertPreferenceRow",
     "AlertRuleRow",
@@ -1017,6 +1139,7 @@ __all__ = [
     "ScheduleJobRow",
     "SessionRow",
     "StockScoreRow",
+    "StockSummaryRow",
     "StreamEventRow",
     "SubscriptionRow",
     "SupplyChainEdgeRow",
@@ -1025,6 +1148,7 @@ __all__ = [
     "ThemeRow",
     "ThemeTierRow",
     "ThreadRow",
+    "TrendScoreRow",
     "TurnFeedbackRow",
     "TurnRow",
     "UsageCounterRow",

@@ -65,6 +65,24 @@ async def stock_score(
     )
 
 
+@router.get("/analytics/{symbol}/summary")
+async def stock_summary(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The stock-detail-page AI-summary read: the cached (or freshly generated) headline +
+    narrative + SWOT grounded in today's cached composite score. Sponsor-tier — an unentitled
+    caller gets `dispatch_tool`'s whole-tool masked-teaser envelope, not real content."""
+    return await _dispatch(
+        state,
+        "get_stock_summary",
+        {"id": symbol, "market": market.value},
+        ctx,
+    )
+
+
 @router.get("/analytics/rankings")
 async def score_rankings(
     market: Market = Query(Market.TW),
@@ -92,6 +110,25 @@ async def score_rankings(
             "limit": limit,
             "as_of": as_of.isoformat() if as_of is not None else None,
         },
+        ctx,
+    )
+
+
+@router.get("/analytics/{symbol}/trend-score")
+async def trend_score(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    days: int = Query(90, ge=1, le=250),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The 趨勢評分 tab read: the six-dimension trend-score composite (five cache-backed, one
+    computed live for the requested symbol) plus trailing history for a chart, or `found=False`
+    if today's trend-score batch has not yet computed it."""
+    return await _dispatch(
+        state,
+        "get_trend_score",
+        {"id": symbol, "market": market.value, "days": days},
         ctx,
     )
 

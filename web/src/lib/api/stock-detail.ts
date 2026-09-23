@@ -59,6 +59,7 @@ import {
   type StockInsiderTransferDeclarationResponse,
   type StockMaterialAnnouncementsResponse,
   type StockScoreResponse,
+  type StockSummaryResponse,
   type SupplyChainEdgesResponse,
   type SymbolThemesResponse,
   securitiesLendingResponseSchema,
@@ -67,14 +68,17 @@ import {
   stockInsiderTransferDeclarationResponseSchema,
   stockMaterialAnnouncementsResponseSchema,
   stockScoreResponseSchema,
+  stockSummaryResponseSchema,
   supplyChainEdgesResponseSchema,
   symbolThemesResponseSchema,
   type TechnicalIndicatorsResponse,
   type ThemeMembersResponse,
   type ThemeTierHeatmapResponse,
+  type TrendScoreResponse,
   technicalIndicatorsResponseSchema,
   themeMembersResponseSchema,
   themeTierHeatmapResponseSchema,
+  trendScoreResponseSchema,
   type ValuationRatiosResponse,
   valuationRatiosResponseSchema,
 } from "@/types/stock-detail";
@@ -122,10 +126,41 @@ export async function getCompanyProfile(symbol: string, market: Market): Promise
 // 2. GET /analytics/{symbol}/score (public)
 // ---------------------------------------------------------------------------
 
-export async function getStockScore(symbol: string, market: Market): Promise<StockScoreResponse> {
-  const search = new URLSearchParams({ market });
+export async function getStockScore(
+  symbol: string,
+  market: Market,
+  profile: "swing" | "position" = "swing",
+): Promise<StockScoreResponse> {
+  const search = new URLSearchParams({ market, profile });
   const raw = await requestJson(`/analytics/${symbol}/score?${search.toString()}`);
   return stockScoreResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 2b. GET /analytics/{symbol}/trend-score (public) — AI tab's 6-dimension 趨勢評分 card
+// ---------------------------------------------------------------------------
+
+export async function getTrendScore(
+  symbol: string,
+  market: Market,
+  days = 90,
+): Promise<TrendScoreResponse> {
+  const search = new URLSearchParams({ market, days: String(days) });
+  const raw = await requestJson(`/analytics/${symbol}/trend-score?${search.toString()}`);
+  return trendScoreResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 2c. GET /analytics/{symbol}/summary (Sponsor-tier) — AI tab's AI-generated SWOT summary card
+// ---------------------------------------------------------------------------
+
+export async function getStockSummary(
+  symbol: string,
+  market: Market,
+): Promise<StockSummaryResponse> {
+  const search = new URLSearchParams({ market });
+  const raw = await requestJson(`/analytics/${symbol}/summary?${search.toString()}`);
+  return stockSummaryResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

@@ -188,7 +188,10 @@ async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseMo
         logger.info("tool_entitlement_masked", tool=tool.name, tier=ctx.tier.value)
         return MaskedTeaser(
             required_tier=Tier.PREMIUM,
-            preview=f"{tool.name} requires a Premium or Pro subscription to unlock.",
+            # User-facing text — never the raw internal tool name (`tool.name` still travels in
+            # the `tool_name` field below for the frontend/telemetry to key off of, but is not
+            # meant to be displayed verbatim to a user).
+            preview="This data is available on a Premium or Pro subscription.",
             tool_name=tool.name,
         )
     return await tool.run(args, ctx)

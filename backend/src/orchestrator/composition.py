@@ -14,6 +14,7 @@ priority config.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,6 +25,7 @@ from dataaccess.composition import build_default_router
 from dataaccess.router import DataAccessRouter
 from db.base import make_engine, make_session_factory
 from ingest import build_market_data_reader
+from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry
 from skills.registry import SkillRegistry
@@ -55,17 +57,27 @@ def build_tool_registry(
     router: DataAccessRouter | None = None,
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
+    settings: Settings | None = None,
 ) -> ToolRegistry:
     """The fully-wired tool registry. `session_factory` backs the relational theme-lookup tools
     (which read the ingested theme store rather than a live source); the real composition roots
     thread the same factory they build for the request path, so a theme tool reads the one DB the
     app is pointed at. The derived-store reader backs the tag screener, which reads the ingest-
     owned Parquet flag store the nightly batch job writes — built from the same `parquet_root`
-    config the rest of the app reads."""
+    config the rest of the app reads. The `get_stock_summary` tool's `LLMClient` is resolved here
+    via `ModelRole.SUBAGENT` (an analytical-prose sub-task from tool data, per that role's own
+    docstring) — an unconfigured role degrades to the tool simply not registering (matching
+    `theme_group`/`score_group`'s own optional-dependency shape), rather than failing the whole
+    registry build, since the summary feature is Sponsor-tier-gated and additive, never load-
+    bearing for the rest of the tool surface."""
+    summary_llm = None
+    with contextlib.suppress(ProviderNotConfiguredError):
+        summary_llm = resolve_role(ModelRole.SUBAGENT, settings)
     return build_default_tool_registry(
         router or build_default_router(),
         session_factory=session_factory,
         market_data_reader=build_market_data_reader(),
+        summary_llm=summary_llm,
     )
 
 

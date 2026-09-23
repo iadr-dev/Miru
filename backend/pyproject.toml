@@ -171,7 +171,9 @@ ignore_missing_imports = true
 # Pydantic result models (ScoreResult, FactorScore, SmaResult, Theme, ThemeMember, SymbolTheme,
 # TagDefinition, ...) with the identical model_config synthesized-Any edge.
 # agent.* defines its own frozen Pydantic models (HookVerdict, CompactionEntry, Plan,
-# ToolPlanStep) with the same model_config synthesized-Any edge.
+# ToolPlanStep) with the same model_config synthesized-Any edge. governance.textscan defines the
+# same HookVerdict model (agent.guardrails re-exports it from there, see that module's docstring)
+# — identical edge, one layer down.
 # conversation.*/events.*/memory.*/skills.*/feedback.*/orchestrator.* define their own frozen
 # Pydantic models (Message, Event, Memory, SkillFrontmatter, SkillProvenance, Routing,
 # LaneResult, Finding, ...) with the identical model_config synthesized-Any edge.
@@ -195,6 +197,7 @@ module = [
   "analytics.themes.models",
   "analytics.screener.catalog",
   "agent.*",
+  "governance.*",
   "conversation.*",
   "events.*",
   "memory.*",

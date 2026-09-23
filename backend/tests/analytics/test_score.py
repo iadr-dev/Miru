@@ -351,9 +351,9 @@ def test_normalization_caveat_flavors() -> None:
     )
     assert "半導體" in sector
     whole = normalization_caveat(sector_relative=False, sector_label=None, has_fundamentals=True)
-    assert "whole" in whole.lower()
+    assert "全市場" in whole
     none = normalization_caveat(sector_relative=False, sector_label=None, has_fundamentals=False)
-    assert "not normalized" in none.lower()
+    assert "未進行橫斷面標準化" in none
 
 
 def test_annualized_ttm_is_disclosed_in_factor_description() -> None:
@@ -362,4 +362,4 @@ def test_annualized_ttm_is_disclosed_in_factor_description() -> None:
         "quality", metrics, _QUALITY_SUB_METRICS, _quality_universe(), "unavailable"
     )
     assert factor.percentile is not None
-    assert "annualized" in factor.description.lower()
+    assert "TTM" in factor.description
