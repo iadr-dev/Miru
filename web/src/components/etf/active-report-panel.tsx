@@ -113,6 +113,7 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
             className="flex flex-col items-center gap-1 rounded-[var(--radius-input)] border p-3"
             style={{
               borderColor: `color-mix(in srgb, ${STATUS_COLOR[status]} 35%, var(--border))`,
+              backgroundColor: `color-mix(in srgb, ${STATUS_COLOR[status]} 6%, var(--surface-2))`,
             }}
           >
             <span className="text-[12px] text-[var(--text-muted)]">{status}</span>
