@@ -87,7 +87,7 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
         </span>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-3">
         <StatCard
           label={t("fundSize")}
           value={formatNumber(data.fund_size ?? null, locale, { decimals: 0 })}
@@ -104,6 +104,9 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
           delta={null}
           locale={locale}
         />
+      </div>
+
+      <div className="mb-4 grid grid-cols-4 gap-3">
         {(["新增", "刪除", "加碼", "減碼"] as const).map((status) => (
           <div
             key={status}
