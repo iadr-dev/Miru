@@ -1942,7 +1942,12 @@
       "passiveUnavailable": "No constituent-holdings data is available for this ETF — passive ETFs have no per-constituent weight data source today; only active-management ETFs show this.",
       "activeOnlyCaveat": "Per-constituent weights are only available for active-management ETFs (derived from the Daily Operations Report) — no source exists yet for passive ETFs.",
       "asOfDate": "Weights as of {date}",
-      "others": "Others"
+      "others": "Others",
+      "subTabLabel": "Holdings view switcher",
+      "subTab": {
+        "holdings": "Holdings",
+        "industry": "Industry Breakdown"
+      }
     },
     "premiumDiscount": {
       "title": "Premium/Discount to NAV",

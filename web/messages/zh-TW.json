@@ -1942,7 +1942,12 @@
       "passiveUnavailable": "此ETF尚無成分股持股資料 — 被動式ETF目前無逐檔持股權重資料來源，僅主動式ETF可顯示此資訊。",
       "activeOnlyCaveat": "僅主動式ETF提供逐檔持股權重（依「操作日報」資料計算），被動式ETF尚無此資料來源。",
       "asOfDate": "{date} 持股權重",
-      "others": "其他"
+      "others": "其他",
+      "subTabLabel": "成分股視圖切換",
+      "subTab": {
+        "holdings": "成分股",
+        "industry": "產業分佈"
+      }
     },
     "premiumDiscount": {
       "title": "折溢價",
