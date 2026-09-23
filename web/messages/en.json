@@ -1922,6 +1922,7 @@
     },
     "activeReport": {
       "title": "Daily Operations Report",
+      "holdingsTitle": "Holding Changes",
       "asOfDate": "Report as of {date}",
       "empty": "No daily operations report yet — this ETF may not be actively managed, or has no holding-change data yet.",
       "noChanges": "No holding changes today.",

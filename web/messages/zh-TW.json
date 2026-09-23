@@ -1922,6 +1922,7 @@
     },
     "activeReport": {
       "title": "操作日報",
+      "holdingsTitle": "持股變動明細",
       "asOfDate": "{date} 操作日報",
       "empty": "尚無操作日報資料，此ETF可能非主動式ETF或尚無持股變動資料。",
       "noChanges": "當日無持股變動。",

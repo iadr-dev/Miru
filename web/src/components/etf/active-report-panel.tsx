@@ -36,7 +36,13 @@ export function ActiveReportPanel({
     queryFn: () => getActiveEtfReport(symbol, market),
   });
 
-  if (query.isLoading) return <CardSkeletonBody height={420} />;
+  if (query.isLoading) {
+    return (
+      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+        <CardSkeletonBody height={420} />
+      </section>
+    );
+  }
   if (!query.data) return null;
 
   if (isMaskedTeaser(query.data)) {
@@ -57,10 +63,11 @@ export function ActiveReportPanel({
 }
 
 /** Shared body — also used by `holdings-panel.tsx`'s active-management-ETF branch so the two
- * tabs (操作日報/成分股) never re-derive the same rows-fetch or table shape twice. */
+ * tabs (操作日報/成分股) never re-derive the same rows-fetch or table shape twice. Two separate
+ * cards (summary / holdings table), matching the stock-detail page's own per-block card
+ * convention (e.g. `basic-info-panel.tsx`) rather than stacking everything into one card. */
 export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData }): ReactNode {
   const t = useTranslations("etf.activeReport");
-  const locale = useLocale();
 
   if (data.report_date == null) {
     return (
@@ -71,6 +78,22 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
     );
   }
 
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <ActiveReportSummaryCard data={{ ...data, report_date: data.report_date }} t={t} />
+      <ActiveReportHoldingsCard data={data} t={t} />
+    </div>
+  );
+}
+
+function ActiveReportSummaryCard({
+  data,
+  t,
+}: {
+  readonly data: ActiveEtfReportData & { report_date: string };
+  readonly t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  const locale = useLocale();
   const counts = {
     新增: data.rows.filter((row) => row.status === "新增").length,
     刪除: data.rows.filter((row) => row.status === "刪除").length,
@@ -79,7 +102,7 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
   };
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
       <div className="mb-3 flex items-baseline justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <span className="text-[11px] text-[var(--text-muted)]">
@@ -106,7 +129,7 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
         />
       </div>
 
-      <div className="mb-4 grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         {(["新增", "刪除", "加碼", "減碼"] as const).map((status) => (
           <div
             key={status}
@@ -129,11 +152,26 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
       </div>
 
       {data.estimation_caveat ? (
-        <p className="mb-3 text-[11px] text-[var(--text-muted)] leading-[1.5]">
+        <p className="mt-3 text-[11px] text-[var(--text-muted)] leading-[1.5]">
           {data.estimation_caveat}
         </p>
       ) : null}
+    </section>
+  );
+}
 
+function ActiveReportHoldingsCard({
+  data,
+  t,
+}: {
+  readonly data: ActiveEtfReportData;
+  readonly t: ReturnType<typeof useTranslations>;
+}): ReactNode {
+  const locale = useLocale();
+
+  return (
+    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("holdingsTitle")}</h2>
       {data.rows.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("noChanges")}</p>
       ) : (
