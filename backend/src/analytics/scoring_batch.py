@@ -888,7 +888,7 @@ def _taiex_closes(price_frame: pd.DataFrame) -> tuple[float, ...]:
         projected.loc[projected["symbol"] == _TAIEX_SYMBOL].sort_values("trade_date"),
     )
     closes: list[float] = []
-    for close in taiex_rows["close"]:
+    for close in cast("list[object]", taiex_rows["close"].tolist()):
         close_f = _as_float(close)
         if close_f is not None:
             closes.append(close_f)

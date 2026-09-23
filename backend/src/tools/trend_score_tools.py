@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from datetime import date as date_
 from datetime import timedelta
+from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -143,7 +144,10 @@ async def _fetch_broker_concentration(
         )
         raw_rows = result.payload.get("rows")
         if isinstance(raw_rows, list):
-            rows.extend(ChipBrokerRow.model_validate(row) for row in raw_rows)
+            rows.extend(
+                ChipBrokerRow.model_validate(row)
+                for row in cast("list[dict[str, object]]", raw_rows)
+            )
 
     net_by_broker: dict[str, int] = {}
     for row in rows:
