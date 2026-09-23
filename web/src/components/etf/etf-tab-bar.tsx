@@ -8,6 +8,7 @@ import { HoldingsPanel } from "@/components/etf/holdings-panel";
 import { OverviewPanel } from "@/components/etf/overview-panel";
 import { PremiumDiscountPanel } from "@/components/etf/premium-discount-panel";
 import { AiPanel } from "@/components/stock/ai-panel";
+import { ChipAnalysisPanel } from "@/components/stock/chip-analysis-panel";
 import { RealtimeTab } from "@/components/stock/realtime-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
@@ -16,16 +17,18 @@ import { cn } from "@/lib/cn";
 import type { SymbolType } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-// 總覽/操作日報/成分股/折溢價 are new, ETF-only panels (`components/etf/*`); 看盤/技術/AI/新聞 reuse
-// the stock-detail page's own panels verbatim (`components/stock/*`) — each already takes only
-// `symbol`/`market` (plus `AiPanel`'s optional `symbolType`), no stock-only assumption baked in.
-// 討論/forum is deliberately not a tab — never requested, no backing.
+// 總覽/操作日報/成分股/折溢價 are new, ETF-only panels (`components/etf/*`); 看盤/籌碼/技術/AI/新聞
+// reuse the stock-detail page's own panels verbatim (`components/stock/*`) — each already takes
+// only `symbol`/`market` (plus `AiPanel`'s optional `symbolType`), no stock-only assumption baked
+// in (institutional flow/margin-short/broker-chip-flow are published for ETF symbols too, not
+// just plain equities). 討論/forum is deliberately not a tab — never requested, no backing.
 const ETF_TABS = [
   "overview",
   "realtime",
   "activeReport",
   "holdings",
   "premiumDiscount",
+  "chipAnalysis",
   "technical",
   "ai",
   "news",
@@ -89,6 +92,7 @@ export function EtfTabBar({
       {tab === "activeReport" ? <ActiveReportPanel symbol={symbol} market={market} /> : null}
       {tab === "holdings" ? <HoldingsPanel symbol={symbol} market={market} /> : null}
       {tab === "premiumDiscount" ? <PremiumDiscountPanel symbol={symbol} market={market} /> : null}
+      {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "technical" ? <TechnicalAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "ai" ? <AiPanel symbol={symbol} market={market} symbolType={symbolType} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
