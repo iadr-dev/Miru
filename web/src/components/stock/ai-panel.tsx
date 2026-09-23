@@ -27,6 +27,7 @@ import { GaugeCard } from "@/components/market/gauge-card";
 import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
 import { getStockScore, getStockSummary, getTrendScore } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import type { SymbolType } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { TrendScoreDimension } from "@/types/stock-detail";
 
@@ -66,16 +67,18 @@ const TREND_DIMENSION_COLUMNS = [
 export function AiPanel({
   symbol,
   market,
+  symbolType = "stock",
 }: {
   readonly symbol: string;
   readonly market: Market;
+  readonly symbolType?: SymbolType;
 }): ReactNode {
   const t = useTranslations("stock.ai");
 
   return (
     <div className="flex flex-col gap-4">
       <TrendScoreCard symbol={symbol} market={market} />
-      <ScoreGaugeCard symbol={symbol} market={market} />
+      <ScoreGaugeCard symbol={symbol} market={market} symbolType={symbolType} />
       <SummaryCard symbol={symbol} market={market} />
       <p className="text-[11px] text-[var(--text-muted)]">{t("footerCaveat")}</p>
     </div>
@@ -321,12 +324,31 @@ const STOCK_FACTOR_ORDER = [
   "revenue_flow",
 ] as const;
 
+// An ETF's `ScoreResult.breakdown` carries an entirely different factor set than a stock's
+// (`analytics/score.py`'s `EtfScoreBreakdown` vs `StockScoreBreakdown`) — only `revenue_flow` is
+// shared. Iterating `STOCK_FACTOR_ORDER` against an ETF result would silently render 4 of 5 rows
+// blank (every stock-only key is `undefined`), so the order must branch by symbol type.
+const ETF_FACTOR_ORDER = [
+  "premium_discount",
+  "cost",
+  "management_activity",
+  "liquidity_flow",
+  "revenue_flow",
+] as const;
+type FactorName = (typeof STOCK_FACTOR_ORDER)[number] | (typeof ETF_FACTOR_ORDER)[number];
+
+function factorOrderFor(symbolType: SymbolType): readonly FactorName[] {
+  return symbolType === "stock" ? STOCK_FACTOR_ORDER : ETF_FACTOR_ORDER;
+}
+
 function ScoreGaugeCard({
   symbol,
   market,
+  symbolType,
 }: {
   readonly symbol: string;
   readonly market: Market;
+  readonly symbolType: SymbolType;
 }): ReactNode {
   const t = useTranslations("stock.ai");
   const locale = useLocale();
@@ -394,7 +416,7 @@ function ScoreGaugeCard({
             />
           </div>
           <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-4 border-[var(--border)] border-t pt-4 sm:grid-cols-2">
-            {STOCK_FACTOR_ORDER.map((name) => {
+            {factorOrderFor(symbolType).map((name) => {
               const factor = result.breakdown?.[name];
               return factor ? (
                 <FactorRow key={name} name={name} factor={factor} locale={locale} />
@@ -412,7 +434,7 @@ function FactorRow({
   factor,
   locale,
 }: {
-  readonly name: (typeof STOCK_FACTOR_ORDER)[number];
+  readonly name: FactorName;
   readonly factor: {
     percentile: number | null;
     description: string;

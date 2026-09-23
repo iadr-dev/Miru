@@ -5,10 +5,14 @@ returns the expected shape — mirroring `test_themes_routes.py`'s stub-router-s
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from config.settings import Settings
+from ingest.jobs import ETF_NAV_DATASET
+from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -219,3 +223,86 @@ class TestComparisonRoute:
         body = resp.json()
         assert body["code"] == "invalid_request"
         assert body["retryable"] is False
+
+
+def _client_with_etf_nav_store(
+    settings: Settings,
+    agent_answer: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> TestClient:
+    """`get_etf_premium_discount` reads a real `ParquetStore`, not the stub router — same
+    env-var-move pattern `test_etf_list_route.py::_client_with_store` uses."""
+    monkeypatch.setenv("PARQUET_ROOT", str(tmp_path))
+    client = build_test_client(settings, agent_answer=agent_answer)
+    stub_router, _ = make_router(Symbol(id="00981A", market=Market.TW), {})
+    registry = build_default_tool_registry(stub_router)
+    object.__setattr__(client.app.state.app_state, "tool_registry", registry)
+    return client
+
+
+class TestPremiumDiscountRoute:
+    def test_reports_unavailable_when_no_partition(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = _client_with_etf_nav_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get("/api/v1/funds/00981A/premium-discount")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is False
+        assert body["rows"] == []
+
+    def test_returns_bounded_history(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("PARQUET_ROOT", str(tmp_path))
+        store = ParquetStore(root=tmp_path)
+        store.write_partition(
+            ETF_NAV_DATASET,
+            "TW",
+            date(2026, 8, 26),
+            [
+                {
+                    "symbol": "00981A",
+                    "market": "TW",
+                    "as_of": "2026-08-26",
+                    "fund_name": "統一台股增長",
+                    "close_price": 29.25,
+                    "estimated_nav": 29.10,
+                    "premium_discount_pct": -0.03,
+                    "prior_day_nav": 29.00,
+                }
+            ],
+        )
+        client = build_test_client(settings, agent_answer=agent_answer)
+        stub_router, _ = make_router(Symbol(id="00981A", market=Market.TW), {})
+        registry = build_default_tool_registry(stub_router)
+        object.__setattr__(client.app.state.app_state, "tool_registry", registry)
+
+        resp = client.get(
+            "/api/v1/funds/00981A/premium-discount", params={"market": "TW", "days": 30}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is True
+        assert body["rows"][0]["premium_discount_pct"] == -0.03
+
+    def test_rejects_out_of_bounds_days(
+        self, settings: Settings, agent_answer: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _client_with_etf_nav_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get("/api/v1/funds/00981A/premium-discount", params={"days": 1})
+
+        assert resp.status_code == 422

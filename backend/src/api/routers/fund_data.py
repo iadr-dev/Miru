@@ -153,6 +153,25 @@ async def etf_expense_ratio(
     )
 
 
+@router.get("/funds/{symbol}/premium-discount")
+async def etf_premium_discount(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    days: int = Query(60, ge=2, le=180),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """折溢價 (premium/discount to NAV) history + latest AUM for one TW ETF, over a bounded
+    trailing trading-day window. Backed by `get_etf_premium_discount` over the already-ingested
+    `etf_nav`/`etf_aum` datasets — never a live per-request NAV fetch."""
+    return await _dispatch(
+        state,
+        "get_etf_premium_discount",
+        {"id": symbol, "market": market.value, "days": days},
+        ctx,
+    )
+
+
 # ---- multi-symbol overlap / comparison -----------------------------------------------------
 
 

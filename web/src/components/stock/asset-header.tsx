@@ -8,10 +8,12 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SectorChip } from "@/components/stock/sector-chip";
+import { getEtfFundInfo } from "@/lib/api/etf-detail";
 import { getPriceHistory, getSymbolInfo } from "@/lib/api/market";
 import { getStockScore } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
-import type { ScoreBand } from "@/types/market";
+import { isEtfSymbolType } from "@/lib/symbol-type";
+import type { ScoreBand, SymbolType } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 const HISTORY_DAYS_FOR_CHANGE = 2;
@@ -38,19 +40,28 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
 export function AssetHeader({
   symbol,
   market,
+  symbolType = "stock",
 }: {
   readonly symbol: string;
   readonly market: Market;
+  readonly symbolType?: SymbolType;
 }): ReactNode {
   const t = useTranslations("stock.assetHeader");
   const locale = useLocale();
   const reduceMotion = useReducedMotion();
+  const isEtf = isEtfSymbolType(symbolType);
 
   const symbolInfoQuery = useQuery({
     queryKey: ["symbol_info", symbol, market],
     queryFn: () => getSymbolInfo([symbol], market),
   });
   const symbolInfo = symbolInfoQuery.data?.rows[0];
+  const etfFundInfoQuery = useQuery({
+    queryKey: ["etf_fund_info", symbol, market],
+    queryFn: () => getEtfFundInfo(symbol, market),
+    enabled: isEtf,
+  });
+  const trackedIndex = etfFundInfoQuery.data?.info?.tracked_index;
   const scoreQuery = useQuery({
     queryKey: ["stock_score", symbol, market],
     queryFn: () => getStockScore(symbol, market),
@@ -84,9 +95,11 @@ export function AssetHeader({
           <span className="font-num text-[15px] text-[var(--text-muted)] tabular-nums">
             {symbol}
           </span>
-          {symbolInfo?.industry_category ? (
-            <SectorChip label={symbolInfo.industry_category} />
-          ) : null}
+          {headerChipLabel({
+            isEtf,
+            trackedIndex,
+            industryCategory: symbolInfo?.industry_category,
+          })}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
@@ -208,4 +221,19 @@ export function AssetHeader({
       </p>
     </header>
   );
+}
+
+/** ETFs have no sector; the same chip slot instead shows the tracked index (追蹤指數) when the
+ * fund-info fetch has resolved one — a stock keeps the industry-category sector chip. */
+function headerChipLabel({
+  isEtf,
+  trackedIndex,
+  industryCategory,
+}: {
+  readonly isEtf: boolean;
+  readonly trackedIndex: string | null | undefined;
+  readonly industryCategory: string | null | undefined;
+}): ReactNode {
+  const label = isEtf ? trackedIndex : industryCategory;
+  return label ? <SectorChip label={label} /> : null;
 }

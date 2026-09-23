@@ -2,9 +2,8 @@
 
 import { ChartLineIcon } from "@phosphor-icons/react/dist/ssr";
 import { motion } from "motion/react";
-import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useCallback } from "react";
+import type { ReactNode } from "react";
 import { ComingSoon } from "@/components/shell/coming-soon";
 import { AiPanel } from "@/components/stock/ai-panel";
 import { BasicInfoPanel } from "@/components/stock/basic-info-panel";
@@ -16,7 +15,7 @@ import { ResearchChartsPanel } from "@/components/stock/research-charts-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
 import { TrackerPanel } from "@/components/stock/tracker-panel";
-import { usePathname, useRouter } from "@/i18n/navigation";
+import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
@@ -55,15 +54,9 @@ const BUILT_TABS: ReadonlySet<StockTab> = new Set([
   "realtime",
 ]);
 
-function isStockTab(value: string | null): value is StockTab {
-  return (STOCK_TABS as readonly string[]).includes(value ?? "");
-}
-
-/** The active tab lives in `?tab=` rather than local `useState` — a locale switch
- * (`LanguageSwitcher`'s `router.replace(pathname, { locale })`) is a real navigation that
- * remounts this whole page tree, which would silently reset a plain `useState` back to
- * `DEFAULT_TAB` every time a user switched language mid-tab. Reading from the URL means the
- * active tab survives that navigation (and is bookmarkable/shareable) for free. */
+/** The active tab lives in `?tab=` rather than local `useState`, via the shared `useDetailTab`
+ * hook (`hooks/use-detail-tab.ts`) — see that hook's own docstring for why (a locale switch is a
+ * real navigation that remounts this page tree, which would reset a plain `useState`). */
 export function StockTabBar({
   symbol,
   market,
@@ -72,25 +65,7 @@ export function StockTabBar({
   readonly market: Market;
 }): ReactNode {
   const t = useTranslations("stock.tabs");
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const rawTab = searchParams.get("tab");
-  const tab: StockTab = isStockTab(rawTab) ? rawTab : DEFAULT_TAB;
-
-  const setTab = useCallback(
-    (next: StockTab) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (next === DEFAULT_TAB) {
-        params.delete("tab");
-      } else {
-        params.set("tab", next);
-      }
-      const query = params.toString();
-      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    },
-    [pathname, router, searchParams],
-  );
+  const { tab, setTab } = useDetailTab(STOCK_TABS, DEFAULT_TAB);
 
   return (
     <div className="flex flex-col gap-4 p-5">
