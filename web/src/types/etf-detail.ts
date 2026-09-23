@@ -108,6 +108,14 @@ export const activeEtfReportRowSchema = z.object({
 });
 export type ActiveEtfReportRow = z.infer<typeof activeEtfReportRowSchema>;
 
+export const activeEtfHoldingWeightRowSchema = z.object({
+  component_stock_id: z.string(),
+  component_stock_name: z.string(),
+  weight: z.number(),
+  industry_category: z.string().nullable().optional(),
+});
+export type ActiveEtfHoldingWeightRow = z.infer<typeof activeEtfHoldingWeightRowSchema>;
+
 export const activeEtfReportDataSchema = z.object({
   source_id: z.string(),
   currentness_caveat: z.string(),
@@ -119,12 +127,14 @@ export const activeEtfReportDataSchema = z.object({
   fund_size: z.number().nullable().optional(),
   fund_size_prior: z.number().nullable().optional(),
   fund_size_change_pct: z.number().nullable().optional(),
+  fund_size_caveat: z.string().nullable().optional(),
   premium_discount_pct: z.number().nullable().optional(),
   premium_discount_unavailable_reason: z.string().nullable().optional(),
   estimated_nav_per_unit: z.number().nullable().optional(),
   estimated_premium_discount_pct: z.number().nullable().optional(),
   estimation_caveat: z.string().nullable().optional(),
   rows: z.array(activeEtfReportRowSchema).default([]),
+  current_holdings: z.array(activeEtfHoldingWeightRowSchema).default([]),
 });
 export type ActiveEtfReportData = z.infer<typeof activeEtfReportDataSchema>;
 

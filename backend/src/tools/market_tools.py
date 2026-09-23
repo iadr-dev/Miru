@@ -691,6 +691,23 @@ class ActiveEtfReportRow(BaseModel):
     weight_delta_pct: float | None = None  # current_weight - prior_weight, when both exist
 
 
+class ActiveEtfHoldingWeightRow(BaseModel):
+    """One constituent's FULL current-day weight — every holding on `report_date`, not just the
+    ones that changed (`ActiveEtfReportRow`'s own scope). This is the 成分股/產業分佈 tab's real
+    backing: a 成分股 donut/table needs the whole holdings list with weight, and a 產業分佈 view
+    needs each holding's industry — neither is expressible from the diffed change rows alone.
+    `industry_category` is joined from the same whole-market `STOCK_INFO_JOB` roster
+    `GetSectorHeatmapTool` already reads (ingest-owned store, never a live per-symbol fetch);
+    `None` when the constituent isn't found in that day's roster (never fabricated)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    component_stock_id: str
+    component_stock_name: str
+    weight: float
+    industry_category: str | None = None
+
+
 class GetActiveEtfReportOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -704,6 +721,11 @@ class GetActiveEtfReportOutput(BaseModel):
     fund_size: float | None = None  # 基金規模 — sum of constituent market_value on report_date
     fund_size_prior: float | None = None
     fund_size_change_pct: float | None = None  # 基金規模較前日
+    # Set only when `fund_size` fell back to `etf_aum` (Yahoo's totalAssets) because today's
+    # constituent closes haven't ingested yet — see `_fund_size_with_aum_fallback`'s docstring.
+    # `fund_size_prior`/`fund_size_change_pct` are never computed from this fallback source
+    # (see that function for why), so this caveat also explains their absence.
+    fund_size_caveat: str | None = None
     premium_discount_pct: float | None = None  # 折溢價 (official NAV) — always None, see reason
     premium_discount_unavailable_reason: str | None = _PREMIUM_DISCOUNT_UNAVAILABLE_REASON
     # 估算淨值/折溢價 — self-computed from holdings x close ÷ units_outstanding, NOT official NAV;
@@ -713,6 +735,9 @@ class GetActiveEtfReportOutput(BaseModel):
     estimated_premium_discount_pct: float | None = None
     estimation_caveat: str | None = None
     rows: tuple[ActiveEtfReportRow, ...] = Field(default_factory=tuple)
+    # Full current-day holdings (成分股/產業分佈 tabs) — see `ActiveEtfHoldingWeightRow`'s own
+    # docstring for why this is a separate field from `rows`.
+    current_holdings: tuple[ActiveEtfHoldingWeightRow, ...] = Field(default_factory=tuple)
 
 
 def _active_etf_report_row(
@@ -935,6 +960,29 @@ def _active_etf_fund_size_fields(
     return fund_size, fund_size_prior, fund_size_change_pct
 
 
+def _fund_size_with_aum_fallback(
+    store: ParquetStore,
+    market: str,
+    etf_symbol: str,
+    computed: tuple[float | None, float | None, float | None],
+) -> tuple[float | None, float | None, float | None, str | None]:
+    """Falls back to `etf_aum` (Yahoo's own `totalAssets`, already ingested — see
+    `_etf_aum_by_symbol`) only when the shares-x-close computation came back `None` — typically
+    because today's constituent closes haven't landed in `TaiwanStockPrice` yet (a same-day
+    ingest-timing gap, not a data-availability gap: the AUM figure genuinely exists). Never
+    falls back `fund_size_prior`/`fund_size_change_pct`: `etf_aum` is refreshed weekly, not
+    daily (confirmed against real ingested data — the same value repeats across consecutive
+    days), so a day-over-day delta computed from it would be a fabricated signal, not a real
+    one — those two fields stay honestly `None` when the fallback is used."""
+    fund_size, fund_size_prior, fund_size_change_pct = computed
+    if fund_size is not None:
+        return fund_size, fund_size_prior, fund_size_change_pct, None
+    aum = _etf_aum_by_symbol(store, market).get(etf_symbol)
+    if aum is None:
+        return fund_size, fund_size_prior, fund_size_change_pct, None
+    return aum, None, None, _ETF_AUM_CAVEAT
+
+
 def _estimated_nav_fields(
     store: ParquetStore,
     etf_symbol: Symbol,
@@ -959,6 +1007,36 @@ def _estimated_nav_fields(
         market_price / nav_per_unit - 1.0 if market_price is not None and nav_per_unit else None
     )
     return nav_per_unit, premium_discount_pct
+
+
+def _active_etf_current_holdings(
+    store: ParquetStore,
+    market: str,
+    report_holdings: dict[str, ActiveEtfHoldingRow],
+) -> tuple[ActiveEtfHoldingWeightRow, ...]:
+    """Every constituent's weight on `report_date` (`report_holdings`, already fetched by the
+    caller), joined against the whole-market `STOCK_INFO_JOB` roster for `industry_category` —
+    same ingest-owned-store join `GetSectorHeatmapTool` already performs, never a live per-symbol
+    fetch. Sorted by weight descending so the caller never re-sorts for its own donut/table."""
+    if not report_holdings:
+        return ()
+    roster_date = _latest_dataset_date(store, STOCK_INFO_JOB.dataset, market)
+    industry_by_symbol: dict[str, str] = {}
+    if roster_date is not None:
+        raw_roster = store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        industry_by_symbol = {
+            row.symbol: row.industry_category for row in _rows_from_store(StockInfoRow, raw_roster)
+        }
+    rows = [
+        ActiveEtfHoldingWeightRow(
+            component_stock_id=holding.component_stock_id,
+            component_stock_name=holding.component_stock_name,
+            weight=holding.weight,
+            industry_category=industry_by_symbol.get(holding.component_stock_id),
+        )
+        for holding in report_holdings.values()
+    ]
+    return tuple(sorted(rows, key=lambda row: row.weight, reverse=True))
 
 
 class GetActiveEtfReportTool(BaseTool):
@@ -1035,11 +1113,18 @@ class GetActiveEtfReportTool(BaseTool):
             report_holdings=report_holdings,
             has_prior_day=prior_date is not None,
         )
-        fund_size, fund_size_prior, fund_size_change_pct = _active_etf_fund_size_fields(
-            self._store,
-            symbol.market.value,
-            (report_date, prior_date),
-            (report_holdings, prior_holdings),
+        fund_size, fund_size_prior, fund_size_change_pct, fund_size_caveat = (
+            _fund_size_with_aum_fallback(
+                self._store,
+                symbol.market.value,
+                symbol.id,
+                _active_etf_fund_size_fields(
+                    self._store,
+                    symbol.market.value,
+                    (report_date, prior_date),
+                    (report_holdings, prior_holdings),
+                ),
+            )
         )
 
         units_outstanding = await self._fetch_units_outstanding(symbol, ctx)
@@ -1054,6 +1139,9 @@ class GetActiveEtfReportTool(BaseTool):
             if estimated_nav_per_unit is not None or estimated_premium_discount_pct is not None
             else None
         )
+        current_holdings = _active_etf_current_holdings(
+            self._store, symbol.market.value, report_holdings
+        )
 
         return GetActiveEtfReportOutput(
             source_id=holding_result.source_id,
@@ -1066,10 +1154,12 @@ class GetActiveEtfReportTool(BaseTool):
             fund_size=fund_size,
             fund_size_prior=fund_size_prior,
             fund_size_change_pct=fund_size_change_pct,
+            fund_size_caveat=fund_size_caveat,
             estimated_nav_per_unit=estimated_nav_per_unit,
             estimated_premium_discount_pct=estimated_premium_discount_pct,
             estimation_caveat=estimation_caveat,
             rows=tuple(rows),
+            current_holdings=current_holdings,
         )
 
     async def _fetch_units_outstanding(self, symbol: Symbol, ctx: ToolContext) -> int | None:
@@ -5340,6 +5430,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
 
 
 __all__ = [
+    "ActiveEtfHoldingWeightRow",
     "ActiveEtfReportRow",
     "AdvanceDeclineBuckets",
     "DailySignalHighlight",
