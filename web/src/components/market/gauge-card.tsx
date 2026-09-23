@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { cn } from "@/lib/cn";
 
 /**
  * A banded half-circle gauge for one real numeric value — the mockup's `.gauge-svg-wrap` shape,
@@ -86,73 +85,78 @@ export function GaugeCard({
   const needleTip = polarToCartesian(needleAngle, NEEDLE_LENGTH);
 
   return (
-    <div className="flex items-center gap-6">
-      <div className="relative shrink-0" style={{ width: GAUGE_WIDTH_PX }}>
-        <svg viewBox="0 0 200 118" width={GAUGE_WIDTH_PX} aria-hidden role="presentation">
-          <title>{title}</title>
-          {bands.map((band) => {
-            const startAngle = valueToAngleDeg(band.min, domainMin, domainMax);
-            const endAngle = valueToAngleDeg(
-              Number.isFinite(band.max) ? band.max : domainMax,
-              domainMin,
-              domainMax,
-            );
-            return (
-              <path
-                key={band.label}
-                d={describeArc(startAngle, endAngle, GAUGE_RADIUS)}
-                fill="none"
-                stroke={band.color}
-                strokeWidth={16}
-                strokeLinecap="round"
-              />
-            );
-          })}
-          {value !== null ? (
-            <>
-              <line
-                x1={GAUGE_CENTER_X}
-                y1={GAUGE_CENTER_Y}
-                x2={needleTip.x}
-                y2={needleTip.y}
-                stroke="var(--text)"
-                strokeWidth={3}
-                strokeLinecap="round"
-              />
-              <circle cx={GAUGE_CENTER_X} cy={GAUGE_CENTER_Y} r={5} fill="var(--text)" />
-            </>
-          ) : null}
-          <text x={20} y={112} fontSize={9} fill="var(--text-muted)">
-            {leftAxisLabel}
-          </text>
-          <text x={150} y={112} fontSize={9} fill="var(--text-muted)">
-            {rightAxisLabel}
-          </text>
-        </svg>
-        <div
-          className="absolute top-[66%] left-1/2 -translate-x-1/2 -translate-y-1/2 text-center"
-          role="group"
-          aria-label={
-            value !== null
-              ? `${title} ${formatNumber(value, "zh-TW", { decimals })}${unit ?? ""}${
-                  activeBand ? ` ${activeBand.label}` : ""
-                }`
-              : `${title}：資料暫無`
-          }
-        >
-          <div className="font-num text-[34px] text-[var(--text)] tabular-nums">
-            {value !== null ? formatNumber(value, "zh-TW", { decimals }) : "—"}
-            {value !== null ? unit : ""}
-          </div>
-          {activeBand ? (
-            <div
-              className={cn("mt-0.5 text-[13px]")}
-              style={{ color: activeBand.color }}
-              aria-hidden
-            >
-              {activeBand.label}
+    <div className="flex flex-wrap items-center gap-6">
+      <div className="shrink-0" style={{ width: GAUGE_WIDTH_PX }}>
+        <div className="relative">
+          <svg viewBox="0 0 200 108" width={GAUGE_WIDTH_PX} aria-hidden role="presentation">
+            <title>{title}</title>
+            {bands.map((band) => {
+              const startAngle = valueToAngleDeg(band.min, domainMin, domainMax);
+              const endAngle = valueToAngleDeg(
+                Number.isFinite(band.max) ? band.max : domainMax,
+                domainMin,
+                domainMax,
+              );
+              return (
+                <path
+                  key={band.label}
+                  d={describeArc(startAngle, endAngle, GAUGE_RADIUS)}
+                  fill="none"
+                  stroke={band.color}
+                  strokeWidth={14}
+                  strokeLinecap="round"
+                />
+              );
+            })}
+            {value !== null ? (
+              <>
+                <line
+                  x1={GAUGE_CENTER_X}
+                  y1={GAUGE_CENTER_Y}
+                  x2={needleTip.x}
+                  y2={needleTip.y}
+                  stroke="var(--text)"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                />
+                <circle cx={GAUGE_CENTER_X} cy={GAUGE_CENTER_Y} r={5} fill="var(--text)" />
+              </>
+            ) : null}
+          </svg>
+          {/* Number + band chip float ABOVE the arc's own baseline (never inside its sweep),
+           * so they can never collide with the needle or the arc strokes regardless of value. */}
+          <div
+            className="absolute inset-x-0 top-[52%] flex flex-col items-center gap-1 text-center"
+            role="group"
+            aria-label={
+              value !== null
+                ? `${title} ${formatNumber(value, "zh-TW", { decimals })}${unit ?? ""}${
+                    activeBand ? ` ${activeBand.label}` : ""
+                  }`
+                : `${title}：資料暫無`
+            }
+          >
+            <div className="font-num text-[30px] text-[var(--text)] tabular-nums leading-none">
+              {value !== null ? formatNumber(value, "zh-TW", { decimals }) : "—"}
+              {value !== null ? unit : ""}
             </div>
-          ) : null}
+            {activeBand ? (
+              <span
+                aria-hidden
+                className="rounded-[var(--radius-pill)] px-2 py-0.5 font-medium text-[11px]"
+                style={{
+                  color: activeBand.color,
+                  backgroundColor: `color-mix(in srgb, ${activeBand.color} 14%, transparent)`,
+                }}
+              >
+                {activeBand.label}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="mt-1 flex justify-between px-1 text-[10px] text-[var(--text-muted)]">
+          <span>{leftAxisLabel}</span>
+          <span>{rightAxisLabel}</span>
         </div>
       </div>
       {children}

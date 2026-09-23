@@ -91,7 +91,9 @@ def entitlement_transform(
         if data_class is DataClass.SPONSOR and not is_entitled(data_class, tier):
             masked = MaskedTeaser(
                 required_tier=Tier.PREMIUM,
-                preview=f"{_QUOTE_TOOL} requires a Premium or Pro subscription to unlock.",
+                # User-facing text — never the raw internal tool name, matching
+                # `tools/base.py::dispatch_tool`'s own default masked-teaser preview text.
+                preview="This data is available on a Premium or Pro subscription.",
                 tool_name=_QUOTE_TOOL,
             )
             return {**data, "quote": masked.model_dump(mode="json")}

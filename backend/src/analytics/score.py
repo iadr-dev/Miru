@@ -75,13 +75,11 @@ from schemas.capabilities import EODBar, InstitutionalFlowRow
 from schemas.enums import Market
 
 _NON_TRADING_CAVEAT = (
-    "Descriptive factor analysis only — not a buy, sell, hold, or price recommendation; "
-    "computed at last post-close and may not reflect intraday moves."
+    "僅為描述性因子分析——非買進、賣出、持有或價格建議；以最近一次收盤後計算，可能未反映盤中變動。"
 )
 _REGIME_CAVEAT_NO_MARKET_DATA = (
-    "Market-regime context (e.g. TAIEX vs its 200-day trend) is not evaluated in this pass — "
-    "treat any momentum-driven factor with the same elevated reversal risk you would in any "
-    "unassessed market condition."
+    "本次計算未評估大盤情境（如TAIEX與其200日均線的關係）——"
+    "任何受動能驅動的因子，請以未經評估市場情境的同等反轉風險視之。"
 )
 
 # Horizon-aware weight profiles — weights sum to 1.0 within each profile before any
@@ -373,20 +371,18 @@ def unavailable_factor(name: str, reason: str) -> FactorScore:
     return FactorScore(
         name=name,
         percentile=None,
-        description=f"{name} is unavailable for this symbol/date.",
+        description=f"此標的/日期尚無「{name}」資料。",
         unavailable_reason=reason,
     )
 
 
 _VALUE_GUARD_UNAVAILABLE_REASON = (
-    "No value sub-metric (EV/EBITDA, FCF yield, P/E, P/B) could be assembled — the financial-"
-    "statement and/or market-capitalization line items this symbol needs are absent from the "
-    "derived store; no value-guard figure is fabricated in its place."
+    "無法組成任何價值防護子指標（EV/EBITDA、自由現金流殖利率、本益比、股價淨值比）——"
+    "此標的所需的財報及/或市值資料尚未收錄；不會以虛構數值替代。"
 )
 _QUALITY_UNAVAILABLE_REASON = (
-    "No quality sub-metric (ROE, debt/equity, earnings variability, ROIC, gross profitability) "
-    "could be assembled — this symbol's financial-statement line items are absent from the "
-    "derived store; no quality figure is fabricated in its place."
+    "無法組成任何品質子指標（ROE、負債權益比、盈餘穩定性、ROIC、毛利率）——"
+    "此標的的財報資料尚未收錄；不會以虛構數值替代。"
 )
 
 
@@ -406,27 +402,25 @@ class _SubMetric:
 # direction so a lower-is-better metric still pushes a strong factor score upward.
 _QUALITY_SUB_METRICS: tuple[_SubMetric, ...] = (
     _SubMetric("roe", higher_is_better=True, label="ROE"),
-    _SubMetric("debt_to_equity", higher_is_better=False, label="debt/equity"),
-    _SubMetric("earnings_variability", higher_is_better=False, label="earnings variability"),
+    _SubMetric("debt_to_equity", higher_is_better=False, label="負債權益比"),
+    _SubMetric("earnings_variability", higher_is_better=False, label="盈餘穩定性"),
     _SubMetric("roic", higher_is_better=True, label="ROIC"),
-    _SubMetric("gross_profitability", higher_is_better=True, label="gross profitability"),
+    _SubMetric("gross_profitability", higher_is_better=True, label="毛利率"),
 )
 _VALUE_SUB_METRICS: tuple[_SubMetric, ...] = (
     _SubMetric("ev_ebitda", higher_is_better=False, label="EV/EBITDA"),
-    _SubMetric("fcf_yield", higher_is_better=True, label="FCF yield"),
-    _SubMetric("pe", higher_is_better=False, label="P/E"),
-    _SubMetric("pb", higher_is_better=False, label="P/B"),
+    _SubMetric("fcf_yield", higher_is_better=True, label="自由現金流殖利率"),
+    _SubMetric("pe", higher_is_better=False, label="本益比"),
+    _SubMetric("pb", higher_is_better=False, label="股價淨值比"),
 )
 
-_SECTOR_RELATIVE_CAVEAT = "Value and quality factors are z-scored against sector peers ({sector})."
+_SECTOR_RELATIVE_CAVEAT = "價值防護與品質因子已對同業同儕（{sector}）進行 z-score 標準化。"
 _WHOLE_UNIVERSE_CAVEAT = (
-    "No ingested sector/industry classification was available, so value and quality factors are "
-    "z-scored against the whole comparison universe rather than sector peers — a coarser "
-    "normalization, disclosed here rather than presented as sector-relative."
+    "尚無可用的產業分類資料，因此價值防護與品質因子改以全市場為比較基準進行 z-score 標準化，"
+    "而非同業同儕——此為較粗略的標準化方式，特此揭露而非以同業比較呈現。"
 )
 _NO_FUNDAMENTAL_NORMALIZATION_CAVEAT = (
-    "Value and quality were not normalized cross-sectionally — no fundamental comparison universe "
-    "was supplied for this run."
+    "價值防護與品質因子本次未進行橫斷面標準化——本次執行未提供基本面比較基準。"
 )
 
 
@@ -484,16 +478,13 @@ def _fundamental_factor(
     if combined is None:
         return unavailable_factor(name, unavailable_reason)
     annualized_note = (
-        " (trailing figures rest on an annualized single quarter — full TTM not yet available)"
-        if metrics.ttm_is_annualized
-        else ""
+        "（近期數據為單季年化估算，完整TTM尚未可得）" if metrics.ttm_is_annualized else ""
     )
     return FactorScore(
         name=name,
         percentile=zscore_to_percentile(combined),
         description=(
-            f"z-scored composite of {', '.join(used)}, mapped to a 0-100 cross-sectional "
-            f"standing{annualized_note}"
+            f"{'、'.join(used)} 之 z-score 綜合指標，對應至 0-100 橫斷面排名{annualized_note}"
         ),
     )
 
@@ -517,15 +508,12 @@ def _momentum_factor(inputs: FactorInputs) -> tuple[FactorScore, float | None]:
             name="momentum",
             percentile=momentum_percentile,
             description=(
-                "12-1 momentum (trailing 12-month return excluding the most recent month), "
-                "ranked against the day's universe"
-                + (" — capped for over-extension vs the 50-day MA (乖離過大)" if was_capped else "")
+                "12-1 動能（排除最近一個月的trailing 12個月報酬），對當日全市場排名"
+                + ("（因與50日均線乖離過大而調降上限）" if was_capped else "")
             ),
         )
         if momentum_percentile is not None
-        else unavailable_factor(
-            "momentum", "fewer than 12 months of price history ingested for this symbol"
-        )
+        else unavailable_factor("momentum", "此標的已收錄的價格歷史不足12個月")
     )
     return momentum, momentum_percentile
 
@@ -543,12 +531,10 @@ def _liquidity_flow_factor(inputs: FactorInputs) -> FactorScore:
         FactorScore(
             name="liquidity_flow",
             percentile=flow_percentile,
-            description="三大法人 20-day net-buy trend percentile",
+            description="三大法人 20日淨買超趨勢百分位",
         )
         if flow_percentile is not None
-        else unavailable_factor(
-            "liquidity_flow", "no institutional-flow rows ingested for this symbol/window"
-        )
+        else unavailable_factor("liquidity_flow", "此標的/期間尚無三大法人買賣超資料")
     )
 
 
@@ -564,12 +550,10 @@ def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
         FactorScore(
             name="trend_quality",
             percentile=(raw_trend / _TREND_TEMPLATE_CONDITION_COUNT) * 100.0,
-            description=f"{raw_trend}/8 Minervini trend-template conditions met",
+            description=f"{raw_trend}/8 項 Minervini 趨勢模板條件達標",
         )
         if raw_trend is not None
-        else unavailable_factor(
-            "trend_quality", "fewer than 252 trading days of price history ingested for this symbol"
-        )
+        else unavailable_factor("trend_quality", "此標的已收錄的價格歷史不足252個交易日")
     )
 
     value_guard = _fundamental_factor(
@@ -597,14 +581,12 @@ def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
             name="revenue_flow",
             percentile=flow_percentile,
             description=(
-                "三大法人 20-day net-buy trend percentile only — 月營收 YoY sub-signal not yet "
-                "ingested, so this factor reflects the chip-flow half of the design, disclosed here"
+                "僅反映三大法人 20日淨買超趨勢百分位 — 月營收 YoY 子訊號尚未納入計算，"
+                "因子目前僅涵蓋籌碼面設計的一半，特此揭露"
             ),
         )
         if flow_percentile is not None
-        else unavailable_factor(
-            "revenue_flow", "no institutional-flow rows ingested for this symbol/window"
-        )
+        else unavailable_factor("revenue_flow", "此標的/期間尚無三大法人買賣超資料")
     )
 
     return StockScoreBreakdown(
@@ -633,26 +615,22 @@ def _premium_discount_factor(premium_discount_pct: float | None) -> FactorScore:
     `_PREMIUM_DISCOUNT_SCALE_PCT`'s own comment for why this is a fixed scale, not a
     cross-sectional percentile."""
     if premium_discount_pct is None:
-        return unavailable_factor(
-            "premium_discount",
-            "no ETF NAV/premium-discount row ingested for this symbol/date "
-            "(sources/twse_etf_nav.py)",
-        )
+        return unavailable_factor("premium_discount", "此標的/日期尚無ETF淨值折溢價資料")
     deviation = abs(premium_discount_pct)
     score = max(0.0, 100.0 * (1.0 - deviation / _PREMIUM_DISCOUNT_SCALE_PCT))
     if premium_discount_pct > 0:
-        direction = "premium"
+        direction = "溢價"
     elif premium_discount_pct < 0:
-        direction = "discount"
+        direction = "折價"
     else:
-        direction = "parity"
+        direction = "平價"
     return FactorScore(
         name="premium_discount",
         percentile=score,
         description=(
-            f"{abs(premium_discount_pct):.2f}% {direction} to NAV (TWSE-published estimate), "
-            f"scored on a fixed 0-{_PREMIUM_DISCOUNT_SCALE_PCT:.0f}% deviation scale — closer to "
-            "NAV parity scores higher; never ranked against other ETFs"
+            f"對淨值{direction} {abs(premium_discount_pct):.2f}%（TWSE公告估算值），"
+            f"採固定 0-{_PREMIUM_DISCOUNT_SCALE_PCT:.0f}% 偏離度計分——越接近淨值平價分數越高；"
+            "不與其他ETF比較排名"
         ),
     )
 
@@ -661,20 +639,17 @@ def _cost_factor(expense_ratio_pct: float | None, universe: Sequence[float]) -> 
     """Lower expense ratio scores higher — a cross-sectional percentile like momentum/flow,
     since "cheap relative to other ETFs" is exactly the comparison an investor makes."""
     if expense_ratio_pct is None:
-        return unavailable_factor(
-            "cost",
-            "no SITCA expense-ratio disclosure ingested for this symbol "
-            "(tools/etf_pcf_tools.py::get_etf_expense_ratio)",
-        )
+        return unavailable_factor("cost", "此標的尚無 SITCA 費用率揭露資料")
     # Lower is better: winsorized_percentile ranks ascending, so negate to rank descending.
     percentile = winsorized_percentile(-expense_ratio_pct, [-v for v in universe])
     if percentile is None:
-        return unavailable_factor("cost", "fewer than 2 ETFs with a disclosed expense ratio today")
+        return unavailable_factor("cost", "今日揭露費用率的ETF數量不足2檔")
     return FactorScore(
         name="cost",
         percentile=percentile,
-        description=f"{expense_ratio_pct:.2f}% expense ratio, ranked ascending against today's "
-        "ETF universe (lower cost scores higher)",
+        description=(
+            f"費用率 {expense_ratio_pct:.2f}%，於今日ETF全體中由低到高排名（費用越低分數越高）"
+        ),
     )
 
 
@@ -686,23 +661,17 @@ def _management_activity_factor(
     so this is genuinely unavailable for them, never fabricated from a proxy."""
     if not is_active:
         return unavailable_factor(
-            "management_activity",
-            "not an active ETF — no holdings-turnover data is ingested for passive/leveraged/"
-            "inverse ETFs (ActiveEtfHoldingChangeRow is an active-ETF-only capability)",
+            "management_activity", "非主動式ETF——被動/槓桿/反向ETF尚無持股變動資料收錄"
         )
     if turnover_value is None:
-        return unavailable_factor(
-            "management_activity", "no active-ETF holdings-change rows ingested for this symbol"
-        )
+        return unavailable_factor("management_activity", "此標的尚無主動式ETF持股變動資料")
     percentile = winsorized_percentile(turnover_value, universe)
     if percentile is None:
-        return unavailable_factor(
-            "management_activity", "fewer than 2 active ETFs with holdings-turnover data today"
-        )
+        return unavailable_factor("management_activity", "今日有持股變動資料的主動式ETF數量不足2檔")
     return FactorScore(
         name="management_activity",
         percentile=percentile,
-        description="holdings-turnover percentile against today's active-ETF universe",
+        description="於今日主動式ETF全體中的持股周轉率百分位",
     )
 
 

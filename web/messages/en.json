@@ -1409,7 +1409,7 @@
       "chipAnalysis": "Chip Analysis",
       "technical": "Technical",
       "tracker": "Tracker",
-      "summary": "Summary",
+      "ai": "AI",
       "news": "News",
       "research": "Research",
       "realtime": "Market Watch",
@@ -1442,6 +1442,69 @@
         "supplies": "Supplies",
         "customer": "Customer",
         "competes": "Competes"
+      }
+    },
+    "ai": {
+      "footerCaveat": "AI-generated summary of data, for reference only — not investment advice.",
+      "trendScoreTitle": "Trend Score",
+      "trendScoreUnavailable": "No trend score data yet — the batch may not have run, or this stock has no data available.",
+      "trendScoreSeriesLabel": "Trend Score",
+      "priceSeriesLabel": "Price",
+      "scoreUnit": "pts",
+      "noHistoryYet": "No historical trend data yet.",
+      "asOfDate": "As of {date}",
+      "dimensionLocked": "Broker data partly locked",
+      "dimensionUnavailable": "No data",
+      "dimension": {
+        "technical": "Technical",
+        "chip_flow": "Chip Flow",
+        "margin_credit": "Margin/Credit",
+        "broker_concentration": "Broker Concentration",
+        "sector_rotation": "Sector Rotation",
+        "taiex_correlation": "TAIEX Co-movement"
+      },
+      "dimensionCaption": {
+        "technical": "MA stack / KD / MACD / BB %b composite (current technical posture, not a forecast)",
+        "chip_flow": "Institutional 20-day net-buy trend percentile",
+        "margin_credit": "Margin/short balance change vs. price direction",
+        "broker_concentration": "Broker-branch concentration days % + main-force direction agreement",
+        "sector_rotation": "Change in same-industry institutional inflow ranking",
+        "taiex_correlation": "Daily-return correlation with the broad market (TAIEX)"
+      },
+      "scoreTitle": "多空 Score",
+      "scoreUnavailable": "No score data yet — today's batch may not have finished computing.",
+      "profileToggleLabel": "Score profile switch",
+      "profile": {
+        "swing": "Swing",
+        "position": "Position"
+      },
+      "band": {
+        "bullish": "Bullish-leaning",
+        "neutral": "Neutral",
+        "bearish": "Bearish-leaning"
+      },
+      "factor": {
+        "momentum": "Momentum",
+        "trend_quality": "Trend Quality",
+        "value_guard": "Value Guard",
+        "quality": "Quality",
+        "revenue_flow": "Chip/Revenue Flow"
+      },
+      "factorCaption": {
+        "momentum": "12-1 momentum (trailing 12-month return excluding the most recent month), ranked against the day's universe",
+        "trend_quality": "Share of Minervini trend-template conditions met",
+        "value_guard": "Composite of EV/EBITDA, FCF yield, P/E, P/B, mapped to a 0-100 cross-sectional standing",
+        "quality": "Composite of ROE, debt/equity, earnings variability, ROIC, gross profitability, mapped to a 0-100 cross-sectional standing",
+        "revenue_flow": "Institutional 20-day net-buy trend percentile (monthly-revenue YoY sub-signal not yet ingested)"
+      },
+      "summaryTitle": "AI Summary",
+      "summaryUnavailable": "No AI summary yet — the underlying score may not be computed.",
+      "swotEmpty": "No data",
+      "swot": {
+        "strengths": "Strengths",
+        "weaknesses": "Weaknesses",
+        "opportunities": "Opportunities",
+        "threats": "Threats"
       }
     },
     "realtime": {

@@ -10,16 +10,31 @@ tools themselves.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 
+from analytics.models import (
+    FactorScore,
+    ScoreBand,
+    ScoreProfile,
+    ScoreResult,
+    StockScoreBreakdown,
+    TrendDimensionResult,
+    TrendScoreResult,
+)
+from analytics.score import unavailable_factor
+from analytics.scoring_store import upsert_score
+from analytics.symbol_universe import SymbolType
+from analytics.trend_score_store import upsert_trend_score
 from config.settings import Settings
-from schemas.enums import Capability, DataClass, Market, TimingClass
+from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
-from tests.api.conftest import build_test_client
+from tests.api.conftest import build_test_client, sign_in
+from tests.llm.stubs import StubLLMClient, make_text_response
 from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
 
@@ -359,6 +374,188 @@ class TestPriceLimitRoute:
         client = build_test_client(settings, agent_answer=agent_answer)
         resp = client.get("/api/v1/stock/price-limit")
         assert resp.status_code == 422
+
+
+class TestSummaryRoute:
+    """AI 智能摘要 tab's headline/narrative/SWOT card — `get_stock_summary` is `DataClass.SPONSOR`
+    with no row-preview opt-in, so a Free/anonymous caller gets the whole-tool masked-teaser
+    envelope; a Premium caller gets the real, LLM-generated (stub-scripted here) content grounded
+    in a seeded cached score."""
+
+    _CLEAN_SCRIPT = json.dumps(
+        {
+            "headline": "偏多格局，動能與趨勢皆強",
+            "narrative": "動能因子與趨勢品質因子皆位於高百分位，顯示近期價格表現偏強。",
+            "strengths": ["momentum factor at the 80th percentile"],
+            "weaknesses": [],
+            "opportunities": [],
+            "threats": [],
+        }
+    )
+
+    def _swap_registry_and_seed_score(
+        self, client: TestClient, llm: StubLLMClient, *, seed_score: bool
+    ) -> None:
+        """Must be called from inside an entered `with client:` block — `client.portal` (used
+        both by `sign_in` and here to seed the score row on the app's own event loop) only
+        exists once `TestClient.__enter__` has started it."""
+        symbol = Symbol(id="2330", market=Market.TW)
+        stub_router, _ = make_router(symbol, {})
+        state = client.app.state.app_state
+        registry = build_default_tool_registry(
+            stub_router, session_factory=state.session_factory, summary_llm=llm
+        )
+        object.__setattr__(state, "tool_registry", registry)
+        if not seed_score:
+            return
+
+        breakdown = StockScoreBreakdown(
+            momentum=FactorScore(name="momentum", percentile=80.0, description="strong momentum"),
+            trend_quality=FactorScore(
+                name="trend_quality", percentile=70.0, description="above MAs"
+            ),
+            value_guard=unavailable_factor("value_guard", "no financials ingested"),
+            quality=unavailable_factor("quality", "no financials ingested"),
+            revenue_flow=FactorScore(name="revenue_flow", percentile=55.0, description="flat"),
+        )
+        score = ScoreResult(
+            symbol="2330",
+            market=Market.TW,
+            as_of=date(2026, 9, 22),
+            profile=ScoreProfile.SWING,
+            symbol_type=SymbolType.STOCK,
+            composite=68.0,
+            band=ScoreBand.BULLISH_LEANING,
+            breakdown=breakdown,
+            partial_factors=("value_guard", "quality"),
+            regime_caveat="regime caveat text",
+            non_trading_caveat="This is analytical market context only, not a recommendation.",
+            normalization_caveat="Compared against the whole universe.",
+        )
+
+        async def _seed() -> None:
+            async with state.session_factory() as session:
+                await upsert_score(session, score)
+                await session.commit()
+
+        assert client.portal is not None
+        client.portal.call(_seed)
+
+    def test_masked_for_free(self, settings: Settings, agent_answer: str) -> None:
+        with build_test_client(settings, agent_answer=agent_answer) as client:
+            llm = StubLLMClient(script=[make_text_response(self._CLEAN_SCRIPT)])
+            self._swap_registry_and_seed_score(client, llm, seed_score=True)
+            headers, _ = sign_in(client, settings, tier=Tier.FREE)
+            resp = client.get(
+                "/api/v1/analytics/2330/summary", params={"market": "TW"}, headers=headers
+            )
+            assert resp.status_code == 200
+            assert resp.json()["locked"] is True
+
+    def test_real_content_for_premium(self, settings: Settings, agent_answer: str) -> None:
+        with build_test_client(settings, agent_answer=agent_answer) as client:
+            llm = StubLLMClient(script=[make_text_response(self._CLEAN_SCRIPT)])
+            self._swap_registry_and_seed_score(client, llm, seed_score=True)
+            headers, _ = sign_in(client, settings, tier=Tier.PREMIUM)
+            resp = client.get(
+                "/api/v1/analytics/2330/summary", params={"market": "TW"}, headers=headers
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert "locked" not in body
+            assert body["found"] is True
+            assert body["headline"] == "偏多格局，動能與趨勢皆強"
+            assert body["as_of"] == "2026-09-22"
+
+    def test_found_false_when_no_score_yet(self, settings: Settings, agent_answer: str) -> None:
+        with build_test_client(settings, agent_answer=agent_answer) as client:
+            llm = StubLLMClient(script=[])
+            self._swap_registry_and_seed_score(client, llm, seed_score=False)
+            headers, _ = sign_in(client, settings, tier=Tier.PREMIUM)
+            resp = client.get(
+                "/api/v1/analytics/9999/summary", params={"market": "TW"}, headers=headers
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["found"] is False
+            assert llm.calls == []
+
+
+class TestTrendScoreRoute:
+    """AI tab's 趨勢評分 card — `get_trend_score` is `DataClass.PUBLIC` (never masked), but its
+    sixth dimension (`broker_concentration`) is a live Sponsor-tier fetch the tool itself locks
+    for an unentitled caller rather than `dispatch_tool`'s whole-tool substitution."""
+
+    def _swap_registry_and_seed(self, client: TestClient, *, seed_row: bool) -> None:
+        """Must be called from inside an entered `with client:` block — see `TestSummaryRoute`'s
+        own note on why `client.portal` requires that."""
+        symbol = Symbol(id="2330", market=Market.TW)
+        stub_router, _ = make_router(symbol, {Capability.CHIP_BROKER: _result({"rows": []})})
+        state = client.app.state.app_state
+        registry = build_default_tool_registry(stub_router, session_factory=state.session_factory)
+        object.__setattr__(state, "tool_registry", registry)
+        if not seed_row:
+            return
+
+        result = TrendScoreResult(
+            symbol="2330",
+            market=Market.TW,
+            as_of=date(2026, 9, 22),
+            composite=62.5,
+            dimensions=(
+                TrendDimensionResult(name="technical", value=70.0, description="MA排列/KD/MACD"),
+                TrendDimensionResult(name="chip_flow", value=60.0, description="三大法人淨買超"),
+                TrendDimensionResult(name="margin_credit", value=55.0, description="融資融劵變化"),
+                TrendDimensionResult(
+                    name="broker_concentration",
+                    value=None,
+                    description="broker_concentration unavailable",
+                    unavailable_reason="not computed by the batch",
+                ),
+                TrendDimensionResult(name="sector_rotation", value=65.0, description="產業輪動"),
+                TrendDimensionResult(name="taiex_correlation", value=58.0, description="大盤連動"),
+            ),
+            unavailable_dimensions=("broker_concentration",),
+            non_trading_caveat="Descriptive trend-strength read only — not a recommendation.",
+        )
+
+        async def _seed() -> None:
+            async with state.session_factory() as session:
+                await upsert_trend_score(session, result)
+                await session.commit()
+
+        assert client.portal is not None
+        client.portal.call(_seed)
+
+    def test_public_never_masked_for_free(self, settings: Settings, agent_answer: str) -> None:
+        with build_test_client(settings, agent_answer=agent_answer) as client:
+            self._swap_registry_and_seed(client, seed_row=True)
+            headers, _ = sign_in(client, settings, tier=Tier.FREE)
+            resp = client.get(
+                "/api/v1/analytics/2330/trend-score", params={"market": "TW"}, headers=headers
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert "locked" not in body
+            assert body["found"] is True
+            by_name = {d["name"]: d for d in body["dimensions"]}
+            assert by_name["broker_concentration"]["locked"] is True
+            assert by_name["technical"]["locked"] is False
+
+    def test_found_false_when_no_row_yet(self, settings: Settings, agent_answer: str) -> None:
+        with build_test_client(settings, agent_answer=agent_answer) as client:
+            self._swap_registry_and_seed(client, seed_row=False)
+            headers, _ = sign_in(client, settings, tier=Tier.FREE)
+            resp = client.get(
+                "/api/v1/analytics/9999/trend-score", params={"market": "TW"}, headers=headers
+            )
+            assert resp.status_code == 200
+            assert resp.json()["found"] is False
+
+    def test_requires_symbol(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        resp = client.get("/api/v1/analytics//trend-score")
+        assert resp.status_code == 404
 
 
 class TestIntradayKbarRoute:

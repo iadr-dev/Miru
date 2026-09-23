@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dataaccess.router import DataAccessRouter
 from ingest.reader import ParquetMarketDataReader
+from llm.base import LLMClient
 from tools import (
     analyst_tools,
     ask_user_tools,
@@ -49,9 +50,11 @@ from tools import (
     realtime_tools,
     score_tools,
     screener_tools,
+    summary_tools,
     tdcc_tools,
     technical_tools,
     theme_tools,
+    trend_score_tools,
     web_search_tools,
 )
 from tools.registry import ToolRegistry, build_default_registry
@@ -62,12 +65,30 @@ def build_default_tool_registry(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     market_data_reader: ParquetMarketDataReader | None = None,
+    summary_llm: LLMClient | None = None,
 ) -> ToolRegistry:
     theme_group = (
         theme_tools.build_registration_table(session_factory) if session_factory is not None else []
     )
     score_group = (
         score_tools.build_registration_table(session_factory) if session_factory is not None else []
+    )
+    # The trend-score tool needs BOTH the DB session factory (trend_scores cache) and the router
+    # (the live per-symbol broker_concentration fetch) — same optional-dependency shape as
+    # `score_group`/`summary_group` so a narrow test wiring only one seam still composes.
+    trend_score_group = (
+        trend_score_tools.build_registration_table(session_factory, router)
+        if session_factory is not None
+        else []
+    )
+    # The AI-summary tool needs BOTH the DB session factory (score + summary cache) and a
+    # resolved `LLMClient` (ModelRole.SUBAGENT, resolved by the composition root) — registered
+    # only when both are supplied, matching `theme_group`/`score_group`'s optional-dependency
+    # shape so a narrow test wiring only the router-backed set still composes.
+    summary_group = (
+        summary_tools.build_registration_table(session_factory, summary_llm)
+        if session_factory is not None and summary_llm is not None
+        else []
     )
     # The tag screener reads the ingest-owned Parquet flag store through the derived-store reader.
     # Optional so a narrow test wiring only the router-backed set still composes; when omitted, the
@@ -107,6 +128,8 @@ def build_default_tool_registry(
         theme_group,
         score_group,
         screener_group,
+        summary_group,
+        trend_score_group,
     )
 
 

@@ -1409,7 +1409,7 @@
       "chipAnalysis": "籌碼分析",
       "technical": "技術分析",
       "tracker": "追蹤",
-      "summary": "智能摘要",
+      "ai": "AI",
       "news": "相關新聞",
       "research": "研究圖表",
       "realtime": "看盤",
@@ -1442,6 +1442,69 @@
         "supplies": "供應",
         "customer": "客戶",
         "competes": "競爭"
+      }
+    },
+    "ai": {
+      "footerCaveat": "AI 生成之資料摘要，僅供參考，非投資建議。",
+      "trendScoreTitle": "趨勢評分",
+      "trendScoreUnavailable": "尚無趨勢評分資料，可能因批次尚未計算或此股票無可用資料。",
+      "trendScoreSeriesLabel": "趨勢評分",
+      "priceSeriesLabel": "股價",
+      "scoreUnit": "分",
+      "noHistoryYet": "尚無歷史走勢資料。",
+      "asOfDate": "資料日期：{date}",
+      "dimensionLocked": "分點資料部分未解鎖",
+      "dimensionUnavailable": "無資料",
+      "dimension": {
+        "technical": "技術面",
+        "chip_flow": "籌碼動能",
+        "margin_credit": "資金信用",
+        "broker_concentration": "分點集中",
+        "sector_rotation": "板塊輪動",
+        "taiex_correlation": "大盤連動"
+      },
+      "dimensionCaption": {
+        "technical": "MA排列/KD/MACD/BB %b 綜合（技術面現況，非預測）",
+        "chip_flow": "三大法人 20日淨買超趨勢百分位",
+        "margin_credit": "融資融劵餘額變化與股價方向比對",
+        "broker_concentration": "分點集中天數% + 主力籌碼方向一致性",
+        "sector_rotation": "同產業資金流入排名變化",
+        "taiex_correlation": "與大盤(TAIEX)日報酬相關性"
+      },
+      "scoreTitle": "多空評分",
+      "scoreUnavailable": "尚無多空評分資料，今日批次可能尚未計算完成。",
+      "profileToggleLabel": "評分模式切換",
+      "profile": {
+        "swing": "波段",
+        "position": "長期"
+      },
+      "band": {
+        "bullish": "偏多",
+        "neutral": "中性",
+        "bearish": "偏空"
+      },
+      "factor": {
+        "momentum": "動能",
+        "trend_quality": "趨勢品質",
+        "value_guard": "價值防護",
+        "quality": "品質",
+        "revenue_flow": "籌碼與營收"
+      },
+      "factorCaption": {
+        "momentum": "12-1動能（排除最近一個月的trailing 12個月報酬），對當日全市場排名",
+        "trend_quality": "Minervini 趨勢模板條件達標比例",
+        "value_guard": "EV/EBITDA、自由現金流殖利率、本益比、股價淨值比 之綜合指標，對應至0-100橫斷面排名",
+        "quality": "ROE、負債權益比、盈餘穩定性、ROIC、毛利率 之綜合指標，對應至0-100橫斷面排名",
+        "revenue_flow": "三大法人 20日淨買超趨勢百分位（月營收 YoY 子訊號尚未納入計算）"
+      },
+      "summaryTitle": "AI 智能摘要",
+      "summaryUnavailable": "尚無 AI 摘要，可能因多空評分尚未計算完成。",
+      "swotEmpty": "無資料",
+      "swot": {
+        "strengths": "優勢",
+        "weaknesses": "劣勢",
+        "opportunities": "機會",
+        "threats": "威脅"
       }
     },
     "realtime": {

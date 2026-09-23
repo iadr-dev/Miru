@@ -261,6 +261,78 @@ class ScoreResult(BaseModel):
     )
 
 
+class StockSwot(BaseModel):
+    """The four SWOT quadrants for the AI-generated stock summary — every bullet is grounded in
+    one of `ScoreResult.breakdown`'s factors (see `analytics/summary_generation.py`'s prompt),
+    never fabricated beyond what the score already discloses. Any quadrant may be empty (e.g. no
+    factor supported a "threats" bullet that day) — an empty tuple, never a filler sentence."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    strengths: tuple[str, ...] = Field(default=())
+    weaknesses: tuple[str, ...] = Field(default=())
+    opportunities: tuple[str, ...] = Field(default=())
+    threats: tuple[str, ...] = Field(default=())
+
+
+class StockSummaryResult(BaseModel):
+    """The AI-generated headline + narrative + SWOT for one symbol, strictly grounded in the
+    `ScoreResult` it was generated from — `as_of` is that score's own date (the cache key), not
+    "today", so a summary generated against yesterday's still-cached score is never silently
+    treated as freshly computed. Like `ScoreResult`, nothing here is, or may become, buy/sell/
+    hold/price-target/position-sizing language (enforced both by the generation prompt and by
+    `agent.guardrails.scan_structured_payload` before this model is constructed)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    as_of: date_
+    headline: str = Field(min_length=1)
+    narrative: str = Field(min_length=1)
+    swot: StockSwot
+    non_trading_caveat: str = Field(min_length=1)
+
+
+# -- 趨勢評分 (trend score) result models -----------------------------------------------------
+
+
+class TrendDimensionResult(BaseModel):
+    """Frozen pydantic mirror of `analytics.trend_score.TrendDimension` (a plain dataclass there
+    by design — that module is pure computation with zero pydantic dependency). Same "never
+    fabricate, always disclose" shape as `FactorScore`: `value is None` means genuinely
+    unavailable (data not ingested / not enough history), never a fabricated neutral default."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    value: float | None = Field(default=None, ge=0.0, le=100.0)
+    description: str = Field(min_length=1)
+    unavailable_reason: str | None = None
+
+
+class TrendScoreResult(BaseModel):
+    """The 趨勢評分 composite's full, transparent output — the number, the six-dimension
+    breakdown behind it, and which dimensions were unavailable. Mirrors `ScoreResult`'s "show the
+    work" discipline; nothing here is, or may become, buy/sell/hold/price-target language.
+
+    Unlike `ScoreResult` (a same-day snapshot cache), this table's read pattern includes a date
+    RANGE for a chart (see `analytics/trend_score_store.py::get_trend_score_history`), so
+    `TrendScoreResult` rows persist as real history rather than being overwritten daily — the
+    same symbol's `as_of` genuinely differs day to day, unlike `ScoreResult`'s single-latest-row
+    cache."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    as_of: date_
+    composite: float | None = Field(default=None, ge=0.0, le=100.0)
+    dimensions: tuple[TrendDimensionResult, ...] = Field(default_factory=tuple)
+    unavailable_dimensions: tuple[str, ...] = Field(default=())
+    non_trading_caveat: str = Field(min_length=1)
+
+
 __all__ = [
     "AtrResult",
     "BollingerResult",
@@ -278,7 +350,11 @@ __all__ = [
     "ScoreResult",
     "SmaResult",
     "StockScoreBreakdown",
+    "StockSummaryResult",
+    "StockSwot",
     "SupportResistanceLevel",
     "SupportResistanceResult",
+    "TrendDimensionResult",
+    "TrendScoreResult",
     "VwapResult",
 ]

@@ -228,7 +228,7 @@ def test_quality_and_value_are_genuinely_computable_end_to_end(tmp_path: object)
     assert "quality" not in result.partial_factors
     assert "value_guard" not in result.partial_factors
     # No ingested sector classification -> whole-universe fallback, honestly disclosed.
-    assert "whole" in result.normalization_caveat.lower()
+    assert "全市場" in result.normalization_caveat
 
 
 def test_missing_financials_and_no_sector_degrades_cleanly(tmp_path: object) -> None:
@@ -275,4 +275,4 @@ def test_missing_financials_and_no_sector_degrades_cleanly(tmp_path: object) -> 
     assert result.composite is None  # nothing available at all -> honest None, not a fake neutral
     assert "quality" in result.partial_factors
     assert "value_guard" in result.partial_factors
-    assert "not normalized" in result.normalization_caveat.lower()
+    assert "未進行橫斷面標準化" in result.normalization_caveat

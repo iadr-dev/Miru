@@ -135,6 +135,10 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     # score_tools.py
     "get_stock_score": "stock_score",
     "get_score_leaderboard": "score_leaderboard",
+    # summary_tools.py
+    "get_stock_summary": "stock_summary",
+    # trend_score_tools.py
+    "get_trend_score": "trend_score",
     # tdcc_tools.py
     "get_tdcc_shareholding_distribution": "tdcc_shareholding_distribution",
     "get_tdcc_evoting_schedule": "tdcc_evoting_schedule",
@@ -152,6 +156,12 @@ def _theme_session_factory() -> async_sessionmaker:
     construction so they register, but these tests only inspect tool metadata (name/card_type/
     schema), never call `run()`, so the engine is never actually queried."""
     return async_sessionmaker(create_async_engine("sqlite+aiosqlite:///:memory:"))
+
+
+def _summary_llm_stub() -> StubLLMClient:
+    """A bare stub `LLMClient` for registry-metadata tests: `get_stock_summary` needs one at
+    construction so it registers, but these tests never call `run()`, so it is never invoked."""
+    return StubLLMClient(script=[])
 
 
 def _chip_broker_result() -> SourceResult:
@@ -382,7 +392,9 @@ def test_card_opted_tool_declares_its_exact_card_type(
     silently shipping a card the frontend can't map."""
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(symbol, {})
-    registry = build_default_tool_registry(router, session_factory=_theme_session_factory())
+    registry = build_default_tool_registry(
+        router, session_factory=_theme_session_factory(), summary_llm=_summary_llm_stub()
+    )
 
     tool = registry.get_tool(tool_name)
     assert tool is not None, f"{tool_name} is not registered"
@@ -394,7 +406,9 @@ def test_exactly_the_card_opted_tools_declare_a_card_type() -> None:
     being enabled somewhere without landing in the locked mapping above."""
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(symbol, {})
-    registry = build_default_tool_registry(router, session_factory=_theme_session_factory())
+    registry = build_default_tool_registry(
+        router, session_factory=_theme_session_factory(), summary_llm=_summary_llm_stub()
+    )
 
     opted_in = {t.name: t.card_type for t in registry.all_tools() if t.card_type is not None}
     assert opted_in == CARD_OPTED_TOOLS
