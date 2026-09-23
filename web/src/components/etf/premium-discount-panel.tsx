@@ -8,6 +8,7 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
+  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -212,6 +213,12 @@ function PriceNavLineCard({
                 formatNumber(value as number, locale, { decimals: 2 }),
                 name === "closePrice" ? t("priceSeriesLabel") : t("navSeriesLabel"),
               ]}
+            />
+            <Legend
+              formatter={(value) =>
+                value === "closePrice" ? t("priceSeriesLabel") : t("navSeriesLabel")
+              }
+              wrapperStyle={{ fontSize: 12, color: "var(--text-muted)" }}
             />
             <Line
               type="monotone"
