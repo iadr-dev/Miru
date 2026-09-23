@@ -15,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { getEtfPremiumDiscount } from "@/lib/api/etf-detail";
 import type { EtfNavRow } from "@/types/etf-detail";
@@ -108,7 +108,7 @@ function PremiumDiscountBarCard({
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         {currentAum != null ? (
           <span className="text-[11px] text-[var(--text-muted)]">
-            {t("aum", { value: formatNumber(currentAum, locale, { decimals: 0 }) })}
+            {t("aum", { value: formatCompactNumber(currentAum, locale) })}
           </span>
         ) : null}
       </div>
