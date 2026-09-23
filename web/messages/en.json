@@ -1911,6 +1911,7 @@
         "trackedIndex": "Tracked Index",
         "expenseRatio": "Expense Ratio",
         "unitsOutstanding": "Units Outstanding",
+        "unitsOutstandingValue": "{value} units",
         "listedDate": "Listed Date",
         "inceptionDate": "Inception Date",
         "fundName": "Fund Name",
@@ -1944,6 +1945,8 @@
     },
     "premiumDiscount": {
       "title": "Premium/Discount to NAV",
+      "priceNavTitle": "Price / NAV",
+      "dataSheetTitle": "Data Sheet",
       "unavailable": "No premium/discount history available.",
       "aum": "AUM {value}",
       "chartSeriesLabel": "Premium/Discount (%)",

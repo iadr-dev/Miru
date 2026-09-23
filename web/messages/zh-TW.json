@@ -1911,6 +1911,7 @@
         "trackedIndex": "追蹤指數",
         "expenseRatio": "內扣費用",
         "unitsOutstanding": "發行單位數",
+        "unitsOutstandingValue": "{value} 單位",
         "listedDate": "上市日期",
         "inceptionDate": "成立日期",
         "fundName": "基金名稱",
@@ -1944,6 +1945,8 @@
     },
     "premiumDiscount": {
       "title": "折溢價",
+      "priceNavTitle": "股價／淨值",
+      "dataSheetTitle": "資料明細",
       "unavailable": "尚無折溢價歷史資料。",
       "aum": "資產規模 {value}",
       "chartSeriesLabel": "折溢價(%)",

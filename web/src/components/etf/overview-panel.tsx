@@ -58,7 +58,9 @@ export function OverviewPanel({
       label: t("field.unitsOutstanding"),
       value:
         info.units_outstanding != null
-          ? formatNumber(info.units_outstanding, locale, { decimals: 0 })
+          ? t("field.unitsOutstandingValue", {
+              value: formatNumber(info.units_outstanding, locale, { decimals: 0 }),
+            })
           : null,
     },
     { label: t("field.listedDate"), value: info.listed_date ?? null },
