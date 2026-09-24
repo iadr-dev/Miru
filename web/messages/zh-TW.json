@@ -1952,6 +1952,8 @@
         "industry": "產業分佈"
       },
       "dataSheetTitle": "成分股明細",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
       "column": {
         "rank": "排名",
         "stock": "標的",

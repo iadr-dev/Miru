@@ -7,6 +7,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
+import { ExpandModal } from "@/components/ui/expand-modal";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import type { ActiveEtfHoldingWeightRow } from "@/types/etf-detail";
@@ -23,6 +24,7 @@ const OTHERS_COLOR = "var(--text-muted)";
 const TOP_N = 4;
 const SUB_TABS = ["holdings", "industry"] as const;
 type SubTab = (typeof SUB_TABS)[number];
+const DATA_SHEET_COLLAPSED_ROW_COUNT = 10;
 
 type Slice = { label: string; weight: number; color: string };
 
@@ -139,39 +141,66 @@ function HoldingsDataSheetCard({
   readonly holdings: readonly ActiveEtfHoldingWeightRow[];
 }): ReactNode {
   const t = useTranslations("etf.holdings");
-  const locale = useLocale();
+  const [expanded, setExpanded] = useState(false);
   const ranked = [...holdings].sort((a, b) => b.weight - a.weight);
 
   return (
-    <DataSheetCard title={t("dataSheetTitle")}>
-      <table className="w-full text-[12.5px]">
-        <thead>
-          <tr className="border-[var(--border)] border-b text-[var(--text-muted)]">
-            <th className="py-2 text-left font-medium">{t("column.rank")}</th>
-            <th className="py-2 text-left font-medium">{t("column.stock")}</th>
-            <th className="py-2 text-left font-medium">{t("column.industry")}</th>
-            <th className="py-2 text-right font-medium">{t("column.weight")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ranked.map((row, index) => (
-            <tr key={row.component_stock_id} className="border-[var(--border)] border-b">
-              <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
-              <td className="py-2 text-[var(--text)]">
-                {row.component_stock_name}
-                <span className="ml-1 font-num text-[11px] text-[var(--text-muted)]">
-                  {row.component_stock_id}
-                </span>
-              </td>
-              <td className="py-2 text-[var(--text-muted)]">{row.industry_category ?? "—"}</td>
-              <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
-                {formatNumber(row.weight, locale, { decimals: 2 })}%
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <DataSheetCard
+      title={t("dataSheetTitle")}
+      totalCount={ranked.length}
+      expanded={expanded}
+      onExpand={() => setExpanded(true)}
+      onCollapse={() => setExpanded(false)}
+    >
+      <HoldingsTable rows={ranked.slice(0, DATA_SHEET_COLLAPSED_ROW_COUNT)} />
+      <ExpandModal
+        open={expanded}
+        title={t("dataSheetTitle")}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      >
+        <HoldingsTable rows={ranked} />
+      </ExpandModal>
     </DataSheetCard>
+  );
+}
+
+function HoldingsTable({
+  rows,
+}: {
+  readonly rows: readonly ActiveEtfHoldingWeightRow[];
+}): ReactNode {
+  const t = useTranslations("etf.holdings");
+  const locale = useLocale();
+
+  return (
+    <table className="w-full text-[12.5px]">
+      <thead>
+        <tr className="border-[var(--border)] border-b text-[var(--text-muted)]">
+          <th className="py-2 text-left font-medium">{t("column.rank")}</th>
+          <th className="py-2 text-left font-medium">{t("column.stock")}</th>
+          <th className="py-2 text-left font-medium">{t("column.industry")}</th>
+          <th className="py-2 text-right font-medium">{t("column.weight")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={row.component_stock_id} className="border-[var(--border)] border-b">
+            <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
+            <td className="py-2 text-[var(--text)]">
+              {row.component_stock_name}
+              <span className="ml-1 font-num text-[11px] text-[var(--text-muted)]">
+                {row.component_stock_id}
+              </span>
+            </td>
+            <td className="py-2 text-[var(--text-muted)]">{row.industry_category ?? "—"}</td>
+            <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
+              {formatNumber(row.weight, locale, { decimals: 2 })}%
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -181,46 +210,94 @@ function IndustryDataSheetCard({
   readonly rows: readonly { label: string; weight: number }[];
 }): ReactNode {
   const t = useTranslations("etf.holdings");
-  const locale = useLocale();
+  const [expanded, setExpanded] = useState(false);
   const ranked = [...rows].sort((a, b) => b.weight - a.weight);
 
   return (
-    <DataSheetCard title={t("dataSheetTitle")}>
-      <table className="w-full text-[12.5px]">
-        <thead>
-          <tr className="border-[var(--border)] border-b text-[var(--text-muted)]">
-            <th className="py-2 text-left font-medium">{t("column.rank")}</th>
-            <th className="py-2 text-left font-medium">{t("column.industry")}</th>
-            <th className="py-2 text-right font-medium">{t("column.weight")}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ranked.map((row, index) => (
-            <tr key={row.label} className="border-[var(--border)] border-b">
-              <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
-              <td className="py-2 text-[var(--text)]">{row.label}</td>
-              <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
-                {formatNumber(row.weight, locale, { decimals: 2 })}%
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <DataSheetCard
+      title={t("dataSheetTitle")}
+      totalCount={ranked.length}
+      expanded={expanded}
+      onExpand={() => setExpanded(true)}
+      onCollapse={() => setExpanded(false)}
+    >
+      <IndustryTable rows={ranked.slice(0, DATA_SHEET_COLLAPSED_ROW_COUNT)} />
+      <ExpandModal
+        open={expanded}
+        title={t("dataSheetTitle")}
+        closeLabel={t("collapse")}
+        onClose={() => setExpanded(false)}
+      >
+        <IndustryTable rows={ranked} />
+      </ExpandModal>
     </DataSheetCard>
+  );
+}
+
+function IndustryTable({
+  rows,
+}: {
+  readonly rows: readonly { label: string; weight: number }[];
+}): ReactNode {
+  const t = useTranslations("etf.holdings");
+  const locale = useLocale();
+
+  return (
+    <table className="w-full text-[12.5px]">
+      <thead>
+        <tr className="border-[var(--border)] border-b text-[var(--text-muted)]">
+          <th className="py-2 text-left font-medium">{t("column.rank")}</th>
+          <th className="py-2 text-left font-medium">{t("column.industry")}</th>
+          <th className="py-2 text-right font-medium">{t("column.weight")}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={row.label} className="border-[var(--border)] border-b">
+            <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
+            <td className="py-2 text-[var(--text)]">{row.label}</td>
+            <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
+              {formatNumber(row.weight, locale, { decimals: 2 })}%
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
 function DataSheetCard({
   title,
+  totalCount,
+  expanded,
+  onExpand,
   children,
 }: {
   readonly title: string;
+  readonly totalCount: number;
+  readonly expanded: boolean;
+  readonly onExpand: () => void;
+  readonly onCollapse: () => void;
   readonly children: ReactNode;
 }): ReactNode {
+  const t = useTranslations("etf.holdings");
+
   return (
     <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{title}</h2>
       <div className="overflow-x-auto">{children}</div>
+      {totalCount > DATA_SHEET_COLLAPSED_ROW_COUNT && !expanded ? (
+        <button
+          type="button"
+          onClick={onExpand}
+          className={cn(
+            "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+            "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+          )}
+        >
+          <span>{t("expandTo", { count: totalCount })}</span>
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -1952,6 +1952,8 @@
         "industry": "Industry Breakdown"
       },
       "dataSheetTitle": "Holdings Detail",
+      "expandTo": "Show all {count} rows",
+      "collapse": "Collapse",
       "column": {
         "rank": "Rank",
         "stock": "Holding",
