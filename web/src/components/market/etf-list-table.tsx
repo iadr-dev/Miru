@@ -7,6 +7,7 @@ import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-lis
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
+import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -16,18 +17,6 @@ const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr]
 // neighbors; "展開完整{count}筆" opens the full sorted list (unbounded, still scrollable) in
 // `ExpandModal` instead of growing this card past the rest of the ETF tab.
 const COLLAPSED_ROW_COUNT = 10;
-
-// 槓桿/反向 badges use distinct categorical tokens (--chart-1/--chart-2), never --up/--down —
-// leveraged/inverse is a fund-structure fact, not a price/%/score signal (web/CLAUDE.md §4).
-const SYMBOL_TYPE_BADGE: Record<string, { labelKey: string; color: string }> = {
-  etf_leveraged: { labelKey: "leveraged", color: "var(--chart-1)" },
-  etf_inverse: { labelKey: "inverse", color: "var(--chart-2)" },
-};
-
-// 主動式/被動式 is an orthogonal axis from 原型/槓桿型/反向型 above (a leveraged/inverse ETF is
-// passive by construction; a plain "原型" ETF can be either) — its own categorical token
-// (--chart-3), never --up/--down, same reasoning as SYMBOL_TYPE_BADGE.
-const ACTIVE_BADGE_COLOR = "var(--chart-3)";
 
 /**
  * 主動式ETF-style sortable ETF list — every column's header is a real `<button>` (click to
@@ -259,7 +248,7 @@ function EtfListRowItem({
         {row.is_active_etf ? (
           <span
             className="ml-1.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 font-medium text-[10px]"
-            style={{ color: ACTIVE_BADGE_COLOR }}
+            style={{ color: ACTIVE_ETF_BADGE_COLOR }}
           >
             {t("active")}
           </span>

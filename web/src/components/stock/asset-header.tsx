@@ -13,8 +13,9 @@ import { getEtfList, getPriceHistory, getSymbolInfo } from "@/lib/api/market";
 import { getStockScore } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
+import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import { isEtfSymbolType } from "@/lib/symbol-type";
-import type { ScoreBand, SymbolType } from "@/types/market";
+import type { EtfListRow, ScoreBand, SymbolType } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 const HISTORY_DAYS_FOR_CHANGE = 2;
@@ -74,9 +75,10 @@ export function AssetHeader({
     queryFn: () => getEtfList(market),
     enabled: isEtf,
   });
-  const distributionFrequency = etfListQuery.data?.data_available
-    ? etfListQuery.data.rows.find((row) => row.symbol === symbol)?.distribution_frequency
+  const etfListRow = etfListQuery.data?.data_available
+    ? etfListQuery.data.rows.find((row) => row.symbol === symbol)
     : undefined;
+  const distributionFrequency = etfListRow?.distribution_frequency;
   const scoreQuery = useQuery({
     queryKey: ["stock_score", symbol, market],
     queryFn: () => getStockScore(symbol, market),
@@ -115,6 +117,7 @@ export function AssetHeader({
             trackedIndex,
             industryCategory: symbolInfo?.industry_category,
           })}
+          {isEtf ? <EtfStructureBadges row={etfListRow} /> : null}
           {distributionFrequency ? (
             <DistributionFrequencyBadge frequency={distributionFrequency} />
           ) : null}
@@ -254,6 +257,39 @@ function headerChipLabel({
 }): ReactNode {
   const label = isEtf ? trackedIndex : industryCategory;
   return label ? <SectorChip label={label} /> : null;
+}
+
+/** 原型/槓桿型/反向型 (`symbol_type`) + 主動式 (`is_active_etf`) badges — the SAME constants and
+ * labels `components/market/etf-list-table.tsx` uses for the market ETF-tab list
+ * (`lib/etf-badges.ts`), so a fund reads identically on both pages. Reads the
+ * `market.cards.etfList` namespace directly (not `stock.assetHeader`) rather than duplicating
+ * the label strings into a second namespace. `row` is `undefined` while `get_etf_list` is still
+ * loading or this symbol isn't in the whole-market list yet — renders nothing rather than a
+ * loading placeholder, matching `headerChipLabel`'s own "absent → no chip" precedent. */
+function EtfStructureBadges({ row }: { readonly row: EtfListRow | undefined }): ReactNode {
+  const t = useTranslations("market.cards.etfList");
+  if (!row) return null;
+  const symbolTypeBadge = SYMBOL_TYPE_BADGE[row.symbol_type];
+  return (
+    <>
+      {row.is_active_etf ? (
+        <span
+          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2.5 py-1 font-medium text-[12px]"
+          style={{ color: ACTIVE_ETF_BADGE_COLOR }}
+        >
+          {t("active")}
+        </span>
+      ) : null}
+      {symbolTypeBadge ? (
+        <span
+          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2.5 py-1 font-medium text-[12px]"
+          style={{ color: symbolTypeBadge.color }}
+        >
+          {t(symbolTypeBadge.labelKey)}
+        </span>
+      ) : null}
+    </>
+  );
 }
 
 /** 配息 cadence badge (月配/季配/半年配/年配/不配息) — colored by the frequency LABEL itself via
