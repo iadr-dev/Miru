@@ -25,9 +25,13 @@ _PAGE_WITH_TWO_TAGS = (
 <div class="etf-result">
     <div class="text">主題/因子：</div>
 
-        <span class="result"><a href="/zh/ETFortune/products?tag=%E7%A7%91%E6%8A%80%E4%B8%BB%E9%A1%8C%E5%9E%8B">科技主題型</a></span>
+        <span class="result">
+            <a href="/zh/ETFortune/products?tag=tech">科技主題型</a>
+        </span>
 
-        <span class="result"><a href="/zh/ETFortune/products?tag=%E9%AB%98%E8%82%A1%E6%81%AF">高股息</a></span>
+        <span class="result">
+            <a href="/zh/ETFortune/products?tag=div">高股息</a>
+        </span>
 
 </div>
 """
