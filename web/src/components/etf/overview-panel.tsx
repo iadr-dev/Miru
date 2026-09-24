@@ -3,6 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { DividendCalendarCard } from "@/components/etf/dividend-calendar-card";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
@@ -10,10 +20,122 @@ import {
   getEtfExpenseRatio,
   getEtfFundInfo,
   getEtfThemeTags,
+  getEtfTrailingReturns,
   getFundTotalReturn,
 } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
+import type { EtfTrailingReturns } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
+
+const TOOLTIP_STYLE = {
+  background: "var(--surface-2)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-input)",
+  color: "var(--text)",
+};
+
+const TRAILING_RETURN_HORIZONS: ReadonlyArray<{
+  key: keyof Pick<
+    EtfTrailingReturns,
+    | "return_1m_pct"
+    | "return_1q_pct"
+    | "return_6m_pct"
+    | "return_1y_pct"
+    | "return_3y_pct"
+    | "return_5y_pct"
+  >;
+  labelKey: string;
+}> = [
+  { key: "return_1m_pct", labelKey: "1m" },
+  { key: "return_1q_pct", labelKey: "1q" },
+  { key: "return_6m_pct", labelKey: "6m" },
+  { key: "return_1y_pct", labelKey: "1y" },
+  { key: "return_3y_pct", labelKey: "3y" },
+  { key: "return_5y_pct", labelKey: "5y" },
+];
+
+/** 各期間報酬率 — bar chart of the 6 fixed trailing horizons (1個月/1季/半年/1年/3年/5年), all
+ * computed by the backend from one split/dividend-adjusted price history fetch
+ * (`get_etf_trailing_returns`; see `EtfTrailingReturns`'s own docstring for why — a historical
+ * stock split must never read as a fabricated crash). A horizon bar is simply omitted when its
+ * value is `null` (the fund's history doesn't reach back that far), never rendered as zero. */
+function TrailingReturnsCard({
+  symbol,
+  market,
+}: {
+  readonly symbol: string;
+  readonly market: Market;
+}): ReactNode {
+  const t = useTranslations("etf.trailingReturns");
+  const locale = useLocale();
+  const query = useQuery({
+    queryKey: ["etf_trailing_returns", symbol, market],
+    queryFn: () => getEtfTrailingReturns(symbol, market),
+  });
+
+  if (query.isLoading) {
+    return (
+      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+        <CardSkeletonBody height={260} />
+      </section>
+    );
+  }
+
+  const returns = query.data?.returns;
+  const chartData = returns
+    ? TRAILING_RETURN_HORIZONS.filter(({ key }) => returns[key] != null).map(
+        ({ key, labelKey }) => ({
+          horizon: t(`horizon.${labelKey}`),
+          returnPct: returns[key] as number,
+        }),
+      )
+    : [];
+
+  return (
+    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
+      {chartData.length === 0 ? (
+        <p className="text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>
+      ) : (
+        <div className="h-[220px] w-full">
+          <ResponsiveContainer>
+            <BarChart data={chartData} margin={{ left: 8, right: 8 }}>
+              <CartesianGrid stroke="var(--grid)" vertical={false} />
+              <XAxis
+                dataKey="horizon"
+                tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                stroke="var(--border)"
+              />
+              <YAxis
+                tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                width={40}
+                stroke="var(--border)"
+              />
+              <Tooltip
+                cursor={{ fill: "var(--text)", opacity: 0.08 }}
+                contentStyle={TOOLTIP_STYLE}
+                labelStyle={{ color: "var(--text)", fontWeight: 600 }}
+                itemStyle={{ color: "var(--text)" }}
+                formatter={(value) => [
+                  `${formatNumber(value as number, locale, { decimals: 1 })}%`,
+                  t("tooltipLabel"),
+                ]}
+              />
+              <Bar dataKey="returnPct" radius={2}>
+                {chartData.map((point) => (
+                  <Cell
+                    key={point.horizon}
+                    fill={point.returnPct >= 0 ? "var(--up)" : "var(--down)"}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </section>
+  );
+}
 
 /** 今年以來報酬 — `get_fund_comparison`'s dividend-reinvested total return (see that tool's own
  * module docstring for the reinvestment convention) over a calendar-year-to-date window
@@ -175,6 +297,8 @@ export function OverviewPanel({
           </p>
         ) : null}
       </section>
+
+      <TrailingReturnsCard symbol={symbol} market={market} />
 
       <div className="xl:col-span-2">
         <DividendCalendarCard symbol={symbol} market={market} />

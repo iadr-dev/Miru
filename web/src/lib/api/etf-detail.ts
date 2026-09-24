@@ -13,10 +13,12 @@ import {
   type EtfFundInfoResponse,
   type EtfPremiumDiscountResponse,
   type EtfThemeTagsResponse,
+  type EtfTrailingReturnsResponse,
   etfExpenseRatioResponseSchema,
   etfFundInfoResponseSchema,
   etfPremiumDiscountResponseSchema,
   etfThemeTagsResponseSchema,
+  etfTrailingReturnsResponseSchema,
   type FundComparisonResponse,
   fundComparisonResponseSchema,
 } from "@/types/etf-detail";
@@ -74,7 +76,21 @@ export async function getEtfPremiumDiscount(
 }
 
 // ---------------------------------------------------------------------------
-// 5. GET /funds/comparison (public) — single-symbol call only (the ETF 總覽 tab's own
+// 5. GET /funds/{symbol}/trailing-returns (public)
+// ---------------------------------------------------------------------------
+
+export async function getEtfTrailingReturns(
+  symbol: string,
+  market: Market,
+): Promise<EtfTrailingReturnsResponse> {
+  const raw = await requestJson(
+    `/funds/${encodeURIComponent(symbol)}/trailing-returns?market=${market}`,
+  );
+  return etfTrailingReturnsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 6. GET /funds/comparison (public) — single-symbol call only (the ETF 總覽 tab's own
 //    "since inception" stat); the multi-symbol chat-card comparison path has its own
 //    generic-card rendering and doesn't go through this typed client.
 // ---------------------------------------------------------------------------
@@ -93,7 +109,7 @@ export async function getFundTotalReturn(
 }
 
 // ---------------------------------------------------------------------------
-// 6. GET /market/active-etf-report (Sponsor-tier)
+// 7. GET /market/active-etf-report (Sponsor-tier)
 // ---------------------------------------------------------------------------
 
 export async function getActiveEtfReport(

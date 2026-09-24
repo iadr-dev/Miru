@@ -141,6 +141,21 @@ def _client_with_stub(settings: Settings, agent_answer: str) -> TestClient:
         ),
         Capability.DIVIDENDS: _result({"events": []}),
         Capability.ETF_HOLDINGS: _result({"info": None}),
+        Capability.ETF_TRAILING_RETURNS: _result(
+            {
+                "returns": {
+                    "symbol": "SPY",
+                    "market": "US",
+                    "as_of": date(2024, 6, 2).isoformat(),
+                    "return_1m_pct": 2.1,
+                    "return_1q_pct": 5.4,
+                    "return_6m_pct": 9.8,
+                    "return_1y_pct": 18.3,
+                    "return_3y_pct": 40.0,
+                    "return_5y_pct": 95.5,
+                }
+            }
+        ),
     }
     stub_router, _ = make_router(symbol, results)
     registry = build_default_tool_registry(stub_router)
@@ -177,6 +192,14 @@ class TestPerSymbolRoutes:
         body = resp.json()
         assert body["holdings"][0]["holding_symbol"] == "AAPL"
         assert body["sector_weightings"][0]["sector"] == "Technology"
+
+    def test_trailing_returns_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_stub(settings, agent_answer)
+        resp = client.get("/api/v1/funds/SPY/trailing-returns", params={"market": Market.US.value})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["returns"]["return_1y_pct"] == 18.3
+        assert body["returns"]["return_5y_pct"] == 95.5
 
 
 class TestOverlapRoute:

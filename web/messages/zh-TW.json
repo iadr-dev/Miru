@@ -1927,6 +1927,19 @@
         "custodianBank": "保管銀行"
       }
     },
+    "trailingReturns": {
+      "title": "各期間報酬率",
+      "unavailable": "尚無足夠價格資料計算各期間報酬率。",
+      "tooltipLabel": "報酬率",
+      "horizon": {
+        "1m": "1個月",
+        "1q": "1季",
+        "6m": "半年",
+        "1y": "1年",
+        "3y": "3年",
+        "5y": "5年"
+      }
+    },
     "dividendCalendar": {
       "title": "股息日曆",
       "viewList": "清單",

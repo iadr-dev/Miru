@@ -1927,6 +1927,19 @@
         "custodianBank": "Custodian Bank"
       }
     },
+    "trailingReturns": {
+      "title": "Trailing Returns",
+      "unavailable": "Not enough price history to compute trailing returns.",
+      "tooltipLabel": "Return",
+      "horizon": {
+        "1m": "1M",
+        "1q": "1Q",
+        "6m": "6M",
+        "1y": "1Y",
+        "3y": "3Y",
+        "5y": "5Y"
+      }
+    },
     "dividendCalendar": {
       "title": "Dividend Calendar",
       "viewList": "List",

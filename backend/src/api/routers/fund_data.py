@@ -170,6 +170,21 @@ async def etf_theme_tags(
     return await _dispatch(state, "get_etf_theme_tags", {"id": symbol, "market": market.value}, ctx)
 
 
+@router.get("/funds/{symbol}/trailing-returns")
+async def etf_trailing_returns(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One listed ETF's price return over 6 fixed trailing horizons (1個月/1季/半年/1年/3年/5年),
+    computed from a single split/dividend-adjusted price-history fetch. Backed by
+    `get_etf_trailing_returns`."""
+    return await _dispatch(
+        state, "get_etf_trailing_returns", {"id": symbol, "market": market.value}, ctx
+    )
+
+
 @router.get("/funds/{symbol}/premium-discount")
 async def etf_premium_discount(
     symbol: str,

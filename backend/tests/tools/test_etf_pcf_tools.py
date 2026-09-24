@@ -15,6 +15,7 @@ from tools.etf_pcf_tools import (
     GetEtfPremiumDiscountInput,
     GetEtfPremiumDiscountTool,
     GetEtfThemeTagsTool,
+    GetEtfTrailingReturnsTool,
 )
 
 
@@ -90,6 +91,60 @@ async def test_get_etf_theme_tags_empty_when_no_tags_in_payload() -> None:
 
     assert output.tags == ()
     assert output.holder_count_wan is None
+
+
+async def test_get_etf_trailing_returns_delegates_and_parses() -> None:
+    symbol = Symbol(id="0050", market=Market.TW)
+    returns_row = {
+        "symbol": "0050",
+        "market": "TW",
+        "as_of": "2026-09-24",
+        "return_1m_pct": 3.5,
+        "return_1q_pct": 8.1,
+        "return_6m_pct": 12.4,
+        "return_1y_pct": 20.9,
+        "return_3y_pct": 45.2,
+        "return_5y_pct": None,
+    }
+    result = SourceResult(
+        source_id="YFINANCE",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.REFERENCE,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={"returns": returns_row},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, adapter = make_router(symbol, {Capability.ETF_TRAILING_RETURNS: result})
+    tool = GetEtfTrailingReturnsTool(router)
+    assert tool.data_class is DataClass.PUBLIC
+
+    output = await tool.run(SymbolInput(id="0050", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ETF_TRAILING_RETURNS
+    assert output.returns is not None
+    assert output.returns.return_1y_pct == 20.9
+    assert output.returns.return_5y_pct is None
+
+
+async def test_get_etf_trailing_returns_none_when_fetch_failed() -> None:
+    symbol = Symbol(id="NOPE", market=Market.TW)
+    result = SourceResult(
+        source_id="YFINANCE",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.REFERENCE,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={},
+        health=SourceHealth(status=HealthStatus.STALE, detail="no price history returned"),
+    )
+    router, _ = make_router(symbol, {Capability.ETF_TRAILING_RETURNS: result})
+    tool = GetEtfTrailingReturnsTool(router)
+
+    output = await tool.run(SymbolInput(id="NOPE", market=Market.TW), ToolContext())
+
+    assert output.returns is None
+    assert output.health_status is HealthStatus.STALE
 
 
 def _etf_nav_row(symbol: str, as_of: date, premium_discount_pct: float) -> dict[str, object]:

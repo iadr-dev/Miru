@@ -17,7 +17,14 @@ from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import ETF_AUM_DATASET, ETF_NAV_DATASET
 from ingest.store import ParquetStore
-from schemas.capabilities import EtfAumRow, EtfExpenseInfo, EtfFundInfo, EtfNavRow, EtfThemeTags
+from schemas.capabilities import (
+    EtfAumRow,
+    EtfExpenseInfo,
+    EtfFundInfo,
+    EtfNavRow,
+    EtfThemeTags,
+    EtfTrailingReturns,
+)
 from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
@@ -171,6 +178,56 @@ class GetEtfThemeTagsTool(BaseTool):
         )
 
 
+class GetEtfTrailingReturnsOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: str
+    currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
+    returns: EtfTrailingReturns | None = None
+
+
+class GetEtfTrailingReturnsTool(BaseTool):
+    """`get_etf_trailing_returns` — wraps `Capability.ETF_TRAILING_RETURNS` (see
+    `EtfTrailingReturns`'s own docstring in `schemas/capabilities.py` for why this is computed
+    from a dedicated split/dividend-adjusted yfinance history fetch rather than this codebase's
+    ingested — unadjusted — `price_eod` bars). `returns` is `None` only on a genuine fetch
+    failure (unreachable/stale); a `None` individual horizon field inside a present `returns` is
+    the normal, honest case for a fund whose history doesn't reach that far back yet."""
+
+    name = "get_etf_trailing_returns"
+    description = (
+        "Get one listed ETF's price return over 6 fixed trailing horizons — 1個月/1季/半年/1年/"
+        "3年/5年 — computed from a single split/dividend-adjusted price-history fetch, so a "
+        "historical stock split never reads as a fabricated crash."
+    )
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetEtfTrailingReturnsOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "etf_trailing_returns"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(SymbolInput, args)
+        result = await self._router.fetch(
+            Capability.ETF_TRAILING_RETURNS, typed.to_symbol(), tls_policy=ctx.tls_policy
+        )
+        raw_returns = result.payload.get("returns")
+        returns = (
+            EtfTrailingReturns.model_validate(raw_returns)
+            if isinstance(raw_returns, dict)
+            else None
+        )
+        return GetEtfTrailingReturnsOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            returns=returns,
+        )
+
+
 _PREMIUM_DISCOUNT_DAYS_DEFAULT = 60
 _PREMIUM_DISCOUNT_DAYS_MIN = 2
 _PREMIUM_DISCOUNT_DAYS_MAX = 180
@@ -315,6 +372,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetEtfFundInfoTool(router), False),
         (GetEtfExpenseRatioTool(router), False),
         (GetEtfThemeTagsTool(router), False),
+        (GetEtfTrailingReturnsTool(router), False),
         (GetEtfPremiumDiscountTool(store), False),
     ]
 
@@ -329,5 +387,7 @@ __all__ = [
     "GetEtfPremiumDiscountTool",
     "GetEtfThemeTagsOutput",
     "GetEtfThemeTagsTool",
+    "GetEtfTrailingReturnsOutput",
+    "GetEtfTrailingReturnsTool",
     "build_registration_table",
 ]

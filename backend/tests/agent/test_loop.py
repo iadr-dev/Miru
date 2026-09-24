@@ -114,6 +114,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_etf_fund_info": "etf_fund_info",
     "get_etf_expense_ratio": "etf_expense_ratio",
     "get_etf_theme_tags": "etf_theme_tags",
+    "get_etf_trailing_returns": "etf_trailing_returns",
     "get_etf_premium_discount": "etf_premium_discount",
     # etf_overlap_tools.py
     "get_etf_overlap": "etf_overlap",

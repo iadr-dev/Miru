@@ -164,6 +164,7 @@ class Capability(StrEnum):
     ETF_NAV = "etf_nav"
     ETF_AUM = "etf_aum"
     ETF_THEME_TAGS = "etf_theme_tags"
+    ETF_TRAILING_RETURNS = "etf_trailing_returns"
     ACTIVE_ETF_HOLDING = "active_etf_holding"
     ACTIVE_ETF_HOLDING_CHANGE = "active_etf_holding_change"
     ACTIVE_ETF_INFO = "active_etf_info"

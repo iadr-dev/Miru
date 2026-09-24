@@ -74,6 +74,35 @@ export const etfThemeTagsResponseSchema = z.object({
 export type EtfThemeTagsResponse = z.infer<typeof etfThemeTagsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// GET /funds/{symbol}/trailing-returns — get_etf_trailing_returns (public). Mirrors
+// `EtfTrailingReturns` (backend/src/schemas/capabilities.py) — 6 fixed horizons computed from
+// one split/dividend-adjusted price history fetch, never yfinance's own inconsistent-unit
+// `.info` return fields. A `null` horizon is real ("history doesn't reach back that far"), never
+// a fetch failure — a fetch failure instead makes the whole `returns` field `null`.
+// ---------------------------------------------------------------------------
+
+export const etfTrailingReturnsSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  as_of: z.string(),
+  return_1m_pct: z.number().nullable().optional(),
+  return_1q_pct: z.number().nullable().optional(),
+  return_6m_pct: z.number().nullable().optional(),
+  return_1y_pct: z.number().nullable().optional(),
+  return_3y_pct: z.number().nullable().optional(),
+  return_5y_pct: z.number().nullable().optional(),
+});
+export type EtfTrailingReturns = z.infer<typeof etfTrailingReturnsSchema>;
+
+export const etfTrailingReturnsResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  returns: etfTrailingReturnsSchema.nullable().optional(),
+});
+export type EtfTrailingReturnsResponse = z.infer<typeof etfTrailingReturnsResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // GET /funds/comparison — get_fund_comparison (public). Mirrors `FundComparisonRow`/
 // `GetFundComparisonOutput` (backend/src/tools/etf_overlap_tools.py) field-for-field, restricted
 // to the fields the ETF 總覽 tab's own single-symbol "since inception" call actually reads —

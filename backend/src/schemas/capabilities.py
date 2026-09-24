@@ -2100,6 +2100,38 @@ class EtfAumRow(BaseModel):
     aum: float | None = None  # 資產規模 (NTD), None when Yahoo has no totalAssets for this fund
 
 
+class EtfTrailingReturns(BaseModel):
+    """`etf_trailing_returns` — one listed ETF's price-return over 6 fixed trailing horizons
+    (1個月/1季/半年/1年/3年/5年), computed from ONE split/dividend-adjusted price history fetch
+    (`yfinance.Ticker.history(period="5y", auto_adjust=True)`) — never yfinance's own `.info`
+    fields (`ytdReturn`/`threeYearAverageReturn`/`fiveYearAverageReturn`), which mix inconsistent
+    units (percent vs. fraction, confirmed live) and don't cover 1M/1Q/6M/1Y at all. Computing
+    every horizon the same way over the same already-adjusted series means the six numbers are
+    genuinely comparable to each other, not stitched from two different methodologies.
+
+    `auto_adjust=True` retroactively folds every split/dividend into the historical close
+    series — this is deliberately NOT the raw `Capability.PRICE_EOD` bars this codebase ingests
+    elsewhere (those are unadjusted; see `get_fund_comparison`'s own dividend-reinvestment
+    simulation, built for exactly that gap, but which itself broke on 0050's real 2025-06-18
+    4-for-1 split precisely because the ingested bars are unadjusted — this capability sidesteps
+    that whole class of bug by reading Yahoo's pre-adjusted series instead).
+
+    A horizon is `None` (never fabricated) when the 5-year history window doesn't reach back
+    far enough for that horizon (e.g. a fund listed 2 years ago has no real 5-year return)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    as_of: date_
+    return_1m_pct: float | None = None
+    return_1q_pct: float | None = None
+    return_6m_pct: float | None = None
+    return_1y_pct: float | None = None
+    return_3y_pct: float | None = None
+    return_5y_pct: float | None = None
+
+
 # --- yfinance-native capabilities (non-TW primary; no existing FinMind/gov equivalent) ---
 
 

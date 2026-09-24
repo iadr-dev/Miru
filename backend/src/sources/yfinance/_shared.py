@@ -27,12 +27,16 @@ _CAVEAT = (
     "symbol list; per-symbol calls here run in a threadpool for isolated fetch)."
 )
 
-# TW keeps the original narrow set — analyst/ESG/sector/AUM gap-filling only.
+# TW keeps the original narrow set — analyst/ESG/sector/AUM gap-filling only, plus the
+# split/dividend-adjusted trailing-return computation (`etf_trailing_returns`'s own module
+# docstring) which is genuinely TW-primary: this codebase's ingested `price_eod` bars for TW are
+# unadjusted, so this is the ONLY source of a real multi-year TW ETF return figure.
 _TW_SUPPORTED = {
     Capability.ANALYST_CONSENSUS,
     Capability.ESG,
     Capability.SECTOR_CLASS,
     Capability.ETF_AUM,
+    Capability.ETF_TRAILING_RETURNS,
 }
 
 # Non-TW markets: yfinance is primary for the shared capabilities other adapters also serve,
