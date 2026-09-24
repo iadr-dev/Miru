@@ -17,6 +17,8 @@ import {
   etfFundInfoResponseSchema,
   etfPremiumDiscountResponseSchema,
   etfThemeTagsResponseSchema,
+  type FundComparisonResponse,
+  fundComparisonResponseSchema,
 } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 
@@ -72,7 +74,26 @@ export async function getEtfPremiumDiscount(
 }
 
 // ---------------------------------------------------------------------------
-// 5. GET /market/active-etf-report (Sponsor-tier)
+// 5. GET /funds/comparison (public) — single-symbol call only (the ETF 總覽 tab's own
+//    "since inception" stat); the multi-symbol chat-card comparison path has its own
+//    generic-card rendering and doesn't go through this typed client.
+// ---------------------------------------------------------------------------
+
+export async function getFundTotalReturn(
+  symbol: string,
+  market: Market,
+  lookbackDays: number,
+): Promise<FundComparisonResponse> {
+  const search = new URLSearchParams({
+    symbols: `${symbol}:${market}`,
+    lookback_days: String(lookbackDays),
+  });
+  const raw = await requestJson(`/funds/comparison?${search.toString()}`);
+  return fundComparisonResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 6. GET /market/active-etf-report (Sponsor-tier)
 // ---------------------------------------------------------------------------
 
 export async function getActiveEtfReport(

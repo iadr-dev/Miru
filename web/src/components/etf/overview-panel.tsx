@@ -6,46 +6,44 @@ import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { DividendCalendarCard } from "@/components/etf/dividend-calendar-card";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
-import { getEtfExpenseRatio, getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
-import { getTechnicalIndicators } from "@/lib/api/stock-detail";
+import {
+  getEtfExpenseRatio,
+  getEtfFundInfo,
+  getEtfThemeTags,
+  getFundTotalReturn,
+} from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
-const DAYS_PER_YEAR = 365.25;
-
-/** 年化報酬(成立以來) — `(latest close / inception-day close) ^ (1/years) - 1`, over the full
- * `inception_date`-to-today window from `get_technical_indicators`'s plain OHLC bars (no
- * per-symbol range cap, unlike `get_price_history`'s 60-day bound — the only already-live
- * capability that can span years back to a fund's inception). Genuinely `None` (never
- * fabricated) when `inception_date` is missing or fewer than 2 bars exist in that window. */
-function useAnnualizedReturnSinceInception(
+/** 今年以來報酬 — `get_fund_comparison`'s dividend-reinvested total return (see that tool's own
+ * module docstring for the reinvestment convention) over a calendar-year-to-date window
+ * (Jan 1 of the current year through today), computed via a live `lookback_days` derived from
+ * today's own date. Deliberately YTD, not since-inception: a since-inception window can span a
+ * stock split (confirmed live for 0050 — an unadjusted 2025-06-18 4-for-1 split makes any
+ * multi-year raw-close total-return calc read as a fabricated ~-75% crash at that date, since
+ * this codebase's price pipeline has no split-adjustment step anywhere). A YTD window is short
+ * enough that it essentially never crosses a split, so this sidesteps that gap entirely rather
+ * than risk showing a distorted number. Genuinely `None` (never fabricated) when the tool itself
+ * couldn't compute a return (no usable price history in the window). */
+function useYtdReturn(
   symbol: string,
   market: Market,
-  inceptionDate: string | null | undefined,
 ): { value: number | null; isLoading: boolean } {
+  const lookbackDays = Math.ceil(
+    (Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (24 * 60 * 60 * 1000) + 1,
+  );
   const query = useQuery({
-    queryKey: ["etf_inception_return", symbol, market, inceptionDate],
-    queryFn: () => getTechnicalIndicators(symbol, market, { startDate: inceptionDate as string }),
-    enabled: !!inceptionDate,
+    queryKey: ["fund_total_return_ytd", symbol, market, lookbackDays],
+    queryFn: () => getFundTotalReturn(symbol, market, lookbackDays),
   });
-  if (!inceptionDate) return { value: null, isLoading: false };
-  const bars = query.data?.bars ?? [];
-  if (bars.length < 2) return { value: null, isLoading: query.isLoading };
-  const first = bars[0];
-  const last = bars.at(-1);
-  if (!first || !last || first.close <= 0) return { value: null, isLoading: query.isLoading };
-  const years =
-    (new Date(last.trade_date).getTime() - new Date(first.trade_date).getTime()) /
-    (DAYS_PER_YEAR * 24 * 60 * 60 * 1000);
-  if (years <= 0) return { value: null, isLoading: query.isLoading };
-  const totalReturn = last.close / first.close;
-  const annualized = totalReturn ** (1 / years) - 1;
-  return { value: annualized * 100, isLoading: query.isLoading };
+  const row = query.data?.rows[0];
+  const totalReturnPct = row?.total_return_pct;
+  return { value: totalReturnPct ?? null, isLoading: query.isLoading };
 }
 
 /** 總覽 — fund-level reference (`get_etf_fund_info`/`get_etf_expense_ratio`, both public,
  * matching the reference app's 基本資料 key-value block: 資產規模/成立年數/內扣費用/基金名稱/經理人/
- * 投信公司/保管銀行) plus the reference app's own 年化報酬(成立以來) headline stat. No AUM/units-
+ * 投信公司/保管銀行) plus the reference app's own 今年以來報酬 headline stat. No AUM/units-
  * history chart here — that lives in the 折溢價 tab, which is the dataset that actually carries a
  * daily series; this tab is a point-in-time fund profile. */
 export function OverviewPanel({
@@ -70,7 +68,7 @@ export function OverviewPanel({
     queryFn: () => getEtfThemeTags(symbol, market),
   });
   const info = fundInfoQuery.data?.info;
-  const annualizedReturn = useAnnualizedReturnSinceInception(symbol, market, info?.inception_date);
+  const ytdReturn = useYtdReturn(symbol, market);
   const holderCountWan = themeTagsQuery.data?.holder_count_wan;
 
   if (fundInfoQuery.isLoading || expenseQuery.isLoading) return <CardSkeletonBody height={360} />;
@@ -124,23 +122,19 @@ export function OverviewPanel({
           "bg-[color-mix(in_srgb,var(--up)_10%,var(--surface)_90%)] backdrop-blur-[16px] backdrop-saturate-150",
         )}
       >
-        <span className="text-[12.5px] text-[var(--text-muted)]">
-          {t("annualizedReturnSinceInception")}
-        </span>
-        {annualizedReturn.isLoading ? (
+        <span className="text-[12.5px] text-[var(--text-muted)]">{t("ytdReturn")}</span>
+        {ytdReturn.isLoading ? (
           <div className="mt-2 h-8 w-32 animate-pulse rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-        ) : annualizedReturn.value != null ? (
+        ) : ytdReturn.value != null ? (
           <div
             className="mt-1 font-num text-[28px] tabular-nums"
-            style={{ color: annualizedReturn.value >= 0 ? "var(--up)" : "var(--down)" }}
+            style={{ color: ytdReturn.value >= 0 ? "var(--up)" : "var(--down)" }}
           >
-            {annualizedReturn.value >= 0 ? "▲" : "▼"}
-            {formatNumber(Math.abs(annualizedReturn.value), locale, { decimals: 1 })}%
+            {ytdReturn.value >= 0 ? "▲" : "▼"}
+            {formatNumber(Math.abs(ytdReturn.value), locale, { decimals: 1 })}%
           </div>
         ) : (
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-            {t("annualizedReturnUnavailable")}
-          </p>
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("ytdReturnUnavailable")}</p>
         )}
       </section>
 

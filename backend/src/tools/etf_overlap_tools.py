@@ -38,11 +38,13 @@ silently dropped from the request — it simply contributes no rows to the overl
 
 ## `get_fund_comparison` (PTT gap: 0050 vs 00713 vs 00878 報酬率比較, 股利再投入)
 
-Total-return-with-dividends-reinvested comparison across 2+ symbols, **any market** — unlike the
-overlap-checker, this is legitimately buildable for TW too, because it only needs
+Total-return-with-dividends-reinvested comparison across 1-10 symbols, **any market** — unlike
+the overlap-checker, this is legitimately buildable for TW too, because it only needs
 `Capability.PRICE_EOD` (real for TW) + `Capability.DIVIDENDS` (real for TW, wraps the same read
 `market_tools.GetDividendScheduleTool` exposes as `get_dividend_schedule`) — no per-constituent
-holdings/NAV involved.
+holdings/NAV involved. `lookback_days` is bounded to `_MAX_LOOKBACK_DAYS` (~55yr) rather than the
+original 10yr cap, since a single-symbol call (e.g. the ETF detail page's own "年化報酬(成立以來)"
+stat) needs to span all the way back to a fund's real `inception_date`, not just a recent window.
 
 **Dividend-reinvestment convention chosen** (stated explicitly, not invented silently): on each
 dividend event whose `cash_ex_dividend_date` falls within the lookback window, the cash dividend
@@ -108,9 +110,10 @@ def _validate_non_tw(market: Market) -> Market:
 
 _MIN_OVERLAP_SYMBOLS = 3
 _MAX_OVERLAP_SYMBOLS = 10  # bounded fan-out — never a full-market scan
-_MIN_COMPARISON_SYMBOLS = 2
+_MIN_COMPARISON_SYMBOLS = 1
 _MAX_COMPARISON_SYMBOLS = 10
 _DEFAULT_LOOKBACK_DAYS = 365
+_MAX_LOOKBACK_DAYS = 20000  # ~55yr headroom — a long-listed TW ETF's own inception-to-today span
 
 _TW_HOLDINGS_GAP_NOTE = (
     "Per-constituent holdings/weights and NAV/IOPV are a known, unfilled gap for TW ETFs — "
@@ -277,10 +280,13 @@ class GetEtfOverlapTool(BaseTool):
 
 
 class GetFundComparisonInput(BaseModel):
-    """2+ symbols, any market (TW allowed) — each symbol carries its own market, since this
+    """1-10 symbols, any market (TW allowed) — each symbol carries its own market, since this
     tool's whole point is comparing across markets (e.g. a TW ETF vs a US ETF), unlike the
     overlap-checker which is single-market by construction (holdings-weight comparison only
-    makes sense within one non-TW capability)."""
+    makes sense within one non-TW capability). A single symbol is a legitimate call too — the
+    exact same dividend-reinvested total-return computation, just with nothing to compare it
+    against (e.g. a fund's own "since inception" return, which the ETF detail page's own 總覽
+    tab uses this tool for with `lookback_days` set to span the fund's real inception date)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -290,7 +296,7 @@ class GetFundComparisonInput(BaseModel):
     lookback_days: int = Field(
         default=_DEFAULT_LOOKBACK_DAYS,
         ge=1,
-        le=3650,
+        le=_MAX_LOOKBACK_DAYS,
         description="Total-return lookback window in calendar days, ending today.",
     )
 
@@ -489,11 +495,12 @@ class GetFundComparisonTool(BaseTool):
 
     name = "get_fund_comparison"
     description = (
-        "Compare 2 or more stock/ETF symbols (any market, incl. TW) on total return over a "
-        "lookback window with dividends reinvested at the ex-dividend close, plus basic profile "
-        "fields (non-TW: sector weightings; TW: issuer/tracked-index). Never computes overlap%/"
-        "premium-discount/NAV for TW symbols (documented adapter gap) — omitted with an honest "
-        "note, not fabricated."
+        "Get one or more stock/ETF symbols' (any market, incl. TW) total return over a lookback "
+        "window with dividends reinvested at the ex-dividend close, plus basic profile fields "
+        "(non-TW: sector weightings; TW: issuer/tracked-index). A single symbol over a "
+        "multi-decade window is a legitimate call (e.g. a fund's own since-inception return). "
+        "Never computes overlap%/premium-discount/NAV for TW symbols (documented adapter gap) — "
+        "omitted with an honest note, not fabricated."
     )
     input_model: type[BaseModel] = GetFundComparisonInput
     output_model: type[BaseModel] = GetFundComparisonOutput

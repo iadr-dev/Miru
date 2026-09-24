@@ -51,8 +51,12 @@ _HTTP_422_UNPROCESSABLE = 422
 
 _MIN_OVERLAP_SYMBOLS = 3
 _MAX_OVERLAP_SYMBOLS = 10
-_MIN_COMPARISON_SYMBOLS = 2
+_MIN_COMPARISON_SYMBOLS = 1
 _MAX_COMPARISON_SYMBOLS = 10
+# Mirrors etf_overlap_tools._MAX_LOOKBACK_DAYS — a single-symbol call (e.g. the ETF detail
+# page's own "since inception" stat) needs to span decades back to a fund's real inception_date,
+# not just the original 10yr comparison-only cap.
+_MAX_COMPARISON_LOOKBACK_DAYS = 20000
 
 
 def _context(
@@ -212,18 +216,23 @@ async def fund_comparison(
     symbols: str = Query(
         ...,
         description=(
-            "Comma-separated 'id:market' pairs, 2-10, any market (incl. TW), e.g. '0050:TW,SPY:US'."
+            "Comma-separated 'id:market' pairs, 1-10, any market (incl. TW), e.g. '0050:TW,SPY:US'."
         ),
     ),
     lookback_days: int = Query(
-        365, ge=1, le=3650, description="Total-return lookback window in calendar days."
+        365,
+        ge=1,
+        le=_MAX_COMPARISON_LOOKBACK_DAYS,
+        description="Total-return lookback window in calendar days.",
     ),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
-    """Total-return-with-dividends-reinvested comparison across 2+ symbols in any market
-    (including TW). Never computes overlap%/NAV/premium-discount for TW symbols — a documented,
-    honest adapter gap relayed in each TW row's `unavailable_note`."""
+    """Total-return-with-dividends-reinvested comparison across 1+ symbols in any market
+    (including TW) — a single symbol is a legitimate call too (e.g. a fund's own "since
+    inception" return over a multi-decade `lookback_days`). Never computes overlap%/NAV/
+    premium-discount for TW symbols — a documented, honest adapter gap relayed in each TW row's
+    `unavailable_note`."""
     pairs = _split_symbol_market_pairs(
         symbols, min_count=_MIN_COMPARISON_SYMBOLS, max_count=_MAX_COMPARISON_SYMBOLS
     )

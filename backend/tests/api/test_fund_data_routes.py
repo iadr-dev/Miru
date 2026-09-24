@@ -214,11 +214,23 @@ class TestComparisonRoute:
         assert len(body["rows"]) == 2
         assert body["rows"][0]["symbol"] == "SPY"
 
-    def test_comparison_rejects_too_few_symbols(
+    def test_comparison_single_symbol_succeeds(
+        self, settings: Settings, agent_answer: str
+    ) -> None:
+        """A single symbol is a legitimate call — e.g. the ETF detail page's own 總覽 tab uses
+        this route for one fund's own since-inception/YTD return, not a multi-fund comparison."""
+        client = _client_with_stub(settings, agent_answer)
+        resp = client.get("/api/v1/funds/comparison", params={"symbols": "SPY:US"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["rows"]) == 1
+        assert body["rows"][0]["symbol"] == "SPY"
+
+    def test_comparison_rejects_zero_symbols(
         self, settings: Settings, agent_answer: str
     ) -> None:
         client = _client_with_stub(settings, agent_answer)
-        resp = client.get("/api/v1/funds/comparison", params={"symbols": "SPY:US"})
+        resp = client.get("/api/v1/funds/comparison", params={"symbols": ""})
         assert resp.status_code == 422
         body = resp.json()
         assert body["code"] == "invalid_request"

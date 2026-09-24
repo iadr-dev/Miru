@@ -1907,8 +1907,8 @@
     "overview": {
       "title": "Fund Info",
       "unavailable": "No fund info available for this ETF.",
-      "annualizedReturnSinceInception": "Annualized Return (Since Inception)",
-      "annualizedReturnUnavailable": "Not enough price history to compute the annualized return since inception.",
+      "ytdReturn": "Return (Year to Date)",
+      "ytdReturnUnavailable": "Not enough price history to compute the year-to-date return.",
       "holderCount": "Holder Count (10k)",
       "holderCountUnit": "",
       "holderCountUnavailable": "No holder-count data available.",

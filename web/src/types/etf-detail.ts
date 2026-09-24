@@ -74,6 +74,29 @@ export const etfThemeTagsResponseSchema = z.object({
 export type EtfThemeTagsResponse = z.infer<typeof etfThemeTagsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// GET /funds/comparison — get_fund_comparison (public). Mirrors `FundComparisonRow`/
+// `GetFundComparisonOutput` (backend/src/tools/etf_overlap_tools.py) field-for-field, restricted
+// to the fields the ETF 總覽 tab's own single-symbol "since inception" call actually reads —
+// `fund_info`/`sector_weightings` are the multi-symbol chat-card path's concern, not this one.
+// ---------------------------------------------------------------------------
+
+export const fundComparisonRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  window_start: z.string().nullable().optional(),
+  window_end: z.string().nullable().optional(),
+  total_return_pct: z.number().nullable().optional(),
+  price_unavailable_reason: z.string().nullable().optional(),
+});
+export type FundComparisonRow = z.infer<typeof fundComparisonRowSchema>;
+
+export const fundComparisonResponseSchema = z.object({
+  rows: z.array(fundComparisonRowSchema).default([]),
+  methodology_note: z.string(),
+});
+export type FundComparisonResponse = z.infer<typeof fundComparisonResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // GET /funds/{symbol}/premium-discount — get_etf_premium_discount (public)
 // ---------------------------------------------------------------------------
 

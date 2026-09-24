@@ -1907,8 +1907,8 @@
     "overview": {
       "title": "基本資料",
       "unavailable": "尚無此ETF的基本資料。",
-      "annualizedReturnSinceInception": "年化報酬(成立以來)",
-      "annualizedReturnUnavailable": "尚無足夠價格資料計算成立以來年化報酬。",
+      "ytdReturn": "今年以來報酬",
+      "ytdReturnUnavailable": "尚無足夠價格資料計算今年以來報酬。",
       "holderCount": "受益人次(萬人)",
       "holderCountUnit": "萬人",
       "holderCountUnavailable": "尚無受益人次資料。",
