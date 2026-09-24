@@ -69,6 +69,7 @@ export const etfThemeTagsResponseSchema = z.object({
   currentness_caveat: z.string(),
   health_status: healthStatusSchema,
   tags: z.array(z.string()).default([]),
+  holder_count_wan: z.number().nullable().optional(),
 });
 export type EtfThemeTagsResponse = z.infer<typeof etfThemeTagsResponseSchema>;
 

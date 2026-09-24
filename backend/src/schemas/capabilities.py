@@ -2023,13 +2023,18 @@ class EtfThemeTags(BaseModel):
     classification for one listed ETF (e.g. 高股息/科技主題型/公司治理及ESG) — a curated editorial
     tag set distinct from this codebase's AI-researched stock-concept themes
     (`analytics/themes`). Zero, one, or several tags per ETF; `tags` is empty (never `None`)
-    when this ETF has no 主題/因子 assigned on the source page."""
+    when this ETF has no 主題/因子 assigned on the source page.
+
+    `holder_count_wan` (受益人次, in 萬人/10-thousands) is scraped from the SAME page — the
+    microsite's own beneficiary-count stat, refreshed on its own cadence; `None` when the page
+    doesn't carry the figure for this symbol (never fabricated)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     symbol: str
     market: Market
     tags: tuple[str, ...] = ()
+    holder_count_wan: float | None = None
 
 
 class EtfExpenseInfo(BaseModel):

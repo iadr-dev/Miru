@@ -123,17 +123,19 @@ class GetEtfThemeTagsOutput(BaseModel):
     currentness_caveat: str = Field(min_length=1)
     health_status: HealthStatus
     tags: tuple[str, ...] = Field(default_factory=tuple)
+    holder_count_wan: float | None = None
 
 
 class GetEtfThemeTagsTool(BaseTool):
     """`get_etf_theme_tags` — wraps `Capability.ETF_THEME_TAGS` (TWSE's own ETF e添富 microsite's
-    主題/因子 editorial classification) for one listed ETF. Empty `tags` is a real, valid result
-    (not every ETF carries a tag) — never fabricated."""
+    主題/因子 editorial classification + 受益人次(萬人) holder count) for one listed ETF. Empty
+    `tags` / `None` `holder_count_wan` are real, valid results (not every ETF carries a tag, and
+    not every page carries the holder-count stat) — never fabricated."""
 
     name = "get_etf_theme_tags"
     description = (
-        "Get TWSE's own 主題/因子 (theme/factor) editorial tags for one listed ETF "
-        "(e.g. 高股息/科技主題型/公司治理及ESG) — zero, one, or several tags."
+        "Get TWSE's own 主題/因子 (theme/factor) editorial tags (e.g. 高股息/科技主題型/"
+        "公司治理及ESG) plus 受益人次 (holder count, in 萬人) for one listed ETF."
     )
     input_model: type[BaseModel] = SymbolInput
     output_model: type[BaseModel] = GetEtfThemeTagsOutput
@@ -149,18 +151,23 @@ class GetEtfThemeTagsTool(BaseTool):
             Capability.ETF_THEME_TAGS, typed.to_symbol(), tls_policy=ctx.tls_policy
         )
         raw_tags = result.payload.get("tags")
-        tags = (
-            EtfThemeTags.model_validate(
-                {"symbol": typed.id, "market": typed.market.value, "tags": raw_tags}
-            ).tags
-            if isinstance(raw_tags, list)
-            else ()
+        raw_holder_count = result.payload.get("holder_count_wan")
+        parsed = EtfThemeTags.model_validate(
+            {
+                "symbol": typed.id,
+                "market": typed.market.value,
+                "tags": raw_tags if isinstance(raw_tags, list) else (),
+                "holder_count_wan": raw_holder_count
+                if isinstance(raw_holder_count, int | float)
+                else None,
+            }
         )
         return GetEtfThemeTagsOutput(
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
-            tags=tags,
+            tags=parsed.tags,
+            holder_count_wan=parsed.holder_count_wan,
         )
 
 

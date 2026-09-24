@@ -1909,6 +1909,9 @@
       "unavailable": "No fund info available for this ETF.",
       "annualizedReturnSinceInception": "Annualized Return (Since Inception)",
       "annualizedReturnUnavailable": "Not enough price history to compute the annualized return since inception.",
+      "holderCount": "Holder Count (10k)",
+      "holderCountUnit": "",
+      "holderCountUnavailable": "No holder-count data available.",
       "expenseFloorCaveat": "Expense ratio is a management+custody fee floor, not the audited total expense ratio.",
       "field": {
         "fundType": "Fund Type",

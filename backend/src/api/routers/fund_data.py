@@ -160,9 +160,9 @@ async def etf_theme_tags(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
-    """TWSE's own 主題/因子 (theme/factor) editorial tags for one TW listed ETF (e.g. 高股息/
-    科技主題型/公司治理及ESG) — zero, one, or several tags. Backed by `get_etf_theme_tags` over
-    the ETF e添富 microsite's own per-symbol page."""
+    """TWSE's own 主題/因子 (theme/factor) editorial tags plus 受益人次(萬人) holder count for one
+    TW listed ETF (e.g. 高股息/科技主題型/公司治理及ESG). Backed by `get_etf_theme_tags` over the
+    ETF e添富 microsite's own per-symbol page."""
     return await _dispatch(state, "get_etf_theme_tags", {"id": symbol, "market": market.value}, ctx)
 
 

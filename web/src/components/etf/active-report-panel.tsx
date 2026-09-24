@@ -156,11 +156,6 @@ function ActiveReportSummaryCard({
           {data.fund_size_caveat}
         </p>
       ) : null}
-      {data.estimation_caveat ? (
-        <p className="mt-1 text-[11px] text-[var(--text-muted)] leading-[1.5]">
-          {data.estimation_caveat}
-        </p>
-      ) : null}
     </section>
   );
 }

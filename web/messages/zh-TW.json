@@ -1909,6 +1909,9 @@
       "unavailable": "尚無此ETF的基本資料。",
       "annualizedReturnSinceInception": "年化報酬(成立以來)",
       "annualizedReturnUnavailable": "尚無足夠價格資料計算成立以來年化報酬。",
+      "holderCount": "受益人次(萬人)",
+      "holderCountUnit": "萬人",
+      "holderCountUnavailable": "尚無受益人次資料。",
       "expenseFloorCaveat": "費用率為經理費+保管費之下限估算值，非審計後的內扣總費用率。",
       "field": {
         "fundType": "基金類型",

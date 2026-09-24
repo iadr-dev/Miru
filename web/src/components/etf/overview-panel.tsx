@@ -6,8 +6,9 @@ import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { DividendCalendarCard } from "@/components/etf/dividend-calendar-card";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
-import { getEtfExpenseRatio, getEtfFundInfo } from "@/lib/api/etf-detail";
+import { getEtfExpenseRatio, getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
+import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
 const DAYS_PER_YEAR = 365.25;
@@ -64,8 +65,13 @@ export function OverviewPanel({
     queryKey: ["etf_expense_ratio", symbol, market],
     queryFn: () => getEtfExpenseRatio(symbol, market),
   });
+  const themeTagsQuery = useQuery({
+    queryKey: ["etf_theme_tags", symbol, market],
+    queryFn: () => getEtfThemeTags(symbol, market),
+  });
   const info = fundInfoQuery.data?.info;
   const annualizedReturn = useAnnualizedReturnSinceInception(symbol, market, info?.inception_date);
+  const holderCountWan = themeTagsQuery.data?.holder_count_wan;
 
   if (fundInfoQuery.isLoading || expenseQuery.isLoading) return <CardSkeletonBody height={360} />;
 
@@ -112,7 +118,12 @@ export function OverviewPanel({
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section
+        className={cn(
+          "glass rounded-[var(--radius-card)] border border-[var(--border)] p-5",
+          "bg-[color-mix(in_srgb,var(--up)_10%,var(--surface)_90%)] backdrop-blur-[16px] backdrop-saturate-150",
+        )}
+      >
         <span className="text-[12.5px] text-[var(--text-muted)]">
           {t("annualizedReturnSinceInception")}
         </span>
@@ -130,6 +141,27 @@ export function OverviewPanel({
           <p className="mt-1 text-[13px] text-[var(--text-muted)]">
             {t("annualizedReturnUnavailable")}
           </p>
+        )}
+      </section>
+
+      <section
+        className={cn(
+          "glass rounded-[var(--radius-card)] border border-[var(--border)] p-5",
+          "bg-[color-mix(in_srgb,var(--accent)_10%,var(--surface)_90%)] backdrop-blur-[16px] backdrop-saturate-150",
+        )}
+      >
+        <span className="text-[12.5px] text-[var(--text-muted)]">{t("holderCount")}</span>
+        {themeTagsQuery.isLoading ? (
+          <div className="mt-2 h-8 w-32 animate-pulse rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
+        ) : holderCountWan != null ? (
+          <div className="mt-1 font-num text-[28px] text-[var(--text)] tabular-nums">
+            {formatNumber(holderCountWan, locale, { decimals: 2 })}
+            <span className="ml-1 text-[15px] text-[var(--text-muted)]">
+              {t("holderCountUnit")}
+            </span>
+          </div>
+        ) : (
+          <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("holderCountUnavailable")}</p>
         )}
       </section>
 

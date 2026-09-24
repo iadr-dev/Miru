@@ -9,9 +9,19 @@ import sources.etf_theme_tags as etf_theme_tags_module
 from schemas.enums import Capability, DataClass, Market, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus
-from sources.etf_theme_tags import EtfThemeTagsAdapter, _parse_theme_tags
+from sources.etf_theme_tags import EtfThemeTagsAdapter, _parse_holder_count_wan, _parse_theme_tags
 
-_PAGE_WITH_TWO_TAGS = """
+_HOLDER_COUNT_BLOCK = """
+        <div class="shadow-box chart-flex">
+            <div class="name">
+                <p>受益人次(萬人)</p>
+                <span>98.53</span>&nbsp;<b>萬人</b>
+            </div>
+        </div>
+"""
+
+_PAGE_WITH_TWO_TAGS = (
+    """
 <div class="etf-result">
     <div class="text">主題/因子：</div>
 
@@ -21,6 +31,8 @@ _PAGE_WITH_TWO_TAGS = """
 
 </div>
 """
+    + _HOLDER_COUNT_BLOCK
+)
 
 _PAGE_WITH_NO_TAGS = """
 <div class="etf-result">
@@ -60,6 +72,14 @@ def test_parse_theme_tags_none_when_block_entirely_absent() -> None:
     assert _parse_theme_tags(_PAGE_WITHOUT_BLOCK) is None
 
 
+def test_parse_holder_count_wan_extracts_the_stat() -> None:
+    assert _parse_holder_count_wan(_PAGE_WITH_TWO_TAGS) == 98.53
+
+
+def test_parse_holder_count_wan_none_when_block_absent() -> None:
+    assert _parse_holder_count_wan(_PAGE_WITHOUT_BLOCK) is None
+
+
 async def test_fetch_returns_real_tags(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         etf_theme_tags_module, "build_async_client", _client_factory(_PAGE_WITH_TWO_TAGS)
@@ -74,6 +94,7 @@ async def test_fetch_returns_real_tags(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.health.status is HealthStatus.OK
     assert result.currentness_caveat
     assert result.payload["tags"] == ["科技主題型", "高股息"]
+    assert result.payload["holder_count_wan"] == 98.53
 
 
 async def test_fetch_zero_tags_is_ok_not_stale(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -89,6 +110,7 @@ async def test_fetch_zero_tags_is_ok_not_stale(monkeypatch: pytest.MonkeyPatch) 
 
     assert result.health.status is HealthStatus.OK
     assert result.payload["tags"] == []
+    assert result.payload["holder_count_wan"] is None
 
 
 async def test_fetch_unknown_symbol_returns_stale(monkeypatch: pytest.MonkeyPatch) -> None:

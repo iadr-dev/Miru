@@ -58,7 +58,7 @@ async def test_get_etf_theme_tags_delegates_and_parses() -> None:
         timing_class=TimingClass.OFFICIAL_EOD,
         fetched_at=datetime.now(UTC),
         currentness_caveat="caveat",
-        payload={"tags": ["高股息", "科技主題型"]},
+        payload={"tags": ["高股息", "科技主題型"], "holder_count_wan": 98.53},
         health=SourceHealth(status=HealthStatus.OK, detail="ok"),
     )
     router, adapter = make_router(symbol, {Capability.ETF_THEME_TAGS: result})
@@ -69,6 +69,7 @@ async def test_get_etf_theme_tags_delegates_and_parses() -> None:
 
     assert adapter.calls[0][0] is Capability.ETF_THEME_TAGS
     assert output.tags == ("高股息", "科技主題型")
+    assert output.holder_count_wan == 98.53
 
 
 async def test_get_etf_theme_tags_empty_when_no_tags_in_payload() -> None:
@@ -88,6 +89,7 @@ async def test_get_etf_theme_tags_empty_when_no_tags_in_payload() -> None:
     output = await tool.run(SymbolInput(id="0050", market=Market.TW), ToolContext())
 
     assert output.tags == ()
+    assert output.holder_count_wan is None
 
 
 def _etf_nav_row(symbol: str, as_of: date, premium_discount_pct: float) -> dict[str, object]:

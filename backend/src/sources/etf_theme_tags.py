@@ -1,15 +1,20 @@
-"""ETF 主題/因子 (theme/factor) tag adapter — TWSE's own "ETF e添富" (ETFortune) microsite,
+"""ETF profile scrape — TWSE's own "ETF e添富" (ETFortune) microsite,
 `https://www.twse.com.tw/zh/ETFortune/etfInfo/{symbol}`, a plain server-rendered HTML page (no
-auth, no cookies, confirmed live via a bare `curl`). This is TWSE's own curated editorial
-classification (高股息/高息低波動/因子投資/等權重/全市場指數/大型權值/中小型權值/科技主題型/金融/
-綠能及電動車/生技/公司治理及ESG at the time of writing) — distinct from this codebase's
-AI-researched stock-concept themes (`analytics/themes`), which cover common stocks, not ETFs,
-and carry a `confidence` score rather than an editorial guarantee.
+auth, no cookies, confirmed live via a bare `curl`). Two fields come off this one page fetch:
 
-One GET per symbol (no whole-market dump exists for this microsite — each ETF has its own page),
-parsed by locating the page's own `<div class="etf-result">...主題/因子：...</div>` block and
-extracting every `<a href="/zh/ETFortune/products?tag=...">LABEL</a>` inside it. Zero tags is a
-real, valid result (not every ETF is tagged) — `EtfThemeTags.tags` is `()`, never fabricated.
+- **主題/因子** (theme/factor): TWSE's own curated editorial classification (高股息/高息低波動/
+  因子投資/等權重/全市場指數/大型權值/中小型權值/科技主題型/金融/綠能及電動車/生技/公司治理及ESG at
+  the time of writing) — distinct from this codebase's AI-researched stock-concept themes
+  (`analytics/themes`), which cover common stocks, not ETFs, and carry a `confidence` score
+  rather than an editorial guarantee.
+- **受益人次** (holder/beneficiary count, in 萬人/10-thousands): the microsite's own
+  `<p>受益人次(萬人)</p><span>NN.NN</span>` stat block, refreshed on its own cadence.
+
+One GET per symbol (no whole-market dump exists for this microsite — each ETF has its own page).
+主題/因子 is parsed by locating the page's own `<div class="etf-result">...主題/因子：...</div>`
+block and extracting every `<a href="/zh/ETFortune/products?tag=...">LABEL</a>` inside it. Zero
+tags is a real, valid result (not every ETF is tagged) — `EtfThemeTags.tags` is `()`, never
+fabricated. `holder_count_wan` is `None` (never fabricated) when its own stat block isn't found.
 """
 
 from __future__ import annotations
@@ -46,6 +51,10 @@ _THEME_BLOCK_RE = re.compile(
 )
 _TAG_LINK_RE = re.compile(r'<a\s+href="/zh/ETFortune/products\?tag=[^"]*">([^<]+)</a>')
 
+# The page's own 受益人次(萬人) stat block — `<p>受益人次(萬人)</p>` immediately followed by
+# `<span>NN.NN</span>` (whitespace/newlines between them, confirmed live).
+_HOLDER_COUNT_RE = re.compile(r"受益人次\(萬人\)\s*</p>\s*<span>([\d.]+)</span>")
+
 
 def _parse_theme_tags(page_html: str) -> tuple[str, ...] | None:
     """The theme/factor labels found in the page's own result block, or `None` if the block
@@ -57,6 +66,18 @@ def _parse_theme_tags(page_html: str) -> tuple[str, ...] | None:
     return tuple(
         html.unescape(m.group(1)).strip() for m in _TAG_LINK_RE.finditer(block_match.group(1))
     )
+
+
+def _parse_holder_count_wan(page_html: str) -> float | None:
+    """The 受益人次(萬人) figure, or `None` if the page's own stat block isn't found (a
+    genuinely different page shape, or this symbol's page simply omits the block)."""
+    match = _HOLDER_COUNT_RE.search(page_html)
+    if match is None:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
 
 
 class EtfThemeTagsAdapter:
@@ -72,6 +93,9 @@ class EtfThemeTagsAdapter:
         tags = raw.get("tags")
         if tags is not None and not isinstance(tags, list):
             raise ValueError("ETF theme-tags payload's 'tags' is not a list")
+        holder_count_wan = raw.get("holder_count_wan")
+        if holder_count_wan is not None and not isinstance(holder_count_wan, int | float):
+            raise ValueError("ETF theme-tags payload's 'holder_count_wan' is not a number")
         return raw
 
     async def fetch(
@@ -113,8 +137,9 @@ class EtfThemeTagsAdapter:
                     detail=f"symbol {sym.id} not found on the ETF e添富 microsite",
                 ),
             )
+        holder_count_wan = _parse_holder_count_wan(response.text)
         return _result(
-            payload={"tags": list(tags)},
+            payload={"tags": list(tags), "holder_count_wan": holder_count_wan},
             health=SourceHealth(status=HealthStatus.OK, detail="ok"),
         )
 
