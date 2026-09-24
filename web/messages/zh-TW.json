@@ -1899,7 +1899,6 @@
       "holdings": "成分股",
       "premiumDiscount": "折溢價",
       "chipAnalysis": "籌碼分析",
-      "calendar": "股息日曆",
       "technical": "技術分析",
       "ai": "AI",
       "news": "相關新聞"
@@ -1923,6 +1922,24 @@
         "managerCompany": "投信公司",
         "custodianBank": "保管銀行"
       }
+    },
+    "dividendCalendar": {
+      "title": "股息日曆",
+      "viewList": "清單",
+      "viewCalendar": "日曆",
+      "prevMonth": "上個月",
+      "nextMonth": "下個月",
+      "monthTitle": "{year} 年 {month} 月",
+      "legendExDate": "除息日",
+      "legendLastBuyDate": "最後購買日",
+      "legendPaymentDate": "股利發放日",
+      "cashDividendLabel": "配息",
+      "cashDividend": "配發金額 ${amount}",
+      "noPaymentDate": "尚未公布",
+      "empty": "此月份查無股息事件。",
+      "unavailable": "尚無此ETF的股息日曆資料。",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合"
     },
     "activeReport": {
       "title": "操作日報",

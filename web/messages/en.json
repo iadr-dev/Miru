@@ -1899,7 +1899,6 @@
       "holdings": "Holdings",
       "premiumDiscount": "Premium/Discount",
       "chipAnalysis": "Chip Analysis",
-      "calendar": "Dividend Calendar",
       "technical": "Technical",
       "ai": "AI",
       "news": "News"
@@ -1923,6 +1922,24 @@
         "managerCompany": "Management Company",
         "custodianBank": "Custodian Bank"
       }
+    },
+    "dividendCalendar": {
+      "title": "Dividend Calendar",
+      "viewList": "List",
+      "viewCalendar": "Calendar",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "monthTitle": "{month}/{year}",
+      "legendExDate": "Ex-Dividend Date",
+      "legendLastBuyDate": "Last Buy Date",
+      "legendPaymentDate": "Payment Date",
+      "cashDividendLabel": "Distribution",
+      "cashDividend": "${amount}",
+      "noPaymentDate": "Not yet announced",
+      "empty": "No dividend events this month.",
+      "unavailable": "No dividend calendar data available for this ETF.",
+      "expandTo": "Show all {count}",
+      "collapse": "Collapse"
     },
     "activeReport": {
       "title": "Daily Operations Report",

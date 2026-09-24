@@ -4,7 +4,6 @@ import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { ActiveReportPanel } from "@/components/etf/active-report-panel";
-import { EtfDividendCalendarPanel } from "@/components/etf/etf-dividend-calendar-panel";
 import { HoldingsPanel } from "@/components/etf/holdings-panel";
 import { OverviewPanel } from "@/components/etf/overview-panel";
 import { PremiumDiscountPanel } from "@/components/etf/premium-discount-panel";
@@ -30,7 +29,6 @@ const ETF_TABS = [
   "holdings",
   "premiumDiscount",
   "chipAnalysis",
-  "calendar",
   "technical",
   "ai",
   "news",
@@ -95,7 +93,6 @@ export function EtfTabBar({
       {tab === "holdings" ? <HoldingsPanel symbol={symbol} market={market} /> : null}
       {tab === "premiumDiscount" ? <PremiumDiscountPanel symbol={symbol} market={market} /> : null}
       {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
-      {tab === "calendar" ? <EtfDividendCalendarPanel symbol={symbol} market={market} /> : null}
       {tab === "technical" ? <TechnicalAnalysisPanel symbol={symbol} market={market} /> : null}
       {tab === "ai" ? <AiPanel symbol={symbol} market={market} symbolType={symbolType} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}

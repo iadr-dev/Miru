@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { DividendCalendarCard } from "@/components/etf/dividend-calendar-card";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { getEtfExpenseRatio, getEtfFundInfo } from "@/lib/api/etf-detail";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
@@ -148,6 +149,10 @@ export function OverviewPanel({
           </p>
         ) : null}
       </section>
+
+      <div className="xl:col-span-2">
+        <DividendCalendarCard symbol={symbol} market={market} />
+      </div>
     </div>
   );
 }
