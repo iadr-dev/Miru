@@ -2018,6 +2018,20 @@ class EtfFundInfo(BaseModel):
     custodian_bank: str | None = None  # 保管機構
 
 
+class EtfThemeTags(BaseModel):
+    """`etf_theme_tags` — TWSE's own "ETF e添富" (ETFortune) 主題/因子 (theme/factor)
+    classification for one listed ETF (e.g. 高股息/科技主題型/公司治理及ESG) — a curated editorial
+    tag set distinct from this codebase's AI-researched stock-concept themes
+    (`analytics/themes`). Zero, one, or several tags per ETF; `tags` is empty (never `None`)
+    when this ETF has no 主題/因子 assigned on the source page."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    tags: tuple[str, ...] = ()
+
+
 class EtfExpenseInfo(BaseModel):
     """`etf_expense_ratio` — internal-fee (內扣費用) disclosure for one fund/ETF, sourced from
     SITCA's (投信投顧公會) monthly fee-rate report. `management_fee_pct`/`custody_fee_pct` are the

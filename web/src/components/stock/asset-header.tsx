@@ -8,7 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SectorChip } from "@/components/stock/sector-chip";
-import { getEtfFundInfo } from "@/lib/api/etf-detail";
+import { getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
 import { getEtfList, getPriceHistory, getSymbolInfo } from "@/lib/api/market";
 import { getStockScore } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
@@ -79,6 +79,12 @@ export function AssetHeader({
     ? etfListQuery.data.rows.find((row) => row.symbol === symbol)
     : undefined;
   const distributionFrequency = etfListRow?.distribution_frequency;
+  const themeTagsQuery = useQuery({
+    queryKey: ["etf_theme_tags", symbol, market],
+    queryFn: () => getEtfThemeTags(symbol, market),
+    enabled: isEtf,
+  });
+  const themeTags = themeTagsQuery.data?.tags ?? [];
   const scoreQuery = useQuery({
     queryKey: ["stock_score", symbol, market],
     queryFn: () => getStockScore(symbol, market),
@@ -121,6 +127,9 @@ export function AssetHeader({
           {distributionFrequency ? (
             <DistributionFrequencyBadge frequency={distributionFrequency} />
           ) : null}
+          {themeTags.map((tag) => (
+            <ThemeTagBadge key={tag} tag={tag} />
+          ))}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
@@ -289,6 +298,26 @@ function EtfStructureBadges({ row }: { readonly row: EtfListRow | undefined }): 
         </span>
       ) : null}
     </>
+  );
+}
+
+/** 主題/因子 badge — TWSE's own ETF e添富 editorial tag (高股息/科技主題型/公司治理及ESG/...),
+ * colored by the tag LABEL itself via `hashToChartToken` (the same stable categorical-color hash
+ * `SectorChip`/`DistributionFrequencyBadge` use), never signed `--up`/`--down`: this is a
+ * classification, not a price/%/score, per web/CLAUDE.md §4. */
+function ThemeTagBadge({ tag }: { readonly tag: string }): ReactNode {
+  const token = hashToChartToken(tag);
+  return (
+    <span
+      className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px]"
+      style={{
+        backgroundColor: `${token}26`,
+        color: token,
+        border: `1px solid ${token}40`,
+      }}
+    >
+      {tag}
+    </span>
   );
 }
 

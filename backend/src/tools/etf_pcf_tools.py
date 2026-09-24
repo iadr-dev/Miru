@@ -17,7 +17,7 @@ from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import ETF_AUM_DATASET, ETF_NAV_DATASET
 from ingest.store import ParquetStore
-from schemas.capabilities import EtfAumRow, EtfExpenseInfo, EtfFundInfo, EtfNavRow
+from schemas.capabilities import EtfAumRow, EtfExpenseInfo, EtfFundInfo, EtfNavRow, EtfThemeTags
 from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
@@ -113,6 +113,54 @@ class GetEtfExpenseRatioTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             info=info,
+        )
+
+
+class GetEtfThemeTagsOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: str
+    currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
+    tags: tuple[str, ...] = Field(default_factory=tuple)
+
+
+class GetEtfThemeTagsTool(BaseTool):
+    """`get_etf_theme_tags` — wraps `Capability.ETF_THEME_TAGS` (TWSE's own ETF e添富 microsite's
+    主題/因子 editorial classification) for one listed ETF. Empty `tags` is a real, valid result
+    (not every ETF carries a tag) — never fabricated."""
+
+    name = "get_etf_theme_tags"
+    description = (
+        "Get TWSE's own 主題/因子 (theme/factor) editorial tags for one listed ETF "
+        "(e.g. 高股息/科技主題型/公司治理及ESG) — zero, one, or several tags."
+    )
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetEtfThemeTagsOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "etf_theme_tags"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(SymbolInput, args)
+        result = await self._router.fetch(
+            Capability.ETF_THEME_TAGS, typed.to_symbol(), tls_policy=ctx.tls_policy
+        )
+        raw_tags = result.payload.get("tags")
+        tags = (
+            EtfThemeTags.model_validate(
+                {"symbol": typed.id, "market": typed.market.value, "tags": raw_tags}
+            ).tags
+            if isinstance(raw_tags, list)
+            else ()
+        )
+        return GetEtfThemeTagsOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            tags=tags,
         )
 
 
@@ -259,6 +307,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     return [
         (GetEtfFundInfoTool(router), False),
         (GetEtfExpenseRatioTool(router), False),
+        (GetEtfThemeTagsTool(router), False),
         (GetEtfPremiumDiscountTool(store), False),
     ]
 
@@ -271,5 +320,7 @@ __all__ = [
     "GetEtfPremiumDiscountInput",
     "GetEtfPremiumDiscountOutput",
     "GetEtfPremiumDiscountTool",
+    "GetEtfThemeTagsOutput",
+    "GetEtfThemeTagsTool",
     "build_registration_table",
 ]

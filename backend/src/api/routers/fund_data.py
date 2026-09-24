@@ -153,6 +153,19 @@ async def etf_expense_ratio(
     )
 
 
+@router.get("/funds/{symbol}/theme-tags")
+async def etf_theme_tags(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """TWSE's own 主題/因子 (theme/factor) editorial tags for one TW listed ETF (e.g. 高股息/
+    科技主題型/公司治理及ESG) — zero, one, or several tags. Backed by `get_etf_theme_tags` over
+    the ETF e添富 microsite's own per-symbol page."""
+    return await _dispatch(state, "get_etf_theme_tags", {"id": symbol, "market": market.value}, ctx)
+
+
 @router.get("/funds/{symbol}/premium-discount")
 async def etf_premium_discount(
     symbol: str,

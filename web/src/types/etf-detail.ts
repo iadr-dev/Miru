@@ -61,6 +61,18 @@ export const etfExpenseRatioResponseSchema = z.object({
 export type EtfExpenseRatioResponse = z.infer<typeof etfExpenseRatioResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// GET /funds/{symbol}/theme-tags — get_etf_theme_tags (public)
+// ---------------------------------------------------------------------------
+
+export const etfThemeTagsResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  tags: z.array(z.string()).default([]),
+});
+export type EtfThemeTagsResponse = z.infer<typeof etfThemeTagsResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // GET /funds/{symbol}/premium-discount — get_etf_premium_discount (public)
 // ---------------------------------------------------------------------------
 

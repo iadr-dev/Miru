@@ -163,6 +163,7 @@ class Capability(StrEnum):
     ETF_EXPENSE_RATIO = "etf_expense_ratio"
     ETF_NAV = "etf_nav"
     ETF_AUM = "etf_aum"
+    ETF_THEME_TAGS = "etf_theme_tags"
     ACTIVE_ETF_HOLDING = "active_etf_holding"
     ACTIVE_ETF_HOLDING_CHANGE = "active_etf_holding_change"
     ACTIVE_ETF_INFO = "active_etf_info"

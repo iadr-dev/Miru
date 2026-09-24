@@ -12,9 +12,11 @@ import {
   type EtfExpenseRatioResponse,
   type EtfFundInfoResponse,
   type EtfPremiumDiscountResponse,
+  type EtfThemeTagsResponse,
   etfExpenseRatioResponseSchema,
   etfFundInfoResponseSchema,
   etfPremiumDiscountResponseSchema,
+  etfThemeTagsResponseSchema,
 } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 
@@ -42,7 +44,19 @@ export async function getEtfExpenseRatio(
 }
 
 // ---------------------------------------------------------------------------
-// 3. GET /funds/{symbol}/premium-discount (public)
+// 3. GET /funds/{symbol}/theme-tags (public)
+// ---------------------------------------------------------------------------
+
+export async function getEtfThemeTags(
+  symbol: string,
+  market: Market,
+): Promise<EtfThemeTagsResponse> {
+  const raw = await requestJson(`/funds/${encodeURIComponent(symbol)}/theme-tags?market=${market}`);
+  return etfThemeTagsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 4. GET /funds/{symbol}/premium-discount (public)
 // ---------------------------------------------------------------------------
 
 export async function getEtfPremiumDiscount(
@@ -58,7 +72,7 @@ export async function getEtfPremiumDiscount(
 }
 
 // ---------------------------------------------------------------------------
-// 4. GET /market/active-etf-report (Sponsor-tier)
+// 5. GET /market/active-etf-report (Sponsor-tier)
 // ---------------------------------------------------------------------------
 
 export async function getActiveEtfReport(

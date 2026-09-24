@@ -14,6 +14,7 @@ from tools.etf_pcf_tools import (
     GetEtfFundInfoTool,
     GetEtfPremiumDiscountInput,
     GetEtfPremiumDiscountTool,
+    GetEtfThemeTagsTool,
 )
 
 
@@ -47,6 +48,46 @@ async def test_get_etf_fund_info_delegates_and_parses() -> None:
     assert adapter.calls[0][0] is Capability.ETF_HOLDINGS
     assert output.info is not None
     assert output.info.fund_name == "元大台灣50"
+
+
+async def test_get_etf_theme_tags_delegates_and_parses() -> None:
+    symbol = Symbol(id="00929", market=Market.TW)
+    result = SourceResult(
+        source_id="ETF_THEME_TAGS",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={"tags": ["高股息", "科技主題型"]},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, adapter = make_router(symbol, {Capability.ETF_THEME_TAGS: result})
+    tool = GetEtfThemeTagsTool(router)
+    assert tool.data_class is DataClass.PUBLIC
+
+    output = await tool.run(SymbolInput(id="00929", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ETF_THEME_TAGS
+    assert output.tags == ("高股息", "科技主題型")
+
+
+async def test_get_etf_theme_tags_empty_when_no_tags_in_payload() -> None:
+    symbol = Symbol(id="0050", market=Market.TW)
+    result = SourceResult(
+        source_id="ETF_THEME_TAGS",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={},
+        health=SourceHealth(status=HealthStatus.STALE, detail="not found"),
+    )
+    router, _ = make_router(symbol, {Capability.ETF_THEME_TAGS: result})
+    tool = GetEtfThemeTagsTool(router)
+
+    output = await tool.run(SymbolInput(id="0050", market=Market.TW), ToolContext())
+
+    assert output.tags == ()
 
 
 def _etf_nav_row(symbol: str, as_of: date, premium_discount_pct: float) -> dict[str, object]:
