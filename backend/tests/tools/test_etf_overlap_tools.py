@@ -370,9 +370,64 @@ async def test_get_fund_comparison_tw_symbol_honestly_omits_holdings_fields() ->
     assert us_row.fund_info is None
 
 
-def test_get_fund_comparison_enforces_minimum_of_two_symbols() -> None:
+async def test_get_fund_comparison_single_symbol_since_inception() -> None:
+    """The exact shape the ETF detail page's own 總覽 tab uses this tool for: ONE symbol, a
+    multi-year `lookback_days` spanning a fund's real inception date, dividends reinvested.
+    Regression guard for the price-only annualized-return bug (0050's own 4.9% understatement —
+    see the ETF overview panel's own history) — a single dividend event over a multi-year window
+    must move the total return, proving this path isn't silently price-only."""
+    today = date.today()
+    inception, ex_date, end = today - timedelta(days=3650), today - timedelta(days=1825), today
+    results: dict[tuple[Capability, str], SourceResult] = {
+        (Capability.PRICE_EOD, "0050"): _ok_result(
+            {
+                "bars": [
+                    _price_bar("0050", inception, 40.0),
+                    _price_bar("0050", ex_date, 80.0),
+                    _price_bar("0050", end, 112.45),
+                ]
+            }
+        ),
+        (Capability.DIVIDENDS, "0050"): _ok_result(
+            {"events": [_dividend_event("0050", ex_date, 2.0)]}
+        ),
+        (Capability.ETF_HOLDINGS, "0050"): _ok_result({"info": None}),
+    }
+    router, _ = _router(results)
+    registry = ToolRegistry()
+    registry.register(GetFundComparisonTool(router))
+    resolved_tool = registry.get_tool("get_fund_comparison")
+    assert resolved_tool is not None
+
+    output = await dispatch_tool(
+        resolved_tool,
+        GetFundComparisonInput(
+            symbols=(SymbolInput(id="0050", market=Market.TW),),
+            lookback_days=3650,
+        ),
+        ToolContext(tier=Tier.FREE, tls_policy=TLSPolicy.STRICT),
+    )
+
+    rows = output.rows  # type: ignore[union-attr]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.symbol == "0050"
+    # Price-only would be (112.45-40)/40*100 = 181.125%; dividend-reinvested must exceed that.
+    price_only_return_pct = (112.45 - 40.0) / 40.0 * 100
+    assert row.total_return_pct is not None
+    assert row.total_return_pct > price_only_return_pct
+
+
+def test_get_fund_comparison_allows_a_single_symbol() -> None:
+    """A single symbol is a legitimate call (e.g. a fund's own "since inception" return) — the
+    real bound is 0 (empty) and 11+ (too many), not "fewer than two"."""
+    parsed = GetFundComparisonInput(symbols=(SymbolInput(id="FUND_X", market=Market.US),))
+    assert len(parsed.symbols) == 1
+
+
+def test_get_fund_comparison_rejects_zero_symbols() -> None:
     with pytest.raises(ValidationError):
-        GetFundComparisonInput(symbols=(SymbolInput(id="FUND_X", market=Market.US),))
+        GetFundComparisonInput(symbols=())
 
 
 # ---- governance: no trading language in either tool's output ----

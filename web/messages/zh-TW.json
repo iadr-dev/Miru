@@ -360,6 +360,7 @@
         "columnExpense": "費用率",
         "leveraged": "槓桿",
         "inverse": "反向",
+        "active": "主動式",
         "noChangeData": "無漲跌資料",
         "empty": "此市場查無 ETF 資料。",
         "unavailable": "今日查無 ETF 資料。",
@@ -1488,14 +1489,22 @@
         "trend_quality": "趨勢品質",
         "value_guard": "價值防護",
         "quality": "品質",
-        "revenue_flow": "籌碼與營收"
+        "revenue_flow": "籌碼與營收",
+        "premium_discount": "折溢價",
+        "cost": "費用率",
+        "management_activity": "主動管理程度",
+        "liquidity_flow": "資金流向"
       },
       "factorCaption": {
         "momentum": "12-1動能（排除最近一個月的trailing 12個月報酬），對當日全市場排名",
         "trend_quality": "Minervini 趨勢模板條件達標比例",
         "value_guard": "EV/EBITDA、自由現金流殖利率、本益比、股價淨值比 之綜合指標，對應至0-100橫斷面排名",
         "quality": "ROE、負債權益比、盈餘穩定性、ROIC、毛利率 之綜合指標，對應至0-100橫斷面排名",
-        "revenue_flow": "三大法人 20日淨買超趨勢百分位（月營收 YoY 子訊號尚未納入計算）"
+        "revenue_flow": "三大法人 20日淨買超趨勢百分位（月營收 YoY 子訊號尚未納入計算）",
+        "premium_discount": "對淨值折溢價幅度（TWSE公告估算值），採固定偏離度計分，越接近淨值平價分數越高，不與其他ETF比較排名",
+        "cost": "費用率於今日ETF全體中由低到高排名，費用越低分數越高",
+        "management_activity": "於今日主動式ETF全體中的持股周轉率百分位，僅適用主動式ETF",
+        "liquidity_flow": "三大法人20日淨買超趨勢百分位"
       },
       "summaryTitle": "AI 智能摘要",
       "summaryUnavailable": "尚無 AI 摘要，可能因多空評分尚未計算完成。",
@@ -1880,6 +1889,128 @@
       "expandTo": "展開完整 {count} 筆",
       "collapse": "收合",
       "empty": "暫無資料。"
+    }
+  },
+  "etf": {
+    "tabs": {
+      "label": "ETF頁籤",
+      "overview": "總覽",
+      "realtime": "看盤",
+      "activeReport": "操作日報",
+      "holdings": "成分股",
+      "premiumDiscount": "折溢價",
+      "chipAnalysis": "籌碼分析",
+      "technical": "技術分析",
+      "ai": "AI",
+      "news": "相關新聞"
+    },
+    "overview": {
+      "title": "基本資料",
+      "unavailable": "尚無此ETF的基本資料。",
+      "ytdReturn": "今年以來報酬",
+      "ytdReturnUnavailable": "尚無足夠價格資料計算今年以來報酬。",
+      "holderCount": "受益人次(萬人)",
+      "holderCountUnit": "萬人",
+      "holderCountUnavailable": "尚無受益人次資料。",
+      "expenseFloorCaveat": "費用率為經理費+保管費之下限估算值，非審計後的內扣總費用率。",
+      "field": {
+        "fundType": "基金類型",
+        "trackedIndex": "追蹤指數",
+        "expenseRatio": "內扣費用",
+        "unitsOutstanding": "發行單位數",
+        "unitsOutstandingValue": "{value} 單位",
+        "listedDate": "上市日期",
+        "inceptionDate": "成立日期",
+        "fundName": "基金名稱",
+        "managerName": "經理人",
+        "managerCompany": "投信公司",
+        "custodianBank": "保管銀行"
+      }
+    },
+    "trailingReturns": {
+      "title": "各期間報酬率",
+      "unavailable": "尚無足夠價格資料計算各期間報酬率。",
+      "tooltipLabel": "報酬率",
+      "horizon": {
+        "1m": "1個月",
+        "1q": "1季",
+        "6m": "半年",
+        "1y": "1年",
+        "3y": "3年",
+        "5y": "5年"
+      }
+    },
+    "dividendCalendar": {
+      "title": "股息日曆",
+      "viewList": "清單",
+      "viewCalendar": "日曆",
+      "prevMonth": "上個月",
+      "nextMonth": "下個月",
+      "monthTitle": "{year} 年 {month} 月",
+      "legendExDate": "除息日",
+      "legendLastBuyDate": "最後購買日",
+      "legendPaymentDate": "股利發放日",
+      "cashDividendLabel": "配息",
+      "cashDividend": "配發金額 ${amount}",
+      "noPaymentDate": "尚未公布",
+      "empty": "此月份查無股息事件。",
+      "unavailable": "尚無此ETF的股息日曆資料。",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合"
+    },
+    "activeReport": {
+      "title": "操作日報",
+      "holdingsTitle": "持股變動明細",
+      "asOfDate": "{date} 操作日報",
+      "empty": "尚無操作日報資料，此ETF可能非主動式ETF或尚無持股變動資料。",
+      "noChanges": "當日無持股變動。",
+      "fundSize": "基金規模",
+      "estimatedPremiumDiscount": "估算折溢價",
+      "countUnit": "檔",
+      "column": {
+        "stock": "標的",
+        "status": "狀態",
+        "sharesDelta": "變動張數",
+        "currentWeight": "目前權重",
+        "weightDelta": "權重變動%"
+      }
+    },
+    "holdings": {
+      "title": "成分股",
+      "passiveUnavailable": "此ETF尚無成分股持股資料 — 被動式ETF目前無逐檔持股權重資料來源，僅主動式ETF可顯示此資訊。",
+      "activeOnlyCaveat": "僅主動式ETF提供逐檔持股權重（依「操作日報」資料計算），被動式ETF尚無此資料來源。",
+      "asOfDate": "{date} 持股權重",
+      "others": "其他",
+      "subTabLabel": "成分股視圖切換",
+      "subTab": {
+        "holdings": "成分股",
+        "industry": "產業分佈"
+      },
+      "dataSheetTitle": "成分股明細",
+      "expandTo": "展開完整 {count} 筆",
+      "collapse": "收合",
+      "column": {
+        "rank": "排名",
+        "stock": "標的",
+        "industry": "產業",
+        "weight": "權重"
+      }
+    },
+    "premiumDiscount": {
+      "title": "折溢價",
+      "priceNavTitle": "股價／淨值",
+      "dataSheetTitle": "資料明細",
+      "unavailable": "尚無折溢價歷史資料。",
+      "aum": "資產規模 {value}",
+      "chartSeriesLabel": "折溢價(%)",
+      "priceSeriesLabel": "股價",
+      "navSeriesLabel": "估算淨值",
+      "column": {
+        "date": "日期",
+        "price": "股價",
+        "nav": "淨值",
+        "premiumDiscount": "折溢價(%)"
+      }
     }
   }
 }

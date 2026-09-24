@@ -5,10 +5,14 @@ returns the expected shape — mirroring `test_themes_routes.py`'s stub-router-s
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from config.settings import Settings
+from ingest.jobs import ETF_NAV_DATASET
+from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -137,6 +141,21 @@ def _client_with_stub(settings: Settings, agent_answer: str) -> TestClient:
         ),
         Capability.DIVIDENDS: _result({"events": []}),
         Capability.ETF_HOLDINGS: _result({"info": None}),
+        Capability.ETF_TRAILING_RETURNS: _result(
+            {
+                "returns": {
+                    "symbol": "SPY",
+                    "market": "US",
+                    "as_of": date(2024, 6, 2).isoformat(),
+                    "return_1m_pct": 2.1,
+                    "return_1q_pct": 5.4,
+                    "return_6m_pct": 9.8,
+                    "return_1y_pct": 18.3,
+                    "return_3y_pct": 40.0,
+                    "return_5y_pct": 95.5,
+                }
+            }
+        ),
     }
     stub_router, _ = make_router(symbol, results)
     registry = build_default_tool_registry(stub_router)
@@ -174,6 +193,14 @@ class TestPerSymbolRoutes:
         assert body["holdings"][0]["holding_symbol"] == "AAPL"
         assert body["sector_weightings"][0]["sector"] == "Technology"
 
+    def test_trailing_returns_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_stub(settings, agent_answer)
+        resp = client.get("/api/v1/funds/SPY/trailing-returns", params={"market": Market.US.value})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["returns"]["return_1y_pct"] == 18.3
+        assert body["returns"]["return_5y_pct"] == 95.5
+
 
 class TestOverlapRoute:
     def test_overlap_happy_path(self, settings: Settings, agent_answer: str) -> None:
@@ -210,12 +237,103 @@ class TestComparisonRoute:
         assert len(body["rows"]) == 2
         assert body["rows"][0]["symbol"] == "SPY"
 
-    def test_comparison_rejects_too_few_symbols(
-        self, settings: Settings, agent_answer: str
-    ) -> None:
+    def test_comparison_single_symbol_succeeds(self, settings: Settings, agent_answer: str) -> None:
+        """A single symbol is a legitimate call — e.g. the ETF detail page's own 總覽 tab uses
+        this route for one fund's own since-inception/YTD return, not a multi-fund comparison."""
         client = _client_with_stub(settings, agent_answer)
         resp = client.get("/api/v1/funds/comparison", params={"symbols": "SPY:US"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["rows"]) == 1
+        assert body["rows"][0]["symbol"] == "SPY"
+
+    def test_comparison_rejects_zero_symbols(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_stub(settings, agent_answer)
+        resp = client.get("/api/v1/funds/comparison", params={"symbols": ""})
         assert resp.status_code == 422
         body = resp.json()
         assert body["code"] == "invalid_request"
         assert body["retryable"] is False
+
+
+def _client_with_etf_nav_store(
+    settings: Settings,
+    agent_answer: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> TestClient:
+    """`get_etf_premium_discount` reads a real `ParquetStore`, not the stub router — same
+    env-var-move pattern `test_etf_list_route.py::_client_with_store` uses."""
+    monkeypatch.setenv("PARQUET_ROOT", str(tmp_path))
+    client = build_test_client(settings, agent_answer=agent_answer)
+    stub_router, _ = make_router(Symbol(id="00981A", market=Market.TW), {})
+    registry = build_default_tool_registry(stub_router)
+    object.__setattr__(client.app.state.app_state, "tool_registry", registry)
+    return client
+
+
+class TestPremiumDiscountRoute:
+    def test_reports_unavailable_when_no_partition(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = _client_with_etf_nav_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get("/api/v1/funds/00981A/premium-discount")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is False
+        assert body["rows"] == []
+
+    def test_returns_bounded_history(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("PARQUET_ROOT", str(tmp_path))
+        store = ParquetStore(root=tmp_path)
+        store.write_partition(
+            ETF_NAV_DATASET,
+            "TW",
+            date(2026, 8, 26),
+            [
+                {
+                    "symbol": "00981A",
+                    "market": "TW",
+                    "as_of": "2026-08-26",
+                    "fund_name": "統一台股增長",
+                    "close_price": 29.25,
+                    "estimated_nav": 29.10,
+                    "premium_discount_pct": -0.03,
+                    "prior_day_nav": 29.00,
+                }
+            ],
+        )
+        client = build_test_client(settings, agent_answer=agent_answer)
+        stub_router, _ = make_router(Symbol(id="00981A", market=Market.TW), {})
+        registry = build_default_tool_registry(stub_router)
+        object.__setattr__(client.app.state.app_state, "tool_registry", registry)
+
+        resp = client.get(
+            "/api/v1/funds/00981A/premium-discount", params={"market": "TW", "days": 30}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data_available"] is True
+        assert body["rows"][0]["premium_discount_pct"] == -0.03
+
+    def test_rejects_out_of_bounds_days(
+        self, settings: Settings, agent_answer: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _client_with_etf_nav_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get("/api/v1/funds/00981A/premium-discount", params={"days": 1})
+
+        assert resp.status_code == 422

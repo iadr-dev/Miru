@@ -8,6 +8,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
+import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import {
   getCompanyProfile,
   getDispositionSecurities,
@@ -515,32 +516,6 @@ function AnnouncementsCard({
         />
       )}
     </section>
-  );
-}
-
-function ViewToggleButton({
-  active,
-  label,
-  onClick,
-}: {
-  readonly active: boolean;
-  readonly label: string;
-  readonly onClick: () => void;
-}): ReactNode {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-colors",
-        active
-          ? "bg-[var(--accent)] text-[color:#06231F]"
-          : "text-[var(--text-muted)] hover:text-[var(--text)]",
-      )}
-    >
-      {label}
-    </button>
   );
 }
 

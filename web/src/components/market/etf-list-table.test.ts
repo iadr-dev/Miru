@@ -18,6 +18,7 @@ function row(overrides: Partial<EtfListRow>): EtfListRow {
     aum: 1_000_000,
     expense_ratio_pct_approx: 0.3,
     symbol_type: "etf",
+    is_active_etf: false,
     ...overrides,
   };
 }

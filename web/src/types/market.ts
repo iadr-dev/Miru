@@ -894,6 +894,7 @@ export const etfListRowSchema = z.object({
   aum: z.number().nullable(),
   expense_ratio_pct_approx: z.number().nullable(),
   symbol_type: symbolTypeSchema,
+  is_active_etf: z.boolean().default(false),
 });
 export type EtfListRow = z.infer<typeof etfListRowSchema>;
 

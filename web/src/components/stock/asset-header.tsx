@@ -8,10 +8,14 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SectorChip } from "@/components/stock/sector-chip";
-import { getPriceHistory, getSymbolInfo } from "@/lib/api/market";
+import { getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
+import { getEtfList, getPriceHistory, getSymbolInfo } from "@/lib/api/market";
 import { getStockScore } from "@/lib/api/stock-detail";
+import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
-import type { ScoreBand } from "@/types/market";
+import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
+import { isEtfSymbolType } from "@/lib/symbol-type";
+import type { EtfListRow, ScoreBand, SymbolType } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 const HISTORY_DAYS_FOR_CHANGE = 2;
@@ -38,19 +42,49 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
 export function AssetHeader({
   symbol,
   market,
+  symbolType = "stock",
 }: {
   readonly symbol: string;
   readonly market: Market;
+  readonly symbolType?: SymbolType;
 }): ReactNode {
   const t = useTranslations("stock.assetHeader");
   const locale = useLocale();
   const reduceMotion = useReducedMotion();
+  const isEtf = isEtfSymbolType(symbolType);
 
   const symbolInfoQuery = useQuery({
     queryKey: ["symbol_info", symbol, market],
     queryFn: () => getSymbolInfo([symbol], market),
   });
   const symbolInfo = symbolInfoQuery.data?.rows[0];
+  const etfFundInfoQuery = useQuery({
+    queryKey: ["etf_fund_info", symbol, market],
+    queryFn: () => getEtfFundInfo(symbol, market),
+    enabled: isEtf,
+  });
+  const trackedIndex = etfFundInfoQuery.data?.info?.tracked_index;
+  // `get_etf_list` is whole-market (no per-symbol input — see its own docstring), so this reads
+  // the same list the market ETF tab already fetches and narrows to this one symbol client-side,
+  // the same "fetch whole, filter locally" shape every other per-symbol slice of a whole-market
+  // dataset in this codebase uses. TanStack dedupes this against the market tab's own identical
+  // query key, so an ETF's own detail page doesn't cost a second distinct network request beyond
+  // whatever's already cached.
+  const etfListQuery = useQuery({
+    queryKey: ["etf_list", market],
+    queryFn: () => getEtfList(market),
+    enabled: isEtf,
+  });
+  const etfListRow = etfListQuery.data?.data_available
+    ? etfListQuery.data.rows.find((row) => row.symbol === symbol)
+    : undefined;
+  const distributionFrequency = etfListRow?.distribution_frequency;
+  const themeTagsQuery = useQuery({
+    queryKey: ["etf_theme_tags", symbol, market],
+    queryFn: () => getEtfThemeTags(symbol, market),
+    enabled: isEtf,
+  });
+  const themeTags = themeTagsQuery.data?.tags ?? [];
   const scoreQuery = useQuery({
     queryKey: ["stock_score", symbol, market],
     queryFn: () => getStockScore(symbol, market),
@@ -84,9 +118,18 @@ export function AssetHeader({
           <span className="font-num text-[15px] text-[var(--text-muted)] tabular-nums">
             {symbol}
           </span>
-          {symbolInfo?.industry_category ? (
-            <SectorChip label={symbolInfo.industry_category} />
+          {headerChipLabel({
+            isEtf,
+            trackedIndex,
+            industryCategory: symbolInfo?.industry_category,
+          })}
+          {isEtf ? <EtfStructureBadges row={etfListRow} /> : null}
+          {distributionFrequency ? (
+            <DistributionFrequencyBadge frequency={distributionFrequency} />
           ) : null}
+          {themeTags.map((tag) => (
+            <ThemeTagBadge key={tag} tag={tag} />
+          ))}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
@@ -207,5 +250,95 @@ export function AssetHeader({
         </span>
       </p>
     </header>
+  );
+}
+
+/** ETFs have no sector; the same chip slot instead shows the tracked index (追蹤指數) when the
+ * fund-info fetch has resolved one — a stock keeps the industry-category sector chip. */
+function headerChipLabel({
+  isEtf,
+  trackedIndex,
+  industryCategory,
+}: {
+  readonly isEtf: boolean;
+  readonly trackedIndex: string | null | undefined;
+  readonly industryCategory: string | null | undefined;
+}): ReactNode {
+  const label = isEtf ? trackedIndex : industryCategory;
+  return label ? <SectorChip label={label} /> : null;
+}
+
+/** 原型/槓桿型/反向型 (`symbol_type`) + 主動式 (`is_active_etf`) badges — the SAME constants and
+ * labels `components/market/etf-list-table.tsx` uses for the market ETF-tab list
+ * (`lib/etf-badges.ts`), so a fund reads identically on both pages. Reads the
+ * `market.cards.etfList` namespace directly (not `stock.assetHeader`) rather than duplicating
+ * the label strings into a second namespace. `row` is `undefined` while `get_etf_list` is still
+ * loading or this symbol isn't in the whole-market list yet — renders nothing rather than a
+ * loading placeholder, matching `headerChipLabel`'s own "absent → no chip" precedent. */
+function EtfStructureBadges({ row }: { readonly row: EtfListRow | undefined }): ReactNode {
+  const t = useTranslations("market.cards.etfList");
+  if (!row) return null;
+  const symbolTypeBadge = SYMBOL_TYPE_BADGE[row.symbol_type];
+  return (
+    <>
+      {row.is_active_etf ? (
+        <span
+          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2.5 py-1 font-medium text-[12px]"
+          style={{ color: ACTIVE_ETF_BADGE_COLOR }}
+        >
+          {t("active")}
+        </span>
+      ) : null}
+      {symbolTypeBadge ? (
+        <span
+          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2.5 py-1 font-medium text-[12px]"
+          style={{ color: symbolTypeBadge.color }}
+        >
+          {t(symbolTypeBadge.labelKey)}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** 主題/因子 badge — TWSE's own ETF e添富 editorial tag (高股息/科技主題型/公司治理及ESG/...),
+ * colored by the tag LABEL itself via `hashToChartToken` (the same stable categorical-color hash
+ * `SectorChip`/`DistributionFrequencyBadge` use), never signed `--up`/`--down`: this is a
+ * classification, not a price/%/score, per web/CLAUDE.md §4. */
+function ThemeTagBadge({ tag }: { readonly tag: string }): ReactNode {
+  const token = hashToChartToken(tag);
+  return (
+    <span
+      className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px]"
+      style={{
+        backgroundColor: `${token}26`,
+        color: token,
+        border: `1px solid ${token}40`,
+      }}
+    >
+      {tag}
+    </span>
+  );
+}
+
+/** 配息 cadence badge (月配/季配/半年配/年配/不配息) — colored by the frequency LABEL itself via
+ * `hashToChartToken` (the same stable categorical-color hash `SectorChip` uses), never signed
+ * `--up`/`--down`: this is a cadence classification, not a price/%/score, per web/CLAUDE.md §4.
+ * A distinct color per frequency lets a reader tell 月配 from 年配 at a glance across a list of
+ * ETF pages, the same reasoning behind giving each industry its own stable color in the holdings
+ * donut/table. */
+function DistributionFrequencyBadge({ frequency }: { readonly frequency: string }): ReactNode {
+  const token = hashToChartToken(frequency);
+  return (
+    <span
+      className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px]"
+      style={{
+        backgroundColor: `${token}26`,
+        color: token,
+        border: `1px solid ${token}40`,
+      }}
+    >
+      {frequency}
+    </span>
   );
 }

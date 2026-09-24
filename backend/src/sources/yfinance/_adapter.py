@@ -42,6 +42,7 @@ from .discovery import (
 )
 from .holders import _fund_holdings, _insider_activity, _institutional_holders, _options_chain
 from .price_financials import _dividends, _financial_statement, _price_eod, _split_price
+from .trailing_returns import _etf_trailing_returns
 
 logger = structlog.get_logger(__name__)
 
@@ -75,6 +76,7 @@ class YFinanceAdapter:
         Capability.SECTOR_OVERVIEW,
         Capability.INDUSTRY_OVERVIEW,
         Capability.MARKET_STATUS,
+        Capability.ETF_TRAILING_RETURNS,
     }
 
     async def fetch(
@@ -134,6 +136,7 @@ class YFinanceAdapter:
             Capability.SECTOR_OVERVIEW: _sector_overview,
             Capability.INDUSTRY_OVERVIEW: _industry_overview,
             Capability.MARKET_STATUS: lambda s, _p: _market_status(s),
+            Capability.ETF_TRAILING_RETURNS: lambda s, _p: _etf_trailing_returns(s),
         }
         return await handlers[cap](sym, params)
 

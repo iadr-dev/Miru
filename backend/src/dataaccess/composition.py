@@ -20,6 +20,7 @@ from dataaccess.router import DataAccessRouter
 from sources.base import SourceAdapter
 from sources.caching_adapter import build_caching_adapter
 from sources.etf_pcf import EtfPcfAdapter
+from sources.etf_theme_tags import EtfThemeTagsAdapter
 from sources.finmind import FinMindAdapter
 from sources.mops import MopsAdapter
 from sources.ncdr_closure import NcdrClosureAdapter
@@ -53,6 +54,7 @@ def build_default_adapters(
         "yfinance": YFinanceAdapter(),
         "news": NewsAdapter(resolved),
         "etf_pcf": EtfPcfAdapter(),
+        "etf_theme_tags": EtfThemeTagsAdapter(),
         "sitca": SitcaAdapter(),
         "mops": MopsAdapter(),
         "ncdr_closure": NcdrClosureAdapter(),

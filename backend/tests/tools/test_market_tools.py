@@ -730,6 +730,126 @@ async def test_get_active_etf_report_classifies_status_from_prior_day_weight(
     assert output.premium_discount_unavailable_reason is not None
 
 
+async def test_get_active_etf_report_exposes_full_current_holdings_with_industry(
+    tmp_path: Path,
+) -> None:
+    """`current_holdings` (成分股/產業分佈 tabs' real backing) must carry EVERY constituent on
+    `report_date` — not just the ones `rows` diffed as changed — joined against the whole-market
+    roster for `industry_category`."""
+    symbol = Symbol(id="00980A", market=Market.TW)
+    router, _ = make_router(
+        symbol,
+        {
+            Capability.ACTIVE_ETF_HOLDING: _active_etf_holding_result(),
+            Capability.ACTIVE_ETF_HOLDING_CHANGE: _active_etf_holding_change_result(),
+        },
+    )
+    store = ParquetStore(root=tmp_path)
+    _write_price_partitions(store)
+    store.write_partition(
+        "TaiwanStockInfo",
+        "TW",
+        date(2025, 5, 7),
+        [
+            {
+                "symbol": "2330",
+                "market": "TW",
+                "name": "台積電",
+                "industry_category": "半導體業",
+                "security_type": "twse",
+                "as_of": "2025-05-07",
+            },
+            {
+                "symbol": "2317",
+                "market": "TW",
+                "name": "鴻海",
+                "industry_category": "電子零組件業",
+                "security_type": "twse",
+                "as_of": "2025-05-07",
+            },
+        ],
+    )
+    tool = GetActiveEtfReportTool(router, store)
+
+    output = await tool.run(
+        GetActiveEtfReportInput(id="00980A", market=Market.TW, trade_date=date(2025, 5, 7)),
+        ToolContext(),
+    )
+
+    by_stock = {row.component_stock_id: row for row in output.current_holdings}
+    # report_date (2025-05-07) holdings are 2330 + 2317 — 2454 was sold and no longer holds.
+    assert set(by_stock) == {"2330", "2317"}
+    assert by_stock["2330"].weight == 9.2
+    assert by_stock["2330"].industry_category == "半導體業"
+    assert by_stock["2317"].industry_category == "電子零組件業"
+    # Sorted descending by weight — the caller never needs to re-sort for its own donut/table.
+    assert [row.component_stock_id for row in output.current_holdings] == ["2330", "2317"]
+
+
+async def test_get_active_etf_report_current_holdings_industry_none_when_roster_missing(
+    tmp_path: Path,
+) -> None:
+    """No `stock_info` roster partition at all — `industry_category` is honestly `None` for
+    every holding, never fabricated, and the weights are still exposed."""
+    symbol = Symbol(id="00980A", market=Market.TW)
+    router, _ = make_router(
+        symbol,
+        {
+            Capability.ACTIVE_ETF_HOLDING: _active_etf_holding_result(),
+            Capability.ACTIVE_ETF_HOLDING_CHANGE: _active_etf_holding_change_result(),
+        },
+    )
+    store = ParquetStore(root=tmp_path)
+    _write_price_partitions(store)
+    tool = GetActiveEtfReportTool(router, store)
+
+    output = await tool.run(
+        GetActiveEtfReportInput(id="00980A", market=Market.TW, trade_date=date(2025, 5, 7)),
+        ToolContext(),
+    )
+
+    assert len(output.current_holdings) == 2
+    assert all(row.industry_category is None for row in output.current_holdings)
+
+
+async def test_get_active_etf_report_falls_back_to_etf_aum_when_prices_not_ingested_yet(
+    tmp_path: Path,
+) -> None:
+    """The genuine gap this fallback closes: `report_date`'s constituent closes haven't landed
+    in `TaiwanStockPrice` yet (a same-day ingest-timing lag), so the shares-x-close computation
+    returns `None` — `fund_size` must fall back to the already-ingested `etf_aum` figure rather
+    than staying empty, but `fund_size_prior`/`fund_size_change_pct` must NOT be fabricated from
+    it (see `_fund_size_with_aum_fallback`'s own docstring for why)."""
+    symbol = Symbol(id="00980A", market=Market.TW)
+    router, _ = make_router(
+        symbol,
+        {
+            Capability.ACTIVE_ETF_HOLDING: _active_etf_holding_result(),
+            Capability.ACTIVE_ETF_HOLDING_CHANGE: _active_etf_holding_change_result(),
+        },
+    )
+    store = ParquetStore(root=tmp_path)
+    # Deliberately no `_write_price_partitions(store)` — report_date's closes are absent, so
+    # `fund_size` from the shares-x-close path is `None` before the fallback.
+    store.write_partition(
+        "etf_aum",
+        "TW",
+        date(2025, 5, 7),
+        [{"symbol": "00980A", "market": "TW", "as_of": "2025-05-07", "aum": 123_456_789.0}],
+    )
+    tool = GetActiveEtfReportTool(router, store)
+
+    output = await tool.run(
+        GetActiveEtfReportInput(id="00980A", market=Market.TW, trade_date=date(2025, 5, 7)),
+        ToolContext(),
+    )
+
+    assert output.fund_size == 123_456_789.0
+    assert output.fund_size_prior is None
+    assert output.fund_size_change_pct is None
+    assert output.fund_size_caveat is not None
+
+
 async def test_get_active_etf_report_no_prior_day_is_not_guessed(tmp_path: Path) -> None:
     """A change row on the earliest date the window returns has no prior partition to diff
     against — `status` must say so explicitly, never guess 新增/加碼."""

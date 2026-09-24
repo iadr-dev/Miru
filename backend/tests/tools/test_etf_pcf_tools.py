@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
+from ingest.jobs import ETF_AUM_DATASET, ETF_NAV_DATASET
+from ingest.store import ParquetStore
 from schemas.enums import Capability, DataClass, Market, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.tools.conftest import make_router
 from tools.base import ToolContext
 from tools.common import SymbolInput
-from tools.etf_pcf_tools import GetEtfFundInfoTool
+from tools.etf_pcf_tools import (
+    GetEtfFundInfoTool,
+    GetEtfPremiumDiscountInput,
+    GetEtfPremiumDiscountTool,
+    GetEtfThemeTagsTool,
+    GetEtfTrailingReturnsTool,
+)
 
 
 async def test_get_etf_fund_info_delegates_and_parses() -> None:
@@ -41,3 +49,199 @@ async def test_get_etf_fund_info_delegates_and_parses() -> None:
     assert adapter.calls[0][0] is Capability.ETF_HOLDINGS
     assert output.info is not None
     assert output.info.fund_name == "元大台灣50"
+
+
+async def test_get_etf_theme_tags_delegates_and_parses() -> None:
+    symbol = Symbol(id="00929", market=Market.TW)
+    result = SourceResult(
+        source_id="ETF_THEME_TAGS",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={"tags": ["高股息", "科技主題型"], "holder_count_wan": 98.53},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, adapter = make_router(symbol, {Capability.ETF_THEME_TAGS: result})
+    tool = GetEtfThemeTagsTool(router)
+    assert tool.data_class is DataClass.PUBLIC
+
+    output = await tool.run(SymbolInput(id="00929", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ETF_THEME_TAGS
+    assert output.tags == ("高股息", "科技主題型")
+    assert output.holder_count_wan == 98.53
+
+
+async def test_get_etf_theme_tags_empty_when_no_tags_in_payload() -> None:
+    symbol = Symbol(id="0050", market=Market.TW)
+    result = SourceResult(
+        source_id="ETF_THEME_TAGS",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={},
+        health=SourceHealth(status=HealthStatus.STALE, detail="not found"),
+    )
+    router, _ = make_router(symbol, {Capability.ETF_THEME_TAGS: result})
+    tool = GetEtfThemeTagsTool(router)
+
+    output = await tool.run(SymbolInput(id="0050", market=Market.TW), ToolContext())
+
+    assert output.tags == ()
+    assert output.holder_count_wan is None
+
+
+async def test_get_etf_trailing_returns_delegates_and_parses() -> None:
+    symbol = Symbol(id="0050", market=Market.TW)
+    returns_row = {
+        "symbol": "0050",
+        "market": "TW",
+        "as_of": "2026-09-24",
+        "return_1m_pct": 3.5,
+        "return_1q_pct": 8.1,
+        "return_6m_pct": 12.4,
+        "return_1y_pct": 20.9,
+        "return_3y_pct": 45.2,
+        "return_5y_pct": None,
+    }
+    result = SourceResult(
+        source_id="YFINANCE",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.REFERENCE,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={"returns": returns_row},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, adapter = make_router(symbol, {Capability.ETF_TRAILING_RETURNS: result})
+    tool = GetEtfTrailingReturnsTool(router)
+    assert tool.data_class is DataClass.PUBLIC
+
+    output = await tool.run(SymbolInput(id="0050", market=Market.TW), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.ETF_TRAILING_RETURNS
+    assert output.returns is not None
+    assert output.returns.return_1y_pct == 20.9
+    assert output.returns.return_5y_pct is None
+
+
+async def test_get_etf_trailing_returns_none_when_fetch_failed() -> None:
+    symbol = Symbol(id="NOPE", market=Market.TW)
+    result = SourceResult(
+        source_id="YFINANCE",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.REFERENCE,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="caveat",
+        payload={},
+        health=SourceHealth(status=HealthStatus.STALE, detail="no price history returned"),
+    )
+    router, _ = make_router(symbol, {Capability.ETF_TRAILING_RETURNS: result})
+    tool = GetEtfTrailingReturnsTool(router)
+
+    output = await tool.run(SymbolInput(id="NOPE", market=Market.TW), ToolContext())
+
+    assert output.returns is None
+    assert output.health_status is HealthStatus.STALE
+
+
+def _etf_nav_row(symbol: str, as_of: date, premium_discount_pct: float) -> dict[str, object]:
+    return {
+        "symbol": symbol,
+        "market": "TW",
+        "as_of": as_of.isoformat(),
+        "fund_name": "統一台股增長",
+        "close_price": 29.25,
+        "estimated_nav": 29.10,
+        "premium_discount_pct": premium_discount_pct,
+        "prior_day_nav": 29.00,
+    }
+
+
+async def test_get_etf_premium_discount_returns_bounded_history(tmp_path: object) -> None:
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        ETF_NAV_DATASET,
+        "TW",
+        date(2026, 8, 25),
+        [_etf_nav_row("00981A", date(2026, 8, 25), 0.11)],
+    )
+    store.write_partition(
+        ETF_NAV_DATASET,
+        "TW",
+        date(2026, 8, 26),
+        [_etf_nav_row("00981A", date(2026, 8, 26), -0.03)],
+    )
+    store.write_partition(
+        ETF_AUM_DATASET,
+        "TW",
+        date(2026, 8, 26),
+        [{"symbol": "00981A", "market": "TW", "as_of": "2026-08-26", "aum": 28_700_000_000.0}],
+    )
+
+    tool = GetEtfPremiumDiscountTool(store)
+    assert tool.data_class is DataClass.PUBLIC
+
+    output = await tool.run(
+        GetEtfPremiumDiscountInput(id="00981A", market=Market.TW, days=30), ToolContext()
+    )
+
+    assert output.data_available is True
+    assert [row.as_of for row in output.rows] == [date(2026, 8, 25), date(2026, 8, 26)]
+    assert output.rows[-1].premium_discount_pct == -0.03
+    assert output.current_aum == 28_700_000_000.0
+    assert output.aum_caveat is not None
+
+
+async def test_get_etf_premium_discount_honestly_reports_no_partition(tmp_path: object) -> None:
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    tool = GetEtfPremiumDiscountTool(store)
+
+    output = await tool.run(
+        GetEtfPremiumDiscountInput(id="00981A", market=Market.TW), ToolContext()
+    )
+
+    assert output.data_available is False
+    assert output.unavailable_reason is not None
+    assert output.rows == ()
+
+
+async def test_get_etf_premium_discount_dedupes_carried_forward_as_of(tmp_path: object) -> None:
+    """Confirmed against real ingested data: a day's `etf_nav` partition can carry forward the
+    prior confirmed `EtfNavRow.as_of` (partition `date` != row `as_of`), so several partitions
+    can yield rows for the same `as_of`. The tool must dedupe on `as_of`, never emit a repeated
+    trade date in the history."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        ETF_NAV_DATASET, "TW", date(2026, 8, 8), [_etf_nav_row("00981A", date(2026, 8, 7), 0.01)]
+    )
+    store.write_partition(
+        ETF_NAV_DATASET, "TW", date(2026, 8, 9), [_etf_nav_row("00981A", date(2026, 8, 7), 0.01)]
+    )
+    store.write_partition(
+        ETF_NAV_DATASET, "TW", date(2026, 8, 10), [_etf_nav_row("00981A", date(2026, 8, 10), 0.02)]
+    )
+    tool = GetEtfPremiumDiscountTool(store)
+
+    output = await tool.run(
+        GetEtfPremiumDiscountInput(id="00981A", market=Market.TW, days=30), ToolContext()
+    )
+
+    assert [row.as_of for row in output.rows] == [date(2026, 8, 7), date(2026, 8, 10)]
+
+
+async def test_get_etf_premium_discount_honestly_reports_unknown_symbol(tmp_path: object) -> None:
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        ETF_NAV_DATASET, "TW", date(2026, 8, 26), [_etf_nav_row("0050", date(2026, 8, 26), 0.02)]
+    )
+    tool = GetEtfPremiumDiscountTool(store)
+
+    output = await tool.run(
+        GetEtfPremiumDiscountInput(id="00981A", market=Market.TW), ToolContext()
+    )
+
+    assert output.data_available is False
+    assert output.rows == ()

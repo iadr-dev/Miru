@@ -51,8 +51,12 @@ _HTTP_422_UNPROCESSABLE = 422
 
 _MIN_OVERLAP_SYMBOLS = 3
 _MAX_OVERLAP_SYMBOLS = 10
-_MIN_COMPARISON_SYMBOLS = 2
+_MIN_COMPARISON_SYMBOLS = 1
 _MAX_COMPARISON_SYMBOLS = 10
+# Mirrors etf_overlap_tools._MAX_LOOKBACK_DAYS — a single-symbol call (e.g. the ETF detail
+# page's own "since inception" stat) needs to span decades back to a fund's real inception_date,
+# not just the original 10yr comparison-only cap.
+_MAX_COMPARISON_LOOKBACK_DAYS = 20000
 
 
 def _context(
@@ -153,6 +157,53 @@ async def etf_expense_ratio(
     )
 
 
+@router.get("/funds/{symbol}/theme-tags")
+async def etf_theme_tags(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """TWSE's own 主題/因子 (theme/factor) editorial tags plus 受益人次(萬人) holder count for one
+    TW listed ETF (e.g. 高股息/科技主題型/公司治理及ESG). Backed by `get_etf_theme_tags` over the
+    ETF e添富 microsite's own per-symbol page."""
+    return await _dispatch(state, "get_etf_theme_tags", {"id": symbol, "market": market.value}, ctx)
+
+
+@router.get("/funds/{symbol}/trailing-returns")
+async def etf_trailing_returns(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One listed ETF's price return over 6 fixed trailing horizons (1個月/1季/半年/1年/3年/5年),
+    computed from a single split/dividend-adjusted price-history fetch. Backed by
+    `get_etf_trailing_returns`."""
+    return await _dispatch(
+        state, "get_etf_trailing_returns", {"id": symbol, "market": market.value}, ctx
+    )
+
+
+@router.get("/funds/{symbol}/premium-discount")
+async def etf_premium_discount(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    days: int = Query(60, ge=2, le=180),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """折溢價 (premium/discount to NAV) history + latest AUM for one TW ETF, over a bounded
+    trailing trading-day window. Backed by `get_etf_premium_discount` over the already-ingested
+    `etf_nav`/`etf_aum` datasets — never a live per-request NAV fetch."""
+    return await _dispatch(
+        state,
+        "get_etf_premium_discount",
+        {"id": symbol, "market": market.value, "days": days},
+        ctx,
+    )
+
+
 # ---- multi-symbol overlap / comparison -----------------------------------------------------
 
 
@@ -180,18 +231,23 @@ async def fund_comparison(
     symbols: str = Query(
         ...,
         description=(
-            "Comma-separated 'id:market' pairs, 2-10, any market (incl. TW), e.g. '0050:TW,SPY:US'."
+            "Comma-separated 'id:market' pairs, 1-10, any market (incl. TW), e.g. '0050:TW,SPY:US'."
         ),
     ),
     lookback_days: int = Query(
-        365, ge=1, le=3650, description="Total-return lookback window in calendar days."
+        365,
+        ge=1,
+        le=_MAX_COMPARISON_LOOKBACK_DAYS,
+        description="Total-return lookback window in calendar days.",
     ),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
-    """Total-return-with-dividends-reinvested comparison across 2+ symbols in any market
-    (including TW). Never computes overlap%/NAV/premium-discount for TW symbols — a documented,
-    honest adapter gap relayed in each TW row's `unavailable_note`."""
+    """Total-return-with-dividends-reinvested comparison across 1+ symbols in any market
+    (including TW) — a single symbol is a legitimate call too (e.g. a fund's own "since
+    inception" return over a multi-decade `lookback_days`). Never computes overlap%/NAV/
+    premium-discount for TW symbols — a documented, honest adapter gap relayed in each TW row's
+    `unavailable_note`."""
     pairs = _split_symbol_market_pairs(
         symbols, min_count=_MIN_COMPARISON_SYMBOLS, max_count=_MAX_COMPARISON_SYMBOLS
     )

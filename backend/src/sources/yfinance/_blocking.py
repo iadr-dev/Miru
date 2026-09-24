@@ -71,6 +71,22 @@ def _safe_funds_data(ticker: Any) -> Any:  # dynamically-shaped 3rd-party edge
         return None
 
 
+def _fetch_adjusted_history_blocking(yahoo_symbol: str, period: str) -> pd.DataFrame:
+    """A SEPARATE `history()` call from `_fetch_ticker_frames_blocking`'s own `period="5d",
+    auto_adjust=False` bundle entry — that one exists for the raw daily-bar `price_eod`
+    capability (deliberately unadjusted, matching every other market's raw-OHLCV convention in
+    this codebase). This one is `auto_adjust=True` over a much longer window, purpose-built for
+    `etf_trailing_returns`: split/dividend-adjusted so a fund's real 1M/1Q/6M/1Y/3Y/5Y return
+    computation never reads a historical stock split as a fabricated price crash (confirmed live
+    against 0050.TW's real 2025-06-18 4-for-1 split — the unadjusted series has a ~75% single-day
+    drop there; the adjusted one does not)."""
+    import yfinance as yf  # noqa: PLC0415
+
+    _init_tz_cache()
+    ticker = yf.Ticker(yahoo_symbol)
+    return ticker.history(period=period, auto_adjust=True)
+
+
 def _fetch_search_blocking(query: str) -> list[dict[str, Any]]:
     import yfinance as yf  # noqa: PLC0415
 
@@ -156,6 +172,7 @@ def _fetch_option_chain_blocking(yahoo_symbol: str, expiry: str) -> Any:
 
 __all__ = [
     "_dict_to_frame",
+    "_fetch_adjusted_history_blocking",
     "_fetch_calendars_blocking",
     "_fetch_industry_blocking",
     "_fetch_info_blocking",

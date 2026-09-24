@@ -360,6 +360,7 @@
         "columnExpense": "Expense Ratio",
         "leveraged": "Leveraged",
         "inverse": "Inverse",
+        "active": "Active",
         "noChangeData": "no change data",
         "empty": "No ETFs found for this market.",
         "unavailable": "No ETF data for today.",
@@ -1488,14 +1489,22 @@
         "trend_quality": "Trend Quality",
         "value_guard": "Value Guard",
         "quality": "Quality",
-        "revenue_flow": "Chip/Revenue Flow"
+        "revenue_flow": "Chip/Revenue Flow",
+        "premium_discount": "Premium/Discount",
+        "cost": "Expense Ratio",
+        "management_activity": "Active Management",
+        "liquidity_flow": "Fund Flow"
       },
       "factorCaption": {
         "momentum": "12-1 momentum (trailing 12-month return excluding the most recent month), ranked against the day's universe",
         "trend_quality": "Share of Minervini trend-template conditions met",
         "value_guard": "Composite of EV/EBITDA, FCF yield, P/E, P/B, mapped to a 0-100 cross-sectional standing",
         "quality": "Composite of ROE, debt/equity, earnings variability, ROIC, gross profitability, mapped to a 0-100 cross-sectional standing",
-        "revenue_flow": "Institutional 20-day net-buy trend percentile (monthly-revenue YoY sub-signal not yet ingested)"
+        "revenue_flow": "Institutional 20-day net-buy trend percentile (monthly-revenue YoY sub-signal not yet ingested)",
+        "premium_discount": "Deviation from NAV (TWSE's own estimated figure), scored on a fixed-deviation scale — closer to par scores higher, never ranked against other ETFs",
+        "cost": "Expense ratio ranked low-to-high against today's whole ETF universe — lower cost scores higher",
+        "management_activity": "Holdings-turnover percentile against today's active-management ETF universe — active ETFs only",
+        "liquidity_flow": "Institutional 20-day net-buy trend percentile"
       },
       "summaryTitle": "AI Summary",
       "summaryUnavailable": "No AI summary yet — the underlying score may not be computed.",
@@ -1880,6 +1889,128 @@
       "expandTo": "Show all {count} rows",
       "collapse": "Collapse",
       "empty": "No data available."
+    }
+  },
+  "etf": {
+    "tabs": {
+      "label": "ETF tabs",
+      "overview": "Overview",
+      "realtime": "Live",
+      "activeReport": "Daily Ops Report",
+      "holdings": "Holdings",
+      "premiumDiscount": "Premium/Discount",
+      "chipAnalysis": "Chip Analysis",
+      "technical": "Technical",
+      "ai": "AI",
+      "news": "News"
+    },
+    "overview": {
+      "title": "Fund Info",
+      "unavailable": "No fund info available for this ETF.",
+      "ytdReturn": "Return (Year to Date)",
+      "ytdReturnUnavailable": "Not enough price history to compute the year-to-date return.",
+      "holderCount": "Holder Count (10k)",
+      "holderCountUnit": "",
+      "holderCountUnavailable": "No holder-count data available.",
+      "expenseFloorCaveat": "Expense ratio is a management+custody fee floor, not the audited total expense ratio.",
+      "field": {
+        "fundType": "Fund Type",
+        "trackedIndex": "Tracked Index",
+        "expenseRatio": "Expense Ratio",
+        "unitsOutstanding": "Units Outstanding",
+        "unitsOutstandingValue": "{value} units",
+        "listedDate": "Listed Date",
+        "inceptionDate": "Inception Date",
+        "fundName": "Fund Name",
+        "managerName": "Fund Manager",
+        "managerCompany": "Management Company",
+        "custodianBank": "Custodian Bank"
+      }
+    },
+    "trailingReturns": {
+      "title": "Trailing Returns",
+      "unavailable": "Not enough price history to compute trailing returns.",
+      "tooltipLabel": "Return",
+      "horizon": {
+        "1m": "1M",
+        "1q": "1Q",
+        "6m": "6M",
+        "1y": "1Y",
+        "3y": "3Y",
+        "5y": "5Y"
+      }
+    },
+    "dividendCalendar": {
+      "title": "Dividend Calendar",
+      "viewList": "List",
+      "viewCalendar": "Calendar",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "monthTitle": "{month}/{year}",
+      "legendExDate": "Ex-Dividend Date",
+      "legendLastBuyDate": "Last Buy Date",
+      "legendPaymentDate": "Payment Date",
+      "cashDividendLabel": "Distribution",
+      "cashDividend": "${amount}",
+      "noPaymentDate": "Not yet announced",
+      "empty": "No dividend events this month.",
+      "unavailable": "No dividend calendar data available for this ETF.",
+      "expandTo": "Show all {count}",
+      "collapse": "Collapse"
+    },
+    "activeReport": {
+      "title": "Daily Operations Report",
+      "holdingsTitle": "Holding Changes",
+      "asOfDate": "Report as of {date}",
+      "empty": "No daily operations report yet — this ETF may not be actively managed, or has no holding-change data yet.",
+      "noChanges": "No holding changes today.",
+      "fundSize": "Fund Size",
+      "estimatedPremiumDiscount": "Est. Premium/Discount",
+      "countUnit": "",
+      "column": {
+        "stock": "Holding",
+        "status": "Status",
+        "sharesDelta": "Shares Δ",
+        "currentWeight": "Weight",
+        "weightDelta": "Weight Δ%"
+      }
+    },
+    "holdings": {
+      "title": "Holdings",
+      "passiveUnavailable": "No constituent-holdings data is available for this ETF — passive ETFs have no per-constituent weight data source today; only active-management ETFs show this.",
+      "activeOnlyCaveat": "Per-constituent weights are only available for active-management ETFs (derived from the Daily Operations Report) — no source exists yet for passive ETFs.",
+      "asOfDate": "Weights as of {date}",
+      "others": "Others",
+      "subTabLabel": "Holdings view switcher",
+      "subTab": {
+        "holdings": "Holdings",
+        "industry": "Industry Breakdown"
+      },
+      "dataSheetTitle": "Holdings Detail",
+      "expandTo": "Show all {count} rows",
+      "collapse": "Collapse",
+      "column": {
+        "rank": "Rank",
+        "stock": "Holding",
+        "industry": "Industry",
+        "weight": "Weight"
+      }
+    },
+    "premiumDiscount": {
+      "title": "Premium/Discount to NAV",
+      "priceNavTitle": "Price / NAV",
+      "dataSheetTitle": "Data Sheet",
+      "unavailable": "No premium/discount history available.",
+      "aum": "AUM {value}",
+      "chartSeriesLabel": "Premium/Discount (%)",
+      "priceSeriesLabel": "Price",
+      "navSeriesLabel": "Estimated NAV",
+      "column": {
+        "date": "Date",
+        "price": "Price",
+        "nav": "NAV",
+        "premiumDiscount": "Premium/Discount (%)"
+      }
     }
   }
 }
