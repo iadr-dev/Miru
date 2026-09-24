@@ -172,6 +172,7 @@ US:
   market_status: [yfinance]
   fund_holdings: [yfinance]
   etf_trailing_returns: [yfinance]
+  sec_filings: [yfinance] # US-only; SEC EDGAR has no equivalent for any other market
 
 GB:
   uk_stock_info: [finmind]

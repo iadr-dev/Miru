@@ -90,6 +90,30 @@ def _analyst_consensus_extended(frames: dict[str, Any]) -> dict[str, object]:
     if isinstance(growth_est, pd.DataFrame) and "LTG" in growth_est.index:
         growth_row = cast(_Series, growth_est.loc["LTG"])
         extended["long_term_growth_estimate"] = _as_float(_get(growth_row, "stockTrend"))
+    if isinstance(growth_est, pd.DataFrame):
+        if "0y" in growth_est.index:
+            current_year_row = cast(_Series, growth_est.loc["0y"])
+            extended["current_year_growth_estimate"] = _as_float(
+                _get(current_year_row, "stockTrend")
+            )
+        if "+1y" in growth_est.index:
+            next_year_row = cast(_Series, growth_est.loc["+1y"])
+            extended["next_year_growth_estimate"] = _as_float(_get(next_year_row, "stockTrend"))
+
+    eps_trend = frames.get("eps_trend")
+    if isinstance(eps_trend, pd.DataFrame) and "0y" in eps_trend.index:
+        trend_row = cast(_Series, eps_trend.loc["0y"])
+        extended["eps_trend_current"] = _as_float(_get(trend_row, "current"))
+        extended["eps_trend_7_days_ago"] = _as_float(_get(trend_row, "7daysAgo"))
+        extended["eps_trend_30_days_ago"] = _as_float(_get(trend_row, "30daysAgo"))
+        extended["eps_trend_60_days_ago"] = _as_float(_get(trend_row, "60daysAgo"))
+        extended["eps_trend_90_days_ago"] = _as_float(_get(trend_row, "90daysAgo"))
+
+    eps_revisions = frames.get("eps_revisions")
+    if isinstance(eps_revisions, pd.DataFrame) and "0y" in eps_revisions.index:
+        revisions_row = cast(_Series, eps_revisions.loc["0y"])
+        extended["eps_revisions_up_last_30_days"] = _as_int(_get(revisions_row, "upLast30days"))
+        extended["eps_revisions_down_last_30_days"] = _as_int(_get(revisions_row, "downLast30days"))
     return extended
 
 
@@ -125,6 +149,8 @@ def _sector_class(sym: Symbol, info: dict[str, Any]) -> SourceResult:
         "market": sym.market.value,
         "sector": sector,
         "industry": industry,
+        "sector_key": _get(info, "sectorKey"),
+        "industry_key": _get(info, "industryKey"),
     }
     return _result(
         payload={"classification": classification},

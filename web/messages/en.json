@@ -1642,6 +1642,12 @@
         "balance_sheet": "Balance Sheet",
         "cash_flow": "Cash Flow"
       },
+      "periodType": {
+        "label": "Period Type",
+        "annual": "Annual",
+        "quarterly": "Quarterly",
+        "ttm": "TTM"
+      },
       "statementTable": {
         "item": "Item"
       },
@@ -1672,13 +1678,16 @@
       "estimatesTitle": "Estimates",
       "forwardEpsLabel": "Forward EPS",
       "forwardRevenueLabel": "Forward Revenue",
+      "currentYearGrowthLabel": "This Year Growth",
+      "nextYearGrowthLabel": "Next Year Growth",
       "longTermGrowthLabel": "Long-Term Growth",
       "upgradeDowngradeTitle": "Latest Rating Change",
       "upgradeDowngradeAction": {
         "up": "Upgrade",
         "down": "Downgrade",
         "main": "Maintain",
-        "init": "Initiated"
+        "init": "Initiated",
+        "reit": "Reiterated"
       },
       "eventsTitle": "Stock Events",
       "eventsEmpty": "No recent events.",
@@ -2011,6 +2020,36 @@
         "nav": "NAV",
         "premiumDiscount": "Premium/Discount (%)"
       }
+    }
+  },
+  "usStock": {
+    "tabs": {
+      "label": "US stock tabs",
+      "overview": "Overview",
+      "financials": "Financials",
+      "research": "Research",
+      "technical": "Technical",
+      "sectorPeers": "Sector & Peers",
+      "newsFilings": "News & Filings",
+      "ai": "AI"
+    },
+    "sectorPeers": {
+      "title": "Sector & Peers",
+      "unavailable": "No sector/industry classification available for this symbol.",
+      "sectorTitle": "Sector Peers ({sector})",
+      "sectorTitleFallback": "Sector Peers",
+      "industryTitle": "Industry Peers ({industry})",
+      "industryTitleFallback": "Industry Peers",
+      "noSectorPeers": "No sector peers available.",
+      "noIndustryPeers": "No industry peers available.",
+      "self": "This symbol"
+    },
+    "newsFilings": {
+      "label": "News & filings tabs",
+      "news": "News",
+      "filings": "SEC Filings",
+      "newsEmpty": "No related news.",
+      "filingsEmpty": "No SEC filings."
     }
   }
 }

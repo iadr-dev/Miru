@@ -45,6 +45,11 @@ def _fetch_ticker_frames_blocking(yahoo_symbol: str) -> dict[str, Any]:
         "financials": ticker.financials,
         "balance_sheet": ticker.balance_sheet,
         "cash_flow": ticker.cash_flow,
+        "quarterly_financials": ticker.quarterly_financials,
+        "quarterly_balance_sheet": ticker.quarterly_balance_sheet,
+        "quarterly_cash_flow": ticker.quarterly_cashflow,
+        "ttm_financials": ticker.ttm_income_stmt,
+        "ttm_cash_flow": ticker.ttm_cashflow,
         "dividends": ticker.dividends,
         "splits": ticker.splits,
         "recommendations_summary": ticker.recommendations_summary,
@@ -52,12 +57,15 @@ def _fetch_ticker_frames_blocking(yahoo_symbol: str) -> dict[str, Any]:
         "growth_estimates": ticker.growth_estimates,
         "earnings_estimate": ticker.earnings_estimate,
         "revenue_estimate": ticker.revenue_estimate,
+        "eps_trend": ticker.eps_trend,
+        "eps_revisions": ticker.eps_revisions,
         "options": ticker.options,
         "option_chain": ticker.option_chain,  # callable — invoked per-expiry by the handler
         "institutional_holders": ticker.institutional_holders,
         "mutualfund_holders": ticker.mutualfund_holders,
         "insider_transactions": ticker.insider_transactions,
         "funds_data": _safe_funds_data(ticker),
+        "sec_filings": _safe_sec_filings(ticker),
     }
 
 
@@ -68,6 +76,16 @@ def _safe_funds_data(ticker: Any) -> Any:  # dynamically-shaped 3rd-party edge
     try:
         return ticker.funds_data
     except Exception:  # a non-fund symbol raising here is expected, not an error
+        return None
+
+
+def _safe_sec_filings(ticker: Any) -> Any:  # dynamically-shaped 3rd-party edge
+    """`Ticker.get_sec_filings()` raises for a symbol with no EDGAR filing history (e.g. a
+    non-US-listed instrument) rather than returning an empty list — normalize that expected case
+    to `None` here, matching `_safe_funds_data`'s own convention."""
+    try:
+        return ticker.get_sec_filings()
+    except Exception:  # a symbol with no SEC filings raising here is expected, not an error
         return None
 
 

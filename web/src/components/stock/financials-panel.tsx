@@ -24,9 +24,13 @@ import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 import {
   FINANCIAL_STATEMENT_TYPES,
+  type FinancialStatementLine,
   type FinancialStatementType,
   type MonthRevenueTrendPoint,
 } from "@/types/stock-detail";
+
+type PeriodType = FinancialStatementLine["period_type"];
+const PERIOD_TYPES: readonly PeriodType[] = ["annual", "quarterly", "ttm"];
 
 // The extended `--chart-1..10` categorical set (tokens.css) — 10 slots so this chart's 10
 // tracked line items never repeat a color, indexed directly (not hashed) so the Nth item always
@@ -106,9 +110,13 @@ export function FinancialsPanel({
   readonly symbol: string;
   readonly market: Market;
 }): ReactNode {
+  // 月營收 (monthly revenue) is a TW-specific disclosure concept — `get_month_revenue` has no
+  // US/non-TW equivalent dataset, so this card is dropped rather than rendered empty for those
+  // markets.
+  const isTw = market === "TW";
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <MonthRevenueCard symbol={symbol} market={market} />
+      {isTw ? <MonthRevenueCard symbol={symbol} market={market} /> : null}
       <DividendPolicyCard symbol={symbol} market={market} />
       <FinancialStatementCard symbol={symbol} market={market} />
     </div>
@@ -385,6 +393,7 @@ function FinancialStatementCard({
   const t = useTranslations("stock.financials");
   const locale = useLocale();
   const [statementType, setStatementType] = useState<FinancialStatementType>("income_statement");
+  const [periodType, setPeriodType] = useState<PeriodType>("quarterly");
   const [expanded, setExpanded] = useState(false);
   // Tracks which items have been clicked away from their *default* visibility
   // (`STATEMENT_DEFAULT_VISIBLE_ITEMS`) — never the visibility set directly, since `topItems`
@@ -407,7 +416,12 @@ function FinancialStatementCard({
   // same-named rows collide in `valueByItemAndPeriod` below (last-write-wins), silently
   // swapping some periods' plotted value for that item between the real figure and a 0-100
   // percentage.
-  const lines = (query.data?.lines ?? []).filter((l) => !l.item.endsWith("_per"));
+  const allLines = (query.data?.lines ?? []).filter((l) => !l.item.endsWith("_per"));
+  // Every FinMind (TW) row is implicitly `period_type="quarterly"` (its only frequency) — the
+  // toggle only has real effect for yfinance-sourced (non-TW) rows, which genuinely carry
+  // annual/quarterly/ttm as distinct frames (see `FinancialStatementLine`'s own docstring).
+  const periodTypes = [...new Set(allLines.map((l) => l.period_type))];
+  const lines = allLines.filter((l) => l.period_type === periodType);
   const periods = [...new Set(lines.map((l) => l.period_end))].sort((a, b) => a.localeCompare(b));
   const latestPeriod = periods.at(-1);
   const topItems = [...lines]
@@ -549,6 +563,32 @@ function FinancialStatementCard({
           </button>
         ))}
       </div>
+
+      {periodTypes.length > 1 ? (
+        <div
+          role="tablist"
+          aria-label={t("periodType.label")}
+          className="mt-2 flex flex-wrap gap-1.5"
+        >
+          {PERIOD_TYPES.filter((pt) => periodTypes.includes(pt)).map((pt) => (
+            <button
+              key={pt}
+              type="button"
+              role="tab"
+              aria-selected={periodType === pt}
+              onClick={() => setPeriodType(pt)}
+              className={cn(
+                "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11.5px] transition-colors",
+                periodType === pt
+                  ? "bg-[var(--surface-3)] font-semibold text-[var(--text)]"
+                  : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
+              )}
+            >
+              {t(`periodType.${pt}`)}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="mt-3">{statementBody}</div>
 

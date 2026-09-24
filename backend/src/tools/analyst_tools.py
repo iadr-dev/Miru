@@ -34,6 +34,8 @@ from schemas.capabilities import (
     IpoCalendarRow,
     MarketStatusInfo,
     OptionContractRow,
+    SecFiling,
+    SectorClassification,
     SectorOverviewCompanyRow,
     SymbolLookupResultRow,
     SymbolSearchResultRow,
@@ -272,6 +274,62 @@ class GetEsgScoreTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             esg=esg,
+        )
+
+
+class UsSymbolInput(SymbolInput):
+    """`SymbolInput` restricted to `Market.US` — for capabilities with no equivalent in any other
+    market this codebase serves (e.g. SEC EDGAR filings), rather than the broader
+    `NonTwSymbolInput` (US/GB/JP/EU)."""
+
+    @field_validator("market")
+    @classmethod
+    def _check_market(cls, value: Market) -> Market:
+        if value is not Market.US:
+            raise ValueError(f"{value.value} is not served — this capability is US-only")
+        return value
+
+
+class GetSecFilingsOutput(_RowsOutput):
+    filings: tuple[SecFiling, ...] = Field(default_factory=tuple)
+
+
+class GetSecFilingsTool(BaseTool):
+    """`get_sec_filings` — wraps `Capability.SEC_FILINGS` (yfinance's `Ticker.get_sec_filings()`,
+    itself a read of SEC EDGAR). US-only: no equivalent regulatory-filing feed exists for any
+    other market this codebase serves — TW's own filing-adjacent disclosures are
+    `Capability.CORPORATE_ACTIONS`/`INSIDER_TRANSFER_DECLARATION` (MOPS), not this. No filings
+    (a symbol with no EDGAR history, or a genuine fetch failure) is a graceful empty tuple, never
+    fabricated."""
+
+    name = "get_sec_filings"
+    description = (
+        "Get the most recent SEC EDGAR filings (10-K/10-Q/8-K/etc.) for one US-listed symbol. "
+        "Returns an empty list (not an error) when no filings are found."
+    )
+    input_model: type[BaseModel] = UsSymbolInput
+    output_model: type[BaseModel] = GetSecFilingsOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "sec_filings"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(UsSymbolInput, args)
+        result, filings = await fetch_rows(
+            self._router,
+            Capability.SEC_FILINGS,
+            typed.to_symbol(),
+            tls_policy=ctx.tls_policy,
+            model=SecFiling,
+            key="filings",
+        )
+        return GetSecFilingsOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            filings=filings,
         )
 
 
@@ -579,6 +637,102 @@ class GetIndustryOverviewTool(BaseTool):
         )
 
 
+class GetStockPeersOutput(BaseModel):
+    """Composite output over two capability fetches (`SECTOR_CLASS` resolve, then
+    `SECTOR_OVERVIEW`/`INDUSTRY_OVERVIEW`) — `source_id`/`currentness_caveat`/`health_status`
+    describe the peer-list fetch specifically (the caveat that actually matters to a reader of
+    the peer rows); `sector`/`industry` display names are carried through for the panel's own
+    header, without requiring a second round trip to `get_sector_class`."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: str
+    currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
+    sector: str | None = None
+    industry: str | None = None
+    sector_peers: tuple[SectorOverviewCompanyRow, ...] = Field(default_factory=tuple)
+    industry_peers: tuple[IndustryOverviewCompanyRow, ...] = Field(default_factory=tuple)
+    unavailable_reason: str | None = None
+
+
+class GetStockPeersTool(BaseTool):
+    """`get_stock_peers` — resolves one symbol's sector/industry slug key (`Capability.
+    SECTOR_CLASS`, `sector_key`/`industry_key`) then fetches its peer companies (`Capability.
+    SECTOR_OVERVIEW`/`INDUSTRY_OVERVIEW`, `yfinance.Sector`/`Industry`) in one call — sparing the
+    frontend a symbol -> sector_key resolve round trip before it can render a peer-overview
+    panel. Genuinely unavailable (never fabricated) when the symbol carries no sector/industry
+    classification at all (sparse for some non-US/small-cap names)."""
+
+    name = "get_stock_peers"
+    description = (
+        "Get one symbol's sector/industry peer companies — resolves the symbol's own sector/"
+        "industry classification, then returns the top companies in each. Public data, any "
+        "market yfinance classifies."
+    )
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetStockPeersOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "stock_peers"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(SymbolInput, args)
+        sym = typed.to_symbol()
+        class_result = await self._router.fetch(
+            Capability.SECTOR_CLASS, sym, tls_policy=ctx.tls_policy
+        )
+        raw_classification = class_result.payload.get("classification")
+        classification = (
+            SectorClassification.model_validate(cast(_UntypedDict, raw_classification))
+            if isinstance(raw_classification, dict)
+            else None
+        )
+        if classification is None or (
+            classification.sector_key is None and classification.industry_key is None
+        ):
+            return GetStockPeersOutput(
+                source_id=class_result.source_id,
+                currentness_caveat=class_result.currentness_caveat,
+                health_status=class_result.health.status,
+                unavailable_reason="no sector/industry classification for this symbol",
+            )
+        sector_peers: tuple[SectorOverviewCompanyRow, ...] = ()
+        industry_peers: tuple[IndustryOverviewCompanyRow, ...] = ()
+        peers_result = class_result
+        if classification.sector_key:
+            peers_result, sector_peers = await fetch_rows(
+                self._router,
+                Capability.SECTOR_OVERVIEW,
+                sym,
+                tls_policy=ctx.tls_policy,
+                model=SectorOverviewCompanyRow,
+                key="rows",
+                params={"sector_key": classification.sector_key},
+            )
+        if classification.industry_key:
+            peers_result, industry_peers = await fetch_rows(
+                self._router,
+                Capability.INDUSTRY_OVERVIEW,
+                sym,
+                tls_policy=ctx.tls_policy,
+                model=IndustryOverviewCompanyRow,
+                key="rows",
+                params={"industry_key": classification.industry_key},
+            )
+        return GetStockPeersOutput(
+            source_id=peers_result.source_id,
+            currentness_caveat=peers_result.currentness_caveat,
+            health_status=peers_result.health.status,
+            sector=classification.sector,
+            industry=classification.industry,
+            sector_peers=sector_peers,
+            industry_peers=industry_peers,
+        )
+
+
 class GetMarketStatusOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -665,7 +819,9 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetCalendarEventsFeedTool(router), False),
         (GetSectorOverviewTool(router), False),
         (GetIndustryOverviewTool(router), False),
+        (GetStockPeersTool(router), False),
         (GetMarketStatusTool(router), False),
+        (GetSecFilingsTool(router), False),
         (RunEquityScreenerUsTool(), False),
     ]
 
@@ -691,9 +847,13 @@ __all__ = [
     "GetOptionsChainInput",
     "GetOptionsChainOutput",
     "GetOptionsChainTool",
+    "GetSecFilingsOutput",
+    "GetSecFilingsTool",
     "GetSectorOverviewInput",
     "GetSectorOverviewOutput",
     "GetSectorOverviewTool",
+    "GetStockPeersOutput",
+    "GetStockPeersTool",
     "GetSymbolLookupOutput",
     "GetSymbolLookupTool",
     "GetSymbolSearchOutput",
@@ -703,5 +863,6 @@ __all__ = [
     "RunEquityScreenerUsOutput",
     "RunEquityScreenerUsTool",
     "SymbolSearchInput",
+    "UsSymbolInput",
     "build_registration_table",
 ]

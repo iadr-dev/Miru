@@ -1642,6 +1642,12 @@
         "balance_sheet": "資產負債表",
         "cash_flow": "現金流量表"
       },
+      "periodType": {
+        "label": "期間類型",
+        "annual": "年度",
+        "quarterly": "季度",
+        "ttm": "近12個月"
+      },
       "statementTable": {
         "item": "項目"
       },
@@ -1672,13 +1678,16 @@
       "estimatesTitle": "預估值",
       "forwardEpsLabel": "預估EPS",
       "forwardRevenueLabel": "預估營收",
+      "currentYearGrowthLabel": "今年成長率",
+      "nextYearGrowthLabel": "明年成長率",
       "longTermGrowthLabel": "長期成長率",
       "upgradeDowngradeTitle": "最新評等調整",
       "upgradeDowngradeAction": {
         "up": "調升",
         "down": "調降",
         "main": "維持",
-        "init": "新增覆蓋"
+        "init": "新增覆蓋",
+        "reit": "重申"
       },
       "eventsTitle": "個股事件",
       "eventsEmpty": "近期無相關事件。",
@@ -2011,6 +2020,36 @@
         "nav": "淨值",
         "premiumDiscount": "折溢價(%)"
       }
+    }
+  },
+  "usStock": {
+    "tabs": {
+      "label": "美股個股頁籤",
+      "overview": "總覽",
+      "financials": "財務",
+      "research": "研究",
+      "technical": "技術",
+      "sectorPeers": "產業同業",
+      "newsFilings": "新聞公告",
+      "ai": "AI"
+    },
+    "sectorPeers": {
+      "title": "產業同業",
+      "unavailable": "尚無此標的的產業分類資料。",
+      "sectorTitle": "同業（{sector}）",
+      "sectorTitleFallback": "同業",
+      "industryTitle": "同業（{industry}）",
+      "industryTitleFallback": "同業",
+      "noSectorPeers": "尚無同業資料。",
+      "noIndustryPeers": "尚無同業資料。",
+      "self": "本標的"
+    },
+    "newsFilings": {
+      "label": "新聞公告頁籤",
+      "news": "新聞",
+      "filings": "SEC文件",
+      "newsEmpty": "尚無相關新聞。",
+      "filingsEmpty": "尚無SEC文件。"
     }
   }
 }

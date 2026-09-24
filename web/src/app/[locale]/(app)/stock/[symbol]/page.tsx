@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { EtfTabBar } from "@/components/etf/etf-tab-bar";
 import { AssetHeader } from "@/components/stock/asset-header";
 import { StockTabBar } from "@/components/stock/stock-tab-bar";
+import { UsStockTabBar } from "@/components/us-stock/us-stock-tab-bar";
 import { classifySymbolType, isEtfSymbolType } from "@/lib/symbol-type";
 import type { Market } from "@/types/settings";
 
@@ -31,7 +32,9 @@ export default async function StockDetailPage({
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <AssetHeader symbol={symbol} market={market} symbolType={symbolType} />
-      {isEtfSymbolType(symbolType) ? (
+      {market === "US" ? (
+        <UsStockTabBar symbol={symbol} market={market} />
+      ) : isEtfSymbolType(symbolType) ? (
         <EtfTabBar symbol={symbol} market={market} symbolType={symbolType} />
       ) : (
         <StockTabBar symbol={symbol} market={market} />

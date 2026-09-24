@@ -87,7 +87,11 @@ export function BasicInfoPanel({
   );
 }
 
-function ProfileCard({
+/** Exported for reuse by `us-stock/overview-panel.tsx` — `get_company_profile` degrades
+ * gracefully for markets with no MOPS equivalent (market_value/valuation_ratios/MOPS identity
+ * fields go `None` + `missing_fields`, per that tool's own docstring), so this card already
+ * renders sensibly for a US symbol, not just TW. */
+export function ProfileCard({
   symbol,
   market,
 }: {
@@ -625,7 +629,9 @@ function AnnouncementsCalendarView({
   );
 }
 
-function EsgCard({
+/** Exported for reuse by `us-stock/overview-panel.tsx` — `Capability.ESG` is real for every
+ * market (yfinance), not TW-only; coverage-gated (hidden when null), never an empty scaffold. */
+export function EsgCard({
   symbol,
   market,
 }: {
