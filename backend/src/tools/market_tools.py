@@ -4507,6 +4507,26 @@ def _etf_ttm_distribution_by_symbol(
     return {symbol: (sum(amounts), len(amounts)) for symbol, amounts in by_symbol.items()}
 
 
+_ACTIVE_ETF_LOOKBACK_DAYS = 10  # same window scoring_batch.py's own active-ETF gate reads
+
+
+def _active_etf_symbols_in_window(store: ParquetStore, market: str, as_of: date_) -> set[str]:
+    """Which ETF symbols had at least one constituent-holdings snapshot in the trailing window —
+    the same ground truth `scoring_batch.py::_active_etf_symbols` uses for its own management-
+    activity factor (`ActiveEtfHoldingRow` is an active-ETF-only FinMind capability; a passive/
+    leveraged/inverse ETF is never present here). Never derived from a fund name's own "主動"
+    marketing prefix — that string is issuer copy, not verified fund-structure data."""
+    known_dates = [
+        d
+        for d in store.list_partition_dates(ACTIVE_ETF_HOLDING_JOB.dataset, market)
+        if as_of - timedelta(days=_ACTIVE_ETF_LOOKBACK_DAYS) <= d <= as_of
+    ]
+    if not known_dates:
+        return set()
+    raw_rows = store.read_range(ACTIVE_ETF_HOLDING_JOB.dataset, market, known_dates)
+    return {row.symbol for row in _rows_from_store(ActiveEtfHoldingRow, raw_rows)}
+
+
 class EtfListRow(BaseModel):
     """One row of the whole-market ETF list — see `GetEtfListTool`'s own docstring for exactly
     which already-ingested dataset backs each field. A field is `None` when its backing dataset
@@ -4528,6 +4548,12 @@ class EtfListRow(BaseModel):
     aum: float | None = None
     expense_ratio_pct_approx: float | None = None
     symbol_type: str  # SymbolType's value: "etf" | "etf_leveraged" | "etf_inverse"
+    # True when this symbol had at least one constituent-holdings snapshot in
+    # `ACTIVE_ETF_HOLDING_JOB`'s recent lookback window — the same "is this an active ETF"
+    # ground truth `scoring_batch.py::_active_etf_symbols` already uses (an active-ETF-only
+    # FinMind capability; a passive/leveraged/inverse ETF never has a row here). Never derived
+    # from the fund name's own "主動"-prefix convention, which is a marketing string, not data.
+    is_active_etf: bool = False
 
 
 class GetEtfListInput(BaseModel):
@@ -4667,6 +4693,7 @@ class _EtfListJoinInputs:
     aum: dict[str, float]
     expense_ratios: dict[str, float]
     distributions: dict[str, tuple[float, int]]
+    active_etf_symbols: set[str]
 
 
 @dataclass(frozen=True)
@@ -4691,6 +4718,7 @@ def _gather_etf_list_inputs(
         aum=_etf_aum_by_symbol(store, market),
         expense_ratios=_etf_expense_ratios_by_symbol(store, market),
         distributions=_etf_ttm_distribution_by_symbol(store, market, window.trade_date),
+        active_etf_symbols=_active_etf_symbols_in_window(store, market, window.trade_date),
     )
 
 
@@ -4745,6 +4773,7 @@ def _etf_list_row(
         aum=inputs.aum.get(symbol),
         expense_ratio_pct_approx=inputs.expense_ratios.get(symbol),
         symbol_type=classify_symbol_type(symbol).value,
+        is_active_etf=symbol in inputs.active_etf_symbols,
     )
 
 
@@ -4752,10 +4781,14 @@ class GetEtfListTool(BaseTool):
     """`get_etf_list` — the whole-market TW ETF list (~300 symbols): price/change/volume/
     1-week-return from `PRICE_EOD_JOB`, name from `EtfNavRow.fund_name` (`etf_nav`), AUM from
     `EtfAumRow.aum` (`etf_aum`, Yahoo's own `totalAssets`), expense-ratio floor from
-    `EtfExpenseInfo` (`etf_expense_ratio`), and trailing-12-month distribution yield/frequency
-    derived from `DividendEvent` rows (`dividends`) — four already-ingested datasets joined by
-    symbol, never a per-symbol live fan-out (same whole-market-aggregate posture
-    `GetSectorHeatmapTool`'s own docstring documents).
+    `EtfExpenseInfo` (`etf_expense_ratio`), trailing-12-month distribution yield/frequency
+    derived from `DividendEvent` rows (`dividends`), and `is_active_etf` from a recent
+    `ACTIVE_ETF_HOLDING_JOB` snapshot (see `_active_etf_symbols_in_window`'s own docstring) —
+    five already-ingested datasets joined by symbol, never a per-symbol live fan-out (same
+    whole-market-aggregate posture `GetSectorHeatmapTool`'s own docstring documents). 原型/
+    槓桿型/反向型 is `symbol_type` (already present, from `classify_symbol_type`'s code-shape
+    rule) — `is_active_etf` is the orthogonal 主動式/被動式 axis, since a leveraged/inverse ETF
+    is passive by construction and a plain ("原型") ETF can be either.
 
     The ETF universe itself is derived purely from `PRICE_EOD_JOB`'s own symbol codes via
     `analytics.symbol_universe.classify_symbol_type` (00-prefixed, ≤6 chars) — no separate

@@ -24,6 +24,11 @@ const SYMBOL_TYPE_BADGE: Record<string, { labelKey: string; color: string }> = {
   etf_inverse: { labelKey: "inverse", color: "var(--chart-2)" },
 };
 
+// 主動式/被動式 is an orthogonal axis from 原型/槓桿型/反向型 above (a leveraged/inverse ETF is
+// passive by construction; a plain "原型" ETF can be either) — its own categorical token
+// (--chart-3), never --up/--down, same reasoning as SYMBOL_TYPE_BADGE.
+const ACTIVE_BADGE_COLOR = "var(--chart-3)";
+
 /**
  * 主動式ETF-style sortable ETF list — every column's header is a real `<button>` (click to
  * sort, click again to flip direction), matching the reference app's own ▲▼-on-every-column
@@ -251,6 +256,14 @@ function EtfListRowItem({
       >
         {row.name}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
+        {row.is_active_etf ? (
+          <span
+            className="ml-1.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 font-medium text-[10px]"
+            style={{ color: ACTIVE_BADGE_COLOR }}
+          >
+            {t("active")}
+          </span>
+        ) : null}
         {badge ? (
           <span
             className="ml-1.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 font-medium text-[10px]"

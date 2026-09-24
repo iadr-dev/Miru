@@ -148,7 +148,71 @@ class TestEtfListRoute:
         assert row["aum"] == 2_000_000_000.0
         assert row["expense_ratio_pct_approx"] == pytest.approx(0.335)
         assert row["symbol_type"] == "etf"
+        assert row["is_active_etf"] is False  # no active_etf_holding partition seeded
         assert "locked" not in body
+
+    def test_is_active_etf_true_when_holding_snapshot_exists_in_window(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """主動式/被動式 classification: a symbol with a real `TaiwanStockActiveETFHolding`
+        snapshot within the trailing lookback window is `is_active_etf=True`; one with no such
+        snapshot (0050, a passive ETF) stays `False` — never derived from the fund name's own
+        "主動" marketing prefix."""
+        store = ParquetStore(root=tmp_path)
+        prior_day = date_(2025, 5, 6)
+        trading_day = date_(2025, 5, 7)
+        store.write_partition(
+            "TaiwanStockPrice",
+            "TW",
+            prior_day,
+            [
+                {"symbol": "0050", "trade_date": "2025-05-06", "close": 100.0},
+                {"symbol": "00981A", "trade_date": "2025-05-06", "close": 20.0},
+            ],
+        )
+        store.write_partition(
+            "TaiwanStockPrice",
+            "TW",
+            trading_day,
+            [
+                {"symbol": "0050", "trade_date": "2025-05-07", "close": 110.0},
+                {"symbol": "00981A", "trade_date": "2025-05-07", "close": 21.0},
+            ],
+        )
+        store.write_partition(
+            "TaiwanStockActiveETFHolding",
+            "TW",
+            trading_day,
+            [
+                {
+                    "symbol": "00981A",
+                    "market": "TW",
+                    "trade_date": "2025-05-07",
+                    "component_stock_id": "2330",
+                    "component_stock_name": "台積電",
+                    "asset_type": "stock",
+                    "shares": 1000,
+                    "weight": 10.0,
+                    "market_value": 1_000_000.0,
+                    "currency": "TWD",
+                }
+            ],
+        )
+        client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        resp = client.get(
+            "/api/v1/market/etf-list",
+            params={"trade_date": trading_day.isoformat()},
+        )
+
+        assert resp.status_code == 200
+        by_symbol = {row["symbol"]: row for row in resp.json()["rows"]}
+        assert by_symbol["00981A"]["is_active_etf"] is True
+        assert by_symbol["0050"]["is_active_etf"] is False
 
     def test_missing_dataset_fields_are_none_not_fabricated(
         self,

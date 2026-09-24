@@ -360,6 +360,7 @@
         "columnExpense": "費用率",
         "leveraged": "槓桿",
         "inverse": "反向",
+        "active": "主動式",
         "noChangeData": "無漲跌資料",
         "empty": "此市場查無 ETF 資料。",
         "unavailable": "今日查無 ETF 資料。",

@@ -360,6 +360,7 @@
         "columnExpense": "Expense Ratio",
         "leveraged": "Leveraged",
         "inverse": "Inverse",
+        "active": "Active",
         "noChangeData": "no change data",
         "empty": "No ETFs found for this market.",
         "unavailable": "No ETF data for today.",
