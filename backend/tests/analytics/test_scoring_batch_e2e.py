@@ -32,6 +32,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from analytics.models import StockScoreBreakdown
 from analytics.scoring_batch import (
+    ACTIVE_ETF_HOLDING_CHANGE_DATASET,
+    ACTIVE_ETF_HOLDING_DATASET,
+    ETF_EXPENSE_RATIO_DATASET,
+    ETF_NAV_DATASET,
     INSTITUTIONAL_FLOW_DATASET,
     PRICE_EOD_DATASET,
     job_scoring_batch,
@@ -137,6 +141,118 @@ def _seed_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None:
             + _flow_rows_for("WEAK", "Foreign_Investor", [-300.0], [day])
         )
         store.write_partition(INSTITUTIONAL_FLOW_DATASET, "TW", day, rows)
+
+
+def _seed_active_etf(store: ParquetStore, calendar: TradingDayCalendar) -> None:
+    """Two active-management ETFs ("00981A"/"00982A"-shaped symbols) with real `etf_nav`/
+    `etf_expense_ratio`/`active_etf_holding`/`active_etf_holding_change` rows written through
+    the REAL `ParquetStore` — a regression guard for the bug where `scoring_batch.py`'s own
+    `_latest_etf_nav_by_symbol`/`_latest_etf_expense_ratio_by_symbol`/`_active_etf_symbols`/
+    `_holdings_turnover_by_symbol` validated raw store reads directly against their
+    `extra="forbid"` capability models: `ParquetStore.read_range`'s Hive-partitioned glob
+    resurfaces the `dataset`/`date`/`v` bookkeeping columns, which `extra="forbid"` rejects,
+    silently emptying every one of those four dicts (caught only by a bare `except ValueError:
+    continue`) — so premium_discount/cost/management_activity were unavailable for EVERY ETF
+    regardless of real data being present.
+
+    Two symbols, not one: `_cost_factor`/`_management_activity_factor` are cross-sectional
+    percentiles (`winsorized_percentile` returns `None` below 2 points), so a single-ETF universe
+    would still show those two factors unavailable for a reason unrelated to the bug being
+    guarded against — see each factor's own "數量不足2檔" unavailable-reason string.
+
+    Each symbol needs its own 260-day price window (the ETF factor branch still needs
+    momentum/flow like any other symbol) — reuses `_flat_then_ramp_closes` for that, tagged with
+    an "00XXXA"-shaped symbol so `classify_symbol_type` routes both to the ETF branch."""
+    window = calendar.business_days_between(
+        calendar.shift_business_days(_RUN_DATE, -259), _RUN_DATE
+    )
+    symbols = ("00981A", "00982A")
+    closes_by_symbol = {
+        symbol: _flat_then_ramp_closes(window, final_return=final_return)
+        for symbol, final_return in zip(symbols, (0.05, 0.08), strict=True)
+    }
+    for i, day in enumerate(window):
+        rows = [
+            row
+            for symbol in symbols
+            for row in _price_rows_for(symbol, [closes_by_symbol[symbol][i]], [day])
+        ]
+        store.write_partition(PRICE_EOD_DATASET, "TW", day, rows)
+
+    nav_day = window[-1]
+    store.write_partition(
+        ETF_NAV_DATASET,
+        "TW",
+        nav_day,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "as_of": nav_day.isoformat(),
+                "fund_name": f"測試主動式ETF {symbol}",
+                "units_outstanding": 1_000_000,
+                "units_outstanding_change": 0,
+                "close_price": 30.0,
+                "estimated_nav": 29.9,
+                "premium_discount_pct": premium_discount_pct,
+                "prior_day_nav": 29.8,
+            }
+            for symbol, premium_discount_pct in zip(symbols, (0.33, -0.12), strict=True)
+        ],
+    )
+    store.write_partition(
+        ETF_EXPENSE_RATIO_DATASET,
+        "TW",
+        nav_day,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "as_of": nav_day.isoformat(),
+                "management_fee_pct": 0.3,
+                "custody_fee_pct": 0.035,
+                "total_expense_ratio_pct_approx": total_expense_ratio_pct_approx,
+            }
+            for symbol, total_expense_ratio_pct_approx in zip(symbols, (0.335, 0.5), strict=True)
+        ],
+    )
+    store.write_partition(
+        ACTIVE_ETF_HOLDING_DATASET,
+        "TW",
+        nav_day,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "trade_date": nav_day.isoformat(),
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "asset_type": "stock",
+                "shares": 1000,
+                "weight": 10.0,
+                "market_value": 1_000_000.0,
+                "currency": "TWD",
+            }
+            for symbol in symbols
+        ],
+    )
+    store.write_partition(
+        ACTIVE_ETF_HOLDING_CHANGE_DATASET,
+        "TW",
+        nav_day,
+        [
+            {
+                "symbol": symbol,
+                "market": "TW",
+                "trade_date": nav_day.isoformat(),
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": buy,
+                "sell": 0,
+            }
+            for symbol, buy in zip(symbols, (500, 900), strict=True)
+        ],
+    )
 
 
 @pytest.fixture
@@ -269,6 +385,34 @@ async def test_leaderboard_tool_orders_by_real_composite(
     )
     top2_symbols = [row["symbol"] for row in top2.model_dump(mode="json")["results"]]
     assert top2_symbols == ["STRO", "MID"]
+
+
+async def test_etf_factors_resolve_from_real_store_reads(
+    tmp_path: Path, session_factory: async_sessionmaker
+) -> None:
+    """Regression for the bookkeeping-column bug (see `_seed_active_etf`'s own docstring):
+    `premium_discount`/`cost`/`management_activity` must actually resolve real percentiles, not
+    fall back to `unavailable_reason`, once real `etf_nav`/`etf_expense_ratio`/
+    `active_etf_holding`/`active_etf_holding_change` rows exist for the ETF in the read window."""
+    ctx = _ctx(tmp_path, session_factory)
+    _seed_universe(ctx.store, ctx.calendar)
+    _seed_active_etf(ctx.store, ctx.calendar)
+    await job_scoring_batch(_RUN_DATE, ctx)
+
+    tool = build_registration_table(session_factory)[0][0]
+    result = await dispatch_tool(
+        tool,
+        tool.input_model.model_validate({"id": "00981A", "market": "TW", "profile": "swing"}),
+        ToolContext(user_id=None, tier=Tier.FREE, tls_policy=TLSPolicy.STRICT),
+    )
+    data = result.model_dump(mode="json")
+    assert data["found"] is True
+    breakdown = data["result"]["breakdown"]
+    for factor_name in ("premium_discount", "cost", "management_activity"):
+        assert breakdown[factor_name]["unavailable_reason"] is None, (
+            f"{factor_name} unexpectedly unavailable: {breakdown[factor_name]}"
+        )
+        assert breakdown[factor_name]["percentile"] is not None
 
 
 async def test_no_trading_language_in_score_or_leaderboard_output(

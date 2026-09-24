@@ -386,6 +386,22 @@ def _split_universe_by_symbol_type(universe: Sequence[str]) -> tuple[list[str], 
     return stock_symbols, etf_symbols
 
 
+def _project(row: dict[str, object], fields: frozenset[str]) -> dict[str, object]:
+    """Keep only the model's own fields — `ParquetStore.read_range`'s Hive-partitioned glob read
+    resurfaces the partition-key bookkeeping columns (`dataset`/`market`/`date`/`v`) alongside
+    the written row data, which the frozen `extra="forbid"` capability models reject outright.
+    Mirrors `analytics/fundamentals.py::_project` (duplicated, not imported — that module is a
+    layer this one already depends on for other reasons, but the helper itself is trivial enough
+    that importing it across would only obscure which model's fields is meant here)."""
+    return {key: value for key, value in row.items() if key in fields}
+
+
+_ETF_NAV_FIELDS = frozenset(EtfNavRow.model_fields)
+_ETF_EXPENSE_FIELDS = frozenset(EtfExpenseInfo.model_fields)
+_ACTIVE_ETF_HOLDING_FIELDS = frozenset(ActiveEtfHoldingRow.model_fields)
+_ACTIVE_ETF_HOLDING_CHANGE_FIELDS = frozenset(ActiveEtfHoldingChangeRow.model_fields)
+
+
 def _latest_etf_nav_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, float]:
     """This symbol's most recent published premium/discount %, from whatever `etf_nav` rows
     fell in the read window — `None`-valued rows (TWSE published no estimate that day) are
@@ -393,7 +409,7 @@ def _latest_etf_nav_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, fl
     latest: dict[str, EtfNavRow] = {}
     for raw in rows:
         try:
-            row = EtfNavRow.model_validate(raw)
+            row = EtfNavRow.model_validate(_project(raw, _ETF_NAV_FIELDS))
         except ValueError:
             continue
         current = latest.get(row.symbol)
@@ -413,7 +429,7 @@ def _latest_etf_expense_ratio_by_symbol(rows: Sequence[dict[str, object]]) -> di
     latest: dict[str, EtfExpenseInfo] = {}
     for raw in rows:
         try:
-            row = EtfExpenseInfo.model_validate(raw)
+            row = EtfExpenseInfo.model_validate(_project(raw, _ETF_EXPENSE_FIELDS))
         except ValueError:
             continue
         current = latest.get(row.symbol)
@@ -436,7 +452,7 @@ def _active_etf_symbols(rows: Sequence[dict[str, object]]) -> set[str]:
     symbols: set[str] = set()
     for raw in rows:
         try:
-            row = ActiveEtfHoldingRow.model_validate(raw)
+            row = ActiveEtfHoldingRow.model_validate(_project(raw, _ACTIVE_ETF_HOLDING_FIELDS))
         except ValueError:
             continue
         symbols.add(row.symbol)
@@ -451,7 +467,9 @@ def _holdings_turnover_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str,
     turnover: dict[str, float] = defaultdict(float)
     for raw in rows:
         try:
-            row = ActiveEtfHoldingChangeRow.model_validate(raw)
+            row = ActiveEtfHoldingChangeRow.model_validate(
+                _project(raw, _ACTIVE_ETF_HOLDING_CHANGE_FIELDS)
+            )
         except ValueError:
             continue
         turnover[row.symbol] += abs(row.buy) + abs(row.sell)
