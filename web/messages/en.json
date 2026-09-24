@@ -1906,6 +1906,8 @@
     "overview": {
       "title": "Fund Info",
       "unavailable": "No fund info available for this ETF.",
+      "annualizedReturnSinceInception": "Annualized Return (Since Inception)",
+      "annualizedReturnUnavailable": "Not enough price history to compute the annualized return since inception.",
       "expenseFloorCaveat": "Expense ratio is a management+custody fee floor, not the audited total expense ratio.",
       "field": {
         "fundType": "Fund Type",
@@ -1948,6 +1950,13 @@
       "subTab": {
         "holdings": "Holdings",
         "industry": "Industry Breakdown"
+      },
+      "dataSheetTitle": "Holdings Detail",
+      "column": {
+        "rank": "Rank",
+        "stock": "Holding",
+        "industry": "Industry",
+        "weight": "Weight"
       }
     },
     "premiumDiscount": {

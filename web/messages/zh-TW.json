@@ -1906,6 +1906,8 @@
     "overview": {
       "title": "基本資料",
       "unavailable": "尚無此ETF的基本資料。",
+      "annualizedReturnSinceInception": "年化報酬(成立以來)",
+      "annualizedReturnUnavailable": "尚無足夠價格資料計算成立以來年化報酬。",
       "expenseFloorCaveat": "費用率為經理費+保管費之下限估算值，非審計後的內扣總費用率。",
       "field": {
         "fundType": "基金類型",
@@ -1948,6 +1950,13 @@
       "subTab": {
         "holdings": "成分股",
         "industry": "產業分佈"
+      },
+      "dataSheetTitle": "成分股明細",
+      "column": {
+        "rank": "排名",
+        "stock": "標的",
+        "industry": "產業",
+        "weight": "權重"
       }
     },
     "premiumDiscount": {

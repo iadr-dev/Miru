@@ -124,7 +124,104 @@ export function HoldingsPanel({
         </div>
         <DonutAndTable slices={subTab === "holdings" ? holdingSlices : industrySlices} />
       </section>
+      {subTab === "holdings" ? (
+        <HoldingsDataSheetCard holdings={data.current_holdings} />
+      ) : (
+        <IndustryDataSheetCard rows={industryWeights(data.current_holdings)} />
+      )}
     </div>
+  );
+}
+
+function HoldingsDataSheetCard({
+  holdings,
+}: {
+  readonly holdings: readonly ActiveEtfHoldingWeightRow[];
+}): ReactNode {
+  const t = useTranslations("etf.holdings");
+  const locale = useLocale();
+  const ranked = [...holdings].sort((a, b) => b.weight - a.weight);
+
+  return (
+    <DataSheetCard title={t("dataSheetTitle")}>
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="border-[var(--border)] border-b text-[var(--text-muted)]">
+            <th className="py-2 text-left font-medium">{t("column.rank")}</th>
+            <th className="py-2 text-left font-medium">{t("column.stock")}</th>
+            <th className="py-2 text-left font-medium">{t("column.industry")}</th>
+            <th className="py-2 text-right font-medium">{t("column.weight")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ranked.map((row, index) => (
+            <tr key={row.component_stock_id} className="border-[var(--border)] border-b">
+              <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
+              <td className="py-2 text-[var(--text)]">
+                {row.component_stock_name}
+                <span className="ml-1 font-num text-[11px] text-[var(--text-muted)]">
+                  {row.component_stock_id}
+                </span>
+              </td>
+              <td className="py-2 text-[var(--text-muted)]">{row.industry_category ?? "—"}</td>
+              <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
+                {formatNumber(row.weight, locale, { decimals: 2 })}%
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataSheetCard>
+  );
+}
+
+function IndustryDataSheetCard({
+  rows,
+}: {
+  readonly rows: readonly { label: string; weight: number }[];
+}): ReactNode {
+  const t = useTranslations("etf.holdings");
+  const locale = useLocale();
+  const ranked = [...rows].sort((a, b) => b.weight - a.weight);
+
+  return (
+    <DataSheetCard title={t("dataSheetTitle")}>
+      <table className="w-full text-[12.5px]">
+        <thead>
+          <tr className="border-[var(--border)] border-b text-[var(--text-muted)]">
+            <th className="py-2 text-left font-medium">{t("column.rank")}</th>
+            <th className="py-2 text-left font-medium">{t("column.industry")}</th>
+            <th className="py-2 text-right font-medium">{t("column.weight")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ranked.map((row, index) => (
+            <tr key={row.label} className="border-[var(--border)] border-b">
+              <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
+              <td className="py-2 text-[var(--text)]">{row.label}</td>
+              <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
+                {formatNumber(row.weight, locale, { decimals: 2 })}%
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataSheetCard>
+  );
+}
+
+function DataSheetCard({
+  title,
+  children,
+}: {
+  readonly title: string;
+  readonly children: ReactNode;
+}): ReactNode {
+  return (
+    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{title}</h2>
+      <div className="overflow-x-auto">{children}</div>
+    </section>
   );
 }
 
