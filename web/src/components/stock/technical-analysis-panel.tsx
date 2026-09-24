@@ -164,7 +164,7 @@ export function TechnicalAnalysisPanel({
         onTogglePatterns={setShowPatterns}
         t={t}
       />
-      <OverlayToggleRow value={subOverlays} onChange={setSubOverlays} t={t} />
+      <OverlayToggleRow value={subOverlays} onChange={setSubOverlays} market={market} t={t} />
 
       <KLineChart
         bars={bucketed}
@@ -364,19 +364,36 @@ const SUB_OVERLAYS: readonly SubOverlay[] = [
   "retail",
 ];
 
+// TWSE/TDCC chip-flow/holder concepts — backed by FinMind-only capabilities with no non-TW
+// equivalent (institutional flow, shareholder dispersion, foreign holding, margin/short,
+// securities lending). `bollinger`/`kd`/`macd` are universal technical indicators, never gated.
+const TW_ONLY_OVERLAYS: ReadonlySet<SubOverlay> = new Set([
+  "institutional",
+  "bigHolders",
+  "foreignHolding",
+  "marginShort",
+  "securitiesLending",
+  "retail",
+]);
+
 function OverlayToggleRow({
   value,
   onChange,
+  market,
   t,
 }: {
   readonly value: ReadonlySet<SubOverlay>;
   readonly onChange: (v: ReadonlySet<SubOverlay>) => void;
+  readonly market: Market;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
+  const overlays = SUB_OVERLAYS.filter(
+    (overlay) => market === "TW" || !TW_ONLY_OVERLAYS.has(overlay),
+  );
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <span className="text-[11px] text-[var(--text-muted)]">{t("overlayLabel")}</span>
-      {SUB_OVERLAYS.map((overlay) => {
+      {overlays.map((overlay) => {
         const active = value.has(overlay);
         return (
           <button

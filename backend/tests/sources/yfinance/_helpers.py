@@ -53,10 +53,13 @@ def empty_frames() -> dict[str, object]:
         "growth_estimates": pd.DataFrame(),
         "earnings_estimate": pd.DataFrame(),
         "revenue_estimate": pd.DataFrame(),
+        "eps_trend": pd.DataFrame(),
+        "eps_revisions": pd.DataFrame(),
         "options": (),
         "option_chain": lambda *_a, **_k: None,
         "institutional_holders": pd.DataFrame(),
         "mutualfund_holders": pd.DataFrame(),
         "insider_transactions": pd.DataFrame(),
         "funds_data": None,
+        "sec_filings": None,
     }

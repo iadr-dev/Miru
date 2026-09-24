@@ -62,6 +62,12 @@ _NON_TW_SUPPORTED = _TW_SUPPORTED | {
     Capability.FUND_HOLDINGS,
 }
 
+# US-only, unlike the rest of `_NON_TW_SUPPORTED` (which is US-primary but genuinely served for
+# GB/JP/EU too) — SEC EDGAR filings have no equivalent for any other market this codebase serves.
+_US_ONLY_SUPPORTED = {
+    Capability.SEC_FILINGS,
+}
+
 _NON_TW_MARKETS = (Market.US, Market.GB, Market.JP, Market.EU)
 
 # `yfinance.Market`'s own region taxonomy (`MarketRegion`) doesn't map 1:1 onto this codebase's
@@ -223,6 +229,7 @@ __all__ = [
     "_NON_TW_MARKETS",
     "_NON_TW_SUPPORTED",
     "_TW_SUPPORTED",
+    "_US_ONLY_SUPPORTED",
     "_as_date",
     "_as_datetime",
     "_as_float",

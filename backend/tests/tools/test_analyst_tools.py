@@ -16,9 +16,12 @@ from tools.analyst_tools import (
     GetInstitutionalHoldersTool,
     GetMarketStatusTool,
     GetOptionsChainTool,
+    GetSecFilingsTool,
+    GetStockPeersTool,
     MarketScopedInput,
     NonTwSymbolInput,
     RunEquityScreenerUsTool,
+    UsSymbolInput,
 )
 from tools.base import ToolContext
 from tools.common import SymbolInput
@@ -184,6 +187,104 @@ async def test_get_market_status_parses_optional_status() -> None:
 def test_market_scoped_input_rejects_tw() -> None:
     with pytest.raises(ValidationError):
         MarketScopedInput(market=Market.TW)
+
+
+async def test_get_sec_filings_delegates() -> None:
+    symbol = Symbol(id="AAPL", market=Market.US)
+    filing = {
+        "symbol": "AAPL",
+        "market": "US",
+        "filing_date": "2026-08-01",
+        "filing_type": "10-Q",
+        "title": "Quarterly report",
+        "edgar_url": "https://www.sec.gov/example",
+    }
+    router, adapter = make_router(symbol, {Capability.SEC_FILINGS: _result({"filings": [filing]})})
+    tool = GetSecFilingsTool(router)
+
+    output = await tool.run(UsSymbolInput(id="AAPL", market=Market.US), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.SEC_FILINGS
+    assert output.filings[0].filing_type == "10-Q"
+
+
+async def test_get_sec_filings_degrades_gracefully_with_no_filings() -> None:
+    symbol = Symbol(id="AAPL", market=Market.US)
+    router, _ = make_router(symbol, {Capability.SEC_FILINGS: _result({})})
+    tool = GetSecFilingsTool(router)
+
+    output = await tool.run(UsSymbolInput(id="AAPL", market=Market.US), ToolContext())
+
+    assert output.filings == ()
+
+
+def test_us_symbol_input_rejects_non_us() -> None:
+    with pytest.raises(ValidationError):
+        UsSymbolInput(id="2330", market=Market.TW)
+
+
+async def test_get_stock_peers_resolves_then_fetches() -> None:
+    symbol = Symbol(id="AAPL", market=Market.US)
+    classification = {
+        "symbol": "AAPL",
+        "market": "US",
+        "sector": "Technology",
+        "industry": "Consumer Electronics",
+        "sector_key": "technology",
+        "industry_key": "consumer-electronics",
+    }
+    sector_row = {
+        "market": "US",
+        "sector_key": "technology",
+        "row_kind": "company",
+        "symbol": "MSFT",
+        "name": "Microsoft",
+        "rating": None,
+        "market_weight": 0.1,
+    }
+    industry_row = {
+        "market": "US",
+        "sector_key": "technology",
+        "industry_key": "consumer-electronics",
+        "row_kind": "company",
+        "symbol": "SONY",
+        "name": "Sony",
+    }
+    router, adapter = make_router(
+        symbol,
+        {
+            Capability.SECTOR_CLASS: _result({"classification": classification}),
+            Capability.SECTOR_OVERVIEW: _result({"rows": [sector_row]}),
+            Capability.INDUSTRY_OVERVIEW: _result({"rows": [industry_row]}),
+        },
+    )
+    tool = GetStockPeersTool(router)
+
+    output = await tool.run(SymbolInput(id="AAPL", market=Market.US), ToolContext())
+
+    calls = [call[0] for call in adapter.calls]
+    assert calls == [
+        Capability.SECTOR_CLASS,
+        Capability.SECTOR_OVERVIEW,
+        Capability.INDUSTRY_OVERVIEW,
+    ]
+    assert output.sector == "Technology"
+    assert output.industry == "Consumer Electronics"
+    assert output.sector_peers[0].symbol == "MSFT"
+    assert output.industry_peers[0].symbol == "SONY"
+    assert output.unavailable_reason is None
+
+
+async def test_get_stock_peers_honestly_reports_no_classification() -> None:
+    symbol = Symbol(id="0050", market=Market.TW)
+    router, _ = make_router(symbol, {Capability.SECTOR_CLASS: _result({})})
+    tool = GetStockPeersTool(router)
+
+    output = await tool.run(SymbolInput(id="0050", market=Market.TW), ToolContext())
+
+    assert output.unavailable_reason is not None
+    assert output.sector_peers == ()
+    assert output.industry_peers == ()
 
 
 def test_run_equity_screener_us_input_is_screener_query_not_a_full_market_scan() -> None:

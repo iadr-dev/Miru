@@ -1132,6 +1132,30 @@ async def analyst_consensus(
     )
 
 
+@router.get("/stock/sec-filings")
+async def sec_filings(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The 新聞公告 tab's SEC filings list — most-recent 10-K/10-Q/8-K/etc. from EDGAR, backed by
+    `get_sec_filings`, `DataClass.PUBLIC`, US-only (no equivalent feed for any other market)."""
+    return await _dispatch(state, "get_sec_filings", {"id": symbol, "market": market.value}, ctx)
+
+
+@router.get("/stock/peers")
+async def stock_peers(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The 產業同業 tab's sector/industry peer list — resolves the symbol's own classification then
+    fetches its peers, backed by `get_stock_peers`, `DataClass.PUBLIC`."""
+    return await _dispatch(state, "get_stock_peers", {"id": symbol, "market": market.value}, ctx)
+
+
 @router.get("/stock/calendar-events")
 async def stock_calendar_events(
     symbol: str = Query(..., min_length=1),

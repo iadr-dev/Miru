@@ -53,7 +53,11 @@ class DividendEvent(BaseModel):
 
 
 class FinancialStatementLine(BaseModel):
-    """`financials` — one line item from an income/balance/cash-flow statement."""
+    """`financials` — one line item from an income/balance/cash-flow statement. `period_type`
+    defaults to `"quarterly"` — FinMind (TW's source for this capability) reports one frequency
+    only, so every existing TW row is implicitly quarterly; yfinance (the US/non-TW source)
+    reports annual/quarterly/TTM as genuinely distinct frames, so US rows set this field for
+    real rather than leaving every US row ambiguously defaulted."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -61,6 +65,7 @@ class FinancialStatementLine(BaseModel):
     market: Market
     period_end: date_
     statement_type: str  # e.g. "income", "balance_sheet", "cash_flow"
+    period_type: str = "quarterly"  # "annual" | "quarterly" | "ttm"
     item: str  # normalized line-item type (upstream "type" column)
     origin_name: str  # upstream label, kept for citation/traceability
     value: float
@@ -122,6 +127,19 @@ class AnalystConsensus(BaseModel):
     forward_eps_estimate: float | None = None  # earnings_estimate current-fiscal-year avg
     forward_revenue_estimate: float | None = None  # revenue_estimate current-fiscal-year avg
     long_term_growth_estimate: float | None = None  # growth_estimates LTG stockTrend
+    # EPS-revision/growth depth — yfinance-only, same `_extended`-field convention as the block
+    # above (never populated for TW): eps_trend's current-fiscal-year estimate as it stood today
+    # vs 7/30/60/90 days ago, eps_revisions' analyst up/down-revision counts, and this-year/
+    # next-year growth-estimate percentages (vs `long_term_growth_estimate`'s multi-year LTG).
+    eps_trend_current: float | None = None  # eps_trend 0y "current"
+    eps_trend_7_days_ago: float | None = None
+    eps_trend_30_days_ago: float | None = None
+    eps_trend_60_days_ago: float | None = None
+    eps_trend_90_days_ago: float | None = None
+    eps_revisions_up_last_30_days: int | None = None  # eps_revisions 0y upLast30days
+    eps_revisions_down_last_30_days: int | None = None  # eps_revisions 0y downLast30days
+    current_year_growth_estimate: float | None = None  # growth_estimates 0y stockTrend
+    next_year_growth_estimate: float | None = None  # growth_estimates +1y stockTrend
 
 
 class EsgScore(BaseModel):
@@ -138,7 +156,11 @@ class EsgScore(BaseModel):
 
 class SectorClassification(BaseModel):
     """`sector_class` — English cross-market sector/industry label (yfinance); FinMind's
-    Chinese 產業別/產業鏈 remains authoritative for TW."""
+    Chinese 產業別/產業鏈 remains authoritative for TW. `sector_key`/`industry_key` are yfinance's
+    own slug identifiers (e.g. "technology"), distinct from `sector`/`industry`'s human-readable
+    display names — the slugs are what `Capability.SECTOR_OVERVIEW`/`INDUSTRY_OVERVIEW` (backed
+    by `yfinance.Sector`/`Industry`) actually key on, so a caller resolving "this symbol's peer
+    group" needs the slug, not the display name."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -146,6 +168,8 @@ class SectorClassification(BaseModel):
     market: Market
     sector: str | None = None
     industry: str | None = None
+    sector_key: str | None = None
+    industry_key: str | None = None
 
 
 class NewsItem(BaseModel):
@@ -159,6 +183,22 @@ class NewsItem(BaseModel):
     source: str
     published_at: datetime
     summary: str | None = None
+
+
+class SecFiling(BaseModel):
+    """`sec_filings` — one SEC EDGAR filing row for a listed US company (yfinance's
+    `Ticker.get_sec_filings()`). Third-party regulatory-filing content: `title`/`type` are the
+    filing's own metadata, never summarized into a trading signal. US-only — no equivalent feed
+    exists for any other market this codebase serves."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    filing_date: date_
+    filing_type: str  # e.g. "10-K", "10-Q", "8-K", "4"
+    title: str
+    edgar_url: str | None = None  # link to the filing on SEC EDGAR, when yfinance provides one
 
 
 class PttPost(BaseModel):

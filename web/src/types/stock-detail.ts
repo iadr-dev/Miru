@@ -401,6 +401,10 @@ export const financialStatementLineSchema = z.object({
   market: z.string(),
   period_end: z.string(),
   statement_type: z.string(),
+  // Defaults to "quarterly" — FinMind (TW's source) reports one frequency only; yfinance (US)
+  // reports annual/quarterly/ttm as genuinely distinct frames (see backend
+  // `FinancialStatementLine`'s own docstring).
+  period_type: z.enum(["annual", "quarterly", "ttm"]).default("quarterly"),
   item: z.string(),
   origin_name: z.string(),
   value: z.number(),
@@ -648,6 +652,15 @@ export const analystConsensusSchema = z.object({
   forward_eps_estimate: z.number().nullable().optional(),
   forward_revenue_estimate: z.number().nullable().optional(),
   long_term_growth_estimate: z.number().nullable().optional(),
+  eps_trend_current: z.number().nullable().optional(),
+  eps_trend_7_days_ago: z.number().nullable().optional(),
+  eps_trend_30_days_ago: z.number().nullable().optional(),
+  eps_trend_60_days_ago: z.number().nullable().optional(),
+  eps_trend_90_days_ago: z.number().nullable().optional(),
+  eps_revisions_up_last_30_days: z.number().nullable().optional(),
+  eps_revisions_down_last_30_days: z.number().nullable().optional(),
+  current_year_growth_estimate: z.number().nullable().optional(),
+  next_year_growth_estimate: z.number().nullable().optional(),
 });
 export type AnalystConsensus = z.infer<typeof analystConsensusSchema>;
 
@@ -1219,3 +1232,66 @@ export const themeMembersResponseSchema = z.object({
   message: z.string().default(""),
 });
 export type ThemeMembersResponse = z.infer<typeof themeMembersResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stocks/{symbol}/sec-filings — get_sec_filings (public, US-only). Mirrors `SecFiling`/
+// `GetSecFilingsOutput` (backend/src/tools/analyst_tools.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const secFilingSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  filing_date: z.string(),
+  filing_type: z.string(),
+  title: z.string(),
+  edgar_url: z.string().nullable().optional(),
+});
+export type SecFiling = z.infer<typeof secFilingSchema>;
+
+export const secFilingsResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  filings: z.array(secFilingSchema).default([]),
+});
+export type SecFilingsResponse = z.infer<typeof secFilingsResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /stocks/{symbol}/peers — get_stock_peers (public). Mirrors `GetStockPeersOutput`
+// (backend/src/tools/analyst_tools.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const sectorOverviewCompanyRowSchema = z.object({
+  market: z.string(),
+  sector_key: z.string(),
+  row_kind: z.string(),
+  symbol: z.string(),
+  name: z.string(),
+  rating: z.string().nullable().optional(),
+  market_weight: z.number().nullable().optional(),
+});
+export type SectorOverviewCompanyRow = z.infer<typeof sectorOverviewCompanyRowSchema>;
+
+export const industryOverviewCompanyRowSchema = z.object({
+  market: z.string(),
+  industry_key: z.string(),
+  sector_key: z.string(),
+  row_kind: z.string(),
+  symbol: z.string(),
+  name: z.string(),
+  rating: z.string().nullable().optional(),
+  market_weight: z.number().nullable().optional(),
+});
+export type IndustryOverviewCompanyRow = z.infer<typeof industryOverviewCompanyRowSchema>;
+
+export const stockPeersResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  sector: z.string().nullable().optional(),
+  industry: z.string().nullable().optional(),
+  sector_peers: z.array(sectorOverviewCompanyRowSchema).default([]),
+  industry_peers: z.array(industryOverviewCompanyRowSchema).default([]),
+  unavailable_reason: z.string().nullable().optional(),
+});
+export type StockPeersResponse = z.infer<typeof stockPeersResponseSchema>;

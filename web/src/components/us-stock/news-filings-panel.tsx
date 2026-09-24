@@ -1,0 +1,177 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import { type ReactNode, useState } from "react";
+import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { getNewsFeed, getSymbolInfo } from "@/lib/api/market";
+import { getSecFilings } from "@/lib/api/stock-detail";
+import { cn } from "@/lib/cn";
+import { safeHttpUrl } from "@/lib/safe-url";
+import type { Market } from "@/types/settings";
+
+type NewsFilingsSubTab = "news" | "filings";
+const NEWS_ROW_LIMIT = 20;
+
+/** 新聞公告 tab — replaces the TW stock-detail page's 相關新聞 tab (FinMind news + PTT, both
+ * structurally TW-only sources) with `get_news_feed` (a genuinely all-market RSS/Finnhub
+ * aggregator, keyed by the company name as a free-text query — see that tool's own
+ * `source_priority.yaml` comment: "keyless/near-keyless, all-market capable") plus a new SEC
+ * EDGAR filings list (`get_sec_filings`, US-only — no other market this codebase serves has an
+ * equivalent regulatory-filing feed). */
+export function NewsFilingsPanel({
+  symbol,
+  market,
+}: {
+  readonly symbol: string;
+  readonly market: Market;
+}): ReactNode {
+  const t = useTranslations("usStock.newsFilings");
+  const [subTab, setSubTab] = useState<NewsFilingsSubTab>("news");
+
+  return (
+    <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <div role="tablist" aria-label={t("label")} className="mb-3 flex flex-wrap gap-1.5">
+        {(["news", "filings"] as const).map((key) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={subTab === key}
+            onClick={() => setSubTab(key)}
+            className={cn(
+              "rounded-[var(--radius-pill)] px-3 py-1.5 text-[12.5px] transition-colors",
+              subTab === key
+                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
+            )}
+          >
+            {t(key)}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "news" ? (
+        <NewsFeedList symbol={symbol} market={market} />
+      ) : (
+        <SecFilingsList symbol={symbol} market={market} />
+      )}
+    </div>
+  );
+}
+
+function NewsFeedList({
+  symbol,
+  market,
+}: {
+  readonly symbol: string;
+  readonly market: Market;
+}): ReactNode {
+  const t = useTranslations("usStock.newsFilings");
+  const symbolInfoQuery = useQuery({
+    queryKey: ["symbol_info", symbol, market],
+    queryFn: () => getSymbolInfo([symbol], market),
+  });
+  const companyName = symbolInfoQuery.data?.rows[0]?.name ?? symbol;
+
+  const newsQuery = useQuery({
+    queryKey: ["news_feed", companyName],
+    queryFn: () => getNewsFeed(companyName),
+    enabled: Boolean(companyName),
+  });
+
+  if (symbolInfoQuery.isLoading || newsQuery.isLoading) return <CardSkeletonBody height={480} />;
+  const items = (newsQuery.data?.items ?? []).slice(0, NEWS_ROW_LIMIT);
+  if (items.length === 0) {
+    return <p className="text-[13px] text-[var(--text-muted)]">{t("newsEmpty")}</p>;
+  }
+
+  return (
+    <ul className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
+      {items.map((item) => {
+        const href = safeHttpUrl(item.link);
+        const body = (
+          <>
+            <span className="line-clamp-2 text-[13px] text-[var(--text)] hover:underline">
+              {item.title}
+            </span>
+            <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+              {item.source}
+            </span>
+          </>
+        );
+        return (
+          <li key={item.link} className="border-[var(--border)] border-b py-2.5">
+            {href ? (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="block">
+                {body}
+              </a>
+            ) : (
+              <span className="block">{body}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function SecFilingsList({
+  symbol,
+  market,
+}: {
+  readonly symbol: string;
+  readonly market: Market;
+}): ReactNode {
+  const t = useTranslations("usStock.newsFilings");
+  const query = useQuery({
+    queryKey: ["sec_filings", symbol, market],
+    queryFn: () => getSecFilings(symbol, market),
+  });
+
+  if (query.isLoading) return <CardSkeletonBody height={480} />;
+  const filings = query.data?.filings ?? [];
+  if (filings.length === 0) {
+    return <p className="text-[13px] text-[var(--text-muted)]">{t("filingsEmpty")}</p>;
+  }
+
+  return (
+    <ul className="flex flex-col gap-2.5">
+      {filings.map((filing) => {
+        const href = safeHttpUrl(filing.edgar_url ?? "");
+        const body = (
+          <>
+            <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
+              {filing.filing_type}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text)]">
+              {filing.title}
+            </span>
+            <span className="shrink-0 font-num text-[11px] text-[var(--text-muted)] tabular-nums">
+              {filing.filing_date}
+            </span>
+          </>
+        );
+        return (
+          <li
+            key={`${filing.filing_type}-${filing.filing_date}-${filing.title}`}
+            className="flex items-center gap-2.5 border-[var(--border)] border-b py-2.5 last:border-b-0"
+          >
+            {href ? (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-h-11 w-full items-center gap-2.5 hover:underline"
+              >
+                {body}
+              </a>
+            ) : (
+              <span className="flex min-h-11 w-full items-center gap-2.5">{body}</span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}

@@ -101,9 +101,11 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_fund_holdings": "fund_holdings",
     "get_sector_overview": "sector_overview",
     "get_industry_overview": "industry_overview",
+    "get_stock_peers": "stock_peers",
     "run_equity_screener_us": "equity_screener",
     "get_analyst_consensus": "analyst_consensus",
     "get_esg_score": "esg_score",
+    "get_sec_filings": "sec_filings",
     # convertible_bond_tools.py
     "get_convertible_bond_profile": "cb_profile",
     "get_convertible_bond_flow": "cb_flow",

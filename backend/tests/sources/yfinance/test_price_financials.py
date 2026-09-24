@@ -66,6 +66,55 @@ async def test_fetch_financials_us(monkeypatch: pytest.MonkeyPatch) -> None:
     lines = result.payload["lines"]
     assert lines[0]["item"] == "Total Revenue"  # type: ignore[index]
     assert lines[0]["value"] == 100.0  # type: ignore[index]
+    assert lines[0]["period_type"] == "annual"  # type: ignore[index]
+
+
+async def test_fetch_financials_merges_annual_quarterly_and_ttm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """yfinance reports these as three genuinely distinct frames — confirm all three land in
+    one merged line list, each correctly tagged, rather than only the annual frame surviving."""
+    frames = empty_frames()
+    frames["financials"] = pd.DataFrame(
+        {pd.Timestamp("2025-09-30"): [400.0]}, index=["Total Revenue"]
+    )
+    frames["quarterly_financials"] = pd.DataFrame(
+        {pd.Timestamp("2026-06-30"): [105.0]}, index=["Total Revenue"]
+    )
+    frames["ttm_financials"] = pd.DataFrame(
+        {pd.Timestamp("2026-06-30"): [410.0]}, index=["Total Revenue"]
+    )
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="AAPL", market=Market.US)
+
+    result = await adapter.fetch(Capability.FINANCIALS, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.OK
+    lines = result.payload["lines"]
+    period_types = {line["period_type"] for line in lines}  # type: ignore[index]
+    assert period_types == {"annual", "quarterly", "ttm"}
+
+
+async def test_fetch_balance_sheet_has_no_ttm_frame(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Balance sheet is a point-in-time snapshot, not a flow statement — yfinance itself has no
+    `ttm_balance_sheet` property, so only annual/quarterly should ever appear."""
+    frames = empty_frames()
+    frames["balance_sheet"] = pd.DataFrame(
+        {pd.Timestamp("2025-09-30"): [1000.0]}, index=["Total Assets"]
+    )
+    frames["quarterly_balance_sheet"] = pd.DataFrame(
+        {pd.Timestamp("2026-06-30"): [1050.0]}, index=["Total Assets"]
+    )
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="AAPL", market=Market.US)
+
+    result = await adapter.fetch(Capability.BALANCE_SHEET, sym, tls_policy=TLSPolicy.STRICT)
+
+    lines = result.payload["lines"]
+    period_types = {line["period_type"] for line in lines}  # type: ignore[index]
+    assert period_types == {"annual", "quarterly"}
 
 
 async def test_fetch_financials_degrades_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:

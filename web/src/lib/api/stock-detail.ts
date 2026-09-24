@@ -53,20 +53,24 @@ import {
   priceLimitResponseSchema,
   priceTickResponseSchema,
   pttStockSearchResponseSchema,
+  type SecFilingsResponse,
   type SecuritiesLendingResponse,
   type ShareholderDispersionResponse,
   type StockCalendarEventsResponse,
   type StockInsiderTransferDeclarationResponse,
   type StockMaterialAnnouncementsResponse,
+  type StockPeersResponse,
   type StockScoreResponse,
   type StockSummaryResponse,
   type SupplyChainEdgesResponse,
   type SymbolThemesResponse,
+  secFilingsResponseSchema,
   securitiesLendingResponseSchema,
   shareholderDispersionResponseSchema,
   stockCalendarEventsResponseSchema,
   stockInsiderTransferDeclarationResponseSchema,
   stockMaterialAnnouncementsResponseSchema,
+  stockPeersResponseSchema,
   stockScoreResponseSchema,
   stockSummaryResponseSchema,
   supplyChainEdgesResponseSchema,
@@ -368,6 +372,26 @@ export async function getAnalystConsensus(
   const search = new URLSearchParams({ symbol, market });
   const raw = await requestJson(`/stock/analyst-consensus?${search.toString()}`);
   return analystConsensusResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14a. GET /stock/sec-filings (public, US-only)
+// ---------------------------------------------------------------------------
+
+export async function getSecFilings(symbol: string, market: Market): Promise<SecFilingsResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  const raw = await requestJson(`/stock/sec-filings?${search.toString()}`);
+  return secFilingsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14b. GET /stock/peers (public)
+// ---------------------------------------------------------------------------
+
+export async function getStockPeers(symbol: string, market: Market): Promise<StockPeersResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  const raw = await requestJson(`/stock/peers?${search.toString()}`);
+  return stockPeersResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

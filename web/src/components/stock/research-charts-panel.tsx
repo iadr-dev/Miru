@@ -68,11 +68,15 @@ export function ResearchChartsPanel({
   readonly symbol: string;
   readonly market: Market;
 }): ReactNode {
+  // `get_valuation_ratios`/`get_calendar_events` are FinMind/TWSE-sourced with no non-TW
+  // equivalent — dropped rather than rendered against the wrong market's data.
+  // `AnalystConsensusCard` (`get_analyst_consensus`, yfinance) is real for every market.
+  const isTw = market === "TW";
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <ValuationRiverCard symbol={symbol} market={market} />
+      {isTw ? <ValuationRiverCard symbol={symbol} market={market} /> : null}
       <AnalystConsensusCard symbol={symbol} market={market} />
-      <StockEventsCard symbol={symbol} market={market} />
+      {isTw ? <StockEventsCard symbol={symbol} market={market} /> : null}
     </div>
   );
 }
@@ -497,7 +501,9 @@ function EstimatesCard({
   const hasAny =
     consensus.forward_eps_estimate != null ||
     consensus.forward_revenue_estimate != null ||
-    consensus.long_term_growth_estimate != null;
+    consensus.long_term_growth_estimate != null ||
+    consensus.current_year_growth_estimate != null ||
+    consensus.next_year_growth_estimate != null;
   return (
     <div
       className="flex flex-col gap-3 rounded-[var(--radius-input)] border p-3 backdrop-blur-md"
@@ -522,10 +528,22 @@ function EstimatesCard({
           value={formatCompactNumber(consensus.forward_revenue_estimate, locale)}
         />
       ) : null}
+      {consensus.current_year_growth_estimate != null ? (
+        <EstimateRow
+          label={t("currentYearGrowthLabel")}
+          value={`${formatNumber(consensus.current_year_growth_estimate * 100, locale, { decimals: 1 })}%`}
+        />
+      ) : null}
+      {consensus.next_year_growth_estimate != null ? (
+        <EstimateRow
+          label={t("nextYearGrowthLabel")}
+          value={`${formatNumber(consensus.next_year_growth_estimate * 100, locale, { decimals: 1 })}%`}
+        />
+      ) : null}
       {consensus.long_term_growth_estimate != null ? (
         <EstimateRow
           label={t("longTermGrowthLabel")}
-          value={`${formatNumber(consensus.long_term_growth_estimate, locale, { decimals: 1 })}%`}
+          value={`${formatNumber(consensus.long_term_growth_estimate * 100, locale, { decimals: 1 })}%`}
         />
       ) : null}
     </div>

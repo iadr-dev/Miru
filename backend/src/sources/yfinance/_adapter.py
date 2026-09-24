@@ -28,7 +28,14 @@ from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 
 from ._blocking import _fetch_info_blocking, _fetch_ticker_frames_blocking
-from ._shared import _NON_TW_MARKETS, _NON_TW_SUPPORTED, _TW_SUPPORTED, _result, _yahoo_symbol
+from ._shared import (
+    _NON_TW_MARKETS,
+    _NON_TW_SUPPORTED,
+    _TW_SUPPORTED,
+    _US_ONLY_SUPPORTED,
+    _result,
+    _yahoo_symbol,
+)
 from .analyst import _analyst_consensus, _esg, _etf_aum, _sector_class
 from .discovery import (
     _earnings_calendar,
@@ -42,6 +49,7 @@ from .discovery import (
 )
 from .holders import _fund_holdings, _insider_activity, _institutional_holders, _options_chain
 from .price_financials import _dividends, _financial_statement, _price_eod, _split_price
+from .sec_filings import _sec_filings
 from .trailing_returns import _etf_trailing_returns
 
 logger = structlog.get_logger(__name__)
@@ -56,6 +64,7 @@ class YFinanceAdapter:
     def supports(self) -> set[tuple[Capability, Market]]:
         pairs = {(cap, Market.TW) for cap in _TW_SUPPORTED}
         pairs |= {(cap, market) for cap in _NON_TW_SUPPORTED for market in _NON_TW_MARKETS}
+        pairs |= {(cap, Market.US) for cap in _US_ONLY_SUPPORTED}
         return pairs
 
     def validate(self, raw: dict[str, object]) -> dict[str, object]:
@@ -91,6 +100,10 @@ class YFinanceAdapter:
         **params: object,
     ) -> SourceResult:
         supported = _TW_SUPPORTED if sym.market is Market.TW else _NON_TW_SUPPORTED
+        # `_US_ONLY_SUPPORTED` (e.g. SEC filings) is additive to `_NON_TW_SUPPORTED` for US only —
+        # every other non-TW market stays gated on `_NON_TW_SUPPORTED` alone.
+        if sym.market is Market.US:
+            supported = supported | _US_ONLY_SUPPORTED
         if cap not in supported or (
             sym.market is not Market.TW and sym.market not in _NON_TW_MARKETS
         ):
@@ -169,19 +182,36 @@ class YFinanceAdapter:
             Capability.ETF_AUM: lambda: _etf_aum(sym, info),
             Capability.PRICE_EOD: lambda: _price_eod(sym, frames),
             Capability.FINANCIALS: lambda: _financial_statement(
-                sym, frames, "financials", "income_statement"
+                sym,
+                frames,
+                "financials",
+                "income_statement",
+                quarterly_frame_key="quarterly_financials",
+                ttm_frame_key="ttm_financials",
             ),
             Capability.BALANCE_SHEET: lambda: _financial_statement(
-                sym, frames, "balance_sheet", "balance_sheet"
+                sym,
+                frames,
+                "balance_sheet",
+                "balance_sheet",
+                quarterly_frame_key="quarterly_balance_sheet",
+                # No TTM balance sheet — it's a point-in-time snapshot, not a flow statement;
+                # yfinance itself has no `ttm_balance_sheet` property.
             ),
             Capability.CASH_FLOW_STATEMENT: lambda: _financial_statement(
-                sym, frames, "cash_flow", "cash_flow"
+                sym,
+                frames,
+                "cash_flow",
+                "cash_flow",
+                quarterly_frame_key="quarterly_cash_flow",
+                ttm_frame_key="ttm_cash_flow",
             ),
             Capability.DIVIDENDS: lambda: _dividends(sym, frames),
             Capability.SPLIT_PRICE: lambda: _split_price(sym, frames),
             Capability.INSTITUTIONAL_HOLDERS: lambda: _institutional_holders(sym, frames),
             Capability.INSIDER_ACTIVITY: lambda: _insider_activity(sym, frames),
             Capability.FUND_HOLDINGS: lambda: _fund_holdings(sym, frames),
+            Capability.SEC_FILINGS: lambda: _sec_filings(sym, frames),
         }
         return handlers[cap]()
 

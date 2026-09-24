@@ -40,20 +40,50 @@ def _price_eod(sym: Symbol, frames: dict[str, Any]) -> SourceResult:
     return _result(payload={"bars": bars}, health=SourceHealth(status=HealthStatus.OK, detail="ok"))
 
 
-def _financial_statement(
+def _financial_statement(  # noqa: PLR0913 — one keyword-only arg per optional yfinance frame
+    # frequency (annual is positional/required, quarterly/TTM are optional per statement type —
+    # see the balance-sheet call site, which omits `ttm_frame_key` since no such frame exists);
+    # splitting this into a request object would only move the same argument count one level out.
     sym: Symbol,
     frames: dict[str, Any],
     frame_key: str,
     statement_type: str,
+    *,
+    quarterly_frame_key: str | None = None,
+    ttm_frame_key: str | None = None,
 ) -> SourceResult:
-    frame = frames.get(frame_key)
-    if not isinstance(frame, pd.DataFrame) or frame.empty:
+    """`frame_key`'s frame is tagged `period_type="annual"`; `quarterly_frame_key`/
+    `ttm_frame_key` (when given — balance sheet has no TTM concept, it's a point-in-time
+    snapshot, not a flow statement) are tagged `"quarterly"`/`"ttm"` and merged into the same
+    line list. yfinance genuinely reports these as three distinct frames (unlike FinMind's single
+    quarterly-only TW frame, where `FinancialStatementLine.period_type` just defaults), so a US
+    caller gets the real annual-vs-quarterly-vs-TTM distinction rather than one frequency."""
+    lines: list[dict[str, object]] = []
+    for key, period_type in (
+        (frame_key, "annual"),
+        (quarterly_frame_key, "quarterly"),
+        (ttm_frame_key, "ttm"),
+    ):
+        if key is None:
+            continue
+        lines.extend(_financial_statement_lines(sym, frames.get(key), statement_type, period_type))
+    if not lines:
         return _result(
             payload={},
             health=SourceHealth(
-                status=HealthStatus.STALE, detail=f"no {statement_type} data returned"
+                status=HealthStatus.STALE, detail=f"no {statement_type} line items"
             ),
         )
+    return _result(
+        payload={"lines": lines}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
+    )
+
+
+def _financial_statement_lines(
+    sym: Symbol, frame: object, statement_type: str, period_type: str
+) -> list[dict[str, object]]:
+    if not isinstance(frame, pd.DataFrame) or frame.empty:
+        return []
     lines: list[dict[str, object]] = []
     for item, row in frame.iterrows():
         for period_end, value in row.items():
@@ -67,21 +97,13 @@ def _financial_statement(
                     "market": sym.market.value,
                     "period_end": _dt_iso(period_end_date),
                     "statement_type": statement_type,
+                    "period_type": period_type,
                     "item": str(item),
                     "origin_name": str(item),
                     "value": numeric,
                 }
             )
-    if not lines:
-        return _result(
-            payload={},
-            health=SourceHealth(
-                status=HealthStatus.STALE, detail=f"no {statement_type} line items"
-            ),
-        )
-    return _result(
-        payload={"lines": lines}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
-    )
+    return lines
 
 
 def _dividends(sym: Symbol, frames: dict[str, Any]) -> SourceResult:

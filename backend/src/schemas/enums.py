@@ -142,6 +142,9 @@ class Capability(StrEnum):
     PROFILE = "profile"
     NEWS = "news"
     STOCK_NEWS = "stock_news"
+    # yfinance/US SEC EDGAR filing feed (Ticker.get_sec_filings()) — no equivalent for any other
+    # market this codebase serves; MOPS 重大訊息/內部人 filings are their own distinct capabilities.
+    SEC_FILINGS = "sec_filings"
 
     # --- Reference / symbol lookup ---
     STOCK_INFO = "stock_info"
