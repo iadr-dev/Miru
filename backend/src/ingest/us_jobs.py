@@ -46,6 +46,17 @@ logger = structlog.get_logger(__name__)
 
 US_PRICE_EOD_DATASET = "us_price_eod"
 
+# SPY (S&P 500 ETF) rides along in every `job_us_price_eod` pull as the US broad-market
+# reference-index proxy — the direct counterpart to TAIEX riding along in TW's own whole-market
+# `TaiwanStockPrice` partition (`analytics/scoring_batch.py::_TAIEX_SYMBOL`'s own comment).
+# `analytics/scoring_batch.py::_reference_index_closes` reads this symbol back out of the same
+# partition for the US `taiex_correlation`-equivalent trend-score dimension. A real, liquid,
+# continuously-traded ETF (not a synthetic index ticker like `^GSPC`, which yfinance's batch
+# `download()` handles inconsistently across multi-symbol requests) — chosen for the same
+# "broad, investable, always-quotable" reasons `^GSPC` would be chosen for if it worked reliably
+# in this batch path.
+US_REFERENCE_INDEX_SYMBOL = "SPY"
+
 # One capability -> Parquet dataset name per fundamentals family this job covers. Mirrors the
 # split `ingest/jobs.py::FINANCIALS_JOB`/`BALANCE_SHEET_JOB`/`CASH_FLOW_JOB`/`DIVIDENDS_JOB` take
 # for TW, so a US symbol's financials land in the same dataset-name shape a TW symbol's do.
@@ -206,11 +217,14 @@ async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
             status=RunStatus.SKIPPED,
             detail="no US symbol universe yet — run job_us_symbol_universe first",
         )
+    # SPY always rides along, even though it's never part of the screener-discovered universe
+    # itself — see `US_REFERENCE_INDEX_SYMBOL`'s own comment for why.
+    fetch_symbols = [*symbols, US_REFERENCE_INDEX_SYMBOL]
 
     date_str = run_date.isoformat()
     end_str = (run_date + _ONE_DAY).isoformat()
     try:
-        frame = await batch_download(symbols, start=date_str, end=end_str, interval="1d")
+        frame = await batch_download(fetch_symbols, start=date_str, end=end_str, interval="1d")
     except Exception as exc:  # never retry-loop tightly — journal and let the next run retry
         logger.warning("us_price_eod_fetch_failed", run_date=date_str, error=str(exc))
         return journal_run(
@@ -222,12 +236,15 @@ async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
         )
 
     rows = _rows_from_price_frame(frame)
-    if len(symbols) == 1 and rows:
+    if len(fetch_symbols) == 1 and rows:
         # The single-symbol MultiIndex-collapse case (see `_rows_from_price_frame`) — the one
         # requested symbol is unambiguous, so backfill it onto the row the frame-mapper left
-        # `symbol=None` on.
+        # `symbol=None` on. Effectively dead now that `US_REFERENCE_INDEX_SYMBOL` always makes
+        # `fetch_symbols` >= 2, but kept as a defensive fallback rather than removed outright —
+        # a future caller of `_rows_from_price_frame` with a genuinely single-symbol frame
+        # still needs this backfill.
         for row in rows:
-            row["symbol"] = symbols[0]
+            row["symbol"] = fetch_symbols[0]
 
     rows_written = ctx.store.write_partition(US_PRICE_EOD_DATASET, Market.US.value, run_date, rows)
     await ctx.data_update_publisher.publish_data_updated(

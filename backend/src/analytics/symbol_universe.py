@@ -15,6 +15,18 @@ A tool/batch that reads `TaiwanStockPrice` (or any dataset keyed by the same sym
 without this filter silently mixes ~17K warrant rows into what should be a ~2.65K-symbol
 equity/ETF market — this was confirmed to be the root cause of `get_advance_decline`'s breadth
 counts not matching TWSE's real market (thousands of extra warrant rows inflating every bucket).
+
+**`market` parameter (default `Market.TW`):** every function here defaults to the TW code-shape
+rule above so no existing TW-only caller needs to change. For `Market.US`, the TW rule is simply
+wrong — US tickers have no fixed length (`AAPL` is 4 chars, `GOOGL` is 5, `BRK-B` has a
+punctuation character) and no `00`-prefix ETF convention, so applying the TW length/prefix rule
+to a US symbol would misclassify or outright reject real tickers (confirmed: `GOOGL`/`BRK-B`
+fail the plain 4-char cutoff). The US branch is intentionally permissive rather than a mirrored
+shape rule: `ingest/us_universe.py`'s screener-based discovery already pre-filters to real
+equities before anything reaches this module (no warrant/derivative pollution to exclude, unlike
+TW's raw `TaiwanStockPrice` dump), so every US symbol reaching this classifier is scoreable and
+`SymbolType.STOCK` — this codebase has no ingested US ETF universe (`ingest/us_universe.py`
+queries `ScreenerAssetKind.EQUITY` only) to need an ETF branch for yet.
 """
 
 from __future__ import annotations
@@ -23,6 +35,8 @@ from enum import StrEnum
 from typing import cast
 
 import pandas as pd
+
+from schemas.enums import Market
 
 _MAX_PLAIN_EQUITY_LENGTH = 4
 _MAX_ETF_LENGTH = 6
@@ -50,22 +64,28 @@ class SymbolType(StrEnum):
     ETF_INVERSE = "etf_inverse"
 
 
-def is_scoreable_symbol(symbol: str) -> bool:
+def is_scoreable_symbol(symbol: str, market: Market = Market.TW) -> bool:
     """Scalar predicate for a plain `dict`/loop-shaped reader (e.g. `tools/market_tools.py`'s
     `_closes_by_symbol`) — same rule as `scoreable_symbol_mask`, just per-value instead of
-    vectorized."""
+    vectorized. `Market.US` is unconditionally scoreable — see the module docstring's `market`
+    section for why the TW length/prefix rule doesn't apply and no pre-filter is needed."""
+    if market is Market.US:
+        return True
     is_plain_equity = len(symbol) <= _MAX_PLAIN_EQUITY_LENGTH
     is_etf = len(symbol) <= _MAX_ETF_LENGTH and symbol.startswith(_ETF_PREFIX)
     return is_plain_equity or is_etf
 
 
-def classify_symbol_type(symbol: str) -> SymbolType:
-    """Which scoring branch `symbol` belongs to, from the code shape alone. Does NOT distinguish
+def classify_symbol_type(symbol: str, market: Market = Market.TW) -> SymbolType:
+    """Which scoring branch `symbol` belongs to, from the code shape alone (TW) or unconditionally
+    `SymbolType.STOCK` (US — see the module docstring's `market` section). Does NOT distinguish
     active vs. passive ETFs — that needs ingested holdings data (`ActiveEtfHoldingRow`
     membership for the day), not the code shape, so `scoring_batch.py` layers that distinction
     on top of this function's `ETF` result itself, rather than this module reaching into the
     store. Callers must call `is_scoreable_symbol` first — this function assumes the symbol is
     already known to be a real equity/ETF, not a warrant."""
+    if market is Market.US:
+        return SymbolType.STOCK
     if symbol.startswith(_ETF_PREFIX) and len(symbol) <= _MAX_ETF_LENGTH:
         if symbol.endswith(_LEVERAGED_SUFFIX):
             return SymbolType.ETF_LEVERAGED
@@ -75,11 +95,13 @@ def classify_symbol_type(symbol: str) -> SymbolType:
     return SymbolType.STOCK
 
 
-def scoreable_symbol_mask(symbols: pd.Series) -> pd.Series:
+def scoreable_symbol_mask(symbols: pd.Series, market: Market = Market.TW) -> pd.Series:
     """Vectorized counterpart of `is_scoreable_symbol`, for a columnar `DataFrame`-shaped reader
     (e.g. `analytics/scoring_batch.py`'s whole-market price window) — a mask over the whole
     frame, not a per-row Python check, so the excluded ~90% of rows never reach per-symbol
-    processing at all."""
+    processing at all. `Market.US` unconditionally passes every row — see `is_scoreable_symbol`."""
+    if market is Market.US:
+        return pd.Series(True, index=symbols.index)
     lengths = cast("pd.Series", symbols.str.len())
     is_plain_equity = cast("pd.Series", lengths <= _MAX_PLAIN_EQUITY_LENGTH)
     starts_with_etf_prefix = cast("pd.Series", symbols.str.startswith(_ETF_PREFIX))

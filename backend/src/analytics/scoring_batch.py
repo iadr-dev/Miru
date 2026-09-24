@@ -26,6 +26,7 @@ store, since the score cache is relational (see `scoring_store.py`'s docstring f
 
 from __future__ import annotations
 
+from calendar.trading_days import TradingDayCalendar
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -120,8 +121,34 @@ ACTIVE_ETF_HOLDING_CHANGE_DATASET = "TaiwanStockActiveETFHoldingChange"
 # leaderboard would show a bare code with no name forever, not just for one stale day.
 STOCK_INFO_DATASET = "TaiwanStockInfo"
 
+# US counterparts (`ingest/us_jobs.py`'s own dataset-name constants, duplicated here as local
+# read-key constants for the same decoupling reason as the TW constants above). US has no
+# institutional-flow/market-value/ETF-nav/active-ETF/stock-roster datasets ingested at all —
+# those factors/dimensions degrade to unavailable for US by design: `job_scoring_batch`/
+# `job_trend_score_batch` still read the TW-only dataset names for those (no US branch), which
+# always finds no partitions for `market_str="US"` and returns an empty frame/list — the same
+# graceful "nothing ingested yet" path every other missing-dataset case already takes.
+US_PRICE_EOD_DATASET = "us_price_eod"
+US_FINANCIALS_DATASET = "us_financials"
+US_BALANCE_SHEET_DATASET = "us_balance_sheet"
+US_CASH_FLOW_DATASET = "us_cash_flow"
+
 # FinMind investor-category labels the revenue/flow factor's chip sub-signal sums.
 _FLOW_INVESTORS = ("Foreign_Investor", "Investment_Trust")
+
+
+def _price_eod_dataset(market: Market) -> str:
+    return US_PRICE_EOD_DATASET if market is Market.US else PRICE_EOD_DATASET
+
+
+def _financials_datasets(market: Market) -> tuple[str, str, str]:
+    """`(income_statement, balance_sheet, cash_flow)` dataset names for `market` — see
+    `US_FINANCIALS_DATASET`'s own comment for why only these three (not institutional-flow/
+    market-value/ETF datasets) have a US counterpart at all."""
+    if market is Market.US:
+        return US_FINANCIALS_DATASET, US_BALANCE_SHEET_DATASET, US_CASH_FLOW_DATASET
+    return FINANCIALS_DATASET, BALANCE_SHEET_DATASET, CASH_FLOW_DATASET
+
 
 # 12-1 momentum needs 253 trading days; the Minervini trend template needs 252 plus the MA200
 # slope check reaches back another ~22 — 260 is the same comfortable margin
@@ -229,12 +256,20 @@ def _active_roster_symbols(ctx: IngestContext, market_str: str) -> frozenset[str
     return frozenset(row.symbol for row in roster)
 
 
+def _calendar_for(ctx: IngestContext) -> TradingDayCalendar:
+    """`ctx.us_calendar` for a `Market.US`-scoped context, `ctx.calendar` (TW) otherwise — TW and
+    US holiday sets diverge (`ingest/context.py`'s own `us_calendar` field comment), so this
+    batch must never gate a US run against the TW calendar or vice versa."""
+    return ctx.us_calendar if ctx.market is Market.US else ctx.calendar
+
+
 def _trailing_trading_days(ctx: IngestContext, run_date: date_, count: int) -> tuple[date_, ...]:
     """The `count` trading days ending at (and including) `run_date`, via the trading-day
     calendar so the window skips weekends/holidays rather than hand-rolling date math — same
     helper shape `screener/batch.py` uses."""
-    start = ctx.calendar.shift_business_days(run_date, -(count - 1))
-    return ctx.calendar.business_days_between(start, run_date)
+    calendar = _calendar_for(ctx)
+    start = calendar.shift_business_days(run_date, -(count - 1))
+    return calendar.business_days_between(start, run_date)
 
 
 def _as_float(value: object) -> float | None:
@@ -272,7 +307,9 @@ _PRICE_FRAME_COLUMNS: tuple[str, ...] = (
 _FLOW_FRAME_COLUMNS: tuple[str, ...] = ("symbol", "trade_date", "investor", "buy", "sell")
 
 
-def _bars_by_symbol(price_frame: pd.DataFrame) -> dict[str, tuple[PriceBar, ...]]:
+def _bars_by_symbol(
+    price_frame: pd.DataFrame, market: Market = Market.TW
+) -> dict[str, tuple[PriceBar, ...]]:
     """Group the price window's rows by symbol and build each an ascending-by-date `PriceBar`
     series, from the columnar `read_range_frame` read (see that method's own docstring for why
     this reads a `DataFrame`, not `list[dict]` — this whole-market, 260-trading-day window is
@@ -284,8 +321,9 @@ def _bars_by_symbol(price_frame: pd.DataFrame) -> dict[str, tuple[PriceBar, ...]
     # Drop warrant/derivative codes before any per-symbol grouping — a vectorized mask over the
     # whole frame, not a per-row Python check, so the excluded ~90% of rows
     # (`analytics.symbol_universe`'s own comment has the measured split) never reach
-    # `PriceBar` construction at all.
-    scoreable = scoreable_symbol_mask(cast("pd.Series", projected["symbol"]))
+    # `PriceBar` construction at all. A no-op for US (see `scoreable_symbol_mask`'s own
+    # docstring — the ingested US universe has no warrant/derivative pollution to exclude).
+    scoreable = scoreable_symbol_mask(cast("pd.Series", projected["symbol"]), market)
     ordered = cast("pd.DataFrame", projected.loc[scoreable].sort_values("trade_date"))
     by_symbol: dict[str, list[PriceBar]] = defaultdict(list)
     # Positional-tuple unpacking (`name=None`), not attribute access: pandas' `itertuples()`
@@ -370,16 +408,20 @@ def _latest_market_value_by_symbol(rows: Sequence[dict[str, object]]) -> dict[st
     return {symbol: float(row.market_value) for symbol, row in latest.items()}
 
 
-def _split_universe_by_symbol_type(universe: Sequence[str]) -> tuple[list[str], list[str]]:
+def _split_universe_by_symbol_type(
+    universe: Sequence[str], market: Market = Market.TW
+) -> tuple[list[str], list[str]]:
     """Every symbol's scoring branch is decided purely by its code shape (`classify_symbol_type`
     needs no store lookup) — the one place `job_scoring_batch` chooses which of the two factor
     sets (`StockScoreBreakdown` vs `EtfScoreBreakdown`) a symbol gets. `ETF_LEVERAGED`/
     `ETF_INVERSE` are grouped with plain `ETF` here (all three use the same `EtfScoreBreakdown`
-    shape — see that model's own docstring)."""
+    shape — see that model's own docstring). Every `Market.US` symbol is unconditionally
+    `SymbolType.STOCK` (see that function's own docstring) — `etf_symbols` is always empty for
+    US."""
     stock_symbols: list[str] = []
     etf_symbols: list[str] = []
     for symbol in universe:
-        if classify_symbol_type(symbol) is SymbolType.STOCK:
+        if classify_symbol_type(symbol, market) is SymbolType.STOCK:
             stock_symbols.append(symbol)
         else:
             etf_symbols.append(symbol)
@@ -692,7 +734,7 @@ async def _score_and_persist_universe(  # noqa: PLR0913 — one keyword-only fie
                     market=market,
                     as_of=run_date,
                     profile=profile,
-                    symbol_type=classify_symbol_type(symbol),
+                    symbol_type=classify_symbol_type(symbol, market),
                     breakdown=etf_breakdown,
                 )
                 await upsert_score(session, result)
@@ -710,7 +752,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     extrapolating check since `run_date` is almost always "today", which is always beyond
     `ctx.calendar`'s known range until today's own whole-market pulls have landed — see
     `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
-    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+    if not _calendar_for(ctx).is_trading_day_extrapolating(run_date):
         return journal_run(
             STOCK_SCORE_DATASET,
             run_date,
@@ -746,17 +788,29 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         ctx, run_date, _HOLDINGS_TURNOVER_LOOKBACK_DAYS
     )
 
+    financials_dataset, balance_sheet_dataset, cash_flow_dataset = _financials_datasets(market)
     price_frame = ctx.store.read_range_frame(
-        PRICE_EOD_DATASET, market_str, price_window, columns=_PRICE_FRAME_COLUMNS
+        _price_eod_dataset(market), market_str, price_window, columns=_PRICE_FRAME_COLUMNS
     )
+    # US has no institutional-flow dataset ingested at all (`ingest/us_jobs.py` covers only
+    # price/fundamentals) — reading the TW-only dataset name for `market_str="US"` always finds
+    # no partitions and returns an empty frame, the same graceful "nothing ingested yet" path
+    # `ParquetStore.read_range_frame` already takes for any dataset with no written partitions;
+    # `revenue_flow`/`liquidity_flow`/chip-flow-dependent factors then degrade to unavailable
+    # exactly as `analytics/score.py`'s own graceful-degradation contract already guarantees.
     flow_frame = ctx.store.read_range_frame(
         INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
     )
     statement_rows = (
-        ctx.store.read_range(FINANCIALS_DATASET, market_str, financials_window)
-        + ctx.store.read_range(BALANCE_SHEET_DATASET, market_str, financials_window)
-        + ctx.store.read_range(CASH_FLOW_DATASET, market_str, financials_window)
+        ctx.store.read_range(financials_dataset, market_str, financials_window)
+        + ctx.store.read_range(balance_sheet_dataset, market_str, financials_window)
+        + ctx.store.read_range(cash_flow_dataset, market_str, financials_window)
     )
+    # market_value/etf_nav/etf_expense_ratio/active_etf_holding have no US-ingested counterpart
+    # either — same empty-frame graceful degradation as institutional-flow above; value_guard's
+    # market-cap-dependent sub-metrics (EV/EBITDA, FCF yield, P/E, P/B) degrade to unavailable for
+    # US, and every ETF-only factor is moot since `_split_universe_by_symbol_type` never assigns
+    # a US symbol to the ETF branch (see that function's own docstring).
     market_value_rows = ctx.store.read_range(MARKET_VALUE_DATASET, market_str, market_value_window)
     etf_nav_rows = ctx.store.read_range(ETF_NAV_DATASET, market_str, etf_nav_window)
     etf_expense_ratio_rows = ctx.store.read_range(
@@ -769,7 +823,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         ACTIVE_ETF_HOLDING_CHANGE_DATASET, market_str, holdings_turnover_window
     )
 
-    bars_by_symbol = _bars_by_symbol(price_frame)
+    bars_by_symbol = _bars_by_symbol(price_frame, market)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
     lines_by_symbol = _statement_lines_by_symbol(statement_rows)
     market_value_by_symbol = _latest_market_value_by_symbol(market_value_rows)
@@ -799,7 +853,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
             "nothing to score",
         )
 
-    stock_symbols, etf_symbols = _split_universe_by_symbol_type(universe)
+    stock_symbols, etf_symbols = _split_universe_by_symbol_type(universe, market)
 
     signals, universes = _assemble_signals_and_universes(
         universe,
@@ -870,6 +924,13 @@ async def _margin_short_rows_by_symbol(
     per dataset per day, no retry loop) — a day whose fetch fails is logged and skipped, never
     retried in a tight loop; the day's rows are simply absent from the returned mapping."""
     by_symbol: dict[str, list[MarginShortRow]] = defaultdict(list)
+    if market is not Market.TW:
+        # `ctx.finmind.fetch_whole_market` has no `market` parameter at all — FinMind's own
+        # `MARGIN_SHORT` dataset is TW-only, with no US equivalent ingested anywhere. Calling it
+        # unconditionally here would silently fetch TW margin data and mislabel it under a US
+        # symbol universe. Returns empty — `margin_credit_trend_score` degrades to unavailable
+        # for every non-TW market exactly like every other genuinely-missing dimension.
+        return {}
     for run_date in margin_window:
         result = await ctx.finmind.fetch_whole_market(
             Capability.MARGIN_SHORT, tls_policy=ctx.tls_policy, start_date=run_date.isoformat()
@@ -894,19 +955,28 @@ async def _margin_short_rows_by_symbol(
     return dict(by_symbol)
 
 
-def _taiex_closes(price_frame: pd.DataFrame) -> tuple[float, ...]:
-    """TAIEX's own daily closes from the SAME whole-market `PRICE_EOD_DATASET` frame
-    `_bars_by_symbol` reads — read back separately because `scoreable_symbol_mask` (the
-    four-digit-or-`00`-prefixed equity/ETF filter) deliberately excludes the non-numeric `TAIEX`
-    aggregate label (see that mask's own docstring), so the same projected frame is filtered a
-    second time here for the one row this dimension needs, ascending by trade date."""
+_US_REFERENCE_INDEX_SYMBOL = "SPY"  # `ingest/us_jobs.py::US_REFERENCE_INDEX_SYMBOL`, duplicated
+# as a local read-key constant — same decoupling convention as `PRICE_EOD_DATASET` etc. above.
+
+
+def _reference_index_closes(price_frame: pd.DataFrame, market: Market) -> tuple[float, ...]:
+    """The broad-market reference index's own daily closes from the SAME whole-market
+    `PRICE_EOD_DATASET`/`US_PRICE_EOD_DATASET` frame `_bars_by_symbol` reads — read back
+    separately because `scoreable_symbol_mask` (the four-digit-or-`00`-prefixed equity/ETF
+    filter) deliberately excludes the non-numeric `TAIEX` aggregate label for TW (see that
+    mask's own docstring); SPY is a real, `is_scoreable_symbol`-unfiltered ticker for US (that
+    mask is a no-op there), but is read back the same way here for symmetry with the TW path and
+    because `_bars_by_symbol`'s per-symbol grouping is a different shape than the flat closes
+    list this dimension needs. TAIEX (TW) or SPY (US, `ingest/us_jobs.py::job_us_price_eod`
+    always fetches it alongside the discovered universe) — ascending by trade date."""
+    index_symbol = _US_REFERENCE_INDEX_SYMBOL if market is Market.US else _TAIEX_SYMBOL
     projected = cast("pd.DataFrame", price_frame.loc[:, ["symbol", "trade_date", "close"]])
-    taiex_rows = cast(
+    index_rows = cast(
         "pd.DataFrame",
-        projected.loc[projected["symbol"] == _TAIEX_SYMBOL].sort_values("trade_date"),
+        projected.loc[projected["symbol"] == index_symbol].sort_values("trade_date"),
     )
     closes: list[float] = []
-    for close in cast("list[object]", taiex_rows["close"].tolist()):
+    for close in cast("list[object]", index_rows["close"].tolist()):
         close_f = _as_float(close)
         if close_f is not None:
             closes.append(close_f)
@@ -1093,7 +1163,7 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
 
     Scores BOTH stock and ETF symbols with the same five dimensions (no ETF-specific branching,
     per the task brief: the five factors here are mostly stock-agnostic)."""
-    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+    if not _calendar_for(ctx).is_trading_day_extrapolating(run_date):
         return journal_run(
             TREND_SCORE_DATASET,
             run_date,
@@ -1119,15 +1189,15 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     margin_window = _trailing_trading_days(ctx, run_date, _MARGIN_SHORT_LOOKBACK_DAYS)
 
     price_frame = ctx.store.read_range_frame(
-        PRICE_EOD_DATASET, market_str, price_window, columns=_PRICE_FRAME_COLUMNS
+        _price_eod_dataset(market), market_str, price_window, columns=_PRICE_FRAME_COLUMNS
     )
     flow_frame = ctx.store.read_range_frame(
         INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
     )
-    bars_by_symbol = _bars_by_symbol(price_frame)
+    bars_by_symbol = _bars_by_symbol(price_frame, market)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
     margin_by_symbol = await _margin_short_rows_by_symbol(ctx, market, margin_window)
-    taiex_closes_full = _taiex_closes(price_frame)
+    reference_index_closes = _reference_index_closes(price_frame, market)
     industry_by_symbol = _industry_by_symbol(ctx, market_str)
     industry_ranks_by_industry = _sector_rotation_ranks_by_industry(
         flow_by_symbol, industry_by_symbol
@@ -1172,7 +1242,7 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
             )
             industry = industry_by_symbol.get(symbol)
             industry_ranks = industry_ranks_by_industry.get(industry, []) if industry else []
-            symbol_closes, aligned_taiex_closes = _align_closes(closes, taiex_closes_full)
+            symbol_closes, aligned_index_closes = _align_closes(closes, reference_index_closes)
             result = _build_trend_result(
                 symbol,
                 market=market,
@@ -1184,7 +1254,7 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
                 price_change_pct=price_change_pct,
                 industry_ranks=industry_ranks,
                 symbol_closes=symbol_closes,
-                taiex_closes=aligned_taiex_closes,
+                taiex_closes=aligned_index_closes,
             )
             await upsert_trend_score(session, result)
             rows_written += 1

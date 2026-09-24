@@ -38,17 +38,19 @@ from analytics.scoring_batch import (
     ETF_NAV_DATASET,
     INSTITUTIONAL_FLOW_DATASET,
     PRICE_EOD_DATASET,
+    US_PRICE_EOD_DATASET,
     job_scoring_batch,
+    job_trend_score_batch,
 )
 from db import models  # noqa: F401 — registers ORM models onto Base.metadata
 from db.base import Base
-from db.models import StockScoreRow
+from db.models import StockScoreRow, TrendScoreRow
 from db.sqlite_pragma import enable_sqlite_foreign_keys
 from ingest.context import IngestContext
 from ingest.daemon import IngestDaemon, ScheduledIngestJob
 from ingest.leader import AlwaysLeader
 from ingest.store import ParquetStore
-from schemas.enums import Tier, TLSPolicy
+from schemas.enums import Market, Tier, TLSPolicy
 from tools.base import ToolContext, dispatch_tool
 from tools.score_tools import build_registration_table
 
@@ -448,3 +450,111 @@ async def test_no_trading_language_in_score_or_leaderboard_output(
     for row in leaderboard_result.model_dump(mode="json")["results"]:
         for banned in _TRADING_LANGUAGE:
             assert banned not in row["band"].lower()
+
+
+def _seed_us_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None:
+    """One US symbol (`AAPL`-shaped) plus SPY riding along in the same `us_price_eod` partition
+    (`ingest/us_jobs.py::US_REFERENCE_INDEX_SYMBOL`'s own precedent — this mirrors that, not a
+    fresh convention) — enough price history for momentum/trend_quality to resolve, and enough
+    SPY history for `taiex_correlation` (the US branch reads SPY back via
+    `analytics.scoring_batch._reference_index_closes`). No institutional-flow/market-value/ETF/
+    stock-roster data is written at all — those factors/dimensions must degrade to unavailable
+    for `Market.US`, not error, per `job_scoring_batch`'s own market-branching contract."""
+    window = calendar.business_days_between(
+        calendar.shift_business_days(_RUN_DATE, -259), _RUN_DATE
+    )
+    aapl_closes = _flat_then_ramp_closes(window, final_return=0.20)
+    spy_closes = _flat_then_ramp_closes(window, final_return=0.05)
+    for i, day in enumerate(window):
+        rows = _price_rows_for("AAPL", [aapl_closes[i]], [day]) + _price_rows_for(
+            "SPY", [spy_closes[i]], [day]
+        )
+        for row in rows:
+            row["market"] = "US"
+        store.write_partition(US_PRICE_EOD_DATASET, "US", day, rows)
+
+
+def _us_ctx(root: Path, session_factory: async_sessionmaker) -> IngestContext:
+    return IngestContext(
+        finmind=None,  # type: ignore[arg-type]  # this job makes no FinMind call for US
+        store=ParquetStore(root=root),
+        leader=AlwaysLeader(),
+        calendar=TradingDayCalendar(),
+        us_calendar=TradingDayCalendar(),
+        tls_policy=TLSPolicy.STRICT,
+        market=Market.US,
+        session_factory=session_factory,
+    )
+
+
+async def test_us_scoring_batch_computes_momentum_but_degrades_chip_flow(
+    tmp_path: Path, session_factory: async_sessionmaker
+) -> None:
+    """`Market.US`-scoped `job_scoring_batch`: momentum/trend_quality must resolve from real
+    price history (the only ingested US dataset), while `revenue_flow` (needs
+    institutional-flow, never ingested for US) must degrade to a disclosed `unavailable_reason`,
+    never a fabricated value or a crash. `value_guard`/`quality` likewise degrade (no US
+    financials seeded in this test) — this proof is about the price-only factors resolving
+    correctly alongside the missing ones, not about every factor being available."""
+    ctx = _us_ctx(tmp_path, session_factory)
+    _seed_us_universe(ctx.store, ctx.calendar)
+    await job_scoring_batch(_RUN_DATE, ctx)
+
+    async with session_factory() as session:
+        rows = (await session.scalars(select(StockScoreRow))).all()
+
+    us_rows = [row for row in rows if row.market == "US"]
+    symbols = {row.symbol for row in us_rows}
+    # SPY IS scored too, unlike TAIEX on the TW side — `scoreable_symbol_mask`'s TW branch
+    # structurally excludes the non-numeric `TAIEX` label, but the US branch is unconditionally
+    # permissive (see that function's own docstring: no warrant/derivative pollution to exclude
+    # for a screener-discovered US universe), and SPY is a real, ordinary US ticker with no
+    # special-cased exclusion anywhere in `job_scoring_batch`. This is correct, not a bug — SPY
+    # riding along in the price partition as the reference-index proxy doesn't mean it should be
+    # hidden from scoring too.
+    assert symbols == {"AAPL", "SPY"}
+
+    swing_rows = [row for row in us_rows if row.profile == "swing" and row.symbol == "AAPL"]
+    assert len(swing_rows) == 1
+    swing_row = swing_rows[0]
+    assert swing_row.momentum_percentile is not None
+    assert swing_row.momentum_unavailable_reason is None
+
+    assert swing_row.revenue_flow_percentile is None
+    assert swing_row.revenue_flow_unavailable_reason is not None
+
+
+async def test_us_trend_score_batch_computes_technical_but_degrades_chip_and_credit(
+    tmp_path: Path, session_factory: async_sessionmaker
+) -> None:
+    """`Market.US`-scoped `job_trend_score_batch`: `technical` (price-only) must resolve;
+    `chip_flow`/`margin_credit`/`broker_concentration`/`sector_rotation` must all degrade
+    (no institutional-flow/margin-short/stock-roster data ingested for US — `Capability.
+    MARGIN_SHORT` is FinMind-only per `_margin_short_rows_by_symbol`'s own market gate).
+    `taiex_correlation` (SPY-based) must resolve, since SPY rides along in the same price
+    partition `_seed_us_universe` writes — proving the reference-index substitution genuinely
+    works for US, not just that it degrades gracefully when absent."""
+    ctx = _us_ctx(tmp_path, session_factory)
+    _seed_us_universe(ctx.store, ctx.calendar)
+    await job_trend_score_batch(_RUN_DATE, ctx)
+
+    async with session_factory() as session:
+        rows = (await session.scalars(select(TrendScoreRow))).all()
+    us_rows = [row for row in rows if row.market == "US"]
+    # SPY is scored too — see `test_us_scoring_batch_computes_momentum_but_degrades_chip_flow`'s
+    # own comment for why (unconditionally permissive `scoreable_symbol_mask` for US, no
+    # special-cased exclusion of the reference-index symbol from scoring itself).
+    assert {row.symbol for row in us_rows} == {"AAPL", "SPY"}
+    row = next(r for r in us_rows if r.symbol == "AAPL")
+
+    assert row.technical_value is not None
+    assert row.technical_unavailable_reason is None
+    assert row.taiex_correlation_value is not None
+    assert row.taiex_correlation_unavailable_reason is None
+
+    assert row.chip_flow_value is None
+    assert row.chip_flow_unavailable_reason is not None
+    assert row.margin_credit_value is None
+    assert row.margin_credit_unavailable_reason is not None
+    assert row.broker_concentration_value is None
+    assert row.broker_concentration_unavailable_reason is not None
