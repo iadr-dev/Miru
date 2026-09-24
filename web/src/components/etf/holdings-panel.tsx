@@ -194,7 +194,23 @@ function HoldingsTable({
                 {row.component_stock_id}
               </span>
             </td>
-            <td className="py-2 text-[var(--text-muted)]">{row.industry_category ?? "—"}</td>
+            <td className="py-2">
+              {row.industry_category ? (
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  style={{ color: hashToChartToken(row.industry_category) }}
+                >
+                  <span
+                    aria-hidden
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: hashToChartToken(row.industry_category) }}
+                  />
+                  {row.industry_category}
+                </span>
+              ) : (
+                <span className="text-[var(--text-muted)]">—</span>
+              )}
+            </td>
             <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
               {formatNumber(row.weight, locale, { decimals: 2 })}%
             </td>
@@ -256,7 +272,19 @@ function IndustryTable({
         {rows.map((row, index) => (
           <tr key={row.label} className="border-[var(--border)] border-b">
             <td className="py-2 text-[var(--text-muted)] tabular-nums">{index + 1}</td>
-            <td className="py-2 text-[var(--text)]">{row.label}</td>
+            <td className="py-2">
+              <span
+                className="inline-flex items-center gap-1.5"
+                style={{ color: hashToChartToken(row.label) }}
+              >
+                <span
+                  aria-hidden
+                  className="size-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: hashToChartToken(row.label) }}
+                />
+                {row.label}
+              </span>
+            </td>
             <td className="py-2 text-right font-num text-[var(--text)] tabular-nums">
               {formatNumber(row.weight, locale, { decimals: 2 })}%
             </td>
