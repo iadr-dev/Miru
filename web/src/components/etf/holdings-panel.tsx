@@ -9,6 +9,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
+import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import type { ActiveEtfHoldingWeightRow } from "@/types/etf-detail";
 import { isMaskedTeaser } from "@/types/market";
@@ -87,7 +88,7 @@ export function HoldingsPanel({
     data.current_holdings.map((row) => ({ label: row.component_stock_name, weight: row.weight })),
     t("others"),
   );
-  const industrySlices = topSlices(industryWeights(data.current_holdings), t("others"));
+  const industrySlices = topIndustrySlices(industryWeights(data.current_holdings), t("others"));
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -312,6 +313,24 @@ function topSlices(
     weight: row.weight,
     color: DONUT_COLORS[index % DONUT_COLORS.length] ?? "var(--chart-1)",
   }));
+  const othersWeight = sorted.slice(TOP_N).reduce((sum, row) => sum + row.weight, 0);
+  return othersWeight > 0
+    ? [...top, { label: othersLabel, weight: othersWeight, color: OTHERS_COLOR }]
+    : top;
+}
+
+/** Industry slices get a color keyed to the industry NAME (`hashToChartToken`, the same stable
+ * categorical-color hash `SectorChip` already uses) rather than `topSlices`' rank-index cycling
+ * — an industry's color should never shift just because its weight rank moved, and the same
+ * industry should read as the same color everywhere it appears on this page. */
+function topIndustrySlices(
+  rows: readonly { label: string; weight: number }[],
+  othersLabel: string,
+): Slice[] {
+  const sorted = [...rows].sort((a, b) => b.weight - a.weight);
+  const top = sorted
+    .slice(0, TOP_N)
+    .map((row) => ({ label: row.label, weight: row.weight, color: hashToChartToken(row.label) }));
   const othersWeight = sorted.slice(TOP_N).reduce((sum, row) => sum + row.weight, 0);
   return othersWeight > 0
     ? [...top, { label: othersLabel, weight: othersWeight, color: OTHERS_COLOR }]
