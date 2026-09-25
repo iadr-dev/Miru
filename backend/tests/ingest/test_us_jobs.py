@@ -180,18 +180,34 @@ async def test_job_us_fundamentals_writes_every_capability(
             Capability.CASH_FLOW_STATEMENT: "lines",
             Capability.DIVIDENDS: "events",
             Capability.SPLIT_PRICE: "rows",
+            # `ANALYST_CONSENSUS`/`SECTOR_CLASS` return one row's own dict directly (see
+            # `_fetch_one_fundamental`'s own docstring) — `INSTITUTIONAL_HOLDERS`/
+            # `INSIDER_ACTIVITY` are list-shaped like the original five.
+            Capability.ANALYST_CONSENSUS: "consensus",
+            Capability.INSTITUTIONAL_HOLDERS: "holders",
+            Capability.INSIDER_ACTIVITY: "activity",
+            Capability.SECTOR_CLASS: "classification",
         }[cap]
-        return _stub_result({key: [{"symbol": sym.id, "value": 1}]})
+        value: object = (
+            {"symbol": sym.id, "value": 1}
+            if cap in (Capability.ANALYST_CONSENSUS, Capability.SECTOR_CLASS)
+            else [{"symbol": sym.id, "value": 1}]
+        )
+        return _stub_result({key: value})
 
     monkeypatch.setattr(yfinance_adapter_module.YFinanceAdapter, "fetch", fake_fetch)
 
     run = await job_us_fundamentals(run_date, ctx)
 
     assert run.status is RunStatus.SUCCESS
-    assert run.rows_written == 5  # one row per capability, one symbol
+    assert run.rows_written == 9  # one row per capability (9), one symbol
     assert ctx.store.has_partition("us_financials", "US", run_date)
     assert ctx.store.has_partition("us_dividends", "US", run_date)
     assert ctx.store.has_partition("us_split_price", "US", run_date)
+    assert ctx.store.has_partition("us_analyst_consensus", "US", run_date)
+    assert ctx.store.has_partition("us_institutional_holders", "US", run_date)
+    assert ctx.store.has_partition("us_insider_activity", "US", run_date)
+    assert ctx.store.has_partition("us_sector_class", "US", run_date)
 
 
 async def test_job_us_fundamentals_one_symbol_failure_is_partial_not_fatal(
@@ -276,8 +292,8 @@ async def test_job_us_fundamentals_throttles_between_calls(
 
     await job_us_fundamentals(run_date, ctx)
 
-    # 2 symbols x 5 capabilities = 10 calls, 9 delays (never before the first call).
-    assert len(sleep_calls) == 9
+    # 2 symbols x 9 capabilities = 18 calls, 17 delays (never before the first call).
+    assert len(sleep_calls) == 17
 
 
 async def test_job_us_fundamentals_without_yfinance_adapter_is_skipped(
