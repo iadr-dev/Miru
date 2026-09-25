@@ -469,9 +469,7 @@ def _institutional_holders_by_symbol(
     by_symbol: dict[str, list[InstitutionalHolderRow]] = defaultdict(list)
     for raw in rows:
         try:
-            row = InstitutionalHolderRow.model_validate(
-                _project(raw, _INSTITUTIONAL_HOLDER_FIELDS)
-            )
+            row = InstitutionalHolderRow.model_validate(_project(raw, _INSTITUTIONAL_HOLDER_FIELDS))
         except ValueError:
             continue
         by_symbol[row.symbol].append(row)

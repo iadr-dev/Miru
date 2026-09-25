@@ -70,9 +70,7 @@ def _row_to_result(row: TrendScoreRow) -> TrendScoreResult:
         market=market,
         as_of=date_.fromisoformat(row.as_of),
         composite=row.composite,
-        dimensions=tuple(
-            _dimension_result(row, name) for name in _dimension_names_for(market)
-        ),
+        dimensions=tuple(_dimension_result(row, name) for name in _dimension_names_for(market)),
         unavailable_dimensions=tuple(row.unavailable_dimensions),
         non_trading_caveat=row.non_trading_caveat,
     )

@@ -310,9 +310,7 @@ async def test_get_sector_overview_degrades_stats_and_industries_when_absent() -
         "symbol": "NVDA",
         "name": "NVIDIA",
     }
-    router, _ = make_router(
-        symbol, {Capability.SECTOR_OVERVIEW: _result({"rows": [sector_row]})}
-    )
+    router, _ = make_router(symbol, {Capability.SECTOR_OVERVIEW: _result({"rows": [sector_row]})})
     tool = GetSectorOverviewTool(router)
 
     output = await tool.run(
