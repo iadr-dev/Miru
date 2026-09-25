@@ -8,9 +8,10 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SectorChip } from "@/components/stock/sector-chip";
+import { useLiveQuote } from "@/hooks/use-live-quote";
 import { getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
 import { getEtfList, getPriceHistory, getSymbolInfo } from "@/lib/api/market";
-import { getStockScore } from "@/lib/api/stock-detail";
+import { getLivePriceQuote, getStockScore } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
@@ -34,10 +35,18 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
  * `get_company_profile` — that tool's output has no name field at all (composed from
  * sector/dividends/market-value/valuation/financials/MOPS-profile capabilities, none of which
  * carry the company's display name). Price/change/OHLCV come from a direct `get_price_history`
- * call over a 2-day window. ☆/💬 are honest placeholders: no `/watchlists` write path exists yet
- * (`WatchlistRail` itself is still an unwired shell), so ☆ stays visually present but
- * non-interactive rather than faking a save; 💬 links to `/chat` plain (no seed-query mechanism
- * exists yet either).
+ * call over a 2-day window for TW/ETF — for US, `getPriceHistory`'s `Capability.PRICE_EOD` has
+ * no ingested partition yet, so this reads a live yfinance-WebSocket tick instead. Two
+ * complementary US price sources: `useLiveQuote` (SSE `GET /quote/stream`) for a tick while the
+ * market is open, and a one-shot `getLivePriceQuote` (`GET /stock/live-price-quote`) fetched on
+ * mount as the initial/off-hours value — the SSE poller only fetches while the session is open
+ * (bounded observation), so a page load outside market hours would otherwise never receive a
+ * tick at all; the one-shot route's own adapter already falls back to a `.info` snapshot
+ * (`sources/yfinance/live_quote_adapter.py::_snapshot_tick`) for exactly this case. The SSE tick
+ * wins once it starts arriving (a genuinely live overwrite of the one-shot snapshot). ☆/💬 are
+ * honest placeholders: no `/watchlists` write path exists yet (`WatchlistRail` itself is still an
+ * unwired shell), so ☆ stays visually present but non-interactive rather than faking a save;
+ * 💬 links to `/chat` plain (no seed-query mechanism exists yet either).
  */
 export function AssetHeader({
   symbol,
@@ -96,14 +105,48 @@ export function AssetHeader({
   const bars = [...(historyQuery.data?.rows ?? [])].sort((a, b) =>
     a.trade_date.localeCompare(b.trade_date),
   );
-  const latestBar = bars.at(-1) ?? null;
-  const priorBar = bars.length >= 2 ? bars.at(-2) : null;
-  const changePct =
-    latestBar && priorBar && priorBar.close !== 0
-      ? (latestBar.close / priorBar.close - 1) * 100
+  const eodLatestBar = bars.at(-1) ?? null;
+  const eodPriorBar = bars.length >= 2 ? bars.at(-2) : null;
+  const eodChangePct =
+    eodLatestBar && eodPriorBar && eodPriorBar.close !== 0
+      ? (eodLatestBar.close / eodPriorBar.close - 1) * 100
       : null;
+
+  // For US: the SSE stream (`useLiveQuote`) only carries a tick while the market session is
+  // open (the poller's bounded-observation gate never fetches off-hours), so a one-shot
+  // `getLivePriceQuote` read on mount covers the load-time/off-hours case — its own adapter
+  // already falls back to a `.info` snapshot when no WS tick has streamed in. The SSE tick wins
+  // once it starts arriving (a strictly-live overwrite of the one-shot snapshot); EOD history is
+  // the final fallback for TW/ETF, which have no live-quote path at all.
+  const liveQuote = useLiveQuote(symbol, market);
+  const liveQuoteSnapshotQuery = useQuery({
+    queryKey: ["live_price_quote", symbol, market],
+    queryFn: () => getLivePriceQuote(symbol, market),
+    enabled: market === "US",
+    staleTime: 15_000,
+  });
+  const tick = liveQuote.tick ?? liveQuoteSnapshotQuery.data?.tick ?? null;
+  const price = tick?.price ?? eodLatestBar?.close ?? null;
+  // `tick.change_percent` is already percent-scaled (e.g. `-0.196` means -0.196%), matching
+  // yfinance's own `.info`/WebSocket convention — never multiply by 100 again here.
+  const changePct = tick?.change_percent ?? eodChangePct;
   const isUp = changePct !== null && changePct >= 0;
   const priceColor = changePct === null ? "var(--text)" : isUp ? "var(--up)" : "var(--down)";
+  const ohlc = tick
+    ? {
+        open: tick.open_price ?? null,
+        high: tick.day_high ?? null,
+        low: tick.day_low ?? null,
+        volume: tick.day_volume ?? null,
+      }
+    : eodLatestBar
+      ? {
+          open: eodLatestBar.open,
+          high: eodLatestBar.high,
+          low: eodLatestBar.low,
+          volume: eodLatestBar.volume,
+        }
+      : null;
 
   const band = scoreQuery.data?.found ? scoreQuery.data.result?.band : undefined;
   const composite = scoreQuery.data?.found ? scoreQuery.data.result?.composite : undefined;
@@ -167,8 +210,8 @@ export function AssetHeader({
           role="group"
           aria-label={
             changePct !== null
-              ? `${formatNumber(latestBar?.close ?? null, locale)} ${isUp ? "上漲" : "下跌"} ${Math.abs(changePct).toFixed(2)}%`
-              : formatNumber(latestBar?.close ?? null, locale)
+              ? `${formatNumber(price, locale)} ${isUp ? "上漲" : "下跌"} ${Math.abs(changePct).toFixed(2)}%`
+              : formatNumber(price, locale)
           }
           className="flex items-baseline gap-2"
         >
@@ -177,7 +220,7 @@ export function AssetHeader({
             className="font-num text-[28px] tabular-nums"
             style={{ color: priceColor }}
           >
-            {formatNumber(latestBar?.close ?? null, locale, { decimals: 2 })}
+            {formatNumber(price, locale, { decimals: 2 })}
           </span>
           {changePct !== null ? (
             <span
@@ -207,29 +250,29 @@ export function AssetHeader({
           `--chart-1..4` per label (never `--up`/`--down`) just to visually separate the 4
           labels from each other, web/CLAUDE.md §4. */}
       <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-num text-[12px] tabular-nums">
-        {latestBar ? (
+        {ohlc ? (
           <>
             <span>
               <span style={{ color: "var(--chart-1)" }}>{t("open")} </span>
               <span className="text-[var(--text)]">
-                {formatNumber(latestBar.open, locale, { decimals: 2 })}
+                {formatNumber(ohlc.open, locale, { decimals: 2 })}
               </span>
             </span>
             <span>
               <span style={{ color: "var(--chart-2)" }}>{t("high")} </span>
               <span className="text-[var(--text)]">
-                {formatNumber(latestBar.high, locale, { decimals: 2 })}
+                {formatNumber(ohlc.high, locale, { decimals: 2 })}
               </span>
             </span>
             <span>
               <span style={{ color: "var(--chart-3)" }}>{t("low")} </span>
               <span className="text-[var(--text)]">
-                {formatNumber(latestBar.low, locale, { decimals: 2 })}
+                {formatNumber(ohlc.low, locale, { decimals: 2 })}
               </span>
             </span>
             <span>
               <span style={{ color: "var(--chart-4)" }}>{t("volume")} </span>
-              <span className="text-[var(--text)]">{formatNumber(latestBar.volume, locale)}</span>
+              <span className="text-[var(--text)]">{formatNumber(ohlc.volume, locale)}</span>
             </span>
           </>
         ) : null}
@@ -243,10 +286,20 @@ export function AssetHeader({
             aria-hidden
             className={cn(
               "size-1.5 rounded-full",
-              historyQuery.isError ? "bg-[var(--warn)]" : "bg-[var(--text-muted)]",
+              tick && liveQuote.marketOpen
+                ? "bg-[var(--up)]"
+                : historyQuery.isError
+                  ? "bg-[var(--warn)]"
+                  : "bg-[var(--text-muted)]",
             )}
           />
-          {historyQuery.isError ? t("dataDelayed") : t("eodOnly")}
+          {tick && liveQuote.marketOpen
+            ? t("liveNow")
+            : market === "US"
+              ? t("marketClosedEodPrice")
+              : historyQuery.isError
+                ? t("dataDelayed")
+                : t("eodOnly")}
         </span>
       </p>
     </header>

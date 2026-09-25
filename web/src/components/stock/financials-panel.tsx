@@ -59,10 +59,18 @@ const MAX_STATEMENT_LINE_ITEMS = STATEMENT_LINE_COLORS.length;
 // still list in the legend (never dropped from the chart's data), just start toggled off so 10
 // simultaneous lines don't read as visual noise. Each statement type needs its own headline set
 // since 損益表/資產負債表/現金流量表 track entirely different line items — labels are this
-// dataset's own line-item names (`sources/finmind/fundamental.py`'s naming), not hand-picked
-// guesses; a label absent from a given quarter's `topItems` simply never renders (no-op, not an
-// error) since `topItems` is intersected against this set at render time.
-const STATEMENT_DEFAULT_VISIBLE_ITEMS: Record<FinancialStatementType, ReadonlySet<string>> = {
+// dataset's own line-item names, not hand-picked guesses; a label absent from a given quarter's
+// `topItems` simply never renders (no-op, not an error) since `topItems` is intersected against
+// this set at render time. TW rows use FinMind's own Chinese line-item names
+// (`sources/finmind/fundamental.py`); every other market's rows are yfinance-sourced and use
+// yfinance's own English item names instead (`sources/yfinance/price_financials.py`'s
+// `_financial_statement_lines`) — the two vocabularies share no overlap, so this needs one
+// headline set per (statement type, source vocabulary) pair, picked by market in
+// `FinancialStatementCard` (`isTw ? ...FinMind : ...Yfinance`).
+const STATEMENT_DEFAULT_VISIBLE_ITEMS_FINMIND: Record<
+  FinancialStatementType,
+  ReadonlySet<string>
+> = {
   income_statement: new Set([
     "營業收入",
     "營業毛利（毛損）",
@@ -74,6 +82,24 @@ const STATEMENT_DEFAULT_VISIBLE_ITEMS: Record<FinancialStatementType, ReadonlySe
     "營業活動之淨現金流入（流出）",
     "投資活動之淨現金流入（流出）",
     "本期現金及約當現金增加（減少）數",
+  ]),
+};
+const STATEMENT_DEFAULT_VISIBLE_ITEMS_YFINANCE: Record<
+  FinancialStatementType,
+  ReadonlySet<string>
+> = {
+  income_statement: new Set(["Total Revenue", "Gross Profit", "Operating Income", "Net Income"]),
+  balance_sheet: new Set([
+    "Total Assets",
+    "Total Liabilities Net Minority Interest",
+    "Stockholders Equity",
+    "Cash And Cash Equivalents",
+  ]),
+  cash_flow: new Set([
+    "Operating Cash Flow",
+    "Investing Cash Flow",
+    "Financing Cash Flow",
+    "Free Cash Flow",
   ]),
 };
 
@@ -395,13 +421,17 @@ function FinancialStatementCard({
   const [statementType, setStatementType] = useState<FinancialStatementType>("income_statement");
   const [periodType, setPeriodType] = useState<PeriodType>("quarterly");
   const [expanded, setExpanded] = useState(false);
-  // Tracks which items have been clicked away from their *default* visibility
-  // (`STATEMENT_DEFAULT_VISIBLE_ITEMS`) — never the visibility set directly, since `topItems`
-  // isn't known until the query resolves; XORing a toggle set against the fixed default means no
-  // effect/derived-state dance is needed to seed it once data arrives.
+  // Tracks which items have been clicked away from their *default* visibility (the market-
+  // appropriate `STATEMENT_DEFAULT_VISIBLE_ITEMS_*` set) — never the visibility set directly,
+  // since `topItems` isn't known until the query resolves; XORing a toggle set against the fixed
+  // default means no effect/derived-state dance is needed to seed it once data arrives.
   const [toggledItems, setToggledItems] = useState<ReadonlySet<string>>(new Set());
+  const defaultVisibleItems =
+    market === "TW"
+      ? STATEMENT_DEFAULT_VISIBLE_ITEMS_FINMIND
+      : STATEMENT_DEFAULT_VISIBLE_ITEMS_YFINANCE;
   const isItemVisible = (item: string): boolean =>
-    STATEMENT_DEFAULT_VISIBLE_ITEMS[statementType].has(item) !== toggledItems.has(item);
+    defaultVisibleItems[statementType].has(item) !== toggledItems.has(item);
   const startDate = monthsAgoIso(STATEMENT_LOOKBACK_MONTHS);
   const query = useQuery({
     queryKey: ["financial_statement", symbol, market, statementType, startDate],

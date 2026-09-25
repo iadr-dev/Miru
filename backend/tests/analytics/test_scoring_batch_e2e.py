@@ -38,17 +38,23 @@ from analytics.scoring_batch import (
     ETF_NAV_DATASET,
     INSTITUTIONAL_FLOW_DATASET,
     PRICE_EOD_DATASET,
+    US_ANALYST_CONSENSUS_DATASET,
+    US_INSIDER_ACTIVITY_DATASET,
+    US_INSTITUTIONAL_HOLDERS_DATASET,
+    US_PRICE_EOD_DATASET,
+    US_SECTOR_CLASS_DATASET,
     job_scoring_batch,
+    job_trend_score_batch,
 )
 from db import models  # noqa: F401 — registers ORM models onto Base.metadata
 from db.base import Base
-from db.models import StockScoreRow
+from db.models import StockScoreRow, TrendScoreRow
 from db.sqlite_pragma import enable_sqlite_foreign_keys
 from ingest.context import IngestContext
 from ingest.daemon import IngestDaemon, ScheduledIngestJob
 from ingest.leader import AlwaysLeader
 from ingest.store import ParquetStore
-from schemas.enums import Tier, TLSPolicy
+from schemas.enums import Market, Tier, TLSPolicy
 from tools.base import ToolContext, dispatch_tool
 from tools.score_tools import build_registration_table
 
@@ -448,3 +454,222 @@ async def test_no_trading_language_in_score_or_leaderboard_output(
     for row in leaderboard_result.model_dump(mode="json")["results"]:
         for banned in _TRADING_LANGUAGE:
             assert banned not in row["band"].lower()
+
+
+def _seed_us_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None:
+    """One US symbol (`AAPL`-shaped) plus SPY riding along in the same `us_price_eod` partition
+    (`ingest/us_jobs.py::US_REFERENCE_INDEX_SYMBOL`'s own precedent — this mirrors that, not a
+    fresh convention) — enough price history for momentum/trend_quality to resolve, and enough
+    SPY history for `taiex_correlation` (the US branch reads SPY back via
+    `analytics.scoring_batch._reference_index_closes`). No institutional-flow/market-value/ETF/
+    stock-roster data is written at all — those factors/dimensions must degrade to unavailable
+    for `Market.US`, not error, per `job_scoring_batch`'s own market-branching contract."""
+    window = calendar.business_days_between(
+        calendar.shift_business_days(_RUN_DATE, -259), _RUN_DATE
+    )
+    aapl_closes = _flat_then_ramp_closes(window, final_return=0.20)
+    spy_closes = _flat_then_ramp_closes(window, final_return=0.05)
+    for i, day in enumerate(window):
+        rows = _price_rows_for("AAPL", [aapl_closes[i]], [day]) + _price_rows_for(
+            "SPY", [spy_closes[i]], [day]
+        )
+        for row in rows:
+            row["market"] = "US"
+        store.write_partition(US_PRICE_EOD_DATASET, "US", day, rows)
+
+
+def _seed_us_analyst_data(store: ParquetStore, run_date: date_) -> None:
+    """The four US-native-factor datasets `ingest/us_jobs.py::job_us_fundamentals`'s extended
+    fan-out writes — `us_analyst_consensus`/`us_institutional_holders`/`us_insider_activity`/
+    `us_sector_class` — enough for AAPL's `analyst_revision`/`growth`/`institutional_ownership`/
+    `insider_sentiment`/`sector_momentum` factors/dimensions to resolve to real values, proving
+    the US-native replacement design genuinely computes (not just gracefully degrades).
+    `current_year_growth_estimate`/`mean_target` are the two `growth` factor sub-signals."""
+    store.write_partition(
+        US_ANALYST_CONSENSUS_DATASET,
+        "US",
+        run_date,
+        [
+            {
+                "symbol": "AAPL",
+                "market": "US",
+                "as_of": run_date.isoformat(),
+                "eps_trend_current": 6.50,
+                "eps_trend_90_days_ago": 6.00,
+                "eps_revisions_up_last_30_days": 8,
+                "eps_revisions_down_last_30_days": 2,
+                "current_year_growth_estimate": 0.12,
+                "mean_target": 220.0,
+            },
+            # SPY also gets a consensus row — `growth`'s two sub-signals
+            # (`current_year_growth_estimate`/`price_target_upside`) are cross-sectional
+            # percentiles (`winsorized_percentile`'s own >= 2-point floor), so a single-symbol
+            # universe would leave `growth` unavailable for a reason unrelated to what this test
+            # is proving.
+            {
+                "symbol": "SPY",
+                "market": "US",
+                "as_of": run_date.isoformat(),
+                "current_year_growth_estimate": 0.08,
+                "mean_target": 480.0,
+            },
+        ],
+    )
+    store.write_partition(
+        US_INSTITUTIONAL_HOLDERS_DATASET,
+        "US",
+        run_date,
+        [
+            {
+                "symbol": "AAPL",
+                "market": "US",
+                "holder_type": "institutional",
+                "holder_name": "Example Asset Management",
+                "date_reported": run_date.isoformat(),
+                "pct_held": 6.5,
+                "pct_change": 1.2,
+            }
+        ],
+    )
+    store.write_partition(
+        US_INSIDER_ACTIVITY_DATASET,
+        "US",
+        run_date,
+        [
+            {
+                "symbol": "AAPL",
+                "market": "US",
+                "insider_name": "Example Officer",
+                "transaction": "Buy",
+                "value": 500_000.0,
+                "start_date": run_date.isoformat(),
+            }
+        ],
+    )
+    store.write_partition(
+        US_SECTOR_CLASS_DATASET,
+        "US",
+        run_date,
+        [
+            {"symbol": "AAPL", "market": "US", "sector": "Technology", "sector_key": "technology"},
+            # SPY is priced-only (an ETF, not a real "sector"), but `sector_momentum_trend_score`
+            # needs >= 2 sectors in the day's comparison universe to rank against
+            # (`winsorized_percentile`'s own floor) — giving it a distinct slug here is a test-only
+            # convenience to exercise the cross-sectional ranking path, not a claim SPY "belongs"
+            # to a real sector.
+            {"symbol": "SPY", "market": "US", "sector": "Diversified", "sector_key": "diversified"},
+        ],
+    )
+
+
+def _us_ctx(root: Path, session_factory: async_sessionmaker) -> IngestContext:
+    return IngestContext(
+        finmind=None,  # type: ignore[arg-type]  # this job makes no FinMind call for US
+        store=ParquetStore(root=root),
+        leader=AlwaysLeader(),
+        calendar=TradingDayCalendar(),
+        us_calendar=TradingDayCalendar(),
+        tls_policy=TLSPolicy.STRICT,
+        market=Market.US,
+        session_factory=session_factory,
+    )
+
+
+async def test_us_scoring_batch_computes_momentum_and_analyst_revision(
+    tmp_path: Path, session_factory: async_sessionmaker
+) -> None:
+    """`Market.US`-scoped `job_scoring_batch`: momentum/trend_quality/liquidity must resolve from
+    real price history, AND `analyst_revision`/`growth` (the two US-native factors replacing/
+    adding to TW's five — see `UsStockScoreBreakdown`'s own docstring) must resolve from the
+    seeded `us_analyst_consensus` row — never left permanently unavailable. `value_guard`/
+    `quality` still degrade (no US financials seeded in this test). Critically: `revenue_flow_*`
+    columns must stay `None` for a US row (that TW-only factor is never computed for `Market.US`
+    at all — not computed-then-unavailable, genuinely never attempted)."""
+    ctx = _us_ctx(tmp_path, session_factory)
+    _seed_us_universe(ctx.store, ctx.calendar)
+    _seed_us_analyst_data(ctx.store, _RUN_DATE)
+    await job_scoring_batch(_RUN_DATE, ctx)
+
+    async with session_factory() as session:
+        rows = (await session.scalars(select(StockScoreRow))).all()
+
+    us_rows = [row for row in rows if row.market == "US"]
+    symbols = {row.symbol for row in us_rows}
+    # SPY IS scored too, unlike TAIEX on the TW side — `scoreable_symbol_mask`'s TW branch
+    # structurally excludes the non-numeric `TAIEX` label, but the US branch is unconditionally
+    # permissive (see that function's own docstring: no warrant/derivative pollution to exclude
+    # for a screener-discovered US universe), and SPY is a real, ordinary US ticker with no
+    # special-cased exclusion anywhere in `job_scoring_batch`. This is correct, not a bug — SPY
+    # riding along in the price partition as the reference-index proxy doesn't mean it should be
+    # hidden from scoring too.
+    assert symbols == {"AAPL", "SPY"}
+
+    swing_rows = [row for row in us_rows if row.profile == "swing" and row.symbol == "AAPL"]
+    assert len(swing_rows) == 1
+    swing_row = swing_rows[0]
+    assert swing_row.momentum_percentile is not None
+    assert swing_row.momentum_unavailable_reason is None
+
+    assert swing_row.analyst_revision_percentile is not None
+    assert swing_row.analyst_revision_unavailable_reason is None
+
+    assert swing_row.growth_percentile is not None
+    assert swing_row.growth_unavailable_reason is None
+
+    assert swing_row.liquidity_percentile is not None
+    assert swing_row.liquidity_unavailable_reason is None
+
+    # The TW-only `revenue_flow` slot is never touched for a US row — permanently null, not a
+    # disclosed-unavailable computation.
+    assert swing_row.revenue_flow_percentile is None
+    assert swing_row.revenue_flow_unavailable_reason is None
+
+
+async def test_us_trend_score_batch_computes_all_six_us_native_dimensions(
+    tmp_path: Path, session_factory: async_sessionmaker
+) -> None:
+    """`Market.US`-scoped `job_trend_score_batch`: all six US-native dimensions
+    (`technical`/`institutional_ownership`/`insider_sentiment`/`analyst_revision`/
+    `sector_momentum`/`taiex_correlation`) must resolve to real values from the seeded price +
+    `us_institutional_holders`/`us_insider_activity`/`us_analyst_consensus`/`us_sector_class`
+    data — proving the US-native replacement design genuinely computes, not just gracefully
+    degrades. The four TW-only columns (`chip_flow`/`margin_credit`/`broker_concentration`/
+    `sector_rotation`) must stay permanently `None` — never computed for `Market.US` at all."""
+    ctx = _us_ctx(tmp_path, session_factory)
+    _seed_us_universe(ctx.store, ctx.calendar)
+    _seed_us_analyst_data(ctx.store, _RUN_DATE)
+    await job_trend_score_batch(_RUN_DATE, ctx)
+
+    async with session_factory() as session:
+        rows = (await session.scalars(select(TrendScoreRow))).all()
+    us_rows = [row for row in rows if row.market == "US"]
+    # SPY is scored too — see `test_us_scoring_batch_computes_momentum_and_analyst_revision`'s
+    # own comment for why (unconditionally permissive `scoreable_symbol_mask` for US, no
+    # special-cased exclusion of the reference-index symbol from scoring itself).
+    assert {row.symbol for row in us_rows} == {"AAPL", "SPY"}
+    row = next(r for r in us_rows if r.symbol == "AAPL")
+
+    assert row.technical_value is not None
+    assert row.technical_unavailable_reason is None
+    assert row.taiex_correlation_value is not None
+    assert row.taiex_correlation_unavailable_reason is None
+
+    assert row.institutional_ownership_value is not None
+    assert row.institutional_ownership_unavailable_reason is None
+    assert row.insider_sentiment_value is not None
+    assert row.insider_sentiment_unavailable_reason is None
+    assert row.analyst_revision_value is not None
+    assert row.analyst_revision_unavailable_reason is None
+    assert row.sector_momentum_value is not None
+    assert row.sector_momentum_unavailable_reason is None
+
+    # The four TW-only dimensions are never computed for `Market.US` — permanently null columns,
+    # not a disclosed-unavailable computation.
+    assert row.chip_flow_value is None
+    assert row.chip_flow_unavailable_reason is None
+    assert row.margin_credit_value is None
+    assert row.margin_credit_unavailable_reason is None
+    assert row.broker_concentration_value is None
+    assert row.broker_concentration_unavailable_reason is None
+    assert row.sector_rotation_value is None
+    assert row.sector_rotation_unavailable_reason is None

@@ -106,3 +106,99 @@ async def test_fetch_analyst_consensus_extended_us(monkeypatch: pytest.MonkeyPat
     assert consensus["latest_upgrade_downgrade_firm"] == "JP Morgan"  # type: ignore[index]
     assert consensus["forward_eps_estimate"] == pytest.approx(8.81)  # type: ignore[index]
     assert consensus["long_term_growth_estimate"] == pytest.approx(0.122)  # type: ignore[index]
+
+
+async def test_fetch_market_value_us(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`market_value`/`valuation_ratios`/`profile` are US/GB/JP/EU-only additions — no adapter
+    was wired for any of these on a non-TW market before, so `get_company_profile`'s
+    市值/本益比/殖利率/公司資訊 fields always came back empty for e.g. `MU`/`AAPL`."""
+    frames = empty_frames()
+    frames["info"] = {"marketCap": 123_213_381_632_0}
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="MU", market=Market.US)
+
+    result = await adapter.fetch(Capability.MARKET_VALUE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.OK
+    rows = result.payload["rows"]
+    assert rows[0]["market_value"] == 123_213_381_632_0  # type: ignore[index]
+
+
+async def test_fetch_market_value_us_no_market_cap_degrades_to_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frames = empty_frames()
+    frames["info"] = {}
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="MU", market=Market.US)
+
+    result = await adapter.fetch(Capability.MARKET_VALUE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.STALE
+    assert result.payload == {}
+
+
+async def test_fetch_valuation_ratios_us(monkeypatch: pytest.MonkeyPatch) -> None:
+    frames = empty_frames()
+    frames["info"] = {"trailingPE": 24.69, "priceToBook": 5.1, "dividendYield": 0.05}
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="MU", market=Market.US)
+
+    result = await adapter.fetch(Capability.VALUATION_RATIOS, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.OK
+    row = result.payload["rows"][0]  # type: ignore[index]
+    assert row["per"] == pytest.approx(24.69)
+    assert row["pbr"] == pytest.approx(5.1)
+    assert row["dividend_yield"] == pytest.approx(0.05)
+
+
+async def test_fetch_profile_us_maps_officer_title_to_chairman(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frames = empty_frames()
+    frames["info"] = {
+        "companyOfficers": [
+            {"name": "Sanjay Mehrotra", "title": "CEO & Chairman"},
+            {"name": "Scott DeBoer", "title": "President"},
+        ],
+        "address1": "8000 South Federal Way",
+        "city": "Boise",
+        "state": "ID",
+        "country": "United States",
+        "website": "https://www.micron.com",
+        "industry": "Semiconductors",
+    }
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="MU", market=Market.US)
+
+    result = await adapter.fetch(Capability.PROFILE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.OK
+    profile = result.payload["profile"]  # type: ignore[index]
+    assert profile["chairman"] == "Sanjay Mehrotra"
+    assert profile["headquarters"] == "8000 South Federal Way, Boise, ID, United States"
+    assert profile["website"] == "https://www.micron.com"
+    # No yfinance equivalent for these MOPS-only fields — always an honest `None`, never faked.
+    assert profile["auditor"] is None
+    assert profile["spokesperson"] is None
+    assert profile["founding_date"] is None
+
+
+async def test_fetch_profile_us_no_identity_fields_degrades_to_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frames = empty_frames()
+    frames["info"] = {}
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="MU", market=Market.US)
+
+    result = await adapter.fetch(Capability.PROFILE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.STALE
+    assert result.payload == {}

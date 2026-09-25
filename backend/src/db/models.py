@@ -956,6 +956,21 @@ class StockScoreRow(Base):
     revenue_flow_description: Mapped[str] = mapped_column(default="")
     revenue_flow_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
 
+    # -- US-stock-only factor (UsStockScoreBreakdown) — `analyst_revision` replaces `revenue_flow`
+    # for Market.US rows (revenue_flow has no US data source; see that model's own docstring).
+    # A US row leaves `revenue_flow_*` null and a TW row leaves `analyst_revision_*` null.
+    analyst_revision_percentile: Mapped[float | None] = mapped_column(default=None)
+    analyst_revision_description: Mapped[str] = mapped_column(default="")
+    analyst_revision_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    growth_percentile: Mapped[float | None] = mapped_column(default=None)
+    growth_description: Mapped[str] = mapped_column(default="")
+    growth_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    liquidity_percentile: Mapped[float | None] = mapped_column(default=None)
+    liquidity_description: Mapped[str] = mapped_column(default="")
+    liquidity_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
     # -- ETF-only factors (EtfScoreBreakdown) --
     premium_discount_percentile: Mapped[float | None] = mapped_column(default=None)
     premium_discount_description: Mapped[str] = mapped_column(default="")
@@ -1104,6 +1119,26 @@ class TrendScoreRow(Base):
     taiex_correlation_value: Mapped[float | None] = mapped_column(default=None)
     taiex_correlation_description: Mapped[str] = mapped_column(default="")
     taiex_correlation_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    # -- US-only dimensions — replace chip_flow/margin_credit/broker_concentration/sector_rotation
+    # one-for-one for Market.US rows (none of those four TW dimensions has a US data source; see
+    # `analytics/trend_score.py::US_DIMENSION_WEIGHTS`'s own comment). A US row leaves the four TW
+    # columns above null; a TW row leaves these four null.
+    institutional_ownership_value: Mapped[float | None] = mapped_column(default=None)
+    institutional_ownership_description: Mapped[str] = mapped_column(default="")
+    institutional_ownership_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    insider_sentiment_value: Mapped[float | None] = mapped_column(default=None)
+    insider_sentiment_description: Mapped[str] = mapped_column(default="")
+    insider_sentiment_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    analyst_revision_value: Mapped[float | None] = mapped_column(default=None)
+    analyst_revision_description: Mapped[str] = mapped_column(default="")
+    analyst_revision_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
+
+    sector_momentum_value: Mapped[float | None] = mapped_column(default=None)
+    sector_momentum_description: Mapped[str] = mapped_column(default="")
+    sector_momentum_unavailable_reason: Mapped[str | None] = mapped_column(default=None)
 
     unavailable_dimensions: Mapped[list[str]] = mapped_column(JSON, default=list)
     non_trading_caveat: Mapped[str] = mapped_column(default="")

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { NewsSourceLogo } from "@/components/ui/news-source-logo";
 import { getNewsFeed, getSymbolInfo } from "@/lib/api/market";
 import { getSecFilings } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
@@ -81,7 +82,13 @@ function NewsFeedList({
   });
 
   if (symbolInfoQuery.isLoading || newsQuery.isLoading) return <CardSkeletonBody height={480} />;
-  const items = (newsQuery.data?.items ?? []).slice(0, NEWS_ROW_LIMIT);
+  // The RSS/Finnhub aggregator can return the same story more than once (e.g. re-syndicated
+  // across feeds) with an identical `link` — dedupe by link before slicing/rendering, the same
+  // reasoning `stock-news-panel.tsx`'s own `NewsRowList` applies to its TW feed.
+  const deduped = Array.from(
+    new Map((newsQuery.data?.items ?? []).map((item) => [item.link, item])).values(),
+  );
+  const items = deduped.slice(0, NEWS_ROW_LIMIT);
   if (items.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("newsEmpty")}</p>;
   }
@@ -92,22 +99,33 @@ function NewsFeedList({
         const href = safeHttpUrl(item.link);
         const body = (
           <>
-            <span className="line-clamp-2 text-[13px] text-[var(--text)] hover:underline">
-              {item.title}
-            </span>
-            <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
-              {item.source}
+            <NewsSourceLogo url={item.link} />
+            <span className="min-w-0">
+              <span className="line-clamp-2 text-[13px] text-[var(--text)] hover:underline">
+                {item.title}
+              </span>
+              <span className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                {item.source}
+                <span className="font-num tabular-nums">{item.published_at.slice(0, 10)}</span>
+              </span>
             </span>
           </>
         );
         return (
           <li key={item.link} className="border-[var(--border)] border-b py-2.5">
             {href ? (
-              <a href={href} target="_blank" rel="noopener noreferrer" className="block">
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="grid min-h-11 w-full grid-cols-[20px_1fr] items-start gap-2"
+              >
                 {body}
               </a>
             ) : (
-              <span className="block">{body}</span>
+              <span className="grid min-h-11 w-full grid-cols-[20px_1fr] items-start gap-2">
+                {body}
+              </span>
             )}
           </li>
         );

@@ -31,17 +31,31 @@ def _fetch_info_blocking(yahoo_symbol: str) -> dict[str, Any]:
     return raw_info
 
 
-def _fetch_ticker_frames_blocking(yahoo_symbol: str) -> dict[str, Any]:
+def _fetch_ticker_frames_blocking(
+    yahoo_symbol: str, start_date: str | None = None, end_date: str | None = None
+) -> dict[str, Any]:
     """One blocking call site that gathers every `Ticker`-scoped frame/object a `fetch()` for
     this symbol might need, so each capability handler only ever touches already-fetched,
-    in-process pandas objects — never triggers its own separate blocking round trip."""
+    in-process pandas objects — never triggers its own separate blocking round trip.
+
+    `start_date`/`end_date` (ISO date strings) scope the `history` frame `_price_eod` reads —
+    the one frame here a caller genuinely ranges over (`get_trend_score`'s chart-history overlay,
+    any other range-scoped `price_eod` fetch). Defaults to `period="5d"` when neither is given,
+    matching this function's original behavior for a plain "give me recent price" call with no
+    range — this is NOT a fallback for a caller that DID ask for a range; `_adapter.py`'s
+    `fetch()` always forwards whatever `start_date`/`end_date` params it received."""
     import yfinance as yf  # noqa: PLC0415
 
     _init_tz_cache()
     ticker = yf.Ticker(yahoo_symbol)
+    history = (
+        ticker.history(start=start_date, end=end_date, auto_adjust=False)
+        if start_date is not None or end_date is not None
+        else ticker.history(period="5d", auto_adjust=False)
+    )
     return {
         "info": ticker.get_info(),
-        "history": ticker.history(period="5d", auto_adjust=False),
+        "history": history,
         "financials": ticker.financials,
         "balance_sheet": ticker.balance_sheet,
         "cash_flow": ticker.cash_flow,
@@ -135,7 +149,12 @@ def _fetch_calendars_blocking() -> dict[str, pd.DataFrame]:
     }
 
 
-def _fetch_sector_blocking(sector_key: str, region: str) -> dict[str, pd.DataFrame | None]:
+def _fetch_sector_blocking(sector_key: str, region: str) -> dict[str, Any]:
+    """`overview` (a plain dict — sector-level stats) and `industries` (a DataFrame — this
+    sector's own industry breakdown by market weight) are fetched here alongside the existing
+    `top_companies`/`top_etfs`/`top_mutual_funds` — all five are already-fetched properties of
+    the SAME `yf.Sector(...)` construction above, so adding them costs no extra network round
+    trip; `discovery.py::_sector_overview_stats`/`_sector_industry_rows` do the actual mapping."""
     import yfinance as yf  # noqa: PLC0415
 
     _init_tz_cache()
@@ -144,6 +163,8 @@ def _fetch_sector_blocking(sector_key: str, region: str) -> dict[str, pd.DataFra
         "top_companies": sector.top_companies,
         "top_etfs": _dict_to_frame(sector.top_etfs),
         "top_mutual_funds": _dict_to_frame(sector.top_mutual_funds),
+        "overview": sector.overview,
+        "industries": sector.industries,
     }
 
 

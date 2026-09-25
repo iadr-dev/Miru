@@ -1400,7 +1400,9 @@
       "low": "低",
       "volume": "量",
       "eodOnly": "僅收盤資料",
-      "dataDelayed": "資料延遲"
+      "dataDelayed": "資料延遲",
+      "liveNow": "即時",
+      "marketClosedEodPrice": "休市中 · 前次收盤"
     },
     "tabs": {
       "label": "個股頁籤",
@@ -1462,7 +1464,11 @@
         "margin_credit": "資金信用",
         "broker_concentration": "分點集中",
         "sector_rotation": "板塊輪動",
-        "taiex_correlation": "大盤連動"
+        "taiex_correlation": "大盤連動",
+        "institutional_ownership": "機構持股",
+        "insider_sentiment": "內部人動向",
+        "analyst_revision": "分析師預估修正",
+        "sector_momentum": "產業動能"
       },
       "dimensionCaption": {
         "technical": "MA排列/KD/MACD/BB %b 綜合（技術面現況，非預測）",
@@ -1470,7 +1476,11 @@
         "margin_credit": "融資融劵餘額變化與股價方向比對",
         "broker_concentration": "分點集中天數% + 主力籌碼方向一致性",
         "sector_rotation": "同產業資金流入排名變化",
-        "taiex_correlation": "與大盤(TAIEX)日報酬相關性"
+        "taiex_correlation": "與大盤(TAIEX)日報酬相關性",
+        "institutional_ownership": "機構投資人持股加權變化（13F持股揭露）",
+        "insider_sentiment": "內部人淨交易金額（Form 4 申報，買超為正）",
+        "analyst_revision": "EPS預估趨勢變化與分析師上下修家數之綜合指標",
+        "sector_momentum": "所屬產業3個月平均報酬於當日全產業排名"
       },
       "scoreTitle": "多空評分",
       "scoreUnavailable": "尚無多空評分資料，今日批次可能尚未計算完成。",
@@ -1490,6 +1500,9 @@
         "value_guard": "價值防護",
         "quality": "品質",
         "revenue_flow": "籌碼與營收",
+        "analyst_revision": "分析師預估修正",
+        "growth": "成長性",
+        "liquidity": "流動性",
         "premium_discount": "折溢價",
         "cost": "費用率",
         "management_activity": "主動管理程度",
@@ -1501,6 +1514,9 @@
         "value_guard": "EV/EBITDA、自由現金流殖利率、本益比、股價淨值比 之綜合指標，對應至0-100橫斷面排名",
         "quality": "ROE、負債權益比、盈餘穩定性、ROIC、毛利率 之綜合指標，對應至0-100橫斷面排名",
         "revenue_flow": "三大法人 20日淨買超趨勢百分位（月營收 YoY 子訊號尚未納入計算）",
+        "analyst_revision": "EPS預估趨勢變化與分析師上下修家數之綜合指標（IBES/Zacks式分析師預估修正因子）",
+        "growth": "本年度成長預估與目標價上行空間之綜合指標，對應至0-100橫斷面排名",
+        "liquidity": "近20日平均成交金額，對當日全市場排名（成交金額越高分數越高）",
         "premium_discount": "對淨值折溢價幅度（TWSE公告估算值），採固定偏離度計分，越接近淨值平價分數越高，不與其他ETF比較排名",
         "cost": "費用率於今日ETF全體中由低到高排名，費用越低分數越高",
         "management_activity": "於今日主動式ETF全體中的持股周轉率百分位，僅適用主動式ETF",
@@ -2027,22 +2043,45 @@
       "label": "美股個股頁籤",
       "overview": "總覽",
       "financials": "財務",
-      "research": "研究",
       "technical": "技術",
       "sectorPeers": "產業同業",
       "newsFilings": "新聞公告",
       "ai": "AI"
     },
+    "overview": {
+      "calendarTitle": "近期財報公布",
+      "calendarEmpty": "尚無此標的的財報公布日期資料。",
+      "earningsEventLabel": "財報公布",
+      "viewList": "清單",
+      "viewCalendar": "日曆",
+      "prevMonth": "上個月",
+      "nextMonth": "下個月",
+      "monthTitle": "{year} 年 {month} 月"
+    },
     "sectorPeers": {
       "title": "產業同業",
       "unavailable": "尚無此標的的產業分類資料。",
+      "industriesTitle": "{sector} 產業權重分布",
+      "industriesTitleFallback": "產業權重分布",
+      "industriesTreemapTitle": "產業權重圖",
+      "industryWeight": "市場佔比 {value}",
+      "viewAllIndustries": "查看全部產業",
+      "collapse": "收合",
+      "statMarketCap": "市值",
+      "statCompaniesCount": "公司數",
+      "statEmployeeCount": "員工數",
+      "statMarketWeight": "市場佔比",
       "sectorTitle": "同業（{sector}）",
       "sectorTitleFallback": "同業",
       "industryTitle": "同業（{industry}）",
       "industryTitleFallback": "同業",
       "noSectorPeers": "尚無同業資料。",
       "noIndustryPeers": "尚無同業資料。",
-      "self": "本標的"
+      "self": "本標的",
+      "topMoversTitle": "產業內表現/成長領先",
+      "ytdReturnAria": "年初至今報酬 {value}%",
+      "targetPrice": "目標價 {value}",
+      "growthEstimate": "成長預估 {value}%"
     },
     "newsFilings": {
       "label": "新聞公告頁籤",

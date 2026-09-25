@@ -17,6 +17,8 @@ from tools.analyst_tools import (
     GetMarketStatusTool,
     GetOptionsChainTool,
     GetSecFilingsTool,
+    GetSectorOverviewInput,
+    GetSectorOverviewTool,
     GetStockPeersTool,
     MarketScopedInput,
     NonTwSymbolInput,
@@ -250,11 +252,29 @@ async def test_get_stock_peers_resolves_then_fetches() -> None:
         "symbol": "SONY",
         "name": "Sony",
     }
+    stats = {
+        "market": "US",
+        "sector_key": "technology",
+        "companies_count": 858,
+        "market_cap": 29_454_185_267_200,
+        "market_weight": 0.334,
+        "employee_count": 7_955_387,
+        "description": "Companies engaged in computer systems.",
+    }
+    industry_weight_row = {
+        "market": "US",
+        "sector_key": "technology",
+        "industry_key": "semiconductors",
+        "name": "Semiconductors",
+        "market_weight": 0.382,
+    }
     router, adapter = make_router(
         symbol,
         {
             Capability.SECTOR_CLASS: _result({"classification": classification}),
-            Capability.SECTOR_OVERVIEW: _result({"rows": [sector_row]}),
+            Capability.SECTOR_OVERVIEW: _result(
+                {"rows": [sector_row], "stats": stats, "industries": [industry_weight_row]}
+            ),
             Capability.INDUSTRY_OVERVIEW: _result({"rows": [industry_row]}),
         },
     )
@@ -273,6 +293,33 @@ async def test_get_stock_peers_resolves_then_fetches() -> None:
     assert output.sector_peers[0].symbol == "MSFT"
     assert output.industry_peers[0].symbol == "SONY"
     assert output.unavailable_reason is None
+    assert output.stats is not None
+    assert output.stats.companies_count == 858
+    assert output.industries[0].industry_key == "semiconductors"
+
+
+async def test_get_sector_overview_degrades_stats_and_industries_when_absent() -> None:
+    """A `SECTOR_OVERVIEW` payload with only `rows` (no `stats`/`industries` keys — e.g. an
+    older cached fetch, or a source that genuinely couldn't resolve the aggregate-level frame)
+    must not raise; `GetSectorOverviewOutput.stats`/`industries` simply degrade to `None`/`()`."""
+    symbol = Symbol(id="", market=Market.US)
+    sector_row = {
+        "market": "US",
+        "sector_key": "technology",
+        "row_kind": "company",
+        "symbol": "NVDA",
+        "name": "NVIDIA",
+    }
+    router, _ = make_router(symbol, {Capability.SECTOR_OVERVIEW: _result({"rows": [sector_row]})})
+    tool = GetSectorOverviewTool(router)
+
+    output = await tool.run(
+        GetSectorOverviewInput(market=Market.US, sector_key="technology"), ToolContext()
+    )
+
+    assert output.rows[0].symbol == "NVDA"
+    assert output.stats is None
+    assert output.industries == ()
 
 
 async def test_get_stock_peers_honestly_reports_no_classification() -> None:

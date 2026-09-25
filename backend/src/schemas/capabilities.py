@@ -2330,7 +2330,13 @@ class SectorOverviewCompanyRow(BaseModel):
 
 class IndustryOverviewCompanyRow(BaseModel):
     """`industry_overview` — one top-company row within one `yfinance.Industry` aggregate
-    view (analogous to `sector_overview`, one level narrower)."""
+    view (analogous to `sector_overview`, one level narrower).
+
+    `ytd_return`/`last_price`/`target_price` come from `yfinance.Industry.top_performing_
+    companies` (only populated on a `row_kind="performing_company"` row); `ytd_return`/
+    `growth_estimate` come from `top_growth_companies` (`row_kind="growth_company"` only). A
+    plain `row_kind="company"` row (from `top_companies`, the same frame `sector_overview` reads)
+    never carries any of these four — left `None`, never fabricated from the other frames."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -2342,6 +2348,41 @@ class IndustryOverviewCompanyRow(BaseModel):
     name: str
     rating: str | None = None
     market_weight: float | None = None
+    ytd_return: float | None = None
+    last_price: float | None = None
+    target_price: float | None = None
+    growth_estimate: float | None = None
+
+
+class SectorOverviewStats(BaseModel):
+    """`sector_overview`'s aggregate-level stats — `yfinance.Sector.overview`'s own dict, mapped
+    1:1. Distinct from `SectorOverviewCompanyRow` (a per-company row): this is the ONE summary
+    for the whole sector aggregate itself, not a company within it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market
+    sector_key: str
+    companies_count: int | None = None
+    market_cap: float | None = None
+    market_weight: float | None = None
+    employee_count: int | None = None
+    description: str | None = None
+
+
+class SectorIndustryWeightRow(BaseModel):
+    """One row of `yfinance.Sector.industries` — this sector's own industry breakdown by market
+    weight (e.g. Technology -> Semiconductors 38%, Software-Infrastructure 21%, ...). The data
+    source for a sector-industries composition treemap; distinct from `IndustryOverviewCompanyRow`
+    (a company within ONE industry) — this is industries within ONE sector."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market
+    sector_key: str
+    industry_key: str
+    name: str
+    market_weight: float
 
 
 class MarketStatusInfo(BaseModel):

@@ -52,6 +52,9 @@ def test_supports_declares_broad_set_for_non_tw_markets() -> None:
             Capability.INDUSTRY_OVERVIEW,
             Capability.MARKET_STATUS,
             Capability.FUND_HOLDINGS,
+            Capability.MARKET_VALUE,
+            Capability.VALUATION_RATIOS,
+            Capability.PROFILE,
         ):
             assert (cap, market) in supported
 

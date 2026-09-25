@@ -47,12 +47,18 @@ lack of ingested data is disclosed and dropped, never defaulted to a fake neutra
 from __future__ import annotations
 
 import statistics
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from analytics.indicators import PriceBar, bollinger, kd, macd, moving_average_bundle
-from analytics.score import winsorized_percentile
-from schemas.capabilities import ChipBrokerRow, MarginShortRow
+from analytics.score import eps_trend_delta, revision_breadth, winsorized_percentile
+from schemas.capabilities import (
+    AnalystConsensus,
+    ChipBrokerRow,
+    InsiderActivityRow,
+    InstitutionalHolderRow,
+    MarginShortRow,
+)
 
 # Weights sum to 1.0 before any renormalization for unavailable dimensions — set per the user's
 # explicit instruction: technical is a smaller share (20%) than institutional chip flow (35%),
@@ -71,6 +77,25 @@ DIMENSION_WEIGHTS: dict[str, float] = {
     "margin_credit": MARGIN_WEIGHT,
     "broker_concentration": CONCENTRATION_WEIGHT,
     "sector_rotation": ROTATION_WEIGHT,
+    "taiex_correlation": TAIEX_CORR_WEIGHT,
+}
+
+# US weight profile — `technical`/`taiex_correlation` (the latter already SPY-based for US) keep
+# their TW weights; the four TW-only dimensions (chip_flow/margin_credit/broker_concentration/
+# sector_rotation, none of which have a US data source) are replaced one-for-one by four genuinely
+# US-native dimensions at the same weight their TW counterpart held — see each `*_trend_score`
+# function below for the professional-factor grounding of each.
+US_INSTITUTIONAL_OWNERSHIP_WEIGHT = CHIP_WEIGHT
+US_INSIDER_SENTIMENT_WEIGHT = MARGIN_WEIGHT
+US_ANALYST_REVISION_WEIGHT = CONCENTRATION_WEIGHT
+US_SECTOR_MOMENTUM_WEIGHT = ROTATION_WEIGHT
+
+US_DIMENSION_WEIGHTS: dict[str, float] = {
+    "technical": TECH_WEIGHT,
+    "institutional_ownership": US_INSTITUTIONAL_OWNERSHIP_WEIGHT,
+    "insider_sentiment": US_INSIDER_SENTIMENT_WEIGHT,
+    "analyst_revision": US_ANALYST_REVISION_WEIGHT,
+    "sector_momentum": US_SECTOR_MOMENTUM_WEIGHT,
     "taiex_correlation": TAIEX_CORR_WEIGHT,
 }
 
@@ -331,6 +356,151 @@ def broker_concentration_trend_score(
 
 
 # ---------------------------------------------------------------------------
+# US-native dimensions — replace chip_flow/margin_credit/broker_concentration/sector_rotation
+# one-for-one for `Market.US` (none of those four TW dimensions has any US data source; see
+# `US_DIMENSION_WEIGHTS`'s own comment). Each is a real, professionally-recognized US equity
+# factor grounded in data this codebase already ingests via yfinance, never a fabricated
+# substitute for a TW-shaped slot.
+# ---------------------------------------------------------------------------
+
+
+def institutional_ownership_trend_score(
+    holders: Sequence[InstitutionalHolderRow],
+) -> TrendDimension:
+    """The 13F-based "smart money" institutional-ownership-change signal — the standard
+    accumulation-as-conviction framing (rising %-held = institutions accumulating = a bullish
+    tilt), weighted by each holder's own `pct_held` so a large holder's reported change carries
+    more weight than a small one's. Requires at least one holder row with both `pct_held` and
+    `pct_change` populated; a holder missing either is simply excluded from the weighted average,
+    not treated as a zero."""
+    weighted: list[tuple[float, float]] = [
+        (row.pct_held, row.pct_change)
+        for row in holders
+        if row.pct_held is not None and row.pct_change is not None
+    ]
+    if not weighted:
+        return _unavailable(
+            "institutional_ownership",
+            "no institutional_holders rows with both pct_held and pct_change ingested",
+        )
+    total_weight = sum(weight for weight, _ in weighted)
+    if total_weight <= 0:
+        return _unavailable(
+            "institutional_ownership", "institutional holders' combined pct_held was zero"
+        )
+    weighted_change = sum(weight * change for weight, change in weighted) / total_weight
+    # A weighted-average pct_change is an unbounded raw %; map it onto 0-100 via the same
+    # fixed-scale convention `_premium_discount_factor` (analytics/score.py) uses for a bounded,
+    # self-contained deviation measure — +/-5 percentage points of ownership change is a large
+    # single-quarter swing, so that magnitude maps to the extremes of the scale.
+    score = 50.0 + max(-50.0, min(50.0, weighted_change * 10.0))
+    return TrendDimension(
+        name="institutional_ownership",
+        value=score,
+        description=f"機構持股加權變化 {weighted_change:+.2f} 百分點（13F持股揭露）",
+    )
+
+
+def insider_sentiment_trend_score(activity: Sequence[InsiderActivityRow]) -> TrendDimension:
+    """The Form-4-based insider-sentiment signal (Lakonishok & Lee 2001; Jeng/Metrick/Zeckhauser
+    2003) — net signed dollar value of insider transactions over the trailing window supplied by
+    the caller, buys positive and sales negative, per the standard convention that insider buying
+    carries far more informational content than routine sales. `transaction` text is matched
+    case-insensitively for "buy"/"purchase" (positive) vs "sale"/"sell" (negative); a row whose
+    `transaction`/`value` cannot be classified is excluded, not treated as neutral."""
+    net_value = 0.0
+    classified = 0
+    for row in activity:
+        if row.value is None or row.transaction is None:
+            continue
+        text = row.transaction.lower()
+        if "buy" in text or "purchase" in text:
+            net_value += row.value
+            classified += 1
+        elif "sale" in text or "sell" in text:
+            net_value -= row.value
+            classified += 1
+    if classified == 0:
+        return _unavailable(
+            "insider_sentiment", "no insider_activity rows with a classifiable buy/sell transaction"
+        )
+    # Net dollar value has no natural bound across symbols of wildly different market caps — score
+    # by sign alone (bullish/bearish lean) rather than a cross-sectional percentile, since ranking
+    # raw dollar magnitude against other symbols would just reward mega-cap insiders trading larger
+    # absolute sums, not stronger conviction.
+    if net_value > 0:
+        score = 70.0
+    elif net_value < 0:
+        score = 35.0
+    else:
+        score = 50.0
+    return TrendDimension(
+        name="insider_sentiment",
+        value=score,
+        description=f"內部人淨交易金額 {net_value:+,.0f}（Form 4 申報，買超為正）",
+    )
+
+
+def analyst_revision_trend_score(
+    consensus: AnalystConsensus | None, eps_trend_delta_universe: Sequence[float]
+) -> TrendDimension:
+    """The IBES/Zacks-style analyst estimate-revision signal — the same raw sub-signals
+    `analytics/score.py::_analyst_revision_factor` computes for the 多空評分 factor, re-blended
+    here as a 趨勢評分 dimension (shared calculation, not duplicated arithmetic — `trend_score.py`
+    importing from `score.py` is the same import direction `chip_flow_trend_score` already takes
+    for `net_buy_20d_trend`)."""
+    if consensus is None:
+        return _unavailable("analyst_revision", "no analyst_consensus row ingested for this symbol")
+    delta = eps_trend_delta(consensus)
+    breadth = revision_breadth(consensus)
+    sub_scores: list[float] = []
+    if delta is not None:
+        delta_percentile = winsorized_percentile(delta, eps_trend_delta_universe)
+        if delta_percentile is not None:
+            sub_scores.append(delta_percentile)
+    if breadth is not None:
+        sub_scores.append((breadth + 1.0) * 50.0)
+    if not sub_scores:
+        return _unavailable(
+            "analyst_revision", "analyst_consensus row had no EPS-trend or revision-count data"
+        )
+    return TrendDimension(
+        name="analyst_revision",
+        value=statistics.fmean(sub_scores),
+        description="EPS預估趨勢變化與分析師上下修家數之綜合指標",
+    )
+
+
+def sector_momentum_trend_score(
+    sector_key: str | None, sector_returns_by_key: Mapping[str, float]
+) -> TrendDimension:
+    """The sector-relative-momentum signal (Moskowitz & Grinblatt 1999 "Do Industries Explain
+    Momentum?") — this symbol's own sector's trailing return, ranked cross-sectionally against
+    every other sector's trailing return the same day (`sector_returns_by_key`, keyed by
+    `SectorClassification.sector_key`) — the real "sector rotation" concept, computed from
+    already-ingested `us_price_eod` grouped by sector rather than any TW institutional-flow-based
+    rank. Unavailable if this symbol has no resolved sector, or if its sector's own return is
+    missing from the day's universe."""
+    if sector_key is None:
+        return _unavailable("sector_momentum", "no sector_class row ingested for this symbol")
+    sector_return = sector_returns_by_key.get(sector_key)
+    if sector_return is None:
+        return _unavailable(
+            "sector_momentum", f"no trailing return computed for sector '{sector_key}'"
+        )
+    percentile = winsorized_percentile(sector_return, list(sector_returns_by_key.values()))
+    if percentile is None:
+        return _unavailable(
+            "sector_momentum", "fewer than 2 sectors in today's comparison universe"
+        )
+    return TrendDimension(
+        name="sector_momentum",
+        value=percentile,
+        description=f"所屬產業（{sector_key}）3個月平均報酬於當日全產業排名",
+    )
+
+
+# ---------------------------------------------------------------------------
 # 板塊輪動 (sector rotation) — this symbol's own industry's rank-bump trend.
 # ---------------------------------------------------------------------------
 
@@ -415,18 +585,22 @@ def taiex_correlation_score(
 
 def blend_trend_composite(
     dimensions: Sequence[TrendDimension],
+    weights: Mapping[str, float] | None = None,
 ) -> tuple[float | None, tuple[str, ...]]:
     """Weighted blend over available dimensions only, renormalized so the available weights sum
-    to 1.0 — mirrors `analytics.score.blend_composite` exactly. Returns
+    to 1.0 — mirrors `analytics.score.blend_composite` exactly. `weights` defaults to the TW
+    `DIMENSION_WEIGHTS` map for backward compatibility; a US caller passes `US_DIMENSION_WEIGHTS`
+    so the four US-native dimensions resolve their weight under their own names. Returns
     `(composite_or_None, names_of_unavailable_dimensions)`."""
+    weight_map = weights if weights is not None else DIMENSION_WEIGHTS
     available = [d for d in dimensions if d.value is not None]
     unavailable = tuple(d.name for d in dimensions if d.value is None)
     if not available:
         return None, unavailable
-    total_weight = sum(DIMENSION_WEIGHTS[d.name] for d in available)
+    total_weight = sum(weight_map[d.name] for d in available)
     if total_weight <= 0:
         return None, unavailable
-    weighted_total = sum(DIMENSION_WEIGHTS[d.name] * (d.value or 0.0) for d in available)
+    weighted_total = sum(weight_map[d.name] * (d.value or 0.0) for d in available)
     composite = weighted_total / total_weight
     return min(max(composite, 0.0), 100.0), unavailable
 
@@ -439,12 +613,21 @@ __all__ = [
     "ROTATION_WEIGHT",
     "TAIEX_CORR_WEIGHT",
     "TECH_WEIGHT",
+    "US_ANALYST_REVISION_WEIGHT",
+    "US_DIMENSION_WEIGHTS",
+    "US_INSIDER_SENTIMENT_WEIGHT",
+    "US_INSTITUTIONAL_OWNERSHIP_WEIGHT",
+    "US_SECTOR_MOMENTUM_WEIGHT",
     "TrendDimension",
+    "analyst_revision_trend_score",
     "blend_trend_composite",
     "broker_concentration_trend_score",
     "chip_flow_trend_score",
     "concentration_days_pct",
+    "insider_sentiment_trend_score",
+    "institutional_ownership_trend_score",
     "margin_credit_trend_score",
+    "sector_momentum_trend_score",
     "sector_rotation_trend_score",
     "taiex_correlation_score",
     "technical_trend_score",

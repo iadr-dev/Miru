@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from datetime import date as date_
 from datetime import time as time_
@@ -123,6 +123,37 @@ class ScheduledIngestJob:
     fire_time: time_
     run: IngestJobFn
     cadence: Cadence = Cadence.DAILY
+    # Which calendar the daemon's own daily trading-day gate (below) checks THIS job against —
+    # not merely which market the job internally scopes its own data reads to. `us_price_eod`/
+    # `us_fundamentals`/`_us_scoring_batch`/`_us_trend_score_batch` must gate on `Market.US`
+    # (US market holidays), never the TW calendar `run_due_jobs` otherwise defaults every job
+    # to — a TW-only closure (Lunar New Year, Double Ten, etc.) is an ordinary US trading day and
+    # must not silently skip a US job (this was a real latent bug: every existing US daily job
+    # was gated against the TW calendar before this field existed, since `run_due_jobs` checked
+    # `self._ctx.calendar` unconditionally for every `Cadence.DAILY` job regardless of which
+    # market it actually served).
+    market: Market = Market.TW
+
+
+async def _us_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`job_scoring_batch`, but against a `Market.US`-scoped view of the SAME shared `ctx`
+    (`store`/`leader`/`session_factory`/`yfinance` all reused as-is — only `market` differs).
+    `IngestDaemon` holds exactly one `IngestContext` (`self._ctx`, TW by default); this thin
+    wrapper is how a US-scoped batch pass gets registered in `SCHEDULED_JOBS` without standing up
+    a second daemon instance or a second full context construction. `dataclasses.replace` is
+    cheap here since `IngestContext` is frozen and every field but `market` is a shared reference
+    (the same `ParquetStore`/`LeaderElection`/session factory the TW jobs already use), not a
+    fresh copy. Graceful degradation for the momentum/trend_quality-only US case (no
+    institutional-flow/market-value/ETF datasets ingested for US) already lives inside
+    `job_scoring_batch` itself — see `analytics/scoring_batch.py`'s own market-branching
+    comments — so no US-specific logic belongs in this wrapper."""
+    return await job_scoring_batch(run_date, replace(ctx, market=Market.US))
+
+
+async def _us_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`job_trend_score_batch`'s US counterpart — see `_us_scoring_batch`'s own docstring for why
+    this thin `dataclasses.replace`-based wrapper exists rather than a second daemon instance."""
+    return await job_trend_score_batch(run_date, replace(ctx, market=Market.US))
 
 
 # The whole-market pulls, each at the Taipei-local time its own job docstring documents.
@@ -224,11 +255,23 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # past that close before this pulls. `job_us_price_eod` is calendar-gated the same Mon-Fri
     # weekday way `is_trading_day` degrades to for any market (see its own docstring) — a US
     # market holiday just lands as a legitimate empty response, same as a TW non-trading day.
-    ScheduledIngestJob("us_price_eod", time_(6, 0), job_us_price_eod),
+    ScheduledIngestJob("us_price_eod", time_(6, 0), job_us_price_eod, market=Market.US),
     # US fundamentals — per-symbol yfinance fan-out (no bulk endpoint), so it runs later in the
     # Taipei morning, well clear of the price pull's own network usage. Weekly: fundamentals
     # change far slower than daily price EOD (see `job_us_fundamentals`'s own docstring).
-    ScheduledIngestJob("us_fundamentals", time_(7, 0), job_us_fundamentals, Cadence.WEEKLY),
+    ScheduledIngestJob(
+        "us_fundamentals", time_(7, 0), job_us_fundamentals, Cadence.WEEKLY, market=Market.US
+    ),
+    # US scoring/trend-score batches — the direct US counterpart to `scoring_batch`/
+    # `trend_score_batch` above (23:55/23:57 Taipei, right after that day's TW pulls land), fired
+    # here instead since `us_price_eod` publishes ~06:00 Taipei, not late TW-evening: 07:30 gives
+    # `job_us_fundamentals` (07:00) a comfortable landing buffer first. Both wrappers
+    # (`_us_scoring_batch`/`_us_trend_score_batch`) run against a `Market.US`-scoped view of the
+    # SAME shared `ctx` via `dataclasses.replace` — see their own docstrings.
+    ScheduledIngestJob("us_scoring_batch", time_(7, 30), _us_scoring_batch, market=Market.US),
+    ScheduledIngestJob(
+        "us_trend_score_batch", time_(7, 32), _us_trend_score_batch, market=Market.US
+    ),
     # TDCC/FinMind 股權持股分級表 — weekly (published for each week's final trading day; the job
     # itself resolves the exact publish date, see `job_shareholding_distribution`'s own
     # docstring). Fires at the same 06:00 off-peak slot `stock_info` uses, well before the
@@ -310,10 +353,12 @@ class IngestDaemon:
             # trading-day-gated. Uses the extrapolating check (not the strict allow-list one) —
             # `today` is always beyond the calendar's known range until today's own job writes
             # its partition, so the strict check would skip every job every day forever; see
-            # `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring.
-            if job.cadence is Cadence.DAILY and not self._ctx.calendar.is_trading_day_extrapolating(
-                today
-            ):
+            # `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring. Gates against
+            # `job.market`'s own calendar (`ctx.us_calendar` for a US-scoped job, `ctx.calendar`
+            # otherwise) — see `ScheduledIngestJob.market`'s own field comment for why this must
+            # not default to the TW calendar for every job regardless of which market it serves.
+            calendar = self._ctx.us_calendar if job.market is Market.US else self._ctx.calendar
+            if job.cadence is Cadence.DAILY and not calendar.is_trading_day_extrapolating(today):
                 logger.info(
                     "ingest_job_skipped_non_trading_day",
                     job=job.name,

@@ -172,7 +172,11 @@ US:
   market_status: [yfinance]
   fund_holdings: [yfinance]
   etf_trailing_returns: [yfinance]
+  market_value: [yfinance] # Yahoo marketCap — the non-TW equivalent of FinMind's TW-only feed
+  valuation_ratios: [yfinance] # Yahoo trailing PER/PBR/dividend yield
+  profile: [yfinance] # Yahoo .info identity fields — the non-TW equivalent of MOPS
   sec_filings: [yfinance] # US-only; SEC EDGAR has no equivalent for any other market
+  live_price_quote: [yfinance_live] # US-only; yfinance WebSocket streaming tick
 
 GB:
   uk_stock_info: [finmind]
@@ -199,6 +203,9 @@ GB:
   market_status: [yfinance]
   fund_holdings: [yfinance]
   etf_trailing_returns: [yfinance]
+  market_value: [yfinance]
+  valuation_ratios: [yfinance]
+  profile: [yfinance]
 
 EU:
   europe_stock_info: [finmind]
@@ -225,6 +232,9 @@ EU:
   market_status: [yfinance]
   fund_holdings: [yfinance]
   etf_trailing_returns: [yfinance]
+  market_value: [yfinance]
+  valuation_ratios: [yfinance]
+  profile: [yfinance]
 
 JP:
   japan_stock_info: [finmind]
@@ -251,3 +261,6 @@ JP:
   market_status: [yfinance]
   fund_holdings: [yfinance]
   etf_trailing_returns: [yfinance]
+  market_value: [yfinance]
+  valuation_ratios: [yfinance]
+  profile: [yfinance]

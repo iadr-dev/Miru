@@ -36,7 +36,9 @@ from schemas.capabilities import (
     OptionContractRow,
     SecFiling,
     SectorClassification,
+    SectorIndustryWeightRow,
     SectorOverviewCompanyRow,
+    SectorOverviewStats,
     SymbolLookupResultRow,
     SymbolSearchResultRow,
 )
@@ -561,6 +563,31 @@ class GetSectorOverviewInput(MarketScopedInput):
 
 class GetSectorOverviewOutput(_RowsOutput):
     rows: tuple[SectorOverviewCompanyRow, ...] = Field(default_factory=tuple)
+    stats: SectorOverviewStats | None = None
+    industries: tuple[SectorIndustryWeightRow, ...] = Field(default_factory=tuple)
+
+
+def _sector_stats_from_payload(payload: dict[str, object]) -> SectorOverviewStats | None:
+    """`Capability.SECTOR_OVERVIEW`'s payload carries `stats` alongside `rows` (see
+    `sources/yfinance/discovery.py::_sector_overview_stats`) — `None` (never a validation
+    exception) when the key is absent/not-a-dict, matching `fetch_rows`' own graceful-
+    degradation contract for the `rows` key."""
+    raw = payload.get("stats")
+    if not isinstance(raw, dict):
+        return None
+    return SectorOverviewStats.model_validate(cast(_UntypedDict, raw))
+
+
+def _sector_industries_from_payload(
+    payload: dict[str, object],
+) -> tuple[SectorIndustryWeightRow, ...]:
+    """Same payload, the `industries` key (see `_sector_industry_rows`) — a missing/non-list key
+    is "no industries", never an error, mirroring `validate_rows`' own contract."""
+    raw = payload.get("industries")
+    if not isinstance(raw, list):
+        return ()
+    rows = cast("list[dict[str, object]]", raw)
+    return tuple(SectorIndustryWeightRow.model_validate(row) for row in rows)
 
 
 class GetSectorOverviewTool(BaseTool):
@@ -592,6 +619,8 @@ class GetSectorOverviewTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
+            stats=_sector_stats_from_payload(result.payload),
+            industries=_sector_industries_from_payload(result.payload),
         )
 
 
@@ -653,6 +682,8 @@ class GetStockPeersOutput(BaseModel):
     industry: str | None = None
     sector_peers: tuple[SectorOverviewCompanyRow, ...] = Field(default_factory=tuple)
     industry_peers: tuple[IndustryOverviewCompanyRow, ...] = Field(default_factory=tuple)
+    stats: SectorOverviewStats | None = None
+    industries: tuple[SectorIndustryWeightRow, ...] = Field(default_factory=tuple)
     unavailable_reason: str | None = None
 
 
@@ -701,9 +732,11 @@ class GetStockPeersTool(BaseTool):
             )
         sector_peers: tuple[SectorOverviewCompanyRow, ...] = ()
         industry_peers: tuple[IndustryOverviewCompanyRow, ...] = ()
+        stats: SectorOverviewStats | None = None
+        industries: tuple[SectorIndustryWeightRow, ...] = ()
         peers_result = class_result
         if classification.sector_key:
-            peers_result, sector_peers = await fetch_rows(
+            sector_result, sector_peers = await fetch_rows(
                 self._router,
                 Capability.SECTOR_OVERVIEW,
                 sym,
@@ -712,6 +745,9 @@ class GetStockPeersTool(BaseTool):
                 key="rows",
                 params={"sector_key": classification.sector_key},
             )
+            peers_result = sector_result
+            stats = _sector_stats_from_payload(sector_result.payload)
+            industries = _sector_industries_from_payload(sector_result.payload)
         if classification.industry_key:
             peers_result, industry_peers = await fetch_rows(
                 self._router,
@@ -730,6 +766,8 @@ class GetStockPeersTool(BaseTool):
             industry=classification.industry,
             sector_peers=sector_peers,
             industry_peers=industry_peers,
+            stats=stats,
+            industries=industries,
         )
 
 

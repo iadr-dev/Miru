@@ -68,10 +68,11 @@ from analytics.models import (
     ScoreProfile,
     ScoreResult,
     StockScoreBreakdown,
+    UsStockScoreBreakdown,
 )
 from analytics.normalization import combine_zscores, zscore, zscore_to_percentile
 from analytics.symbol_universe import SymbolType
-from schemas.capabilities import EODBar, InstitutionalFlowRow
+from schemas.capabilities import AnalystConsensus, EODBar, InstitutionalFlowRow
 from schemas.enums import Market
 
 _NON_TRADING_CAVEAT = (
@@ -98,6 +99,36 @@ _STOCK_WEIGHTS: dict[ScoreProfile, dict[str, float]] = {
         "value_guard": 0.25,
         "quality": 0.30,
         "revenue_flow": 0.15,
+    },
+}
+
+# US weight profiles — momentum/trend_quality/value_guard/quality carry the same weights
+# `_STOCK_WEIGHTS` uses (all four are already market-agnostic); `analyst_revision` takes
+# `revenue_flow`'s slot (see `UsStockScoreBreakdown`'s own docstring for why this is a genuinely
+# different US factor, not a renamed TW one); `growth` is a genuinely new sixth factor rounding
+# out the standard "Value + Momentum + Quality + Growth" long-short combo. `liquidity` is a
+# smaller-weight seventh factor — the standard Size/Liquidity risk-overlay convention gives it a
+# supporting role, not equal billing with the four core alpha factors — taken proportionally from
+# momentum/trend_quality (the noisiest, least-robust two here) so value_guard/quality/growth keep
+# their weight.
+_US_STOCK_WEIGHTS: dict[ScoreProfile, dict[str, float]] = {
+    ScoreProfile.SWING: {
+        "momentum": 0.25,
+        "trend_quality": 0.15,
+        "value_guard": 0.10,
+        "quality": 0.10,
+        "analyst_revision": 0.15,
+        "growth": 0.15,
+        "liquidity": 0.10,
+    },
+    ScoreProfile.POSITION: {
+        "momentum": 0.05,
+        "trend_quality": 0.05,
+        "value_guard": 0.25,
+        "quality": 0.30,
+        "analyst_revision": 0.10,
+        "growth": 0.15,
+        "liquidity": 0.10,
     },
 }
 
@@ -258,7 +289,7 @@ def band_from_composite(composite: float | None) -> ScoreBand:
 
 
 def _factors_by_name(
-    breakdown: StockScoreBreakdown | EtfScoreBreakdown,
+    breakdown: StockScoreBreakdown | UsStockScoreBreakdown | EtfScoreBreakdown,
 ) -> dict[str, FactorScore]:
     """Every named factor on `breakdown`, keyed by its own field name — the one place that maps
     a breakdown model's fields to a plain dict, so `blend_composite`/`build_score_result` work
@@ -267,12 +298,18 @@ def _factors_by_name(
 
 
 def blend_composite(
-    breakdown: StockScoreBreakdown | EtfScoreBreakdown, profile: ScoreProfile
+    breakdown: StockScoreBreakdown | UsStockScoreBreakdown | EtfScoreBreakdown,
+    profile: ScoreProfile,
 ) -> tuple[float | None, tuple[str, ...]]:
     """Weighted blend over *available* factors only, renormalized so the available weights sum
     to 1.0 — computed over whichever factors are present, with the gap always disclosed rather
     than silently degraded. Returns `(composite_or_None, names_of_unavailable_factors)`."""
-    weight_profiles = _ETF_WEIGHTS if isinstance(breakdown, EtfScoreBreakdown) else _STOCK_WEIGHTS
+    if isinstance(breakdown, EtfScoreBreakdown):
+        weight_profiles = _ETF_WEIGHTS
+    elif isinstance(breakdown, UsStockScoreBreakdown):
+        weight_profiles = _US_STOCK_WEIGHTS
+    else:
+        weight_profiles = _STOCK_WEIGHTS
     weights = weight_profiles[profile]
     factors = _factors_by_name(breakdown)
     available = {name: f for name, f in factors.items() if f.percentile is not None}
@@ -329,7 +366,7 @@ def build_score_result(  # noqa: PLR0913 — one keyword-only field per result d
     as_of: date_,
     profile: ScoreProfile,
     symbol_type: SymbolType,
-    breakdown: StockScoreBreakdown | EtfScoreBreakdown,
+    breakdown: StockScoreBreakdown | UsStockScoreBreakdown | EtfScoreBreakdown,
     sector_context: SectorContext | None = None,
 ) -> ScoreResult:
     """Assemble the final, fully-caveated `ScoreResult` — the one place composite + band +
@@ -337,11 +374,12 @@ def build_score_result(  # noqa: PLR0913 — one keyword-only field per result d
     others."""
     composite, partial_factors = blend_composite(breakdown, profile)
     band = band_from_composite(composite)
-    # Sector-relative z-scoring only ever applies to the stock breakdown's value/quality factors
-    # — every ETF factor is a winsorized percentile (like momentum), never a sector-normalized
-    # z-score, so an ETF result always reports "no fundamental comparison universe" rather than
-    # a sector/whole-universe caveat that would misleadingly imply one was attempted.
-    has_fundamentals = isinstance(breakdown, StockScoreBreakdown) and (
+    # Sector-relative z-scoring only ever applies to the stock/US-stock breakdowns' value/quality
+    # factors — every ETF factor is a winsorized percentile (like momentum), never a
+    # sector-normalized z-score, so an ETF result always reports "no fundamental comparison
+    # universe" rather than a sector/whole-universe caveat that would misleadingly imply one was
+    # attempted.
+    has_fundamentals = isinstance(breakdown, (StockScoreBreakdown, UsStockScoreBreakdown)) and (
         breakdown.value_guard.percentile is not None or breakdown.quality.percentile is not None
     )
     sector = sector_context or SectorContext()
@@ -424,6 +462,172 @@ _NO_FUNDAMENTAL_NORMALIZATION_CAVEAT = (
 )
 
 
+_ANALYST_REVISION_UNAVAILABLE_REASON = (
+    "無法組成分析師預估修正因子（EPS預估趨勢變化、上下修分析師家數）——"
+    "此標的尚無 analyst_consensus 資料收錄；不會以虛構數值替代。"
+)
+
+
+def eps_trend_delta(consensus: AnalystConsensus) -> float | None:
+    """The EPS-trend-delta sub-signal: how much this fiscal year's consensus EPS estimate has
+    moved over the trailing ~90 days — `(current - 90_days_ago) / abs(90_days_ago)`. `None` if
+    either endpoint is missing or the 90-day-ago estimate was exactly zero (division undefined),
+    never a fabricated partial-window estimate."""
+    current = consensus.eps_trend_current
+    prior = consensus.eps_trend_90_days_ago
+    if current is None or prior is None or prior == 0:
+        return None
+    return (current - prior) / abs(prior)
+
+
+def revision_breadth(consensus: AnalystConsensus) -> float | None:
+    """The revision-breadth sub-signal: net analyst-revision direction over the trailing 30 days
+    — `(up - down) / (up + down)`, in `[-1, 1]`. `None` if neither an up- nor down-revision count
+    is available, or if both are zero (no revisions at all that period — genuinely no signal, not
+    a neutral 0)."""
+    up = consensus.eps_revisions_up_last_30_days
+    down = consensus.eps_revisions_down_last_30_days
+    if up is None and down is None:
+        return None
+    total = (up or 0) + (down or 0)
+    if total == 0:
+        return None
+    return ((up or 0) - (down or 0)) / total
+
+
+def _analyst_revision_factor(
+    consensus: AnalystConsensus | None, eps_trend_delta_universe: Sequence[float]
+) -> FactorScore:
+    """The US-native `analyst_revision` factor (`UsStockScoreBreakdown`'s fifth slot) — a
+    well-documented IBES/Zacks-style estimate-revision signal, blending the EPS-trend-delta
+    sub-signal (ranked cross-sectionally, since it is a raw % change with no natural bound) with
+    the revision-breadth sub-signal (already bounded to `[-1, 1]`, mapped linearly to 0-100 — no
+    cross-sectional universe needed for an already-normalized ratio). Equal-weighted when both
+    sub-signals are present; the factor falls back to whichever one sub-signal is available, and
+    is unavailable only when neither is."""
+    if consensus is None:
+        return unavailable_factor("analyst_revision", _ANALYST_REVISION_UNAVAILABLE_REASON)
+    delta = eps_trend_delta(consensus)
+    breadth = revision_breadth(consensus)
+    sub_scores: list[float] = []
+    used: list[str] = []
+    if delta is not None:
+        delta_percentile = winsorized_percentile(delta, eps_trend_delta_universe)
+        if delta_percentile is not None:
+            sub_scores.append(delta_percentile)
+            used.append("EPS預估趨勢變化")
+    if breadth is not None:
+        sub_scores.append((breadth + 1.0) * 50.0)
+        used.append("分析師上下修家數")
+    if not sub_scores:
+        return unavailable_factor("analyst_revision", _ANALYST_REVISION_UNAVAILABLE_REASON)
+    return FactorScore(
+        name="analyst_revision",
+        percentile=statistics.fmean(sub_scores),
+        description=f"{'、'.join(used)} 之綜合指標（IBES/Zacks式分析師預估修正因子）",
+    )
+
+
+_GROWTH_UNAVAILABLE_REASON = (
+    "無法組成任何成長因子子指標（年度成長預估、目標價上行空間）——"
+    "此標的尚無 analyst_consensus 資料收錄；不會以虛構數值替代。"
+)
+
+
+def price_target_upside(consensus: AnalystConsensus, price: float | None) -> float | None:
+    """The analyst price-target-upside sub-signal: `(mean_target - price) / price`. `None` if
+    either the current price or the consensus mean target is missing, or price is non-positive
+    (division undefined) — never a fabricated ratio."""
+    if price is None or price <= 0 or consensus.mean_target is None:
+        return None
+    return (consensus.mean_target - price) / price
+
+
+def _growth_factor(
+    consensus: AnalystConsensus | None,
+    price: float | None,
+    *,
+    growth_estimate_universe: Sequence[float],
+    price_target_upside_universe: Sequence[float],
+) -> FactorScore:
+    """The US-native `growth` factor (`UsStockScoreBreakdown`'s sixth slot) — rounds out the
+    standard "Value + Momentum + Quality + Growth" long-short combo with two ranked sub-signals:
+    forward growth-estimate (`current_year_growth_estimate`, the nearer and more reliably
+    populated of the two `AnalystConsensus` growth-estimate fields) and analyst price-target
+    upside (`price_target_upside`). Both are raw, unbounded ratios, so both rank cross-sectionally
+    via `winsorized_percentile` rather than a fixed scale. Equal-weighted when both sub-signals
+    are present; the factor falls back to whichever one is available, and is unavailable only
+    when neither is."""
+    if consensus is None:
+        return unavailable_factor("growth", _GROWTH_UNAVAILABLE_REASON)
+    sub_scores: list[float] = []
+    used: list[str] = []
+    growth_estimate = consensus.current_year_growth_estimate
+    if growth_estimate is not None:
+        growth_percentile = winsorized_percentile(growth_estimate, growth_estimate_universe)
+        if growth_percentile is not None:
+            sub_scores.append(growth_percentile)
+            used.append("本年度成長預估")
+    upside = price_target_upside(consensus, price)
+    if upside is not None:
+        upside_percentile = winsorized_percentile(upside, price_target_upside_universe)
+        if upside_percentile is not None:
+            sub_scores.append(upside_percentile)
+            used.append("目標價上行空間")
+    if not sub_scores:
+        return unavailable_factor("growth", _GROWTH_UNAVAILABLE_REASON)
+    return FactorScore(
+        name="growth",
+        percentile=statistics.fmean(sub_scores),
+        description=f"{'、'.join(used)} 之綜合指標，對應至 0-100 橫斷面排名",
+    )
+
+
+# The standard Size/Liquidity convention's own window — same trailing-20-trading-day convention
+# `net_buy_20d_trend`/holdings-turnover already use elsewhere in this module, long enough to
+# smooth single-day volume spikes without needing a second, differently-sized lookback constant.
+_LIQUIDITY_LOOKBACK_DAYS = 20
+_LIQUIDITY_UNAVAILABLE_REASON = (
+    "無法計算平均成交金額——此標的已收錄的價格/成交量歷史不足；不會以虛構數值替代。"
+)
+
+
+def average_dollar_volume(closes: Sequence[float], volumes: Sequence[int]) -> float | None:
+    """The Size/Liquidity factor's own raw signal: trailing `_LIQUIDITY_LOOKBACK_DAYS`-day
+    average of `close * volume` — a standard dollar-volume liquidity proxy, higher meaning more
+    liquid/easier to trade in size. `None` if fewer than `_LIQUIDITY_LOOKBACK_DAYS` aligned
+    close/volume pairs are available, never a partial-window estimate silently substituted."""
+    if len(closes) < _LIQUIDITY_LOOKBACK_DAYS or len(volumes) < _LIQUIDITY_LOOKBACK_DAYS:
+        return None
+    window_closes = closes[-_LIQUIDITY_LOOKBACK_DAYS:]
+    window_volumes = volumes[-_LIQUIDITY_LOOKBACK_DAYS:]
+    dollar_volumes = [
+        close * volume for close, volume in zip(window_closes, window_volumes, strict=True)
+    ]
+    return statistics.fmean(dollar_volumes)
+
+
+def _liquidity_factor(
+    closes: Sequence[float], volumes: Sequence[int], dollar_volume_universe: Sequence[float]
+) -> FactorScore:
+    """The US-native `liquidity` factor (`UsStockScoreBreakdown`'s seventh slot) — the standard
+    Size/Liquidity risk-overlay convention: trailing average dollar volume
+    (`average_dollar_volume`), ranked cross-sectionally like momentum/flow (higher liquidity
+    ranks higher — easier to trade in size, lower transaction-cost drag on a long-short
+    portfolio)."""
+    dollar_volume = average_dollar_volume(closes, volumes)
+    if dollar_volume is None:
+        return unavailable_factor("liquidity", _LIQUIDITY_UNAVAILABLE_REASON)
+    percentile = winsorized_percentile(dollar_volume, dollar_volume_universe)
+    if percentile is None:
+        return unavailable_factor("liquidity", "今日有成交量資料的標的數量不足2檔")
+    return FactorScore(
+        name="liquidity",
+        percentile=percentile,
+        description=f"近{_LIQUIDITY_LOOKBACK_DAYS}日平均成交金額，對當日全市場排名（成交金額越高分數越高）",
+    )
+
+
 @dataclass(frozen=True)
 class FactorInputs:
     """The raw, already-computed per-symbol series + cross-sectional universes
@@ -448,6 +652,17 @@ class FactorInputs:
     value_universe: Mapping[str, Sequence[float]] = field(default_factory=lambda: {})
     sector_relative: bool = False
     sector_label: str | None = None
+    # US-only: this symbol's `analyst_consensus` row (`None` for TW callers, which never populate
+    # this factor) and the day's cross-sectional comparison universes for `_analyst_revision_factor`
+    # and `_growth_factor`.
+    analyst_consensus: AnalystConsensus | None = None
+    eps_trend_delta_universe: Sequence[float] = field(default_factory=tuple)
+    growth_estimate_universe: Sequence[float] = field(default_factory=tuple)
+    price_target_upside_universe: Sequence[float] = field(default_factory=tuple)
+    # US-only: this symbol's own daily volumes (aligned with `closes`) and the day's average
+    # dollar-volume comparison universe for `_liquidity_factor`.
+    volumes: Sequence[int] = field(default_factory=tuple)
+    dollar_volume_universe: Sequence[float] = field(default_factory=tuple)
 
 
 def _fundamental_factor(
@@ -538,9 +753,13 @@ def _liquidity_flow_factor(inputs: FactorInputs) -> FactorScore:
     )
 
 
-def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
-    """Build the five-factor stock breakdown from `inputs`. Pure computation — no I/O, no
-    dependency on the ingest store."""
+def _price_and_fundamental_factors(
+    inputs: FactorInputs,
+) -> tuple[FactorScore, FactorScore, FactorScore, FactorScore]:
+    """The four factors shared verbatim by `StockScoreBreakdown` and `UsStockScoreBreakdown`
+    (momentum/trend_quality/value_guard/quality are already market-agnostic — see
+    `UsStockScoreBreakdown`'s own docstring) — pulled out so neither caller duplicates this
+    computation. Returns `(momentum, trend_quality, value_guard, quality)`."""
     closes = inputs.closes
     ma_series = inputs.ma_series
     momentum, momentum_percentile = _momentum_factor(inputs)
@@ -570,6 +789,13 @@ def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
         inputs.quality_universe,
         _QUALITY_UNAVAILABLE_REASON,
     )
+    return momentum, trend_quality, value_guard, quality
+
+
+def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
+    """Build the five-factor TW stock breakdown from `inputs`. Pure computation — no I/O, no
+    dependency on the ingest store."""
+    momentum, trend_quality, value_guard, quality = _price_and_fundamental_factors(inputs)
 
     flow_percentile = (
         winsorized_percentile(inputs.flow_value, inputs.flow_universe)
@@ -595,6 +821,35 @@ def compute_stock_factor_breakdown(inputs: FactorInputs) -> StockScoreBreakdown:
         value_guard=value_guard,
         quality=quality,
         revenue_flow=revenue_flow,
+    )
+
+
+def compute_us_stock_factor_breakdown(inputs: FactorInputs) -> UsStockScoreBreakdown:
+    """Build the seven-factor US stock breakdown from `inputs` — the US-market counterpart to
+    `compute_stock_factor_breakdown`, with `analyst_revision` (see `_analyst_revision_factor`)
+    replacing the TW-only `revenue_flow` slot, a `growth` sixth factor (see `_growth_factor`)
+    rounding out the standard Value+Momentum+Quality+Growth combo, and a `liquidity` seventh
+    factor (see `_liquidity_factor`) as the standard Size/Liquidity risk overlay. Pure
+    computation — no I/O, no dependency on the ingest store."""
+    momentum, trend_quality, value_guard, quality = _price_and_fundamental_factors(inputs)
+    analyst_revision = _analyst_revision_factor(
+        inputs.analyst_consensus, inputs.eps_trend_delta_universe
+    )
+    growth = _growth_factor(
+        inputs.analyst_consensus,
+        inputs.price,
+        growth_estimate_universe=inputs.growth_estimate_universe,
+        price_target_upside_universe=inputs.price_target_upside_universe,
+    )
+    liquidity = _liquidity_factor(inputs.closes, inputs.volumes, inputs.dollar_volume_universe)
+    return UsStockScoreBreakdown(
+        momentum=momentum,
+        trend_quality=trend_quality,
+        value_guard=value_guard,
+        quality=quality,
+        analyst_revision=analyst_revision,
+        growth=growth,
+        liquidity=liquidity,
     )
 
 
@@ -748,14 +1003,19 @@ __all__ = [
     "FactorInputs",
     "SectorContext",
     "apply_over_extension_cap",
+    "average_dollar_volume",
     "band_from_composite",
     "blend_composite",
     "build_score_result",
     "compute_etf_factor_breakdown",
     "compute_stock_factor_breakdown",
+    "compute_us_stock_factor_breakdown",
     "eod_bars_to_closes",
+    "eps_trend_delta",
     "net_buy_20d_trend",
     "normalization_caveat",
+    "price_target_upside",
+    "revision_breadth",
     "trend_template_score",
     "twelve_minus_one_momentum",
     "unavailable_factor",

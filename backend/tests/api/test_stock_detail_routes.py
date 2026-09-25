@@ -217,6 +217,52 @@ class TestAnalystConsensusRoute:
         assert resp.json()["consensus"] is None
 
 
+class TestLivePriceQuoteRoute:
+    def test_route(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        symbol = Symbol(id="AAPL", market=Market.US)
+        tick_result = SourceResult(
+            source_id="YFINANCE_LIVE",
+            data_class=DataClass.PUBLIC,
+            timing_class=TimingClass.LIVE_ISH,
+            fetched_at=datetime.now(UTC),
+            currentness_caveat="live caveat",
+            payload={"tick": {"price": 230.5}},
+            health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+        )
+        stub_router, _ = make_router(symbol, {Capability.LIVE_PRICE_QUOTE: tick_result})
+        registry = build_default_tool_registry(stub_router)
+        object.__setattr__(client.app.state.app_state, "tool_registry", registry)
+
+        resp = client.get(
+            "/api/v1/stock/live-price-quote", params={"symbol": "AAPL", "market": "US"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["tick"]["price"] == 230.5
+
+
+class TestCalendarEventsFeedRoute:
+    def test_route(self, settings: Settings, agent_answer: str) -> None:
+        client = build_test_client(settings, agent_answer=agent_answer)
+        symbol = Symbol(id="", market=Market.US)
+        stub_router, _ = make_router(
+            symbol,
+            {
+                Capability.EARNINGS_CALENDAR: _result({"rows": []}),
+                Capability.IPO_CALENDAR: _result({"rows": []}),
+                Capability.ECONOMIC_CALENDAR: _result({"rows": []}),
+            },
+        )
+        registry = build_default_tool_registry(stub_router)
+        object.__setattr__(client.app.state.app_state, "tool_registry", registry)
+        resp = client.get("/api/v1/stock/calendar-events-feed", params={"market": "US"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["earnings"] == []
+        assert body["ipo"] == []
+        assert body["economic"] == []
+
+
 class TestFinmindStockNewsRoute:
     def test_route(self, settings: Settings, agent_answer: str) -> None:
         client = _client_with_capability(

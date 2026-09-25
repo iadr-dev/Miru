@@ -7,6 +7,8 @@ through the shared `Ticker` frame fetch.
 
 from __future__ import annotations
 
+from typing import cast
+
 import anyio.to_thread
 import pandas as pd
 import structlog
@@ -28,6 +30,7 @@ from ._shared import (
     _as_date,
     _as_datetime,
     _as_float,
+    _as_int,
     _as_str,
     _dt_iso,
     _dt_isoformat,
@@ -200,6 +203,13 @@ async def _sector_overview(sym: Symbol, params: dict[str, object]) -> SourceResu
             payload={}, health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=str(exc))
         )
     rows = _sector_rows(sym, sector_key, frames)
+    # `stats`/`industries` are best-effort additions to the same payload — a sector aggregate
+    # with real top-companies/etfs/funds data but a missing/malformed `overview`/`industries`
+    # frame (should not happen live, but yfinance's own dict/DataFrame shape isn't contractually
+    # guaranteed) still returns its `rows` successfully; `stats`/`industries` just come back
+    # empty/`None` for the caller to disclose, never blocking the whole fetch.
+    stats = _sector_overview_stats(sym, sector_key, frames.get("overview"))
+    industries = _sector_industry_rows(sym, sector_key, frames.get("industries"))
     if not rows:
         return _result(
             payload={},
@@ -208,7 +218,57 @@ async def _sector_overview(sym: Symbol, params: dict[str, object]) -> SourceResu
                 detail="sector aggregate has no top-companies/etfs/funds data",
             ),
         )
-    return _result(payload={"rows": rows}, health=SourceHealth(status=HealthStatus.OK, detail="ok"))
+    return _result(
+        payload={"rows": rows, "stats": stats, "industries": industries},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+def _sector_overview_stats(
+    sym: Symbol, sector_key: str, overview: object
+) -> dict[str, object] | None:
+    """Maps `yf.Sector.overview`'s dict 1:1 into `SectorOverviewStats`'s field shape. `None`
+    (not an empty dict) when the frame itself isn't a dict — the caller (`GetSectorOverviewTool`)
+    treats `None` as "no stats available" rather than trying to validate a garbage payload."""
+    if not isinstance(overview, dict):
+        return None
+    overview_dict = cast("dict[str, object]", overview)
+    return {
+        "market": sym.market.value,
+        "sector_key": sector_key,
+        "companies_count": _as_int(_get(overview_dict, "companies_count")),
+        "market_cap": _as_float(_get(overview_dict, "market_cap")),
+        "market_weight": _as_float(_get(overview_dict, "market_weight")),
+        "employee_count": _as_int(_get(overview_dict, "employee_count")),
+        "description": _as_str(_get(overview_dict, "description")),
+    }
+
+
+def _sector_industry_rows(
+    sym: Symbol, sector_key: str, industries: object
+) -> list[dict[str, object]]:
+    """Maps `yf.Sector.industries` (a DataFrame indexed by industry `key`, columns `name`/
+    `market weight`) into `SectorIndustryWeightRow` rows — this sector's own industry breakdown,
+    the data source for a sector-industries composition treemap. A row with no resolvable
+    `market weight` is dropped (never a fabricated 0, which would silently understate that
+    industry's real share when a treemap sizes tiles by this field)."""
+    if not isinstance(industries, pd.DataFrame) or industries.empty:
+        return []
+    rows: list[dict[str, object]] = []
+    for industry_key, row in industries.iterrows():
+        weight = _as_float(_get(row, "market weight"))
+        if weight is None:
+            continue
+        rows.append(
+            {
+                "market": sym.market.value,
+                "sector_key": sector_key,
+                "industry_key": str(industry_key),
+                "name": str(_get(row, "name", "")),
+                "market_weight": weight,
+            }
+        )
+    return rows
 
 
 def _sector_rows(
@@ -285,6 +345,15 @@ async def _industry_overview(sym: Symbol, params: dict[str, object]) -> SourceRe
                     "name": str(_get(row, "name", "")),
                     "rating": _as_str(_get(row, "rating")),
                     "market_weight": _as_float(_get(row, "market weight")),
+                    # `ytd_return` is shared by both `top_growth_companies` and
+                    # `top_performing_companies`; `last_price`/`target_price` are
+                    # performing-only, `growth_estimate` is growth-only — a plain `top_companies`
+                    # row (row_kind="company") has none of these four columns at all, so every
+                    # `_get` below returns `None` for it, never fabricated.
+                    "ytd_return": _as_float(_get(row, "ytd return")),
+                    "last_price": _as_float(_get(row, "last price")),
+                    "target_price": _as_float(_get(row, "target price")),
+                    "growth_estimate": _as_float(_get(row, "growth estimate")),
                 }
             )
     if not rows:

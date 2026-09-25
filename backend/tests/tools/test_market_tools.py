@@ -31,6 +31,7 @@ from tools.market_tools import (
     GetIndexContributionInput,
     GetIndexContributionTool,
     GetInstitutionalFlowTool,
+    GetLivePriceQuoteTool,
     GetPriceQuoteTool,
     HoldingStatus,
     InstitutionalFlowRollingNet,
@@ -242,6 +243,40 @@ async def test_get_price_quote_delegates_to_price_eod_capability() -> None:
     assert adapter.calls[0][0] is Capability.PRICE_EOD
     assert output.bar is not None
     assert output.bar.close == 100.5
+
+
+async def test_get_live_price_quote_delegates_to_live_price_quote_capability() -> None:
+    symbol = Symbol(id="AAPL", market=Market.US)
+    tick_result = SourceResult(
+        source_id="YFINANCE_LIVE",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.LIVE_ISH,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="live caveat",
+        payload={"tick": {"price": 230.5, "change_percent": 1.2}},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, adapter = make_router(symbol, {Capability.LIVE_PRICE_QUOTE: tick_result})
+    tool = GetLivePriceQuoteTool(router)
+
+    output = await tool.run(SymbolInput(id="AAPL", market=Market.US), ToolContext())
+
+    assert adapter.calls[0][0] is Capability.LIVE_PRICE_QUOTE
+    assert output.tick is not None
+    assert output.tick.price == 230.5
+    assert output.tick.change_percent == 1.2
+
+
+async def test_get_live_price_quote_rejects_non_us_market_without_touching_router() -> None:
+    symbol = Symbol(id="2330", market=Market.TW)
+    router, adapter = make_router(symbol, {Capability.LIVE_PRICE_QUOTE: _bar_result()})
+    tool = GetLivePriceQuoteTool(router)
+
+    output = await tool.run(SymbolInput(id="2330", market=Market.TW), ToolContext())
+
+    assert adapter.calls == []
+    assert output.tick is None
+    assert output.health_status is HealthStatus.UNAVAILABLE_TIER
 
 
 async def test_get_dividend_schedule_delegates_and_parses_events() -> None:
@@ -1646,6 +1681,90 @@ async def test_get_company_profile_lists_field_missing_when_its_capability_fetch
     # The other enriched fields still succeeded and must not be dragged into missing_fields too.
     assert "per" not in output.missing_fields
     assert "eps" not in output.missing_fields
+
+
+def _yfinance_income_statement_result() -> SourceResult:
+    """yfinance's own item naming (`Diluted EPS`/`Total Revenue`/`Gross Profit`) with
+    `period_type="annual"` — the shape `_latest_eps`/`_yfinance_revenue_yoy_and_margins` read for
+    every non-TW market, distinct from TW's FinMind-shaped `_income_statement_result` fixture
+    above (plain `"EPS"`/`"Revenue"`, no `period_type` at all)."""
+    lines = []
+    for period_end, eps, revenue, gross_profit in (
+        ("2025-08-31", 7.59, 37_378_000_000.0, 12_500_000_000.0),
+        ("2024-08-31", 0.70, 25_111_000_000.0, 6_200_000_000.0),
+    ):
+        lines.extend(
+            [
+                {
+                    "symbol": "MU",
+                    "market": "US",
+                    "period_end": period_end,
+                    "statement_type": "income_statement",
+                    "period_type": "annual",
+                    "item": "Diluted EPS",
+                    "origin_name": "Diluted EPS",
+                    "value": eps,
+                },
+                {
+                    "symbol": "MU",
+                    "market": "US",
+                    "period_end": period_end,
+                    "statement_type": "income_statement",
+                    "period_type": "annual",
+                    "item": "Total Revenue",
+                    "origin_name": "Total Revenue",
+                    "value": revenue,
+                },
+                {
+                    "symbol": "MU",
+                    "market": "US",
+                    "period_end": period_end,
+                    "statement_type": "income_statement",
+                    "period_type": "annual",
+                    "item": "Gross Profit",
+                    "origin_name": "Gross Profit",
+                    "value": gross_profit,
+                },
+            ]
+        )
+    return SourceResult(
+        source_id="STUB",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.REFERENCE,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="yfinance income statement caveat",
+        payload={"lines": lines},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+
+
+async def test_get_company_profile_reads_eps_and_revenue_yoy_live_for_us(
+    tmp_path: Path,
+) -> None:
+    """US (and every other non-TW market) has no ingested `financials_lines`/
+    `month_revenue_rows` partition — `eps`/`revenue_yoy`/`margins` must be computed live off the
+    yfinance `financials` fetch instead of the permanently-empty derived-store read TW uses."""
+    symbol = Symbol(id="MU", market=Market.US)
+    router, _ = make_router(
+        symbol,
+        {
+            Capability.SECTOR_CLASS: _sector_result(),
+            Capability.DIVIDENDS: _dividend_result(),
+            Capability.MARKET_VALUE: _market_value_result(),
+            Capability.VALUATION_RATIOS: _valuation_ratios_result(),
+            Capability.FINANCIALS: _yfinance_income_statement_result(),
+        },
+    )
+    tool = GetCompanyProfileTool(router, ParquetStore(root=tmp_path))
+
+    output = await tool.run(SymbolInput(id="MU", market=Market.US), ToolContext())
+
+    assert output.eps == pytest.approx(7.59)  # the LATEST period's Diluted EPS, not Basic
+    assert output.revenue_yoy == pytest.approx(37_378_000_000.0 / 25_111_000_000.0 - 1)
+    assert output.margins == pytest.approx(12_500_000_000.0 / 37_378_000_000.0)
+    assert "eps" not in output.missing_fields
+    assert "revenue_yoy" not in output.missing_fields
+    assert "margins" not in output.missing_fields
 
 
 async def test_get_etfs_holding_stock_reports_unavailable_when_store_has_no_partition(

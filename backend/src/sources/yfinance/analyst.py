@@ -183,4 +183,116 @@ def _etf_aum(sym: Symbol, info: dict[str, Any]) -> SourceResult:
     return _result(payload={"aum": aum}, health=SourceHealth(status=HealthStatus.OK, detail="ok"))
 
 
-__all__ = ["_analyst_consensus", "_analyst_consensus_extended", "_esg", "_etf_aum", "_sector_class"]
+def _market_value(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    """`market_value` — Yahoo's own `marketCap`, the non-TW equivalent of FinMind's
+    backer/sponsor-only TW `market_value` feed. `get_company_profile` reads this back for a US/
+    GB/JP/EU symbol's 市值 field instead of leaving it perpetually empty (no adapter was
+    configured for these markets at all before this)."""
+    market_cap = _get(info, "marketCap")
+    if market_cap is None:
+        return _result(
+            payload={},
+            health=SourceHealth(status=HealthStatus.STALE, detail="no marketCap for this symbol"),
+        )
+    row = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "trade_date": date.today().isoformat(),
+        "market_value": _as_int(market_cap),
+    }
+    return _result(
+        payload={"rows": [row]}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
+    )
+
+
+def _valuation_ratios(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    """`valuation_ratios` — Yahoo's own trailing PER/PBR/dividend-yield, the non-TW equivalent of
+    FinMind's TW-only daily valuation feed. Degrades field-by-field to `None` (`ValuationRatiosRow`
+    itself requires all three, so a row is only emitted once all three resolve — matching
+    `get_company_profile`'s own per-field `missing_fields` disclosure at the tool layer rather
+    than fabricating a partial row here)."""
+    per = _as_float(_get(info, "trailingPE"))
+    pbr = _as_float(_get(info, "priceToBook"))
+    dividend_yield = _as_float(_get(info, "dividendYield"))
+    if per is None and pbr is None and dividend_yield is None:
+        return _result(
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.STALE, detail="no valuation ratios for this symbol"
+            ),
+        )
+    row = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "trade_date": date.today().isoformat(),
+        "dividend_yield": dividend_yield,
+        "per": per,
+        "pbr": pbr,
+    }
+    return _result(
+        payload={"rows": [row]}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
+    )
+
+
+def _profile(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    """`profile` — yfinance's `.info` company-identity fields, the non-TW equivalent of MOPS's
+    TW-only company-profile dump. Maps onto the SAME key names `get_company_profile`'s
+    `_mops_fields` already reads (`chairman`/`auditor`/`headquarters`/`website`/`capital`/
+    `spokesperson`/`founding_date`/`industry_classification_code`) so that tool needs no branch
+    on source — `chairman` is `companyOfficers`' first `"Chairman"`/`"CEO"`-titled officer (Yahoo
+    has no single dedicated chairman field); `auditor`/`spokesperson`/`founding_date` have no
+    yfinance equivalent at all and stay `None` (never fabricated) — `get_company_profile`'s own
+    `missing_fields` already discloses that honestly, same as it does for a MOPS-side gap."""
+    officers = _get(info, "companyOfficers")
+    chairman = None
+    if isinstance(officers, list):
+        for officer in cast("list[dict[str, Any]]", officers):
+            title = str(officer.get("title") or "")
+            if "chairman" in title.lower() or "ceo" in title.lower():
+                chairman = officer.get("name")
+                break
+    address_parts = [
+        _get(info, "address1"),
+        _get(info, "city"),
+        _get(info, "state"),
+        _get(info, "country"),
+    ]
+    headquarters = ", ".join(str(p) for p in address_parts if p) or None
+    profile = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "chairman": chairman,
+        "auditor": None,
+        "headquarters": headquarters,
+        "website": _get(info, "website"),
+        # `capital` (TW's 實收資本額, paid-in capital) has no yfinance equivalent —
+        # `sharesOutstanding` is a share COUNT, not a capital amount, and `marketCap` is a
+        # market valuation, not paid-in capital; neither is the same quantity, so this stays
+        # `None` (an honest gap) rather than mislabeling either as 資本額.
+        "capital": None,
+        "spokesperson": None,
+        "founding_date": None,
+        "industry_classification_code": _get(info, "industry"),
+    }
+    if not any(v is not None for k, v in profile.items() if k not in ("symbol", "market")):
+        return _result(
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.STALE, detail="no profile identity fields for this symbol"
+            ),
+        )
+    return _result(
+        payload={"profile": profile}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
+    )
+
+
+__all__ = [
+    "_analyst_consensus",
+    "_analyst_consensus_extended",
+    "_esg",
+    "_etf_aum",
+    "_market_value",
+    "_profile",
+    "_sector_class",
+    "_valuation_ratios",
+]

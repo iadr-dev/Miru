@@ -3,7 +3,7 @@
 import { ChartLineIcon } from "@phosphor-icons/react/dist/ssr";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ComingSoon } from "@/components/shell/coming-soon";
 import { AiPanel } from "@/components/stock/ai-panel";
 import { BasicInfoPanel } from "@/components/stock/basic-info-panel";
@@ -66,6 +66,13 @@ export function StockTabBar({
 }): ReactNode {
   const t = useTranslations("stock.tabs");
   const { tab, setTab } = useDetailTab(STOCK_TABS, DEFAULT_TAB);
+  // Once visited, 技術分析 stays mounted (hidden via CSS on other tabs) instead of unmounting —
+  // its indicator/range/overlay toggles live in local `useState`, which switching tabs would
+  // otherwise reset to defaults every time (unmount destroys that state).
+  const [visitedTechnical, setVisitedTechnical] = useState(false);
+  useEffect(() => {
+    if (tab === "technical") setVisitedTechnical(true);
+  }, [tab]);
 
   return (
     <div className="flex flex-col gap-4 p-5">
@@ -107,7 +114,11 @@ export function StockTabBar({
       {tab === "industry" ? <IndustryPanel symbol={symbol} market={market} /> : null}
       {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
       {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
-      {tab === "technical" ? <TechnicalAnalysisPanel symbol={symbol} market={market} /> : null}
+      {visitedTechnical ? (
+        <div className={tab === "technical" ? undefined : "hidden"}>
+          <TechnicalAnalysisPanel symbol={symbol} market={market} />
+        </div>
+      ) : null}
       {tab === "tracker" ? <TrackerPanel symbol={symbol} market={market} /> : null}
       {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
