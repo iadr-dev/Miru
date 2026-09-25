@@ -29,6 +29,7 @@ from tools.market_tools import GetChipFlowsTool
 CARD_OPTED_TOOLS: dict[str, str] = {
     # market_tools.py
     "get_price_quote": "price_quote",
+    "get_live_price_quote": "live_price_quote",
     "get_chip_flows": "chip_flows",
     "get_active_etf_report": "active_etf_report",
     "get_etf_money_flow": "etf_money_flow",

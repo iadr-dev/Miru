@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from accounts.hooks import EntitlementResolver
 from api.dependencies import AppState
 from api.errors import register_exception_handlers
-from api.quote_stream import CalendarMarketOpenGate, ToolQuoteFetcher
+from api.quote_stream import CalendarMarketOpenGate, LiveQuoteManagerLike, ToolQuoteFetcher
 from api.routers import (
     accounts_extra,
     agent,
@@ -72,6 +72,7 @@ def create_app(
     usage_store: UsageStore | None = None,
     quote_feed: QuoteFeed | None = None,
     data_update_broker: DataUpdateBroker | None = None,
+    live_quote_manager: LiveQuoteManagerLike | None = None,
     allowed_origins: list[str] | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
@@ -81,7 +82,16 @@ def create_app(
         # `create_all()` is idempotent — safe even if the caller (a test fixture) already
         # created the schema itself, and safe under multiple replicas racing to call it.
         await ensure_schema_for(session_factory)
-        yield
+        try:
+            yield
+        finally:
+            # `live_quote_manager` is the SAME instance the composition root threaded into
+            # `YFinanceLiveQuoteAdapter` (see `api/composition.py`) — closing it here on shutdown
+            # cancels its background listen/sweep tasks and closes the WebSocket connection.
+            # `quote_feed`'s own poller has no equivalent shutdown hook today (a pre-existing
+            # gap this doesn't fix) — not repeating that gap for the new manager.
+            if live_quote_manager is not None:
+                await live_quote_manager.aclose()
 
     app = FastAPI(title="Miro API", version="0.1.0", lifespan=_lifespan)
 

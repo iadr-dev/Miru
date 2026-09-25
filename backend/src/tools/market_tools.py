@@ -127,6 +127,80 @@ class GetPriceQuoteTool(BaseTool):
         )
 
 
+class LivePriceTick(BaseModel):
+    """One decoded `PricingData` WebSocket message — mapped straight off yfinance's own
+    snake_case field names (`MessageToDict(..., preserving_proto_field_name=True)`)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    price: float | None = None
+    change: float | None = None
+    change_percent: float | None = None
+    day_high: float | None = None
+    day_low: float | None = None
+    day_volume: int | None = None
+    open_price: float | None = None
+    previous_close: float | None = None
+    bid: float | None = None
+    bid_size: int | None = None
+    ask: float | None = None
+    ask_size: int | None = None
+    currency: str | None = None
+    market_hours: int | None = None
+    observed_at: str | None = None
+
+
+class GetLivePriceQuoteOutput(BaseModel):
+    """The real-time (WebSocket-streamed) price-quote read — US-only."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_id: str
+    currentness_caveat: str = Field(min_length=1)
+    health_status: HealthStatus
+    tick: LivePriceTick | None = None
+
+
+class GetLivePriceQuoteTool(BaseTool):
+    """`get_live_price_quote` — wraps `Capability.LIVE_PRICE_QUOTE` (yfinance WebSocket, real-
+    time-ish, US-only). Validates `market` up front rather than letting the router's `supports()`
+    gate silently degrade for a market this tool never claims — a non-US call returns
+    `HealthStatus.UNAVAILABLE_TIER` without ever touching the router."""
+
+    name = "get_live_price_quote"
+    description = "Get a real-time (WebSocket-streamed) price tick for one US stock/ETF symbol."
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetLivePriceQuoteOutput
+    card_type: str | None = "live_price_quote"
+    data_class = DataClass.PUBLIC
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(SymbolInput, args)
+        if typed.market is not Market.US:
+            return GetLivePriceQuoteOutput(
+                source_id="none",
+                currentness_caveat=(
+                    f"get_live_price_quote only serves Market.US today, not {typed.market.value}."
+                ),
+                health_status=HealthStatus.UNAVAILABLE_TIER,
+                tick=None,
+            )
+        result = await self._router.fetch(
+            Capability.LIVE_PRICE_QUOTE, typed.to_symbol(), tls_policy=ctx.tls_policy
+        )
+        raw_tick = result.payload.get("tick")
+        tick = LivePriceTick.model_validate(raw_tick) if isinstance(raw_tick, dict) else None
+        return GetLivePriceQuoteOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            tick=tick,
+        )
+
+
 class GetDividendScheduleOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -5020,19 +5094,92 @@ class GetDividendCalendarTool(BaseTool):
         )
 
 
+# TW's `financials` capability (FinMind-sourced) reports the line item as plain `"EPS"`;
+# yfinance's own income-statement frame (every other market) reports `"Diluted EPS"`/
+# `"Basic EPS"` instead — no single name works for every source, so `_latest_eps` matches
+# either, preferring Diluted (the more conservative, dilution-adjusted figure) when both exist
+# for the same period.
+_EPS_ITEM_NAMES: tuple[str, ...] = ("EPS", "Diluted EPS", "Basic EPS")
+
+
 def _latest_eps(payload: dict[str, object]) -> float | None:
     """`financials`' payload is `{"lines": [...]}` — one row per (period, statement line);
-    the most recent `item == "EPS"` row's `value` is the latest reported EPS."""
+    the most recent EPS-item row's `value` is the latest reported EPS (see `_EPS_ITEM_NAMES`)."""
     raw_lines = payload.get("lines")
     if not isinstance(raw_lines, list):
         return None
     rows = cast(_RowList, raw_lines)
-    eps_rows = [row for row in rows if row.get("item") == "EPS"]
+    eps_rows = [row for row in rows if row.get("item") in _EPS_ITEM_NAMES]
     if not eps_rows:
         return None
-    latest = max(eps_rows, key=lambda row: cast("str", row.get("period_end", "")))
-    value = latest.get("value")
-    return float(cast("float", value)) if isinstance(value, int | float) else None
+    latest_period = max(cast("str", row.get("period_end", "")) for row in eps_rows)
+    same_period = [row for row in eps_rows if row.get("period_end") == latest_period]
+    for name in _EPS_ITEM_NAMES:
+        match = next((row for row in same_period if row.get("item") == name), None)
+        if match is not None:
+            value = match.get("value")
+            return float(cast("float", value)) if isinstance(value, int | float) else None
+    return None
+
+
+# yfinance's own income-statement item names for revenue/gross-profit (every non-TW market) —
+# distinct from `analytics/fundamentals.py`'s FinMind-shaped `_REVENUE_ITEMS`/
+# `_GROSS_PROFIT_ITEMS` constants, which name TW's own line-item vocabulary instead.
+_YF_REVENUE_ITEM_NAMES: tuple[str, ...] = ("Total Revenue", "Operating Revenue")
+_YF_GROSS_PROFIT_ITEM_NAME = "Gross Profit"
+_MIN_PERIODS_FOR_YOY = 2
+
+
+def _yfinance_revenue_yoy_and_margins(
+    payload: dict[str, object],
+) -> tuple[float | None, float | None]:
+    """`margins`/`revenue_yoy` for every non-TW market, computed live from the SAME `financials`
+    payload `_latest_eps` already reads — no derived-store dependency (unlike TW, no US/GB/JP/EU
+    ingest job populates `financials_lines`/`month_revenue_rows` at all, so the store-backed path
+    `_revenue_yoy_and_margins` uses would stay permanently empty for these markets). Only the
+    ANNUAL period rows are used for both: yfinance's own annual revenue series is the natural
+    "vs a year ago" comparison (unlike TW's month_revenue feed, yfinance has no monthly revenue
+    series at all), and gross margin is computed off the same annual Gross Profit/Total Revenue
+    pair rather than mixing annual and quarterly periods."""
+    raw_lines = payload.get("lines")
+    if not isinstance(raw_lines, list):
+        return None, None
+    rows = cast(_RowList, raw_lines)
+    annual_rows = [row for row in rows if row.get("period_type") == "annual"]
+
+    def _annual_value(names: tuple[str, ...]) -> dict[str, float]:
+        by_period: dict[str, float] = {}
+        for row in annual_rows:
+            item = row.get("item")
+            period_end = row.get("period_end")
+            value = row.get("value")
+            if item in names and isinstance(period_end, str) and isinstance(value, int | float):
+                by_period[period_end] = float(value)
+        return by_period
+
+    revenue_by_period = _annual_value(_YF_REVENUE_ITEM_NAMES)
+    gross_profit_by_period = _annual_value((_YF_GROSS_PROFIT_ITEM_NAME,))
+
+    # A plain ratio (e.g. `0.18` for +18%), matching `analytics/fundamentals.py`'s own
+    # `compute_revenue_yoy`/`_safe_ratio` scale for the TW path this field shares a name with —
+    # never re-scaled here, so the two markets' values stay directly comparable under one field.
+    revenue_yoy: float | None = None
+    periods = sorted(revenue_by_period, reverse=True)
+    if len(periods) >= _MIN_PERIODS_FOR_YOY:
+        latest_revenue = revenue_by_period[periods[0]]
+        prior_revenue = revenue_by_period[periods[1]]
+        if prior_revenue != 0:
+            revenue_yoy = latest_revenue / prior_revenue - 1
+
+    margins: float | None = None
+    if periods:
+        latest_period = periods[0]
+        margin_revenue = revenue_by_period.get(latest_period)
+        margin_gross_profit = gross_profit_by_period.get(latest_period)
+        if margin_revenue is not None and margin_gross_profit is not None and margin_revenue != 0:
+            margins = margin_gross_profit / margin_revenue
+
+    return revenue_yoy, margins
 
 
 # MOPS-sourced identity fields (`Capability.PROFILE`'s `profile` payload) that map straight into
@@ -5236,7 +5383,13 @@ class GetCompanyProfileTool(BaseTool):
         if eps is None:
             missing_fields.append("eps")
 
-        revenue_yoy, margins = self._revenue_yoy_and_margins(symbol=symbol, market=typed.market)
+        # TW reads back the derived-store-ingested feeds (`_revenue_yoy_and_margins`); every
+        # other market has no such ingest job at all, so this computes the same two fields live
+        # off the `financials` fetch already made above instead of a permanently-empty store read.
+        if typed.market is Market.TW:
+            revenue_yoy, margins = self._revenue_yoy_and_margins(symbol=symbol, market=typed.market)
+        else:
+            revenue_yoy, margins = _yfinance_revenue_yoy_and_margins(financials_result.payload)
         if revenue_yoy is None:
             missing_fields.append("revenue_yoy")
         if margins is None:
@@ -5438,6 +5591,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     tools: list[tuple[Tool, bool]] = [
         (GetCompanyProfileTool(router, store), True),
         (GetPriceQuoteTool(router), True),
+        (GetLivePriceQuoteTool(router), False),
         (GetDividendScheduleTool(router), False),
         (GetInstitutionalFlowTool(router), False),
         (GetChipFlowsTool(router), False),
@@ -5509,6 +5663,8 @@ __all__ = [
     "GetIndexContributionTool",
     "GetInstitutionalFlowOutput",
     "GetInstitutionalFlowTool",
+    "GetLivePriceQuoteOutput",
+    "GetLivePriceQuoteTool",
     "GetPriceHistoryInput",
     "GetPriceHistoryOutput",
     "GetPriceHistoryTool",
@@ -5540,6 +5696,7 @@ __all__ = [
     "HolderWindow",
     "HoldingStatus",
     "IndexContributionRow",
+    "LivePriceTick",
     "MomentumPeriod",
     "PriceMomentumRow",
     "SectorConstituentRow",

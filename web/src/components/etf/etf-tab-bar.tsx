@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ActiveReportPanel } from "@/components/etf/active-report-panel";
 import { HoldingsPanel } from "@/components/etf/holdings-panel";
 import { OverviewPanel } from "@/components/etf/overview-panel";
@@ -50,6 +50,13 @@ export function EtfTabBar({
 }): ReactNode {
   const t = useTranslations("etf.tabs");
   const { tab, setTab } = useDetailTab(ETF_TABS, DEFAULT_TAB);
+  // Once visited, 技術分析 stays mounted (hidden via CSS on other tabs) instead of unmounting —
+  // its indicator/range/overlay toggles live in local `useState`, which switching tabs would
+  // otherwise reset to defaults every time (unmount destroys that state).
+  const [visitedTechnical, setVisitedTechnical] = useState(false);
+  useEffect(() => {
+    if (tab === "technical") setVisitedTechnical(true);
+  }, [tab]);
 
   return (
     <div className="flex flex-col gap-4 p-5">
@@ -93,7 +100,11 @@ export function EtfTabBar({
       {tab === "holdings" ? <HoldingsPanel symbol={symbol} market={market} /> : null}
       {tab === "premiumDiscount" ? <PremiumDiscountPanel symbol={symbol} market={market} /> : null}
       {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
-      {tab === "technical" ? <TechnicalAnalysisPanel symbol={symbol} market={market} /> : null}
+      {visitedTechnical ? (
+        <div className={tab === "technical" ? undefined : "hidden"}>
+          <TechnicalAnalysisPanel symbol={symbol} market={market} />
+        </div>
+      ) : null}
       {tab === "ai" ? <AiPanel symbol={symbol} market={market} symbolType={symbolType} /> : null}
       {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
     </div>

@@ -1144,6 +1144,35 @@ async def sec_filings(
     return await _dispatch(state, "get_sec_filings", {"id": symbol, "market": market.value}, ctx)
 
 
+@router.get("/stock/live-price-quote")
+async def live_price_quote(
+    symbol: str = Query(..., min_length=1),
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """`AssetHeader`'s one-shot price read for US symbols, backed by `get_live_price_quote`
+    (yfinance WebSocket tick, falling back to a `.info` snapshot when no tick has streamed in
+    yet — e.g. market closed). `DataClass.PUBLIC`. Distinct from `GET /quote/stream`'s SSE feed:
+    that feed's poller only fetches while the market session is open (bounded observation), so a
+    page load outside market hours needs this one-shot read instead to show a last-known price."""
+    return await _dispatch(
+        state, "get_live_price_quote", {"id": symbol, "market": market.value}, ctx
+    )
+
+
+@router.get("/stock/calendar-events-feed")
+async def calendar_events_feed(
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The US 總覽 tab's upcoming-events calendar — earnings/IPO/economic calendars bundled from
+    `yfinance.Calendars`, backed by `get_calendar_events_feed`, `DataClass.PUBLIC`. Market-wide
+    (no `symbol` param — `MarketScopedInput` has none either), non-TW only."""
+    return await _dispatch(state, "get_calendar_events_feed", {"market": market.value}, ctx)
+
+
 @router.get("/stock/peers")
 async def stock_peers(
     symbol: str = Query(..., min_length=1),

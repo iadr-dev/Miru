@@ -196,6 +196,76 @@ async def test_fetch_sector_overview(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rows[0]["row_kind"] == "company"  # type: ignore[index]
 
 
+async def test_fetch_sector_overview_includes_stats_and_industries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    top_companies = pd.DataFrame(
+        [{"name": "NVIDIA Corporation", "rating": "Strong Buy", "market weight": 0.177}],
+        index=["NVDA"],
+    )
+    industries = pd.DataFrame(
+        [
+            {"name": "Semiconductors", "symbol": "^YH31130020", "market weight": 0.382},
+            {"name": "Software - Infrastructure", "symbol": "^YH31110030", "market weight": 0.211},
+        ],
+        index=pd.Index(["semiconductors", "software-infrastructure"], name="key"),
+    )
+    overview = {
+        "companies_count": 858,
+        "market_cap": 29_454_185_267_200,
+        "market_weight": 0.334,
+        "employee_count": 7_955_387,
+        "description": "Companies engaged in the design of computer systems.",
+    }
+    frames = {
+        "top_companies": top_companies,
+        "top_etfs": None,
+        "top_mutual_funds": None,
+        "overview": overview,
+        "industries": industries,
+    }
+    patch_run_sync(monkeypatch, _fetch_sector_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="", market=Market.US)
+
+    result = await adapter.fetch(
+        Capability.SECTOR_OVERVIEW, sym, tls_policy=TLSPolicy.STRICT, sector_key="technology"
+    )
+
+    assert result.health.status is HealthStatus.OK
+    stats = result.payload["stats"]
+    assert stats["companies_count"] == 858  # type: ignore[index]
+    assert stats["employee_count"] == 7_955_387  # type: ignore[index]
+    industry_rows = result.payload["industries"]
+    assert industry_rows[0]["industry_key"] == "semiconductors"  # type: ignore[index]
+    assert industry_rows[0]["market_weight"] == pytest.approx(0.382)  # type: ignore[index]
+    assert industry_rows[1]["industry_key"] == "software-infrastructure"  # type: ignore[index]
+
+
+async def test_fetch_sector_overview_degrades_stats_and_industries_when_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real sector fetch (`top_companies` present) but a missing/malformed `overview`/
+    `industries` frame still returns its company rows — `stats`/`industries` degrade
+    independently, never blocking the whole result."""
+    top_companies = pd.DataFrame(
+        [{"name": "NVIDIA Corporation", "rating": "Strong Buy", "market weight": 0.177}],
+        index=["NVDA"],
+    )
+    frames = {"top_companies": top_companies, "top_etfs": None, "top_mutual_funds": None}
+    patch_run_sync(monkeypatch, _fetch_sector_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="", market=Market.US)
+
+    result = await adapter.fetch(
+        Capability.SECTOR_OVERVIEW, sym, tls_policy=TLSPolicy.STRICT, sector_key="technology"
+    )
+
+    assert result.health.status is HealthStatus.OK
+    assert result.payload["stats"] is None
+    assert result.payload["industries"] == []
+
+
 async def test_fetch_sector_overview_requires_sector_key() -> None:
     adapter = YFinanceAdapter()
     sym = Symbol(id="", market=Market.US)
@@ -236,6 +306,69 @@ async def test_fetch_industry_overview(monkeypatch: pytest.MonkeyPatch) -> None:
     rows = result.payload["rows"]
     assert rows[0]["sector_key"] == "technology"  # type: ignore[index]
     assert rows[0]["row_kind"] == "company"  # type: ignore[index]
+
+
+async def test_fetch_industry_overview_maps_growth_and_performing_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    top_companies = pd.DataFrame(
+        [{"name": "NVIDIA Corporation", "rating": "Strong Buy", "market weight": 0.44}],
+        index=["NVDA"],
+    )
+    top_growth = pd.DataFrame(
+        [{"name": "Micron Technology, Inc.", "ytd return": 2.6951, "growth estimate": 5.846}],
+        index=["MU"],
+    )
+    top_performing = pd.DataFrame(
+        [
+            {
+                "name": "MaxLinear, Inc.",
+                "ytd return": 3.7656,
+                "last price": 83.065,
+                "target price": 94.5454,
+            }
+        ],
+        index=["MXL"],
+    )
+    patch_run_sync(
+        monkeypatch,
+        _fetch_industry_blocking=(
+            {
+                "top_companies": top_companies,
+                "top_growth_companies": top_growth,
+                "top_performing_companies": top_performing,
+            },
+            "technology",
+        ),
+    )
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="", market=Market.US)
+
+    result = await adapter.fetch(
+        Capability.INDUSTRY_OVERVIEW,
+        sym,
+        tls_policy=TLSPolicy.STRICT,
+        industry_key="semiconductors",
+    )
+
+    rows = result.payload["rows"]
+    by_symbol = {row["symbol"]: row for row in rows}  # type: ignore[index]
+    company_row = by_symbol["NVDA"]
+    assert company_row["ytd_return"] is None  # top_companies never carries these four fields
+    assert company_row["last_price"] is None
+
+    growth_row = by_symbol["MU"]
+    assert growth_row["row_kind"] == "growth_company"
+    assert growth_row["ytd_return"] == pytest.approx(2.6951)
+    assert growth_row["growth_estimate"] == pytest.approx(5.846)
+    assert growth_row["last_price"] is None  # growth frame has no price/target columns
+
+    performing_row = by_symbol["MXL"]
+    assert performing_row["row_kind"] == "performing_company"
+    assert performing_row["ytd_return"] == pytest.approx(3.7656)
+    assert performing_row["last_price"] == pytest.approx(83.065)
+    assert performing_row["target_price"] == pytest.approx(94.5454)
+    assert performing_row["growth_estimate"] is None  # performing frame has no growth-estimate
 
 
 async def test_fetch_industry_overview_requires_industry_key() -> None:

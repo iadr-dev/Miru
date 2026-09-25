@@ -505,15 +505,22 @@ export const factorScoreSchema = z.object({
 });
 export type FactorScore = z.infer<typeof factorScoreSchema>;
 
-/** Every per-factor key is optional — a stock and an ETF are scored on disjoint factor sets
- * (`analytics/score.py`'s `StockScoreBreakdown`/`EtfScoreBreakdown`), so a result of one
- * `symbol_type` simply omits the other universe's keys rather than sending a fabricated one. */
+/** Every per-factor key is optional — a stock, a US stock, and an ETF are each scored on
+ * disjoint factor sets (`analytics/score.py`'s `StockScoreBreakdown`/`UsStockScoreBreakdown`/
+ * `EtfScoreBreakdown`), so a result of one `symbol_type`/market simply omits the other shapes'
+ * keys rather than sending a fabricated one. `analyst_revision`/`growth` are
+ * `UsStockScoreBreakdown`'s US-native factors (replacing TW-only `revenue_flow`, and rounding
+ * out the six-factor US set respectively — see that model's own docstring) — a US row never
+ * carries `revenue_flow`, and a TW row never carries `analyst_revision`/`growth`. */
 export const scoreBreakdownSchema = z.object({
   momentum: factorScoreSchema.optional(),
   trend_quality: factorScoreSchema.optional(),
   value_guard: factorScoreSchema.optional(),
   quality: factorScoreSchema.optional(),
   revenue_flow: factorScoreSchema.optional(),
+  analyst_revision: factorScoreSchema.optional(),
+  growth: factorScoreSchema.optional(),
+  liquidity: factorScoreSchema.optional(),
   premium_discount: factorScoreSchema.optional(),
   cost: factorScoreSchema.optional(),
   management_activity: factorScoreSchema.optional(),

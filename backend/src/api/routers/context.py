@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from accounts.models import User
 from api.dependencies import AppState, get_state, optional_user, tool_context_for
 from api.errors import ApiError
-from api.quote_stream import entitlement_transform
+from api.quote_stream import entitlement_transform, quote_tool_name_for
 from api.sse import format_sse_event
 from schemas.enums import Market, Tier
 from tools.base import ToolContext, dispatch_tool
@@ -146,7 +146,9 @@ async def quote_stream(
             retryable=False,
         )
     tier = ctx.tier if user is not None else Tier.FREE
-    transform = entitlement_transform(state.tool_registry, tier)
+    transform = entitlement_transform(
+        state.tool_registry, tier, tool_name=quote_tool_name_for(market)
+    )
     stream = state.quote_feed.stream(ids, market=market, cadence=cadence, transform=transform)
     return StreamingResponse(stream, media_type="text/event-stream")
 

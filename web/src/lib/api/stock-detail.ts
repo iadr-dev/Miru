@@ -6,12 +6,15 @@
  * `requestJson`/`MarketApiError` seam rather than duplicating it.
  */
 import { MarketApiError, requestJson } from "@/lib/api/market";
+import { type LivePriceQuoteResponse, livePriceQuoteResponseSchema } from "@/types/live-quote";
 import type { Market } from "@/types/settings";
 import {
   type AnalystConsensusResponse,
   analystConsensusResponseSchema,
+  type CalendarEventsFeedResponse,
   type ChipFlowsResponse,
   type CompanyProfile,
+  calendarEventsFeedResponseSchema,
   chipFlowsResponseSchema,
   companyProfileSchema,
   type DayTradingResponse,
@@ -392,6 +395,29 @@ export async function getStockPeers(symbol: string, market: Market): Promise<Sto
   const search = new URLSearchParams({ symbol, market });
   const raw = await requestJson(`/stock/peers?${search.toString()}`);
   return stockPeersResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14c. GET /stock/live-price-quote (public) — AssetHeader's one-shot US price fallback
+// ---------------------------------------------------------------------------
+
+export async function getLivePriceQuote(
+  symbol: string,
+  market: Market,
+): Promise<LivePriceQuoteResponse> {
+  const search = new URLSearchParams({ symbol, market });
+  const raw = await requestJson(`/stock/live-price-quote?${search.toString()}`);
+  return livePriceQuoteResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 14d. GET /stock/calendar-events-feed (public) — US 總覽's upcoming-events calendar card
+// ---------------------------------------------------------------------------
+
+export async function getCalendarEventsFeed(market: Market): Promise<CalendarEventsFeedResponse> {
+  const search = new URLSearchParams({ market });
+  const raw = await requestJson(`/stock/calendar-events-feed?${search.toString()}`);
+  return calendarEventsFeedResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

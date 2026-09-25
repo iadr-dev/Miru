@@ -1272,6 +1272,10 @@ export const sectorOverviewCompanyRowSchema = z.object({
 });
 export type SectorOverviewCompanyRow = z.infer<typeof sectorOverviewCompanyRowSchema>;
 
+// `ytd_return`/`last_price`/`target_price`/`growth_estimate` come from `yfinance.Industry.
+// top_performing_companies`/`top_growth_companies` — only populated on a `row_kind=
+// "performing_company"`/`"growth_company"` row respectively; a plain `row_kind="company"` row
+// (from `top_companies`) never carries any of the four.
 export const industryOverviewCompanyRowSchema = z.object({
   market: z.string(),
   industry_key: z.string(),
@@ -1281,8 +1285,36 @@ export const industryOverviewCompanyRowSchema = z.object({
   name: z.string(),
   rating: z.string().nullable().optional(),
   market_weight: z.number().nullable().optional(),
+  ytd_return: z.number().nullable().optional(),
+  last_price: z.number().nullable().optional(),
+  target_price: z.number().nullable().optional(),
+  growth_estimate: z.number().nullable().optional(),
 });
 export type IndustryOverviewCompanyRow = z.infer<typeof industryOverviewCompanyRowSchema>;
+
+// Mirrors `SectorOverviewStats` (backend/src/schemas/capabilities.py) — the ONE aggregate-level
+// summary for a whole sector (market cap/companies/employees), not a per-company row.
+export const sectorOverviewStatsSchema = z.object({
+  market: z.string(),
+  sector_key: z.string(),
+  companies_count: z.number().nullable().optional(),
+  market_cap: z.number().nullable().optional(),
+  market_weight: z.number().nullable().optional(),
+  employee_count: z.number().nullable().optional(),
+  description: z.string().nullable().optional(),
+});
+export type SectorOverviewStats = z.infer<typeof sectorOverviewStatsSchema>;
+
+// Mirrors `SectorIndustryWeightRow` — one row of this sector's own industry breakdown by market
+// weight (`yfinance.Sector.industries`). The data source for the sector-industries treemap.
+export const sectorIndustryWeightRowSchema = z.object({
+  market: z.string(),
+  sector_key: z.string(),
+  industry_key: z.string(),
+  name: z.string(),
+  market_weight: z.number(),
+});
+export type SectorIndustryWeightRow = z.infer<typeof sectorIndustryWeightRowSchema>;
 
 export const stockPeersResponseSchema = z.object({
   source_id: z.string(),
@@ -1292,6 +1324,62 @@ export const stockPeersResponseSchema = z.object({
   industry: z.string().nullable().optional(),
   sector_peers: z.array(sectorOverviewCompanyRowSchema).default([]),
   industry_peers: z.array(industryOverviewCompanyRowSchema).default([]),
+  stats: sectorOverviewStatsSchema.nullable().optional(),
+  industries: z.array(sectorIndustryWeightRowSchema).default([]),
   unavailable_reason: z.string().nullable().optional(),
 });
 export type StockPeersResponse = z.infer<typeof stockPeersResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// 23. GET /stock/calendar-events-feed — get_calendar_events_feed (yfinance.Calendars,
+// market-wide, non-TW). Backs the US 總覽 tab's upcoming-events calendar card.
+// ---------------------------------------------------------------------------
+
+export const earningsCalendarRowSchema = z.object({
+  market: z.string(),
+  symbol: z.string(),
+  company: z.string(),
+  event_start: z.string(),
+  timing: z.string().nullable().optional(),
+  eps_estimate: z.number().nullable().optional(),
+  reported_eps: z.number().nullable().optional(),
+  surprise_pct: z.number().nullable().optional(),
+});
+export type EarningsCalendarRow = z.infer<typeof earningsCalendarRowSchema>;
+
+export const ipoCalendarRowSchema = z.object({
+  market: z.string(),
+  symbol: z.string(),
+  company: z.string(),
+  exchange: z.string().nullable().optional(),
+  filing_date: z.string().nullable().optional(),
+  offer_date: z.string().nullable().optional(),
+  price_from: z.number().nullable().optional(),
+  price_to: z.number().nullable().optional(),
+  price: z.number().nullable().optional(),
+  currency: z.string().nullable().optional(),
+  shares: z.number().nullable().optional(),
+  action: z.string().nullable().optional(),
+});
+export type IpoCalendarRow = z.infer<typeof ipoCalendarRowSchema>;
+
+export const economicCalendarRowSchema = z.object({
+  market: z.string(),
+  event: z.string(),
+  region: z.string().nullable().optional(),
+  event_time: z.string(),
+  for_period: z.string().nullable().optional(),
+  actual: z.number().nullable().optional(),
+  expected: z.number().nullable().optional(),
+  last: z.number().nullable().optional(),
+  revised: z.number().nullable().optional(),
+});
+export type EconomicCalendarRow = z.infer<typeof economicCalendarRowSchema>;
+
+export const calendarEventsFeedResponseSchema = z.object({
+  currentness_caveat: z.string(),
+  earnings: z.array(earningsCalendarRowSchema).default([]),
+  ipo: z.array(ipoCalendarRowSchema).default([]),
+  economic: z.array(economicCalendarRowSchema).default([]),
+});
+export type CalendarEventsFeedResponse = z.infer<typeof calendarEventsFeedResponseSchema>;

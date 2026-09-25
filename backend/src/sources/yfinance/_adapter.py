@@ -36,7 +36,15 @@ from ._shared import (
     _result,
     _yahoo_symbol,
 )
-from .analyst import _analyst_consensus, _esg, _etf_aum, _sector_class
+from .analyst import (
+    _analyst_consensus,
+    _esg,
+    _etf_aum,
+    _market_value,
+    _profile,
+    _sector_class,
+    _valuation_ratios,
+)
 from .discovery import (
     _earnings_calendar,
     _economic_calendar,
@@ -120,7 +128,7 @@ class YFinanceAdapter:
 
         yahoo_symbol = _yahoo_symbol(sym)
         try:
-            frames = await self._fetch_frames(cap, sym, yahoo_symbol)
+            frames = await self._fetch_frames(cap, sym, yahoo_symbol, params)
         except Exception as exc:
             # M5Q rather than propagating — never let a yfinance outage break a core flow.
             logger.warning("yfinance_fetch_failed", symbol=yahoo_symbol, error=str(exc))
@@ -154,7 +162,7 @@ class YFinanceAdapter:
         return await handlers[cap](sym, params)
 
     async def _fetch_frames(
-        self, cap: Capability, sym: Symbol, yahoo_symbol: str
+        self, cap: Capability, sym: Symbol, yahoo_symbol: str, params: dict[str, object]
     ) -> dict[str, Any]:
         if (
             cap in (Capability.ESG, Capability.SECTOR_CLASS, Capability.ETF_AUM)
@@ -169,7 +177,15 @@ class YFinanceAdapter:
             # `.info`-only path would silently starve those fields of the data they need.
             info = await anyio.to_thread.run_sync(_fetch_info_blocking, yahoo_symbol)
             return {"info": info}
-        return await anyio.to_thread.run_sync(_fetch_ticker_frames_blocking, yahoo_symbol)
+        # `start_date`/`end_date` (when the caller passed them, e.g. `PRICE_EOD`'s range-scoped
+        # fetch) scope `_fetch_ticker_frames_blocking`'s own `history` frame — see that
+        # function's own docstring for why a caller-supplied range must never be silently
+        # dropped in favor of a hardcoded lookback.
+        start_date = cast("str | None", params.get("start_date"))
+        end_date = cast("str | None", params.get("end_date"))
+        return await anyio.to_thread.run_sync(
+            _fetch_ticker_frames_blocking, yahoo_symbol, start_date, end_date
+        )
 
     def _dispatch_frame_capability(
         self, cap: Capability, sym: Symbol, frames: dict[str, Any]
@@ -180,6 +196,9 @@ class YFinanceAdapter:
             Capability.ESG: lambda: _esg(sym, info),
             Capability.SECTOR_CLASS: lambda: _sector_class(sym, info),
             Capability.ETF_AUM: lambda: _etf_aum(sym, info),
+            Capability.MARKET_VALUE: lambda: _market_value(sym, info),
+            Capability.VALUATION_RATIOS: lambda: _valuation_ratios(sym, info),
+            Capability.PROFILE: lambda: _profile(sym, info),
             Capability.PRICE_EOD: lambda: _price_eod(sym, frames),
             Capability.FINANCIALS: lambda: _financial_statement(
                 sym,

@@ -40,6 +40,7 @@ from analytics.models import (
     ScoreProfile,
     ScoreResult,
     StockScoreBreakdown,
+    UsStockScoreBreakdown,
 )
 from analytics.symbol_universe import SymbolType
 from db.models import StockScoreRow
@@ -65,6 +66,18 @@ _STOCK_FACTOR_NAMES: tuple[str, ...] = (
     "quality",
     "revenue_flow",
 )
+# `analyst_revision` replaces `revenue_flow` for `Market.US` rows — see `UsStockScoreBreakdown`'s
+# own docstring for why the US-market breakdown needs its own factor-name tuple/column set rather
+# than reusing `_STOCK_FACTOR_NAMES`.
+_US_STOCK_FACTOR_NAMES: tuple[str, ...] = (
+    "momentum",
+    "trend_quality",
+    "value_guard",
+    "quality",
+    "analyst_revision",
+    "growth",
+    "liquidity",
+)
 _ETF_FACTOR_NAMES: tuple[str, ...] = (
     "momentum",
     "premium_discount",
@@ -88,18 +101,23 @@ def _factor_score(row: StockScoreRow, name: str) -> FactorScore:
 
 def _row_to_result(row: StockScoreRow) -> ScoreResult:
     symbol_type = SymbolType(row.symbol_type)
-    breakdown: StockScoreBreakdown | EtfScoreBreakdown
-    if symbol_type is SymbolType.STOCK:
-        breakdown = StockScoreBreakdown(
-            **{name: _factor_score(row, name) for name in _STOCK_FACTOR_NAMES},
-        )
-    else:
+    market = Market(row.market)
+    breakdown: StockScoreBreakdown | UsStockScoreBreakdown | EtfScoreBreakdown
+    if symbol_type is not SymbolType.STOCK:
         breakdown = EtfScoreBreakdown(
             **{name: _factor_score(row, name) for name in _ETF_FACTOR_NAMES},
         )
+    elif market is Market.US:
+        breakdown = UsStockScoreBreakdown(
+            **{name: _factor_score(row, name) for name in _US_STOCK_FACTOR_NAMES},
+        )
+    else:
+        breakdown = StockScoreBreakdown(
+            **{name: _factor_score(row, name) for name in _STOCK_FACTOR_NAMES},
+        )
     return ScoreResult(
         symbol=row.symbol,
-        market=Market(row.market),
+        market=market,
         as_of=date_.fromisoformat(row.as_of),
         profile=ScoreProfile(row.profile),
         symbol_type=symbol_type,
@@ -113,30 +131,39 @@ def _row_to_result(row: StockScoreRow) -> ScoreResult:
     )
 
 
+_ALL_FACTOR_NAME_SETS: tuple[tuple[str, ...], ...] = (
+    _STOCK_FACTOR_NAMES,
+    _US_STOCK_FACTOR_NAMES,
+    _ETF_FACTOR_NAMES,
+)
+
+
 def _factor_columns(result: ScoreResult) -> dict[str, float | str | None]:
-    """Every factor column this row could ever carry (both stock and ETF names), so a re-run
-    that switches a symbol's classification (should never happen in practice, but never silently
-    leaves a stale value in a column the new breakdown doesn't populate) always writes a clean
-    row — unpopulated columns for the other shape are explicitly `None`, not left untouched."""
+    """Every factor column this row could ever carry (stock/US-stock/ETF names, across all three
+    breakdown shapes), so a re-run that switches a symbol's classification (should never happen
+    in practice, but never silently leaves a stale value in a column the new breakdown doesn't
+    populate) always writes a clean row — unpopulated columns for the other two shapes are
+    explicitly `None`, not left untouched."""
     columns: dict[str, float | str | None] = {}
     breakdown = result.breakdown
-    factor_names = (
-        _STOCK_FACTOR_NAMES if isinstance(breakdown, StockScoreBreakdown) else _ETF_FACTOR_NAMES
-    )
-    other_names = (
-        _ETF_FACTOR_NAMES if isinstance(breakdown, StockScoreBreakdown) else _STOCK_FACTOR_NAMES
-    )
+    if isinstance(breakdown, EtfScoreBreakdown):
+        factor_names = _ETF_FACTOR_NAMES
+    elif isinstance(breakdown, UsStockScoreBreakdown):
+        factor_names = _US_STOCK_FACTOR_NAMES
+    else:
+        factor_names = _STOCK_FACTOR_NAMES
     for name in factor_names:
         factor: FactorScore = getattr(breakdown, name)
         columns[f"{name}_percentile"] = factor.percentile
         columns[f"{name}_description"] = factor.description
         columns[f"{name}_unavailable_reason"] = factor.unavailable_reason
-    for name in other_names:
-        if name in factor_names:  # "momentum" is shared by both breakdowns — never clear it
-            continue
-        columns[f"{name}_percentile"] = None
-        columns[f"{name}_description"] = ""
-        columns[f"{name}_unavailable_reason"] = None
+    for other_names in _ALL_FACTOR_NAME_SETS:
+        for name in other_names:
+            if name in factor_names:  # "momentum" is shared by every breakdown — never clear it
+                continue
+            columns[f"{name}_percentile"] = None
+            columns[f"{name}_description"] = ""
+            columns[f"{name}_unavailable_reason"] = None
     return columns
 
 

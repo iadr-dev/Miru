@@ -1400,7 +1400,9 @@
       "low": "Low",
       "volume": "Volume",
       "eodOnly": "EOD only",
-      "dataDelayed": "Data delayed"
+      "dataDelayed": "Data delayed",
+      "liveNow": "Live",
+      "marketClosedEodPrice": "Market closed · last close"
     },
     "tabs": {
       "label": "Stock detail views",
@@ -1462,7 +1464,11 @@
         "margin_credit": "Margin/Credit",
         "broker_concentration": "Broker Concentration",
         "sector_rotation": "Sector Rotation",
-        "taiex_correlation": "TAIEX Co-movement"
+        "taiex_correlation": "Market Co-movement",
+        "institutional_ownership": "Institutional Ownership",
+        "insider_sentiment": "Insider Sentiment",
+        "analyst_revision": "Analyst Revision",
+        "sector_momentum": "Sector Momentum"
       },
       "dimensionCaption": {
         "technical": "MA stack / KD / MACD / BB %b composite (current technical posture, not a forecast)",
@@ -1470,7 +1476,11 @@
         "margin_credit": "Margin/short balance change vs. price direction",
         "broker_concentration": "Broker-branch concentration days % + main-force direction agreement",
         "sector_rotation": "Change in same-industry institutional inflow ranking",
-        "taiex_correlation": "Daily-return correlation with the broad market (TAIEX)"
+        "taiex_correlation": "Daily-return correlation with the broad market",
+        "institutional_ownership": "Weighted institutional-ownership change (13F disclosures)",
+        "insider_sentiment": "Net insider transaction value (Form 4 filings, net buying is positive)",
+        "analyst_revision": "Composite of EPS-trend change and analyst up/down-revision counts",
+        "sector_momentum": "Trailing 3-month sector-average return ranked against all sectors that day"
       },
       "scoreTitle": "多空 Score",
       "scoreUnavailable": "No score data yet — today's batch may not have finished computing.",
@@ -1490,6 +1500,9 @@
         "value_guard": "Value Guard",
         "quality": "Quality",
         "revenue_flow": "Chip/Revenue Flow",
+        "analyst_revision": "Analyst Revision",
+        "growth": "Growth",
+        "liquidity": "Liquidity",
         "premium_discount": "Premium/Discount",
         "cost": "Expense Ratio",
         "management_activity": "Active Management",
@@ -1501,6 +1514,9 @@
         "value_guard": "Composite of EV/EBITDA, FCF yield, P/E, P/B, mapped to a 0-100 cross-sectional standing",
         "quality": "Composite of ROE, debt/equity, earnings variability, ROIC, gross profitability, mapped to a 0-100 cross-sectional standing",
         "revenue_flow": "Institutional 20-day net-buy trend percentile (monthly-revenue YoY sub-signal not yet ingested)",
+        "analyst_revision": "Composite of EPS-trend change and analyst up/down-revision counts (IBES/Zacks-style estimate-revision factor)",
+        "growth": "Composite of this-year growth estimate and analyst price-target upside, mapped to a 0-100 cross-sectional standing",
+        "liquidity": "Trailing 20-day average dollar volume, ranked against today's whole universe — higher dollar volume scores higher",
         "premium_discount": "Deviation from NAV (TWSE's own estimated figure), scored on a fixed-deviation scale — closer to par scores higher, never ranked against other ETFs",
         "cost": "Expense ratio ranked low-to-high against today's whole ETF universe — lower cost scores higher",
         "management_activity": "Holdings-turnover percentile against today's active-management ETF universe — active ETFs only",
@@ -2027,22 +2043,45 @@
       "label": "US stock tabs",
       "overview": "Overview",
       "financials": "Financials",
-      "research": "Research",
       "technical": "Technical",
       "sectorPeers": "Sector & Peers",
       "newsFilings": "News & Filings",
       "ai": "AI"
     },
+    "overview": {
+      "calendarTitle": "Upcoming Earnings",
+      "calendarEmpty": "No upcoming earnings date available for this symbol.",
+      "earningsEventLabel": "Earnings report",
+      "viewList": "List",
+      "viewCalendar": "Calendar",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "monthTitle": "{year} / {month}"
+    },
     "sectorPeers": {
       "title": "Sector & Peers",
       "unavailable": "No sector/industry classification available for this symbol.",
+      "industriesTitle": "{sector} industry weight breakdown",
+      "industriesTitleFallback": "Industry weight breakdown",
+      "industriesTreemapTitle": "Industry weight treemap",
+      "industryWeight": "Market weight {value}",
+      "viewAllIndustries": "View all industries",
+      "collapse": "Close",
+      "statMarketCap": "Market Cap",
+      "statCompaniesCount": "Companies",
+      "statEmployeeCount": "Employees",
+      "statMarketWeight": "Market Weight",
       "sectorTitle": "Sector Peers ({sector})",
       "sectorTitleFallback": "Sector Peers",
       "industryTitle": "Industry Peers ({industry})",
       "industryTitleFallback": "Industry Peers",
       "noSectorPeers": "No sector peers available.",
       "noIndustryPeers": "No industry peers available.",
-      "self": "This symbol"
+      "self": "This symbol",
+      "topMoversTitle": "Top performers / growth in this industry",
+      "ytdReturnAria": "YTD return {value}%",
+      "targetPrice": "Target {value}",
+      "growthEstimate": "Growth est. {value}%"
     },
     "newsFilings": {
       "label": "News & filings tabs",

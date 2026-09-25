@@ -196,6 +196,42 @@ class StockScoreBreakdown(BaseModel):
     revenue_flow: FactorScore
 
 
+class UsStockScoreBreakdown(BaseModel):
+    """The US-market counterpart to `StockScoreBreakdown` — same `momentum`/`trend_quality`/
+    `value_guard`/`quality` factors (already market-agnostic, computed straight from price/
+    financials), but `analyst_revision` in place of `revenue_flow`: US has no 三大法人
+    institutional-flow/月營收 equivalent ingested anywhere, so rather than let that TW-shaped slot
+    degrade to permanently unavailable, the fifth factor is a genuinely US-native signal — the
+    analyst estimate-revision factor (IBES/Zacks-style: EPS-trend delta + revision breadth from
+    `AnalystConsensus`), a well-documented growth/sentiment factor with no TW equivalent either
+    (TW's `AnalystConsensus` payload never populates the `_extended` EPS-trend fields this factor
+    reads). A separate model (not a repurposed `revenue_flow` field) so the two breakdowns can
+    never be confused for one another at the type level.
+
+    A sixth factor, `growth`, rounds out the standard "Value + Momentum + Quality + Growth"
+    long-short combo (the longest-track-record practitioner factor set): forward EPS/revenue
+    growth estimates (`AnalystConsensus.current_year_growth_estimate`/`next_year_growth_estimate`)
+    blended with analyst price-target upside (`mean_target` vs. the symbol's own current price) —
+    both already-ingested `AnalystConsensus` fields with no TW equivalent, so `growth` has no
+    TW-side counterpart either, same as `analyst_revision`.
+
+    A seventh factor, `liquidity`, is the standard Size/Liquidity risk-overlay factor (average
+    daily dollar volume — price x average share volume, computed straight from already-ingested
+    `us_price_eod`, ranked cross-sectionally): a real, professionally-recognized US equity factor
+    with no TW equivalent slot to displace (TW's `StockScoreBreakdown` has never modeled
+    liquidity as its own factor), so it is purely additive rather than replacing anything."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    momentum: FactorScore
+    trend_quality: FactorScore
+    value_guard: FactorScore
+    quality: FactorScore
+    analyst_revision: FactorScore
+    growth: FactorScore
+    liquidity: FactorScore
+
+
 class EtfScoreBreakdown(BaseModel):
     """The 4-factor breakdown for an ETF — deliberately NOT `StockScoreBreakdown`'s value/
     quality/trend-template factors, which are either meaningless (an ETF has no ROE/EV-EBITDA of
@@ -244,7 +280,7 @@ class ScoreResult(BaseModel):
     symbol_type: SymbolType
     composite: float | None = Field(default=None, ge=0.0, le=100.0)
     band: ScoreBand
-    breakdown: StockScoreBreakdown | EtfScoreBreakdown
+    breakdown: StockScoreBreakdown | UsStockScoreBreakdown | EtfScoreBreakdown
     partial_factors: tuple[str, ...] = Field(
         default=(),
         description="Names of factors that were unavailable and excluded from the composite — "
@@ -356,5 +392,6 @@ __all__ = [
     "SupportResistanceResult",
     "TrendDimensionResult",
     "TrendScoreResult",
+    "UsStockScoreBreakdown",
     "VwapResult",
 ]

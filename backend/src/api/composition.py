@@ -19,7 +19,7 @@ from fastapi import FastAPI
 
 from api.app import create_app
 from config.settings import Settings, get_settings
-from dataaccess.composition import build_default_router
+from dataaccess.composition import build_default_router, build_live_quote_manager
 from orchestrator.composition import (
     build_orchestrator,
     build_session_factory,
@@ -34,7 +34,13 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     entrypoint invokes."""
     resolved = settings or get_settings()
     session_factory = build_session_factory(resolved)
-    router = build_default_router(resolved)
+    # One process-lifetime manager, shared between the `YFinanceLiveQuoteAdapter` the router
+    # resolves `Capability.LIVE_PRICE_QUOTE` to and `create_app`'s own shutdown hook — otherwise
+    # the hook would close a WebSocket connection nobody is actually serving traffic through.
+    # Built via `dataaccess.composition` (not imported from `sources/` directly) — `api/` may
+    # not import `sources/` (layering test), so this stays a downward `dataaccess` call.
+    live_quote_manager = build_live_quote_manager()
+    router = build_default_router(resolved, live_quote_manager=live_quote_manager)
     tool_registry = build_tool_registry(router, session_factory=session_factory)
     skill_registry = build_skill_registry()
     # Built once and shared: the orchestrator resolves the turn's personality fragment from it,
@@ -54,6 +60,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         orchestrator=orchestrator,
         settings=resolved,
         personality_registry=personality_registry,
+        live_quote_manager=live_quote_manager,
         allowed_origins=resolved.allowed_origins() or None,
     )
 

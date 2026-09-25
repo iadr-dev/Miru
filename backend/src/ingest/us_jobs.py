@@ -60,18 +60,29 @@ US_REFERENCE_INDEX_SYMBOL = "SPY"
 # One capability -> Parquet dataset name per fundamentals family this job covers. Mirrors the
 # split `ingest/jobs.py::FINANCIALS_JOB`/`BALANCE_SHEET_JOB`/`CASH_FLOW_JOB`/`DIVIDENDS_JOB` take
 # for TW, so a US symbol's financials land in the same dataset-name shape a TW symbol's do.
+#
+# `ANALYST_CONSENSUS`/`INSTITUTIONAL_HOLDERS`/`INSIDER_ACTIVITY`/`SECTOR_CLASS` were added
+# alongside the original five so `analytics/scoring_batch.py`'s US-native factor/dimension design
+# (`analyst_revision`/`institutional_ownership`/`insider_sentiment`/`sector_momentum` — see that
+# module's own docstring) has a whole-market-ingested dataset to read back nightly, rather than a
+# live per-symbol fetch at score-compute time (which would violate backend/CLAUDE.md §4's "no
+# full-market scan" rule the moment the scoring batch iterated the whole universe).
 _FUNDAMENTALS_DATASETS: dict[Capability, str] = {
     Capability.FINANCIALS: "us_financials",
     Capability.BALANCE_SHEET: "us_balance_sheet",
     Capability.CASH_FLOW_STATEMENT: "us_cash_flow",
     Capability.DIVIDENDS: "us_dividends",
     Capability.SPLIT_PRICE: "us_split_price",
+    Capability.ANALYST_CONSENSUS: "us_analyst_consensus",
+    Capability.INSTITUTIONAL_HOLDERS: "us_institutional_holders",
+    Capability.INSIDER_ACTIVITY: "us_insider_activity",
+    Capability.SECTOR_CLASS: "us_sector_class",
 }
 
 _ONE_DAY = timedelta(days=1)
 
 # yfinance's anonymous/free tier rate-limits aggressively: a tight per-symbol loop (250 symbols
-# x 5 capabilities = ~1250 calls with no delay) gets almost every call throttled to
+# x 9 capabilities = ~2250 calls with no delay) gets almost every call throttled to
 # HealthStatus.UNREACHABLE within seconds — confirmed empirically (455 "Too Many Requests" in
 # under 4 minutes on the first real run of this job). A fixed inter-call pause is the accepted
 # per-symbol-fan-out exception's own mitigation — this is not a batch endpoint, so pacing the
@@ -287,8 +298,17 @@ async def _fetch_one_fundamental(
             detail=result.health.detail,
         )
         return None
-    payload_rows = next(iter(result.payload.values()), None)
-    return cast("list[dict[str, object]]", payload_rows) if isinstance(payload_rows, list) else []
+    payload_value = next(iter(result.payload.values()), None)
+    if isinstance(payload_value, list):
+        return cast("list[dict[str, object]]", payload_value)
+    if isinstance(payload_value, dict):
+        # `analyst_consensus`/`sector_class` return one row's own dict directly, not a list
+        # (`AnalystConsensus`/`SectorClassification` are single-row-per-symbol capabilities,
+        # unlike the list-shaped financial-statement-line capabilities `FINANCIALS`/
+        # `BALANCE_SHEET`/`CASH_FLOW_STATEMENT`/`DIVIDENDS`/`SPLIT_PRICE` originally fanned out
+        # here) — wrap it so the caller's uniform "list of rows" contract still holds.
+        return [cast("dict[str, object]", payload_value)]
+    return []
 
 
 async def _collect_fundamentals_rows(
@@ -353,7 +373,8 @@ def _fundamentals_status(*, failures: int, total_written: int) -> RunStatus:
 
 
 async def job_us_fundamentals(run_date: date_, ctx: IngestContext) -> JobRun:
-    """Weekly US financials/balance-sheet/cash-flow/dividends/splits pull — per-symbol, since
+    """Weekly US financials/balance-sheet/cash-flow/dividends/splits/analyst-consensus/
+    institutional-holders/insider-activity/sector-class pull — per-symbol, since
     yfinance has no bulk fundamentals endpoint (the one accepted per-symbol-fan-out exception in
     this module; see the module docstring). One failing symbol never aborts the run: it's
     counted, journaled as a `PARTIAL` run if any symbol failed, and every other symbol's data

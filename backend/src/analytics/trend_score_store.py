@@ -26,7 +26,7 @@ from schemas.enums import Market
 
 # The six dimension names, in `trend_score.py`'s own fixed order — used to walk the flat
 # per-dimension column triplets on `TrendScoreRow` without repeating each name six times.
-_DIMENSION_NAMES: tuple[str, ...] = (
+_TW_DIMENSION_NAMES: tuple[str, ...] = (
     "technical",
     "chip_flow",
     "margin_credit",
@@ -34,6 +34,21 @@ _DIMENSION_NAMES: tuple[str, ...] = (
     "sector_rotation",
     "taiex_correlation",
 )
+# `Market.US`'s six dimension names — four TW-only dimensions replaced by their US-native
+# counterparts (see `analytics/trend_score.py::US_DIMENSION_WEIGHTS`'s own comment).
+_US_DIMENSION_NAMES: tuple[str, ...] = (
+    "technical",
+    "institutional_ownership",
+    "insider_sentiment",
+    "analyst_revision",
+    "sector_momentum",
+    "taiex_correlation",
+)
+_ALL_DIMENSION_NAME_SETS: tuple[tuple[str, ...], ...] = (_TW_DIMENSION_NAMES, _US_DIMENSION_NAMES)
+
+
+def _dimension_names_for(market: Market) -> tuple[str, ...]:
+    return _US_DIMENSION_NAMES if market is Market.US else _TW_DIMENSION_NAMES
 
 
 def _dimension_result(row: TrendScoreRow, name: str) -> TrendDimensionResult:
@@ -49,25 +64,32 @@ def _dimension_result(row: TrendScoreRow, name: str) -> TrendDimensionResult:
 
 
 def _row_to_result(row: TrendScoreRow) -> TrendScoreResult:
+    market = Market(row.market)
     return TrendScoreResult(
         symbol=row.symbol,
-        market=Market(row.market),
+        market=market,
         as_of=date_.fromisoformat(row.as_of),
         composite=row.composite,
-        dimensions=tuple(_dimension_result(row, name) for name in _DIMENSION_NAMES),
+        dimensions=tuple(
+            _dimension_result(row, name) for name in _dimension_names_for(market)
+        ),
         unavailable_dimensions=tuple(row.unavailable_dimensions),
         non_trading_caveat=row.non_trading_caveat,
     )
 
 
 def _dimension_columns(result: TrendScoreResult) -> dict[str, float | str | None]:
-    """Every dimension column this row carries, keyed by the dimension's own `name` field —
-    a dimension absent from `result.dimensions` (should not happen given `trend_score.py` always
-    returns all six, but defensively handled) leaves that dimension's columns at their defaults
-    rather than raising."""
+    """Every dimension column this row could ever carry (both the TW and US six-dimension name
+    sets), keyed by the dimension's own `name` field — a dimension absent from `result.dimensions`
+    (should not happen given `trend_score.py` always returns all six for the result's market, but
+    defensively handled) leaves that dimension's columns at their defaults rather than raising.
+    Columns for the OTHER market's dimension names are explicitly cleared to `None`, mirroring
+    `scoring_store.py::_factor_columns`'s "never leave a stale value from a prior classification"
+    contract — see that function's own docstring."""
     columns: dict[str, float | str | None] = {}
     by_name = {dimension.name: dimension for dimension in result.dimensions}
-    for name in _DIMENSION_NAMES:
+    own_names = _dimension_names_for(result.market)
+    for name in own_names:
         dimension = by_name.get(name)
         if dimension is None:
             columns[f"{name}_value"] = None
@@ -77,6 +99,13 @@ def _dimension_columns(result: TrendScoreResult) -> dict[str, float | str | None
         columns[f"{name}_value"] = dimension.value
         columns[f"{name}_description"] = dimension.description
         columns[f"{name}_unavailable_reason"] = dimension.unavailable_reason
+    for other_names in _ALL_DIMENSION_NAME_SETS:
+        for name in other_names:
+            if name in own_names:  # "technical"/"taiex_correlation" are shared — never clear them
+                continue
+            columns[f"{name}_value"] = None
+            columns[f"{name}_description"] = ""
+            columns[f"{name}_unavailable_reason"] = None
     return columns
 
 

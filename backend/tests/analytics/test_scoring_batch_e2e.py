@@ -38,7 +38,11 @@ from analytics.scoring_batch import (
     ETF_NAV_DATASET,
     INSTITUTIONAL_FLOW_DATASET,
     PRICE_EOD_DATASET,
+    US_ANALYST_CONSENSUS_DATASET,
+    US_INSIDER_ACTIVITY_DATASET,
+    US_INSTITUTIONAL_HOLDERS_DATASET,
     US_PRICE_EOD_DATASET,
+    US_SECTOR_CLASS_DATASET,
     job_scoring_batch,
     job_trend_score_batch,
 )
@@ -474,6 +478,90 @@ def _seed_us_universe(store: ParquetStore, calendar: TradingDayCalendar) -> None
         store.write_partition(US_PRICE_EOD_DATASET, "US", day, rows)
 
 
+def _seed_us_analyst_data(store: ParquetStore, run_date: date_) -> None:
+    """The four US-native-factor datasets `ingest/us_jobs.py::job_us_fundamentals`'s extended
+    fan-out writes — `us_analyst_consensus`/`us_institutional_holders`/`us_insider_activity`/
+    `us_sector_class` — enough for AAPL's `analyst_revision`/`growth`/`institutional_ownership`/
+    `insider_sentiment`/`sector_momentum` factors/dimensions to resolve to real values, proving
+    the US-native replacement design genuinely computes (not just gracefully degrades).
+    `current_year_growth_estimate`/`mean_target` are the two `growth` factor sub-signals."""
+    store.write_partition(
+        US_ANALYST_CONSENSUS_DATASET,
+        "US",
+        run_date,
+        [
+            {
+                "symbol": "AAPL",
+                "market": "US",
+                "as_of": run_date.isoformat(),
+                "eps_trend_current": 6.50,
+                "eps_trend_90_days_ago": 6.00,
+                "eps_revisions_up_last_30_days": 8,
+                "eps_revisions_down_last_30_days": 2,
+                "current_year_growth_estimate": 0.12,
+                "mean_target": 220.0,
+            },
+            # SPY also gets a consensus row — `growth`'s two sub-signals
+            # (`current_year_growth_estimate`/`price_target_upside`) are cross-sectional
+            # percentiles (`winsorized_percentile`'s own >= 2-point floor), so a single-symbol
+            # universe would leave `growth` unavailable for a reason unrelated to what this test
+            # is proving.
+            {
+                "symbol": "SPY",
+                "market": "US",
+                "as_of": run_date.isoformat(),
+                "current_year_growth_estimate": 0.08,
+                "mean_target": 480.0,
+            },
+        ],
+    )
+    store.write_partition(
+        US_INSTITUTIONAL_HOLDERS_DATASET,
+        "US",
+        run_date,
+        [
+            {
+                "symbol": "AAPL",
+                "market": "US",
+                "holder_type": "institutional",
+                "holder_name": "Example Asset Management",
+                "date_reported": run_date.isoformat(),
+                "pct_held": 6.5,
+                "pct_change": 1.2,
+            }
+        ],
+    )
+    store.write_partition(
+        US_INSIDER_ACTIVITY_DATASET,
+        "US",
+        run_date,
+        [
+            {
+                "symbol": "AAPL",
+                "market": "US",
+                "insider_name": "Example Officer",
+                "transaction": "Buy",
+                "value": 500_000.0,
+                "start_date": run_date.isoformat(),
+            }
+        ],
+    )
+    store.write_partition(
+        US_SECTOR_CLASS_DATASET,
+        "US",
+        run_date,
+        [
+            {"symbol": "AAPL", "market": "US", "sector": "Technology", "sector_key": "technology"},
+            # SPY is priced-only (an ETF, not a real "sector"), but `sector_momentum_trend_score`
+            # needs >= 2 sectors in the day's comparison universe to rank against
+            # (`winsorized_percentile`'s own floor) — giving it a distinct slug here is a test-only
+            # convenience to exercise the cross-sectional ranking path, not a claim SPY "belongs"
+            # to a real sector.
+            {"symbol": "SPY", "market": "US", "sector": "Diversified", "sector_key": "diversified"},
+        ],
+    )
+
+
 def _us_ctx(root: Path, session_factory: async_sessionmaker) -> IngestContext:
     return IngestContext(
         finmind=None,  # type: ignore[arg-type]  # this job makes no FinMind call for US
@@ -487,17 +575,19 @@ def _us_ctx(root: Path, session_factory: async_sessionmaker) -> IngestContext:
     )
 
 
-async def test_us_scoring_batch_computes_momentum_but_degrades_chip_flow(
+async def test_us_scoring_batch_computes_momentum_and_analyst_revision(
     tmp_path: Path, session_factory: async_sessionmaker
 ) -> None:
-    """`Market.US`-scoped `job_scoring_batch`: momentum/trend_quality must resolve from real
-    price history (the only ingested US dataset), while `revenue_flow` (needs
-    institutional-flow, never ingested for US) must degrade to a disclosed `unavailable_reason`,
-    never a fabricated value or a crash. `value_guard`/`quality` likewise degrade (no US
-    financials seeded in this test) — this proof is about the price-only factors resolving
-    correctly alongside the missing ones, not about every factor being available."""
+    """`Market.US`-scoped `job_scoring_batch`: momentum/trend_quality/liquidity must resolve from
+    real price history, AND `analyst_revision`/`growth` (the two US-native factors replacing/
+    adding to TW's five — see `UsStockScoreBreakdown`'s own docstring) must resolve from the
+    seeded `us_analyst_consensus` row — never left permanently unavailable. `value_guard`/
+    `quality` still degrade (no US financials seeded in this test). Critically: `revenue_flow_*`
+    columns must stay `None` for a US row (that TW-only factor is never computed for `Market.US`
+    at all — not computed-then-unavailable, genuinely never attempted)."""
     ctx = _us_ctx(tmp_path, session_factory)
     _seed_us_universe(ctx.store, ctx.calendar)
+    _seed_us_analyst_data(ctx.store, _RUN_DATE)
     await job_scoring_batch(_RUN_DATE, ctx)
 
     async with session_factory() as session:
@@ -520,28 +610,40 @@ async def test_us_scoring_batch_computes_momentum_but_degrades_chip_flow(
     assert swing_row.momentum_percentile is not None
     assert swing_row.momentum_unavailable_reason is None
 
+    assert swing_row.analyst_revision_percentile is not None
+    assert swing_row.analyst_revision_unavailable_reason is None
+
+    assert swing_row.growth_percentile is not None
+    assert swing_row.growth_unavailable_reason is None
+
+    assert swing_row.liquidity_percentile is not None
+    assert swing_row.liquidity_unavailable_reason is None
+
+    # The TW-only `revenue_flow` slot is never touched for a US row — permanently null, not a
+    # disclosed-unavailable computation.
     assert swing_row.revenue_flow_percentile is None
-    assert swing_row.revenue_flow_unavailable_reason is not None
+    assert swing_row.revenue_flow_unavailable_reason is None
 
 
-async def test_us_trend_score_batch_computes_technical_but_degrades_chip_and_credit(
+async def test_us_trend_score_batch_computes_all_six_us_native_dimensions(
     tmp_path: Path, session_factory: async_sessionmaker
 ) -> None:
-    """`Market.US`-scoped `job_trend_score_batch`: `technical` (price-only) must resolve;
-    `chip_flow`/`margin_credit`/`broker_concentration`/`sector_rotation` must all degrade
-    (no institutional-flow/margin-short/stock-roster data ingested for US — `Capability.
-    MARGIN_SHORT` is FinMind-only per `_margin_short_rows_by_symbol`'s own market gate).
-    `taiex_correlation` (SPY-based) must resolve, since SPY rides along in the same price
-    partition `_seed_us_universe` writes — proving the reference-index substitution genuinely
-    works for US, not just that it degrades gracefully when absent."""
+    """`Market.US`-scoped `job_trend_score_batch`: all six US-native dimensions
+    (`technical`/`institutional_ownership`/`insider_sentiment`/`analyst_revision`/
+    `sector_momentum`/`taiex_correlation`) must resolve to real values from the seeded price +
+    `us_institutional_holders`/`us_insider_activity`/`us_analyst_consensus`/`us_sector_class`
+    data — proving the US-native replacement design genuinely computes, not just gracefully
+    degrades. The four TW-only columns (`chip_flow`/`margin_credit`/`broker_concentration`/
+    `sector_rotation`) must stay permanently `None` — never computed for `Market.US` at all."""
     ctx = _us_ctx(tmp_path, session_factory)
     _seed_us_universe(ctx.store, ctx.calendar)
+    _seed_us_analyst_data(ctx.store, _RUN_DATE)
     await job_trend_score_batch(_RUN_DATE, ctx)
 
     async with session_factory() as session:
         rows = (await session.scalars(select(TrendScoreRow))).all()
     us_rows = [row for row in rows if row.market == "US"]
-    # SPY is scored too — see `test_us_scoring_batch_computes_momentum_but_degrades_chip_flow`'s
+    # SPY is scored too — see `test_us_scoring_batch_computes_momentum_and_analyst_revision`'s
     # own comment for why (unconditionally permissive `scoreable_symbol_mask` for US, no
     # special-cased exclusion of the reference-index symbol from scoring itself).
     assert {row.symbol for row in us_rows} == {"AAPL", "SPY"}
@@ -552,9 +654,22 @@ async def test_us_trend_score_batch_computes_technical_but_degrades_chip_and_cre
     assert row.taiex_correlation_value is not None
     assert row.taiex_correlation_unavailable_reason is None
 
+    assert row.institutional_ownership_value is not None
+    assert row.institutional_ownership_unavailable_reason is None
+    assert row.insider_sentiment_value is not None
+    assert row.insider_sentiment_unavailable_reason is None
+    assert row.analyst_revision_value is not None
+    assert row.analyst_revision_unavailable_reason is None
+    assert row.sector_momentum_value is not None
+    assert row.sector_momentum_unavailable_reason is None
+
+    # The four TW-only dimensions are never computed for `Market.US` — permanently null columns,
+    # not a disclosed-unavailable computation.
     assert row.chip_flow_value is None
-    assert row.chip_flow_unavailable_reason is not None
+    assert row.chip_flow_unavailable_reason is None
     assert row.margin_credit_value is None
-    assert row.margin_credit_unavailable_reason is not None
+    assert row.margin_credit_unavailable_reason is None
     assert row.broker_concentration_value is None
-    assert row.broker_concentration_unavailable_reason is not None
+    assert row.broker_concentration_unavailable_reason is None
+    assert row.sector_rotation_value is None
+    assert row.sector_rotation_unavailable_reason is None

@@ -131,7 +131,12 @@ export function ProfileCard({
     [t("eps"), formatNumber(p.eps ?? null, locale, { decimals: 2 }), "var(--chart-4)"],
     [
       t("revenueYoy"),
-      p.revenue_yoy != null ? `${p.revenue_yoy.toFixed(2)}%` : "—",
+      // `revenue_yoy` is a plain ratio off the backend (`analytics/fundamentals.py::
+      // compute_revenue_yoy`/`tools/market_tools.py::_yfinance_revenue_yoy_and_margins`, e.g.
+      // `0.05` for +5%) — unlike `dividend_yield` above, which yfinance/FinMind already report
+      // percent-scaled. Multiply by 100 here, the one narrow place this ratio becomes a display
+      // percentage.
+      p.revenue_yoy != null ? `${(p.revenue_yoy * 100).toFixed(2)}%` : "—",
       "var(--chart-5)",
     ],
   ];

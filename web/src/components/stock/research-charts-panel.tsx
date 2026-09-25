@@ -60,6 +60,11 @@ function daysFromTodayIso(days: number): string {
  * surprise-history array server-side (only the single latest upgrade/downgrade row) — this tab
  * never fabricates a 財報意外史 timeline the backend doesn't have (per this app's governance:
  * coverage-gated → show nothing, not invented content).
+ *
+ * `AnalystConsensusCard` is exported and also rendered from `us-stock/overview-panel.tsx` — the
+ * US 總覽 tab folds in this one card (real for every market) since 估值河流圖/個股事件 are
+ * TW-only and the US 研究 tab was otherwise nearly empty; this panel itself stays unchanged for
+ * TW/ETF.
  */
 export function ResearchChartsPanel({
   symbol,
@@ -358,7 +363,10 @@ function ValuationTable({
  * (web/CLAUDE.md §4 non-trading language rule). Hidden entirely — not an empty scaffold — when
  * `consensus` is null (yfinance tracks no analyst coverage for this symbol, common for small/mid
  * caps), matching the design doc's own "Coverage-gated → hidden when null" rule. */
-function AnalystConsensusCard({
+/** Exported so `us-stock/overview-panel.tsx` can reuse this exact card — the US 總覽 tab folds in
+ * the one genuinely non-TW-gated card this tab has (see `ResearchChartsPanel`'s own docstring),
+ * rather than forking a second copy of the rating/target/estimate/upgrade-downgrade markup. */
+export function AnalystConsensusCard({
   symbol,
   market,
 }: {

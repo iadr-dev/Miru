@@ -1,16 +1,15 @@
 "use client";
 
-import { GlobeIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { NewsSourceLogo } from "@/components/ui/news-source-logo";
 import { getSymbolInfo } from "@/lib/api/market";
 import { getFinmindStockNews, getPttStockSearch } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
-import { sourceLogoUrl } from "@/lib/source-logo";
 import type { Market } from "@/types/settings";
 import type { PttStockSearchPost, StockNewsRow } from "@/types/stock-detail";
 
@@ -186,29 +185,6 @@ function NewsRow({ row }: { readonly row: StockNewsRow }): ReactNode {
         <span className="grid min-h-11 w-full grid-cols-[20px_1fr] items-start gap-2">{body}</span>
       )}
     </li>
-  );
-}
-
-function NewsSourceLogo({ url }: { readonly url: string }): ReactNode {
-  const logoUrl = sourceLogoUrl(url);
-  const [failed, setFailed] = useState(false);
-  if (!logoUrl || failed) {
-    return (
-      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center text-[var(--text-muted)]">
-        <GlobeIcon size={14} weight="regular" aria-hidden />
-      </span>
-    );
-  }
-  return (
-    // biome-ignore lint/performance/noImgElement: dynamic per-source domain, remotePatterns can't allowlist it
-    <img
-      src={logoUrl}
-      alt=""
-      width={20}
-      height={20}
-      className="mt-0.5 size-5 shrink-0 rounded-[4px] object-contain"
-      onError={() => setFailed(true)}
-    />
   );
 }
 

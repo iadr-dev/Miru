@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from analytics.models import TrendDimensionResult
 from analytics.trend_score import (
     DIMENSION_WEIGHTS,
+    US_DIMENSION_WEIGHTS,
     TrendDimension,
     blend_trend_composite,
     broker_concentration_trend_score,
@@ -257,16 +258,20 @@ class GetTrendScoreTool(BaseTool):
 
         entitled = is_entitled(DataClass.SPONSOR, ctx.tier)
         cached_dimensions = [_dimension_result_to_dimension(d) for d in cached.dimensions]
-        # `broker_concentration` always ships as the batch's disclosed-unavailable placeholder —
-        # replace it (entitled caller only) with a live-fetched value, then re-blend the full six.
         by_name = {d.name: d for d in cached_dimensions}
-        if entitled:
+        # `broker_concentration` (分點, `Capability.CHIP_BROKER`) is TW-only — no US equivalent
+        # exists anywhere in this codebase (see `analytics/trend_score.py::US_DIMENSION_WEIGHTS`'s
+        # own comment for the four US-native dimensions that replace TW's chip/margin/broker/
+        # sector-rotation set). Only a TW row ever ships that placeholder to begin with, so the
+        # live on-demand fetch/replace only ever applies there.
+        weights = DIMENSION_WEIGHTS if market is Market.TW else US_DIMENSION_WEIGHTS
+        if entitled and market is Market.TW:
             live_concentration = await _fetch_broker_concentration(
                 self._router, symbol=typed.id, market=market, ctx=ctx
             )
             by_name["broker_concentration"] = live_concentration
-        dimensions_in_order = [by_name[name] for name in DIMENSION_WEIGHTS]
-        composite, unavailable = blend_trend_composite(dimensions_in_order)
+        dimensions_in_order = [by_name[name] for name in weights if name in by_name]
+        composite, unavailable = blend_trend_composite(dimensions_in_order, weights=weights)
 
         dimension_outputs = tuple(
             TrendScoreDimensionOutput(

@@ -26,6 +26,7 @@ store, since the score cache is relational (see `scoring_store.py`'s docstring f
 
 from __future__ import annotations
 
+import statistics
 from calendar.trading_days import TradingDayCalendar
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -55,23 +56,33 @@ from analytics.models import (
     StockScoreBreakdown,
     TrendDimensionResult,
     TrendScoreResult,
+    UsStockScoreBreakdown,
 )
 from analytics.score import (
     EtfFactorInputs,
     FactorInputs,
+    average_dollar_volume,
     build_score_result,
     compute_etf_factor_breakdown,
     compute_stock_factor_breakdown,
+    compute_us_stock_factor_breakdown,
+    eps_trend_delta,
     net_buy_20d_trend,
+    price_target_upside,
     twelve_minus_one_momentum,
 )
 from analytics.scoring_store import upsert_score
 from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_mask
 from analytics.trend_score import (
+    US_DIMENSION_WEIGHTS,
     TrendDimension,
+    analyst_revision_trend_score,
     blend_trend_composite,
     chip_flow_trend_score,
+    insider_sentiment_trend_score,
+    institutional_ownership_trend_score,
     margin_credit_trend_score,
+    sector_momentum_trend_score,
     sector_rotation_trend_score,
     taiex_correlation_score,
     technical_trend_score,
@@ -82,12 +93,16 @@ from ingest.journal import JobRun, RunStatus, journal_run
 from schemas.capabilities import (
     ActiveEtfHoldingChangeRow,
     ActiveEtfHoldingRow,
+    AnalystConsensus,
     EtfExpenseInfo,
     EtfNavRow,
     FinancialStatementLine,
+    InsiderActivityRow,
     InstitutionalFlowRow,
+    InstitutionalHolderRow,
     MarginShortRow,
     MarketValueRow,
+    SectorClassification,
     StockInfoRow,
 )
 from schemas.enums import Capability, Market
@@ -123,15 +138,21 @@ STOCK_INFO_DATASET = "TaiwanStockInfo"
 
 # US counterparts (`ingest/us_jobs.py`'s own dataset-name constants, duplicated here as local
 # read-key constants for the same decoupling reason as the TW constants above). US has no
-# institutional-flow/market-value/ETF-nav/active-ETF/stock-roster datasets ingested at all —
-# those factors/dimensions degrade to unavailable for US by design: `job_scoring_batch`/
-# `job_trend_score_batch` still read the TW-only dataset names for those (no US branch), which
-# always finds no partitions for `market_str="US"` and returns an empty frame/list — the same
-# graceful "nothing ingested yet" path every other missing-dataset case already takes.
+# institutional-flow/market-value/ETF-nav/active-ETF/stock-roster datasets ingested at all — those
+# TW-only factors/dimensions are simply never computed for US (no US branch calls them). In their
+# place, `job_scoring_batch`/`job_trend_score_batch` read these four US-native datasets (also
+# `ingest/us_jobs.py`-written, via `job_us_fundamentals`'s extended fan-out) for the US-only
+# `analyst_revision`/`institutional_ownership`/`insider_sentiment`/`sector_momentum`
+# factor/dimensions — see `analytics/score.py::compute_us_stock_factor_breakdown` and
+# `analytics/trend_score.py`'s US dimension functions.
 US_PRICE_EOD_DATASET = "us_price_eod"
 US_FINANCIALS_DATASET = "us_financials"
 US_BALANCE_SHEET_DATASET = "us_balance_sheet"
 US_CASH_FLOW_DATASET = "us_cash_flow"
+US_ANALYST_CONSENSUS_DATASET = "us_analyst_consensus"
+US_INSTITUTIONAL_HOLDERS_DATASET = "us_institutional_holders"
+US_INSIDER_ACTIVITY_DATASET = "us_insider_activity"
+US_SECTOR_CLASS_DATASET = "us_sector_class"
 
 # FinMind investor-category labels the revenue/flow factor's chip sub-signal sums.
 _FLOW_INVESTORS = ("Foreign_Investor", "Investment_Trust")
@@ -174,6 +195,13 @@ _ACTIVE_ETF_HOLDING_LOOKBACK_DAYS = 10
 _ETF_EXPENSE_RATIO_LOOKBACK_DAYS = 40
 # `net_buy_20d_trend`'s own convention, reused for the holdings-turnover proxy.
 _HOLDINGS_TURNOVER_LOOKBACK_DAYS = 20
+# `job_us_fundamentals` runs weekly (`ingest/us_jobs.py`'s own cadence) — same
+# generous-but-bounded reasoning as `_FINANCIALS_LOOKBACK_DAYS` so a symbol's most recent
+# analyst_consensus/institutional_holders/insider_activity/sector_class pull is comfortably
+# within the read window even right before the next weekly run lands.
+_US_ANALYST_DATA_LOOKBACK_DAYS = 40
+# Sector-relative momentum's own convention (Moskowitz & Grinblatt) — trailing 3 months.
+_SECTOR_MOMENTUM_LOOKBACK_DAYS = 63
 
 # ---------------------------------------------------------------------------------------------
 # 趨勢評分 (trend score) batch — reads the SAME price/flow frames above plus two more datasets,
@@ -408,6 +436,77 @@ def _latest_market_value_by_symbol(rows: Sequence[dict[str, object]]) -> dict[st
     return {symbol: float(row.market_value) for symbol, row in latest.items()}
 
 
+_ANALYST_CONSENSUS_FIELDS = frozenset(AnalystConsensus.model_fields)
+_INSTITUTIONAL_HOLDER_FIELDS = frozenset(InstitutionalHolderRow.model_fields)
+_INSIDER_ACTIVITY_FIELDS = frozenset(InsiderActivityRow.model_fields)
+_SECTOR_CLASS_FIELDS = frozenset(SectorClassification.model_fields)
+
+
+def _latest_analyst_consensus_by_symbol(
+    rows: Sequence[dict[str, object]],
+) -> dict[str, AnalystConsensus]:
+    """This symbol's most recent `analyst_consensus` row from the read window — used by both the
+    US `analyst_revision` 多空評分 factor and the US `analyst_revision` 趨勢評分 dimension (shared
+    read, not a duplicate fetch)."""
+    latest: dict[str, AnalystConsensus] = {}
+    for raw in rows:
+        try:
+            row = AnalystConsensus.model_validate(_project(raw, _ANALYST_CONSENSUS_FIELDS))
+        except ValueError:
+            continue
+        current = latest.get(row.symbol)
+        if current is None or row.as_of > current.as_of:
+            latest[row.symbol] = row
+    return latest
+
+
+def _institutional_holders_by_symbol(
+    rows: Sequence[dict[str, object]],
+) -> dict[str, list[InstitutionalHolderRow]]:
+    """Every `institutional_holders` row in the read window, grouped by symbol — a snapshot of
+    current top holders, not a time series (see `InstitutionalHolderRow`'s own docstring), so
+    every row in the window is kept rather than deduplicated to "latest per symbol"."""
+    by_symbol: dict[str, list[InstitutionalHolderRow]] = defaultdict(list)
+    for raw in rows:
+        try:
+            row = InstitutionalHolderRow.model_validate(
+                _project(raw, _INSTITUTIONAL_HOLDER_FIELDS)
+            )
+        except ValueError:
+            continue
+        by_symbol[row.symbol].append(row)
+    return dict(by_symbol)
+
+
+def _insider_activity_by_symbol(
+    rows: Sequence[dict[str, object]],
+) -> dict[str, list[InsiderActivityRow]]:
+    """Every `insider_activity` row in the read window, grouped by symbol."""
+    by_symbol: dict[str, list[InsiderActivityRow]] = defaultdict(list)
+    for raw in rows:
+        try:
+            row = InsiderActivityRow.model_validate(_project(raw, _INSIDER_ACTIVITY_FIELDS))
+        except ValueError:
+            continue
+        by_symbol[row.symbol].append(row)
+    return dict(by_symbol)
+
+
+def _sector_key_by_symbol(rows: Sequence[dict[str, object]]) -> dict[str, str]:
+    """This symbol's most recently-ingested `sector_class` slug (`sector_key`) — `sector_class`
+    rows have no `as_of` field (a symbol's sector rarely changes), so the last row read for a
+    given symbol wins, matching `ParquetStore.read_range`'s own ascending-by-date read order."""
+    by_symbol: dict[str, str] = {}
+    for raw in rows:
+        try:
+            row = SectorClassification.model_validate(_project(raw, _SECTOR_CLASS_FIELDS))
+        except ValueError:
+            continue
+        if row.sector_key is not None:
+            by_symbol[row.symbol] = row.sector_key
+    return by_symbol
+
+
 def _split_universe_by_symbol_type(
     universe: Sequence[str], market: Market = Market.TW
 ) -> tuple[list[str], list[str]]:
@@ -541,7 +640,10 @@ def _fundamental_universe(
 @dataclass(frozen=True)
 class _PerSymbolSignals:
     """Every symbol's already-assembled raw inputs, before any cross-sectional universe can be
-    built from them — the output of pass 1, and the per-symbol lookup pass 2 reads from."""
+    built from them — the output of pass 1, and the per-symbol lookup pass 2 reads from.
+
+    `analyst_consensus_by_symbol` is US-only (empty dict for a TW pass — `analyst_revision` has
+    no TW counterpart, see `UsStockScoreBreakdown`'s own docstring)."""
 
     bars_by_symbol: dict[str, tuple[PriceBar, ...]]
     ma_series_by_symbol: dict[str, dict[str, tuple[float | None, ...]]]
@@ -549,27 +651,36 @@ class _PerSymbolSignals:
     ma50_by_symbol: dict[str, float | None]
     flow_value_by_symbol: dict[str, float | None]
     metrics_by_symbol: dict[str, FundamentalMetrics]
+    analyst_consensus_by_symbol: dict[str, AnalystConsensus]
 
 
 @dataclass(frozen=True)
 class _CrossSectionalUniverses:
     """The whole day's comparison universes — the whole reason the entire universe is scored in
     one pass rather than symbol-by-symbol: every percentile/z-score in pass 2 ranks against these,
-    so they must be complete (built from every symbol's pass-1 output) before pass 2 can start."""
+    so they must be complete (built from every symbol's pass-1 output) before pass 2 can start.
+
+    `eps_trend_delta`/`growth_estimate`/`price_target_upside`/`dollar_volume` are US-only (empty
+    list for a TW pass, same reasoning as `_PerSymbolSignals.analyst_consensus_by_symbol`)."""
 
     momentum: list[float]
     flow: list[float]
     quality: dict[str, list[float]]
     value: dict[str, list[float]]
+    eps_trend_delta: list[float]
+    growth_estimate: list[float]
+    price_target_upside: list[float]
+    dollar_volume: list[float]
 
 
-def _assemble_signals_and_universes(
+def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field per upstream frame
     universe: Sequence[str],
     *,
     bars_by_symbol: dict[str, tuple[PriceBar, ...]],
     flow_by_symbol: dict[str, list[InstitutionalFlowRow]],
     lines_by_symbol: dict[str, list[FinancialStatementLine]],
     market_value_by_symbol: dict[str, float],
+    analyst_consensus_by_symbol: dict[str, AnalystConsensus] | None = None,
 ) -> tuple[_PerSymbolSignals, _CrossSectionalUniverses]:
     """Pass 1 (each symbol's raw momentum, MA series, price/MA50, chip-flow net, and fundamental
     metrics — each computed independently per symbol) plus the cross-sectional universe assembly
@@ -580,11 +691,17 @@ def _assemble_signals_and_universes(
     raw_momentum: dict[str, float | None] = {}
     flow_value_by_symbol: dict[str, float | None] = {}
     metrics_by_symbol: dict[str, FundamentalMetrics] = {}
+    consensus_by_symbol = analyst_consensus_by_symbol or {}
+    raw_eps_trend_delta: dict[str, float | None] = {}
+    raw_growth_estimate: dict[str, float | None] = {}
+    raw_price_target_upside: dict[str, float | None] = {}
+    raw_dollar_volume: dict[str, float | None] = {}
 
     for symbol in universe:
         bars = bars_by_symbol.get(symbol, ())
         closes = [bar.close for bar in bars]
         raw_momentum[symbol] = twelve_minus_one_momentum(closes) if closes else None
+        raw_dollar_volume[symbol] = average_dollar_volume(closes, [bar.volume for bar in bars])
         ma_series: dict[str, tuple[float | None, ...]] = (
             _ma_series_for(bars) if bars else {f"ma{w}": () for w in _MA_WINDOWS}
         )
@@ -603,6 +720,17 @@ def _assemble_signals_and_universes(
         mcap = market_value_by_symbol.get(symbol)
         metrics_by_symbol[symbol] = compute_fundamental_metrics(lines, market_value=mcap)
 
+        consensus = consensus_by_symbol.get(symbol)
+        raw_eps_trend_delta[symbol] = eps_trend_delta(consensus) if consensus is not None else None
+        raw_growth_estimate[symbol] = (
+            consensus.current_year_growth_estimate if consensus is not None else None
+        )
+        raw_price_target_upside[symbol] = (
+            price_target_upside(consensus, price_by_symbol[symbol])
+            if consensus is not None
+            else None
+        )
+
     signals = _PerSymbolSignals(
         bars_by_symbol=bars_by_symbol,
         ma_series_by_symbol=ma_series_by_symbol,
@@ -610,12 +738,17 @@ def _assemble_signals_and_universes(
         ma50_by_symbol=ma50_by_symbol,
         flow_value_by_symbol=flow_value_by_symbol,
         metrics_by_symbol=metrics_by_symbol,
+        analyst_consensus_by_symbol=consensus_by_symbol,
     )
     universes = _CrossSectionalUniverses(
         momentum=_cross_sectional_universe(raw_momentum),
         flow=_cross_sectional_universe(flow_value_by_symbol),
         quality=_fundamental_universe(metrics_by_symbol, _QUALITY_ATTRS),
         value=_fundamental_universe(metrics_by_symbol, _VALUE_ATTRS),
+        eps_trend_delta=_cross_sectional_universe(raw_eps_trend_delta),
+        growth_estimate=_cross_sectional_universe(raw_growth_estimate),
+        price_target_upside=_cross_sectional_universe(raw_price_target_upside),
+        dollar_volume=_cross_sectional_universe(raw_dollar_volume),
     )
     return signals, universes
 
@@ -663,6 +796,36 @@ def _score_stock_symbol(
     return compute_stock_factor_breakdown(inputs)
 
 
+def _score_us_stock_symbol(
+    symbol: str, *, signals: _PerSymbolSignals, universes: _CrossSectionalUniverses
+) -> UsStockScoreBreakdown:
+    """The `Market.US` counterpart of `_score_stock_symbol` — same price/fundamental inputs, plus
+    `analyst_consensus`/`eps_trend_delta_universe` for the `analyst_revision` factor in place of
+    `revenue_flow`, `growth_estimate_universe`/`price_target_upside_universe` for the `growth`
+    factor, and `volumes`/`dollar_volume_universe` for the seventh `liquidity` factor."""
+    bars = signals.bars_by_symbol.get(symbol, ())
+    closes = [bar.close for bar in bars]
+    inputs = FactorInputs(
+        closes=closes,
+        ma_series=signals.ma_series_by_symbol[symbol],
+        momentum_universe=universes.momentum,
+        flow_value=signals.flow_value_by_symbol[symbol],
+        flow_universe=universes.flow,
+        price=signals.price_by_symbol[symbol],
+        ma50=signals.ma50_by_symbol[symbol],
+        fundamentals=signals.metrics_by_symbol[symbol],
+        quality_universe=universes.quality,
+        value_universe=universes.value,
+        analyst_consensus=signals.analyst_consensus_by_symbol.get(symbol),
+        eps_trend_delta_universe=universes.eps_trend_delta,
+        growth_estimate_universe=universes.growth_estimate,
+        price_target_upside_universe=universes.price_target_upside,
+        volumes=[bar.volume for bar in bars],
+        dollar_volume_universe=universes.dollar_volume,
+    )
+    return compute_us_stock_factor_breakdown(inputs)
+
+
 def _score_etf_symbol(
     symbol: str,
     *,
@@ -708,7 +871,11 @@ async def _score_and_persist_universe(  # noqa: PLR0913 — one keyword-only fie
     rows_written = 0
     async with session_factory() as session:
         for symbol in stock_symbols:
-            breakdown = _score_stock_symbol(symbol, signals=signals, universes=universes)
+            breakdown: StockScoreBreakdown | UsStockScoreBreakdown = (
+                _score_us_stock_symbol(symbol, signals=signals, universes=universes)
+                if market is Market.US
+                else _score_stock_symbol(symbol, signals=signals, universes=universes)
+            )
             for profile in (ScoreProfile.SWING, ScoreProfile.POSITION):
                 result: ScoreResult = build_score_result(
                     symbol=symbol,
@@ -787,6 +954,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     holdings_turnover_window = _trailing_trading_days(
         ctx, run_date, _HOLDINGS_TURNOVER_LOOKBACK_DAYS
     )
+    us_analyst_data_window = _trailing_trading_days(ctx, run_date, _US_ANALYST_DATA_LOOKBACK_DAYS)
 
     financials_dataset, balance_sheet_dataset, cash_flow_dataset = _financials_datasets(market)
     price_frame = ctx.store.read_range_frame(
@@ -822,6 +990,13 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     active_etf_holding_change_rows = ctx.store.read_range(
         ACTIVE_ETF_HOLDING_CHANGE_DATASET, market_str, holdings_turnover_window
     )
+    # US-only: analyst_consensus for the `analyst_revision` factor (no TW branch — this dataset is
+    # never written for Market.TW, see `US_ANALYST_CONSENSUS_DATASET`'s own comment).
+    us_analyst_consensus_rows = (
+        ctx.store.read_range(US_ANALYST_CONSENSUS_DATASET, market_str, us_analyst_data_window)
+        if market is Market.US
+        else []
+    )
 
     bars_by_symbol = _bars_by_symbol(price_frame, market)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
@@ -831,6 +1006,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     expense_ratio_by_symbol = _latest_etf_expense_ratio_by_symbol(etf_expense_ratio_rows)
     active_etf_symbols = _active_etf_symbols(active_etf_holding_rows)
     holdings_turnover_by_symbol = _holdings_turnover_by_symbol(active_etf_holding_change_rows)
+    analyst_consensus_by_symbol = _latest_analyst_consensus_by_symbol(us_analyst_consensus_rows)
 
     raw_universe = (
         bars_by_symbol.keys()
@@ -840,6 +1016,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         | expense_ratio_by_symbol.keys()
         | active_etf_symbols
         | holdings_turnover_by_symbol.keys()
+        | analyst_consensus_by_symbol.keys()
     )
     active_roster = _active_roster_symbols(ctx, market_str)
     universe = sorted(raw_universe if active_roster is None else raw_universe & active_roster)
@@ -861,6 +1038,7 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         flow_by_symbol=flow_by_symbol,
         lines_by_symbol=lines_by_symbol,
         market_value_by_symbol=market_value_by_symbol,
+        analyst_consensus_by_symbol=analyst_consensus_by_symbol,
     )
     etf_signals = _EtfSignals(
         premium_discount_by_symbol=premium_discount_by_symbol,
@@ -1036,6 +1214,34 @@ def _sector_rotation_ranks_by_industry(
     return dict(ranks_by_industry)
 
 
+def _sector_momentum_returns_by_key(
+    bars_by_symbol: Mapping[str, tuple[PriceBar, ...]],
+    sector_key_by_symbol: Mapping[str, str],
+) -> dict[str, float]:
+    """The day's US sector-relative-momentum comparison universe: each sector's average trailing
+    ~3-month (`_SECTOR_MOMENTUM_LOOKBACK_DAYS`) return across every symbol resolved to that sector
+    — the real cross-sectional input `sector_momentum_trend_score` ranks against (Moskowitz &
+    Grinblatt industry-momentum convention). A symbol with fewer than
+    `_SECTOR_MOMENTUM_LOOKBACK_DAYS` bars contributes nothing to its sector's average, never a
+    fabricated partial-window return."""
+    returns_by_sector: dict[str, list[float]] = defaultdict(list)
+    for symbol, bars in bars_by_symbol.items():
+        sector_key = sector_key_by_symbol.get(symbol)
+        if sector_key is None or len(bars) < _SECTOR_MOMENTUM_LOOKBACK_DAYS:
+            continue
+        window = bars[-_SECTOR_MOMENTUM_LOOKBACK_DAYS:]
+        start_close = window[0].close
+        if start_close <= 0:
+            continue
+        symbol_return = (window[-1].close - start_close) / start_close
+        returns_by_sector[sector_key].append(symbol_return)
+    return {
+        sector_key: statistics.fmean(returns)
+        for sector_key, returns in returns_by_sector.items()
+        if returns
+    }
+
+
 _NON_TRADING_TREND_CAVEAT = (
     "Descriptive trend-strength read across technical/chip/credit/concentration/rotation/"
     "co-movement evidence only — not a buy, sell, hold, or price recommendation; computed at "
@@ -1069,10 +1275,9 @@ def _align_closes(
     return tuple(symbol_closes[-length:]), tuple(taiex_closes[-length:])
 
 
-def _build_trend_result(  # noqa: PLR0913 — one keyword-only field per dimension's own raw input
+def _build_tw_trend_result(  # noqa: PLR0913 — one keyword-only field per dimension's own raw input
     symbol: str,
     *,
-    market: Market,
     run_date: date_,
     bars: Sequence[PriceBar],
     flow_value: float | None,
@@ -1083,7 +1288,7 @@ def _build_trend_result(  # noqa: PLR0913 — one keyword-only field per dimensi
     symbol_closes: Sequence[float],
     taiex_closes: Sequence[float],
 ) -> TrendScoreResult:
-    """Blends the FIVE whole-market-ingested-data dimensions this batch can compute
+    """Blends the FIVE whole-market-ingested-data TW dimensions this batch can compute
     (`technical`/`chip_flow`/`margin_credit`/`sector_rotation`/`taiex_correlation`) plus a
     disclosed-unavailable placeholder for `broker_concentration` — see the module's
     `job_trend_score_batch` docstring for why that sixth dimension is deliberately never
@@ -1110,12 +1315,67 @@ def _build_trend_result(  # noqa: PLR0913 — one keyword-only field per dimensi
     )
     return TrendScoreResult(
         symbol=symbol,
-        market=market,
+        market=Market.TW,
         as_of=run_date,
         composite=composite,
         dimensions=dimension_results,
         unavailable_dimensions=unavailable,
         non_trading_caveat=_NON_TRADING_TREND_CAVEAT,
+    )
+
+
+_NON_TRADING_US_TREND_CAVEAT = (
+    "Descriptive trend-strength read across technical/institutional-ownership/insider-sentiment/"
+    "analyst-revision/sector-momentum/S&P 500 co-movement evidence only — not a buy, sell, hold, "
+    "or price recommendation; computed at last post-close and may not reflect intraday moves. "
+    "None of TW's chip/margin/broker/sector-rotation dimensions apply to a US symbol — every "
+    "dimension here is a US-native replacement grounded in yfinance-sourced data."
+)
+
+
+def _build_us_trend_result(  # noqa: PLR0913 — one keyword-only field per dimension's own raw input
+    symbol: str,
+    *,
+    run_date: date_,
+    bars: Sequence[PriceBar],
+    holders: Sequence[InstitutionalHolderRow],
+    insider_activity: Sequence[InsiderActivityRow],
+    consensus: AnalystConsensus | None,
+    eps_trend_delta_universe: Sequence[float],
+    sector_key: str | None,
+    sector_returns_by_key: Mapping[str, float],
+    symbol_closes: Sequence[float],
+    reference_index_closes: Sequence[float],
+) -> TrendScoreResult:
+    """The `Market.US` counterpart of `_build_tw_trend_result` — six genuinely US-native
+    dimensions, zero TW-shaped placeholders (see `analytics/trend_score.py`'s US dimension
+    functions for the professional-factor grounding of each)."""
+    dimensions: list[TrendDimension] = [
+        technical_trend_score(bars),
+        institutional_ownership_trend_score(holders),
+        insider_sentiment_trend_score(insider_activity),
+        analyst_revision_trend_score(consensus, eps_trend_delta_universe),
+        sector_momentum_trend_score(sector_key, sector_returns_by_key),
+        taiex_correlation_score(symbol_closes, reference_index_closes),
+    ]
+    composite, unavailable = blend_trend_composite(dimensions, weights=US_DIMENSION_WEIGHTS)
+    dimension_results = tuple(
+        TrendDimensionResult(
+            name=d.name,
+            value=d.value,
+            description=d.description,
+            unavailable_reason=d.unavailable_reason,
+        )
+        for d in dimensions
+    )
+    return TrendScoreResult(
+        symbol=symbol,
+        market=Market.US,
+        as_of=run_date,
+        composite=composite,
+        dimensions=dimension_results,
+        unavailable_dimensions=unavailable,
+        non_trading_caveat=_NON_TRADING_US_TREND_CAVEAT,
     )
 
 
@@ -1185,19 +1445,30 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     market = ctx.market
     market_str = market.value
     price_window = _trailing_trading_days(ctx, run_date, _PRICE_LOOKBACK_DAYS)
-    flow_window = _trailing_trading_days(ctx, run_date, _FLOW_LOOKBACK_DAYS)
-    margin_window = _trailing_trading_days(ctx, run_date, _MARGIN_SHORT_LOOKBACK_DAYS)
 
     price_frame = ctx.store.read_range_frame(
         _price_eod_dataset(market), market_str, price_window, columns=_PRICE_FRAME_COLUMNS
     )
+    bars_by_symbol = _bars_by_symbol(price_frame, market)
+    reference_index_closes = _reference_index_closes(price_frame, market)
+
+    if market is Market.US:
+        return await _run_us_trend_score_batch(
+            ctx,
+            run_date,
+            session_factory=ctx.session_factory,
+            bars_by_symbol=bars_by_symbol,
+            reference_index_closes=reference_index_closes,
+        )
+
+    flow_window = _trailing_trading_days(ctx, run_date, _FLOW_LOOKBACK_DAYS)
+    margin_window = _trailing_trading_days(ctx, run_date, _MARGIN_SHORT_LOOKBACK_DAYS)
+
     flow_frame = ctx.store.read_range_frame(
         INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
     )
-    bars_by_symbol = _bars_by_symbol(price_frame, market)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
     margin_by_symbol = await _margin_short_rows_by_symbol(ctx, market, margin_window)
-    reference_index_closes = _reference_index_closes(price_frame, market)
     industry_by_symbol = _industry_by_symbol(ctx, market_str)
     industry_ranks_by_industry = _sector_rotation_ranks_by_industry(
         flow_by_symbol, industry_by_symbol
@@ -1243,9 +1514,8 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
             industry = industry_by_symbol.get(symbol)
             industry_ranks = industry_ranks_by_industry.get(industry, []) if industry else []
             symbol_closes, aligned_index_closes = _align_closes(closes, reference_index_closes)
-            result = _build_trend_result(
+            result = _build_tw_trend_result(
                 symbol,
-                market=market,
                 run_date=run_date,
                 bars=bars,
                 flow_value=flow_value_by_symbol.get(symbol),
@@ -1275,6 +1545,106 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
         detail=f"scored {len(universe)} symbols (5 of 6 dimensions; broker_concentration "
         f"deferred to on-demand tool-layer compute) over {market_str} price/flow/margin-short "
         "history",
+    )
+
+
+async def _run_us_trend_score_batch(
+    ctx: IngestContext,
+    run_date: date_,
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    bars_by_symbol: Mapping[str, tuple[PriceBar, ...]],
+    reference_index_closes: Sequence[float],
+) -> JobRun:
+    """The `Market.US` branch of `job_trend_score_batch` — reads the four US-native datasets
+    (`us_institutional_holders`/`us_insider_activity`/`us_analyst_consensus`/`us_sector_class`,
+    all written by `ingest/us_jobs.py::job_us_fundamentals`'s extended fan-out) instead of TW's
+    institutional-flow/margin-short/roster datasets, and calls `_build_us_trend_result` per
+    symbol. Split out of `job_trend_score_batch` to keep that function's TW/US branches each
+    readably linear rather than one function threading both paths through shared local state."""
+    market_str = Market.US.value
+    analyst_data_window = _trailing_trading_days(ctx, run_date, _US_ANALYST_DATA_LOOKBACK_DAYS)
+
+    holder_rows = ctx.store.read_range(
+        US_INSTITUTIONAL_HOLDERS_DATASET, market_str, analyst_data_window
+    )
+    insider_rows = ctx.store.read_range(
+        US_INSIDER_ACTIVITY_DATASET, market_str, analyst_data_window
+    )
+    consensus_rows = ctx.store.read_range(
+        US_ANALYST_CONSENSUS_DATASET, market_str, analyst_data_window
+    )
+    sector_rows = ctx.store.read_range(US_SECTOR_CLASS_DATASET, market_str, analyst_data_window)
+
+    holders_by_symbol = _institutional_holders_by_symbol(holder_rows)
+    insider_by_symbol = _insider_activity_by_symbol(insider_rows)
+    consensus_by_symbol = _latest_analyst_consensus_by_symbol(consensus_rows)
+    sector_key_by_symbol = _sector_key_by_symbol(sector_rows)
+    sector_returns_by_key = _sector_momentum_returns_by_key(bars_by_symbol, sector_key_by_symbol)
+
+    raw_universe = (
+        bars_by_symbol.keys()
+        | holders_by_symbol.keys()
+        | insider_by_symbol.keys()
+        | consensus_by_symbol.keys()
+    )
+    active_roster = _active_roster_symbols(ctx, market_str)
+    universe = sorted(raw_universe if active_roster is None else raw_universe & active_roster)
+    if not universe:
+        return journal_run(
+            TREND_SCORE_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SUCCESS,
+            detail="no upstream price/institutional-holders/insider-activity/analyst-consensus "
+            "history in the read window — nothing to score",
+        )
+
+    eps_trend_delta_universe = [
+        delta
+        for symbol in universe
+        if (consensus := consensus_by_symbol.get(symbol)) is not None
+        and (delta := eps_trend_delta(consensus)) is not None
+    ]
+
+    rows_written = 0
+    async with session_factory() as session:
+        for symbol in universe:
+            bars = bars_by_symbol.get(symbol, ())
+            closes = [bar.close for bar in bars]
+            symbol_closes, aligned_index_closes = _align_closes(closes, reference_index_closes)
+            result = _build_us_trend_result(
+                symbol,
+                run_date=run_date,
+                bars=bars,
+                holders=holders_by_symbol.get(symbol, []),
+                insider_activity=insider_by_symbol.get(symbol, []),
+                consensus=consensus_by_symbol.get(symbol),
+                eps_trend_delta_universe=eps_trend_delta_universe,
+                sector_key=sector_key_by_symbol.get(symbol),
+                sector_returns_by_key=sector_returns_by_key,
+                symbol_closes=symbol_closes,
+                reference_index_closes=aligned_index_closes,
+            )
+            await upsert_trend_score(session, result)
+            rows_written += 1
+        await session.commit()
+
+    logger.info(
+        "trend_score_batch_computed",
+        market=market_str,
+        run_date=run_date.isoformat(),
+        symbols=len(universe),
+        rows_written=rows_written,
+    )
+    return journal_run(
+        TREND_SCORE_DATASET,
+        run_date,
+        rows_written=rows_written,
+        status=RunStatus.SUCCESS,
+        detail=f"scored {len(universe)} US symbols across 6 US-native dimensions "
+        "(technical/institutional_ownership/insider_sentiment/analyst_revision/"
+        "sector_momentum/taiex_correlation)",
     )
 
 

@@ -47,13 +47,31 @@ function bandColorFor(value: number): string {
 
 // Two visual columns (matching the reference layout's split), each its own `--chart-N` token —
 // never a signed 紅漲綠跌 color, since a dimension bar-length is a magnitude, not a price direction.
-const TREND_DIMENSION_COLUMNS = [
+// US rows never carry a TW-only dimension name (chip_flow/margin_credit/broker_concentration/
+// sector_rotation) — see `analytics/trend_score.py::US_DIMENSION_WEIGHTS`'s own comment — so a
+// separate US column set is required rather than one shared list with unmatched names silently
+// rendering nothing.
+const TW_TREND_DIMENSION_COLUMNS = [
   { names: ["technical", "chip_flow", "margin_credit"] as const, color: "var(--chart-1)" },
   {
     names: ["broker_concentration", "sector_rotation", "taiex_correlation"] as const,
     color: "var(--chart-2)",
   },
 ] as const;
+const US_TREND_DIMENSION_COLUMNS = [
+  {
+    names: ["technical", "institutional_ownership", "insider_sentiment"] as const,
+    color: "var(--chart-1)",
+  },
+  {
+    names: ["analyst_revision", "sector_momentum", "taiex_correlation"] as const,
+    color: "var(--chart-2)",
+  },
+] as const;
+
+function trendDimensionColumnsFor(market: Market) {
+  return market === "US" ? US_TREND_DIMENSION_COLUMNS : TW_TREND_DIMENSION_COLUMNS;
+}
 
 /** 個股 › AI tab (renamed from the never-built "summary" placeholder) — three cards read
  * top-to-bottom as one story, per the agreed design: (1) 趨勢評分, a 6-dimension descriptive
@@ -241,18 +259,25 @@ function TrendScoreCard({
             <p className="text-[13px] text-[var(--text-muted)]">{t("noHistoryYet")}</p>
           )}
           <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-4 border-[var(--border)] border-t pt-4 sm:grid-cols-2">
-            {TREND_DIMENSION_COLUMNS.map((column) => (
+            {trendDimensionColumnsFor(market).map((column) => (
               <div key={column.color} className="flex flex-col gap-4">
                 {column.names.map((name) => {
                   const dimension = data.dimensions.find((d) => d.name === name);
-                  return dimension ? (
+                  if (!dimension) return null;
+                  // `broker_concentration` renders a Sponsor-lock teaser even with `value: null`
+                  // (a real product feature, not a missing dimension) — every other dimension
+                  // the batch never computed for this row is skipped rather than shown as a bare
+                  // "no data" placeholder.
+                  const isLockedTeaser = name === "broker_concentration";
+                  if (dimension.value === null && !isLockedTeaser) return null;
+                  return (
                     <TrendDimensionRow
                       key={name}
                       dimension={dimension}
                       locale={locale}
                       color={column.color}
                     />
-                  ) : null;
+                  );
                 })}
               </div>
             ))}
@@ -324,6 +349,19 @@ const STOCK_FACTOR_ORDER = [
   "revenue_flow",
 ] as const;
 
+// `Market.US`'s `UsStockScoreBreakdown` swaps the TW-only `revenue_flow` for `analyst_revision`
+// (see that model's own docstring) — a US row never carries `revenue_flow`, so it needs its own
+// factor-order list rather than sharing `STOCK_FACTOR_ORDER`.
+const US_STOCK_FACTOR_ORDER = [
+  "momentum",
+  "trend_quality",
+  "value_guard",
+  "quality",
+  "analyst_revision",
+  "growth",
+  "liquidity",
+] as const;
+
 // An ETF's `ScoreResult.breakdown` carries an entirely different factor set than a stock's
 // (`analytics/score.py`'s `EtfScoreBreakdown` vs `StockScoreBreakdown`) — only `revenue_flow` is
 // shared. Iterating `STOCK_FACTOR_ORDER` against an ETF result would silently render 4 of 5 rows
@@ -335,10 +373,14 @@ const ETF_FACTOR_ORDER = [
   "liquidity_flow",
   "revenue_flow",
 ] as const;
-type FactorName = (typeof STOCK_FACTOR_ORDER)[number] | (typeof ETF_FACTOR_ORDER)[number];
+type FactorName =
+  | (typeof STOCK_FACTOR_ORDER)[number]
+  | (typeof US_STOCK_FACTOR_ORDER)[number]
+  | (typeof ETF_FACTOR_ORDER)[number];
 
-function factorOrderFor(symbolType: SymbolType): readonly FactorName[] {
-  return symbolType === "stock" ? STOCK_FACTOR_ORDER : ETF_FACTOR_ORDER;
+function factorOrderFor(symbolType: SymbolType, market: Market): readonly FactorName[] {
+  if (symbolType !== "stock") return ETF_FACTOR_ORDER;
+  return market === "US" ? US_STOCK_FACTOR_ORDER : STOCK_FACTOR_ORDER;
 }
 
 function ScoreGaugeCard({
@@ -416,9 +458,12 @@ function ScoreGaugeCard({
             />
           </div>
           <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-4 border-[var(--border)] border-t pt-4 sm:grid-cols-2">
-            {factorOrderFor(symbolType).map((name) => {
+            {factorOrderFor(symbolType, market).map((name) => {
               const factor = result.breakdown?.[name];
-              return factor ? (
+              // A factor absent from this row's breakdown shape (e.g. `revenue_flow` on a US
+              // row, `analyst_revision` on a TW row) — or unavailable for this run — is never
+              // rendered as an empty placeholder row, only factors that resolved to a real value.
+              return factor && factor.percentile !== null ? (
                 <FactorRow key={name} name={name} factor={factor} locale={locale} />
               ) : null;
             })}

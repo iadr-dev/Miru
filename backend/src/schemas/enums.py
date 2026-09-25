@@ -57,6 +57,7 @@ class Capability(StrEnum):
     PRICE_EOD = "price_eod"
     PRICE_EOD_ADJUSTED = "price_eod_adjusted"
     PRICE_INTRADAY = "price_intraday"
+    LIVE_PRICE_QUOTE = "live_price_quote"  # yfinance WebSocket streaming tick, US-only
     PRICE_TICK = "price_tick"
     PRICE_WEEKLY = "price_weekly"
     PRICE_MONTHLY = "price_monthly"
