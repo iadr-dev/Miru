@@ -29,6 +29,10 @@ import type { Market } from "@/types/settings";
 
 type SectorView = "heatmap" | "stock" | "rotation";
 const SECTOR_VIEWS = ["heatmap", "stock", "rotation"] as const satisfies readonly SectorView[];
+// `get_sector_rotation_rrg` needs TWSE's own published industry sub-index price series as its
+// RRG benchmark (see that tool's own docstring) — no US equivalent is ingested, so the rotation
+// view/button simply doesn't exist for US rather than rendering a permanently-unavailable tab.
+const US_SECTOR_VIEWS = ["heatmap", "stock"] as const satisfies readonly SectorView[];
 
 // Both treemaps collapse to a fixed count inline — showing every row (45+ industries, 150
 // stocks) in the same fixed-aspect-ratio box squeezes tiles down to unreadable slivers, the
@@ -67,6 +71,7 @@ const STOCK_HEATMAP_COLLAPSED_INDUSTRIES = 24;
  */
 export function SectorHeatmapPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.sectorHeatmap");
+  const views = market === "US" ? US_SECTOR_VIEWS : SECTOR_VIEWS;
   const [view, setView] = useState<SectorView>("heatmap");
   const [period, setPeriod] = useState<SectorHeatmapPeriod>("immediate");
   const [sizeBy, setSizeBy] = useState<SectorHeatmapSizeBy>("turnover");
@@ -89,7 +94,9 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
   const rotationRrgQuery = useQuery({
     queryKey: ["sector_rotation_rrg", market],
     queryFn: () => getSectorRotationRrg(market),
-    enabled: view === "rotation",
+    // No RRG for US at all (see `US_SECTOR_VIEWS`'s own comment) — never fires for market="US"
+    // even if `view` somehow held "rotation" from a stale prior TW selection.
+    enabled: view === "rotation" && market !== "US",
   });
 
   const constituentsQuery = useQuery({
@@ -112,7 +119,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
           aria-label={t("viewToggleLabel")}
           className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]"
         >
-          {SECTOR_VIEWS.map((v) => (
+          {views.map((v) => (
             <button
               key={v}
               type="button"

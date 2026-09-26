@@ -12,6 +12,14 @@ import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { sourceLogoUrl } from "@/lib/source-logo";
 import type { NewsFeedItem } from "@/types/market";
+import type { Market } from "@/types/settings";
+
+const NEWS_QUERY_BY_MARKET: Record<Market, string> = {
+  TW: "台股",
+  US: "US stock market",
+  GB: "UK stock market",
+  JP: "Japan stock market",
+};
 
 // This sub-tab has no sibling card next to it (unlike 每日焦點's multi-card grid), so its own
 // list needs to fill the tab's width/height on its own rather than staying a single narrow
@@ -21,18 +29,25 @@ import type { NewsFeedItem } from "@/types/market";
 const NEWS_FEED_COLLAPSED_ROW_COUNT = 40;
 
 /**
- * 即時新聞 — the TW tab's News sub-tab. Public (`DataClass.PUBLIC`) — no `SponsorTeaser`/
+ * 即時新聞 — the TW/US tab's News sub-tab. Public (`DataClass.PUBLIC`) — no `SponsorTeaser`/
  * masked-teaser branch, mirroring `MaterialAnnouncementFeedPanel`'s own explicit no-blur
  * requirement. Backed by `get_news_feed` (`sources/news.py`'s RSS/Finnhub aggregator) — distinct
  * from FinMind's own per-symbol `get_finmind_stock_news` dataset, never merged with it here.
+ *
+ * `market` only scopes the Finnhub half of the feed (`NEWS_QUERY_BY_MARKET`) — the RSS half is a
+ * fixed set of Taiwanese financial feeds (cnyes/udn/technews/ithome/blocktempo) fetched
+ * unconditionally regardless of `query`, per `get_news_feed`'s own tool docstring ("RSS feeds are
+ * fetched whole regardless — they are not query-filterable upstream"). A US caller therefore
+ * still sees some TW-sourced RSS items mixed in alongside US-scoped Finnhub results; this is the
+ * existing, accepted tool contract, not a new gap this panel introduces.
  */
-export function NewsFeedPanel(): ReactNode {
+export function NewsFeedPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.newsFeed");
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["news_feed"],
-    queryFn: () => getNewsFeed(),
+    queryKey: ["news_feed", market],
+    queryFn: () => getNewsFeed(NEWS_QUERY_BY_MARKET[market]),
   });
 
   return (

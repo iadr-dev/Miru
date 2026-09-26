@@ -93,7 +93,7 @@ export function TwTabContent({ market }: { readonly market: Market }): ReactNode
       {subTab === "chip" ? <ChipDataPanel market={market} /> : null}
       {subTab === "disposition" ? <DispositionBoardPanel market={market} /> : null}
       {subTab === "heatmap" ? <HeatmapPanel market={market} /> : null}
-      {subTab === "news" ? <NewsFeedPanel /> : null}
+      {subTab === "news" ? <NewsFeedPanel market={market} /> : null}
       {subTab === "ptt" ? <PttBoardPanel /> : null}
     </div>
   );
