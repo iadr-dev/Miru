@@ -128,6 +128,18 @@ async def fund_holdings(
     return await _dispatch(state, "get_fund_holdings", {"id": symbol, "market": market.value}, ctx)
 
 
+@router.get("/funds/{symbol}/profile")
+async def fund_profile(
+    symbol: str,
+    market: Market = Query(Market.US),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """AUM/category/issuer/YTD-return/distribution-yield/inception-date for one non-TW
+    ETF/mutual fund — the fund-equivalent of `/stock/company-profile`."""
+    return await _dispatch(state, "get_fund_profile", {"id": symbol, "market": market.value}, ctx)
+
+
 @router.get("/funds/{symbol}/fund-info")
 async def etf_fund_info(
     symbol: str,

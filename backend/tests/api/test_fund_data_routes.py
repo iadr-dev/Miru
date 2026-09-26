@@ -100,6 +100,22 @@ _HOLDINGS_PAYLOAD = _result(
     }
 )
 
+_FUND_PROFILE_PAYLOAD = _result(
+    {
+        "profile": {
+            "symbol": "SPY",
+            "market": "US",
+            "as_of": date(2024, 6, 2).isoformat(),
+            "total_assets": 488981004288,
+            "category": "Large Blend",
+            "fund_family": "State Street",
+            "ytd_return_pct": 12.5,
+            "distribution_yield_pct": 1.2,
+            "inception_date": "1993-01-22",
+        }
+    }
+)
+
 
 def _client_with_stub(settings: Settings, agent_answer: str) -> TestClient:
     """A real `TestClient` whose tool registry answers every capability with a canned, healthy
@@ -113,6 +129,7 @@ def _client_with_stub(settings: Settings, agent_answer: str) -> TestClient:
         Capability.INSTITUTIONAL_HOLDERS: _HOLDERS_PAYLOAD,
         Capability.INSIDER_ACTIVITY: _INSIDER_PAYLOAD,
         Capability.FUND_HOLDINGS: _HOLDINGS_PAYLOAD,
+        Capability.FUND_PROFILE: _FUND_PROFILE_PAYLOAD,
         Capability.PRICE_EOD: _result(
             {
                 "bars": [
@@ -192,6 +209,14 @@ class TestPerSymbolRoutes:
         body = resp.json()
         assert body["holdings"][0]["holding_symbol"] == "AAPL"
         assert body["sector_weightings"][0]["sector"] == "Technology"
+
+    def test_fund_profile_route(self, settings: Settings, agent_answer: str) -> None:
+        client = _client_with_stub(settings, agent_answer)
+        resp = client.get("/api/v1/funds/SPY/profile", params={"market": Market.US.value})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["profile"]["category"] == "Large Blend"
+        assert body["profile"]["fund_family"] == "State Street"
 
     def test_trailing_returns_route(self, settings: Settings, agent_answer: str) -> None:
         client = _client_with_stub(settings, agent_answer)

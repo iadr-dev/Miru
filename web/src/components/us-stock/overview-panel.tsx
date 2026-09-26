@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { EsgCard, ProfileCard } from "@/components/stock/basic-info-panel";
 import { AnalystConsensusCard } from "@/components/stock/research-charts-panel";
 import { UsMarketCalendarCard } from "@/components/us-stock/calendar-events-card";
+import { FundProfileCard } from "@/components/us-stock/fund-profile-card";
 import type { Market } from "@/types/settings";
 
 /** 總覽 tab — reuses `basic-info-panel.tsx`'s `ProfileCard`/`EsgCard` verbatim rather than
@@ -25,6 +26,7 @@ export function UsStockOverviewPanel({
 }): ReactNode {
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+      <FundProfileCard symbol={symbol} market={market} />
       <ProfileCard symbol={symbol} market={market} />
       <EsgCard symbol={symbol} market={market} />
       <AnalystConsensusCard symbol={symbol} market={market} />

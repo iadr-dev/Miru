@@ -2443,6 +2443,27 @@ class FundSectorWeightingRow(BaseModel):
     weight: float
 
 
+class FundProfileRow(BaseModel):
+    """`fund_profile` — one non-TW ETF/mutual fund's identity + summary-return fields from
+    yfinance's own `.info` payload (`sources/yfinance/analyst.py::_fund_profile`). The 總覽
+    tab's fund-equivalent of `GetCompanyProfileOutput` for a plain equity — a fund has no
+    chairman/EPS/capital, but has real AUM/category/issuer/return figures `ProfileCard` never
+    surfaced. Every field degrades to `None` independently (never fabricated) when yfinance's
+    own `.info` payload doesn't carry it for this symbol."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: Market
+    as_of: date_
+    total_assets: float | None = None  # totalAssets/netAssets — AUM
+    category: str | None = None  # e.g. "Large Growth"
+    fund_family: str | None = None  # issuer, e.g. "Invesco"
+    ytd_return_pct: float | None = None  # already a percent (yfinance's own `ytdReturn` scale)
+    distribution_yield_pct: float | None = None  # yfinance's own `yield`, scaled to a percent
+    inception_date: date_ | None = None
+
+
 class TdccSecuritiesInfoRow(BaseModel):
     """`tdcc_securities_info` — one 證券基本資料 (securities master reference) row from TDCC
     OpenData id `1-1`: market/registrar/status/par-value reference facts, not a price."""

@@ -202,3 +202,43 @@ async def test_fetch_profile_us_no_identity_fields_degrades_to_stale(
 
     assert result.health.status is HealthStatus.STALE
     assert result.payload == {}
+
+
+async def test_fetch_fund_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Field values mirror what was confirmed live against QQQ."""
+    frames = empty_frames()
+    frames["info"] = {
+        "totalAssets": 488981004288,
+        "category": "Large Growth",
+        "fundFamily": "Invesco",
+        "ytdReturn": 16.99566,
+        "yield": 0.0042,
+        "fundInceptionDate": 921024000,  # 1999-03-10 (epoch seconds, NOT nanoseconds)
+    }
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="QQQ", market=Market.US)
+
+    result = await adapter.fetch(Capability.FUND_PROFILE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.OK
+    profile = result.payload["profile"]  # type: ignore[index]
+    assert profile["total_assets"] == 488981004288
+    assert profile["category"] == "Large Growth"
+    assert profile["fund_family"] == "Invesco"
+    assert profile["ytd_return_pct"] == 16.99566
+    assert profile["distribution_yield_pct"] == pytest.approx(0.42)
+    assert profile["inception_date"] == "1999-03-10"
+
+
+async def test_fetch_fund_profile_degrades_for_non_fund(monkeypatch: pytest.MonkeyPatch) -> None:
+    frames = empty_frames()
+    frames["info"] = {}
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="AAPL", market=Market.US)
+
+    result = await adapter.fetch(Capability.FUND_PROFILE, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.STALE
+    assert result.payload == {}

@@ -2117,6 +2117,15 @@
       },
       "expandTo": "Expand all {count} rows",
       "collapse": "Close"
+    },
+    "fundProfile": {
+      "title": "Fund Info",
+      "aum": "AUM",
+      "ytdReturn": "YTD Return",
+      "distributionYield": "Distribution Yield",
+      "category": "Category",
+      "fundFamily": "Issuer",
+      "inceptionDate": "Inception Date"
     }
   }
 }

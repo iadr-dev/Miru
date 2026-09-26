@@ -63,6 +63,7 @@ _NON_TW_SUPPORTED = _TW_SUPPORTED | {
     Capability.INDUSTRY_OVERVIEW,
     Capability.MARKET_STATUS,
     Capability.FUND_HOLDINGS,
+    Capability.FUND_PROFILE,
 }
 
 # US-only, unlike the rest of `_NON_TW_SUPPORTED` (which is US-primary but genuinely served for

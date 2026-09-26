@@ -171,6 +171,7 @@ US:
   industry_overview: [yfinance]
   market_status: [yfinance]
   fund_holdings: [yfinance]
+  fund_profile: [yfinance]
   etf_trailing_returns: [yfinance]
   market_value: [yfinance] # Yahoo marketCap — the non-TW equivalent of FinMind's TW-only feed
   valuation_ratios: [yfinance] # Yahoo trailing PER/PBR/dividend yield
@@ -202,6 +203,7 @@ GB:
   industry_overview: [yfinance]
   market_status: [yfinance]
   fund_holdings: [yfinance]
+  fund_profile: [yfinance]
   etf_trailing_returns: [yfinance]
   market_value: [yfinance]
   valuation_ratios: [yfinance]
@@ -231,6 +233,7 @@ EU:
   industry_overview: [yfinance]
   market_status: [yfinance]
   fund_holdings: [yfinance]
+  fund_profile: [yfinance]
   etf_trailing_returns: [yfinance]
   market_value: [yfinance]
   valuation_ratios: [yfinance]
@@ -260,6 +263,7 @@ JP:
   industry_overview: [yfinance]
   market_status: [yfinance]
   fund_holdings: [yfinance]
+  fund_profile: [yfinance]
   etf_trailing_returns: [yfinance]
   market_value: [yfinance]
   valuation_ratios: [yfinance]

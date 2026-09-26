@@ -21,8 +21,10 @@ import {
   etfTrailingReturnsResponseSchema,
   type FundComparisonResponse,
   type FundHoldingsResponse,
+  type FundProfileResponse,
   fundComparisonResponseSchema,
   fundHoldingsResponseSchema,
+  fundProfileResponseSchema,
 } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 
@@ -137,4 +139,14 @@ export async function getFundHoldings(
 ): Promise<FundHoldingsResponse> {
   const raw = await requestJson(`/funds/${encodeURIComponent(symbol)}/holdings?market=${market}`);
   return fundHoldingsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 9. GET /funds/{symbol}/profile (public, non-TW) — AUM/category/issuer/YTD-return/
+//    distribution-yield/inception-date, the 總覽 tab's fund-equivalent of company-profile.
+// ---------------------------------------------------------------------------
+
+export async function getFundProfile(symbol: string, market: Market): Promise<FundProfileResponse> {
+  const raw = await requestJson(`/funds/${encodeURIComponent(symbol)}/profile?market=${market}`);
+  return fundProfileResponseSchema.parse(raw);
 }
