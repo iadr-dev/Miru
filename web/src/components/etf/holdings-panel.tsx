@@ -3,10 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
+import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-legend";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
@@ -26,8 +26,6 @@ const TOP_N = 4;
 const SUB_TABS = ["holdings", "industry"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 const DATA_SHEET_COLLAPSED_ROW_COUNT = 10;
-
-type Slice = { label: string; weight: number; color: string };
 
 /** 成分股 / 產業分佈 — genuinely absent for passive TW ETFs today (`sources/etf_pcf.py`'s own
  * docstring: per-constituent holdings are never ingested for passive/leveraged/inverse funds).
@@ -125,7 +123,7 @@ export function HoldingsPanel({
             </button>
           ))}
         </div>
-        <DonutAndTable slices={subTab === "holdings" ? holdingSlices : industrySlices} />
+        <DonutWithLegend slices={subTab === "holdings" ? holdingSlices : industrySlices} />
       </section>
       {subTab === "holdings" ? (
         <HoldingsDataSheetCard holdings={data.current_holdings} />
@@ -334,7 +332,7 @@ function DataSheetCard({
 function topSlices(
   rows: readonly { label: string; weight: number }[],
   othersLabel: string,
-): Slice[] {
+): DonutSlice[] {
   const sorted = [...rows].sort((a, b) => b.weight - a.weight);
   const top = sorted.slice(0, TOP_N).map((row, index) => ({
     label: row.label,
@@ -354,7 +352,7 @@ function topSlices(
 function topIndustrySlices(
   rows: readonly { label: string; weight: number }[],
   othersLabel: string,
-): Slice[] {
+): DonutSlice[] {
   const sorted = [...rows].sort((a, b) => b.weight - a.weight);
   const top = sorted
     .slice(0, TOP_N)
@@ -375,68 +373,4 @@ function industryWeights(
     byIndustry.set(key, (byIndustry.get(key) ?? 0) + row.weight);
   }
   return [...byIndustry.entries()].map(([label, weight]) => ({ label, weight }));
-}
-
-function DonutAndTable({ slices }: { readonly slices: readonly Slice[] }): ReactNode {
-  const locale = useLocale();
-
-  if (slices.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-      <div className="h-[180px] w-[180px] shrink-0">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie
-              data={slices}
-              dataKey="weight"
-              nameKey="label"
-              innerRadius="55%"
-              outerRadius="100%"
-              strokeWidth={0}
-            >
-              {slices.map((slice) => (
-                <Cell key={slice.label} fill={slice.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-input)",
-                color: "var(--text)",
-              }}
-              itemStyle={{ color: "var(--text)" }}
-              formatter={(value) => [
-                `${formatNumber(value as number, locale, { decimals: 2 })}%`,
-                "",
-              ]}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="flex flex-1 flex-col gap-2">
-        {slices.map((slice) => (
-          <div key={slice.label} className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: slice.color }}
-              />
-              {slice.label}
-            </span>
-            <span
-              className="shrink-0 font-num text-[13px] tabular-nums"
-              style={{ color: slice.color }}
-            >
-              {formatNumber(slice.weight, locale, { decimals: 2 })}%
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }

@@ -3,10 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
+import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-legend";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getFundHoldings } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
@@ -23,15 +23,14 @@ const OTHERS_COLOR = "var(--text-muted)";
 const TOP_N = 4;
 const DATA_SHEET_COLLAPSED_ROW_COUNT = 10;
 
-type Slice = { label: string; weight: number; color: string };
-
 /** 持股與產業 tab — the US-ETF counterpart to the TW ETF's 成分股/產業分佈 sub-tabs, but backed
  * by `get_fund_holdings` (yfinance's own `FundsData.top_holdings`/`sector_weightings`) rather
  * than TDCC/PCF data, since that source is TW-only. Genuinely different data shape too: TW's
  * `current_holdings` carries every constituent at its real weight; yfinance's fund holdings are
  * already a "top N" slice (typically ~10 rows) with no "the rest" total, so there is no
  * expand-to-full-constituent-list affordance here — the data sheet just shows what the source
- * gives, no synthesized "and N more" row. */
+ * gives, no synthesized "and N more" row. Shares `DonutWithLegend` with `etf/holdings-panel.tsx`
+ * for the sector-breakdown donut — same shape, different source data. */
 export function FundHoldingsPanel({
   symbol,
   market,
@@ -73,7 +72,7 @@ export function FundHoldingsPanel({
       {sectorSlices.length > 0 ? (
         <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
           <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("sectorTitle")}</h2>
-          <DonutAndTable slices={sectorSlices} />
+          <DonutWithLegend slices={sectorSlices} />
         </section>
       ) : null}
       {data.holdings.length > 0 ? (
@@ -158,75 +157,21 @@ function HoldingsCard({
   );
 }
 
-function topSectorSlices(rows: readonly FundSectorWeightingRow[], othersLabel: string): Slice[] {
+/** `FundSectorWeightingRow.weight` is a 0-1 fraction (yfinance's own convention) — scaled to a
+ * 0-100 percent here so it matches `DonutWithLegend`'s "already a percent" contract, the same
+ * convention `etf/holdings-panel.tsx`'s TW-sourced slices (already 0-100) satisfy natively. */
+function topSectorSlices(
+  rows: readonly FundSectorWeightingRow[],
+  othersLabel: string,
+): DonutSlice[] {
   const sorted = [...rows].sort((a, b) => b.weight - a.weight);
   const top = sorted.slice(0, TOP_N).map((row, index) => ({
     label: row.sector,
-    weight: row.weight,
+    weight: row.weight * 100,
     color: DONUT_COLORS[index % DONUT_COLORS.length] ?? "var(--chart-1)",
   }));
-  const othersWeight = sorted.slice(TOP_N).reduce((sum, row) => sum + row.weight, 0);
+  const othersWeight = sorted.slice(TOP_N).reduce((sum, row) => sum + row.weight, 0) * 100;
   return othersWeight > 0
     ? [...top, { label: othersLabel, weight: othersWeight, color: OTHERS_COLOR }]
     : top;
-}
-
-function DonutAndTable({ slices }: { readonly slices: readonly Slice[] }): ReactNode {
-  const locale = useLocale();
-
-  return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-      <div className="h-[180px] w-[180px] shrink-0">
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie
-              data={slices}
-              dataKey="weight"
-              nameKey="label"
-              innerRadius="55%"
-              outerRadius="100%"
-              strokeWidth={0}
-            >
-              {slices.map((slice) => (
-                <Cell key={slice.label} fill={slice.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                background: "var(--surface-2)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-input)",
-                color: "var(--text)",
-              }}
-              itemStyle={{ color: "var(--text)" }}
-              formatter={(value) => [
-                `${formatNumber((value as number) * 100, locale, { decimals: 2 })}%`,
-                "",
-              ]}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="flex flex-1 flex-col gap-2">
-        {slices.map((slice) => (
-          <div key={slice.label} className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 text-[13px] text-[var(--text)]">
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: slice.color }}
-              />
-              {slice.label}
-            </span>
-            <span
-              className="shrink-0 font-num text-[13px] tabular-nums"
-              style={{ color: slice.color }}
-            >
-              {formatNumber(slice.weight * 100, locale, { decimals: 2 })}%
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
