@@ -5540,9 +5540,7 @@ class GetSymbolDirectorySearchTool(BaseTool):
     never merged into one call)."""
 
     name = "get_symbol_directory_search"
-    description = (
-        "Search the TW stock/ETF roster by free-text company name or ticker (type-ahead)."
-    )
+    description = "Search the TW stock/ETF roster by free-text company name or ticker (type-ahead)."
     input_model: type[BaseModel] = GetSymbolDirectorySearchInput
     output_model: type[BaseModel] = GetSymbolDirectorySearchOutput
     data_class = DataClass.PUBLIC

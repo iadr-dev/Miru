@@ -15,6 +15,72 @@ import type { SearchHit } from "@/types/symbol-search";
 
 const DEBOUNCE_MS = 250;
 
+type PaletteMotionProps = {
+  readonly fadeTransition: { duration: number };
+  readonly panelTransition:
+    | { duration: number }
+    | { type: "spring"; stiffness: number; damping: number };
+  readonly panelMotionProps:
+    | { initial: false; animate: { opacity: number }; exit: { opacity: number } }
+    | {
+        initial: { opacity: number; y: number; scale: number };
+        animate: { opacity: number; y: number; scale: number };
+        exit: { opacity: number; y: number; scale: number };
+      };
+};
+
+function usePaletteMotion(reduceMotion: boolean | null): PaletteMotionProps {
+  if (reduceMotion) {
+    return {
+      fadeTransition: { duration: 0 },
+      panelTransition: { duration: 0 },
+      panelMotionProps: { initial: false, animate: { opacity: 1 }, exit: { opacity: 0 } },
+    };
+  }
+  return {
+    fadeTransition: { duration: 0.15 },
+    panelTransition: { type: "spring", stiffness: 260, damping: 26 },
+    panelMotionProps: {
+      initial: { opacity: 0, y: -8, scale: 0.98 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      exit: { opacity: 0, y: -8, scale: 0.98 },
+    },
+  };
+}
+
+/** The two real, distinct queries (TW roster scan / US yfinance search) normalized and
+ * regrouped into 公司/ETF, plus the derived loading/empty/error flags the palette body reads.
+ * Pulled out of `SearchPalette` itself to keep that component's own cognitive load down to
+ * "render the shell" — this hook owns "what do we show". */
+function useSearchPaletteResults(debouncedQuery: string): {
+  companies: readonly SearchHit[];
+  etfs: readonly SearchHit[];
+  isLoading: boolean;
+  isEmpty: boolean;
+  bothFailed: boolean;
+  retry: () => void;
+} {
+  const twQuery = useSymbolSearch(debouncedQuery, "TW");
+  const usQuery = useSymbolSearch(debouncedQuery, "US");
+
+  const allHits = [...(twQuery.data ?? []), ...(usQuery.data ?? [])];
+  const isLoading = debouncedQuery.length > 0 && (twQuery.isPending || usQuery.isPending);
+  const bothFailed = twQuery.isError && usQuery.isError;
+  const isEmpty = debouncedQuery.length > 0 && !isLoading && !bothFailed && allHits.length === 0;
+
+  return {
+    companies: allHits.filter((hit) => hit.kind === "stock"),
+    etfs: allHits.filter((hit) => hit.kind === "etf"),
+    isLoading,
+    isEmpty,
+    bothFailed,
+    retry: () => {
+      void twQuery.refetch();
+      void usQuery.refetch();
+    },
+  };
+}
+
 /**
  * Full-screen 公司/ETF search command palette (Cmd/Ctrl+K or the top-bar search button). Two
  * real, distinct queries run in parallel — TW (ingested roster scan) and US (live yfinance
@@ -25,16 +91,16 @@ const DEBOUNCE_MS = 250;
 export function SearchPalette({
   open,
   onClose,
-}: {
+}: Readonly<{
   open: boolean;
   onClose: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("shell.search");
   const router = useRouter();
-  const reduceMotion = useReducedMotion();
   const dialogRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
+  const motionProps = usePaletteMotion(useReducedMotion());
 
   const close = useCallback(() => {
     onClose();
@@ -43,35 +109,13 @@ export function SearchPalette({
 
   useFocusTrap(dialogRef, open, close);
 
-  const twQuery = useSymbolSearch(debouncedQuery, "TW");
-  const usQuery = useSymbolSearch(debouncedQuery, "US");
-
-  const twHits = twQuery.data ?? [];
-  const usHits = usQuery.data ?? [];
-  const allHits = [...twHits, ...usHits];
-  const companies = allHits.filter((hit) => hit.kind === "stock");
-  const etfs = allHits.filter((hit) => hit.kind === "etf");
-
-  const isLoading = debouncedQuery.length > 0 && (twQuery.isPending || usQuery.isPending);
-  const bothFailed = twQuery.isError && usQuery.isError;
-  const isEmpty = debouncedQuery.length > 0 && !isLoading && !bothFailed && allHits.length === 0;
+  const { companies, etfs, isLoading, isEmpty, bothFailed, retry } =
+    useSearchPaletteResults(debouncedQuery);
 
   const select = (hit: SearchHit): void => {
     close();
     router.push(`/stock/${encodeURIComponent(hit.symbol)}?market=${hit.market}`);
   };
-
-  const fadeTransition = reduceMotion ? { duration: 0 } : { duration: 0.15 };
-  const panelTransition = reduceMotion
-    ? { duration: 0 }
-    : { type: "spring" as const, stiffness: 260, damping: 26 };
-  const panelMotionProps = reduceMotion
-    ? { initial: false, animate: { opacity: 1 }, exit: { opacity: 0 } }
-    : {
-        initial: { opacity: 0, y: -8, scale: 0.98 },
-        animate: { opacity: 1, y: 0, scale: 1 },
-        exit: { opacity: 0, y: -8, scale: 0.98 },
-      };
 
   const overlay = (
     <AnimatePresence>
@@ -81,7 +125,7 @@ export function SearchPalette({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={fadeTransition}
+          transition={motionProps.fadeTransition}
         >
           <button
             type="button"
@@ -99,8 +143,8 @@ export function SearchPalette({
               "relative flex w-full max-w-lg flex-col overflow-hidden rounded-[var(--radius-card)]",
               "border border-[var(--border)] bg-[var(--surface)] shadow-2xl",
             )}
-            {...panelMotionProps}
-            transition={panelTransition}
+            {...motionProps.panelMotionProps}
+            transition={motionProps.panelTransition}
           >
             <Command shouldFilter={false} loop label={t("label")}>
               <div className="flex items-center gap-2 border-[var(--border)] border-b px-4">
@@ -129,45 +173,17 @@ export function SearchPalette({
                   </p>
                 ) : null}
                 {!isLoading && bothFailed ? (
-                  <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
-                    <p className="text-[13px] text-[var(--text-muted)]">{t("error")}</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void twQuery.refetch();
-                        void usQuery.refetch();
-                      }}
-                      className="text-[13px] text-[var(--accent)] hover:underline"
-                    >
-                      {t("retry")}
-                    </button>
-                  </div>
+                  <SearchPaletteErrorState
+                    message={t("error")}
+                    retryLabel={t("retry")}
+                    onRetry={retry}
+                  />
                 ) : null}
-                {!isLoading && companies.length > 0 ? (
-                  <Command.Group
-                    heading={<GroupHeading label={t("groupCompany")} count={companies.length} />}
-                  >
-                    {companies.map((hit) => (
-                      <SearchHitRow
-                        key={`${hit.market}:${hit.symbol}`}
-                        hit={hit}
-                        onSelect={select}
-                      />
-                    ))}
-                  </Command.Group>
-                ) : null}
-                {!isLoading && etfs.length > 0 ? (
-                  <Command.Group
-                    heading={<GroupHeading label={t("groupEtf")} count={etfs.length} />}
-                  >
-                    {etfs.map((hit) => (
-                      <SearchHitRow
-                        key={`${hit.market}:${hit.symbol}`}
-                        hit={hit}
-                        onSelect={select}
-                      />
-                    ))}
-                  </Command.Group>
+                {!isLoading ? (
+                  <>
+                    <ResultsGroup label={t("groupCompany")} hits={companies} onSelect={select} />
+                    <ResultsGroup label={t("groupEtf")} hits={etfs} onSelect={select} />
+                  </>
                 ) : null}
               </Command.List>
             </Command>
@@ -183,7 +199,60 @@ export function SearchPalette({
   return createPortal(overlay, document.body);
 }
 
-function GroupHeading({ label, count }: { label: string; count: number }): ReactNode {
+function SearchPaletteErrorState({
+  message,
+  retryLabel,
+  onRetry,
+}: Readonly<{
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+}>): ReactNode {
+  return (
+    <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
+      <p className="text-[13px] text-[var(--text-muted)]">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="text-[13px] text-[var(--accent)] hover:underline"
+      >
+        {retryLabel}
+      </button>
+    </div>
+  );
+}
+
+/** One 公司/ETF section: heading + count badge + rows. Shared by both groups so the
+ * grouped-with-count-badge layout exists in exactly one place, not duplicated per kind. Renders
+ * nothing when `hits` is empty — the caller doesn't need its own length check. */
+function ResultsGroup({
+  label,
+  hits,
+  onSelect,
+}: Readonly<{
+  label: string;
+  hits: readonly SearchHit[];
+  onSelect: (hit: SearchHit) => void;
+}>): ReactNode {
+  if (hits.length === 0) {
+    return null;
+  }
+  return (
+    <Command.Group heading={<GroupHeading label={label} count={hits.length} />}>
+      {hits.map((hit) => (
+        <SearchHitRow key={`${hit.market}:${hit.symbol}`} hit={hit} onSelect={onSelect} />
+      ))}
+    </Command.Group>
+  );
+}
+
+function GroupHeading({
+  label,
+  count,
+}: Readonly<{
+  label: string;
+  count: number;
+}>): ReactNode {
   return (
     <div className="flex items-center justify-between px-2 py-1.5">
       <span className="font-medium text-[12px] text-[var(--text-muted)] uppercase tracking-wide">
@@ -204,10 +273,10 @@ function GroupHeading({ label, count }: { label: string; count: number }): React
 function SearchHitRow({
   hit,
   onSelect,
-}: {
+}: Readonly<{
   hit: SearchHit;
   onSelect: (hit: SearchHit) => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <Command.Item
       value={`${hit.market}:${hit.symbol}:${hit.name}`}
@@ -230,7 +299,7 @@ function SearchHitRow({
   );
 }
 
-function SearchPaletteLoadingRows({ label }: { label: string }): ReactNode {
+function SearchPaletteLoadingRows({ label }: Readonly<{ label: string }>): ReactNode {
   return (
     <div className="flex flex-col gap-1 p-1" aria-live="off" role="status" aria-label={label}>
       {[0, 1, 2, 3].map((i) => (

@@ -223,12 +223,8 @@ async def test_query_param_participates_in_cache_key_for_symbol_search(
     wrapped = _CountingStubAdapter()
     adapter = _caching_adapter(wrapped, fake_redis)
     sym = Symbol(id="", market=Market.US)
-    await adapter.fetch(
-        Capability.SYMBOL_SEARCH, sym, tls_policy=TLSPolicy.STRICT, query="AAPL"
-    )
-    await adapter.fetch(
-        Capability.SYMBOL_SEARCH, sym, tls_policy=TLSPolicy.STRICT, query="2330"
-    )
+    await adapter.fetch(Capability.SYMBOL_SEARCH, sym, tls_policy=TLSPolicy.STRICT, query="AAPL")
+    await adapter.fetch(Capability.SYMBOL_SEARCH, sym, tls_policy=TLSPolicy.STRICT, query="2330")
     assert wrapped.calls == 2  # different queries never collide on one cache key
 
 
