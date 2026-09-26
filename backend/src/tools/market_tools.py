@@ -900,14 +900,14 @@ def _industry_by_symbol_for(store: ParquetStore, market: str) -> dict[str, str]:
         if roster_date is None:
             return {}
         raw = store.read_partition(US_SECTOR_CLASS_DATASET, market, roster_date)
-        rows = _rows_from_store(SectorClassification, raw)
-        return {row.symbol: row.sector for row in rows if row.sector}
+        sector_rows = _rows_from_store(SectorClassification, raw)
+        return {row.symbol: row.sector for row in sector_rows if row.sector}
     roster_date = _latest_dataset_date(store, STOCK_INFO_JOB.dataset, market)
     if roster_date is None:
         return {}
     raw = store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
-    rows = _rows_from_store(StockInfoRow, raw)
-    return {row.symbol: row.industry_category for row in rows if row.industry_category}
+    stock_info_rows = _rows_from_store(StockInfoRow, raw)
+    return {row.symbol: row.industry_category for row in stock_info_rows if row.industry_category}
 
 
 def _names_by_symbol_for(store: ParquetStore, market: str) -> dict[str, str]:
