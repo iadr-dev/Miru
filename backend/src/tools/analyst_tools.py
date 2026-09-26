@@ -27,6 +27,7 @@ from schemas.capabilities import (
     EconomicCalendarRow,
     EsgScore,
     FundHoldingRow,
+    FundProfileRow,
     FundSectorWeightingRow,
     IndustryOverviewCompanyRow,
     InsiderActivityRow,
@@ -381,6 +382,41 @@ class GetFundHoldingsTool(BaseTool):
             health_status=result.health.status,
             holdings=holdings,
             sector_weightings=weightings,
+        )
+
+
+class GetFundProfileOutput(_RowsOutput):
+    profile: FundProfileRow | None = None
+
+
+class GetFundProfileTool(BaseTool):
+    """`get_fund_profile` — wraps `Capability.FUND_PROFILE` (AUM/category/issuer/YTD-return/
+    distribution-yield/inception-date for one non-TW ETF/mutual fund, from yfinance's own
+    `.info`). The 總覽 tab's fund-equivalent of `get_company_profile` — `profile=None` (not an
+    error) means this symbol isn't a fund, or yfinance carries none of these fields for it."""
+
+    name = "get_fund_profile"
+    description = "Get fund-level identity/summary-return fields for one non-TW ETF/mutual fund."
+    input_model: type[BaseModel] = NonTwSymbolInput
+    output_model: type[BaseModel] = GetFundProfileOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "fund_profile"
+
+    def __init__(self, router: DataAccessRouter) -> None:
+        self._router = router
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(NonTwSymbolInput, args)
+        result = await self._router.fetch(
+            Capability.FUND_PROFILE, typed.to_symbol(), tls_policy=ctx.tls_policy
+        )
+        raw = result.payload.get("profile")
+        profile = FundProfileRow.model_validate(raw) if isinstance(raw, dict) else None
+        return GetFundProfileOutput(
+            source_id=result.source_id,
+            currentness_caveat=result.currentness_caveat,
+            health_status=result.health.status,
+            profile=profile,
         )
 
 
@@ -852,6 +888,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetAnalystConsensusTool(router), False),
         (GetEsgScoreTool(router), False),
         (GetFundHoldingsTool(router), False),
+        (GetFundProfileTool(router), False),
         (GetSymbolSearchTool(router), False),
         (GetSymbolLookupTool(router), False),
         (GetCalendarEventsFeedTool(router), False),
@@ -873,6 +910,8 @@ __all__ = [
     "GetEsgScoreTool",
     "GetFundHoldingsOutput",
     "GetFundHoldingsTool",
+    "GetFundProfileOutput",
+    "GetFundProfileTool",
     "GetIndustryOverviewInput",
     "GetIndustryOverviewOutput",
     "GetIndustryOverviewTool",

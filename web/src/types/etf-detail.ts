@@ -242,3 +242,30 @@ export const fundHoldingsResponseSchema = z.object({
   sector_weightings: z.array(fundSectorWeightingRowSchema).default([]),
 });
 export type FundHoldingsResponse = z.infer<typeof fundHoldingsResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /funds/{symbol}/profile — get_fund_profile (public, non-TW). The 總覽 tab's
+// fund-equivalent of `get_company_profile` — AUM/category/issuer/YTD-return/distribution-yield/
+// inception-date, fields a fund has that a plain equity's ProfileCard never asked for.
+// ---------------------------------------------------------------------------
+
+export const fundProfileSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  as_of: z.string(),
+  total_assets: z.number().nullable().optional(),
+  category: z.string().nullable().optional(),
+  fund_family: z.string().nullable().optional(),
+  ytd_return_pct: z.number().nullable().optional(),
+  distribution_yield_pct: z.number().nullable().optional(),
+  inception_date: z.string().nullable().optional(),
+});
+export type FundProfile = z.infer<typeof fundProfileSchema>;
+
+export const fundProfileResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  profile: fundProfileSchema.nullable().optional(),
+});
+export type FundProfileResponse = z.infer<typeof fundProfileResponseSchema>;

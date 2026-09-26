@@ -40,6 +40,7 @@ from .analyst import (
     _analyst_consensus,
     _esg,
     _etf_aum,
+    _fund_profile,
     _market_value,
     _profile,
     _sector_class,
@@ -230,6 +231,7 @@ class YFinanceAdapter:
             Capability.INSTITUTIONAL_HOLDERS: lambda: _institutional_holders(sym, frames),
             Capability.INSIDER_ACTIVITY: lambda: _insider_activity(sym, frames),
             Capability.FUND_HOLDINGS: lambda: _fund_holdings(sym, frames),
+            Capability.FUND_PROFILE: lambda: _fund_profile(sym, info),
             Capability.SEC_FILINGS: lambda: _sec_filings(sym, frames),
         }
         return handlers[cap]()

@@ -101,6 +101,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_institutional_holders": "institutional_holders",
     "get_insider_activity": "insider_activity",
     "get_fund_holdings": "fund_holdings",
+    "get_fund_profile": "fund_profile",
     "get_sector_overview": "sector_overview",
     "get_industry_overview": "industry_overview",
     "get_stock_peers": "stock_peers",

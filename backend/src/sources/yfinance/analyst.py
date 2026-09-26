@@ -13,7 +13,7 @@ upgrades/downgrades history that day), never withheld market-wide.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any, cast
 
 import pandas as pd
@@ -286,11 +286,72 @@ def _profile(sym: Symbol, info: dict[str, Any]) -> SourceResult:
     )
 
 
+def _epoch_seconds_to_date(value: object) -> date | None:
+    """yfinance's `fundInceptionDate` is raw Unix epoch SECONDS (confirmed live: `921024000` ->
+    1999-03-10) — `pd.Timestamp(value)` with no `unit=` argument (this module's usual `_as_date`
+    helper) misreads a bare int as epoch NANOSECONDS, silently producing a bogus 1970 date. This
+    field needs its own explicit `unit="s"` conversion rather than reusing `_as_date`."""
+    seconds = _as_float(value)
+    if seconds is None:
+        return None
+    return datetime.fromtimestamp(seconds, tz=UTC).date()
+
+
+def _fund_profile(sym: Symbol, info: dict[str, Any]) -> SourceResult:
+    """`fund_profile` — the ETF/mutual-fund equivalent of `_profile`'s company-identity fields,
+    for the 總覽 tab's fund-info card. A fund has no chairman/EPS/capital (`_profile`/
+    `_valuation_ratios` legitimately return those as `None` for a fund symbol), but yfinance's
+    `.info` DOES carry real fund-specific fields nothing surfaces today: AUM, category, issuer,
+    YTD return, distribution yield, inception date (confirmed live against QQQ). `totalAssets`
+    is preferred over `netAssets` when both are present — same field `_etf_aum` already reads,
+    kept consistent here rather than introducing a second AUM source of truth."""
+    total_assets = _as_float(_get(info, "totalAssets")) or _as_float(_get(info, "netAssets"))
+    category = _as_str(_get(info, "category"))
+    fund_family = _as_str(_get(info, "fundFamily"))
+    ytd_return = _as_float(_get(info, "ytdReturn"))
+    distribution_yield = _as_float(_get(info, "yield"))
+    inception_date = _epoch_seconds_to_date(_get(info, "fundInceptionDate"))
+    if (
+        total_assets is None
+        and category is None
+        and fund_family is None
+        and ytd_return is None
+        and distribution_yield is None
+        and inception_date is None
+    ):
+        return _result(
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.STALE, detail="symbol is not a fund/ETF (no fund profile)"
+            ),
+        )
+    profile = {
+        "symbol": sym.id,
+        "market": sym.market.value,
+        "as_of": date.today().isoformat(),
+        "total_assets": total_assets,
+        "category": category,
+        "fund_family": fund_family,
+        # `ytdReturn` is already percent-scaled in yfinance's own `.info` convention (confirmed
+        # live: QQQ's `ytdReturn=16.99...` reads as 16.99%, not 1699%) — never multiplied by
+        # 100. `yield` is the opposite: a 0-1 fraction (confirmed live: QQQ's `yield=0.0042`
+        # means 0.42%), so it IS scaled by 100 below, same convention
+        # `FundSectorWeightingRow.weight` uses.
+        "ytd_return_pct": ytd_return,
+        "distribution_yield_pct": (distribution_yield * 100) if distribution_yield else None,
+        "inception_date": inception_date.isoformat() if inception_date else None,
+    }
+    return _result(
+        payload={"profile": profile}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
+    )
+
+
 __all__ = [
     "_analyst_consensus",
     "_analyst_consensus_extended",
     "_esg",
     "_etf_aum",
+    "_fund_profile",
     "_market_value",
     "_profile",
     "_sector_class",

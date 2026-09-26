@@ -2117,6 +2117,15 @@
       },
       "expandTo": "展開全部 {count} 筆",
       "collapse": "收合"
+    },
+    "fundProfile": {
+      "title": "基金資訊",
+      "aum": "資產規模",
+      "ytdReturn": "今年以來報酬",
+      "distributionYield": "配息率",
+      "category": "類別",
+      "fundFamily": "發行機構",
+      "inceptionDate": "成立日期"
     }
   }
 }

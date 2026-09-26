@@ -173,6 +173,7 @@ class Capability(StrEnum):
     ACTIVE_ETF_HOLDING_CHANGE = "active_etf_holding_change"
     ACTIVE_ETF_INFO = "active_etf_info"
     FUND_HOLDINGS = "fund_holdings"
+    FUND_PROFILE = "fund_profile"
 
     # --- Convertible bonds (CB) ---
     CB_DAILY = "cb_daily"
