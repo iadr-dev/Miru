@@ -79,7 +79,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        <RainbowBorderCard>
+        <RainbowBorderCard className="flex h-full">
           <QueryState query={breadthQuery} skeleton={<CardSkeleton height={560} />}>
             {(breadth) =>
               isUs ? (

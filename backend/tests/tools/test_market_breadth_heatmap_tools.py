@@ -18,6 +18,8 @@ from tools.base import ToolContext
 from tools.market_tools import (
     GetAdvanceDeclineInput,
     GetAdvanceDeclineTool,
+    GetPriceHistoryInput,
+    GetPriceHistoryTool,
     GetPriceMomentumInput,
     GetPriceMomentumTool,
     GetSectorConstituentsInput,
@@ -26,6 +28,8 @@ from tools.market_tools import (
     GetSectorHeatmapTool,
     GetStockHeatmapInput,
     GetStockHeatmapTool,
+    GetSymbolInfoInput,
+    GetSymbolInfoTool,
 )
 
 _TODAY = date(2025, 6, 2)
@@ -61,8 +65,24 @@ def _write_tw_fixture(store: ParquetStore) -> None:
         "TW",
         _PRIOR,
         [
-            {"symbol": "2330", "trade_date": _PRIOR.isoformat(), "close": 100.0, "volume": 1000},
-            {"symbol": "2454", "trade_date": _PRIOR.isoformat(), "close": 50.0, "volume": 500},
+            {
+                "symbol": "2330",
+                "trade_date": _PRIOR.isoformat(),
+                "open": 100.0,
+                "high": 100.0,
+                "low": 100.0,
+                "close": 100.0,
+                "volume": 1000,
+            },
+            {
+                "symbol": "2454",
+                "trade_date": _PRIOR.isoformat(),
+                "open": 50.0,
+                "high": 50.0,
+                "low": 50.0,
+                "close": 50.0,
+                "volume": 500,
+            },
         ],
     )
     store.write_partition(
@@ -70,8 +90,24 @@ def _write_tw_fixture(store: ParquetStore) -> None:
         "TW",
         _TODAY,
         [
-            {"symbol": "2330", "trade_date": _TODAY.isoformat(), "close": 110.0, "volume": 1200},
-            {"symbol": "2454", "trade_date": _TODAY.isoformat(), "close": 48.0, "volume": 600},
+            {
+                "symbol": "2330",
+                "trade_date": _TODAY.isoformat(),
+                "open": 110.0,
+                "high": 110.0,
+                "low": 110.0,
+                "close": 110.0,
+                "volume": 1200,
+            },
+            {
+                "symbol": "2454",
+                "trade_date": _TODAY.isoformat(),
+                "open": 48.0,
+                "high": 48.0,
+                "low": 48.0,
+                "close": 48.0,
+                "volume": 600,
+            },
         ],
     )
 
@@ -118,6 +154,9 @@ def _write_us_fixture(store: ParquetStore) -> None:
                 "symbol": "AAPL",
                 "market": "US",
                 "trade_date": _PRIOR.isoformat(),
+                "open": 200.0,
+                "high": 200.0,
+                "low": 200.0,
                 "close": 200.0,
                 "volume": 5000,
                 "turnover": None,
@@ -126,6 +165,9 @@ def _write_us_fixture(store: ParquetStore) -> None:
                 "symbol": "BRK-B",
                 "market": "US",
                 "trade_date": _PRIOR.isoformat(),
+                "open": 400.0,
+                "high": 400.0,
+                "low": 400.0,
                 "close": 400.0,
                 "volume": 2000,
                 "turnover": None,
@@ -141,6 +183,9 @@ def _write_us_fixture(store: ParquetStore) -> None:
                 "symbol": "AAPL",
                 "market": "US",
                 "trade_date": _TODAY.isoformat(),
+                "open": 220.0,
+                "high": 220.0,
+                "low": 220.0,
                 "close": 220.0,
                 "volume": 6000,
                 "turnover": None,
@@ -149,6 +194,9 @@ def _write_us_fixture(store: ParquetStore) -> None:
                 "symbol": "BRK-B",
                 "market": "US",
                 "trade_date": _TODAY.isoformat(),
+                "open": 380.0,
+                "high": 380.0,
+                "low": 380.0,
                 "close": 380.0,
                 "volume": 2500,
                 "turnover": None,
@@ -338,3 +386,90 @@ async def test_stock_heatmap_us_resolves_us_datasets(tmp_path: Path) -> None:
     assert by_symbol["AAPL"].stock_name == "Apple Inc."
     assert by_symbol["AAPL"].industry == "Technology"
     assert by_symbol["BRK-B"].stock_name == "Berkshire Hathaway Inc."
+
+
+# ---------------------------------------------------------------------------
+# get_symbol_info — backs `useSymbolQuotes`' name/industry column for the AI leaderboard and
+# 漲跌幅排行 momentum cards; without a US branch here those cards' 價格/走勢 columns render "—"
+# for every US row even though the ranking itself resolves real US data.
+# ---------------------------------------------------------------------------
+
+
+async def test_symbol_info_tw_unchanged(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_tw_fixture(store)
+    tool = GetSymbolInfoTool(store)
+
+    output = await tool.run(
+        GetSymbolInfoInput(symbols=("2330", "2454"), market=Market.TW), ToolContext()
+    )
+
+    assert output.data_available is True
+    by_symbol = {row.symbol: row for row in output.rows}
+    assert by_symbol["2330"].name == "台積電"
+    assert by_symbol["2330"].industry_category == "半導體業"
+
+
+async def test_symbol_info_us_resolves_us_universe_and_sector(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_us_fixture(store)
+    tool = GetSymbolInfoTool(store)
+
+    output = await tool.run(
+        GetSymbolInfoInput(symbols=("AAPL", "BRK-B"), market=Market.US), ToolContext()
+    )
+
+    assert output.data_available is True
+    by_symbol = {row.symbol: row for row in output.rows}
+    assert by_symbol["AAPL"].name == "Apple Inc."
+    assert by_symbol["AAPL"].industry_category == "Technology"
+    assert by_symbol["BRK-B"].name == "Berkshire Hathaway Inc."
+    assert by_symbol["BRK-B"].security_type == "equity"
+
+
+async def test_symbol_info_us_degrades_honestly_with_no_ingested_data(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    tool = GetSymbolInfoTool(store)
+
+    output = await tool.run(
+        GetSymbolInfoInput(symbols=("AAPL",), market=Market.US), ToolContext()
+    )
+
+    assert output.data_available is False
+    assert output.unavailable_reason is not None
+
+
+# ---------------------------------------------------------------------------
+# get_price_history — backs `useSymbolQuotes`' price/chg%/sparkline columns.
+# ---------------------------------------------------------------------------
+
+
+async def test_price_history_tw_unchanged(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_tw_fixture(store)
+    tool = GetPriceHistoryTool(store)
+
+    output = await tool.run(
+        GetPriceHistoryInput(symbols=("2330",), market=Market.TW, days=2), ToolContext()
+    )
+
+    assert output.data_available is True
+    closes = [row.close for row in output.rows if row.symbol == "2330"]
+    assert closes == [100.0, 110.0]
+
+
+async def test_price_history_us_resolves_us_price_eod_dataset(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_us_fixture(store)
+    tool = GetPriceHistoryTool(store)
+
+    output = await tool.run(
+        GetPriceHistoryInput(symbols=("AAPL", "BRK-B"), market=Market.US, days=2), ToolContext()
+    )
+
+    assert output.data_available is True
+    closes_by_symbol: dict[str, list[float]] = {}
+    for row in output.rows:
+        closes_by_symbol.setdefault(row.symbol, []).append(row.close)
+    assert closes_by_symbol["AAPL"] == [200.0, 220.0]
+    assert closes_by_symbol["BRK-B"] == [400.0, 380.0]

@@ -5552,6 +5552,9 @@ class GetSymbolInfoTool(BaseTool):
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetSymbolInfoInput, args)
         market = typed.market.value
+        wanted = set(typed.symbols)
+        if market == Market.US.value:
+            return self._run_us(market, wanted)
         roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
         if roster_date is None:
             return GetSymbolInfoOutput(
@@ -5561,8 +5564,36 @@ class GetSymbolInfoTool(BaseTool):
             )
         raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
         roster = _rows_from_store(StockInfoRow, raw_roster)
-        wanted = set(typed.symbols)
         rows = tuple(row for row in roster if row.symbol in wanted)
+        return GetSymbolInfoOutput(market=market, roster_date=roster_date, rows=rows)
+
+    def _run_us(self, market: str, wanted: set[str]) -> GetSymbolInfoOutput:
+        """US has no `StockInfoRow`-shaped roster — assembles the equivalent from
+        `us_symbol_universe` (name) joined with `us_sector_class` (industry, via
+        `_industry_by_symbol_for`'s broad `sector` grouping); `security_type` is always
+        "equity" since the US universe is screener-discovered common stock, never a warrant
+        roster. `roster_date` is `_names_by_symbol_for`'s own underlying partition date."""
+        roster_date = _latest_dataset_date(self._store, US_SYMBOL_UNIVERSE_DATASET, market)
+        if roster_date is None:
+            return GetSymbolInfoOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, None),
+            )
+        names_by_symbol = _names_by_symbol_for(self._store, market)
+        industry_by_symbol = _industry_by_symbol_for(self._store, market)
+        rows = tuple(
+            StockInfoRow(
+                symbol=symbol,
+                market=Market.US,
+                name=name,
+                industry_category=industry_by_symbol.get(symbol, ""),
+                security_type="equity",
+                as_of=roster_date,
+            )
+            for symbol, name in names_by_symbol.items()
+            if symbol in wanted
+        )
         return GetSymbolInfoOutput(market=market, roster_date=roster_date, rows=rows)
 
 
@@ -5730,7 +5761,8 @@ class GetPriceHistoryTool(BaseTool):
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetPriceHistoryInput, args)
         market = typed.market.value
-        latest = _latest_dataset_date(self._store, PRICE_EOD_JOB.dataset, market)
+        price_eod_dataset = _price_eod_dataset_for(market)
+        latest = _latest_dataset_date(self._store, price_eod_dataset, market)
         if latest is None:
             return GetPriceHistoryOutput(
                 market=market,
@@ -5744,9 +5776,7 @@ class GetPriceHistoryTool(BaseTool):
         # than validating every symbol in the market for this window and discarding almost all
         # of it in Python — this tool's own contract caps `symbols` at 20, so the filtered read
         # is at most 20 symbols x `days` rows, not the whole market's.
-        raw_rows = self._store.read_range(
-            PRICE_EOD_JOB.dataset, market, dates, symbols=typed.symbols
-        )
+        raw_rows = self._store.read_range(price_eod_dataset, market, dates, symbols=typed.symbols)
         rows = tuple(
             row for row in _rows_from_store(EODBar, raw_rows) if row.market.value == market
         )

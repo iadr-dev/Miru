@@ -98,11 +98,11 @@ export function BreadthOrderBookCard({
     negativeContributors.length > COLLAPSED_CONTRIBUTOR_COUNT;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex h-full w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       {breadth.data_available ? (
-        <>
+        <div className={cn("flex flex-col", indexContribution === null && "flex-1")}>
           {market === "US" ? (
             <p className="mb-2 text-[11px] text-[var(--text-muted)]">{t("usCoverageCaveat")}</p>
           ) : null}
@@ -117,7 +117,10 @@ export function BreadthOrderBookCard({
               {t("unchanged")} {formatNumber(breadth.unchanged_count, locale)}
             </span>
           </div>
-          <div style={{ width: "100%", height: 160 }}>
+          <div
+            className={cn(indexContribution === null && "flex-1")}
+            style={{ width: "100%", height: indexContribution === null ? undefined : 160 }}
+          >
             <ResponsiveContainer>
               <BarChart data={bucketData} margin={{ left: 0, right: 8 }}>
                 <CartesianGrid stroke="var(--grid)" vertical={false} />
@@ -164,7 +167,7 @@ export function BreadthOrderBookCard({
             </ResponsiveContainer>
           </div>
           <AdvanceDeclineSummaryBar breadth={breadth} locale={locale} />
-        </>
+        </div>
       ) : (
         <p className="text-[13px] text-[var(--text-muted)]">{t("breadthUnavailable")}</p>
       )}
