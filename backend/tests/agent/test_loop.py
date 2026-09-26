@@ -48,6 +48,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_price_momentum": "price_momentum",
     "get_holder_accumulation": "holder_accumulation",
     "get_symbol_info": "symbol_info",
+    "get_symbol_directory_search": "symbol_search",
     "get_price_history": "price_history",
     "get_etf_list": "etf_list",
     "get_dividend_calendar": "dividend_calendar",

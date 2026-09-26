@@ -2259,6 +2259,21 @@ class SymbolLookupResultRow(BaseModel):
     short_name: str | None = None
 
 
+class SymbolDirectorySearchRow(BaseModel):
+    """`symbol_directory_search` — one ranked match from the ingested `TaiwanStockInfo` roster
+    (`StockInfoRow`) for a free-text symbol/name query. `instrument_kind` is derived from the
+    symbol's code shape (`analytics.symbol_universe.classify_symbol_type`), collapsing
+    leveraged/inverse ETFs into `"etf"` — this is a UI-facing search-result row, not the roster
+    row itself, so it carries only what a type-ahead result needs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    name: str
+    instrument_kind: str  # "stock" | "etf"
+    industry_category: str | None = None
+
+
 class EarningsCalendarRow(BaseModel):
     """`earnings_calendar` — one upcoming/recent earnings-report event row (`yfinance.Calendars`
     market-wide feed, not scoped to one symbol's own `.calendar`)."""

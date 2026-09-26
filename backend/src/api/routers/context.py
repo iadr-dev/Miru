@@ -29,7 +29,9 @@ _CANONICAL = "canonical"
 _CONVERSATION = "conversation"
 _QUOTE_STREAM_FEATURE = "live_quote_stream"
 # Non-TW markets yfinance's free-text symbol search actually serves (the backing tool refuses TW).
-_SEARCH_SERVED_MARKETS = frozenset({Market.US, Market.GB, Market.JP, Market.EU})
+_YFINANCE_SEARCH_MARKETS = frozenset({Market.US, Market.GB, Market.JP, Market.EU})
+# TW is served by a distinct tool (the ingested roster scan) — see `symbol_search` below.
+_SEARCH_SERVED_MARKETS = _YFINANCE_SEARCH_MARKETS | {Market.TW}
 
 
 def _context(
@@ -89,9 +91,10 @@ async def symbol_search(
 ) -> dict[str, object]:
     """Symbol type-ahead over the free-text search capability.
 
-    NOTE on coverage: the only built symbol-search tool (`get_symbol_search`, yfinance) serves
-    non-TW markets (US/GB/JP/EU) — there is no ingested TaiwanStockInfo/ETF symbol-universe
-    search service backing a TW/ETF type-ahead today, so `market=TW` returns a clear
+    Two distinct backing tools, never merged into one call: `market=TW` dispatches
+    `get_symbol_directory_search` (a scan over the ingested `TaiwanStockInfo` roster — stocks and
+    ETFs together, warrants excluded); US/GB/JP/EU dispatch `get_symbol_search` (yfinance's live
+    free-text search, which itself refuses TW). Any other market still gets a clear
     `not_supported` rather than a naive whole-roster scan masquerading as a ranked type-ahead.
     """
     if market not in _SEARCH_SERVED_MARKETS:
@@ -99,10 +102,14 @@ async def symbol_search(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             code="not_supported",
             message=(
-                "Symbol type-ahead is only backed for US/GB/JP/EU today; a TW/ETF "
-                "symbol-universe search service is not yet built."
+                "Symbol type-ahead is only backed for TW/US/GB/JP/EU today; this market has no "
+                "search service built."
             ),
             retryable=False,
+        )
+    if market is Market.TW:
+        return await _dispatch(
+            state, "get_symbol_directory_search", {"query": q, "market": market.value}, ctx
         )
     return await _dispatch(state, "get_symbol_search", {"query": q, "market": market.value}, ctx)
 

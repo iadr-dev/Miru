@@ -501,7 +501,13 @@
       "placeholder": "Search stocks — code / name",
       "hint": "⌘K",
       "label": "Search stocks",
-      "comingSoon": "Stock search is coming soon."
+      "inputPlaceholder": "Search companies or ETFs by code or name",
+      "groupCompany": "Companies",
+      "groupEtf": "ETFs",
+      "loading": "Searching…",
+      "empty": "No matching companies or ETFs",
+      "error": "Search failed. Please retry.",
+      "retry": "Retry"
     },
     "notifications": { "label": "Notifications", "empty": "No notifications yet" },
     "tier": { "free": "Free", "premium": "Premium", "pro": "Pro" },

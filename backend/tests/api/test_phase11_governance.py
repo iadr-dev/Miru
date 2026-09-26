@@ -60,9 +60,22 @@ def test_institutional_ranking_public_anonymous(client: TestClient) -> None:
 
 
 @pytest.mark.governance
-def test_search_tw_not_supported(client: TestClient) -> None:
-    # No TW symbol-universe search backing exists — the route says so rather than faking it.
+def test_search_tw_now_backed_by_the_ingested_roster(client: TestClient) -> None:
+    # TW search is now real (`get_symbol_directory_search` over the ingested roster) — no
+    # ingested partition in this fixture, so it degrades via `data_available: false` (the
+    # honest "no data yet" shape every other roster-reading tool uses) rather than a fabricated
+    # row or the old blanket `not_supported`.
     resp = client.get("/api/v1/search", params={"q": "台積", "market": "TW"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data_available"] is False
+    assert body["rows"] == []
+
+
+@pytest.mark.governance
+def test_search_unbuilt_market_still_not_supported(client: TestClient) -> None:
+    # HK has no search tool built for it at all — the route says so rather than faking it.
+    resp = client.get("/api/v1/search", params={"q": "x", "market": "HK"})
     assert resp.status_code == 501
     assert resp.json()["code"] == "not_supported"
 

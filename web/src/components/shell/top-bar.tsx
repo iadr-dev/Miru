@@ -9,8 +9,9 @@ import {
 } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { MarketTabSwitcher } from "@/components/market/market-tabs";
+import { SearchPalette } from "@/components/search/search-palette";
 import { LanguageSwitcher } from "@/components/shell/language-switcher";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { usePathname, useRouter } from "@/i18n/navigation";
@@ -73,36 +74,48 @@ export function TopBar({
   );
 }
 
-/** The 股票搜尋 command-palette affordance. Visual-only: it does not search anything yet (stock
- * search depends on Stock/Screener surfaces not built this pass). Clearly inert — clicking shows a
- * "coming soon" hint rather than faking results. */
+/** The 股票搜尋 command-palette trigger. Opens `SearchPalette` (公司/ETF, TW roster + US
+ * yfinance search) on click or on the global Cmd/Ctrl+K shortcut. */
 function SearchPlaceholder(): ReactNode {
   const t = useTranslations("shell.search");
-  const [hint, setHint] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   return (
-    <button
-      type="button"
-      onClick={() => setHint(true)}
-      onBlur={() => setHint(false)}
-      aria-label={t("label")}
-      className={cn(
-        "flex min-h-11 max-w-md flex-1 items-center gap-2 rounded-[var(--radius-input)] px-3",
-        "border border-[var(--border)] bg-[var(--surface)] text-left text-[var(--text-muted)] text-sm",
-        "transition-colors hover:border-[var(--text-muted)]",
-      )}
-    >
-      <MagnifyingGlassIcon size={16} weight="regular" aria-hidden />
-      <span className="flex-1 truncate">{hint ? t("comingSoon") : t("placeholder")}</span>
-      <kbd
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={t("label")}
         className={cn(
-          "hidden rounded-[6px] border border-[var(--border)] bg-[var(--surface-2)] px-1.5",
-          "py-0.5 font-num text-[11px] text-[var(--text-muted)] sm:inline",
+          "flex min-h-11 max-w-md flex-1 items-center gap-2 rounded-[var(--radius-input)] px-3",
+          "border border-[var(--border)] bg-[var(--surface)] text-left text-[var(--text-muted)] text-sm",
+          "transition-colors hover:border-[var(--text-muted)]",
         )}
       >
-        {t("hint")}
-      </kbd>
-    </button>
+        <MagnifyingGlassIcon size={16} weight="regular" aria-hidden />
+        <span className="flex-1 truncate">{t("placeholder")}</span>
+        <kbd
+          className={cn(
+            "hidden rounded-[6px] border border-[var(--border)] bg-[var(--surface-2)] px-1.5",
+            "py-0.5 font-num text-[11px] text-[var(--text-muted)] sm:inline",
+          )}
+        >
+          {t("hint")}
+        </kbd>
+      </button>
+      <SearchPalette open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }
 

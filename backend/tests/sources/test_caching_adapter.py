@@ -213,6 +213,25 @@ async def test_date_param_participates_in_cache_key(fake_redis: Redis) -> None:
     assert wrapped.calls == 2  # different dates never collide on one cache key
 
 
+async def test_query_param_participates_in_cache_key_for_symbol_search(
+    fake_redis: Redis,
+) -> None:
+    """Regression guard: `SYMBOL_SEARCH`/`SYMBOL_LOOKUP` are query-shaped, not symbol-shaped —
+    every call passes the same empty `Symbol(id="")`. Confirmed live: searching "2330" right
+    after "AAPL" returned AAPL's cached results because both calls collapsed onto one Redis key
+    without `query` in it."""
+    wrapped = _CountingStubAdapter()
+    adapter = _caching_adapter(wrapped, fake_redis)
+    sym = Symbol(id="", market=Market.US)
+    await adapter.fetch(
+        Capability.SYMBOL_SEARCH, sym, tls_policy=TLSPolicy.STRICT, query="AAPL"
+    )
+    await adapter.fetch(
+        Capability.SYMBOL_SEARCH, sym, tls_policy=TLSPolicy.STRICT, query="2330"
+    )
+    assert wrapped.calls == 2  # different queries never collide on one cache key
+
+
 async def test_different_markets_never_collide(fake_redis: Redis) -> None:
     wrapped = _CountingStubAdapter()
     adapter = _caching_adapter(wrapped, fake_redis)
