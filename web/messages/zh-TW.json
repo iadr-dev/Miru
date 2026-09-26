@@ -2095,6 +2095,28 @@
       "filings": "SEC文件",
       "newsEmpty": "尚無相關新聞。",
       "filingsEmpty": "尚無SEC文件。"
+    },
+    "etfTabs": {
+      "label": "美股ETF頁籤",
+      "overview": "總覽",
+      "holdings": "持股與產業",
+      "technical": "技術",
+      "newsFilings": "新聞公告",
+      "ai": "AI"
+    },
+    "fundHoldings": {
+      "title": "持股與產業",
+      "unavailable": "尚無此標的的持股或產業資料。",
+      "sectorTitle": "產業分布",
+      "holdingsTitle": "前十大持股",
+      "others": "其他",
+      "column": {
+        "rank": "排名",
+        "holding": "持股",
+        "weight": "權重"
+      },
+      "expandTo": "展開全部 {count} 筆",
+      "collapse": "收合"
     }
   }
 }
