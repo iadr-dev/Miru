@@ -208,3 +208,37 @@ export const activeEtfReportResponseSchema = z.union([
   maskedTeaserSchema,
 ]);
 export type ActiveEtfReportResponse = z.infer<typeof activeEtfReportResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// GET /funds/{symbol}/holdings — get_fund_holdings (public, non-TW).
+// Also doubles as the US-ETF-vs-stock signal on the stock-detail page: `classifySymbolType`
+// always returns "stock" for US (TW's code-shape rule doesn't apply — see
+// `lib/symbol-type.ts`), so whether this call resolves non-empty `holdings`/`sector_weightings`
+// is the only real signal a US symbol is a fund, not a plain equity.
+// ---------------------------------------------------------------------------
+
+export const fundHoldingRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  holding_symbol: z.string(),
+  holding_name: z.string(),
+  weight: z.number(),
+});
+export type FundHoldingRow = z.infer<typeof fundHoldingRowSchema>;
+
+export const fundSectorWeightingRowSchema = z.object({
+  symbol: z.string(),
+  market: z.string(),
+  sector: z.string(),
+  weight: z.number(),
+});
+export type FundSectorWeightingRow = z.infer<typeof fundSectorWeightingRowSchema>;
+
+export const fundHoldingsResponseSchema = z.object({
+  source_id: z.string(),
+  currentness_caveat: z.string(),
+  health_status: healthStatusSchema,
+  holdings: z.array(fundHoldingRowSchema).default([]),
+  sector_weightings: z.array(fundSectorWeightingRowSchema).default([]),
+});
+export type FundHoldingsResponse = z.infer<typeof fundHoldingsResponseSchema>;

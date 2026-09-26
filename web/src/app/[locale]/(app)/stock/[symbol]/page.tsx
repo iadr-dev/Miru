@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { EtfTabBar } from "@/components/etf/etf-tab-bar";
 import { AssetHeader } from "@/components/stock/asset-header";
 import { StockTabBar } from "@/components/stock/stock-tab-bar";
-import { UsStockTabBar } from "@/components/us-stock/us-stock-tab-bar";
+import { UsDetailTabRouter } from "@/components/us-stock/us-detail-tab-router";
 import { classifySymbolType, isEtfSymbolType } from "@/lib/symbol-type";
 import type { Market } from "@/types/settings";
 
@@ -11,11 +11,14 @@ const DEFAULT_MARKET: Market = "TW";
 
 /** The stock/ETF-detail page (`/stock/{symbol}`, `docs/web/stock-detail.md`) — one route for
  * both asset kinds (every existing symbol link, including `etf-list-table.tsx`'s, already points
- * here via `SymbolLink`). `classifySymbolType` is a pure code-shape check (no fetch), so this
+ * here via `SymbolLink`). `classifySymbolType` is a pure code-shape check (no fetch), so TW
  * branches synchronously between `StockTabBar` (stock) and `EtfTabBar` (etf/etf_leveraged/
- * etf_inverse) without adding latency. `market` defaults to TW (this repo's only fully-live
- * market for the stock-detail tools) and can be overridden via `?market=US`, same pattern the
- * `/market` page's own `DEFAULT_MARKET` establishes. */
+ * etf_inverse) without adding latency. US has no such code-shape rule (`classifySymbolType`
+ * always returns `"stock"` for US — see its own docstring), so `UsDetailTabRouter` picks
+ * `UsStockTabBar` vs `UsEtfTabBar` client-side once it resolves whether the symbol is a fund.
+ * `market` defaults to TW (this repo's only fully-live market for the stock-detail tools) and
+ * can be overridden via `?market=US`, same pattern the `/market` page's own `DEFAULT_MARKET`
+ * establishes. */
 export default async function StockDetailPage({
   params,
   searchParams,
@@ -33,7 +36,7 @@ export default async function StockDetailPage({
     <div className="flex min-h-[100dvh] flex-col">
       <AssetHeader symbol={symbol} market={market} symbolType={symbolType} />
       {market === "US" ? (
-        <UsStockTabBar symbol={symbol} market={market} />
+        <UsDetailTabRouter symbol={symbol} market={market} />
       ) : isEtfSymbolType(symbolType) ? (
         <EtfTabBar symbol={symbol} market={market} symbolType={symbolType} />
       ) : (

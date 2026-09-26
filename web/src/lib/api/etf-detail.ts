@@ -20,7 +20,9 @@ import {
   etfThemeTagsResponseSchema,
   etfTrailingReturnsResponseSchema,
   type FundComparisonResponse,
+  type FundHoldingsResponse,
   fundComparisonResponseSchema,
+  fundHoldingsResponseSchema,
 } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 
@@ -121,4 +123,18 @@ export async function getActiveEtfReport(
   if (tradeDate) search.set("trade_date", tradeDate);
   const raw = await requestJson(`/market/active-etf-report?${search.toString()}`);
   return activeEtfReportResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 8. GET /funds/{symbol}/holdings (public, non-TW) — top holdings + sector weightings from
+//    yfinance's own FundsData; also the client-side signal for "is this US symbol a fund"
+//    (see the schema's own comment in types/etf-detail.ts).
+// ---------------------------------------------------------------------------
+
+export async function getFundHoldings(
+  symbol: string,
+  market: Market,
+): Promise<FundHoldingsResponse> {
+  const raw = await requestJson(`/funds/${encodeURIComponent(symbol)}/holdings?market=${market}`);
+  return fundHoldingsResponseSchema.parse(raw);
 }

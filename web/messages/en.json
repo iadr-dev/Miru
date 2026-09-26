@@ -2095,6 +2095,28 @@
       "filings": "SEC Filings",
       "newsEmpty": "No related news.",
       "filingsEmpty": "No SEC filings."
+    },
+    "etfTabs": {
+      "label": "US ETF tabs",
+      "overview": "Overview",
+      "holdings": "Holdings & Sectors",
+      "technical": "Technical",
+      "newsFilings": "News & Filings",
+      "ai": "AI"
+    },
+    "fundHoldings": {
+      "title": "Holdings & Sectors",
+      "unavailable": "No holdings or sector data available for this symbol.",
+      "sectorTitle": "Sector Breakdown",
+      "holdingsTitle": "Top 10 Holdings",
+      "others": "Others",
+      "column": {
+        "rank": "Rank",
+        "holding": "Holding",
+        "weight": "Weight"
+      },
+      "expandTo": "Expand all {count} rows",
+      "collapse": "Close"
     }
   }
 }
