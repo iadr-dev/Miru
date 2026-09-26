@@ -306,6 +306,29 @@
         "change": "Chg %",
         "unavailable": "No data for this selection."
       },
+      "rankings": {
+        "title": "Rankings",
+        "tabPriceMomentum": "Gainers/Losers",
+        "tabTrending": "Trending",
+        "tabMarketCap": "Market Cap",
+        "tabRevenue": "Revenue",
+        "tabRoe": "ROE",
+        "tabVolume": "Volume",
+        "columnName": "Name / Symbol",
+        "columnPrice": "Price",
+        "columnChangePct": "Chg %",
+        "columnChange": "Chg",
+        "columnVolume": "Volume",
+        "empty": "No data",
+        "unavailable": "No data for this selection.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
+      },
+      "earningsCalendar": {
+        "title": "Upcoming Earnings",
+        "empty": "No upcoming earnings data available.",
+        "expandTo": "Show all {count}"
+      },
       "holderAccumulation": {
         "title": "Large-Holder Accumulation",
         "threshold200": "200+",

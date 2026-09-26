@@ -5,10 +5,12 @@ import { type ReactNode, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { BreadthOrderBookCard } from "@/components/market/breadth-order-book-card";
 import { CardSkeleton } from "@/components/market/card-skeleton";
+import { EarningsCalendarPanel } from "@/components/market/earnings-calendar-panel";
 import { LeaderboardCard } from "@/components/market/leaderboard-card";
 import { MaterialAnnouncementFeedPanel } from "@/components/market/material-announcement-feed-panel";
 import { PriceMomentumCard } from "@/components/market/price-momentum-card";
 import { RainbowBorderCard } from "@/components/market/rainbow-border-card";
+import { RankingsCard } from "@/components/market/rankings-card";
 import {
   getAdvanceDecline,
   getIndexContribution,
@@ -101,23 +103,39 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
 
         <RainbowBorderCard className="flex h-full">
           <QueryState query={priceMomentumQuery} skeleton={<CardSkeleton height={430} />}>
-            {(data) => (
-              <PriceMomentumCard
-                gainers={data.top_gainers}
-                losers={data.top_losers}
-                direction={momentumDirection}
-                onDirectionChange={setMomentumDirection}
-                period={momentumPeriod}
-                onPeriodChange={setMomentumPeriod}
-                market={market}
-              />
-            )}
+            {(data) =>
+              isUs ? (
+                <RankingsCard
+                  gainers={data.top_gainers}
+                  losers={data.top_losers}
+                  direction={momentumDirection}
+                  onDirectionChange={setMomentumDirection}
+                  period={momentumPeriod}
+                  onPeriodChange={setMomentumPeriod}
+                  market={market}
+                />
+              ) : (
+                <PriceMomentumCard
+                  gainers={data.top_gainers}
+                  losers={data.top_losers}
+                  direction={momentumDirection}
+                  onDirectionChange={setMomentumDirection}
+                  period={momentumPeriod}
+                  onPeriodChange={setMomentumPeriod}
+                  market={market}
+                />
+              )
+            }
           </QueryState>
         </RainbowBorderCard>
 
-        {isUs ? null : (
-          // Fills the grid cell to 漲跌幅排行's right — the grid has 4 cards on a 2-col layout
-          // for TW, leaving that cell empty otherwise. No US equivalent (MOPS-only).
+        {isUs ? (
+          // Fills the grid cell 重大訊息 occupies for TW (MOPS-only, no US equivalent) with a
+          // real US-backed alternative instead of leaving it empty.
+          <RainbowBorderCard>
+            <EarningsCalendarPanel />
+          </RainbowBorderCard>
+        ) : (
           <RainbowBorderCard>
             <MaterialAnnouncementFeedPanel market={market} />
           </RainbowBorderCard>

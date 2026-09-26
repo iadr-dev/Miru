@@ -297,6 +297,21 @@ async def price_momentum(
     return await _dispatch(state, "get_price_momentum", args, ctx)
 
 
+@router.get("/market/us-rankings")
+async def us_rankings(
+    kind: Literal["trending", "market_cap", "revenue", "roe", "volume"] = Query("trending"),
+    top_n: int = Query(10, ge=1, le=50),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """US-only 排行榜 multi-tab ranking: `trending` (Yahoo's own most-active screen), `market_cap`/
+    `revenue`/`roe`/`volume` (a bounded Yahoo screener query sorted by the matching field). No
+    `market` param — this is inherently a US-region screener query (`get_us_market_rankings`'s
+    own docstring), unlike `/market/price-momentum`'s real `market` axis over our own ingested
+    data."""
+    return await _dispatch(state, "get_us_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
+
+
 @router.get("/market/holder-accumulation")
 async def holder_accumulation(
     market: Market = Query(Market.TW),

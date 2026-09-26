@@ -45,6 +45,95 @@ export function PriceMomentumCard({
   market: Market;
 }): ReactNode {
   const t = useTranslations("market.cards.priceMomentum");
+
+  return (
+    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
+        <PriceMomentumControls
+          direction={direction}
+          onDirectionChange={onDirectionChange}
+          period={period}
+          onPeriodChange={onPeriodChange}
+        />
+      </div>
+      <PriceMomentumBody gainers={gainers} losers={losers} direction={direction} market={market} />
+    </section>
+  );
+}
+
+/** The 日/週/月 + 漲幅/跌幅 toggle row — split out of `PriceMomentumCard` so `RankingsCard`'s own
+ * 漲跌幅 tab can render the identical controls inside its own tab-pill header instead of
+ * `PriceMomentumCard`'s title row. */
+export function PriceMomentumControls({
+  direction,
+  onDirectionChange,
+  period,
+  onPeriodChange,
+}: {
+  direction: LeaderboardDirection;
+  onDirectionChange: (direction: LeaderboardDirection) => void;
+  period: MomentumPeriod;
+  onPeriodChange: (period: MomentumPeriod) => void;
+}): ReactNode {
+  const t = useTranslations("market.cards.priceMomentum");
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <div className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
+        {PERIODS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onPeriodChange(p)}
+            aria-pressed={period === p}
+            className={cn(
+              "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
+              period === p
+                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]",
+            )}
+          >
+            {t(p === "day" ? "periodDay" : p === "week" ? "periodWeek" : "periodMonth")}
+          </button>
+        ))}
+      </div>
+      <div className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
+        {(["bullish", "bearish"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => onDirectionChange(d)}
+            aria-pressed={direction === d}
+            className={cn(
+              "rounded-[var(--radius-pill)] px-3.5 py-1 text-[12px] transition-colors",
+              direction === d
+                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]",
+            )}
+          >
+            {t(d === "bullish" ? "gainers" : "losers")}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The row list + "Show all"/expand-modal body, with no outer card shell or title — split out
+ * of `PriceMomentumCard` so `RankingsCard`'s 漲跌幅 tab can embed this directly under its own
+ * card shell instead of nesting a second `<section>` card inside a card. */
+export function PriceMomentumBody({
+  gainers,
+  losers,
+  direction,
+  market,
+}: {
+  gainers: readonly PriceMomentumRow[];
+  losers: readonly PriceMomentumRow[];
+  direction: LeaderboardDirection;
+  market: Market;
+}): ReactNode {
+  const t = useTranslations("market.cards.priceMomentum");
   const tLeaderboard = useTranslations("market.cards.leaderboard");
   const [expanded, setExpanded] = useState(false);
   const rows = direction === "bullish" ? gainers : losers;
@@ -58,49 +147,7 @@ export function PriceMomentumCard({
   const allQuoteBySymbol = new Map(allQuotes.map((q) => [q.code, q]));
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
-            {PERIODS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => onPeriodChange(p)}
-                aria-pressed={period === p}
-                className={cn(
-                  "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
-                  period === p
-                    ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text)]",
-                )}
-              >
-                {t(p === "day" ? "periodDay" : p === "week" ? "periodWeek" : "periodMonth")}
-              </button>
-            ))}
-          </div>
-          <div className="inline-flex gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
-            {(["bullish", "bearish"] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => onDirectionChange(d)}
-                aria-pressed={direction === d}
-                className={cn(
-                  "rounded-[var(--radius-pill)] px-3.5 py-1 text-[12px] transition-colors",
-                  direction === d
-                    ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
-                    : "text-[var(--text-muted)] hover:text-[var(--text)]",
-                )}
-              >
-                {t(d === "bullish" ? "gainers" : "losers")}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
+    <>
       {rows.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>
       ) : (
@@ -136,7 +183,7 @@ export function PriceMomentumCard({
       >
         <PriceMomentumRows rows={rows} quoteBySymbol={allQuoteBySymbol} market={market} />
       </ExpandModal>
-    </section>
+    </>
   );
 }
 

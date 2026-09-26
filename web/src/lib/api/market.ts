@@ -64,6 +64,7 @@ import {
   priceHistoryResponseSchema,
   priceMomentumResponseSchema,
   pttBoardResponseSchema,
+  type RankingKind,
   type ScoreLeaderboardData,
   type SectorConstituentsResponse,
   type SectorHeatmapPeriod,
@@ -82,6 +83,8 @@ import {
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
   tickSnapshotResponseSchema,
+  type UsMarketRankingsResponse,
+  usMarketRankingsResponseSchema,
 } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -327,6 +330,20 @@ export async function getPriceMomentum(
   if (asOf) search.set("as_of", asOf);
   const raw = await requestJson(`/market/price-momentum?${search.toString()}`);
   return priceMomentumResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 11b. GET /market/us-rankings (public, US-only 排行榜 — no `market` param, see the backend
+// tool's own docstring for why this is inherently a US-region screener query)
+// ---------------------------------------------------------------------------
+
+export async function getUsMarketRankings(
+  kind: RankingKind,
+  topN: number,
+): Promise<UsMarketRankingsResponse> {
+  const search = new URLSearchParams({ kind, top_n: String(topN) });
+  const raw = await requestJson(`/market/us-rankings?${search.toString()}`);
+  return usMarketRankingsResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
