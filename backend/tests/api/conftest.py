@@ -276,6 +276,26 @@ def client(settings: Settings, agent_answer: str) -> Iterator[TestClient]:
         yield test_client
 
 
+def client_with_symbol_store(
+    settings: Settings,
+    agent_answer: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> TestClient:
+    """The shared `_client_with_store` shape every Parquet-roster-reading route test rebuilds
+    per-file (`test_symbol_batch_routes.py`, `test_price_momentum_route.py`,
+    `test_stock_heatmap_route.py`, and others) — a real tool registry over a fresh, per-test
+    `PARQUET_ROOT`, so a test can `store.write_partition(...)` its own fixture rows and hit the
+    route for real rather than stubbing the tool layer. Factored out here (rather than left
+    duplicated at every call site) once the SonarCloud duplication gate flagged it."""
+    monkeypatch.setenv("PARQUET_ROOT", str(tmp_path))
+    test_client = build_test_client(settings, agent_answer=agent_answer)
+    stub_router, _ = make_router(Symbol(id="2330", market=Market.TW), {})
+    registry = build_default_tool_registry(stub_router)
+    object.__setattr__(test_client.app.state.app_state, "tool_registry", registry)
+    return test_client
+
+
 async def _insert_user(session_factory, *, tier: Tier) -> str:
     now = datetime.now(UTC)
     user_id = str(uuid.uuid4())

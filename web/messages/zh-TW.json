@@ -501,7 +501,13 @@
       "placeholder": "搜尋股票 代號／名稱",
       "hint": "⌘K",
       "label": "搜尋股票",
-      "comingSoon": "股票搜尋即將推出。"
+      "inputPlaceholder": "搜尋公司或 ETF 代號／名稱",
+      "groupCompany": "公司",
+      "groupEtf": "ETF",
+      "loading": "搜尋中…",
+      "empty": "沒有符合的公司或 ETF",
+      "error": "搜尋失敗，請重試。",
+      "retry": "重試"
     },
     "notifications": { "label": "通知", "empty": "目前沒有通知" },
     "tier": { "free": "免費", "premium": "Premium", "pro": "Pro" },

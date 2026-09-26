@@ -60,6 +60,7 @@ from schemas.capabilities import (
     MarketValueWeightRow,
     SectorClassification,
     StockInfoRow,
+    SymbolDirectorySearchRow,
     ValuationRatiosRow,
 )
 from schemas.enums import Capability, DataClass, Market
@@ -5498,6 +5499,118 @@ class GetSymbolInfoTool(BaseTool):
         return GetSymbolInfoOutput(market=market, roster_date=roster_date, rows=rows)
 
 
+_SYMBOL_DIRECTORY_SEARCH_MAX_LIMIT = 20
+
+
+class GetSymbolDirectorySearchInput(BaseModel):
+    """Free-text query against the same whole-market roster `GetSymbolInfoTool` reads — this is
+    the TW counterpart to `analyst_tools.GetSymbolSearchTool` (`get_symbol_search`, yfinance),
+    which explicitly refuses `market=TW` since it has no TW roster to search. `limit` is bounded
+    the same way `symbols` is bounded elsewhere in this module — a type-ahead call, not a
+    whole-roster dump."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    query: str = Field(min_length=1)
+    market: Market = Market.TW
+    limit: int = Field(default=_SYMBOL_DIRECTORY_SEARCH_MAX_LIMIT, ge=1, le=50)
+
+
+class GetSymbolDirectorySearchOutput(BaseModel):
+    """Same "absent, never fabricated" contract as `GetSymbolInfoOutput` — an empty `rows` means
+    no roster match, not a placeholder result."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    roster_date: date_ | None = None
+    data_available: bool = True
+    unavailable_reason: str | None = None
+    rows: tuple[SymbolDirectorySearchRow, ...] = Field(default_factory=tuple)
+
+
+class GetSymbolDirectorySearchTool(BaseTool):
+    """`get_symbol_directory_search` — free-text symbol/name type-ahead over the ingested
+    `STOCK_INFO_JOB` roster (stocks + ETFs together, warrants excluded via `is_scoreable_symbol`).
+    Ranks exact-prefix-on-symbol first, then prefix-on-name, then substring-anywhere — a plain
+    Python scan over ~2.7K rows per call, not a search index, since the whole roster already sits
+    in memory for the duration of one request and re-scanning it per keystroke is still
+    sub-millisecond at this size. Backs the TW leg of the `/search` route; the yfinance-backed
+    `get_symbol_search` remains the non-TW leg (see its own class docstring for why the two are
+    never merged into one call)."""
+
+    name = "get_symbol_directory_search"
+    description = "Search the TW stock/ETF roster by free-text company name or ticker (type-ahead)."
+    input_model: type[BaseModel] = GetSymbolDirectorySearchInput
+    output_model: type[BaseModel] = GetSymbolDirectorySearchOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "symbol_search"
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._store = store
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx  # no router fetch — reads the ingest-owned Parquet store directly
+        typed = parse_args(GetSymbolDirectorySearchInput, args)
+        market = typed.market.value
+        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
+        if roster_date is None:
+            return GetSymbolDirectorySearchOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, None),
+            )
+        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+        roster = _rows_from_store(StockInfoRow, raw_roster)
+        rows = _rank_symbol_directory_matches(roster, typed.query, typed.market, typed.limit)
+        return GetSymbolDirectorySearchOutput(market=market, roster_date=roster_date, rows=rows)
+
+
+def _rank_symbol_directory_matches(
+    roster: list[StockInfoRow], query: str, market: Market, limit: int
+) -> tuple[SymbolDirectorySearchRow, ...]:
+    """Rank tier: 0 = symbol starts with `query`, 1 = name starts with `query`, 2 = substring
+    match anywhere in symbol/name. Ties within a tier keep the roster's own order (alphabetical
+    by symbol, per `STOCK_INFO_JOB`), so results are stable across repeated calls. The roster
+    itself carries duplicate `(symbol, name)` rows under more than one `industry_category`
+    (confirmed live, e.g. `2330`/`2454` both list under 半導體業 and 電子工業) — the first-seen
+    row per symbol wins, since a search result is "this symbol", not "this symbol per category"."""
+    needle = query.strip().casefold()
+    if not needle:
+        return ()
+    ranked: list[tuple[int, SymbolDirectorySearchRow]] = []
+    seen_symbols: set[str] = set()
+    for row in roster:
+        if row.symbol in seen_symbols or not is_scoreable_symbol(row.symbol, market):
+            continue  # excludes warrants — same filter every other whole-roster reader applies
+        symbol_cf = row.symbol.casefold()
+        name_cf = row.name.casefold()
+        if symbol_cf.startswith(needle):
+            tier = 0
+        elif name_cf.startswith(needle):
+            tier = 1
+        elif needle in symbol_cf or needle in name_cf:
+            tier = 2
+        else:
+            continue
+        seen_symbols.add(row.symbol)
+        symbol_type = classify_symbol_type(row.symbol, market)
+        kind = "stock" if symbol_type is SymbolType.STOCK else "etf"
+        ranked.append(
+            (
+                tier,
+                SymbolDirectorySearchRow(
+                    symbol=row.symbol,
+                    name=row.name,
+                    instrument_kind=kind,
+                    industry_category=row.industry_category or None,
+                ),
+            )
+        )
+    ranked.sort(key=lambda pair: pair[0])
+    return tuple(row for _, row in ranked[:limit])
+
+
 class GetPriceHistoryInput(BaseModel):
     """A bounded symbol list (≤20) + market + a bounded trailing-day count — the sparkline/chg%
     read. `days` counts trading days, not calendar days, and is capped well short of a "give me
@@ -5609,6 +5722,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetSectorRotationTool(store), False),
         (GetSectorRotationRrgTool(router), False),
         (GetSymbolInfoTool(store), False),
+        (GetSymbolDirectorySearchTool(store), False),
         (GetPriceHistoryTool(store), False),
         (GetEtfListTool(store), False),
         (GetDividendCalendarTool(store), False),
@@ -5688,6 +5802,9 @@ __all__ = [
     "GetStockHeatmapInput",
     "GetStockHeatmapOutput",
     "GetStockHeatmapTool",
+    "GetSymbolDirectorySearchInput",
+    "GetSymbolDirectorySearchOutput",
+    "GetSymbolDirectorySearchTool",
     "GetSymbolInfoInput",
     "GetSymbolInfoOutput",
     "GetSymbolInfoTool",

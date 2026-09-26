@@ -53,6 +53,16 @@ logger = structlog.get_logger(__name__)
 # space per-caller; a cache miss on those simply falls through to the source, never wrong data.
 _DATE_PARAM_NAMES = ("date", "start_date", "end_date")
 
+# `SYMBOL_SEARCH`/`SYMBOL_LOOKUP` are query-shaped, not symbol-shaped — every call passes the
+# same empty `Symbol(id="")` (see `analyst_tools.py::SymbolSearchInput.to_symbol`), so without
+# `query` in the key every free-text search for a given market collapsed onto one Redis key:
+# confirmed live, "2330" returned "AAPL"'s cached results because a prior "AAPL" search had
+# already written that key. `query` must be folded in for these two capabilities specifically,
+# the same way `date` is folded in for date-ranged ones — a cache miss on an unlisted param
+# still falls through to the source, never wrong data, but these two are common enough (the
+# search palette's every keystroke) to need their own real key.
+_QUERY_PARAM_CAPABILITIES = frozenset({Capability.SYMBOL_SEARCH, Capability.SYMBOL_LOOKUP})
+
 # Single-flight poll cadence while waiting on another worker's in-flight fetch for the same key.
 _LOCK_POLL_INTERVAL_SECONDS = 0.05
 # Upper bound on how long a waiter polls before giving up and fetching itself — protects against
@@ -82,6 +92,10 @@ def _cache_key(
         value = params.get(name)
         if value is not None:
             parts.append(f"{name}={value}")
+    if cap in _QUERY_PARAM_CAPABILITIES:
+        query = params.get("query")
+        if query is not None:
+            parts.append(f"query={query}")
     return ":".join(parts)
 
 
