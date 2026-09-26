@@ -21,6 +21,7 @@ import type {
   IndexContributionResponse,
   IndexContributionRow,
 } from "@/types/market";
+import type { Market } from "@/types/settings";
 
 const BUCKET_ORDER = [
   "down_over_5pct",
@@ -61,13 +62,23 @@ const COLLAPSED_CONTRIBUTOR_COUNT = 5;
  * card rather than each getting their own (mirrors the reference design). The contribution half
  * is Sponsor-tier but opted into governance.md §4's row-preview exception
  * (`supports_row_preview=True`), so an unentitled caller gets real rows with individually
- * `locked` entries beyond `free_row_count` — never a whole-section masked teaser. */
+ * `locked` entries beyond `free_row_count` — never a whole-section masked teaser.
+ *
+ * `indexContribution={null}` (US today) hides that whole section — no real US index is
+ * ingested, only the SPY ETF proxy, so there is nothing honest to show there. `market="US"`
+ * additionally shows a coverage caveat under the breadth histogram: `us_price_eod`'s own
+ * universe is ~1,000-1,500 large/mid-cap symbols by construction
+ * (`ingest/us_universe.py`'s own docstring), never the whole exchange the way TW's breadth
+ * genuinely is — this label exists so 漲跌家數 for US is never mistaken for whole-market
+ * breadth. */
 export function BreadthOrderBookCard({
   breadth,
   indexContribution,
+  market,
 }: {
   breadth: AdvanceDeclineResponse;
-  indexContribution: IndexContributionResponse;
+  indexContribution: IndexContributionResponse | null;
+  market: Market;
 }): ReactNode {
   const t = useTranslations("market.cards.breadth");
   const tContribution = useTranslations("market.cards.indexContribution");
@@ -79,19 +90,22 @@ export function BreadthOrderBookCard({
     count: breadth.data_available ? breadth.buckets[key] : 0,
   }));
 
-  const positiveContributors = indexContribution.positive_contributors;
-  const negativeContributors = indexContribution.negative_contributors;
+  const positiveContributors = indexContribution?.positive_contributors ?? [];
+  const negativeContributors = indexContribution?.negative_contributors ?? [];
   const hasContributors = positiveContributors.length > 0 || negativeContributors.length > 0;
   const hasMoreContributors =
     positiveContributors.length > COLLAPSED_CONTRIBUTOR_COUNT ||
     negativeContributors.length > COLLAPSED_CONTRIBUTOR_COUNT;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex h-full w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       {breadth.data_available ? (
-        <>
+        <div className={cn("flex flex-col", indexContribution === null && "flex-1")}>
+          {market === "US" ? (
+            <p className="mb-2 text-[11px] text-[var(--text-muted)]">{t("usCoverageCaveat")}</p>
+          ) : null}
           <div className="mb-3 flex items-center gap-4 text-[13px]">
             <span style={{ color: "var(--up)" }}>
               {t("advancing")} {formatNumber(breadth.advancing_count, locale)}
@@ -103,7 +117,10 @@ export function BreadthOrderBookCard({
               {t("unchanged")} {formatNumber(breadth.unchanged_count, locale)}
             </span>
           </div>
-          <div style={{ width: "100%", height: 160 }}>
+          <div
+            className={cn(indexContribution === null && "flex-1")}
+            style={{ width: "100%", height: indexContribution === null ? undefined : 160 }}
+          >
             <ResponsiveContainer>
               <BarChart data={bucketData} margin={{ left: 0, right: 8 }}>
                 <CartesianGrid stroke="var(--grid)" vertical={false} />
@@ -150,73 +167,75 @@ export function BreadthOrderBookCard({
             </ResponsiveContainer>
           </div>
           <AdvanceDeclineSummaryBar breadth={breadth} locale={locale} />
-        </>
+        </div>
       ) : (
         <p className="text-[13px] text-[var(--text-muted)]">{t("breadthUnavailable")}</p>
       )}
 
-      <div className="mt-4 border-[var(--border)] border-t pt-3">
-        <div className="mb-1 flex items-center gap-2">
-          <h3 className="font-medium text-[13px] text-[var(--text)]">{tContribution("title")}</h3>
-          <span className="rounded-[var(--radius-pill)] bg-[var(--warn)]/15 px-2 py-0.5 text-[11px] text-[var(--warn)]">
-            {tContribution("estimateBadge")}
-          </span>
-        </div>
+      {indexContribution ? (
+        <div className="mt-4 border-[var(--border)] border-t pt-3">
+          <div className="mb-1 flex items-center gap-2">
+            <h3 className="font-medium text-[13px] text-[var(--text)]">{tContribution("title")}</h3>
+            <span className="rounded-[var(--radius-pill)] bg-[var(--warn)]/15 px-2 py-0.5 text-[11px] text-[var(--warn)]">
+              {tContribution("estimateBadge")}
+            </span>
+          </div>
 
-        <p className="mb-3 text-[11px] text-[var(--text-muted)]">
-          {indexContribution.contribution_caveat}
-        </p>
+          <p className="mb-3 text-[11px] text-[var(--text-muted)]">
+            {indexContribution.contribution_caveat}
+          </p>
 
-        {hasContributors ? (
-          <>
+          {hasContributors ? (
+            <>
+              <IndexContributionColumns
+                positiveContributors={positiveContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+                negativeContributors={negativeContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+                positiveLabel={tContribution("positive")}
+                negativeLabel={tContribution("negative")}
+              />
+
+              {hasMoreContributors ? (
+                <button
+                  type="button"
+                  onClick={() => setExpanded(true)}
+                  className={cn(
+                    "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                    "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                  )}
+                >
+                  <span>
+                    {t("expandContribution", {
+                      count: Math.max(positiveContributors.length, negativeContributors.length),
+                    })}
+                  </span>
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-[13px] text-[var(--text-muted)]">{tContribution("unavailable")}</p>
+          )}
+
+          {indexContribution.trade_date ? (
+            <p className="mt-3 text-[11px] text-[var(--text-muted)]">
+              {tContribution("updatedAt", { date: indexContribution.trade_date })}
+            </p>
+          ) : null}
+
+          <ExpandModal
+            open={expanded}
+            title={tContribution("title")}
+            closeLabel={t("collapseContribution")}
+            onClose={() => setExpanded(false)}
+          >
             <IndexContributionColumns
-              positiveContributors={positiveContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
-              negativeContributors={negativeContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+              positiveContributors={positiveContributors}
+              negativeContributors={negativeContributors}
               positiveLabel={tContribution("positive")}
               negativeLabel={tContribution("negative")}
             />
-
-            {hasMoreContributors ? (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className={cn(
-                  "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                  "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                )}
-              >
-                <span>
-                  {t("expandContribution", {
-                    count: Math.max(positiveContributors.length, negativeContributors.length),
-                  })}
-                </span>
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <p className="text-[13px] text-[var(--text-muted)]">{tContribution("unavailable")}</p>
-        )}
-
-        {indexContribution.trade_date ? (
-          <p className="mt-3 text-[11px] text-[var(--text-muted)]">
-            {tContribution("updatedAt", { date: indexContribution.trade_date })}
-          </p>
-        ) : null}
-
-        <ExpandModal
-          open={expanded}
-          title={tContribution("title")}
-          closeLabel={t("collapseContribution")}
-          onClose={() => setExpanded(false)}
-        >
-          <IndexContributionColumns
-            positiveContributors={positiveContributors}
-            negativeContributors={negativeContributors}
-            positiveLabel={tContribution("positive")}
-            negativeLabel={tContribution("negative")}
-          />
-        </ExpandModal>
-      </div>
+          </ExpandModal>
+        </div>
+      ) : null}
     </section>
   );
 }

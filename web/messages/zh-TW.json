@@ -106,6 +106,12 @@
         "heatmap": "熱力圖",
         "news": "新聞",
         "ptt": "PTT"
+      },
+      "usSub": {
+        "label": "美股 檢視",
+        "focus": "每日焦點",
+        "heatmap": "熱力圖",
+        "news": "新聞"
       }
     },
     "cards": {
@@ -336,7 +342,8 @@
         "bucketUp3to5": "3% ~ 5%",
         "bucketUpOver5": "> 5%",
         "expandContribution": "展開完整 {count} 筆",
-        "collapseContribution": "收合"
+        "collapseContribution": "收合",
+        "usCoverageCaveat": "涵蓋約 1,000-1,500 檔美股大中型股，非全市場統計。"
       },
       "indexContribution": {
         "title": "指數貢獻排行",

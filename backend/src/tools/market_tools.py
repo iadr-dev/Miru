@@ -29,6 +29,7 @@ from analytics.fundamentals import (
     load_symbol_market_value,
     load_symbol_month_revenue,
 )
+from analytics.scoring_batch import US_PRICE_EOD_DATASET, US_SECTOR_CLASS_DATASET
 from analytics.symbol_universe import SymbolType, classify_symbol_type, is_scoreable_symbol
 from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
@@ -47,6 +48,7 @@ from ingest.jobs import (
     STOCK_INFO_JOB,
 )
 from ingest.store import ParquetStore
+from ingest.us_universe import US_SYMBOL_UNIVERSE_DATASET
 from schemas.capabilities import (
     ActiveEtfHoldingChangeRow,
     ActiveEtfHoldingRow,
@@ -868,6 +870,72 @@ def _active_etf_report_rows(
     return rows
 
 
+def _price_eod_dataset_for(market: str) -> str:
+    """`(price_eod dataset name)` for `market` — TW's whole-market breadth/momentum/heatmap
+    tools (`GetAdvanceDeclineTool` and siblings) all hardcoded `PRICE_EOD_JOB.dataset`
+    ("TaiwanStockPrice") until this function existed; passing `market=US` into any of them
+    unmodified would look up that TW dataset name under `market=US` and find nothing — US's
+    whole-market OHLCV lives under a different dataset name entirely (`US_PRICE_EOD_DATASET`,
+    `ingest/us_jobs.py::job_us_price_eod`). Mirrors `analytics/scoring_batch.py::
+    _price_eod_dataset`'s identical branch — kept as a separate function here (not imported)
+    because that one takes a `Market` enum member, this one the `.value` string every caller in
+    this module already has in hand."""
+    return US_PRICE_EOD_DATASET if market == Market.US.value else PRICE_EOD_JOB.dataset
+
+
+def _industry_by_symbol_for(store: ParquetStore, market: str) -> dict[str, str]:
+    """`(symbol -> group label)` for `market`, the roster join every sector-heatmap/
+    stock-heatmap/sector-constituents tool needs. TW groups by `StockInfoRow.industry_category`
+    (FinMind's Chinese industry taxonomy, from `STOCK_INFO_JOB`). US has no equivalent field —
+    `us_sector_class`'s `SectorClassification` rows carry `sector` (yfinance's broad ~11-bucket
+    GICS-ish taxonomy, e.g. "Technology") and `industry` (a much finer taxonomy, e.g. "Consumer
+    Electronics") separately. Groups US by `sector`, not `industry`: the ~1,000-1,500-symbol US
+    universe split across yfinance's fine `industry` taxonomy would produce a heatmap with
+    hundreds of near-empty tiles, whereas `sector`'s ~11 buckets read the same as TW's own
+    industry-heatmap tile count. Returns `{}` (never raises) when no roster/sector-class
+    partition has landed yet — callers already treat an empty join map as "nothing to group",
+    the same as a missing roster does for TW."""
+    if market == Market.US.value:
+        roster_date = _latest_dataset_date(store, US_SECTOR_CLASS_DATASET, market)
+        if roster_date is None:
+            return {}
+        raw = store.read_partition(US_SECTOR_CLASS_DATASET, market, roster_date)
+        sector_rows = _rows_from_store(SectorClassification, raw)
+        return {row.symbol: row.sector for row in sector_rows if row.sector}
+    roster_date = _latest_dataset_date(store, STOCK_INFO_JOB.dataset, market)
+    if roster_date is None:
+        return {}
+    raw = store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+    stock_info_rows = _rows_from_store(StockInfoRow, raw)
+    return {row.symbol: row.industry_category for row in stock_info_rows if row.industry_category}
+
+
+def _names_by_symbol_for(store: ParquetStore, market: str) -> dict[str, str]:
+    """`(symbol -> display name)` for `market` — `get_price_momentum`'s roster-name join. TW
+    reads `STOCK_INFO_JOB`'s `name` field; US has no `StockInfoRow`-shaped roster, but
+    `US_SYMBOL_UNIVERSE_DATASET` (`ingest/us_universe.py::job_us_symbol_universe`) writes
+    `{"symbol", "name", "exchange"}` rows — that dataset's own read-back helper
+    (`latest_us_symbols`) discards `name` (it only needs the symbol list for the price/
+    fundamentals ingest fan-out), so this reads the raw partition directly rather than adding a
+    second dataset or a second US-roster read path."""
+    if market == Market.US.value:
+        roster_date = _latest_dataset_date(store, US_SYMBOL_UNIVERSE_DATASET, market)
+        if roster_date is None:
+            return {}
+        raw = store.read_partition(US_SYMBOL_UNIVERSE_DATASET, market, roster_date)
+        return {
+            str(row["symbol"]): str(row["name"])
+            for row in raw
+            if row.get("symbol") and row.get("name")
+        }
+    roster_date = _latest_dataset_date(store, STOCK_INFO_JOB.dataset, market)
+    if roster_date is None:
+        return {}
+    raw = store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
+    rows = _rows_from_store(StockInfoRow, raw)
+    return {row.symbol: row.name for row in rows}
+
+
 def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
     """The real trading-day calendar for `market`, built from `PRICE_EOD_JOB`'s own
     already-ingested partition dates — same reasoning and construction as
@@ -877,8 +945,12 @@ def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
     from). A plain `TradingDayCalendar()` (naive Mon-Fri weekday math) previously used at every
     call site here would miscount real TW holidays as trading days, corrupting the "prior
     trading day" every close-to-close calculation in this module depends on — the same class of
-    bug fixed in the ingest daemon's own calendar construction."""
-    known_dates = store.list_partition_dates(PRICE_EOD_JOB.dataset, market)
+    bug fixed in the ingest daemon's own calendar construction. Resolves the price_eod dataset
+    name via `_price_eod_dataset_for` — a no-op for every existing TW caller (that function
+    returns the identical `PRICE_EOD_JOB.dataset` string for `market="TW"`), but correctly reads
+    `us_price_eod`'s own partition dates for `market="US"` instead of a TW dataset name that has
+    no `market=US` partitions at all."""
+    known_dates = store.list_partition_dates(_price_eod_dataset_for(market), market)
     if not known_dates:
         return TradingDayCalendar()
     return calendar_from_known_dates(known_dates)
@@ -886,23 +958,29 @@ def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
 
 def _closes_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, float]:
     """Every real equity/ETF symbol's closing price on `trade_date`, read from the whole-market
-    `TaiwanStockPrice` partition the daily ingest job already wrote — the same derived-store
-    read `GetEtfMoneyFlowTool` uses, not a per-symbol live fetch (`_active_etf_holding_value`'s
-    own docstring explains why this beats trusting FinMind's own `market_value` field).
+    price_eod partition the daily ingest job already wrote (`_price_eod_dataset_for` resolves
+    `TaiwanStockPrice` for TW / `us_price_eod` for US) — the same derived-store read
+    `GetEtfMoneyFlowTool` uses, not a per-symbol live fetch (`_active_etf_holding_value`'s own
+    docstring explains why this beats trusting FinMind's own `market_value` field).
 
-    Filtered through `analytics.symbol_universe.is_scoreable_symbol`: the raw partition is
-    dominated by warrant/derivative codes (~17K/day vs. ~2.65K real equities/ETFs — see that
-    module's docstring for the measured split), which would otherwise inflate every
-    breadth/contribution/heatmap calculation built from this map with thousands of warrant rows
-    that don't belong in "how many real stocks moved today"."""
-    raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+    Filtered through `analytics.symbol_universe.is_scoreable_symbol`, with `market` passed
+    through explicitly: TW's raw partition is dominated by warrant/derivative codes (~17K/day
+    vs. ~2.65K real equities/ETFs — see that module's docstring for the measured split), which
+    would otherwise inflate every breadth/contribution/heatmap calculation built from this map
+    with thousands of warrant rows that don't belong in "how many real stocks moved today". US
+    has no such warrant pollution (`ingest/us_universe.py`'s screener-based discovery already
+    excludes it) — `is_scoreable_symbol` unconditionally passes every US symbol, but the `market`
+    arg must still be threaded through: omitting it defaults to TW's length/prefix code-shape
+    rule, which is simply wrong for US tickers (see that function's own docstring)."""
+    market_enum = Market(market)
+    raw_bars = store.read_partition(_price_eod_dataset_for(market), market, trade_date)
     closes: dict[str, float] = {}
     for row in raw_bars:
         symbol = row.get("symbol")
         close = row.get("close")
         if (
             isinstance(symbol, str)
-            and is_scoreable_symbol(symbol)
+            and is_scoreable_symbol(symbol, market_enum)
             and isinstance(close, (int, float))
         ):
             closes[symbol] = float(close)
@@ -2593,7 +2671,7 @@ class GetAdvanceDeclineTool(BaseTool):
         market = typed.market.value
         calendar = _real_calendar(self._store, market)
         window = _two_day_window(
-            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+            self._store, _price_eod_dataset_for(market), market, calendar, typed.trade_date
         )
         if window is None:
             return GetAdvanceDeclineOutput(
@@ -2724,12 +2802,13 @@ class GetPriceMomentumTool(BaseTool):
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetPriceMomentumInput, args)
         market = typed.market.value
+        price_eod_dataset = _price_eod_dataset_for(market)
         calendar = _real_calendar(self._store, market)
         trade_date = typed.trade_date or _latest_dataset_date(
-            self._store, PRICE_EOD_JOB.dataset, market
+            self._store, price_eod_dataset, market
         )
         if trade_date is None or not self._store.has_partition(
-            PRICE_EOD_JOB.dataset, market, trade_date
+            price_eod_dataset, market, trade_date
         ):
             return GetPriceMomentumOutput(
                 market=market,
@@ -2743,7 +2822,7 @@ class GetPriceMomentumTool(BaseTool):
         period_ago_date = calendar.shift_business_days(
             trade_date, -_MOMENTUM_PERIOD_TRADING_DAYS[typed.period.value]
         )
-        if not self._store.has_partition(PRICE_EOD_JOB.dataset, market, period_ago_date):
+        if not self._store.has_partition(price_eod_dataset, market, period_ago_date):
             return GetPriceMomentumOutput(
                 market=market,
                 period=typed.period,
@@ -2751,8 +2830,8 @@ class GetPriceMomentumTool(BaseTool):
                 data_available=False,
                 unavailable_reason=_unavailable_reason_for_window("price_eod", market, trade_date),
             )
-        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
-        if roster_date is None:
+        names_by_symbol = _names_by_symbol_for(self._store, market)
+        if not names_by_symbol:
             return GetPriceMomentumOutput(
                 market=market,
                 period=typed.period,
@@ -2764,9 +2843,6 @@ class GetPriceMomentumTool(BaseTool):
 
         today_closes = _closes_by_symbol(self._store, market, trade_date)
         period_ago_closes = _closes_by_symbol(self._store, market, period_ago_date)
-        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
-        roster = _rows_from_store(StockInfoRow, raw_roster)
-        names_by_symbol = {row.symbol: row.name for row in roster}
 
         rows: list[PriceMomentumRow] = []
         for symbol, close in today_closes.items():
@@ -3306,20 +3382,24 @@ class GetIndexContributionTool(BaseTool):
 
 def _turnovers_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, float]:
     """Every real equity/ETF symbol's trading-value (`turnover`, NT$) on `trade_date` from the
-    same `PRICE_EOD_JOB` partition `_closes_by_symbol` reads (same warrant-exclusion reasoning —
-    see that function's docstring) — `get_sector_heatmap`'s optional trading-value weighting
-    input. `EODBar.turnover` is `None` on some rows (TWSE OpenAPI's own single-latest-snapshot
-    shape never carries it, only FinMind's whole-market pull does) — a row with no turnover is
-    simply absent from this map, never coerced to a fabricated `0.0` that would silently
-    zero-weight it in the weighted average."""
-    raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+    same price_eod partition `_closes_by_symbol` reads (same warrant-exclusion reasoning — see
+    that function's docstring) — `get_sector_heatmap`'s optional trading-value weighting input.
+    `EODBar.turnover` is `None` on some rows (TWSE OpenAPI's own single-latest-snapshot shape
+    never carries it, only FinMind's whole-market pull does; `us_price_eod` writes `None`
+    unconditionally, `ingest/us_jobs.py`'s row builders never populate it) — a row with no
+    turnover is simply absent from this map, never coerced to a fabricated `0.0` that would
+    silently zero-weight it in the weighted average. For US this means `weighted` in
+    `_sector_heatmap_rows` always resolves `False` (no member ever has a turnover) — an honest
+    degrade to the simple per-stock average, not a crash or a fabricated weighting."""
+    market_enum = Market(market)
+    raw_bars = store.read_partition(_price_eod_dataset_for(market), market, trade_date)
     turnovers: dict[str, float] = {}
     for row in raw_bars:
         symbol = row.get("symbol")
         turnover = row.get("turnover")
         if (
             isinstance(symbol, str)
-            and is_scoreable_symbol(symbol)
+            and is_scoreable_symbol(symbol, market_enum)
             and isinstance(turnover, (int, float))
         ):
             turnovers[symbol] = float(turnover)
@@ -3498,17 +3578,18 @@ def _sector_heatmap_rows(
 
 
 def _volumes_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, int]:
-    """Every real equity/ETF symbol's share volume on `trade_date`, from the same `PRICE_EOD_JOB`
+    """Every real equity/ETF symbol's share volume on `trade_date`, from the same price_eod
     partition `_closes_by_symbol`/`_turnovers_by_symbol` read (same warrant-exclusion reasoning —
     see `_closes_by_symbol`'s own docstring) — `get_sector_heatmap`'s 成交量 size_by option."""
-    raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
+    market_enum = Market(market)
+    raw_bars = store.read_partition(_price_eod_dataset_for(market), market, trade_date)
     volumes: dict[str, int] = {}
     for row in raw_bars:
         symbol = row.get("symbol")
         volume = row.get("volume")
         if (
             isinstance(symbol, str)
-            and is_scoreable_symbol(symbol)
+            and is_scoreable_symbol(symbol, market_enum)
             and isinstance(volume, (int, float))
         ):
             volumes[symbol] = int(volume)
@@ -3521,13 +3602,16 @@ def _market_values_by_symbol(
     """Every real equity/ETF symbol's market capitalization on `trade_date`, read directly from
     `MARKET_VALUE_JOB`'s own already-ingested partition (never recomputed from shares-outstanding
     x close the way `_shares_outstanding_by_symbol` does it the other direction) —
-    `get_sector_heatmap`'s 市值 size_by option."""
+    `get_sector_heatmap`'s 市值 size_by option. No US equivalent dataset is ingested —
+    `has_partition` below is always `False` for `market="US"`, so this honestly degrades to `{}`
+    (the 市值 size_by option simply has no totals for US) rather than needing its own branch."""
     if not store.has_partition(MARKET_VALUE_JOB.dataset, market, trade_date):
         return {}
     raw_values = store.read_partition(MARKET_VALUE_JOB.dataset, market, trade_date)
     market_values: dict[str, float] = {}
+    market_enum = Market(market)
     for row in _rows_from_store(MarketValueRow, raw_values):
-        if is_scoreable_symbol(row.symbol):
+        if is_scoreable_symbol(row.symbol, market_enum):
             market_values[row.symbol] = float(row.market_value)
     return market_values
 
@@ -3566,12 +3650,13 @@ class GetSectorHeatmapTool(BaseTool):
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetSectorHeatmapInput, args)
         market = typed.market.value
+        price_eod_dataset = _price_eod_dataset_for(market)
         calendar = _real_calendar(self._store, market)
         trade_date = typed.trade_date or _latest_dataset_date(
-            self._store, PRICE_EOD_JOB.dataset, market
+            self._store, price_eod_dataset, market
         )
         if trade_date is None or not self._store.has_partition(
-            PRICE_EOD_JOB.dataset, market, trade_date
+            price_eod_dataset, market, trade_date
         ):
             return GetSectorHeatmapOutput(
                 market=market,
@@ -3586,7 +3671,7 @@ class GetSectorHeatmapTool(BaseTool):
         prior_date = calendar.shift_business_days(
             trade_date, -_SECTOR_HEATMAP_PERIOD_TRADING_DAYS[typed.period.value]
         )
-        if not self._store.has_partition(PRICE_EOD_JOB.dataset, market, prior_date):
+        if not self._store.has_partition(price_eod_dataset, market, prior_date):
             return GetSectorHeatmapOutput(
                 market=market,
                 trade_date=trade_date,
@@ -3595,8 +3680,8 @@ class GetSectorHeatmapTool(BaseTool):
                 data_available=False,
                 unavailable_reason=_unavailable_reason_for_window("price_eod", market, trade_date),
             )
-        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
-        if roster_date is None:
+        industry_by_symbol = _industry_by_symbol_for(self._store, market)
+        if not industry_by_symbol:
             return GetSectorHeatmapOutput(
                 market=market,
                 trade_date=trade_date,
@@ -3607,11 +3692,6 @@ class GetSectorHeatmapTool(BaseTool):
                 unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
             )
 
-        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
-        roster = _rows_from_store(StockInfoRow, raw_roster)
-        industry_by_symbol = {
-            row.symbol: row.industry_category for row in roster if row.industry_category
-        }
         today_closes = _closes_by_symbol(self._store, market, trade_date)
         prior_closes = _closes_by_symbol(self._store, market, prior_date)
         turnovers = _turnovers_by_symbol(self._store, market, trade_date)
@@ -3734,7 +3814,7 @@ class GetSectorConstituentsTool(BaseTool):
         market = typed.market.value
         calendar = _real_calendar(self._store, market)
         window = _two_day_window(
-            self._store, PRICE_EOD_JOB.dataset, market, calendar, typed.trade_date
+            self._store, _price_eod_dataset_for(market), market, calendar, typed.trade_date
         )
         if window is None:
             return GetSectorConstituentsOutput(
@@ -3747,8 +3827,9 @@ class GetSectorConstituentsTool(BaseTool):
                 ),
             )
         trade_date, prior_date = window
-        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
-        if roster_date is None:
+        names_by_symbol = _names_by_symbol_for(self._store, market)
+        industry_by_symbol = _industry_by_symbol_for(self._store, market)
+        if not names_by_symbol or not industry_by_symbol:
             return GetSectorConstituentsOutput(
                 market=market,
                 industry=typed.industry,
@@ -3758,26 +3839,10 @@ class GetSectorConstituentsTool(BaseTool):
                 unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
             )
 
-        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
-        roster = _rows_from_store(StockInfoRow, raw_roster)
-        names_by_symbol = {row.symbol: row.name for row in roster}
-        industry_by_symbol = {
-            row.symbol: row.industry_category for row in roster if row.industry_category
-        }
         today_closes = _closes_by_symbol(self._store, market, trade_date)
         prior_closes = _closes_by_symbol(self._store, market, prior_date)
         turnovers = _turnovers_by_symbol(self._store, market, trade_date)
-        raw_bars = self._store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
-        volumes_by_symbol: dict[str, int] = {}
-        for bar_row in raw_bars:
-            bar_symbol = bar_row.get("symbol")
-            volume = bar_row.get("volume")
-            if (
-                isinstance(bar_symbol, str)
-                and is_scoreable_symbol(bar_symbol)
-                and isinstance(volume, (int, float))
-            ):
-                volumes_by_symbol[bar_symbol] = int(volume)
+        volumes_by_symbol = _volumes_by_symbol(self._store, market, trade_date)
 
         rows: list[SectorConstituentRow] = []
         for symbol, industry in industry_by_symbol.items():
@@ -3932,12 +3997,13 @@ class GetStockHeatmapTool(BaseTool):
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetStockHeatmapInput, args)
         market = typed.market.value
+        price_eod_dataset = _price_eod_dataset_for(market)
         calendar = _real_calendar(self._store, market)
         trade_date = typed.trade_date or _latest_dataset_date(
-            self._store, PRICE_EOD_JOB.dataset, market
+            self._store, price_eod_dataset, market
         )
         if trade_date is None or not self._store.has_partition(
-            PRICE_EOD_JOB.dataset, market, trade_date
+            price_eod_dataset, market, trade_date
         ):
             return GetStockHeatmapOutput(
                 market=market,
@@ -3952,7 +4018,7 @@ class GetStockHeatmapTool(BaseTool):
         prior_date = calendar.shift_business_days(
             trade_date, -_SECTOR_HEATMAP_PERIOD_TRADING_DAYS[typed.period.value]
         )
-        if not self._store.has_partition(PRICE_EOD_JOB.dataset, market, prior_date):
+        if not self._store.has_partition(price_eod_dataset, market, prior_date):
             return GetStockHeatmapOutput(
                 market=market,
                 trade_date=trade_date,
@@ -3961,8 +4027,9 @@ class GetStockHeatmapTool(BaseTool):
                 data_available=False,
                 unavailable_reason=_unavailable_reason_for_window("price_eod", market, trade_date),
             )
-        roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
-        if roster_date is None:
+        names_by_symbol = _names_by_symbol_for(self._store, market)
+        industry_by_symbol = _industry_by_symbol_for(self._store, market)
+        if not names_by_symbol or not industry_by_symbol:
             return GetStockHeatmapOutput(
                 market=market,
                 trade_date=trade_date,
@@ -3973,10 +4040,10 @@ class GetStockHeatmapTool(BaseTool):
                 unavailable_reason=_unavailable_reason_for_window("stock_info", market, trade_date),
             )
 
-        raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
-        roster = _rows_from_store(StockInfoRow, raw_roster)
         names_and_industry = {
-            row.symbol: (row.name, row.industry_category) for row in roster if row.industry_category
+            symbol: (names_by_symbol[symbol], industry)
+            for symbol, industry in industry_by_symbol.items()
+            if symbol in names_by_symbol
         }
         today_closes = _closes_by_symbol(self._store, market, trade_date)
         prior_closes = _closes_by_symbol(self._store, market, prior_date)
@@ -5485,6 +5552,9 @@ class GetSymbolInfoTool(BaseTool):
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetSymbolInfoInput, args)
         market = typed.market.value
+        wanted = set(typed.symbols)
+        if market == Market.US.value:
+            return self._run_us(market, wanted)
         roster_date = _latest_dataset_date(self._store, STOCK_INFO_JOB.dataset, market)
         if roster_date is None:
             return GetSymbolInfoOutput(
@@ -5494,8 +5564,36 @@ class GetSymbolInfoTool(BaseTool):
             )
         raw_roster = self._store.read_partition(STOCK_INFO_JOB.dataset, market, roster_date)
         roster = _rows_from_store(StockInfoRow, raw_roster)
-        wanted = set(typed.symbols)
         rows = tuple(row for row in roster if row.symbol in wanted)
+        return GetSymbolInfoOutput(market=market, roster_date=roster_date, rows=rows)
+
+    def _run_us(self, market: str, wanted: set[str]) -> GetSymbolInfoOutput:
+        """US has no `StockInfoRow`-shaped roster — assembles the equivalent from
+        `us_symbol_universe` (name) joined with `us_sector_class` (industry, via
+        `_industry_by_symbol_for`'s broad `sector` grouping); `security_type` is always
+        "equity" since the US universe is screener-discovered common stock, never a warrant
+        roster. `roster_date` is `_names_by_symbol_for`'s own underlying partition date."""
+        roster_date = _latest_dataset_date(self._store, US_SYMBOL_UNIVERSE_DATASET, market)
+        if roster_date is None:
+            return GetSymbolInfoOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason=_unavailable_reason_for_window("stock_info", market, None),
+            )
+        names_by_symbol = _names_by_symbol_for(self._store, market)
+        industry_by_symbol = _industry_by_symbol_for(self._store, market)
+        rows = tuple(
+            StockInfoRow(
+                symbol=symbol,
+                market=Market.US,
+                name=name,
+                industry_category=industry_by_symbol.get(symbol, ""),
+                security_type="equity",
+                as_of=roster_date,
+            )
+            for symbol, name in names_by_symbol.items()
+            if symbol in wanted
+        )
         return GetSymbolInfoOutput(market=market, roster_date=roster_date, rows=rows)
 
 
@@ -5663,7 +5761,8 @@ class GetPriceHistoryTool(BaseTool):
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetPriceHistoryInput, args)
         market = typed.market.value
-        latest = _latest_dataset_date(self._store, PRICE_EOD_JOB.dataset, market)
+        price_eod_dataset = _price_eod_dataset_for(market)
+        latest = _latest_dataset_date(self._store, price_eod_dataset, market)
         if latest is None:
             return GetPriceHistoryOutput(
                 market=market,
@@ -5677,9 +5776,7 @@ class GetPriceHistoryTool(BaseTool):
         # than validating every symbol in the market for this window and discarding almost all
         # of it in Python — this tool's own contract caps `symbols` at 20, so the filtered read
         # is at most 20 symbols x `days` rows, not the whole market's.
-        raw_rows = self._store.read_range(
-            PRICE_EOD_JOB.dataset, market, dates, symbols=typed.symbols
-        )
+        raw_rows = self._store.read_range(price_eod_dataset, market, dates, symbols=typed.symbols)
         rows = tuple(
             row for row in _rows_from_store(EODBar, raw_rows) if row.market.value == market
         )

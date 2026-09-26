@@ -24,16 +24,22 @@ import type { Market } from "@/types/settings";
 const MAX_TOP_N = 50;
 
 /**
- * 每日焦點 — the TW tab's default sub-tab: AI 多空排行 (whole-market score leaderboard),
- * 漲跌家數 + 指數貢獻排行 (breadth/contribution), and 漲跌幅排行 (price momentum). These three
+ * 每日焦點 — the market tab's default sub-tab: AI 多空排行 (whole-market score leaderboard),
+ * 漲跌家數 (+ 指數貢獻排行 for TW only) breadth card, and 漲跌幅排行 (price momentum). These
  * cards previously rendered directly in `MarketPanel`'s `renderTw` with no sub-tab wrapper —
  * pulled out here as the TW tab grows a second sub-tab (籌碼) per `docs/web/market.md`'s own
  * Row-2 view-tab spec, mirroring `TwTabContent`'s sibling `ChipDataPanel`.
+ *
+ * US variant (`market === "US"`) drops two cards with no US backing data: 指數貢獻排行 (no real
+ * US index is ingested — only the SPY ETF proxy exists, not a genuine index-contribution
+ * dataset) and 重大訊息 (MOPS material announcements are TW-only). The grid falls back to 2
+ * columns x 2 rows instead of the TW 4-card layout.
  */
 export function DailyFocusPanel({ market }: { readonly market: Market }): ReactNode {
   const [momentumDirection, setMomentumDirection] = useState<LeaderboardDirection>("bullish");
   const [momentumPeriod, setMomentumPeriod] = useState<MomentumPeriod>("week");
   const [leaderboardDirection, setLeaderboardDirection] = useState<LeaderboardDirection>("bullish");
+  const isUs = market === "US";
 
   const leaderboardQuery = useQuery({
     queryKey: ["score_leaderboard", market, leaderboardDirection, "stock"],
@@ -48,6 +54,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
   const indexContributionQuery = useQuery({
     queryKey: ["index_contribution", market],
     queryFn: () => getIndexContribution(market),
+    enabled: !isUs,
   });
 
   const priceMomentumQuery = useQuery({
@@ -72,15 +79,23 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        <RainbowBorderCard>
+        <RainbowBorderCard className="flex h-full">
           <QueryState query={breadthQuery} skeleton={<CardSkeleton height={560} />}>
-            {(breadth) => (
-              <QueryState query={indexContributionQuery} skeleton={<CardSkeleton height={560} />}>
-                {(contribution) => (
-                  <BreadthOrderBookCard breadth={breadth} indexContribution={contribution} />
-                )}
-              </QueryState>
-            )}
+            {(breadth) =>
+              isUs ? (
+                <BreadthOrderBookCard breadth={breadth} indexContribution={null} market={market} />
+              ) : (
+                <QueryState query={indexContributionQuery} skeleton={<CardSkeleton height={560} />}>
+                  {(contribution) => (
+                    <BreadthOrderBookCard
+                      breadth={breadth}
+                      indexContribution={contribution}
+                      market={market}
+                    />
+                  )}
+                </QueryState>
+              )
+            }
           </QueryState>
         </RainbowBorderCard>
 
@@ -100,11 +115,13 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        {/* Fills the grid cell to 漲跌幅排行's right — the grid has 3 cards on a 2-col layout,
-            leaving that cell empty otherwise. */}
-        <RainbowBorderCard>
-          <MaterialAnnouncementFeedPanel market={market} />
-        </RainbowBorderCard>
+        {isUs ? null : (
+          // Fills the grid cell to 漲跌幅排行's right — the grid has 4 cards on a 2-col layout
+          // for TW, leaving that cell empty otherwise. No US equivalent (MOPS-only).
+          <RainbowBorderCard>
+            <MaterialAnnouncementFeedPanel market={market} />
+          </RainbowBorderCard>
+        )}
       </div>
     </div>
   );
