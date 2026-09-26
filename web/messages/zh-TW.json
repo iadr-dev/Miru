@@ -306,6 +306,30 @@
         "change": "漲跌%",
         "unavailable": "此選項查無資料。"
       },
+      "rankings": {
+        "title": "排行榜",
+        "tabPriceMomentum": "漲跌幅",
+        "tabTrending": "熱門美股",
+        "tabMarketCap": "市值",
+        "tabRevenue": "營收",
+        "tabRoe": "ROE",
+        "tabVolume": "成交量",
+        "columnName": "名稱/代號",
+        "columnPrice": "最新價",
+        "columnChangePct": "漲跌幅",
+        "columnChange": "漲跌",
+        "columnVolume": "成交量",
+        "empty": "無資料",
+        "unavailable": "此選項查無資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
+      },
+      "earningsCalendar": {
+        "title": "近期財報公布",
+        "empty": "近期查無財報公布資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "monthHeading": "{year}年{month}月"
+      },
       "holderAccumulation": {
         "title": "大戶加碼股",
         "threshold200": "200張以上",

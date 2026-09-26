@@ -143,3 +143,71 @@ async def test_fetch_unsupported_capability_returns_unavailable_tier() -> None:
 
     assert result.health.status is HealthStatus.UNAVAILABLE_TIER
     assert result.payload == {}
+
+
+async def test_fetch_news_us_market_skips_rss_and_uses_finnhub_general_news(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real bug this guards against: US news previously mixed in TW-only RSS feeds and
+    called Finnhub's company-news endpoint with a free-text phrase as `symbol` (which Finnhub
+    company-news requires to be a real ticker) — silently returning zero Finnhub items. For any
+    non-TW market, RSS must be skipped entirely and Finnhub's general market-news category
+    (no symbol/keyword) must be used instead."""
+    finnhub_body = json.loads((FIXTURES / "finnhub.json").read_text(encoding="utf-8"))
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        return httpx.Response(200, json=finnhub_body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(news_module, "build_async_client", factory)
+    adapter = NewsAdapter(
+        settings=_settings(finnhub_key="test-key"),
+        rss_feeds=(RssFeed(source="cnyes_tw_stock", url="https://news.cnyes.com/fake"),),
+    )
+
+    result = await adapter.fetch_news(
+        query="US stock market", market=Market.US, tls_policy=TLSPolicy.STRICT
+    )
+
+    # Only one request made at all — the RSS feed was never fetched.
+    assert len(requested_urls) == 1
+    assert "finnhub.io/api/v1/news" in requested_urls[0]
+    assert "category=general" in requested_urls[0]
+    assert "cnyes.com" not in requested_urls[0]
+    items = result.payload["items"]
+    assert isinstance(items, list)
+    assert all(str(item["source"]).startswith("finnhub:") for item in items)  # type: ignore[index]
+
+
+async def test_fetch_news_tw_market_still_uses_company_news(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pin the unchanged TW behavior: company-news (query-scoped), not general-news."""
+    finnhub_body = json.loads((FIXTURES / "finnhub.json").read_text(encoding="utf-8"))
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        if "finnhub.io" in str(request.url):
+            return httpx.Response(200, json=finnhub_body)
+        return httpx.Response(200, content=(FIXTURES / "cnyes_rss.xml").read_bytes())
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(news_module, "build_async_client", factory)
+    adapter = NewsAdapter(
+        settings=_settings(finnhub_key="test-key"),
+        rss_feeds=(RssFeed(source="cnyes_tw_stock", url="https://news.cnyes.com/fake"),),
+    )
+
+    await adapter.fetch_news(query="2330", market=Market.TW, tls_policy=TLSPolicy.STRICT)
+
+    finnhub_urls = [u for u in requested_urls if "finnhub.io" in u]
+    assert len(finnhub_urls) == 1
+    assert "company-news" in finnhub_urls[0]
+    assert "symbol=2330" in finnhub_urls[0]

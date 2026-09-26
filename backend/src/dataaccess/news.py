@@ -10,7 +10,7 @@ string isn't `(capability, symbol)`-shaped), so this tool cannot go through
 
 from __future__ import annotations
 
-from schemas.enums import TLSPolicy
+from schemas.enums import Market, TLSPolicy
 from schemas.source import SourceResult
 from sources.news import NewsAdapter
 
@@ -22,9 +22,13 @@ class NewsGateway:
         self._adapter = adapter or NewsAdapter()
 
     async def fetch_news(
-        self, *, query: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+        self,
+        *,
+        query: str,
+        market: Market = Market.TW,
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
     ) -> SourceResult:
-        return await self._adapter.fetch_news(query=query, tls_policy=tls_policy)
+        return await self._adapter.fetch_news(query=query, market=market, tls_policy=tls_policy)
 
 
 __all__ = ["NewsGateway"]

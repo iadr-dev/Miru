@@ -297,6 +297,21 @@ async def price_momentum(
     return await _dispatch(state, "get_price_momentum", args, ctx)
 
 
+@router.get("/market/us-rankings")
+async def us_rankings(
+    kind: Literal["trending", "market_cap", "revenue", "roe", "volume"] = Query("trending"),
+    top_n: int = Query(10, ge=1, le=50),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """US-only 排行榜 multi-tab ranking: `trending` (Yahoo's own most-active screen), `market_cap`/
+    `revenue`/`roe`/`volume` (a bounded Yahoo screener query sorted by the matching field). No
+    `market` param — this is inherently a US-region screener query (`get_us_market_rankings`'s
+    own docstring), unlike `/market/price-momentum`'s real `market` axis over our own ingested
+    data."""
+    return await _dispatch(state, "get_us_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
+
+
 @router.get("/market/holder-accumulation")
 async def holder_accumulation(
     market: Market = Query(Market.TW),
@@ -819,13 +834,16 @@ def _symbol_date_args(
 @router.get("/market/news-feed")
 async def news_feed(
     query: str = Query("台股"),
+    market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
     """即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub, backed by
-    `get_news_feed`, `DataClass.PUBLIC`. `query` only scopes the Finnhub call; RSS feeds are
-    always fetched whole (not query-filterable upstream)."""
-    return await _dispatch(state, "get_news_feed", {"query": query}, ctx)
+    `get_news_feed`, `DataClass.PUBLIC`. `market=TW` (default): `query` scopes the Finnhub
+    company-news call; RSS feeds are always fetched whole (not query-filterable upstream). Any
+    other market: RSS is skipped (TW-only outlets) and Finnhub's general-market-news category is
+    used instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring."""
+    return await _dispatch(state, "get_news_feed", {"query": query, "market": market.value}, ctx)
 
 
 @router.get("/market/ptt-board")

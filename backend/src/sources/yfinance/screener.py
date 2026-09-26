@@ -103,6 +103,19 @@ def _run_screener_blocking(asset_kind: ScreenerAssetKind, q: ScreenerQuery) -> d
     return response
 
 
+def _run_predefined_screener_blocking(name: str, size: int) -> dict[str, Any]:
+    """Yahoo's own NAMED screens (`yf.PREDEFINED_SCREENER_QUERIES`, e.g. `"most_actives"`) —
+    a distinct call shape from `_run_screener_blocking`'s custom field/op/value query: `yf.screen`
+    takes the name as a bare string and a `count` kwarg, not `size`/`sortField`/`sortAsc` (passing
+    `size` to a predefined screen emits a deprecation warning — confirmed live). Yahoo defines the
+    sort order for its own named screens; this call never re-sorts them."""
+    import yfinance as yf  # noqa: PLC0415
+
+    _init_tz_cache()
+    response = cast("dict[str, Any]", yf.screen(name, count=size))
+    return response
+
+
 # Fields promoted to `ScreenerHit`'s own named attributes; everything else Yahoo returns for a
 # quote row is passed through in `matched_fields` as-is (never invented, never dropped).
 _HIT_NAME_FIELDS = ("longName", "shortName")
@@ -132,6 +145,20 @@ def _quote_to_hit(quote: dict[str, Any], rank: int) -> ScreenerHit:
     )
 
 
+def _screener_result_from_raw(
+    asset_kind: ScreenerAssetKind, raw: dict[str, Any], *, empty_detail: str
+) -> ScreenerResult:
+    """Shared quotes-dict -> `ScreenerResult` mapping for both `run_screener` and
+    `run_predefined_screener` — the two calls differ only in how the raw Yahoo response is
+    fetched (custom query vs. named screen), never in how it's normalized."""
+    quotes = cast("list[dict[str, Any]]", raw.get("quotes") or [])
+    total = _as_int(raw.get("total")) or len(quotes)
+    if not quotes:
+        return ScreenerResult(asset_kind=asset_kind, total_matches=0, hits=(), detail=empty_detail)
+    hits = tuple(_quote_to_hit(q, rank) for rank, q in enumerate(quotes, start=1))
+    return ScreenerResult(asset_kind=asset_kind, total_matches=total, hits=hits, detail="ok")
+
+
 async def run_screener(query: ScreenerQuery) -> ScreenerResult:
     """Run an equity/ETF/fund screener query against Yahoo's screener endpoint and return
     normalized `ScreenerHit` rows.
@@ -151,17 +178,29 @@ async def run_screener(query: ScreenerQuery) -> ScreenerResult:
         return ScreenerResult(
             asset_kind=query.asset_kind, total_matches=0, hits=(), detail=str(exc)
         )
-    quotes = cast("list[dict[str, Any]]", raw.get("quotes") or [])
-    total = _as_int(raw.get("total")) or len(quotes)
-    if not quotes:
+    return _screener_result_from_raw(
+        query.asset_kind, raw, empty_detail="no symbols matched this screener query"
+    )
+
+
+async def run_predefined_screener(name: str, size: int) -> ScreenerResult:
+    """Run one of Yahoo's own NAMED screens (`yf.PREDEFINED_SCREENER_QUERIES.keys()`, e.g.
+    `"most_actives"`) — the real, non-fabricated source for a "trending"/"most active" symbol
+    list (there is no per-symbol "is this trending" field anywhere in this codebase or upstream;
+    this named screen IS Yahoo's own popularity ranking, not our own approximation of one).
+    Always reported as `ScreenerAssetKind.EQUITY` — every predefined screen in
+    `PREDEFINED_SCREENER_QUERIES` returns equities. Same never-raise, honest-empty-degrade
+    contract as `run_screener`."""
+    try:
+        raw = await anyio.to_thread.run_sync(_run_predefined_screener_blocking, name, size)
+    except Exception as exc:  # never raise out of a screener call — degrade honestly
+        logger.warning("yfinance_predefined_screener_failed", name=name, error=str(exc))
         return ScreenerResult(
-            asset_kind=query.asset_kind,
-            total_matches=0,
-            hits=(),
-            detail="no symbols matched this screener query",
+            asset_kind=ScreenerAssetKind.EQUITY, total_matches=0, hits=(), detail=str(exc)
         )
-    hits = tuple(_quote_to_hit(q, rank) for rank, q in enumerate(quotes, start=1))
-    return ScreenerResult(asset_kind=query.asset_kind, total_matches=total, hits=hits, detail="ok")
+    return _screener_result_from_raw(
+        ScreenerAssetKind.EQUITY, raw, empty_detail=f"predefined screen {name!r} returned no rows"
+    )
 
 
 __all__ = [
@@ -169,5 +208,6 @@ __all__ = [
     "_condition_operand",
     "_quote_to_hit",
     "_run_screener_blocking",
+    "run_predefined_screener",
     "run_screener",
 ]

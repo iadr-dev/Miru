@@ -580,6 +580,31 @@ export const priceMomentumResponseSchema = priceMomentumDataSchema;
 export type PriceMomentumResponse = z.infer<typeof priceMomentumResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 11b. GET /market/us-rankings — get_us_market_rankings (public, US-only 排行榜)
+// ---------------------------------------------------------------------------
+
+export const RANKING_KINDS = ["trending", "market_cap", "revenue", "roe", "volume"] as const;
+export const rankingKindSchema = z.enum(RANKING_KINDS);
+export type RankingKind = z.infer<typeof rankingKindSchema>;
+
+export const marketRankingRowSchema = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  price: z.number().nullable(),
+  change: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  volume: z.number().nullable(),
+});
+export type MarketRankingRow = z.infer<typeof marketRankingRowSchema>;
+
+export const usMarketRankingsResponseSchema = z.object({
+  kind: rankingKindSchema,
+  rows: z.array(marketRankingRowSchema).default([]),
+  detail: z.string(),
+});
+export type UsMarketRankingsResponse = z.infer<typeof usMarketRankingsResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 12. GET /market/holder-accumulation — get_holder_accumulation (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

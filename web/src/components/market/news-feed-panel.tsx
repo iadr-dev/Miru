@@ -34,12 +34,13 @@ const NEWS_FEED_COLLAPSED_ROW_COUNT = 40;
  * requirement. Backed by `get_news_feed` (`sources/news.py`'s RSS/Finnhub aggregator) — distinct
  * from FinMind's own per-symbol `get_finmind_stock_news` dataset, never merged with it here.
  *
- * `market` only scopes the Finnhub half of the feed (`NEWS_QUERY_BY_MARKET`) — the RSS half is a
- * fixed set of Taiwanese financial feeds (cnyes/udn/technews/ithome/blocktempo) fetched
- * unconditionally regardless of `query`, per `get_news_feed`'s own tool docstring ("RSS feeds are
- * fetched whole regardless — they are not query-filterable upstream"). A US caller therefore
- * still sees some TW-sourced RSS items mixed in alongside US-scoped Finnhub results; this is the
- * existing, accepted tool contract, not a new gap this panel introduces.
+ * `market` now genuinely branches the backend's own source mix (`get_news_feed`'s own docstring):
+ * `market=TW` fetches the fixed TW financial RSS feeds plus Finnhub company-news scoped by
+ * `query`; any other market skips RSS entirely (those feeds are TW-only outlets) and uses
+ * Finnhub's general market-news category instead — fixing a real bug where the US panel's
+ * Finnhub call passed a free-text phrase as a company-news `symbol` param (which Finnhub
+ * requires to be a real ticker) and silently returned zero items, leaving only TW-mixed RSS
+ * content visible.
  */
 export function NewsFeedPanel({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.cards.newsFeed");
@@ -47,7 +48,7 @@ export function NewsFeedPanel({ market }: { readonly market: Market }): ReactNod
 
   const query = useQuery({
     queryKey: ["news_feed", market],
-    queryFn: () => getNewsFeed(NEWS_QUERY_BY_MARKET[market]),
+    queryFn: () => getNewsFeed(NEWS_QUERY_BY_MARKET[market], market),
   });
 
   return (

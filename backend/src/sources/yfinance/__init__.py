@@ -33,15 +33,15 @@ dispatch skeleton), and one module per capability domain — `analyst.py`,
 carve-outs `batch.py` (ingest entry point) and `screener.py` (query-shaped screener, see its
 own module docstring for why it lives outside `SourceAdapter`).
 
-This module re-exports `YFinanceAdapter`, `batch_download`, and `run_screener` — the public
-seam every caller (`dataaccess/`, `ingest/`, tests) imports as
-`from sources.yfinance import ...`.
+This module re-exports `YFinanceAdapter`, `batch_download`, `run_screener`, and
+`run_predefined_screener` — the public seam every caller (`dataaccess/`, `ingest/`, tests)
+imports as `from sources.yfinance import ...`.
 """
 
 from __future__ import annotations
 
 from ._adapter import YFinanceAdapter
 from .batch import batch_download
-from .screener import run_screener
+from .screener import run_predefined_screener, run_screener
 
-__all__ = ["YFinanceAdapter", "batch_download", "run_screener"]
+__all__ = ["YFinanceAdapter", "batch_download", "run_predefined_screener", "run_screener"]

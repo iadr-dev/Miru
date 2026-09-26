@@ -12,7 +12,7 @@ from schemas.screener import (
     ScreenerOperator,
     ScreenerQuery,
 )
-from sources.yfinance import run_screener
+from sources.yfinance import run_predefined_screener, run_screener
 from sources.yfinance.screener import _build_query
 
 
@@ -134,3 +134,62 @@ async def test_run_screener_etf_between_operator_maps_to_btwn(
 
     assert captured["operator"] == "BTWN"
     assert captured["operands"] == ["fundnetassets", 1_000_000, 1_000_000_000]
+
+
+def _patch_predefined_screen(monkeypatch: pytest.MonkeyPatch, response: dict[str, object]) -> None:
+    async def fake_run_sync(fn: object, *args: object) -> dict[str, object]:
+        assert getattr(fn, "__name__", "") == "_run_predefined_screener_blocking"
+        return response
+
+    monkeypatch.setattr(anyio.to_thread, "run_sync", fake_run_sync)
+
+
+async def test_run_predefined_screener_real_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    response = {
+        "total": 1,
+        "quotes": [
+            {
+                "symbol": "INTC",
+                "shortName": "Intel Corporation",
+                "longName": "Intel Corporation",
+                "fullExchangeName": "NasdaqGS",
+                "regularMarketVolume": 96982345.0,
+                "regularMarketChangePercent": -3.44611,
+            }
+        ],
+    }
+    _patch_predefined_screen(monkeypatch, response)
+
+    result = await run_predefined_screener("most_actives", 10)
+
+    assert result.detail == "ok"
+    assert result.asset_kind == ScreenerAssetKind.EQUITY
+    assert result.hits[0].symbol == "INTC"
+    assert result.hits[0].matched_fields["regularMarketVolume"] == 96982345.0
+
+
+async def test_run_predefined_screener_empty_match_is_honest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_predefined_screen(monkeypatch, {"total": 0, "quotes": []})
+
+    result = await run_predefined_screener("most_actives", 10)
+
+    assert result.total_matches == 0
+    assert result.hits == ()
+    assert "most_actives" in result.detail
+
+
+async def test_run_predefined_screener_degrades_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def raise_run_sync(fn: object, *args: object) -> dict[str, object]:
+        raise ValueError("unknown predefined screen 'not_a_real_screen'")
+
+    monkeypatch.setattr(anyio.to_thread, "run_sync", raise_run_sync)
+
+    result = await run_predefined_screener("not_a_real_screen", 10)
+
+    assert result.total_matches == 0
+    assert result.hits == ()
+    assert "not_a_real_screen" in result.detail

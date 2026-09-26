@@ -15,7 +15,7 @@ from typing import cast
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.news import NewsGateway
-from schemas.enums import DataClass
+from schemas.enums import DataClass, Market
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 
@@ -25,8 +25,17 @@ class GetNewsFeedInput(BaseModel):
     query: str = Field(
         default="台股",
         min_length=1,
-        description="Search phrase/ticker — RSS feeds are fetched whole regardless (they are "
-        "not query-filterable upstream); this only scopes the Finnhub company-news call.",
+        description="Search phrase/ticker — only used for `market=TW`, where it scopes the "
+        "Finnhub company-news call (RSS feeds are fetched whole regardless, not "
+        "query-filterable upstream). Ignored for any other market — see `market`'s own "
+        "description.",
+    )
+    market: Market = Field(
+        default=Market.TW,
+        description="TW (default): RSS (TW financial outlets) + Finnhub company-news scoped by "
+        "`query`. Any other market: RSS is skipped (those feeds are TW-only outlets with no "
+        "non-TW equivalent) and Finnhub's general market-news category is used instead of "
+        "company-news (which requires a real ticker as `query`, not a free-text phrase).",
     )
 
 
@@ -48,10 +57,12 @@ class GetNewsFeedOutput(BaseModel):
 
 
 class GetNewsFeedTool(BaseTool):
-    """`get_news_feed` — near-real-time news aggregated from financial RSS (cnyes/udn/technews/
-    ithome/blocktempo/Yahoo股市) plus Finnhub company news when a token is configured
-    (`Settings().finnhub_key`; silently skipped otherwise, never a hard failure). Third-party
-    content: every item is cited by `link`/`source`, never restated as analysis."""
+    """`get_news_feed` — near-real-time news, market-branched (see `GetNewsFeedInput.market`'s
+    own description). `market=TW`: financial RSS (cnyes/udn/technews/ithome/blocktempo/Yahoo股市)
+    plus Finnhub company news scoped by `query`. Any other market: RSS skipped, Finnhub
+    general-market-news category used instead. Finnhub half silently skipped (never a hard
+    failure) when no token is configured (`Settings().finnhub_key`). Third-party content: every
+    item is cited by `link`/`source`, never restated as analysis."""
 
     name = "get_news_feed"
     description = (
@@ -68,7 +79,9 @@ class GetNewsFeedTool(BaseTool):
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetNewsFeedInput, args)
-        result = await self._gateway.fetch_news(query=typed.query, tls_policy=ctx.tls_policy)
+        result = await self._gateway.fetch_news(
+            query=typed.query, market=typed.market, tls_policy=ctx.tls_policy
+        )
         raw_items = result.payload.get("items")
         items: tuple[NewsFeedItemOut, ...] = ()
         if isinstance(raw_items, list):
