@@ -431,9 +431,7 @@ async def test_symbol_info_us_degrades_honestly_with_no_ingested_data(tmp_path: 
     store = ParquetStore(root=tmp_path)
     tool = GetSymbolInfoTool(store)
 
-    output = await tool.run(
-        GetSymbolInfoInput(symbols=("AAPL",), market=Market.US), ToolContext()
-    )
+    output = await tool.run(GetSymbolInfoInput(symbols=("AAPL",), market=Market.US), ToolContext())
 
     assert output.data_available is False
     assert output.unavailable_reason is not None
