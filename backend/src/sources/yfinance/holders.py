@@ -159,8 +159,22 @@ def _fund_holdings(sym: Symbol, frames: dict[str, Any]) -> SourceResult:
                 status=HealthStatus.STALE, detail="symbol is not a fund/ETF (no funds data)"
             ),
         )
-    top_holdings = getattr(funds_data, "top_holdings", None)
-    sector_weightings = getattr(funds_data, "sector_weightings", None)
+    # `FundsData` is lazy: the property access above (`_safe_funds_data`) succeeding does NOT
+    # mean this symbol is a real fund — `.top_holdings`/`.sector_weightings` trigger their own
+    # later fetch-and-parse on first access, which raises `YFDataException` for an ordinary
+    # equity (confirmed live: crashed `GET /funds/AAPL/holdings` with an unhandled 500 — AAPL is
+    # a stock, not a fund, so `funds_data` resolves non-None but has nothing to parse). Same
+    # "expected outcome, not an error" contract `_safe_funds_data` already establishes.
+    try:
+        top_holdings = getattr(funds_data, "top_holdings", None)
+        sector_weightings = getattr(funds_data, "sector_weightings", None)
+    except Exception:
+        return _result(
+            payload={},
+            health=SourceHealth(
+                status=HealthStatus.STALE, detail="symbol is not a fund/ETF (no funds data)"
+            ),
+        )
     holdings: list[dict[str, object]] = []
     if isinstance(top_holdings, pd.DataFrame) and not top_holdings.empty:
         holdings = [

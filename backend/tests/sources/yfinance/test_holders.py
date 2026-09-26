@@ -180,3 +180,33 @@ async def test_fetch_fund_holdings_degrades_for_non_fund(monkeypatch: pytest.Mon
     result = await adapter.fetch(Capability.FUND_HOLDINGS, sym, tls_policy=TLSPolicy.STRICT)
 
     assert result.health.status is HealthStatus.STALE
+
+
+async def test_fetch_fund_holdings_degrades_when_property_access_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard: `FundsData` is lazy — `.top_holdings`/`.sector_weightings` trigger
+    their own fetch-and-parse on first access, which raises `YFDataException` for an ordinary
+    equity even though `Ticker.funds_data` itself resolved non-`None` (confirmed live: crashed
+    `GET /funds/AAPL/holdings` with an unhandled 500). `funds_data is None` alone (the sibling
+    test above) doesn't cover this — this fixture's fake object mimics the lazy-raise shape."""
+
+    class _RaisingFundsData:
+        @property
+        def top_holdings(self) -> object:
+            raise ValueError("AAPL: No Fund data found.")
+
+        @property
+        def sector_weightings(self) -> object:
+            raise ValueError("AAPL: No Fund data found.")
+
+    frames = empty_frames()
+    frames["funds_data"] = _RaisingFundsData()
+    patch_run_sync(monkeypatch, _fetch_ticker_frames_blocking=frames)
+    adapter = YFinanceAdapter()
+    sym = Symbol(id="AAPL", market=Market.US)
+
+    result = await adapter.fetch(Capability.FUND_HOLDINGS, sym, tls_policy=TLSPolicy.STRICT)
+
+    assert result.health.status is HealthStatus.STALE
+    assert result.payload == {}
