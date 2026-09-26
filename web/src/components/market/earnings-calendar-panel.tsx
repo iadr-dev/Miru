@@ -66,40 +66,81 @@ export function EarningsCalendarPanel(): ReactNode {
   );
 }
 
+/** Groups events by calendar month (`event_start`'s own `YYYY-MM`) — a market-wide feed spanning
+ * many weeks reads better broken into 月 sections (e.g. "2026年9月") than one flat list, the same
+ * way a monthly earnings calendar is conventionally presented. Order is preserved from the
+ * caller's own sort (ascending `event_start`), so each group's insertion order stays chronological
+ * without a second sort pass here. */
+function groupEventsByMonth(
+  events: readonly EarningsCalendarRow[],
+): ReadonlyMap<string, EarningsCalendarRow[]> {
+  const groups = new Map<string, EarningsCalendarRow[]>();
+  for (const event of events) {
+    const monthKey = event.event_start.slice(0, 7);
+    const group = groups.get(monthKey);
+    if (group) {
+      group.push(event);
+    } else {
+      groups.set(monthKey, [event]);
+    }
+  }
+  return groups;
+}
+
 function EarningsList({ events }: { readonly events: readonly EarningsCalendarRow[] }): ReactNode {
+  const t = useTranslations("market.cards.earningsCalendar");
+  const groups = groupEventsByMonth(events);
+
   return (
-    <ol className="divide-y divide-[var(--border)]">
-      {events.map((event) => (
-        <li key={`${event.symbol}_${event.event_start}`} className="flex items-center gap-3 py-2.5">
-          <span
-            className="size-2 shrink-0 rounded-full"
-            style={{ backgroundColor: EVENT_DOT_COLOR }}
-            aria-hidden
-          />
-          <SymbolLink
-            symbol={event.symbol}
-            market={US_MARKET}
-            className="flex-1 truncate text-[13px] text-[var(--text)] hover:underline"
-          >
-            {event.company}
-            <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">{event.symbol}</span>
-          </SymbolLink>
-          {event.timing ? (
-            <span
-              className="rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px]"
-              style={{
-                backgroundColor: "color-mix(in srgb, var(--chart-1) 16%, transparent)",
-                color: EVENT_DOT_COLOR,
-              }}
-            >
-              {event.timing}
-            </span>
-          ) : null}
-          <span className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">
-            {event.event_start.slice(0, 10)}
-          </span>
-        </li>
-      ))}
-    </ol>
+    <div className="flex flex-col gap-4">
+      {[...groups.entries()].map(([monthKey, monthEvents]) => {
+        const [yearStr, monthStr] = monthKey.split("-");
+        return (
+          <div key={monthKey}>
+            <h3 className="mb-1 text-[12px] text-[var(--text-muted)]">
+              {t("monthHeading", { year: Number(yearStr), month: Number(monthStr) })}
+            </h3>
+            <ol className="divide-y divide-[var(--border)]">
+              {monthEvents.map((event) => (
+                <li
+                  key={`${event.symbol}_${event.event_start}`}
+                  className="flex items-center gap-3 py-2.5"
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: EVENT_DOT_COLOR }}
+                    aria-hidden
+                  />
+                  <SymbolLink
+                    symbol={event.symbol}
+                    market={US_MARKET}
+                    className="flex-1 truncate text-[13px] text-[var(--text)] hover:underline"
+                  >
+                    {event.company}
+                    <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">
+                      {event.symbol}
+                    </span>
+                  </SymbolLink>
+                  {event.timing ? (
+                    <span
+                      className="rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px]"
+                      style={{
+                        backgroundColor: "color-mix(in srgb, var(--chart-1) 16%, transparent)",
+                        color: EVENT_DOT_COLOR,
+                      }}
+                    >
+                      {event.timing}
+                    </span>
+                  ) : null}
+                  <span className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">
+                    {event.event_start.slice(0, 10)}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        );
+      })}
+    </div>
   );
 }

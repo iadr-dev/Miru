@@ -1,11 +1,19 @@
 """News adapter — the near-real-time news freshness layer.
 
-Aggregates two keyless/near-keyless sources into one normalized `NewsItem` list:
+Aggregates two keyless/near-keyless sources into one normalized `NewsItem` list, market-branched:
 
-- **Financial RSS** — 鉅亨網 cnyes (台股/頭條), 經濟日報 udn money, TechNews, iThome, BlockTempo,
-  Yahoo股市. No auth. Faster than a daily-batch aggregator but still a pull, never a push/stream.
-- **Finnhub** — company news, token via `Settings().finnhub_key`; skipped (not a hard failure)
-  when the token isn't configured.
+- **TW** (`market=TW`, the default): **Financial RSS** — 鉅亨網 cnyes (台股/頭條), 經濟日報 udn
+  money, TechNews, iThome, BlockTempo, Yahoo股市 (all genuinely TW-only outlets, no auth, always
+  fetched whole — not query-filterable upstream) **plus** Finnhub's **company-news** endpoint
+  scoped by `query` (a real ticker symbol expected here).
+- **Non-TW** (`market != TW`): the RSS half is skipped entirely (those 7 feeds are Taiwan
+  financial/tech outlets with no non-TW equivalent — mixing them into a "US news" feed produced
+  visibly TW-only headlines, confirmed live) and Finnhub's **general market news** category
+  (`/news?category=general`) is used instead of company-news: company-news requires a real
+  ticker as its `symbol` param, so passing a free-text phrase like `"US stock market"` there (the
+  original bug) silently returned zero Finnhub items every time — `category=general` takes no
+  symbol/keyword at all and returns broad market news, which is what a whole-market news panel
+  actually wants.
 
 GDELT Doc 2.0 (keyless global news search) was removed 2026-09 after live verification found its
 public endpoint persistently rate-limiting (HTTP 429) regardless of request spacing — see
@@ -48,7 +56,11 @@ _CAVEAT = (
 # (a coarse scheduler refresh, not this adapter, owns any periodic cadence).
 MIN_SECONDS_BETWEEN_REQUESTS = 30.0
 
-_FINNHUB_URL = "https://finnhub.io/api/v1/company-news"
+_FINNHUB_COMPANY_NEWS_URL = "https://finnhub.io/api/v1/company-news"
+# Finnhub's whole-market news category (no symbol/keyword param) — see the module docstring for
+# why this, not company-news, is the right endpoint for a non-TW market's general news panel.
+_FINNHUB_MARKET_NEWS_URL = "https://finnhub.io/api/v1/news"
+_FINNHUB_MARKET_NEWS_CATEGORY = "general"
 
 # The two cast() target types every raw JSON list/dict-of-unknowns value below uses.
 type _UntypedList = list[object]
@@ -189,33 +201,46 @@ class NewsAdapter:
                 ),
             )
         query = str(params.get("query") or sym.id)
-        return await self.fetch_news(query=query, tls_policy=tls_policy)
+        return await self.fetch_news(query=query, market=sym.market, tls_policy=tls_policy)
 
     async def fetch_news(
-        self, *, query: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+        self,
+        *,
+        query: str,
+        market: Market = Market.TW,
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
     ) -> SourceResult:
-        """Aggregate RSS + (optional) Finnhub for `query`. RSS feeds are fetched whole (they
-        are not query-filterable) — filtering by symbol/keyword is a caller concern over the
-        returned items; Finnhub is genuinely query-scoped. GDELT Doc 2.0 was dropped from this
+        """Aggregate RSS + (optional) Finnhub for `query`, market-branched (see module docstring).
+        `market=TW` (the default, unchanged behavior): RSS feeds fetched whole (not query-
+        filterable) + Finnhub company-news scoped by `query`. Any other market: RSS skipped
+        (TW-only outlets), Finnhub general-market-news category used instead (no query/symbol
+        param — `query` is simply unused on this branch). GDELT Doc 2.0 was dropped from this
         aggregator (2026-09) after live verification found its public endpoint persistently
         rate-limiting (HTTP 429) regardless of request spacing — not a transient blip, so it
         isn't worth the added failure surface; re-add only after confirming the upstream quota
         issue has actually cleared."""
         items: list[NewsItem] = []
         errors: list[str] = []
+        is_tw = market is Market.TW
 
-        for feed in self._rss_feeds:
-            try:
-                fetched = await self._fetch_rss(feed, tls_policy)
-                items.extend(fetched)
-            except httpx.HTTPError as exc:
-                errors.append(f"{feed.source}: {type(exc).__name__}")
-                logger.warning("news_rss_fetch_failed", source=feed.source, error=str(exc))
+        if is_tw:
+            for feed in self._rss_feeds:
+                try:
+                    fetched = await self._fetch_rss(feed, tls_policy)
+                    items.extend(fetched)
+                except httpx.HTTPError as exc:
+                    errors.append(f"{feed.source}: {type(exc).__name__}")
+                    logger.warning("news_rss_fetch_failed", source=feed.source, error=str(exc))
 
         finnhub_key = self._settings.finnhub_key
         if finnhub_key:
             try:
-                items.extend(await self._fetch_finnhub(query, finnhub_key, tls_policy))
+                if is_tw:
+                    items.extend(
+                        await self._fetch_finnhub_company_news(query, finnhub_key, tls_policy)
+                    )
+                else:
+                    items.extend(await self._fetch_finnhub_market_news(finnhub_key, tls_policy))
             except httpx.HTTPError as exc:
                 errors.append(f"finnhub: {type(exc).__name__}")
                 logger.warning("news_finnhub_fetch_failed", error=str(exc))
@@ -242,7 +267,9 @@ class NewsAdapter:
             response.raise_for_status()
             return _parse_rss_body(feed.source, response.content)
 
-    async def _fetch_finnhub(self, query: str, token: str, tls_policy: TLSPolicy) -> list[NewsItem]:
+    async def _fetch_finnhub_company_news(
+        self, query: str, token: str, tls_policy: TLSPolicy
+    ) -> list[NewsItem]:
         today = datetime.now(UTC).date()
         params = {
             "symbol": query,
@@ -251,7 +278,17 @@ class NewsAdapter:
             "token": token,
         }
         async with build_async_client(tls_policy=tls_policy) as client:
-            response = await client.get(_FINNHUB_URL, params=params)
+            response = await client.get(_FINNHUB_COMPANY_NEWS_URL, params=params)
+            response.raise_for_status()
+            raw: object = response.json()
+            return _parse_finnhub_body(raw)
+
+    async def _fetch_finnhub_market_news(self, token: str, tls_policy: TLSPolicy) -> list[NewsItem]:
+        """Finnhub's whole-market news category — no symbol/keyword param, unlike company-news.
+        The correct endpoint for a non-TW market's general news panel (see module docstring)."""
+        params = {"category": _FINNHUB_MARKET_NEWS_CATEGORY, "token": token}
+        async with build_async_client(tls_policy=tls_policy) as client:
+            response = await client.get(_FINNHUB_MARKET_NEWS_URL, params=params)
             response.raise_for_status()
             raw: object = response.json()
             return _parse_finnhub_body(raw)

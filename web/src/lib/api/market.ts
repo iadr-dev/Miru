@@ -619,8 +619,11 @@ export async function getDispositionBoard(
 // 26. GET /market/news-feed (public, RSS/Finnhub 即時新聞 aggregator)
 // ---------------------------------------------------------------------------
 
-export async function getNewsFeed(query = "台股"): Promise<NewsFeedResponse> {
-  const search = new URLSearchParams({ query });
+export async function getNewsFeed(
+  query = "台股",
+  market: Market = "TW",
+): Promise<NewsFeedResponse> {
+  const search = new URLSearchParams({ query, market });
   const raw = await requestJson(`/market/news-feed?${search.toString()}`);
   return newsFeedResponseSchema.parse(raw);
 }

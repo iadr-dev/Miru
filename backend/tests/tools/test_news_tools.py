@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from schemas.enums import DataClass, TimingClass, TLSPolicy
+from schemas.enums import DataClass, Market, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tools.base import ToolContext
 from tools.news_tools import GetNewsFeedInput, GetNewsFeedTool
@@ -15,7 +15,11 @@ class _FakeNewsGateway:
         self.calls: list[str] = []
 
     async def fetch_news(
-        self, *, query: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+        self,
+        *,
+        query: str,
+        market: Market = Market.TW,
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
     ) -> SourceResult:
         self.calls.append(query)
         return SourceResult(
@@ -64,7 +68,11 @@ async def test_get_news_feed_defaults_query() -> None:
 async def test_get_news_feed_handles_no_items() -> None:
     class _EmptyGateway:
         async def fetch_news(
-            self, *, query: str, tls_policy: TLSPolicy = TLSPolicy.STRICT
+            self,
+            *,
+            query: str,
+            market: Market = Market.TW,
+            tls_policy: TLSPolicy = TLSPolicy.STRICT,
         ) -> SourceResult:
             return SourceResult(
                 source_id="NEWS",

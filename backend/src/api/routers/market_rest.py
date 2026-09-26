@@ -834,13 +834,16 @@ def _symbol_date_args(
 @router.get("/market/news-feed")
 async def news_feed(
     query: str = Query("台股"),
+    market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
     """即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub, backed by
-    `get_news_feed`, `DataClass.PUBLIC`. `query` only scopes the Finnhub call; RSS feeds are
-    always fetched whole (not query-filterable upstream)."""
-    return await _dispatch(state, "get_news_feed", {"query": query}, ctx)
+    `get_news_feed`, `DataClass.PUBLIC`. `market=TW` (default): `query` scopes the Finnhub
+    company-news call; RSS feeds are always fetched whole (not query-filterable upstream). Any
+    other market: RSS is skipped (TW-only outlets) and Finnhub's general-market-news category is
+    used instead of a `query`-scoped company-news call — see `get_news_feed`'s own docstring."""
+    return await _dispatch(state, "get_news_feed", {"query": query, "market": market.value}, ctx)
 
 
 @router.get("/market/ptt-board")
