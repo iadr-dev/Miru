@@ -51,6 +51,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_symbol_directory_search": "symbol_search",
     "get_price_history": "price_history",
     "get_us_market_rankings": "us_market_ranking",
+    "get_tw_market_rankings": "tw_market_ranking",
     "get_macro_calendar": "macro_calendar",
     "get_etf_list": "etf_list",
     "get_dividend_calendar": "dividend_calendar",

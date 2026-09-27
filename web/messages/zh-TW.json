@@ -352,6 +352,23 @@
         "expandTo": "展開完整 {count} 筆",
         "collapse": "收合"
       },
+      "twRankings": {
+        "title": "排行榜",
+        "tabDealerStreak": "主力連買賣",
+        "tabTrustStreak": "投信連買賣",
+        "tabForeignStreak": "外資連買賣",
+        "tabMarginChange": "融資增減",
+        "tabDividendYield": "股息殖利率",
+        "tabRevenueGrowth": "月營收成長",
+        "tabHolderAccumulation": "大戶買賣",
+        "columnStreak": "連買賣天數",
+        "columnMarginChange": "融資變動",
+        "columnDividendYield": "殖利率",
+        "columnRevenueGrowth": "營收年增率",
+        "unavailable": "此選項查無資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "collapse": "收合"
+      },
       "earningsCalendar": {
         "title": "近期財報公布",
         "empty": "近期查無財報公布資料。",

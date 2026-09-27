@@ -634,6 +634,47 @@ export const usMarketRankingsResponseSchema = z.object({
 export type UsMarketRankingsResponse = z.infer<typeof usMarketRankingsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 11c. GET /market/tw-rankings — get_tw_market_rankings (public, TW-only 排行榜, 6 of its 7 tabs
+// — 大戶買賣 reuses holderAccumulationResponseSchema below verbatim instead of this schema)
+// ---------------------------------------------------------------------------
+
+export const TW_RANKING_KINDS = [
+  "dealer_streak",
+  "trust_streak",
+  "foreign_streak",
+  "margin_change",
+  "dividend_yield",
+  "revenue_growth",
+] as const;
+export const twRankingKindSchema = z.enum(TW_RANKING_KINDS);
+export type TwRankingKind = z.infer<typeof twRankingKindSchema>;
+
+// Same `SymbolQuoteRows`-compatible base as `marketRankingRowSchema` above, plus one shared
+// `extra_value`/`extra_label` pair carrying each tab's own distinct metric (signed streak-day
+// count, signed margin-balance change, or a plain percentage) — see the backend
+// `TwRankingRow`'s own docstring for why one shared numeric field covers all 6 kinds.
+export const twRankingRowSchema = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  price: z.number().nullable(),
+  change: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  volume: z.number().nullable(),
+  extra_value: z.number(),
+  extra_label: z.string(),
+});
+export type TwRankingRow = z.infer<typeof twRankingRowSchema>;
+
+export const twMarketRankingsResponseSchema = z.object({
+  kind: twRankingKindSchema,
+  trade_date: z.string().nullable().optional(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(twRankingRowSchema).default([]),
+});
+export type TwMarketRankingsResponse = z.infer<typeof twMarketRankingsResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 12. GET /market/holder-accumulation — get_holder_accumulation (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

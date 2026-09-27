@@ -322,6 +322,28 @@ async def us_rankings(
     return await _dispatch(state, "get_us_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
 
 
+@router.get("/market/tw-rankings")
+async def tw_rankings(
+    kind: Literal[
+        "dealer_streak",
+        "trust_streak",
+        "foreign_streak",
+        "margin_change",
+        "dividend_yield",
+        "revenue_growth",
+    ] = Query("dealer_streak"),
+    top_n: int = Query(10, ge=1, le=50),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """TW-only 排行榜 multi-tab ranking (6 of its 7 tabs — 大戶買賣 reuses
+    `/market/holder-accumulation` verbatim instead of this route): dealer/trust/foreign
+    consecutive-day net-buy/sell streak, day-over-day margin-purchase-balance change, dividend
+    yield, monthly-revenue YoY growth. No `market` param — TW-only by construction
+    (`get_tw_market_rankings`'s own docstring), mirroring `/market/us-rankings`'s own shape."""
+    return await _dispatch(state, "get_tw_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
+
+
 @router.get("/market/holder-accumulation")
 async def holder_accumulation(
     market: Market = Query(Market.TW),

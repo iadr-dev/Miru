@@ -62,6 +62,7 @@ from ingest.jobs import (
     job_financials,
     job_insider_transfer_declaration,
     job_institutional_flow,
+    job_margin_short,
     job_market_value,
     job_market_value_weight,
     job_material_announcements,
@@ -69,6 +70,7 @@ from ingest.jobs import (
     job_price_eod,
     job_shareholding_distribution,
     job_stock_info,
+    job_valuation_ratios,
 )
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
@@ -166,6 +168,12 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # listings/reclassifications aren't stale for up to a month).
     ScheduledIngestJob("stock_info", time_(6, 0), job_stock_info),
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
+    # Margin-purchase/short-sale balance snapshot — shares `price_eod`'s ~17:30 FinMind publish
+    # clock (MARGIN_SHORT_JOB's own cron_hint); feeds the 融資增減 TW-rankings tab.
+    ScheduledIngestJob("margin_short", time_(17, 40), job_margin_short),
+    # PER/PBR/dividend-yield snapshot — ~18:00 post-close publish clock (VALUATION_RATIOS_JOB's
+    # own cron_hint); feeds the 股息殖利率 TW-rankings tab.
+    ScheduledIngestJob("valuation_ratios", time_(18, 10), job_valuation_ratios),
     ScheduledIngestJob("institutional_flow", time_(20, 10), job_institutional_flow),
     # Screener-flag batch — a derived-compute pass, not a FinMind pull: it reads the price and
     # institutional-flow partitions the two jobs above just wrote and evaluates the tag catalog

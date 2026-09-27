@@ -85,7 +85,10 @@ import {
   stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
+  type TwMarketRankingsResponse,
+  type TwRankingKind,
   tickSnapshotResponseSchema,
+  twMarketRankingsResponseSchema,
   type UsMarketRankingsResponse,
   usMarketRankingsResponseSchema,
 } from "@/types/market";
@@ -372,6 +375,20 @@ export async function getUsMarketRankings(
   const search = new URLSearchParams({ kind, top_n: String(topN) });
   const raw = await requestJson(`/market/us-rankings?${search.toString()}`);
   return usMarketRankingsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 11c. GET /market/tw-rankings (public, TW-only 排行榜 — 6 of its 7 tabs; 大戶買賣 reuses
+// getHolderAccumulation below verbatim instead of this fn)
+// ---------------------------------------------------------------------------
+
+export async function getTwMarketRankings(
+  kind: TwRankingKind,
+  topN: number,
+): Promise<TwMarketRankingsResponse> {
+  const search = new URLSearchParams({ kind, top_n: String(topN) });
+  const raw = await requestJson(`/market/tw-rankings?${search.toString()}`);
+  return twMarketRankingsResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

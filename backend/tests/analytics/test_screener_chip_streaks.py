@@ -32,3 +32,21 @@ def test_cumulative_net_buy_negative_window_is_false() -> None:
 
 def test_partial_window_is_not_asserted() -> None:
     assert chip_streaks.cumulative_net_buy([100.0, 100.0], 5) is False
+
+
+def test_streak_length_positive_for_buy_streak() -> None:
+    assert chip_streaks.streak_length([100.0, 50.0, 200.0]) == 3
+
+
+def test_streak_length_negative_for_sell_streak() -> None:
+    assert chip_streaks.streak_length([-100.0, -50.0, -200.0]) == -3
+
+
+def test_streak_length_stops_at_first_sign_flip() -> None:
+    # A down day two steps back breaks the streak — only the trailing 2 buy days count.
+    assert chip_streaks.streak_length([100.0, -10.0, 200.0, 50.0]) == 2
+
+
+def test_streak_length_zero_on_flat_or_empty_series() -> None:
+    assert chip_streaks.streak_length([100.0, 0.0]) == 0
+    assert chip_streaks.streak_length([]) == 0

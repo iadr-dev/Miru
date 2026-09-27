@@ -47,12 +47,14 @@ from schemas.capabilities import (
     FinancialStatementLine,
     InsiderTransferDeclarationRow,
     InstitutionalFlowRow,
+    MarginShortRow,
     MarketValueRow,
     MarketValueWeightRow,
     MaterialAnnouncementRow,
     MonthRevenueRow,
     ShareholdingDistributionRow,
     StockInfoRow,
+    ValuationRatiosRow,
 )
 from schemas.enums import Capability
 from schemas.market import Symbol
@@ -177,6 +179,32 @@ MONTH_REVENUE_JOB = WholeMarketJobSpec(
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
     cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
     row_model=MonthRevenueRow,
+)
+
+# `TaiwanStockMarginPurchaseShortSale` — daily whole-market margin-purchase/short-sale balance
+# snapshot, already `whole_market_ok=True` in `sources/finmind/chip_institutional.py`'s own
+# `_DatasetConfig`. Ingested so a 融資增減 (day-over-day margin-balance-change) ranking can be
+# computed from the derived store — `margin_purchase_today_balance`/`margin_purchase_yesterday_
+# balance` are both carried in the same row, so this needs no extra history, just today's
+# whole-market partition read back.
+MARGIN_SHORT_JOB = WholeMarketJobSpec(
+    dataset="TaiwanStockMarginPurchaseShortSale",
+    capability=Capability.MARGIN_SHORT,
+    finmind_update_time="Mon-Fri ~17:30 (documented alongside the other daily EOD chip datasets)",
+    cron_hint="17:40 Asia/Taipei",
+    row_model=MarginShortRow,
+)
+
+# `TaiwanStockPER` — daily whole-market PER/PBR/dividend-yield snapshot. Not `whole_market_ok`
+# by default in `sources/finmind/technical.py`'s own `_DatasetConfig` (that flag was added
+# specifically to support this job); ingested so a 股息殖利率 (dividend-yield) ranking can read
+# the latest whole-market partition instead of a per-symbol live fetch per candidate.
+VALUATION_RATIOS_JOB = WholeMarketJobSpec(
+    dataset="TaiwanStockPER",
+    capability=Capability.VALUATION_RATIOS,
+    finmind_update_time="Mon-Fri ~18:00 (post-close, not intraday)",
+    cron_hint="18:10 Asia/Taipei",
+    row_model=ValuationRatiosRow,
 )
 
 # The balance-sheet and cash-flow statement families share the same irregular per-filing cadence
@@ -304,6 +332,8 @@ ALL_WHOLE_MARKET_JOBS: tuple[WholeMarketJobSpec, ...] = (
     BALANCE_SHEET_JOB,
     CASH_FLOW_JOB,
     MONTH_REVENUE_JOB,
+    MARGIN_SHORT_JOB,
+    VALUATION_RATIOS_JOB,
     MARKET_VALUE_JOB,
     MARKET_VALUE_WEIGHT_JOB,
     ACTIVE_ETF_HOLDING_JOB,
@@ -535,6 +565,18 @@ async def job_month_revenue(run_date: date_, ctx: IngestContext) -> JobRun:
     """`ingest-monthly`/late-daily catch-all for monthly-revenue filings, cron **21:30**. A day
     with no filings legitimately returns zero rows — filings are irregular per-company."""
     return await run_whole_market_job(MONTH_REVENUE_JOB, run_date, ctx)
+
+
+async def job_margin_short(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily-postclose` — daily whole-market margin-purchase/short-sale balance
+    snapshot, cron **17:40**."""
+    return await run_whole_market_job(MARGIN_SHORT_JOB, run_date, ctx)
+
+
+async def job_valuation_ratios(run_date: date_, ctx: IngestContext) -> JobRun:
+    """`ingest-daily-postclose` — daily whole-market PER/PBR/dividend-yield snapshot,
+    cron **18:10**."""
+    return await run_whole_market_job(VALUATION_RATIOS_JOB, run_date, ctx)
 
 
 async def job_market_value(run_date: date_, ctx: IngestContext) -> JobRun:

@@ -16,19 +16,23 @@ from ingest.jobs import (
     CASH_FLOW_JOB,
     DIVIDENDS_JOB,
     FINANCIALS_JOB,
+    MARGIN_SHORT_JOB,
     MARKET_VALUE_JOB,
     MARKET_VALUE_WEIGHT_JOB,
     PRICE_EOD_JOB,
     STOCK_INFO_JOB,
+    VALUATION_RATIOS_JOB,
     job_active_etf_holding_changes,
     job_balance_sheet,
     job_cash_flow,
     job_dividends,
     job_financials,
+    job_margin_short,
     job_market_value,
     job_market_value_weight,
     job_price_eod,
     job_stock_info,
+    job_valuation_ratios,
 )
 from ingest.journal import RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
@@ -332,6 +336,66 @@ async def test_market_value_non_trading_day_is_skipped_with_no_fetch(
 
     assert run.status is RunStatus.SKIPPED
     assert not ctx.store.has_partition(MARKET_VALUE_JOB.dataset, "TW", saturday)
+
+
+async def test_margin_short_leader_writes_and_reads_back(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = load_fixture("finmind", "margin_short_2330.json")
+    _patch_client(monkeypatch, body)
+    ctx = _ctx(tmp_path, leader=AlwaysLeader())
+    trading_day = date(2024, 1, 2)
+
+    run = await job_margin_short(trading_day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert ctx.store.has_partition(MARGIN_SHORT_JOB.dataset, "TW", trading_day)
+
+
+async def test_margin_short_non_trading_day_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(**_kwargs: object) -> object:
+        raise AssertionError("must not construct an HTTP client on a non-trading day")
+
+    monkeypatch.setattr(finmind_module, "build_async_client", _boom)
+    ctx = _ctx(tmp_path)
+    saturday = date(2024, 1, 6)
+
+    run = await job_margin_short(saturday, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert not ctx.store.has_partition(MARGIN_SHORT_JOB.dataset, "TW", saturday)
+
+
+async def test_valuation_ratios_leader_writes_and_reads_back(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = load_fixture("finmind", "valuation_ratios_2330.json")
+    _patch_client(monkeypatch, body)
+    ctx = _ctx(tmp_path, leader=AlwaysLeader())
+    trading_day = date(2024, 1, 2)
+
+    run = await job_valuation_ratios(trading_day, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert ctx.store.has_partition(VALUATION_RATIOS_JOB.dataset, "TW", trading_day)
+
+
+async def test_valuation_ratios_non_trading_day_is_skipped_with_no_fetch(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _boom(**_kwargs: object) -> object:
+        raise AssertionError("must not construct an HTTP client on a non-trading day")
+
+    monkeypatch.setattr(finmind_module, "build_async_client", _boom)
+    ctx = _ctx(tmp_path)
+    saturday = date(2024, 1, 6)
+
+    run = await job_valuation_ratios(saturday, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert not ctx.store.has_partition(VALUATION_RATIOS_JOB.dataset, "TW", saturday)
 
 
 async def test_market_value_weight_leader_writes_and_reads_back(

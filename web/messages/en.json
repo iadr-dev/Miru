@@ -352,6 +352,23 @@
         "expandTo": "Show all {count}",
         "collapse": "Collapse"
       },
+      "twRankings": {
+        "title": "Rankings",
+        "tabDealerStreak": "Dealer Streak",
+        "tabTrustStreak": "Trust Streak",
+        "tabForeignStreak": "Foreign Streak",
+        "tabMarginChange": "Margin Chg",
+        "tabDividendYield": "Dividend Yield",
+        "tabRevenueGrowth": "Revenue Growth",
+        "tabHolderAccumulation": "Large-Holder Accum.",
+        "columnStreak": "Streak",
+        "columnMarginChange": "Margin Chg",
+        "columnDividendYield": "Yield",
+        "columnRevenueGrowth": "Rev. YoY",
+        "unavailable": "No data for this selection.",
+        "expandTo": "Show all {count}",
+        "collapse": "Collapse"
+      },
       "earningsCalendar": {
         "title": "Upcoming Earnings",
         "empty": "No upcoming earnings data available.",

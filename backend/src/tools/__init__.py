@@ -57,6 +57,7 @@ from tools import (
     technical_tools,
     theme_tools,
     trend_score_tools,
+    tw_ranking_tools,
     us_market_index_strip_tools,
     web_search_tools,
 )
@@ -131,6 +132,7 @@ def build_default_tool_registry(
         others_tools.build_registration_table(router),
         realtime_tools.build_registration_table(router),
         tdcc_tools.build_registration_table(router),
+        tw_ranking_tools.build_registration_table(),
         theme_group,
         score_group,
         screener_group,
