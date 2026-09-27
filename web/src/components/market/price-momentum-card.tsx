@@ -9,7 +9,7 @@ import { cn } from "@/lib/cn";
 import type { LeaderboardDirection, MomentumPeriod, PriceMomentumRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr]";
+const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr_0.9fr]";
 const PERIODS = ["day", "week", "month"] as const satisfies readonly MomentumPeriod[];
 // Same collapsed-row-count convention `LeaderboardCard`/`HolderAccumulationCard` use — 10 rows
 // visible inline, "Show all" opens the full ranking (up to the backend's 50 cap) in a modal.

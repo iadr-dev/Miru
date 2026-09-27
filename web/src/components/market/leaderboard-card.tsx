@@ -18,7 +18,7 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
   偏空: "var(--down)",
 };
 
-const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr_1.3fr]";
+const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_1.3fr]";
 
 /**
  * AI 多空排行 — the real `get_score_leaderboard` composite ranking, enriched via

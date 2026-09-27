@@ -2,7 +2,8 @@
 
 /**
  * The shared base raw-data model for "one row per stock/ETF symbol" surfaces (the AI
- * leaderboard, a watchlist, an ETF roster, …): `{code, name, price, changePct, sparkline}`.
+ * leaderboard, a watchlist, an ETF roster, …): `{code, name, price, changePct, sparkline,
+ * volume}`.
  * Combines two real, batched (≤20 symbols) backend routes —
  * `GET /market/symbol-info` (name/industry) and `GET /market/price-history` (bounded OHLCV
  * window) — into one typed shape per symbol, so every caller enriches a bare symbol list the
@@ -34,6 +35,10 @@ export type SymbolQuote = {
   /** Ascending-by-date closes over the fetched window — feeds a sparkline directly. Empty when
    * no bars were found (never a single synthetic point). */
   sparkline: readonly number[];
+  /** The latest fetched bar's own volume — `null` if no bar was found. NOT a period-cumulative
+   * sum (a caller wanting "volume over the whole window" would need to sum `sparkline`'s own
+   * bars separately); this mirrors `price`'s own "latest bar" semantics. */
+  volume: number | null;
 };
 
 const DEFAULT_HISTORY_DAYS = 20;
@@ -84,6 +89,7 @@ function buildQuotes(
       price: last?.close ?? null,
       changePct,
       sparkline: bars.map((bar) => bar.close),
+      volume: last?.volume ?? null,
     };
   });
 }
