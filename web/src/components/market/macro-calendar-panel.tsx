@@ -32,6 +32,15 @@ const IMPACT_COLOR: Record<string, string> = {
   low: "var(--text-muted)",
 };
 
+// 前值/預期/實際 each get their own categorical hue (never `--up`/`--down` — that pair is
+// reserved for a real signed price/%/score move per web/CLAUDE.md §4, and none of these three
+// numbers is being presented as a beat/miss direction, just three distinct data columns that
+// need to read as different at a glance). `--chart-4`/`--chart-2`/`--chart-1` chosen so 實際
+// (the one that just published) is the most attention-grabbing of the three.
+const PRIOR_COLOR = "var(--chart-4)";
+const CONSENSUS_COLOR = "var(--chart-2)";
+const ACTUAL_COLOR = "var(--chart-1)";
+
 const IMPACT_LABEL_KEY: Record<string, string> = {
   high: "impactHigh",
   medium: "impactMedium",
@@ -498,13 +507,22 @@ function MacroEventRow({ event }: { readonly event: MacroReleaseEventRow }): Rea
           />
         ))}
       </span>
-      <span className="text-right font-num text-[12px] text-[var(--text-muted)] tabular-nums">
+      <span
+        className="text-right font-num text-[12px] tabular-nums"
+        style={{ color: event.prior !== null ? PRIOR_COLOR : "var(--text-muted)" }}
+      >
         {event.prior ?? "—"}
       </span>
-      <span className="text-right font-num text-[12px] text-[var(--text-muted)] tabular-nums">
+      <span
+        className="text-right font-num text-[12px] tabular-nums"
+        style={{ color: event.consensus !== null ? CONSENSUS_COLOR : "var(--text-muted)" }}
+      >
         {event.consensus ?? "—"}
       </span>
-      <span className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
+      <span
+        className="text-right font-num text-[12px] tabular-nums"
+        style={{ color: event.actual !== null ? ACTUAL_COLOR : "var(--text-muted)" }}
+      >
         {event.actual ?? "—"}
       </span>
     </li>
