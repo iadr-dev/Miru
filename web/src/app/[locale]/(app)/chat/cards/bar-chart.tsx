@@ -107,6 +107,9 @@ export function BarChart({ data }: { data: unknown }): ReactNode {
                 borderRadius: "var(--radius-input)",
                 color: "var(--text)",
               }}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
+              cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value) => formatNumber(asNumber(value), locale)}
               labelFormatter={(key) => String(key)}
             />

@@ -240,6 +240,9 @@ export function MarginMaintenanceCard({
                   borderRadius: "var(--radius-input)",
                   color: "var(--text)",
                 }}
+                labelStyle={{ color: "var(--text)" }}
+                itemStyle={{ color: "var(--text)" }}
+                cursor={{ fill: "var(--accent)", opacity: 0.08 }}
                 formatter={(value) => [
                   `${formatNumber(value as number, locale, { decimals: 2 })}%`,
                   t("title"),

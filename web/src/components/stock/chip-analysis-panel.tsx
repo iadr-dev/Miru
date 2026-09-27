@@ -520,6 +520,9 @@ function InstitutionalFlowBody({
             <ReferenceLine yAxisId="flow" y={0} stroke="var(--border)" />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
+              cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value, name) => [
                 name === "price"
                   ? formatNumber(Number(value), locale)
@@ -927,6 +930,9 @@ function InstitutionalTotalsBody({
             <ReferenceLine yAxisId="flow" y={0} stroke="var(--border)" />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
+              cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value, name) => [
                 name === "price"
                   ? formatNumber(Number(value), locale)
@@ -1109,6 +1115,9 @@ function InstitutionalSummaryBody({
               <ReferenceLine y={0} stroke="var(--border)" />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
+                labelStyle={{ color: "var(--text)" }}
+                itemStyle={{ color: "var(--text)" }}
+                cursor={{ fill: "var(--accent)", opacity: 0.08 }}
                 formatter={(value) => t("lotUnit", { value: formatNumber(Number(value), locale) })}
                 labelFormatter={(label) => investorLabel(tFields, String(label))}
               />
@@ -1476,6 +1485,9 @@ function ForeignShareholdingBody({
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
+              cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value, name) => [
                 name === "price"
                   ? formatNumber(Number(value), locale)
@@ -1746,6 +1758,9 @@ function MarginShortChartShell<TRow extends { trade_date: string }>({
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
+              cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               formatter={(value, name) => [
                 name === "price"
                   ? formatNumber(Number(value), locale)

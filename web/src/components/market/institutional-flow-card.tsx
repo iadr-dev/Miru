@@ -99,6 +99,9 @@ export function InstitutionalFlowCard({
               borderRadius: "var(--radius-input)",
               color: "var(--text)",
             }}
+            labelStyle={{ color: "var(--text)" }}
+            itemStyle={{ color: "var(--text)" }}
+            cursor={{ fill: "var(--accent)", opacity: 0.08 }}
             formatter={(value, name) => [
               formatNumber(value as number, locale),
               fieldLabel(t, CATEGORY_FIELD_KEY[name as string] ?? (name as string)),

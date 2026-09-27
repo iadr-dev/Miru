@@ -271,6 +271,9 @@ function ValuationChart({
           />
           <Tooltip
             contentStyle={TOOLTIP_STYLE}
+            labelStyle={{ color: "var(--text)" }}
+            itemStyle={{ color: "var(--text)" }}
+            cursor={{ fill: "var(--accent)", opacity: 0.08 }}
             formatter={(value) => formatNumber(Number(value), locale, { decimals: 2 })}
           />
           <Area

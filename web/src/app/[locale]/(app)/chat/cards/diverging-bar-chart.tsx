@@ -110,6 +110,9 @@ export function DivergingBarChart({ data }: { data: unknown }): ReactNode {
                 borderRadius: "var(--radius-input)",
                 color: "var(--text)",
               }}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
+              cursor={{ fill: "var(--accent)", opacity: 0.08 }}
               labelFormatter={(key) => fieldLabel(t, String(key))}
               formatter={(value) => formatNumber(asNumber(value), locale)}
             />

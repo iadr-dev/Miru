@@ -90,9 +90,12 @@ export function MonthGridCalendar({
               <span className="font-num tabular-nums">{date.getDate()}</span>
               {dots.length > 0 ? (
                 <span className="flex gap-0.5" aria-hidden>
-                  {dots.slice(0, 3).map((color) => (
+                  {dots.slice(0, 3).map((color, index) => (
                     <span
-                      key={color}
+                      // A day can repeat the same color (e.g. two high-impact releases), so
+                      // color alone isn't unique; `dots` is a fixed, never-reordered snapshot.
+                      // biome-ignore lint/suspicious/noArrayIndexKey: tie-breaker only, see comment above.
+                      key={index}
                       className="size-1.5 rounded-full"
                       style={{ backgroundColor: color }}
                     />
