@@ -2327,6 +2327,35 @@ class EconomicCalendarRow(BaseModel):
     revised: float | None = None
 
 
+class MacroReleaseEventRow(BaseModel):
+    """`macro_calendar` — one upcoming/recent macro-release event row
+    (`financecalendar.com`'s `wp-json/fc/v1/calendar` feed, a distinct third-party source from
+    `EconomicCalendarRow`'s yfinance `Calendars` feed — see `sources/financecalendar.py`'s own
+    module docstring for why this is additive, not a replacement). Modeled `Market.GLOBAL`: the
+    feed spans multiple countries (US GDP/CPI/NFP, RBA/ECB/BOJ rate decisions, Australia/Canada/
+    Eurozone releases, ...), distinguished only by the free-text `category`/`name` fields, the
+    same "no single-country home" reasoning `EconomicCalendarRow` already uses.
+
+    `consensus`/`prior`/`actual` are deliberately `str | None`, never `float` — the live upstream
+    returns human-readable strings ("Hold at 3.50-3.75%", "3.8% annual", "55.6") that mix ranges,
+    units, and plain numbers; coercing them to a float would either fail or silently misrepresent
+    a range/unit. Render as opaque cited text, never parsed or computed on."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Market
+    date: date_
+    time_utc: datetime | None = None
+    name: str
+    title: str
+    impact: str  # "high" | "medium" | "low", upstream's own vocabulary
+    category: str
+    consensus: str | None = None
+    prior: str | None = None
+    actual: str | None = None
+    url: str | None = None
+
+
 class SectorOverviewCompanyRow(BaseModel):
     """`sector_overview` — one top-company/top-ETF/top-mutual-fund row within one
     `yfinance.Sector` aggregate view. `row_kind` distinguishes the three sub-lists this

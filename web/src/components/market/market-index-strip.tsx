@@ -163,7 +163,9 @@ function toSponsorItem<Row>(
   return select(data.rows) ?? "unavailable";
 }
 
-function PublicStripItem({ item }: { readonly item: MarketIndexStripItem }): ReactNode {
+/** Exported so `us-market-index-strip.tsx` (an entirely-public strip, no Sponsor items) reuses
+ * this same 名稱+值+漲跌% chip rendering rather than duplicating it. */
+export function PublicStripItem({ item }: { readonly item: MarketIndexStripItem }): ReactNode {
   return (
     <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
       <span className="truncate text-[12px] text-[var(--text-muted)]">{item.label}</span>

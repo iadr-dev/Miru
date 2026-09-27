@@ -391,6 +391,35 @@ export const macroIndicatorsResponseSchema = z.union([
 export type MacroIndicatorsResponse = z.infer<typeof macroIndicatorsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 7b. GET /market/macro-calendar — get_macro_calendar (public, financecalendar.com)
+// ---------------------------------------------------------------------------
+
+export const MACRO_IMPACT_LEVELS = ["high", "medium", "low"] as const;
+export const macroImpactLevelSchema = z.enum(MACRO_IMPACT_LEVELS);
+export type MacroImpactLevel = z.infer<typeof macroImpactLevelSchema>;
+
+export const macroReleaseEventRowSchema = z.object({
+  market: z.string(),
+  date: z.string(),
+  time_utc: z.string().nullable(),
+  name: z.string(),
+  title: z.string(),
+  impact: z.string(),
+  category: z.string(),
+  consensus: z.string().nullable(),
+  prior: z.string().nullable(),
+  actual: z.string().nullable(),
+  url: z.string().nullable(),
+});
+export type MacroReleaseEventRow = z.infer<typeof macroReleaseEventRowSchema>;
+
+export const macroCalendarResponseSchema = z.object({
+  currentness_caveat: z.string(),
+  events: z.array(macroReleaseEventRowSchema).default([]),
+});
+export type MacroCalendarResponse = z.infer<typeof macroCalendarResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 8. GET /macro/business-indicator — get_business_indicator (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

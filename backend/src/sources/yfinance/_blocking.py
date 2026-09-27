@@ -209,10 +209,25 @@ def _fetch_option_chain_blocking(yahoo_symbol: str, expiry: str) -> Any:
     return ticker.option_chain(expiry)
 
 
+def _fetch_fast_info_blocking(yahoo_symbol: str) -> dict[str, Any]:
+    """`Ticker.fast_info` — a lighter-weight quote-only fetch than `_fetch_info_blocking`'s full
+    `.get_info()`, used for the US ticker-strip's index quotes (`^GSPC`/`^DJI`/`^IXIC`/`^SOX`/
+    `^VIX`/`^TNX`) — these are index tickers, not equities in our own ingested `us_price_eod`
+    universe, so there is no whole-market-ingested path for them; this is the same bounded,
+    per-request live fetch `_fetch_info_blocking`/`_fetch_calendars_blocking` already establish
+    as an accepted pattern (never a full-market scan — one symbol per call, caller-bounded)."""
+    import yfinance as yf  # noqa: PLC0415
+
+    _init_tz_cache()
+    ticker = yf.Ticker(yahoo_symbol)
+    return dict(ticker.fast_info)
+
+
 __all__ = [
     "_dict_to_frame",
     "_fetch_adjusted_history_blocking",
     "_fetch_calendars_blocking",
+    "_fetch_fast_info_blocking",
     "_fetch_industry_blocking",
     "_fetch_info_blocking",
     "_fetch_lookup_blocking",

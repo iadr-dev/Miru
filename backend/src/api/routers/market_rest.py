@@ -70,6 +70,16 @@ async def index_strip(
     return await _dispatch(state, "get_market_index_strip", {}, ctx)
 
 
+@router.get("/market/us-index-strip")
+async def us_index_strip(
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """US-tab ticker-strip public items (S&P500/Dow Jones/Nasdaq/SOX/VIX/US 10Y yield/Fed funds
+    rate) — backed by `get_us_market_index_strip`, `DataClass.PUBLIC`."""
+    return await _dispatch(state, "get_us_market_index_strip", {}, ctx)
+
+
 @router.get("/market/tick-snapshot")
 async def tick_snapshot(
     symbol: str = Query(..., min_length=1, description="4-digit stock id or 3-digit index code."),
@@ -801,6 +811,23 @@ async def business_indicator(
     return await _dispatch(
         state, "get_business_indicator", _market_args(market, start_date, end_date), ctx
     )
+
+
+@router.get("/market/macro-calendar")
+async def macro_calendar(
+    impact: Literal["high", "medium", "low"] | None = Query(None),
+    days_ahead: int = Query(14, ge=1, le=90),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """Upcoming US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/
+    actual, backed by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct
+    third-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see
+    that tool's own docstring."""
+    args: dict[str, object] = {"days_ahead": days_ahead}
+    if impact is not None:
+        args["impact"] = impact
+    return await _dispatch(state, "get_macro_calendar", args, ctx)
 
 
 def _market_args(

@@ -29,19 +29,27 @@ rendered as empty scaffolding.
 Internal layout: `_shared.py` (constants + coercion helpers + envelope constructor),
 `_blocking.py` (every isolated synchronous SDK call), `_adapter.py` (the `YFinanceAdapter`
 dispatch skeleton), and one module per capability domain — `analyst.py`,
-`price_financials.py`, `holders.py`, `discovery.py` — plus the two non-`SourceAdapter`
-carve-outs `batch.py` (ingest entry point) and `screener.py` (query-shaped screener, see its
-own module docstring for why it lives outside `SourceAdapter`).
+`price_financials.py`, `holders.py`, `discovery.py` — plus the three non-`SourceAdapter`
+carve-outs `batch.py` (ingest entry point), `screener.py` (query-shaped screener, see its own
+module docstring for why it lives outside `SourceAdapter`), and `index_quote.py` (live index
+ticker quotes for the US market-index strip — see its own module docstring).
 
-This module re-exports `YFinanceAdapter`, `batch_download`, `run_screener`, and
-`run_predefined_screener` — the public seam every caller (`dataaccess/`, `ingest/`, tests)
-imports as `from sources.yfinance import ...`.
+This module re-exports `YFinanceAdapter`, `batch_download`, `run_screener`,
+`run_predefined_screener`, and `fetch_index_quote` — the public seam every caller (`dataaccess/`,
+`ingest/`, tests) imports as `from sources.yfinance import ...`.
 """
 
 from __future__ import annotations
 
 from ._adapter import YFinanceAdapter
 from .batch import batch_download
+from .index_quote import fetch_index_quote
 from .screener import run_predefined_screener, run_screener
 
-__all__ = ["YFinanceAdapter", "batch_download", "run_predefined_screener", "run_screener"]
+__all__ = [
+    "YFinanceAdapter",
+    "batch_download",
+    "fetch_index_quote",
+    "run_predefined_screener",
+    "run_screener",
+]

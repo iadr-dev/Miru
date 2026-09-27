@@ -42,12 +42,15 @@ import {
   institutionalRankingResponseSchema,
   type LeaderboardDirection,
   type LeaderboardUniverse,
+  type MacroCalendarResponse,
+  type MacroImpactLevel,
   type MacroIndicatorsResponse,
   type MarginMaintenanceResponse,
   type MarginShortBalanceResponse,
   type MarketIndexStripResponse,
   type MaterialAnnouncementFeedResponse,
   type MomentumPeriod,
+  macroCalendarResponseSchema,
   macroIndicatorsResponseSchema,
   marginMaintenanceResponseSchema,
   marginShortBalanceResponseSchema,
@@ -243,6 +246,21 @@ export async function getMacroIndicators(
   const suffix = search.toString();
   const raw = await requestJson(suffix ? `/macro?${suffix}` : "/macro");
   return macroIndicatorsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 7c. GET /market/macro-calendar (public, financecalendar.com — distinct third-party feed from
+// get_calendar_events_feed's yfinance economic calendar)
+// ---------------------------------------------------------------------------
+
+export async function getMacroCalendar(
+  impact?: MacroImpactLevel,
+  daysAhead = 14,
+): Promise<MacroCalendarResponse> {
+  const search = new URLSearchParams({ days_ahead: String(daysAhead) });
+  if (impact) search.set("impact", impact);
+  const raw = await requestJson(`/market/macro-calendar?${search.toString()}`);
+  return macroCalendarResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -533,6 +551,17 @@ export async function getDividendCalendar(
 
 export async function getMarketIndexStrip(): Promise<MarketIndexStripResponse> {
   const raw = await requestJson("/market/index-strip");
+  return marketIndexStripResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 21b. GET /market/us-index-strip (public, US-tab ticker strip: S&P500/Dow/Nasdaq/SOX/VIX/
+// US10Y/Fed funds rate) — same `MarketIndexStripItem` row shape as the TW strip above, just a
+// different backing tool/route.
+// ---------------------------------------------------------------------------
+
+export async function getUsMarketIndexStrip(): Promise<MarketIndexStripResponse> {
+  const raw = await requestJson("/market/us-index-strip");
   return marketIndexStripResponseSchema.parse(raw);
 }
 

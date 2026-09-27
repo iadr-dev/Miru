@@ -111,7 +111,8 @@
         "label": "US views",
         "focus": "Daily Focus",
         "heatmap": "Heatmap",
-        "news": "News"
+        "news": "News",
+        "macro": "Macro"
       }
     },
     "cards": {
@@ -269,12 +270,24 @@
       "macro": {
         "title": "Macro Indicators",
         "exchangeRate": "Exchange rate",
-        "centralBankRate": "Central bank rate",
+        "centralBankRate": "Fed funds rate",
         "goldPrice": "Gold price",
-        "crudeOilPrices": "Crude oil prices",
-        "governmentBondYield": "US Treasury yield",
+        "crudeOilPrices": "Crude oil (WTI)",
+        "governmentBondYield": "US 10Y Treasury yield",
         "fearGreedIndex": "Fear & Greed Index",
         "businessIndicator": "Business climate indicator"
+      },
+      "macroCalendar": {
+        "title": "Economic Releases",
+        "empty": "No economic release data in this window.",
+        "expandTo": "Show all {count}",
+        "monthHeading": "{month}/{year}",
+        "impactHigh": "High",
+        "impactMedium": "Medium",
+        "impactLow": "Low",
+        "consensus": "Consensus",
+        "prior": "Prior",
+        "actual": "Actual"
       },
       "leaderboard": {
         "title": "AI Score Leaderboard",

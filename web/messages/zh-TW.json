@@ -111,7 +111,8 @@
         "label": "美股 檢視",
         "focus": "每日焦點",
         "heatmap": "熱力圖",
-        "news": "新聞"
+        "news": "新聞",
+        "macro": "總經"
       }
     },
     "cards": {
@@ -269,12 +270,24 @@
       "macro": {
         "title": "宏觀指標",
         "exchangeRate": "匯率",
-        "centralBankRate": "央行利率",
+        "centralBankRate": "Fed 利率",
         "goldPrice": "黃金價格",
-        "crudeOilPrices": "原油價格",
-        "governmentBondYield": "美債殖利率",
+        "crudeOilPrices": "原油價格 (WTI)",
+        "governmentBondYield": "美債殖利率 (10年)",
         "fearGreedIndex": "恐懼與貪婪指數",
         "businessIndicator": "景氣對策信號"
+      },
+      "macroCalendar": {
+        "title": "經濟數據公布",
+        "empty": "此區間查無經濟數據公布資料。",
+        "expandTo": "展開完整 {count} 筆",
+        "monthHeading": "{year}年{month}月",
+        "impactHigh": "高",
+        "impactMedium": "中",
+        "impactLow": "低",
+        "consensus": "預期",
+        "prior": "前值",
+        "actual": "實際"
       },
       "leaderboard": {
         "title": "AI 多空排行",
