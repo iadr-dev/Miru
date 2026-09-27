@@ -287,7 +287,15 @@
         "impactLow": "Low",
         "consensus": "Consensus",
         "prior": "Prior",
-        "actual": "Actual"
+        "actual": "Actual",
+        "viewList": "List",
+        "viewCalendar": "Calendar",
+        "prevMonth": "Previous month",
+        "nextMonth": "Next month",
+        "monthTitle": "{month}/{year}",
+        "columnTime": "Time",
+        "columnEvent": "Event",
+        "columnImpact": "Impact"
       },
       "leaderboard": {
         "title": "AI Score Leaderboard",

@@ -287,7 +287,15 @@
         "impactLow": "低",
         "consensus": "預期",
         "prior": "前值",
-        "actual": "實際"
+        "actual": "實際",
+        "viewList": "清單",
+        "viewCalendar": "日曆",
+        "prevMonth": "上一月",
+        "nextMonth": "下一月",
+        "monthTitle": "{year} / {month}",
+        "columnTime": "時間",
+        "columnEvent": "數據",
+        "columnImpact": "重要性"
       },
       "leaderboard": {
         "title": "AI 多空排行",
