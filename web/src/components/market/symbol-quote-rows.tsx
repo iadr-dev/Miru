@@ -1,5 +1,6 @@
 "use client";
 
+import { CaretDownIcon, CaretUpDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
@@ -19,7 +20,7 @@ export interface SymbolQuoteRowItem {
   readonly name?: string;
 }
 
-type SortKey = "change" | "volume";
+type SortKey = "change" | "volume" | "extra";
 type SortDirection = "asc" | "desc";
 
 /**
@@ -46,12 +47,14 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
   quoteBySymbol,
   market,
   gridCols,
+  priceFor,
   changePctFor,
   volumeFor,
   showRank = false,
   extraHeader,
   extraCell,
   extraAriaLabel,
+  extraSortable,
 }: {
   readonly rows: readonly T[];
   readonly quoteBySymbol: ReadonlyMap<string, SymbolQuote>;
@@ -59,6 +62,14 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
   /** This row-list's own Tailwind `grid-cols-[...]` value — the caller decides how many/wide
    * columns exist (rank column, extra column), this component only fills in the shared 5. */
   readonly gridCols: string;
+  /** Same override shape as `changePctFor`/`volumeFor`, for 價格 — supply this when the row's own
+   * source already carries a real price (e.g. `get_us_market_rankings`' own live screener quote)
+   * instead of falling back to the quote's derived `get_price_history` latest bar, which can be
+   * null for a symbol that fetch doesn't cover (an illiquid/OTC-ish ticker with no recent daily
+   * bar) even though the row's own source has a real price for it — confirmed live: several US
+   * ROE-ranking rows (NTNX, PBT, MMYT, GEMI) showed a fabricated-looking "—" price this way
+   * despite having real 漲跌%/成交量, before this override existed. */
+  readonly priceFor?: (row: T) => number | null | undefined;
   /** `null`/`undefined` falls back to the quote's own derived `changePct` (the common case);
    * supply this when the row's own source already carries the authoritative %-change (e.g.
    * `get_price_momentum`'s real period return) instead of the shorter default quote window. */
@@ -73,11 +84,19 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
    * `rows` order, not the sorted order, since `showRank` conventionally numbers the caller's own
    * ranking (e.g. AI 多空排行's score order), not this component's own transient sort. */
   readonly showRank?: boolean;
+  /** Static (non-sortable) extra-column header — mutually exclusive with `extraSortable`. Most
+   * callers (leaderboard's AI-score column, industry member lists) have no natural sort key of
+   * their own; `extraSortable` below is for the ones that do (e.g. TW rankings' streak/margin/
+   * yield/growth column). */
   readonly extraHeader?: ReactNode;
   readonly extraCell?: (row: T, quote: SymbolQuote | undefined) => ReactNode;
   /** Appended to the shared name/symbol/change aria-label — for a caller whose extra column
    * carries its own announcable value (e.g. the leaderboard's AI band + score). */
   readonly extraAriaLabel?: (row: T) => string;
+  /** Makes the extra column click-to-sort, same convention as 漲跌%/成交量 — `label` is the
+   * header text, `valueFor` extracts the numeric sort key from a row. Takes over rendering the
+   * extra header (do not also pass `extraHeader` alongside this). */
+  readonly extraSortable?: { label: string; valueFor: (row: T) => number | null };
 }): ReactNode {
   const t = useTranslations("market.cards.leaderboard");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
@@ -101,8 +120,11 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
         const pct = changePctFor ? changePctFor(row) : quote?.changePct;
         return pct ?? null;
       }
-      const volume = volumeFor ? volumeFor(row) : quote?.volume;
-      return volume ?? null;
+      if (sortKey === "volume") {
+        const volume = volumeFor ? volumeFor(row) : quote?.volume;
+        return volume ?? null;
+      }
+      return extraSortable ? extraSortable.valueFor(row) : null;
     };
     return [...rows].sort((a, b) => {
       const av = valueFor(a);
@@ -112,7 +134,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
       if (bv === null) return -1;
       return sign * (av - bv);
     });
-  }, [rows, sortKey, sortDirection, quoteBySymbol, changePctFor, volumeFor]);
+  }, [rows, sortKey, sortDirection, quoteBySymbol, changePctFor, volumeFor, extraSortable]);
 
   return (
     <>
@@ -142,7 +164,16 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
           direction={sortDirection}
           onClick={() => toggleSort("volume")}
         />
-        {extraHeader}
+        {extraSortable ? (
+          <SortableHeaderCell
+            label={extraSortable.label}
+            active={sortKey === "extra"}
+            direction={sortDirection}
+            onClick={() => toggleSort("extra")}
+          />
+        ) : (
+          extraHeader
+        )}
       </div>
       <ul className="divide-y divide-[var(--border)]">
         {sortedRows.map((row) => {
@@ -154,6 +185,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
           const name = row.name ?? quote?.name ?? row.symbol;
           const rank = showRank ? rows.indexOf(row) + 1 : null;
           const volume = volumeFor ? volumeFor(row) : quote?.volume;
+          const price = priceFor ? priceFor(row) : quote?.price;
           return (
             <li
               key={row.symbol}
@@ -182,8 +214,8 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                 aria-hidden
                 className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
               >
-                {quote?.price !== null && quote?.price !== undefined
-                  ? formatNumber(quote.price, "zh-TW", { decimals: 1 })
+                {price !== null && price !== undefined
+                  ? formatNumber(price, "zh-TW", { decimals: 1 })
                   : "—"}
               </span>
               <span
@@ -215,9 +247,15 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
   );
 }
 
-/** One clickable, sortable column header — ▲/▼ shown only on the active column, `aria-sort` set
- * on a `role="columnheader"` wrapper (not a real `<table>`, this is a CSS grid), matching
- * `EtfListTable`'s own established sortable-header convention. */
+/** One clickable, sortable column header — a caret icon sits to the LEFT of the label (the
+ * common site convention the reference screenshot for this feature showed: an up/down glyph
+ * marking "this column sorts", not trailing the text). Unsorted state shows a neutral up+down
+ * caret (`CaretUpDownIcon`) so a caller can tell the column IS sortable before ever clicking it;
+ * the active column swaps to a single filled `CaretUpIcon`/`CaretDownIcon` matching the current
+ * direction. `aria-sort` set on a `role="columnheader"` wrapper (not a real `<table>`, this is a
+ * CSS grid), matching `EtfListTable`'s own established sortable-header convention (that one still
+ * uses a trailing ▲/▼ glyph — this component's own header cell, not a shared one, so the two are
+ * free to diverge here without touching that table). */
 function SortableHeaderCell({
   label,
   active,
@@ -229,6 +267,7 @@ function SortableHeaderCell({
   readonly direction: SortDirection;
   readonly onClick: () => void;
 }): ReactNode {
+  const CaretIcon = active ? (direction === "asc" ? CaretUpIcon : CaretDownIcon) : CaretUpDownIcon;
   return (
     <div
       role="columnheader"
@@ -243,12 +282,8 @@ function SortableHeaderCell({
           active ? "text-[var(--text)]" : "text-[var(--text-muted)]",
         )}
       >
+        <CaretIcon size={11} weight="bold" aria-hidden />
         <span>{label}</span>
-        {active ? (
-          <span aria-hidden className="text-[10px]">
-            {direction === "asc" ? "▲" : "▼"}
-          </span>
-        ) : null}
       </button>
     </div>
   );

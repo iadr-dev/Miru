@@ -142,7 +142,9 @@ export function LeaderboardCard({
 /** The header row + data rows, shared verbatim between the card's inline preview and the full
  * list inside `ExpandModal` — one render path, so the two never drift in columns/formatting.
  * Built on `SymbolQuoteRows`' shared 4-column base, adding only the one column this ranking
- * has that a plain symbol list doesn't: the AI composite-score pill. */
+ * has that a plain symbol list doesn't: the AI composite-score pill. Click-to-sort on 分數 (via
+ * `extraSortable`, same convention 漲跌%/成交量 already use) — a `null` composite (no score for
+ * this symbol yet) sorts last regardless of direction, `SymbolQuoteRows`' own null-handling. */
 function LeaderboardRows({
   results,
   quoteBySymbol,
@@ -161,7 +163,7 @@ function LeaderboardRows({
       market={market}
       gridCols={ROW_GRID_COLS}
       showRank
-      extraHeader={<span className="text-center">{t("columnScore")}</span>}
+      extraSortable={{ label: t("columnScore"), valueFor: (result) => result.composite }}
       extraAriaLabel={(result) =>
         `${result.band} ${t("scoreAria")} ${
           result.composite !== null ? formatNumber(result.composite, "zh-TW") : t("empty")
