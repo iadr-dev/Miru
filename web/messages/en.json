@@ -296,7 +296,18 @@
         "columnTime": "Time",
         "columnEvent": "Event",
         "columnImpact": "Impact",
-        "collapse": "Collapse"
+        "collapse": "Collapse",
+        "prevWeek": "Previous week",
+        "nextWeek": "Next week",
+        "weekday": {
+          "sun": "Sun",
+          "mon": "Mon",
+          "tue": "Tue",
+          "wed": "Wed",
+          "thu": "Thu",
+          "fri": "Fri",
+          "sat": "Sat"
+        }
       },
       "leaderboard": {
         "title": "AI Score Leaderboard",

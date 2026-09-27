@@ -296,7 +296,18 @@
         "columnTime": "時間",
         "columnEvent": "數據",
         "columnImpact": "重要性",
-        "collapse": "收合"
+        "collapse": "收合",
+        "prevWeek": "上一週",
+        "nextWeek": "下一週",
+        "weekday": {
+          "sun": "日",
+          "mon": "一",
+          "tue": "二",
+          "wed": "三",
+          "thu": "四",
+          "fri": "五",
+          "sat": "六"
+        }
       },
       "leaderboard": {
         "title": "AI 多空排行",
