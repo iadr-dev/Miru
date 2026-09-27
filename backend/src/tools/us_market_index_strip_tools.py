@@ -112,10 +112,13 @@ class GetUsMarketIndexStripTool(BaseTool):
         return GetUsMarketIndexStripOutput(rows=tuple(rows))
 
     async def _fed_rate_row(self, ctx: ToolContext) -> MarketIndexStripItemRow | None:
+        # Confirmed live against FinMind: `InterestRate`'s whole-panel form (empty `data_id`)
+        # returns near-empty results for most of the timeline — pass the FED `data_id` directly
+        # rather than relying on that broken whole-panel form (see `macro_tools.py`'s own fix).
         _rate_result, rate_rows = await fetch_rows(
             self._router,
             Capability.CENTRAL_BANK_RATE,
-            Symbol(id="", market=Market.GLOBAL),
+            Symbol(id=_FED_COUNTRY_CODE, market=Market.GLOBAL, finmind=_FED_COUNTRY_CODE),
             tls_policy=ctx.tls_policy,
             model=CentralBankRateRow,
             key="rows",

@@ -100,7 +100,12 @@ class GetMacroIndicatorsTool(BaseTool):
         _rate_result, rate_rows = await fetch_rows(
             self._router,
             Capability.CENTRAL_BANK_RATE,
-            Symbol(id="", market=Market.GLOBAL),
+            # Confirmed live against FinMind: the whole-panel form (empty `data_id`) returns
+            # near-empty results for most of the timeline — `InterestRate` genuinely requires an
+            # explicit `data_id` per central bank. Every consumer of this row only ever reads the
+            # FED reading (`macro-indicators-panel.tsx`'s own `FED_COUNTRY_CODE` filter), so this
+            # queries FED directly rather than the broken whole-panel form.
+            Symbol(id="FED", market=Market.GLOBAL, finmind="FED"),
             tls_policy=ctx.tls_policy,
             model=CentralBankRateRow,
             key="rows",
@@ -127,7 +132,13 @@ class GetMacroIndicatorsTool(BaseTool):
         _bond_result, bond_rows = await fetch_rows(
             self._router,
             Capability.GOVERNMENT_BOND_YIELD,
-            Symbol(id="", market=Market.US),
+            # Confirmed live against FinMind: `GovernmentBondsYield`'s whole-panel form (empty
+            # `data_id`) returns zero rows unconditionally, regardless of date range —
+            # `data_id` must be the exact tenor name FinMind documents (e.g. "United States
+            # 10-Year"). Every consumer of this row reads the 10-year tenor specifically
+            # (`macro-indicators-panel.tsx`'s own `TEN_YEAR_NAME_HINT` filter), so this queries
+            # it directly rather than the broken whole-panel form.
+            Symbol(id="United States 10-Year", market=Market.US, finmind="United States 10-Year"),
             tls_policy=ctx.tls_policy,
             model=GovernmentBondYieldRow,
             key="rows",
