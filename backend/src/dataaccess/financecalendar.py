@@ -8,6 +8,8 @@ calendar query has no symbol to route), so this tool cannot go through `DataAcce
 
 from __future__ import annotations
 
+from datetime import date
+
 from schemas.enums import TLSPolicy
 from schemas.source import SourceResult
 from sources.financecalendar import FinanceCalendarAdapter
@@ -24,10 +26,16 @@ class FinanceCalendarGateway:
         *,
         impact: str | None = None,
         days_ahead: int = 14,
+        from_date: date | None = None,
+        to_date: date | None = None,
         tls_policy: TLSPolicy = TLSPolicy.STRICT,
     ) -> SourceResult:
         return await self._adapter.fetch_calendar(
-            impact=impact, days_ahead=days_ahead, tls_policy=tls_policy
+            impact=impact,
+            days_ahead=days_ahead,
+            from_date=from_date,
+            to_date=to_date,
+            tls_policy=tls_policy,
         )
 
 

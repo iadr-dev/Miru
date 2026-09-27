@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import httpx
 import pytest
 
@@ -100,6 +102,34 @@ async def test_fetch_calendar_passes_impact_filter(monkeypatch: pytest.MonkeyPat
     assert isinstance(params, dict)
     assert params["impact"] == "high"
     assert "from" in params
+
+
+async def test_fetch_calendar_passes_explicit_range_verbatim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Confirmed live: financecalendar.com genuinely serves past date ranges (not just
+    "upcoming") — an explicit `from_date`/`to_date` pair must reach the upstream unchanged, not
+    get silently rewritten to `today`-anchored dates."""
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"events": []})
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(financecalendar_module, "build_async_client", factory)
+    adapter = FinanceCalendarAdapter()
+
+    await adapter.fetch_calendar(
+        from_date=date(2026, 8, 1), to_date=date(2026, 8, 31), tls_policy=TLSPolicy.STRICT
+    )
+
+    params = captured["params"]
+    assert isinstance(params, dict)
+    assert params["from"] == "2026-08-01"
+    assert params["to"] == "2026-08-31"
     assert "to" in params
 
 

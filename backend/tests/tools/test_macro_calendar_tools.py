@@ -14,7 +14,7 @@ from tools.macro_calendar_tools import GetMacroCalendarInput, GetMacroCalendarTo
 
 class _FakeGateway:
     def __init__(self, events: list[dict[str, object]] | None = None) -> None:
-        self.calls: list[tuple[str | None, int]] = []
+        self.calls: list[tuple[str | None, int, date | None, date | None]] = []
         self._events = events if events is not None else []
 
     async def fetch_calendar(
@@ -22,9 +22,11 @@ class _FakeGateway:
         *,
         impact: str | None = None,
         days_ahead: int = 14,
+        from_date: date | None = None,
+        to_date: date | None = None,
         tls_policy: TLSPolicy = TLSPolicy.STRICT,
     ) -> SourceResult:
-        self.calls.append((impact, days_ahead))
+        self.calls.append((impact, days_ahead, from_date, to_date))
         return SourceResult(
             source_id="FINANCE_CALENDAR",
             data_class=DataClass.PUBLIC,
@@ -59,7 +61,7 @@ async def test_run_delegates_and_parses_events() -> None:
 
     output = await tool.run(GetMacroCalendarInput(impact="high", days_ahead=30), ToolContext())
 
-    assert gateway.calls == [("high", 30)]
+    assert gateway.calls == [("high", 30, None, None)]
     assert output.currentness_caveat == "caveat"
     assert output.events[0].name == "US GDP"
     assert output.events[0].market.value == "GLOBAL"
@@ -71,8 +73,35 @@ async def test_run_defaults() -> None:
 
     output = await tool.run(GetMacroCalendarInput(), ToolContext())
 
-    assert gateway.calls == [(None, 14)]
+    assert gateway.calls == [(None, 14, None, None)]
     assert output.events == ()
+
+
+async def test_run_passes_explicit_range_to_gateway() -> None:
+    gateway = _FakeGateway(events=[_event_row("US GDP")])
+    tool = GetMacroCalendarTool(gateway)
+    from_date, to_date = date(2026, 8, 1), date(2026, 8, 31)
+
+    await tool.run(GetMacroCalendarInput(from_date=from_date, to_date=to_date), ToolContext())
+
+    assert gateway.calls == [(None, 14, from_date, to_date)]
+
+
+def test_from_date_and_to_date_must_be_given_together() -> None:
+    with pytest.raises(ValueError, match="from_date and to_date must be given together"):
+        GetMacroCalendarInput(from_date=date(2026, 8, 1))
+    with pytest.raises(ValueError, match="from_date and to_date must be given together"):
+        GetMacroCalendarInput(to_date=date(2026, 8, 31))
+
+
+def test_to_date_must_not_be_before_from_date() -> None:
+    with pytest.raises(ValueError, match="to_date must not be before from_date"):
+        GetMacroCalendarInput(from_date=date(2026, 8, 31), to_date=date(2026, 8, 1))
+
+
+def test_explicit_range_is_bounded_to_max_days() -> None:
+    with pytest.raises(ValueError, match="must not exceed 92 days"):
+        GetMacroCalendarInput(from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
 
 
 def test_days_ahead_is_bounded() -> None:

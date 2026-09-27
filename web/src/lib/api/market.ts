@@ -253,12 +253,22 @@ export async function getMacroIndicators(
 // get_calendar_events_feed's yfinance economic calendar)
 // ---------------------------------------------------------------------------
 
+/** `fromDate`/`toDate` (given together) override `daysAhead` — confirmed live that
+ * financecalendar.com genuinely serves past ranges, so a caller paging back to a prior
+ * month/week (the 總經 calendar card's own month-nav/day-strip) passes the actual visible range
+ * instead of always re-fetching the same today-anchored upcoming window. */
 export async function getMacroCalendar(
   impact?: MacroImpactLevel,
   daysAhead = 14,
+  fromDate?: string,
+  toDate?: string,
 ): Promise<MacroCalendarResponse> {
   const search = new URLSearchParams({ days_ahead: String(daysAhead) });
   if (impact) search.set("impact", impact);
+  if (fromDate && toDate) {
+    search.set("from_date", fromDate);
+    search.set("to_date", toDate);
+  }
   const raw = await requestJson(`/market/macro-calendar?${search.toString()}`);
   return macroCalendarResponseSchema.parse(raw);
 }

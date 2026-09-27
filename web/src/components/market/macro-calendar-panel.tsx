@@ -16,7 +16,10 @@ import { safeHttpUrl } from "@/lib/safe-url";
 import type { MacroReleaseEventRow } from "@/types/market";
 
 const COLLAPSED_ROW_COUNT = 10;
-const DAYS_AHEAD = 30;
+// Padding either side of the visible day-strip week / calendar month, in days — generous enough
+// that the month-grouped list view still shows real neighboring context, not just the exact
+// visible week, while staying well inside the upstream's own 92-day range cap.
+const RANGE_PADDING_DAYS = 21;
 const MACRO_ROW_GRID_COLS = "grid-cols-[64px_1.6fr_88px_100px_100px_100px]";
 const DAY_STRIP_LENGTH = 7;
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -63,9 +66,30 @@ export function MacroCalendarPanel(): ReactNode {
   const [dayStripAnchor, setDayStripAnchor] = useState(today);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
+  // The fetch range tracks whichever navigation surface is active — the day-strip's visible
+  // week in list view, the month grid's visible month in calendar view — padded on both sides
+  // (confirmed live: financecalendar.com genuinely serves past ranges, so paging back to a
+  // prior month/week now actually re-fetches that range instead of silently staying empty).
+  const { fromDate, toDate } = useMemo(() => {
+    if (view === "calendar") {
+      const monthStart = new Date(cursor.year, cursor.month - 1, 1);
+      const monthEnd = new Date(cursor.year, cursor.month, 0);
+      return {
+        fromDate: toIsoDate(addDays(monthStart, -RANGE_PADDING_DAYS)),
+        toDate: toIsoDate(addDays(monthEnd, RANGE_PADDING_DAYS)),
+      };
+    }
+    const weekStart = addDays(dayStripAnchor, -dayStripAnchor.getDay());
+    const weekEnd = addDays(weekStart, DAY_STRIP_LENGTH - 1);
+    return {
+      fromDate: toIsoDate(addDays(weekStart, -RANGE_PADDING_DAYS)),
+      toDate: toIsoDate(addDays(weekEnd, RANGE_PADDING_DAYS)),
+    };
+  }, [view, cursor, dayStripAnchor]);
+
   const query = useQuery({
-    queryKey: ["macro_calendar", DAYS_AHEAD],
-    queryFn: () => getMacroCalendar(undefined, DAYS_AHEAD),
+    queryKey: ["macro_calendar", fromDate, toDate],
+    queryFn: () => getMacroCalendar(undefined, undefined, fromDate, toDate),
   });
 
   return (

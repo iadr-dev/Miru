@@ -113,13 +113,22 @@ class FinanceCalendarAdapter:
         *,
         impact: str | None = None,
         days_ahead: int = 14,
+        from_date: date | None = None,
+        to_date: date | None = None,
         tls_policy: TLSPolicy = TLSPolicy.STRICT,
     ) -> SourceResult:
-        """`/calendar` — upcoming events from today through `days_ahead` days out (capped at the
-        upstream's own 92-day window), optionally filtered to one `impact` level."""
-        today = datetime.now(UTC).date()
-        end = today + timedelta(days=min(days_ahead, _MAX_DAYS_AHEAD))
-        params: dict[str, str] = {"from": today.isoformat(), "to": end.isoformat()}
+        """`/calendar` — confirmed live to genuinely serve arbitrary past date ranges (not just
+        "upcoming"), so an explicit `from_date`/`to_date` pair (e.g. a caller paging back to a
+        prior month) is passed straight through, capped at the upstream's own 92-day window.
+        Omitting both keeps the original today-through-`days_ahead` default. `days_ahead` is
+        ignored once `from_date`/`to_date` are given — that pair fully determines the range.
+        Optionally filtered to one `impact` level."""
+        if from_date is not None and to_date is not None:
+            start, end = from_date, to_date
+        else:
+            start = datetime.now(UTC).date()
+            end = start + timedelta(days=min(days_ahead, _MAX_DAYS_AHEAD))
+        params: dict[str, str] = {"from": start.isoformat(), "to": end.isoformat()}
         if impact is not None:
             params["impact"] = impact
 

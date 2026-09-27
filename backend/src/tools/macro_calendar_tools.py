@@ -8,9 +8,10 @@ establishes for `get_news_feed`.
 
 from __future__ import annotations
 
+from datetime import date as date_
 from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from dataaccess.financecalendar import FinanceCalendarGateway
 from schemas.capabilities import MacroReleaseEventRow
@@ -18,6 +19,7 @@ from schemas.enums import DataClass
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 _MAX_DAYS_AHEAD = 90
+_MAX_RANGE_DAYS = 92
 
 
 class GetMacroCalendarInput(BaseModel):
@@ -30,8 +32,29 @@ class GetMacroCalendarInput(BaseModel):
         default=14,
         ge=1,
         le=_MAX_DAYS_AHEAD,
-        description="Bounded look-ahead window in days from today.",
+        description="Bounded look-ahead window in days from today. Ignored if from_date/to_date "
+        "are given.",
     )
+    from_date: date_ | None = Field(
+        default=None,
+        description="Explicit range start (inclusive) — e.g. paging back to a prior month. Must "
+        "be given together with to_date; overrides days_ahead.",
+    )
+    to_date: date_ | None = Field(
+        default=None,
+        description="Explicit range end (inclusive). Must be given together with from_date.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_range(self) -> GetMacroCalendarInput:
+        if (self.from_date is None) != (self.to_date is None):
+            raise ValueError("from_date and to_date must be given together")
+        if self.from_date is not None and self.to_date is not None:
+            if self.to_date < self.from_date:
+                raise ValueError("to_date must not be before from_date")
+            if (self.to_date - self.from_date).days > _MAX_RANGE_DAYS:
+                raise ValueError(f"from_date/to_date range must not exceed {_MAX_RANGE_DAYS} days")
+        return self
 
 
 class GetMacroCalendarOutput(BaseModel):
@@ -42,16 +65,20 @@ class GetMacroCalendarOutput(BaseModel):
 
 
 class GetMacroCalendarTool(BaseTool):
-    """`get_macro_calendar` — upcoming US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC
-    and international central-bank/CPI releases) with consensus/prior/actual, from
-    financecalendar.com. Public — the upstream itself carries no entitlement tier; distinct from
-    `get_macro_indicators`, which stays Sponsor-gated for its own existing reasons."""
+    """`get_macro_calendar` — US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC and
+    international central-bank/CPI releases) with consensus/prior/actual, from
+    financecalendar.com. Defaults to an upcoming look-ahead window; an explicit `from_date`/
+    `to_date` pair (confirmed live to work for genuinely past ranges too) lets a caller page back
+    to a prior month/week instead of only ever seeing "upcoming". Public — the upstream itself
+    carries no entitlement tier; distinct from `get_macro_indicators`, which stays Sponsor-gated
+    for its own existing reasons."""
 
     name = "get_macro_calendar"
     description = (
-        "Get upcoming US/global macro-economic release events (GDP, CPI, PCE, PMI, jobs report, "
-        "central-bank rate decisions) with consensus/prior/actual figures, bounded to a look-"
-        "ahead window and optional impact-level filter."
+        "Get US/global macro-economic release events (GDP, CPI, PCE, PMI, jobs report, "
+        "central-bank rate decisions) with consensus/prior/actual figures — either an upcoming "
+        "look-ahead window (days_ahead) or an explicit from_date/to_date range (including past "
+        "dates), with an optional impact-level filter."
     )
     input_model: type[BaseModel] = GetMacroCalendarInput
     output_model: type[BaseModel] = GetMacroCalendarOutput
@@ -64,7 +91,11 @@ class GetMacroCalendarTool(BaseTool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetMacroCalendarInput, args)
         result = await self._gateway.fetch_calendar(
-            impact=typed.impact, days_ahead=typed.days_ahead, tls_policy=ctx.tls_policy
+            impact=typed.impact,
+            days_ahead=typed.days_ahead,
+            from_date=typed.from_date,
+            to_date=typed.to_date,
+            tls_policy=ctx.tls_policy,
         )
         raw_events = result.payload.get("events")
         events: tuple[MacroReleaseEventRow, ...] = ()

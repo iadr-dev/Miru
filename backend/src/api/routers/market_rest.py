@@ -817,16 +817,23 @@ async def business_indicator(
 async def macro_calendar(
     impact: Literal["high", "medium", "low"] | None = Query(None),
     days_ahead: int = Query(14, ge=1, le=90),
+    from_date: date_ | None = Query(None),
+    to_date: date_ | None = Query(None),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
-    """Upcoming US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/
-    actual, backed by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct
+    """US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/actual,
+    backed by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct
     third-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see
-    that tool's own docstring."""
+    that tool's own docstring. `from_date`/`to_date` (given together) override `days_ahead` and
+    can address a genuinely past range, for a caller paging back to a prior month/week."""
     args: dict[str, object] = {"days_ahead": days_ahead}
     if impact is not None:
         args["impact"] = impact
+    if from_date is not None:
+        args["from_date"] = from_date.isoformat()
+    if to_date is not None:
+        args["to_date"] = to_date.isoformat()
     return await _dispatch(state, "get_macro_calendar", args, ctx)
 
 
