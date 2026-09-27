@@ -163,12 +163,35 @@ function toSponsorItem<Row>(
   return select(data.rows) ?? "unavailable";
 }
 
+// Maps each `MarketIndexStripItemRow.key` (TW strip + US strip, both tools) to its i18n label
+// key — the backend row's own `label` field is Chinese-only (`sources`/`tools` have no locale
+// concept), so the client is the one seam that can render an English label in the `en` locale.
+const ITEM_LABEL_KEY: Record<string, string> = {
+  taiex: "taiex",
+  otc: "otc",
+  usd_twd: "usdTwd",
+  jpy_twd: "jpyTwd",
+  gold: "gold",
+  crude_oil_wti: "crudeOilWti",
+  crude_oil_brent: "crudeOilBrent",
+  sp500: "sp500",
+  dow_jones: "dowJones",
+  nasdaq: "nasdaq",
+  sox: "sox",
+  vix: "vix",
+  us10y: "us10y",
+  fed_rate: "fedRate",
+};
+
 /** Exported so `us-market-index-strip.tsx` (an entirely-public strip, no Sponsor items) reuses
  * this same 名稱+值+漲跌% chip rendering rather than duplicating it. */
 export function PublicStripItem({ item }: { readonly item: MarketIndexStripItem }): ReactNode {
+  const t = useTranslations("market.cards.indexStrip");
+  const labelKey = ITEM_LABEL_KEY[item.key];
+  const label = labelKey ? t(labelKey) : item.label;
   return (
     <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
-      <span className="truncate text-[12px] text-[var(--text-muted)]">{item.label}</span>
+      <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
       <StripItemValue
         value={formatNumber(item.value, "zh-TW", { decimals: 2 })}
         changePct={item.change_pct}
