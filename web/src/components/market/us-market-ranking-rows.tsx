@@ -11,10 +11,14 @@ const ROW_GRID_COLS = "grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr]";
 /** The 4 US-only 排行榜 tabs' shared row list (熱門美股/市值/營收/ROE) — built on
  * `SymbolQuoteRows`' shared 名稱/價格/漲跌%/走勢/成交量 base (no rank column, no extra column).
  * `price`/`change_pct`/`volume` come straight from `get_us_market_rankings`'s own row (a live
- * Yahoo screener quote already carries these in one call) via `changePctFor`/`volumeFor`,
- * mirroring `PriceMomentumRows`' own `changePctFor` override; `走勢` is the one field that
- * screener quote doesn't carry, so this enriches via `useSymbolQuotes` (`get_price_history`) for
- * the sparkline only. 漲跌%/成交量 click-to-sort is `SymbolQuoteRows`' own built-in behavior. */
+ * Yahoo screener quote already carries these in one call) via `priceFor`/`changePctFor`/
+ * `volumeFor` — all three are overridden, not just change/volume: `useSymbolQuotes`'s own
+ * `get_price_history` fetch can legitimately have no recent daily bar for an illiquid/OTC-ish
+ * ticker (confirmed live: several ROE-ranking rows showed a fabricated-looking "—" price before
+ * `priceFor` was wired here, despite the row's own screener quote carrying a real one). `走勢` is
+ * the one field the screener quote doesn't carry at all, so that alone still comes from
+ * `useSymbolQuotes`'s sparkline. 漲跌%/成交量 click-to-sort is `SymbolQuoteRows`' own built-in
+ * behavior. */
 export function UsMarketRankingRows({
   rows,
   market,
@@ -39,6 +43,7 @@ export function UsMarketRankingRows({
       quoteBySymbol={quoteBySymbol}
       market={market}
       gridCols={ROW_GRID_COLS}
+      priceFor={(row) => row.price}
       changePctFor={(row) => row.change_pct}
       volumeFor={(row) => row.volume}
     />
