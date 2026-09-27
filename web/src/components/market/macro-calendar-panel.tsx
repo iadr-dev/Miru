@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getMacroCalendar } from "@/lib/api/market";
@@ -203,7 +204,10 @@ function MacroEventHeaderRow(): ReactNode {
 /** Same left-list / right-grid two-column arrangement `EarningsCalendarView`
  * (`calendar-events-card.tsx`) uses over the shared `MonthGridCalendar` — impact color stands in
  * for that view's dot color, one dot per event on its release day (a day can carry more than one
- * release, so this maps to an array, not a single color). */
+ * release, so this maps to an array, not a single color). The side list is capped to
+ * `COLLAPSED_ROW_COUNT` + a scrollable max-height so an unfiltered month (which can carry 50+
+ * events across the whole `DAYS_AHEAD` window) never runs the list past the calendar grid's own
+ * bottom edge — `ExpandModal` opens the full (or day-filtered) list instead. */
 function MacroEventCalendarView({
   year,
   month,
@@ -219,6 +223,7 @@ function MacroEventCalendarView({
 }): ReactNode {
   const t = useTranslations("market.cards.macroCalendar");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const dotsByDay = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -232,6 +237,7 @@ function MacroEventCalendarView({
   }, [events]);
 
   const visibleEvents = selectedDay ? events.filter((event) => event.date === selectedDay) : events;
+  const previewEvents = visibleEvents.slice(0, COLLAPSED_ROW_COUNT);
 
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-start">
@@ -239,11 +245,37 @@ function MacroEventCalendarView({
         {visibleEvents.length === 0 ? (
           <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
         ) : (
-          <ol className="divide-y divide-[var(--border)]">
-            {visibleEvents.map((event) => (
-              <MacroEventCompactRow key={`${event.name}_${event.date}`} event={event} />
-            ))}
-          </ol>
+          <>
+            <ol className="max-h-[420px] divide-y divide-[var(--border)] overflow-y-auto">
+              {previewEvents.map((event) => (
+                <MacroEventCompactRow key={`${event.name}_${event.date}`} event={event} />
+              ))}
+            </ol>
+            {visibleEvents.length > COLLAPSED_ROW_COUNT ? (
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className={cn(
+                  "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                  "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                )}
+              >
+                <span>{t("expandTo", { count: visibleEvents.length })}</span>
+              </button>
+            ) : null}
+            <ExpandModal
+              open={expanded}
+              title={t("title")}
+              closeLabel={t("collapse")}
+              onClose={() => setExpanded(false)}
+            >
+              <ol className="divide-y divide-[var(--border)]">
+                {visibleEvents.map((event) => (
+                  <MacroEventCompactRow key={`${event.name}_${event.date}`} event={event} />
+                ))}
+              </ol>
+            </ExpandModal>
+          </>
         )}
       </div>
 

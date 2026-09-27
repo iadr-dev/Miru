@@ -295,7 +295,8 @@
         "monthTitle": "{year} / {month}",
         "columnTime": "時間",
         "columnEvent": "數據",
-        "columnImpact": "重要性"
+        "columnImpact": "重要性",
+        "collapse": "收合"
       },
       "leaderboard": {
         "title": "AI 多空排行",

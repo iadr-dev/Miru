@@ -295,7 +295,8 @@
         "monthTitle": "{month}/{year}",
         "columnTime": "Time",
         "columnEvent": "Event",
-        "columnImpact": "Impact"
+        "columnImpact": "Impact",
+        "collapse": "Collapse"
       },
       "leaderboard": {
         "title": "AI Score Leaderboard",
