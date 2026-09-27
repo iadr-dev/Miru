@@ -176,6 +176,39 @@ async def test_discover_us_symbols_deduplicates_across_bands(
     assert [row["symbol"] for row in rows] == ["AAPL"]
 
 
+async def test_discover_us_symbols_fetches_ascending_page_when_band_overflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test for the real bug this fix closes: a band whose `total` exceeds
+    `_BAND_SIZE` must ALSO be queried ascending and the two pages merged — otherwise a
+    descending-only page silently drops every symbol Yahoo's screener doesn't happen to include
+    in that one arbitrary slice (confirmed live: real large-cap names like Ford/GM/Nike were
+    absent from a descending-only page whose own minimum returned cap was nowhere near the
+    band's floor)."""
+    call_count = 0
+
+    async def fake_run_sync(fn: object, *args: object) -> dict[str, object]:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # First band: overflowing — descending page returns TOP, ascending returns BOTTOM.
+            return {"total": 300, "quotes": [_quote("TOP_SYM")]}
+        if call_count == 2:
+            return {"total": 300, "quotes": [_quote("BOTTOM_SYM")]}
+        # Every other band: a single non-overflowing page, one call each.
+        return {"total": 1, "quotes": [_quote(f"SYM{call_count}")]}
+
+    monkeypatch.setattr(anyio.to_thread, "run_sync", fake_run_sync)
+
+    rows = await discover_us_symbols()
+
+    # 2 calls for the first (overflowing) band + 1 call for each remaining band.
+    assert call_count == 2 + (len(_MARKET_CAP_BANDS) - 1)
+    symbols = {row["symbol"] for row in rows}
+    assert "TOP_SYM" in symbols
+    assert "BOTTOM_SYM" in symbols
+
+
 async def test_discover_us_symbols_tolerates_one_empty_band(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
