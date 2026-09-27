@@ -7,6 +7,7 @@ import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { getMacroIndicators } from "@/lib/api/market";
+import { cn } from "@/lib/cn";
 import { isMaskedTeaser, type MacroIndicatorsData } from "@/types/market";
 
 const FED_COUNTRY_CODE = "FED";
@@ -106,32 +107,50 @@ function MacroIndicatorsGrid({
       <MacroStat
         label={t("centralBankRate")}
         value={fedRate ? `${fedRate.interest_rate.toFixed(2)}%` : "—"}
+        tint="var(--accent)"
       />
       <MacroStat
         label={t("governmentBondYield")}
         value={latestYield ? `${latestYield.value.toFixed(2)}%` : "—"}
+        tint="var(--chart-2)"
       />
       <MacroStat
         label={t("goldPrice")}
         value={latestGold ? latestGold.price.toLocaleString("en-US") : "—"}
+        tint="var(--warn)"
       />
       <MacroStat
         label={t("crudeOilPrices")}
         value={latestOil ? latestOil.price.toLocaleString("en-US") : "—"}
+        tint="var(--chart-4)"
       />
     </div>
   );
 }
 
+/** Frosted-glass stat tile — same `glass` + `color-mix(...)` tint convention
+ * `overview-panel.tsx`'s own AUM/YTD-return tiles established (falls back to solid `--surface`
+ * under `prefers-reduced-transparency` via the `.glass` class, web/CLAUDE.md §7). Each of the 4
+ * macro stats gets a distinct categorical tint (`--accent`/`--chart-2`/`--warn`/`--chart-4`) —
+ * these are context/theme tints, not signed price data, so `--chart-*`/`--warn` here don't
+ * collide with the 紅漲綠跌 `--up`/`--down` reservation (web/CLAUDE.md §4). */
 function MacroStat({
   label,
   value,
+  tint,
 }: {
   readonly label: string;
   readonly value: string;
+  readonly tint: string;
 }): ReactNode {
   return (
-    <div className="rounded-[var(--radius-input)] bg-[var(--surface-2)] p-3">
+    <div
+      className={cn(
+        "glass rounded-[var(--radius-input)] p-3",
+        "backdrop-blur-[16px] backdrop-saturate-150",
+      )}
+      style={{ backgroundColor: `color-mix(in srgb, ${tint} 10%, var(--surface) 90%)` }}
+    >
       <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
       <p className="font-num mt-1 text-[18px] text-[var(--text)] tabular-nums">{value}</p>
     </div>
