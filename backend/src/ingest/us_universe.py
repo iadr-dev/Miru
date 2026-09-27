@@ -15,11 +15,24 @@ verified, non-overlapping slice of the real market — not multiple identical qu
 as different pages.
 
 **Still an honest, disclosed approximation, not "every US-listed symbol":** a band whose real
-`ScreenerResult.total_matches` exceeds 250 (e.g. the $50-200B band alone had 539 real matches
-when this was verified) is truncated to its top-250-by-market-cap within that band — the
-smaller-cap tail inside a wide band is dropped, not silently included. `_MARKET_CAP_BANDS`'
-five ranges were chosen (and verified against live data) to land around ~1,000-1,500 total
-symbols — roughly the large-and-mid-cap range, not micro-caps.
+`ScreenerResult.total_matches` exceeds 250 (e.g. the $50-200B band alone had 522 real matches
+when this was verified) cannot fit in one page — `_MARKET_CAP_BANDS`' five ranges were chosen
+(and verified against live data) to land around ~1,000-1,500 total symbols across all bands
+combined, roughly the large-and-mid-cap range, not micro-caps.
+
+**A real bug this module works around, confirmed live**: Yahoo's screener does NOT actually
+return the top-N-by-`sort_field` page its own `sortField`/`sortAsc` params claim to — verified
+against the live $50-200B band: `sort_ascending=False` returned 247 real-`marketCap` hits whose
+minimum cap was $84.7B (nowhere near the band's own $50B floor), and `sort_ascending=True`
+returned a DIFFERENT 235 hits capped at $79.9B max — the two pages don't even overlap at the
+boundary, meaning Yahoo returns some other internal ordering/slice, not a genuine sort-then-page.
+Real, well-known large caps (Ford $50.7B, GM $74.7B, Nike $53.0B, Comcast $77.8B, Cigna $71.9B)
+were silently absent from `sort_ascending=False` alone — they exist in the band, just not in
+whatever slice that one query call happens to return. The fix: for any band whose
+`total_matches > _BAND_SIZE`, `discover_us_symbols` below fetches BOTH the ascending and
+descending page and merges+dedupes them — still an honest, disclosed approximation (a band with
+>500 real matches still can't be fully covered by two 250-row pages), but no longer silently
+biased toward only one end of the cap range within a wide band.
 
 Writes the resulting symbol list to its own Parquet partition (`US_SYMBOL_UNIVERSE_DATASET`)
 rather than a relational table — nothing here needs relational joins/queries, so this stays
@@ -67,7 +80,7 @@ _MARKET_CAP_BANDS: tuple[tuple[int, int | None], ...] = (
 _BAND_THROTTLE_SECONDS = 0.5
 
 
-def _band_query(lo: int, hi: int | None) -> ScreenerQuery:
+def _band_query(lo: int, hi: int | None, *, sort_ascending: bool) -> ScreenerQuery:
     conditions = [ScreenerCondition(field="region", op=ScreenerOperator.EQ, value="us")]
     if hi is None:
         conditions.append(
@@ -84,7 +97,7 @@ def _band_query(lo: int, hi: int | None) -> ScreenerQuery:
         conditions=tuple(conditions),
         size=_BAND_SIZE,
         sort_field="intradaymarketcap",
-        sort_ascending=False,
+        sort_ascending=sort_ascending,
     )
 
 
@@ -93,17 +106,27 @@ async def discover_us_symbols() -> list[dict[str, object]]:
     combined `(symbol, name, exchange)` rows, deduplicated by symbol (a symbol can only ever
     match one disjoint band, but dedup stays defensive rather than assuming the bands never
     drift). A band that returns nothing is logged and skipped — never a hard failure for the
-    whole run; only a wholesale empty result across every band fails the job."""
+    whole run; only a wholesale empty result across every band fails the job.
+
+    For a band whose `total_matches > _BAND_SIZE`, ALSO fetches the ascending-sorted page and
+    merges it in — see this module's own docstring for why one descending page alone silently
+    biases toward whatever arbitrary slice Yahoo's screener happens to return, dropping real
+    large-cap names that are nowhere near either range boundary."""
     seen: set[str] = set()
     rows: list[dict[str, object]] = []
     for index, (lo, hi) in enumerate(_MARKET_CAP_BANDS):
         if index > 0:
             await asyncio.sleep(_BAND_THROTTLE_SECONDS)
-        result = await run_screener(_band_query(lo, hi))
-        if not result.hits:
-            logger.warning("us_universe_band_empty", lo=lo, hi=hi, detail=result.detail)
+        descending = await run_screener(_band_query(lo, hi, sort_ascending=False))
+        if not descending.hits:
+            logger.warning("us_universe_band_empty", lo=lo, hi=hi, detail=descending.detail)
             continue
-        for hit in result.hits:
+        band_hits = list(descending.hits)
+        if descending.total_matches > _BAND_SIZE:
+            await asyncio.sleep(_BAND_THROTTLE_SECONDS)
+            ascending = await run_screener(_band_query(lo, hi, sort_ascending=True))
+            band_hits.extend(ascending.hits)
+        for hit in band_hits:
             if not hit.symbol or hit.symbol in seen:
                 continue
             seen.add(hit.symbol)

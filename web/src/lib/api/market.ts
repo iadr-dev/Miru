@@ -42,12 +42,15 @@ import {
   institutionalRankingResponseSchema,
   type LeaderboardDirection,
   type LeaderboardUniverse,
+  type MacroCalendarResponse,
+  type MacroImpactLevel,
   type MacroIndicatorsResponse,
   type MarginMaintenanceResponse,
   type MarginShortBalanceResponse,
   type MarketIndexStripResponse,
   type MaterialAnnouncementFeedResponse,
   type MomentumPeriod,
+  macroCalendarResponseSchema,
   macroIndicatorsResponseSchema,
   marginMaintenanceResponseSchema,
   marginShortBalanceResponseSchema,
@@ -82,7 +85,10 @@ import {
   stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
   type TickSnapshotResponse,
+  type TwMarketRankingsResponse,
+  type TwRankingKind,
   tickSnapshotResponseSchema,
+  twMarketRankingsResponseSchema,
   type UsMarketRankingsResponse,
   usMarketRankingsResponseSchema,
 } from "@/types/market";
@@ -246,6 +252,31 @@ export async function getMacroIndicators(
 }
 
 // ---------------------------------------------------------------------------
+// 7c. GET /market/macro-calendar (public, financecalendar.com — distinct third-party feed from
+// get_calendar_events_feed's yfinance economic calendar)
+// ---------------------------------------------------------------------------
+
+/** `fromDate`/`toDate` (given together) override `daysAhead` — confirmed live that
+ * financecalendar.com genuinely serves past ranges, so a caller paging back to a prior
+ * month/week (the 總經 calendar card's own month-nav/day-strip) passes the actual visible range
+ * instead of always re-fetching the same today-anchored upcoming window. */
+export async function getMacroCalendar(
+  impact?: MacroImpactLevel,
+  daysAhead = 14,
+  fromDate?: string,
+  toDate?: string,
+): Promise<MacroCalendarResponse> {
+  const search = new URLSearchParams({ days_ahead: String(daysAhead) });
+  if (impact) search.set("impact", impact);
+  if (fromDate && toDate) {
+    search.set("from_date", fromDate);
+    search.set("to_date", toDate);
+  }
+  const raw = await requestJson(`/market/macro-calendar?${search.toString()}`);
+  return macroCalendarResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
 // 8. GET /macro/business-indicator (Sponsor-tier)
 // ---------------------------------------------------------------------------
 
@@ -344,6 +375,20 @@ export async function getUsMarketRankings(
   const search = new URLSearchParams({ kind, top_n: String(topN) });
   const raw = await requestJson(`/market/us-rankings?${search.toString()}`);
   return usMarketRankingsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 11c. GET /market/tw-rankings (public, TW-only 排行榜 — 6 of its 7 tabs; 大戶買賣 reuses
+// getHolderAccumulation below verbatim instead of this fn)
+// ---------------------------------------------------------------------------
+
+export async function getTwMarketRankings(
+  kind: TwRankingKind,
+  topN: number,
+): Promise<TwMarketRankingsResponse> {
+  const search = new URLSearchParams({ kind, top_n: String(topN) });
+  const raw = await requestJson(`/market/tw-rankings?${search.toString()}`);
+  return twMarketRankingsResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -533,6 +578,17 @@ export async function getDividendCalendar(
 
 export async function getMarketIndexStrip(): Promise<MarketIndexStripResponse> {
   const raw = await requestJson("/market/index-strip");
+  return marketIndexStripResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 21b. GET /market/us-index-strip (public, US-tab ticker strip: S&P500/Dow/Nasdaq/SOX/VIX/
+// US10Y/Fed funds rate) — same `MarketIndexStripItem` row shape as the TW strip above, just a
+// different backing tool/route.
+// ---------------------------------------------------------------------------
+
+export async function getUsMarketIndexStrip(): Promise<MarketIndexStripResponse> {
+  const raw = await requestJson("/market/us-index-strip");
   return marketIndexStripResponseSchema.parse(raw);
 }
 

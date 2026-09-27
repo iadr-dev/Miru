@@ -485,6 +485,7 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         caveat="Daily PER/PBR/dividend-yield; published post-close ~18:00, not intraday.",
         row_key="rows",
         row_mapper=_map_valuation_ratios,
+        whole_market_ok=True,
     ),
     Capability.ORDER_BOOK_STATS: _DatasetConfig(
         dataset="TaiwanStockStatisticsOfOrderBookAndTrade",

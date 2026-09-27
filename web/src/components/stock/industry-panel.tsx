@@ -293,7 +293,7 @@ function SubIndustryMembersModal({
           rows={memberSymbols.map((symbol) => ({ symbol }))}
           quoteBySymbol={quoteBySymbol}
           market={market}
-          gridCols="grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr]"
+          gridCols="grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr]"
         />
       )}
     </ExpandModal>

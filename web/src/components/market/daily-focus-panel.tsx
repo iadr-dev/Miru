@@ -8,29 +8,22 @@ import { CardSkeleton } from "@/components/market/card-skeleton";
 import { EarningsCalendarPanel } from "@/components/market/earnings-calendar-panel";
 import { LeaderboardCard } from "@/components/market/leaderboard-card";
 import { MaterialAnnouncementFeedPanel } from "@/components/market/material-announcement-feed-panel";
-import { PriceMomentumCard } from "@/components/market/price-momentum-card";
 import { RainbowBorderCard } from "@/components/market/rainbow-border-card";
 import { RankingsCard } from "@/components/market/rankings-card";
-import {
-  getAdvanceDecline,
-  getIndexContribution,
-  getPriceMomentum,
-  getScoreLeaderboard,
-} from "@/lib/api/market";
-import type { LeaderboardDirection, MomentumPeriod } from "@/types/market";
+import { TwRankingsCard } from "@/components/market/tw-rankings-card";
+import { getAdvanceDecline, getIndexContribution, getScoreLeaderboard } from "@/lib/api/market";
+import type { LeaderboardDirection } from "@/types/market";
 import type { Market } from "@/types/settings";
-
-// The backend caps top_n at 50 for `/market/price-momentum` — fetch the full cap so
-// `PriceMomentumCard` can show 50 via its own collapse-to-10/expand-modal pattern (mirrors
-// `LeaderboardCard`'s own "Show all 50", the same limit `/analytics/rankings` caps at).
-const MAX_TOP_N = 50;
 
 /**
  * 每日焦點 — the market tab's default sub-tab: AI 多空排行 (whole-market score leaderboard),
- * 漲跌家數 (+ 指數貢獻排行 for TW only) breadth card, and 漲跌幅排行 (price momentum). These
- * cards previously rendered directly in `MarketPanel`'s `renderTw` with no sub-tab wrapper —
- * pulled out here as the TW tab grows a second sub-tab (籌碼) per `docs/web/market.md`'s own
- * Row-2 view-tab spec, mirroring `TwTabContent`'s sibling `ChipDataPanel`.
+ * 漲跌家數 (+ 指數貢獻排行 for TW only) breadth card, and 排行榜 (TW: `TwRankingsCard`'s 7 tabs;
+ * US: `RankingsCard`'s 4 tabs — 漲跌幅排行/`PriceMomentumCard` no longer renders in either
+ * market's grid cell, replaced by `TwRankingsCard` for TW the same way `RankingsCard` already
+ * replaced it for US). These cards previously rendered directly in `MarketPanel`'s `renderTw`
+ * with no sub-tab wrapper — pulled out here as the TW tab grows a second sub-tab (籌碼) per
+ * `docs/web/market.md`'s own Row-2 view-tab spec, mirroring `TwTabContent`'s sibling
+ * `ChipDataPanel`.
  *
  * US variant (`market === "US"`) drops two cards with no US backing data: 指數貢獻排行 (no real
  * US index is ingested — only the SPY ETF proxy exists, not a genuine index-contribution
@@ -38,8 +31,6 @@ const MAX_TOP_N = 50;
  * columns x 2 rows instead of the TW 4-card layout.
  */
 export function DailyFocusPanel({ market }: { readonly market: Market }): ReactNode {
-  const [momentumDirection, setMomentumDirection] = useState<LeaderboardDirection>("bullish");
-  const [momentumPeriod, setMomentumPeriod] = useState<MomentumPeriod>("week");
   const [leaderboardDirection, setLeaderboardDirection] = useState<LeaderboardDirection>("bullish");
   const isUs = market === "US";
 
@@ -57,11 +48,6 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
     queryKey: ["index_contribution", market],
     queryFn: () => getIndexContribution(market),
     enabled: !isUs,
-  });
-
-  const priceMomentumQuery = useQuery({
-    queryKey: ["price_momentum", market, momentumPeriod],
-    queryFn: () => getPriceMomentum(market, momentumPeriod, undefined, MAX_TOP_N),
   });
 
   return (
@@ -102,31 +88,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
         </RainbowBorderCard>
 
         <RainbowBorderCard className="flex h-full">
-          <QueryState query={priceMomentumQuery} skeleton={<CardSkeleton height={430} />}>
-            {(data) =>
-              isUs ? (
-                <RankingsCard
-                  gainers={data.top_gainers}
-                  losers={data.top_losers}
-                  direction={momentumDirection}
-                  onDirectionChange={setMomentumDirection}
-                  period={momentumPeriod}
-                  onPeriodChange={setMomentumPeriod}
-                  market={market}
-                />
-              ) : (
-                <PriceMomentumCard
-                  gainers={data.top_gainers}
-                  losers={data.top_losers}
-                  direction={momentumDirection}
-                  onDirectionChange={setMomentumDirection}
-                  period={momentumPeriod}
-                  onPeriodChange={setMomentumPeriod}
-                  market={market}
-                />
-              )
-            }
-          </QueryState>
+          {isUs ? <RankingsCard market={market} /> : <TwRankingsCard />}
         </RainbowBorderCard>
 
         {isUs ? (

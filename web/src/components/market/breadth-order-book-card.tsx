@@ -144,6 +144,8 @@ export function BreadthOrderBookCard({
                     borderRadius: "var(--radius-input)",
                     color: "var(--text)",
                   }}
+                  labelStyle={{ color: "var(--text)" }}
+                  itemStyle={{ color: "var(--text)" }}
                   labelFormatter={(key) =>
                     t(BUCKET_LABEL_KEY[key as (typeof BUCKET_ORDER)[number]])
                   }

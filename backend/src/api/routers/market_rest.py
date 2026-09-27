@@ -70,6 +70,16 @@ async def index_strip(
     return await _dispatch(state, "get_market_index_strip", {}, ctx)
 
 
+@router.get("/market/us-index-strip")
+async def us_index_strip(
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """US-tab ticker-strip public items (S&P500/Dow Jones/Nasdaq/SOX/VIX/US 10Y yield/Fed funds
+    rate) — backed by `get_us_market_index_strip`, `DataClass.PUBLIC`."""
+    return await _dispatch(state, "get_us_market_index_strip", {}, ctx)
+
+
 @router.get("/market/tick-snapshot")
 async def tick_snapshot(
     symbol: str = Query(..., min_length=1, description="4-digit stock id or 3-digit index code."),
@@ -310,6 +320,28 @@ async def us_rankings(
     own docstring), unlike `/market/price-momentum`'s real `market` axis over our own ingested
     data."""
     return await _dispatch(state, "get_us_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
+
+
+@router.get("/market/tw-rankings")
+async def tw_rankings(
+    kind: Literal[
+        "dealer_streak",
+        "trust_streak",
+        "foreign_streak",
+        "margin_change",
+        "dividend_yield",
+        "revenue_growth",
+    ] = Query("dealer_streak"),
+    top_n: int = Query(10, ge=1, le=50),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """TW-only 排行榜 multi-tab ranking (6 of its 7 tabs — 大戶買賣 reuses
+    `/market/holder-accumulation` verbatim instead of this route): dealer/trust/foreign
+    consecutive-day net-buy/sell streak, day-over-day margin-purchase-balance change, dividend
+    yield, monthly-revenue YoY growth. No `market` param — TW-only by construction
+    (`get_tw_market_rankings`'s own docstring), mirroring `/market/us-rankings`'s own shape."""
+    return await _dispatch(state, "get_tw_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
 
 
 @router.get("/market/holder-accumulation")
@@ -801,6 +833,30 @@ async def business_indicator(
     return await _dispatch(
         state, "get_business_indicator", _market_args(market, start_date, end_date), ctx
     )
+
+
+@router.get("/market/macro-calendar")
+async def macro_calendar(
+    impact: Literal["high", "medium", "low"] | None = Query(None),
+    days_ahead: int = Query(14, ge=1, le=90),
+    from_date: date_ | None = Query(None),
+    to_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/actual,
+    backed by `get_macro_calendar` (financecalendar.com, `DataClass.PUBLIC`) — a distinct
+    third-party feed from `get_calendar_events_feed`'s existing yfinance economic calendar, see
+    that tool's own docstring. `from_date`/`to_date` (given together) override `days_ahead` and
+    can address a genuinely past range, for a caller paging back to a prior month/week."""
+    args: dict[str, object] = {"days_ahead": days_ahead}
+    if impact is not None:
+        args["impact"] = impact
+    if from_date is not None:
+        args["from_date"] = from_date.isoformat()
+    if to_date is not None:
+        args["to_date"] = to_date.isoformat()
+    return await _dispatch(state, "get_macro_calendar", args, ctx)
 
 
 def _market_args(

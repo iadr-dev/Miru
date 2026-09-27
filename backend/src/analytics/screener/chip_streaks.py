@@ -39,6 +39,34 @@ def net_sell_streak(daily_net: Sequence[float], min_days: int) -> bool:
     return all(value < 0 for value in daily_net[-min_days:])
 
 
+def streak_length(daily_net: Sequence[float]) -> int:
+    """The length of the CURRENT consecutive-day streak, signed by direction — positive N means
+    the last N trading days were each a net buy (a "連N買" ranking's own sort key), negative N
+    means the last N were each a net sell, 0 means today is part of neither (no data, or today's
+    sign differs from yesterday's — a fresh streak of length 1 in the new direction, or a flat/
+    zero day breaking any streak). Walks backward from the newest entry only, stopping at the
+    first non-positive (for a buy streak) or non-negative (for a sell streak) day — never looks
+    past that first break, so a streak reported here is always provable from the data given."""
+    if not daily_net:
+        return 0
+    newest = daily_net[-1]
+    if newest > 0:
+        length = 0
+        for value in reversed(daily_net):
+            if value <= 0:
+                break
+            length += 1
+        return length
+    if newest < 0:
+        length = 0
+        for value in reversed(daily_net):
+            if value >= 0:
+                break
+            length += 1
+        return -length
+    return 0
+
+
 def cumulative_net_buy(daily_net: Sequence[float], window: int) -> bool:
     """The SUM of net-buy over the trailing `window` trading days is positive — the looser
     "近N日買超" semantics, which tolerates an individual down day as long as the window nets to
@@ -51,4 +79,4 @@ def cumulative_net_buy(daily_net: Sequence[float], window: int) -> bool:
     return sum(daily_net[-window:]) > 0
 
 
-__all__ = ["cumulative_net_buy", "net_buy_streak", "net_sell_streak"]
+__all__ = ["cumulative_net_buy", "net_buy_streak", "net_sell_streak", "streak_length"]

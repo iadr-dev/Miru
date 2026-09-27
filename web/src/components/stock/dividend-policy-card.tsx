@@ -156,6 +156,9 @@ export function DividendPolicyCard({
                 />
                 <Tooltip
                   contentStyle={TOOLTIP_STYLE}
+                  labelStyle={{ color: "var(--text)" }}
+                  itemStyle={{ color: "var(--text)" }}
+                  cursor={{ fill: "var(--accent)", opacity: 0.08 }}
                   formatter={(value) => formatNumber(Number(value), "zh-TW", { decimals: 2 })}
                 />
                 <Legend

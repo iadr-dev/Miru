@@ -1,20 +1,24 @@
 "use client";
 
-import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { SymbolLink } from "@/components/market/symbol-link";
-import { cn } from "@/lib/cn";
+import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
+import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import type { MarketRankingRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.8fr_0.9fr]";
+const ROW_GRID_COLS = "grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr]";
 
-/** The 5 non-漲跌幅 排行榜 tabs' shared row list (熱門美股/市值/營收/ROE/成交量) — every field
- * comes straight from `get_us_market_rankings`' own row (a live Yahoo screener quote), never
- * `useSymbolQuotes`' enrichment (`get_symbol_info`/`get_price_history`): a screener quote already
- * carries name/price/change/volume in one call, so there is nothing left to enrich. No sparkline
- * column either — the screener returns one point-in-time quote, not a price history window. */
+/** The 4 US-only 排行榜 tabs' shared row list (熱門美股/市值/營收/ROE) — built on
+ * `SymbolQuoteRows`' shared 名稱/價格/漲跌%/走勢/成交量 base (no rank column, no extra column).
+ * `price`/`change_pct`/`volume` come straight from `get_us_market_rankings`'s own row (a live
+ * Yahoo screener quote already carries these in one call) via `priceFor`/`changePctFor`/
+ * `volumeFor` — all three are overridden, not just change/volume: `useSymbolQuotes`'s own
+ * `get_price_history` fetch can legitimately have no recent daily bar for an illiquid/OTC-ish
+ * ticker (confirmed live: several ROE-ranking rows showed a fabricated-looking "—" price before
+ * `priceFor` was wired here, despite the row's own screener quote carrying a real one). `走勢` is
+ * the one field the screener quote doesn't carry at all, so that alone still comes from
+ * `useSymbolQuotes`'s sparkline. 漲跌%/成交量 click-to-sort is `SymbolQuoteRows`' own built-in
+ * behavior. */
 export function UsMarketRankingRows({
   rows,
   market,
@@ -22,88 +26,26 @@ export function UsMarketRankingRows({
   readonly rows: readonly MarketRankingRow[];
   readonly market: Market;
 }): ReactNode {
-  const t = useTranslations("market.cards.rankings");
+  const { quotes } = useSymbolQuotes(
+    rows.map((row) => row.symbol),
+    market,
+  );
+  const quoteBySymbol = new Map(quotes.map((q) => [q.code, q]));
+  // `MarketRankingRow.name` is `string | null` (honestly nullable — a screener quote missing a
+  // display name); `SymbolQuoteRowItem.name` is `string | undefined` (optional-if-absent). `??
+  // undefined` bridges the two without fabricating a name — `SymbolQuoteRows` itself falls back
+  // to the quote's own roster name, then the bare symbol, when `name` is absent either way.
+  const items = rows.map((row) => ({ ...row, name: row.name ?? undefined }));
 
   return (
-    <>
-      <div
-        aria-hidden
-        className={cn(
-          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
-          ROW_GRID_COLS,
-        )}
-      >
-        <span />
-        <span>{t("columnName")}</span>
-        <span className="text-right">{t("columnPrice")}</span>
-        <span className="text-right">{t("columnChangePct")}</span>
-        <span className="text-right">{t("columnChange")}</span>
-        <span className="text-right">{t("columnVolume")}</span>
-      </div>
-      <ul className="divide-y divide-[var(--border)]">
-        {rows.map((row, index) => {
-          const changePct = row.change_pct;
-          const up = changePct !== null && changePct >= 0;
-          const color =
-            changePct !== null ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
-          const name = row.name ?? row.symbol;
-          const change = row.change;
-          return (
-            <li
-              key={row.symbol}
-              role="group"
-              aria-label={`${name} ${row.symbol} ${
-                changePct !== null
-                  ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(changePct), "zh-TW", { decimals: 2 })}%`
-                  : t("empty")
-              }`}
-              className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
-            >
-              <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
-                {index + 1}
-              </span>
-              <SymbolLink
-                symbol={row.symbol}
-                market={market}
-                className="truncate text-[14px] text-[var(--text)] hover:underline"
-              >
-                {name}
-                <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">{row.symbol}</span>
-              </SymbolLink>
-              <span
-                aria-hidden
-                className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
-              >
-                {row.price !== null ? formatNumber(row.price, "zh-TW", { decimals: 2 }) : "—"}
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[12.5px] tabular-nums"
-                style={{ color }}
-              >
-                {changePct !== null
-                  ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(changePct), "zh-TW", { decimals: 2 })}%`
-                  : "—"}
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[12.5px] tabular-nums"
-                style={{ color }}
-              >
-                {change !== null
-                  ? `${change >= 0 ? "+" : ""}${formatNumber(change, "zh-TW", { decimals: 2 })}`
-                  : "—"}
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[12.5px] text-[var(--text-muted)] tabular-nums"
-              >
-                {row.volume !== null ? formatNumber(row.volume, "zh-TW", { decimals: 0 }) : "—"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </>
+    <SymbolQuoteRows
+      rows={items}
+      quoteBySymbol={quoteBySymbol}
+      market={market}
+      gridCols={ROW_GRID_COLS}
+      priceFor={(row) => row.price}
+      changePctFor={(row) => row.change_pct}
+      volumeFor={(row) => row.volume}
+    />
   );
 }

@@ -1,12 +1,19 @@
 "use client";
 
-import { NewspaperIcon, SparkleIcon, SquaresFourIcon } from "@phosphor-icons/react";
+import {
+  ChartLineUpIcon,
+  NewspaperIcon,
+  SparkleIcon,
+  SquaresFourIcon,
+} from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { DailyFocusPanel } from "@/components/market/daily-focus-panel";
 import { HeatmapPanel } from "@/components/market/heatmap-panel";
+import { MacroPanel } from "@/components/market/macro-panel";
 import { NewsFeedPanel } from "@/components/market/news-feed-panel";
+import { UsMarketIndexStrip } from "@/components/market/us-market-index-strip";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
@@ -14,19 +21,22 @@ const US_SUB_TABS = [
   { key: "focus", icon: SparkleIcon },
   { key: "heatmap", icon: SquaresFourIcon },
   { key: "news", icon: NewspaperIcon },
+  { key: "macro", icon: ChartLineUpIcon },
 ] as const;
 type UsSubTab = (typeof US_SUB_TABS)[number]["key"];
 
 /**
- * The US tab's own sub-tabs — mirrors `TwTabContent`'s shell/motion pattern exactly, but only 3
- * keys: 每日焦點 (AI 多空排行/漲跌家數/漲跌幅排行, the default), 熱力圖 (產業熱力圖/股票熱力圖,
- * no 板塊輪動 — see `SectorHeatmapPanel`'s own market-aware view list), and 新聞. `TwTabContent`'s
- * 籌碼/處置/PTT sub-tabs have no US backing data at all (margin/holder-tier/disposition-board
- * are TWSE/TPEx-specific regulatory concepts; PTT has no US equivalent) — dropped entirely
- * rather than rendered as an empty/broken tab. No `MarketIndexStrip` either: that component
- * takes no props and is hardcoded to TW indices (加權指數/櫃買指數) plus Sponsor-tier
- * semiconductor/TAIEX-futures/VIX items — there is no real US index ingested to show in its
- * place (only the SPY ETF proxy exists, not a genuine index dataset).
+ * The US tab's own sub-tabs — mirrors `TwTabContent`'s shell/motion pattern exactly, with 4
+ * keys: 每日焦點 (AI 多空排行/漲跌家數/排行榜, the default), 熱力圖 (產業熱力圖/股票熱力圖, no
+ * 板塊輪動 — see `SectorHeatmapPanel`'s own market-aware view list), 新聞, and 總經 (macro-
+ * economic release calendar + yield/Fed-rate/gold/oil indicators, `MacroPanel`).
+ * `TwTabContent`'s 籌碼/處置/PTT sub-tabs have no US backing data at all (margin/holder-tier/
+ * disposition-board are TWSE/TPEx-specific regulatory concepts; PTT has no US equivalent) —
+ * dropped entirely rather than rendered as an empty/broken tab. `UsMarketIndexStrip` (S&P500/
+ * Dow Jones/Nasdaq/SOX/VIX/US 10Y yield/Fed funds rate, live yfinance index quotes confirmed
+ * live this session) sits above the sub-tab bar, mirroring `TwTabContent`'s own
+ * `MarketIndexStrip` placement — this is the real US counterpart that used to have no backing
+ * data at all (only the SPY ETF proxy existed before).
  */
 export function UsTabContent({ market }: { readonly market: Market }): ReactNode {
   const t = useTranslations("market.tabs.usSub");
@@ -34,6 +44,8 @@ export function UsTabContent({ market }: { readonly market: Market }): ReactNode
 
   return (
     <div className="flex flex-col gap-4">
+      <UsMarketIndexStrip />
+
       <div
         role="tablist"
         aria-label={t("label")}
@@ -77,6 +89,7 @@ export function UsTabContent({ market }: { readonly market: Market }): ReactNode
       {subTab === "focus" ? <DailyFocusPanel market={market} /> : null}
       {subTab === "heatmap" ? <HeatmapPanel market={market} /> : null}
       {subTab === "news" ? <NewsFeedPanel market={market} /> : null}
+      {subTab === "macro" ? <MacroPanel /> : null}
     </div>
   );
 }

@@ -151,8 +151,11 @@ export function HolderAccumulationCard({
 
 /** The header row + data rows, shared verbatim between the card's inline preview and the full
  * list inside `ExpandModal` — one render path, mirroring `LeaderboardCard`'s own
- * `LeaderboardRows` so the two never drift in columns/formatting. */
-function HolderAccumulationRows({
+ * `LeaderboardRows` so the two never drift in columns/formatting. Exported so
+ * `TwRankingsCard`'s own 大戶買賣 tab (`tw-rankings-card.tsx`) reuses this exact row rendering
+ * rather than duplicating it — that tab's own docstring explains why `HolderAccumulationCard`'s
+ * bespoke row shape (not `SymbolQuoteRows`-based) is reused as-is. */
+export function HolderAccumulationRows({
   rows,
   t,
   tLeaderboard,
