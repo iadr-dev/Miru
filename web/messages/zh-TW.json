@@ -341,7 +341,6 @@
       },
       "rankings": {
         "title": "排行榜",
-        "tabPriceMomentum": "漲跌幅",
         "tabTrending": "熱門美股",
         "tabMarketCap": "市值",
         "tabRevenue": "營收",
@@ -350,7 +349,7 @@
         "columnName": "名稱/代號",
         "columnPrice": "最新價",
         "columnChangePct": "漲跌幅",
-        "columnChange": "漲跌",
+        "columnSparkline": "走勢",
         "columnVolume": "成交量",
         "empty": "無資料",
         "unavailable": "此選項查無資料。",

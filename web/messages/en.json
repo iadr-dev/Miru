@@ -341,7 +341,6 @@
       },
       "rankings": {
         "title": "Rankings",
-        "tabPriceMomentum": "Gainers/Losers",
         "tabTrending": "Trending",
         "tabMarketCap": "Market Cap",
         "tabRevenue": "Revenue",
@@ -350,7 +349,7 @@
         "columnName": "Name / Symbol",
         "columnPrice": "Price",
         "columnChangePct": "Chg %",
-        "columnChange": "Chg",
+        "columnSparkline": "Trend",
         "columnVolume": "Volume",
         "empty": "No data",
         "unavailable": "No data for this selection.",

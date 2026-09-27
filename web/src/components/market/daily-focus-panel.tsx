@@ -62,6 +62,9 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
   const priceMomentumQuery = useQuery({
     queryKey: ["price_momentum", market, momentumPeriod],
     queryFn: () => getPriceMomentum(market, momentumPeriod, undefined, MAX_TOP_N),
+    // US no longer renders `PriceMomentumCard` (`RankingsCard`'s own tabs — a live screener
+    // snapshot, not this historical %-change ranking — replaced it), so this fetch is TW-only.
+    enabled: !isUs,
   });
 
   return (
@@ -102,19 +105,11 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
         </RainbowBorderCard>
 
         <RainbowBorderCard className="flex h-full">
-          <QueryState query={priceMomentumQuery} skeleton={<CardSkeleton height={430} />}>
-            {(data) =>
-              isUs ? (
-                <RankingsCard
-                  gainers={data.top_gainers}
-                  losers={data.top_losers}
-                  direction={momentumDirection}
-                  onDirectionChange={setMomentumDirection}
-                  period={momentumPeriod}
-                  onPeriodChange={setMomentumPeriod}
-                  market={market}
-                />
-              ) : (
+          {isUs ? (
+            <RankingsCard market={market} />
+          ) : (
+            <QueryState query={priceMomentumQuery} skeleton={<CardSkeleton height={430} />}>
+              {(data) => (
                 <PriceMomentumCard
                   gainers={data.top_gainers}
                   losers={data.top_losers}
@@ -124,9 +119,9 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
                   onPeriodChange={setMomentumPeriod}
                   market={market}
                 />
-              )
-            }
-          </QueryState>
+              )}
+            </QueryState>
+          )}
         </RainbowBorderCard>
 
         {isUs ? (
