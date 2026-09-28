@@ -12,6 +12,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
 import { MarketTabSwitcher } from "@/components/market/market-tabs";
 import { SearchPalette } from "@/components/search/search-palette";
+import { useSearchPaletteStore } from "@/components/search/search-palette-store";
 import { LanguageSwitcher } from "@/components/shell/language-switcher";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { usePathname, useRouter } from "@/i18n/navigation";
@@ -75,10 +76,13 @@ export function TopBar({
 }
 
 /** The 股票搜尋 command-palette trigger. Opens `SearchPalette` (公司/ETF, TW roster + US
- * yfinance search) on click or on the global Cmd/Ctrl+K shortcut. */
+ * yfinance search) on click or on the global Cmd/Ctrl+K shortcut. Open state lives in
+ * `useSearchPaletteStore` (not local state) so other surfaces — e.g. the `/stock` empty
+ * state's "搜尋股票" CTA — can open the same palette. */
 function SearchPlaceholder(): ReactNode {
   const t = useTranslations("shell.search");
-  const [open, setOpen] = useState(false);
+  const open = useSearchPaletteStore((s) => s.open);
+  const setOpen = useSearchPaletteStore((s) => s.setOpen);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -89,7 +93,7 @@ function SearchPlaceholder(): ReactNode {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [setOpen]);
 
   return (
     <>

@@ -1,8 +1,11 @@
-import { ChartLineIcon } from "@phosphor-icons/react/dist/ssr";
-import { getTranslations, setRequestLocale } from "next-intl/server";
+import { setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
-import { ComingSoon } from "@/components/shell/coming-soon";
+import { StockEmptyState } from "./stock-empty-state";
 
+/** `/stock` (no symbol) — the stock-DETAIL route (`/stock/{symbol}`) is a fully built multi-tab
+ * workbench, so this index is a guide into it (search palette + a few quick-pick symbols), not a
+ * "coming soon" stub — see `stock-empty-state.tsx`'s own docstring for why that placeholder was
+ * retired here specifically. */
 export default async function StockPage({
   params,
 }: {
@@ -10,6 +13,5 @@ export default async function StockPage({
 }): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
-  const t = await getTranslations({ locale, namespace: "nav" });
-  return <ComingSoon icon={ChartLineIcon} title={t("stock.label")} body={t("comingSoon")} />;
+  return <StockEmptyState />;
 }

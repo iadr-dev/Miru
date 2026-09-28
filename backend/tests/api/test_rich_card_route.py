@@ -169,6 +169,32 @@ class TestRichCardStream:
             block_types = [m["type"] for m in assistant["messages"]]
             assert "rich_card" in block_types
 
+    def test_rich_card_block_is_persisted_before_the_answer_text(
+        self, settings, agent_answer
+    ) -> None:
+        """Regression guard: `_persist_answer` (`api/turn_driver.py`) used to append the `text`
+        block before the `rich_card` blocks, so a reopened thread rendered the answer/caveat
+        FIRST and the supporting chart/card BELOW it — backwards from both the live stream's own
+        order (`active-turn-view.tsx` renders `turn.richCards` above `turn.answerText`) and from
+        what a good analytical answer should look like: lead with the supporting data, close with
+        the narrative + caveat, not dump a card after the "final word" caveat like an appendix."""
+        with _client(settings, agent_answer) as client:
+            headers, _ = sign_in(client, settings, tier=Tier.FREE)
+            resp = client.post(
+                "/api/v1/agent/query", json={"message": "台積電報價"}, headers=headers
+            )
+            _parse_sse(resp.text)
+
+            thread_id = client.get("/api/v1/threads", headers=headers).json()["threads"][0]["id"]
+            full = client.get(f"/api/v1/threads/{thread_id}", headers=headers).json()
+            assistant = next(t for t in full["turns"] if t["role"] == "assistant")
+            block_types = [m["type"] for m in assistant["messages"]]
+            card_index = block_types.index("rich_card")
+            text_index = block_types.index("text")
+            assert card_index < text_index, (
+                f"rich_card block must precede the text block; got order {block_types}"
+            )
+
     def test_unentitled_sponsor_tool_without_row_preview_yields_no_real_data_card(
         self, settings, agent_answer
     ) -> None:

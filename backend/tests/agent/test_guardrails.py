@@ -282,6 +282,49 @@ def test_scan_structured_payload_strips_yahoo_from_a_card_caveat_field() -> None
     assert "yahoo" not in str(cleaned["sector_caveat"]).lower()
 
 
+def test_scan_structured_payload_redacts_trading_language_in_a_chart_hint_title() -> None:
+    """`chart_hint` (schemas/chart_hint.py) rides through `agent.loop._build_card`'s
+    `scan_structured_payload(result.model_dump(mode="json"))` call exactly like every other field
+    on a tool's output_model — no new scanning code needed for it. Proves that property: a
+    trading-language chart title is redacted by the SAME walk that already scans `sector_caveat`/
+    `note` above, not a bespoke chart-specific scanner."""
+    payload = {
+        "chart_hint": {
+            "mark": "bar",
+            "title": "目標價 600 元，買進建議",
+            "x": {"field": "trade_date", "type": "temporal"},
+            "y": {"field": "revenue", "type": "quantitative"},
+        },
+        "rows": [{"trade_date": "2026-01-01", "revenue": 100}],
+    }
+    cleaned, redacted = scan_structured_payload(payload)
+    assert redacted is True
+    assert isinstance(cleaned, dict)
+    chart_hint = cleaned["chart_hint"]
+    assert isinstance(chart_hint, dict)
+    assert chart_hint["title"] == REDACTION_NOTICE
+    # Sibling fields (mark/x/y/rows) are untouched — only the string leaf matching trading
+    # language is redacted, never the whole payload.
+    assert chart_hint["mark"] == "bar"
+    assert cleaned["rows"] == payload["rows"]
+
+
+def test_scan_structured_payload_leaves_a_decisive_chart_hint_title_alone() -> None:
+    """The governance rule-12 counterpart to the redaction test above: a confident descriptive
+    chart title (never buy/sell/hold-shaped) must survive this walk untouched."""
+    payload = {
+        "chart_hint": {
+            "mark": "bar",
+            "title": "營收季節性：8月為旺季，2月為連續5年負增長的低谷",
+            "x": {"field": "trade_date", "type": "temporal"},
+            "y": {"field": "revenue", "type": "quantitative"},
+        }
+    }
+    cleaned, redacted = scan_structured_payload(payload)
+    assert redacted is False
+    assert cleaned == payload
+
+
 # ---- split_sentences_streaming: incremental, nothing-discarded boundary detection ----
 
 

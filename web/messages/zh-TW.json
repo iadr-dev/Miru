@@ -743,6 +743,7 @@
       "fieldUnavailable": "{field} 暫無資料",
       "showDataSheet": "顯示資料表",
       "hideDataSheet": "隱藏資料表",
+      "otherCategory": "其他",
       "showAllRows": "顯示全部 {count} 筆",
       "showFewerRows": "收合",
       "moreRows": "還有 {count} 筆",
@@ -1500,6 +1501,12 @@
     }
   },
   "stock": {
+    "empty": {
+      "heading": "查看任何一支個股或 ETF",
+      "subheading": "輸入代號或名稱搜尋，即可查看基本資料、財務、籌碼、技術分析與 AI 摘要。",
+      "searchCta": "搜尋股票",
+      "quickPicksLabel": "或直接看看："
+    },
     "assetHeader": {
       "addToWatchlist": "加入自選",
       "removeFromWatchlist": "從自選股移除",

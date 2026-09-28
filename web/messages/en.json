@@ -743,6 +743,7 @@
       "fieldUnavailable": "{field} unavailable",
       "showDataSheet": "Show data table",
       "hideDataSheet": "Hide data table",
+      "otherCategory": "Other",
       "showAllRows": "Show all {count} more",
       "showFewerRows": "Show fewer",
       "moreRows": "+{count} more",
@@ -1500,6 +1501,12 @@
     }
   },
   "stock": {
+    "empty": {
+      "heading": "Look up any stock or ETF",
+      "subheading": "Search a ticker or company name to see profile, financials, chip flows, technicals, and an AI summary.",
+      "searchCta": "Search stocks",
+      "quickPicksLabel": "Or check out:"
+    },
     "assetHeader": {
       "addToWatchlist": "Add to watchlist",
       "removeFromWatchlist": "Remove from watchlist",
