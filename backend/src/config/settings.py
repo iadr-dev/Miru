@@ -64,11 +64,17 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 16_000
 
     # ---- Orchestrator budgets (per-turn ceilings, orchestrator/ceilings.py) ----
-    orch_max_subagents: int = 4
+    # `orch_max_subagents` bounds fan-out breadth (how many independent-dimension skill lanes
+    # can run in one turn), not per-lane depth (`orch_max_steps_per_agent`, unchanged). Raised
+    # from 4 to 6 so a genuinely multi-angle query isn't clamped below what the classifier's own
+    # router prompt asks for; the tool-call/cost/token ceilings below are scaled by the same
+    # ~1.5x factor so a 6-lane fan-out has proportionally more headroom, not the old 4-lane budget
+    # stretched thinner across more lanes.
+    orch_max_subagents: int = 6
     orch_max_steps_per_agent: int = 8
-    orch_max_tool_calls_per_turn: int = 40
-    orch_max_cost_micros_per_turn: int = 5_000_000
-    orch_max_tokens_per_turn: int = 1_000_000
+    orch_max_tool_calls_per_turn: int = 60
+    orch_max_cost_micros_per_turn: int = 7_500_000
+    orch_max_tokens_per_turn: int = 1_500_000
 
     # ---- Data providers ----
     finmind_api_key: str | None = None

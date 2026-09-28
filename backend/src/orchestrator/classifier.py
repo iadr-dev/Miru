@@ -29,8 +29,8 @@ logger = structlog.get_logger(__name__)
 _VALID_FRAMEWORKS: frozenset[str] = frozenset({"none", "single", "subagent", "team"})
 # A rare-hallucination backstop, not the routine breadth control — the real fan-out ceiling is
 # `TurnBudget.max_subagents` (orchestrator/ceilings.py, `orch_max_subagents` setting), which stays
-# at 4 per governance. This only guards against a classifier naming an unreasonable number of
-# skills; the router prompt below already asks for "at most 4" in normal operation.
+# at 6 per governance. This only guards against a classifier naming an unreasonable number of
+# skills; the router prompt below already asks for "at most 6" in normal operation.
 _MAX_SKILLS = 8
 
 _ROUTER_SYSTEM_PROMPT = (
@@ -46,11 +46,11 @@ _ROUTER_SYSTEM_PROMPT = (
     "- none: greeting, off-topic, or a capability question — reply from the system prompt, no "
     "skills, skills MUST be [].\n"
     "- single: one-dimension lookup or action — exactly one skill (or none if no skill fits).\n"
-    "- subagent: multi-angle analysis across INDEPENDENT dimensions — 2 to 4 skills, run in "
+    "- subagent: multi-angle analysis across INDEPENDENT dimensions — 2 to 6 skills, run in "
     "parallel.\n"
-    "- team: sequential deep research where later findings depend on earlier ones — 2 to 4 "
+    "- team: sequential deep research where later findings depend on earlier ones — 2 to 6 "
     "skills, run in order.\n"
-    "Pick at most 4 skills, only from the provided list, by their exact name. Prefer 'single' "
+    "Pick at most 6 skills, only from the provided list, by their exact name. Prefer 'single' "
     "for ambiguous intent rather than guessing a fan-out."
 )
 

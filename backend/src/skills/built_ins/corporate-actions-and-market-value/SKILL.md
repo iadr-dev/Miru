@@ -1,8 +1,8 @@
 ---
 name: corporate-actions-and-market-value
 version: 1.0.0
-description: 減資/下市/分割/面額變動 corporate-action reference events, daily market value + market-cap-weight ranking, 當沖 eligibility, and 漲跌停參考價 for one stock.
-triggers: [減資, 下市, 分割, 面額變動, 市值, 市值比重, 當沖, 漲跌停, corporate action, market cap, market value, day trading]
+description: 減資/下市/分割/面額變動 corporate-action reference events, daily market value + market-cap-weight ranking, 當沖 eligibility + 暫停先賣後買當沖公告, and 漲跌停參考價 for one stock.
+triggers: [減資, 下市, 分割, 面額變動, 市值, 市值比重, 當沖, 暫停先賣後買當沖, 漲跌停, corporate action, market cap, market value, day trading, day trading suspension]
 design_pattern: tool_wrapper
 inputs:
   stock_id:
@@ -14,16 +14,18 @@ inputs:
   end_date:
     type: string
     required: false
-tools: [get_canonical_context, get_source_health, get_corporate_action_events, get_market_value, get_market_value_weight, get_day_trading, get_price_limit]
+tools: [get_canonical_context, get_source_health, get_corporate_action_events, get_market_value, get_market_value_weight, get_day_trading, get_day_trading_suspension, get_price_limit]
 output_structure:
   - '公司行動事件: 減資恢復買賣參考價/下市櫃/分割反分割/變更面額 (若有)'
   - '市值走勢: 區間內每日市值 (Sponsor)'
   - '市值比重排行: 區間內每日全市場排名 (Sponsor)'
   - '當沖標的與量值: 是否列入當沖標的與當日量值'
+  - '暫停先賣後買當沖公告: 區間內公告紀錄 (Sponsor，若有)'
   - '漲跌停參考價: 區間內每日參考/漲停/跌停價'
 freshness_rule: 每個子區塊須標明其資料日期；公司行動事件本質上是事件驅動且各自可能為空，缺一律說明「查詢區間內無此類事件」而非留白。
 boundaries:
   - get_market_value 與 get_market_value_weight 為 Sponsor 資料，未取得授權時針對遭遮蔽區塊誠實說明。
+  - get_day_trading_suspension (暫停先賣後買當沖) 與 get_day_trading (當沖標的/量值) 為不同資料集 — 前者是公告事件流，後者是每日量值統計，不得混用或視為同一份資料的兩種呈現。
   - 減資/下市/分割等公司行動事件僅為歷史事件描述，不對股價後續影響做任何推測或建議。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []
@@ -45,6 +47,9 @@ outputs: markdown
    end_date)` (Sponsor-tier) for the daily whole-market market-cap-weight ranking. If
    unentitled, report around the masked sections.
 4. Call `get_day_trading(stock_id, market, start_date, end_date)` for 當沖 eligibility marker +
-   volume/value rows, and `get_price_limit(stock_id, market, start_date, end_date)` for daily
-   reference/limit-up/limit-down price rows.
-5. Synthesize using `output_structure`, in order, every figure tagged with its trading date.
+   volume/value rows, and `get_day_trading_suspension(stock_id, market, start_date, end_date)`
+   (Sponsor-tier) for any 暫停先賣後買當沖 announcement in the window — a distinct dataset from
+   `get_day_trading`, never merged into the same figure.
+5. Call `get_price_limit(stock_id, market, start_date, end_date)` for daily reference/limit-up/
+   limit-down price rows.
+6. Synthesize using `output_structure`, in order, every figure tagged with its trading date.

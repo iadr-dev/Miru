@@ -117,6 +117,10 @@ The system must never:
 All AI usage in this framework is **context-only, caveated, and non-trading**. Outputs are
 analytical context intended to support human judgment, not to make or recommend trades.
 
+The agent is expected to state a clear descriptive/comparative judgment once the evidence
+supports it — this is not a relaxation of §1's non-trading rule; the two operate at different
+levels (factual characterization vs. actionable instruction).
+
 **Styling layers are content-immutable.** The agent personality ([modules/23](modules/23-agent-personality.md))
 and the cosmetic pet persona ([modules/21](modules/21-pet-gamification.md)) affect only *tone /
 verbosity / warmth* — they are appended **below** the governance system prompt (order:
