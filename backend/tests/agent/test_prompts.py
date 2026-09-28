@@ -105,6 +105,16 @@ def test_governance_prompt_bans_internal_identifiers_and_code_syntax() -> None:
     assert "rows: []" in prompt
 
 
+def test_governance_prompt_encourages_decisive_descriptive_language() -> None:
+    """Rule 12 — descriptive/comparative decisiveness is expected, never a relaxation of rule
+    1's actionable-advice ban. Checked as literal example fragments so a future prompt edit
+    that drops the rule's concrete guidance or its cross-reference to rule 1 fails loudly."""
+    prompt = governance_prompt()
+
+    assert "structurally the more volatile of the two" in prompt
+    assert "rule 1's actionable territory" in prompt
+
+
 def test_default_prompt_layers_forwards_locale_to_governance() -> None:
     layers = default_prompt_layers("en")
 

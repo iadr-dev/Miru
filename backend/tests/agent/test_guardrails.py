@@ -132,6 +132,18 @@ def test_check_output_leaves_descriptive_buy_sell_signal_prose_alone() -> None:
         assert "buy signal" in verdict.redacted_text
 
 
+def test_check_output_leaves_decisive_descriptive_comparison_alone() -> None:
+    """Governance rule 12 explicitly encourages confident descriptive/comparative judgment
+    ("structurally the more volatile of the two", "consistent dividend payer") — this must never
+    be caught by the trading-language scanner, since none of it is buy/sell/hold-shaped."""
+    text = "A股波動性較高，B股客戶結構較為集中。A股為近5年配息穩定的股利支付者，填息成功率較高。"
+    verdict = check_output(text)
+    assert verdict.allowed is True
+    if verdict.redacted_text is not None:
+        assert REDACTION_NOTICE not in verdict.redacted_text
+        assert "波動性較高" in verdict.redacted_text
+
+
 def test_check_output_appends_caveat_when_market_data_present_and_caveat_missing() -> None:
     verdict = check_output("Foreign investors increased holdings this week.")
     assert verdict.allowed is True

@@ -8,7 +8,7 @@ inputs:
   stock_id:
     type: string
     required: true
-tools: [get_canonical_context, get_company_profile, get_dividend_schedule, get_analyst_consensus, get_esg_score]
+tools: [get_canonical_context, get_company_profile, get_dividend_schedule, get_analyst_consensus, get_esg_score, ask_user]
 output_structure:
   - '產業分類: sector / industry'
   - '公司基本資料: 董座/總經理/發言人/簽證會計師/資本額/成立日期/總部/官網 — 僅 TW 個股提供，其他市場一律列入 missing_fields (內部實作走 MOPS，但這是資料來源細節，絕不在輸出文字或欄位標題中提及來源名稱)'
@@ -19,6 +19,7 @@ output_structure:
   - '尚無法提供的欄位: 以中文欄位名稱明確列出 (如「營收年增率」「毛利率」「每股盈餘」，以及非 TW 市場的公司基本資料欄位) — 絕不輸出原始英文欄位識別碼 (revenue_yoy/margins/eps 等)'
 freshness_rule: 股利資訊須標明宣告/發放日期；公司基本資料標明其 currentness_caveat (whole-market current dump, 無歷史)；缺漏欄位一律列在 missing_fields，不得臆測。
 boundaries:
+  - ask_user 僅在股票代碼/名稱本身真正有歧義時使用 (例如同名不同市場的公司、一般股與其存託憑證/ADR 難以確定使用者指的是哪一個) — 絕不用於徵求執行許可，本技能其他工具永遠直接執行。呼叫後即為本回合唯一動作，不得同時呼叫其他工具或給出結論。
   - 不提供目標價、評等或買賣建議 — analyst_consensus 僅陳述第三方已發布的目標價/評等數據，不得由本技能自行解讀為買賣訊號。
   - 缺漏欄位（如 ESG 分數、分析師覆蓋、非 TW 的公司基本資料欄位）一律誠實列出，不得杜撰數字填補。
   - 輸出文字（章節標題、欄位說明、caveat）絕不提及任何內部資料來源/供應商名稱 (如 MOPS、Sustainalytics、yFinance、TDCC、TWSE 等) — 使用者只看得到「公司基本資料」「ESG 分數」等通用描述，來源永遠是實作細節。
@@ -30,8 +31,13 @@ outputs: markdown
 
 ## Procedure
 
-1. Call `get_canonical_context(stock_id, market)` for the currentness baseline.
-2. Call `get_company_profile(stock_id, market)` — sector/industry, latest dividend, market
+1. If `stock_id` is genuinely ambiguous — e.g. a company name that resolves to more than one
+   listed instrument, or unclear whether the caller means the ordinary share or its ADR/
+   depositary-receipt counterpart — call `ask_user` with the specific options before calling
+   any other tool, and make that your only action this turn. Do not use this for anything
+   short of real identity ambiguity; a normal, resolvable stock id proceeds straight to step 2.
+2. Call `get_canonical_context(stock_id, market)` for the currentness baseline.
+3. Call `get_company_profile(stock_id, market)` — sector/industry, latest dividend, market
    value/PER/dividend-yield/EPS, and (TW only) MOPS identity fields (chairman/general manager/
    spokesperson/auditor/capital/founding date/headquarters/website/industry code). For a
    non-TW symbol, every MOPS-sourced field is absent by design — always read its
@@ -42,16 +48,16 @@ outputs: markdown
    fold into the relevant section's prose or the closing caveat footer — never name them as a
    field or show them as a labeled row; the reader should never see the tokens
    "sector_caveat"/"dividend_caveat" appear anywhere in the answer.
-3. Call `get_analyst_consensus(stock_id, market)` for the target-price/rating consensus (real
+4. Call `get_analyst_consensus(stock_id, market)` for the target-price/rating consensus (real
    for any market, not just non-TW) — present the mean/median/high/low target and analyst
    count when covered; state plainly "no analyst coverage" when `consensus` is null, never
    silently omit the section.
-4. Call `get_esg_score(stock_id, market)` for the ESG risk score — sparse, large-cap-skewed
+5. Call `get_esg_score(stock_id, market)` for the ESG risk score — sparse, large-cap-skewed
    coverage; state plainly "no ESG data" when `esg` is null.
-5. If the caller specifically asked about dividends, call `get_dividend_schedule(stock_id,
+6. If the caller specifically asked about dividends, call `get_dividend_schedule(stock_id,
    market)` for a fuller history than the single latest-dividend field the profile tool
    carries, and cite each entry's declared/paid date.
-6. Present sector/industry first, then (TW) the company identity card, then market value/
+7. Present sector/industry first, then (TW) the company identity card, then market value/
    valuation, then the dividend read, then analyst consensus/ESG, then the missing-fields
    disclosure. Never imply completeness the underlying data doesn't have. The rendered output
    itself must never name the underlying source/vendor (MOPS, Sustainalytics, yFinance, etc.) —

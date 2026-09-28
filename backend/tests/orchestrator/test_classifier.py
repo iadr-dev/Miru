@@ -109,7 +109,7 @@ async def test_classifier_drops_unknown_skill_names(registry: SkillRegistry) -> 
 async def test_classifier_clamps_to_eight_skills(registry: SkillRegistry) -> None:
     # 9 distinct valid names to exceed the backstop ceiling — clamp keeps at most eight. This
     # ceiling is a rare-hallucination backstop, not the routine fan-out control (that's
-    # `TurnBudget.max_subagents`, still 4, enforced separately downstream in the orchestrator).
+    # `TurnBudget.max_subagents`, still 6, enforced separately downstream in the orchestrator).
     skill_names = [
         "chip-flow-review",
         "company-profile",

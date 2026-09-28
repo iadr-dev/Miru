@@ -45,10 +45,14 @@ _ZH_TW_LABELS: Final[dict[str, str]] = {
     "margin-and-short-interest": "正在檢視融資融券與券資比",
     "market-breadth-and-flow": "正在檢視全市場廣度與資金流",
     "reference-data-lookup": "正在查詢參考資料",
+    "self-assessed-earnings-check": "正在查詢自結損益公告",
+    "stock-financial-comparison": "正在比較兩檔股票的財務資料",
     "stock-score": "正在查詢個股評分",
     "stock-screener": "正在執行標籤篩選",
+    "tdcc-registry-lookup": "正在查詢集保相關登記資料",
     "theme-lookup": "正在查詢主題與產業鏈分類",
     "valuation-band": "正在檢視估值區間",
+    "warrant-and-derivatives-microstructure": "正在查詢權證與期權逐筆/分點資料",
 }
 
 # English fallback for a non-zh-TW-locale turn — mirrors the same skill set 1:1.
@@ -77,10 +81,14 @@ _EN_LABELS: Final[dict[str, str]] = {
     "margin-and-short-interest": "Reviewing margin and short-interest data",
     "market-breadth-and-flow": "Reviewing market-wide breadth and flow",
     "reference-data-lookup": "Looking up reference data",
+    "self-assessed-earnings-check": "Checking self-assessed earnings filing",
+    "stock-financial-comparison": "Comparing two stocks' financial data",
     "stock-score": "Looking up stock score",
     "stock-screener": "Running tag screener",
+    "tdcc-registry-lookup": "Looking up TDCC registry data",
     "theme-lookup": "Looking up theme/industry-chain classification",
     "valuation-band": "Reviewing valuation band",
+    "warrant-and-derivatives-microstructure": "Looking up warrant/derivatives tick and broker data",
 }
 
 _LOCALE_LABELS: Final[dict[str, dict[str, str]]] = {
