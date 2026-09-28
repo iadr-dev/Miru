@@ -597,9 +597,7 @@ class GetMarginMaintenanceTool(BaseTool):
             chart_hint=ChartHint(
                 mark=Mark.AREA,
                 x=FieldDef(field="trade_date", type=FieldType.TEMPORAL),
-                y=FieldDef(
-                    field="total_exchange_margin_maintenance", type=FieldType.QUANTITATIVE
-                ),
+                y=FieldDef(field="total_exchange_margin_maintenance", type=FieldType.QUANTITATIVE),
             )
             if rows
             else None,
