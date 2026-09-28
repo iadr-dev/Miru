@@ -297,23 +297,31 @@ tables, [../backend/adr/0027-first-class-watchlist.md](../backend/adr/0027-first
   (`opacity-0 group-hover:opacity-100`). Reduced-motion → no drag transition, keyboard reorder
   (focus row, `Space` lift, `↑/↓`, `Space` drop, announced via aria-live).
 
-**Default presets — copied verbatim from the Kestrel backend `DEFAULT_WATCHLISTS`**
-(`kestrel-backend .../endpoints/kestrel/user.py:89`), **server-seeded when a user's list for a
-market is empty** (backend ADR-0027 seeds these on first `GET /watchlists?market=`):
+**Default presets — `backend/src/config/watchlist_presets.py::DEFAULT_WATCHLIST_PRESETS`**,
+**server-seeded once per user, per `(market, asset_class)` combo that has zero non-deleted
+groups** (backend ADR-0027; seeded on first `GET /watchlists?market=` for that combo — never
+re-seeds over a user's own edits/deletions):
 
 | Tab | Preset group | Symbols |
 |-----|--------------|---------|
-| **TW** | **半導體** | 2330 台積電 · 2454 聯發科 · 3711 日月光投控 · 2303 聯電 |
-| **TW** | **權值股** | 2317 鴻海 · 2382 廣達 · 2881 富邦金 · 2882 國泰金 · 2412 中華電 |
-| **US** | **US Tech** | NVDA · AAPL · TSLA · MSFT |
-| **US** | **US Index** | SPY · QQQ · DIA |
-| **ETF** | **台股 ETF** | 0050 元大台灣50 · 0056 元大高股息 · 00878 國泰永續高股息 · 00919 群益台灣精選高息 |
-| **ETF** | **債券/海外 ETF** | 00679B 元大美債20年 · 00713 元大台灣高息低波 · 00757 統一FANG+ |
+| **TW** | **SpaceX 供應鏈** | 3665 貿聯-KY · 3491 昇達科 · 2455 全新 · 4979 華星光 · 2059 川湖 · 6141 柏承 · 3081 聯亞 · 6213 聯茂 |
+| **TW** | **軍工&無人機** | 2634 漢翔 · 1503 士電 · 2371 大同 · 4551 智伸科 · 1522 堤維西 · 4526 東台 |
+| **TW** | **記憶體** | 2408 南亞科 · 8299 群聯 · 5347 世界 · 4919 新唐 · 3532 台勝科 · 8054 安國 · 6533 晶心科 |
+| **TW** | **金融&航空** | 2882 國泰金 · 2881 富邦金 · 2891 中信金 · 2886 兆豐金 · 2884 玉山金 · 2885 元大金 · 2610 華航 · 2618 長榮航 |
+| **TW** | **半導體** | 2330 台積電 · 2454 聯發科 · 3711 日月光投控 · 2303 聯電 · 3661 世芯-KY · 3529 力旺 · 3034 聯詠 · 3413 京鼎 |
+| **US** | **AI Infrastructure & Data Centers** | NVDA · AVGO · MU · VRT · SMCI · ANET · ETN · VST · CEG · ORCL |
+| **US** | **Nuclear Power & SMRs** | CEG · VST · NRG · OKLO · SMR · BWXT · CCJ · LEU · GEV |
+| **US** | **Quantum Computing** | IONQ · RGTI · QBTS · IBM · GOOGL · MSFT · HON |
+| **US** | **Defense & Drones** | LMT · RTX · NOC · GD · KTOS · AVAV · RCAT · PLTR |
+| **US** | **Stablecoins & Crypto Infrastructure** | COIN · CRCL · MSTR · MA · V · PYPL · XYZ · HOOD |
+| **ETF** | **Active ETF** | 00981A · 00403A · 00991A · 00982A · 00992A · 00406A · 00400A |
+| **ETF** | **Leveraged ETF** | 00631L · 00685L · 00675L · 00632R · 00663L · 00670L · 00637L |
+| **ETF** | **Popular ETF** | 0050 · 0056 · 00878 · 00919 · 006208 · 0052 · 00881 |
 
 Presets are a **starter seed only** — fully editable/removable; a returning user's own groups
-override them. Seeded server-side (single source of truth), not hardcoded in the client. US Index
-(SPY/QQQ/DIA) is reserved until the multi-market US phase ships (module 19); the group renders with
-its symbols but quote data shows "尚未支援" until then.
+override them (once a user has ANY group for a `(market, asset_class)` combo, that combo is never
+re-seeded). Seeded server-side (single source of truth), not hardcoded in the client. Identical
+for every tier (Free/Premium/Pro) — no tier gate anywhere in the seeding path.
 
 ### 7.8 StockRow — category-aware default info
 The atomic row used in the watchlist rail, market tables, peer lists, and screener results. Adapts

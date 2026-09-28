@@ -5,13 +5,14 @@ import { type ReactNode, useMemo, useState } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-list-sort";
 import { SymbolLink } from "@/components/market/symbol-link";
+import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr]";
+const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr_28px]";
 // Same collapsed-row-count convention `HolderAccumulationCard`/`LeaderboardCard` use — enough
 // rows to be useful inline while keeping this card's height comparable to its dashboard
 // neighbors; "展開完整{count}筆" opens the full sorted list (unbounded, still scrollable) in
@@ -209,6 +210,7 @@ function EtfListHeaderRow({
           </div>
         );
       })}
+      <span aria-hidden />
     </div>
   );
 }
@@ -296,6 +298,7 @@ function EtfListRowItem({
           ? `${formatNumber(row.expense_ratio_pct_approx, locale, { decimals: 2 })}%`
           : "—"}
       </span>
+      <WatchlistStarButton symbol={row.symbol} market={market} assetClass="etf" size="compact" />
     </li>
   );
 }

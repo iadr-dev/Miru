@@ -675,6 +675,29 @@ export const twMarketRankingsResponseSchema = z.object({
 export type TwMarketRankingsResponse = z.infer<typeof twMarketRankingsResponseSchema>;
 
 // ---------------------------------------------------------------------------
+// 11d. GET /market/tag-screener — run_tag_screener (public). Mirrors `TagScreenerResult`
+//      (backend/src/schemas/screener.py) field-for-field.
+// ---------------------------------------------------------------------------
+
+export const tagScreenerHitSchema = z.object({
+  symbol: z.string(),
+  matched_tags: z.array(z.string()),
+});
+export type TagScreenerHit = z.infer<typeof tagScreenerHitSchema>;
+
+export const tagScreenerResultSchema = z.object({
+  market: z.string(),
+  as_of: z.string().nullable().optional(),
+  total_matches: z.number(),
+  hits: z.array(tagScreenerHitSchema),
+  detail: z.string(),
+});
+export type TagScreenerResult = z.infer<typeof tagScreenerResultSchema>;
+
+export const tagScreenerResponseSchema = z.object({ result: tagScreenerResultSchema });
+export type TagScreenerResponse = z.infer<typeof tagScreenerResponseSchema>;
+
+// ---------------------------------------------------------------------------
 // 12. GET /market/holder-accumulation — get_holder_accumulation (Sponsor-tier)
 // ---------------------------------------------------------------------------
 

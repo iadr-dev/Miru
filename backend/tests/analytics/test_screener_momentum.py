@@ -44,6 +44,39 @@ def test_volume_surge_false_with_zero_baseline() -> None:
     assert momentum.volume_surge(bars) is False
 
 
+def test_volume_contraction_fires_at_exactly_the_fraction() -> None:
+    # 20 baseline days at volume 100 (avg 100), then today's volume is exactly half -> fires.
+    volumes = [100] * momentum.VOLUME_SURGE_WINDOW + [50]
+    bars = _bars_with_volume(volumes)
+    assert momentum.volume_contraction(bars) is True
+
+
+def test_volume_contraction_false_above_the_fraction() -> None:
+    volumes = [100] * momentum.VOLUME_SURGE_WINDOW + [51]
+    bars = _bars_with_volume(volumes)
+    assert momentum.volume_contraction(bars) is False
+
+
+def test_volume_contraction_baseline_excludes_todays_own_volume() -> None:
+    # If today's near-zero volume were folded into its own baseline, the ratio would rise above
+    # the threshold. The baseline must be strictly the 20 days BEFORE today.
+    volumes = [1000] * momentum.VOLUME_SURGE_WINDOW + [1]
+    bars = _bars_with_volume(volumes)
+    assert momentum.volume_contraction(bars) is True
+
+
+def test_volume_contraction_false_with_insufficient_history() -> None:
+    volumes = [100] * (momentum.VOLUME_SURGE_WINDOW - 1) + [1]
+    bars = _bars_with_volume(volumes)
+    assert momentum.volume_contraction(bars) is False
+
+
+def test_volume_contraction_false_with_zero_baseline() -> None:
+    volumes = [0] * momentum.VOLUME_SURGE_WINDOW + [0]
+    bars = _bars_with_volume(volumes)
+    assert momentum.volume_contraction(bars) is False
+
+
 def _bars_with_closes(closes: list[float]) -> list[PriceBar]:
     return [PriceBar(high=c, low=c, close=c, volume=0) for c in closes]
 

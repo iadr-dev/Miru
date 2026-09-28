@@ -1,6 +1,6 @@
 "use client";
 
-import { SparkleIcon, StarIcon } from "@phosphor-icons/react";
+import { SparkleIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
@@ -8,6 +8,9 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SectorChip } from "@/components/stock/sector-chip";
+import { TwStockSignalBadges } from "@/components/stock/tw-stock-signal-badges";
+import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
+import { Badge } from "@/components/ui/badge";
 import { useLiveQuote } from "@/hooks/use-live-quote";
 import { getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
 import { getEtfList, getPriceHistory, getSymbolInfo } from "@/lib/api/market";
@@ -43,10 +46,9 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
  * (bounded observation), so a page load outside market hours would otherwise never receive a
  * tick at all; the one-shot route's own adapter already falls back to a `.info` snapshot
  * (`sources/yfinance/live_quote_adapter.py::_snapshot_tick`) for exactly this case. The SSE tick
- * wins once it starts arriving (a genuinely live overwrite of the one-shot snapshot). ☆/💬 are
- * honest placeholders: no `/watchlists` write path exists yet (`WatchlistRail` itself is still an
- * unwired shell), so ☆ stays visually present but non-interactive rather than faking a save;
- * 💬 links to `/chat` plain (no seed-query mechanism exists yet either).
+ * wins once it starts arriving (a genuinely live overwrite of the one-shot snapshot). ☆ is a real
+ * add/remove-from-自選股 toggle (`WatchlistStarButton`, backed by the real `/watchlists` write
+ * path); 💬 still links to `/chat` plain (no seed-query mechanism exists yet).
  */
 export function AssetHeader({
   symbol,
@@ -173,17 +175,14 @@ export function AssetHeader({
           {themeTags.map((tag) => (
             <ThemeTagBadge key={tag} tag={tag} />
           ))}
+          {!isEtf ? <TwStockSignalBadges symbol={symbol} market={market} /> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button
-            type="button"
-            disabled
-            title={t("watchlistComingSoon")}
-            aria-label={t("addToWatchlist")}
-            className="inline-flex size-11 items-center justify-center rounded-[var(--radius-button)] text-[var(--text-muted)] opacity-50"
-          >
-            <StarIcon size={18} weight="regular" aria-hidden />
-          </button>
+          <WatchlistStarButton
+            symbol={symbol}
+            market={market}
+            assetClass={isEtf ? "etf" : "stock"}
+          />
           <Link
             href="/chat"
             className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] transition-colors hover:bg-[var(--surface-2)]"
@@ -334,21 +333,9 @@ function EtfStructureBadges({ row }: { readonly row: EtfListRow | undefined }): 
   const symbolTypeBadge = SYMBOL_TYPE_BADGE[row.symbol_type];
   return (
     <>
-      {row.is_active_etf ? (
-        <span
-          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2.5 py-1 font-medium text-[12px]"
-          style={{ color: ACTIVE_ETF_BADGE_COLOR }}
-        >
-          {t("active")}
-        </span>
-      ) : null}
+      {row.is_active_etf ? <Badge label={t("active")} color={ACTIVE_ETF_BADGE_COLOR} /> : null}
       {symbolTypeBadge ? (
-        <span
-          className="rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2.5 py-1 font-medium text-[12px]"
-          style={{ color: symbolTypeBadge.color }}
-        >
-          {t(symbolTypeBadge.labelKey)}
-        </span>
+        <Badge label={t(symbolTypeBadge.labelKey)} color={symbolTypeBadge.color} />
       ) : null}
     </>
   );
@@ -359,19 +346,7 @@ function EtfStructureBadges({ row }: { readonly row: EtfListRow | undefined }): 
  * `SectorChip`/`DistributionFrequencyBadge` use), never signed `--up`/`--down`: this is a
  * classification, not a price/%/score, per web/CLAUDE.md §4. */
 function ThemeTagBadge({ tag }: { readonly tag: string }): ReactNode {
-  const token = hashToChartToken(tag);
-  return (
-    <span
-      className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px]"
-      style={{
-        backgroundColor: `${token}26`,
-        color: token,
-        border: `1px solid ${token}40`,
-      }}
-    >
-      {tag}
-    </span>
-  );
+  return <Badge label={tag} color={hashToChartToken(tag)} variant="outline" />;
 }
 
 /** 配息 cadence badge (月配/季配/半年配/年配/不配息) — colored by the frequency LABEL itself via
@@ -381,17 +356,5 @@ function ThemeTagBadge({ tag }: { readonly tag: string }): ReactNode {
  * ETF pages, the same reasoning behind giving each industry its own stable color in the holdings
  * donut/table. */
 function DistributionFrequencyBadge({ frequency }: { readonly frequency: string }): ReactNode {
-  const token = hashToChartToken(frequency);
-  return (
-    <span
-      className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px]"
-      style={{
-        backgroundColor: `${token}26`,
-        color: token,
-        border: `1px solid ${token}40`,
-      }}
-    >
-      {frequency}
-    </span>
-  );
+  return <Badge label={frequency} color={hashToChartToken(frequency)} variant="outline" />;
 }

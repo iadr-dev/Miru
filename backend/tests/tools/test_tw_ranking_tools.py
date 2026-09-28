@@ -120,6 +120,89 @@ async def test_dealer_streak_ranks_by_streak_length(tmp_path: Path) -> None:
     assert output.rows[0].name == "台積電"
 
 
+async def test_dealer_streak_symbol_filter_returns_one_row_ignoring_top_n(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_stock_info(store)
+    store.write_partition(
+        _INSTITUTIONAL_FLOW_DATASET,
+        "TW",
+        date(2025, 5, 29),
+        [
+            {
+                "symbol": "2330",
+                "trade_date": "2025-05-29",
+                "investor": "Dealer_self",
+                "buy": 80,
+                "sell": 40,
+            },
+            {
+                "symbol": "2454",
+                "trade_date": "2025-05-29",
+                "investor": "Dealer_self",
+                "buy": 90,
+                "sell": 30,
+            },
+        ],
+    )
+    store.write_partition(
+        _INSTITUTIONAL_FLOW_DATASET,
+        "TW",
+        _TODAY,
+        [
+            {
+                "symbol": "2330",
+                "trade_date": "2025-06-02",
+                "investor": "Dealer_self",
+                "buy": 200,
+                "sell": 50,
+            },
+            {
+                "symbol": "2454",
+                "trade_date": "2025-06-02",
+                "investor": "Dealer_self",
+                "buy": 10,
+                "sell": 80,
+            },
+        ],
+    )
+
+    tool = GetTwMarketRankingsTool(store)
+    output = await tool.run(
+        GetTwMarketRankingsInput(kind=TwRankingKind.DEALER_STREAK, symbol="2330"), ToolContext()
+    )
+
+    assert output.data_available is True
+    assert [row.symbol for row in output.rows] == ["2330"]
+    assert output.rows[0].extra_value == 2.0
+
+
+async def test_symbol_filter_returns_empty_rows_when_symbol_has_no_streak(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_stock_info(store)
+    store.write_partition(
+        _INSTITUTIONAL_FLOW_DATASET,
+        "TW",
+        _TODAY,
+        [
+            {
+                "symbol": "2330",
+                "trade_date": "2025-06-02",
+                "investor": "Dealer_self",
+                "buy": 200,
+                "sell": 50,
+            }
+        ],
+    )
+
+    tool = GetTwMarketRankingsTool(store)
+    output = await tool.run(
+        GetTwMarketRankingsInput(kind=TwRankingKind.DEALER_STREAK, symbol="9999"), ToolContext()
+    )
+
+    assert output.data_available is True
+    assert output.rows == ()
+
+
 async def test_margin_change_ranks_by_signed_balance_delta(tmp_path: Path) -> None:
     store = ParquetStore(root=tmp_path)
     _write_stock_info(store)

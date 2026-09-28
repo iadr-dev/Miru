@@ -614,7 +614,21 @@
       "title": "自選股",
       "close": "關閉自選欄",
       "tabs": { "tw": "台股", "us": "美股", "etf": "ETF" },
-      "empty": "尚無股票，點 ☆ 或問 Miru 加入"
+      "empty": "尚無股票，點 ☆ 或問 Miru 加入",
+      "emptyGroup": "此分組尚無股票",
+      "loadError": "載入自選股失敗",
+      "retry": "重試",
+      "newGroup": "新增分組",
+      "newGroupPlaceholder": "分組名稱",
+      "dragGroup": "拖曳排序分組",
+      "dragItem": "拖曳排序股票",
+      "removeItem": "從此分組移除",
+      "deleteGroup": "刪除分組",
+      "deleteGroupConfirmTitle": "刪除分組？",
+      "deleteGroupConfirmBody": "確定要刪除「{name}」分組嗎？分組內的股票將一併移除，此操作無法復原。",
+      "deleteGroupConfirm": "刪除",
+      "cancel": "取消",
+      "resizeHandle": "調整自選欄寬度"
     },
     "sisi": { "streak": "連續 {days} 天", "dismiss": "關閉" },
     "loading": "載入中…",
@@ -1488,7 +1502,9 @@
   "stock": {
     "assetHeader": {
       "addToWatchlist": "加入自選",
-      "watchlistComingSoon": "自選功能即將推出",
+      "removeFromWatchlist": "從自選股移除",
+      "noWatchlistGroups": "尚無自選分組",
+      "pickWatchlistGroup": "加入分組",
       "askMiru": "問 Miru",
       "open": "開",
       "high": "高",
@@ -1497,7 +1513,11 @@
       "eodOnly": "僅收盤資料",
       "dataDelayed": "資料延遲",
       "liveNow": "即時",
-      "marketClosedEodPrice": "休市中 · 前次收盤"
+      "marketClosedEodPrice": "休市中 · 前次收盤",
+      "volumeSurge": "爆量",
+      "volumeContraction": "量縮",
+      "new52wHigh": "創新高",
+      "new52wLow": "創新低"
     },
     "tabs": {
       "label": "個股頁籤",

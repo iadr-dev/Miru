@@ -4,11 +4,13 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { SymbolLink } from "@/components/market/symbol-link";
+import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type { HolderAccumulationRow, HolderThreshold, HolderWindow } from "@/types/market";
 
-const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_1.1fr_0.9fr]";
+const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_1.1fr_0.9fr_28px]";
 const THRESHOLDS = [200, 400, 800, 1000] as const satisfies readonly HolderThreshold[];
 const WINDOWS = [1, 2, 3, 4] as const satisfies readonly HolderWindow[];
 // Same collapsed-row-count convention `LeaderboardCard` uses — 15 rows visible inline, "Show all"
@@ -178,6 +180,7 @@ export function HolderAccumulationRows({
         <span className="text-right">{t("custodyPercent")}</span>
         <span className="text-right">{t("sharesChange")}</span>
         <span className="text-right">{t("percentChange")}</span>
+        <span />
       </div>
       <ul className="divide-y divide-[var(--border)]">
         {rows.map((row) =>
@@ -214,6 +217,7 @@ function LockedHolderAccumulationRow({ rank }: { readonly rank: number }): React
       <span aria-hidden className="text-right text-[13px] text-[var(--text-muted)]">
         ••••
       </span>
+      <span aria-hidden />
     </li>
   );
 }
@@ -233,7 +237,11 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
       <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
         {row.rank}
       </span>
-      <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+      <SymbolLink
+        symbol={row.symbol ?? ""}
+        market="TW"
+        className="truncate text-[13px] text-[var(--text)] hover:underline"
+      >
         {row.stock_name}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
         {row.latest_close !== null ? (
@@ -241,7 +249,7 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
             {formatNumber(row.latest_close, "zh-TW", { decimals: 1 })}
           </span>
         ) : null}
-      </span>
+      </SymbolLink>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums">
         <span className="text-[var(--text-muted)]">
           {(row.percent_of_custody_before ?? 0).toFixed(2)}%
@@ -257,6 +265,11 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
         {up ? "▲" : "▼"}
         {formatNumber(Math.abs(change), "zh-TW", { decimals: 2 })}%
       </span>
+      {row.symbol ? (
+        <WatchlistStarButton symbol={row.symbol} market="TW" assetClass="stock" size="compact" />
+      ) : (
+        <span aria-hidden />
+      )}
     </li>
   );
 }

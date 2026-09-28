@@ -147,12 +147,29 @@ class WatchlistGroupView(BaseModel):
     items: tuple[WatchlistItem, ...] = Field(default_factory=tuple)
 
 
+_PRESET_MARKET_ASSET_CLASS_COMBOS: tuple[tuple[Market, str], ...] = (
+    (Market.TW, "stock"),
+    (Market.US, "stock"),
+    (Market.TW, "etf"),
+)
+
+
 @router.get("/watchlists")
 async def list_watchlists(
     market: Market | None = Query(None),
     user: User = Depends(require_user),
     store: WatchlistStore = Depends(_watchlist_store),
 ) -> dict[str, list[WatchlistGroupView]]:
+    # Seed starter presets for any (market, asset_class) combo this user has zero groups in yet
+    # — a no-op per combo once real groups exist there (own edits/deletions never get
+    # overwritten). Runs before the read below so a brand-new user's very first `GET` already
+    # sees their presets, never a cold-empty rail.
+    for preset_market, preset_asset_class in _PRESET_MARKET_ASSET_CLASS_COMBOS:
+        if market is not None and preset_market is not market:
+            continue
+        await store.seed_default_presets(
+            user_id=user.id, market=preset_market, asset_class=preset_asset_class
+        )
     groups = await store.list_groups(user.id)
     views: list[WatchlistGroupView] = []
     for group in groups:

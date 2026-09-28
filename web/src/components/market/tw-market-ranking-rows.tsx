@@ -6,7 +6,7 @@ import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import type { TwRankingRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const ROW_GRID_COLS = "grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_1fr]";
+const ROW_GRID_COLS = "grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_1fr_28px]";
 
 /** The 6 non-大戶買賣 TW-market 排行榜 tabs' shared row list (主力/投信/外資連買賣、融資增減、
  * 股息殖利率、月營收成長) — built on `SymbolQuoteRows`' shared 名稱/價格/漲跌%/走勢/成交量 base,
@@ -41,6 +41,7 @@ export function TwMarketRankingRows({
       rows={items}
       quoteBySymbol={quoteBySymbol}
       market={market}
+      assetClass="stock"
       gridCols={ROW_GRID_COLS}
       extraSortable={{ label: extraColumnLabel, valueFor: (row) => row.extra_value }}
       extraAriaLabel={(row) => row.extra_label}

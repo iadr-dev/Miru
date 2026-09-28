@@ -26,6 +26,11 @@ VOLUME_SURGE_MULTIPLE = 2.0
 # a single prior spike, short enough to track a genuine regime change in turnover.
 VOLUME_SURGE_WINDOW = 20
 
+# "量縮" (volume-contraction) — the mirror-image screen: today's volume at most this fraction of
+# its own trailing average. 0.5 (half of normal) is the conventional threshold, symmetric with
+# `VOLUME_SURGE_MULTIPLE`'s 2x on the other side.
+VOLUME_CONTRACTION_FRACTION = 0.5
+
 # The 52-week-high/low lookback. Matches `analytics/score.py`'s `_TREND_TEMPLATE_LOOKBACK` VALUE
 # (252 trading days ~ 52 weeks) for consistency with the rest of the codebase's "52-week" meaning,
 # without importing from `score.py` — this package stays decoupled from the composite-score module
@@ -46,6 +51,22 @@ def volume_surge(bars: Sequence[PriceBar], *, multiple: float = VOLUME_SURGE_MUL
     if baseline_avg <= 0:
         return False
     return bars[-1].volume >= multiple * baseline_avg
+
+
+def volume_contraction(
+    bars: Sequence[PriceBar], *, fraction: float = VOLUME_CONTRACTION_FRACTION
+) -> bool:
+    """Today's volume is at most `fraction` times the average volume of the `VOLUME_SURGE_WINDOW`
+    trading days strictly before today — the mirror-image of `volume_surge`, same trailing-average
+    baseline (excludes today itself) and the same `False`-when-insufficient-history/zero-baseline
+    rules."""
+    if len(bars) < VOLUME_SURGE_WINDOW + 1:
+        return False
+    baseline_bars = bars[-(VOLUME_SURGE_WINDOW + 1) : -1]
+    baseline_avg = sum(bar.volume for bar in baseline_bars) / VOLUME_SURGE_WINDOW
+    if baseline_avg <= 0:
+        return False
+    return bars[-1].volume <= fraction * baseline_avg
 
 
 def new_52w_high(bars: Sequence[PriceBar]) -> bool:
@@ -69,9 +90,11 @@ def new_52w_low(bars: Sequence[PriceBar]) -> bool:
 
 __all__ = [
     "FIFTY_TWO_WEEK_WINDOW",
+    "VOLUME_CONTRACTION_FRACTION",
     "VOLUME_SURGE_MULTIPLE",
     "VOLUME_SURGE_WINDOW",
     "new_52w_high",
     "new_52w_low",
+    "volume_contraction",
     "volume_surge",
 ]

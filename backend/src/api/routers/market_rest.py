@@ -333,6 +333,9 @@ async def tw_rankings(
         "revenue_growth",
     ] = Query("dealer_streak"),
     top_n: int = Query(10, ge=1, le=50),
+    symbol: str | None = Query(
+        None, description="When set, return only this symbol's own row (ignores top_n)."
+    ),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
@@ -340,8 +343,13 @@ async def tw_rankings(
     `/market/holder-accumulation` verbatim instead of this route): dealer/trust/foreign
     consecutive-day net-buy/sell streak, day-over-day margin-purchase-balance change, dividend
     yield, monthly-revenue YoY growth. No `market` param — TW-only by construction
-    (`get_tw_market_rankings`'s own docstring), mirroring `/market/us-rankings`'s own shape."""
-    return await _dispatch(state, "get_tw_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
+    (`get_tw_market_rankings`'s own docstring), mirroring `/market/us-rankings`'s own shape.
+    `symbol` switches this into a single-row lookup (e.g. a stock-detail signal badge asking
+    "does 2330 have a foreign-buy streak today")."""
+    args: dict[str, object] = {"kind": kind, "top_n": top_n}
+    if symbol is not None:
+        args["symbol"] = symbol
+    return await _dispatch(state, "get_tw_market_rankings", args, ctx)
 
 
 @router.get("/market/holder-accumulation")
@@ -684,6 +692,11 @@ async def tag_screener(
     market: Market = Query(Market.TW),
     as_of: date_ | None = Query(None),
     size: int = Query(50, ge=1, le=250),
+    symbols: str | None = Query(
+        None,
+        description="Up to 20 comma-separated symbol ids — narrows the match to just these "
+        "symbols, e.g. a stock-detail badge asking 'does 2330 carry 爆量 today'.",
+    ),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
@@ -710,6 +723,8 @@ async def tag_screener(
     }
     if as_of is not None:
         args["as_of"] = as_of.isoformat()
+    if symbols is not None:
+        args["symbols"] = _split_symbols(symbols)
     return await _dispatch(state, "run_tag_screener", args, ctx)
 
 

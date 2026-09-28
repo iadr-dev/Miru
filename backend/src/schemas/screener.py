@@ -143,7 +143,9 @@ class TagCondition(BaseModel):
 class TagScreenerQuery(BaseModel):
     """A tap-tile tag screener query. `as_of` selects which end-of-day flag partition to read;
     `None` means the latest available one. `match` combines the requested tags: `AND` returns
-    symbols satisfying every requested condition, `OR` symbols satisfying any."""
+    symbols satisfying every requested condition, `OR` symbols satisfying any. `symbols`, when
+    set, narrows the result to just those symbols (e.g. a stock-detail badge asking "does 2330
+    carry 爆量 today" without paging through the whole market's `size`-capped hit list)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -152,6 +154,7 @@ class TagScreenerQuery(BaseModel):
     match: Literal["AND", "OR"] = "AND"
     as_of: date | None = None
     size: int = Field(default=50, ge=1, le=250)
+    symbols: tuple[str, ...] | None = Field(default=None, max_length=20)
 
 
 class TagScreenerHit(BaseModel):

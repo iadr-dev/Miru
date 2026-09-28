@@ -107,3 +107,85 @@ async def test_list_groups_excludes_soft_deleted(db_session: AsyncSession) -> No
     groups = await store.list_groups("user-1")
 
     assert len(groups) == 1
+
+
+async def test_seed_default_presets_populates_the_right_groups_and_items(
+    db_session: AsyncSession,
+) -> None:
+    store = WatchlistStore(db_session)
+
+    created = await store.seed_default_presets(
+        user_id="user-1", market=Market.TW, asset_class="stock"
+    )
+
+    assert {group.name for group in created} == {
+        "我的自選股",
+        "SpaceX 供應鏈",
+        "軍工&無人機",
+        "記憶體",
+        "金融&航空",
+        "半導體",
+    }
+    groups = await store.list_groups("user-1")
+    assert len(groups) == 6
+    for group in groups:
+        assert group.is_default is True
+        items = await store.list_items(user_id="user-1", watchlist_id=group.id)
+        if group.name == "我的自選股":
+            assert items == []
+        else:
+            assert len(items) >= 5
+
+
+async def test_seed_default_presets_is_a_noop_once_the_user_has_any_group_there(
+    db_session: AsyncSession,
+) -> None:
+    """Even a user's own single manually-created group must block seeding — presets never
+    silently reappear after a user deletes them or replaces them with their own groups."""
+    store = WatchlistStore(db_session)
+    await store.create_group(
+        user_id="user-1", name="我的自選", market=Market.TW, asset_class="stock"
+    )
+
+    created = await store.seed_default_presets(
+        user_id="user-1", market=Market.TW, asset_class="stock"
+    )
+
+    assert created == []
+    groups = await store.list_groups("user-1")
+    assert len(groups) == 1
+    assert groups[0].name == "我的自選"
+
+
+async def test_seed_default_presets_scopes_to_market_and_asset_class(
+    db_session: AsyncSession,
+) -> None:
+    """Seeding one (market, asset_class) combo must not touch the other two — a user with TW
+    stock groups still gets seeded for US stock and TW ETF independently."""
+    store = WatchlistStore(db_session)
+    await store.create_group(
+        user_id="user-1", name="我的自選", market=Market.TW, asset_class="stock"
+    )
+
+    tw_stock = await store.seed_default_presets(
+        user_id="user-1", market=Market.TW, asset_class="stock"
+    )
+    us_stock = await store.seed_default_presets(
+        user_id="user-1", market=Market.US, asset_class="stock"
+    )
+    tw_etf = await store.seed_default_presets(user_id="user-1", market=Market.TW, asset_class="etf")
+
+    assert tw_stock == []
+    assert len(us_stock) == 6
+    assert len(tw_etf) == 4
+
+
+async def test_seed_default_presets_symbols_round_trip_through_watches(
+    db_session: AsyncSession,
+) -> None:
+    store = WatchlistStore(db_session)
+
+    await store.seed_default_presets(user_id="user-1", market=Market.TW, asset_class="stock")
+
+    assert await store.watches(user_id="user-1", symbol="2330") is True
+    assert await store.watches(user_id="user-1", symbol="9999") is False

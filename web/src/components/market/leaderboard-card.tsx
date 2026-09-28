@@ -9,6 +9,7 @@ import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
 import type { LeaderboardDirection, ScoreBand, ScoreResult } from "@/types/market";
 import type { Market } from "@/types/settings";
+import type { WatchlistAssetClass } from "@/types/watchlist";
 
 const COLLAPSED_ROW_COUNT = 10;
 
@@ -18,7 +19,7 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
   偏空: "var(--down)",
 };
 
-const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_1.3fr]";
+const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_1.3fr_28px]";
 
 /**
  * AI 多空排行 — the real `get_score_leaderboard` composite ranking, enriched via
@@ -38,12 +39,17 @@ export function LeaderboardCard({
   direction,
   onDirectionChange,
   market,
+  assetClass,
 }: {
   results: readonly ScoreResult[];
   asOf: string | null;
   direction: LeaderboardDirection;
   onDirectionChange: (direction: LeaderboardDirection) => void;
   market: Market;
+  /** Fixed per caller — the stock leaderboard (`DailyFocusPanel`) always passes `"stock"`, the
+   * ETF leaderboard (`EtfLeaderboardPanel`) always passes `"etf"`; this card no longer renders a
+   * universe switcher (see docstring above), so it's a caller-supplied constant, never derived. */
+  assetClass: WatchlistAssetClass;
 }): ReactNode {
   const t = useTranslations("market.cards.leaderboard");
   const [expanded, setExpanded] = useState(false);
@@ -95,6 +101,7 @@ export function LeaderboardCard({
           results={previewResults}
           quoteBySymbol={previewQuoteBySymbol}
           market={market}
+          assetClass={assetClass}
           t={t}
         />
       )}
@@ -133,7 +140,13 @@ export function LeaderboardCard({
         closeLabel={t("collapse")}
         onClose={() => setExpanded(false)}
       >
-        <LeaderboardRows results={results} quoteBySymbol={allQuoteBySymbol} market={market} t={t} />
+        <LeaderboardRows
+          results={results}
+          quoteBySymbol={allQuoteBySymbol}
+          market={market}
+          assetClass={assetClass}
+          t={t}
+        />
       </ExpandModal>
     </section>
   );
@@ -149,11 +162,13 @@ function LeaderboardRows({
   results,
   quoteBySymbol,
   market,
+  assetClass,
   t,
 }: {
   results: readonly ScoreResult[];
   quoteBySymbol: ReadonlyMap<string, ReturnType<typeof useSymbolQuotes>["quotes"][number]>;
   market: Market;
+  assetClass: WatchlistAssetClass;
   t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   return (
@@ -161,6 +176,7 @@ function LeaderboardRows({
       rows={results}
       quoteBySymbol={quoteBySymbol}
       market={market}
+      assetClass={assetClass}
       gridCols={ROW_GRID_COLS}
       showRank
       extraSortable={{ label: t("columnScore"), valueFor: (result) => result.composite }}

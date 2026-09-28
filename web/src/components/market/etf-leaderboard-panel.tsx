@@ -32,6 +32,7 @@ export function EtfLeaderboardPanel({ market }: { market: Market }): ReactNode {
           direction={direction}
           onDirectionChange={setDirection}
           market={market}
+          assetClass="etf"
         />
       )}
     </QueryState>

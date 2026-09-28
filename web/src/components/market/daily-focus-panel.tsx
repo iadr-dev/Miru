@@ -62,6 +62,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
                 direction={leaderboardDirection}
                 onDirectionChange={setLeaderboardDirection}
                 market={market}
+                assetClass="stock"
               />
             )}
           </QueryState>

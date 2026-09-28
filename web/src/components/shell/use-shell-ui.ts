@@ -61,6 +61,54 @@ export function useSidebarCollapsed(): {
   return { collapsed, toggle };
 }
 
+const WATCHLIST_WIDTH_KEY = "miru-watchlist-width";
+const WATCHLIST_WIDTH_DEFAULT = 300;
+const WATCHLIST_WIDTH_MIN = 240;
+const WATCHLIST_WIDTH_MAX = 480;
+
+function readWidth(): number {
+  try {
+    const raw = localStorage.getItem(WATCHLIST_WIDTH_KEY);
+    const parsed = raw === null ? Number.NaN : Number(raw);
+    if (Number.isNaN(parsed)) return WATCHLIST_WIDTH_DEFAULT;
+    return Math.min(WATCHLIST_WIDTH_MAX, Math.max(WATCHLIST_WIDTH_MIN, parsed));
+  } catch {
+    return WATCHLIST_WIDTH_DEFAULT;
+  }
+}
+
+function writeWidth(width: number): void {
+  try {
+    localStorage.setItem(WATCHLIST_WIDTH_KEY, String(width));
+  } catch {
+    // persistence is best-effort; the in-session width still works
+  }
+}
+
+/** Watchlist rail width (px), persisted, clamped to `[240, 480]` — the resize-handle's own
+ * bounds (`ResizableRailHandle`). Read after mount (same hydration-mismatch avoidance as
+ * `useSidebarCollapsed`), default 300px on first load. */
+export function useWatchlistWidth(): {
+  width: number;
+  setWidth: (width: number) => void;
+} {
+  const [width, setWidthState] = useState(WATCHLIST_WIDTH_DEFAULT);
+
+  useEffect(() => {
+    setWidthState(readWidth());
+  }, []);
+
+  const setWidth = useCallback((next: number): void => {
+    const clamped = Math.min(WATCHLIST_WIDTH_MAX, Math.max(WATCHLIST_WIDTH_MIN, next));
+    setWidthState(clamped);
+    writeWidth(clamped);
+  }, []);
+
+  return { width, setWidth };
+}
+
+export { WATCHLIST_WIDTH_MAX, WATCHLIST_WIDTH_MIN };
+
 /** Right watchlist rail open/closed, persisted. Default closed on first load (rail is opt-in). */
 export function useWatchlistOpen(): {
   open: boolean;
