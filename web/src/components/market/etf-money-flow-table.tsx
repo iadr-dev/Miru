@@ -4,12 +4,14 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { SymbolLink } from "@/components/market/symbol-link";
+import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
 import type { EtfMoneyFlowRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_1fr_0.8fr_0.9fr]";
+const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_1fr_0.8fr_0.9fr_28px]";
 
 /** A boolean "is this an upward move" flag's `--up`/`--down` color — pulled out of
  * `EtfMoneyFlowRowItem`'s own ternary chain purely to avoid a nested ternary. */
@@ -66,6 +68,7 @@ export function EtfMoneyFlowTable({
           <span className="text-right">{t("columnHeldValue")}</span>
           <span className="text-right">{t("columnHolderCount")}</span>
           <span className="text-right">{t("columnSharesHeldPct")}</span>
+          <span aria-hidden />
         </div>
         <ul className="divide-y divide-[var(--border)]">
           {rows.map((row) =>
@@ -78,6 +81,7 @@ export function EtfMoneyFlowTable({
                 quote={
                   row.component_stock_id ? quoteBySymbol.get(row.component_stock_id) : undefined
                 }
+                market={market}
                 locale={locale}
                 t={t}
               />
@@ -115,6 +119,7 @@ function LockedEtfMoneyFlowRowItem({ rank }: { readonly rank: number }): ReactNo
       <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
         ••••
       </span>
+      <span aria-hidden />
     </li>
   );
 }
@@ -122,11 +127,13 @@ function LockedEtfMoneyFlowRowItem({ rank }: { readonly rank: number }): ReactNo
 function EtfMoneyFlowRowItem({
   row,
   quote,
+  market,
   locale,
   t,
 }: {
   readonly row: EtfMoneyFlowRow;
   readonly quote: ReturnType<typeof useSymbolQuotes>["quotes"][number] | undefined;
+  readonly market: Market;
   readonly locale: string;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
@@ -146,12 +153,16 @@ function EtfMoneyFlowRowItem({
       }`}
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
     >
-      <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
+      <SymbolLink
+        symbol={row.component_stock_id ?? ""}
+        market={market}
+        className="truncate text-[13px] text-[var(--text)] hover:underline"
+      >
         {quote?.name ?? row.component_stock_name}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">
           {row.component_stock_id}
         </span>
-      </span>
+      </SymbolLink>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
         {changePct !== null
           ? `${upDownArrow(up)}${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
@@ -176,6 +187,16 @@ function EtfMoneyFlowRowItem({
           ? `${formatNumber(row.stock_shares_held_pct, locale, { decimals: 2 })}%`
           : "—"}
       </span>
+      {row.component_stock_id ? (
+        <WatchlistStarButton
+          symbol={row.component_stock_id}
+          market={market}
+          assetClass="stock"
+          size="compact"
+        />
+      ) : (
+        <span aria-hidden />
+      )}
     </li>
   );
 }

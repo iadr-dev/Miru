@@ -70,6 +70,10 @@ class GetTwMarketRankingsInput(BaseModel):
 
     kind: TwRankingKind
     top_n: int = Field(default=_DEFAULT_TOP_N, ge=1, le=_MAX_TOP_N)
+    # When set, the caller wants one symbol's own row (e.g. a stock-detail signal badge asking
+    # "does 2330 have a foreign-buy streak today"), not a top-N ranking — `top_n` is ignored in
+    # this mode since there's nothing to truncate.
+    symbol: str | None = None
 
 
 class TwRankingRow(BaseModel):
@@ -126,7 +130,11 @@ def _names_by_symbol(store: ParquetStore) -> dict[str, str]:
 
 
 def _streak_rows(
-    store: ParquetStore, kind: TwRankingKind, names_by_symbol: dict[str, str], top_n: int
+    store: ParquetStore,
+    kind: TwRankingKind,
+    names_by_symbol: dict[str, str],
+    top_n: int,
+    target_symbol: str | None = None,
 ) -> GetTwMarketRankingsOutput:
     known_dates = store.list_partition_dates(INSTITUTIONAL_FLOW_DATASET, "TW")
     if not known_dates:
@@ -170,6 +178,13 @@ def _streak_rows(
                 extra_label=f"連{abs(length)}天{'買超' if length > 0 else '賣超'}",
             )
         )
+    if target_symbol is not None:
+        return GetTwMarketRankingsOutput(
+            kind=kind,
+            trade_date=latest_date,
+            data_available=True,
+            rows=tuple(r for r in ranked if r.symbol == target_symbol),
+        )
     ranked.sort(key=lambda r: abs(r.extra_value), reverse=True)
     return GetTwMarketRankingsOutput(
         kind=kind, trade_date=latest_date, data_available=True, rows=tuple(ranked[:top_n])
@@ -177,7 +192,10 @@ def _streak_rows(
 
 
 def _margin_change_rows(
-    store: ParquetStore, names_by_symbol: dict[str, str], top_n: int
+    store: ParquetStore,
+    names_by_symbol: dict[str, str],
+    top_n: int,
+    target_symbol: str | None = None,
 ) -> GetTwMarketRankingsOutput:
     latest_date = _latest_dataset_date(store, MARGIN_SHORT_JOB.dataset)
     if latest_date is None:
@@ -207,6 +225,13 @@ def _margin_change_rows(
                 extra_label=f"{'+' if change >= 0 else ''}{change:,.0f}",
             )
         )
+    if target_symbol is not None:
+        return GetTwMarketRankingsOutput(
+            kind=TwRankingKind.MARGIN_CHANGE,
+            trade_date=latest_date,
+            data_available=True,
+            rows=tuple(r for r in ranked if r.symbol == target_symbol),
+        )
     ranked.sort(key=lambda r: r.extra_value, reverse=True)
     return GetTwMarketRankingsOutput(
         kind=TwRankingKind.MARGIN_CHANGE,
@@ -217,7 +242,10 @@ def _margin_change_rows(
 
 
 def _dividend_yield_rows(
-    store: ParquetStore, names_by_symbol: dict[str, str], top_n: int
+    store: ParquetStore,
+    names_by_symbol: dict[str, str],
+    top_n: int,
+    target_symbol: str | None = None,
 ) -> GetTwMarketRankingsOutput:
     latest_date = _latest_dataset_date(store, VALUATION_RATIOS_JOB.dataset)
     if latest_date is None:
@@ -241,6 +269,13 @@ def _dividend_yield_rows(
                 extra_label=f"{float(yield_pct):.2f}%",
             )
         )
+    if target_symbol is not None:
+        return GetTwMarketRankingsOutput(
+            kind=TwRankingKind.DIVIDEND_YIELD,
+            trade_date=latest_date,
+            data_available=True,
+            rows=tuple(r for r in ranked if r.symbol == target_symbol),
+        )
     ranked.sort(key=lambda r: r.extra_value, reverse=True)
     return GetTwMarketRankingsOutput(
         kind=TwRankingKind.DIVIDEND_YIELD,
@@ -251,7 +286,10 @@ def _dividend_yield_rows(
 
 
 def _revenue_growth_rows(
-    store: ParquetStore, names_by_symbol: dict[str, str], top_n: int
+    store: ParquetStore,
+    names_by_symbol: dict[str, str],
+    top_n: int,
+    target_symbol: str | None = None,
 ) -> GetTwMarketRankingsOutput:
     known_dates = store.list_partition_dates(MONTH_REVENUE_JOB.dataset, "TW")
     if not known_dates:
@@ -318,6 +356,13 @@ def _revenue_growth_rows(
                 extra_label=f"{yoy_pct:+.1f}%",
             )
         )
+    if target_symbol is not None:
+        return GetTwMarketRankingsOutput(
+            kind=TwRankingKind.REVENUE_GROWTH,
+            trade_date=latest_date,
+            data_available=True,
+            rows=tuple(r for r in ranked if r.symbol == target_symbol),
+        )
     ranked.sort(key=lambda r: r.extra_value, reverse=True)
     return GetTwMarketRankingsOutput(
         kind=TwRankingKind.REVENUE_GROWTH,
@@ -350,12 +395,12 @@ class GetTwMarketRankingsTool(BaseTool):
         typed = parse_args(GetTwMarketRankingsInput, args)
         names_by_symbol = _names_by_symbol(self._store)
         if typed.kind in _STREAK_INVESTOR_BY_KIND:
-            return _streak_rows(self._store, typed.kind, names_by_symbol, typed.top_n)
+            return _streak_rows(self._store, typed.kind, names_by_symbol, typed.top_n, typed.symbol)
         if typed.kind is TwRankingKind.MARGIN_CHANGE:
-            return _margin_change_rows(self._store, names_by_symbol, typed.top_n)
+            return _margin_change_rows(self._store, names_by_symbol, typed.top_n, typed.symbol)
         if typed.kind is TwRankingKind.DIVIDEND_YIELD:
-            return _dividend_yield_rows(self._store, names_by_symbol, typed.top_n)
-        return _revenue_growth_rows(self._store, names_by_symbol, typed.top_n)
+            return _dividend_yield_rows(self._store, names_by_symbol, typed.top_n, typed.symbol)
+        return _revenue_growth_rows(self._store, names_by_symbol, typed.top_n, typed.symbol)
 
 
 def build_registration_table() -> list[tuple[Tool, bool]]:

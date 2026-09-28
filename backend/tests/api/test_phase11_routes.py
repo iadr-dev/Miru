@@ -289,9 +289,13 @@ class TestWatchlists:
         again = client.put(f"/api/v1/watchlists/{gid}/items/2330", json={}, headers=headers)
         assert again.json()["id"] == add.json()["id"]
 
+        # `market=TW` also covers the (TW, etf) asset class — and `GET /watchlists` seeds starter
+        # presets for any (market, asset_class) combo this user has zero groups in yet (see
+        # `WatchlistStore.seed_default_presets`), so a fresh test user's `(TW, etf)` groups get
+        # seeded here too. Find this test's own "Core" group by id rather than assuming index 0.
         listed = client.get("/api/v1/watchlists", params={"market": "TW"}, headers=headers).json()
-        assert listed["watchlists"][0]["group"]["id"] == gid
-        assert len(listed["watchlists"][0]["items"]) == 1
+        own_view = next(view for view in listed["watchlists"] if view["group"]["id"] == gid)
+        assert len(own_view["items"]) == 1
 
         rm = client.delete(f"/api/v1/watchlists/{gid}/items/2330", headers=headers)
         assert rm.status_code == 204

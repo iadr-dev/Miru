@@ -614,7 +614,21 @@
       "title": "Watchlist",
       "close": "Close watchlist",
       "tabs": { "tw": "TW", "us": "US", "etf": "ETF" },
-      "empty": "尚無股票，點 ☆ 或問 Miru 加入"
+      "empty": "No stocks yet — click ☆ or ask Miru to add one",
+      "emptyGroup": "No stocks in this group yet",
+      "loadError": "Couldn't load your watchlist",
+      "retry": "Retry",
+      "newGroup": "New group",
+      "newGroupPlaceholder": "Group name",
+      "dragGroup": "Drag to reorder group",
+      "dragItem": "Drag to reorder stock",
+      "removeItem": "Remove from this group",
+      "deleteGroup": "Delete group",
+      "deleteGroupConfirmTitle": "Delete group?",
+      "deleteGroupConfirmBody": "Delete the \"{name}\" group? Its stocks will be removed too — this can't be undone.",
+      "deleteGroupConfirm": "Delete",
+      "cancel": "Cancel",
+      "resizeHandle": "Resize watchlist panel"
     },
     "sisi": { "streak": "{days}-day streak", "dismiss": "Dismiss" },
     "loading": "Loading…",
@@ -1488,7 +1502,9 @@
   "stock": {
     "assetHeader": {
       "addToWatchlist": "Add to watchlist",
-      "watchlistComingSoon": "Watchlist coming soon",
+      "removeFromWatchlist": "Remove from watchlist",
+      "noWatchlistGroups": "No watchlist groups yet",
+      "pickWatchlistGroup": "Add to group",
       "askMiru": "Ask Miru",
       "open": "Open",
       "high": "High",
@@ -1497,7 +1513,11 @@
       "eodOnly": "EOD only",
       "dataDelayed": "Data delayed",
       "liveNow": "Live",
-      "marketClosedEodPrice": "Market closed · last close"
+      "marketClosedEodPrice": "Market closed · last close",
+      "volumeSurge": "Volume surge",
+      "volumeContraction": "Volume contraction",
+      "new52wHigh": "New 52w high",
+      "new52wLow": "New 52w low"
     },
     "tabs": {
       "label": "Stock detail views",

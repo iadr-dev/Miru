@@ -150,6 +150,10 @@ def evaluate_query(query: TagScreenerQuery, rows: list[dict[str, object]]) -> Ta
             key=lambda hit: hit.symbol,
         )
 
+    if query.symbols is not None:
+        requested = set(query.symbols)
+        hits_all = [hit for hit in hits_all if hit.symbol in requested]
+
     total = len(hits_all)
     hits = tuple(hits_all[: query.size])
     detail = _build_detail(total, query.match, unknown, len(rows))

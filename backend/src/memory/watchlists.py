@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config.watchlist_presets import presets_for
 from db.models import WatchlistItemRow, WatchlistRow
 from schemas.enums import Market
 
@@ -187,6 +188,49 @@ class WatchlistStore:
         await self._session.flush()
         logger.info("watchlist_group_created", user_id=user_id, watchlist_id=row.id, name=name)
         return _group_to_model(row)
+
+    async def seed_default_presets(
+        self, *, user_id: str, market: Market, asset_class: str
+    ) -> list[WatchlistGroup]:
+        """Seed `config.watchlist_presets.presets_for(market, asset_class)` for this user, but
+        ONLY when they have zero non-deleted groups for this exact `(market, asset_class)` —
+        never re-seeds over a user's own edits/deletions (a user who deleted every preset group
+        stays empty, not silently repopulated). Called from the `GET /watchlists` route so a
+        brand-new user's rail is never cold-empty, mirroring ADR-0027 §6's "server-seeded"
+        intent without needing a dedicated register-time hook. Returns the newly created groups
+        (empty list if the user already had groups here — a no-op, not an error)."""
+        existing = await self._session.execute(
+            select(WatchlistRow.id).where(
+                WatchlistRow.user_id == user_id,
+                WatchlistRow.market == market.value,
+                WatchlistRow.asset_class == asset_class,
+                WatchlistRow.deleted_at.is_(None),
+            )
+        )
+        if existing.first() is not None:
+            return []
+
+        created: list[WatchlistGroup] = []
+        for preset in presets_for(market, asset_class):
+            group = await self.create_group(
+                user_id=user_id,
+                name=preset.name,
+                market=preset.market,
+                asset_class=preset.asset_class,
+                is_default=True,
+            )
+            for symbol in preset.symbols:
+                await self.add_item(user_id=user_id, watchlist_id=group.id, symbol=symbol)
+            created.append(group)
+        if created:
+            logger.info(
+                "watchlist_presets_seeded",
+                user_id=user_id,
+                market=market.value,
+                asset_class=asset_class,
+                group_count=len(created),
+            )
+        return created
 
     async def list_groups(self, user_id: str) -> list[WatchlistGroup]:
         result = await self._session.execute(

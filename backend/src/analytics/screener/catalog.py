@@ -250,6 +250,14 @@ CATALOG: tuple[TagDefinition, ...] = (
         "days — a conventional 爆量 threshold flagging a visible spike in activity.",
     ),
     TagDefinition(
+        key="volume_contraction",
+        label_zh="成交量量縮",
+        label_en="Volume contraction",
+        category=TagCategory.HOT,
+        description="Today's trading volume is at most half the average of the prior 20 trading "
+        "days — a conventional 量縮 threshold flagging visibly reduced activity.",
+    ),
+    TagDefinition(
         key="new_52w_high",
         label_zh="創52週新高",
         label_en="New 52-week high",

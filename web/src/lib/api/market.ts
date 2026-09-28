@@ -84,9 +84,11 @@ import {
   sectorRotationRrgResponseSchema,
   stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
+  type TagScreenerResponse,
   type TickSnapshotResponse,
   type TwMarketRankingsResponse,
   type TwRankingKind,
+  tagScreenerResponseSchema,
   tickSnapshotResponseSchema,
   twMarketRankingsResponseSchema,
   type UsMarketRankingsResponse,
@@ -385,10 +387,31 @@ export async function getUsMarketRankings(
 export async function getTwMarketRankings(
   kind: TwRankingKind,
   topN: number,
+  symbol?: string,
 ): Promise<TwMarketRankingsResponse> {
   const search = new URLSearchParams({ kind, top_n: String(topN) });
+  if (symbol) search.set("symbol", symbol);
   const raw = await requestJson(`/market/tw-rankings?${search.toString()}`);
   return twMarketRankingsResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// 11e. GET /market/tag-screener (public, run_tag_screener) — a stock-detail signal badge's own
+// "does THIS symbol carry this tag" lookup, via the `symbols` filter (never a whole-market page).
+// ---------------------------------------------------------------------------
+
+export async function getTagScreenerForSymbols(
+  tags: readonly string[],
+  symbols: readonly string[],
+  market: Market = "TW",
+): Promise<TagScreenerResponse> {
+  // `match=OR` — these are independent tags (爆量/量縮/創新高/創新低), never a combined AND
+  // condition; a caller wants to know WHICH of them a symbol satisfies, not whether it satisfies
+  // all of them at once.
+  const search = new URLSearchParams({ market, symbols: symbols.join(","), match: "OR" });
+  for (const tag of tags) search.append("tags", tag);
+  const raw = await requestJson(`/market/tag-screener?${search.toString()}`);
+  return tagScreenerResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

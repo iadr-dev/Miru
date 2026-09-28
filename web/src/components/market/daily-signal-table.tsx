@@ -5,11 +5,12 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SymbolLink } from "@/components/market/symbol-link";
+import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { cn } from "@/lib/cn";
 import type { DailySignalRow, HoldingStatus } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_0.9fr]";
+const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_0.9fr_28px]";
 
 // Each of the 4 real statuses gets its own distinct categorical --chart-* token (never --up/
 // --down — this is a fund-structure classification, not a price/%/score signal, per web/CLAUDE.md
@@ -68,6 +69,7 @@ export function DailySignalTable({
           <span className="text-center">{t("columnStatus")}</span>
           <span className="text-right">{t("columnSharesDelta")}</span>
           <span className="text-right">{t("columnPctChange")}</span>
+          <span aria-hidden />
         </div>
         <ul className="divide-y divide-[var(--border)]">
           {filtered.map((row) =>
@@ -141,6 +143,7 @@ function LockedDailySignalRowItem({ rank }: { readonly rank: number }): ReactNod
       <span aria-hidden className="text-right text-[12px] text-[var(--text-muted)]">
         ••••
       </span>
+      <span aria-hidden />
     </li>
   );
 }
@@ -226,6 +229,16 @@ function DailySignalRowItem({
           ? `${upDownArrow(pctUp)}${formatNumber(Math.abs(row.pct_change) * 100, locale, { decimals: 1 })}%`
           : "—"}
       </span>
+      {row.component_stock_id ? (
+        <WatchlistStarButton
+          symbol={row.component_stock_id}
+          market={market}
+          assetClass="stock"
+          size="compact"
+        />
+      ) : (
+        <span aria-hidden />
+      )}
     </li>
   );
 }

@@ -4,7 +4,11 @@ import type { ReactNode } from "react";
 import { AuthGuard } from "@/components/shell/auth-guard";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TopBar } from "@/components/shell/top-bar";
-import { useSidebarCollapsed, useWatchlistOpen } from "@/components/shell/use-shell-ui";
+import {
+  useSidebarCollapsed,
+  useWatchlistOpen,
+  useWatchlistWidth,
+} from "@/components/shell/use-shell-ui";
 import { WatchlistRail } from "@/components/shell/watchlist-rail";
 
 /**
@@ -27,6 +31,7 @@ export function AppShell({
     toggle: toggleWatchlist,
     close: closeWatchlist,
   } = useWatchlistOpen();
+  const { width: watchlistWidth, setWidth: setWatchlistWidth } = useWatchlistWidth();
 
   return (
     <AuthGuard>
@@ -43,7 +48,11 @@ export function AppShell({
 
           {watchlistOpen ? (
             <div className="sticky top-0 hidden h-[100dvh] shrink-0 lg:block">
-              <WatchlistRail onClose={closeWatchlist} />
+              <WatchlistRail
+                onClose={closeWatchlist}
+                width={watchlistWidth}
+                onWidthChange={setWatchlistWidth}
+              />
             </div>
           ) : null}
 

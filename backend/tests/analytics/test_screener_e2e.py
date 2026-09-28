@@ -408,6 +408,35 @@ async def test_seam_reads_back_and_and_or(tmp_path: Path) -> None:
     }
 
 
+async def test_seam_symbols_filter_narrows_hits(tmp_path: Path) -> None:
+    """`TagScreenerQuery.symbols` narrows the match to just the requested symbols — a
+    stock-detail badge asking "does this ONE symbol carry this tag" without paging through the
+    whole market's `size`-capped hit list."""
+    ctx = _ctx(tmp_path)
+    _seed_upstream(ctx.store, ctx.calendar)
+    await job_screener_flags(_RUN_DATE, ctx)
+
+    reader = ParquetMarketDataReader(root=tmp_path)
+
+    or_query = TagScreenerQuery(
+        tags=(
+            TagCondition(tag="breakout_above_ma20"),
+            TagCondition(tag="foreign_net_buy_streak_3"),
+        ),
+        match="OR",
+        symbols=("FOREIGN",),
+    )
+    result = run_tag_screener_query(reader, or_query, root=reader.root)
+    assert result.total_matches == 1
+    assert result.hits[0].symbol == "FOREIGN"
+
+    # A requested symbol that isn't in the whole-market match set at all -> zero hits, never an
+    # error.
+    none_query = or_query.model_copy(update={"symbols": ("NOPE",)})
+    none_result = run_tag_screener_query(reader, none_query, root=reader.root)
+    assert none_result.total_matches == 0
+
+
 async def test_tool_via_dispatch_tool(tmp_path: Path) -> None:
     """Proof 3: the tool driven through the REAL dispatch_tool returns the same correct result."""
     ctx = _ctx(tmp_path)

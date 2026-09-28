@@ -6,9 +6,11 @@ import { type ReactNode, useMemo, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
+import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import type { SymbolQuote } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
+import type { WatchlistAssetClass } from "@/types/watchlist";
 
 /** One row's identity — every "one row per stock/ETF symbol" list in this app names at least a
  * symbol; `name` is optional because some callers (`get_price_momentum`'s own ranking rows)
@@ -46,6 +48,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
   rows,
   quoteBySymbol,
   market,
+  assetClass,
   gridCols,
   priceFor,
   changePctFor,
@@ -59,6 +62,10 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
   readonly rows: readonly T[];
   readonly quoteBySymbol: ReadonlyMap<string, SymbolQuote>;
   readonly market: Market;
+  /** Constant per caller (a TW/US ranking is always stocks, the ETF leaderboard is always ETFs)
+   * — never varies per row, so this is a component-level prop, not derived per item. Drives the
+   * trailing ☆ column's `WatchlistStarButton`. */
+  readonly assetClass: WatchlistAssetClass;
   /** This row-list's own Tailwind `grid-cols-[...]` value — the caller decides how many/wide
    * columns exist (rank column, extra column), this component only fills in the shared 5. */
   readonly gridCols: string;
@@ -174,6 +181,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
         ) : (
           extraHeader
         )}
+        <span aria-hidden />
       </div>
       <ul className="divide-y divide-[var(--border)]">
         {sortedRows.map((row) => {
@@ -239,6 +247,12 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                   : "—"}
               </span>
               {extraCell ? extraCell(row, quote) : null}
+              <WatchlistStarButton
+                symbol={row.symbol}
+                market={market}
+                assetClass={assetClass}
+                size="compact"
+              />
             </li>
           );
         })}
