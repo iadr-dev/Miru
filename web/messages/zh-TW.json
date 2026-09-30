@@ -574,11 +574,26 @@
     }
   },
   "nav": {
-    "chat": { "label": "對話", "sublabel": "Chat" },
-    "market": { "label": "大盤", "sublabel": "Market" },
-    "stock": { "label": "個股", "sublabel": "Stock" },
-    "screener": { "label": "選股", "sublabel": "Screener" },
-    "settings": { "label": "設定", "sublabel": "Settings" },
+    "chat": {
+      "label": "對話",
+      "sublabel": "Chat"
+    },
+    "market": {
+      "label": "大盤",
+      "sublabel": "Market"
+    },
+    "stock": {
+      "label": "個股",
+      "sublabel": "Stock"
+    },
+    "screener": {
+      "label": "選股",
+      "sublabel": "Screener"
+    },
+    "settings": {
+      "label": "設定",
+      "sublabel": "Settings"
+    },
     "newChat": "新對話",
     "expand": "展開側欄",
     "collapse": "收合側欄",
@@ -598,8 +613,15 @@
       "error": "搜尋失敗，請重試。",
       "retry": "重試"
     },
-    "notifications": { "label": "通知", "empty": "目前沒有通知" },
-    "tier": { "free": "免費", "premium": "Premium", "pro": "Pro" },
+    "notifications": {
+      "label": "通知",
+      "empty": "目前沒有通知"
+    },
+    "tier": {
+      "free": "免費",
+      "premium": "Premium",
+      "pro": "Pro"
+    },
     "account": {
       "label": "帳號",
       "menu": "帳號選單",
@@ -613,7 +635,11 @@
       "toggle": "切換自選欄",
       "title": "自選股",
       "close": "關閉自選欄",
-      "tabs": { "tw": "台股", "us": "美股", "etf": "ETF" },
+      "tabs": {
+        "tw": "台股",
+        "us": "美股",
+        "etf": "ETF"
+      },
       "empty": "尚無股票，點 ☆ 或問 Miru 加入",
       "emptyGroup": "此分組尚無股票",
       "loadError": "載入自選股失敗",
@@ -630,7 +656,10 @@
       "cancel": "取消",
       "resizeHandle": "調整自選欄寬度"
     },
-    "sisi": { "streak": "連續 {days} 天", "dismiss": "關閉" },
+    "sisi": {
+      "streak": "連續 {days} 天",
+      "dismiss": "關閉"
+    },
     "loading": "載入中…",
     "authRequired": "請先登入以繼續。",
     "goHome": "返回首頁"
@@ -1845,8 +1874,19 @@
     },
     "technical": {
       "title": "K線圖",
-      "timeframe": { "day": "日", "week": "週", "month": "月" },
-      "range": { "1m": "1M", "3m": "3M", "6m": "6M", "ytd": "YTD", "1y": "1Y", "5y": "5Y" },
+      "timeframe": {
+        "day": "日",
+        "week": "週",
+        "month": "月"
+      },
+      "range": {
+        "1m": "1M",
+        "3m": "3M",
+        "6m": "6M",
+        "ytd": "YTD",
+        "1y": "1Y",
+        "5y": "5Y"
+      },
       "maLabel": "均線：",
       "structureLabel": "標記：",
       "structureSupportResistance": "支撐/壓力",
@@ -1863,7 +1903,11 @@
         "securitiesLending": "借券賣出",
         "retail": "散戶"
       },
-      "institutionalBucket": { "foreign": "外資", "trust": "投信", "dealer": "自營商" },
+      "institutionalBucket": {
+        "foreign": "外資",
+        "trust": "投信",
+        "dealer": "自營商"
+      },
       "volumeLabel": "量",
       "dateLabel": "日期",
       "openLabel": "開",
@@ -1884,7 +1928,11 @@
       },
       "supportLabel": "支撐",
       "resistanceLabel": "壓力",
-      "patternDirection": { "bullish": "看多", "bearish": "看空", "neutral": "中性" },
+      "patternDirection": {
+        "bullish": "看多",
+        "bearish": "看空",
+        "neutral": "中性"
+      },
       "pattern": {
         "doji": "十字線",
         "bullish_engulfing": "多頭吞噬",
@@ -2242,6 +2290,118 @@
       "category": "類別",
       "fundFamily": "發行機構",
       "inceptionDate": "成立日期"
+    }
+  },
+  "screener": {
+    "marketTab": {
+      "tw": "台股 TW",
+      "us": "美股 US",
+      "etf": "ETF"
+    },
+    "modeTab": {
+      "screen": "篩選 Screen",
+      "themes": "主題 Themes"
+    },
+    "funnel": {
+      "universe": "全市場",
+      "gated": "通過門檻",
+      "setup": "符合條件",
+      "matchRate": "符合率",
+      "matchRateDetail": "{setup} / {universe} 檔"
+    },
+    "gateBar": {
+      "minPrice": "最低價格",
+      "minAvgVolume": "最低成交量",
+      "minMarketCap": "最低市值",
+      "excludeDisposition": "排除處置股",
+      "excludeAttention": "排除注意股",
+      "excludeFullCashDelivery": "排除全額交割股",
+      "passed": "通過 {count} 檔",
+      "riskProtection": "市場風控防護",
+      "volumeUnitLots": "張",
+      "volumeUnitShares": "股",
+      "minAum": "最低規模",
+      "excludeLeveragedInverse": "排除槓桿/反向",
+      "etfProtection": "ETF 篩選防護"
+    },
+    "builder": {
+      "title": "自訂條件",
+      "signals": "訊號",
+      "conditions": "條件",
+      "matchAnd": "AND",
+      "matchOr": "OR",
+      "addCondition": "新增條件",
+      "removeCondition": "移除條件",
+      "liveCount": "{count} 檔"
+    },
+    "presets": {
+      "title": "篩選範本",
+      "search": "搜尋範本",
+      "allCategories": "全部範本",
+      "applyPreset": "套用範本",
+      "conditionCount": "{count} 項條件"
+    },
+    "table": {
+      "symbol": "名稱代號",
+      "close": "收盤",
+      "change": "漲跌%",
+      "volume": "成交量",
+      "matchedConditions": "符合條件",
+      "sponsorLocked": "訂閱解鎖",
+      "sector": "產業",
+      "price": "股價",
+      "changePct": "漲跌%",
+      "star": "收藏",
+      "resultCount": "共 {count} 檔",
+      "exportCsv": "匯出 CSV",
+      "marketCap": "市值",
+      "peRatio": "本益比",
+      "pctHeldInstitutions": "機構持股%",
+      "shortPctOfFloat": "放空%"
+    },
+    "caveat": "符合條件的清單，非推薦名單。",
+    "emptyState": "無符合條件的個股，放寬篩選?",
+    "relaxGates": "放寬 gates",
+    "loading": "Miru 正在跑篩選…",
+    "error": "篩選發生問題，請重試。",
+    "retry": "重試",
+    "savedScreens": {
+      "title": "已存篩選",
+      "loadHint": "點擊即時載入",
+      "save": "另存篩選",
+      "rename": "重新命名",
+      "delete": "刪除",
+      "namePlaceholder": "篩選名稱",
+      "dirty": "尚未儲存的變更",
+      "matchCount": "{count} 檔"
+    },
+    "themes": {
+      "error": "無法載入主題清單，請重試。",
+      "allKinds": "全部主題",
+      "kindIndustry": "產業鏈",
+      "kindConcept": "概念題材",
+      "search": "搜尋主題",
+      "noThemesMatch": "沒有符合的主題",
+      "subIndustry": "次產業：",
+      "allSubIndustries": "全部"
+    },
+    "drawer": {
+      "title": "新增 / 編輯指標條件",
+      "selectFactor": "選擇指標",
+      "pickFactorHint": "請先選擇左側分類的指標",
+      "sponsorNote": "訂閱後可設定門檻值",
+      "livePreview": "即時符合 {count} 檔",
+      "cancel": "取消",
+      "confirm": "加入篩選條件"
+    },
+    "operators": {
+      "gt": "大於",
+      "gte": "大於等於",
+      "lt": "小於",
+      "lte": "小於等於",
+      "between": "介於",
+      "eq": "等於",
+      "in": "屬於"
     }
   }
 }

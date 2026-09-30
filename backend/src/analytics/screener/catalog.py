@@ -233,12 +233,70 @@ CATALOG: tuple[TagDefinition, ...] = (
         "trading days.",
     ),
     TagDefinition(
+        key="trust_net_sell_streak_3",
+        label_zh="投信連3賣",
+        label_en="Investment trusts net-sold 3 days running",
+        category=TagCategory.CHIP,
+        description="Investment-trust net buy was negative on each of the last 3 consecutive "
+        "trading days.",
+    ),
+    TagDefinition(
+        key="dealer_net_buy_streak_3",
+        label_zh="自營商連3買",
+        label_en="Dealers net-bought 3 days running",
+        category=TagCategory.CHIP,
+        description="Dealer (自營商自行) net buy was positive on each of the last 3 consecutive "
+        "trading days.",
+    ),
+    TagDefinition(
+        key="dealer_net_sell_streak_3",
+        label_zh="自營商連3賣",
+        label_en="Dealers net-sold 3 days running",
+        category=TagCategory.CHIP,
+        description="Dealer (自營商自行) net buy was negative on each of the last 3 consecutive "
+        "trading days.",
+    ),
+    TagDefinition(
         key="foreign_net_buy_5d_cumulative",
         label_zh="近5日外資買超",
         label_en="Foreign investors net buyers over the last 5 days",
         category=TagCategory.CHIP,
         description="Foreign-investor net buy summed over the last 5 trading days is positive — "
         "a cumulative window, tolerating an individual down day inside it.",
+    ),
+    TagDefinition(
+        key="margin_purchase_balance_streak_up_3",
+        label_zh="融資餘額連3日增加",
+        label_en="Margin-purchase balance rose 3 days running",
+        category=TagCategory.CHIP,
+        description="Today's 融資 (margin-purchase) balance was higher than the day before, on "
+        "each of the last 3 consecutive trading days.",
+    ),
+    TagDefinition(
+        key="short_sale_balance_streak_down_3",
+        label_zh="融券餘額連3日減少",
+        label_en="Short-sale balance fell 3 days running",
+        category=TagCategory.CHIP,
+        description="Today's 融券 (short-sale) balance was lower than the day before, on each of "
+        "the last 3 consecutive trading days.",
+    ),
+    TagDefinition(
+        key="small_holder_share_rising_3w",
+        label_zh="持股100張以下比例連3週增加",
+        label_en="Sub-100-lot holder share rose 3 weeks running",
+        category=TagCategory.CHIP,
+        description="The share of custody held by holders with fewer than 100 張 (100,000 "
+        "shares) rose in each of the last 3 weekly 集保 snapshots — Sponsor-tier.",
+        data_class=DataClass.SPONSOR,
+    ),
+    TagDefinition(
+        key="large_holder_share_rising_3w",
+        label_zh="持股1000張以上比例連3週增加",
+        label_en="1,000+-lot holder share rose 3 weeks running",
+        category=TagCategory.CHIP,
+        description="The share of custody held by holders with 1,000 張 (1,000,000 shares) or "
+        "more rose in each of the last 3 weekly 集保 snapshots — Sponsor-tier.",
+        data_class=DataClass.SPONSOR,
     ),
     # -- 熱門 (momentum: volume surge, price extremes) ---------------------------------------
     TagDefinition(

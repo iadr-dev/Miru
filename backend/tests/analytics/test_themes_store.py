@@ -82,6 +82,35 @@ async def test_replace_theme_members_and_hot_path_read(
     assert members == ["2330", "2454"]
 
 
+async def test_count_theme_members(session_factory: async_sessionmaker) -> None:
+    async with session_factory() as session:
+        store = SqlAlchemyThemeStore(session)
+        await store.upsert_theme(
+            key="半導體",
+            name_zh="半導體",
+            kind=ThemeKind.INDUSTRY,
+            source=ThemeSource.INDUSTRY_CHAIN,
+        )
+        await store.replace_theme_members(
+            theme_key="半導體",
+            source=ThemeSource.INDUSTRY_CHAIN,
+            members=[_member("2330"), _member("2454")],
+        )
+        await session.commit()
+
+    async with session_factory() as session:
+        count = await SqlAlchemyThemeStore(session).count_theme_members(theme_key="半導體")
+    assert count == 2
+
+
+async def test_count_theme_members_unknown_key_is_zero(
+    session_factory: async_sessionmaker,
+) -> None:
+    async with session_factory() as session:
+        count = await SqlAlchemyThemeStore(session).count_theme_members(theme_key="does-not-exist")
+    assert count == 0
+
+
 async def test_replace_theme_members_replaces_not_unions(
     session_factory: async_sessionmaker,
 ) -> None:

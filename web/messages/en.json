@@ -574,11 +574,26 @@
     }
   },
   "nav": {
-    "chat": { "label": "Chat", "sublabel": "對話" },
-    "market": { "label": "Market", "sublabel": "大盤" },
-    "stock": { "label": "Stock", "sublabel": "個股" },
-    "screener": { "label": "Screener", "sublabel": "選股" },
-    "settings": { "label": "Settings", "sublabel": "設定" },
+    "chat": {
+      "label": "Chat",
+      "sublabel": "對話"
+    },
+    "market": {
+      "label": "Market",
+      "sublabel": "大盤"
+    },
+    "stock": {
+      "label": "Stock",
+      "sublabel": "個股"
+    },
+    "screener": {
+      "label": "Screener",
+      "sublabel": "選股"
+    },
+    "settings": {
+      "label": "Settings",
+      "sublabel": "設定"
+    },
     "newChat": "New chat",
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
@@ -598,8 +613,15 @@
       "error": "Search failed. Please retry.",
       "retry": "Retry"
     },
-    "notifications": { "label": "Notifications", "empty": "No notifications yet" },
-    "tier": { "free": "Free", "premium": "Premium", "pro": "Pro" },
+    "notifications": {
+      "label": "Notifications",
+      "empty": "No notifications yet"
+    },
+    "tier": {
+      "free": "Free",
+      "premium": "Premium",
+      "pro": "Pro"
+    },
     "account": {
       "label": "Account",
       "menu": "Account menu",
@@ -613,7 +635,11 @@
       "toggle": "Toggle watchlist",
       "title": "Watchlist",
       "close": "Close watchlist",
-      "tabs": { "tw": "TW", "us": "US", "etf": "ETF" },
+      "tabs": {
+        "tw": "TW",
+        "us": "US",
+        "etf": "ETF"
+      },
       "empty": "No stocks yet — click ☆ or ask Miru to add one",
       "emptyGroup": "No stocks in this group yet",
       "loadError": "Couldn't load your watchlist",
@@ -630,7 +656,10 @@
       "cancel": "Cancel",
       "resizeHandle": "Resize watchlist panel"
     },
-    "sisi": { "streak": "{days}-day streak", "dismiss": "Dismiss" },
+    "sisi": {
+      "streak": "{days}-day streak",
+      "dismiss": "Dismiss"
+    },
     "loading": "Loading…",
     "authRequired": "Please sign in to continue.",
     "goHome": "Back to home"
@@ -1845,8 +1874,19 @@
     },
     "technical": {
       "title": "Candlestick Chart",
-      "timeframe": { "day": "D", "week": "W", "month": "M" },
-      "range": { "1m": "1M", "3m": "3M", "6m": "6M", "ytd": "YTD", "1y": "1Y", "5y": "5Y" },
+      "timeframe": {
+        "day": "D",
+        "week": "W",
+        "month": "M"
+      },
+      "range": {
+        "1m": "1M",
+        "3m": "3M",
+        "6m": "6M",
+        "ytd": "YTD",
+        "1y": "1Y",
+        "5y": "5Y"
+      },
       "maLabel": "MA:",
       "structureLabel": "Markers:",
       "structureSupportResistance": "Support/Resistance",
@@ -1863,7 +1903,11 @@
         "securitiesLending": "Securities Lending",
         "retail": "Retail"
       },
-      "institutionalBucket": { "foreign": "Foreign", "trust": "Trust", "dealer": "Dealer" },
+      "institutionalBucket": {
+        "foreign": "Foreign",
+        "trust": "Trust",
+        "dealer": "Dealer"
+      },
       "volumeLabel": "Vol",
       "dateLabel": "Date",
       "openLabel": "Open",
@@ -1884,7 +1928,11 @@
       },
       "supportLabel": "Support",
       "resistanceLabel": "Resistance",
-      "patternDirection": { "bullish": "Bullish", "bearish": "Bearish", "neutral": "Neutral" },
+      "patternDirection": {
+        "bullish": "Bullish",
+        "bearish": "Bearish",
+        "neutral": "Neutral"
+      },
       "pattern": {
         "doji": "Doji",
         "bullish_engulfing": "Bullish Engulfing",
@@ -2242,6 +2290,118 @@
       "category": "Category",
       "fundFamily": "Issuer",
       "inceptionDate": "Inception Date"
+    }
+  },
+  "screener": {
+    "marketTab": {
+      "tw": "TW",
+      "us": "US",
+      "etf": "ETF"
+    },
+    "modeTab": {
+      "screen": "Screen",
+      "themes": "Themes"
+    },
+    "funnel": {
+      "universe": "Universe",
+      "gated": "Passed gates",
+      "setup": "Matched",
+      "matchRate": "Match rate",
+      "matchRateDetail": "{setup} / {universe}"
+    },
+    "gateBar": {
+      "minPrice": "Min price",
+      "minAvgVolume": "Min avg volume",
+      "minMarketCap": "Min market cap",
+      "excludeDisposition": "Exclude disposition",
+      "excludeAttention": "Exclude attention",
+      "excludeFullCashDelivery": "Exclude full-cash-delivery",
+      "passed": "{count} passed",
+      "riskProtection": "Market risk protection",
+      "volumeUnitLots": "lots",
+      "volumeUnitShares": "shares",
+      "minAum": "Min AUM",
+      "excludeLeveragedInverse": "Exclude leveraged/inverse",
+      "etfProtection": "ETF screening protection"
+    },
+    "builder": {
+      "title": "Custom conditions",
+      "signals": "Signals",
+      "conditions": "Conditions",
+      "matchAnd": "AND",
+      "matchOr": "OR",
+      "addCondition": "Add condition",
+      "removeCondition": "Remove condition",
+      "liveCount": "{count} matched"
+    },
+    "presets": {
+      "title": "Presets",
+      "search": "Search presets",
+      "allCategories": "All presets",
+      "applyPreset": "Apply preset",
+      "conditionCount": "{count} condition(s)"
+    },
+    "table": {
+      "symbol": "Symbol",
+      "close": "Close",
+      "change": "Change%",
+      "volume": "Volume",
+      "matchedConditions": "Matched",
+      "sponsorLocked": "Unlock",
+      "sector": "Sector",
+      "price": "Price",
+      "changePct": "Change%",
+      "star": "Star",
+      "resultCount": "{count} results",
+      "exportCsv": "Export CSV",
+      "marketCap": "Market cap",
+      "peRatio": "PE",
+      "pctHeldInstitutions": "Institutional %",
+      "shortPctOfFloat": "Short %"
+    },
+    "caveat": "A filtered list matching your criteria — not a recommendation.",
+    "emptyState": "No matches — relax your filters?",
+    "relaxGates": "Relax gates",
+    "loading": "Running the screen…",
+    "error": "Something went wrong running the screen.",
+    "retry": "Retry",
+    "savedScreens": {
+      "title": "Saved screens",
+      "loadHint": "Tap to load instantly",
+      "save": "Save screen",
+      "rename": "Rename",
+      "delete": "Delete",
+      "namePlaceholder": "Screen name",
+      "dirty": "Unsaved changes",
+      "matchCount": "{count}"
+    },
+    "themes": {
+      "error": "Could not load themes — please retry.",
+      "allKinds": "All themes",
+      "kindIndustry": "Industry chain",
+      "kindConcept": "Concept",
+      "search": "Search themes",
+      "noThemesMatch": "No themes match",
+      "subIndustry": "Sub-industry:",
+      "allSubIndustries": "All"
+    },
+    "drawer": {
+      "title": "Add / edit condition",
+      "selectFactor": "Select a factor",
+      "pickFactorHint": "Choose a factor from the categories on the left",
+      "sponsorNote": "Subscribe to set a threshold",
+      "livePreview": "{count} matched",
+      "cancel": "Cancel",
+      "confirm": "Add condition"
+    },
+    "operators": {
+      "gt": "Greater than",
+      "gte": "At least",
+      "lt": "Less than",
+      "lte": "At most",
+      "between": "Between",
+      "eq": "Equals",
+      "in": "In"
     }
   }
 }

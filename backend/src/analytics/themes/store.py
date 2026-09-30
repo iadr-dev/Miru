@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 import structlog
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from analytics.themes.models import (
@@ -54,6 +54,8 @@ class ThemeStore(Protocol):
     ) -> list[Theme]: ...
 
     async def get_theme_members(self, *, theme_key: str) -> list[str]: ...
+
+    async def count_theme_members(self, *, theme_key: str) -> int: ...
 
     async def get_theme_member_details(self, *, theme_key: str) -> list[ThemeMember]: ...
 
@@ -148,6 +150,16 @@ class SqlAlchemyThemeStore:
             .order_by(ThemeMembershipRow.symbol)
         )
         return list((await self._session.scalars(stmt)).all())
+
+    async def count_theme_members(self, *, theme_key: str) -> int:
+        """The member count for one theme — a lighter read than `get_theme_member_details` for a
+        caller (the `list_themes` discovery card) that only needs the count, not every row."""
+        stmt = (
+            select(func.count(ThemeMembershipRow.id))
+            .join(ThemeRow, ThemeRow.id == ThemeMembershipRow.theme_id)
+            .where(ThemeRow.key == theme_key)
+        )
+        return (await self._session.scalar(stmt)) or 0
 
     async def get_theme_member_details(self, *, theme_key: str) -> list[ThemeMember]:
         """The full membership rows for a theme — each symbol with its per-membership

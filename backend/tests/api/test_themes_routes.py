@@ -97,6 +97,23 @@ def _client_with_seeded_themes(settings: Settings, agent_answer: str) -> TestCli
     return client
 
 
+def test_list_themes_route(settings: Settings, agent_answer: str) -> None:
+    client = _client_with_seeded_themes(settings, agent_answer)
+    resp = client.get("/api/v1/themes")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["theme_count"] == 1
+    assert body["themes"][0]["key"] == "半導體"
+    assert body["themes"][0]["member_count"] == 2
+
+
+def test_list_themes_route_filters_by_kind(settings: Settings, agent_answer: str) -> None:
+    client = _client_with_seeded_themes(settings, agent_answer)
+    resp = client.get("/api/v1/themes", params={"kind": "concept"})
+    assert resp.status_code == 200
+    assert resp.json()["theme_count"] == 0
+
+
 def test_theme_detail_route(settings: Settings, agent_answer: str) -> None:
     client = _client_with_seeded_themes(settings, agent_answer)
     resp = client.get("/api/v1/themes/半導體")
