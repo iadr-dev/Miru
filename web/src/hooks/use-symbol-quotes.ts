@@ -16,6 +16,7 @@
  * backend — see `PriceHistoryBar`'s own docstring for why that tool stays a pure data read.
  */
 import { useQueries } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { getPriceHistory, getSymbolInfo } from "@/lib/api/market";
 import type { PriceHistoryBar, SymbolInfoRow } from "@/types/market";
 import type { Market } from "@/types/settings";
@@ -122,14 +123,28 @@ export function useSymbolQuotes(
     })),
   });
 
-  // Not memoized: `useMemo`'s dependency array must stay a stable length across renders, but the
-  // number of ≤20-symbol batches (and thus how many query results feed this) varies with
-  // `symbols.length` (e.g. a leaderboard's inline 10-row preview vs. its expanded 50-row modal).
-  // The computation itself is a cheap flatMap + map over at most 50 rows — recomputing it every
-  // render is far simpler than threading a variable-length dependency list through `useMemo`.
   const infoRows = infoQueries.flatMap((q) => q.data?.rows ?? []);
   const historyRows = historyQueries.flatMap((q) => q.data?.rows ?? []);
-  const quotes = buildQuotes(symbols, infoRows, historyRows);
+
+  // `useMemo`'s dependency array must stay a fixed length across renders, but the number of
+  // ≤20-symbol batches (and thus how many query results feed this) varies with `symbols.length`
+  // — so instead of spreading the batch results as separate deps, we fold them into single
+  // stable fingerprints. Without this, `quotes` was a brand-new array identity on every render
+  // regardless of whether any underlying data changed, which defeats every downstream
+  // `useMemo`/`useReactTable` memoization keyed on it (e.g. `ScreenerTable`'s `rows` and its
+  // TanStack Table instance, which fully rebuilds its row/sort model whenever `data`'s identity
+  // changes) — confirmed as a real source of excessive re-render cost on a 50-row screener page.
+  const symbolsKey = symbols.join(",");
+  const infoRowsKey = infoRows.map((r) => r.symbol).join(",");
+  const historyRowsKey = historyRows.length;
+  // Intentionally keyed on the *Key fingerprints above (stable strings/counts), not the arrays
+  // themselves, since `symbols`/`infoRows`/`historyRows` are rebuilt every render regardless of
+  // real data change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
+  const quotes = useMemo(
+    () => buildQuotes(symbols, infoRows, historyRows),
+    [symbolsKey, infoRowsKey, historyRowsKey],
+  );
 
   return {
     quotes,

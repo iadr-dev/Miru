@@ -12,6 +12,7 @@ from tools.technical_tools import (
     GetPriceLimitTool,
     GetPriceTickTool,
     GetTechnicalIndicatorsTool,
+    GetTotalReturnIndexTool,
     GetTradingCalendarTool,
     GetValuationRatiosTool,
     GetWarrantUnderlyingTool,
@@ -96,6 +97,71 @@ async def test_get_valuation_ratios_band_is_none_when_no_rows() -> None:
 
     assert output.band is None
     assert output.rows == ()
+
+
+async def test_get_valuation_ratios_attaches_a_point_chart_hint_when_rows_exist() -> None:
+    """`per`/`pbr` are two independent quantitative fields on the same row — the first real
+    caller of the `point` (scatter) mark."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    row = {
+        "symbol": "2330",
+        "market": "TW",
+        "trade_date": "2026-08-01",
+        "dividend_yield": 1.5,
+        "per": 18.0,
+        "pbr": 5.0,
+    }
+    router, _adapter = make_router(symbol, {Capability.VALUATION_RATIOS: _result({"rows": [row]})})
+    tool = GetValuationRatiosTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    assert output.chart_hint is not None
+    assert output.chart_hint.mark.value == "point"
+    assert output.chart_hint.x is not None
+    assert output.chart_hint.x.field == "per"
+    assert output.chart_hint.y is not None
+    assert output.chart_hint.y.field == "pbr"
+
+
+async def test_get_valuation_ratios_omits_chart_hint_when_no_rows() -> None:
+    symbol = Symbol(id="2330", market=Market.TW)
+    router, _adapter = make_router(symbol, {Capability.VALUATION_RATIOS: _result({"rows": []})})
+    tool = GetValuationRatiosTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    assert output.chart_hint is None
+
+
+async def test_get_total_return_index_attaches_a_line_chart_hint_when_rows_exist() -> None:
+    """A single continuous index-level series over time is the textbook `line` case — the first
+    real caller of that mark."""
+    symbol = Symbol(id="TAIEX", market=Market.TW)
+    row = {"symbol": "TAIEX", "market": "TW", "trade_date": "2026-08-01", "price": 12345.6}
+    router, _adapter = make_router(
+        symbol, {Capability.TOTAL_RETURN_INDEX: _result({"rows": [row]})}
+    )
+    tool = GetTotalReturnIndexTool(router)
+
+    output = await tool.run(DateRangeInput(id="TAIEX", market=Market.TW), ToolContext())
+
+    assert output.chart_hint is not None
+    assert output.chart_hint.mark.value == "line"
+    assert output.chart_hint.x is not None
+    assert output.chart_hint.x.field == "trade_date"
+    assert output.chart_hint.y is not None
+    assert output.chart_hint.y.field == "price"
+
+
+async def test_get_total_return_index_omits_chart_hint_when_no_rows() -> None:
+    symbol = Symbol(id="TAIEX", market=Market.TW)
+    router, _adapter = make_router(symbol, {Capability.TOTAL_RETURN_INDEX: _result({"rows": []})})
+    tool = GetTotalReturnIndexTool(router)
+
+    output = await tool.run(DateRangeInput(id="TAIEX", market=Market.TW), ToolContext())
+
+    assert output.chart_hint is None
 
 
 async def test_get_price_limit_delegates() -> None:

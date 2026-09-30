@@ -146,6 +146,36 @@ def _ctx() -> ToolContext:
     return ToolContext(user_id=None, tier=Tier.FREE, tls_policy=TLSPolicy.STRICT)
 
 
+async def test_get_themes_lists_active_themes_with_member_counts(
+    session_factory: async_sessionmaker,
+) -> None:
+    await _seed(session_factory)
+    registry = _registry(session_factory)
+    tool = registry.get_tool("get_themes")
+    assert tool is not None
+
+    result = await dispatch_tool(tool, tool.input_model.model_validate({}), _ctx())
+    data = result.model_dump()
+    assert data["theme_count"] == 2
+    by_key = {t["key"]: t for t in data["themes"]}
+    assert by_key["半導體"]["member_count"] == 2
+    assert by_key["半導體"]["kind"] == "industry"
+    assert by_key["AI伺服器"]["member_count"] == 1
+    assert by_key["AI伺服器"]["kind"] == "concept"
+
+
+async def test_get_themes_filters_by_kind(session_factory: async_sessionmaker) -> None:
+    await _seed(session_factory)
+    registry = _registry(session_factory)
+    tool = registry.get_tool("get_themes")
+    assert tool is not None
+
+    result = await dispatch_tool(tool, tool.input_model.model_validate({"kind": "concept"}), _ctx())
+    data = result.model_dump()
+    assert data["theme_count"] == 1
+    assert data["themes"][0]["key"] == "AI伺服器"
+
+
 async def test_get_theme_members_via_dispatch(session_factory: async_sessionmaker) -> None:
     await _seed(session_factory)
     registry = _registry(session_factory)

@@ -12,6 +12,7 @@ import { EventTimeline } from "@/app/[locale]/(app)/chat/cards/event-timeline";
 import { anyRowsPresent, hasSnapshotEntity } from "@/app/[locale]/(app)/chat/cards/extract-rows";
 import { cardTypeLabel, fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { FlowDistribution } from "@/app/[locale]/(app)/chat/cards/flow-distribution";
+import { chartHintUsable, GenericChart } from "@/app/[locale]/(app)/chat/cards/generic-chart";
 import { GroupedBarChart } from "@/app/[locale]/(app)/chat/cards/grouped-bar-chart";
 import { InstitutionalFlowTimeseries } from "@/app/[locale]/(app)/chat/cards/institutional-flow-timeseries";
 import { LeaderboardTable } from "@/app/[locale]/(app)/chat/cards/leaderboard-table";
@@ -23,13 +24,17 @@ import type { RichCard } from "@/types/conversation";
 /**
  * Inline `rich_card` renderer (interaction-spec §2.6). The card `data` shape is card-type-specific
  * and NOT invented here — the backend (`agent/loop.py::RichCard`) emits an already-governance-scanned
- * open object. `card_type` is looked up in `card-registry.ts`'s shape map; a mapped type renders
- * through one of 10 dedicated components (candlestick+line chart/snapshot/data-sheet/leaderboard/
- * compare/distribution bar/timeline/diverging-net bar/grouped bar/bar) — but only once a pure,
- * hook-free check confirms the payload actually has the rows/entity that shape needs
- * (`extract-rows.ts`); a mapped type whose real payload doesn't resolve, or a type absent from the
- * map altogether, falls through to the flat key/value list below — honest, never a crash, never
- * fabricated structure.
+ * open object. If `data.chart_hint` validates against `chartHintSchema`, chart selection is
+ * decoupled from `card_type` entirely: `GenericChart` picks a mark/encoding from the hint alone,
+ * independent of which tool produced the data (see `generic-chart.tsx`'s own docstring) — this is
+ * checked FIRST, before the legacy path, but is purely additive: no existing `card_type` needs a
+ * `chart_hint` to keep rendering exactly as it does today. Absent a valid hint, `card_type` is
+ * looked up in `card-registry.ts`'s shape map; a mapped type renders through one of 10 dedicated
+ * components (candlestick+line chart/snapshot/data-sheet/leaderboard/compare/distribution bar/
+ * timeline/diverging-net bar/grouped bar/bar) — but only once a pure, hook-free check confirms the
+ * payload actually has the rows/entity that shape needs (`extract-rows.ts`); a mapped type whose
+ * real payload doesn't resolve, or a type absent from the map altogether, falls through to the
+ * flat key/value list below — honest, never a crash, never fabricated structure.
  *
  * Governance: renders external/model-derived values as inert text only (no HTML injection); numbers
  * use `--font-num` + `tabular-nums`; `--accent` is never used to color a value.
@@ -47,6 +52,9 @@ export function RichCardView({
 }): ReactNode {
   if (card.card_type === "ask_user") {
     return <AskUserCard data={card.data} onPick={onAskUserPick ?? (() => {})} />;
+  }
+  if (chartHintUsable(card.data)) {
+    return <GenericChart data={card.data} />;
   }
   const shape = shapeForCardType(card.card_type);
   const usable = shape === "snapshot" ? hasSnapshotEntity(card.data) : anyRowsPresent(card.data);

@@ -462,16 +462,18 @@ async def _persist_answer(
     parent_message_id: str,
     regenerate_of: str | None = None,
 ) -> None:
-    blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
-        *_lane_process_blocks(result),
-        (MessageBlockType.TEXT, TextBlock(text=result.final_text)),
-    ]
-    # Persist each governed card as its own block so a re-opened thread renders the same cards
-    # the live stream showed — the card payload is already scanned/caveated by the Step loop.
+    blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [*_lane_process_blocks(result)]
+    # Persist each governed card as its own block, BEFORE the answer text — matches the live
+    # stream's own order (`active-turn-view.tsx` renders `turn.richCards` above `turn.answerText`,
+    # since a tool's `rich_card` event fires mid-turn, before the final synthesis text). Ordering
+    # this any other way means a turn renders cards-then-answer live but flips to answer-then-cards
+    # the moment the thread reloads into `PersistedThreadView` — the exact "cards ended up below
+    # the caveat" regression this fixes.
     blocks.extend(
         (MessageBlockType.RICH_CARD, RichCardBlock(card_type=card.card_type, data=card.data))
         for card in result.rich_cards
     )
+    blocks.append((MessageBlockType.TEXT, TextBlock(text=result.final_text)))
     # One block for every source this turn's native web search consulted, so a re-opened thread
     # still shows the "N sources" pill `web-search-sources.tsx` renders — without this, `web_
     # search.result` was a live-only SSE event with nowhere to land once the turn finished (see

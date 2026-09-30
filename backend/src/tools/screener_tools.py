@@ -20,12 +20,19 @@ threadpool so it never stalls the event loop.
 
 from __future__ import annotations
 
+from typing import Literal
+
 import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analytics.screener.catalog import all_tags
+from analytics.screener.engine import RunScreenerInput, RunScreenerOutput, run_screener
+from analytics.screener.factor_catalog import FactorCatalog, get_factor_catalog
+from analytics.screener.presets import ScreenerPreset, get_screener_presets
 from analytics.screener.store import run_tag_screener_query
 from ingest.reader import ParquetMarketDataReader
+from ingest.store import ParquetStore
 from schemas.enums import DataClass
 from schemas.screener import TagScreenerQuery, TagScreenerResult
 from tools.base import BaseTool, Tool, ToolContext, parse_args
@@ -133,23 +140,154 @@ class GetTagCatalogTool(BaseTool):
         return GetTagCatalogOutput(categories=categories)
 
 
+class GetFactorCatalogInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Literal["TW", "US", "ETF"]
+
+
+class GetFactorCatalogOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    catalog: FactorCatalog
+
+
+class GetFactorCatalogTool(BaseTool):
+    """`get_factor_catalog` — the per-market screener factor/signal catalog the condition
+    builder discovers from (README.md §2.1). Pure lookup, no I/O."""
+
+    name = "get_factor_catalog"
+    description = (
+        "Get the per-market screener factor catalog (TW/US/ETF): filterable numeric fields "
+        "plus, for TW, boolean signal tags. Every factor maps to a real, already-computable "
+        "input — never an aspirational field."
+    )
+    input_model: type[BaseModel] = GetFactorCatalogInput
+    output_model: type[BaseModel] = GetFactorCatalogOutput
+    data_class = DataClass.PUBLIC
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(GetFactorCatalogInput, args)
+        return GetFactorCatalogOutput(catalog=get_factor_catalog(typed.market))
+
+
+class GetScreenerPresetsInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: Literal["TW", "US", "ETF"]
+
+
+class GetScreenerPresetsOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    presets: tuple[ScreenerPreset, ...] = Field(default_factory=tuple)
+
+
+class GetScreenerPresetsTool(BaseTool):
+    """`get_screener_presets` — named starting-point condition sets the frontend's
+    `PresetLibrary` loads into the builder (README.md §3). A preset is a visible, editable
+    starting point, never a black-box recommendation."""
+
+    name = "get_screener_presets"
+    description = (
+        "Get the named screener presets for one market (TW/US/ETF) — each a bundle of "
+        "conditions a user can load into the condition builder and tweak. Descriptive "
+        "starting points, never trading advice."
+    )
+    input_model: type[BaseModel] = GetScreenerPresetsInput
+    output_model: type[BaseModel] = GetScreenerPresetsOutput
+    data_class = DataClass.PUBLIC
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(GetScreenerPresetsInput, args)
+        return GetScreenerPresetsOutput(presets=get_screener_presets(typed.market))
+
+
+class RunScreenerOutputWrapper(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    result: RunScreenerOutput
+
+
+class RunScreenerTool(BaseTool):
+    """`run_screener` — the gates→setup funnel (`analytics/screener/engine.py`): binary
+    elimination (liquidity/price/市值/處置/注意) followed by AND/OR condition matching, returning
+    a filtered symbol list, never a ranked/recommended one. Rank (stage ⓒ) is a separate call
+    (`get_top_stocks`/`get_score_leaderboard`) over this call's survivors."""
+
+    name = "run_screener"
+    description = (
+        "Run the gates->setup screener funnel for one market (TW/US/ETF): apply hard "
+        "liquidity/price/market-cap/disposition gates, then AND/OR-match the requested factor "
+        "conditions, returning the filtered symbol list. A descriptive filter result "
+        "('符合條件的清單，非推薦名單'), never a buy/sell recommendation. Set count_only=true "
+        "for a cheap survivor-count probe (e.g. a live builder UI) without hydrating rows."
+    )
+    input_model: type[BaseModel] = RunScreenerInput
+    output_model: type[BaseModel] = RunScreenerOutputWrapper
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "screener_result"
+
+    def __init__(
+        self,
+        parquet_store: ParquetStore,
+        tag_reader: ParquetMarketDataReader,
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> None:
+        self._parquet_store = parquet_store
+        self._tag_reader = tag_reader
+        self._session_factory = session_factory
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(RunScreenerInput, args)
+        result = await run_screener(
+            typed,
+            parquet_store=self._parquet_store,
+            tag_reader=self._tag_reader,
+            session_factory=self._session_factory,
+        )
+        return RunScreenerOutputWrapper(result=result)
+
+
 def build_registration_table(
     reader: ParquetMarketDataReader,
+    *,
+    parquet_store: ParquetStore | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> list[tuple[Tool, bool]]:
-    """This module's `(tool, immediate)` registration table. Both tools are deferred long-tail
-    reads. `run_tag_screener` reads the ingest-owned Parquet flag store, so this table takes the
-    derived-store reader rather than the data-access router; `get_tag_catalog` needs neither but
-    is registered here alongside its companion."""
-    return [
+    """This module's `(tool, immediate)` registration table. `run_tag_screener`/`get_tag_catalog`
+    are deferred long-tail reads needing only the derived-store reader. `get_factor_catalog`/
+    `get_screener_presets` are pure lookups, no dependencies. `run_screener` additionally needs
+    the Parquet store (gates + ETF numeric reads) and the DB session factory (TW `stock_scores`
+    numeric reads) — registered only when both are supplied, matching `theme_group`/`score_group`'s
+    optional-dependency shape in `tools/__init__.py` so a narrow test wiring only the router-backed
+    set still composes without it."""
+    table: list[tuple[Tool, bool]] = [
         (RunTagScreenerTool(reader), False),
         (GetTagCatalogTool(), False),
+        (GetFactorCatalogTool(), False),
+        (GetScreenerPresetsTool(), False),
     ]
+    if parquet_store is not None and session_factory is not None:
+        table.append((RunScreenerTool(parquet_store, reader, session_factory), False))
+    return table
 
 
 __all__ = [
+    "GetFactorCatalogInput",
+    "GetFactorCatalogOutput",
+    "GetFactorCatalogTool",
+    "GetScreenerPresetsInput",
+    "GetScreenerPresetsOutput",
+    "GetScreenerPresetsTool",
     "GetTagCatalogInput",
     "GetTagCatalogOutput",
     "GetTagCatalogTool",
+    "RunScreenerOutputWrapper",
+    "RunScreenerTool",
     "RunTagScreenerOutput",
     "RunTagScreenerTool",
     "TagCatalogCategory",

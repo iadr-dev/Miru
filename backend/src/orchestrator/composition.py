@@ -24,7 +24,7 @@ from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router
 from dataaccess.router import DataAccessRouter
 from db.base import make_engine, make_session_factory
-from ingest import build_market_data_reader
+from ingest import ParquetStore, build_market_data_reader
 from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry
@@ -78,6 +78,7 @@ def build_tool_registry(
         session_factory=session_factory,
         market_data_reader=build_market_data_reader(),
         summary_llm=summary_llm,
+        parquet_store=ParquetStore(root=(settings or get_settings()).parquet_root),
     )
 
 

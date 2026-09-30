@@ -304,8 +304,46 @@ async def get_leaderboard(  # noqa: PLR0913 — one keyword-only field per read-
     return tuple(_row_to_result(row) for row in rows)
 
 
+async def get_all_scores_for_date(
+    session: AsyncSession,
+    *,
+    market: Market,
+    profile: ScoreProfile,
+    universe: LeaderboardUniverse = "stock",
+    as_of: date_ | None = None,
+) -> tuple[ScoreResult, ...]:
+    """Every scored row for `(market, profile, universe)` on `as_of` (or the latest `as_of` on
+    file when unset) — unsorted, unlimited. This is the screener engine's numeric-condition read:
+    unlike `get_leaderboard` (sort+slice for a ranking display), the screener needs the FULL
+    scored universe so it can filter on arbitrary percentile thresholds before any ranking stage
+    runs. Reading this already-materialized cache table in full is not the governance-forbidden
+    "live per-symbol upstream fetch" (`docs/backend/governance.md` §1.3/§6) — it is the same class
+    of read `get_leaderboard` already does, just without the sort/limit."""
+    resolved_as_of = (
+        as_of.isoformat()
+        if as_of is not None
+        else await _latest_as_of(session, market=market, profile=profile)
+    )
+    if resolved_as_of is None:
+        return ()
+    symbol_type_filter = (
+        StockScoreRow.symbol_type.in_(_ETF_SYMBOL_TYPES)
+        if universe == "etf"
+        else StockScoreRow.symbol_type == SymbolType.STOCK.value
+    )
+    stmt: Select[tuple[StockScoreRow]] = select(StockScoreRow).where(
+        StockScoreRow.market == market.value,
+        StockScoreRow.profile == profile.value,
+        StockScoreRow.as_of == resolved_as_of,
+        symbol_type_filter,
+    )
+    rows: Sequence[StockScoreRow] = (await session.scalars(stmt)).all()
+    return tuple(_row_to_result(row) for row in rows)
+
+
 __all__ = [
     "LeaderboardDirection",
+    "get_all_scores_for_date",
     "get_cached_score",
     "get_leaderboard",
     "upsert_score",

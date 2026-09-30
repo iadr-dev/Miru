@@ -269,6 +269,45 @@ class WatchlistItemRow(Base):
     )
 
 
+class ScreenerScreenRow(Base):
+    """A user's saved screener condition set (README.md §6 `SavedScreens`) — `market` is the
+    screener's own three-tab model (`'TW'|'US'|'ETF'`, not `schemas.enums.Market`, which has no
+    `ETF` value), so this table's check constraint is its own rather than reusing
+    `_MARKET_TW_US_CHECK`. `conditions_json`/`gate_overrides_json` are opaque serialized request
+    bodies (the same shape `POST /analytics/screener/run` accepts) — this store never
+    interprets them, only persists/replays, so it needs no schema change when the condition/gate
+    shape evolves. No `version`/lexorank: a saved-screen list has no user-visible drag-reorder in
+    this pass's spec (README.md §6 lists load/rename/delete only), so the optimistic-CAS/lexorank
+    machinery `WatchlistRow` needs for its drag-and-drop rail would be unused complexity here."""
+
+    __tablename__ = "screener_screens"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(index=True)
+    name: Mapped[str]
+    market: Mapped[str]
+    conditions_json: Mapped[str]  # JSON array — see class docstring
+    match: Mapped[str] = mapped_column(default="AND")
+    gate_overrides_json: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(_UTC)
+    updated_at: Mapped[datetime] = mapped_column(_UTC)
+
+    __table_args__ = (
+        CheckConstraint("market IN ('TW','US','ETF')", name="ck_screener_screens_market"),
+        CheckConstraint("match IN ('AND','OR')", name="ck_screener_screens_match"),
+        # One screen name per (user, market) — same partial-unique shape as
+        # `uq_watchlists_user_market_class_name`, minus `asset_class` (this table has none).
+        Index(
+            "uq_screener_screens_user_market_name",
+            "user_id",
+            "market",
+            "name",
+            unique=True,
+        ),
+        Index("ix_screener_screens_user_market", "user_id", "market"),
+    )
+
+
 # ---- Accounts, identity, entitlements (Phase 9) --------------------------------------------
 
 

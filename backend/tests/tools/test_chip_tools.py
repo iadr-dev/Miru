@@ -13,6 +13,7 @@ from tools.chip_tools import (
     GetGovernmentBankFlowsTool,
     GetIndustryMoneyFlowTool,
     GetInstitutionalFlowTotalMarketTool,
+    GetMarginMaintenanceTool,
     GetMarginShortTool,
     GetSecuritiesTraderInfoTool,
 )
@@ -31,6 +32,42 @@ def _result(
         payload=payload,
         health=SourceHealth(status=HealthStatus.OK, detail="ok"),
     )
+
+
+async def test_get_margin_maintenance_attaches_an_area_chart_hint_when_rows_exist() -> None:
+    """A bounded warning-threshold ratio hovering near a danger line reads better filled
+    (`area`) than as a bare `line` — the first real caller of that mark."""
+    symbol = Symbol(id="", market=Market.TW)
+    row = {
+        "market": "TW",
+        "trade_date": "2026-08-01",
+        "total_exchange_margin_maintenance": 165.2,
+    }
+    router, _adapter = make_router(
+        symbol, {Capability.MARGIN_MAINTENANCE_RATIO: _result({"rows": [row]})}
+    )
+    tool = GetMarginMaintenanceTool(router)
+
+    output = await tool.run(MarketOnlyInput(market=Market.TW), ToolContext())
+
+    assert output.chart_hint is not None
+    assert output.chart_hint.mark.value == "area"
+    assert output.chart_hint.x is not None
+    assert output.chart_hint.x.field == "trade_date"
+    assert output.chart_hint.y is not None
+    assert output.chart_hint.y.field == "total_exchange_margin_maintenance"
+
+
+async def test_get_margin_maintenance_omits_chart_hint_when_no_rows() -> None:
+    symbol = Symbol(id="", market=Market.TW)
+    router, _adapter = make_router(
+        symbol, {Capability.MARGIN_MAINTENANCE_RATIO: _result({"rows": []})}
+    )
+    tool = GetMarginMaintenanceTool(router)
+
+    output = await tool.run(MarketOnlyInput(market=Market.TW), ToolContext())
+
+    assert output.chart_hint is None
 
 
 async def test_get_margin_short_delegates_and_parses_rows() -> None:

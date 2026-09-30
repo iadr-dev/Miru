@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dataaccess.router import DataAccessRouter
 from ingest.reader import ParquetMarketDataReader
+from ingest.store import ParquetStore
 from llm.base import LLMClient
 from tools import (
     analyst_tools,
@@ -70,6 +71,7 @@ def build_default_tool_registry(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     market_data_reader: ParquetMarketDataReader | None = None,
     summary_llm: LLMClient | None = None,
+    parquet_store: ParquetStore | None = None,
 ) -> ToolRegistry:
     theme_group = (
         theme_tools.build_registration_table(session_factory) if session_factory is not None else []
@@ -97,8 +99,15 @@ def build_default_tool_registry(
     # The tag screener reads the ingest-owned Parquet flag store through the derived-store reader.
     # Optional so a narrow test wiring only the router-backed set still composes; when omitted, the
     # screener group is simply not registered (its catalog tool goes with it — they are a pair).
+    # `run_screener` additionally needs the Parquet store (gates + ETF numeric reads) and the DB
+    # session factory (TW `stock_scores` numeric reads) — see `screener_tools.
+    # build_registration_table`'s own docstring for why it degrades gracefully without them.
     screener_group = (
-        screener_tools.build_registration_table(market_data_reader)
+        screener_tools.build_registration_table(
+            market_data_reader,
+            parquet_store=parquet_store,
+            session_factory=session_factory,
+        )
         if market_data_reader is not None
         else []
     )

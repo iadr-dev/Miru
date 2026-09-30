@@ -33,6 +33,7 @@ from analytics.themes.models import (
     SymbolTheme,
     ThemeKind,
     ThemeMember,
+    ThemeStatus,
     ThemeTier,
     ThemeTierName,
     ThemeTierSource,
@@ -46,6 +47,80 @@ from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
 
 _DEFAULT_MEMBER_LIMIT = 200
+
+
+class GetThemesInput(BaseModel):
+    """No parameters required — `kind`/`status` narrow an otherwise whole-catalog listing.
+    `status` defaults to `active` (never surface a `retired` theme to a caller browsing "what
+    themes exist" unless explicitly asked for one) — `None` here means "use that default", not
+    "no filter"; pass `status="proposed"`/`"retired"` explicitly to see those."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: ThemeKind | None = None
+    status: ThemeStatus | None = None
+
+
+class ThemeSummary(BaseModel):
+    """One theme's discovery-card shape — identity plus its member count, so a caller (the
+    screener's `PresetLibrary`-style theme picker) can show "半導體 (128)" without a second
+    round-trip per theme."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str
+    name_zh: str
+    name_en: str = ""
+    kind: ThemeKind
+    status: ThemeStatus
+    member_count: int = 0
+
+
+class GetThemesOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    theme_count: int = 0
+    themes: tuple[ThemeSummary, ...] = Field(default_factory=tuple)
+
+
+class GetThemesTool(BaseTool):
+    """`get_themes` — the discovery-level list of every theme in the catalog (industry-chain +
+    concept), each with its member count. The screener's 主題 Themes sub-tab reads this to render
+    theme chips; selecting one loads that theme's members as a pre-filtered screen via the
+    existing `get_theme_members` lookup — a theme is a tag, never a scored factor."""
+
+    name = "get_themes"
+    description = (
+        "List every theme in the catalog (industry-chain and concept), each with its member "
+        "count. Defaults to active themes only."
+    )
+    input_model: type[BaseModel] = GetThemesInput
+    output_model: type[BaseModel] = GetThemesOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = "themes"
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(GetThemesInput, args)
+        status = typed.status if typed.status is not None else ThemeStatus.ACTIVE
+        async with self._session_factory() as session:
+            store: ThemeStore = SqlAlchemyThemeStore(session)
+            themes = await store.list_themes(kind=typed.kind, status=status)
+            summaries = [
+                ThemeSummary(
+                    key=theme.key,
+                    name_zh=theme.name_zh,
+                    name_en=theme.name_en,
+                    kind=theme.kind,
+                    status=theme.status,
+                    member_count=await store.count_theme_members(theme_key=theme.key),
+                )
+                for theme in themes
+            ]
+        return GetThemesOutput(theme_count=len(summaries), themes=tuple(summaries))
 
 
 class GetThemeMembersInput(BaseModel):
@@ -447,6 +522,7 @@ def build_registration_table(
     `tools/market_tools.py::build_registration_table` pattern) since it also needs real prices."""
     store = ParquetStore(root=get_settings().parquet_root)
     tools: list[tuple[Tool, bool]] = [
+        (GetThemesTool(session_factory), False),
         (GetThemeMembersTool(session_factory), False),
         (GetSymbolThemesTool(session_factory), False),
         (GetThemeTiersTool(session_factory), False),
@@ -469,6 +545,10 @@ __all__ = [
     "GetThemeTiersInput",
     "GetThemeTiersOutput",
     "GetThemeTiersTool",
+    "GetThemesInput",
+    "GetThemesOutput",
+    "GetThemesTool",
     "SubIndustryHeat",
+    "ThemeSummary",
     "build_registration_table",
 ]

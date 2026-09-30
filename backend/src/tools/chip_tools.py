@@ -39,6 +39,7 @@ from schemas.capabilities import (
     SecuritiesTraderInfoRow,
     ShareholdingDistributionRow,
 )
+from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
 from tools._rows import fetch_rows
@@ -555,6 +556,10 @@ class GetWarrantChipBrokerTool(BaseTool):
 
 class GetMarginMaintenanceOutput(_RowsOutput):
     rows: tuple[MarginMaintenanceRatioRow, ...] = Field(default_factory=tuple)
+    # `chart_hint` (schemas/chart_hint.py): a bounded warning-threshold ratio hovering near a
+    # danger line reads better filled (`area`) than as a bare `line` — the first real caller of
+    # that mark.
+    chart_hint: ChartHint | None = None
 
 
 class GetMarginMaintenanceTool(BaseTool):
@@ -589,6 +594,13 @@ class GetMarginMaintenanceTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
+            chart_hint=ChartHint(
+                mark=Mark.AREA,
+                x=FieldDef(field="trade_date", type=FieldType.TEMPORAL),
+                y=FieldDef(field="total_exchange_margin_maintenance", type=FieldType.QUANTITATIVE),
+            )
+            if rows
+            else None,
         )
 
 

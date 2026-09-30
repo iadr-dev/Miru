@@ -9,6 +9,8 @@ catalog is public while a user's own pets require sign-in. There is no user-scop
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, status
 
 from accounts.models import User
@@ -41,6 +43,20 @@ async def _dispatch(
     validated = tool.input_model.model_validate(args)
     result = await dispatch_tool(tool, validated, ctx)
     return result.model_dump(mode="json")
+
+
+@router.get("/themes")
+async def list_themes(
+    kind: Literal["industry", "concept"] | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The discovery-level theme catalog (screener README.md §6 主題 Themes sub-tab) — every
+    active theme with its member count. `get_themes` defaults to `status="active"`."""
+    args: dict[str, object] = {}
+    if kind is not None:
+        args["kind"] = kind
+    return await _dispatch(state, "get_themes", args, ctx)
 
 
 @router.get("/themes/{key}")

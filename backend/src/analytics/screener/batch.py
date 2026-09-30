@@ -23,6 +23,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import date as date_
+from typing import cast
 
 import structlog
 
@@ -46,10 +47,31 @@ SCREENER_FLAGS_DATASET = "screener_flags"
 # scheduler's wiring (the same decoupling `analytics/fundamentals.py` uses).
 PRICE_EOD_DATASET = "TaiwanStockPrice"
 INSTITUTIONAL_FLOW_DATASET = "TaiwanStockInstitutionalInvestorsBuySell"
+MARGIN_SHORT_DATASET = "TaiwanStockMarginPurchaseShortSale"
+SHAREHOLDING_DISTRIBUTION_DATASET = "TaiwanStockHoldingSharesPer"
+
+# The same tier-label scheme `tools/market_tools.py::_HOLDER_TIER_LABELS`/`_HOLDER_THRESHOLDS`
+# confirms live against TDCC's own web query tool and FinMind's `TaiwanStockHoldingSharesPer` —
+# duplicated here (not imported) since that module lives in `tools/`, which `analytics/` may not
+# import from (dependency rule, `backend/CLAUDE.md` §3). Only the two boundaries this pass's tags
+# need (<=100張 and >=1,000張), not the full 17-tier table.
+_SMALL_HOLDER_TIER_LABELS: tuple[str, ...] = (
+    "1-999",
+    "1,000-5,000",
+    "5,001-10,000",
+    "10,001-15,000",
+    "15,001-20,000",
+    "20,001-30,000",
+    "30,001-40,000",
+    "40,001-50,000",
+    "50,001-100,000",
+)  # every tier whose upper bound is <= 100,000 shares (100張)
+_LARGE_HOLDER_TIER_LABELS: tuple[str, ...] = ("1,000,001以上",)  # >= 1,000張 (1,000,000 shares)
 
 # FinMind investor-category labels in the institutional-flow rows.
 _FOREIGN_INVESTOR = "Foreign_Investor"
 _INVESTMENT_TRUST = "Investment_Trust"
+_DEALER_SELF = "Dealer_self"
 
 # How many trailing trading days of history to read for the technical events. MACD (12/26/9) needs
 # ~35 bars to define its histogram, and the slope/cross checks need two or three defined MA points
@@ -200,24 +222,149 @@ def _chip_flags(net_by_investor: dict[str, list[float]]) -> list[str]:
     flags: list[str] = []
     foreign = net_by_investor.get(_FOREIGN_INVESTOR, [])
     trust = net_by_investor.get(_INVESTMENT_TRUST, [])
+    dealer = net_by_investor.get(_DEALER_SELF, [])
     if chip_streaks.net_buy_streak(foreign, STREAK_DAYS):
         flags.append("foreign_net_buy_streak_3")
     if chip_streaks.net_sell_streak(foreign, STREAK_DAYS):
         flags.append("foreign_net_sell_streak_3")
     if chip_streaks.net_buy_streak(trust, STREAK_DAYS):
         flags.append("trust_net_buy_streak_3")
+    if chip_streaks.net_sell_streak(trust, STREAK_DAYS):
+        flags.append("trust_net_sell_streak_3")
+    if chip_streaks.net_buy_streak(dealer, STREAK_DAYS):
+        flags.append("dealer_net_buy_streak_3")
+    if chip_streaks.net_sell_streak(dealer, STREAK_DAYS):
+        flags.append("dealer_net_sell_streak_3")
     if chip_streaks.cumulative_net_buy(foreign, FOREIGN_CUMULATIVE_WINDOW):
         flags.append("foreign_net_buy_5d_cumulative")
     return flags
 
 
+def _daily_balances_by_field(rows: Sequence[dict[str, object]], field: str) -> list[float]:
+    """One symbol's ascending-by-date series for a single `MarginShortRow` balance field (e.g.
+    `margin_purchase_today_balance`) — one value per trading day present in the read window."""
+    by_day: dict[str, float] = {}
+    for row in rows:
+        day = _trade_date_key(row)
+        value = _as_float(row.get(field))
+        if value is not None:
+            by_day[day] = value
+    return [value for _, value in sorted(by_day.items())]
+
+
+def _balance_rising_streak(daily_balances: Sequence[float], min_days: int) -> bool:
+    """The last `min_days` day-over-day changes were each strictly positive — "連N日增加" for a
+    plain balance series (distinct from `chip_streaks.net_buy_streak`, which streaks on the sign
+    of an already-net buy/sell flow rather than a balance level's own deltas)."""
+    if len(daily_balances) < min_days + 1:
+        return False
+    window = daily_balances[-(min_days + 1) :]
+    deltas = [window[i] - window[i - 1] for i in range(1, len(window))]
+    return all(delta > 0 for delta in deltas)
+
+
+def _balance_falling_streak(daily_balances: Sequence[float], min_days: int) -> bool:
+    """The "連N日減少" mirror of `_balance_rising_streak`."""
+    if len(daily_balances) < min_days + 1:
+        return False
+    window = daily_balances[-(min_days + 1) :]
+    deltas = [window[i] - window[i - 1] for i in range(1, len(window))]
+    return all(delta < 0 for delta in deltas)
+
+
+def _margin_flags(margin_rows: Sequence[dict[str, object]]) -> list[str]:
+    flags: list[str] = []
+    margin_balances = _daily_balances_by_field(margin_rows, "margin_purchase_today_balance")
+    short_balances = _daily_balances_by_field(margin_rows, "short_sale_today_balance")
+    if _balance_rising_streak(margin_balances, STREAK_DAYS):
+        flags.append("margin_purchase_balance_streak_up_3")
+    if _balance_falling_streak(short_balances, STREAK_DAYS):
+        flags.append("short_sale_balance_streak_down_3")
+    return flags
+
+
+def _holder_tier_percent(
+    rows: Sequence[dict[str, object]], tier_labels: Sequence[str]
+) -> float | None:
+    """This weekly snapshot's summed `percent`（占集保庫存數比例%）across `tier_labels` — `None`
+    if the snapshot carried none of the wanted tiers (never asserted as `0.0`, which would read
+    as a genuine "held by nobody" rather than "no data this week")."""
+    wanted = set(tier_labels)
+    total = 0.0
+    seen = False
+    for row in rows:
+        level = row.get("holding_shares_level")
+        percent = row.get("percent")
+        if level in wanted and isinstance(percent, (int, float)):
+            total += float(percent)
+            seen = True
+    return total if seen else None
+
+
+def _holder_share_rising_flags(
+    weekly_snapshots: Sequence[Sequence[dict[str, object]]],
+) -> list[str]:
+    """`weekly_snapshots` is this ONE symbol's rows from each of the last 4 weekly 集保 snapshots
+    (oldest first) — 4 snapshots give 3 week-over-week deltas, the minimum needed to prove a
+    genuine 3-week rising streak rather than a single-week blip."""
+    small_series = [
+        _holder_tier_percent(rows, _SMALL_HOLDER_TIER_LABELS) for rows in weekly_snapshots
+    ]
+    large_series = [
+        _holder_tier_percent(rows, _LARGE_HOLDER_TIER_LABELS) for rows in weekly_snapshots
+    ]
+    flags: list[str] = []
+    if all(v is not None for v in small_series) and _balance_rising_streak(
+        cast("list[float]", small_series), STREAK_DAYS
+    ):
+        flags.append("small_holder_share_rising_3w")
+    if all(v is not None for v in large_series) and _balance_rising_streak(
+        cast("list[float]", large_series), STREAK_DAYS
+    ):
+        flags.append("large_holder_share_rising_3w")
+    return flags
+
+
+def _symbol_tags(
+    *,
+    price_rows: Sequence[dict[str, object]],
+    flow_rows: Sequence[dict[str, object]],
+    margin_rows: Sequence[dict[str, object]],
+    shareholding_snapshots: Sequence[Sequence[dict[str, object]]],
+    enough_shareholding_snapshots: bool,
+) -> list[str]:
+    """Every tag one symbol earns from its own already-grouped rows across all four sources —
+    pulled out of `compute_flag_rows`'s per-symbol loop purely to keep that loop's own
+    branch/statement count low; no behavior of its own beyond the source-by-source dispatch each
+    line already documents."""
+    tags: list[str] = []
+    bars = _bars_for_symbol(price_rows)
+    if bars:
+        tags.extend(_technical_flags(bars))
+        tags.extend(_hot_flags(bars))
+    net_by_investor = _daily_net_by_investor(flow_rows)
+    if net_by_investor:
+        tags.extend(_chip_flags(net_by_investor))
+    if margin_rows:
+        tags.extend(_margin_flags(margin_rows))
+    if shareholding_snapshots and enough_shareholding_snapshots:
+        tags.extend(_holder_share_rising_flags(shareholding_snapshots))
+    # Smart combos are evaluated last, over the already-assembled tag list above, so they can
+    # only fire on tags this same pass has already proven true for this symbol.
+    tags.extend(_smart_flags(tags))
+    return tags
+
+
 def compute_flag_rows(
     price_rows: Sequence[dict[str, object]],
     flow_rows: Sequence[dict[str, object]],
+    margin_rows: Sequence[dict[str, object]] = (),
+    weekly_shareholding_snapshots: Sequence[Sequence[dict[str, object]]] = (),
 ) -> list[dict[str, object]]:
-    """Pure core: given the raw price and flow rows read across the trailing window, return the
-    tidy `(symbol, tag)` flag rows for every symbol/tag that evaluates true. Sorted by
-    `(symbol, tag)` so the partition is deterministic for a given input."""
+    """Pure core: given the raw price/flow/margin rows read across the trailing window (plus up
+    to 4 weekly shareholding-distribution snapshots, oldest first), return the tidy `(symbol,
+    tag)` flag rows for every symbol/tag that evaluates true. Sorted by `(symbol, tag)` so the
+    partition is deterministic for a given input."""
     price_by_symbol: dict[str, list[dict[str, object]]] = defaultdict(list)
     for row in price_rows:
         symbol = row.get("symbol")
@@ -230,19 +377,39 @@ def compute_flag_rows(
         if isinstance(symbol, str) and symbol:
             flow_by_symbol[symbol].append(row)
 
+    margin_by_symbol: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for row in margin_rows:
+        symbol = row.get("symbol")
+        if isinstance(symbol, str) and symbol:
+            margin_by_symbol[symbol].append(row)
+
+    # Per symbol, this symbol's own rows from each weekly snapshot, in the same oldest-first order
+    # as `weekly_shareholding_snapshots` itself.
+    shareholding_by_symbol: dict[str, list[list[dict[str, object]]]] = defaultdict(
+        lambda: [[] for _ in weekly_shareholding_snapshots]
+    )
+    for week_index, snapshot_rows in enumerate(weekly_shareholding_snapshots):
+        for row in snapshot_rows:
+            symbol = row.get("symbol")
+            if isinstance(symbol, str) and symbol:
+                shareholding_by_symbol[symbol][week_index].append(row)
+
+    all_symbols = (
+        price_by_symbol.keys()
+        | flow_by_symbol.keys()
+        | margin_by_symbol.keys()
+        | shareholding_by_symbol.keys()
+    )
+    enough_snapshots = len(weekly_shareholding_snapshots) >= STREAK_DAYS + 1
     flag_rows: list[dict[str, object]] = []
-    for symbol in price_by_symbol.keys() | flow_by_symbol.keys():
-        tags: list[str] = []
-        bars = _bars_for_symbol(price_by_symbol.get(symbol, []))
-        if bars:
-            tags.extend(_technical_flags(bars))
-            tags.extend(_hot_flags(bars))
-        net_by_investor = _daily_net_by_investor(flow_by_symbol.get(symbol, []))
-        if net_by_investor:
-            tags.extend(_chip_flags(net_by_investor))
-        # Smart combos are evaluated last, over the already-assembled tag list above, so they can
-        # only fire on tags this same pass has already proven true for this symbol.
-        tags.extend(_smart_flags(tags))
+    for symbol in all_symbols:
+        tags = _symbol_tags(
+            price_rows=price_by_symbol.get(symbol, []),
+            flow_rows=flow_by_symbol.get(symbol, []),
+            margin_rows=margin_by_symbol.get(symbol, []),
+            shareholding_snapshots=shareholding_by_symbol.get(symbol, []),
+            enough_shareholding_snapshots=enough_snapshots,
+        )
         for tag in tags:
             flag_rows.append({"symbol": symbol, "tag": tag})
 
@@ -282,8 +449,24 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
     chip_window = _trailing_trading_days(ctx, run_date, _CHIP_LOOKBACK_DAYS)
     price_rows = ctx.store.read_range(PRICE_EOD_DATASET, market, price_window)
     flow_rows = ctx.store.read_range(INSTITUTIONAL_FLOW_DATASET, market, chip_window)
+    margin_rows = ctx.store.read_range(MARGIN_SHORT_DATASET, market, chip_window)
 
-    if not price_rows and not flow_rows:
+    # Up to 4 weekly shareholding-distribution snapshots (oldest first) — 4 snapshots give 3
+    # week-over-week deltas, the minimum needed to prove a genuine 3-week rising streak. Reads
+    # whichever already-ingested snapshot dates exist on/before `run_date`; a market with fewer
+    # than 4 ingested snapshots yet simply degrades to "not enough history" in `compute_flag_rows`
+    # rather than erroring.
+    shareholding_dates = [
+        d
+        for d in ctx.store.list_partition_dates(SHAREHOLDING_DISTRIBUTION_DATASET, market)
+        if d <= run_date
+    ][-(STREAK_DAYS + 1) :]
+    weekly_shareholding_snapshots = [
+        ctx.store.read_partition(SHAREHOLDING_DISTRIBUTION_DATASET, market, d)
+        for d in shareholding_dates
+    ]
+
+    if not price_rows and not flow_rows and not margin_rows and not weekly_shareholding_snapshots:
         # No upstream history landed for this window — nothing to evaluate. A real, honest empty
         # write (rows=0) rather than an error: the next day's run recomputes once the price/flow
         # partitions this depends on exist.
@@ -296,7 +479,7 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="no upstream price/flow history in the read window — empty flag partition",
         )
 
-    flag_rows = compute_flag_rows(price_rows, flow_rows)
+    flag_rows = compute_flag_rows(price_rows, flow_rows, margin_rows, weekly_shareholding_snapshots)
     rows_written = ctx.store.write_partition(SCREENER_FLAGS_DATASET, market, run_date, flag_rows)
     logger.info(
         "screener_flags_computed",

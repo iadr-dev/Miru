@@ -290,6 +290,43 @@ async def test_get_dividend_schedule_delegates_and_parses_events() -> None:
     assert output.events[0].cash_dividend == 10.0
 
 
+async def test_get_dividend_schedule_attaches_a_bar_chart_hint_when_events_exist() -> None:
+    """A dozen+ announced quarters is materially clearer as a bar chart than the raw event-list
+    card (see the live screenshot complaint this migration fixes) — `chart_hint` must be present
+    whenever there's at least one event to plot."""
+    symbol = Symbol(id="2330", market=Market.TW)
+    router, _adapter = make_router(symbol, {Capability.DIVIDENDS: _dividend_result()})
+    tool = GetDividendScheduleTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    assert output.chart_hint is not None
+    assert output.chart_hint.mark.value == "bar"
+    assert output.chart_hint.x is not None
+    assert output.chart_hint.x.field == "announced_date"
+    assert output.chart_hint.y is not None
+    assert output.chart_hint.y.field == "cash_dividend"
+
+
+async def test_get_dividend_schedule_omits_chart_hint_when_no_events() -> None:
+    symbol = Symbol(id="2330", market=Market.TW)
+    empty_result = SourceResult(
+        source_id="STUB",
+        data_class=DataClass.PUBLIC,
+        timing_class=TimingClass.OFFICIAL_EOD,
+        fetched_at=datetime.now(UTC),
+        currentness_caveat="dividend caveat",
+        payload={"events": []},
+        health=SourceHealth(status=HealthStatus.OK, detail="ok"),
+    )
+    router, _adapter = make_router(symbol, {Capability.DIVIDENDS: empty_result})
+    tool = GetDividendScheduleTool(router)
+
+    output = await tool.run(DateRangeInput(id="2330", market=Market.TW), ToolContext())
+
+    assert output.chart_hint is None
+
+
 async def test_get_institutional_flow_delegates_and_parses_rows() -> None:
     symbol = Symbol(id="2330", market=Market.TW)
     router, adapter = make_router(

@@ -31,6 +31,7 @@ from schemas.capabilities import (
     SplitPriceRow,
     StockDelistingRow,
 )
+from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
 from tools._rows import fetch_rows
@@ -304,6 +305,12 @@ class GetDividendPolicySummaryOutput(BaseModel):
     year_summaries: tuple[DividendYearSummary, ...] = Field(default_factory=tuple)
     fill_results: tuple[DividendFillResult, ...] = Field(default_factory=tuple)
     stats: DividendPolicyStats = Field(default_factory=DividendPolicyStats)
+    # Tier-1 `chart_hint` pilot (see `schemas/chart_hint.py`): this is the pie/donut chart's real
+    # unlock — `donut-with-legend.tsx` already knows how to draw exactly this per-year cash+stock
+    # composition, but was structurally unreachable from the chat pipeline (no `card_type` shape
+    # maps to it). `data_key="year_summaries"` disambiguates which of this composite output's 3
+    # row-lists (`events`/`year_summaries`/`fill_results`) the hint plots.
+    chart_hint: ChartHint | None = None
 
 
 class GetDividendPolicySummaryTool(BaseTool):
@@ -395,6 +402,14 @@ class GetDividendPolicySummaryTool(BaseTool):
             year_summaries=year_summaries,
             fill_results=fill_results,
             stats=stats,
+            chart_hint=ChartHint(
+                mark=Mark.ARC,
+                data_key="year_summaries",
+                theta=FieldDef(field="total_dividend", type=FieldType.QUANTITATIVE),
+                color=FieldDef(field="year", type=FieldType.NOMINAL),
+            )
+            if year_summaries
+            else None,
         )
 
 
@@ -512,6 +527,11 @@ class GetMonthRevenueOutput(_RowsOutput):
     # a pre-computed MoM/YoY figure per month so it never hand-diffs adjacent rows itself.
     trend: tuple[MonthRevenueTrendPoint, ...] = Field(default_factory=tuple)
     rows: tuple[MonthRevenueRow, ...] = Field(default_factory=tuple)
+    # Tier-1 `chart_hint` pilot (see `schemas/chart_hint.py`): a discrete one-filing-per-month
+    # magnitude series is exactly `Mark.BAR`'s intended shape — proves the generic chart pipe
+    # renders this tool's real data equivalently to the hardcoded `card_type="month_revenue"` ->
+    # `BarChart` path it already has, before any tool is migrated off that path.
+    chart_hint: ChartHint | None = None
 
 
 class GetMonthRevenueTool(BaseTool):
@@ -564,6 +584,13 @@ class GetMonthRevenueTool(BaseTool):
             health_status=result.health.status,
             rows=rows,
             trend=_month_revenue_trend(rows, bars),
+            chart_hint=ChartHint(
+                mark=Mark.BAR,
+                x=FieldDef(field="trade_date", type=FieldType.TEMPORAL),
+                y=FieldDef(field="revenue", type=FieldType.QUANTITATIVE),
+            )
+            if rows
+            else None,
         )
 
 

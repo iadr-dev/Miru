@@ -65,6 +65,7 @@ from schemas.capabilities import (
     SymbolDirectorySearchRow,
     ValuationRatiosRow,
 )
+from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from schemas.source import HealthStatus
@@ -211,6 +212,13 @@ class GetDividendScheduleOutput(BaseModel):
     currentness_caveat: str = Field(min_length=1)
     health_status: HealthStatus
     events: tuple[DividendEvent, ...] = Field(default_factory=tuple)
+    # `chart_hint` (schemas/chart_hint.py): a per-quarter cash-dividend bar is materially clearer
+    # than the raw event list (esp. a growth trend across a dozen+ announced quarters — see the
+    # scrolling-text-list complaint this fixes). `stock_dividend` is intentionally not plotted as
+    # a second series here: virtually every modern TW dividend event is 100% cash, so a
+    # near-all-zero series would just add legend noise; a future migration can add it back via
+    # `y2` if a real stock-dividend-heavy issuer surfaces the need.
+    chart_hint: ChartHint | None = None
 
 
 class GetDividendScheduleTool(BaseTool):
@@ -245,6 +253,13 @@ class GetDividendScheduleTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             events=events,
+            chart_hint=ChartHint(
+                mark=Mark.BAR,
+                x=FieldDef(field="announced_date", type=FieldType.TEMPORAL),
+                y=FieldDef(field="cash_dividend", type=FieldType.QUANTITATIVE),
+            )
+            if events
+            else None,
         )
 
 

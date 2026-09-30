@@ -42,6 +42,7 @@ from schemas.capabilities import (
     ValuationRatiosRow,
     WarrantUnderlyingRow,
 )
+from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass
 from schemas.source import HealthStatus
 from tools._rows import fetch_rows
@@ -258,6 +259,10 @@ class GetValuationRatiosOutput(_RowsOutput):
     # and gave up without ever stating whether the current PER/PBR was high or low in-range).
     band: ValuationBandSummary | None = None
     rows: tuple[ValuationRatiosRow, ...] = Field(default_factory=tuple)
+    # `chart_hint` (schemas/chart_hint.py): `per`/`pbr` are two genuinely independent
+    # quantitative fields on the same row (no shared date/category axis needed) — the first
+    # real caller of the `point` (scatter) mark, one point per trading day.
+    chart_hint: ChartHint | None = None
 
 
 class GetValuationRatiosTool(BaseTool):
@@ -297,6 +302,13 @@ class GetValuationRatiosTool(BaseTool):
             health_status=result.health.status,
             band=_valuation_band_summary(rows),
             rows=rows,
+            chart_hint=ChartHint(
+                mark=Mark.POINT,
+                x=FieldDef(field="per", type=FieldType.QUANTITATIVE),
+                y=FieldDef(field="pbr", type=FieldType.QUANTITATIVE),
+            )
+            if rows
+            else None,
         )
 
 
@@ -412,6 +424,10 @@ class GetDayTradingTool(BaseTool):
 
 class GetTotalReturnIndexOutput(_RowsOutput):
     rows: tuple[TotalReturnIndexRow, ...] = Field(default_factory=tuple)
+    # `chart_hint` (schemas/chart_hint.py): a single continuous index-level series over time is
+    # the textbook `line` case — the first real caller of that mark (until now only `bar`/`arc`
+    # had one).
+    chart_hint: ChartHint | None = None
 
 
 class GetTotalReturnIndexTool(BaseTool):
@@ -444,6 +460,13 @@ class GetTotalReturnIndexTool(BaseTool):
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             rows=rows,
+            chart_hint=ChartHint(
+                mark=Mark.LINE,
+                x=FieldDef(field="trade_date", type=FieldType.TEMPORAL),
+                y=FieldDef(field="price", type=FieldType.QUANTITATIVE),
+            )
+            if rows
+            else None,
         )
 
 
