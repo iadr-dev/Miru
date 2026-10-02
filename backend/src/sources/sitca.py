@@ -53,6 +53,11 @@ _COLUMN_FIELD = "ctl00$ContentPlaceHolder1$ddlQ_Column"
 _QUERY_BUTTON_FIELD = "ctl00$ContentPlaceHolder1$BtnQuery"
 _HIDDEN_FIELDS = ("__VIEWSTATE", "__VIEWSTATEGENERATOR", "__EVENTVALIDATION")
 
+# SITCA publishes a month's report with a lag of a month or more, so the dropdown's newest option
+# trails the calendar. A requested month beyond it is "not published yet", not a layout change.
+MONTH_NOT_PUBLISHED_DETAIL = "requested month not yet published by SITCA"
+MONTH_NOT_PUBLISHED_KEY = "month_not_published"
+
 _CAVEAT = (
     "SITCA (投信投顧公會) 月頻費率揭露 — 經理費/保管費為公告值，非即時；內扣總費用率(TER)於工具層"
     "近似為 經理費+保管費，未含其他營運費用，為下限估計而非經會計師查核之總費用率。"
@@ -252,6 +257,9 @@ async def _fetch_fee_table_rows(
         async with build_async_client(tls_policy=TLSPolicy.UNSAFE_EXPLICIT) as client:
             get_response = await client.get(_FEE_REPORT_URL)
             get_response.raise_for_status()
+            published = _MONTH_OPTION_RE.findall(get_response.text)
+            if year_month is not None and published and year_month not in published:
+                return None, MONTH_NOT_PUBLISHED_DETAIL
             form = _build_postback_form(get_response.text, year_month=year_month)
             if form is None:
                 return None, "SITCA form hidden fields / month options not found"
@@ -348,6 +356,11 @@ async def fetch_whole_market_etf_fees(
     (`job_etf_expense_ratio`'s monthly walk) — `None` keeps fetching the latest month, the
     original single-snapshot behavior."""
     rows, error = await _fetch_fee_table_rows(tls_policy=tls_policy, year_month=year_month)
+    if rows is None and error == MONTH_NOT_PUBLISHED_DETAIL:
+        return _result(
+            payload={"rows": [], MONTH_NOT_PUBLISHED_KEY: True},
+            health=SourceHealth(status=HealthStatus.STALE, detail=MONTH_NOT_PUBLISHED_DETAIL),
+        )
     if rows is None:
         return _result(
             payload={"rows": []},
@@ -412,4 +425,9 @@ def _result(*, payload: dict[str, object], health: SourceHealth) -> SourceResult
     )
 
 
-__all__ = ["SitcaAdapter", "fetch_whole_market_etf_fees"]
+__all__ = [
+    "MONTH_NOT_PUBLISHED_DETAIL",
+    "MONTH_NOT_PUBLISHED_KEY",
+    "SitcaAdapter",
+    "fetch_whole_market_etf_fees",
+]

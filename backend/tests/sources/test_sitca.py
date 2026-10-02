@@ -165,3 +165,25 @@ async def test_fetch_whole_market_transport_error_is_unreachable(
 
     assert result.health.status is HealthStatus.UNREACHABLE
     assert result.payload["rows"] == []
+
+
+async def test_fetch_whole_market_unpublished_month_is_flagged_not_layout_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A month past the dropdown's newest option (SITCA publishes with a lag) must be reported as
+    'not yet published', never as the layout-change failure — and must not POST at all."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        return httpx.Response(200, text=_load("fee_form.html"))
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(sitca_module, "build_async_client", factory)
+
+    result = await fetch_whole_market_etf_fees(tls_policy=TLSPolicy.STRICT, year_month="202612")
+
+    assert result.health.status is HealthStatus.STALE
+    assert result.health.detail == sitca_module.MONTH_NOT_PUBLISHED_DETAIL
+    assert result.payload == {"rows": [], sitca_module.MONTH_NOT_PUBLISHED_KEY: True}

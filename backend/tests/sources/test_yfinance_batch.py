@@ -6,9 +6,12 @@ the ~1,130-symbol universe flooded Yahoo's rate limiter regardless of any pacing
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import anyio.to_thread
 import pandas as pd
 import pytest
+import yfinance as yf
 
 import sources.yfinance.batch as batch_module
 from sources.yfinance.batch import _CHUNK_SIZE, batch_download
@@ -73,3 +76,28 @@ async def test_batch_download_throttles_between_chunks(
 
     # 3 chunks, 2 pauses (never before the first chunk).
     assert len(sleep_calls) == 2
+
+
+@pytest.mark.parametrize(("flag", "expected"), [(None, True), (False, False)])
+async def test_batch_download_forwards_auto_adjust(
+    monkeypatch: pytest.MonkeyPatch, flag: bool | None, expected: bool
+) -> None:
+    """Default stays adjusted (existing callers unchanged); `False` reaches `yf.download` so a
+    multi-year backfill can request raw as-traded prices."""
+    seen: dict[str, object] = {}
+
+    def fake_download(chunk: list[str], **kwargs: object) -> pd.DataFrame:
+        seen.update(kwargs)
+        return pd.DataFrame()
+
+    async def fake_run_sync(fn: Callable[[list[str]], object], chunk: list[str]) -> object:
+        return fn(chunk)
+
+    monkeypatch.setattr(yf, "download", fake_download)
+    monkeypatch.setattr(batch_module, "_init_tz_cache", lambda: None)
+    monkeypatch.setattr(batch_module.anyio.to_thread, "run_sync", fake_run_sync)
+
+    kwargs: dict[str, bool] = {} if flag is None else {"auto_adjust": flag}
+    await batch_download(["AAPL"], start="2024-01-02", end="2024-01-03", **kwargs)
+
+    assert seen["auto_adjust"] is expected

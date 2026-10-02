@@ -32,6 +32,7 @@ async def batch_download(
     start: str | None = None,
     end: str | None = None,
     interval: str = "1d",
+    auto_adjust: bool = True,
 ) -> Any:  # returns a raw yfinance/pandas MultiIndex DataFrame, the ingest
     # layer's own row-mapper is responsible for reshaping it, not this adapter
     """Batch multi-symbol OHLCV download (`yfinance.download([...], group_by='ticker')`),
@@ -40,6 +41,11 @@ async def batch_download(
 
     Runs each chunk's blocking download call in a threadpool, same as every other yfinance call
     in this package.
+
+    `auto_adjust=False` returns the raw as-traded OHLC. A multi-year range with the default
+    `True` is back-adjusted for dividends and can go negative on thin, high-yield OTC tickers,
+    so a historical backfill that must match the single-day rows the daily job stores passes
+    `False`.
     """
     symbol_list = list(symbols)
     chunks = [
@@ -58,7 +64,13 @@ async def batch_download(
         # worker per chunk is already the concurrency this call gets; no need for a second,
         # nested thread pool underneath it.
         return yf.download(
-            chunk, start=start, end=end, interval=interval, group_by="ticker", threads=False
+            chunk,
+            start=start,
+            end=end,
+            interval=interval,
+            group_by="ticker",
+            threads=False,
+            auto_adjust=auto_adjust,
         )
 
     frames: list[Any] = []

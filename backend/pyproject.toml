@@ -169,7 +169,9 @@ ignore_missing_imports = true
 # tools.* is the same: every tool's input/output is a frozen Pydantic model.
 # analytics.models / analytics.themes.models / analytics.screener.catalog define their own frozen
 # Pydantic result models (ScoreResult, FactorScore, SmaResult, Theme, ThemeMember, SymbolTheme,
-# TagDefinition, ...) with the identical model_config synthesized-Any edge.
+# TagDefinition, ...) with the identical model_config synthesized-Any edge. The screener funnel
+# modules (gates/presets/factor_catalog/engine) do the same for their own frozen request/result
+# models (GateDefaults, PresetCondition, FactorField, RunScreenerInput, ...).
 # agent.* defines its own frozen Pydantic models (HookVerdict, CompactionEntry, Plan,
 # ToolPlanStep) with the same model_config synthesized-Any edge. governance.textscan defines the
 # same HookVerdict model (agent.guardrails re-exports it from there, see that module's docstring)
@@ -196,6 +198,10 @@ module = [
   "analytics.models",
   "analytics.themes.models",
   "analytics.screener.catalog",
+  "analytics.screener.gates",
+  "analytics.screener.presets",
+  "analytics.screener.factor_catalog",
+  "analytics.screener.engine",
   "agent.*",
   "governance.*",
   "conversation.*",
