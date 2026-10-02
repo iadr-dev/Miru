@@ -63,7 +63,7 @@ from sources.mops import (
     fetch_whole_market_insider_transfer_declarations,
     fetch_whole_market_material_announcements,
 )
-from sources.sitca import fetch_whole_market_etf_fees
+from sources.sitca import MONTH_NOT_PUBLISHED_KEY, fetch_whole_market_etf_fees
 from sources.tpex_openapi import (
     fetch_whole_market_attention_stocks_tpex,
     fetch_whole_market_disposition_events_tpex,
@@ -804,6 +804,14 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
     result = await fetch_whole_market_etf_fees(
         tls_policy=ctx.tls_policy, year_month=run_date.strftime("%Y%m")
     )
+    if result.payload.get(MONTH_NOT_PUBLISHED_KEY) is True:
+        return journal_run(
+            ETF_EXPENSE_RATIO_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail=result.health.detail,
+        )
     if _fetch_error_status(result) is RunStatus.FAILED:
         return journal_run(
             ETF_EXPENSE_RATIO_DATASET,
