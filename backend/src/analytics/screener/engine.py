@@ -47,7 +47,7 @@ from analytics.indicators import PriceBar, kd, macd, rsi, sma
 from analytics.models import ScoreProfile, ScoreResult
 from analytics.scoring_batch import ETF_EXPENSE_RATIO_DATASET
 from analytics.scoring_store import get_all_scores_for_date
-from analytics.screener import store as tag_store
+from analytics.screener.batch import SCREENER_FLAGS_DATASET
 from analytics.screener.catalog import tag_keys
 from analytics.screener.factor_catalog import FactorField, get_factor_catalog
 from analytics.screener.gates import GateDefaults, GateOverrides, resolve_gates
@@ -683,7 +683,7 @@ async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genu
                 labels.append(condition.factor)
                 continue
             rows = tag_reader.read_partition(
-                tag_store.SCREENER_FLAGS_DATASET, Market.TW.value, partition_date
+                SCREENER_FLAGS_DATASET, Market.TW.value, partition_date
             )
             by_tag, _universe = _flag_symbols_by_tag(rows)
             per_condition.append(by_tag.get(condition.factor, set()) & gated_universe)
@@ -758,7 +758,7 @@ async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genu
 
 
 def _latest_tw_flag_date(reader: ParquetMarketDataReader) -> date_ | None:
-    market_dir = reader.root / f"dataset={tag_store.SCREENER_FLAGS_DATASET}" / "market=TW"
+    market_dir = reader.root / f"dataset={SCREENER_FLAGS_DATASET}" / "market=TW"
     if not market_dir.exists():
         return None
     candidates: list[date_] = []
@@ -769,7 +769,7 @@ def _latest_tw_flag_date(reader: ParquetMarketDataReader) -> date_ | None:
             day = date_.fromisoformat(child.name.removeprefix("date="))
         except ValueError:
             continue
-        if reader.has_partition(tag_store.SCREENER_FLAGS_DATASET, Market.TW.value, day):
+        if reader.has_partition(SCREENER_FLAGS_DATASET, Market.TW.value, day):
             candidates.append(day)
     return max(candidates) if candidates else None
 

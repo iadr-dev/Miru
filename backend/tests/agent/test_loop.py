@@ -138,6 +138,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_international_stock": "international_stock",
     "get_us_stock_price_minute": "us_price_minute",
     # theme_tools.py
+    "get_themes": "themes",
     "get_theme_members": "theme_members",
     "get_symbol_themes": "symbol_themes",
     "get_theme_tiers": "theme_tiers",
