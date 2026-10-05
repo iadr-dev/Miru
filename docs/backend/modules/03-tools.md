@@ -1,7 +1,8 @@
 # Module: Tool registry (`backend/src/tools/`)
 
 The agent's entire action surface. The agent **never** touches network or filesystem
-directly — only through registered tools. All tools are **read-only and always runnable**;
+directly — only through registered tools. All tools are **read-only and always runnable** (`propose_alert` is the one "propose-only" class:
+it computes nothing and writes nothing — see below);
 there is no safety-tier system and no confirmation/approval gate. The only access control is
 the **`sponsor` data-class entitlement** (paid FinMind data). These are also the tools
 projected over MCP (see [06-interfaces.md](06-interfaces.md)).
@@ -232,6 +233,40 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   (volume-surge, 52-week high/low) and a 智能 category (pre-bundled AND-combinations of existing
   tags, not a new composite score); the tools themselves are unchanged, enumerating the catalog
   dynamically. Fundamental-gate and theme tags remain later dispatches.)
+
+- `propose_alert` (`propose_alert_tools.py::ProposeAlertTool`) — **propose-only**: validates an
+  alert rule assembled from the user's words (`symbol`, `market` TW/US, a typed `RuleCondition`
+  from `schemas/alerts.py`, trigger mode, expiry) and echoes it as an `alert_proposal` card
+  (`card_type = "alert_proposal"`). It performs **no I/O and creates nothing** — the signed-in user
+  taps 建立 on the card and the *frontend* calls the ordinary `POST /alerts` (auth, caps, market
+  checks). So the confirm gate is the card, not a flag the model could skip, and the agent has no
+  write path. Validation lives in the input model (a Taiwan-only template on a US symbol, an
+  out-of-range threshold) so a bad proposal returns to the model as a correctable argument error.
+  Reachable in normal chat via `_WARM_TOOLS` (skill-less turns) and the `alert-proposal` skill
+  (`tools: [propose_alert, ask_user]`). The model does not choose the frequency or the lifetime
+  (`trigger_mode` is not an argument; the proposal is once-per-day, 90 days) — a live model once set
+  "once" unprompted; the user edits them after creating. The result carries a `next_step` note
+  ("the card is on screen; do not call again") because one model re-proposed in a loop without it.
+- `get_morning_brief` (`morning_brief_tools.py`) — the data behind the 晨間摘要: one call that runs
+  the market/macro/institution/sector/calendar/watchlist/ETF/news tools concurrently, isolates each
+  section's failure into an `unavailable` list, and adds rule-based `flags`. PUBLIC, deferred; see
+  [modules/14 §5](14-scheduler-alerts.md). Registered last because it composes the other tools.
+- `get_annual_fundamentals`, `get_revenue_seasonality`, `get_risk_metrics`, `get_etf_annual_summary`,
+  `get_comparison_metrics` (`report_tools.py`) — the pre-computed numbers behind the analysis
+  reports (see [modules/14 §4](14-scheduler-alerts.md)). PUBLIC, per-symbol, read the same
+  capabilities as the raw statement/price/dividend tools; results carry `chart_hints` and are
+  registered as deferred tools. `get_dividend_policy_summary` now defaults its window to five years
+  (the agent is not told today's date) and reports `days_to_fill` per 填息 event.
+- `propose_schedule` (`propose_schedule_tools.py::ProposeScheduleTool`) — **propose-only**, the
+  recurring-briefing twin of `propose_alert` (`card_type = "schedule_proposal"`). The model picks a
+  `template` from the `schemas/schedule_templates.py` catalogue (`pre_open_brief`,
+  `after_close_chip`, `disposition_watch`, `weekly_catalyst`, `weekly_etf`, `us_after_close`) and
+  ticker `targets` (one for every template except the pre-open brief, up to 10); it never supplies a
+  cron or a skill name. The output carries the resolved `trigger` and `action` — the exact bodies
+  `POST /schedules` takes — and the card posts them on 建立. No I/O, creates nothing. Reachable via
+  `_WARM_TOOLS` and the `schedule-proposal` skill (`tools: [propose_schedule, ask_user]`), whose
+  recurrence triggers (每天, 每週, 定期, 排程…) are weighted so "每天開盤前幫我看…" routes here and
+  not to the one-off `daily-context-brief`.
 
 **Confirmed not built (no matching `Capability`/adapter at all, not just no tool):**
 `get_disposition_stocks`/`get_disposition_forecast`/`get_attention_stocks` (only the narrower,

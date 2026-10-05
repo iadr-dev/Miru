@@ -12,8 +12,8 @@
 12	| 方案與帳單 / Billing | plans, BYOK checkbox, portal, history | `/billing/*` ([15](../../backend/modules/15-payments-paddle.md)) |
 13	| API 金鑰 / BYOK | store/remove keys | `/me/keys` |
 14	| 用量 / Usage & quota | resolved **limits** (chats/day, req/min, FinMind class, features) — ⚑ **live consumption ("X/3 used today") + cost are NOT exposed**: `/usage/summary` is unbuilt, `/usage/quota` returns limits only ([../DEVELOPMENT.md §4a](../DEVELOPMENT.md)) | `/usage/quota` |
-15	| **提醒與排程 / Alerts & Schedules** (Pro) | price/event **alert rules** + **scheduled jobs** (create/list/edit/delete) — the alerts home on **both web and mobile** (no top-level nav item) | `/alerts`, `/schedules` ([14](../../backend/modules/14-scheduler-alerts.md)) |
-16	| 通知偏好 / Alert prefs | channels (in-app/LINE/**telegram**/email/push), quiet hours, morning digest — ⚑ only **in-app** delivers today; LINE/telegram/email/push are no-network stubs ([../DEVELOPMENT.md §4d](../DEVELOPMENT.md)) | `/me/alert-preferences`, `/me/devices` ([14](../../backend/modules/14-scheduler-alerts.md)) |
+15	| **提醒與排程 / Alerts & Schedules** (all users; sponsor values masked) | template-based **alert rules** + **scheduled AI briefings** (create/list/edit/delete), notification history — the alerts home on **both web and mobile** (no top-level nav item); UX spec [alerts.md](alerts.md) | `/alerts`, `/schedules`, `/notifications` ([14](../../backend/modules/14-scheduler-alerts.md), the alerts v2 design) |
+16	| 通知偏好 / Alert prefs | *(v1 state; v2 per the alerts v2 design)* channels (in-app/LINE/**telegram**/email/push), quiet hours, morning digest — ⚑ only **in-app** delivers today; LINE/telegram/email/push are no-network stubs ([../DEVELOPMENT.md §4d](../DEVELOPMENT.md)) | `/me/alert-preferences`, `/me/devices` ([14](../../backend/modules/14-scheduler-alerts.md)) |
 17	| 記憶 / Memory | list + delete | `/memory` ([09](../../backend/modules/09-memory.md)) |
 18	
 19	## Also under 設定: **Screener** ([../screener/README.md](../screener/README.md) — on mobile; web has it as a primary nav item) · Themes. Alerts & Schedules is now a first-class Settings row above (both platforms).

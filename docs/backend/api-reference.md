@@ -324,21 +324,34 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 
 ---
 
-## 7. Scheduler & alerts ([modules/14](modules/14-scheduler-alerts.md)) — Pro; §9a carve-out
+## 7. Scheduler & alerts ([modules/14](modules/14-scheduler-alerts.md)) — open to all signed-in users under fair-use caps (the alerts v2 design); §9a carve-out
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/schedules` | Create (validated: user-authorized, read-only, quota-checked) |
 | GET | `/schedules` | List mine |
-| PATCH | `/schedules/{id}` | Enable/disable/edit |
+| PATCH | `/schedules/{id}` | Partial edit (implemented): send only changed fields — `enabled`, `trigger`, `action`, `delivery_channels`, `quiet_hours`, `daily_limit`; optional `expected_version` → 409 `stale_version`; a new `trigger` or re-enabling recomputes `next_run`; 422 `invalid_trigger` / `unknown_skill` / unknown fields |
 | DELETE | `/schedules/{id}` | Delete |
-| POST | `/alerts` | Create alert rule |
+| POST | `/alerts` | Create alert rule: scope `symbol`+`market` (TW/US) **xor** `watchlist_id`; `condition` is a template `{kind, ...}` (`close_price`, `daily_change`, `volume_surge`, `institutional_streak`, `attention_entry`) with decimal params; optional `trigger_mode` (`once`/`once_per_day`/`every_occurrence`), `cooldown_seconds`, `expires_in_days` (default 90, null = never), `explain`; empty channels / null quiet hours / null daily limit inherit preferences. 409 `cap_reached`, 422 `invalid_market`, 404 `watchlist_not_found` |
 | GET | `/alerts` | List mine |
-| PATCH/DELETE | `/alerts/{id}` | Edit/delete |
+| PATCH | `/alerts/{id}` | Partial edit (implemented): send only changed fields — `condition`, `trigger_mode`, `cooldown_seconds`, `expires_in_days` (null = never), `explain`, `channels`, `quiet_hours`, `daily_limit`, `enabled`; optional `expected_version` → 409 `stale_version` on mismatch; scope fields and unknown fields → 422 |
+| DELETE | `/alerts/{id}` | Delete |
+| POST | `/alerts/proposals` | v2: parse-only rule draft for the chat confirm card (creates nothing) |
+| POST | `/notifications/read` | v2: mark read `{ids[]}` or `{all:true}` |
+| POST | `/me/channels/line`, `/me/channels/telegram` | v2: start/complete external channel binding |
 | GET | `/notifications` | Delivered notifications |
 | GET | `/notifications/badge` | Lightweight counts `{unread_notifications, unread_threads, pending_alerts}` — mobile tab-island + bell dots (glyph+count, never color-alone) |
-| PUT | `/me/alert-preferences` | Channels, quiet hours, digest |
-| POST | `/me/devices` | Register native push token `{platform: ios\|android, token}` (idempotent); payload deep-links `{route, symbol?, thread_id?}` ([14](modules/14-scheduler-alerts.md) §4) |
+| GET/PUT | `/me/alert-preferences` | Channels, quiet hours, `timezone` (IANA, validated), daily cap, digest (v2 adds `GET`; `PUT` replaces the whole record) |
+| GET | `/me/channels` | Which external channels can reach the caller now `{email, push, line, telegram, telegram_available}` |
+| POST / DELETE | `/me/channels/line/link`, `/me/channels/line` | Issue a one-time LINE code (`{code, add_friend_url, expires_in_seconds}`) / unlink |
+| POST | `/webhooks/resend` | Resend webhook (Svix signature required, else 403): permanent bounce / complaint / Resend suppression → address suppressed |
+| GET / POST | `/email/unsubscribe?token=` | One-click email unsubscribe: GET shows a confirmation page, POST unsubscribes (RFC 8058 target). Invalid token → 400 |
+| POST | `/channels/line/webhook` | LINE webhook, `X-Line-Signature` required (403 otherwise); binds the sender when a message carries a valid code |
+| POST / DELETE | `/me/channels/telegram/link`, `/me/channels/telegram` | Issue a one-time Telegram link (`{url, expires_in_seconds}`) / unlink |
+| POST | `/webhooks/telegram` | Bot webhook, `X-Telegram-Bot-Api-Secret-Token` required (403 otherwise); binds the chat on `/start <token>` |
+| POST | `/alerts/batch` | 逐檔設定: up to 30 per-stock rules at once `{items:[{symbol,market,condition}], origin_watchlist_id?, trigger_mode?, expires_in_days?}`, all or nothing (409 `cap_reached`; 422 `template_market_mismatch` / duplicate stock; 404 `watchlist_not_found`). `POST /alerts` with a `watchlist_id` refuses a price-level condition (422 `template_scope_mismatch`) |
+| GET | `/alerts/symbol-check` | `?symbol&market` → `{checked, exists}`; whether the ticker has price data (a hint, never blocks creation) |
+| POST | `/me/devices` | Register native push token `{platform: ios\|android\|web, token}` (idempotent); payload deep-links `{route, symbol?, thread_id?}` ([14](modules/14-scheduler-alerts.md) §4) |
 | DELETE | `/me/devices/{token}` | Unregister (logout / rotation) |
 
 ---

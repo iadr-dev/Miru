@@ -152,6 +152,8 @@ This amends — but does not weaken — the rules above:
 
 ### 9a. Scheduler carve-out (overrides "no scheduler / no auto-poll")
 
+> **Amended by the alerts v2 design** (bounds 2 and 6 below are the amended text; ADR-0009 keeps the original as history). The amendment takes effect when modules/14 P0 ships — until then the v1 code still enforces the Pro gate.
+
 Rules §1.3 and §6 forbade schedulers, polling, and background jobs. The scheduler/alerts
 feature ([modules/14](modules/14-scheduler-alerts.md), [adr/0009](adr/0009-scheduler-governance-amendment.md))
 is permitted **only** within these hard bounds:
@@ -162,13 +164,21 @@ is permitted **only** within these hard bounds:
 2. **Read-only & non-streaming** — scheduled runs read canonical/official-EOD/history and
    build conversation/health context. They must **not** open live/real-time streams or poll
    at high frequency (that would violate §1.2/§1.3); a coarse post-close snapshot is fine.
-   Sponsor-data jobs require the owner to hold the entitlement (§4).
+   Evaluation reads the **ingested canonical store** (§9c output) — event-driven consumption of
+   ingest, no new polling and no per-user upstream fetch. Sponsor-class values reach a non-entitled
+   user only as the §4 `{locked, required_tier, preview}` mask, applied **server-side when the
+   notification is built** (never sent and hidden client-side).
 3. **Non-trading** — scheduled/alert outputs carry the same caveats; observations, never signals.
 4. **Quota-bounded** — jobs consume the owner's tier quota; over-quota jobs are skipped and
    reported, never retried in a tight loop.
 5. **Coarse, market-aware cadence** — post-close / pre-open / weekday cron aligned to EOD
    availability; **no high-frequency tick polling**.
-6. **Entitlement-gated** (Pro) and auditable — every run is journaled with its owner.
+6. **Open to all signed-in users under uniform fair-use caps** (not a tier feature) and
+   auditable — every run **and fire** is journaled with its owner.
+7. **Outbound delivery is user-authorized egress** — email / Web Push / LINE / Telegram sends
+   are confined to `scheduler/delivery/*`, carry only the user's own notification, never read
+   upstream market data, use the §5 TLS policy, and take channel credentials from env only (§1.6).
+   Every outbound body passes `guardrails.check_output` first and fails closed to a fixed template.
 
 ### 9b. Live-quote carve-out (overrides "no auto-polling / no streaming" for intraday quotes)
 

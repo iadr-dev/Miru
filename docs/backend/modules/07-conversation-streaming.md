@@ -107,7 +107,7 @@ carries a common envelope so the frontend can attribute each token/tool to the r
 | `caveat` | `{kind, text}` | currentness / non-trading caveat surfaced |
 | `message` | `{text, framework}` | **real** — the one final-answer frame the driver publishes just before `turn.end`; not chunked/streamed token-by-token (see `message.delta` below) |
 | `synthesis.start` | `{from_agents:[...]}` | main agent begins merging sub-agent results |
-| `rich_card` | `{card_type, data}` | structured UI card (stock card, comparison table, chart, gauge) — **real**, see status note below |
+| `rich_card` | `{card_type, data}` | structured UI card (stock card, comparison table, chart, gauge) — **real**, see status note below. Interactive kinds: `ask_user` (option tap) and `alert_proposal` (`propose_alert` tool → a confirm card whose 建立 button makes the *frontend* call `POST /alerts`; the agent never creates the rule) |
 | `ask_user` | `{prompt, options?, kind}` | agent needs clarification (ambiguous symbol, missing param) |
 | `follow_up` | `{suggestions:[...]}` | suggested next questions/actions (chips) |
 | `pet.reaction` | `{pet_id, cue}` | **cosmetic** companion avatar cue ([21](21-pet-gamification.md)) — separate UI region, ignorable |

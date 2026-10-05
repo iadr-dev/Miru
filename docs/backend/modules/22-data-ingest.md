@@ -191,11 +191,14 @@ never scores/flags stale or partial data.
 
 **On completion → cache-invalidation signal.** The seam for this is real
 (`ingest/data_updates.py`'s `DataUpdatePublisher` Protocol + `NoOpDataUpdatePublisher` default,
-wired onto `IngestContext.data_update_publisher`), and the **whole-market FinMind jobs in
-`ingest/jobs.py` do call `publish_data_updated({capability, market, as_of, scope})`** on landing —
-only the leader publishes (same `is_leader()` gate as the write itself), and with no concrete
-transport wired the default is a no-op, so an ingest run still lands its partition either way and
-clients fall back to boundary-anchored revalidation. **`scoring_batch` and `screener_flags`
+wired onto `IngestContext.data_update_publisher`), and **every job in `ingest/jobs.py` and
+`ingest/us_jobs.py` that feeds a cached dataset calls
+`publish_data_updated({capability, market, as_of, scope})`** on landing — only the leader publishes
+(same `is_leader()` gate as the write itself). The daemon binds the **real Redis publisher** via
+`ingest/publisher_binding.py` (the `INGEST_DATA_UPDATE_PUBLISHER_FACTORY` setting names a factory in
+`events/`, which `ingest/` may not import statically); on the in-memory bus, with the setting
+emptied, or on any wiring failure it keeps the no-op, so an ingest run still lands its partition
+either way and clients fall back to boundary-anchored revalidation. **`scoring_batch` and `screener_flags`
 (module 20's two real derived-compute jobs) do not call this publisher** — confirmed by reading
 both modules directly; they write their result and journal the run, nothing more. So the
 "`compute-scores`→`{score,…}`" style per-job event-name mapping this section originally described
