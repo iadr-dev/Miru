@@ -19,10 +19,14 @@ longer than that batch job's own `_CHIP_LOOKBACK_DAYS=12` window isn't silently 
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import date as date_
 from enum import StrEnum
+from typing import cast
 
+import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 
 from analytics.screener import chip_streaks
@@ -40,6 +44,10 @@ _DEFAULT_TOP_N = 10
 # screener-tag batch job's own `_CHIP_LOOKBACK_DAYS=12` (that window is sized for a fixed 3-day
 # streak check plus a 5-day cumulative check, not for measuring an arbitrarily long streak).
 _STREAK_LOOKBACK_TRADING_DAYS = 20
+
+# Upper bound on serving a cached ranking even if the store fingerprint didn't change (an
+# idempotent same-date re-write doesn't bump a directory mtime).
+_RANKING_CACHE_TTL_S = 600.0
 
 _DEALER_INVESTOR = "Dealer_self"
 _INVESTMENT_TRUST_INVESTOR = "Investment_Trust"
@@ -145,28 +153,39 @@ def _streak_rows(
     # The trailing `_STREAK_LOOKBACK_TRADING_DAYS` actually-ingested dates, not a calendar-day
     # window — a holiday/weekend gap in the raw date range would otherwise under-fill the window.
     window_dates = tuple(sorted(known_dates)[-_STREAK_LOOKBACK_TRADING_DAYS:])
-    raw_rows = store.read_range(INSTITUTIONAL_FLOW_DATASET, "TW", window_dates)
-
+    # One batched, column-projected DuckDB read + a vectorised per-day net, instead of a
+    # connection-per-date `read_partition` loop boxing ~20 days of whole-market rows (all three
+    # investor types) into dicts: the cold path dropped from ~13s to a second or two.
+    frame = store.read_range_frame(
+        INSTITUTIONAL_FLOW_DATASET,
+        "TW",
+        window_dates,
+        columns=("symbol", "investor", "trade_date", "buy", "sell"),
+    )
     investor = _STREAK_INVESTOR_BY_KIND[kind]
-    per_symbol: dict[str, dict[str, float]] = defaultdict(dict)
-    for row in raw_rows:
-        symbol = row.get("symbol")
-        row_investor = row.get("investor")
-        trade_date = row.get("trade_date")
+    # Positional tuples, not attribute access: pandas has no stub-backed row types here (same
+    # idiom as `analytics/scoring_batch.py::_flow_rows_by_symbol`).
+    flow_tuples = cast(
+        "Iterable[tuple[object, object, object, object, object]]",
+        frame.itertuples(index=False, name=None),
+    )
+    per_symbol_days: dict[str, dict[str, float]] = defaultdict(dict)
+    for symbol, row_investor, trade_date, buy, sell in flow_tuples:
         if not isinstance(symbol, str) or row_investor != investor or trade_date is None:
             continue
         day_key = str(trade_date)
-        buy = row.get("buy")
-        sell = row.get("sell")
         net = float(
             (buy if isinstance(buy, int | float) else 0)
             - (sell if isinstance(sell, int | float) else 0)
         )
-        per_symbol[symbol][day_key] = per_symbol[symbol].get(day_key, 0.0) + net
+        per_symbol_days[symbol][day_key] = per_symbol_days[symbol].get(day_key, 0.0) + net
+    per_symbol: dict[str, list[float]] = {
+        symbol: [net for _, net in sorted(per_day.items())]
+        for symbol, per_day in per_symbol_days.items()
+    }
 
     ranked: list[TwRankingRow] = []
-    for symbol, per_day in per_symbol.items():
-        series = [net for _, net in sorted(per_day.items())]
+    for symbol, series in per_symbol.items():
         length = chip_streaks.streak_length(series)
         if length == 0:
             continue
@@ -389,18 +408,47 @@ class GetTwMarketRankingsTool(BaseTool):
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
+        # kind -> (computed-at monotonic seconds, store freshness token, FULL ranking). The
+        # ranking is identical for every caller of a kind — `top_n` and `symbol` only slice it —
+        # so a stock page asking "does 2330 have a foreign streak" must not recompute (and
+        # re-read 20 days of whole-market flow) every time.
+        self._full_rankings: dict[
+            TwRankingKind, tuple[float, object, GetTwMarketRankingsOutput]
+        ] = {}
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetTwMarketRankingsInput, args)
+        # Synchronous DuckDB + pure-Python aggregation: off the event loop so it can't freeze every
+        # other request (and the SSE fan-out) while it runs.
+        return await anyio.to_thread.run_sync(self._rank, typed)
+
+    def _rank(self, typed: GetTwMarketRankingsInput) -> GetTwMarketRankingsOutput:
+        full = self._full_ranking(typed.kind)
+        if typed.symbol is not None:
+            return full.model_copy(
+                update={"rows": tuple(r for r in full.rows if r.symbol == typed.symbol)}
+            )
+        return full.model_copy(update={"rows": full.rows[: typed.top_n]})
+
+    def _full_ranking(self, kind: TwRankingKind) -> GetTwMarketRankingsOutput:
+        token = self._store.freshness_token("TW")
+        cached = self._full_rankings.get(kind)
+        now = time.monotonic()
+        if cached is not None and cached[1] == token and now - cached[0] < _RANKING_CACHE_TTL_S:
+            return cached[2]
         names_by_symbol = _names_by_symbol(self._store)
-        if typed.kind in _STREAK_INVESTOR_BY_KIND:
-            return _streak_rows(self._store, typed.kind, names_by_symbol, typed.top_n, typed.symbol)
-        if typed.kind is TwRankingKind.MARGIN_CHANGE:
-            return _margin_change_rows(self._store, names_by_symbol, typed.top_n, typed.symbol)
-        if typed.kind is TwRankingKind.DIVIDEND_YIELD:
-            return _dividend_yield_rows(self._store, names_by_symbol, typed.top_n, typed.symbol)
-        return _revenue_growth_rows(self._store, names_by_symbol, typed.top_n, typed.symbol)
+        everything = 1_000_000  # the slice to `top_n` happens after caching, in `_rank`
+        if kind in _STREAK_INVESTOR_BY_KIND:
+            full = _streak_rows(self._store, kind, names_by_symbol, everything)
+        elif kind is TwRankingKind.MARGIN_CHANGE:
+            full = _margin_change_rows(self._store, names_by_symbol, everything)
+        elif kind is TwRankingKind.DIVIDEND_YIELD:
+            full = _dividend_yield_rows(self._store, names_by_symbol, everything)
+        else:
+            full = _revenue_growth_rows(self._store, names_by_symbol, everything)
+        self._full_rankings[kind] = (now, token, full)
+        return full
 
 
 def build_registration_table() -> list[tuple[Tool, bool]]:

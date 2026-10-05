@@ -1,28 +1,27 @@
 """Concrete `DeliveryChannel` implementations, one per channel.
 
-Design decision on how "real" each channel is in this phase (mirrors the voice-provider
-convention, where the Protocol + a deterministic no-network stub ship in the default profile and
-the live transport is a config-selected seam deferred until wired):
+Every external channel follows the same two-step shape: `build_request` shapes the exact provider
+request (endpoint, headers, body — real and unit-testable with no socket), then `send` hands it to
+an injected transport. A channel with no credential configured reports a no-network success, so a
+development profile with no provider accounts behaves exactly as before; a configured channel
+really sends, and maps the provider's answer to a receipt (`retryable` for a network failure, 429
+or 5xx; permanent for a 4xx such as a blocked bot or a stale device token).
 
-- **in-app** — fully real. The durable in-app record is the `notifications` row the worker
-  persists; this channel's `send` therefore succeeds without any network, because the row *is*
-  the delivery. It is the one channel with no external dependency at all.
-- **LINE / Telegram / email / push (APNs, FCM)** — real *request shaping* (correct endpoint URL
-  and payload shape for each provider's API), but the actual socket write is intentionally not
-  performed here. Two reasons: (1) the "only `sources/` opens a socket" invariant means the live
-  HTTP transport belongs under `sources/`, wired later behind this same Protocol; (2) the default
-  test profile must never hit a live upstream. Each channel below builds the exact request it
-  *would* send (so the wire contract is real and testable) and, when no credential is configured,
-  reports a successful no-network delivery — the same shape a real transport returns, so swapping
-  the transport in later is a construction-site change, not a call-site one.
+- **in-app** — the durable `notifications` row the worker writes *is* the delivery.
+- **LINE / Telegram** — one JSON POST to the provider's bot API.
+- **email** — Resend's HTTP API, with the notification id as the idempotency key.
+- **push** — browser Web Push (VAPID), one encrypted message per subscribed browser.
 
-Secrets discipline: channel credentials and recipient addresses/tokens are never bound into a
-log call. A channel logs only its kind and a boolean outcome.
+Secrets discipline: channel credentials and recipient addresses/tokens are never bound into a log
+call. A channel logs only its kind and a boolean outcome.
 """
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+import html
+import json
+from typing import Protocol, cast, runtime_checkable
+from urllib.parse import quote
 
 import structlog
 
@@ -33,11 +32,21 @@ from scheduler.delivery.base import (
     DeliveryReceipt,
     DeliveryRecipient,
 )
+from scheduler.delivery.push_endpoint import subscription_endpoint_allowed
+from scheduler.delivery.transport import (
+    HttpxTransport,
+    OutboundTransport,
+    PywebpushSender,
+    TransportResult,
+    WebPushSender,
+)
 from scheduler.models import DeliveryChannelKind
+from schemas.alerts import NON_ADVICE_FOOTER
 
 logger = structlog.get_logger(__name__)
 
 _JSON_CONTENT_TYPE = "application/json"
+_NO_NETWORK = "no-network profile"
 
 
 class ChannelNotConfiguredError(RuntimeError):
@@ -46,9 +55,7 @@ class ChannelNotConfiguredError(RuntimeError):
 
 
 class OutboundRequest:
-    """The fully-shaped request a live transport would send. Built and returned by each channel
-    so the wire contract (method, url, headers, json body) is real and unit-testable without a
-    socket. `headers`/`json` never contain a secret in a form this object logs — the channel
+    """The fully-shaped request a transport sends. `headers`/`json` carry credentials; the channel
     passes them to a transport, never to a logger."""
 
     __slots__ = ("headers", "json", "method", "url")
@@ -65,6 +72,25 @@ class OutboundRequest:
         self.url = url
         self.headers = headers
         self.json = json
+
+
+def _text(notification: DeliveryNotification) -> str:
+    return f"{notification.title}\n{notification.body}".strip()
+
+
+def _receipt(kind: DeliveryChannelKind, result: TransportResult) -> DeliveryReceipt:
+    logger.info("delivery_sent", channel=kind.value, ok=result.ok, status=result.status)
+    return DeliveryReceipt(
+        channel=kind,
+        delivered=result.ok,
+        retryable=result.retryable,
+        provider_message_id=result.message_id,
+        detail=result.detail,
+    )
+
+
+def _unaddressable(kind: DeliveryChannelKind, exc: ChannelNotConfiguredError) -> DeliveryReceipt:
+    return DeliveryReceipt(channel=kind, delivered=False, retryable=False, detail=str(exc))
 
 
 class InAppChannel:
@@ -90,8 +116,9 @@ class LineMessagingChannel:
     kind = DeliveryChannelKind.LINE
     _PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
         self._token = settings.line_messaging_channel_access_token
+        self._transport = transport
 
     def build_request(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
@@ -107,23 +134,24 @@ class LineMessagingChannel:
             },
             json={
                 "to": recipient.line_user_id,
-                "messages": [
-                    {"type": "text", "text": f"{notification.title}\n{notification.body}".strip()}
-                ],
+                "messages": [{"type": "text", "text": _text(notification)}],
             },
         )
 
     async def send(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
-        return await _shaped_send(self, notification, recipient, configured=bool(self._token))
+        return await _post_json_send(
+            self, self._transport, notification, recipient, configured=bool(self._token)
+        )
 
 
 class TelegramChannel:
     kind = DeliveryChannelKind.TELEGRAM
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
         self._token = settings.telegram_bot_token
+        self._transport = transport
 
     def build_request(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
@@ -134,78 +162,176 @@ class TelegramChannel:
             method="POST",
             url=f"https://api.telegram.org/bot{self._token or ''}/sendMessage",
             headers={"Content-Type": _JSON_CONTENT_TYPE},
-            json={
-                "chat_id": recipient.telegram_chat_id,
-                "text": f"{notification.title}\n{notification.body}".strip(),
-            },
+            json={"chat_id": recipient.telegram_chat_id, "text": _text(notification)},
         )
 
     async def send(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
-        return await _shaped_send(self, notification, recipient, configured=bool(self._token))
+        return await _post_json_send(
+            self, self._transport, notification, recipient, configured=bool(self._token)
+        )
 
 
 class EmailChannel:
-    """SMTP email. `build_request` returns the message envelope (the SMTP transport is the
-    deferred seam); an unconfigured host reports a no-network success in the default profile."""
+    """Email through Resend's HTTP API (`POST /emails`). It is a transactional message — one the
+    user asked for by setting an alert or schedule — so it carries a plain-text body plus a small
+    accessible HTML copy, and the non-advice footer. The notification id is the `Idempotency-Key`,
+    so a retried send after a timeout can never deliver the same email twice."""
 
     kind = DeliveryChannelKind.EMAIL
+    _URL = "https://api.resend.com/emails"
 
-    def __init__(self, settings: Settings) -> None:
-        self._host = settings.email_smtp_host
+    def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
+        self._key = settings.resend_api_key
         self._from = settings.email_from_address
+        self._transport = transport
 
     def build_request(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> OutboundRequest:
         if recipient.email_address is None:
             raise ChannelNotConfiguredError("no email address for recipient")
+        text = (
+            notification.body
+            if NON_ADVICE_FOOTER in notification.body
+            else f"{notification.body}\n\n{NON_ADVICE_FOOTER}"
+        )
+        link = recipient.unsubscribe_url
+        if link is not None:
+            text = f"{text}\n\n不想再收到電子郵件通知？一鍵取消：{link}"
+        payload: dict[str, object] = {
+            "from": self._from or "",
+            "to": [recipient.email_address],
+            "subject": notification.title,
+            "text": text,
+            "html": _email_html(notification.title, text),
+        }
+        if link is not None:
+            # RFC 8058: the mail client shows its own "unsubscribe" button and POSTs to the link.
+            payload["headers"] = {
+                "List-Unsubscribe": f"<{link}>",
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            }
         return OutboundRequest(
-            method="SMTP",
-            url=self._host or "",
-            headers={"From": self._from or "", "To": recipient.email_address},
-            json={"subject": notification.title, "body": notification.body},
+            method="POST",
+            url=self._URL,
+            headers={
+                "Authorization": f"Bearer {self._key or ''}",
+                "Content-Type": _JSON_CONTENT_TYPE,
+                "Idempotency-Key": notification.notification_id,
+            },
+            json=payload,
         )
 
     async def send(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
-        return await _shaped_send(self, notification, recipient, configured=bool(self._host))
+        return await _post_json_send(
+            self,
+            self._transport,
+            notification,
+            recipient,
+            configured=bool(self._key and self._from),
+        )
+
+
+def _email_html(title: str, text: str) -> str:
+    """A minimal, accessible HTML copy: declared language, a <title>, real paragraphs, no images
+    and no colour-only meaning — it reads the same as the plain-text part."""
+    paragraphs = "".join(
+        f"<p>{html.escape(block).replace(chr(10), '<br>')}</p>"
+        for block in text.split("\n\n")
+        if block.strip()
+    )
+    return (
+        '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">'
+        f"<title>{html.escape(title)}</title></head><body>"
+        f"<h1>{html.escape(title)}</h1>{paragraphs}</body></html>"
+    )
 
 
 class PushChannel:
-    """Native push (APNs/FCM). One notification fans out to a user's registered device tokens;
-    the payload carries the deep-link so a tap opens the right surface."""
+    """Browser notifications via Web Push. A user's registered web devices are JSON-encoded
+    `PushSubscription`s; one encrypted push is sent to each. The receipt is delivered when at least
+    one browser accepted it, retryable only when none did and a failure was transient, and it lists
+    the subscriptions the push service reported gone so the worker can prune them."""
 
     kind = DeliveryChannelKind.PUSH
 
-    def __init__(self, settings: Settings) -> None:
-        self._configured = bool(settings.apns_auth_key or settings.fcm_service_account_json)
+    def __init__(self, settings: Settings, sender: WebPushSender | None = None) -> None:
+        self._configured = bool(settings.vapid_public_key and settings.vapid_private_key)
+        self._sender = sender
 
-    def build_request(
-        self, notification: DeliveryNotification, recipient: DeliveryRecipient
-    ) -> OutboundRequest:
-        if not recipient.device_tokens:
-            raise ChannelNotConfiguredError("no device tokens for recipient")
-        return OutboundRequest(
-            method="POST",
-            url="https://fcm.googleapis.com/v1/messages:send",
-            headers={"Content-Type": _JSON_CONTENT_TYPE},
-            json={
-                "tokens": list(recipient.device_tokens),
-                "notification": {"title": notification.title, "body": notification.body},
-                "data": {
-                    "deep_link": notification.deep_link,
-                    "notification_id": notification.notification_id,
-                },
+    @staticmethod
+    def build_payload(notification: DeliveryNotification) -> str:
+        """The JSON the service worker shows as a notification: short text plus the tap target."""
+        return json.dumps(
+            {
+                "title": notification.title,
+                "body": notification.body,
+                "url": _push_url(notification.deep_link),
+                "id": notification.notification_id,
             },
+            ensure_ascii=False,
         )
 
     async def send(
         self, notification: DeliveryNotification, recipient: DeliveryRecipient
     ) -> DeliveryReceipt:
-        return await _shaped_send(self, notification, recipient, configured=self._configured)
+        if not recipient.device_tokens:
+            return _unaddressable(self.kind, ChannelNotConfiguredError("no device tokens"))
+        if not (self._configured and self._sender):
+            logger.info("delivery_shaped", channel=self.kind.value, configured=False)
+            return DeliveryReceipt(channel=self.kind, delivered=True, detail=_NO_NETWORK)
+        payload = self.build_payload(notification)
+        results: list[TransportResult] = []
+        stale: list[str] = []
+        for token in recipient.device_tokens:
+            subscription = _parse_subscription(token)
+            if subscription is None:
+                stale.append(token)  # not a subscription at all (e.g. a leftover native token)
+                continue
+            result = await self._sender.send(subscription=subscription, payload=payload)
+            results.append(result)
+            if result.gone:
+                stale.append(token)
+        accepted = [r for r in results if r.ok]
+        logger.info(
+            "delivery_sent", channel=self.kind.value, ok=bool(accepted), devices=len(results)
+        )
+        return DeliveryReceipt(
+            channel=self.kind,
+            delivered=bool(accepted),
+            retryable=not accepted and any(r.retryable for r in results),
+            detail="" if accepted else "no device accepted",
+            stale_tokens=tuple(stale),
+        )
+
+
+def _parse_subscription(token: str) -> dict[str, object] | None:
+    """The subscription, or None if the token is not one — including an endpoint that is not an
+    allow-listed push service (checked again here so a row stored before the registration check, or
+    written some other way, can never make the server call an arbitrary URL)."""
+    if not subscription_endpoint_allowed(token):
+        return None
+    parsed = json.loads(token)
+    if isinstance(parsed, dict) and parsed.get("keys"):
+        return cast("dict[str, object]", parsed)
+    return None
+
+
+_LINK_ROUTES = {"stock": "/stock/{detail}", "thread": "/chat?thread={detail}"}
+
+
+def _push_url(deep_link: dict[str, object]) -> str:
+    """Where a tap on the browser notification goes (locale-less; the app resolves the prefix)."""
+    route = deep_link.get("route")
+    detail = deep_link.get("symbol") or deep_link.get("thread_id")
+    template = _LINK_ROUTES.get(str(route))
+    if template and detail:
+        return template.format(detail=quote(str(detail), safe=""))
+    return "/settings/alerts"
 
 
 @runtime_checkable
@@ -219,44 +345,46 @@ class _ShapedChannel(Protocol):
     ) -> OutboundRequest: ...
 
 
-async def _shaped_send(
+async def _post_json_send(
     channel: _ShapedChannel,
+    transport: OutboundTransport | None,
     notification: DeliveryNotification,
     recipient: DeliveryRecipient,
     *,
     configured: bool,
 ) -> DeliveryReceipt:
-    """Shared send path for the external channels: build the real request (validating the
-    recipient is addressable), then — in the default no-network profile — report a successful
-    no-network delivery. When a live transport is wired under `sources/`, it consumes the built
-    request here; nothing about the call site changes."""
+    """Shared send path for the JSON-POST channels: build the real request (validating that the
+    recipient is addressable), then send it — or, with no credential or transport, report a
+    no-network success so an unconfigured profile is not a failure."""
     try:
         request = channel.build_request(notification, recipient)
     except ChannelNotConfiguredError as exc:
-        return DeliveryReceipt(
-            channel=channel.kind, delivered=False, retryable=False, detail=str(exc)
+        return _unaddressable(channel.kind, exc)
+    if not (configured and transport is not None):
+        logger.info("delivery_shaped", channel=channel.kind.value, configured=configured)
+        return DeliveryReceipt(channel=channel.kind, delivered=True, detail=_NO_NETWORK)
+    result = await transport.post_json(request.url, headers=request.headers, body=request.json)
+    return _receipt(channel.kind, result)
+
+
+def build_default_channels(
+    settings: Settings, *, live: bool = False
+) -> dict[DeliveryChannelKind, DeliveryChannel]:
+    """The config-selected channel set the worker dispatches through. `live=True` (the scheduler
+    daemon) wires the real transports; everything else — tests, the API process — keeps the
+    no-network behaviour, so constructing channels never opens a socket by accident."""
+    transport = HttpxTransport() if live else None
+    web_push: WebPushSender | None = None
+    if live and settings.vapid_private_key and settings.vapid_public_key:
+        web_push = PywebpushSender(
+            private_key=settings.vapid_private_key, subject=settings.vapid_subject
         )
-    logger.info(
-        "delivery_shaped",
-        channel=channel.kind.value,
-        notification_id=notification.notification_id,
-        configured=configured,
-        method=request.method,
-    )
-    # No socket in this phase; the live transport is the deferred seam. The request shape above
-    # is what it will send. A no-network profile is a successful delivery of the in-app record's
-    # mirror, not a failure.
-    return DeliveryReceipt(channel=channel.kind, delivered=True, detail="no-network profile")
-
-
-def build_default_channels(settings: Settings) -> dict[DeliveryChannelKind, DeliveryChannel]:
-    """The config-selected channel set the worker dispatches through."""
     return {
         DeliveryChannelKind.IN_APP: InAppChannel(),
-        DeliveryChannelKind.LINE: LineMessagingChannel(settings),
-        DeliveryChannelKind.TELEGRAM: TelegramChannel(settings),
-        DeliveryChannelKind.EMAIL: EmailChannel(settings),
-        DeliveryChannelKind.PUSH: PushChannel(settings),
+        DeliveryChannelKind.LINE: LineMessagingChannel(settings, transport),
+        DeliveryChannelKind.TELEGRAM: TelegramChannel(settings, transport),
+        DeliveryChannelKind.EMAIL: EmailChannel(settings, transport),
+        DeliveryChannelKind.PUSH: PushChannel(settings, web_push),
     }
 
 

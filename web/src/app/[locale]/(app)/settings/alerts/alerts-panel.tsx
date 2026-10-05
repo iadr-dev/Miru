@@ -1,52 +1,55 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { SettingsSection } from "@/components/settings/settings-section";
-import { RequiresProNotice, SettingsLoading } from "@/components/settings/settings-states";
-import { useRouter } from "@/i18n/navigation";
-import { listAlerts, SettingsApiError } from "@/lib/api/settings";
+import type { AlertFormPreset } from "./alert-form";
 import { AlertList } from "./alert-list";
+import { NotificationHistory } from "./notification-history";
 import { ScheduleList } from "./schedule-list";
 
-/** 提醒與排程 / Alerts & Schedules — Pro-gated. A 403 `feature_not_entitled` on the probe request
- * renders a calm upgrade notice instead of the builder (never 馬賽克, per interaction-spec §2.13). */
+/** 提醒與排程 / Alerts & Schedules. Open to every signed-in user (modules/14) — there is no tier gate
+ * on the feature itself; what a tier gates is the *data* a notification carries. Each list owns its
+ * own loading / empty / error states, so one failing list never blanks the other. */
 export function AlertsPanel(): ReactNode {
   const t = useTranslations("settings.alerts");
-  const router = useRouter();
-
-  const entitlementProbe = useQuery({
-    queryKey: ["settings", "alerts"],
-    queryFn: listAlerts,
-    retry: false,
-  });
-
-  if (entitlementProbe.isLoading) {
-    return (
-      <SettingsSection title={t("title")}>
-        <SettingsLoading rows={2} />
-      </SettingsSection>
-    );
-  }
-
-  const notEntitled =
-    entitlementProbe.isError &&
-    entitlementProbe.error instanceof SettingsApiError &&
-    entitlementProbe.error.code === "feature_not_entitled";
-
-  if (notEntitled) {
-    return <RequiresProNotice onUpgrade={() => router.push("/settings/billing")} />;
-  }
+  const preset = presetFromParams(useSearchParams());
 
   return (
     <>
       <SettingsSection title={t("title")} description={t("description")} className="mb-6">
-        <AlertList />
+        <AlertList preset={preset} />
       </SettingsSection>
-      <SettingsSection title={t("schedules.title")} description={t("schedules.description")}>
+      <SettingsSection
+        title={t("schedules.title")}
+        description={t("schedules.description")}
+        className="mb-6"
+      >
         <ScheduleList />
+      </SettingsSection>
+      <SettingsSection title={t("history.title")} description={t("history.description")}>
+        <NotificationHistory />
       </SettingsSection>
     </>
   );
+}
+
+/** `?alert=symbol&symbol=2330&market=TW`, `?alert=group&group=<id>` or `?alert=perStock&group=<id>` —
+ * how the watchlist's bell and group menu open the form already pointed at what was clicked. */
+function presetFromParams(params: URLSearchParams): AlertFormPreset | undefined {
+  const kind = params.get("alert");
+  const group = params.get("group") ?? undefined;
+  if (kind === "symbol") {
+    const symbol = params.get("symbol")?.trim().toUpperCase();
+    const market = params.get("market") === "US" ? "US" : "TW";
+    return symbol ? { scope: "symbol", symbol, market } : undefined;
+  }
+  if (kind === "group") {
+    return { scope: "watchlist", groupId: group };
+  }
+  if (kind === "perStock") {
+    return { scope: "perStock", groupId: group };
+  }
+  return undefined;
 }

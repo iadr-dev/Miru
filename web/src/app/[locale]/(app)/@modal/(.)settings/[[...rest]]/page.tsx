@@ -1,6 +1,5 @@
 import { setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
-import { SettingsDialog } from "@/components/settings/settings-dialog";
 import { SettingsPanelSwitch } from "@/components/settings/settings-panel-switch";
 
 /**
@@ -18,9 +17,5 @@ export default async function InterceptedSettingsPage({
 }): Promise<ReactNode> {
   const { locale, rest } = await params;
   setRequestLocale(locale);
-  return (
-    <SettingsDialog>
-      <SettingsPanelSwitch segment={rest?.[0]} />
-    </SettingsDialog>
-  );
+  return <SettingsPanelSwitch segment={rest?.[0]} />;
 }

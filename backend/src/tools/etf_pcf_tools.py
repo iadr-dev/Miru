@@ -25,6 +25,7 @@ from schemas.capabilities import (
     EtfThemeTags,
     EtfTrailingReturns,
 )
+from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
 from tools.base import BaseTool, Tool, ToolContext, parse_args
@@ -178,6 +179,15 @@ class GetEtfThemeTagsTool(BaseTool):
         )
 
 
+class TrailingReturnPoint(BaseModel):
+    """One horizon of `EtfTrailingReturns`, flattened so a chart can plot the six of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    horizon: str
+    return_pct: float
+
+
 class GetEtfTrailingReturnsOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -185,6 +195,28 @@ class GetEtfTrailingReturnsOutput(BaseModel):
     currentness_caveat: str = Field(min_length=1)
     health_status: HealthStatus
     returns: EtfTrailingReturns | None = None
+    # The same six figures as a list, so the bar chart below can plot them. Horizons the history
+    # does not reach are simply absent — never drawn as a zero bar.
+    series: tuple[TrailingReturnPoint, ...] = Field(default_factory=tuple)
+    chart_hint: ChartHint | None = None
+
+
+def _trailing_series(returns: EtfTrailingReturns | None) -> tuple[TrailingReturnPoint, ...]:
+    if returns is None:
+        return ()
+    horizons = (
+        ("1個月", returns.return_1m_pct),
+        ("1季", returns.return_1q_pct),
+        ("半年", returns.return_6m_pct),
+        ("1年", returns.return_1y_pct),
+        ("3年", returns.return_3y_pct),
+        ("5年", returns.return_5y_pct),
+    )
+    return tuple(
+        TrailingReturnPoint(horizon=label, return_pct=value)
+        for label, value in horizons
+        if value is not None
+    )
 
 
 class GetEtfTrailingReturnsTool(BaseTool):
@@ -220,11 +252,22 @@ class GetEtfTrailingReturnsTool(BaseTool):
             if isinstance(raw_returns, dict)
             else None
         )
+        series = _trailing_series(returns)
         return GetEtfTrailingReturnsOutput(
             source_id=result.source_id,
             currentness_caveat=result.currentness_caveat,
             health_status=result.health.status,
             returns=returns,
+            series=series,
+            chart_hint=ChartHint(
+                mark=Mark.BAR,
+                title="累計報酬（%，還原權息價格）",
+                data_key="series",
+                x=FieldDef(field="horizon", type=FieldType.ORDINAL),
+                y=FieldDef(field="return_pct", type=FieldType.QUANTITATIVE),
+            )
+            if series
+            else None,
         )
 
 
@@ -266,6 +309,7 @@ class GetEtfPremiumDiscountOutput(BaseModel):
     rows: tuple[EtfNavRow, ...] = Field(default_factory=tuple)
     current_aum: float | None = None
     aum_caveat: str | None = None
+    chart_hint: ChartHint | None = None
 
 
 class GetEtfPremiumDiscountTool(BaseTool):
@@ -338,6 +382,13 @@ class GetEtfPremiumDiscountTool(BaseTool):
             rows=rows,
             current_aum=current_aum,
             aum_caveat=aum_caveat,
+            chart_hint=ChartHint(
+                mark=Mark.LINE,
+                title="預估折溢價幅度（%）",
+                data_key="rows",
+                x=FieldDef(field="as_of", type=FieldType.TEMPORAL),
+                y=FieldDef(field="premium_discount_pct", type=FieldType.QUANTITATIVE),
+            ),
         )
 
     def _current_aum(self, market: str, symbol: str) -> tuple[float | None, str | None]:

@@ -322,6 +322,17 @@ def _as_int(value: object) -> int:
 # whole universe at once, see `_score_and_persist_universe`) past the ~7.6GB it OOM-killed at.
 # The classification rule (and its measured split) lives in `analytics/symbol_universe.py`,
 # shared with every other reader of the raw `TaiwanStockPrice` universe.
+# US statement datasets are a full re-pull every week, so the same (symbol, period, item) line
+# sits in every snapshot of the window. Only the newest copy of each is read — see
+# `ParquetStore.read_range_latest_by_key` for the memory this saves.
+_STATEMENT_COLUMNS: tuple[str, ...] = tuple(FinancialStatementLine.model_fields)
+_STATEMENT_KEY_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "period_end",
+    "statement_type",
+    "period_type",
+    "item",
+)
 _PRICE_FRAME_COLUMNS: tuple[str, ...] = (
     "symbol",
     "trade_date",
@@ -967,11 +978,25 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     flow_frame = ctx.store.read_range_frame(
         INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
     )
-    statement_rows = (
-        ctx.store.read_range(financials_dataset, market_str, financials_window)
-        + ctx.store.read_range(balance_sheet_dataset, market_str, financials_window)
-        + ctx.store.read_range(cash_flow_dataset, market_str, financials_window)
-    )
+    statement_datasets = (financials_dataset, balance_sheet_dataset, cash_flow_dataset)
+    if market is Market.US:
+        statement_rows = [
+            row
+            for dataset in statement_datasets
+            for row in ctx.store.read_range_latest_by_key(
+                dataset,
+                market_str,
+                financials_window,
+                columns=_STATEMENT_COLUMNS,
+                key_columns=_STATEMENT_KEY_COLUMNS,
+            )
+        ]
+    else:
+        statement_rows = [
+            row
+            for dataset in statement_datasets
+            for row in ctx.store.read_range(dataset, market_str, financials_window)
+        ]
     # market_value/etf_nav/etf_expense_ratio/active_etf_holding have no US-ingested counterpart
     # either — same empty-frame graceful degradation as institutional-flow above; value_guard's
     # market-cap-dependent sub-metrics (EV/EBITDA, FCF yield, P/E, P/B) degrade to unavailable for

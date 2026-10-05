@@ -7,7 +7,6 @@ import pytest
 from accounts.models import OAuthProvider
 from accounts.store import (
     LastLoginMethodError,
-    ProviderAlreadyLinkedError,
     SqlAlchemyUserStore,
 )
 
@@ -84,9 +83,9 @@ async def test_line_without_email_creates_distinct_users(db_session) -> None:
     assert u1.id != u2.id
 
 
-async def test_link_refused_if_bound_elsewhere(db_session) -> None:
+async def test_one_identity_can_be_linked_to_several_accounts(db_session) -> None:
     store = SqlAlchemyUserStore(db_session)
-    await store.upsert_via_oauth(
+    u1 = await store.upsert_via_oauth(
         provider=OAuthProvider.GOOGLE,
         provider_account_id="g-1",
         email="a@x.com",
@@ -98,10 +97,27 @@ async def test_link_refused_if_bound_elsewhere(db_session) -> None:
         email="b@x.com",
         email_verified=True,
     )
-    with pytest.raises(ProviderAlreadyLinkedError):
-        await store.link_provider(
-            user_id=u2.id, provider=OAuthProvider.GOOGLE, provider_account_id="g-1"
-        )
+    await store.link_provider(
+        user_id=u2.id, provider=OAuthProvider.GOOGLE, provider_account_id="g-1"
+    )
+    # both accounts show it as linked ...
+    first = {a.provider_account_id for a in await store.list_providers(user_id=u1.id)}
+    second = {a.provider_account_id for a in await store.list_providers(user_id=u2.id)}
+    assert first == {"g-1"}
+    assert second == {"g-1", "g-2"}
+    # ... signing in with it opens the account that linked it first ...
+    again = await store.upsert_via_oauth(
+        provider=OAuthProvider.GOOGLE,
+        provider_account_id="g-1",
+        email="a@x.com",
+        email_verified=True,
+    )
+    assert again.id == u1.id
+    # ... and linking it twice to the same account changes nothing
+    await store.link_provider(
+        user_id=u2.id, provider=OAuthProvider.GOOGLE, provider_account_id="g-1"
+    )
+    assert len(await store.list_providers(user_id=u2.id)) == 2
 
 
 async def test_cannot_unlink_last_login_method(db_session) -> None:

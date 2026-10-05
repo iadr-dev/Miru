@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  BellSimpleIcon,
   CaretDownIcon,
   CaretRightIcon,
   DotsSixVerticalIcon,
@@ -26,6 +27,7 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
@@ -43,6 +45,7 @@ import {
   useReorderWatchlistGroup,
   useWatchlists,
 } from "@/hooks/use-watchlists";
+import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass, WatchlistGroupView, WatchlistItem } from "@/types/watchlist";
@@ -338,6 +341,8 @@ function WatchlistGroupSection({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const renameMutation = useRenameWatchlist(market);
   const deleteMutation = useDeleteWatchlist(market);
+  const router = useRouter();
+  const alertable = market === "TW" || market === "US";
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: view.group.id,
@@ -422,6 +427,49 @@ function WatchlistGroupSection({
         <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
           {view.items.length}
         </span>
+        {alertable ? (
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button
+                type="button"
+                aria-label={t("alertGroup", { name: view.group.name })}
+                className="flex size-8 shrink-0 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity hover:text-[var(--text)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+              >
+                <BellSimpleIcon size={14} weight="regular" aria-hidden />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content
+                align="end"
+                sideOffset={6}
+                className="z-50 min-w-56 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-1 shadow-lg"
+              >
+                <DropdownMenu.Item
+                  onSelect={() =>
+                    router.push(`/settings/alerts?alert=group&group=${view.group.id}`)
+                  }
+                  className="!outline-none min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 py-2 text-[13px] text-[var(--text)] data-[highlighted]:bg-[var(--surface-2)]"
+                >
+                  <span className="block">{t("alertGroupRelative")}</span>
+                  <span className="block text-[11px] text-[var(--text-muted)]">
+                    {t("alertGroupRelativeHint")}
+                  </span>
+                </DropdownMenu.Item>
+                <DropdownMenu.Item
+                  onSelect={() =>
+                    router.push(`/settings/alerts?alert=perStock&group=${view.group.id}`)
+                  }
+                  className="!outline-none min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 py-2 text-[13px] text-[var(--text)] data-[highlighted]:bg-[var(--surface-2)]"
+                >
+                  <span className="block">{t("alertGroupPerStock")}</span>
+                  <span className="block text-[11px] text-[var(--text-muted)]">
+                    {t("alertGroupPerStockHint")}
+                  </span>
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        ) : null}
         <button
           type="button"
           onClick={() => setConfirmingDelete(true)}
@@ -541,6 +589,8 @@ function WatchlistStockRow({
   const up = hasChange && pctChange >= 0;
   const color = hasChange ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
   const name = quote?.name ?? item.symbol;
+  const router = useRouter();
+  const alertable = market === "TW" || market === "US";
 
   return (
     <li
@@ -579,6 +629,20 @@ function WatchlistStockRow({
           ? formatNumber(quote.price, "zh-TW", { decimals: 1 })
           : "—"}
       </span>
+      {alertable ? (
+        <button
+          type="button"
+          onClick={() =>
+            router.push(
+              `/settings/alerts?alert=symbol&symbol=${encodeURIComponent(item.symbol)}&market=${market}`,
+            )
+          }
+          aria-label={t("alertItem", { name })}
+          className="flex size-7 shrink-0 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity hover:text-[var(--text)] focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <BellSimpleIcon size={12} weight="regular" aria-hidden />
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => removeMutation.mutate({ watchlistId, symbol: item.symbol })}

@@ -1,4 +1,4 @@
-"""Provider-specific OAuth clients (Google + LINE) behind a shared Protocol.
+"""Provider-specific OAuth clients (Google + LINE + Telegram) behind a shared Protocol.
 
 Each provider knows how to build its authorization URL, exchange an authorization code for
 tokens at its token endpoint, and turn the resulting ID token into a verified identity. The
@@ -39,6 +39,12 @@ LINE_TOKEN_ENDPOINT = "https://api.line.me/oauth2/v2.1/token"  # noqa: S105 — 
 LINE_VERIFY_ENDPOINT = "https://api.line.me/oauth2/v2.1/verify"
 LINE_ISSUER = "https://access.line.me"
 LINE_SCOPES = "profile openid email"
+
+TELEGRAM_AUTHORIZATION_ENDPOINT = "https://oauth.telegram.org/auth"
+TELEGRAM_TOKEN_ENDPOINT = "https://oauth.telegram.org/token"  # noqa: S105 — fixed protocol URL, not a secret
+TELEGRAM_JWKS_URL = "https://oauth.telegram.org/.well-known/jwks.json"
+TELEGRAM_ISSUER = "https://oauth.telegram.org"
+TELEGRAM_SCOPES = "openid profile"  # no `phone`: Miru never asks for the number
 
 _HTTP_TIMEOUT_SECONDS = 10.0
 # PyJWT's `leeway` for iat/exp/nbf checks — absorbs ordinary clock drift between this host and
@@ -118,10 +124,17 @@ def _default_client_factory() -> httpx.AsyncClient:
 
 
 async def _post_form(
-    client_factory: HttpClientFactory, url: str, data: dict[str, str]
+    client_factory: HttpClientFactory,
+    url: str,
+    data: dict[str, str],
+    *,
+    auth: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     async with client_factory() as client:
-        response = await client.post(url, data=data)
+        if auth is None:
+            response = await client.post(url, data=data)
+        else:
+            response = await client.post(url, data=data, auth=httpx.BasicAuth(*auth))
     if response.status_code != int(httpx.codes.OK):
         # Never log `data` (carries the client secret / code / verifier) — only the provider's
         # own error body, which is documented to be error-code-shaped, not credential-shaped.
@@ -338,6 +351,127 @@ class LineOAuthProvider:
         return identity
 
 
+def telegram_client_id(settings: Settings) -> str | None:
+    """The Login client id: explicit, else the bot's numeric id (the part of the bot token before
+    the colon)."""
+    if settings.telegram_login_client_id:
+        return settings.telegram_login_client_id
+    token = settings.telegram_bot_token
+    return token.partition(":")[0] if token and ":" in token else None
+
+
+class TelegramOAuthProvider:
+    """Log in with Telegram — OpenID Connect (code + PKCE), core.telegram.org/bots/telegram-login.
+
+    The token endpoint takes the client id/secret as HTTP Basic auth; the ID token is RS256-signed
+    and verified against Telegram's JWKS. There is no email: `sub` (the Telegram user id) is the
+    identity."""
+
+    provider = OAuthProvider.TELEGRAM
+    requires_pkce = True
+
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        client_factory: HttpClientFactory = _default_client_factory,
+        signing_key_client: SigningKeyClient | None = None,
+    ) -> None:
+        client_id = telegram_client_id(settings)
+        if not (client_id and settings.telegram_login_client_secret):
+            raise OAuthConfigError("telegram login client id/secret not configured")
+        if not settings.telegram_login_redirect_uri:
+            raise OAuthConfigError("telegram login redirect uri not configured")
+        self._client_id = client_id
+        self._client_secret = settings.telegram_login_client_secret
+        self._redirect_uri = settings.telegram_login_redirect_uri
+        self._client_factory = client_factory
+        self._signing_key_client = signing_key_client
+
+    def build_authorization_url(
+        self,
+        *,
+        state: str,
+        code_challenge: str | None = None,
+        nonce: str | None = None,
+    ) -> str:
+        if not code_challenge:
+            raise OAuthConfigError("telegram authorization requires a PKCE code challenge")
+        params = {
+            "client_id": self._client_id,
+            "redirect_uri": self._redirect_uri,
+            "response_type": "code",
+            "scope": TELEGRAM_SCOPES,
+            "state": state,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+        }
+        if nonce:
+            params["nonce"] = nonce
+        return f"{TELEGRAM_AUTHORIZATION_ENDPOINT}?{urlencode(params)}"
+
+    async def exchange_code(
+        self, *, code: str, code_verifier: str | None = None
+    ) -> ProviderTokenResponse:
+        if not code_verifier:
+            raise TokenExchangeError("telegram code exchange requires the PKCE code verifier")
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": self._redirect_uri,
+            "client_id": self._client_id,
+            "code_verifier": code_verifier,
+        }
+        payload = await _post_form(
+            self._client_factory,
+            TELEGRAM_TOKEN_ENDPOINT,
+            data,
+            auth=(self._client_id, self._client_secret),
+        )
+        return ProviderTokenResponse.model_validate(payload)
+
+    def _resolve_key(self, id_token: str) -> Any:
+        client = self._signing_key_client or PyJWKClient(TELEGRAM_JWKS_URL)
+        return client.get_signing_key_from_jwt(id_token).key
+
+    async def verify_id_token(self, id_token: str, *, nonce: str | None = None) -> VerifiedIdentity:
+        signing_key: Any = await anyio.to_thread.run_sync(self._resolve_key, id_token)
+        try:
+            claims: dict[str, Any] = jwt.decode(
+                id_token,
+                signing_key,
+                algorithms=["RS256"],
+                audience=self._client_id,
+                issuer=TELEGRAM_ISSUER,
+                leeway=_CLOCK_SKEW_LEEWAY_SECONDS,
+            )
+        except jwt.PyJWTError as exc:
+            logger.warning(
+                "telegram_id_token_verification_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+            raise IdentityVerificationError("telegram id token verification failed") from exc
+        if "nonce" in claims and nonce is not None and claims["nonce"] != nonce:
+            raise IdentityVerificationError("telegram id token nonce mismatch")
+
+        subject = claims.get("sub")
+        if not isinstance(subject, str) or not subject:
+            raise IdentityVerificationError("telegram id token missing subject")
+        identity = VerifiedIdentity(
+            provider=OAuthProvider.TELEGRAM,
+            provider_account_id=subject,
+            name=str(claims.get("name") or claims.get("preferred_username") or ""),
+            picture=claims.get("picture"),
+        )
+        logger.info(
+            "oauth_id_token_verified",
+            provider=OAuthProvider.TELEGRAM.value,
+            provider_account_id=identity.provider_account_id,
+        )
+        return identity
+
+
 def build_provider_client(
     provider: OAuthProvider,
     settings: Settings,
@@ -346,6 +480,8 @@ def build_provider_client(
 ) -> OAuthProviderClient:
     if provider is OAuthProvider.GOOGLE:
         return GoogleOAuthProvider(settings, client_factory=client_factory)
+    if provider is OAuthProvider.TELEGRAM:
+        return TelegramOAuthProvider(settings, client_factory=client_factory)
     return LineOAuthProvider(settings, client_factory=client_factory)
 
 
@@ -356,7 +492,9 @@ __all__ = [
     "OAuthConfigError",
     "OAuthProviderClient",
     "ProviderTokenResponse",
+    "TelegramOAuthProvider",
     "TokenExchangeError",
     "VerifiedIdentity",
     "build_provider_client",
+    "telegram_client_id",
 ]

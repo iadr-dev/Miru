@@ -43,6 +43,7 @@ from schemas.capabilities import (
     SymbolLookupResultRow,
     SymbolSearchResultRow,
 )
+from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from schemas.screener import ScreenerQuery, ScreenerResult
@@ -339,6 +340,7 @@ class GetSecFilingsTool(BaseTool):
 class GetFundHoldingsOutput(_RowsOutput):
     holdings: tuple[FundHoldingRow, ...] = Field(default_factory=tuple)
     sector_weightings: tuple[FundSectorWeightingRow, ...] = Field(default_factory=tuple)
+    chart_hint: ChartHint | None = None
 
 
 class GetFundHoldingsTool(BaseTool):
@@ -382,6 +384,15 @@ class GetFundHoldingsTool(BaseTool):
             health_status=result.health.status,
             holdings=holdings,
             sector_weightings=weightings,
+            chart_hint=ChartHint(
+                mark=Mark.ARC,
+                title="產業配置",
+                data_key="sector_weightings",
+                theta=FieldDef(field="weight", type=FieldType.QUANTITATIVE),
+                color=FieldDef(field="sector", type=FieldType.NOMINAL),
+            )
+            if weightings
+            else None,
         )
 
 

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  chartHintPayloads,
   chartHintUsable,
   checkCardinality,
+  formatShare,
   groupArcSlices,
+  isFractionSet,
   pivotByColor,
   resolveSeriesColor,
+  unitSuffix,
 } from "@/app/[locale]/(app)/chat/cards/generic-chart";
 
 describe("resolveSeriesColor", () => {
@@ -174,5 +178,72 @@ describe("chartHintUsable", () => {
       year_summaries: [{ year: 2024, total_dividend: 10 }],
     };
     expect(chartHintUsable(data)).toBe(true);
+  });
+});
+
+describe("chartHintPayloads", () => {
+  const data = {
+    revenue_series: [
+      { year: "2023", metric: "營收", value: 100 },
+      { year: "2024", metric: "營收", value: 120 },
+    ],
+    eps_series: [],
+    chart_hints: [
+      {
+        mark: "bar",
+        title: "營收",
+        data_key: "revenue_series",
+        x: { field: "year", type: "ordinal" },
+        y: { field: "value", type: "quantitative" },
+      },
+      {
+        mark: "bar",
+        title: "EPS",
+        data_key: "eps_series",
+        x: { field: "year", type: "ordinal" },
+        y: { field: "value", type: "quantitative" },
+      },
+    ],
+  };
+
+  it("returns one single-hint payload per chart that would actually draw", () => {
+    const payloads = chartHintPayloads(data);
+    expect(payloads).toHaveLength(1); // the EPS series is empty, so it is dropped
+    expect(payloads[0]?.chart_hint).toMatchObject({ title: "營收" });
+    expect(chartHintUsable(payloads[0])).toBe(true);
+  });
+
+  it("is empty for a card without chart_hints", () => {
+    expect(chartHintPayloads({ rows: [] })).toEqual([]);
+    expect(chartHintPayloads(null)).toEqual([]);
+  });
+});
+
+describe("donut value formatting", () => {
+  it("treats a set of weights that sum to about one as fractions and shows shares", () => {
+    const weights = [0.387, 0.121, 0.095, 0.093, 0.093, 0.078, 0.045, 0.088];
+    expect(isFractionSet(weights)).toBe(true);
+    expect(
+      formatShare(
+        0.387,
+        weights.reduce((a, b) => a + b, 0),
+        "zh-TW",
+      ),
+    ).toBe("38.7%");
+  });
+
+  it("leaves amounts (dividends per year) alone", () => {
+    expect(isFractionSet([22, 17, 13, 11])).toBe(false);
+    expect(isFractionSet([0.5, 0.3])).toBe(false); // sums to 0.8, not a whole
+  });
+});
+
+describe("unitSuffix", () => {
+  it("adds a percent sign for percentage charts and nothing otherwise", () => {
+    expect(unitSuffix("年度報酬（%）")).toBe("%");
+    expect(unitSuffix("營收季節指數偏離（%，0 = 全年平均）")).toBe("%");
+    expect(unitSuffix("營收（億元（新台幣））")).toBe("");
+    expect(unitSuffix("價格走勢（起點 = 100）：2330")).toBe("");
+    expect(unitSuffix(undefined)).toBe("");
   });
 });

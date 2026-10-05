@@ -1,6 +1,7 @@
 import { CardsIcon } from "@phosphor-icons/react/dist/ssr";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { AlertProposalCard } from "@/app/[locale]/(app)/chat/cards/alert-proposal-card";
 import { AskUserCard } from "@/app/[locale]/(app)/chat/cards/ask-user-card";
 import { BarChart } from "@/app/[locale]/(app)/chat/cards/bar-chart";
 import { PLUMBING_KEYS } from "@/app/[locale]/(app)/chat/cards/card-format";
@@ -12,10 +13,15 @@ import { EventTimeline } from "@/app/[locale]/(app)/chat/cards/event-timeline";
 import { anyRowsPresent, hasSnapshotEntity } from "@/app/[locale]/(app)/chat/cards/extract-rows";
 import { cardTypeLabel, fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { FlowDistribution } from "@/app/[locale]/(app)/chat/cards/flow-distribution";
-import { chartHintUsable, GenericChart } from "@/app/[locale]/(app)/chat/cards/generic-chart";
+import {
+  chartHintPayloads,
+  chartHintUsable,
+  GenericChart,
+} from "@/app/[locale]/(app)/chat/cards/generic-chart";
 import { GroupedBarChart } from "@/app/[locale]/(app)/chat/cards/grouped-bar-chart";
 import { InstitutionalFlowTimeseries } from "@/app/[locale]/(app)/chat/cards/institutional-flow-timeseries";
 import { LeaderboardTable } from "@/app/[locale]/(app)/chat/cards/leaderboard-table";
+import { ScheduleProposalCard } from "@/app/[locale]/(app)/chat/cards/schedule-proposal-card";
 import { SnapshotCard } from "@/app/[locale]/(app)/chat/cards/snapshot-card";
 import { ThemeTiersFlow } from "@/app/[locale]/(app)/chat/cards/theme-tiers-flow";
 import { TimeseriesChart } from "@/app/[locale]/(app)/chat/cards/timeseries-chart";
@@ -50,8 +56,25 @@ export function RichCardView({
    * question/options, just with no-op buttons. */
   onAskUserPick?: (prompt: string) => void;
 }): ReactNode {
+  if (card.card_type === "alert_proposal") {
+    return <AlertProposalCard data={card.data} />;
+  }
+  if (card.card_type === "schedule_proposal") {
+    return <ScheduleProposalCard data={card.data} />;
+  }
   if (card.card_type === "ask_user") {
     return <AskUserCard data={card.data} onPick={onAskUserPick ?? (() => {})} />;
+  }
+  const multi = chartHintPayloads(card.data);
+  if (multi.length > 0) {
+    return (
+      <div className="space-y-3">
+        {multi.map((payload, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a fixed, never-reordered list of this card's charts.
+          <GenericChart key={index} data={payload} />
+        ))}
+      </div>
+    );
   }
   if (chartHintUsable(card.data)) {
     return <GenericChart data={card.data} />;

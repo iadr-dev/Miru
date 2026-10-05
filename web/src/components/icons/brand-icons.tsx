@@ -58,3 +58,23 @@ export function LineIcon({ size = 20 }: { size?: number }): ReactNode {
     </svg>
   );
 }
+
+/** Telegram's official mark — blue disc with the white paper plane. */
+export function TelegramIcon({ size = 20 }: { size?: number }): ReactNode {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      role="presentation"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="24" cy="24" r="24" fill="#27A7E7" />
+      <path
+        fill="#FFFFFF"
+        d="M10.6 23.7c7-3.1 11.7-5.1 14-6.1 6.7-2.8 8.1-3.3 9-3.3.2 0 .6 0 .9.3.2.2.3.4.3.7 0 .2.1.6 0 .9-.4 4.7-2.5 16-3.5 21.2-.4 2.2-1.2 3-2.1 3.1-1.8.2-3.1-1.2-4.8-2.3-2.7-1.8-4.1-2.9-6.6-4.5-2.9-1.9-1-3 .6-4.8.4-.5 7.9-7.3 8-7.9 0-.1 0-.3-.1-.4s-.3-.1-.5-.1c-.2 0-3.9 2.5-11.3 7.5-1.1.7-2 1.1-2.9 1.1-1 0-2.8-.5-4.2-1-1.7-.5-3.1-.8-3-1.8 0-.5.7-1 1.800-1.500z"
+      />
+    </svg>
+  );
+}

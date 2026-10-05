@@ -9,7 +9,7 @@
  * backend field/card-type rename needs its label updated here too (no generated linkage, so this
  * list drifts only on an explicit backend rename).
  *
- * A key absent from either map falls back to the raw identifier itself (`fieldLabel`/
+ * A key absent from either map falls back to a humanized form of the identifier (`fieldLabel`/
  * `cardTypeLabel` below) rather than throwing — an unmapped field/type is a labeling gap to
  * notice and fill in, never a crash, and never a card the user can't see at all.
  */
@@ -20,7 +20,7 @@ type Translator = ReturnType<typeof useTranslations>;
 /** Keys with a mapped label in the `chat.cards.fields` message namespace — kept as a literal
  * list (not derived from the namespace) so `fieldLabel` can check membership without a runtime
  * i18n lookup throwing on a miss. */
-const LABELED_FIELDS = new Set([
+export const LABELED_FIELDS = new Set([
   // company_profile
   "sector",
   "industry",
@@ -330,6 +330,22 @@ const LABELED_FIELDS = new Set([
   // (ThemeMember / SymbolTheme / ThemeTier), plus the not-found fallback fields
   // (GetThemeMembersOutput/GetThemeTiersOutput's own `found`/`message`/`name_en`/`member_count`)
   "confidence",
+  "sub_industry",
+  // analysis-report chart sheets (series points, seasonality, trailing returns, premium/discount)
+  "year",
+  "metric",
+  "period",
+  "label",
+  "index",
+  "deviation_pct",
+  "horizon",
+  "return_pct",
+  "premium_discount_pct",
+  "weight",
+  "close_price",
+  "estimated_nav",
+  "prior_day_nav",
+  "units_outstanding_change",
   "theme_key",
   "name_zh",
   "name_en",
@@ -376,6 +392,15 @@ const LABELED_FIELDS = new Set([
   "forward_eps_estimate",
   "forward_revenue_estimate",
   "long_term_growth_estimate",
+  "current_year_growth_estimate",
+  "next_year_growth_estimate",
+  "eps_trend_current",
+  "eps_trend_7_days_ago",
+  "eps_trend_30_days_ago",
+  "eps_trend_60_days_ago",
+  "eps_trend_90_days_ago",
+  "eps_revisions_up_last_30_days",
+  "eps_revisions_down_last_30_days",
   // esg_score — SnapshotCard stat grid (EsgScore)
   "total_esg_score",
   "esg_risk_percentile",
@@ -397,10 +422,46 @@ const LABELED_FIELDS = new Set([
   "unavailable_reason",
 ]);
 
+/** Raw enum values a card cell can carry, per column, with a translated label in
+ * `chat.cards.fieldValues.<column>.<value>` — e.g. a theme's `kind` ("industry"/"concept") and a
+ * supply-chain `tier`. A value not listed falls through to itself (free text such as a company name
+ * must never be run through a lookup). */
+const LABELED_VALUES: Record<string, ReadonlySet<string>> = {
+  kind: new Set(["industry", "concept"]),
+  tier: new Set(["upstream", "midstream", "downstream"]),
+  recommendation_key: new Set(["strong_buy", "buy", "hold", "underperform", "sell", "none"]),
+  latest_upgrade_downgrade_action: new Set(["main", "up", "down", "init", "reit"]),
+  sector: new Set([
+    "technology",
+    "financial_services",
+    "communication_services",
+    "consumer_cyclical",
+    "consumer_defensive",
+    "healthcare",
+    "industrials",
+    "energy",
+    "utilities",
+    "basic_materials",
+    "realestate",
+    "real_estate",
+  ]),
+};
+
+export function valueLabel(t: Translator, column: string, value: string): string {
+  return LABELED_VALUES[column]?.has(value) ? t(`fieldValues.${column}.${value}`) : value;
+}
+
 /** Resolves `key` to its translated label via the `chat.cards.fields` namespace, falling back to
  * the raw key for anything not yet mapped (see module docstring). */
 export function fieldLabel(t: Translator, key: string): string {
-  return LABELED_FIELDS.has(key) ? t(`fields.${key}`) : key;
+  return LABELED_FIELDS.has(key) ? t(`fields.${key}`) : humanizeKey(key);
+}
+
+/** Last-resort label for an unmapped key: `eps_trend_60_days_ago` → "Eps trend 60 days ago" — a
+ * readable phrase instead of a code identifier, until the key gets a real translation. */
+function humanizeKey(key: string): string {
+  const words = key.replaceAll("_", " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 /** Every `card_type` literal `card-registry.ts`'s `CARD_TYPE_SHAPE` maps — kept as its own set
@@ -475,11 +536,12 @@ const LABELED_CARD_TYPES = new Set([
   "block_trade",
   "dividend_schedule",
   "analyst_consensus",
+  "morning_brief",
   "esg_score",
 ]);
 
 /** Resolves `cardType` to its translated label via the `chat.cards.types` namespace, falling
  * back to the raw `card_type` string for anything not yet mapped (see module docstring). */
 export function cardTypeLabel(t: Translator, cardType: string): string {
-  return LABELED_CARD_TYPES.has(cardType) ? t(`types.${cardType}`) : cardType;
+  return LABELED_CARD_TYPES.has(cardType) ? t(`types.${cardType}`) : humanizeKey(cardType);
 }

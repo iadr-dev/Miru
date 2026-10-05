@@ -42,11 +42,11 @@ account-purge scrub list (§Migrations & retention).
 |--------|------|-------|
 | id | uuid PK | |
 | user_id | uuid FK→users | **many rows per user** — one per linked provider |
-| provider | text | `google` \| `line` (extensible) |
+| provider | text | `google` \| `line` \| `telegram` (extensible) |
 | provider_account_id | text | provider's stable subject/user id |
 | email_at_provider | text null | email as seen from this provider (may differ / be null for LINE) |
 | linked_at | timestamptz | |
-| unique | (provider, provider_account_id) | one provider identity → one user |
+| unique | (user_id, provider, provider_account_id) | a user links a given identity once; the same identity may be linked to several users (index on `(provider, provider_account_id)` for sign-in lookup) |
 | index | `(user_id)` | list a user's linked providers (`GET /me/connections`, [modules/12](modules/12-multi-user-tiers.md) §1a) |
 - A user can have **both** Google + LINE linked → **one account**. Identity resolution +
   linking rules: see [modules/12](modules/12-multi-user-tiers.md) §1a.
@@ -513,13 +513,16 @@ quality-score/alert pipeline remains a dedicated follow-up, not a table in this 
 | daily_limit | int null | |
 | enabled | bool | |
 | last_run, next_run | timestamptz | |
-| status | text | `ok`\|`running`\|`skipped_quota`\|`error` (`running` detects orphaned runs after a crash) |
+| status | text | `ok`\|`running`\|`skipped_quota`\|`error` (`running` detects orphaned runs after a crash: a mark older than 15 min makes the job due again) |
+| status_reason | text null | why the last run was skipped/failed (e.g. `chat_quota_exhausted`, an exception class name) |
+| thread_id | text null | the one persistent thread every run appends to (created on the first run) |
 | version | int | optimistic lock (worker vs user edit) |
 | created_at | timestamptz | |
 | index | partial `(next_run) WHERE enabled` — due-jobs worker scan | |
 
 ### `alert_rules`
 | id | user_id FK | symbol | market | condition json | channels (json array) | quiet_start/end | daily_limit | enabled | last_triggered | created_at |
+- **v2 columns (implemented, fresh schema — no migration during dev; the alerts v2 design, [modules/14](modules/14-scheduler-alerts.md) §3):** `symbol`/`market` now nullable and `watchlist_id` FK→`watchlists` ON DELETE CASCADE, with `CHECK ck_alert_rules_scope` (symbol+market XOR watchlist_id); `trigger_mode` CHECK `IN ('once','once_per_day','every_occurrence')` (default `once_per_day`), `cooldown_seconds`, `state json {last_value,last_fired_at,fire_count}`, `expires_at`, `auto_paused_reason`, `explain bool`, `version` (optimistic CAS). Empty `channels` / null `quiet_*` / null `daily_limit` = inherit `alert_preferences`. `condition` stays JSON; its shape moves to `{kind, params}` with decimal thresholds when the template evaluator lands.
 - `symbol` + `market` (CHECK `IN ('TW','US')`) match the multi-market `Symbol` model
   ([modules/19](modules/19-data-access-router.md)) / `watchlist_items` — a US alert is disambiguated
   (was a bare TW-only `stock_id`). Same stale-vs.-`Market`-enum gap as `watchlists.market` (§3a
@@ -528,17 +531,31 @@ quality-score/alert pipeline remains a dedicated follow-up, not a table in this 
 
 ### `alert_preferences`
 | user_id PK/FK | channels (json array) | enabled_categories (json array) | quiet_start/end | daily_limit | morning_digest bool |
+- v2 adds `timezone` (default `Asia/Taipei`; quiet hours are evaluated in it) — implemented. External-channel bindings (`line_user_id`, `telegram_chat_id`) are **not** in this table yet: they ship with the LINE/Telegram channels (P2/P3) as a separate binding table, **encrypted at rest** like other credentials (governance §9).
 
-### `device_push_tokens` (native APNs/FCM push — [modules/14](modules/14-scheduler-alerts.md) §4)
+### `alert_eval_marks` (v2 — reconciliation watermark)
+| capability | market | last_as_of (text) | evaluated_at |
+- PK `(capability, market)`. The daily sweep compares the ingested store's latest partition to `last_as_of` and evaluates anything unseen; duplicate evaluation is harmless via the notification dedupe key ([modules/14](modules/14-scheduler-alerts.md) §5).
+
+### `device_push_tokens` (browser Web Push subscriptions; ios/android kept for the mobile client — [modules/14](modules/14-scheduler-alerts.md) §4)
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
 | user_id | uuid FK→users | CASCADE; a user may register several devices |
-| platform | text | CHECK `IN ('ios','android')` |
+| platform | text | CHECK `IN ('ios','android','web')` (v2 adds `web`; for `web` the `token` column holds the JSON-encoded `PushSubscription`, encrypted at rest, same `(user_id, token)` uniqueness) |
 | token | text | provider push token |
-| created_at, last_seen | timestamptz | `last_seen` refreshed on app open; prune tokens APNs/FCM reports invalid |
+| created_at, last_seen | timestamptz | `last_seen` refreshed on app open; prune subscriptions the push service reports gone (404/410) |
 | unique | `(user_id, token)` | idempotent register (`POST /me/devices`); `DELETE /me/devices/{token}` on logout/rotation |
 | index | `(user_id)` | fan-out a notification to a user's devices |
+
+### `alert_rules.origin_watchlist_id`
+Nullable text. The group a per-stock rule was created from (`POST /alerts/batch`); display only — it
+does not scope the rule and has no foreign key, so deleting the group leaves an unknown label.
+
+### `channel_links` (external messaging binding)
+| user_id FK→users (CASCADE) | channel (CHECK `IN ('telegram')`) | address (chat id, null until linked) | link_token (one-time, indexed) | token_expires_at | linked_at |
+- PK `(user_id, channel)`. `complete_channel_link` swaps a valid, unexpired token for the address and
+  clears the token (single use). Created by `create_all` — no migration for dev.
 
 ### `notifications` (delivered)
 | id | user_id FK | source (`schedule`\|`alert`\|`digest`) | source_id | channel | dedupe_key | payload json | delivered_at | read_at |
@@ -546,6 +563,9 @@ quality-score/alert pipeline remains a dedicated follow-up, not a table in this 
   at-least-once execution with idempotent delivery, user-scoped for isolation consistency (a
   redelivered LINE/Telegram/native push is a no-op; see [modules/16](modules/16-infrastructure.md) §5).
 - index `(user_id, delivered_at DESC)`; partial `WHERE read_at IS NULL` (unread badge).
+- Every delivery writes an `in_app` row (the inbox, and the only channel the list/badge/mark-read
+  count) plus one row per external channel. During the user's quiet hours an external row carries
+  `payload.held = true` and is sent later as a digest (`release_held`), which clears the flag.
 
 ---
 

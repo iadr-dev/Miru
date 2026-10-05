@@ -46,6 +46,10 @@ class SkillFrontmatter(BaseModel):
     boundaries: tuple[str, ...] = Field(default_factory=tuple)
     resources: tuple[str, ...] = Field(default_factory=tuple)
     outputs: str = "markdown"
+    # Tools whose result card is NOT shown while this skill runs. The model still reads the tool's
+    # data; only the card is dropped. For a report skill that fetches identity/profile data purely
+    # to write about it, the raw key/value card would be clutter above the real charts.
+    hide_cards: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class Skill(BaseModel):

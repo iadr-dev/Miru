@@ -42,6 +42,8 @@ class DeliveryRecipient(BaseModel):
     line_user_id: str | None = None
     telegram_chat_id: str | None = None
     email_address: str | None = None
+    # One-click unsubscribe link for the email channel (None when no HTTPS public URL is set).
+    unsubscribe_url: str | None = None
     device_tokens: tuple[str, ...] = Field(default_factory=tuple)
 
 
@@ -57,6 +59,8 @@ class DeliveryReceipt(BaseModel):
     retryable: bool = False
     provider_message_id: str | None = None
     detail: str = ""
+    # Device tokens the provider reported as permanently invalid; the worker unregisters them.
+    stale_tokens: tuple[str, ...] = ()
 
 
 @runtime_checkable

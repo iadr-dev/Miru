@@ -42,7 +42,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date as date_
 from pathlib import Path
@@ -206,6 +206,18 @@ class ParquetStore:
         finally:
             con.close()
 
+    def freshness_token(self, market: str) -> tuple[tuple[str, int], ...]:
+        """A cheap fingerprint of "has ingest written anything new for this market": each
+        dataset directory's mtime (bumped when a new `date=` partition dir is created). A caller
+        caching a whole-market derivation keys it on this plus a TTL, so the derivation recomputes
+        after an ingest run instead of serving yesterday's ranking."""
+        token: list[tuple[str, int]] = []
+        for dataset_dir in sorted(self.root.glob("dataset=*")):
+            base = dataset_dir / f"market={market}"
+            if base.is_dir():
+                token.append((dataset_dir.name, base.stat().st_mtime_ns))
+        return tuple(token)
+
     def has_partition(self, dataset: str, market: str, run_date: date_) -> bool:
         key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
         return (key.path(self.root) / _MANIFEST_NAME).exists()
@@ -233,7 +245,7 @@ class ParquetStore:
         # comparing it against the cached mtime is enough to detect "ingest wrote something new
         # since we last scanned" without re-opening every partition's Parquet file again. This
         # is the fix for a real measured cost: scanning ~750+ date partitions (each its own
-        # DuckDB `connect()` + Parquet-metadata read in `_partition_has_real_rows`) took ~11s per
+        # DuckDB `connect()` + Parquet-metadata read) took ~11s per
         # call once the store held a few years of backfilled history — and this method is called
         # on every `_real_calendar()`/price-history/ETF-flow tool invocation, so that cost was
         # paid on every single API request, not once.
@@ -243,7 +255,11 @@ class ParquetStore:
         if cached is not None and cached[0] == current_mtime:
             return cached[1]
 
-        dates: list[date_] = []
+        # One DuckDB connection and ONE `parquet_schema` query over every partition's footer,
+        # instead of a `connect()` + `read_parquet` per partition: measured ~0.6s vs ~9s for the
+        # ~830 TaiwanStockPrice partitions, and this scan runs on the request path (it blocks the
+        # event loop) after every API restart and every ingest write of a new date.
+        version_dirs: dict[str, date_] = {}
         for child in base.iterdir():
             if not child.name.startswith("date="):
                 continue
@@ -254,30 +270,33 @@ class ParquetStore:
                 run_date = date_.fromisoformat(child.name.removeprefix("date="))
             except ValueError:  # pragma: no cover — malformed dirname would be an ingest bug
                 continue
-            if self._partition_has_real_rows(manifest_path):
-                dates.append(run_date)
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            version_dirs[(child / f"v={manifest['version']}").as_posix()] = run_date
+        empty_dirs = self._placeholder_only_dirs(version_dirs)
+        dates = [d for version_dir, d in version_dirs.items() if version_dir not in empty_dirs]
         result = tuple(sorted(dates))
         self._partition_dates_cache[cache_key] = (current_mtime, result)
         return result
 
-    def _partition_has_real_rows(self, manifest_path: Path) -> bool:
-        """`read_parquet` auto-detects this file's own Hive-style parent directories
-        (`dataset=`/`market=`/`date=`/`v=`) and injects them as extra columns even without an
-        explicit `hive_partitioning=true` — so a genuinely empty placeholder frame's actual
-        on-disk column set is `["_empty", "dataset", "date", "market", "v"]`, never just
-        `["_empty"]` alone. Checking for `"_empty" in columns` (rather than an exact-list
-        match) is what actually detects the placeholder frame `write_partition` writes for a
-        zero-row day."""
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        version_dir = manifest_path.parent / f"v={manifest['version']}"
-        parquet_glob = str(version_dir / "*.parquet")
+    @staticmethod
+    def _placeholder_only_dirs(version_dirs: Iterable[str]) -> set[str]:
+        """The subset of these version dirs whose Parquet file is the zero-row `_empty`
+        placeholder `write_partition` writes for an empty day (its own doc: DuckDB's `COPY`
+        rejects a zero-column frame). Only the file footer's column list is read, so this is
+        cheap even across hundreds of partitions. `read_parquet` would also surface the
+        Hive-partition path columns, which is why the check is "has an `_empty` column", not an
+        exact column-list match."""
+        globs = [f"{version_dir}/*.parquet" for version_dir in version_dirs]
+        if not globs:
+            return set()
         con = duckdb.connect()
         try:
-            relation = con.execute("SELECT * FROM read_parquet(?) LIMIT 0", [parquet_glob])
-            columns = [d[0] for d in relation.description or []]
-            return "_empty" not in columns
+            rows = con.execute(
+                "SELECT DISTINCT file_name FROM parquet_schema(?) WHERE name = '_empty'", [globs]
+            ).fetchall()
         finally:
             con.close()
+        return {Path(str(row[0])).parent.as_posix() for row in rows}
 
     def read_range(
         self,
@@ -407,6 +426,55 @@ class ParquetStore:
                 [globs],
             )
             return relation.df()
+        finally:
+            con.close()
+
+    def read_range_latest_by_key(
+        self,
+        dataset: str,
+        market: str,
+        run_dates: Sequence[date_],
+        *,
+        columns: Sequence[str],
+        key_columns: Sequence[str],
+    ) -> list[dict[str, object]]:
+        """Across the given date partitions, one row per `key_columns` combination — the copy
+        from the newest partition. For a dataset whose every partition is a full re-pull of the
+        same logical rows (the weekly US financial statements: ~1M rows per snapshot, each one
+        restating the last), `read_range` boxes every snapshot's copy of every row as a Python
+        `dict` — measured at ~5.8GB resident for a 400-day window, enough to OOM a 7.6GB host
+        once the universe doubled. Deduplicating inside DuckDB means only one snapshot's worth
+        of rows ever reaches Python, and a restated value wins over the older figure it
+        replaced instead of both being returned.
+
+        `columns`/`key_columns` are code-side literal identifier tuples (never request input),
+        same as `read_range_frame`; the glob list is still a bound parameter. A date never
+        written is skipped; no written partitions at all returns `[]`."""
+        globs: list[str] = []
+        for run_date in run_dates:
+            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
+            partition_dir = key.path(self.root)
+            manifest_path = partition_dir / _MANIFEST_NAME
+            if not manifest_path.exists():
+                continue
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            globs.append(str(partition_dir / f"v={manifest['version']}" / "*.parquet"))
+        if not globs:
+            return []
+
+        column_list = ", ".join(columns)
+        key_list = ", ".join(key_columns)
+        con = duckdb.connect()
+        try:
+            relation = con.execute(
+                f"SELECT {column_list} FROM "  # noqa: S608
+                "read_parquet(?, union_by_name=True, hive_partitioning=True) "
+                f"WHERE {key_columns[0]} IS NOT NULL "
+                f"QUALIFY row_number() OVER (PARTITION BY {key_list} ORDER BY date DESC) = 1",
+                [globs],
+            )
+            names = [d[0] for d in relation.description or []]
+            return [dict(zip(names, row, strict=True)) for row in relation.fetchall()]
         finally:
             con.close()
 

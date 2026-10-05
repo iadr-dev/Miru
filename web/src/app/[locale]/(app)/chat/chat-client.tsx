@@ -149,11 +149,9 @@ export function ChatClient(): ReactNode {
         router.replace(`/chat?thread=${encodeURIComponent(resolvedThreadId)}`);
       }
 
-      // A model picked before this thread existed is applied now that it has a real id — the
-      // turn that just ran used whatever the thread's prior/default model was (there was no
-      // thread to PATCH yet), so the override takes effect starting with the *next* turn.
-      if (resolvedThreadId !== null && pendingModelOverride !== null) {
-        await applyModelOverride(resolvedThreadId, pendingModelOverride);
+      // A model picked before this thread existed travelled with the first message (`model` on
+      // the query body), so the server already applied and persisted it for that very turn.
+      if (pendingModelOverride !== null) {
         setPendingModelOverride(null);
       }
 
@@ -170,16 +168,7 @@ export function ChatClient(): ReactNode {
       clear();
       return answerText;
     },
-    [
-      threadId,
-      pendingModelOverride,
-      applyModelOverride,
-      begin,
-      consumeStream,
-      clear,
-      queryClient,
-      router,
-    ],
+    [threadId, pendingModelOverride, begin, consumeStream, clear, queryClient, router],
   );
 
   const runTurn = useCallback(
@@ -189,13 +178,14 @@ export function ChatClient(): ReactNode {
           {
             message,
             web_search: webSearchEnabled,
+            ...(pendingModelOverride !== null ? { model: pendingModelOverride } : {}),
             ...(threadId ? { thread_id: threadId } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
           },
           signal,
         ),
       ),
-    [runStream, webSearchEnabled, threadId],
+    [runStream, webSearchEnabled, pendingModelOverride, threadId],
   );
 
   // Voice mode's own entrypoint: identical to a typed send (`runTurn`), but the caller wants the

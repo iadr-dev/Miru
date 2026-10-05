@@ -143,8 +143,10 @@ class _FakeReader:
     def __init__(self, by_dataset: dict[str, list[dict[str, object]]]) -> None:
         self._by_dataset = by_dataset
 
-    def read_range(self, dataset: str, market: str, run_dates: object) -> list[dict[str, object]]:
-        del market, run_dates
+    def read_range(
+        self, dataset: str, market: str, run_dates: object, *, symbols: object = None
+    ) -> list[dict[str, object]]:
+        del market, run_dates, symbols
         return self._by_dataset.get(dataset, [])
 
 

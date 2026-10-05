@@ -13,7 +13,7 @@ import pytest
 from google.genai import types as genai_types
 
 from llm.base import ImagePart, Message, MessageRole, StopReason, ToolCall, ToolResultPart, ToolSpec
-from llm.gemini_client import GeminiClient
+from llm.gemini_client import GeminiClient, _function_call_part, _function_call_to_tool_call
 
 
 class _FakeAsyncIterator:
@@ -387,3 +387,38 @@ async def test_count_tokens_uses_sdk_endpoint(monkeypatch: pytest.MonkeyPatch) -
     count = await client.count_tokens([Message(role=MessageRole.USER, content="hi")])
 
     assert count == 42
+
+
+async def test_count_tokens_sends_no_system_instruction_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: `CountTokensConfig.system_instruction` is Vertex-only and the Developer API
+    rejects it, failing every Gemini turn. The system text rides along as a leading user part."""
+    client = _client()
+    mock = AsyncMock(return_value=genai_types.CountTokensResponse(total_tokens=7))
+    monkeypatch.setattr(client._client.aio.models, "count_tokens", mock)
+
+    await client.count_tokens(
+        [
+            Message(role=MessageRole.SYSTEM, content="be brief"),
+            Message(role=MessageRole.USER, content="hi"),
+        ]
+    )
+
+    kwargs = mock.await_args.kwargs
+    assert kwargs.get("config") is None
+    assert kwargs["contents"][0].parts[0].text == "be brief"
+
+
+def test_function_call_thought_signature_round_trips() -> None:
+    """Regression: Gemini 3 400s ("Function call is missing a thought_signature") when a replayed
+    function call loses the signature it was issued with."""
+    call = _function_call_to_tool_call(
+        genai_types.FunctionCall(name="propose_alert", args={"symbol": "2317"}), 0, b"sig-bytes"
+    )
+    assert call.continuation is not None
+    assert "continuation" not in call.model_dump()  # never leaks into persisted/streamed JSON
+
+    part = _function_call_part(call)
+    assert part.thought_signature == b"sig-bytes"
+    assert _function_call_part(ToolCall(id="x", name="n", arguments={})).thought_signature is None

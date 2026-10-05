@@ -33,7 +33,9 @@ from typing import Any, cast
 
 import pandas as pd
 import structlog
+from sqlalchemy import select
 
+from db.models import AlertRuleRow, WatchlistItemRow
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 from ingest.us_universe import latest_us_symbols
@@ -56,6 +58,50 @@ US_PRICE_EOD_DATASET = "us_price_eod"
 # "broad, investable, always-quotable" reasons `^GSPC` would be chosen for if it worked reliably
 # in this batch path.
 US_REFERENCE_INDEX_SYMBOL = "SPY"
+
+# Upper bound on how many user-demanded US symbols ride along in the daily price pull, on top of
+# the screener-discovered universe. Alert caps are per user, so total demand is otherwise
+# unbounded; this keeps one `batch_download` request a sane size. Beyond it the lowest-sorted
+# symbols win (deterministic) and the truncation is logged, never silent.
+MAX_DEMANDED_US_SYMBOLS = 500
+
+
+async def demanded_us_symbols(ctx: IngestContext) -> list[str]:
+    """US symbols that users currently have an enabled alert on — directly, or through a
+    watchlist-scoped rule — so the daily price pull covers them even when they are outside the
+    screener-discovered universe. Without this, an alert on such a symbol has no data and never
+    fires, with nothing to tell the user why.
+
+    Reads only the symbol column of the relational store (no user identity leaves this function)
+    and returns `[]` when no DB session factory is wired, so a Parquet-only ingest composition is
+    unaffected. Tickers are normalised to upper case, matching what alert creation stores."""
+    if ctx.session_factory is None:
+        return []
+    direct = select(AlertRuleRow.symbol).where(
+        AlertRuleRow.enabled.is_(True),
+        AlertRuleRow.market == Market.US.value,
+        AlertRuleRow.symbol.is_not(None),
+    )
+    via_watchlist = (
+        select(WatchlistItemRow.symbol)
+        .join(AlertRuleRow, AlertRuleRow.watchlist_id == WatchlistItemRow.watchlist_id)
+        .where(AlertRuleRow.enabled.is_(True), WatchlistItemRow.market == Market.US.value)
+    )
+    async with ctx.session_factory() as session:
+        found = {
+            str(symbol).strip().upper()
+            for query in (direct, via_watchlist)
+            for (symbol,) in (await session.execute(query)).all()
+            if symbol
+        }
+    symbols = sorted(found)
+    if len(symbols) > MAX_DEMANDED_US_SYMBOLS:
+        logger.warning(
+            "us_demanded_symbols_truncated", demanded=len(symbols), kept=MAX_DEMANDED_US_SYMBOLS
+        )
+        symbols = symbols[:MAX_DEMANDED_US_SYMBOLS]
+    return symbols
+
 
 # One capability -> Parquet dataset name per fundamentals family this job covers. Mirrors the
 # split `ingest/jobs.py::FINANCIALS_JOB`/`BALANCE_SHEET_JOB`/`CASH_FLOW_JOB`/`DIVIDENDS_JOB` take
@@ -219,18 +265,24 @@ async def job_us_price_eod(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="not the leader — write skipped",
         )
 
-    symbols = latest_us_symbols(ctx.store)
+    # The screener-discovered universe plus any symbol a user has an alert on (so alerts work for
+    # tickers outside the universe too — see `demanded_us_symbols`).
+    symbols = sorted({*latest_us_symbols(ctx.store), *await demanded_us_symbols(ctx)})
     if not symbols:
         return journal_run(
             US_PRICE_EOD_DATASET,
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="no US symbol universe yet — run job_us_symbol_universe first",
+            detail="no US symbol universe yet and no alerted symbols — run "
+            "job_us_symbol_universe first",
         )
     # SPY always rides along, even though it's never part of the screener-discovered universe
     # itself — see `US_REFERENCE_INDEX_SYMBOL`'s own comment for why.
-    fetch_symbols = [*symbols, US_REFERENCE_INDEX_SYMBOL]
+    fetch_symbols = [
+        *symbols,
+        *([] if US_REFERENCE_INDEX_SYMBOL in symbols else [US_REFERENCE_INDEX_SYMBOL]),
+    ]
 
     date_str = run_date.isoformat()
     end_str = (run_date + _ONE_DAY).isoformat()

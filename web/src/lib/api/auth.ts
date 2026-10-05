@@ -16,7 +16,7 @@ import { apiUrl } from "@/lib/api/config";
 import { apiErrorSchema, type BeginAuthResponse, beginAuthResponseSchema } from "@/lib/api/schemas";
 import { type MeResponse, meResponseSchema } from "@/types/account";
 
-export const OAUTH_PROVIDERS = ["google", "line"] as const;
+export const OAUTH_PROVIDERS = ["google", "line", "telegram"] as const;
 export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 /** The backend error codes this flow can surface (auth.py + dependencies.py). */
@@ -74,6 +74,29 @@ export async function beginOAuth(provider: OAuthProvider): Promise<BeginAuthResp
   let response: Response;
   try {
     response = await fetch(apiUrl(`/auth/oauth/${provider}`), {
+      method: "POST",
+      credentials: "include",
+      headers: { accept: "application/json" },
+    });
+  } catch {
+    throw new AuthError("network_error", "Could not reach the sign-in service.", true);
+  }
+  if (!response.ok) {
+    throw await readError(response);
+  }
+  const parsed = beginAuthResponseSchema.safeParse(await response.json());
+  if (!parsed.success) {
+    throw new AuthError("bad_response", "Unexpected sign-in response.", false);
+  }
+  return parsed.data;
+}
+
+/** Link a provider to the signed-in account: same shape as `beginOAuth`, but the backend's callback
+ * attaches the verified identity to the current user and returns to settings → connections. */
+export async function beginOAuthLink(provider: OAuthProvider): Promise<BeginAuthResponse> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/auth/oauth/${provider}/link`), {
       method: "POST",
       credentials: "include",
       headers: { accept: "application/json" },

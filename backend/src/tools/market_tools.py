@@ -20,6 +20,7 @@ from datetime import timedelta
 from enum import IntEnum, StrEnum
 from typing import NamedTuple, cast
 
+import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from analytics.fundamentals import (
@@ -5470,7 +5471,10 @@ class GetCompanyProfileTool(BaseTool):
         # other market has no such ingest job at all, so this computes the same two fields live
         # off the `financials` fetch already made above instead of a permanently-empty store read.
         if typed.market is Market.TW:
-            revenue_yoy, margins = self._revenue_yoy_and_margins(symbol=symbol, market=typed.market)
+            # Synchronous Parquet reads + validation: off the event loop.
+            revenue_yoy, margins = await anyio.to_thread.run_sync(
+                lambda: self._revenue_yoy_and_margins(symbol=symbol, market=typed.market)
+            )
         else:
             revenue_yoy, margins = _yfinance_revenue_yoy_and_margins(financials_result.payload)
         if revenue_yoy is None:
@@ -5558,7 +5562,9 @@ class GetSymbolInfoTool(BaseTool):
     input_model: type[BaseModel] = GetSymbolInfoInput
     output_model: type[BaseModel] = GetSymbolInfoOutput
     data_class = DataClass.PUBLIC
-    card_type: str | None = "symbol_info"
+    # No card: this is a name/industry lookup the model reads, and the raw key/value card it used to
+    # produce (market, roster date, "data available") told the reader nothing.
+    card_type: str | None = None
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store

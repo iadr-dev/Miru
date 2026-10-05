@@ -9,7 +9,11 @@ import {
   formatNumber,
   PLUMBING_KEYS,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { cardTypeLabel, fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import {
+  cardTypeLabel,
+  fieldLabel,
+  valueLabel,
+} from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { cn } from "@/lib/cn";
 
 /** Large-magnitude monetary fields (market cap / fund size, routinely in the billions of TWD)
@@ -237,7 +241,7 @@ export function SnapshotCard({ card_type, data }: { card_type: string; data: unk
                 ? COMPACT_NUMBER_FIELDS.has(key)
                   ? formatCompactNumber(asNumber(value), locale)
                   : formatNumber(asNumber(value), locale)
-                : String(value)}
+                : valueLabel(t, key, String(value))}
             </p>
           </div>
         ))}

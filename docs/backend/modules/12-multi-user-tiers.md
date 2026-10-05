@@ -6,7 +6,7 @@ and BYOK. This is a deliberate scope expansion — see [../adr/0008](../adr/0008
 
 ## 1. Authentication & identity
 
-**OAuth 2.0 authorization-code flow** (Google + LINE Login), then our own **JWT session**
+**OAuth 2.0 authorization-code flow** (Google + LINE Login; Telegram via OpenID Connect, link-only in Settings), then our own **JWT session**
 (access + refresh, httpOnly cookie; `JWT_*` config). Anonymous browsing allowed for read-only
 public market data; AI chat requires sign-in.
 
@@ -32,6 +32,7 @@ Two-leg flow per provider, **with PKCE (S256)**:
 | Provider | authorize / token endpoint | client_id / secret (config) | scopes | identity source |
 |----------|----------------------------|-----------------------------|--------|-----------------|
 | **Google** | `accounts.google.com/o/oauth2/v2/auth` · `oauth2.googleapis.com/token` | `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` | `openid email profile` | ID token + userinfo |
+| **Log in with Telegram** (OIDC) | `oauth.telegram.org/auth` · `oauth.telegram.org/token` (HTTP Basic client auth) · JWKS `oauth.telegram.org/.well-known/jwks.json` | `TELEGRAM_LOGIN_CLIENT_ID` (defaults to the bot id) / `TELEGRAM_LOGIN_CLIENT_SECRET` / `TELEGRAM_LOGIN_REDIRECT_URI` (register under the bot's *Login Widget* in @BotFather) | `openid profile` (never `phone`) | **ID token (RS256)**; PKCE S256; no email — `sub` is the Telegram user id. Identity only — alert delivery to Telegram still uses the bot link flow (modules/14) |
 | **LINE Login** | `access.line.me/oauth2/v2.1/authorize` · `api.line.me/oauth2/v2.1/token` | `LINE_CHANNEL_ID`/`LINE_CHANNEL_SECRET` | `profile openid email` | **ID token (JWT)**; verify `nonce` |
 
 - **`state` is required** (CSRF) on both; LINE also uses a `nonce` bound to the ID token.
@@ -65,8 +66,10 @@ this is native, not a retrofit. Resolution at callback:
 3. **New provider identity, already logged-in (Settings "link account")** — attach the new
    provider to the **current** user regardless of email. This is how a Google user adds LINE.
 
-Rules: one provider identity maps to exactly one user (unique constraint); linking a provider
-already bound to another account is refused (surface "already linked elsewhere"); a user can
+Rules: one provider identity may be linked to **several** users (e.g. one LINE account on a main
+and a second Miru account) — each account that completes the link flow shows it as linked;
+signing in with such an identity opens the account that linked it first (an account chooser is a
+possible later refinement); a user can
 **unlink** a provider only while **≥1 login method remains** (never orphan an account).
 
 **Settings** shows linked providers with link/unlink; `display_name`/`picture_url` seed from the
@@ -116,7 +119,9 @@ from then on.
 |------|--------------|---------|---------------|-------------------|
 | **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors — real, cache-only reads, [module 20](../modules/20-analytics-scoring.md) §2c); tag screener (`run_tag_screener`/`get_tag_catalog`, public criteria — real, [module 20](../modules/20-analytics-scoring.md) §5T); theme lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`, public); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
 | **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, theme discovery (LLM-surfaced, distinct from the public theme-lookup tools above), news_sentiment, web_search |
-| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + tick/minute-K, **deep_research** (multi-step web), scheduler |
+| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + tick/minute-K, **deep_research** (multi-step web) |
+
+**Alerts & schedules are not a tier feature** (the alerts v2 design): every signed-in user gets them under uniform fair-use caps (proposed: 50 alert rules, 10 schedules, 20 notifications/day; exceeding → 409 `cap_reached`). Effective when modules/14 P0 ships (v1 still has the Pro gate). Tiers only gate the *data* a notification carries — sponsor values are masked for non-entitled users.
 
 **Price tiering:** Free = EOD only; Premium/Pro = `price_intraday` — a delayed snapshot pushed
 over SSE by the shared **demand-driven server poller** (5s, market-open only, [modules/16](../modules/16-infrastructure.md)

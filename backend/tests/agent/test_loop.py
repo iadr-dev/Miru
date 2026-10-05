@@ -21,6 +21,7 @@ from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
 from tools.base import ToolContext
 from tools.market_tools import GetChipFlowsTool
+from tools.propose_alert_tools import ProposeAlertTool
 
 # The full card-opted-in tool set: every tool whose typed output is chart/table/gauge-shaped
 # enough to render a `RichCard`, mapped to its stable `card_type` label. Locked here so a typo
@@ -47,7 +48,6 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_institutional_flow": "institutional_flow",
     "get_price_momentum": "price_momentum",
     "get_holder_accumulation": "holder_accumulation",
-    "get_symbol_info": "symbol_info",
     "get_symbol_directory_search": "symbol_search",
     "get_price_history": "price_history",
     "get_us_market_rankings": "us_market_ranking",
@@ -156,6 +156,15 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     "get_tdcc_evoting_schedule": "tdcc_evoting_schedule",
     # ask_user_tools.py
     "ask_user": "ask_user",
+    # propose_alert_tools.py
+    "propose_alert": "alert_proposal",
+    "propose_schedule": "schedule_proposal",
+    "get_annual_fundamentals": "annual_fundamentals",
+    "get_revenue_seasonality": "revenue_seasonality",
+    "get_risk_metrics": "risk_metrics",
+    "get_etf_annual_summary": "etf_annual_summary",
+    "get_comparison_metrics": "comparison_metrics",
+    "get_morning_brief": "morning_brief",
     # market_index_strip_tools.py
     "get_market_index_strip": "market_index_strip",
     # us_market_index_strip_tools.py
@@ -694,3 +703,131 @@ async def test_run_turn_accumulates_web_search_sources_onto_the_turn_result() ->
     result = await loop.run_turn("what's the latest on 2330?", tool_context=ToolContext())
 
     assert result.web_search_sources == sources
+
+
+# ---- a model's bad tool arguments must be fed back to it, never kill the turn ----
+
+
+async def test_invalid_tool_arguments_become_a_tool_error_not_a_crashed_turn() -> None:
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(tool_call_id="call-1", name="echo_tool", arguments={}),
+            make_text_response("done"),
+        ]
+    )
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=4)
+
+    result = await loop.run_turn("call the tool wrongly", tool_context=ToolContext())
+
+    tool_result = result.steps[0].tool_messages[0].tool_results[0]
+    assert tool_result.is_error is True
+    assert "invalid arguments for echo_tool" in tool_result.content
+    assert "text" in tool_result.content  # names the offending field
+    assert result.final_text  # the turn ran to completion instead of raising
+
+
+async def test_the_model_can_correct_itself_after_an_argument_error() -> None:
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(
+                tool_call_id="call-1", name="echo_tool", arguments={"text": ""}
+            ),
+            make_tool_call_response(
+                tool_call_id="call-2", name="echo_tool", arguments={"text": "second try"}
+            ),
+            make_text_response("done"),
+        ]
+    )
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=5)
+
+    result = await loop.run_turn("retry after a bad call", tool_context=ToolContext())
+
+    assert result.steps[0].tool_messages[0].tool_results[0].is_error is True
+    assert result.steps[1].tool_messages[0].tool_results[0].is_error is False
+
+
+async def test_the_feedback_lists_valid_options_but_never_echoes_the_rejected_value() -> None:
+    # The failure seen live: a model put an out-of-set word in an enum field.
+    secret_looking = "close-SENTINEL-value"
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(
+                tool_call_id="call-1",
+                name="propose_alert",
+                arguments={
+                    "symbol": "2330",
+                    "market": secret_looking,
+                    "condition": {"kind": "close_price", "comparator": "above", "value": 800},
+                },
+            ),
+            make_text_response("done"),
+        ]
+    )
+    loop = AgentLoop(llm, tools=[ProposeAlertTool()], max_steps=4)
+
+    result = await loop.run_turn("alert me", tool_context=ToolContext())
+
+    content = result.steps[0].tool_messages[0].tool_results[0].content
+    assert "market" in content
+    assert "TW" in content  # tells the model what IS valid
+    assert secret_looking not in content  # ...without reflecting what it sent
+
+
+async def test_a_recovered_propose_alert_call_still_produces_its_card() -> None:
+    good = {
+        "symbol": "2330",
+        "market": "TW",
+        "condition": {"kind": "close_price", "comparator": "above", "value": 800},
+    }
+    llm = StubLLMClient(
+        script=[
+            make_tool_call_response(
+                tool_call_id="call-1",
+                name="propose_alert",
+                arguments={**good, "trigger_mode": "close"},
+            ),
+            make_tool_call_response(tool_call_id="call-2", name="propose_alert", arguments=good),
+            make_text_response("已列出提醒提案，請確認。"),
+        ]
+    )
+    loop = AgentLoop(llm, tools=[ProposeAlertTool()], max_steps=5)
+
+    result = await loop.run_turn("2330 收盤價高於 800 提醒我", tool_context=ToolContext())
+
+    assert [c.card_type for c in result.rich_cards] == ["alert_proposal"]
+    assert result.rich_cards[0].data["condition"]["value"] == 800  # type: ignore[index]
+
+
+async def test_hide_cards_for_drops_the_card_but_the_model_still_reads_the_data() -> None:
+    """A report skill fetches identity data only to write about it — its raw card is clutter above
+    the charts. The card is dropped; the tool result the model sees is untouched."""
+    arguments = {
+        "symbol": "2330",
+        "market": "TW",
+        "condition": {"kind": "close_price", "comparator": "above", "value": 800},
+    }
+
+    def script() -> StubLLMClient:
+        return StubLLMClient(
+            script=[
+                make_tool_call_response(
+                    tool_call_id="c1", name="propose_alert", arguments=arguments
+                ),
+                make_text_response("done"),
+            ]
+        )
+
+    shown = await AgentLoop(script(), tools=[ProposeAlertTool()], max_steps=4).run_turn(
+        "x", tool_context=ToolContext()
+    )
+    assert any(card.card_type == "alert_proposal" for card in shown.rich_cards)
+
+    hidden = await AgentLoop(
+        script(),
+        tools=[ProposeAlertTool()],
+        max_steps=4,
+        hide_cards_for=frozenset({"propose_alert"}),
+    ).run_turn("x", tool_context=ToolContext())
+    assert hidden.rich_cards == ()
+    tool_text = hidden.steps[0].tool_messages[0].tool_results[0].content
+    assert "2330" in tool_text  # the model still got the data

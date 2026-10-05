@@ -77,7 +77,12 @@ from tools.base import Tool, ToolContext
 logger = structlog.get_logger(__name__)
 
 _ROOT_AGENT_ID = "root"
-_WARM_TOOLS: tuple[str, ...] = ("get_canonical_context", "get_source_health")
+_WARM_TOOLS: tuple[str, ...] = (
+    "get_canonical_context",
+    "get_source_health",
+    "propose_alert",
+    "propose_schedule",
+)
 _DEGRADED_ALL_LANES = (
     "All analysis lanes were unavailable for this request, so no market context could be "
     "compiled. This is informational only and not a buy/sell/hold recommendation; please try "
@@ -583,6 +588,7 @@ class Orchestrator:
             web_search_enabled=web_search_enabled,
             locale=locale,
             recall_provider=recall_provider,
+            hide_cards_for=frozenset(skill.frontmatter.hide_cards) if skill else frozenset(),
         )
         try:
             turn = await loop.run_turn(
@@ -862,6 +868,7 @@ class Orchestrator:
             turn_id=turn_id,
             agent_id=agent_id,
             locale=locale,
+            hide_cards_for=frozenset(skill.frontmatter.hide_cards),
         )
         try:
             turn = await loop.run_turn(lane_message, tool_context=tool_context, history=history)
@@ -1058,6 +1065,7 @@ class Orchestrator:
         web_search_enabled: bool = False,
         locale: str = "zh-TW",
         recall_provider: RecallBlockProvider | None = None,
+        hide_cards_for: frozenset[str] = frozenset(),
     ) -> AgentLoop:
         pre_tool_hooks: list[PreToolHook] | None = None
         post_tool_hooks: list[PostToolHook] | None = None
@@ -1126,6 +1134,7 @@ class Orchestrator:
             pre_llm_hooks=pre_llm_hooks,
             steering_source=steering_source,
             native_web_search=native_web_search,
+            hide_cards_for=hide_cards_for,
         )
 
     def _resolve_client(self, role: ModelRole, *, model_override: str | None = None) -> LLMClient:

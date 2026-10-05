@@ -159,6 +159,34 @@ def test_check_output_does_not_duplicate_an_existing_caveat() -> None:
     assert verdict.redacted_text is None
 
 
+def test_check_output_keeps_newlines_and_bullets_when_it_rewrites() -> None:
+    """Regression guard: re-joining split sentences used to delete every newline, so a bulleted
+    answer collapsed into one run-on line whenever ANY rewrite (even the caveat) happened."""
+    text = "提案如下：\n\n- 標的：2330。\n- 條件：收盤價高於 800。\n\n請按建立。"
+    verdict = check_output(text)
+    assert verdict.redacted_text is not None  # caveat appended → rebuild path ran
+    assert verdict.redacted_text.startswith(text)
+
+
+def test_check_output_keeps_newlines_around_a_redacted_sentence() -> None:
+    verdict = check_output("第一行。\n建議買進這檔股票。\n第三行。")
+    assert verdict.redacted_text is not None
+    assert "目標價" not in verdict.redacted_text
+    assert "第一行。\n" in verdict.redacted_text
+    assert "\n第三行。" in verdict.redacted_text
+
+
+def test_check_output_appends_the_caveat_in_the_answers_language() -> None:
+    verdict = check_output("外資本週買超 2317。")
+    assert verdict.redacted_text is not None
+    assert verdict.redacted_text.endswith("以上僅為資料觀察，不構成買賣建議。")
+    assert "analytical market context" not in verdict.redacted_text
+
+
+def test_check_output_recognises_a_chinese_caveat_already_present() -> None:
+    assert check_output("外資本週買超 2317。以上不構成投資建議。").redacted_text is None
+
+
 def test_check_output_skips_caveat_when_no_market_data_involved() -> None:
     verdict = check_output("Hello, how can I help you today?", has_market_data=False)
     assert verdict.allowed is True

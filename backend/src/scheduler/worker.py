@@ -8,11 +8,12 @@ bound the scheduling amendment is permitted under:
    real cross-process election swaps in at the construction site alone.
 2. **User-authorized.** Only jobs/alerts a signed-in user created are in the store; the worker
    never invents work.
-3. **Entitlement-gated at run time.** The owner's tier is resolved *fresh* each run. If the
-   scheduler feature entitlement has lapsed (owner no longer Pro), the job auto-disables. Sponsor
-   data inside a run is masked by the same tool-dispatch gate an interactive turn uses, because
-   the run's `ToolContext` carries the owner's current data-licensing tier — a lapsed sponsor
-   entitlement masks that section of the brief without spamming an upgrade prompt.
+3. **Open to every user, data-masked at run time.** The feature is not tier-gated (modules/14);
+   a job whose owner account no longer exists auto-disables. The owner's tier is still resolved
+   *fresh* each run: sponsor data inside a run is masked by the same tool-dispatch gate an
+   interactive turn uses, because the run's `ToolContext` carries the owner's current
+   data-licensing tier — a lapsed sponsor entitlement masks that section of the brief without
+   spamming an upgrade prompt.
 4. **Quota-bounded.** Over-quota runs are skipped and reported (`skipped_quota`), never retried
    in a tight loop. A job's own `daily_limit` is enforced independently against delivered-today
    counts.
@@ -27,52 +28,88 @@ bound the scheduling amendment is permitted under:
 
 from __future__ import annotations
 
+import asyncio
+from calendar.holidays import is_market_open_day
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from typing import cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from accounts.entitlements import feature_allowed
 from accounts.hooks import EntitlementResolver
 from accounts.models import User
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError
-from conversation.models import CaveatBlock, MessageBlockType, TextBlock, TurnRole
-from conversation.store import SqlAlchemyConversationStore
+from agent.loop import RichCard
+from conversation.models import CaveatBlock, MessageBlockType, RichCardBlock, TextBlock, TurnRole
+from conversation.store import SqlAlchemyConversationStore, ThreadNotFoundError
 from dataaccess.router import DataAccessRouter
 from events.bus import EventBus
+from governance.textscan import check_output
 from ingest.leader import LeaderElection, get_default_leader_election
 from orchestrator.orchestrator import Orchestrator, PersonalityContext
-from scheduler.alerts import AlertEvaluation, evaluate_condition
 from scheduler.delivery.base import (
     DeliveryChannel,
     DeliveryNotification,
     DeliveryReceipt,
     DeliveryRecipient,
 )
+from scheduler.evaluator import Evaluation, SnapshotReader, SnapshotView, evaluate_condition
 from scheduler.models import (
+    AlertPreference,
     AlertRule,
     DeliveryChannelKind,
     JobStatus,
+    Notification,
     NotificationSource,
     QuietHours,
     ScheduleJob,
+    TriggerMode,
 )
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.store import SqlAlchemySchedulerStore
+from scheduler.templates import (
+    NON_ADVICE_FOOTER,
+    ConditionModel,
+    capability_of,
+    describe,
+    probe_dataset,
+)
+from scheduler.triggers import UnresolvableTriggerError, market_timezone, next_run_after
+from scheduler.unsubscribe import unsubscribe_url
 from schemas.enums import Capability, Market
-from schemas.market import Symbol
+from schemas.schedule_templates import MAX_TARGETS, WATCHLIST_INPUT
+from tools.base import Tool, dispatch_tool
+from tools.morning_brief_models import GetMorningBriefOutput, MorningBriefInput
 from usage.store import SqlAlchemyUsageStore
 
 logger = structlog.get_logger(__name__)
 
-_SCHEDULER_FEATURE = "scheduler"
+_DEFAULT_USER_TZ = "Asia/Taipei"
+_HELD_LOOKBACK = timedelta(days=2)
+# The morning digest goes out at or after this local time, and no later than the cutoff (a pass that
+# was down at 08:00 still sends it late in the morning; after that the moment has passed).
+_DIGEST_FROM = time(8, 0)
+_DIGEST_UNTIL = time(12, 0)
+_DIGEST_LOOKBACK = timedelta(hours=24)
+_DIGEST_MAX_LINES = 8
 
 
-def _within_quiet_hours(quiet: QuietHours | None, now: datetime) -> bool:
+def _user_zone(name: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(name or _DEFAULT_USER_TZ)
+    except (ZoneInfoNotFoundError, ValueError):
+        return ZoneInfo(_DEFAULT_USER_TZ)
+
+
+def _within_quiet_hours(quiet: QuietHours | None, now: datetime, tz_name: str | None) -> bool:
+    """Is `now` inside the quiet window? The window is wall-clock time in the user's own timezone
+    (their preference, default Asia/Taipei), not the server's UTC."""
     if quiet is None:
         return False
-    hhmm = now.strftime("%H:%M")
+    hhmm = as_utc(now).astimezone(_user_zone(tz_name)).strftime("%H:%M")
     if quiet.start <= quiet.end:
         return quiet.start <= hhmm < quiet.end
     # window wraps past midnight
@@ -92,11 +129,23 @@ class SchedulerContext:
     leader: LeaderElection
     quota_gate: QuotaGate
     event_bus: EventBus | None = None
+    # Read-only view of the ingested store the alert engine evaluates against. None disables
+    # alert evaluation (job scheduling is unaffected).
+    reader: SnapshotReader | None = None
+    # The `get_morning_brief` tool. The 晨間摘要 is rendered by code from its figures, so a daily
+    # digest needs no model call and no chat quota. None falls back to the plain recap.
+    brief_tool: Tool | None = None
+    # Public HTTPS base URL and signing secret for the one-click email unsubscribe link.
+    public_base_url: str | None = None
+    link_secret: str | None = None
 
 
 class SchedulerWorker:
     def __init__(self, ctx: SchedulerContext) -> None:
         self._ctx = ctx
+        # One DuckDB reader connection must not serve concurrent queries, so alert evaluation is
+        # serialised through this lock.
+        self._eval_lock = asyncio.Lock()
 
     # ---- jobs ----
 
@@ -117,29 +166,40 @@ class SchedulerWorker:
                 ran.append(job.id)
         return ran
 
-    async def run_job(self, job: ScheduleJob, *, now: datetime | None = None) -> bool:
+    async def run_job(  # noqa: PLR0911 — each early return is a distinct skip reason
+        self, job: ScheduleJob, *, now: datetime | None = None
+    ) -> bool:
         """Run one job end to end. Returns True if the skill actually executed (vs. skipped)."""
         now = now or datetime.now(UTC)
         async with self._ctx.session_factory() as session:
             store = SqlAlchemySchedulerStore(session)
             user = await self._load_user(session, job.user_id)
 
-            if user is None or not feature_allowed(user, _SCHEDULER_FEATURE):
-                # Entitlement lapsed (owner no longer Pro, or account gone) — auto-disable so it
-                # never fires again at this tier; no upgrade-prompt spam.
+            if user is None:
+                # Owner account is gone — auto-disable so the orphaned job never fires again.
                 await store.set_job_status(job_id=job.id, status=JobStatus.ERROR, disable=True)
                 await session.commit()
                 self._emit("schedule.disabled", user_id=job.user_id, data={"job_id": job.id})
-                logger.info("schedule_job_auto_disabled", job_id=job.id, reason="entitlement")
+                logger.info("schedule_job_auto_disabled", job_id=job.id, reason="owner_missing")
                 return False
 
-            if _within_quiet_hours(job.quiet_hours, now):
+            prefs = await store.get_preferences(user_id=user.id)
+            tz_name = prefs.timezone if prefs else None
+            quiet = job.quiet_hours or (prefs.quiet_hours if prefs else None)
+            if _within_quiet_hours(quiet, now, tz_name):
+                # The job stays due, so it runs on the first pass after the window closes.
                 self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
                 return False
 
             if not await self._ctx.quota_gate.allows(user_id=user.id, tier=user.tier):
+                # Advance next_run too: with a real resolver the job stays "due" otherwise, and
+                # an over-quota job must be skipped once per cadence, not retried every poll.
                 await store.set_job_status(
-                    job_id=job.id, status=JobStatus.SKIPPED_QUOTA, last_run=now
+                    job_id=job.id,
+                    status=JobStatus.SKIPPED_QUOTA,
+                    last_run=now,
+                    next_run=self._next_run(job, now),
+                    reason="chat_quota_exhausted",
                 )
                 await session.commit()
                 self._emit("schedule.skipped_quota", user_id=user.id, data={"job_id": job.id})
@@ -155,6 +215,21 @@ class SchedulerWorker:
                 self._emit("schedule.skipped_limit", user_id=user.id, data={"job_id": job.id})
                 return False
 
+            inputs = await self._resolved_inputs(store, job)
+            if inputs is None:
+                # The watchlist is gone or holds no Taiwan stocks: nothing to brief on. Say so and
+                # move on to the next cadence instead of running the skill on an empty target.
+                await store.set_job_status(
+                    job_id=job.id,
+                    status=JobStatus.ERROR,
+                    last_run=now,
+                    next_run=self._next_run(job, now),
+                    reason="watchlist_empty",
+                )
+                await session.commit()
+                self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
+                return False
+
             # Mark running so a crash mid-run is detectable as an orphaned run.
             await store.set_job_status(job_id=job.id, status=JobStatus.RUNNING)
             await session.commit()
@@ -168,7 +243,7 @@ class SchedulerWorker:
             try:
                 result = await self._ctx.orchestrator.run_skill(
                     job.action.skill_ref,
-                    self._job_message(job),
+                    self._job_message(job, inputs),
                     tool_context=tool_context,
                     event_bus=self._ctx.event_bus,
                     turn_id=job.id,
@@ -179,12 +254,24 @@ class SchedulerWorker:
                     personality=PersonalityContext(user_preference=user.personality_id),
                 )
             except Exception as exc:
-                await store.set_job_status(job_id=job.id, status=JobStatus.ERROR, last_run=now)
+                await store.set_job_status(
+                    job_id=job.id,
+                    status=JobStatus.ERROR,
+                    last_run=now,
+                    next_run=self._next_run(job, now),
+                    reason=type(exc).__name__,
+                )
                 await session.commit()
                 logger.warning("schedule_job_run_failed", job_id=job.id, error=str(exc))
                 return False
 
-            await self._persist_turn(session, user_id=user.id, text=result.final_text)
+            thread_id = await self._persist_turn(
+                session,
+                user_id=user.id,
+                text=result.final_text,
+                cards=result.rich_cards,
+                job=job,
+            )
             await self._deliver(
                 store,
                 user=user,
@@ -192,73 +279,207 @@ class SchedulerWorker:
                 source_id=job.id,
                 channels=job.delivery_channels,
                 title="排程摘要",
-                body=result.final_text,
+                body=_notification_preview(result.final_text),
                 trigger_date=now.date(),
-                deep_link={"route": "thread"},
+                deep_link={"route": "thread", "thread_id": thread_id},
             )
             await store.set_job_status(
-                job_id=job.id, status=JobStatus.OK, last_run=now, next_run=self._next_run(job, now)
+                job_id=job.id,
+                status=JobStatus.OK,
+                last_run=now,
+                next_run=self._next_run(job, now),
+                thread_id=thread_id,
             )
             await session.commit()
             return True
 
     # ---- alerts ----
+    #
+    # Event-driven (modules/14): a `data.updated` signal and the reconciliation sweep both land in
+    # `_evaluate_group`, which is idempotent per `(capability, market, as_of)` via the eval mark and
+    # the notification dedupe key. The signal is best-effort, so the sweep — run every daemon pass —
+    # is the correctness floor; the signal only lowers latency.
 
-    async def evaluate_alerts(self, *, now: datetime | None = None) -> list[str]:
-        """Evaluate every enabled alert against official/EOD data. Returns fired alert ids."""
+    async def reconcile_alerts(self, *, now: datetime | None = None) -> list[str]:
+        """Evaluate, for every `(capability, market)` an enabled rule depends on, the latest
+        ingested `as_of` not yet evaluated. Returns the ids of rules that fired."""
         if not self._ctx.leader.is_leader():
             logger.info("scheduler_skip_not_leader", phase="alerts")
+            return []
+        if self._ctx.reader is None:
             return []
         now = now or datetime.now(UTC)
         async with self._ctx.session_factory() as session:
             store = SqlAlchemySchedulerStore(session)
-            alerts = await store.enabled_alerts()
+            wanted: set[tuple[Capability, Market]] = set()
+            for rule in await store.enabled_alerts():
+                for _symbol, market in await self._targets(store, rule):
+                    wanted.add((capability_of(rule.condition), market))
             await session.commit()
         fired: list[str] = []
-        for alert in alerts:
-            if await self.evaluate_alert(alert, now=now):
-                fired.append(alert.id)
+        for capability, market in sorted(wanted, key=lambda w: (w[0].value, w[1].value)):
+            as_of = await self._latest_as_of(capability, market, now)
+            if as_of is not None:
+                fired.extend(await self._evaluate_group(capability, market, as_of, now=now))
         return fired
 
-    async def evaluate_alert(self, alert: AlertRule, *, now: datetime | None = None) -> bool:
-        now = now or datetime.now(UTC)
-        async with self._ctx.session_factory() as session:
+    async def handle_data_updated(
+        self, *, capability: Capability, market: Market, as_of: str, now: datetime | None = None
+    ) -> list[str]:
+        """React to a `data.updated` signal. A malformed `as_of` is ignored (best-effort signal)."""
+        if not self._ctx.leader.is_leader() or self._ctx.reader is None:
+            return []
+        try:
+            day = date.fromisoformat(as_of)
+        except ValueError:
+            logger.warning("alert_signal_bad_as_of", as_of=as_of)
+            return []
+        return await self._evaluate_group(capability, market, day, now=now or datetime.now(UTC))
+
+    async def _latest_as_of(
+        self, capability: Capability, market: Market, now: datetime
+    ) -> date | None:
+        reader = self._ctx.reader
+        if reader is None:
+            return None
+        probe = probe_dataset(capability, market)
+        today = now.astimezone(market_timezone(market)).date()
+        async with self._eval_lock:
+            return await asyncio.to_thread(
+                SnapshotView(reader).latest_partition_date, probe, market, on_or_before=today
+            )
+
+    async def _targets(
+        self, store: SqlAlchemySchedulerStore, rule: AlertRule
+    ) -> list[tuple[str, Market]]:
+        if rule.symbol is not None and rule.market is not None:
+            return [(rule.symbol, rule.market)]
+        if rule.watchlist_id is not None:
+            return await store.watchlist_members(
+                watchlist_id=rule.watchlist_id, user_id=rule.user_id
+            )
+        return []
+
+    async def _evaluate_group(
+        self, capability: Capability, market: Market, as_of: date, *, now: datetime
+    ) -> list[str]:
+        reader = self._ctx.reader
+        if reader is None:
+            return []
+        async with self._eval_lock, self._ctx.session_factory() as session:
             store = SqlAlchemySchedulerStore(session)
-            user = await self._load_user(session, alert.user_id)
-            if user is None or not feature_allowed(user, _SCHEDULER_FEATURE):
-                await store.update_alert(user_id=alert.user_id, alert_id=alert.id, enabled=False)
-                await session.commit()
-                return False
-            if _within_quiet_hours(alert.quiet_hours, now):
-                return False
+            mark = await store.get_eval_mark(capability=capability.value, market=market.value)
+            if mark is not None and as_of.isoformat() <= mark:
+                return []
+            rules = [
+                r for r in await store.enabled_alerts() if capability_of(r.condition) is capability
+            ]
+            targets = {r.id: await self._targets(store, r) for r in rules}
+            view = SnapshotView(reader)
+            evaluations = await asyncio.to_thread(
+                _compute_evaluations, rules, targets, market, as_of, view
+            )
+            fired: list[str] = []
+            for rule in rules:
+                if await self._apply_rule(
+                    store,
+                    rule,
+                    results=evaluations.get(rule.id, {}),
+                    market=market,
+                    as_of=as_of,
+                    now=now,
+                ):
+                    fired.append(rule.id)
+            await store.set_eval_mark(
+                capability=capability.value, market=market.value, as_of=as_of.isoformat()
+            )
+            await session.commit()
+        return fired
 
-            evaluation = await self._evaluate_condition(alert)
-            if not evaluation.triggered:
-                return False
+    async def _apply_rule(  # noqa: PLR0913 — one argument per evaluation dimension
+        self,
+        store: SqlAlchemySchedulerStore,
+        rule: AlertRule,
+        *,
+        results: dict[str, Evaluation],
+        market: Market,
+        as_of: date,
+        now: datetime,
+    ) -> bool:
+        """Apply one rule's per-symbol evaluations: expiry, edge-trigger, cooldown, mode, delivery,
+        and the state write-back. Returns whether anything was delivered."""
+        if rule.expires_at is not None and now > as_utc(rule.expires_at):
+            await store.save_alert_state(
+                alert_id=rule.id, state=rule.state, enabled=False, auto_paused_reason="expired"
+            )
+            return False
+        # Partition dates are market-local, so compare in the market's timezone.
+        if as_utc(rule.created_at).astimezone(market_timezone(market)).date() > as_of:
+            return False  # never fire on data that predates the rule
 
-            self._emit("alert.fired", user_id=user.id, data={"alert_id": alert.id})
+        user = await self._load_user(store.session, rule.user_id)
+        if user is None:
+            await store.save_alert_state(
+                alert_id=rule.id,
+                state=rule.state,
+                enabled=False,
+                auto_paused_reason="owner_missing",
+            )
+            return False
+
+        state = dict(rule.state)
+        raw_met = state.get("met")
+        met_map: dict[str, bool] = (
+            {str(k): bool(v) for k, v in cast("dict[object, object]", raw_met).items()}
+            if isinstance(raw_met, dict)
+            else {}
+        )
+        fire_count = _as_int(state.get("fire_count"))
+        prefs = await store.get_preferences(user_id=rule.user_id)
+        channels = rule.channels or (prefs.channels if prefs else ())
+        quiet = rule.quiet_hours or (prefs.quiet_hours if prefs else None)
+        hold_external = _within_quiet_hours(quiet, now, prefs.timezone if prefs else None)
+        delivered = False
+
+        for symbol, evaluation in results.items():
+            was_met = met_map.get(symbol, False)
+            met_map[symbol] = evaluation.met
+            if not evaluation.met:
+                continue
+            if rule.trigger_mode is not TriggerMode.EVERY_OCCURRENCE and was_met:
+                continue  # still true since the last evaluation — fire on the transition only
+            if _in_cooldown(rule, state, now):
+                continue
+            self._emit("alert.fired", user_id=user.id, data={"alert_id": rule.id, "symbol": symbol})
             await self._deliver(
                 store,
                 user=user,
                 source=NotificationSource.ALERT,
-                source_id=alert.id,
-                channels=alert.channels,
-                title=f"{alert.symbol} 觀察提醒",
-                body=evaluation.message,
-                trigger_date=now.date(),
-                deep_link={"route": "stock", "symbol": alert.symbol},
+                source_id=rule.id if rule.symbol else f"{rule.id}:{symbol}",
+                channels=channels,
+                title=f"{symbol} - {describe(rule.condition)}",
+                body=_safe_body(evaluation.message, rule.condition, symbol),
+                trigger_date=as_of,
+                deep_link={"route": "stock", "symbol": symbol},
+                hold_external=hold_external,
             )
-            await store.mark_alert_triggered(alert_id=alert.id, when=now)
-            await session.commit()
-            return True
+            fire_count += 1
+            state["last_fired_at"] = now.isoformat()
+            delivered = True
+
+        state["met"] = met_map
+        state["fire_count"] = fire_count
+        completed = delivered and rule.trigger_mode is TriggerMode.ONCE
+        await store.save_alert_state(
+            alert_id=rule.id,
+            state=state,
+            last_triggered=now if delivered else None,
+            enabled=False if completed else None,
+            auto_paused_reason="completed" if completed else None,
+        )
+        return delivered
 
     # ---- shared internals ----
-
-    async def _evaluate_condition(self, alert: AlertRule) -> AlertEvaluation:
-        symbol = Symbol(id=alert.symbol, market=alert.market)
-        cap = _capability_for(alert.market)
-        result = await self._ctx.router.fetch(cap, symbol)
-        return evaluate_condition(alert, result)
 
     async def _deliver(  # noqa: PLR0913 — one field per delivery dimension
         self,
@@ -272,35 +493,258 @@ class SchedulerWorker:
         body: str,
         trigger_date: date,
         deep_link: dict[str, object],
+        hold_external: bool = False,
     ) -> None:
-        """Persist the in-app record (the dedupe guard) then route to each configured channel.
-        A redelivery of the same `(source_id, trigger_date, channel)` is a no-op via the unique
-        dedupe key — at-least-once execution stays idempotent."""
-        selected = channels or (DeliveryChannelKind.IN_APP,)
-        recipient = DeliveryRecipient(
-            user_id=user.id,
-            email_address=user.email,
-            device_tokens=tuple(d.token for d in await store.list_devices(user_id=user.id)),
+        """Persist the in-app record (the dedupe guard, and the inbox entry) then route to each
+        configured external channel. A redelivery of the same `(source_id, trigger_date, channel)`
+        is a no-op via the unique dedupe key — at-least-once execution stays idempotent.
+
+        During the user's quiet hours (`hold_external`) the inbox entry is still written at once
+        (it is silent) but external channels are only recorded as held; `release_held` sends them
+        as one digest once the window closes."""
+        selected = (
+            DeliveryChannelKind.IN_APP,
+            *(c for c in channels if c is not DeliveryChannelKind.IN_APP),
         )
+        recipient = await self._recipient_for(store, user)
         for channel_kind in selected:
+            held = hold_external and channel_kind is not DeliveryChannelKind.IN_APP
             record = await store.record_notification(
                 user_id=user.id,
                 source=source,
                 source_id=source_id,
                 channel=channel_kind,
                 trigger_date=trigger_date,
-                payload={"title": title, "body": body, "deep_link": deep_link},
+                payload={
+                    "title": title,
+                    "body": body,
+                    "deep_link": deep_link,
+                    **({"held": True} if held else {}),
+                },
             )
             if record is None:
                 continue  # dedupe no-op — already delivered on this channel today
+            if held:
+                continue
             channel = self._ctx.channels.get(channel_kind)
             if channel is None:
                 continue
             notification = DeliveryNotification(
-                notification_id=record.id, title=title, body=body, deep_link=deep_link
+                notification_id=record.id,
+                title=title,
+                body=_external_body(body),
+                deep_link=deep_link,
             )
             receipt = await channel.send(notification, recipient)
             self._log_receipt(receipt)
+            await self._prune_stale(store, user.id, receipt)
+
+    async def send_morning_digests(self, *, now: datetime | None = None) -> int:
+        """Send the 晨間摘要 to every user who turned it on, once per local day: on a Taiwan
+        trading day, from 08:00 (their timezone) — later if their quiet hours are still running —
+        until noon.
+
+        It is a plain recap of what happened in the last 24 hours (the notifications that fired)
+        plus how many alerts and schedules are active. It is deterministic: no model call, so it
+        costs no chat quota and cannot drift into advice. Nothing to report means no digest.
+        Returns how many were sent."""
+        if not self._ctx.leader.is_leader():
+            return 0
+        now = now or datetime.now(UTC)
+        sent = 0
+        async with self._ctx.session_factory() as session:
+            store = SqlAlchemySchedulerStore(session)
+            for user_id in await store.morning_digest_user_ids():
+                if await self._send_digest_to(store, session, user_id, now):
+                    sent += 1
+            await session.commit()
+        return sent
+
+    async def _send_digest_to(
+        self,
+        store: SqlAlchemySchedulerStore,
+        session: AsyncSession,
+        user_id: str,
+        now: datetime,
+    ) -> bool:
+        prefs = await store.get_preferences(user_id=user_id)
+        local_day = _digest_day(prefs, now)
+        if prefs is None or local_day is None:
+            return False
+        source_id = f"digest:{user_id}"
+        if await store.deliveries_today(
+            user_id=user_id, source_id=source_id, trigger_date=local_day
+        ):
+            return False  # already sent today
+        user = await self._load_user(session, user_id)
+        if user is None:
+            return False
+        brief = await self._run_brief(store, session, user, prefs)
+        if brief is not None:
+            text, thread_id = brief
+            await self._deliver(
+                store,
+                user=user,
+                source=NotificationSource.DIGEST,
+                source_id=source_id,
+                channels=prefs.channels,
+                title=f"晨間摘要 {local_day.isoformat()}",
+                body=_brief_preview(text),
+                trigger_date=local_day,
+                deep_link={"route": "thread", "thread_id": thread_id},
+            )
+            return True
+        recent = await store.recent_inbox(user_id=user_id, since=now - _DIGEST_LOOKBACK)
+        active_alerts = sum(1 for a in await store.list_alerts(user_id=user_id) if a.enabled)
+        active_jobs = sum(1 for j in await store.list_jobs(user_id=user_id) if j.enabled)
+        if not recent and not (active_alerts or active_jobs):
+            return False
+        await self._deliver(
+            store,
+            user=user,
+            source=NotificationSource.DIGEST,
+            source_id=source_id,
+            channels=prefs.channels,
+            title=f"晨間摘要 {local_day.isoformat()}",
+            body=_digest_body(recent, active_alerts, active_jobs),
+            trigger_date=local_day,
+            deep_link={"route": "notifications"},
+        )
+        return True
+
+    async def _run_brief(
+        self,
+        store: SqlAlchemySchedulerStore,
+        session: AsyncSession,
+        user: User,
+        prefs: AlertPreference,
+    ) -> tuple[str, str] | None:
+        """Build today's full report (market data + the user's own watchlist stocks and ETFs) and
+        append it, with its charts, to the user's one 晨間摘要 thread. The text is rendered by code
+        from the tool's figures — no model call, so no quota and nothing to drift into advice. If
+        the tool is missing or fails, `None` and the caller falls back to the plain recap."""
+        tool = self._ctx.brief_tool
+        if tool is None:
+            return None
+        symbols = await store.brief_symbols(user_id=user.id)
+        try:
+            result = await dispatch_tool(
+                tool,
+                MorningBriefInput.model_validate(symbols.model_dump()),
+                self._ctx.entitlement_resolver.tool_context_for(user),
+            )
+        except Exception:
+            logger.warning("morning_brief_run_failed", user_id=user.id)
+            return None
+        if not isinstance(result, GetMorningBriefOutput) or not result.report:
+            return None
+        thread_id = await self._append_to_thread(
+            session,
+            user_id=user.id,
+            thread_id=prefs.digest_thread_id,
+            title="晨間摘要",
+            text=result.report,
+            cards=[RichCard(card_type="morning_brief", data=result.model_dump(mode="json"))],
+            caveat="資料整理，非即時報價，不構成投資建議。",
+        )
+        if thread_id != prefs.digest_thread_id:
+            await store.set_digest_thread(user_id=user.id, thread_id=thread_id)
+        return result.report, thread_id
+
+    async def _recipient_for(
+        self, store: SqlAlchemySchedulerStore, user: User
+    ) -> DeliveryRecipient:
+        """Where this user can be reached: their account email, registered devices, the LINE id from
+        their LINE sign-in, and the Telegram chat they linked (if any)."""
+        return DeliveryRecipient(
+            user_id=user.id,
+            # An address that hard-bounced or complained is never emailed again.
+            email_address=(
+                None
+                if user.email and await store.is_email_suppressed(address=user.email)
+                else user.email
+            ),
+            device_tokens=tuple(d.token for d in await store.list_devices(user_id=user.id)),
+            unsubscribe_url=self._unsubscribe_url(user),
+            line_user_id=await store.linked_line_user_id(user_id=user.id),
+            telegram_chat_id=await store.channel_address(user_id=user.id, channel="telegram"),
+        )
+
+    def _unsubscribe_url(self, user: User) -> str | None:
+        if not (user.email and self._ctx.public_base_url and self._ctx.link_secret):
+            return None
+        return unsubscribe_url(
+            self._ctx.public_base_url, self._ctx.link_secret, user.id, user.email
+        )
+
+    async def release_held(self, *, now: datetime | None = None) -> int:
+        """Send what quiet hours parked, as ONE digest per user and channel, for every user whose
+        window has closed. Returns the number of parked notifications released."""
+        if not self._ctx.leader.is_leader():
+            return 0
+        now = now or datetime.now(UTC)
+        released = 0
+        async with self._ctx.session_factory() as session:
+            store = SqlAlchemySchedulerStore(session)
+            held = await store.list_held_notifications(since=now - _HELD_LOOKBACK)
+            by_user: dict[str, list[Notification]] = {}
+            for item in held:
+                by_user.setdefault(item.user_id, []).append(item)
+            for user_id, items in by_user.items():
+                prefs = await store.get_preferences(user_id=user_id)
+                if prefs is not None and _within_quiet_hours(
+                    prefs.quiet_hours, now, prefs.timezone
+                ):
+                    continue  # the user's window is still open
+                user = await self._load_user(session, user_id)
+                if user is None:
+                    continue
+                await self._send_digest(store, user, items)
+                released += await store.release_held_notifications(ids=tuple(i.id for i in items))
+            await session.commit()
+        return released
+
+    async def _send_digest(
+        self, store: SqlAlchemySchedulerStore, user: User, items: Sequence[Notification]
+    ) -> None:
+        recipient = await self._recipient_for(store, user)
+        by_channel: dict[DeliveryChannelKind, list[Notification]] = {}
+        for item in items:
+            by_channel.setdefault(item.channel, []).append(item)
+        for kind, group in by_channel.items():
+            channel = self._ctx.channels.get(kind)
+            if channel is None:
+                continue
+            # Each stored body already ends in the footer; join them bare and add it once.
+            lines = [
+                f"{g.payload.get('title', '')}："
+                f"{str(g.payload.get('body', '')).replace(NON_ADVICE_FOOTER, '').strip()}"
+                for g in group
+            ]
+            joined = lines[0] if len(group) == 1 else "\n".join(f"・{line}" for line in lines)
+            body = _external_body(joined)
+            title = (
+                str(group[0].payload.get("title", "提醒"))
+                if len(group) == 1
+                else f"靜音期間的通知（{len(group)} 則）"
+            )
+            receipt = await channel.send(
+                DeliveryNotification(
+                    notification_id=group[-1].id,
+                    title=title,
+                    body=body,
+                    deep_link={"route": "notifications"},
+                ),
+                recipient,
+            )
+            self._log_receipt(receipt)
+            await self._prune_stale(store, user.id, receipt)
+
+    async def _prune_stale(
+        self, store: SqlAlchemySchedulerStore, user_id: str, receipt: DeliveryReceipt
+    ) -> None:
+        for token in receipt.stale_tokens:
+            await store.unregister_device(user_id=user_id, token=token)
 
     def _log_receipt(self, receipt: DeliveryReceipt) -> None:
         logger.info(
@@ -316,50 +760,252 @@ class SchedulerWorker:
         except UserNotFoundError:
             return None
 
-    async def _persist_turn(self, session: AsyncSession, *, user_id: str, text: str) -> None:
-        """Write the scheduled brief into the owner's thread history, same as an interactive
-        turn — a scheduled run shows up in the user's threads like any other answer."""
+    async def _persist_turn(
+        self,
+        session: AsyncSession,
+        *,
+        user_id: str,
+        text: str,
+        cards: Sequence[RichCard],
+        job: ScheduleJob,
+    ) -> str:
+        """Append the scheduled brief to the schedule's ONE persistent thread (created on the first
+        run), so a daily briefing reads as a single running conversation instead of a new thread
+        per run. If the owner deleted that thread, the next run starts a fresh one. Returns the
+        thread id the brief landed in."""
+        return await self._append_to_thread(
+            session,
+            user_id=user_id,
+            thread_id=job.thread_id,
+            title="排程摘要",
+            text=text,
+            cards=cards,
+            caveat="排程觀察，非投資建議。",
+        )
+
+    async def _append_to_thread(  # noqa: PLR0913 — one keyword per thing a scheduled turn writes
+        self,
+        session: AsyncSession,
+        *,
+        user_id: str,
+        thread_id: str | None,
+        title: str,
+        text: str,
+        cards: Sequence[RichCard],
+        caveat: str,
+    ) -> str:
         store = SqlAlchemyConversationStore(session)
-        thread = await store.create_thread(user_id=user_id, title="排程摘要")
+        parent_message_id: str | None = None
+        if thread_id is not None:
+            try:
+                path = await store.active_path(thread_id=thread_id)
+            except ThreadNotFoundError:
+                thread_id = None
+            else:
+                parent_message_id = path[-1].id if path else None
+        if thread_id is None:
+            thread_id = (await store.create_thread(user_id=user_id, title=title)).id
         await store.append_turn(
             user_id=user_id,
-            thread_id=thread.id,
+            thread_id=thread_id,
             role=TurnRole.ASSISTANT,
+            # The chart/table cards the skill's tools produced go first, exactly as in an
+            # interactive answer — a scheduled report without its charts would be the text alone.
             blocks=[
+                *(
+                    (
+                        MessageBlockType.RICH_CARD,
+                        RichCardBlock(card_type=card.card_type, data=dict(card.data)),
+                    )
+                    for card in cards
+                ),
                 (MessageBlockType.TEXT, TextBlock(text=text)),
                 (
                     MessageBlockType.CAVEAT,
-                    CaveatBlock(kind="scheduled", text="排程觀察，非投資建議。"),
+                    CaveatBlock(kind="scheduled", text=caveat),
                 ),
             ],
-            parent_message_id=None,
+            parent_message_id=parent_message_id,
         )
+        return thread_id
 
     def _emit(self, kind: str, *, user_id: str, data: dict[str, object]) -> None:
         if self._ctx.event_bus is not None:
             self._ctx.event_bus.publish(kind, data={"user_id": user_id, **data})
 
-    def _job_message(self, job: ScheduleJob) -> str:
-        inputs = job.action.inputs
-        symbols = inputs.get("stock_ids") or inputs.get("symbols")
-        if symbols:
-            return f"排程執行技能 {job.action.skill_ref}，標的：{symbols}"
-        return f"排程執行技能 {job.action.skill_ref}"
+    async def _resolved_inputs(
+        self, store: SqlAlchemySchedulerStore, job: ScheduleJob
+    ) -> dict[str, object] | None:
+        """The skill inputs for this run. A schedule scoped to a watchlist stores only the list's
+        id; the Taiwan members are read fresh each run, so adding a stock to the list changes the
+        next briefing without editing the schedule. `None` means the list has nothing to brief."""
+        inputs = dict(job.action.inputs)
+        watchlist_id = inputs.pop(WATCHLIST_INPUT, None)
+        if not isinstance(watchlist_id, str) or not watchlist_id:
+            return inputs
+        members = await store.watchlist_members(watchlist_id=watchlist_id, user_id=job.user_id)
+        stock_ids = [symbol for symbol, market in members if market is Market.TW][:MAX_TARGETS]
+        if not stock_ids:
+            return None
+        inputs["stock_ids"] = stock_ids
+        return inputs
+
+    def _job_message(self, job: ScheduleJob, inputs: dict[str, object] | None = None) -> str:
+        """The user turn a scheduled run hands the skill. Skills name their target input
+        differently (`stock_ids`, `stock_id`, `etf_id`, `symbol_id`...), so every input is spelled
+        out instead of guessing one key: a run that silently dropped its target would brief on
+        nothing."""
+        skill = job.action.skill_ref
+        given = job.action.inputs if inputs is None else inputs
+        inputs = {k: v for k, v in given.items() if v not in (None, "", [], ())}
+        if not inputs:
+            return f"排程執行技能 {skill}"
+        detail = "、".join(f"{key}={value}" for key, value in inputs.items())
+        return f"排程執行技能 {skill}，參數：{detail}"
 
     def _daily_limit_reached(self, delivered_today: int, daily_limit: int | None) -> bool:
         return daily_limit is not None and delivered_today >= daily_limit
 
-    def _next_run(self, job: ScheduleJob, now: datetime) -> datetime:
-        """Coarse next-fire time. A concrete cron/market-calendar resolver is a later infra
-        concern; a scheduled job's cadence is at least a day apart, so advancing by one day is a
-        safe floor that never produces a tight loop."""
-        del job
-        return now + timedelta(days=1)
+    def _next_run(self, job: ScheduleJob, now: datetime) -> datetime | None:
+        """The job's next concrete fire time from its trigger. `None` (left unset) if the trigger
+        can no longer be resolved — the job then simply stops being due rather than looping."""
+        try:
+            return next_run_after(job.trigger, now)
+        except UnresolvableTriggerError:
+            logger.warning("schedule_job_unresolvable_trigger", job_id=job.id)
+            return None
 
 
-def _capability_for(market: Market) -> Capability:
-    del market
-    return Capability.PRICE_EOD
+_PREVIEW_CHARS = 160
+
+
+def _notification_preview(text: str) -> str:
+    """A scheduled report can be thousands of characters; the notification is a pointer to the
+    thread (its deep link), so it carries only the opening of the report, cut at a line break when
+    one is near. The full text, tables and charts live in the schedule's thread."""
+    flat = " ".join(line.strip() for line in text.strip().splitlines() if line.strip())
+    if len(flat) <= _PREVIEW_CHARS:
+        return flat
+    return f"{flat[:_PREVIEW_CHARS].rstrip()}…（完整報告請見對話）"
+
+
+def _digest_day(prefs: AlertPreference | None, now: datetime) -> date | None:
+    """The user's local date if a digest is due right now, else None: inside the 08:00-12:00 window
+    of a Taiwan trading day, and not while their quiet hours are running."""
+    if prefs is None:
+        return None
+    local = as_utc(now).astimezone(_user_zone(prefs.timezone))
+    if not (_DIGEST_FROM <= local.time() < _DIGEST_UNTIL):
+        return None
+    if not is_market_open_day(local.date(), Market.TW):
+        return None
+    if _within_quiet_hours(prefs.quiet_hours, now, prefs.timezone):
+        return None
+    return local.date()
+
+
+def _digest_body(recent: Sequence[Notification], alerts: int, jobs: int) -> str:
+    """The morning recap, in fact phrasing with the non-advice footer. It lists the titles of what
+    fired in the last 24 hours (each already a fixed, scanned fact line) and the active counts."""
+    lines: list[str] = []
+    if recent:
+        lines.append(f"過去 24 小時共 {len(recent)} 則通知：")
+        for item in recent[-_DIGEST_MAX_LINES:]:
+            lines.append(f"・{item.payload.get('title', '')}")
+        if len(recent) > _DIGEST_MAX_LINES:
+            lines.append(f"…另有 {len(recent) - _DIGEST_MAX_LINES} 則較早的通知，請見通知紀錄。")
+    else:
+        lines.append("過去 24 小時沒有新的通知。")
+    lines.append(f"目前啟用中：{alerts} 個提醒、{jobs} 個排程。")
+    body = "\n".join(lines) + f"\n{NON_ADVICE_FOOTER}"
+    if check_output(body, has_market_data=False).reason == "trading_language_redacted":
+        return f"晨間摘要：目前啟用中 {alerts} 個提醒、{jobs} 個排程。\n{NON_ADVICE_FOOTER}"
+    return body
+
+
+def _brief_preview(report: str) -> str:
+    """The notification carries the lines that matter — the date headline and the top drivers —
+    not the whole report (which, with its tables, lives in the thread the notification opens)."""
+    lines = report.splitlines()
+    head = next((ln.strip("*") for ln in lines if ln.startswith("**【晨間摘要】")), "晨間摘要")
+    drivers: list[str] = []
+    in_block = False
+    for ln in lines:
+        if ln.startswith("### Top 3 Drivers"):
+            in_block = True
+        elif ln.startswith("###"):
+            in_block = False
+        elif in_block and ln[:2].rstrip(".").isdigit():
+            drivers.append(ln)
+    return "\n".join([head, *drivers[:3]])
+
+
+def _external_body(body: str) -> str:
+    """What leaves the building on an external channel: the body with the non-advice footer (once),
+    passed through the same output scan an interactive answer gets. Scheduled-report previews and
+    held digests reach this path without having gone through `_safe_body`, so the guarantee is made
+    here, where every external send passes. Fails closed to a fixed line if the scan trips."""
+    text = body if NON_ADVICE_FOOTER in body else f"{body}\n{NON_ADVICE_FOOTER}"
+    if check_output(text, has_market_data=False).reason == "trading_language_redacted":
+        return f"通知內容已更新，請開啟 Miru 查看。\n{NON_ADVICE_FOOTER}"
+    return text
+
+
+def _safe_body(message: str, condition: ConditionModel, symbol: str) -> str:
+    """The notification body with the non-advice footer, passed through the same output scan an
+    interactive answer gets. The templates are fixed fact phrasing so this should never trip; if
+    it ever does, fail closed to a minimal template instead of sending flagged text."""
+    body = f"{message}\n{NON_ADVICE_FOOTER}"
+    if check_output(body, has_market_data=False).reason == "trading_language_redacted":
+        return f"{symbol} 的條件已達成：{describe(condition)}\n{NON_ADVICE_FOOTER}"
+    return body
+
+
+def as_utc(moment: datetime) -> datetime:
+    """A stored timestamp as an aware UTC datetime. `DateTime(timezone=True)` round-trips as a
+    NAIVE value on SQLite (dev) and an aware one on Postgres (prod); every stored timestamp is
+    UTC, so a naive one is labelled UTC. `naive.astimezone(UTC)` would instead assume the host's
+    local zone and shift the value by its offset."""
+    return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment.astimezone(UTC)
+
+
+def _as_int(raw: object) -> int:
+    return raw if isinstance(raw, int) and not isinstance(raw, bool) else 0
+
+
+def _in_cooldown(rule: AlertRule, state: dict[str, object], now: datetime) -> bool:
+    raw = state.get("last_fired_at")
+    if rule.cooldown_seconds is None or not isinstance(raw, str):
+        return False
+    try:
+        last = datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    return (now - last).total_seconds() < rule.cooldown_seconds
+
+
+def _compute_evaluations(
+    rules: list[AlertRule],
+    targets: dict[str, list[tuple[str, Market]]],
+    market: Market,
+    as_of: date,
+    view: SnapshotView,
+) -> dict[str, dict[str, Evaluation]]:
+    """Blocking: read the partitions and evaluate every `(rule, symbol)` for this market. Run in a
+    thread by the caller. Symbols with no data for `as_of` are simply absent from the result."""
+    out: dict[str, dict[str, Evaluation]] = {}
+    for rule in rules:
+        per_symbol: dict[str, Evaluation] = {}
+        for symbol, target_market in targets.get(rule.id, []):
+            if target_market is not market:
+                continue
+            evaluation = evaluate_condition(
+                rule.condition, symbol=symbol, market=market, as_of=as_of, view=view
+            )
+            if evaluation is not None:
+                per_symbol[symbol] = evaluation
+        out[rule.id] = per_symbol
+    return out
 
 
 def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collaborator
@@ -372,6 +1018,10 @@ def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collabora
     leader: LeaderElection | None = None,
     quota_gate: QuotaGate | None = None,
     event_bus: EventBus | None = None,
+    reader: SnapshotReader | None = None,
+    brief_tool: Tool | None = None,
+    public_base_url: str | None = None,
+    link_secret: str | None = None,
 ) -> SchedulerWorker:
     """Assemble a worker with the single-process defaults (always-leader). The quota gate defaults
     to the real `UsageQuotaGate` over the same durable daily-chat counter interactive turns use, so
@@ -387,6 +1037,10 @@ def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collabora
             leader=leader or get_default_leader_election(),
             quota_gate=quota_gate or UsageQuotaGate(SqlAlchemyUsageStore(session_factory)),
             event_bus=event_bus,
+            reader=reader,
+            brief_tool=brief_tool,
+            public_base_url=public_base_url,
+            link_secret=link_secret,
         )
     )
 

@@ -95,6 +95,12 @@ _CAVEAT_MARKERS: Final[tuple[str, ...]] = (
     "not guaranteed real-time",
     "currentness",
     "informational purposes only",
+    "不構成投資建議",
+    "非投資建議",
+    "不是投資建議",
+    "不構成買賣建議",
+    "不保證即時",
+    "非即時",
 )
 
 _NON_TRADING_CAVEAT: Final[str] = (
@@ -102,9 +108,24 @@ _NON_TRADING_CAVEAT: Final[str] = (
     "source here is guaranteed real-time."
 )
 
+_NON_TRADING_CAVEAT_ZH: Final[str] = "以上僅為資料觀察，不構成買賣建議。"
+
 _REDACTION_NOTICE: Final[str] = (
     "A specific trading recommendation or price target was omitted here."
 )
+
+_CJK_CHAR: Final[re.Pattern[str]] = re.compile(r"[一-鿿]")
+_LATIN_WORD: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]{2,}")
+
+
+def _caveat_for(text: str) -> str:
+    """The caveat in the language of the answer it is appended to — an English disclaimer under a
+    Traditional-Chinese reply reads as a leak from another product. A Chinese answer has at least
+    as many CJK characters as Latin words (tickers and a few English terms don't flip it); an
+    English answer with a stray Chinese heading stays English."""
+    cjk = len(_CJK_CHAR.findall(text))
+    latin_words = len(_LATIN_WORD.findall(text))
+    return _NON_TRADING_CAVEAT_ZH if cjk > 0 and cjk >= latin_words else _NON_TRADING_CAVEAT
 
 
 def _contains_trading_language(sentence: str) -> bool:
@@ -204,35 +225,42 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
     already carry one. Always `allowed=True`: the veto here is "what text reaches the
     caller", not "does the turn get to finish".
     """
-    sentences = split_sentences(text)
+    # Scan sentence by sentence, but rebuild the text LOSSLESSLY: `split_sentences` consumes the
+    # whitespace between sentences, so re-joining its output deleted every newline — a markdown
+    # list or a paragraph break in a perfectly clean answer collapsed into one run-on line
+    # whenever ANY rewrite happened, even just the caveat being appended (confirmed live: a
+    # model's bulleted reply came back as "…C- …C- …CTL;DR…"). `split_sentences_streaming` has the
+    # same boundaries but keeps every character, so an untouched sentence passes through verbatim
+    # and a redacted one keeps the whitespace around it.
     cleaned: list[str] = []
     violation = False
     vendor_name_stripped = False
-    for sentence in sentences:
-        if _contains_trading_language(sentence):
+    last_was_notice = False
+    for chunk in split_sentences_streaming(text):
+        core = chunk.strip()
+        if not core:
+            cleaned.append(chunk)  # pure whitespace between sentences — keep it
+            continue
+        lead = chunk[: len(chunk) - len(chunk.lstrip())]
+        trail = chunk[len(chunk.rstrip()) :]
+        if _contains_trading_language(core):
             violation = True
             # Collapse back-to-back violations into a single notice — several adjacent
             # offending sentences read as repetitive noise stacked one after another
             # (confirmed live: 3 separate copies of the same notice in one short answer)
             # rather than as N distinct redactions worth calling out individually.
-            if not cleaned or cleaned[-1] != _REDACTION_NOTICE:
-                cleaned.append(_REDACTION_NOTICE)
+            if not last_was_notice:
+                cleaned.append(lead + _REDACTION_NOTICE + trail)
+            last_was_notice = True
             continue
-        stripped_sentence, sentence_had_vendor_name = _strip_vendor_names(sentence)
-        vendor_name_stripped = vendor_name_stripped or sentence_had_vendor_name
-        cleaned.append(stripped_sentence)
+        last_was_notice = False
+        stripped_core, had_vendor_name = _strip_vendor_names(core)
+        vendor_name_stripped = vendor_name_stripped or had_vendor_name
+        cleaned.append(lead + stripped_core + trail)
 
-    # `split_sentences` discards each terminator's trailing whitespace, so a plain `" ".join`
-    # would insert a space that was never there for CJK text (Chinese sentences run together
-    # with no space after `。！？`) while still needing one between ASCII sentences (`. ! ?`).
-    # Rejoin using each *preceding* sentence's own terminator to decide.
-    candidate = cleaned[0] if cleaned else ""
-    for sentence in cleaned[1:]:
-        separator = "" if candidate and candidate[-1] in "。！？" else " "
-        candidate += separator + sentence
-    candidate = candidate.strip()
+    candidate = "".join(cleaned).strip()
     if has_market_data and not _has_caveat(candidate):
-        candidate = f"{candidate}\n\n{_NON_TRADING_CAVEAT}".strip()
+        candidate = f"{candidate}\n\n{_caveat_for(candidate)}".strip()
 
     if candidate == text.strip():
         return HookVerdict(allowed=True)

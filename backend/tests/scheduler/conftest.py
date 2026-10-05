@@ -62,3 +62,11 @@ async def insert_user(session_factory: async_sessionmaker[AsyncSession], *, tier
         )
         await session.commit()
     return user_id
+
+
+@pytest.fixture(autouse=True)
+def _no_default_quiet_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Most worker tests run against the real clock. The default preset (quiet 00:00-08:00 Taipei)
+    would make them pass or fail by time of day, so they run without it; the tests that are about
+    the default put it back explicitly."""
+    monkeypatch.setattr("scheduler.store.DEFAULT_QUIET_HOURS", None)

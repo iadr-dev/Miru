@@ -58,7 +58,8 @@
     },
     "provider": {
       "google": "Google",
-      "line": "LINE"
+      "line": "LINE",
+      "telegram": "Telegram"
     },
     "error": {
       "title": "登入未完成",
@@ -615,7 +616,10 @@
     },
     "notifications": {
       "label": "通知",
-      "empty": "目前沒有通知"
+      "empty": "目前沒有通知",
+      "markAllRead": "全部標為已讀",
+      "manage": "管理提醒",
+      "unread": "{count} 則未讀通知"
     },
     "tier": {
       "free": "免費",
@@ -647,6 +651,12 @@
       "newGroup": "新增分組",
       "newGroupPlaceholder": "分組名稱",
       "dragGroup": "拖曳排序分組",
+      "alertItem": "為 {name} 設定提醒",
+      "alertGroup": "{name} 的群組提醒",
+      "alertGroupRelative": "群組提醒",
+      "alertGroupRelativeHint": "漲跌幅、成交量、法人連買賣… 每檔都適用的條件",
+      "alertGroupPerStock": "逐檔設定價位",
+      "alertGroupPerStockHint": "每檔各設自己的價位，一次建立",
       "dragItem": "拖曳排序股票",
       "removeItem": "從此分組移除",
       "deleteGroup": "刪除分組",
@@ -1085,6 +1095,15 @@
         "forward_eps_estimate": "預估每股盈餘",
         "forward_revenue_estimate": "預估營收",
         "long_term_growth_estimate": "長期成長率預估",
+        "current_year_growth_estimate": "本年度成長率預估",
+        "next_year_growth_estimate": "明年度成長率預估",
+        "eps_trend_current": "預估每股盈餘（目前）",
+        "eps_trend_7_days_ago": "預估每股盈餘（7 天前）",
+        "eps_trend_30_days_ago": "預估每股盈餘（30 天前）",
+        "eps_trend_60_days_ago": "預估每股盈餘（60 天前）",
+        "eps_trend_90_days_ago": "預估每股盈餘（90 天前）",
+        "eps_revisions_up_last_30_days": "近 30 天 EPS 上修家數",
+        "eps_revisions_down_last_30_days": "近 30 天 EPS 下修家數",
         "total_esg_score": "ESG 總分",
         "esg_risk_percentile": "ESG 風險百分位",
         "expiry": "到期日",
@@ -1098,7 +1117,22 @@
         "unavailable_note": "無法取得原因說明",
         "end_date": "結束日期",
         "data_available": "資料是否可用",
-        "unavailable_reason": "無法取得原因"
+        "unavailable_reason": "無法取得原因",
+        "sub_industry": "細分產業",
+        "year": "年度",
+        "metric": "指標",
+        "period": "期別",
+        "label": "期間",
+        "index": "季節指數",
+        "deviation_pct": "偏離（%）",
+        "horizon": "期間",
+        "return_pct": "報酬（%）",
+        "premium_discount_pct": "折溢價（%）",
+        "weight": "權重",
+        "close_price": "收盤價",
+        "estimated_nav": "預估淨值",
+        "prior_day_nav": "前一日淨值",
+        "units_outstanding_change": "單位數增減"
       },
       "types": {
         "margin_short": "融資融券",
@@ -1170,7 +1204,81 @@
         "block_trade": "拋補交易",
         "dividend_schedule": "股利發放時程",
         "analyst_consensus": "分析師共識",
+        "morning_brief": "晨間摘要",
         "esg_score": "ESG 評分"
+      },
+      "alertProposal": {
+        "title": "提醒提案",
+        "create": "建立",
+        "creating": "建立中…",
+        "dismiss": "略過",
+        "dismissed": "已略過這則提案。",
+        "created": "已建立這則提醒",
+        "alreadySet": "你已經設定過這則提醒",
+        "manage": "管理提醒",
+        "neverExpires": "不會過期",
+        "expiresIn": "{days} 天後到期",
+        "frequency": {
+          "once": "只通知一次",
+          "once_per_day": "條件成立時通知一次",
+          "every_occurrence": "每次條件成立都通知"
+        },
+        "errorCap": "提醒數量已達上限，請先到設定刪除或暫停一則。",
+        "errorGeneric": "建立失敗，請稍後再試。",
+        "caveat": "這只是提案，按下「建立」後才會生效。提醒會在收盤後資料更新時比對，非投資建議。"
+      },
+      "scheduleProposal": {
+        "title": "排程簡報提案",
+        "create": "建立",
+        "creating": "建立中…",
+        "dismiss": "略過",
+        "dismissed": "已略過這個提案。",
+        "created": "已建立這個排程",
+        "alreadySet": "你已經有這個排程",
+        "manage": "管理排程",
+        "errorCap": "已達排程數量上限，請先到設定刪除或暫停一個。",
+        "errorGeneric": "無法建立排程，請再試一次。",
+        "caveat": "這只是提案，按下「建立」後才會生效。每次簡報在執行當下才產生，內容為資料整理，非投資建議。"
+      },
+      "fieldValues": {
+        "recommendation_key": {
+          "strong_buy": "強力買進",
+          "buy": "買進",
+          "hold": "持有",
+          "underperform": "表現落後",
+          "sell": "賣出",
+          "none": "無"
+        },
+        "latest_upgrade_downgrade_action": {
+          "main": "維持",
+          "up": "調升",
+          "down": "調降",
+          "init": "首次評等",
+          "reit": "重申"
+        },
+        "kind": {
+          "industry": "產業",
+          "concept": "概念"
+        },
+        "tier": {
+          "upstream": "上游",
+          "midstream": "中游",
+          "downstream": "下游"
+        },
+        "sector": {
+          "technology": "科技",
+          "financial_services": "金融服務",
+          "communication_services": "通訊服務",
+          "consumer_cyclical": "循環性消費",
+          "consumer_defensive": "防禦性消費",
+          "healthcare": "醫療保健",
+          "industrials": "工業",
+          "energy": "能源",
+          "utilities": "公用事業",
+          "basic_materials": "基礎原物料",
+          "realestate": "不動產",
+          "real_estate": "不動產"
+        }
       }
     },
     "caveat": {
@@ -1211,6 +1319,8 @@
           "anthropic": "Anthropic",
           "openai": "OpenAI",
           "openrouter": "OpenRouter",
+          "grok": "Grok（經 OpenRouter）",
+          "deepseek": "DeepSeek（經 OpenRouter）",
           "gemini": "Gemini",
           "ollama": "Ollama（本機）"
         }
@@ -1292,10 +1402,19 @@
       "description": "管理用於登入的第三方帳號連結。",
       "provider": {
         "google": "Google",
-        "line": "LINE"
+        "line": "LINE",
+        "telegram": "Telegram"
+      },
+      "linked": "已連結",
+      "hint": {
+        "google": "尚未連結",
+        "line": "尚未連結，連結後可收到 LINE 提醒",
+        "telegram": "尚未連結"
       },
       "notLinked": "尚未連結",
       "unlink": "取消連結",
+      "link": "連結",
+      "errorLink": "無法開始連結，請稍後再試。",
       "errorLastMethod": "這是你唯一的登入方式，無法取消連結。"
     },
     "personality": {
@@ -1406,7 +1525,7 @@
     },
     "alerts": {
       "title": "提醒與排程",
-      "description": "設定價格、成交量與籌碼條件提醒。",
+      "description": "設定你關心的條件，資料更新後若條件達成，就會通知你。",
       "empty": "尚未設定任何提醒。",
       "createCta": "新增提醒",
       "toggleLabel": "切換 {symbol} 的提醒",
@@ -1428,69 +1547,319 @@
         },
         "form": {
           "title": "新增排程",
-          "triggerType": "觸發類型",
-          "market": "市場",
-          "spec": "排程規則",
-          "skillRef": "技能名稱",
-          "errorRequired": "請填寫排程規則與技能名稱。",
           "cancel": "取消",
-          "submit": "建立排程"
-        }
+          "submit": "建立排程",
+          "editTitle": "編輯排程",
+          "template": "簡報種類",
+          "targetsOne": "股票或 ETF 代號",
+          "scope": "涵蓋範圍",
+          "scopeStocks": "我輸入的股票",
+          "scopeWatchlist": "我的自選股群組",
+          "watchlist": "自選股群組",
+          "watchlistPlaceholder": "選擇群組",
+          "watchlistNote": "每次執行時取群組內的台股（最多 10 檔）。在群組新增或移除股票，下一次簡報就會跟著變。",
+          "errorWatchlistRequired": "請選擇自選股群組。",
+          "targetsMany": "股票代號（最多 {max} 檔，以逗號分隔）",
+          "note": "每次執行時才產生內容，並累積在同一個對話中，會計入你的對話額度。",
+          "save": "儲存",
+          "error": {
+            "required": "請至少輸入一個代號。",
+            "singleOnly": "這種簡報一次只能設定一個代號。",
+            "tooMany": "最多 {max} 檔。",
+            "format": "請輸入像 2330 或 AAPL 的代號。"
+          },
+          "errorCap": "已達排程數量上限，請先刪除或暫停一個。",
+          "errorStale": "這個排程在其他地方已被修改，列表已更新，請重新開啟後再編輯。",
+          "errorGeneric": "無法儲存排程，請再試一次。"
+        },
+        "templates": {
+          "tw_stock_report": {
+            "label": "台股個股完整分析報告",
+            "cadence": "每週一 08:30"
+          },
+          "us_stock_report": {
+            "label": "美股個股完整分析報告",
+            "cadence": "每週六（週五收盤後，美東上午）"
+          },
+          "tw_etf_report": {
+            "label": "台股 ETF 完整分析報告",
+            "cadence": "每週五 15:30"
+          },
+          "us_etf_report": {
+            "label": "美股 ETF 完整分析報告",
+            "cadence": "每週六（週五收盤後，美東上午）"
+          },
+          "pre_open_brief": {
+            "label": "盤前快訊",
+            "cadence": "每個台股交易日開盤前"
+          },
+          "after_close_chip": {
+            "label": "收盤後籌碼檢視",
+            "cadence": "每個台股交易日收盤後"
+          },
+          "disposition_watch": {
+            "label": "注意股／處置股檢查",
+            "cadence": "每個台股交易日收盤後"
+          },
+          "weekly_catalyst": {
+            "label": "每週催化事件掃描",
+            "cadence": "每週一 08:30"
+          }
+        },
+        "editLabel": "編輯 {skill} 的排程",
+        "paused": "已暫停",
+        "nextRun": "下次：{when}",
+        "lastRun": "上次執行：{when}",
+        "neverRun": "尚未執行",
+        "lastRunFailed": "上次執行失敗，會在下一個排定時間再試一次。",
+        "lastRunSkippedQuota": "上次執行已略過：今日對話額度已用完。",
+        "viewThread": "查看簡報紀錄"
       },
       "form": {
         "title": "新增提醒",
         "symbol": "股票代號",
         "market": "市場",
-        "conditionType": "條件類型",
-        "metric": "指標",
-        "comparator": "比較條件",
-        "threshold": "門檻值",
-        "window": "觀察區間",
-        "channels": "通知管道",
+        "template": "提醒類型",
+        "templateOption": {
+          "close_price": "收盤價",
+          "daily_change": "單日漲跌幅",
+          "volume_surge": "成交量放大",
+          "institutional_streak": "法人連續買賣超",
+          "attention_entry": "列入注意股",
+          "disposition_entry": "列入處置股",
+          "month_revenue_published": "公布月營收",
+          "margin_balance_change": "融資融券餘額變動",
+          "etf_premium_discount": "ETF 折溢價"
+        },
+        "comparator": "條件",
+        "comparatorOption": {
+          "above": "高於",
+          "below": "低於"
+        },
+        "value": "價位",
+        "moveDirection": "方向",
+        "moveDirectionOption": {
+          "up": "上漲",
+          "down": "下跌"
+        },
+        "percent": "幅度 (%)",
+        "multiple": "倍數",
+        "window": "均量天數",
+        "investor": "法人",
+        "investorOption": {
+          "foreign": "外資",
+          "trust": "投信",
+          "dealer": "自營商"
+        },
+        "flowDirection": "方向",
+        "flowDirectionOption": {
+          "buy": "淨買超",
+          "sell": "淨賣超"
+        },
+        "days": "連續天數",
+        "triggerMode": "通知頻率",
+        "triggerModeOption": {
+          "once": "只通知一次",
+          "once_per_day": "條件成立時通知（成立後需先解除才會再通知）",
+          "every_occurrence": "每次資料更新且條件成立都通知"
+        },
+        "expiry": "有效期",
+        "expiryOption": {
+          "30": "30 天",
+          "90": "90 天",
+          "365": "1 年",
+          "never": "不會過期",
+          "keep": "維持目前設定"
+        },
+        "preview": "預覽",
+        "previewPending": "填寫完成後會在這裡顯示提醒條件。",
         "cancel": "取消",
         "submit": "建立提醒",
         "errorSymbolRequired": "請輸入股票代號。",
-        "errorMetricRequired": "請輸入指標。",
-        "errorThresholdRequired": "請輸入有效的門檻值。",
-        "conditionTypeOption": {
-          "price": "價格",
-          "volume": "成交量",
-          "indicator": "技術指標",
-          "institutional": "法人籌碼"
+        "warnSymbolUnknown": "找不到 {symbol} 的價格資料，請確認代號是否正確——這個提醒可能永遠不會觸發。",
+        "scope": "適用範圍",
+        "scopeSymbol": "單一標的",
+        "scopeWatchlist": "自選股群組（相對條件）",
+        "scopePerStock": "逐檔設定價位",
+        "groupHint": "群組提醒只能用每檔都適用的條件（漲跌幅、成交量、法人、進入注意股…）；價位每檔不同，請改用",
+        "groupHintAction": "逐檔設定價位",
+        "watchlist": "自選股群組",
+        "watchlistPlaceholder": "選擇群組",
+        "errorWatchlistRequired": "請選擇自選股群組。",
+        "errorRequired": "請輸入數值。",
+        "errorRange": "數值超出允許範圍。",
+        "errorCap": "提醒數量已達上限，請先刪除或暫停一則再新增。",
+        "errorCreate": "建立提醒失敗，請稍後再試。",
+        "editTitle": "編輯提醒",
+        "save": "儲存變更",
+        "errorStale": "這則提醒在其他地方已被修改，列表已更新，請重新開啟後再編輯。",
+        "merged": "此提醒在其他地方已更新，已保留你的修改並合併最新內容，請確認後再儲存。",
+        "mergedConflict": "此提醒在其他地方已更新，且同一設定兩邊都有修改，已保留你的版本，請確認後再儲存。",
+        "errorUpdate": "儲存提醒失敗，請稍後再試。",
+        "hint": {
+          "attention_entry": "當這檔股票出現在交易所公布的注意股名單時通知你，不需要額外設定。",
+          "disposition_entry": "當這檔股票出現在交易所公布的處置股名單時通知你，並附上處置期間，不需要額外設定。",
+          "month_revenue_published": "當這檔股票公布月營收時通知你；通知只說明已公布，實際數字請到個股頁查看。不需要額外設定。"
         },
-        "comparatorOption": {
-          "above": "高於",
-          "below": "低於",
-          "crosses_above": "向上突破",
-          "crosses_below": "向下突破",
-          "streak_up": "連續上漲",
-          "streak_down": "連續下跌"
+        "marginSide": "項目",
+        "marginSideOption": {
+          "margin": "融資餘額",
+          "short": "融券餘額"
         },
-        "channelOption": {
-          "in_app": "站內通知",
-          "line": "LINE",
-          "telegram": "Telegram",
-          "email": "電子郵件",
-          "push": "推播通知"
+        "marginDirection": "方向",
+        "marginDirectionOption": {
+          "up": "單日增加",
+          "down": "單日減少"
+        },
+        "navSide": "方向",
+        "navSideOption": {
+          "premium": "溢價（成交價高於預估淨值）",
+          "discount": "折價（成交價低於預估淨值）"
+        },
+        "etfNote": "僅適用台股 ETF 代號；折溢價以投信預估淨值計算，為預估值而非最終淨值。"
+      },
+      "status": {
+        "active": "啟用中",
+        "paused": "已暫停",
+        "expired": "已過期",
+        "completed": "已觸發"
+      },
+      "lastFired": "上次觸發 {date}",
+      "neverFired": "尚未觸發",
+      "expiresOn": "到期日 {date}",
+      "neverExpires": "不會過期",
+      "summary": {
+        "close_price": {
+          "above": "收盤價高於 {value}",
+          "below": "收盤價低於 {value}"
+        },
+        "daily_change": {
+          "up": "單日漲幅達 {percent}%",
+          "down": "單日跌幅達 {percent}%"
+        },
+        "volume_surge": "成交量達近 {window} 日均量的 {multiple} 倍",
+        "institutional_streak": {
+          "foreign": {
+            "buy": "外資連續 {days} 日淨買超",
+            "sell": "外資連續 {days} 日淨賣超"
+          },
+          "trust": {
+            "buy": "投信連續 {days} 日淨買超",
+            "sell": "投信連續 {days} 日淨賣超"
+          },
+          "dealer": {
+            "buy": "自營商連續 {days} 日淨買超",
+            "sell": "自營商連續 {days} 日淨賣超"
+          }
+        },
+        "attention_entry": "列入注意股名單",
+        "disposition_entry": "列入處置股名單",
+        "month_revenue_published": "公布月營收",
+        "margin_balance_change": {
+          "margin": {
+            "up": "融資餘額單日增加達 {percent}%",
+            "down": "融資餘額單日減少達 {percent}%"
+          },
+          "short": {
+            "up": "融券餘額單日增加達 {percent}%",
+            "down": "融券餘額單日減少達 {percent}%"
+          }
+        },
+        "etf_premium_discount": {
+          "premium": "預估溢價幅度達 {percent}%",
+          "discount": "預估折價幅度達 {percent}%"
         }
-      }
+      },
+      "groupScope": "{name} · {count} 檔",
+      "fromGroup": "來自：{name}",
+      "deletedGroup": "已刪除的群組",
+      "toggleMembers": "展開或收合 {name} 的成員狀態",
+      "memberPending": "待評估",
+      "memberMet": "已符合",
+      "memberNotMet": "未符合",
+      "perStock": {
+        "title": "逐檔設定價位",
+        "group": "自選股群組",
+        "groupPlaceholder": "選擇群組",
+        "help": "每檔股票價位不同，請逐檔設定；價位留空的股票會略過。建立後每檔都是獨立的提醒，可以各自編輯或刪除。",
+        "empty": "這個群組還沒有股票。",
+        "bulkLabel": "全部空白列：",
+        "bulkComparator": "批次條件",
+        "bulkFromClose": "現價",
+        "bulkPercent": "批次幅度",
+        "bulkApply": "依現價填入",
+        "colSymbol": "標的",
+        "colClose": "最近收盤",
+        "colCondition": "條件",
+        "colLevel": "價位",
+        "colQuick": "快速填入（依該檔現價）",
+        "rowComparator": "{symbol} 的條件",
+        "rowLevel": "{symbol} 的價位",
+        "closeNote": "收盤價為最近一個交易日，僅供參考；「—」代表目前沒有資料。",
+        "truncated": "群組股票較多，只列出前 {max} 檔。",
+        "submit": "建立 {count} 則提醒",
+        "cancel": "取消",
+        "errorNothing": "請至少為一檔股票填入價位。",
+        "errorInvalid": "這些標的的價位不正確：{symbols}",
+        "errorCap": "提醒數量會超過上限，請先刪除不需要的提醒。",
+        "errorGeneric": "建立失敗，請稍後再試。"
+      },
+      "history": {
+        "title": "通知紀錄",
+        "description": "你的提醒與排程送出的所有通知。",
+        "empty": "目前還沒有送出任何通知。",
+        "markAllRead": "全部標為已讀",
+        "markRead": "標為已讀",
+        "open": "查看",
+        "limitNote": "顯示最近 {count} 則。"
+      },
+      "watchlistScope": "自選股群組",
+      "editLabel": "編輯 {symbol} 的提醒"
     },
     "notifications": {
       "title": "通知",
       "description": "管理通知管道與安靜時段。",
       "channels": "通知管道",
-      "deliveryLimitationNote": "目前僅站內通知已實際送達；其他管道僅供設定，尚未串接實際發送。",
+      "channelNotReady": "尚未設定",
+      "channelNotLinked": "尚未連結",
+      "emailBlocked": {
+        "bounced": "電子郵件已暫停：寄到你信箱的郵件被退回。請更新帳號信箱後才會再收到。",
+        "complained": "電子郵件已暫停：你的信箱曾將郵件標為垃圾信。請更新帳號信箱後才會再收到。",
+        "unsubscribed": "你已取消訂閱電子郵件通知。想重新開啟，請勾選上方的電子郵件。"
+      },
+      "lineAddFriend": "加入了然 LINE 官方帳號為好友",
+      "lineLink": "連結 LINE",
+      "lineLinked": "已連結 LINE。",
+      "lineUnlink": "解除連結",
+      "lineSendCode": "加入官方帳號為好友後，傳送這組驗證碼給它：",
+      "lineCodeNote": "驗證碼 10 分鐘內有效，只能使用一次；連結成功後這裡會自動更新。LINE 官方帳號免費方案每月有訊息數量上限，請留意。",
+      "browser": {
+        "label": "此裝置的瀏覽器通知：",
+        "enable": "開啟",
+        "disable": "關閉",
+        "on": "已開啟",
+        "denied": "此瀏覽器已封鎖通知——請到瀏覽器設定允許本網站通知後再試一次。",
+        "unsupported": "此瀏覽器不支援通知。",
+        "notConfigured": "伺服器尚未設定。"
+      },
+      "channelReadyNote": "站內通知一律開啟，也是你的通知匣。其他管道需要能聯絡到你才會送達：帳號 Email、已註冊的裝置、LINE 登入，或已連結的 Telegram 聊天室。",
+      "telegramLink": "連結 Telegram",
+      "telegramOpenLink": "開啟 Telegram 並按下 Start",
+      "telegramLinked": "已連結 Telegram。",
+      "telegramUnlink": "解除連結",
+      "timezone": "時區",
+      "morningDigestNote": "每個台股交易日 08:00 起（依你的時區，並等安靜時段結束）送出完整晨間報告：美股隔夜、總經、加權指數、三大法人、類股、今日行事曆，以及你自選股的個股與 ETF，累積在同一個對話中。不會消耗對話額度；資料無法取得時改送簡短回顧。",
+      "quietHoursNote": "靜音時段內的通知仍會安靜地放進通知匣；其他管道會在靜音結束時合併成一則摘要送出。",
       "quietHours": "安靜時段",
       "quietStart": "開始時間",
       "quietEnd": "結束時間",
-      "dailyLimit": "每日通知上限",
       "morningDigest": "晨間摘要",
       "channelOption": {
         "in_app": "站內通知",
         "line": "LINE",
         "telegram": "Telegram",
         "email": "電子郵件",
-        "push": "推播通知"
+        "push": "瀏覽器通知"
       }
     },
     "memory": {
@@ -2084,6 +2453,26 @@
       "expandTo": "展開完整 {count} 筆",
       "collapse": "收合",
       "empty": "暫無資料。"
+    },
+    "alertButton": {
+      "label": "設定提醒",
+      "labelActive": "設定提醒（{count} 則啟用中）",
+      "title": "為 {symbol} 設定提醒",
+      "existing": "目前的提醒",
+      "quickAdd": "快速新增",
+      "alreadySet": "已設定",
+      "priceTitle": "收盤價提醒",
+      "comparator": "條件",
+      "above": "高於",
+      "below": "低於",
+      "priceValue": "價位",
+      "add": "新增",
+      "created": "已建立：{summary}",
+      "errorRequired": "請輸入價位。",
+      "errorRange": "價位必須大於 0。",
+      "errorCap": "提醒數量已達上限，請先到設定刪除或暫停一則。",
+      "caveat": "僅在你設定的資料條件達成時通知，非投資建議。",
+      "manage": "管理所有提醒"
     }
   },
   "etf": {

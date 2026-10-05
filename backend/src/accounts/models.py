@@ -16,6 +16,7 @@ from schemas.enums import Tier
 class OAuthProvider(StrEnum):
     GOOGLE = "google"
     LINE = "line"
+    TELEGRAM = "telegram"
 
 
 class SecretKind(StrEnum):

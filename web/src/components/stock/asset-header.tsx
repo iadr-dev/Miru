@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SectorChip } from "@/components/stock/sector-chip";
+import { SymbolAlertButton } from "@/components/stock/symbol-alert-button";
 import { TwStockSignalBadges } from "@/components/stock/tw-stock-signal-badges";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +184,7 @@ export function AssetHeader({
             market={market}
             assetClass={isEtf ? "etf" : "stock"}
           />
+          <SymbolAlertButton symbol={symbol} market={market} isEtf={isEtf} />
           <Link
             href="/chat"
             className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] transition-colors hover:bg-[var(--surface-2)]"

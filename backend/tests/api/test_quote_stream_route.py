@@ -75,9 +75,11 @@ def _feed(fetcher: _CountingFetcher, registry: InMemoryDemandRegistry) -> QuoteF
         fetcher=fetcher,
         market_gate=_AlwaysOpen(),
         channel_prefix="quote",
-        # Fast cadence so the test doesn't wait seconds; the warm-up sleep before the first poll
-        # still lets both subscribers register before that first (shared) fetch fires.
-        cadence_seconds={"normal": 0.05, "saver": 0.2},
+        # The warm-up sleep before the first poll is one cadence interval; it must comfortably
+        # outlast the slower subscriber's registration on a loaded CI box (50 ms did not — the
+        # second subscriber occasionally missed the shared first fetch), while staying short of a
+        # second poll cycle before the first quote frame is read.
+        cadence_seconds={"normal": 1.0, "saver": 2.0},
     )
     return QuoteFeed(
         poller=poller, transport=transport, channel_prefix="quote", max_symbols_per_connection=50

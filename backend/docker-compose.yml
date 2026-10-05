@@ -23,6 +23,11 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379/0
   EVENT_BUS_BACKEND: redis
   RATE_LIMITER_BACKEND: redis
+  # How the ingest process binds its real `data.updated` publisher (ingest/ may not import events/,
+  # so it resolves this "module:callable" by name — ingest/publisher_binding.py). The default IS the
+  # real factory on purpose: the usual `${VAR:-}` would forward an EMPTY string when unset, and an
+  # empty value disables binding. Set it to an empty string explicitly to keep the no-op.
+  INGEST_DATA_UPDATE_PUBLISHER_FACTORY: ${INGEST_DATA_UPDATE_PUBLISHER_FACTORY:-events.ingest_wiring:build_data_update_publisher}
   # Derived-store dirs on the shared named volume (leader writes Parquet, readers read it).
   DUCKDB_PATH: /app/data/duckdb
   PARQUET_ROOT: /app/data/parquet
@@ -47,6 +52,9 @@ x-app-env: &app-env
   LINE_CHANNEL_ID: ${LINE_CHANNEL_ID:-}
   LINE_CHANNEL_SECRET: ${LINE_CHANNEL_SECRET:-}
   LINE_REDIRECT_URI: ${LINE_REDIRECT_URI:-}
+  TELEGRAM_LOGIN_CLIENT_ID: ${TELEGRAM_LOGIN_CLIENT_ID:-}
+  TELEGRAM_LOGIN_CLIENT_SECRET: ${TELEGRAM_LOGIN_CLIENT_SECRET:-}
+  TELEGRAM_LOGIN_REDIRECT_URI: ${TELEGRAM_LOGIN_REDIRECT_URI:-}
   # Where the OAuth callback 302s the browser after establishing (or failing to establish) a
   # session — the web app's origin, not this backend's.
   FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
@@ -157,14 +165,18 @@ x-app-env: &app-env
   PADDLE_PRICE_PRO_BYOK_ANNUAL: ${PADDLE_PRICE_PRO_BYOK_ANNUAL:-}
   # Notification channels (module 14 delivery/channels.py) — each degrades to a shaped no-network
   # stub without credentials (only in_app truly delivers regardless).
-  LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: ${LINE_MESSAGING_CHANNEL_ACCESS_TOKEN:-}
+  # The example names it CHANNEL_ACCESS_TOKEN; older .env files used MESSAGING_ACCESS_TOKEN.
+  LINE_MESSAGING_CHANNEL_ACCESS_TOKEN: ${LINE_MESSAGING_CHANNEL_ACCESS_TOKEN:-${LINE_MESSAGING_ACCESS_TOKEN:-}}
+  LINE_BOT_BASIC_ID: ${LINE_BOT_BASIC_ID:-}
+  VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+  VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+  VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:noreply@miru.app}
   LINE_MESSAGING_CHANNEL_SECRET: ${LINE_MESSAGING_CHANNEL_SECRET:-}
   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
   TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
-  EMAIL_SMTP_HOST: ${EMAIL_SMTP_HOST:-}
-  EMAIL_SMTP_PORT: ${EMAIL_SMTP_PORT:-587}
-  EMAIL_SMTP_USERNAME: ${EMAIL_SMTP_USERNAME:-}
-  EMAIL_SMTP_PASSWORD: ${EMAIL_SMTP_PASSWORD:-}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
   EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-}
   APNS_KEY_ID: ${APNS_KEY_ID:-}
   APNS_TEAM_ID: ${APNS_TEAM_ID:-}

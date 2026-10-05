@@ -43,6 +43,8 @@
     "react-dom": "^19.1.0",
     "react-international-phone": "^4.8.0",
     "react-markdown": "^10.1.0",
+    "react-select": "^5.10.2",
+    "react-timezone-select": "^3.3.3",
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "three": "^0.186.0",
