@@ -52,7 +52,7 @@ type ModelOption = {
  * `cerebras` are excluded because those two are internal-only cheap roles for
  * classification/subagent fan-out, never a user-facing chat model. */
 type ModelCategory = {
-  key: "anthropic" | "openai" | "gemini" | "openrouter" | "ollama";
+  key: "anthropic" | "openai" | "gemini" | "openrouter" | "grok" | "deepseek" | "ollama";
   models: ModelOption[];
 };
 
@@ -102,12 +102,27 @@ const MODEL_CATEGORIES: ModelCategory[] = [
     key: "openrouter",
     models: [
       { id: "openrouter/openrouter/auto", label: "openrouter/auto" },
+      { id: "openrouter/meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
+    ],
+  },
+  // Grok and DeepSeek are reached through OpenRouter too (ids are `openrouter/<vendor>/<model>`);
+  // they get their own groups because each vendor now has enough models to crowd the one list.
+  {
+    key: "grok",
+    models: [
+      { id: "openrouter/~x-ai/grok-latest", label: "Grok latest" },
+      { id: "openrouter/x-ai/grok-4.7", label: "Grok 4.7" },
+      { id: "openrouter/x-ai/grok-4.6", label: "Grok 4.6" },
+      { id: "openrouter/x-ai/grok-4.5", label: "Grok 4.5" },
+      { id: "openrouter/x-ai/grok-4.20", label: "Grok 4.20" },
+    ],
+  },
+  {
+    key: "deepseek",
+    models: [
       { id: "openrouter/deepseek/deepseek-chat-v3.1", label: "DeepSeek V3.1" },
       { id: "openrouter/deepseek/deepseek-v4-flash", label: "DeepSeek V4 Flash" },
       { id: "openrouter/deepseek/deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-      { id: "openrouter/meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
-      { id: "openrouter/x-ai/grok-4.3", label: "Grok 4.3" },
-      { id: "openrouter/x-ai/grok-4.20", label: "Grok 4.20" },
     ],
   },
   {

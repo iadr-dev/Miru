@@ -3,16 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { GoogleIcon, LineIcon } from "@/components/icons/brand-icons";
+import { GoogleIcon, LineIcon, TelegramIcon } from "@/components/icons/brand-icons";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { beginOAuthLink, type OAuthProvider } from "@/lib/api/auth";
 import { listConnections, SettingsApiError, unlinkConnection } from "@/lib/api/settings";
 import { OAUTH_LINK_PROVIDERS, type OAuthAccountLike } from "@/types/settings";
 
 const PROVIDER_ICON: Record<(typeof OAUTH_LINK_PROVIDERS)[number], typeof GoogleIcon> = {
   google: GoogleIcon,
   line: LineIcon,
+  telegram: TelegramIcon,
 };
 
 export function ConnectionsPanel(): ReactNode {
@@ -24,7 +26,7 @@ export function ConnectionsPanel(): ReactNode {
   const query = useQuery({ queryKey: ["settings", "connections"], queryFn: listConnections });
 
   const mutation = useMutation({
-    mutationFn: (provider: "google" | "line") => unlinkConnection(provider),
+    mutationFn: (provider: OAuthProvider) => unlinkConnection(provider),
     onSuccess: () => {
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ["settings", "connections"] });
@@ -36,6 +38,15 @@ export function ConnectionsPanel(): ReactNode {
         setError(tc("errorGeneric"));
       }
     },
+  });
+
+  const linkMutation = useMutation({
+    mutationFn: async (provider: OAuthProvider) => {
+      const { authorization_url } = await beginOAuthLink(provider);
+      // Full navigation: the provider sends the browser back through the backend callback.
+      window.location.assign(authorization_url);
+    },
+    onError: () => setError(t("errorLink")),
   });
 
   if (query.isLoading) {
@@ -70,7 +81,7 @@ export function ConnectionsPanel(): ReactNode {
           <SettingsRow
             key={provider}
             label={t(`provider.${provider}`)}
-            hint={account?.email_at_provider ?? t("notLinked")}
+            hint={account ? (account.email_at_provider ?? t("linked")) : t(`hint.${provider}`)}
           >
             <div className="flex items-center gap-3">
               <Icon size={20} />
@@ -84,7 +95,14 @@ export function ConnectionsPanel(): ReactNode {
                   {t("unlink")}
                 </Button>
               ) : (
-                <span className="text-[13px] text-[var(--text-muted)]">{t("notLinked")}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={linkMutation.isPending}
+                  onClick={() => linkMutation.mutate(provider)}
+                >
+                  {t("link")}
+                </Button>
               )}
             </div>
           </SettingsRow>

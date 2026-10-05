@@ -22,6 +22,7 @@ export function SettingsNav(): ReactNode {
             <li key={item.href}>
               <Link
                 href={item.href}
+                replace
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "relative flex min-h-11 items-center gap-3 px-3 text-sm transition-colors",

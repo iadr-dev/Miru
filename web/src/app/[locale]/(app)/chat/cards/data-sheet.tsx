@@ -10,7 +10,7 @@ import {
   formatNumber,
   PLUMBING_KEYS,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { fieldLabel, valueLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { financialStatementItemLabel } from "@/app/[locale]/(app)/chat/cards/financial-statement-labels";
 import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
 import { cn } from "@/lib/cn";
@@ -122,6 +122,16 @@ function PivotedSheet({
   );
 }
 
+/** A text cell: enum-like columns (theme `kind`, supply-chain `tier`) are translated, anything else
+ * is shown as-is; an empty cell is a dash. */
+function valueText(
+  t: ReturnType<typeof useTranslations>,
+  column: string,
+  value: string | null,
+): string {
+  return value === null ? "—" : valueLabel(t, column, value);
+}
+
 function FlatSheet({
   rows,
   locale,
@@ -153,7 +163,8 @@ function FlatSheet({
         </thead>
         <tbody>
           {visibleRows.map((row, i) => (
-            <tr key={columns.map((col) => String(row[col] ?? "")).join("|") || i}>
+            // biome-ignore lint/suspicious/noArrayIndexKey: a fixed, never-reordered preview of the rows; identical rows (e.g. a flat series) must not share a key.
+            <tr key={`${i}|${columns.map((col) => String(row[col] ?? "")).join("|")}`}>
               {columns.map((col) => {
                 const value = row[col];
                 const numeric = asNumber(value);
@@ -168,7 +179,7 @@ function FlatSheet({
                   >
                     {typeof value === "number"
                       ? formatNumber(value, locale)
-                      : (asString(value) ?? "—")}
+                      : valueText(t, col, asString(value))}
                   </td>
                 );
               })}

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  BellIcon,
-  MagnifyingGlassIcon,
-  SignOutIcon,
-  StarIcon,
-  UserIcon,
-} from "@phosphor-icons/react";
+import { MagnifyingGlassIcon, SignOutIcon, StarIcon, UserIcon } from "@phosphor-icons/react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
@@ -14,6 +8,7 @@ import { MarketTabSwitcher } from "@/components/market/market-tabs";
 import { SearchPalette } from "@/components/search/search-palette";
 import { useSearchPaletteStore } from "@/components/search/search-palette-store";
 import { LanguageSwitcher } from "@/components/shell/language-switcher";
+import { NotificationsBell } from "@/components/shell/notifications-bell";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { usePathname, useRouter } from "@/i18n/navigation";
 import { logout } from "@/lib/api/auth";
@@ -24,7 +19,7 @@ import type { MeResponse, Tier } from "@/types/account";
  * Sticky glass top bar (README §9, design-system §6.2). Carries the 搜尋股票 command-palette
  * placeholder (visual only — stock search is future Stock/Screener work), the 台股/美股/ETF
  * market-tab switcher (only on `/market` — everywhere else it would be a dead control, since
- * only the Market page reads its selection), a static notifications bell, the real tier badge
+ * only the Market page reads its selection), the notifications inbox bell, the real tier badge
  * (from `/me`), the account menu (real sign-out via `logout()`), plus the existing theme +
  * language controls and the watchlist rail toggle. Glass falls back to solid `--surface` under
  * `prefers-reduced-transparency` (globals.css `.glass`).
@@ -120,47 +115,6 @@ function SearchPlaceholder(): ReactNode {
       </button>
       <SearchPalette open={open} onClose={() => setOpen(false)} />
     </>
-  );
-}
-
-/** Static notifications bell — no real notification data this pass; the panel shows the empty
- * state. Radix `DropdownMenu` (not a hand-rolled `mousedown`-listener div) so `Esc`-close and
- * focus-return-to-trigger come for free, matching every other menu in the shell. */
-function NotificationsBell(): ReactNode {
-  const t = useTranslations("shell.notifications");
-  const [open, setOpen] = useState(false);
-
-  return (
-    <DropdownMenu.Root open={open} onOpenChange={setOpen}>
-      <DropdownMenu.Trigger asChild>
-        <button
-          type="button"
-          aria-label={t("label")}
-          title={t("label")}
-          className={cn(
-            "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
-            "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
-            "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
-            "data-[state=open]:bg-[var(--surface-2)] data-[state=open]:text-[var(--text)]",
-          )}
-        >
-          <BellIcon size={20} weight="regular" />
-        </button>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          side="bottom"
-          align="end"
-          sideOffset={8}
-          className={cn(
-            "z-50 w-64 rounded-[var(--radius-card)] border border-[var(--border)]",
-            "bg-[var(--surface)] p-4 shadow-lg",
-          )}
-        >
-          <p className="text-center text-[var(--text-muted)] text-sm">{t("empty")}</p>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
   );
 }
 

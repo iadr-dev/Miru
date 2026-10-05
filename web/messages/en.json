@@ -58,7 +58,8 @@
     },
     "provider": {
       "google": "Google",
-      "line": "LINE"
+      "line": "LINE",
+      "telegram": "Telegram"
     },
     "error": {
       "title": "Sign-in didn't finish",
@@ -615,7 +616,10 @@
     },
     "notifications": {
       "label": "Notifications",
-      "empty": "No notifications yet"
+      "empty": "No notifications yet",
+      "markAllRead": "Mark all as read",
+      "manage": "Manage alerts",
+      "unread": "{count} unread notifications"
     },
     "tier": {
       "free": "Free",
@@ -647,6 +651,12 @@
       "newGroup": "New group",
       "newGroupPlaceholder": "Group name",
       "dragGroup": "Drag to reorder group",
+      "alertItem": "Set an alert for {name}",
+      "alertGroup": "Group alerts for {name}",
+      "alertGroupRelative": "Group alert",
+      "alertGroupRelativeHint": "Percent move, volume, institutions… conditions that fit every stock",
+      "alertGroupPerStock": "Set price levels per stock",
+      "alertGroupPerStockHint": "Each stock gets its own level, created together",
       "dragItem": "Drag to reorder stock",
       "removeItem": "Remove from this group",
       "deleteGroup": "Delete group",
@@ -1085,6 +1095,15 @@
         "forward_eps_estimate": "Forward EPS Estimate",
         "forward_revenue_estimate": "Forward Revenue Estimate",
         "long_term_growth_estimate": "Long-Term Growth Estimate",
+        "current_year_growth_estimate": "Current-Year Growth Estimate",
+        "next_year_growth_estimate": "Next-Year Growth Estimate",
+        "eps_trend_current": "EPS Estimate (Current)",
+        "eps_trend_7_days_ago": "EPS Estimate (7 Days Ago)",
+        "eps_trend_30_days_ago": "EPS Estimate (30 Days Ago)",
+        "eps_trend_60_days_ago": "EPS Estimate (60 Days Ago)",
+        "eps_trend_90_days_ago": "EPS Estimate (90 Days Ago)",
+        "eps_revisions_up_last_30_days": "EPS Revisions Up (30 Days)",
+        "eps_revisions_down_last_30_days": "EPS Revisions Down (30 Days)",
         "total_esg_score": "Total ESG Score",
         "esg_risk_percentile": "ESG Risk Percentile",
         "expiry": "Expiry",
@@ -1098,7 +1117,22 @@
         "unavailable_note": "Unavailable Note",
         "end_date": "End Date",
         "data_available": "Data Available",
-        "unavailable_reason": "Unavailable Reason"
+        "unavailable_reason": "Unavailable Reason",
+        "sub_industry": "Sub-industry",
+        "year": "Year",
+        "metric": "Metric",
+        "period": "Period no.",
+        "label": "Period",
+        "index": "Seasonal index",
+        "deviation_pct": "Deviation (%)",
+        "horizon": "Horizon",
+        "return_pct": "Return (%)",
+        "premium_discount_pct": "Premium / discount (%)",
+        "weight": "Weight",
+        "close_price": "Close price",
+        "estimated_nav": "Estimated NAV",
+        "prior_day_nav": "Prior-day NAV",
+        "units_outstanding_change": "Units change"
       },
       "types": {
         "margin_short": "Margin/Short Balances",
@@ -1170,7 +1204,81 @@
         "block_trade": "Block Trade",
         "dividend_schedule": "Dividend Schedule",
         "analyst_consensus": "Analyst Consensus",
+        "morning_brief": "Morning Brief",
         "esg_score": "ESG Score"
+      },
+      "alertProposal": {
+        "title": "Alert proposal",
+        "create": "Create",
+        "creating": "Creating…",
+        "dismiss": "Skip",
+        "dismissed": "Proposal skipped.",
+        "created": "Alert created",
+        "alreadySet": "You already have this alert",
+        "manage": "Manage alerts",
+        "neverExpires": "Never expires",
+        "expiresIn": "Expires in {days} days",
+        "frequency": {
+          "once": "Notify once only",
+          "once_per_day": "Notify once when it becomes true",
+          "every_occurrence": "Notify every time it holds"
+        },
+        "errorCap": "You've reached the alert limit. Delete or pause one in Settings first.",
+        "errorGeneric": "Couldn't create the alert. Please try again.",
+        "caveat": "This is only a proposal — it takes effect when you tap Create. Alerts are checked when end-of-day data updates. Not investment advice."
+      },
+      "scheduleProposal": {
+        "title": "Scheduled briefing proposal",
+        "create": "Create",
+        "creating": "Creating…",
+        "dismiss": "Skip",
+        "dismissed": "Proposal skipped.",
+        "created": "Schedule created",
+        "alreadySet": "You already have this schedule",
+        "manage": "Manage schedules",
+        "errorCap": "You've reached the schedule limit. Delete or pause one in Settings first.",
+        "errorGeneric": "Couldn't create the schedule. Please try again.",
+        "caveat": "This is only a proposal — it takes effect when you tap Create. Each briefing is generated when it runs and describes data; it is not investment advice."
+      },
+      "fieldValues": {
+        "recommendation_key": {
+          "strong_buy": "Strong Buy",
+          "buy": "Buy",
+          "hold": "Hold",
+          "underperform": "Underperform",
+          "sell": "Sell",
+          "none": "None"
+        },
+        "latest_upgrade_downgrade_action": {
+          "main": "Maintained",
+          "up": "Upgraded",
+          "down": "Downgraded",
+          "init": "Initiated",
+          "reit": "Reiterated"
+        },
+        "kind": {
+          "industry": "Industry",
+          "concept": "Concept"
+        },
+        "tier": {
+          "upstream": "Upstream",
+          "midstream": "Midstream",
+          "downstream": "Downstream"
+        },
+        "sector": {
+          "technology": "Technology",
+          "financial_services": "Financial services",
+          "communication_services": "Communication services",
+          "consumer_cyclical": "Consumer cyclical",
+          "consumer_defensive": "Consumer defensive",
+          "healthcare": "Healthcare",
+          "industrials": "Industrials",
+          "energy": "Energy",
+          "utilities": "Utilities",
+          "basic_materials": "Basic materials",
+          "realestate": "Real estate",
+          "real_estate": "Real estate"
+        }
       }
     },
     "caveat": {
@@ -1211,6 +1319,8 @@
           "anthropic": "Anthropic",
           "openai": "OpenAI",
           "openrouter": "OpenRouter",
+          "grok": "Grok (via OpenRouter)",
+          "deepseek": "DeepSeek (via OpenRouter)",
           "gemini": "Gemini",
           "ollama": "Ollama (Local)"
         }
@@ -1292,10 +1402,19 @@
       "description": "Manage the third-party accounts linked to your sign-in.",
       "provider": {
         "google": "Google",
-        "line": "LINE"
+        "line": "LINE",
+        "telegram": "Telegram"
+      },
+      "linked": "Linked",
+      "hint": {
+        "google": "Not linked",
+        "line": "Not linked — link it to get alerts on LINE",
+        "telegram": "Not linked"
       },
       "notLinked": "Not linked",
       "unlink": "Unlink",
+      "link": "Link",
+      "errorLink": "Could not start linking. Please try again.",
       "errorLastMethod": "This is your only sign-in method, so it can't be unlinked."
     },
     "personality": {
@@ -1406,7 +1525,7 @@
     },
     "alerts": {
       "title": "Alerts & Schedules",
-      "description": "Set price, volume, and institutional-flow condition alerts.",
+      "description": "Set the conditions you care about; when data updates and a condition is met, you'll be notified.",
       "empty": "No alerts set yet.",
       "createCta": "Add alert",
       "toggleLabel": "Toggle the alert for {symbol}",
@@ -1428,69 +1547,319 @@
         },
         "form": {
           "title": "Add schedule",
-          "triggerType": "Trigger type",
-          "market": "Market",
-          "spec": "Schedule spec",
-          "skillRef": "Skill name",
-          "errorRequired": "Please fill in the schedule spec and skill name.",
           "cancel": "Cancel",
-          "submit": "Create schedule"
-        }
+          "submit": "Create schedule",
+          "editTitle": "Edit schedule",
+          "template": "Briefing",
+          "targetsOne": "Stock or ETF code",
+          "targetsMany": "Stock codes (up to {max}, comma-separated)",
+          "scope": "Covers",
+          "scopeStocks": "Stocks I type in",
+          "scopeWatchlist": "My watchlist group",
+          "watchlist": "Watchlist group",
+          "watchlistPlaceholder": "Choose a group",
+          "watchlistNote": "Taiwan stocks in the group at the time of each run (up to 10). Add or remove stocks in the group and the next briefing follows.",
+          "errorWatchlistRequired": "Please choose a watchlist group.",
+          "note": "Each run is generated when it fires and appended to one thread. It counts toward your chat quota.",
+          "save": "Save",
+          "error": {
+            "required": "Enter at least one code.",
+            "singleOnly": "This briefing covers one code.",
+            "tooMany": "At most {max} codes.",
+            "format": "Use plain codes like 2330 or AAPL."
+          },
+          "errorCap": "You've reached the schedule limit. Delete or pause one first.",
+          "errorStale": "This schedule was changed elsewhere. The list has been refreshed — reopen it to edit.",
+          "errorGeneric": "Couldn't save the schedule. Please try again."
+        },
+        "templates": {
+          "tw_stock_report": {
+            "label": "Full Taiwan stock report",
+            "cadence": "Weekly, Mondays at 08:30"
+          },
+          "us_stock_report": {
+            "label": "Full US stock report",
+            "cadence": "Weekly, Saturdays (Friday's close, US Eastern morning)"
+          },
+          "tw_etf_report": {
+            "label": "Full Taiwan ETF report",
+            "cadence": "Weekly, Fridays at 15:30"
+          },
+          "us_etf_report": {
+            "label": "Full US ETF report",
+            "cadence": "Weekly, Saturdays (Friday's close, US Eastern morning)"
+          },
+          "pre_open_brief": {
+            "label": "Pre-open quick brief",
+            "cadence": "Every Taiwan trading day before the open"
+          },
+          "after_close_chip": {
+            "label": "After-close chip-flow review",
+            "cadence": "Every Taiwan trading day after the close"
+          },
+          "disposition_watch": {
+            "label": "Attention / disposition check",
+            "cadence": "Every Taiwan trading day after the close"
+          },
+          "weekly_catalyst": {
+            "label": "Weekly catalyst scan",
+            "cadence": "Mondays at 08:30"
+          }
+        },
+        "editLabel": "Edit the schedule for {skill}",
+        "paused": "Paused",
+        "nextRun": "Next: {when}",
+        "lastRun": "Last run: {when}",
+        "neverRun": "Hasn't run yet",
+        "lastRunFailed": "The last run failed. It will try again at the next scheduled time.",
+        "lastRunSkippedQuota": "The last run was skipped: today's chat quota was used up.",
+        "viewThread": "View the briefings"
       },
       "form": {
         "title": "Add alert",
         "symbol": "Symbol",
         "market": "Market",
-        "conditionType": "Condition type",
-        "metric": "Metric",
-        "comparator": "Comparator",
-        "threshold": "Threshold",
-        "window": "Window",
-        "channels": "Notification channels",
+        "template": "Alert type",
+        "templateOption": {
+          "close_price": "Closing price",
+          "daily_change": "Daily move",
+          "volume_surge": "Volume surge",
+          "institutional_streak": "Institutional buy/sell streak",
+          "attention_entry": "Attention-stock listing",
+          "disposition_entry": "Disposition-list listing",
+          "month_revenue_published": "Monthly revenue published",
+          "margin_balance_change": "Margin / short balance change",
+          "etf_premium_discount": "ETF premium / discount"
+        },
+        "comparator": "Condition",
+        "comparatorOption": {
+          "above": "Above",
+          "below": "Below"
+        },
+        "value": "Price level",
+        "moveDirection": "Direction",
+        "moveDirectionOption": {
+          "up": "Rise",
+          "down": "Drop"
+        },
+        "percent": "Size (%)",
+        "multiple": "Multiple",
+        "window": "Average window (days)",
+        "investor": "Investor",
+        "investorOption": {
+          "foreign": "Foreign",
+          "trust": "Investment trust",
+          "dealer": "Dealer"
+        },
+        "flowDirection": "Direction",
+        "flowDirectionOption": {
+          "buy": "Net buying",
+          "sell": "Net selling"
+        },
+        "days": "Consecutive days",
+        "triggerMode": "Notification frequency",
+        "triggerModeOption": {
+          "once": "Notify once only",
+          "once_per_day": "When the condition becomes true (re-arms after it clears)",
+          "every_occurrence": "Every data update while the condition holds"
+        },
+        "expiry": "Valid for",
+        "expiryOption": {
+          "30": "30 days",
+          "90": "90 days",
+          "365": "1 year",
+          "never": "No expiry",
+          "keep": "Keep as is"
+        },
+        "preview": "Preview",
+        "previewPending": "The alert condition will appear here once the form is complete.",
         "cancel": "Cancel",
         "submit": "Create alert",
         "errorSymbolRequired": "Please enter a symbol.",
-        "errorMetricRequired": "Please enter a metric.",
-        "errorThresholdRequired": "Please enter a valid threshold.",
-        "conditionTypeOption": {
-          "price": "Price",
-          "volume": "Volume",
-          "indicator": "Technical indicator",
-          "institutional": "Institutional flow"
+        "warnSymbolUnknown": "We couldn't find price data for {symbol}. Check the ticker — an alert on it may never fire.",
+        "scope": "Applies to",
+        "scopeSymbol": "One symbol",
+        "scopeWatchlist": "A watchlist group (relative conditions)",
+        "scopePerStock": "Set price levels per stock",
+        "groupHint": "A group alert can only use conditions that mean the same for every stock (percent move, volume, institutions, attention list…). Prices differ per stock, so use",
+        "groupHintAction": "set price levels per stock",
+        "watchlist": "Watchlist group",
+        "watchlistPlaceholder": "Choose a group",
+        "errorWatchlistRequired": "Please choose a watchlist group.",
+        "errorRequired": "Please enter a value.",
+        "errorRange": "That value is outside the allowed range.",
+        "errorCap": "You've reached the alert limit. Delete or pause one before adding another.",
+        "errorCreate": "Couldn't create the alert. Please try again.",
+        "editTitle": "Edit alert",
+        "save": "Save changes",
+        "errorStale": "This alert was changed elsewhere. The list has been refreshed — reopen it to edit.",
+        "merged": "Updated elsewhere — your edits are kept on top of the latest version. Review and save again.",
+        "mergedConflict": "Updated elsewhere, and the same setting changed on both sides — yours is kept. Review and save again.",
+        "errorUpdate": "Couldn't save the alert. Please try again.",
+        "hint": {
+          "attention_entry": "You'll be notified when this stock appears on the exchange's attention-stock list. Nothing else to set.",
+          "disposition_entry": "You'll be notified when this stock appears on the exchange's disposition list, with the disposition period. Nothing else to set.",
+          "month_revenue_published": "You'll be notified when this stock publishes its monthly revenue. The alert only says it was published — see the stock page for the figures. Nothing else to set."
         },
-        "comparatorOption": {
-          "above": "Above",
-          "below": "Below",
-          "crosses_above": "Crosses above",
-          "crosses_below": "Crosses below",
-          "streak_up": "Rising streak",
-          "streak_down": "Falling streak"
+        "marginSide": "Balance",
+        "marginSideOption": {
+          "margin": "Margin purchase balance",
+          "short": "Short sale balance"
         },
-        "channelOption": {
-          "in_app": "In-app",
-          "line": "LINE",
-          "telegram": "Telegram",
-          "email": "Email",
-          "push": "Push"
+        "marginDirection": "Direction",
+        "marginDirectionOption": {
+          "up": "Rises in a day",
+          "down": "Falls in a day"
+        },
+        "navSide": "Direction",
+        "navSideOption": {
+          "premium": "Premium (price above estimated NAV)",
+          "discount": "Discount (price below estimated NAV)"
+        },
+        "etfNote": "Taiwan ETF codes only. The premium/discount uses the issuer's estimated NAV — an estimate, not the final NAV."
+      },
+      "status": {
+        "active": "Active",
+        "paused": "Paused",
+        "expired": "Expired",
+        "completed": "Triggered"
+      },
+      "lastFired": "Last triggered {date}",
+      "neverFired": "Not triggered yet",
+      "expiresOn": "Expires {date}",
+      "neverExpires": "Never expires",
+      "summary": {
+        "close_price": {
+          "above": "Close above {value}",
+          "below": "Close below {value}"
+        },
+        "daily_change": {
+          "up": "Daily rise of {percent}% or more",
+          "down": "Daily drop of {percent}% or more"
+        },
+        "volume_surge": "Volume at least {multiple}× its {window}-day average",
+        "institutional_streak": {
+          "foreign": {
+            "buy": "Foreign investors net buying for {days} straight days",
+            "sell": "Foreign investors net selling for {days} straight days"
+          },
+          "trust": {
+            "buy": "Investment trusts net buying for {days} straight days",
+            "sell": "Investment trusts net selling for {days} straight days"
+          },
+          "dealer": {
+            "buy": "Dealers net buying for {days} straight days",
+            "sell": "Dealers net selling for {days} straight days"
+          }
+        },
+        "attention_entry": "Listed as an attention stock",
+        "disposition_entry": "Listed as a disposition stock",
+        "month_revenue_published": "Monthly revenue published",
+        "margin_balance_change": {
+          "margin": {
+            "up": "Margin balance up {percent}% or more in a day",
+            "down": "Margin balance down {percent}% or more in a day"
+          },
+          "short": {
+            "up": "Short balance up {percent}% or more in a day",
+            "down": "Short balance down {percent}% or more in a day"
+          }
+        },
+        "etf_premium_discount": {
+          "premium": "Estimated premium to NAV of {percent}% or more",
+          "discount": "Estimated discount to NAV of {percent}% or more"
         }
-      }
+      },
+      "groupScope": "{name} · {count} stocks",
+      "fromGroup": "From: {name}",
+      "deletedGroup": "a deleted group",
+      "toggleMembers": "Show or hide the members of {name}",
+      "memberPending": "not evaluated yet",
+      "memberMet": "met",
+      "memberNotMet": "not met",
+      "perStock": {
+        "title": "Set price levels per stock",
+        "group": "Watchlist group",
+        "groupPlaceholder": "Choose a group",
+        "help": "Every stock has a different price, so set each one on its own; stocks with no level are skipped. Each becomes an independent alert you can edit or delete separately.",
+        "empty": "This group has no stocks yet.",
+        "bulkLabel": "All empty rows:",
+        "bulkComparator": "Bulk condition",
+        "bulkFromClose": "from the close",
+        "bulkPercent": "Bulk percent",
+        "bulkApply": "Fill from close",
+        "colSymbol": "Stock",
+        "colClose": "Latest close",
+        "colCondition": "Condition",
+        "colLevel": "Level",
+        "colQuick": "Quick fill (from that stock's close)",
+        "rowComparator": "Condition for {symbol}",
+        "rowLevel": "Level for {symbol}",
+        "closeNote": "Close is the latest trading day, for reference; \"—\" means no data yet.",
+        "truncated": "The group is large; only the first {max} stocks are listed.",
+        "submit": "Create {count} alerts",
+        "cancel": "Cancel",
+        "errorNothing": "Enter a level for at least one stock.",
+        "errorInvalid": "These levels are not valid: {symbols}",
+        "errorCap": "That would exceed the alert limit — delete some alerts first.",
+        "errorGeneric": "Could not create the alerts. Please try again."
+      },
+      "history": {
+        "title": "Notification history",
+        "description": "Everything your alerts and schedules have sent.",
+        "empty": "Nothing has been sent yet.",
+        "markAllRead": "Mark all as read",
+        "markRead": "Mark as read",
+        "open": "Open",
+        "limitNote": "Showing the latest {count}."
+      },
+      "watchlistScope": "Watchlist group",
+      "editLabel": "Edit the alert for {symbol}"
     },
     "notifications": {
       "title": "Notifications",
       "description": "Manage delivery channels and quiet hours.",
       "channels": "Notification channels",
-      "deliveryLimitationNote": "Only in-app notifications actually deliver today — the other channels can be configured but aren't wired up for real delivery yet.",
+      "channelNotReady": "not set up",
+      "channelNotLinked": "not linked",
+      "emailBlocked": {
+        "bounced": "Email is paused: messages to your address bounced. Update your account email to receive it again.",
+        "complained": "Email is paused: your address marked a message as spam. Update your account email to receive it again.",
+        "unsubscribed": "Email is off because you unsubscribed. Tick Email above to turn it back on."
+      },
+      "lineAddFriend": "Add the Miru LINE account as a friend",
+      "lineLink": "Link LINE",
+      "lineLinked": "LINE is linked.",
+      "lineUnlink": "Unlink",
+      "lineSendCode": "After adding the official account, send it this code:",
+      "lineCodeNote": "The code is valid for 10 minutes and works once; this updates by itself when it is linked. The free LINE plan has a monthly message cap, so keep an eye on it.",
+      "browser": {
+        "label": "Browser notifications on this device:",
+        "enable": "Turn on",
+        "disable": "Turn off",
+        "on": "On",
+        "denied": "Blocked in this browser — allow notifications for this site in the browser settings, then try again.",
+        "unsupported": "This browser doesn't support notifications.",
+        "notConfigured": "Not set up on this server."
+      },
+      "channelReadyNote": "In-app is always on and is your inbox. The other channels only deliver once they can reach you — an email on your account, a registered device, a LINE sign-in, or a linked Telegram chat.",
+      "telegramLink": "Link Telegram",
+      "telegramOpenLink": "Open Telegram and tap Start",
+      "telegramLinked": "Telegram is linked.",
+      "telegramUnlink": "Unlink",
+      "timezone": "Timezone",
+      "morningDigestNote": "On each Taiwan trading day from 08:00 (your timezone, after quiet hours) you get the full morning report — US overnight, macro, TAIEX, institutions, sectors, today's calendar and your watchlist stocks and ETFs — in one running conversation. It costs no chat quota; if the data can't be loaded you get a short recap instead.",
+      "quietHoursNote": "During quiet hours notifications still land silently in your inbox; the other channels get them as one digest when the window ends.",
       "quietHours": "Quiet hours",
       "quietStart": "Start time",
       "quietEnd": "End time",
-      "dailyLimit": "Daily notification limit",
       "morningDigest": "Morning digest",
       "channelOption": {
         "in_app": "In-app",
         "line": "LINE",
         "telegram": "Telegram",
         "email": "Email",
-        "push": "Push"
+        "push": "Browser"
       }
     },
     "memory": {
@@ -2084,6 +2453,26 @@
       "expandTo": "Show all {count} rows",
       "collapse": "Collapse",
       "empty": "No data available."
+    },
+    "alertButton": {
+      "label": "Set alerts",
+      "labelActive": "Set alerts ({count} active)",
+      "title": "Alerts for {symbol}",
+      "existing": "Current alerts",
+      "quickAdd": "Quick add",
+      "alreadySet": "Already set",
+      "priceTitle": "Closing-price alert",
+      "comparator": "Condition",
+      "above": "Above",
+      "below": "Below",
+      "priceValue": "Price level",
+      "add": "Add",
+      "created": "Created: {summary}",
+      "errorRequired": "Please enter a price level.",
+      "errorRange": "The price level must be greater than 0.",
+      "errorCap": "You've reached the alert limit. Delete or pause one in Settings first.",
+      "caveat": "Notifies only when a data condition you set is met. Not investment advice.",
+      "manage": "Manage all alerts"
     }
   },
   "etf": {

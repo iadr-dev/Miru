@@ -105,7 +105,8 @@ export function ChartWithDataSheet({
               </thead>
               <tbody>
                 {rows.slice(0, ROW_LIMIT).map((row, i) => (
-                  <tr key={columns.map((col) => String(row[col] ?? "")).join("|") || i}>
+                  // biome-ignore lint/suspicious/noArrayIndexKey: rows are a fixed, never-reordered snapshot, and two different days can carry identical values (a flat valuation series), so the row's content alone is not a unique key.
+                  <tr key={`${i}|${columns.map((col) => String(row[col] ?? "")).join("|")}`}>
                     {columns.map((col) => {
                       const value = row[col];
                       const numeric = isNumericColumn(rows, col);

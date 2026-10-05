@@ -18,7 +18,7 @@ import { entitlementViewSchema, TIERS } from "@/types/account";
 // `GET /me/connections` (`backend/src/api/routers/auth.py`).
 // ---------------------------------------------------------------------------
 
-export const OAUTH_LINK_PROVIDERS = ["google", "line"] as const;
+export const OAUTH_LINK_PROVIDERS = ["google", "line", "telegram"] as const;
 
 export const oauthAccountSchema = z.object({
   id: z.string(),
@@ -216,7 +216,7 @@ export const quietHoursSchema = z.object({
 export type QuietHours = z.infer<typeof quietHoursSchema>;
 
 // ---------------------------------------------------------------------------
-// Schedules (Pro-gated)
+// Schedules
 // ---------------------------------------------------------------------------
 
 export const SCHEDULE_TRIGGER_TYPES = ["cron", "market_event"] as const;
@@ -248,6 +248,8 @@ export const scheduleJobSchema = z.object({
   last_run: z.string().nullable(),
   next_run: z.string().nullable(),
   status: z.enum(SCHEDULE_STATUSES).default("ok"),
+  status_reason: z.string().nullable().default(null),
+  thread_id: z.string().nullable().default(null),
   version: z.number().int().default(0),
   created_at: z.string(),
   updated_at: z.string(),
@@ -259,42 +261,95 @@ export const schedulesResponseSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// Alerts (Pro-gated)
+// Alerts — mirrors backend/src/scheduler/templates.py + models.py (docs/backend/modules/14 §3).
+// Open to every signed-in user (ADR-0028); the backend caps rules per user (409 `cap_reached`).
 // ---------------------------------------------------------------------------
 
-export const ALERT_CONDITION_TYPES = ["price", "volume", "indicator", "institutional"] as const;
-export type AlertConditionType = (typeof ALERT_CONDITION_TYPES)[number];
+/** Alerts cover TW and US only (the DB CHECK); `MARKETS` keeps GB/JP for the schedule trigger. */
+export const ALERT_MARKETS = ["TW", "US"] as const;
+export type AlertMarket = (typeof ALERT_MARKETS)[number];
 
-export const ALERT_COMPARATORS = [
-  "above",
-  "below",
-  "crosses_above",
-  "crosses_below",
-  "streak_up",
-  "streak_down",
+export const ALERT_TEMPLATE_KINDS = [
+  "close_price",
+  "daily_change",
+  "volume_surge",
+  "institutional_streak",
+  "attention_entry",
+  "disposition_entry",
+  "month_revenue_published",
+  "margin_balance_change",
+  "etf_premium_discount",
 ] as const;
-export type AlertComparator = (typeof ALERT_COMPARATORS)[number];
+export type AlertTemplateKind = (typeof ALERT_TEMPLATE_KINDS)[number];
 
-export const alertConditionSchema = z.object({
-  type: z.enum(ALERT_CONDITION_TYPES),
-  metric: z.string().min(1),
-  comparator: z.enum(ALERT_COMPARATORS),
-  threshold: z.number().int(),
-  window: z.number().int().default(1),
-});
+export const INSTITUTIONAL_INVESTORS = ["foreign", "trust", "dealer"] as const;
+
+/** The typed `condition {kind, ...params}` union. Thresholds are decimals; bounds match the
+ * backend's pydantic `Field` constraints so an out-of-range value fails here before the request. */
+export const alertConditionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("close_price"),
+    comparator: z.enum(["above", "below"]),
+    value: z.number().gt(0),
+  }),
+  z.object({
+    kind: z.literal("daily_change"),
+    direction: z.enum(["up", "down"]),
+    percent: z.number().gt(0).max(100),
+  }),
+  z.object({
+    kind: z.literal("volume_surge"),
+    multiple: z.number().gt(1).max(100),
+    window: z.number().int().min(5).max(60).default(20),
+  }),
+  z.object({
+    kind: z.literal("institutional_streak"),
+    investor: z.enum(INSTITUTIONAL_INVESTORS),
+    direction: z.enum(["buy", "sell"]),
+    days: z.number().int().min(2).max(20),
+  }),
+  z.object({ kind: z.literal("attention_entry") }),
+  z.object({ kind: z.literal("disposition_entry") }),
+  z.object({ kind: z.literal("month_revenue_published") }),
+  z.object({
+    kind: z.literal("margin_balance_change"),
+    side: z.enum(["margin", "short"]),
+    direction: z.enum(["up", "down"]),
+    percent: z.number().gt(0).max(1000),
+  }),
+  z.object({
+    kind: z.literal("etf_premium_discount"),
+    direction: z.enum(["premium", "discount"]),
+    percent: z.number().gt(0).max(50),
+  }),
+]);
 export type AlertCondition = z.infer<typeof alertConditionSchema>;
+
+export const ALERT_TRIGGER_MODES = ["once", "once_per_day", "every_occurrence"] as const;
+export type AlertTriggerMode = (typeof ALERT_TRIGGER_MODES)[number];
 
 export const alertRuleSchema = z.object({
   id: z.string(),
   user_id: z.string(),
-  symbol: z.string(),
-  market: z.enum(MARKETS),
+  // Scope is a symbol+market XOR a watchlist group (the backend enforces the same XOR).
+  symbol: z.string().nullable().default(null),
+  market: z.enum(MARKETS).nullable().default(null),
+  watchlist_id: z.string().nullable().default(null),
+  // The group a per-stock rule was set up from (display only; it does not scope the rule).
+  origin_watchlist_id: z.string().nullable().default(null),
   condition: alertConditionSchema,
+  trigger_mode: z.enum(ALERT_TRIGGER_MODES).default("once_per_day"),
+  cooldown_seconds: z.number().int().nullable().default(null),
+  state: z.record(z.string(), z.unknown()).default({}),
+  expires_at: z.string().nullable().default(null),
+  auto_paused_reason: z.string().nullable().default(null),
+  explain: z.boolean().default(false),
   channels: z.array(z.enum(DELIVERY_CHANNEL_KINDS)).default([]),
   quiet_hours: quietHoursSchema.nullable(),
   daily_limit: z.number().int().nullable(),
   enabled: z.boolean().default(true),
   last_triggered: z.string().nullable(),
+  version: z.number().int().default(0),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -343,13 +398,14 @@ export const alertPreferenceSchema = z.object({
   channels: z.array(z.enum(DELIVERY_CHANNEL_KINDS)).default([]),
   enabled_categories: z.array(z.string()).default([]),
   quiet_hours: quietHoursSchema.nullable(),
-  daily_limit: z.number().int().nullable(),
   morning_digest: z.boolean().default(false),
+  // IANA zone the quiet-hours window is evaluated in.
+  timezone: z.string().default("Asia/Taipei"),
   updated_at: z.string(),
 });
 export type AlertPreference = z.infer<typeof alertPreferenceSchema>;
 
-export const DEVICE_PLATFORMS = ["ios", "android"] as const;
+export const DEVICE_PLATFORMS = ["ios", "android", "web"] as const;
 
 export const devicePushTokenSchema = z.object({
   id: z.string(),

@@ -29,8 +29,8 @@ import {
   formatNumber,
 } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
-import { hashToChartToken } from "@/lib/chart-token-hash";
+import { fieldLabel, valueLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { distinctChartColors, hashToChartToken } from "@/lib/chart-token-hash";
 import { type ChartHint, chartHintSchema, type Mark } from "@/types/chart-hint";
 
 /** `arc` (pie/donut) degrades past this many distinct categories — an N-slice pie beyond this is
@@ -225,6 +225,24 @@ export function chartHintUsable(data: unknown): boolean {
   return Boolean(hint.x && hint.y);
 }
 
+/** A card may carry several charts at once (`chart_hints`, plural — e.g. the multi-year fundamentals
+ * report: revenue, growth, EPS, margins, dividends). Each hint names its own series array via
+ * `data_key`, so it is rendered exactly like the single-hint path: the card's data with that one
+ * hint swapped in as `chart_hint`. Only hints that would actually draw are returned, in order. */
+export function chartHintPayloads(data: unknown): Record<string, unknown>[] {
+  if (!data || typeof data !== "object") {
+    return [];
+  }
+  const record = data as Record<string, unknown>;
+  const hints = record.chart_hints;
+  if (!Array.isArray(hints)) {
+    return [];
+  }
+  return hints
+    .map((hint): Record<string, unknown> => ({ ...record, chart_hint: hint }))
+    .filter((payload) => chartHintUsable(payload));
+}
+
 /** Adaptive chart renderer — reads `card.data.chart_hint` (validated against `chartHintSchema`)
  * to pick a `mark`/encoding independent of which tool produced the data, instead of every chart
  * shape needing its own hardcoded `card_type -> component` wiring (`card-registry.ts`). Colors
@@ -257,6 +275,25 @@ export function GenericChart({ data }: { data: unknown }): ReactNode {
 
 type Translator = ReturnType<typeof useTranslations>;
 
+/** A chart's title carries its unit in brackets ("年度報酬（%）"); a percentage series should read
+ * "35.4%" in the tooltip, not a bare "35.4". Only `%` is recognised — currency units are already in
+ * the title and the axis, and guessing one would mislabel a value. */
+export function unitSuffix(title: string | undefined | null): string {
+  return title && /[（(][^）)]*%[^）)]*[）)]/.test(title) ? "%" : "";
+}
+
+/** A donut's weights are often fractions of one (an ETF's sector weights sum to ~1, 0.387 = 38.7%),
+ * which read as a bare "0.387" next to a name. When the slices are such a set of fractions, show
+ * each as its share of the whole; otherwise show the amount itself (dividend per share, …). */
+export function isFractionSet(values: readonly number[]): boolean {
+  const total = values.reduce((sum, v) => sum + v, 0);
+  return values.length > 0 && values.every((v) => v >= 0 && v <= 1) && total > 0.95 && total < 1.05;
+}
+
+export function formatShare(value: number, total: number, locale: string): string {
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format((value / total) * 100)}%`;
+}
+
 function ArcChart({
   hint,
   rows,
@@ -275,11 +312,21 @@ function ArcChart({
   if (slices.length === 0) {
     return null;
   }
+  const colorField = hint.color.field;
+  const categoryName = (label: string): string => {
+    const translated = valueLabel(t, colorField, label);
+    return translated === label ? fieldLabel(t, label) : translated;
+  };
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const fractions = isFractionSet(slices.map((slice) => slice.value));
+  const valueText = (value: number): string =>
+    fractions ? formatShare(value, total, locale) : formatNumber(value, locale);
   const sheetRows = slices.map((s) => ({
-    [hint.color?.field ?? "label"]: s.label,
-    value: s.value,
+    [colorField]: categoryName(s.label),
+    value: fractions ? formatShare(s.value, total, locale) : s.value,
   }));
 
+  const sliceColors = distinctChartColors(slices.map((slice) => slice.label));
   return (
     <ChartWithDataSheet rows={sheetRows}>
       {hint.title ? <ChartTitle title={hint.title} /> : null}
@@ -296,19 +343,25 @@ function ArcChart({
                 strokeWidth={0}
               >
                 {slices.map((slice) => (
-                  <Cell key={slice.label} fill={resolveSeriesColor(slice.label, false, null)} />
+                  <Cell key={slice.label} fill={sliceColors[slice.label]} />
                 ))}
               </Pie>
               <Tooltip
                 {...TOOLTIP_STYLE}
-                formatter={(value) => [formatNumber(asNumber(value), locale), ""]}
+                formatter={(value, name) => {
+                  const amount = asNumber(value) ?? 0;
+                  const text = fractions
+                    ? formatShare(amount, total, locale)
+                    : `${formatNumber(amount, locale)}（${formatShare(amount, total, locale)}）`;
+                  return [text, categoryName(String(name))];
+                }}
               />
             </PieChart>
           </ResponsiveContainer>
         </div>
         <div className="flex flex-1 flex-col gap-2">
           {slices.map((slice) => {
-            const color = resolveSeriesColor(slice.label, false, null);
+            const color = sliceColors[slice.label];
             return (
               <div key={slice.label} className="flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-[13px] text-[var(--text)]">
@@ -317,10 +370,10 @@ function ArcChart({
                     className="size-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  {fieldLabel(t, slice.label)}
+                  {categoryName(slice.label)}
                 </span>
                 <span className="shrink-0 font-num text-[13px] tabular-nums" style={{ color }}>
-                  {formatNumber(slice.value, locale)}
+                  {valueText(slice.value)}
                 </span>
               </div>
             );
@@ -422,6 +475,7 @@ function renderPlot(
     );
   }
 
+  const colors = distinctChartColors(seriesLabels);
   const commonAxes = (
     <>
       <CartesianGrid vertical={false} stroke="var(--grid)" />
@@ -438,7 +492,7 @@ function renderPlot(
       />
       <Tooltip
         {...TOOLTIP_STYLE}
-        formatter={(value) => formatNumber(asNumber(value), locale)}
+        formatter={(value) => `${formatNumber(asNumber(value), locale)}${unitSuffix(hint.title)}`}
         labelFormatter={(key) => String(key)}
       />
       {seriesLabels.length > 1 ? (
@@ -460,7 +514,7 @@ function renderPlot(
             type="monotone"
             dataKey={label}
             name={label}
-            stroke={resolveSeriesColor(label, false, null)}
+            stroke={colors[label]}
             strokeWidth={2}
             dot={false}
           />
@@ -473,7 +527,7 @@ function renderPlot(
       <AreaChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
         {commonAxes}
         {seriesLabels.map((label) => {
-          const color = resolveSeriesColor(label, false, null);
+          const color = colors[label];
           return (
             <Area
               key={label}
@@ -494,13 +548,7 @@ function renderPlot(
       <ScatterChart margin={{ left: 8, right: 8, bottom: 8 }}>
         {commonAxes}
         {seriesLabels.map((label) => (
-          <Scatter
-            key={label}
-            name={label}
-            data={points}
-            dataKey={label}
-            fill={resolveSeriesColor(label, false, null)}
-          />
+          <Scatter key={label} name={label} data={points} dataKey={label} fill={colors[label]} />
         ))}
       </ScatterChart>
     );
@@ -510,13 +558,7 @@ function renderPlot(
     <BarChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
       {commonAxes}
       {seriesLabels.map((label) => (
-        <Bar
-          key={label}
-          dataKey={label}
-          name={label}
-          fill={resolveSeriesColor(label, false, null)}
-          radius={4}
-        />
+        <Bar key={label} dataKey={label} name={label} fill={colors[label]} radius={4} />
       ))}
     </BarChart>
   );

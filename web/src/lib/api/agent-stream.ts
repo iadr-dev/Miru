@@ -38,6 +38,8 @@ export type AgentQueryBody = {
   message: string;
   thread_id?: string;
   web_search?: boolean;
+  /** Composer model pick; persisted as the thread override so the first turn honors it. */
+  model?: string;
   attachments?: AttachmentInput[];
 };
 

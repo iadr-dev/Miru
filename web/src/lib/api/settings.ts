@@ -10,7 +10,8 @@
  * instead of only having a generic message.
  */
 
-import { fetchWithRefresh } from "@/lib/api/auth";
+import { z } from "zod";
+import { fetchWithRefresh, type OAuthProvider } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 import { apiErrorSchema } from "@/lib/api/schemas";
 import {
@@ -20,8 +21,11 @@ import {
   userSchema,
 } from "@/types/account";
 import {
+  type AlertCondition,
+  type AlertMarket,
   type AlertPreference,
   type AlertRule,
+  type AlertTriggerMode,
   alertPreferenceSchema,
   alertRuleSchema,
   alertsResponseSchema,
@@ -32,6 +36,7 @@ import {
   type DeliveryChannelKind,
   type DevicePushToken,
   devicePushTokenSchema,
+  type Market,
   type Memory,
   type MemoryScope,
   memoriesResponseSchema,
@@ -154,7 +159,7 @@ export async function listConnections(): Promise<OAuthAccountLike[]> {
   return raw.connections.map((entry) => oauthAccountSchema.parse(entry));
 }
 
-export async function unlinkConnection(provider: "google" | "line"): Promise<void> {
+export async function unlinkConnection(provider: OAuthProvider): Promise<void> {
   await requestJson(`/me/connections/${provider}`, { method: "DELETE" });
 }
 
@@ -276,7 +281,7 @@ export async function getUsageQuota(): Promise<EntitlementView> {
 }
 
 // ---------------------------------------------------------------------------
-// Schedules (Pro-gated — 403 feature_not_entitled for Free/Premium)
+// Schedules (open to every signed-in user; 409 `cap_reached` at the per-user cap)
 // ---------------------------------------------------------------------------
 
 export async function listSchedules(): Promise<ScheduleJob[]> {
@@ -301,13 +306,20 @@ export async function createSchedule(body: CreateScheduleRequest): Promise<Sched
   return scheduleJobSchema.parse(raw);
 }
 
+export type UpdateScheduleRequest = Partial<{
+  enabled: boolean;
+  trigger: ScheduleTrigger;
+  action: ScheduleAction;
+  delivery_channels: DeliveryChannelKind[];
+  quiet_hours: QuietHours | null;
+  daily_limit: number | null;
+  /** Refuse (409 `stale_version`) if another device saved this schedule first. */
+  expected_version: number;
+}>;
+
 export async function updateSchedule(
   jobId: string,
-  body: Partial<{
-    enabled: boolean;
-    delivery_channels: DeliveryChannelKind[];
-    daily_limit: number | null;
-  }>,
+  body: UpdateScheduleRequest,
 ): Promise<ScheduleJob> {
   const raw = await requestJson(`/schedules/${encodeURIComponent(jobId)}`, {
     method: "PATCH",
@@ -325,7 +337,7 @@ export async function deleteSchedule(jobId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Alerts (Pro-gated)
+// Alerts (open to every signed-in user; 409 `cap_reached` at the per-user cap)
 // ---------------------------------------------------------------------------
 
 export async function listAlerts(): Promise<AlertRule[]> {
@@ -333,14 +345,46 @@ export async function listAlerts(): Promise<AlertRule[]> {
   return alertsResponseSchema.parse(raw).alerts;
 }
 
+/** Scope is a symbol+market XOR a `watchlist_id`. Empty `channels` / omitted quiet hours and daily
+ * limit inherit the user's alert preferences; `expires_in_days: null` means "never expires". */
 export type CreateAlertRequest = {
-  symbol: string;
-  market: ScheduleTrigger["market"];
-  condition: AlertRule["condition"];
+  symbol?: string;
+  market?: AlertMarket;
+  watchlist_id?: string;
+  condition: AlertCondition;
+  trigger_mode?: AlertTriggerMode;
+  cooldown_seconds?: number | null;
+  expires_in_days?: number | null;
+  explain?: boolean;
   channels?: DeliveryChannelKind[];
   quiet_hours?: QuietHours | null;
   daily_limit?: number | null;
 };
+
+/** One stock's own rule in a per-stock batch. */
+export type BatchAlertItem = {
+  symbol: string;
+  market: AlertMarket;
+  condition: AlertCondition;
+};
+
+export type BatchAlertsRequest = {
+  items: BatchAlertItem[];
+  origin_watchlist_id?: string;
+  trigger_mode?: AlertTriggerMode;
+  expires_in_days?: number | null;
+};
+
+/** Create several per-stock rules at once, all or nothing (409 `cap_reached` if they do not all
+ * fit). Each item keeps its own stock and level. */
+export async function createAlertsBatch(body: BatchAlertsRequest): Promise<AlertRule[]> {
+  const raw = await requestJson("/alerts/batch", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  return alertsResponseSchema.parse(raw).alerts;
+}
 
 export async function createAlert(body: CreateAlertRequest): Promise<AlertRule> {
   const raw = await requestJson("/alerts", {
@@ -351,13 +395,27 @@ export async function createAlert(body: CreateAlertRequest): Promise<AlertRule> 
   return alertRuleSchema.parse(raw);
 }
 
-/** Only `enabled` is patchable — the backend does not support editing symbol/condition/channels
- * on an existing rule; changing those requires delete + re-create. */
-export async function updateAlert(alertId: string, enabled: boolean): Promise<AlertRule> {
+/** A partial edit — send only what changed. `null` clears a nullable field; `expected_version` is
+ * the rule's `version` as last seen, and a mismatch is a 409 `stale_version` (edited elsewhere).
+ * The rule's scope (symbol / market / watchlist) cannot be edited: delete and re-create instead. */
+export type UpdateAlertRequest = {
+  expected_version?: number;
+  enabled?: boolean;
+  condition?: AlertCondition;
+  trigger_mode?: AlertTriggerMode;
+  cooldown_seconds?: number | null;
+  expires_in_days?: number | null;
+  explain?: boolean;
+  channels?: DeliveryChannelKind[];
+  quiet_hours?: QuietHours | null;
+  daily_limit?: number | null;
+};
+
+export async function updateAlert(alertId: string, body: UpdateAlertRequest): Promise<AlertRule> {
   const raw = await requestJson(`/alerts/${encodeURIComponent(alertId)}`, {
     method: "PATCH",
     headers: jsonHeaders(),
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(body),
   });
   return alertRuleSchema.parse(raw);
 }
@@ -390,6 +448,21 @@ export async function getNotificationBadge(): Promise<NotificationBadge> {
   return notificationBadgeSchema.parse(raw);
 }
 
+const markReadResponseSchema = z.object({ marked: z.number().int() });
+
+/** Mark notifications read — exactly one of `ids` or `all`. Idempotent; returns how many rows
+ * changed. */
+export async function markNotificationsRead(
+  selector: { ids: string[] } | { all: true },
+): Promise<number> {
+  const raw = await requestJson("/notifications/read", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(selector),
+  });
+  return markReadResponseSchema.parse(raw).marked;
+}
+
 // ---------------------------------------------------------------------------
 // Alert preferences + devices
 // ---------------------------------------------------------------------------
@@ -398,9 +471,14 @@ export type AlertPreferenceRequest = Partial<{
   channels: DeliveryChannelKind[];
   enabled_categories: string[];
   quiet_hours: QuietHours | null;
-  daily_limit: number | null;
   morning_digest: boolean;
+  timezone: string;
 }>;
+
+export async function getAlertPreferences(): Promise<AlertPreference> {
+  const raw = await requestJson("/me/alert-preferences");
+  return alertPreferenceSchema.parse(raw);
+}
 
 export async function putAlertPreferences(body: AlertPreferenceRequest): Promise<AlertPreference> {
   const raw = await requestJson("/me/alert-preferences", {
@@ -412,7 +490,7 @@ export async function putAlertPreferences(body: AlertPreferenceRequest): Promise
 }
 
 export async function registerDevice(body: {
-  platform: "ios" | "android";
+  platform: "ios" | "android" | "web";
   token: string;
 }): Promise<DevicePushToken> {
   const raw = await requestJson("/me/devices", {
@@ -463,4 +541,76 @@ export async function deleteMemory(memoryId: string): Promise<void> {
     method: "DELETE",
     expectBody: false,
   });
+}
+
+// ---------------------------------------------------------------------------
+// External channel status + Telegram link + alert symbol check
+// ---------------------------------------------------------------------------
+
+const channelStatusSchema = z.object({
+  email: z.boolean(),
+  push: z.boolean(),
+  line: z.boolean(),
+  telegram: z.boolean(),
+  telegram_available: z.boolean(),
+  line_linked: z.boolean().default(false),
+  line_available: z.boolean().default(false),
+  email_blocked: z.enum(["bounced", "complained", "unsubscribed"]).nullable().default(null),
+  web_push_public_key: z.string().nullable().default(null),
+  line_add_friend_url: z.string().nullable().default(null),
+});
+export type ChannelStatus = z.infer<typeof channelStatusSchema>;
+
+/** Which external channels can reach this user right now (an address/device/link exists and the
+ * server is configured to send). */
+export async function getChannelStatus(): Promise<ChannelStatus> {
+  return channelStatusSchema.parse(await requestJson("/me/channels"));
+}
+
+const telegramLinkSchema = z.object({ url: z.string(), expires_in_seconds: z.number().int() });
+
+/** A one-time link to open in Telegram; tapping Start there binds that chat to the account. */
+export async function startTelegramLink(): Promise<z.infer<typeof telegramLinkSchema>> {
+  const raw = await requestJson("/me/channels/telegram/link", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: "{}",
+  });
+  return telegramLinkSchema.parse(raw);
+}
+
+const lineLinkSchema = z.object({
+  code: z.string(),
+  add_friend_url: z.string().nullable(),
+  expires_in_seconds: z.number().int(),
+});
+
+/** A one-time code to send to the LINE official account; sending it links that LINE account. */
+export async function startLineLink(): Promise<z.infer<typeof lineLinkSchema>> {
+  const raw = await requestJson("/me/channels/line/link", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: "{}",
+  });
+  return lineLinkSchema.parse(raw);
+}
+
+export async function unlinkLine(): Promise<void> {
+  await requestJson("/me/channels/line", { method: "DELETE", expectBody: false });
+}
+
+export async function unlinkTelegram(): Promise<void> {
+  await requestJson("/me/channels/telegram", { method: "DELETE", expectBody: false });
+}
+
+const symbolCheckSchema = z.object({ checked: z.boolean(), exists: z.boolean() });
+
+/** Does this ticker have any price data? `checked: false` means the lookup itself failed, which
+ * says nothing about the ticker — callers only warn on `checked && !exists`. */
+export async function checkAlertSymbol(
+  symbol: string,
+  market: Market,
+): Promise<z.infer<typeof symbolCheckSchema>> {
+  const params = new URLSearchParams({ symbol, market });
+  return symbolCheckSchema.parse(await requestJson(`/alerts/symbol-check?${params.toString()}`));
 }
