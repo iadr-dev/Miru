@@ -9,7 +9,7 @@ existing imports keep working.
 
 Each template names what it watches as a user-set, data-observable *fact*. Thresholds are
 decimals. Copy is fact-style ("a condition you set was met"): every phrase states what the data
-shows against the user's own threshold and never tells anyone to act (governance §1 / ADR-0028
+shows against the user's own threshold and never tells anyone to act (governance §1 / modules/14
 §F). `NON_ADVICE_FOOTER` rides on every notification body.
 """
 

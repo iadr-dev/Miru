@@ -1,4 +1,4 @@
-"""Uniform fair-use caps for alerts and schedules (ADR-0028 §1).
+"""Uniform fair-use caps for alerts and schedules (modules/14).
 
 These are abuse/resource limits applied identically to every signed-in user — not a tier
 feature. The numbers are proposals (docs/backend/modules/12-multi-user-tiers.md) and live in one

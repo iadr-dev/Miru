@@ -8,7 +8,7 @@ bound the scheduling amendment is permitted under:
    real cross-process election swaps in at the construction site alone.
 2. **User-authorized.** Only jobs/alerts a signed-in user created are in the store; the worker
    never invents work.
-3. **Open to every user, data-masked at run time.** The feature is not tier-gated (ADR-0028);
+3. **Open to every user, data-masked at run time.** The feature is not tier-gated (modules/14);
    a job whose owner account no longer exists auto-disables. The owner's tier is still resolved
    *fresh* each run: sponsor data inside a run is masked by the same tool-dispatch gate an
    interactive turn uses, because the run's `ToolContext` carries the owner's current
@@ -295,7 +295,7 @@ class SchedulerWorker:
 
     # ---- alerts ----
     #
-    # Event-driven (ADR-0028 §3): a `data.updated` signal and the reconciliation sweep both land in
+    # Event-driven (modules/14): a `data.updated` signal and the reconciliation sweep both land in
     # `_evaluate_group`, which is idempotent per `(capability, market, as_of)` via the eval mark and
     # the notification dedupe key. The signal is best-effort, so the sweep — run every daemon pass —
     # is the correctness floor; the signal only lowers latency.

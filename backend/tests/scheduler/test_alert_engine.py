@@ -1,4 +1,4 @@
-"""Event-driven alert evaluation (ADR-0028 §3): template evaluation over ingested partitions, edge
+"""Event-driven alert evaluation (modules/14): template evaluation over ingested partitions, edge
 triggering, trigger modes, watchlist fan-out, the reconciliation sweep, and idempotency — all
 against an in-memory fake reader, no Parquet and no network."""
 

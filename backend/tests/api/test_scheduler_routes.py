@@ -1,4 +1,4 @@
-"""HTTP tests for the scheduler surface: open to every signed-in tier (ADR-0028), schedule/alert
+"""HTTP tests for the scheduler surface: open to every signed-in tier (modules/14), schedule/alert
 CRUD with per-user scoping, fair-use caps, notifications, alert preferences, and idempotent
 device registration."""
 

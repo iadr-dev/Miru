@@ -9,7 +9,7 @@ import { AlertList } from "./alert-list";
 import { NotificationHistory } from "./notification-history";
 import { ScheduleList } from "./schedule-list";
 
-/** 提醒與排程 / Alerts & Schedules. Open to every signed-in user (ADR-0028) — there is no tier gate
+/** 提醒與排程 / Alerts & Schedules. Open to every signed-in user (modules/14) — there is no tier gate
  * on the feature itself; what a tier gates is the *data* a notification carries. Each list owns its
  * own loading / empty / error states, so one failing list never blanks the other. */
 export function AlertsPanel(): ReactNode {

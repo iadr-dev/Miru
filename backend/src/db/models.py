@@ -632,7 +632,7 @@ class AlertEvalMarkRow(Base):
     """The reconciliation watermark: the latest `as_of` the alert evaluator has processed per
     `(capability, market)`. `data.updated` is best-effort, so the daily sweep compares the
     ingested store's latest partition to this mark and evaluates whatever it has not yet seen
-    (ADR-0028 §3). Idempotent re-evaluation is guarded by the notification dedupe key."""
+    (modules/14). Idempotent re-evaluation is guarded by the notification dedupe key."""
 
     __tablename__ = "alert_eval_marks"
 

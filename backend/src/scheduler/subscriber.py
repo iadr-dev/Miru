@@ -1,7 +1,7 @@
 """The live half of event-driven alert evaluation: react to the ingest leader's `data.updated`
 signal the moment a dataset lands, instead of waiting for the next reconciliation sweep.
 
-The signal is a *latency optimisation only* (ADR-0028 §3). It is best-effort by design — a publish
+The signal is a *latency optimisation only* (modules/14). It is best-effort by design — a publish
 failure never fails an ingest run, and several ingest jobs publish nothing — so correctness rests on
 the sweep (`SchedulerWorker.reconcile_alerts`, run every daemon pass). Both paths converge on
 `handle_data_updated` → `_evaluate_group`, which is idempotent per `(capability, market, as_of)`

@@ -231,7 +231,7 @@ async def test_usage_quota_gate_skips_over_finite_cap(session_factory) -> None:
 
 
 async def test_free_user_job_runs_and_is_rescheduled(session_factory) -> None:
-    # ADR-0028: scheduling is open to every tier (the data, not the feature, is tier-gated), and
+    # modules/14: scheduling is open to every tier (the data, not the feature, is tier-gated), and
     # a finished run resolves its trigger to a concrete future next_run — not a blind +1 day.
     user = await insert_user(session_factory, tier=Tier.FREE)
     job = await _make_job(session_factory, user)

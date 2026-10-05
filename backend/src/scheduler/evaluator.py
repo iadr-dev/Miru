@@ -2,7 +2,7 @@
 
 Reads only `(dataset, market, date)` partitions through the read-only `SnapshotReader` seam
 (`ingest.reader.ParquetMarketDataReader` satisfies it structurally) — never a source adapter and
-never a per-user upstream fetch, so evaluation spends no FinMind budget (ADR-0028 §2). Reading is
+never a per-user upstream fetch, so evaluation spends no FinMind budget (modules/14). Reading is
 blocking DuckDB work; the worker runs a whole evaluation pass in a thread and serialises it, since
 one reader connection must not be shared across concurrent queries.
 

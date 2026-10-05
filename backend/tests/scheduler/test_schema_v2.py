@@ -1,4 +1,4 @@
-"""Fresh-schema guarantees for alerts v2 (ADR-0028): scope XOR, trigger-mode CHECK, watchlist
+"""Fresh-schema guarantees for alerts v2 (modules/14): scope XOR, trigger-mode CHECK, watchlist
 cascade, new-field round trip, web push platform, timezone preference, mark-read."""
 
 from __future__ import annotations

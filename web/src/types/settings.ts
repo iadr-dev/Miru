@@ -262,7 +262,7 @@ export const schedulesResponseSchema = z.object({
 
 // ---------------------------------------------------------------------------
 // Alerts — mirrors backend/src/scheduler/templates.py + models.py (docs/backend/modules/14 §3).
-// Open to every signed-in user (ADR-0028); the backend caps rules per user (409 `cap_reached`).
+// Open to every signed-in user (modules/14); the backend caps rules per user (409 `cap_reached`).
 // ---------------------------------------------------------------------------
 
 /** Alerts cover TW and US only (the DB CHECK); `MARKETS` keeps GB/JP for the schedule trigger. */
