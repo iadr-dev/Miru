@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
-/** Grouped-row section card shared by every Settings sub-page (docs/web/settings/README.md
- * §Visual design): `--radius-card` surface, 18–20px/600 section head, `divide-y --border` rows. */
+/** Grouped-row section card shared by every Settings sub-page:
+ * `--radius-card` surface, 18–20px/600 section head, `divide-y --border` rows. */
 export function SettingsSection({
   title,
   description,

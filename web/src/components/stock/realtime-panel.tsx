@@ -35,9 +35,8 @@ const LIVE_QUOTE_POLL_MS = 5_000;
 const TICK_COLLAPSED_ROW_COUNT = 20;
 
 /** 即時 tab — 分時 line chart + 逐筆 list (Sponsor, EOD replay) on top; 五檔 ladder (public) +
- * 分K candlestick chart (Sponsor) below; 當沖 stats full-width at the bottom. See
- * `docs/web/stock-detail/即時.md` for the spec this mirrors, and this session's own research
- * notes for exactly which data source backs each section — no fabricated real-time surface.
+ * 分K candlestick chart (Sponsor) below; 當沖 stats full-width at the bottom. Each section's data
+ * source is documented where it is fetched — no fabricated real-time surface.
  *
  * `get_intraday_kbar`/`get_price_tick` are single-trading-day-per-request upstream and default
  * to "today" when no date is named — on a weekend/holiday that's zero rows. `get_day_trading`

@@ -1,5 +1,5 @@
 /**
- * Single source of truth for the design tokens (design-system.md §2/§3/§5).
+ * Single source of truth for the design tokens.
  * Set once at :root per theme; components read only var(--token) — never a hardcoded hex.
  * This file is the palette the shared mobile client is expected to consume too, so values
  * live here and nowhere else.
@@ -100,7 +100,7 @@
   color-scheme: light;
 }
 
-/* Radius scale (locked, design-system §5) + spacing base as tokens. */
+/* Radius scale (locked) + spacing base as tokens. */
 :root {
   --radius-card: 16px;
   --radius-input: 10px;

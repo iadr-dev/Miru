@@ -25,7 +25,7 @@ function isAlertMarket(market: Market): market is AlertMarket {
   return market === "TW" || market === "US";
 }
 
-/** 🔔 quick-create on the stock/ETF header (docs/web/settings/alerts.md §1): a lit bell with a count
+/** 🔔 quick-create on the stock/ETF header: a lit bell with a count
  * when this symbol already has active rules, one-click fact presets that exist for this asset, and
  * a price-level form. Everything created here is the same rule the Settings panel manages —
  * nothing is created without a click. Markets other than TW/US have no alert support and render

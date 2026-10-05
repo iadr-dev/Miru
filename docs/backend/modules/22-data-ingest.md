@@ -214,7 +214,7 @@ shares one `InMemoryDataUpdateBroker` object as both publisher and reader (a sam
 reaches the reader directly), and the Redis backend pairs a `RedisDataUpdatePublisher` (leader
 side) with a `RedisDataUpdateReader` (API-worker side) over the same pub/sub channel — a real
 cross-process relay. So clients **do** revalidate exactly the affected keys
-([web data-freshness.md](../../web/data-freshness.md) §4) the moment a whole-market partition
+the moment a whole-market partition
 lands, for every job that calls `publish_data_updated` (the whole-market FinMind pulls and the
 US-market jobs); `scoring_batch`/`screener_flags` still don't call the publisher (above), so their
 completions are not yet relayed this way.

@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
-/** "query/coverage" class empty state (interaction-spec §4) — inline, no chat CTA, offers
+/** "query/coverage" class empty state — inline, no chat CTA, offers
  * "放寬 gates" — distinct from `stock-empty-state.tsx`'s cold-start class. */
 export function ScreenerEmptyState({
   onRelaxGates,

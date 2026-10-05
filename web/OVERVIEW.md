@@ -1,9 +1,8 @@
 # web/ — Coding Standards
 
-Design-blueprint → real **Next.js (App Router, RSC)** frontend. The **spec lives in `../docs/web/`** —
-read `README.md` (§1 stack, §6 non-negotiables, §7 breakpoints, §9 visual), `design-system.md`
-(tokens, 紅漲綠跌, motion), `interaction-spec.md` (motion + state + a11y contracts), and
-`data-freshness.md` (cache-coherence contract) **before touching any component**. **Governance rules
+**Next.js (App Router, RSC)** frontend. The design docs that used to live in `docs/web/` were
+removed, so the code under `web/src/` and the rules below are the source of truth; design tokens
+live in `web/src/app/tokens.css`. **Governance rules
 are non-negotiable and load-bearing — never relax them to make a screen ship.** See the project-root
 [`../AGENTS.md`](../AGENTS.md) for shared guidance.
 
@@ -31,7 +30,7 @@ are non-negotiable and load-bearing — never relax them to make a screen ship.*
 - **Tailwind v4** via `@tailwindcss/postcss` (CSS-first `@theme`, not the legacy `tailwind.config.js`
   JS plugin path); shadcn/ui components vendored into the repo (own-the-code).
 - **Animation = `motion/react`** (Framer Motion v11+) as the **default/primary** — the entire motion
-  contract ([../docs/web/interaction-spec.md](../docs/web/interaction-spec.md) §1: `spring.default`,
+  contract (`spring.default`,
   duration tokens, reduced-motion tiers) is written against it, and its React-native model + spring
   physics fit our calm product-dashboard motion. **One animation library** — do not ship a second in
   the same bundle without a reason.
@@ -101,10 +100,10 @@ pnpm build                      # next build (must pass typecheck + lint clean)
   (`app/<feature>/types.ts`) — don't dump them in `types/`. Frontend-invented shared shapes (UI/theme
   state) also live in `web/types/` but need no backend citation.
 - **Phosphor icons only** — one family, `weight="regular"`, `strokeWidth` locked globally
-  ([design-system §5](../docs/web/design-system.md)). Never hand-roll SVG icons; **no emoji** in code
+. Never hand-roll SVG icons; **no emoji** in code
   or product chrome.
 - **CSS-variable design tokens only — never a hardcoded hex.** Every color reads from the tokens set
-  once at `:root` ([design-system §2](../docs/web/design-system.md)): `--bg/--surface/--surface-2/`
+  once at `:root`: `--bg/--surface/--surface-2/`
   `--border/--text/--text-muted/--accent/--up/--down/--warn/--chart-1..6/--grid/--crosshair` + sector
   tokens. A literal `#…` or an ad-hoc `rgb()` in a component is a review reject.
 - **Single token source, exported — web + native must not drift.** The `:root` CSS-var set is the
@@ -113,7 +112,7 @@ pnpm build                      # next build (must pass typecheck + lint clean)
   object (StyleSheet/reanimated constants) from it via a build step — never hand-maintain a second
   copy. A token added/changed in one place must propagate to both; a divergent native hex is a reject.
 - **shadcn/ui own-the-code** — customize the vendored component to the 藍鵲 tokens; **never ship the
-  default shadcn skin** (README §1). One design system: no mixing MUI/Chakra/Ant in.
+  default shadcn skin**. One design system: no mixing MUI/Chakra/Ant in.
 - **Naming:** components `PascalCase.tsx`, hooks `useXxx.ts`, one component per file matching the
   export; route segments/folders lowercase; `'use client'` leaves suffixed by intent
   (`*.client.tsx` optional but consistent). `--font-num` + `tabular-nums` on **every** price/%/score.
@@ -176,8 +175,8 @@ if not on): don't pass `undefined` to an optional prop; omit it.
   panels, tables, analytics reads). Anything using **motion / scroll / pointer / SSE / a browser
   API** is an **isolated `'use client'` leaf** — push the `'use client'` boundary as deep as
   possible; never mark a whole page/layout client to unlock one interactive child
-  ([data-freshness §5](../docs/web/data-freshness.md), design-taste-frontend §3.A).
-- **Data-layer ownership — one value, one owner** ([data-freshness §5–§6](../docs/web/data-freshness.md)):
+.
+- **Data-layer ownership — one value, one owner**:
   - **RSC server-fetch** for cold reads (page data, EOD panels, financials/chip tables, daily/weekly
     analytics) — `next: { revalidate: <class boundary> }` + `revalidateTag(...)`, never
     `cache:'no-store'` on a once-a-day value.
@@ -187,13 +186,13 @@ if not on): don't pass `undefined` to an optional prop; omit it.
     write here (or to motion values), **never** into the TanStack cache.
 - **Query keys mirror the backend key** `(capability, market, symbol[, date])` — e.g.
   `['score','TW','2330']`. A symbol crossing screener ↔ watchlist ↔ detail ↔ chat `rich_card`
-  resolves to **one** coherent entry ([data-freshness §3](../docs/web/data-freshness.md)).
+  resolves to **one** coherent entry.
 - **SSE client consumes the module-07 typed envelope.** Deltas append **by `node_id`**; resume via
   **`Last-Event-ID`** replayed by `event_seq` — replayed events materialize instantly (entrance
-  animation suppressed). Never re-type, never duplicate a lane ([interaction-spec §3](../docs/web/interaction-spec.md)).
+  animation suppressed). Never re-type, never duplicate a lane.
 - **Continuous values use motion values / refs — never `useState` per tick.** Live ticks are
   **rAF-batched**; a watchlist of N rows ticking every ~5s must not re-render the tree N times
-  ([data-freshness §6](../docs/web/data-freshness.md)).
+.
 - **Grid over flex-math** for the app frame + multi-panel workbench; **`min-h-[100dvh]`**, never
   `h-screen` (mobile viewport). One design system — no second component lib.
 
@@ -202,22 +201,21 @@ if not on): don't pass `undefined` to an optional prop; omit it.
 - **紅漲綠跌 is a token, never color-alone.** `--up`(漲 red)/`--down`(跌 green) apply **only** to
   price/%/score/candles, and **always** pair with **▲/▼ + sign + an `aria-label`** carrying direction
   + value ("上漲 1.45%"). Get it wrong and the app is unusable for TW users
-  ([design-system §4](../docs/web/design-system.md), README §6). **`--accent` teal is chrome-only —
+. **`--accent` teal is chrome-only —
   never a price.** Categorical chart series use `--chart-1..6` (never signed).
 - **`<Caveat>` is a required, non-removable component** on **every** analytical/quote surface (score,
   SWOT, screener list, top-N, chat answer, `ChartWithDataSheet`, marquee, AssetHeader): non-trading
-  caveat on analytical, currentness caveat on quote/market ([README §8](../docs/web/README.md),
-  [data-freshness §8](../docs/web/data-freshness.md)). No `prop` may hide it. Pair with
+  caveat on analytical, currentness caveat on quote/market. No `prop` may hide it. Pair with
   `DataFreshnessBadge` on cached-and-possibly-stale surfaces.
 - **馬賽克 teaser for sponsor data** — frame/headline/label columns **sharp**, value layer under
   `backdrop-blur` + diagonal texture + a centered lock chip + **one calm CTA**. Never a
   wall/interstitial; the answer proceeds around it. Consistent across chat `tool.locked`, detail SWOT,
-  top-N/screener columns ([README §5](../docs/web/README.md), [design-system §7.4](../docs/web/design-system.md)).
+  top-N/screener columns.
   A `tool.locked` teaser envelope `{locked, required_tier, preview}` is handled as **HTTP 200**, not
   an error.
 - **No trading language, ever.** Copy never uses 明牌/飆股/目標價/買賣/進場/停損. Analyst
   targets/ratings render **attributed** ("N analysts, as of <date>"), never restated as ours.
-- **Non-trading motion** ([interaction-spec §0](../docs/web/interaction-spec.md)): no magnitude-scaled
+- **Non-trading motion**: no magnitude-scaled
   motion (a bigger move is not a bigger animation), no launch/celebratory motion on price/score, and
   the **多空 gauge needle never re-animates on a quote tick** — it eases only on load / on a *new
   score fetch*. The score gauge reads the `score` query cache, not the live layer.
@@ -228,7 +226,7 @@ if not on): don't pass `undefined` to an optional prop; omit it.
 
 - **Cache-bust = background revalidate, never hard reload.** Keep the last good value, update **in
   place**, flash the tick (`--up-weak`/`--down-weak`, `dur.tick`). Never blank a panel, never reset
-  scroll/sort/selection; skeleton is **cold-load only** ([data-freshness §6](../docs/web/data-freshness.md)).
+  scroll/sort/selection; skeleton is **cold-load only**.
 - **Client single-flight** — dedupe in-flight requests per key (TanStack does this natively): N
   components asking for `2330@TW` = one request. The frontend mirror of the backend stampede guard.
 - **rAF-batched SSE ticks via motion values** — presentation reads `live ?? cachedSnapshot`; the
@@ -237,7 +235,7 @@ if not on): don't pass `undefined` to an optional prop; omit it.
 - **No double-caching / TTL-stacking.** One value is owned by exactly one cache tier (RSC *or*
   TanStack). A **single shared `FRESHNESS[class]` map** is the source of truth for RSC `revalidate`,
   TanStack `staleTime`/`gcTime`, and the `Cache-Control` header — layers **mirror** one budget, never
-  each pick their own ([data-freshness §5](../docs/web/data-freshness.md)). `Cache-Control` uses
+  each pick their own. `Cache-Control` uses
   `stale-while-revalidate`, not a third opaque TTL.
 - **Discard non-monotonic responses** — drop any reply whose `as_of`/`version` is not newer than what
   is shown; use `ETag` + `If-None-Match` so a no-change revalidate is a payload-free `304`.
@@ -249,7 +247,7 @@ if not on): don't pass `undefined` to an optional prop; omit it.
 ## 6. Full-state discipline & UX
 
 Never ship happy-path only. Three shared components on every data surface
-([interaction-spec §4](../docs/web/interaction-spec.md)):
+:
 
 - **`LoadingState`** — shaped shimmer skeleton **always** (block shapes matching final layout), never
   a bare spinner. Two classes: **analysis-generation** (chat turns, AI 摘要/SWOT, score compute,
@@ -263,7 +261,7 @@ Never ship happy-path only. Three shared components on every data surface
   never blanks the page. Source-health degrade → honest `<Caveat>` ("資料來源延遲…以下為最後可得"),
   never a silent fabrication.
 - `:active` tactile feedback on pressables; button/label contrast meets AA in **both** themes;
-  radius/shape/color locks from [design-system §5](../docs/web/design-system.md) applied everywhere
+  radius/shape/color locks applied everywhere
   (`card 16px · input 10px · pill 999px · button 12px`).
 
 ## 7. A11y & i18n (TW conventions)
@@ -275,11 +273,11 @@ Never ship happy-path only. Three shared components on every data surface
 - **Focus-visible 2px `--accent` ring** on every interactive element, both themes, never removed
   (scope to `:focus-visible`). **44px minimum touch targets** (grip, ✕, ☆, tab pills, CTAs — incl.
   hover-revealed controls once revealed).
-- **`prefers-reduced-motion` tiers** ([interaction-spec §1.2](../docs/web/interaction-spec.md)): Tier
+- **`prefers-reduced-motion` tiers**: Tier
   1 keeps color-only feedback, Tier 2 snaps, Tier 3 goes instant, Tiers 4–5 stop. Every motion above
   Tier 3 **must** have a fallback. **`prefers-reduced-transparency`** → glass (nav island, top bar,
   teaser) falls back to solid `--surface`.
-- **`aria-live` discipline** ([interaction-spec §3.3](../docs/web/interaction-spec.md)): `polite` on the
+- **`aria-live` discipline**: `polite` on the
   **final answer only** (fires at `turn.end`); **`off`** on thinking/tool narration, live ticks,
   marquee, and auto re-rank churn; `polite` only for **user-initiated** keyboard reorder.
 - **zh-TW first.** Quality **Traditional** Chinese face (Noto Sans TC / source-han) via `next/font`;
@@ -306,5 +304,5 @@ Never ship happy-path only. Three shared components on every data surface
 
 *Blueprint stage — this is the contract to build to. When the UI is actually built from these specs,
 the **`impeccable`** agents run as the build-time review gate against the shipped pixels
-([README §"Build-time review"](../docs/web/README.md)); this doc governs the code, that gate governs
+; this doc governs the code, that gate governs
 the result.*

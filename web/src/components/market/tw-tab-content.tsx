@@ -36,8 +36,7 @@ type TwSubTab = (typeof TW_SUB_TABS)[number]["key"];
  * 籌碼 (三大法人買賣超/融資維持率/大戶加碼股), 處置 (處置王-style board: 風險股/處置中/
  * 即將出關), 熱力圖 (產業熱力圖 treemap + 產業鏈資金流向), 新聞 (即時新聞 — RSS/Finnhub feed via
  * `get_news_feed`), and PTT (5 boards via `get_ptt_board`: Stock/Tech_Job/Warrant/Beauty/
- * Gossiping). `docs/web/market.md`'s own Row-2 view-tab spec lists one more (名人) that doesn't
- * have a built panel yet, matching `EtfTabContent`'s exact underline-tab shell/motion pattern so
+ * Gossiping). One more (名人) is not built yet. Matching `EtfTabContent`'s exact underline-tab shell/motion pattern so
  * the two market tabs share one sub-tab convention. Local `useState`, not the shared
  * `useMarketTab` store: nothing outside this subtree needs to know which TW sub-tab is active.
  */

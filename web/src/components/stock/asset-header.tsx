@@ -32,7 +32,7 @@ const BAND_TOKEN: Record<ScoreBand, string> = {
 };
 
 /**
- * The stock-detail page's sticky header (`docs/web/stock-detail.md` §1/§7): name+code+sector,
+ * The stock-detail page's sticky header: name+code+sector,
  * big tabular price + ▲▼%+sign (紅漲綠跌, never color-alone), 開/高/低/量 micro-row, the `[偏多
  * 72]` band pill (click scrolls to 智能摘要's gauge anchor — built now even though that tab
  * itself ships partial in this phase). Name/industry come from `get_symbol_info`, not

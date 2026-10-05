@@ -29,7 +29,7 @@ type GroupedSeries = { aKey: string; bKey: string; points: GroupedPoint[] };
 /** `margin_short`-shaped: one row per trade_date, two unsigned balance tracks
  * (`margin_purchase_today_balance` vs `short_sale_today_balance`) — genuinely parallel
  * magnitudes, not a signed net, so this is `--chart-1`/`--chart-2` categorical territory, never
- * `--up`/`--down` (design-system.md §2's signed-vs-categorical rule). */
+ * `--up`/`--down` (the signed-vs-categorical rule). */
 function marginShortSeries(rows: Record<string, unknown>[]): GroupedSeries | null {
   const points: GroupedPoint[] = [];
   for (const row of rows) {

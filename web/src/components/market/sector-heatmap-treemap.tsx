@@ -373,7 +373,7 @@ export function SectorHeatmapTreemap({
               initial={{ opacity: 0 }}
               // Same two-phase timing for every tile regardless of avg_pct_change — flash in
               // (dur.tick, ~140ms) then fade back out (dur.tick-fade, ~600ms), per
-              // docs/web/interaction-spec.md's live-tick flash contract.
+              // the live-tick flash contract.
               animate={{ opacity: [0, 0.35, 0] }}
               transition={{ duration: 0.74, times: [0, 0.19, 1], ease: "easeOut" }}
             />

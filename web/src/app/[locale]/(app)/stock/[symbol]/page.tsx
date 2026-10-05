@@ -9,7 +9,7 @@ import type { Market } from "@/types/settings";
 
 const DEFAULT_MARKET: Market = "TW";
 
-/** The stock/ETF-detail page (`/stock/{symbol}`, `docs/web/stock-detail.md`) — one route for
+/** The stock/ETF-detail page (`/stock/{symbol}`) — one route for
  * both asset kinds (every existing symbol link, including `etf-list-table.tsx`'s, already points
  * here via `SymbolLink`). `classifySymbolType` is a pure code-shape check (no fetch), so TW
  * branches synchronously between `StockTabBar` (stock) and `EtfTabBar` (etf/etf_leveraged/

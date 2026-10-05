@@ -1,8 +1,7 @@
 """Screener hard gates (stage ⓐ of the funnel, README.md §1/§5.1) — binary elimination applied
 BEFORE any setup condition or rank. `SCREENER_GATES` are the defaults; `GateOverrides` lets a
 caller relax/tighten them per request. **Liquidity is a gate, never a scored factor** — this
-module's output can only ever exclude a symbol, never rank or weight it (governance non-negotiable,
-`docs/web/screener/README.md` header).
+module's output can only ever exclude a symbol, never rank or weight it (governance non-negotiable).
 """
 
 from __future__ import annotations

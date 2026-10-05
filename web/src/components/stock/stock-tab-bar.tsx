@@ -19,13 +19,12 @@ import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
-// The 9 tabs `docs/web/stock-detail.md` §2 specs for a TW STOCK, plus 追蹤 (not in that doc —
-// added per a later reference-app-driven request; see `tracker-panel.tsx`'s own docstring for
-// the discrepancy with `docs/web/stock-detail/基本資料.md`'s smaller `EtfHoldersCard` plan).
+// The 9 tabs for a TW STOCK, plus 追蹤 (added per a later reference-app-driven request; see
+// `tracker-panel.tsx`'s own docstring).
 // 基本資料/財務分析/籌碼分析/技術分析/相關新聞/研究圖表/追蹤/AI have real backing — the rest render
 // a calm "尚未支援" state via `ComingSoon` rather than being hidden, so the roadmap stays visible
 // without faking content for tabs whose backend (company-relationships) doesn't exist yet.
-// "ai" was the never-built "summary" placeholder from `docs/web/stock-detail/智能摘要.md`, renamed
+// "ai" was the never-built "summary" placeholder, renamed
 // and built out as `ai-panel.tsx` (趨勢評分 + 多空評分 + AI SWOT summary).
 const STOCK_TABS = [
   "basicInfo",

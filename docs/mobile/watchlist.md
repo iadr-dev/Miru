@@ -8,7 +8,7 @@ block on [Home](home.md)**, (b) **one tap from any tab via the top-bar ☆**, wh
 **bottom-sheet / full card-row list** (not a wide table), gesture-first. Parent index:
 [README.md](README.md) §2. UX rationale: [ux-foundation.md](ux-foundation.md). Behaviour/state
 contracts: [interaction-spec.md](interaction-spec.md). Web parity:
-[../web/watchlist/README.md](../web/watchlist/README.md) + [../web/design-system.md](../web/design-system.md)
+the web app
 §7.7 (rail) + §7.8 (`StockRow`).
 
 > Non-negotiables: 紅漲綠跌 `--up`(漲 red)/`--down`(跌 green) **never color-alone → ▲▼ + sign +
@@ -50,7 +50,7 @@ contracts: [interaction-spec.md](interaction-spec.md). Web parity:
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md) (`VISUAL_DENSITY:6`, card 16px, pill
+Tokens from the web app (`VISUAL_DENSITY:6`, card 16px, pill
 999px). `StockRow` full spec = §7.8; rail semantics adapted to a full-width tab. **Dark-first, one
 column, 2026 mobile bar** (gesture-first, glanceable type, thumb-zone spacing).
 
@@ -85,7 +85,7 @@ column, 2026 mobile bar** (gesture-first, glanceable type, thumb-zone spacing).
 ### States
 - **Loading** = shimmer `StockRow`s (candle ghost + text bars), never a spinner.
 - **Empty group** → 「尚無股票，點 ☆ 或問 Miru 加入」; **empty tab** → server-seeded with the default
-  preset ([../web/watchlist/README.md](../web/watchlist/README.md) presets table); **cold-start** (no
+  preset (the web presets table); **cold-start** (no
   lists at all) → route to Chat.
 - **Error** = inline calm retry chip per group; a stale/failed quote shows an honest as-of caveat, not
   a blank price. US Index (SPY/QQQ/DIA) group renders symbols with 「尚未支援」 until module 19 ships.

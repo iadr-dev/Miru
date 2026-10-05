@@ -15,7 +15,7 @@ const BADGE_KEY = ["notifications", "badge"] as const;
 const LIST_KEY = ["notifications", "list"] as const;
 const INBOX_LIMIT = 20;
 
-/** Notification inbox (docs/web/settings/alerts.md §4). The unread count comes from the badge
+/** Notification inbox. The unread count comes from the badge
  * endpoint and refreshes on window focus only — no polling interval. The list loads when the menu
  * opens. Radix `DropdownMenu` gives `Esc`-close and focus-return-to-trigger for free. Notification
  * text renders as inert text; the non-advice footer rides inside each body. */

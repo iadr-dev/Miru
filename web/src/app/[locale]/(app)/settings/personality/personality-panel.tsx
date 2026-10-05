@@ -9,8 +9,7 @@ import { fetchMe } from "@/lib/api/account";
 import { listPersonalityPresets, updateProfile } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 
-/** 了然的語氣 preset picker — radio-card row, selected = `--accent` hairline + tint
- * (docs/web/settings/README.md §Visual design). Labels come from the API (`name_zh`/`name_en`),
+/** 了然的語氣 preset picker — radio-card row, selected = `--accent` hairline + tint. Labels come from the API (`name_zh`/`name_en`),
  * never hardcoded guesses. */
 export function PersonalityPanel(): ReactNode {
   const t = useTranslations("settings.personality");

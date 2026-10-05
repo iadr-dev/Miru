@@ -11,7 +11,7 @@ import { putKey, removeKey, SettingsApiError } from "@/lib/api/settings";
 import { LLM_PROVIDERS, type LlmProvider } from "@/types/settings";
 
 /** BYOK key store/remove — write-only secret, never echoed back after submission
- * (docs/web/settings/README.md; hard rule: clear the input on success). Always stores an
+ * (hard rule: clear the input on success). Always stores an
  * `llm_key` (the only kind that lifts the daily chat limit); `provider` is constrained to the
  * LLM providers this backend actually has an adapter for, not free text. */
 export function ByokPanel(): ReactNode {

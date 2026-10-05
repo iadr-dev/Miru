@@ -48,8 +48,8 @@ Market › 每日焦點; mobile surfaces them as a dedicated pushed view. Parent
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md) (card 16px, pill 999px,
-`VISUAL_DENSITY:6`). Adapts the web `MarketCalendar` block ([../web/market/每日焦點.md](../web/market/每日焦點.md))
+Tokens from the web app (card 16px, pill 999px,
+`VISUAL_DENSITY:6`). Adapts the web `MarketCalendar` block
 to a **full-tab, date-grouped, one-column timeline**. **Dark-first, 2026 mobile bar.**
 
 - **Frame.** Pushed full-screen view (back-gesture / `‹` dismisses; bottom tab island hidden). `100dvh`

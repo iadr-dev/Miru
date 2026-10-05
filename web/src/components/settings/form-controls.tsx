@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 
 type TextInputProps = InputHTMLAttributes<HTMLInputElement>;
 
-/** Shared text/number input styling for Settings forms (design-system: input radius 10px,
+/** Shared text/number input styling for Settings forms (input radius 10px,
  * `--surface` + 1px `--border`, focus-visible `--accent` ring). */
 export function TextInput({ className, ...rest }: TextInputProps): ReactNode {
   return (

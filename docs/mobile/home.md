@@ -4,7 +4,7 @@ The glanceable landing — ambient value **without typing**. The mobile-only 存
 beginner (Xiaoyu) open the app here; ranks 1–3 are the ambient core loop. Parent index:
 [README.md](README.md) §4. UX rationale: [ux-foundation.md](ux-foundation.md). Behaviour/state
 contracts: [interaction-spec.md](interaction-spec.md). Web parity (compress, don't drop):
-[../web/README.md](../web/README.md) §4 + [../web/market/每日焦點.md](../web/market/每日焦點.md).
+the web app.
 
 > Non-negotiables on every block: 紅漲綠跌 `--up`(漲 red)/`--down`(跌 green) **never color-alone →
 > always ▲▼ + sign + aria-label** · `--accent` teal chrome-only, never a price · tabular-nums ·
@@ -14,7 +14,7 @@ contracts: [interaction-spec.md](interaction-spec.md). Web parity (compress, don
 
 | Block | Component | Endpoint | Caveat |
 |-------|-----------|----------|--------|
-| 股票跑馬燈 marquee (persistent top) | `StockMarquee` ([../web/design-system.md](../web/design-system.md) §7.5) | `/quote/stream` (Premium) · `/quote` EOD (Free) | currentness |
+| 股票跑馬燈 marquee (persistent top) | the web `StockMarquee` | `/quote/stream` (Premium) · `/quote` EOD (Free) | currentness |
 | 1 大盤概況 | `IndexCard` ×2 + `FearGreedGauge` | `/market/overview`, `get_market_context` regime | non-trading (市場情境) |
 | 2 我的自選 (更多 → [watchlist.md](watchlist.md)) | `StockRow` list (§7.8) | `/memory` + `/quote(/stream)` | currentness |
 | 3 今日事件 (更多 → [calendar.md](calendar.md)) | `EventRow` list | `/calendar` watchlist-filtered ([18](../backend/modules/18-calendar-events.md)) | currentness |
@@ -61,7 +61,7 @@ contracts: [interaction-spec.md](interaction-spec.md). Web parity (compress, don
 
 ## Visual design
 
-Tokens/radius/spacing from [../web/design-system.md](../web/design-system.md) (`VISUAL_DENSITY:6`,
+Tokens/radius/spacing from the web app (`VISUAL_DENSITY:6`,
 card 16px, pill 999px, 4px base, section gap 24px, card pad 20px). **Dark-first, one column.**
 
 - **Frame.** `100dvh` scroll region on `--bg`; sticky **glass top bar** (56px, `backdrop-blur(20px)

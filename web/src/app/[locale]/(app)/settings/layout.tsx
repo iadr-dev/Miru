@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { SettingsNav } from "@/components/settings/settings-nav";
 
 /**
- * Two-pane Settings shell (docs/web/settings/README.md §Layout): left sub-page nav + right content
+ * Two-pane Settings shell: left sub-page nav + right content
  * pane, single column ~640px max on the right. Stacks (nav above content) below `lg`. Stays a
  * server component — the nav itself is the one client leaf that needs `usePathname`.
  */

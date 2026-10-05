@@ -109,4 +109,4 @@ Pressure-test status: ✅ = checked live; ⬜ = human-verify required.
 2. **"Miru" reads Japanese, not Chinese** — a fine, positive signal in Taiwan (JP aesthetics carry
    weight), but a conscious choice: a JP-rooted Latin mark under a Chinese flagship.
 3. Final palette, logotype, and the 藍鵲 mascot visual design — deferred to the frontend deliverable
-   (`docs/web/`, `docs/mobile/`); the `design-taste-frontend` skill can drive it.
+   (the web and `docs/mobile/` apps); the `design-taste-frontend` skill can drive it.

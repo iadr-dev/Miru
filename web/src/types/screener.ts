@@ -3,7 +3,7 @@
  * routes and `backend/src/analytics/screener/{factor_catalog,presets,engine}.py`. `ScreenerMarket`
  * is the screener's OWN three-tab model (`"TW"|"US"|"ETF"`) — distinct from `types/settings.ts`'s
  * `Market` (`TW|US|GB|JP`), since a TW-ETF is `(Market.TW, etf)` everywhere else in the app but a
- * peer top-level tab here (docs/web/screener/README.md §2).
+ * peer top-level tab here.
  */
 import { z } from "zod";
 

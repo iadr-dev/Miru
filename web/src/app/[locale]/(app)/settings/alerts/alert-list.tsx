@@ -22,7 +22,7 @@ import { parseServerDate } from "@/lib/parse-server-date";
 import type { AlertRule } from "@/types/settings";
 import { AlertForm, type AlertFormPreset } from "./alert-form";
 
-/** Alert-rule list (interaction-spec §2.13; UX: docs/web/settings/alerts.md §2): cold-start empty
+/** Alert-rule list: cold-start empty
  * state with CTA, a plain-language condition line, lifecycle status, last-fired/expiry, enable
  * toggle, and delete via a focus-trapped confirm dialog. */
 export function AlertList({ preset }: { preset?: AlertFormPreset }): ReactNode {

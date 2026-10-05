@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
-/** Sticky save/cancel bar shown when a Settings form pane is dirty (interaction-spec §2.13). */
+/** Sticky save/cancel bar shown when a Settings form pane is dirty. */
 export function DirtyBar({
   dirty,
   saving,

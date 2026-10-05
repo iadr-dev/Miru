@@ -45,7 +45,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Body CJK air (design-system §3): 16px / line-height 1.7. */
+/* Body CJK air: 16px / line-height 1.7. */
 body {
   font-size: 16px;
   line-height: 1.7;
@@ -86,7 +86,7 @@ body {
 }
 
 /**
- * Explicit exception to design-system.md §8 ("no gradients/neon-glow") — every card on the
+ * Explicit exception to the "no gradients/neon-glow" rule — every card on the
  * /market page gets an animated rainbow gradient ring, a deliberate visual-identity choice for
  * this one surface rather than a governance violation. `isolation: isolate` traps the ring's
  * `::before` pseudo-element in its own stacking context (see `ExpandModal`'s own docstring for

@@ -12,8 +12,8 @@ product/app state (threads, memory, schedules…).
   envelope** `{locked, required_tier, preview}` (HTTP 200), never 401 — see
   [modules/12](modules/12-multi-user-tiers.md).
 - `Idempotency-Key` honored on turn-creating POSTs.
-- **Read-model freshness** (cache coherence — [modules/16](modules/16-infrastructure.md) §3a,
-  [web data-freshness.md](../web/data-freshness.md)): every cacheable read (`/quote`, `/analytics/*`,
+- **Read-model freshness** (cache coherence — [modules/16](modules/16-infrastructure.md) §3a):
+  every cacheable read (`/quote`, `/analytics/*`,
   `/market/*`) returns an **`as_of`** timestamp (value production time) + a strong **`ETag`**;
   `If-None-Match` → **`304`**. `Cache-Control: private, max-age=0, stale-while-revalidate=<class
   boundary>`. A **`data.updated`** SSE event (`{capability, market, as_of, scope}`) fires when a
@@ -161,7 +161,7 @@ buy/sell/target/sizing; scores ship their breakdown; analyst externals attribute
 ## 4a-2. Market, derivatives & macro (REST over the module-03 tools)
 
 Thin REST (or RSC/BFF) surface over the market/derivatives/macro tools — the dashboard + new
-screens need these as HTTP, not just agent tools (closes the gap flagged in [../web/market.md](../web/market.md) §2).
+screens need these as HTTP, not just agent tools.
 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|

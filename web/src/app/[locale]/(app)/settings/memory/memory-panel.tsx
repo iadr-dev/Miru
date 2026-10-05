@@ -16,7 +16,7 @@ import {
   type WritableMemoryType,
 } from "@/types/settings";
 
-/** Memory — list + delete is the must-have (docs/web/settings/README.md); a minimal create form
+/** Memory — list + delete is the must-have; a minimal create form
  * is included since key/type/content are simple fields. */
 export function MemoryPanel(): ReactNode {
   const t = useTranslations("settings.memory");

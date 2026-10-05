@@ -174,7 +174,7 @@ export function RecentsList(): ReactNode {
   );
 }
 
-/** A transient "N couldn't be deleted" toast (interaction-spec §2.13's save-flow toast pattern,
+/** A transient "N couldn't be deleted" toast (the save-flow toast pattern,
  * adapted here rather than imported from `components/settings/settings-states.tsx` — that
  * component is settings-scoped, and this feature stays co-located per the project's own
  * "feature-only shapes stay co-located" convention). Auto-dismisses so it never lingers as

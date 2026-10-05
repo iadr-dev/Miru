@@ -38,9 +38,6 @@ ai-tw-stock/
 │  │  ├─ api-reference.md · database-schema.md · data-catalog.md
 │  │  ├─ modules/ (01–23)         #   one spec per module
 │  │  └─ adr/ (0001–0026)         #   why each decision was made
-│  ├─ web/                        # ← the authoritative frontend blueprint
-│  │  ├─ README.md · design-system.md · interaction-spec.md · data-freshness.md
-│  │  └─ DEVELOPMENT.md           #   §4: audited backend reality vs the spec — read before wiring an endpoint
 │  └─ mobile/                     # deferred deliverable — don't build unless asked
 ├─ backend/                       # Python FastAPI backend — see backend/CLAUDE.md
 │  ├─ .env                        # ⚠ LIVE SECRETS — gitignored, never read aloud / commit / log
@@ -92,9 +89,9 @@ make code, a test, or a feature pass:
 ## Working agreements
 
 - **Read the spec before coding.** Backend work → the relevant `docs/backend/modules/` spec +
-  `governance.md`. Frontend work → `docs/web/README.md` + `design-system.md` +
-  `web/OVERVIEW.md`, and check `docs/web/DEVELOPMENT.md` §4 before wiring any endpoint (the spec
-  describes more surface than the backend currently implements — the code wins on conflict).
+  `governance.md`. Frontend work → `web/OVERVIEW.md`, and check `docs/backend/api-reference.md`
+  before wiring any endpoint (the spec describes more surface than the backend currently
+  implements — the code wins on conflict).
   The docs are the source of truth; if code and docs disagree elsewhere, update the docs
   deliberately (with an ADR, for a backend decision).
 - **Keep docs in sync.** Changing a decision → update the module doc **and** add/update an ADR.
@@ -135,9 +132,5 @@ make code, a test, or a feature pass:
 | Tables + portability | `docs/backend/database-schema.md` |
 | Data sources + ingest cadence | `docs/backend/data-catalog.md`, `modules/22-data-ingest.md` |
 | A past backend decision's rationale | `docs/backend/adr/` |
-| Frontend IA, nav, tokens | `docs/web/README.md`, `design-system.md` |
-| Frontend motion/state/a11y contracts | `docs/web/interaction-spec.md` |
-| Frontend cache-coherence contract | `docs/web/data-freshness.md` |
-| What's real vs spec-only in the backend today | `docs/web/DEVELOPMENT.md` §4 |
 | TypeScript/Next.js coding rules + toolchain | `web/OVERVIEW.md` |
 | Quick frontend style reference | `web/CODE-STYLE.md` |

@@ -4,7 +4,7 @@ The product's heart: a full-screen streaming conversation, voice-friendly, the p
 for every persona. The **raised `--accent` center tab** (§6.1) is thumb-home. Parent index:
 [README.md](README.md) §2/§3. UX rationale: [ux-foundation.md](ux-foundation.md). Streaming +
 interaction contracts: [interaction-spec.md](interaction-spec.md). Web parity:
-[../web/chat/README.md](../web/chat/README.md) + [../web/design-system.md](../web/design-system.md)
+the web app
 §7.3 (streaming) + §7.10 (Sisi).
 
 > Non-negotiables: every analytical answer carries a **`caveat` badge** + non-trading footer
@@ -53,7 +53,7 @@ interaction contracts: [interaction-spec.md](interaction-spec.md). Web parity:
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md); streaming look = §7.3, Sisi = §7.10.
+Tokens from the web app; streaming look = §7.3, Sisi = §7.10.
 **Dark-first, full-bleed single column, 2026 mobile bar.**
 
 - **Frame.** Full `100dvh` on `--bg`. Thread **glass top bar** (back · title · `⋯` overflow →

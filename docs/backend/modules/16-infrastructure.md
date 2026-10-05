@@ -84,7 +84,7 @@
 84	- **Entitlement:** `/quote/stream` intraday is `sponsor` (Premium/Pro); an unentitled client gets
 85	  the masked teaser / EOD only. Payload keeps the delayed-snapshot caveat (not true real-time).
 86	- **Off-hours / no subscribers:** poller idle; `/quote` (non-stream) still serves last snapshot/EOD.
-87	- **Payload freshness metadata (for the client `DataFreshnessBadge` + off-hours handling — [web data-freshness.md](../../web/data-freshness.md) §3):**
+87	- **Payload freshness metadata (for the client `DataFreshnessBadge` + off-hours handling):**
 88	  every `quote` event carries **`as_of`** (the snapshot's source timestamp, not the publish time) and
 89	  **`market_open`** (bool). The client stamps the badge from `as_of` and, once `market_open=false`,
 90	  **stops treating the last tick as current** (shows last-close/EOD, static) — so a frozen quote after
@@ -130,8 +130,8 @@
 130	
 131	## 3a. Read-model freshness contract (client cache-coherence)
 132	
-133	So a client cache can never extend a value's freshness budget ([web data-freshness.md](../../web/data-freshness.md)
-134	— the coherence invariant), the read surface exposes the server's own currency, cheaply:
+133	So a client cache can never extend a value's freshness budget
+134	(the coherence invariant), the read surface exposes the server's own currency, cheaply:
 135	
 136	- **`as_of` on every cacheable read.** Each `GET /quote`, `/analytics/*`, `/market/*` response
 137	  carries an **`as_of`** timestamp = when the served value was produced (ingest/compute time), plus
@@ -153,7 +153,7 @@
 153	  boundary>` — the browser serves the last good value instantly and background-revalidates; the
 154	  intraday stream is `no-store` (it's live SSE, not a cacheable body). The **single per-class TTL**
 155	  lives server-side and is echoed to the client so RSC/TanStack/HTTP layers mirror one budget, never
-156	  sum three (the client-side rule, [web data-freshness.md](../../web/data-freshness.md) §5).
+156	  sum three (the client-side rule).
 157	- **Entitlement-keyed reads.** A sponsor-gated read's cache entry is keyed by entitlement so a tier
 158	  change busts the cached **masked** payload (per-call entitlement, §10) — an upgraded user never
 159	  keeps seeing the 馬賽克 cell.

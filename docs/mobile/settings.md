@@ -5,7 +5,7 @@ surface. Hosts **Alerts/Schedules** (the mobile alerts home), 了然的語氣 Pe
 account config. (**Screener is no longer here** — it was promoted to its own tab, [screener.md](screener.md).)
 Parent index: [README.md](README.md) §2. UX rationale: [ux-foundation.md](ux-foundation.md).
 Behaviour/state: [interaction-spec.md](interaction-spec.md). Web parity:
-[../web/settings/README.md](../web/settings/README.md).
+the web app.
 
 > Non-negotiables: config, not analysis — **馬賽克 never appears in Settings**; secrets never echoed;
 > personality/pets are **style/cosmetic only**, never affect analysis or gate data. Dark-first · zh-TW
@@ -68,7 +68,7 @@ Behaviour/state: [interaction-spec.md](interaction-spec.md). Web parity:
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md) (card 16px, input 10px, pill 999px,
+Tokens from the web app (card 16px, input 10px, pill 999px,
 section gap 24px, pad 20px). Settings is **calm/low-density**. Behavioural contract (form dirty/save/
 validation, alert-rule empty/create/validate/delete-confirm, keyboard/focus) =
 [interaction-spec.md](interaction-spec.md). **Dark-first, one column, 2026 mobile bar.**

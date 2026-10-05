@@ -19,7 +19,7 @@ const QUICK_PICKS = [
 ] as const;
 
 /**
- * `/stock` (no symbol) cold-start guide (interaction-spec §4.2 cold-start class, mirrors
+ * `/stock` (no symbol) cold-start guide (mirrors
  * `chat/empty-state.tsx`'s own pattern). The stock-DETAIL route (`/stock/{symbol}`) is a fully
  * built multi-tab workbench — this index page has nothing of its own to show without a symbol, so
  * rather than the old static "尚未支援" `ComingSoon` placeholder (which was actively wrong once

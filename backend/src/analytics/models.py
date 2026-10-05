@@ -37,9 +37,9 @@ class EmaResult(BaseModel):
 
 class MovingAverageBundle(BaseModel):
     """MA5/10/20/60/120/240 together — 均線排列 (the moving-average stack) is read as a set, not
-    one line at a time. MA120/240 were added for the K線 chart's overlay chips
-    (`docs/web/stock-detail/技術分析.md`); the score/screener callers that predate them only ever
-    read `ma5..ma60`, so their existing behavior is unaffected."""
+    one line at a time. MA120/240 were added for the K線 chart's overlay chips; the score/screener
+    callers that predate them only ever read `ma5..ma60`, so their existing behavior is
+    unaffected."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

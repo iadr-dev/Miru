@@ -12,7 +12,7 @@ import {
   UserIcon,
 } from "@phosphor-icons/react";
 
-/** The Settings sub-page list (docs/web/settings/README.md). `messageKey` indexes the
+/** The Settings sub-page list. `messageKey` indexes the
  * `settings.nav` i18n namespace. Order matches the spec's table top-to-bottom. */
 export type SettingsNavItem = {
   href:

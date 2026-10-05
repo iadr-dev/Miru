@@ -28,8 +28,8 @@ const RARITY_STYLE: Record<PetRarity, string> = {
   legendary: "text-[var(--warn)]",
 };
 
-/** 夥伴/Pets — gacha/collection grid (cosmetic; reduced-motion → static, no shake/pop per
- * docs/web/settings/README.md §Visual design). No tier gate. */
+/** 夥伴/Pets — gacha/collection grid (cosmetic; reduced-motion → static, no shake/pop).
+ * No tier gate. */
 export function PetsPanel(): ReactNode {
   const t = useTranslations("settings.pets");
   const tc = useTranslations("settings.common");

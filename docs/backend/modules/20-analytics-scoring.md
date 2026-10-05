@@ -371,7 +371,7 @@ purely descriptive/non-trading):
 Tools: `run_screener`, `get_factor_catalog`, `get_screener_presets`. Rows enriched with latest OHLC
 + sparkline + which gates/framework they pass.
 
-**Screener contracts (support the pro condition builder — [web screener/README.md](../../web/screener/README.md) §4):**
+**Screener contracts (support the pro condition builder — web screener/README.md §4):**
 
 - **`get_factor_catalog(market)`** returns the bilingual catalog **and per-market numeric field
   descriptors** the builder's sliders need — for each factor:

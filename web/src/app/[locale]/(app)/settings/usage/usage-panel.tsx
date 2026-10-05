@@ -7,7 +7,7 @@ import { SettingsRow, SettingsSection } from "@/components/settings/settings-sec
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { getUsageQuota } from "@/lib/api/settings";
 
-/** 用量 — resolved LIMITS only (docs/web/settings/README.md: live consumption isn't exposed by the
+/** 用量 — resolved LIMITS only (live consumption isn't exposed by the
  * backend). Never fabricate an X/N progress bar; render caps as informational text. */
 export function UsagePanel(): ReactNode {
   const t = useTranslations("settings.usage");

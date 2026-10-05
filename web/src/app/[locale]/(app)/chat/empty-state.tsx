@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * Chat cold-start empty state (interaction-spec §4.2 cold-start class): "問我任何台股問題" heading +
+ * Chat cold-start empty state: "問我任何台股問題" heading +
  * prompt-starter chips. Clicking a chip sends it as the first turn. This is the cold-start class
  * (user has no active conversation), so routing INTO chat here is correct.
  */

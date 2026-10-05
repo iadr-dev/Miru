@@ -22,7 +22,7 @@ function writeBool(key: string, value: boolean): void {
   }
 }
 
-/** Sidebar collapse state (design-system §6.2): persisted per user via localStorage, auto-collapses
+/** Sidebar collapse state: persisted per user via localStorage, auto-collapses
  * at the tablet breakpoint. Reads persisted state after mount to avoid a hydration mismatch (the
  * server can't know localStorage), defaulting to expanded on desktop. */
 export function useSidebarCollapsed(): {

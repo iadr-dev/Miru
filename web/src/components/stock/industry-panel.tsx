@@ -44,7 +44,7 @@ type IndustryView = (typeof VIEWS)[number];
  *    this symbol (`get_supply_chain_edges`), rendered as a focus-node radial graph.
  *
  * A symbol with no theme membership yet renders an honest empty state, never a fabricated
- * industry. `docs/web/stock-detail/產業分析.md`'s original 同業比較/多空訊號 cards are NOT built
+ * industry. The original 同業比較/多空訊號 cards are NOT built
  * here — 同業比較 has no reliable backing (no industry-filterable peer tool short of a costly
  * per-peer live fan-out) and 多空訊號 doesn't belong on this tab (it's an MA-position read, not
  * an industry-relationship view); 產業鏈資金流 already ships on 大盤's own 籌碼 tab

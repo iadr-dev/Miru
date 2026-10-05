@@ -5,7 +5,7 @@ web's TanStack funnel table compresses into a **preset card grid → ranked card
 **bottom-sheet condition/gate filters** (no wide tables on a phone). Parent index:
 [README.md](README.md) §2. UX rationale: [ux-foundation.md](ux-foundation.md). Behaviour/state:
 [interaction-spec.md](interaction-spec.md). Web parity (compress, don't drop):
-[../web/screener/README.md](../web/screener/README.md).
+the web app.
 
 > **Governance (load-bearing, [20](../backend/modules/20-analytics-scoring.md) §7):** a result is a
 > **filtered list matching criteria** — 「符合條件的清單，非推薦名單」 — never a buy list. **Liquidity is a
@@ -70,8 +70,8 @@ web's TanStack funnel table compresses into a **preset card grid → ranked card
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md) (`VISUAL_DENSITY:6`, card 16px / input
-10px / pill 999px, 4px base). Component semantics = [../web/screener/README.md](../web/screener/README.md)
+Tokens from the web app (`VISUAL_DENSITY:6`, card 16px / input
+10px / pill 999px, 4px base). Component semantics = the web screener page
 (`PresetLibrary`, `ConditionBuilder`, `GateBar`, `FunnelMeter`) recomposed for touch. **Dark-first,
 one column, 2026 mobile bar.**
 

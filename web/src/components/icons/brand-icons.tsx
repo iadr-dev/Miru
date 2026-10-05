@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /**
  * Official brand marks for the two OAuth providers. Phosphor's icon set is deliberately
- * monochrome (design-system §5: one icon family, `weight="regular"`) — brand logos are the one
+ * monochrome (one icon family, `weight="regular"`) — brand logos are the one
  * sanctioned exception, since Google and LINE's own brand guidelines require their marks render
  * in full color, never recolored to a UI token. Kept as static inline SVG (no extra dependency);
  * do not wrap these in the tokenized icon system or tint them via `currentColor`.

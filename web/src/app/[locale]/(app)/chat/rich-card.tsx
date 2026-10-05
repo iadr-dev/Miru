@@ -28,7 +28,7 @@ import { TimeseriesChart } from "@/app/[locale]/(app)/chat/cards/timeseries-char
 import type { RichCard } from "@/types/conversation";
 
 /**
- * Inline `rich_card` renderer (interaction-spec §2.6). The card `data` shape is card-type-specific
+ * Inline `rich_card` renderer. The card `data` shape is card-type-specific
  * and NOT invented here — the backend (`agent/loop.py::RichCard`) emits an already-governance-scanned
  * open object. If `data.chart_hint` validates against `chartHintSchema`, chart selection is
  * decoupled from `card_type` entirely: `GenericChart` picks a mark/encoding from the hint alone,

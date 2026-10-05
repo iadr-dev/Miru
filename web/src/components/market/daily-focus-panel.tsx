@@ -21,8 +21,8 @@ import type { Market } from "@/types/settings";
  * US: `RankingsCard`'s 4 tabs — 漲跌幅排行/`PriceMomentumCard` no longer renders in either
  * market's grid cell, replaced by `TwRankingsCard` for TW the same way `RankingsCard` already
  * replaced it for US). These cards previously rendered directly in `MarketPanel`'s `renderTw`
- * with no sub-tab wrapper — pulled out here as the TW tab grows a second sub-tab (籌碼) per
- * `docs/web/market.md`'s own Row-2 view-tab spec, mirroring `TwTabContent`'s sibling
+ * with no sub-tab wrapper — pulled out here as the TW tab grows a second sub-tab (籌碼),
+ * mirroring `TwTabContent`'s sibling
  * `ChipDataPanel`.
  *
  * US variant (`market === "US"`) drops two cards with no US backing data: 指數貢獻排行 (no real

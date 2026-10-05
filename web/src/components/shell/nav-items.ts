@@ -1,7 +1,7 @@
 import type { Icon } from "@phosphor-icons/react";
 import { ChartBarIcon, ChartLineIcon, ChatCircleIcon, FunnelIcon } from "@phosphor-icons/react";
 
-/** Primary nav items (docs/web/README.md §2). 對話/Chat, 個股/Stock, and 選股/Screener all have
+/** Primary nav items. 對話/Chat, 個股/Stock, and 選股/Screener all have
  * real destinations (Stock's index guides into the fully-built `/stock/{symbol}` workbench — see
  * `stock/stock-empty-state.tsx`; Screener is the funnel workbench, `screener/screener-workbench.tsx`);
  * 大盤/Market is the existing stub. 設定/Settings is pinned separately at the bottom of the rail.

@@ -17,8 +17,7 @@ to. This is the *why* behind the mobile spec — it **deepens and justifies**
 [interaction-spec.md](interaction-spec.md) (motion/state/SSE contracts — being written in parallel),
 and the per-screen docs [home.md](home.md), [watchlist.md](watchlist.md), [chat.md](chat.md),
 [calendar.md](calendar.md), [settings.md](settings.md), [stock-detail.md](stock-detail.md),
-[screener.md](screener.md). Shared foundations: [../web/design-system.md](../web/design-system.md)
-(tokens/visuals), [../web/interaction-spec.md](../web/interaction-spec.md) §0 (motion non-negotiables),
+[screener.md](screener.md). Shared foundations: the web app's tokens, visuals and motion non-negotiables,
 [../brand.md](../brand.md), [../backend/governance.md](../backend/governance.md).
 
 ---
@@ -31,7 +30,7 @@ Mobile is **not the web workbench shrunk**. It is the surface for the two jobs a
 - **Converse** — ask 了然 in natural language / voice, get a streamed, caveated answer with follow-ups.
 
 Everything deep (multi-panel Stock Detail, screener funnel tables, side-by-side agent lanes) stays
-**desktop-primary** ([README §3](README.md), [../web/README §7](../web/README.md)); mobile shows the
+**desktop-primary** ([README §3](README.md)); mobile shows the
 **compressed** form (section stack, card list, collapsed narration track). The mobile audience skews
 toward people who **monitor and ask**, not people who screen and build.
 
@@ -156,7 +155,7 @@ The [README §2](README.md) IA is **Home / Stock / Chat(center) / Screener / Set
 | **Chat is centered + accent-raised** | It's the product's soul and Xiaoyu's whole use; center = **thumb home** on a phone; the emphasis slot signals "ask me anything." |
 | **Stock is a tab (symbol landing)** | Every persona's most common intent is "pull up a symbol" — search / recent / 我的自選 quick-access / 熱門 → pushes Stock Detail ([stock.md](stock.md)). A first-class thumb-reachable tab beats burying search in the top bar. |
 | **Screener is a tab** | Promoted to a primary tab (was under Settings); on mobile it's a **preset-pick → ranked card list** (not the web funnel table), so it fits a phone and gives discovery a permanent home. |
-| **Watchlist is NOT a tab — it's the top-bar ☆ (every tab) + Home glance block** | Monitoring must be **one tap from anywhere**, but it doesn't need a dedicated slot: the **top-bar ☆ opens the full watchlist as a drag-snap bottom-sheet** (Kai's monitor entry from any tab), and the **我的自選 Home block** gives Sufen a **zero-tap glance** on launch. Mirrors web (☆ toggles the right rail on every page — [../web/README §2](../web/README.md)). So glance = 0 tap, monitor/manage = 1 tap. |
+| **Watchlist is NOT a tab — it's the top-bar ☆ (every tab) + Home glance block** | Monitoring must be **one tap from anywhere**, but it doesn't need a dedicated slot: the **top-bar ☆ opens the full watchlist as a drag-snap bottom-sheet** (Kai's monitor entry from any tab), and the **我的自選 Home block** gives Sufen a **zero-tap glance** on launch. Mirrors web (☆ toggles the right rail on every page — ../web/README §2). So glance = 0 tap, monitor/manage = 1 tap. |
 | **Calendar is NOT a tab — it's a surface** | 除權息/配息/法說 (Sufen's 存股 loop, [18](../backend/modules/18-calendar-events.md)) surfaces as the **今日事件 Home block** (→ full [calendar.md](calendar.md)) + Stock Detail 事件 section. Now consistent with web (in-context, no standalone nav) — the earlier web↔mobile divergence is resolved by the new tab set. |
 | **Alerts live under Settings, NOT a tab** | Low-frequency *config*; the create/edit rule-builder is a settings form. Discoverability preserved via **deep-links** (Detail / watchlist swipe → 設定提醒). |
 | **Notifications = top-bar 🔔 bell, every tab** | It's a **receive-and-tap-through** surface (flow b), the front door for re-entry (Wei) — must be reachable everywhere, never buried in Settings. |
@@ -210,7 +209,7 @@ Personality/pet layers style **tone only**, never add trading language or drop a
 This client targets the **current (2025–2026) mobile UX bar**, not a dated one — but every modern
 pattern must **earn its place for this audience** and never override the non-negotiables (紅漲綠跌+▲▼,
 non-trading, caveats, tabular-nums, dark-first, reduced-motion). Reference basis: the shipped **Kestrel
-app** and the **web spec set** ([../web/design-system.md](../web/design-system.md)) — *not* pattern-mining
+app** and the **web app** — *not* pattern-mining
 (the Mobbin MCP is unavailable; see §9). Patterns adopted, with justification:
 
 | 2026 pattern | Why it earns its place here |
@@ -222,7 +221,7 @@ app** and the **web spec set** ([../web/design-system.md](../web/design-system.m
 | **Notification-driven re-entry** (LINE push → deep-link) | The dominant modern mobile entry path; TW-native via LINE ([14](../backend/modules/14-scheduler-alerts.md)). See §6.5 / flow (b) / Wei. |
 | **Dynamic-type / large-font resilience** | 存股 users (Sufen, 45–60) run large system fonts; layouts must reflow, never clip 台積電 2330 or truncate the caveat. |
 | **Calm glanceable density** | Anti-slop: dense-but-legible, one visual pass (§6.1) — never a cluttered trader terminal on a phone. |
-| **Motivated motion only** | Morph/blur/streaming life communicate state; **no magnitude-scaled or celebratory motion on price/score** ([../web/interaction-spec §0](../web/interaction-spec.md)); everything above tier 3 honors reduced-motion. Trend for trend's sake is rejected. |
+| **Motivated motion only** | Morph/blur/streaming life communicate state; **no magnitude-scaled or celebratory motion on price/score** (the web motion non-negotiables); everything above tier 3 honors reduced-motion. Trend for trend's sake is rejected. |
 
 ---
 
@@ -271,8 +270,7 @@ app** and the **web spec set** ([../web/design-system.md](../web/design-system.m
 ## 9. Reference basis
 
 This foundation is grounded in the **shipped Kestrel app**, the existing **mobile
-[README.md](README.md)**, and the **web spec set** ([../web/README.md](../web/README.md),
-[../web/design-system.md](../web/design-system.md), [../web/interaction-spec.md](../web/interaction-spec.md)),
+[README.md](README.md)**, and the **web app**,
 plus the backend module docs cited inline. Live UX pattern-mining (Mobbin MCP) was **unavailable /
 paywalled**, so the 2026-bar principles (§6.8) are derived from the shipped design system and
 first-principles fit to this audience — not from scraped reference galleries.

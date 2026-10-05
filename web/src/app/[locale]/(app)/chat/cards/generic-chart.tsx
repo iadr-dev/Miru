@@ -47,8 +47,8 @@ const MAX_CHART_TOKENS = 10;
  * label always renders the same color across renders/reorderings (fixes the index-based-coloring
  * inconsistency in `BarChart`/`GroupedBarChart`/`TimeseriesChart`, which reassigns colors whenever
  * series order shifts call-to-call). `diverging=true` instead resolves from the signed `--up`/
- * `--down` tokens by `value`'s sign — never a `--chart-N` token for signed data (design-system
- * §4/§7's 紅漲綠跌 rule). Exported for unit testing (no rendered-DOM test convention exists in
+ * `--down` tokens by `value`'s sign — never a `--chart-N` token for signed data (the
+ * 紅漲綠跌 rule). Exported for unit testing (no rendered-DOM test convention exists in
  * this repo — see `sector-heatmap-treemap.test.ts`). */
 export function resolveSeriesColor(
   label: string,

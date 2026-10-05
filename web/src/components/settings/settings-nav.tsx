@@ -6,7 +6,7 @@ import { SETTINGS_NAV_ITEMS } from "@/components/settings/settings-nav-items";
 import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 
-/** Left sub-page nav for the Settings two-pane layout (docs/web/settings/README.md §Layout):
+/** Left sub-page nav for the Settings two-pane layout:
  * `divide-y --border` rows, active = `--accent-weak` pill + 2px `--accent` edge bar. */
 export function SettingsNav(): ReactNode {
   const t = useTranslations("settings.nav");

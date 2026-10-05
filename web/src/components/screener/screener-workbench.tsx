@@ -30,7 +30,7 @@ const DEFAULT_GATES: ScreenerGateOverrides = {
   exclude_full_cash_delivery: true,
 };
 
-/** The screener funnel workbench (docs/web/screener/README.md): market tabs -> FunnelMeter ->
+/** The screener funnel workbench: market tabs -> FunnelMeter ->
  * GateBar -> builder rail + results table. Client component — the whole surface is interactive
  * (live re-probe on every condition/gate edit), so unlike a typical RSC-first page this pushes
  * `'use client'` at the workbench root rather than a deep leaf (justified: nearly every child here

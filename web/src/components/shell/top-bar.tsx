@@ -16,7 +16,7 @@ import { cn } from "@/lib/cn";
 import type { MeResponse, Tier } from "@/types/account";
 
 /**
- * Sticky glass top bar (README §9, design-system §6.2). Carries the 搜尋股票 command-palette
+ * Sticky glass top bar. Carries the 搜尋股票 command-palette
  * placeholder (visual only — stock search is future Stock/Screener work), the 台股/美股/ETF
  * market-tab switcher (only on `/market` — everywhere else it would be a dead control, since
  * only the Market page reads its selection), the notifications inbox bell, the real tier badge

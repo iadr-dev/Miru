@@ -14,7 +14,7 @@ import { cn } from "@/lib/cn";
 import type { MeResponse } from "@/types/account";
 
 /**
- * The collapsible left rail (design-system §6.2, README §9). Expanded 240px (icon + zh label + en
+ * The collapsible left rail. Expanded 240px (icon + zh label + en
  * sublabel), collapsed 64px icon rail with `title` tooltips. Active = `--accent-weak` pill + 2px
  * `--accent` left edge bar + accent icon; a shared-layout indicator (`layoutId`) glides between
  * items on navigate. Width tween is `transition-all duration-300 ease-out`; reduced-motion snaps

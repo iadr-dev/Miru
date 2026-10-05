@@ -47,7 +47,7 @@ with a first-class thumb-reachable tab. Parent index: [README.md](README.md) §2
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md) (`VISUAL_DENSITY:6`, card 16px, pill
+Tokens from the web app (`VISUAL_DENSITY:6`, card 16px, pill
 999px, input 10px). `StockRow`/`MiniQuoteChip` = §7.8. **Dark-first, one column, 2026 mobile bar.**
 
 - **Frame.** `100dvh` on `--bg`; the **search field rides the top** in a glass region (content scrolls

@@ -75,7 +75,7 @@ const NUMERIC_FIELD_STEP: Record<ConditionFieldKey, string> = {
   days: "1",
 };
 
-/** Alert-rule create/edit form (interaction-spec §2.13; UX: docs/web/settings/alerts.md §3).
+/** Alert-rule create/edit form.
  * Template-first — the user picks what to watch and fills only that template's fields — with a
  * fact-phrased preview line and inline, retryable errors. `Esc` cancels. Pass `rule` to edit: the
  * scope (symbol / market) is fixed, only changed fields are sent, and the save carries the rule's

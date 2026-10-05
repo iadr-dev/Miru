@@ -36,7 +36,7 @@ type NetPoint = { name: string; net: number };
 /** `institutional_flow_wide`-shaped: one row (typically the latest trade_date) with a
  * `{prefix}_buy`/`{prefix}_sell` column pair per institutional-investor category — nets each
  * pair into one signed bar. Governance: `--up`/`--down` per the signed-series rule
- * (design-system.md §2 "Signed vs categorical") — this IS a signed net-flow series, unlike
+ * (signed vs categorical) — this IS a signed net-flow series, unlike
  * `FlowDistribution`'s categorical bars, so `--chart-1..6` would be the wrong token set here. */
 function netPointsFromWideRow(row: Record<string, unknown>): NetPoint[] {
   const points: NetPoint[] = [];

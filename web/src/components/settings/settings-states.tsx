@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
-/** Plain-data loading skeleton for a Settings sub-page (interaction-spec §2.13: no narration —
+/** Plain-data loading skeleton for a Settings sub-page (no narration —
  * config forms are never the analysis-generation loading class). */
 export function SettingsLoading({ rows = 3 }: { rows?: number }): ReactNode {
   const keys = Array.from({ length: rows }, (_, i) => `skeleton-row-${i}`);
@@ -53,7 +53,7 @@ export function SettingsError({
   );
 }
 
-/** Transient "已儲存"-style success toast (interaction-spec §2.13 save flow). Purely local/visual —
+/** Transient "已儲存"-style success toast (save flow). Purely local/visual —
  * callers mount it conditionally and clear it on a timer. */
 export function SavedToast({ message }: { message: string }): ReactNode {
   return (
@@ -71,7 +71,7 @@ export function SavedToast({ message }: { message: string }): ReactNode {
 }
 
 /** Calm "requires Pro" gate message for the 403 `feature_not_entitled` path — plain copy, no 馬賽克
- * teaser (interaction-spec §2.13: 馬賽克 never appears in Settings). */
+ * teaser (馬賽克 never appears in Settings). */
 export function RequiresProNotice({ onUpgrade }: { onUpgrade: () => void }): ReactNode {
   const t = useTranslations("settings.common");
   return (

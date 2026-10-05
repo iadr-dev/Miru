@@ -36,13 +36,10 @@ const COLLAPSED_ROW_COUNT = 10;
  * 追蹤 tab — ETF持有 card (see this tab's own scoping note below for why 基金/mutual funds are
  * out of scope entirely, not a coming-soon placeholder).
  *
- * `docs/web/stock-detail/基本資料.md` already plans this same underlying capability
- * (`get_etfs_holding_stock`) as a smaller in-page card (`EtfHoldersCard`, 比重/張數+增減, no
- * sub-tabs) inside the 基本資料 tab — that doc predates this build. This component ships the
- * richer 3-sub-view reference-app layout (持有張數排行/權重排行/建清倉) as its own tab instead,
- * per an explicit later request; `docs/web/stock-detail/基本資料.md` should be reconciled to
- * either drop its own `EtfHoldersCard` entry or point at this tab, rather than describing a
- * second, un-built card backed by the same tool.
+ * The same underlying capability (`get_etfs_holding_stock`) could back a smaller in-page card
+ * (比重/張數+增減, no sub-tabs) inside the 基本資料 tab. This component ships the richer
+ * 3-sub-view reference-app layout (持有張數排行/權重排行/建清倉) as its own tab instead,
+ * per an explicit later request.
  *
  * Coverage is **active-management ETFs only** (FinMind's `TaiwanStockActiveETFHolding` dataset);
  * passive ETFs (0050/00878/006208/etc.) have no ingested constituent-holdings data source. 基金

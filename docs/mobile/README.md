@@ -2,7 +2,7 @@
 
 Design/blueprint for the **mobile-first client**. Grounded in the backend abilities
 ([../backend/](../backend/)) and the UX research foundation. Companion to the web dashboard
-([../web/](../web/)); shares the design tokens, brand, and governance. This README is the **index** —
+(`web/`); shares the design tokens, brand, and governance. This README is the **index** —
 per-screen layout/visual detail lives in the per-screen docs below.
 
 > **Design read:** a **chat-first companion + glanceable monitor** for TW retail investors on the
@@ -16,13 +16,13 @@ per-screen layout/visual detail lives in the per-screen docs below.
 > `design-taste-frontend` anti-slop discipline (motivated motion only, full states, no AI-purple /
 > generic-glass-on-everything, shape/color locks, WCAG AA). Brand: [../brand.md](../brand.md). The
 > concrete visual language (palette, CJK type, glass nav island, 多空 gauge, cards, streaming chat,
-> 馬賽克 teaser, motion) is shared with web in **[../web/design-system.md](../web/design-system.md)** —
+> 馬賽克 teaser, motion) is shared with web in **`web/src/app/tokens.css`** —
 > referenced by section, never redefined here.
 
 **Read alongside this index:**
 - **[ux-foundation.md](ux-foundation.md)** — the UX research foundation (personas, jobs, mobile intent) *(UX Researcher).*
 - **[interaction-spec.md](interaction-spec.md)** — behavioural / motion / state / a11y contracts *(UX Architect).*
-- **[../web/design-system.md](../web/design-system.md)** — the token/component source of truth (shared).
+- **`web/src/app/tokens.css`** — the token source of truth (shared).
 
 ---
 
@@ -48,7 +48,7 @@ views). Stock Detail is a **full-screen pushed view**, not a tab.
 ## 1. Platform note
 
 Two viable builds off the same backend + tokens:
-- **Responsive web (<768px)** — the web client ([../web/](../web/)) collapses to this spec.
+- **Responsive web (<768px)** — the web client (`web/`) collapses to this spec.
 - **Native (React Native / Expo)** — if a store presence is wanted; reuses the token system, the
   module-07 SSE client, and the same IA. **LINE is the primary TW channel** for notifications either
   way ([14](../backend/modules/14-scheduler-alerts.md) §4).
@@ -62,7 +62,7 @@ The IA below is identical across both; only the shell (tab bar vs responsive nav
 Tuned to **daily mobile intent** (Sufen the 存股 holder, Xiaoyu the beginner, Kai monitoring). Chat is
 centered + accented; deep analysis is compressed, not removed. The bar is a **modern floating glass
 island** with a **raised accent center tab for Chat** and a **morphing active pill** — full treatment
-in [../web/design-system.md](../web/design-system.md) §6.1.
+in the shared web tokens
 
 ```
         content scrolls behind, blurred under the bar
@@ -83,7 +83,7 @@ Top bar (every tab): **股票搜尋** (search stocks) + **☆ 自選** (watchlis
 > **drag-snap bottom-sheet** (groups, TW/US/ETF market tabs, swipe ☆/alert/remove, live ticks,
 > reorder — full spec [watchlist.md](watchlist.md)). It *also* surfaces as the zero-tap **我的自選
 > glance block** on [Home](home.md) (§4) and a quick-access list on the [Stock tab](stock.md). This
-> mirrors web, where ☆ toggles the right-side rail on every page ([../web/README.md](../web/README.md)
+> mirrors web, where ☆ toggles the right-side rail on every page
 > §2). So: glance = 0 tap (Home), monitor/manage = 1 tap (top-bar ☆, any tab).
 
 | Tab | zh / en | Icon | Doc | Rationale |
@@ -143,7 +143,7 @@ Mobile compressions of shared surfaces:
 ## 4. Home content blocks — ranked
 
 Detailed layout/visual in [home.md](home.md). Persistent top: the **股票跑馬燈 (marquee)**
-([../web/design-system.md](../web/design-system.md) §7.5). Then, tuned for a single mobile column:
+(the web app). Then, tuned for a single mobile column:
 
 1. **大盤概況** — TAIEX/櫃買 + 多空氛圍 regime flag (`get_market_context`)
 2. **我的自選** — watchlist quotes, live-ish for Premium (`/memory` + `/quote/stream`) → [watchlist.md](watchlist.md)
@@ -189,5 +189,5 @@ caveat badge + "not advice" footer are **required, non-removable** components; c
 See [../backend/governance.md](../backend/governance.md) §1, [../brand.md](../brand.md) §5.
 
 > Build-time review gate: when the UI is implemented from these blueprints, the **`impeccable`** agents
-> review the *shipped* pixels against this design set (per [../web/README.md](../web/README.md)) — not
+> review the *shipped* pixels against this design set (per the web app) — not
 > applicable at this blueprint stage.

@@ -7,8 +7,7 @@ shipped unless a reverse query is needed"). Adds `watchlists` + `watchlist_items
 ([api-reference.md](../api-reference.md) §5a), three §10 concurrency rows
 ([modules/16](../modules/16-infrastructure.md)), a tier cap
 ([modules/12](../modules/12-multi-user-tiers.md)); updates
-[modules/09](../modules/09-memory.md). Drives the web watchlist rail
-([../../web/design-system.md](../../web/design-system.md) §7.7).
+[modules/09](../modules/09-memory.md). Drives the web watchlist rail.
 
 ## Context
 The web client's right-side watchlist rail (adapted from the Kestrel reference) needs **named

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 
-/** `docs/web/stock-detail.md` §7's `SectorChip` — muted sector-token bg (~15% α) + solid-hue
+/** `SectorChip` — muted sector-token bg (~15% α) + solid-hue
  * text + hairline of the same hue, pill 999px. Category only, never a price. */
 export function SectorChip({ label }: { readonly label: string }): ReactNode {
   const token = hashToChartToken(label);

@@ -1,5 +1,5 @@
 /**
- * Config-driven per-market screener setup (docs/web/screener/README.md §2) — one config object
+ * Config-driven per-market screener setup — one config object
  * per tab controlling its result-table columns. `factors`/`presets`/`signals` are NOT duplicated
  * here — those come live from `GET /analytics/screener/factors`/`presets` (backend `MarketProfile`
  * is the actual source of truth); this file only owns what's genuinely frontend-side: column

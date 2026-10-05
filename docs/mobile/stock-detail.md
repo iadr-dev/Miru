@@ -4,8 +4,7 @@ The compression of the web workbench. Deep-linked from Home/Watchlist/Chat/Calen
 full-screen (back-gesture to dismiss), **not** a bottom-tab. The web's 8-tab detail collapses into a
 single **scrollable section stack**. Parent index: [README.md](README.md) §2. UX rationale:
 [ux-foundation.md](ux-foundation.md). Behaviour/state: [interaction-spec.md](interaction-spec.md).
-Web parity (compress, don't drop): [../web/stock-detail.md](../web/stock-detail.md) +
-[../web/stock-detail/](../web/stock-detail/README.md) per-tab docs.
+Web parity (compress, don't drop): the web stock-detail page and its tabs.
 
 > Non-negotiables on every section: 紅漲綠跌 `--up`(漲)/`--down`(跌) **never color-alone → ▲▼ + sign +
 > aria-label** · tabular-nums · non-trading `<Caveat>` on every analytical card · 馬賽克 on sponsor
@@ -16,13 +15,13 @@ Web parity (compress, don't drop): [../web/stock-detail.md](../web/stock-detail.
 
 | # | Section | Web tab source | Backend |
 |---|---------|----------------|---------|
-| — | AssetHeader (sticky) | [../web/stock-detail.md](../web/stock-detail.md) §1 | `get_company_profile` · `/quote(/stream)` · `/analytics/{s}/score` |
-| 1 | 多空 score gauge + factor bars | [智能摘要](../web/stock-detail/智能摘要.md) | `GET /analytics/{s}/score?profile=` |
-| 2 | 技術 (single chart + indicator chips) | [技術分析](../web/stock-detail/技術分析.md) | `/analytics/{s}/indicators?set=…` + price history |
-| 3 | 智能摘要 / SWOT (Premium teaser) | [智能摘要](../web/stock-detail/智能摘要.md) | `GET /analytics/{s}/summary` (Premium+) |
-| 4 | 事件 (除權息/法說/股東會) | [研究圖表](../web/stock-detail/研究圖表.md) | `get_calendar_events?symbol=`, `get_dividend_schedule` |
-| 5 | 籌碼 (法人/融資券; 分點🔒) | [籌碼分析](../web/stock-detail/籌碼分析.md) | 三大法人 total · `get_chip_flows` 🔒 |
-| 6 | 新聞 (即時/財經) | [相關新聞](../web/stock-detail/相關新聞.md) | `get_stock_news?category=realtime\|finance` |
+| — | AssetHeader (sticky) | web `AssetHeader` | `get_company_profile` · `/quote(/stream)` · `/analytics/{s}/score` |
+| 1 | 多空 score gauge + factor bars | 智能摘要 | `GET /analytics/{s}/score?profile=` |
+| 2 | 技術 (single chart + indicator chips) | 技術分析 | `/analytics/{s}/indicators?set=…` + price history |
+| 3 | 智能摘要 / SWOT (Premium teaser) | 智能摘要 | `GET /analytics/{s}/summary` (Premium+) |
+| 4 | 事件 (除權息/法說/股東會) | 研究圖表 | `get_calendar_events?symbol=`, `get_dividend_schedule` |
+| 5 | 籌碼 (法人/融資券; 分點🔒) | 籌碼分析 | 三大法人 total · `get_chip_flows` 🔒 |
+| 6 | 新聞 (即時/財經) | 相關新聞 | `get_stock_news?category=realtime\|finance` |
 
 *Folded/deferred vs web: 基本資料/產業分析/財務分析/研究圖表 depth and the 即時 ladder collapse into the
 sections above or open on demand — see the ⚑ tradeoff in README.*
@@ -56,7 +55,7 @@ sections above or open on demand — see the ⚑ tradeoff in README.*
 
 ## Visual design
 
-Tokens from [../web/design-system.md](../web/design-system.md); gauge = §7.1, `ChartWithDataSheet` =
+Tokens from the web app; gauge = §7.1, `ChartWithDataSheet` =
 §7.11, `AssetHeader` = §7.9. **Dark-first, one-column scrollable stack, 2026 mobile bar.**
 
 - **Pushed view, not a tab.** Enters as a full-screen push (back-swipe / `‹` to dismiss); the bottom
