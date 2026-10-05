@@ -190,7 +190,12 @@ its own `market` parameter (TW logic runs regardless of market) — see [22](mod
     **No Alembic migration chain.** This project has no `alembic.ini`/`versions/` directory —
     `Base.metadata.create_all()` (`db/base.py::ensure_schema`) is the **sole** schema-provisioning
     mechanism, called idempotently by every schema-bearing process (api/scheduler/ingest/mcp) at
-    its own startup — there is no separate migrate step. The `dual_dialect` marker above tests
+    its own startup — there is no separate migrate step. Right after `create_all()` it runs
+    `db/additive_upgrade.py`, which **adds** any column / index / named unique key an *existing*
+    table is missing (so a database created by an older model version catches up without losing
+    data); it never drops, renames or rewrites anything, and does nothing on a current database.
+    Dropping a column, changing a type or a CHECK definition, and backfills stay a deliberate manual
+    step. The `dual_dialect` marker above tests
     `create_all()`'s portability/idempotency across SQLite and Postgres, **not** migrations (see
     `tests/db/test_dual_dialect_migrations.py`'s own docstring).
 171	
@@ -252,7 +257,8 @@ its own `market` parameter (TW logic runs regardless of market) — see [22](mod
 225	- **CI must be green:** default `pytest` + `governance` + (if schema touched) `dual_dialect` +
 226	  (if shared state touched) `concurrency`; ruff + pyright + mypy clean.
 227	- **Schema-change safety:** there is no Alembic migration chain — `create_all()`
-  (`db/base.py::ensure_schema`) is the sole schema-provisioning mechanism, applied idempotently at
+  (`db/base.py::ensure_schema`, plus the additive `db/additive_upgrade.py` step for existing
+  tables) is the sole schema-provisioning mechanism, applied idempotently at
   each process's own startup. Additive/backward-compatible changes only (add columns/tables,
   never a breaking in-place rewrite of an existing one), since there is no expand/contract
 228	  migration step to sequence a breaking change behind ([modules/17](modules/17-devops-operations.md) §1).

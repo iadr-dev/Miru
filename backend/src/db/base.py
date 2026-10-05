@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from config import get_settings
+from db.additive_upgrade import apply_additive_upgrade
 
 
 class Base(DeclarativeBase):
@@ -34,10 +35,11 @@ def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession
 
 async def ensure_schema(engine: AsyncEngine) -> None:
     """Create every table/index/constraint declared on `Base.metadata` that doesn't already
-    exist — this project's sole schema-provisioning mechanism (no Alembic migration chain).
-    `create_all()` is idempotent (skips existing tables), so calling this once per process at
-    startup is safe even when multiple replicas race to call it concurrently; each schema-bearing
-    process (api, scheduler, ingest, mcp) calls it once from its own composition root."""
+    exist, then add any column/index/unique key an existing table is missing — this project's sole
+    schema-provisioning mechanism (no Alembic migration chain). Both steps are idempotent, so
+    calling this once per process at startup is safe even when multiple replicas race to call it
+    concurrently; each schema-bearing process (api, scheduler, ingest, mcp) calls it once from its
+    own composition root."""
     # Side-effect import: registers every ORM model on `Base.metadata` before `create_all` runs —
     # deferred here (not a top-level import) to avoid a construction-time import cycle, since
     # `db.models` imports `Base` from this module.
@@ -45,6 +47,9 @@ async def ensure_schema(engine: AsyncEngine) -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Existing tables keep their shape under `create_all`; add any column/index/unique key the
+    # models gained since (additive only — never drops or rewrites; see db/additive_upgrade.py).
+    await apply_additive_upgrade(engine, Base.metadata)
 
 
 async def ensure_schema_for(session_factory: async_sessionmaker[AsyncSession]) -> None:
