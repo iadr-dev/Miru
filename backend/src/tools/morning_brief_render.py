@@ -13,6 +13,7 @@ predicted opens). "Top 3 Drivers" are the three largest moves by a fixed, docume
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -36,7 +37,7 @@ def _cell(text: str) -> str:
     return text.replace("|", "¦").replace("\n", " ").strip() or _NA
 
 
-def _table(headers: tuple[str, ...], rows: list[tuple[str, ...]]) -> str:
+def _table(headers: tuple[str, ...], rows: Sequence[tuple[str, ...]]) -> str:
     lines = [
         "| " + " | ".join(headers) + " |",
         "|" + "|".join("---" for _ in headers) + "|",
@@ -196,15 +197,15 @@ def _taiwan(brief: GetMorningBriefOutput) -> list[str]:
 def _us_watch(brief: GetMorningBriefOutput) -> list[str]:
     out = ["### US Watch", ""]
     if brief.events_today:
-        rows = [
+        event_rows = [
             (e.name, e.taipei_time, e.et_time, e.consensus, e.prior) for e in brief.events_today
         ]
-        out += [_table(("事件", "台北時間", "美東時間", "預期值", "前值"), rows), ""]
+        out += [_table(("事件", "台北時間", "美東時間", "預期值", "前值"), event_rows), ""]
     else:
         out += ["今日無已排定的重要數據發布。", ""]
     if brief.us_movers:
-        rows = [(r.label, r.text, _signed(r.change_pct)) for r in brief.us_movers]
-        out += ["**美股熱門個股**", "", _table(("標的", "價格", "漲跌幅"), rows), ""]
+        mover_rows = [(r.label, r.text, _signed(r.change_pct)) for r in brief.us_movers]
+        out += ["**美股熱門個股**", "", _table(("標的", "價格", "漲跌幅"), mover_rows), ""]
     return out
 
 

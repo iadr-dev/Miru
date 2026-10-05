@@ -113,7 +113,8 @@ def price_cagr_pct(series: Series) -> float | None:
     years = (ordered[-1][0] - ordered[0][0]).days / _DAYS_PER_YEAR
     if years < 1:
         return None
-    return round(((ordered[-1][1] / ordered[0][1]) ** (1 / years) - 1) * 100, 2)
+    ratio: float = (ordered[-1][1] / ordered[0][1]) ** (1 / years)
+    return round((ratio - 1) * 100, 2)
 
 
 def indexed_monthly(series: Series, *, base: float = 100.0) -> list[tuple[str, float]]:

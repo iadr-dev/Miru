@@ -1070,11 +1070,12 @@ class SqlAlchemySchedulerStore:
         linked = await self.channel_address(user_id=user_id, channel="line")
         if linked is not None:
             return linked
-        return await self._session.scalar(
+        sign_in_id: str | None = await self._session.scalar(
             select(OAuthAccountRow.provider_account_id).where(
                 OAuthAccountRow.user_id == user_id, OAuthAccountRow.provider == "line"
             )
         )
+        return sign_in_id
 
     async def count_jobs(self, *, user_id: str) -> int:
         count = await self._session.scalar(

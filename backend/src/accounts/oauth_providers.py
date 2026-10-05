@@ -131,7 +131,10 @@ async def _post_form(
     auth: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     async with client_factory() as client:
-        response = await client.post(url, data=data, auth=auth)
+        if auth is None:
+            response = await client.post(url, data=data)
+        else:
+            response = await client.post(url, data=data, auth=httpx.BasicAuth(*auth))
     if response.status_code != int(httpx.codes.OK):
         # Never log `data` (carries the client secret / code / verifier) — only the provider's
         # own error body, which is documented to be error-code-shaped, not credential-shaped.

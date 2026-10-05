@@ -66,7 +66,7 @@ from schemas.capabilities import (
 from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
-from schemas.source import HealthStatus
+from schemas.source import HealthStatus, SourceResult
 from tools._rows import fetch_rows
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
@@ -157,7 +157,9 @@ async def _load_annual(
     params: dict[str, object] = {"start_date": _start_date(years).isoformat()}
     is_tw = symbol.market is Market.TW
 
-    async def statement(capability: Capability):  # noqa: ANN202 — local helper, used 3 times below
+    async def statement(
+        capability: Capability,
+    ) -> tuple[SourceResult, tuple[FinancialStatementLine, ...]]:
         return await fetch_rows(
             router,
             capability,
@@ -722,7 +724,8 @@ class GetComparisonMetricsOutput(BaseModel):
 def _cagr(first: float | None, last: float | None, periods: int) -> float | None:
     if first is None or last is None or first <= 0 or last <= 0 or periods < 1:
         return None
-    return round(((last / first) ** (1 / periods) - 1) * 100, 2)
+    ratio: float = (last / first) ** (1 / periods)
+    return round((ratio - 1) * 100, 2)
 
 
 def _fmt(value: float | None, suffix: str = "", digits: int = 2) -> str:
@@ -770,7 +773,7 @@ async def _load_etf_extras(
 ) -> _EtfExtras:
     is_tw = symbol.market is Market.TW
 
-    async def fetch(cap: Capability):  # noqa: ANN202 — local helper, parsed by its callers
+    async def fetch(cap: Capability) -> SourceResult:
         return await router.fetch(cap, symbol, tls_policy=ctx.tls_policy)
 
     trailing_result = await fetch(Capability.ETF_TRAILING_RETURNS)
