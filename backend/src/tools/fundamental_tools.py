@@ -165,6 +165,9 @@ def _roc_fiscal_year_to_calendar_year(fiscal_year: str) -> int | None:
     return int(digits) + 1911
 
 
+_DEFAULT_DIVIDEND_YEARS = 5
+
+
 class DividendYearSummary(BaseModel):
     """One calendar year's dividend total — the 股利政策 chart's per-year bar (cash+stock
     stacked) and the stats-strip's "latest year" figures, both derived from the same bucketing
@@ -208,6 +211,9 @@ class DividendFillResult(BaseModel):
     before_price: float
     filled: bool | None
     filled_date: date_ | None = None
+    # Calendar days from the ex-dividend date to the day the price recovered; `None` while unfilled
+    # or unresolved. Pre-computed so a report cites 填息天數 instead of subtracting dates itself.
+    days_to_fill: int | None = None
 
 
 def _dividend_fill_results(
@@ -237,6 +243,7 @@ def _dividend_fill_results(
                 before_price=row.before_price,
                 filled=filled if (filled or has_later_bar) else None,
                 filled_date=filled_date,
+                days_to_fill=(filled_date - row.trade_date).days if filled_date else None,
             )
         )
     return tuple(results)
@@ -341,6 +348,13 @@ class GetDividendPolicySummaryTool(BaseTool):
         typed = parse_args(DateRangeInput, args)
         symbol = typed.to_symbol()
         params = typed.date_params()
+        # The agent is not told today's date, so it cannot pass a 5-year window itself; without
+        # one the upstream returns only a year or two and 填息 history looks far shorter.
+        if "start_date" not in params:
+            today = date_.today()
+            params["start_date"] = today.replace(
+                year=today.year - _DEFAULT_DIVIDEND_YEARS
+            ).isoformat()
 
         schedule_result, events = await fetch_rows(
             self._router,

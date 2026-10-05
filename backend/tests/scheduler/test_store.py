@@ -8,21 +8,23 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from scheduler.models import (
-    AlertCondition,
-    AlertConditionType,
-    Comparator,
     DeliveryChannelKind,
     DevicePlatform,
+    JobStatus,
     NotificationSource,
     ScheduleAction,
+    SchedulePatch,
     ScheduleTrigger,
     TriggerType,
 )
 from scheduler.store import (
+    RUN_TIMEOUT,
     AlertRuleNotFoundError,
     ScheduleJobNotFoundError,
     SqlAlchemySchedulerStore,
+    StaleVersionError,
 )
+from scheduler.templates import InstitutionalStreak
 from schemas.enums import Market, Tier
 from tests.scheduler.conftest import insert_user
 
@@ -35,14 +37,8 @@ def _action() -> ScheduleAction:
     return ScheduleAction(skill_ref="daily-context-brief", inputs={"stock_ids": ["2330"]})
 
 
-def _condition() -> AlertCondition:
-    return AlertCondition(
-        type=AlertConditionType.INSTITUTIONAL,
-        metric="foreign_net",
-        comparator=Comparator.STREAK_UP,
-        threshold=3,
-        window=3,
-    )
+def _condition() -> InstitutionalStreak:
+    return InstitutionalStreak(investor="foreign", direction="buy", days=3)
 
 
 async def test_job_crud_and_isolation(session_factory) -> None:
@@ -81,7 +77,9 @@ async def test_job_update_and_delete(session_factory) -> None:
         )
         await session.commit()
 
-        updated = await store.update_job(user_id=user, job_id=job.id, enabled=False)
+        updated = await store.update_job(
+            user_id=user, job_id=job.id, patch=SchedulePatch(enabled=False)
+        )
         assert updated.enabled is False
         assert updated.version == job.version + 1
         await session.commit()
@@ -109,7 +107,7 @@ async def test_alert_crud_and_isolation(session_factory) -> None:
         with pytest.raises(AlertRuleNotFoundError):
             await store.get_alert(user_id=user_b, alert_id=alert.id)
         roundtrip = await store.get_alert(user_id=user_a, alert_id=alert.id)
-        assert roundtrip.condition.comparator is Comparator.STREAK_UP
+        assert roundtrip.condition.kind == "institutional_streak"
 
 
 async def test_notification_dedupe_idempotent(session_factory) -> None:
@@ -203,3 +201,81 @@ async def test_badge_and_due_jobs(session_factory) -> None:
 
         badge = await store.badge_counts(user_id=user)
         assert badge.pending_alerts == 1
+
+
+async def test_job_edit_changes_only_sent_fields_and_bumps_version(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    async with session_factory() as session:
+        store = SqlAlchemySchedulerStore(session)
+        job = await store.create_job(
+            user_id=user,
+            trigger=_trigger(),
+            action=_action(),
+            delivery_channels=(DeliveryChannelKind.IN_APP,),
+            daily_limit=3,
+        )
+        new_trigger = ScheduleTrigger(type=TriggerType.MARKET_EVENT, spec="pre_open")
+        next_run = datetime.now(UTC) + timedelta(hours=5)
+
+        edited = await store.update_job(
+            user_id=user,
+            job_id=job.id,
+            patch=SchedulePatch(trigger=new_trigger),
+            next_run=next_run,
+            expected_version=job.version,
+        )
+
+        assert edited.trigger.spec == "pre_open"
+        assert edited.next_run == next_run
+        assert edited.daily_limit == 3  # not sent -> untouched
+        assert edited.delivery_channels == (DeliveryChannelKind.IN_APP,)
+        assert edited.version == job.version + 1
+
+        cleared = await store.update_job(
+            user_id=user, job_id=job.id, patch=SchedulePatch(daily_limit=None)
+        )
+        assert cleared.daily_limit is None  # sent as null -> cleared
+
+
+async def test_stale_job_edit_is_refused(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    async with session_factory() as session:
+        store = SqlAlchemySchedulerStore(session)
+        job = await store.create_job(
+            user_id=user,
+            trigger=_trigger(),
+            action=_action(),
+            delivery_channels=(DeliveryChannelKind.IN_APP,),
+        )
+        await store.update_job(
+            user_id=user, job_id=job.id, patch=SchedulePatch(enabled=False), expected_version=0
+        )
+        with pytest.raises(StaleVersionError):
+            await store.update_job(
+                user_id=user,
+                job_id=job.id,
+                patch=SchedulePatch(enabled=True),
+                expected_version=0,
+            )
+
+
+async def test_due_jobs_skips_a_fresh_running_mark_but_recovers_an_orphaned_one(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        store = SqlAlchemySchedulerStore(session)
+        job = await store.create_job(
+            user_id=user,
+            trigger=_trigger(),
+            action=_action(),
+            delivery_channels=(DeliveryChannelKind.IN_APP,),
+            next_run=now - timedelta(minutes=1),
+        )
+        await store.set_job_status(job_id=job.id, status=JobStatus.RUNNING)
+        await session.commit()
+
+        assert await store.due_jobs(now=now) == []  # mid-run: no duplicate start
+        orphaned = await store.due_jobs(now=now + RUN_TIMEOUT + timedelta(minutes=1))
+        assert [j.id for j in orphaned] == [job.id]  # crashed run: picked up again

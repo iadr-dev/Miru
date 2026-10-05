@@ -16,8 +16,9 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from schemas.alerts import RuleCondition, TriggerMode
 from schemas.enums import Market
 
 
@@ -53,28 +54,13 @@ class DeliveryChannelKind(StrEnum):
 class DevicePlatform(StrEnum):
     IOS = "ios"
     ANDROID = "android"
+    WEB = "web"  # Web Push: `token` holds the JSON-encoded PushSubscription
 
 
 class NotificationSource(StrEnum):
     SCHEDULE = "schedule"
     ALERT = "alert"
     DIGEST = "digest"
-
-
-class AlertConditionType(StrEnum):
-    PRICE = "price"
-    VOLUME = "volume"
-    INDICATOR = "indicator"
-    INSTITUTIONAL = "institutional"
-
-
-class Comparator(StrEnum):
-    ABOVE = "above"
-    BELOW = "below"
-    CROSSES_ABOVE = "crosses_above"
-    CROSSES_BELOW = "crosses_below"
-    STREAK_UP = "streak_up"  # e.g. 外資連 N 日買超
-    STREAK_DOWN = "streak_down"
 
 
 class QuietHours(BaseModel):
@@ -85,6 +71,12 @@ class QuietHours(BaseModel):
 
     start: str = Field(pattern=r"^\d{2}:\d{2}$")
     end: str = Field(pattern=r"^\d{2}:\d{2}$")
+
+
+# What a user who never saved notification preferences gets: silent from midnight to 08:00 in Taipei
+# (GMT+8). The settings page shows the same values, so the default is visible and editable.
+DEFAULT_TIMEZONE = "Asia/Taipei"
+DEFAULT_QUIET_HOURS = QuietHours(start="00:00", end="08:00")
 
 
 class ScheduleTrigger(BaseModel):
@@ -121,26 +113,25 @@ class ScheduleJob(BaseModel):
     last_run: datetime | None = None
     next_run: datetime | None = None
     status: JobStatus = JobStatus.OK
+    status_reason: str | None = None
+    thread_id: str | None = None
     version: int = 0
     created_at: datetime
     updated_at: datetime
 
 
-class AlertCondition(BaseModel):
-    """A single, EOD/official-data-evaluable threshold. `metric` names the observed quantity
-    (e.g. `close`, `volume`, `foreign_net`); `comparator` + `threshold`/`window` shape the
-    trigger. Deliberately expressive enough for price/volume/indicator/institutional-flow rules
-    without opening a free-form expression surface."""
+class SchedulePatch(BaseModel):
+    """A partial user edit of a schedule. Only fields in `model_fields_set` are applied, so `None`
+    clears the nullable ones (`quiet_hours`, `daily_limit`) while an omitted field is left alone."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    type: AlertConditionType
-    metric: str = Field(min_length=1)
-    comparator: Comparator
-    # threshold as an integer in the metric's natural micro-unit / count (no float DB columns);
-    # for streak comparators this is the streak length, for price/volume it's the level.
-    threshold: int
-    window: int = 1  # trailing observations the comparator looks at (e.g. streak length)
+    enabled: bool | None = None
+    trigger: ScheduleTrigger | None = None
+    action: ScheduleAction | None = None
+    delivery_channels: tuple[DeliveryChannelKind, ...] | None = None
+    quiet_hours: QuietHours | None = None
+    daily_limit: int | None = None
 
 
 class AlertRule(BaseModel):
@@ -148,16 +139,63 @@ class AlertRule(BaseModel):
 
     id: str
     user_id: str
-    symbol: str
-    market: Market
-    condition: AlertCondition
+    # Scope is a symbol (+market) XOR a watchlist group; the DB enforces the same XOR.
+    symbol: str | None = None
+    market: Market | None = None
+    watchlist_id: str | None = None
+    origin_watchlist_id: str | None = None
+    condition: RuleCondition
+    trigger_mode: TriggerMode = TriggerMode.ONCE_PER_DAY
+    cooldown_seconds: int | None = None
+    state: dict[str, object] = Field(default_factory=dict)
+    expires_at: datetime | None = None
+    auto_paused_reason: str | None = None
+    explain: bool = False
     channels: tuple[DeliveryChannelKind, ...] = Field(default_factory=tuple)
     quiet_hours: QuietHours | None = None
     daily_limit: int | None = None
     enabled: bool = True
     last_triggered: datetime | None = None
+    version: int = 0
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def _scope_is_symbol_xor_watchlist(self) -> AlertRule:
+        has_symbol = self.symbol is not None and self.market is not None
+        half_symbol = (self.symbol is None) != (self.market is None)
+        if half_symbol or has_symbol == (self.watchlist_id is not None):
+            raise ValueError("an alert rule needs a symbol+market or a watchlist_id, not both")
+        return self
+
+
+class AlertPatch(BaseModel):
+    """A partial user edit of an alert rule. Only fields present in `model_fields_set` are applied,
+    which is what lets `None` mean "clear" for the nullable ones (`expires_at`, `cooldown_seconds`,
+    `quiet_hours`, `daily_limit`) while an omitted field means "leave alone". Scope (symbol/market/
+    watchlist) is deliberately not editable — changing what a rule watches is delete + re-create."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool | None = None
+    condition: RuleCondition | None = None
+    trigger_mode: TriggerMode | None = None
+    cooldown_seconds: int | None = None
+    expires_at: datetime | None = None
+    explain: bool | None = None
+    channels: tuple[DeliveryChannelKind, ...] | None = None
+    quiet_hours: QuietHours | None = None
+    daily_limit: int | None = None
+
+
+class BriefSymbols(BaseModel):
+    """The user's own symbols the morning brief reports on, taken from their watchlist groups."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tw_stocks: tuple[str, ...] = ()
+    us_stocks: tuple[str, ...] = ()
+    etfs: tuple[str, ...] = ()
 
 
 class AlertPreference(BaseModel):
@@ -170,8 +208,9 @@ class AlertPreference(BaseModel):
     channels: tuple[DeliveryChannelKind, ...] = Field(default_factory=tuple)
     enabled_categories: tuple[str, ...] = Field(default_factory=tuple)
     quiet_hours: QuietHours | None = None
-    daily_limit: int | None = None
     morning_digest: bool = False
+    digest_thread_id: str | None = None
+    timezone: str = DEFAULT_TIMEZONE
     updated_at: datetime
 
 
@@ -222,11 +261,9 @@ def dedupe_key_for(*, source_id: str, trigger_date: str, channel: DeliveryChanne
 
 
 __all__ = [
-    "AlertCondition",
-    "AlertConditionType",
+    "AlertPatch",
     "AlertPreference",
     "AlertRule",
-    "Comparator",
     "DeliveryChannelKind",
     "DevicePlatform",
     "DevicePushToken",
@@ -239,6 +276,7 @@ __all__ = [
     "ScheduleAction",
     "ScheduleJob",
     "ScheduleTrigger",
+    "TriggerMode",
     "TriggerType",
     "dedupe_key_for",
 ]

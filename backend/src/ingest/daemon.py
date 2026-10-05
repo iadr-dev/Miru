@@ -74,6 +74,7 @@ from ingest.jobs import (
 )
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
+from ingest.publisher_binding import resolve_data_update_publisher
 from ingest.store import ParquetStore
 from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_price_eod
 from ingest.us_universe import job_us_symbol_universe
@@ -419,10 +420,12 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     """Assemble the job context from config — the FinMind adapter, the leader-only Parquet writer,
     the shared leader-election seam, and the trading-day calendar. No network I/O at construction.
 
-    The batch-completion invalidation publisher is left at its no-op default: the concrete
-    cross-process transport lives in an upper layer the ingest layer may not import under the
-    one-way dependency rule, so an ingest-owned composition can only bind the seam's no-op. The
-    partition still lands; clients fall back to boundary-anchored revalidation.
+    The batch-completion invalidation publisher (`data.updated`) is bound from config: the concrete
+    cross-process transport lives in `events/`, which the ingest layer may not import under the
+    one-way dependency rule, so `resolve_data_update_publisher` finds it by its configured
+    `"module:callable"` name. With the in-memory bus, an empty setting, or any wiring problem it
+    degrades to the seam's no-op — the partition still lands and clients fall back to
+    boundary-anchored revalidation / the alert sweep.
 
     `async def` (not sync) so it can `await ensure_schema_for(...)` on the caller's own already-
     running startup loop — this project's sole schema-provisioning mechanism for the relational
@@ -444,6 +447,7 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
         session_factory=session_factory,
         # Only the US whole-market jobs (`ingest/us_jobs.py`) use this.
         yfinance=YFinanceAdapter(),
+        data_update_publisher=resolve_data_update_publisher(resolved),
     )
 
 

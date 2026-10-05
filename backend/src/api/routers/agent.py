@@ -53,6 +53,9 @@ class AgentQueryRequest(BaseModel):
     web_search: bool = False
     locale: str = "zh-TW"
     attachments: tuple[AttachmentInput, ...] = Field(default_factory=tuple)
+    # The composer's model pick, sent WITH the message so the very first turn of a new chat honors
+    # it (a separate PATCH /threads can only land after the thread exists, i.e. after this turn).
+    model: str | None = Field(default=None, max_length=200)
 
 
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
@@ -72,6 +75,10 @@ async def agent_query(
     ctx = tool_context_for(user, state)
     await enforce_pre_turn_gate(state, session, user)
     thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
+    if body.model is not None and body.model != thread.model_override:
+        thread = await store.update_thread(
+            user_id=user.id, thread_id=thread.id, model_override=body.model
+        )
     thread_id = thread.id
 
     augmented_message, images, attachment_blocks = await process_attachments(

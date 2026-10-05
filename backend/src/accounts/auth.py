@@ -71,6 +71,11 @@ def _require_secret(settings: Settings) -> str:
     return settings.jwt_secret_key
 
 
+def require_jwt_secret(settings: Settings) -> str:
+    """The server signing secret; raises `AuthConfigError` when unset (never an empty fallback)."""
+    return _require_secret(settings)
+
+
 def issue_access_token(*, user_id: str, settings: Settings | None = None) -> str:
     settings = settings or get_settings()
     secret = _require_secret(settings)
@@ -93,8 +98,9 @@ def decode_access_token(token: str, *, settings: Settings | None = None) -> str:
     except jwt.PyJWTError as exc:
         raise InvalidAccessTokenError("access token invalid or expired") from exc
     subject = payload.get("sub")
-    if not isinstance(subject, str):
-        raise InvalidAccessTokenError("access token missing subject")
+    if payload.get("typ") != "access" or not isinstance(subject, str):
+        # Other signed tokens (e.g. OAuth start tickets) are never a session.
+        raise InvalidAccessTokenError("access token missing subject or wrong type")
     return subject
 
 
@@ -244,4 +250,5 @@ __all__ = [
     "SqlAlchemySessionStore",
     "decode_access_token",
     "issue_access_token",
+    "require_jwt_secret",
 ]

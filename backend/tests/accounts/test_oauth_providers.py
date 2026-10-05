@@ -19,6 +19,7 @@ from accounts.oauth_providers import (
     IdentityVerificationError,
     LineOAuthProvider,
     OAuthConfigError,
+    TelegramOAuthProvider,
     TokenExchangeError,
     build_provider_client,
 )
@@ -203,3 +204,110 @@ def test_build_provider_client_dispatch() -> None:
     settings = _settings()
     assert isinstance(build_provider_client(OAuthProvider.GOOGLE, settings), GoogleOAuthProvider)
     assert isinstance(build_provider_client(OAuthProvider.LINE, settings), LineOAuthProvider)
+
+
+# ---- Log in with Telegram (OIDC) -----------------------------------------------------------------
+
+
+def _telegram_settings() -> Settings:
+    return Settings(
+        telegram_bot_token="8830287122:fake-token",
+        telegram_login_client_secret="tg-secret",
+        telegram_login_redirect_uri="https://app.example/cb/telegram",
+    )
+
+
+def test_telegram_client_id_defaults_to_the_bots_id_and_never_asks_for_the_phone() -> None:
+    provider = TelegramOAuthProvider(_telegram_settings())
+    url = provider.build_authorization_url(state="st", code_challenge="chal", nonce="n0")
+    qs = parse_qs(urlparse(url).query)
+    assert url.startswith("https://oauth.telegram.org/auth?")
+    assert qs["client_id"] == ["8830287122"]
+    assert qs["code_challenge_method"] == ["S256"]
+    assert qs["scope"] == ["openid profile"]  # never the phone number
+
+
+def test_telegram_needs_pkce_and_configuration() -> None:
+    with pytest.raises(OAuthConfigError):
+        TelegramOAuthProvider(
+            Settings(
+                telegram_bot_token="1:x",
+                telegram_login_client_secret=None,
+                telegram_login_redirect_uri=None,
+            )
+        )
+    with pytest.raises(OAuthConfigError):
+        TelegramOAuthProvider(_telegram_settings()).build_authorization_url(state="s")
+
+
+async def test_telegram_code_exchange_uses_basic_auth() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["auth"] = request.headers.get("authorization", "")
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"access_token": "a", "id_token": "t"})
+
+    provider = TelegramOAuthProvider(
+        _telegram_settings(), client_factory=_mock_client_factory(handler)
+    )
+    tokens = await provider.exchange_code(code="c", code_verifier="v")
+    assert tokens.id_token == "t"
+    assert seen["url"] == "https://oauth.telegram.org/token"
+    assert seen["auth"].startswith("Basic ")
+
+
+def _telegram_token(key: Any, **overrides: Any) -> str:
+    claims = {
+        "sub": "123456789",
+        "aud": "8830287122",
+        "iss": "https://oauth.telegram.org",
+        "exp": int(time.time()) + 300,
+        "name": "Ray",
+        "preferred_username": "ray",
+        **overrides,
+    }
+    return jwt.encode(claims, key, algorithm="RS256")
+
+
+async def test_telegram_verify_id_token_has_no_email() -> None:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    provider = TelegramOAuthProvider(
+        _telegram_settings(), signing_key_client=_StubSigningKeyClient(key.public_key())
+    )
+    identity = await provider.verify_id_token(_telegram_token(key))
+    assert identity.provider is OAuthProvider.TELEGRAM
+    assert identity.provider_account_id == "123456789"
+    assert identity.email is None
+    assert identity.name == "Ray"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"aud": "someone-else"}, {"iss": "https://evil.example"}, {"exp": 1}],
+)
+async def test_telegram_verify_rejects_bad_claims(overrides: dict[str, Any]) -> None:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    provider = TelegramOAuthProvider(
+        _telegram_settings(), signing_key_client=_StubSigningKeyClient(key.public_key())
+    )
+    with pytest.raises(IdentityVerificationError):
+        await provider.verify_id_token(_telegram_token(key, **overrides))
+
+
+async def test_telegram_verify_rejects_a_wrong_nonce_and_a_foreign_signature() -> None:
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    provider = TelegramOAuthProvider(
+        _telegram_settings(), signing_key_client=_StubSigningKeyClient(key.public_key())
+    )
+    with pytest.raises(IdentityVerificationError):
+        await provider.verify_id_token(_telegram_token(key, nonce="other"), nonce="mine")
+    forged = _telegram_token(rsa.generate_private_key(public_exponent=65537, key_size=2048))
+    with pytest.raises(IdentityVerificationError):
+        await provider.verify_id_token(forged)
+
+
+def test_build_provider_client_dispatches_telegram() -> None:
+    assert isinstance(
+        build_provider_client(OAuthProvider.TELEGRAM, _telegram_settings()), TelegramOAuthProvider
+    )

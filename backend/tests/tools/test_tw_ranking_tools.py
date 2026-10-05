@@ -356,3 +356,42 @@ async def test_degrades_honestly_with_no_ingested_data(tmp_path: Path) -> None:
     assert output.data_available is False
     assert output.unavailable_reason is not None
     assert output.rows == ()
+
+
+async def test_full_ranking_is_cached_and_recomputed_after_ingest_writes_a_new_date(
+    tmp_path: Path,
+) -> None:
+    """The whole-market ranking is computed once per kind; `top_n`/`symbol` only slice it. A new
+    `date=` partition changes the store fingerprint, so the next call reflects it."""
+
+    def row(symbol: str, today: int, yesterday: int) -> dict[str, object]:
+        return {
+            "symbol": symbol,
+            "trade_date": _TODAY.isoformat(),
+            "margin_purchase_today_balance": today,
+            "margin_purchase_yesterday_balance": yesterday,
+        }
+
+    store = ParquetStore(root=tmp_path)
+    _write_stock_info(store)
+    store.write_partition(MARGIN_SHORT_JOB.dataset, "TW", _TODAY, [row("2330", 2000, 1000)])
+    tool = GetTwMarketRankingsTool(store)
+    kind = TwRankingKind.MARGIN_CHANGE
+
+    first = await tool.run(GetTwMarketRankingsInput(kind=kind), ToolContext())
+    assert [r.symbol for r in first.rows] == ["2330"]
+
+    # Same data, different slice: served from the cached full ranking, no re-read.
+    reads: list[str] = []
+    real_read = store.read_partition
+    store.read_partition = lambda *a, **k: (reads.append("read"), real_read(*a, **k))[1]  # type: ignore[method-assign]
+    single = await tool.run(GetTwMarketRankingsInput(kind=kind, symbol="2330"), ToolContext())
+    assert [r.symbol for r in single.rows] == ["2330"]
+    assert reads == []
+
+    store.read_partition = real_read  # type: ignore[method-assign]
+    next_day = date(2025, 6, 3)
+    store.write_partition(MARGIN_SHORT_JOB.dataset, "TW", next_day, [row("2454", 9000, 1000)])
+    fresh = await tool.run(GetTwMarketRankingsInput(kind=kind), ToolContext())
+    assert fresh.trade_date == next_day
+    assert [r.symbol for r in fresh.rows] == ["2454"]

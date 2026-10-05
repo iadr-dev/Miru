@@ -106,7 +106,12 @@ class DerivedStoreReader(Protocol):
     Parquet reader class."""
 
     def read_range(
-        self, dataset: str, market: str, run_dates: Sequence[date_]
+        self,
+        dataset: str,
+        market: str,
+        run_dates: Sequence[date_],
+        *,
+        symbols: Sequence[str] | None = None,
     ) -> list[dict[str, object]]: ...
 
 
@@ -332,7 +337,7 @@ def load_symbol_month_revenue(
     """Read this symbol's monthly-revenue filings back from the derived store across the given
     ingest-run-date partitions. Reads only the whole-market-ingested dataset; never a live
     per-symbol source call."""
-    rows = reader.read_range(MONTH_REVENUE_DATASET, market.value, run_dates)
+    rows = reader.read_range(MONTH_REVENUE_DATASET, market.value, run_dates, symbols=[symbol])
     return [row for row in parse_month_revenue_rows(rows) if row.symbol == symbol]
 
 
@@ -420,7 +425,7 @@ def load_symbol_financials(
     whole-market-ingested datasets; never a live per-symbol source call."""
     lines: list[FinancialStatementLine] = []
     for dataset in (FINANCIALS_DATASET, BALANCE_SHEET_DATASET, CASH_FLOW_DATASET):
-        rows = reader.read_range(dataset, market.value, run_dates)
+        rows = reader.read_range(dataset, market.value, run_dates, symbols=[symbol])
         lines.extend(line for line in parse_statement_lines(rows) if line.symbol == symbol)
     return lines
 
@@ -435,7 +440,7 @@ def load_symbol_market_value(
     """The most recent ingested market-cap value for this symbol, or `None` if the market-value
     dataset was never ingested for it (the Sponsor-tier dataset may be absent) — the value factor
     then degrades gracefully rather than fabricating a capitalization."""
-    rows = reader.read_range(MARKET_VALUE_DATASET, market.value, run_dates)
+    rows = reader.read_range(MARKET_VALUE_DATASET, market.value, run_dates, symbols=[symbol])
     matched = [row for row in parse_market_value_rows(rows) if row.symbol == symbol]
     if not matched:
         return None

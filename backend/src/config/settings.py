@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from schemas.enums import TLSPolicy
@@ -102,23 +103,38 @@ class Settings(BaseSettings):
     line_channel_id: str | None = None
     line_channel_secret: str | None = None
     line_redirect_uri: str | None = None
+    # Log in with Telegram (OpenID Connect). Register the redirect URI under the bot's "Login
+    # Widget" in @BotFather; it shows the client id (the bot's numeric id — derived from
+    # TELEGRAM_BOT_TOKEN when unset) and the client secret.
+    telegram_login_client_id: str | None = None
+    telegram_login_client_secret: str | None = None
+    telegram_login_redirect_uri: str | None = None
 
     # ---- Notification delivery channels (modules/14) — distinct from LINE Login above ----
-    line_messaging_channel_access_token: str | None = None
+    line_messaging_channel_access_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "line_messaging_channel_access_token", "line_messaging_access_token"
+        ),
+    )
+    # The official account's basic id (e.g. "@123abcde"), used to build the add-friend link.
+    line_bot_basic_id: str | None = None
     line_messaging_channel_secret: str | None = None
     telegram_bot_token: str | None = None
+    telegram_bot_username: str | None = None
     telegram_webhook_secret: str | None = None
-    email_smtp_host: str | None = None
-    email_smtp_port: int = 587
-    email_smtp_username: str | None = None
-    email_smtp_password: str | None = None
+    # Email goes out through Resend's HTTP API. The from-address must be on a domain verified in
+    # Resend (SPF/DKIM), e.g. "Miru <alerts@your-domain.com>".
+    resend_api_key: str | None = None
+    # Signing secret (`whsec_…`) Resend shows when the webhook is added in its dashboard; without it
+    # the bounce/complaint webhook refuses every request.
+    resend_webhook_secret: str | None = None
     email_from_address: str | None = None
-    apns_key_id: str | None = None
-    apns_team_id: str | None = None
-    apns_bundle_id: str | None = None
-    apns_auth_key: str | None = None
-    fcm_project_id: str | None = None
-    fcm_service_account_json: str | None = None
+    # Browser notifications (Web Push, VAPID). The public key is handed to the browser so it can
+    # subscribe; the private key signs each push and never leaves the server.
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_subject: str = "mailto:noreply@miru.app"
 
     # ---- Paddle / billing (modules/15) — MoR; webhook is entitlement source of truth ----
     paddle_api_key: str | None = None
@@ -156,6 +172,10 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     rate_limit_key_prefix: str = "ratelimit"
     data_updated_key_prefix: str = "data.updated"
+    # "module:callable" the ingest process resolves to build its real `data.updated` publisher.
+    # Named rather than imported because `ingest/` sits below `events/` and may not import it;
+    # empty disables binding (ingest keeps the no-op). See `ingest.publisher_binding`.
+    ingest_data_update_publisher_factory: str = "events.ingest_wiring:build_data_update_publisher"
 
     # FinMind sponsor-pool quota (usage/finmind_pool.py)
     finmind_pool_key_prefix: str = "finmind:pool"

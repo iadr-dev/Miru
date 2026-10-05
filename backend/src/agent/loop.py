@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import cast
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent import guardrails
 from agent.context_window import compact
@@ -99,6 +99,24 @@ class RichCard(BaseModel):
 
     card_type: str = Field(min_length=1)
     data: dict[str, object] = Field(default_factory=dict)
+
+
+_MAX_VALIDATION_FEEDBACK_CHARS = 700
+
+
+def _validation_feedback(tool_name: str, exc: ValidationError) -> str:
+    """The tool-error text shown to the model for rejected arguments: each offending field with
+    pydantic's own message (which names the valid options for an enum), and nothing the model
+    sent — `include_input=False` keeps the rejected value out of the feedback."""
+    problems: list[str] = []
+    for error in exc.errors(include_url=False, include_input=False, include_context=False):
+        where = ".".join(str(part) for part in error["loc"]) or "arguments"
+        problems.append(f"{where}: {error['msg']}")
+    text = (
+        f"invalid arguments for {tool_name}: {'; '.join(problems)}. "
+        "Fix the arguments and call the tool again."
+    )
+    return text[:_MAX_VALIDATION_FEEDBACK_CHARS]
 
 
 def _build_card(card_type: str, result: BaseModel) -> RichCard:
@@ -239,6 +257,7 @@ class AgentLoop:
         thinking_hooks: list[ThinkingHook] | None = None,
         answer_delta_hooks: list[AnswerDeltaHook] | None = None,
         web_search_hooks: list[WebSearchHook] | None = None,
+        hide_cards_for: frozenset[str] = frozenset(),
         steering_source: SteeringSource | None = None,
         cancel_token: CancelToken | None = None,
         native_web_search: bool = False,
@@ -261,6 +280,7 @@ class AgentLoop:
         self._thinking_hooks: list[ThinkingHook] = thinking_hooks or []
         self._answer_delta_hooks: list[AnswerDeltaHook] = answer_delta_hooks or []
         self._web_search_hooks: list[WebSearchHook] = web_search_hooks or []
+        self._hide_cards_for = hide_cards_for
         self._steering_source = steering_source
         self._cancel_token = cancel_token
         self._native_web_search = native_web_search
@@ -617,7 +637,30 @@ class AgentLoop:
                 None,
             )
 
-        args = tool.input_model.model_validate(arguments)
+        try:
+            args = tool.input_model.model_validate(arguments)
+        except ValidationError as exc:
+            # A model that mistypes one argument (a wrong enum value, a missing field) must be told
+            # and given the chance to retry — not have its whole turn killed by an exception. The
+            # feedback names the field and the valid options but never echoes the rejected value.
+            feedback = _validation_feedback(tool_name, exc)
+            journal.record_tool_call(
+                step_index=step_index,
+                tool_name=tool_name,
+                arguments_keys=argument_keys,
+                result_summary="invalid arguments",
+                guardrail_allowed=True,
+                guardrail_reason=None,
+            )
+            await self._run_post_tool_hooks(
+                step_index=step_index,
+                tool_name=tool_name,
+                argument_keys=argument_keys,
+                result_summary="invalid arguments",
+                guardrail_allowed=True,
+                guardrail_reason=None,
+            )
+            return ToolResultPart(tool_call_id=tool_call_id, content=feedback, is_error=True), None
         result = await dispatch_tool(tool, args, ctx)
         summary = _summarize_result(result)
         masked = isinstance(result, MaskedTeaser)
@@ -656,7 +699,7 @@ class AgentLoop:
         """Build a governed `RichCard` for a card-opted-in tool's dispatched result — `None`
         for the vast majority of tools that haven't opted in (`Tool.card_type` stays `None`)."""
         card_type = getattr(tool, "card_type", None)
-        if card_type is None:
+        if card_type is None or tool.name in self._hide_cards_for:
             return None
         return _build_card(card_type, result)
 

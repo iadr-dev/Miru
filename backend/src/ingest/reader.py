@@ -91,7 +91,12 @@ class ParquetMarketDataReader:
         return [dict(zip(columns, row, strict=True)) for row in relation.fetchall()]
 
     def read_range(
-        self, dataset: str, market: str, run_dates: Sequence[date_]
+        self,
+        dataset: str,
+        market: str,
+        run_dates: Sequence[date_],
+        *,
+        symbols: Sequence[str] | None = None,
     ) -> list[dict[str, object]]:
         """Read several date partitions in order, silently skipping any never-ingested date. Each
         partition is still resolved through its own manifest, so this is `read_partition` applied
@@ -99,7 +104,10 @@ class ParquetMarketDataReader:
         rows: list[dict[str, object]] = []
         for run_date in run_dates:
             rows.extend(self.read_partition(dataset, market, run_date))
-        return rows
+        if symbols is None:
+            return rows
+        wanted = set(symbols)
+        return [row for row in rows if row.get("symbol") in wanted]
 
     def has_partition(self, dataset: str, market: str, run_date: date_) -> bool:
         """Whether a resolvable (manifest-pointed, version-present) partition exists — lets a

@@ -25,7 +25,7 @@ from ingest.us_jobs import (
     job_us_price_eod,
 )
 from ingest.us_universe import US_SYMBOL_UNIVERSE_DATASET
-from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
+from schemas.enums import Capability, DataClass, Market, Tier, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from sources.finmind import FinMindAdapter
@@ -357,3 +357,193 @@ async def test_backfill_us_price_range_throttles_between_dates(
     # 3 dates, 2 pauses (never before the first call).
     assert len(runs) == 3
     assert len(sleep_calls) == 2
+
+
+# ---- user-demanded symbols: alerts outside the screener universe still get price data -----------
+
+from collections.abc import AsyncGenerator  # noqa: E402
+from dataclasses import replace  # noqa: E402
+from datetime import UTC, datetime  # noqa: E402
+
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from db.base import Base  # noqa: E402
+from db.models import AlertRuleRow, WatchlistItemRow, WatchlistRow  # noqa: E402
+from db.sqlite_pragma import enable_sqlite_foreign_keys  # noqa: E402
+from ingest.us_jobs import MAX_DEMANDED_US_SYMBOLS, demanded_us_symbols  # noqa: E402
+from tests.scheduler.conftest import insert_user  # noqa: E402
+
+_NOW = datetime(2026, 10, 1, tzinfo=UTC)
+
+
+@pytest.fixture
+async def session_factory() -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    enable_sqlite_foreign_keys(engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    await engine.dispose()
+
+
+async def _add_rule(  # noqa: PLR0913 - one keyword per rule column under test
+    factory: async_sessionmaker[AsyncSession],
+    user: str,
+    *,
+    rule_id: str,
+    symbol: str | None = None,
+    market: str | None = "US",
+    watchlist_id: str | None = None,
+    enabled: bool = True,
+) -> None:
+    async with factory() as session:
+        session.add(
+            AlertRuleRow(
+                id=rule_id,
+                user_id=user,
+                symbol=symbol,
+                market=market if symbol is not None else None,
+                watchlist_id=watchlist_id,
+                condition={"kind": "attention_entry"},
+                enabled=enabled,
+                created_at=_NOW,
+                updated_at=_NOW,
+            )
+        )
+        await session.commit()
+
+
+async def _add_watchlist(
+    factory: async_sessionmaker[AsyncSession], user: str, members: list[tuple[str, str]]
+) -> None:
+    async with factory() as session:
+        session.add(
+            WatchlistRow(
+                id="wl",
+                user_id=user,
+                name="w",
+                market="US",
+                asset_class="stock",
+                sort_order="a",
+                created_at=_NOW,
+                updated_at=_NOW,
+            )
+        )
+        await session.flush()
+        for i, (symbol, market) in enumerate(members):
+            session.add(
+                WatchlistItemRow(
+                    id=f"i{i}",
+                    watchlist_id="wl",
+                    user_id=user,
+                    symbol=symbol,
+                    market=market,
+                    asset_class="stock",
+                    sort_order=str(i),
+                    added_at=_NOW,
+                )
+            )
+        await session.commit()
+
+
+async def test_demanded_symbols_is_empty_without_a_database(tmp_path: object) -> None:
+    assert await demanded_us_symbols(_ctx(tmp_path)) == []
+
+
+async def test_demanded_symbols_collects_enabled_us_alerts_only(
+    tmp_path: object, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _add_rule(session_factory, user, rule_id="a", symbol="NVDA")
+    await _add_rule(session_factory, user, rule_id="b", symbol="tsla")  # stored lower-case
+    await _add_rule(session_factory, user, rule_id="c", symbol="AMD", enabled=False)
+    await _add_rule(session_factory, user, rule_id="d", symbol="2330", market="TW")
+    ctx = replace(_ctx(tmp_path), session_factory=session_factory)
+    assert await demanded_us_symbols(ctx) == ["NVDA", "TSLA"]
+
+
+async def test_demanded_symbols_includes_us_members_of_watchlist_scoped_rules(
+    tmp_path: object, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _add_watchlist(session_factory, user, [("AAPL", "US"), ("MSFT", "US"), ("2330", "TW")])
+    await _add_rule(session_factory, user, rule_id="w", market=None, watchlist_id="wl")
+    ctx = replace(_ctx(tmp_path), session_factory=session_factory)
+    assert await demanded_us_symbols(ctx) == ["AAPL", "MSFT"]  # the TW member is not US demand
+
+
+async def test_a_watchlist_without_an_enabled_rule_adds_no_demand(
+    tmp_path: object, session_factory: async_sessionmaker[AsyncSession]
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _add_watchlist(session_factory, user, [("AAPL", "US")])
+    await _add_rule(
+        session_factory, user, rule_id="w", market=None, watchlist_id="wl", enabled=False
+    )
+    ctx = replace(_ctx(tmp_path), session_factory=session_factory)
+    assert await demanded_us_symbols(ctx) == []
+
+
+async def test_demanded_symbols_are_capped_deterministically(
+    tmp_path: object,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    for i, symbol in enumerate(["CCC", "AAA", "BBB", "DDD"]):
+        await _add_rule(session_factory, user, rule_id=str(i), symbol=symbol)
+    monkeypatch.setattr(us_jobs_module, "MAX_DEMANDED_US_SYMBOLS", 2)
+    ctx = replace(_ctx(tmp_path), session_factory=session_factory)
+    assert await demanded_us_symbols(ctx) == ["AAA", "BBB"]
+    assert MAX_DEMANDED_US_SYMBOLS >= 100  # the real cap is a sane size, not a token one
+
+
+async def test_price_job_fetches_alerted_symbols_even_with_no_universe(
+    tmp_path: object,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _add_rule(session_factory, user, rule_id="a", symbol="AAPL")
+    ctx = replace(_ctx(tmp_path), session_factory=session_factory)
+    trading_day = date(2024, 1, 2)
+    requested: list[list[str]] = []
+
+    async def fake_download(symbols: list[str], **_kwargs: object) -> pd.DataFrame:
+        requested.append(list(symbols))
+        return _two_symbol_frame(trading_day)
+
+    monkeypatch.setattr(us_jobs_module, "batch_download", fake_download)
+
+    run = await job_us_price_eod(trading_day, ctx)
+
+    assert run.status is RunStatus.SUCCESS  # previously SKIPPED: "no US symbol universe yet"
+    assert requested == [["AAPL", "SPY"]]  # the alerted symbol + the always-on reference index
+
+
+async def test_price_job_merges_universe_and_demand_without_duplicating_spy(
+    tmp_path: object,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _add_rule(session_factory, user, rule_id="a", symbol="AAPL")  # also in the universe
+    await _add_rule(session_factory, user, rule_id="b", symbol="SPY")  # demanded reference index
+    ctx = replace(_ctx(tmp_path), session_factory=session_factory)
+    trading_day = date(2024, 1, 2)
+    _seed_universe(ctx, trading_day, ["AAPL", "MSFT"])
+    requested: list[list[str]] = []
+
+    async def fake_download(symbols: list[str], **_kwargs: object) -> pd.DataFrame:
+        requested.append(list(symbols))
+        return _two_symbol_frame(trading_day)
+
+    monkeypatch.setattr(us_jobs_module, "batch_download", fake_download)
+
+    await job_us_price_eod(trading_day, ctx)
+
+    assert requested == [["AAPL", "MSFT", "SPY"]]  # merged, de-duplicated, SPY exactly once

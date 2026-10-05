@@ -26,6 +26,8 @@ dependencies = [
   "selectolax>=0.4.11",
   "fastmcp>=3.4.5",
   "redis>=8.1.0",
+  "holidays>=0.105",
+  "pywebpush>=2.5.0",
 ]
 
 [project.optional-dependencies]
@@ -135,6 +137,10 @@ allowed-confusables = ["，", "；", "：", "（", "）", "、", "。", "「", "
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 include = ["src"]
+# Resolve third-party imports (pydantic, sqlalchemy...) from the uv venv; without this a bare
+# `pyright` run cannot find them and reports hundreds of phantom "unknown type" errors.
+venvPath = "."
+venv = ".venv"
 reportMissingTypeStubs = false
 reportUnknownMemberType = "warning" # pandas/duckdb dynamic edges
 

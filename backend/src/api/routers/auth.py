@@ -12,8 +12,14 @@ resolved tier flows through `entitlements`/`ToolContext` on every downstream cal
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
+import hashlib
+import hmac
+import secrets
+import time
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode, urlsplit
 
+import jwt
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -21,11 +27,13 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.auth import (
+    AuthConfigError,
     RefreshTokenInvalidError,
     RefreshTokenReuseError,
     SessionStore,
     SqlAlchemySessionStore,
     issue_access_token,
+    require_jwt_secret,
 )
 from accounts.entitlements import entitlement_view
 from accounts.models import EntitlementView, OAuthAccount, OAuthProvider, User
@@ -42,7 +50,6 @@ from accounts.oauth_providers import (
 )
 from accounts.store import (
     LastLoginMethodError,
-    ProviderAlreadyLinkedError,
     UserStore,
 )
 from api.dependencies import (
@@ -191,6 +198,7 @@ async def begin_oauth(
 @router.post("/auth/oauth/{provider}/link")
 async def begin_oauth_link(
     provider: str,
+    request: Request,
     response: Response,
     user: User = Depends(require_user),
     state: AppState = Depends(get_state),
@@ -207,6 +215,15 @@ async def begin_oauth_link(
             message=f"{oauth_provider.value} sign-in is not configured.",
             retryable=False,
         ) from exc
+    if _callback_is_on_another_origin(state.settings, oauth_provider, request):
+        # The provider will send the browser back to a different origin (e.g. an HTTPS tunnel —
+        # Telegram accepts only HTTPS redirect URIs), where the flow cookies set here would not be
+        # sent. So the flow starts on that origin instead, via a short-lived signed ticket.
+        ticket = _make_start_ticket(state.settings, user.id, oauth_provider)
+        base = state.settings.webhook_base_url.rstrip("/")
+        return BeginAuthResponse(
+            authorization_url=f"{base}/api/v1/auth/oauth/{oauth_provider.value}/start?ticket={ticket}"
+        )
     _set_flow_cookies(
         response,
         state.settings,
@@ -216,6 +233,118 @@ async def begin_oauth_link(
         link_user_id=user.id,
     )
     return BeginAuthResponse(authorization_url=auth_request.authorization_url)
+
+
+@router.get("/auth/oauth/{provider}/start")
+async def start_ticketed_link(
+    provider: str,
+    ticket: str = Query(min_length=10, max_length=600),
+    state: AppState = Depends(get_state),
+) -> RedirectResponse:
+    """Second half of a link started from another origin: redeem the ticket, set the flow cookies
+    on *this* origin (the one the provider will redirect back to), and send the browser on to the
+    provider. A forged or expired ticket goes to the error screen."""
+    oauth_provider = _parse_provider(provider)
+    user_id = _read_start_ticket(state.settings, ticket, oauth_provider)
+    if user_id is None:
+        return _oauth_error_redirect(
+            state.settings, provider, code="oauth_state_mismatch", retryable=False
+        )
+    try:
+        auth_request = start_authorization(oauth_provider, state.settings)
+    except OAuthConfigError:
+        return _oauth_error_redirect(state.settings, provider, code="oauth_failed", retryable=False)
+    redirect = RedirectResponse(
+        url=auth_request.authorization_url, status_code=status.HTTP_302_FOUND
+    )
+    _set_flow_cookies(
+        redirect,
+        state.settings,
+        state=auth_request.state,
+        code_verifier=auth_request.code_verifier,
+        nonce=auth_request.nonce,
+        link_user_id=user_id,
+    )
+    return redirect
+
+
+_START_TICKET_SECONDS = 120
+
+
+def _redirect_uri(settings: Settings, provider: OAuthProvider) -> str | None:
+    return {
+        OAuthProvider.GOOGLE: settings.google_redirect_uri,
+        OAuthProvider.LINE: settings.line_redirect_uri,
+        OAuthProvider.TELEGRAM: settings.telegram_login_redirect_uri,
+    }[provider]
+
+
+def _origin(url: str) -> str:
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}".lower()
+
+
+def _callback_is_on_another_origin(
+    settings: Settings, provider: OAuthProvider, request: Request
+) -> bool:
+    redirect_uri = _redirect_uri(settings, provider)
+    if not redirect_uri:
+        return False
+    return _origin(redirect_uri) != _origin(str(request.base_url))
+
+
+_START_TICKET_AUDIENCE = "oauth-start"
+# Single-use: jti -> expiry. In-process is enough because tickets exist only for the cross-origin
+# (tunnel) link flow; a same-origin deployment never issues one.
+_used_start_tickets: dict[str, float] = {}
+
+
+def _start_ticket_key(settings: Settings) -> str:
+    """A key derived from the server secret for this one purpose, so an access token can never pass
+    as a ticket (or the reverse) and an unset secret fails closed instead of signing with ''."""
+    secret = require_jwt_secret(settings)
+    return hmac.new(secret.encode(), b"oauth-start-ticket", hashlib.sha256).hexdigest()
+
+
+def _make_start_ticket(settings: Settings, user_id: str, provider: OAuthProvider) -> str:
+    claims = {
+        "sub": user_id,
+        "prv": provider.value,
+        "typ": "oauth_start",
+        "aud": _START_TICKET_AUDIENCE,
+        "jti": secrets.token_urlsafe(16),
+        "exp": datetime.now(UTC) + timedelta(seconds=_START_TICKET_SECONDS),
+    }
+    return jwt.encode(claims, _start_ticket_key(settings), algorithm="HS256")
+
+
+def _read_start_ticket(settings: Settings, ticket: str, provider: OAuthProvider) -> str | None:
+    """The user id a valid, unused ticket names (and marks it used), else None."""
+    try:
+        claims = jwt.decode(
+            ticket,
+            _start_ticket_key(settings),
+            algorithms=["HS256"],
+            audience=_START_TICKET_AUDIENCE,
+            options={"require": ["exp", "sub", "prv", "jti", "aud"]},
+        )
+    except (jwt.PyJWTError, AuthConfigError):
+        return None
+    subject, jti = claims.get("sub"), claims.get("jti")
+    if (
+        claims.get("prv") != provider.value
+        or claims.get("typ") != "oauth_start"
+        or not isinstance(subject, str)
+        or not isinstance(jti, str)
+    ):
+        return None
+    now = time.time()
+    for key in [k for k, expiry in _used_start_tickets.items() if expiry < now]:
+        del _used_start_tickets[key]
+    if jti in _used_start_tickets:
+        return None
+    _used_start_tickets[jti] = now + _START_TICKET_SECONDS
+    return subject
 
 
 class MeResponse(BaseModel):
@@ -286,18 +415,16 @@ async def oauth_callback(
         )
     except (TokenExchangeError, IdentityVerificationError):
         return _oauth_error_redirect(state.settings, provider, code="oauth_failed", retryable=True)
-    except ProviderAlreadyLinkedError:
-        return _oauth_error_redirect(
-            state.settings, provider, code="provider_already_linked", retryable=False
-        )
 
     _, refresh_token = await session_store.create(
         user_id=user.id,
         user_agent=request.headers.get("user-agent"),
         ip=request.client.host if request.client else None,
     )
+    # Linking returns to where it was started; a sign-in lands in chat.
+    landing = "/settings/connections" if link_user_id else "/chat"
     redirect = RedirectResponse(
-        url=_frontend_url(state.settings, "/chat"), status_code=status.HTTP_302_FOUND
+        url=_frontend_url(state.settings, landing), status_code=status.HTTP_302_FOUND
     )
     _clear_flow_cookies(redirect)
     _issue_session_cookies(redirect, state.settings, user_id=user.id, refresh_token=refresh_token)

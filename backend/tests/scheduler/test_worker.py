@@ -12,14 +12,13 @@ import pytest
 from accounts.entitlements import TierLimits
 from accounts.hooks import EntitlementResolver
 from agent.guardrails import REDACTION_NOTICE, check_output
+from agent.loop import RichCard
+from conversation.models import MessageBlockType
+from conversation.store import SqlAlchemyConversationStore
 from ingest.leader import AlwaysLeader, NeverLeader
 from orchestrator.models import OrchestratorResult, Routing
 from scheduler.delivery.channels import InAppChannel
 from scheduler.models import (
-    AlertCondition,
-    AlertConditionType,
-    AlertRule,
-    Comparator,
     DeliveryChannelKind,
     JobStatus,
     NotificationSource,
@@ -29,11 +28,10 @@ from scheduler.models import (
 )
 from scheduler.quota import AllowAllQuotaGate, DenyAllQuotaGate, UsageQuotaGate
 from scheduler.store import SqlAlchemySchedulerStore
-from scheduler.worker import SchedulerContext, SchedulerWorker, build_scheduler_worker
+from scheduler.worker import SchedulerContext, SchedulerWorker, as_utc, build_scheduler_worker
 from schemas.enums import (
     Capability,
     DataClass,
-    Market,
     Tier,
     TimingClass,
 )
@@ -118,20 +116,6 @@ async def _make_job(session_factory, user_id: str, **kwargs):
         )
         await session.commit()
         return job
-
-
-def _alert(user_id: str, condition: AlertCondition) -> AlertRule:
-    now = datetime.now(UTC)
-    return AlertRule(
-        id="alert-x",
-        user_id=user_id,
-        symbol="2330",
-        market=Market.TW,
-        condition=condition,
-        channels=(DeliveryChannelKind.IN_APP,),
-        created_at=now,
-        updated_at=now,
-    )
 
 
 async def test_not_leader_skips_without_crash(session_factory) -> None:
@@ -246,8 +230,9 @@ async def test_usage_quota_gate_skips_over_finite_cap(session_factory) -> None:
         assert await gate.allows(user_id=user, tier=Tier.FREE) is False
 
 
-async def test_entitlement_lapsed_auto_disables_job(session_factory) -> None:
-    # Owner is Free — scheduler is a Pro feature, so a job that somehow exists auto-disables.
+async def test_free_user_job_runs_and_is_rescheduled(session_factory) -> None:
+    # ADR-0028: scheduling is open to every tier (the data, not the feature, is tier-gated), and
+    # a finished run resolves its trigger to a concrete future next_run — not a blind +1 day.
     user = await insert_user(session_factory, tier=Tier.FREE)
     job = await _make_job(session_factory, user)
     orch = _StubOrchestrator(_CLEAN_ANSWER)
@@ -260,14 +245,36 @@ async def test_entitlement_lapsed_auto_disables_job(session_factory) -> None:
             quota_gate=AllowAllQuotaGate(),
         )
     )
-    ran = await worker.run_due_jobs()
-    assert ran == []
-    assert orch.calls == []
+    now = datetime.now(UTC)
+    ran = await worker.run_due_jobs(now=now)
+    assert ran == [job.id]
 
     async with session_factory() as session:
         store = SqlAlchemySchedulerStore(session)
         refreshed = await store.get_job(user_id=user, job_id=job.id)
-        assert refreshed.enabled is False
+        assert refreshed.enabled is True
+        assert refreshed.next_run is not None
+        assert refreshed.next_run.replace(tzinfo=UTC) > now
+
+
+async def test_orphaned_job_auto_disables(session_factory) -> None:
+    # The only remaining auto-disable: the owner account no longer exists.
+    job = await _make_job(session_factory, await insert_user(session_factory, tier=Tier.PRO))
+    orch = _StubOrchestrator(_CLEAN_ANSWER)
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=orch,
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+    with patch.object(SchedulerWorker, "_load_user", return_value=None):
+        ran = await worker.run_due_jobs()
+    assert ran == []
+    assert orch.calls == []
+    del job
 
 
 @pytest.mark.governance
@@ -303,69 +310,6 @@ async def test_scheduled_run_output_passes_non_trading_guardrail(session_factory
     assert REDACTION_NOTICE in verdict.redacted_text
 
 
-@pytest.mark.governance
-async def test_alert_fires_non_trading_observation(session_factory) -> None:
-    user = await insert_user(session_factory, tier=Tier.PRO)
-    condition = AlertCondition(
-        type=AlertConditionType.INSTITUTIONAL,
-        metric="foreign_net",
-        comparator=Comparator.STREAK_UP,
-        threshold=3,
-        window=3,
-    )
-    async with session_factory() as session:
-        store = SqlAlchemySchedulerStore(session)
-        alert = await store.create_alert(
-            user_id=user,
-            symbol="2330",
-            market=Market.TW,
-            condition=condition,
-            channels=(DeliveryChannelKind.IN_APP,),
-        )
-        await session.commit()
-
-    worker = SchedulerWorker(
-        _ctx(
-            session_factory,
-            orchestrator=_StubOrchestrator(_CLEAN_ANSWER),
-            router=_StubRouter({"foreign_net_streak": 4}),
-            leader=AlwaysLeader(),
-            quota_gate=AllowAllQuotaGate(),
-        )
-    )
-    fired = await worker.evaluate_alerts()
-    assert alert.id in fired
-
-    async with session_factory() as session:
-        store = SqlAlchemySchedulerStore(session)
-        notification = (await store.list_notifications(user_id=user))[0]
-        body = str(notification.payload["body"])
-        assert "連 4 日" in body
-        assert "非買賣建議" in body  # observation, never a signal
-        # never a trading instruction
-        assert "買進" not in body or "非買賣建議" in body
-
-
-async def test_alert_does_not_fire_below_threshold(session_factory) -> None:
-    user = await insert_user(session_factory, tier=Tier.PRO)
-    condition = AlertCondition(
-        type=AlertConditionType.INSTITUTIONAL,
-        metric="foreign_net",
-        comparator=Comparator.STREAK_UP,
-        threshold=3,
-    )
-    worker = SchedulerWorker(
-        _ctx(
-            session_factory,
-            orchestrator=_StubOrchestrator(_CLEAN_ANSWER),
-            router=_StubRouter({"foreign_net_streak": 2}),
-            leader=AlwaysLeader(),
-            quota_gate=AllowAllQuotaGate(),
-        )
-    )
-    assert await worker.evaluate_alert(_alert(user, condition)) is False
-
-
 async def test_redelivery_is_idempotent(session_factory) -> None:
     user = await insert_user(session_factory, tier=Tier.PRO)
     job = await _make_job(session_factory, user)
@@ -390,3 +334,228 @@ async def test_redelivery_is_idempotent(session_factory) -> None:
     async with session_factory() as session:
         store = SqlAlchemySchedulerStore(session)
         assert len(await store.list_notifications(user_id=user)) == 1
+
+
+async def test_each_run_appends_to_the_schedules_one_persistent_thread(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    job = await _make_job(session_factory, user)
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=_StubOrchestrator(_CLEAN_ANSWER),
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+    await worker.run_job(job)
+    async with session_factory() as session:
+        after_first = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
+    assert after_first.thread_id is not None
+
+    await worker.run_job(after_first)
+    async with session_factory() as session:
+        after_second = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
+        path = await SqlAlchemyConversationStore(session).active_path(
+            thread_id=after_first.thread_id
+        )
+    assert after_second.thread_id == after_first.thread_id  # same thread, not a new one per run
+    assert len([m for m in path if m.type is MessageBlockType.TEXT]) == 2
+
+
+async def test_a_failed_run_records_why_and_is_rescheduled(session_factory) -> None:
+    class _Exploding(_StubOrchestrator):
+        async def run_skill(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            raise RuntimeError("boom")
+
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    job = await _make_job(session_factory, user)
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=_Exploding(_CLEAN_ANSWER),
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+    assert await worker.run_job(job) is False
+    async with session_factory() as session:
+        after = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
+    assert after.status is JobStatus.ERROR
+    assert after.status_reason == "RuntimeError"
+    assert after.next_run is not None
+    assert as_utc(after.next_run) > as_utc(job.next_run)  # not retried every poll
+
+
+@pytest.mark.parametrize(
+    ("inputs", "expected"),
+    [
+        ({"stock_ids": ["2330", "2317"]}, "stock_ids=['2330', '2317']"),
+        ({"stock_id": "2330"}, "stock_id=2330"),
+        ({"etf_id": "0050"}, "etf_id=0050"),
+        ({"symbol_id": "AAPL", "market": "US"}, "symbol_id=AAPL"),
+    ],
+)
+async def test_scheduled_run_message_carries_whichever_target_input_the_skill_uses(
+    session_factory, inputs: dict[str, object], expected: str
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    job = await _make_job(session_factory, user)
+    job = job.model_copy(
+        update={"action": ScheduleAction(skill_ref="chip-flow-review", inputs=inputs)}
+    )
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=_StubOrchestrator(_CLEAN_ANSWER),
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+
+    message = worker._job_message(job)
+
+    assert "chip-flow-review" in message
+    assert expected in message
+
+
+class _CardOrchestrator(_StubOrchestrator):
+    """Returns a result that carries chart cards, like a report skill's tools would."""
+
+    async def run_skill(self, skill_ref, message, **kwargs):  # type: ignore[no-untyped-def]
+        result = await super().run_skill(skill_ref, message, **kwargs)
+        card = RichCard(card_type="annual_fundamentals", data={"rows": [], "chart_hints": []})
+        return result.model_copy(update={"rich_cards": (card,)})
+
+
+async def test_a_scheduled_report_keeps_its_chart_cards_and_sends_a_short_notification(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    job = await _make_job(session_factory, user)
+    long_report = "一、標的基本識別\n" + ("內容" * 400)
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=_CardOrchestrator(long_report),
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+
+    await worker.run_job(job)
+
+    async with session_factory() as session:
+        store = SqlAlchemySchedulerStore(session)
+        stored = await store.get_job(user_id=user, job_id=job.id)
+        path = await SqlAlchemyConversationStore(session).active_path(thread_id=stored.thread_id)
+        notifications = await store.list_notifications(user_id=user)
+    kinds = [m.type for m in path]
+    assert MessageBlockType.RICH_CARD in kinds  # the chart card is in the thread
+    assert kinds.index(MessageBlockType.RICH_CARD) < kinds.index(MessageBlockType.TEXT)
+    body = str(notifications[0].payload.get("body", ""))
+    assert len(body) < 260 and "完整報告請見對話" in body  # a pointer, not the whole report
+
+
+class _InputRecordingOrchestrator(_StubOrchestrator):
+    def __init__(self) -> None:
+        super().__init__(_CLEAN_ANSWER)
+        self.messages: list[str] = []
+
+    async def run_skill(self, skill_ref: str, message: str, **kwargs: object) -> OrchestratorResult:
+        self.messages.append(message)
+        return await super().run_skill(skill_ref, message, **kwargs)
+
+
+async def _seed_watchlist(session_factory, user: str, symbols: list[str]) -> None:
+    from db.models import WatchlistItemRow, WatchlistRow  # noqa: PLC0415 — test-local
+
+    now = datetime.now(UTC)
+    async with session_factory() as session:
+        session.add(
+            WatchlistRow(
+                id="wl",
+                user_id=user,
+                name="自選",
+                market="TW",
+                asset_class="stock",
+                sort_order="a",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        await session.flush()
+        for i, symbol in enumerate(symbols):
+            session.add(
+                WatchlistItemRow(
+                    id=f"i{i}",
+                    watchlist_id="wl",
+                    user_id=user,
+                    symbol=symbol,
+                    market="TW",
+                    asset_class="stock",
+                    sort_order=str(i),
+                    added_at=now,
+                )
+            )
+        await session.commit()
+
+
+async def _watchlist_job(session_factory, user: str) -> None:
+    async with session_factory() as session:
+        await SqlAlchemySchedulerStore(session).create_job(
+            user_id=user,
+            trigger=ScheduleTrigger(type=TriggerType.MARKET_EVENT, spec="pre_open"),
+            action=ScheduleAction(skill_ref="daily-context-brief", inputs={"watchlist_id": "wl"}),
+            delivery_channels=(DeliveryChannelKind.IN_APP,),
+            next_run=datetime.now(UTC) - timedelta(minutes=1),
+        )
+        await session.commit()
+
+
+async def test_a_watchlist_scoped_briefing_expands_to_the_lists_current_members(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _seed_watchlist(session_factory, user, ["2330", "2317"])
+    await _watchlist_job(session_factory, user)
+    orch = _InputRecordingOrchestrator()
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=orch,
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+
+    assert len(await worker.run_due_jobs()) == 1
+    assert "stock_ids=['2330', '2317']" in orch.messages[0]
+    assert "watchlist_id" not in orch.messages[0]
+
+
+async def test_an_empty_watchlist_is_reported_not_run(session_factory) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _seed_watchlist(session_factory, user, [])
+    await _watchlist_job(session_factory, user)
+    orch = _InputRecordingOrchestrator()
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=orch,
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+
+    assert await worker.run_due_jobs() == []
+    assert orch.messages == []
+    async with session_factory() as session:
+        job = (await SqlAlchemySchedulerStore(session).list_jobs(user_id=user))[0]
+    assert job.status is JobStatus.ERROR
+    assert job.status_reason == "watchlist_empty"

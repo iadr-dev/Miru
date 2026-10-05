@@ -23,11 +23,6 @@ from schemas.enums import Tier
 logger = structlog.get_logger(__name__)
 
 
-class ProviderAlreadyLinkedError(RuntimeError):
-    """Linking a provider identity already bound to a different user — refused rather than
-    silently re-pointed."""
-
-
 class LastLoginMethodError(RuntimeError):
     """Unlinking the only remaining login method would orphan the account — refused."""
 
@@ -133,12 +128,16 @@ class SqlAlchemyUserStore:
         display_name: str = "",
         picture_url: str | None = None,
     ) -> User:
-        # 1. Known provider identity → that user.
+        # 1. Known provider identity → that user. An identity linked to several accounts signs
+        # into the one that linked it first.
         existing_link = await self._session.execute(
-            select(OAuthAccountRow).where(
+            select(OAuthAccountRow)
+            .where(
                 OAuthAccountRow.provider == provider.value,
                 OAuthAccountRow.provider_account_id == provider_account_id,
             )
+            .order_by(OAuthAccountRow.linked_at, OAuthAccountRow.id)
+            .limit(1)
         )
         link_row = existing_link.scalar_one_or_none()
         if link_row is not None:
@@ -201,15 +200,12 @@ class SqlAlchemyUserStore:
     ) -> OAuthAccount:
         existing = await self._session.execute(
             select(OAuthAccountRow).where(
+                OAuthAccountRow.user_id == user_id,
                 OAuthAccountRow.provider == provider.value,
                 OAuthAccountRow.provider_account_id == provider_account_id,
             )
         )
         existing_row = existing.scalar_one_or_none()
-        if existing_row is not None and existing_row.user_id != user_id:
-            raise ProviderAlreadyLinkedError(
-                f"{provider.value} identity is already linked to another account"
-            )
         if existing_row is not None:
             return _row_to_oauth(existing_row)
         row = await self._add_link(
@@ -314,7 +310,6 @@ class SqlAlchemyUserStore:
 
 __all__ = [
     "LastLoginMethodError",
-    "ProviderAlreadyLinkedError",
     "SqlAlchemyUserStore",
     "UserNotFoundError",
     "UserStore",

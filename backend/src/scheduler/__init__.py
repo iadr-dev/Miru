@@ -9,7 +9,6 @@ quota-bounded, coarse-cadence, entitlement-gated, and fully auditable.
 from __future__ import annotations
 
 from scheduler.models import (
-    AlertCondition,
     AlertPreference,
     AlertRule,
     DeliveryChannelKind,
@@ -23,7 +22,6 @@ from scheduler.store import SchedulerStore, SqlAlchemySchedulerStore
 from scheduler.worker import SchedulerWorker, build_scheduler_worker
 
 __all__ = [
-    "AlertCondition",
     "AlertPreference",
     "AlertRule",
     "DeliveryChannelKind",

@@ -360,8 +360,9 @@ class UserRow(Base):
 
 class OAuthAccountRow(Base):
     """One linked provider identity for a user — many rows per user (Google + LINE = one
-    account). `(provider, provider_account_id)` is globally unique: one provider identity maps
-    to exactly one user."""
+    account). The same provider identity may be linked to several users (e.g. one LINE account on
+    a main and a second Miru account); each user then shows it as linked. Signing in with such an
+    identity opens the account that linked it first."""
 
     __tablename__ = "oauth_accounts"
 
@@ -375,10 +376,16 @@ class OAuthAccountRow(Base):
     user: Mapped[UserRow] = relationship(back_populates="oauth_accounts")
 
     __table_args__ = (
-        CheckConstraint("provider IN ('google','line')", name="ck_oauth_accounts_provider"),
-        UniqueConstraint(
-            "provider", "provider_account_id", name="uq_oauth_accounts_provider_identity"
+        CheckConstraint(
+            "provider IN ('google','line','telegram')", name="ck_oauth_accounts_provider"
         ),
+        UniqueConstraint(
+            "user_id",
+            "provider",
+            "provider_account_id",
+            name="uq_oauth_accounts_user_provider_identity",
+        ),
+        Index("ix_oauth_accounts_identity", "provider", "provider_account_id"),
     )
 
 
@@ -512,6 +519,10 @@ class ScheduleJobRow(Base):
     last_run: Mapped[datetime | None] = mapped_column(_UTC, default=None)
     next_run: Mapped[datetime | None] = mapped_column(_UTC, default=None)
     status: Mapped[str] = mapped_column(default="ok")
+    # Why the last run was skipped or failed — shown on the schedule row instead of a bare status.
+    status_reason: Mapped[str | None] = mapped_column(default=None)
+    # The one persistent thread every run of this schedule appends to (created on the first run).
+    thread_id: Mapped[str | None] = mapped_column(default=None)
     version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)
@@ -539,24 +550,54 @@ class ScheduleJobRow(Base):
 
 
 class AlertRuleRow(Base):
+    """An alert rule (modules/14 §3). Scope is one symbol *or* a watchlist group — never both,
+    never neither (`ck_alert_rules_scope`). `channels`/`quiet_*`/`daily_limit` null-or-empty mean
+    "inherit `alert_preferences`". `state` is the per-rule edge-trigger memory (`last_value`,
+    `last_fired_at`, `fire_count`) that makes `crosses_*` and enter/leave real. `version` is the
+    optimistic-lock counter for multi-device edits (409 on stale)."""
+
     __tablename__ = "alert_rules"
 
     id: Mapped[str] = mapped_column(primary_key=True)
     user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
-    symbol: Mapped[str]
-    market: Mapped[str]
+    symbol: Mapped[str | None] = mapped_column(default=None)
+    market: Mapped[str | None] = mapped_column(default=None)
+    watchlist_id: Mapped[str | None] = mapped_column(
+        ForeignKey("watchlists.id", ondelete="CASCADE"), default=None
+    )
+    # The group a per-stock rule was set up from (「逐檔設定」), for display only. Unlike
+    # `watchlist_id` it does not scope the rule and does not cascade; it just labels where it came
+    # from, and a deleted group simply leaves an unknown label.
+    origin_watchlist_id: Mapped[str | None] = mapped_column(default=None)
     condition: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    trigger_mode: Mapped[str] = mapped_column(default="once_per_day")
+    cooldown_seconds: Mapped[int | None] = mapped_column(default=None)
+    state: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
+    expires_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
+    auto_paused_reason: Mapped[str | None] = mapped_column(default=None)
+    explain: Mapped[bool] = mapped_column(default=False)
     channels: Mapped[list[str]] = mapped_column(JSON, default=list)
     quiet_start: Mapped[str | None] = mapped_column(default=None)
     quiet_end: Mapped[str | None] = mapped_column(default=None)
     daily_limit: Mapped[int | None] = mapped_column(default=None)
     enabled: Mapped[bool] = mapped_column(default=True)
     last_triggered: Mapped[datetime | None] = mapped_column(_UTC, default=None)
+    version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)
 
     __table_args__ = (
         CheckConstraint(_MARKET_TW_US_CHECK, name="ck_alert_rules_market"),
+        CheckConstraint(
+            "(symbol IS NOT NULL AND market IS NOT NULL AND watchlist_id IS NULL)"
+            " OR (symbol IS NULL AND market IS NULL AND watchlist_id IS NOT NULL)",
+            name="ck_alert_rules_scope",
+        ),
+        CheckConstraint(
+            "trigger_mode IN ('once','once_per_day','every_occurrence')",
+            name="ck_alert_rules_trigger_mode",
+        ),
+        Index("ix_alert_rules_watchlist", "watchlist_id"),
         Index("ix_alert_rules_user", "user_id"),
         # The alert-engine scan — a partial index over only enabled rules.
         Index(
@@ -579,9 +620,26 @@ class AlertPreferenceRow(Base):
     enabled_categories: Mapped[list[str]] = mapped_column(JSON, default=list)
     quiet_start: Mapped[str | None] = mapped_column(default=None)
     quiet_end: Mapped[str | None] = mapped_column(default=None)
-    daily_limit: Mapped[int | None] = mapped_column(default=None)
     morning_digest: Mapped[bool] = mapped_column(default=False)
+    # The one persistent thread the daily 晨間摘要 is appended to (null until the first one).
+    digest_thread_id: Mapped[str | None] = mapped_column(default=None)
+    # IANA zone the quiet-hours window is evaluated in (v1 compared in UTC).
+    timezone: Mapped[str] = mapped_column(default="Asia/Taipei")
     updated_at: Mapped[datetime] = mapped_column(_UTC)
+
+
+class AlertEvalMarkRow(Base):
+    """The reconciliation watermark: the latest `as_of` the alert evaluator has processed per
+    `(capability, market)`. `data.updated` is best-effort, so the daily sweep compares the
+    ingested store's latest partition to this mark and evaluates whatever it has not yet seen
+    (ADR-0028 §3). Idempotent re-evaluation is guarded by the notification dedupe key."""
+
+    __tablename__ = "alert_eval_marks"
+
+    capability: Mapped[str] = mapped_column(primary_key=True)
+    market: Mapped[str] = mapped_column(primary_key=True)
+    last_as_of: Mapped[str]
+    evaluated_at: Mapped[datetime] = mapped_column(_UTC)
 
 
 class DevicePushTokenRow(Base):
@@ -595,9 +653,54 @@ class DevicePushTokenRow(Base):
     last_seen: Mapped[datetime] = mapped_column(_UTC)
 
     __table_args__ = (
-        CheckConstraint("platform IN ('ios','android')", name="ck_device_push_tokens_platform"),
+        CheckConstraint(
+            "platform IN ('ios','android','web')", name="ck_device_push_tokens_platform"
+        ),
         UniqueConstraint("user_id", "token", name="uq_device_push_tokens_user_token"),
         Index("ix_device_push_tokens_user", "user_id"),
+    )
+
+
+class ChannelLinkRow(Base):
+    """A user's binding to one external messaging channel (Telegram today). A link starts as a
+    one-time `link_token` the user sends to the bot; the webhook swaps it for the chat `address`.
+    One row per `(user_id, channel)`."""
+
+    __tablename__ = "channel_links"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), primary_key=True
+    )
+    channel: Mapped[str] = mapped_column(primary_key=True)
+    address: Mapped[str | None] = mapped_column(default=None)
+    link_token: Mapped[str | None] = mapped_column(default=None, index=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
+    linked_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
+
+    __table_args__ = (
+        CheckConstraint("channel IN ('telegram','line')", name="ck_channel_links_channel"),
+        # One external chat belongs to one account (unlinked rows, with a NULL address, do not
+        # collide).
+        UniqueConstraint("channel", "address", name="uq_channel_links_address"),
+    )
+
+
+class EmailSuppressionRow(Base):
+    """An address we must not email again: it hard-bounced or its owner marked a message as spam
+    (recorded from Resend's webhook). Keyed by the lower-cased address; one row is enough — any
+    later event for the same address is a no-op."""
+
+    __tablename__ = "email_suppressions"
+
+    address: Mapped[str] = mapped_column(primary_key=True)
+    reason: Mapped[str]  # 'bounced' | 'complained' | 'unsubscribed'
+    event_id: Mapped[str | None] = mapped_column(default=None)
+    created_at: Mapped[datetime] = mapped_column(_UTC)
+
+    __table_args__ = (
+        CheckConstraint(
+            "reason IN ('bounced','complained','unsubscribed')", name="ck_email_suppressions_reason"
+        ),
     )
 
 

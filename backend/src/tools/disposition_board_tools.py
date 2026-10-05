@@ -10,6 +10,7 @@ Sponsor-tier: same risk-signal family as 大戶加碼股/融資維持率 (`chip_
 
 from __future__ import annotations
 
+import asyncio
 import math
 import re
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
@@ -241,6 +242,10 @@ class GetDispositionBoardInput(BaseModel):
     market: Market = Market.TW
 
 
+# Upper bound on roster symbols enriched at once.
+_ENRICHMENT_CONCURRENCY = 8
+
+
 class GetDispositionBoardTool(BaseTool):
     """`get_disposition_board` — 處置王-style board: 風險股 (at_risk) / 處置中 (in_disposition) /
     即將出關 (exiting_soon) buckets, joined with price/institutional-flow/margin. 自結發布 is out
@@ -331,27 +336,27 @@ class GetDispositionBoardTool(BaseTool):
             _institutional_net_by_symbol(self._store, market, flow_date) if flow_date else {}
         )
 
-        margin_by_symbol: dict[str, MarginShortRow] = {}
-        margin_caveat_by_symbol: dict[str, tuple[str, HealthStatus]] = {}
-        day_trading_by_symbol: dict[str, DayTradingRow] = {}
-        self_assessed_by_symbol: dict[str, SelfAssessedEarningsRow] = {}
-        candidate_periods = _recent_self_assessed_periods(report_date)
-        for symbol in roster:
-            enrichment = await self._fetch_symbol_enrichment(
-                symbol,
-                typed.market,
-                price_date or report_date,
-                _security_type_for(by_symbol_disposition.get(symbol), attention_info.get(symbol)),
-                candidate_periods,
-                ctx,
-            )
-            margin_caveat_by_symbol[symbol] = enrichment.margin_caveat_and_health
-            if enrichment.margin_row is not None:
-                margin_by_symbol[symbol] = enrichment.margin_row
-            if enrichment.day_trading_row is not None:
-                day_trading_by_symbol[symbol] = enrichment.day_trading_row
-            if enrichment.self_assessed_row is not None:
-                self_assessed_by_symbol[symbol] = enrichment.self_assessed_row
+        enrichments = await self._enrich_roster(
+            roster,
+            typed.market,
+            price_date or report_date,
+            {
+                symbol: _security_type_for(
+                    by_symbol_disposition.get(symbol), attention_info.get(symbol)
+                )
+                for symbol in roster
+            },
+            _recent_self_assessed_periods(report_date),
+            ctx,
+        )
+        margin_caveat_by_symbol = {s: e.margin_caveat_and_health for s, e in enrichments.items()}
+        margin_by_symbol = {s: e.margin_row for s, e in enrichments.items() if e.margin_row}
+        day_trading_by_symbol = {
+            s: e.day_trading_row for s, e in enrichments.items() if e.day_trading_row
+        }
+        self_assessed_by_symbol = {
+            s: e.self_assessed_row for s, e in enrichments.items() if e.self_assessed_row
+        }
 
         cards: list[DispositionBoardCardRow] = []
         bucket_counts: dict[str, int] = {}
@@ -390,6 +395,35 @@ class GetDispositionBoardTool(BaseTool):
             cards=output_cards,
         )
 
+    async def _enrich_roster(  # noqa: PLR0913, PLR0917 — one already-resolved lookup per arg
+        self,
+        roster: Sequence[str],
+        market: Market,
+        matching_trade_date: date_,
+        security_types: dict[str, str],
+        candidate_periods: tuple[str, ...],
+        ctx: ToolContext,
+    ) -> dict[str, _SymbolEnrichment]:
+        """`_fetch_symbol_enrichment` for every roster symbol, concurrently but bounded. The
+        roster is a few dozen symbols and each needs three independent router fetches; awaiting
+        them one symbol at a time was most of the endpoint's ~12s. The router's own per-source
+        throttles still apply."""
+        gate = asyncio.Semaphore(_ENRICHMENT_CONCURRENCY)
+
+        async def enrich(symbol: str) -> _SymbolEnrichment:
+            async with gate:
+                return await self._fetch_symbol_enrichment(
+                    symbol,
+                    market,
+                    matching_trade_date,
+                    security_types[symbol],
+                    candidate_periods,
+                    ctx,
+                )
+
+        results = await asyncio.gather(*(enrich(symbol) for symbol in roster))
+        return dict(zip(roster, results, strict=True))
+
     async def _fetch_symbol_enrichment(  # noqa: PLR0913, PLR0917 — every arg is one
         # already-resolved lookup for this symbol, the same shape `_build_card` itself uses.
         self,
@@ -404,8 +438,17 @@ class GetDispositionBoardTool(BaseTool):
         one roster symbol, bundled into one call so `run`'s own per-symbol loop body stays under
         ruff's statement cap — this is pure fan-out orchestration, no new fetch logic of its
         own."""
-        margin_result, margin_rows = await self._fetch_margin(symbol, market, ctx)
-        _, day_trading_rows = await self._fetch_day_trading(symbol, market, ctx)
+        (
+            (margin_result, margin_rows),
+            (_, day_trading_rows),
+            self_assessed_row,
+        ) = await asyncio.gather(
+            self._fetch_margin(symbol, market, ctx),
+            self._fetch_day_trading(symbol, market, ctx),
+            self._fetch_self_assessed_earnings(
+                symbol, market, security_type, candidate_periods, ctx
+            ),
+        )
         # `rows[-1]` (the fetch's own latest row) is NOT necessarily `matching_trade_date`'s own
         # day — day-trading's own upstream cadence can lag behind price_eod's (the same class of
         # mismatch `_two_latest_dates_on_or_before` exists to guard against for the price join),
@@ -415,9 +458,6 @@ class GetDispositionBoardTool(BaseTool):
         matching_day_trading_rows = [
             row for row in day_trading_rows if row.trade_date == matching_trade_date
         ]
-        self_assessed_row = await self._fetch_self_assessed_earnings(
-            symbol, market, security_type, candidate_periods, ctx
-        )
         margin_caveat_and_health = (margin_result.currentness_caveat, margin_result.health.status)
         return _SymbolEnrichment(
             margin_row=margin_rows[-1] if margin_rows else None,

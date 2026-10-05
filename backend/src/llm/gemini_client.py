@@ -116,6 +116,16 @@ def _image_part(image: ImagePart) -> genai_types.Part:
     )
 
 
+def _function_call_part(call: ToolCall) -> genai_types.Part:
+    """Replay a model's function call. Gemini 3 rejects a replayed call that lost its
+    `thought_signature` ("Function call is missing a thought_signature"), so it is carried on
+    `ToolCall.continuation` (base64) from the response and restored here."""
+    part = genai_types.Part.from_function_call(name=call.name, args=dict(call.arguments))
+    if call.continuation:
+        part.thought_signature = base64.b64decode(call.continuation)
+    return part
+
+
 def _message_to_content(message: Message, name_map: dict[str, str]) -> genai_types.Content:
     if message.role is MessageRole.TOOL:
         parts = [_tool_result_part(part, name_map) for part in message.tool_results]
@@ -124,10 +134,7 @@ def _message_to_content(message: Message, name_map: dict[str, str]) -> genai_typ
         assistant_parts: list[genai_types.Part] = []
         if message.content:
             assistant_parts.append(genai_types.Part.from_text(text=message.content))
-        assistant_parts.extend(
-            genai_types.Part.from_function_call(name=call.name, args=dict(call.arguments))
-            for call in message.tool_calls
-        )
+        assistant_parts.extend(_function_call_part(call) for call in message.tool_calls)
         return genai_types.Content(role="model", parts=assistant_parts)
     role = "model" if message.role is MessageRole.ASSISTANT else "user"
     if message.images:
@@ -158,11 +165,14 @@ def _usage_from_metadata(
     )
 
 
-def _function_call_to_tool_call(call: genai_types.FunctionCall, index: int) -> ToolCall:
+def _function_call_to_tool_call(
+    call: genai_types.FunctionCall, index: int, signature: bytes | None = None
+) -> ToolCall:
     return ToolCall(
         id=call.id or f"{call.name}_{index}",
         name=call.name or "",
         arguments=dict(call.args or {}),
+        continuation=base64.b64encode(signature).decode("ascii") if signature else None,
     )
 
 
@@ -183,7 +193,9 @@ def _events_from_chunk_parts(
         elif part.text:
             events.append(TextDeltaEvent(text=part.text))
         elif part.function_call is not None:
-            call = _function_call_to_tool_call(part.function_call, emitted_tool_calls)
+            call = _function_call_to_tool_call(
+                part.function_call, emitted_tool_calls, part.thought_signature
+            )
             emitted_tool_calls += 1
             events.append(
                 ToolCallDeltaEvent(
@@ -405,10 +417,18 @@ class GeminiClient:
         """Uses Gemini's real `count_tokens` endpoint — the SDK exposes it, so we use it for
         real counting rather than an estimate."""
         system, turns = _split_system(messages)
+        # `CountTokensConfig.system_instruction` is Vertex-only — the Gemini Developer API rejects
+        # it outright ("only supported in Gemini Enterprise Agent Platform mode"), which failed
+        # every turn before it started. Count the system text as a leading user part instead.
+        contents = cast("list[genai_types.Content]", self._contents(turns))
+        if system:
+            contents = [
+                genai_types.Content(role="user", parts=[genai_types.Part(text=system)]),
+                *contents,
+            ]
         result = await self._client.aio.models.count_tokens(
             model=self.model_id,
-            contents=self._contents(turns),
-            config=genai_types.CountTokensConfig(system_instruction=system) if system else None,
+            contents=cast("genai_types.ContentListUnion", contents),
         )
         return result.total_tokens or 0
 

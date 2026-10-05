@@ -47,10 +47,14 @@ from tools import (
     market_ranking_tools,
     market_tools,
     mops_tools,
+    morning_brief_tools,
     news_tools,
     others_tools,
+    propose_alert_tools,
+    propose_schedule_tools,
     ptt_tools,
     realtime_tools,
+    report_tools,
     score_tools,
     screener_tools,
     summary_tools,
@@ -111,8 +115,10 @@ def build_default_tool_registry(
         if market_data_reader is not None
         else []
     )
-    return build_default_registry(
+    registry = build_default_registry(
         ask_user_tools.build_registration_table(),
+        propose_alert_tools.build_registration_table(),
+        propose_schedule_tools.build_registration_table(),
         context_tools.build_registration_table(router),
         health_tools.build_registration_table(router),
         market_tools.build_registration_table(router),
@@ -133,6 +139,7 @@ def build_default_tool_registry(
         chip_tools.build_registration_table(router),
         technical_tools.build_registration_table(router),
         fundamental_tools.build_registration_table(router),
+        report_tools.build_registration_table(router),
         derivatives_tools.build_registration_table(router),
         convertible_bond_tools.build_registration_table(router),
         macro_tools.build_registration_table(router),
@@ -148,6 +155,9 @@ def build_default_tool_registry(
         summary_group,
         trend_score_group,
     )
+    # The morning brief composes other tools, so it is registered last, with the registry itself.
+    registry.register(morning_brief_tools.build_registration(registry, router), immediate=False)
+    return registry
 
 
 __all__ = ["build_default_tool_registry"]

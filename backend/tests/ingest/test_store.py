@@ -190,3 +190,54 @@ def test_read_range_frame_with_no_written_dates_returns_empty_frame(tmp_path: ob
 
     assert list(frame.columns) == ["symbol", "close"]
     assert len(frame) == 0
+
+
+def test_read_range_latest_by_key_keeps_newest_snapshot_per_key(tmp_path: object) -> None:
+    """Weekly full re-pulls store the same logical row in every snapshot. The newest copy of each
+    key wins (a restated value replaces the old one), a key present only in an older snapshot
+    is still returned, and an empty-schema partition or never-written date in the window is
+    skipped without error."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        "us_financials",
+        "US",
+        date(2024, 1, 2),
+        [
+            {"symbol": "AAPL", "period_end": "2023-12-31", "item": "Revenue", "value": 100.0},
+            {"symbol": "AAPL", "period_end": "2023-12-31", "item": "Cost", "value": 40.0},
+        ],
+    )
+    store.write_partition("us_financials", "US", date(2024, 1, 3), [])  # empty-schema day
+    store.write_partition(
+        "us_financials",
+        "US",
+        date(2024, 1, 4),
+        [{"symbol": "AAPL", "period_end": "2023-12-31", "item": "Revenue", "value": 105.0}],
+    )
+    # 2024-01-05 is never written at all.
+
+    rows = store.read_range_latest_by_key(
+        "us_financials",
+        "US",
+        [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)],
+        columns=("symbol", "period_end", "item", "value"),
+        key_columns=("symbol", "period_end", "item"),
+    )
+
+    by_item = {row["item"]: row["value"] for row in rows}
+    assert by_item == {"Revenue": 105.0, "Cost": 40.0}
+    assert len(rows) == 2
+
+
+def test_read_range_latest_by_key_with_no_written_dates_returns_empty(tmp_path: object) -> None:
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+
+    rows = store.read_range_latest_by_key(
+        "us_financials",
+        "US",
+        [date(2024, 1, 2)],
+        columns=("symbol", "value"),
+        key_columns=("symbol",),
+    )
+
+    assert rows == []

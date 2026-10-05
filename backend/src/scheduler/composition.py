@@ -17,7 +17,9 @@ from accounts.hooks import EntitlementResolver
 from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router
 from db.base import ensure_schema_for
+from events.live_quote_factory import build_data_update_broker
 from ingest.leader import LeaderElection, get_default_leader_election
+from ingest.reader import ParquetMarketDataReader
 from orchestrator.composition import (
     build_orchestrator,
     build_session_factory,
@@ -25,6 +27,7 @@ from orchestrator.composition import (
     build_tool_registry,
 )
 from scheduler.delivery.channels import build_default_channels
+from scheduler.subscriber import UpdateSource
 from scheduler.worker import SchedulerWorker, build_scheduler_worker
 
 
@@ -49,11 +52,28 @@ async def build_scheduler_from_settings(settings: Settings | None = None) -> Sch
     return build_scheduler_worker(
         session_factory=session_factory,
         orchestrator=orchestrator,
+        brief_tool=tool_registry.get_tool("get_morning_brief"),
+        public_base_url=resolved.webhook_base_url,
+        link_secret=resolved.jwt_secret_key,
         router=router,
         entitlement_resolver=EntitlementResolver(tls_policy=resolved.tls_policy),
-        channels=build_default_channels(resolved),
+        channels=build_default_channels(resolved, live=True),
         leader=leader,
+        # Read-only Parquet view of the ingested store (never the writer's .duckdb file).
+        reader=ParquetMarketDataReader(resolved.parquet_root),
     )
 
 
-__all__ = ["build_scheduler_from_settings"]
+def build_alert_update_source(settings: Settings | None = None) -> UpdateSource | None:
+    """The `data.updated` subscription the alert engine reacts to, or None when there is nothing
+    to subscribe to. Only the Redis backend crosses processes — the ingest leader is a different
+    process from the scheduler, so an in-memory bus could never deliver its signal here. With no
+    source the engine still works: the per-pass reconciliation sweep is the correctness floor and
+    the signal only lowers latency."""
+    resolved = settings or get_settings()
+    if resolved.event_bus_backend != "redis":
+        return None
+    return build_data_update_broker(resolved).reader_factory.updates
+
+
+__all__ = ["build_alert_update_source", "build_scheduler_from_settings"]

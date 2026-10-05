@@ -56,6 +56,10 @@ class ToolCall(BaseModel):
     id: str
     name: str
     arguments: dict[str, object]
+    # Opaque provider continuation token that must ride back with this call on the next request
+    # (Gemini 3's base64 `thought_signature`: a function call replayed without it is rejected with
+    # a 400). Never serialized — it only lives for the in-process tool loop of one turn.
+    continuation: str | None = Field(default=None, exclude=True)
 
 
 class ImagePart(BaseModel):

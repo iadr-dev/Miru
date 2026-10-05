@@ -24,7 +24,8 @@ import signal
 import structlog
 
 from config.settings import get_settings
-from scheduler.composition import build_scheduler_from_settings
+from scheduler.composition import build_alert_update_source, build_scheduler_from_settings
+from scheduler.subscriber import run_subscriber
 from scheduler.worker import SchedulerWorker
 
 logger = structlog.get_logger(__name__)
@@ -54,8 +55,16 @@ async def _run_once(worker: SchedulerWorker) -> None:
     scheduler that crashes on a transient store hiccup is worse than one that retries next tick."""
     try:
         ran = await worker.run_due_jobs()
-        fired = await worker.evaluate_alerts()
-        logger.info("scheduler_pass_complete", jobs_run=len(ran), alerts_fired=len(fired))
+        fired = await worker.reconcile_alerts()
+        released = await worker.release_held()
+        digests = await worker.send_morning_digests()
+        logger.info(
+            "scheduler_pass_complete",
+            jobs_run=len(ran),
+            alerts_fired=len(fired),
+            held_released=released,
+            digests_sent=digests,
+        )
     except Exception:
         logger.exception("scheduler_pass_failed")
 
@@ -108,11 +117,25 @@ async def main() -> None:
         "scheduler_process_start",
         interval_seconds=settings.scheduler_poll_interval_seconds,
     )
-    await run_scheduler_loop(
-        worker,
-        interval_seconds=settings.scheduler_poll_interval_seconds,
-        shutdown=shutdown,
-    )
+    update_source = build_alert_update_source(settings)
+    subscriber: asyncio.Task[None] | None = None
+    if update_source is not None:
+        subscriber = asyncio.create_task(
+            run_subscriber(worker, update_source, stop=shutdown.stop), name="alert-subscriber"
+        )
+    else:
+        logger.info("alert_subscriber_disabled", reason="event bus is not redis; sweep only")
+    try:
+        await run_scheduler_loop(
+            worker,
+            interval_seconds=settings.scheduler_poll_interval_seconds,
+            shutdown=shutdown,
+        )
+    finally:
+        if subscriber is not None:
+            subscriber.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await subscriber
 
 
 if __name__ == "__main__":

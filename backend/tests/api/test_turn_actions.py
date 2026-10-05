@@ -123,8 +123,10 @@ class TestRegenerateTurn:
 
         new_turn = next(t for t in assistant_turns if t["id"] != original_assistant["id"])
         assert new_turn["regenerate_of"] == original_assistant["id"]
-        # Same real guardrail path as any other turn: the non-trading caveat is present.
-        assert "not a buy/sell/hold recommendation" in _text_of(new_turn)
+        # Same real guardrail path as any other turn: the answer already carries its own Chinese
+        # non-trading caveat, so no second (English) one is stacked underneath it.
+        assert "非投資建議" in _text_of(new_turn)
+        assert "not a buy/sell/hold recommendation" not in _text_of(new_turn)
 
         # Both assistant turns are siblings under the same user turn's last message.
         user_turn = _user_turn(full_after)

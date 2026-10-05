@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 
 from scheduler.models import MarketEvent, ScheduleAction, ScheduleTrigger, TriggerType
+from scheduler.triggers import UnresolvableTriggerError, validate_cron
 from skills.registry import SkillRegistry, UnknownSkillError
 
 # A weekday-cron field set: 5 fields, and the minute/hour fields must be concrete (a `*` in the
@@ -51,6 +52,10 @@ def _validate_cron(spec: str) -> None:
         raise InvalidTriggerError(
             "cron minute and hour must be concrete (no wildcard) — coarse cadence only"
         )
+    try:
+        validate_cron(spec)
+    except UnresolvableTriggerError as exc:
+        raise InvalidTriggerError(str(exc)) from exc
 
 
 def validate_action(action: ScheduleAction, registry: SkillRegistry) -> None:

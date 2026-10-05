@@ -43,7 +43,7 @@ def test_hints_prepend_watchlist_then_lexicon() -> None:
     assert "加權指數" in hints  # core lexicon appended
 
 
-_CAVEAT_MARKERS = ("not", "非投資建議", "real-time", "recommendation")
+_CAVEAT_MARKERS = ("not", "非投資建議", "不構成買賣建議", "real-time", "recommendation")
 
 
 def test_speak_enforces_caveat() -> None:
