@@ -1150,6 +1150,37 @@ def _latest_etf_nav_symbols(ctx: IngestContext) -> tuple[str, ...]:
     return tuple(sorted(symbols))
 
 
+def _derived_etf_aum_rows(ctx: IngestContext, run_date: date_) -> list[dict[str, object]]:
+    """AUM = `units_outstanding x prior_day_nav`, from the already-ingested `etf_nav` partition
+    (TWSE MIS's bulk `all_etf.txt`, `job_etf_nav`) — no extra request, and it covers every
+    listed ETF including the bond ETFs Yahoo has no `totalAssets` for. `prior_day_nav` is the
+    issuer's settled unit NAV, not the intraday estimate. A row missing either input, or with a
+    non-positive one, is skipped (left for the Yahoo fallback), never written as a guess."""
+    dates = ctx.store.list_partition_dates(ETF_NAV_DATASET, ctx.market.value)
+    if not dates:
+        return []
+    rows: list[dict[str, object]] = []
+    for raw in ctx.store.read_partition(ETF_NAV_DATASET, ctx.market.value, max(dates)):
+        symbol, units, nav = (
+            raw.get("symbol"),
+            raw.get("units_outstanding"),
+            raw.get("prior_day_nav"),
+        )
+        if not isinstance(symbol, str) or not isinstance(units, int | float):
+            continue
+        if not isinstance(nav, int | float) or units <= 0 or nav <= 0:
+            continue
+        rows.append(
+            {
+                "symbol": symbol,
+                "market": ctx.market.value,
+                "as_of": run_date.isoformat(),
+                "aum": float(units) * float(nav),
+            }
+        )
+    return rows
+
+
 async def _fetch_one_etf_aum(ctx: IngestContext, symbol: str) -> dict[str, object] | None:
     """One symbol's AUM fetch, classified into a row-to-keep or `None` (a real failure the
     caller should count) — mirrors `ingest/us_jobs.py::_fetch_one_fundamental`'s classification:
@@ -1176,15 +1207,19 @@ async def _fetch_one_etf_aum(ctx: IngestContext, symbol: str) -> dict[str, objec
 
 
 async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
-    """`ingest-daily-late` — ETF total-net-assets (資產規模) whole-market snapshot, per-symbol
-    fan-out over `YFinanceAdapter` (see module-level `_YFINANCE_THROTTLE_SECONDS`'s docstring for
-    why this is the accepted exception, not a violation of the "whole-market by-date, never
-    per-symbol" rule — yfinance genuinely has no bulk ETF form).
+    """`ingest-daily-late` — ETF total-net-assets (資產規模) whole-market snapshot.
+
+    Primary source is derived locally from the ingested `etf_nav` partition
+    (`_derived_etf_aum_rows`: TWSE's units outstanding x prior-day NAV) — one bulk upstream,
+    already fetched, covering every listed ETF. Yahoo (`YFinanceAdapter`, per-symbol, paced —
+    see module-level `_YFINANCE_THROTTLE_SECONDS`'s docstring) is only a fallback for an ETF
+    whose NAV row lacks either input; it used to be the sole source, and its throttling plus no
+    `totalAssets` for bond ETFs left ~1/3 of the roster without a row.
 
     Symbol universe comes from `_latest_etf_nav_symbols` (the already-ingested `etf_nav` roster),
     never a hardcoded list — an empty universe (that job hasn't run yet) is a graceful skip.
-    One symbol's failure never aborts the run: it's counted, journaled as `PARTIAL` if any
-    symbol failed but some rows still landed, `FAILED` only if none did."""
+    One fallback symbol's failure never aborts the run: it's counted, journaled as `PARTIAL` if
+    any symbol failed but some rows still landed, `FAILED` only if none did."""
     if not ctx.leader.is_leader():
         return journal_run(
             ETF_AUM_DATASET,
@@ -1192,14 +1227,6 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             rows_written=0,
             status=RunStatus.SKIPPED,
             detail="not the leader — write skipped",
-        )
-    if ctx.yfinance is None:
-        return journal_run(
-            ETF_AUM_DATASET,
-            run_date,
-            rows_written=0,
-            status=RunStatus.SKIPPED,
-            detail="no YFinanceAdapter wired on this IngestContext",
         )
 
     symbols = _latest_etf_nav_symbols(ctx)
@@ -1212,9 +1239,16 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="no etf_nav roster yet — run job_etf_nav first",
         )
 
-    raw_rows: list[dict[str, object]] = []
+    raw_rows = _derived_etf_aum_rows(ctx, run_date)
+    derived_count = len(raw_rows)
+    derived_symbols = {str(row["symbol"]) for row in raw_rows}
+    fallback_symbols = [symbol for symbol in symbols if symbol not in derived_symbols]
     failures = 0
-    for index, symbol in enumerate(symbols):
+    yahoo_count = 0
+    for index, symbol in enumerate(fallback_symbols):
+        if ctx.yfinance is None:
+            failures += len(fallback_symbols)
+            break
         if index > 0:
             # Paced, not concurrent — see `_YFINANCE_THROTTLE_SECONDS`'s own docstring.
             await asyncio.sleep(_YFINANCE_THROTTLE_SECONDS)
@@ -1223,6 +1257,7 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             failures += 1
             continue
         raw_rows.append(row)
+        yahoo_count += 1
 
     rows = _validate_rows_against(EtfAumRow, ETF_AUM_DATASET, raw_rows, run_date)
     rows_written = ctx.store.write_partition(ETF_AUM_DATASET, ctx.market.value, run_date, rows)
@@ -1241,7 +1276,10 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
         run_date,
         rows_written=rows_written,
         status=status,
-        detail=f"{failures} symbol fetch(es) failed" if failures else "ok",
+        detail=(
+            f"{derived_count} derived from TWSE units x NAV, {yahoo_count} from Yahoo fallback"
+            + (f", {failures} symbol fetch(es) failed" if failures else "")
+        ),
     )
 
 

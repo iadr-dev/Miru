@@ -2125,19 +2125,19 @@ class EtfNavRow(BaseModel):
 
 
 class EtfAumRow(BaseModel):
-    """`etf_aum` — one listed TW ETF's total net assets (資產規模), sourced from Yahoo's own
-    `totalAssets` figure (`sources/yfinance/analyst.py::_etf_aum`) rather than derived locally
-    from `EtfNavRow.units_outstanding x estimated_nav` — an issuer/exchange-adjacent figure
-    Yahoo itself computes, preferred over a locally-multiplied approximation once ingested.
-    Per-symbol fan-out (yfinance has no whole-market ETF form), same accepted exception
-    `ingest/us_jobs.py::job_us_fundamentals` documents — paced, never a live per-request call."""
+    """`etf_aum` — one listed TW ETF's total net assets (資產規模). Derived in the ingest layer
+    from `EtfNavRow.units_outstanding x prior_day_nav` (TWSE's bulk feed, already ingested as
+    `etf_nav`); Yahoo's `totalAssets` (`sources/yfinance/analyst.py::_etf_aum`, per-symbol,
+    paced — same accepted exception `ingest/us_jobs.py::job_us_fundamentals` documents) is only
+    the fallback for an ETF whose NAV row lacks either input. Yahoo was the sole source before:
+    its throttling and missing bond-ETF coverage left a third of the roster without a row."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     symbol: str
     market: Market
     as_of: date_
-    aum: float | None = None  # 資產規模 (NTD), None when Yahoo has no totalAssets for this fund
+    aum: float | None = None  # 資產規模 (NTD), None when neither source has a figure
 
 
 class EtfTrailingReturns(BaseModel):
