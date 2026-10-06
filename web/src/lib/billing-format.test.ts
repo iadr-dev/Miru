@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatMinorAmount, summarizeTransaction } from "./billing-format";
+import {
+  formatDate,
+  formatMinorAmount,
+  isBillableTransaction,
+  summarizeTransaction,
+} from "./billing-format";
 
 describe("formatMinorAmount", () => {
   it("turns Paddle's minor units into a currency amount", () => {
@@ -22,6 +27,16 @@ describe("formatDate", () => {
     expect(formatDate("2026-10-05T12:00:00Z", "en-US")).toContain("2026");
     expect(formatDate(null, "en-US")).toBeNull();
     expect(formatDate("garbage", "en-US")).toBeNull();
+  });
+});
+
+describe("isBillableTransaction", () => {
+  it("hides checkouts that were opened but never paid", () => {
+    expect(isBillableTransaction({ status: "ready" })).toBe(false);
+    expect(isBillableTransaction({ status: "draft" })).toBe(false);
+    for (const status of ["billed", "paid", "completed", "past_due", "canceled"]) {
+      expect(isBillableTransaction({ status })).toBe(true);
+    }
   });
 });
 

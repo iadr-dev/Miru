@@ -70,6 +70,7 @@ def test_plans_exposes_client_token_and_catalog(client: TestClient) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert body["client_token"] == "ptok-publishable"
+    assert body["environment"] == "sandbox"
     prices = {p["price_id"] for p in body["plans"]}
     assert PRICE_PREMIUM_MONTHLY in prices
 
@@ -127,3 +128,29 @@ def test_webhook_applies_entitlement_end_to_end(
     me = client.get("/api/v1/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200
     assert me.json()["user"]["tier"] == "premium"
+
+
+def test_a_subscriber_cannot_start_a_second_checkout(
+    client: TestClient, billing_settings: Settings
+) -> None:
+    _, user_id = sign_in(client, billing_settings, tier=Tier.FREE)
+    raw = (
+        b'{"event_id":"evt_http_2","event_type":"subscription.created",'
+        b'"occurred_at":"2024-05-01T00:00:00Z","notification_id":"ntf_2",'
+        b'"data":{"id":"sub_http2","customer_id":"ctm_2","status":"active",'
+        b'"items":[{"price":{"id":"' + PRICE_PREMIUM_MONTHLY.encode() + b'"}}],'
+        b'"custom_data":{"user_id":"' + user_id.encode() + b'"}}}'
+    )
+    assert client.post(
+        "/api/v1/billing/webhook/paddle", content=raw, headers=_signed_headers(raw)
+    ).json()["processed"]
+
+    token = issue_access_token(user_id=user_id, settings=billing_settings)
+    resp = client.post(
+        "/api/v1/billing/checkout",
+        json={"tier": "premium", "interval": "monthly", "byok": False},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    # Refused before any call to Paddle (the test has no Paddle stub, so reaching it would fail).
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "already_subscribed"

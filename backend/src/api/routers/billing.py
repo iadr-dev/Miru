@@ -69,6 +69,8 @@ def _service(
 
 class PlansResponse(BaseModel):
     client_token: str | None
+    # `sandbox` | `production` - which Paddle the browser's Paddle.js must talk to.
+    environment: str
     plans: list[PricedPlan]
 
 
@@ -92,7 +94,11 @@ async def billing_plans(
     country override when `country` names a country Paddle prices separately); it is omitted,
     never guessed, when Paddle can't be asked."""
     plans = await priced_plans(all_plans(settings), lookup, country=country)
-    return PlansResponse(client_token=settings.paddle_client_token, plans=plans)
+    return PlansResponse(
+        client_token=settings.paddle_client_token,
+        environment=settings.paddle_environment,
+        plans=plans,
+    )
 
 
 class CheckoutRequest(BaseModel):
@@ -110,10 +116,21 @@ class CheckoutResponse(BaseModel):
 async def create_checkout(
     body: CheckoutRequest,
     user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> CheckoutResponse:
     """Create a Paddle checkout transaction for the selected plan, tagged with the user id so the
-    webhook can attribute the resulting subscription back to this account."""
+    webhook can attribute the resulting subscription back to this account. A user who already has a
+    live subscription changes or cancels it in the Paddle portal instead - a second checkout would
+    bill them twice."""
+    existing = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user.id)
+    if existing is not None and existing.status != "canceled":
+        raise ApiError(
+            status_code=status.HTTP_409_CONFLICT,
+            code="already_subscribed",
+            message="You already have a subscription; manage it from the billing portal.",
+            retryable=False,
+        )
     try:
         price_id = price_id_for(body.tier, body.interval, byok=body.byok, settings=settings)
     except PlanNotConfiguredError as exc:

@@ -1380,7 +1380,8 @@
         "US": "US",
         "GB": "UK",
         "JP": "Japan"
-      }
+      },
+      "checkoutUnavailable": "Couldn't open checkout. Please try again shortly."
     },
     "profile": {
       "title": "Profile",
@@ -1491,7 +1492,10 @@
         "completed": "Completed",
         "canceled": "Canceled",
         "past_due": "Past due"
-      }
+      },
+      "activationWaiting": "Payment received - activating your plan…",
+      "activationDelayed": "Payment completed. Activating your plan can take a moment - refresh shortly.",
+      "changeInPortal": "You're already subscribed. To change plan, update your card or cancel, use Manage subscription above."
     },
     "byok": {
       "title": "Bring your own key",
