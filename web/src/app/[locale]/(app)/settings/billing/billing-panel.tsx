@@ -2,17 +2,19 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useEffect, useState } from "react";
-import { Checkbox, Select } from "@/components/settings/form-controls";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
 import {
+  changePlan,
   checkout,
   getBillingHistory,
+  getInvoiceUrl,
   getSubscription,
   listPlans,
   openBillingPortal,
+  resumeSubscription,
   SettingsApiError,
 } from "@/lib/api/settings";
 import {
@@ -21,14 +23,21 @@ import {
   isBillableTransaction,
   summarizeTransaction,
 } from "@/lib/billing-format";
-import { CHECKOUT_COMPLETED, loadPaddle, paddleLocale, setCheckoutListener } from "@/lib/paddle";
 import {
-  BILLING_INTERVALS,
-  type BillingTransaction,
-  PAYABLE_TIERS,
-  type PlanInfo,
-  type SubscriptionRecord,
+  changeBlockReason,
+  findPlan,
+  hasReceipt,
+  isLiveSubscription,
+  selectionFor,
+  subscriptionNotice,
+} from "@/lib/billing-state";
+import { CHECKOUT_COMPLETED, loadPaddle, paddleLocale, setCheckoutListener } from "@/lib/paddle";
+import type {
+  BillingTransaction,
+  SubscriptionRecord,
+  SubscriptionResponse,
 } from "@/types/settings";
+import { type BillingInterval, type PayableTier, PlansForm } from "./plans-form";
 
 export function BillingPanel(): ReactNode {
   const t = useTranslations("settings.billing");
@@ -46,8 +55,8 @@ export function BillingPanel(): ReactNode {
     queryFn: getSubscription,
   });
 
-  const [tier, setTier] = useState<(typeof PAYABLE_TIERS)[number]>("premium");
-  const [interval, setInterval] = useState<(typeof BILLING_INTERVALS)[number]>("monthly");
+  const [tier, setTier] = useState<PayableTier>("premium");
+  const [interval, setInterval] = useState<BillingInterval>("monthly");
   const [byok, setByok] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // After Paddle reports a completed payment, the page waits for the webhook to create the
@@ -119,22 +128,74 @@ export function BillingPanel(): ReactNode {
   // opened inside the click (popup blockers allow that) and pointed at the portal link once the
   // server has created it; if the browser blocked the tab, the portal opens in this one instead.
   const portalMutation = useMutation({
-    mutationFn: async (tab: Window | null) => {
+    mutationFn: async ({
+      tab,
+      purpose,
+    }: {
+      tab: Window | null;
+      purpose: "overview" | "payment";
+    }) => {
       try {
-        const { portal_url } = await openBillingPortal();
+        const { portal_url } = await openBillingPortal(purpose);
         if (!portal_url) {
           throw new CheckoutUnavailableError("no portal url");
         }
-        if (tab) {
-          tab.opener = null;
-          tab.location.href = portal_url;
-        } else {
-          window.location.assign(portal_url);
-        }
+        sendTab(tab, portal_url);
       } catch (err) {
         tab?.close();
         throw err;
       }
+    },
+    onError: (err) => setActionError(billingErrorMessage(err, tc)),
+  });
+
+  const plans = plansQuery.data?.plans ?? [];
+  const subscription = subscriptionQuery.data?.subscription ?? null;
+  const live = isLiveSubscription(subscription);
+
+  // A subscriber's picker starts on the plan they are on.
+  const synced = useRef(false);
+  useEffect(() => {
+    if (synced.current || !subscription) {
+      return;
+    }
+    const current = selectionFor(plans, subscription.price_id);
+    if (current) {
+      setTier(current.tier);
+      setInterval(current.interval);
+      setByok(current.byok);
+      synced.current = true;
+    }
+  }, [plans, subscription]);
+
+  const applySubscription = (data: SubscriptionResponse): void => {
+    queryClient.setQueryData(["settings", "subscription"], data);
+    void queryClient.invalidateQueries({ queryKey: ["me"] });
+    void queryClient.invalidateQueries({ queryKey: ["settings", "billing-history"] });
+    setActionError(null);
+  };
+
+  const changeMutation = useMutation({
+    mutationFn: () => changePlan({ tier, interval, byok }),
+    onSuccess: applySubscription,
+    onError: (err) => setActionError(billingErrorMessage(err, tc)),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: resumeSubscription,
+    onSuccess: applySubscription,
+    onError: (err) => setActionError(billingErrorMessage(err, tc)),
+  });
+
+  // A receipt is a PDF download: fetch its link, then download it from this page. Opening a tab for
+  // it would leave an empty tab behind once the browser turns the PDF into a download.
+  const receiptMutation = useMutation({
+    mutationFn: async (transactionId: string) => {
+      const url = await getInvoiceUrl(transactionId);
+      if (!url) {
+        throw new CheckoutUnavailableError("no invoice url");
+      }
+      downloadFile(url);
     },
     onError: (err) => setActionError(billingErrorMessage(err, tc)),
   });
@@ -153,15 +214,18 @@ export function BillingPanel(): ReactNode {
     );
   }
 
-  const selectedPlan = plansQuery.data?.plans.find(
-    (p) => p.tier === tier && p.interval === interval && p.byok === byok,
-  );
+  const selectedPlan = findPlan(plans, { tier, interval, byok });
 
-  // A live subscription is changed or cancelled in Paddle's portal; a second checkout would
-  // bill the user twice (the server refuses it too).
-  const currentSubscription = subscriptionQuery.data?.subscription;
-  const hasLiveSubscription =
-    currentSubscription != null && currentSubscription.status !== "canceled";
+  // A subscriber changes plan here (Paddle's portal only offers card updates and cancelling); a
+  // second checkout would bill them twice, so the server refuses it too.
+  const block = live && subscription ? changeBlockReason(subscription, selectedPlan) : null;
+  const notice = subscriptionNotice(subscription);
+  const planLabel = `${t(`tierOption.${tier}`)} · ${t(`intervalOption.${interval}`)}${byok ? ` · ${t("byok")}` : ""}`;
+  const confirmText = t("confirmChangeText", {
+    plan: selectedPlan?.price
+      ? `${planLabel} (${formatMinorAmount(selectedPlan.price.amount, selectedPlan.price.currency_code, locale)})`
+      : planLabel,
+  });
 
   const unconfigured =
     plansQuery.isError && plansQuery.error instanceof SettingsApiError
@@ -185,7 +249,9 @@ export function BillingPanel(): ReactNode {
               variant="outline"
               size="sm"
               disabled={portalMutation.isPending}
-              onClick={() => portalMutation.mutate(window.open("", "_blank"))}
+              onClick={() =>
+                portalMutation.mutate({ tab: window.open("", "_blank"), purpose: "overview" })
+              }
             >
               {t("managePlan")}
             </Button>
@@ -193,6 +259,38 @@ export function BillingPanel(): ReactNode {
         ) : (
           <p className="text-[13px] text-[var(--text-muted)]">{t("noSubscription")}</p>
         )}
+        {notice ? (
+          <div className="flex items-center justify-between gap-3 border-[var(--border)] border-t py-3">
+            <p role="status" className="text-[13px] text-[var(--warn)]">
+              {notice === "pastDue"
+                ? t("pastDueNotice")
+                : t("cancelScheduledNotice", {
+                    date: formatDate(subscription?.scheduled_cancel_at, locale) ?? "",
+                  })}
+            </p>
+            {notice === "pastDue" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={portalMutation.isPending}
+                onClick={() =>
+                  portalMutation.mutate({ tab: window.open("", "_blank"), purpose: "payment" })
+                }
+              >
+                {t("updatePayment")}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={resumeMutation.isPending}
+                onClick={() => resumeMutation.mutate()}
+              >
+                {t("resumeSubscription")}
+              </Button>
+            )}
+          </div>
+        ) : null}
         <SettingsRow label={t("byokActive")}>
           <span className="text-[13px] text-[var(--text)]">
             {subscriptionQuery.data?.byok_active ? tc("yes") : tc("no")}
@@ -203,8 +301,23 @@ export function BillingPanel(): ReactNode {
       <SettingsSection title={t("plansTitle")} className="mb-6">
         {unconfigured ? (
           <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>
-        ) : hasLiveSubscription ? (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("changeInPortal")}</p>
+        ) : live ? (
+          <PlansForm
+            tier={tier}
+            setTier={setTier}
+            interval={interval}
+            setInterval={setInterval}
+            byok={byok}
+            setByok={setByok}
+            actionError={actionError}
+            pending={changeMutation.isPending}
+            onSubmit={() => changeMutation.mutate()}
+            submitLabel={t("changePlan")}
+            blockedNote={block ? t(`changeBlocked.${block}`) : null}
+            confirmText={confirmText}
+            plan={selectedPlan}
+            locale={locale}
+          />
         ) : (
           <PlansForm
             tier={tier}
@@ -214,8 +327,9 @@ export function BillingPanel(): ReactNode {
             byok={byok}
             setByok={setByok}
             actionError={actionError}
-            checkoutPending={checkoutMutation.isPending}
-            onCheckout={() => checkoutMutation.mutate()}
+            pending={checkoutMutation.isPending}
+            onSubmit={() => checkoutMutation.mutate()}
+            submitLabel={t("checkout")}
             plan={selectedPlan}
             locale={locale}
           />
@@ -223,98 +337,24 @@ export function BillingPanel(): ReactNode {
       </SettingsSection>
 
       <SettingsSection title={t("historyTitle")}>
-        <BillingHistorySection query={historyQuery} locale={locale} />
+        <BillingHistorySection
+          query={historyQuery}
+          locale={locale}
+          onReceipt={(id) => receiptMutation.mutate(id)}
+        />
       </SettingsSection>
     </>
-  );
-}
-
-type PlansFormProps = {
-  tier: (typeof PAYABLE_TIERS)[number];
-  setTier: (tier: (typeof PAYABLE_TIERS)[number]) => void;
-  interval: (typeof BILLING_INTERVALS)[number];
-  setInterval: (interval: (typeof BILLING_INTERVALS)[number]) => void;
-  byok: boolean;
-  setByok: (byok: boolean) => void;
-  actionError: string | null;
-  checkoutPending: boolean;
-  onCheckout: () => void;
-  plan: PlanInfo | undefined;
-  locale: string;
-};
-
-function PlansForm({
-  tier,
-  setTier,
-  interval,
-  setInterval,
-  byok,
-  setByok,
-  actionError,
-  checkoutPending,
-  onCheckout,
-  plan,
-  locale,
-}: PlansFormProps): ReactNode {
-  const t = useTranslations("settings.billing");
-  return (
-    <div className="space-y-4 py-1">
-      <SettingsRow label={t("tier")}>
-        <Select
-          aria-label={t("tier")}
-          value={tier}
-          onChange={(e) => setTier(e.target.value as (typeof PAYABLE_TIERS)[number])}
-          className="w-40"
-        >
-          {PAYABLE_TIERS.map((v) => (
-            <option key={v} value={v}>
-              {t(`tierOption.${v}`)}
-            </option>
-          ))}
-        </Select>
-      </SettingsRow>
-      <SettingsRow label={t("interval")}>
-        <Select
-          aria-label={t("interval")}
-          value={interval}
-          onChange={(e) => setInterval(e.target.value as (typeof BILLING_INTERVALS)[number])}
-          className="w-40"
-        >
-          {BILLING_INTERVALS.map((v) => (
-            <option key={v} value={v}>
-              {t(`intervalOption.${v}`)}
-            </option>
-          ))}
-        </Select>
-      </SettingsRow>
-      <SettingsRow label={t("byok")}>
-        <Checkbox checked={byok} onChange={setByok} label={t("byokCheckbox")} />
-      </SettingsRow>
-      <SettingsRow label={t("price")} hint={plan?.price ? t("taxNote") : undefined}>
-        <span className="font-medium text-[14px] text-[var(--text)] tabular-nums">
-          {plan?.price
-            ? `${formatMinorAmount(plan.price.amount, plan.price.currency_code, locale)} / ${t(`perInterval.${interval}`)}`
-            : t("priceUnavailable")}
-        </span>
-      </SettingsRow>
-      {actionError ? (
-        <p role="alert" className="text-[13px] text-[var(--warn)]">
-          {actionError}
-        </p>
-      ) : null}
-      <Button variant="filled" size="sm" disabled={checkoutPending} onClick={onCheckout}>
-        {t("checkout")}
-      </Button>
-    </div>
   );
 }
 
 function BillingHistorySection({
   query,
   locale,
+  onReceipt,
 }: {
   query: ReturnType<typeof useQuery<BillingTransaction[]>>;
   locale: string;
+  onReceipt: (transactionId: string) => void;
 }): ReactNode {
   const t = useTranslations("settings.billing");
   const tc = useTranslations("settings.common");
@@ -335,15 +375,17 @@ function BillingHistorySection({
   if (transactions.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("noHistory")}</p>;
   }
-  return <HistoryList transactions={transactions} locale={locale} />;
+  return <HistoryList transactions={transactions} locale={locale} onReceipt={onReceipt} />;
 }
 
 function HistoryList({
   transactions,
   locale,
+  onReceipt,
 }: {
   transactions: BillingTransaction[];
   locale: string;
+  onReceipt: (transactionId: string) => void;
 }): ReactNode {
   const t = useTranslations("settings.billing");
   return (
@@ -357,6 +399,17 @@ function HistoryList({
             <span className="text-[var(--text-muted)]">
               {row.status ? transactionStatusLabel(t, row.status) : "—"}
             </span>
+            {row.id && hasReceipt(row.status) ? (
+              <button
+                type="button"
+                className="text-[var(--accent)] underline"
+                onClick={() => onReceipt(row.id as string)}
+              >
+                {t("receipt")}
+              </button>
+            ) : (
+              <span />
+            )}
           </li>
         );
       })}
@@ -421,6 +474,29 @@ function statusLabel(t: (key: string) => string, status: string): string {
 /** The checkout overlay can't open: no client token configured, or Paddle.js didn't load. */
 class CheckoutUnavailableError extends Error {}
 
+/** Point a tab opened inside a click at its destination, or fall back to this tab if the browser
+ * blocked the new one. `opener` is cleared so the destination can't reach back into Miru. */
+function sendTab(tab: Window | null, url: string): void {
+  if (tab) {
+    tab.opener = null;
+    tab.location.href = url;
+  } else {
+    window.location.assign(url);
+  }
+}
+
+/** Start a download of `url` from this page. Paddle serves the invoice as an attachment, so the
+ * browser saves it and Miru stays exactly where it is. */
+function downloadFile(url: string): void {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "";
+  link.rel = "noopener noreferrer";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
 const ACTIVATION_POLLS = 10;
 const ACTIVATION_POLL_MS = 2000;
 
@@ -430,6 +506,12 @@ function billingErrorMessage(err: unknown, tc: (key: string) => string): string 
   }
   if (err instanceof SettingsApiError && err.code === "billing_unconfigured") {
     return tc("billingUnconfigured");
+  }
+  if (err instanceof SettingsApiError && err.code === "same_plan") {
+    return tc("billingSamePlan");
+  }
+  if (err instanceof SettingsApiError && err.code === "cancel_scheduled") {
+    return tc("billingCancelScheduled");
   }
   return tc("errorGeneric");
 }

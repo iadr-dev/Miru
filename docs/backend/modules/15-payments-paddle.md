@@ -81,7 +81,10 @@ GET   /billing/plans?country=XX      tier×interval×byok → price_id + price{a
 POST  /billing/checkout {price_id}   create Paddle checkout (custom_data.user_id)
 GET   /billing/subscription          current subscription — **reconcile-on-read**: read through to
                                      the Paddle API and upsert the local row (self-heals a missed webhook)
-POST  /billing/portal                Paddle-hosted management URL (update card / cancel / invoices)
+POST  /billing/portal?purpose=       Paddle customer-portal link (portal session): overview | payment
+POST  /billing/change-plan           switch tier/interval/BYOK on the live subscription (Paddle prorates)
+POST  /billing/resume                undo a scheduled cancel
+GET   /billing/invoice/{txn_id}      invoice PDF link, only for the caller's own transactions
 POST  /billing/webhook/paddle        Paddle events (signature-verified) — entitlement source of truth
 GET   /billing/history               **proxies Paddle's transactions API** (or deep-links the portal) —
                                      no local invoices mirror; Paddle owns the tax-compliant invoices/PDFs
@@ -90,6 +93,21 @@ GET   /billing/history               **proxies Paddle's transactions API** (or d
 **Reconciliation (correctness):** the local `subscriptions` row is normally webhook-written,
 but `GET /billing/subscription` reconciles-on-read against Paddle so a dropped/delayed webhook
 self-heals on the next page load (no separate ledger job needed at this scale).
+
+### Subscription lifecycle (verified against Paddle sandbox)
+
+| Action | How | Result in Miru |
+|--------|-----|----------------|
+| Subscribe | Paddle.js overlay -> webhook `subscription.created/activated` | row `active`, tier set, page polls until it appears |
+| Change plan | `POST /billing/change-plan` (Paddle's portal only offers card update + cancel) | Paddle prorates and charges; local row/tier refreshed immediately, webhook is then a no-op |
+| Cancel | Paddle portal "Cancel subscription" -> ends at period end | webhook `subscription.updated` with `scheduled_change`: status stays `active`, `scheduled_cancel_at` set, page shows "ends <date>" + Resume |
+| Resume | `POST /billing/resume` | `scheduled_change` cleared, banner gone |
+| Period ends / immediate cancel | webhook `subscription.canceled` | row `canceled`, tier `free`, page shows the plan picker again |
+| Card declined at checkout | Paddle's overlay shows the bank's decline | no subscription is created |
+| Payment fails on renewal | webhook `subscription.past_due` | status `past_due`, tier unchanged during dunning, page shows "update payment method" |
+
+Transactions that never charged anything (`draft`, `ready`, `canceled`) are not shown in billing history.
+A subscriber cannot start a second checkout (`409 already_subscribed`).
 
 ## 6. Config / secrets
 
@@ -100,6 +118,29 @@ PADDLE_CLIENT_TOKEN       = Paddle.js (publishable)
 PADDLE_ENVIRONMENT        = sandbox | production        # config.settings.paddle_environment
 PADDLE_PRICE_*            = the 8 IDs above
 ```
+
+## Go-live checklist (sandbox -> production)
+
+Everything above was exercised against Paddle **sandbox**. Before taking real money:
+
+1. **Paddle live account** approved (business verification, bank details, tax settings).
+2. **Live catalogue**: recreate the product and the 8 prices (Premium/Pro x monthly/annual x BYOK) in
+   the live account, including the Taiwan `unit_price_overrides` (TWD) if prices differ by country.
+3. **Secrets** in the production environment (never committed): `PADDLE_API_KEY` (live),
+   `PADDLE_CLIENT_TOKEN` (`live_...`, publishable), `PADDLE_WEBHOOK_SECRET` (the *live* destination's
+   secret), the 8 `PADDLE_PRICE_*` ids, and `PADDLE_ENVIRONMENT=production`.
+4. **Webhook destination** in the live account: `<public API base>/api/v1/billing/webhook/paddle`
+   (HTTPS, a stable domain - not a tunnel), subscribed to the `subscription.*` and `transaction.*`
+   events. Send a test event and confirm a 200.
+5. **Checkout domain**: the live Paddle.js only opens on an *approved domain* - add the production web
+   origin under Paddle's checkout settings, and set the account's default payment link to a real page.
+6. **Customer portal** enabled in the live account (card update, cancel, invoices).
+7. **Legal & copy**: terms, privacy and refund policy pages linked where you sell; Paddle is the
+   merchant of record and shows its own terms in checkout. Check all plan copy stays free of
+   trading language (governance).
+8. **Smoke test with a real card** on the cheapest plan: subscribe, see the tier change, download the
+   receipt, change plan, cancel, confirm the tier returns to free at period end, then refund it.
+9. **Monitoring**: alert on webhook non-2xx responses and on `billing_provider_error`.
 
 ## Governance obligations
 - Payment credentials/keys are encrypted, never logged/journaled/prompted ([governance.md](../governance.md) §6/§9).

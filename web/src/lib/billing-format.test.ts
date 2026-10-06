@@ -31,10 +31,11 @@ describe("formatDate", () => {
 });
 
 describe("isBillableTransaction", () => {
-  it("hides checkouts that were opened but never paid", () => {
+  it("hides checkouts that were opened but never paid or were canceled", () => {
     expect(isBillableTransaction({ status: "ready" })).toBe(false);
     expect(isBillableTransaction({ status: "draft" })).toBe(false);
-    for (const status of ["billed", "paid", "completed", "past_due", "canceled"]) {
+    expect(isBillableTransaction({ status: "canceled" })).toBe(false);
+    for (const status of ["billed", "paid", "completed", "past_due"]) {
       expect(isBillableTransaction({ status })).toBe(true);
     }
   });
@@ -53,13 +54,19 @@ describe("summarizeTransaction", () => {
       0,
       "en-US",
     );
-    expect(summary).toMatchObject({ key: "txn_1", status: "completed", amount: "$10.99" });
+    expect(summary).toMatchObject({
+      key: "txn_1",
+      id: "txn_1",
+      status: "completed",
+      amount: "$10.99",
+    });
     expect(summary.date).toContain("2026");
   });
 
   it("never throws on a sparse transaction", () => {
     expect(summarizeTransaction({}, 3, "en-US")).toEqual({
       key: "tx-3",
+      id: null,
       date: null,
       amount: null,
       status: null,

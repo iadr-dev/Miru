@@ -7,19 +7,23 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import time
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from accounts.auth import issue_access_token
-from api.routers.billing import get_price_lookup
+from api.routers.billing import get_billing_client, get_price_lookup
 from config.settings import Settings
+from payments.client import PaddleClient
 from payments.pricing import clear_price_cache
 from schemas.enums import Tier
 from tests.api.conftest import build_test_client, sign_in
 from tests.payments.conftest import (
     PRICE_PREMIUM_MONTHLY,
+    PRICE_PRO_MONTHLY,
     WEBHOOK_SECRET,
 )
 
@@ -38,6 +42,14 @@ def billing_settings() -> Settings:
         paddle_client_token="ptok-publishable",
         paddle_environment="sandbox",
         paddle_price_premium_monthly=PRICE_PREMIUM_MONTHLY,
+        paddle_price_pro_monthly=PRICE_PRO_MONTHLY,
+        # Everything else explicitly unset, so a developer's real backend/.env never leaks in.
+        paddle_price_premium_annual=None,
+        paddle_price_premium_byok_monthly=None,
+        paddle_price_premium_byok_annual=None,
+        paddle_price_pro_annual=None,
+        paddle_price_pro_byok_monthly=None,
+        paddle_price_pro_byok_annual=None,
     )
 
 
@@ -154,3 +166,205 @@ def test_a_subscriber_cannot_start_a_second_checkout(
     # Refused before any call to Paddle (the test has no Paddle stub, so reaching it would fail).
     assert resp.status_code == 409
     assert resp.json()["code"] == "already_subscribed"
+
+
+# ---- subscription management (change plan / resume / invoice) ------------------------------------
+_SUB = "sub_lifecycle"
+
+
+class _FakePaddle:
+    """A scripted Paddle API: records every call, serves the subscription the test configures."""
+
+    def __init__(self) -> None:
+        self.price_id = PRICE_PREMIUM_MONTHLY
+        self.scheduled_change: dict[str, str] | None = None
+        self.calls: list[tuple[str, str, object]] = []
+        self.portal_sessions_fail = False
+
+    def entity(self) -> dict[str, object]:
+        return {
+            "id": _SUB,
+            "customer_id": "ctm_1",
+            "status": "active",
+            "items": [{"price": {"id": self.price_id}}],
+            "current_billing_period": {
+                "starts_at": "2026-10-06T00:00:00Z",
+                "ends_at": "2026-11-06T00:00:00Z",
+            },
+            "scheduled_change": self.scheduled_change,
+            "management_urls": {
+                "update_payment_method": "https://portal.example/fallback-card",
+                "cancel": "https://portal.example/fallback-cancel",
+            },
+            "custom_data": None,
+        }
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:  # noqa: PLR0911 - a route table
+        body = json.loads(request.content) if request.content else None
+        self.calls.append((request.method, request.url.path, body))
+        path = request.url.path
+        if request.method == "PATCH" and path == f"/subscriptions/{_SUB}":
+            if body and body.get("items"):
+                self.price_id = body["items"][0]["price_id"]
+            if body and "scheduled_change" in body:
+                self.scheduled_change = body["scheduled_change"]
+            return httpx.Response(200, json={"data": self.entity()})
+        if request.method == "GET" and path == f"/subscriptions/{_SUB}":
+            return httpx.Response(200, json={"data": self.entity()})
+        if request.method == "POST" and path == "/customers/ctm_1/portal-sessions":
+            if self.portal_sessions_fail:
+                return httpx.Response(500, json={"error": {}})
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "urls": {
+                            "general": {"overview": "https://portal.example/overview"},
+                            "subscriptions": [
+                                {
+                                    "id": _SUB,
+                                    "update_subscription_payment_method": "https://portal.example/card",
+                                }
+                            ],
+                        }
+                    }
+                },
+            )
+        if path == "/transactions":
+            return httpx.Response(200, json={"data": [{"id": "txn_mine"}]})
+        if path == "/transactions/txn_mine/invoice":
+            return httpx.Response(200, json={"data": {"url": "https://paddle.example/invoice.pdf"}})
+        return httpx.Response(404, json={"error": {}})
+
+
+@pytest.fixture
+def paddle(client: TestClient, billing_settings: Settings) -> _FakePaddle:
+    fake = _FakePaddle()
+    paddle_client = PaddleClient(
+        billing_settings,
+        client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(fake)),
+    )
+    client.app.dependency_overrides[get_billing_client] = lambda: paddle_client  # type: ignore[attr-defined]
+    return fake
+
+
+def _auth(settings: Settings, user_id: str) -> dict[str, str]:
+    token = issue_access_token(user_id=user_id, settings=settings)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _subscribe(
+    client: TestClient, settings: Settings, *, scheduled_cancel: bool = False
+) -> dict[str, str]:
+    """A signed-in user with a live Premium subscription, created the way Paddle does: a webhook."""
+    _, user_id = sign_in(client, settings, tier=Tier.FREE)
+    change = (
+        ',"scheduled_change":{"action":"cancel","effective_at":"2026-11-06T00:00:00Z"}'
+        if scheduled_cancel
+        else ""
+    )
+    raw = (
+        b'{"event_id":"evt_lc_' + user_id.encode() + b'","event_type":"subscription.created",'
+        b'"occurred_at":"2026-10-06T00:00:00Z","notification_id":"ntf_lc",'
+        b'"data":{"id":"' + _SUB.encode() + b'","customer_id":"ctm_1","status":"active",'
+        b'"items":[{"price":{"id":"'
+        + PRICE_PREMIUM_MONTHLY.encode()
+        + b'"}}]'
+        + change.encode()
+        + b',"custom_data":{"user_id":"'
+        + user_id.encode()
+        + b'"}}}'
+    )
+    assert client.post(
+        "/api/v1/billing/webhook/paddle", content=raw, headers=_signed_headers(raw)
+    ).json()["processed"]
+    return _auth(settings, user_id)
+
+
+def test_changing_plan_switches_the_price_and_refreshes_the_tier(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    resp = client.post(
+        "/api/v1/billing/change-plan",
+        json={"tier": "pro", "interval": "monthly", "byok": False},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["subscription"]["tier"] == "pro"
+    patch = next(c for c in paddle.calls if c[0] == "PATCH")
+    assert patch[2] == {
+        "items": [{"price_id": PRICE_PRO_MONTHLY, "quantity": 1}],
+        "proration_billing_mode": "prorated_immediately",
+    }
+    assert client.get("/api/v1/me", headers=headers).json()["user"]["tier"] == "pro"
+
+
+def test_change_plan_refuses_the_current_plan_an_unknown_plan_and_no_subscription(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    _, user_id = sign_in(client, billing_settings, tier=Tier.FREE)
+    nobody = _auth(billing_settings, user_id)
+    pro = {"tier": "pro", "interval": "monthly", "byok": False}
+    no_sub = client.post("/api/v1/billing/change-plan", json=pro, headers=nobody)
+    assert no_sub.status_code == 404
+
+    headers = _subscribe(client, billing_settings)
+    same = {"tier": "premium", "interval": "monthly", "byok": False}
+    refused = client.post("/api/v1/billing/change-plan", json=same, headers=headers)
+    assert refused.json()["code"] == "same_plan"
+    unknown = {"tier": "pro", "interval": "annual", "byok": False}  # not configured in this env
+    refused = client.post("/api/v1/billing/change-plan", json=unknown, headers=headers)
+    assert refused.json()["code"] == "unknown_plan"
+    assert not [c for c in paddle.calls if c[0] == "PATCH"]  # nothing reached Paddle
+
+
+def test_a_scheduled_cancel_blocks_plan_changes_until_resumed(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings, scheduled_cancel=True)
+    paddle.scheduled_change = {"action": "cancel", "effective_at": "2026-11-06T00:00:00Z"}
+    pro = {"tier": "pro", "interval": "monthly", "byok": False}
+    blocked = client.post("/api/v1/billing/change-plan", json=pro, headers=headers)
+    assert blocked.json()["code"] == "cancel_scheduled"
+
+    resumed = client.post("/api/v1/billing/resume", headers=headers)
+    assert resumed.status_code == 200
+    assert resumed.json()["subscription"]["scheduled_cancel_at"] is None
+    patch = next(c for c in paddle.calls if c[0] == "PATCH")
+    assert patch[2] == {"scheduled_change": None}
+    # Nothing left to resume now.
+    assert client.post("/api/v1/billing/resume", headers=headers).json()["code"] == "not_canceling"
+
+
+def test_an_invoice_link_is_only_for_the_callers_own_transaction(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    mine = client.get("/api/v1/billing/invoice/txn_mine", headers=headers)
+    assert mine.status_code == 200
+    assert mine.json() == {"url": "https://paddle.example/invoice.pdf"}
+    theirs = client.get("/api/v1/billing/invoice/txn_someone_else", headers=headers)
+    assert theirs.status_code == 404
+    assert theirs.json()["code"] == "transaction_not_found"
+
+
+def test_the_portal_opens_the_overview_or_the_card_form(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    overview = client.post("/api/v1/billing/portal", headers=headers)
+    assert overview.json() == {"portal_url": "https://portal.example/overview"}
+    card = client.post("/api/v1/billing/portal?purpose=payment", headers=headers)
+    assert card.json() == {"portal_url": "https://portal.example/card"}
+    assert client.post("/api/v1/billing/portal?purpose=nope", headers=headers).status_code == 422
+
+
+def test_the_portal_falls_back_to_the_subscriptions_own_links(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    paddle.portal_sessions_fail = True
+    resp = client.post("/api/v1/billing/portal", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == {"portal_url": "https://portal.example/fallback-card"}

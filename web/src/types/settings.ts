@@ -164,6 +164,8 @@ export const portalResponseSchema = z.object({
 });
 export type PortalResponse = z.infer<typeof portalResponseSchema>;
 
+export const invoiceResponseSchema = z.object({ url: z.string().nullable() });
+
 export const billingHistoryResponseSchema = z.object({
   transactions: z.array(z.record(z.string(), z.unknown())).default([]),
 });

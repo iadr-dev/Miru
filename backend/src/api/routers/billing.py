@@ -10,7 +10,7 @@ authenticated by the signature, not a session).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel
@@ -54,6 +54,12 @@ def _client_or_503(settings: Settings) -> PaddleClient:
             message="Billing is not configured.",
             retryable=False,
         ) from exc
+
+
+def get_billing_client(settings: Settings = Depends(get_settings_dep)) -> PaddleClient:
+    """The Paddle API client for the subscription-management routes; a dependency so tests can
+    substitute a stub transport."""
+    return _client_or_503(settings)
 
 
 def _service(
@@ -181,13 +187,143 @@ async def current_subscription(
         record = await service.reconcile_subscription(user_id=user.id)
     except PaddleApiError:
         record = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user.id)
+    return await _subscription_response(session, settings, user_id=user.id, record=record)
+
+
+async def _subscription_response(
+    session: AsyncSession, settings: Settings, *, user_id: str, record: SubscriptionRecord | None
+) -> SubscriptionResponse:
     byok = False
     if record is not None:
         byok = effective_byok_active(
             subscription_byok=record.byok,
-            has_llm_key=await _has_llm_key(session, settings, user_id=user.id),
+            has_llm_key=await _has_llm_key(session, settings, user_id=user_id),
         )
     return SubscriptionResponse(subscription=record, byok_active=byok)
+
+
+def _provider_error(message: str) -> ApiError:
+    return ApiError(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        code="billing_provider_error",
+        message=message,
+        retryable=True,
+    )
+
+
+def _conflict(code: str, message: str) -> ApiError:
+    return ApiError(
+        status_code=status.HTTP_409_CONFLICT, code=code, message=message, retryable=False
+    )
+
+
+async def _live_subscription(session: AsyncSession, user_id: str) -> SubscriptionRecord:
+    record = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user_id)
+    if record is None or record.status == "canceled":
+        raise ApiError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="no_subscription",
+            message="No active subscription.",
+            retryable=False,
+        )
+    return record
+
+
+@router.post("/billing/change-plan")
+async def change_plan(
+    body: CheckoutRequest,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    client: PaddleClient = Depends(get_billing_client),
+) -> SubscriptionResponse:
+    """Move the caller's live subscription to another tier / interval / BYOK variant. Paddle's
+    customer portal only offers card updates and cancellation, so plan changes are made here
+    against Paddle's subscription API (prorated immediately by Paddle). The local row and tier are
+    refreshed from Paddle straight away; the webhook that follows is then a no-op."""
+    record = await _live_subscription(session, user.id)
+    if record.scheduled_cancel_at is not None:
+        raise _conflict("cancel_scheduled", "Resume your subscription before changing plan.")
+    try:
+        price_id = price_id_for(body.tier, body.interval, byok=body.byok, settings=settings)
+    except PlanNotConfiguredError as exc:
+        raise ApiError(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            code="unknown_plan",
+            message="That plan is not available.",
+            retryable=False,
+        ) from exc
+    if price_id == record.price_id:
+        raise _conflict("same_plan", "You are already on that plan.")
+    try:
+        await client.change_subscription_price(record.paddle_subscription_id, price_id=price_id)
+        updated = await _service(session, settings, client=client).reconcile_subscription(
+            user_id=user.id
+        )
+    except PaddleApiError as exc:
+        raise _provider_error("Could not change plan.") from exc
+    return await _subscription_response(session, settings, user_id=user.id, record=updated)
+
+
+@router.post("/billing/resume")
+async def resume_subscription(
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    client: PaddleClient = Depends(get_billing_client),
+) -> SubscriptionResponse:
+    """Undo a scheduled cancellation while the subscription is still running."""
+    record = await _live_subscription(session, user.id)
+    if record.scheduled_cancel_at is None:
+        raise _conflict("not_canceling", "This subscription is not scheduled to cancel.")
+    try:
+        await client.clear_scheduled_change(record.paddle_subscription_id)
+        updated = await _service(session, settings, client=client).reconcile_subscription(
+            user_id=user.id
+        )
+    except PaddleApiError as exc:
+        raise _provider_error("Could not resume the subscription.") from exc
+    return await _subscription_response(session, settings, user_id=user.id, record=updated)
+
+
+class InvoiceResponse(BaseModel):
+    url: str | None
+
+
+@router.get("/billing/invoice/{transaction_id}")
+async def billing_invoice(
+    transaction_id: str,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    client: PaddleClient = Depends(get_billing_client),
+) -> InvoiceResponse:
+    """A short-lived link to Paddle's tax-compliant invoice PDF. Only for a transaction that is in
+    the caller's own billing history - the id alone never grants access."""
+    record = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user.id)
+    if record is None:
+        raise ApiError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="no_subscription",
+            message="No billing history.",
+            retryable=False,
+        )
+    try:
+        own = await client.list_transactions(
+            customer_id=record.paddle_customer_id,
+            subscription_id=record.paddle_subscription_id,
+        )
+        if transaction_id not in {str(tx.get("id")) for tx in own}:
+            raise ApiError(
+                status_code=status.HTTP_404_NOT_FOUND,
+                code="transaction_not_found",
+                message="Transaction not found.",
+                retryable=False,
+            )
+        url = await client.get_invoice_url(transaction_id)
+    except PaddleApiError as exc:
+        raise _provider_error("Could not load the invoice.") from exc
+    return InvoiceResponse(url=url)
 
 
 class PortalResponse(BaseModel):
@@ -196,14 +332,16 @@ class PortalResponse(BaseModel):
 
 @router.post("/billing/portal")
 async def billing_portal(
+    purpose: Literal["overview", "payment"] = Query(default="overview"),
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings_dep),
+    client: PaddleClient = Depends(get_billing_client),
 ) -> PortalResponse:
-    """The Paddle-hosted management URL (update card / cancel / invoices). Resolved from the live
-    subscription's `management_urls`; card handling, cancellation and invoices are all Paddle's."""
-    store = SqlAlchemySubscriptionStore(session)
-    record = await store.get_for_user(user_id=user.id)
+    """A link into Paddle's customer portal. `overview` is the portal home (plan, payments,
+    cancel); `payment` goes straight to the update-payment-method form (the past-due fix). Card
+    handling, cancellation and invoices are all Paddle's. Falls back to the subscription's own
+    management links if a portal session can't be created."""
+    record = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user.id)
     if record is None:
         raise ApiError(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -211,19 +349,42 @@ async def billing_portal(
             message="No subscription to manage.",
             retryable=False,
         )
-    client = _client_or_503(settings)
     try:
-        data = await client.get_subscription(record.paddle_subscription_id)
+        url = await _portal_url(client, record, purpose)
     except PaddleApiError as exc:
-        raise ApiError(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            code="billing_provider_error",
-            message="Could not resolve the management portal.",
-            retryable=True,
-        ) from exc
-    urls: dict[str, Any] = data.get("management_urls") or {}
-    portal_url = urls.get("update_payment_method") or urls.get("cancel")
-    return PortalResponse(portal_url=str(portal_url) if portal_url else None)
+        raise _provider_error("Could not resolve the management portal.") from exc
+    return PortalResponse(portal_url=url)
+
+
+async def _portal_url(
+    client: PaddleClient, record: SubscriptionRecord, purpose: Literal["overview", "payment"]
+) -> str | None:
+    if record.paddle_customer_id:
+        try:
+            created = await client.create_portal_session(
+                record.paddle_customer_id, [record.paddle_subscription_id]
+            )
+        except PaddleApiError:
+            created = {}  # fall through to the subscription's own management links
+        urls: dict[str, Any] = created.get("urls") or {}
+        if purpose == "overview":
+            general: dict[str, Any] = urls.get("general") or {}
+            overview = general.get("overview")
+            if overview:
+                return str(overview)
+        else:
+            subscriptions: list[dict[str, Any]] = urls.get("subscriptions") or []
+            pay = (
+                subscriptions[0].get("update_subscription_payment_method")
+                if subscriptions
+                else None
+            )
+            if pay:
+                return str(pay)
+    data = await client.get_subscription(record.paddle_subscription_id)
+    links: dict[str, Any] = data.get("management_urls") or {}
+    fallback = links.get("update_payment_method") or links.get("cancel")
+    return str(fallback) if fallback else None
 
 
 @router.post("/billing/webhook/paddle")
