@@ -1381,7 +1381,9 @@
         "GB": "UK",
         "JP": "Japan"
       },
-      "checkoutUnavailable": "Couldn't open checkout. Please try again shortly."
+      "checkoutUnavailable": "Couldn't open checkout. Please try again shortly.",
+      "billingSamePlan": "This is already your current plan.",
+      "billingCancelScheduled": "Your subscription is set to end. Resume it before changing plan."
     },
     "profile": {
       "title": "Profile",
@@ -1495,7 +1497,20 @@
       },
       "activationWaiting": "Payment received - activating your plan…",
       "activationDelayed": "Payment completed. Activating your plan can take a moment - refresh shortly.",
-      "changeInPortal": "You're already subscribed. To change plan, update your card or cancel, use Manage subscription above."
+      "changePlan": "Change plan",
+      "confirmChange": "Confirm change",
+      "keepPlan": "Keep current plan",
+      "confirmChangeText": "Switch to {plan}? The difference for the rest of this period is prorated by Paddle and charged to or credited back to your payment method.",
+      "changeBlocked": {
+        "samePlan": "This is already your current plan.",
+        "cancelScheduled": "Your subscription is set to end. Choose Resume subscription before changing plan.",
+        "unavailable": "That combination isn't available."
+      },
+      "pastDueNotice": "Your last payment failed. Update your payment method or the subscription may be canceled.",
+      "cancelScheduledNotice": "Your subscription ends on {date} and then returns to the free plan.",
+      "updatePayment": "Update payment method",
+      "resumeSubscription": "Resume subscription",
+      "receipt": "Receipt"
     },
     "byok": {
       "title": "Bring your own key",

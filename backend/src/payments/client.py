@@ -119,6 +119,40 @@ class PaddleClient:
         data: dict[str, Any] = payload.get("data", {})
         return data
 
+    async def create_portal_session(
+        self, customer_id: str, subscription_ids: list[str]
+    ) -> dict[str, Any]:
+        """A customer-portal session: authenticated, short-lived links to the portal overview and
+        to the per-subscription pages (update payment method, cancel)."""
+        payload = await self._request(
+            "POST",
+            f"/customers/{customer_id}/portal-sessions",
+            json={"subscription_ids": subscription_ids},
+        )
+        data: dict[str, Any] = payload.get("data", {})
+        return data
+
+    async def change_subscription_price(
+        self, subscription_id: str, *, price_id: str
+    ) -> dict[str, Any]:
+        """Switch a live subscription to another price. Proration is Paddle's: the difference for
+        the remainder of the period is charged (or credited) immediately."""
+        body: dict[str, Any] = {
+            "items": [{"price_id": price_id, "quantity": 1}],
+            "proration_billing_mode": "prorated_immediately",
+        }
+        payload = await self._request("PATCH", f"/subscriptions/{subscription_id}", json=body)
+        data: dict[str, Any] = payload.get("data", {})
+        return data
+
+    async def clear_scheduled_change(self, subscription_id: str) -> dict[str, Any]:
+        """Remove a pending scheduled change (a cancel that has not taken effect yet)."""
+        payload = await self._request(
+            "PATCH", f"/subscriptions/{subscription_id}", json={"scheduled_change": None}
+        )
+        data: dict[str, Any] = payload.get("data", {})
+        return data
+
     async def list_transactions(
         self, *, customer_id: str | None = None, subscription_id: str | None = None
     ) -> list[dict[str, Any]]:

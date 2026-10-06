@@ -36,6 +36,7 @@ import {
   type DeliveryChannelKind,
   type DevicePushToken,
   devicePushTokenSchema,
+  invoiceResponseSchema,
   type Market,
   type Memory,
   type MemoryScope,
@@ -233,13 +234,42 @@ export async function checkout(body: {
   return checkoutResponseSchema.parse(raw);
 }
 
+/** Move the live subscription to another tier / interval / BYOK variant (Paddle prorates it). */
+export async function changePlan(body: {
+  tier: "premium" | "pro";
+  interval: "monthly" | "annual";
+  byok?: boolean;
+}): Promise<SubscriptionResponse> {
+  const raw = await requestJson("/billing/change-plan", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify(body),
+  });
+  return subscriptionResponseSchema.parse(raw);
+}
+
+/** Undo a scheduled cancellation while the subscription is still running. */
+export async function resumeSubscription(): Promise<SubscriptionResponse> {
+  const raw = await requestJson("/billing/resume", { method: "POST" });
+  return subscriptionResponseSchema.parse(raw);
+}
+
+/** A link to Paddle's invoice PDF for one of the caller's own transactions. */
+export async function getInvoiceUrl(transactionId: string): Promise<string | null> {
+  const raw = await requestJson(`/billing/invoice/${encodeURIComponent(transactionId)}`);
+  return invoiceResponseSchema.parse(raw).url;
+}
+
 export async function getSubscription(): Promise<SubscriptionResponse> {
   const raw = await requestJson("/billing/subscription");
   return subscriptionResponseSchema.parse(raw);
 }
 
-export async function openBillingPortal(): Promise<PortalResponse> {
-  const raw = await requestJson("/billing/portal", { method: "POST" });
+/** A link into Paddle's customer portal: its home (`overview`) or the card-update form (`payment`). */
+export async function openBillingPortal(
+  purpose: "overview" | "payment" = "overview",
+): Promise<PortalResponse> {
+  const raw = await requestJson(`/billing/portal?purpose=${purpose}`, { method: "POST" });
   return portalResponseSchema.parse(raw);
 }
 

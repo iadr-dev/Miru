@@ -30,14 +30,15 @@ export function formatDate(iso: string | null | undefined, locale: string): stri
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
 }
 
-/** Paddle creates a draft/ready transaction the moment checkout opens; one never paid is not a bill
- * and must not show in the user's history. */
+/** Paddle creates a draft/ready transaction the moment checkout opens, and a canceled one is a
+ * checkout that never charged anything. None of these is a bill, so none shows in the history. */
 export function isBillableTransaction(tx: Record<string, unknown>): boolean {
-  return tx.status !== "draft" && tx.status !== "ready";
+  return tx.status !== "draft" && tx.status !== "ready" && tx.status !== "canceled";
 }
 
 export type TransactionSummary = {
   key: string;
+  id: string | null;
   date: string | null;
   amount: string | null;
   status: string | null;
@@ -63,6 +64,7 @@ export function summarizeTransaction(
   const currency = text(tx.currency_code) ?? text(totals?.currency_code);
   return {
     key: text(tx.id) ?? `tx-${index}`,
+    id: text(tx.id),
     date: formatDate(text(tx.billed_at) ?? text(tx.created_at), locale),
     amount: total && currency ? formatMinorAmount(total, currency, locale) : null,
     status: text(tx.status),
