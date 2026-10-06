@@ -3,6 +3,7 @@ and absent - never guessed - when Paddle can't be asked."""
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
 
 import httpx
@@ -87,3 +88,17 @@ async def test_no_lookup_or_a_missing_or_malformed_row_means_no_price() -> None:
     rows: list[Mapping[str, object]] = [{"id": "pri_m", "unit_price": {"amount": 1099}}]
     out = await priced_plans(_PLANS, _Lookup(rows))
     assert all(p.price is None for p in out)  # malformed amount / row absent -> never guessed
+
+
+async def test_a_failed_lookup_is_not_retried_on_every_request() -> None:
+    lookup = _Lookup(error=PaddleApiError("boom"))
+    for _ in range(5):
+        await priced_plans(_PLANS, lookup)
+    assert lookup.calls == 1  # backed off; an unreachable Paddle is not hammered
+
+
+async def test_concurrent_cache_misses_share_one_outbound_fetch() -> None:
+    lookup = _Lookup()
+    results = await asyncio.gather(*(priced_plans(_PLANS, lookup) for _ in range(20)))
+    assert lookup.calls == 1
+    assert all(r[0].price for r in results)

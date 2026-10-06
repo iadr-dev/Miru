@@ -11,6 +11,7 @@ A failed lookup never breaks the catalog: the plans still list, just without an 
 
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import cast
@@ -27,6 +28,7 @@ logger = structlog.get_logger(__name__)
 PriceLookup = Callable[[list[str]], Awaitable[Sequence[Mapping[str, object]]]]
 
 _TTL_SECONDS = 600.0
+_FAILURE_BACKOFF_SECONDS = 30.0
 
 
 class PlanPrice(BaseModel):
@@ -47,8 +49,15 @@ class PricedPlan(PlanInfo):
 _cache: dict[tuple[str, ...], tuple[float, dict[str, Mapping[str, object]]]] = {}
 
 
+# A failed lookup is remembered briefly so an unreachable Paddle isn't hit again by every request,
+# and one lock makes concurrent cache misses share a single outbound fetch (the endpoint is public).
+_failed_at: dict[tuple[str, ...], float] = {}
+_fetch_lock = asyncio.Lock()
+
+
 def clear_price_cache() -> None:
     _cache.clear()
+    _failed_at.clear()
 
 
 def _as_price(value: object) -> PlanPrice | None:
@@ -77,21 +86,36 @@ def _pick_price(row: Mapping[str, object], country: str | None) -> PlanPrice | N
     return _as_price(row.get("unit_price"))
 
 
-async def _rows(price_ids: list[str], lookup: PriceLookup) -> dict[str, Mapping[str, object]]:
-    key = tuple(sorted(price_ids))
+def _fresh(key: tuple[str, ...]) -> dict[str, Mapping[str, object]] | None:
     cached = _cache.get(key)
     if cached is not None and time.monotonic() - cached[0] < _TTL_SECONDS:
         return cached[1]
-    try:
-        fetched = await lookup(price_ids)
-    except (PaddleApiError, httpx.HTTPError):
-        # Degrade to "no amount" rather than fail the whole catalog; not cached, so the next
-        # request retries.
-        logger.warning("paddle_price_lookup_failed")
+    return None
+
+
+async def _rows(price_ids: list[str], lookup: PriceLookup) -> dict[str, Mapping[str, object]]:
+    key = tuple(sorted(price_ids))
+    hit = _fresh(key)
+    if hit is not None:
+        return hit
+    failed_at = _failed_at.get(key)
+    if failed_at is not None and time.monotonic() - failed_at < _FAILURE_BACKOFF_SECONDS:
         return {}
-    rows = {str(row["id"]): row for row in fetched if isinstance(row.get("id"), str)}
-    _cache[key] = (time.monotonic(), rows)
-    return rows
+    async with _fetch_lock:
+        hit = _fresh(key)  # another request may have filled it while this one waited
+        if hit is not None:
+            return hit
+        try:
+            fetched = await lookup(price_ids)
+        except (PaddleApiError, httpx.HTTPError):
+            # Degrade to "no amount" rather than fail the whole catalog; retried after the backoff.
+            logger.warning("paddle_price_lookup_failed")
+            _failed_at[key] = time.monotonic()
+            return {}
+        rows = {str(row["id"]): row for row in fetched if isinstance(row.get("id"), str)}
+        _cache[key] = (time.monotonic(), rows)
+        _failed_at.pop(key, None)
+        return rows
 
 
 async def priced_plans(
