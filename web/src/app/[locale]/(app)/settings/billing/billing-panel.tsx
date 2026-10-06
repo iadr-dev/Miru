@@ -461,8 +461,9 @@ function subscriptionHint(
   const renewOn = formatDate(subscription.current_period_end, locale);
   if (cancelOn) {
     parts.push(t("cancelsOn", { date: cancelOn }));
-  } else if (renewOn && subscription.status !== "paused") {
-    // A paused subscription isn't billed, so it has no next charge to announce.
+  } else if (renewOn && subscription.status !== "paused" && subscription.status !== "past_due") {
+    // Paused: not billed. Past due: the last charge failed and the date on file is the old one.
+    // Neither has a next charge to announce.
     parts.push(t("renewsOn", { date: renewOn }));
   }
   return parts.join(" · ");
