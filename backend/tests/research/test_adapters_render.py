@@ -145,3 +145,11 @@ def test_an_early_stop_is_disclosed_and_empty_reports_say_so() -> None:
     empty = render_markdown(_report(summary=(), sections=()), "zh-TW")
     assert "無法產出" in empty
     assert "### 來源" not in empty
+
+
+def test_page_derived_text_cannot_form_links_or_images() -> None:
+    hostile = ReportClaim(text="![x](https://evil.example/?q=1) <b>hi</b>", source_ids=(1,))
+    md = render_markdown(_report(summary=(hostile,), title="[t](https://evil.example)"), "en")
+    assert "![x](" not in md
+    assert "[t](https://evil.example)" not in md
+    assert "<b>" not in md

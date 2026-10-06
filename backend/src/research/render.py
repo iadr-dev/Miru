@@ -48,9 +48,17 @@ _EARLY_STOP: dict[Locale, dict[StopReason, str]] = {
 }
 
 
+_MARKDOWN_ACTIVE = str.maketrans({c: "\\" + c for c in "[]()<>!`"})
+
+
+def _plain(text: str) -> str:
+    """Model/page-derived text shown as plain text: no links, images or HTML can be formed."""
+    return text.translate(_MARKDOWN_ACTIVE)
+
+
 def _line(claim: ReportClaim) -> str:
     cites = "".join(f"[{n}]" for n in claim.source_ids)
-    return f"- {claim.text} {cites}".rstrip()
+    return f"- {_plain(claim.text)} {cites}".rstrip()
 
 
 def failure_text(locale: Locale) -> str:
@@ -61,7 +69,7 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
     labels = _LABELS[locale]
     if not report.has_content:
         return labels["empty"]
-    parts = [f"## {report.title}", f"*{labels['as_of']} {report.as_of.isoformat()}*"]
+    parts = [f"## {_plain(report.title)}", f"*{labels['as_of']} {report.as_of.isoformat()}*"]
     note = _EARLY_STOP[locale].get(report.stopped_because)
     if note:
         parts.append(f"> {note}")
@@ -73,7 +81,7 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
         parts.append(f"### {labels['open']}\n" + "\n".join(f"- {q}" for q in report.open_questions))
     parts.append(
         f"### {labels['sources']}\n"
-        + "\n".join(f"{s.id}. [{s.title}]({s.url})" for s in report.sources)
+        + "\n".join(f"{s.id}. [{_plain(s.title)}]({s.url})" for s in report.sources)
     )
     parts.append(f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches)}*")
     markdown = "\n\n".join(parts)

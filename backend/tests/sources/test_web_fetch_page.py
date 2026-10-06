@@ -160,3 +160,15 @@ async def test_http_errors_and_dns_failures_are_unreachable(
 
     failed = await _adapter().fetch_page("https://a.example.com/", resolver=no_dns)
     assert failed.health.status is HealthStatus.UNREACHABLE
+
+
+async def test_compressed_bodies_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _serve(
+        monkeypatch,
+        lambda _r: httpx.Response(
+            200, content=b"x", headers={"content-type": "text/html", "content-encoding": "gzip"}
+        ),
+    )
+    result = await _adapter().fetch_page("https://a.example.com/", resolver=_public)
+    assert result.health.status is HealthStatus.UNREACHABLE
+    assert seen[0].headers["accept-encoding"] == "identity"

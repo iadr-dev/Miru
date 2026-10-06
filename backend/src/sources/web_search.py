@@ -180,7 +180,11 @@ class WebSearchAdapter:
             async with build_async_client(
                 tls_policy=tls_policy,
                 timeout=_PAGE_TIMEOUT,
-                headers={"User-Agent": _USER_AGENT, "Accept": "text/html,text/plain;q=0.9"},
+                headers={
+                    "User-Agent": _USER_AGENT,
+                    "Accept": "text/html,text/plain;q=0.9",
+                    "Accept-Encoding": "identity",
+                },
             ) as client:
                 final_url, body, content_type = await _read_following_redirects(
                     client, url, resolver
@@ -223,6 +227,8 @@ async def _read_following_redirects(
                 continue
             response.raise_for_status()
             content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+            if response.headers.get("content-encoding", "identity").lower() != "identity":
+                raise _UnsafeUrlError("compressed body refused")  # no decompression bombs
             if content_type not in _READABLE_TYPES:
                 raise _UnsafeUrlError("unsupported content type")
             chunks: list[bytes] = []
@@ -251,7 +257,7 @@ async def _pin_to_public_ip(
     if not addresses or any(canonical_url(f"http://{_bracket(a)}/") is None for a in addresses):
         raise _UnsafeUrlError("blocked address")
     pinned = httpx.URL(url).copy_with(host=addresses[0])
-    headers = {"Host": parts.netloc}
+    headers = {"Host": parts.netloc, "Accept-Encoding": "identity"}
     return str(pinned), headers, {"sni_hostname": host}
 
 

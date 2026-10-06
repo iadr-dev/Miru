@@ -152,19 +152,40 @@ def test_the_daily_limit_is_five_reports(research_client: TestClient, settings: 
     assert _ask(research_client, headers, deep=False).status_code == 200
 
 
-def test_a_run_that_finds_nothing_is_refunded(
+def test_a_run_that_finds_nothing_still_counts(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Searching already cost real work, so an empty result is not refunded (no free probing)."""
     monkeypatch.setattr(
         deep_research_turn, "build_gateway", lambda: _FakeGateway(has_results=False)
     )
     with build_test_client(settings, agent_answer="x", agent_client=_ResearchClient()) as client:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
-        for _ in range(7):  # more than the daily limit: none of these produced a report
+        for _ in range(5):
+            resp = _ask(client, headers)
+            text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
+            assert "無法產出" in text
+        assert _ask(client, headers).status_code == 429
+
+
+class _BrokenClient(_ResearchClient):
+    async def chat(self, messages, tools=None, *, native_web_search=False):  # type: ignore[no-untyped-def,override]
+        return LLMResponse(
+            text="not json",
+            stop_reason=StopReason.END_TURN,
+            usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+        )
+
+
+def test_our_own_failure_is_refunded(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(deep_research_turn, "build_gateway", _FakeGateway)
+    with build_test_client(settings, agent_answer="x", agent_client=_BrokenClient()) as client:
+        headers, _ = sign_in(client, settings, tier=Tier.PRO)
+        for _ in range(7):  # beyond the daily limit, yet never blocked: no report was produced
             resp = _ask(client, headers)
             assert resp.status_code == 200
             text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
-            assert "無法產出" in text
+            assert "不會計入" in text
 
 
 def test_trading_language_in_a_model_claim_never_reaches_the_report(

@@ -36,6 +36,8 @@ review failures are tolerated and logged; a plan or write failure raises `Resear
   control characters are stripped, `<source` / `</source` inside a page are defused, pages that
   contain instruction-like phrases (EN + 中文) are excluded entirely, and both system prompts carry
   the untrusted-content notice.
+- **No markdown injection.** Claim text, headings and titles are shown as plain text (`[ ] ( ) < > ! `` ` ``
+  are escaped), so a hostile page cannot smuggle a link, tracking image or HTML into the answer.
 - **No trading output.** Claim text, headings, title and open questions pass `check_output` claim by
   claim, and the finished markdown is scanned again and stamped with the standard caveat.
 - **SSRF.** A URL must survive `schemas/urlsafety.canonical_url` (public http/https, no credentials,
@@ -43,7 +45,8 @@ review failures are tolerated and logged; a plan or write failure raises `Resear
   WebSearchAdapter.fetch_page`, the only network code) additionally resolves DNS itself and rejects
   the request if **any** answer is non-public, connects to the checked IP (TLS verifies the real
   hostname via SNI), follows redirects by hand re-validating **every hop** (max 4), caps the body at
-  1 MB and reads only `text/html`, `application/xhtml+xml`, `text/plain`.
+  1 MB (plain `Accept-Encoding: identity`; any compressed response is refused, so no decompression
+  bomb) and reads only `text/html`, `application/xhtml+xml`, `text/plain`.
 
 ## 3. Quota and tier
 
@@ -51,8 +54,8 @@ review failures are tolerated and logged; a plan or write failure raises `Resear
 (`enforce_pre_turn_gate(..., deep_research=True)`) runs: rate limit → `feature_allowed(user,
 "deep_research")` (else `403 feature_not_entitled`) → reserve one of **5 reports per UTC day**
 (`usage_counters`, counter `deep_research`; else `429 deep_research_limit_reached`) → the normal
-chat reservation. BYOK does **not** lift the report limit. The claim is **refunded** when the run
-fails or yields no report (nothing citable was found); a user cancel is not refunded.
+chat reservation. BYOK does **not** lift the report limit. The claim is **refunded only when our own run fails** (model output unusable, unexpected error);
+an empty result or a user cancel still counts, because the searches and fetches already cost work.
 
 ## 4. Streaming and persistence
 

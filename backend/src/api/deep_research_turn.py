@@ -156,7 +156,7 @@ async def run_deep_research_turn(
             usage=usage.snapshot(),
             web_search_sources=sources,
         ),
-        counts_toward_limit=report.has_content,
+        counts_toward_limit=True,  # searching/reading already cost; only our own failures refund
     )
 
 
