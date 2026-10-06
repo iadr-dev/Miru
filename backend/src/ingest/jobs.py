@@ -1134,33 +1134,42 @@ ETF_AUM_DATASET = "etf_aum"
 _YFINANCE_THROTTLE_SECONDS = 0.5
 
 
-def _latest_etf_nav_symbols(ctx: IngestContext) -> tuple[str, ...]:
-    """The ETF universe to loop AUM over — read from the already-ingested `etf_nav` partition
-    (TWSE's own whole-market ETF roster, `job_etf_nav`) rather than a hardcoded list, mirroring
-    `ingest/us_universe.py::latest_us_symbols`'s "read a roster ingest already wrote" pattern.
-    Empty (never a crash) if `job_etf_nav` hasn't run yet."""
-    dates = ctx.store.list_partition_dates(ETF_NAV_DATASET, ctx.market.value)
+def _etf_nav_rows_as_of(ctx: IngestContext, run_date: date_) -> list[dict[str, object]]:
+    """The newest `etf_nav` partition dated on or before `run_date` (TWSE's own whole-market ETF
+    snapshot, `job_etf_nav`) — never a later one, so re-running a past date derives from that
+    day's own units and NAV rather than today's. A live nightly run has `run_date` at or after
+    every partition, so it still reads the latest. Empty (never a crash) if none exists yet."""
+    dates = [
+        d
+        for d in ctx.store.list_partition_dates(ETF_NAV_DATASET, ctx.market.value)
+        if d <= run_date
+    ]
     if not dates:
-        return ()
-    raw_rows = ctx.store.read_partition(ETF_NAV_DATASET, ctx.market.value, max(dates))
+        return []
+    return ctx.store.read_partition(ETF_NAV_DATASET, ctx.market.value, max(dates))
+
+
+def _etf_nav_symbols(nav_rows: list[dict[str, object]]) -> tuple[str, ...]:
+    """The ETF universe to loop AUM over — the symbols in that `etf_nav` roster rather than a
+    hardcoded list, mirroring `ingest/us_universe.py::latest_us_symbols`'s "read a roster ingest
+    already wrote" pattern."""
     field_names = set(EtfNavRow.model_fields)
     symbols = {
-        str(row["symbol"]) for row in raw_rows if "symbol" in {k for k in row if k in field_names}
+        str(row["symbol"]) for row in nav_rows if "symbol" in {k for k in row if k in field_names}
     }
     return tuple(sorted(symbols))
 
 
-def _derived_etf_aum_rows(ctx: IngestContext, run_date: date_) -> list[dict[str, object]]:
-    """AUM = `units_outstanding x prior_day_nav`, from the already-ingested `etf_nav` partition
-    (TWSE MIS's bulk `all_etf.txt`, `job_etf_nav`) — no extra request, and it covers every
+def _derived_etf_aum_rows(
+    ctx: IngestContext, nav_rows: list[dict[str, object]], run_date: date_
+) -> list[dict[str, object]]:
+    """AUM = `units_outstanding x prior_day_nav`, from the `etf_nav` rows (TWSE MIS's bulk
+    `all_etf.txt`, `job_etf_nav`) — no extra request, and it covers every
     listed ETF including the bond ETFs Yahoo has no `totalAssets` for. `prior_day_nav` is the
     issuer's settled unit NAV, not the intraday estimate. A row missing either input, or with a
     non-positive one, is skipped (left for the Yahoo fallback), never written as a guess."""
-    dates = ctx.store.list_partition_dates(ETF_NAV_DATASET, ctx.market.value)
-    if not dates:
-        return []
     rows: list[dict[str, object]] = []
-    for raw in ctx.store.read_partition(ETF_NAV_DATASET, ctx.market.value, max(dates)):
+    for raw in nav_rows:
         symbol, units, nav = (
             raw.get("symbol"),
             raw.get("units_outstanding"),
@@ -1216,7 +1225,7 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
     whose NAV row lacks either input; it used to be the sole source, and its throttling plus no
     `totalAssets` for bond ETFs left ~1/3 of the roster without a row.
 
-    Symbol universe comes from `_latest_etf_nav_symbols` (the already-ingested `etf_nav` roster),
+    Symbol universe comes from `_etf_nav_symbols` (the `etf_nav` roster as of `run_date`),
     never a hardcoded list — an empty universe (that job hasn't run yet) is a graceful skip.
     One fallback symbol's failure never aborts the run: it's counted, journaled as `PARTIAL` if
     any symbol failed but some rows still landed, `FAILED` only if none did."""
@@ -1229,7 +1238,8 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="not the leader — write skipped",
         )
 
-    symbols = _latest_etf_nav_symbols(ctx)
+    nav_rows = _etf_nav_rows_as_of(ctx, run_date)
+    symbols = _etf_nav_symbols(nav_rows)
     if not symbols:
         return journal_run(
             ETF_AUM_DATASET,
@@ -1239,7 +1249,7 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="no etf_nav roster yet — run job_etf_nav first",
         )
 
-    raw_rows = _derived_etf_aum_rows(ctx, run_date)
+    raw_rows = _derived_etf_aum_rows(ctx, nav_rows, run_date)
     derived_count = len(raw_rows)
     derived_symbols = {str(row["symbol"]) for row in raw_rows}
     fallback_symbols = [symbol for symbol in symbols if symbol not in derived_symbols]

@@ -206,7 +206,7 @@ async def _run_non_finmind_forward_only_jobs_for_today(ctx: IngestContext) -> tu
       — confirmed missing from a live backfill run this session: both sat stale for days with
       `run_backfill_cli` reporting a clean `failed_runs=0` the whole time, since a spec it never
       walks can't be gap-filled by it). `job_etf_aum` depends on `job_etf_nav`'s own
-      already-ingested roster (`_latest_etf_nav_symbols`), so NAV must run first.
+      already-ingested `etf_nav` partition (`_etf_nav_rows_as_of`), so NAV must run first.
     - `job_material_announcements`/`job_insider_transfer_declaration` (MOPS) and
       `job_attention_stocks`/`job_disposition_events` (TWSE+TPEX) — all four forward-only, no
       date parameter upstream, so unlike every FinMind spec above there is no historical window
