@@ -69,7 +69,8 @@ not parsed JSON) and processes:
 ## 5. Endpoints (`api/routers/billing.py`)
 
 ```
-GET   /billing/plans                 tier×interval×byok → price_id + display amount (from Paddle)
+GET   /billing/plans?country=XX      tier×interval×byok → price_id + price{amount,currency_code} (Paddle,
+                                     minor units, pre-tax, country override applied; null if unavailable)
 POST  /billing/checkout {price_id}   create Paddle checkout (custom_data.user_id)
 GET   /billing/subscription          current subscription — **reconcile-on-read**: read through to
                                      the Paddle API and upsert the local row (self-heals a missed webhook)

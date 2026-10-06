@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,11 +31,11 @@ from payments.client import PaddleApiError, PaddleClient, PaddleConfigError
 from payments.models import SubscriptionRecord
 from payments.plans import (
     BillingInterval,
-    PlanInfo,
     PlanNotConfiguredError,
     all_plans,
     price_id_for,
 )
+from payments.pricing import PricedPlan, PriceLookup, priced_plans
 from payments.service import BillingService, effective_byok_active
 from payments.store import SqlAlchemySubscriptionStore
 from payments.webhooks import SignatureVerificationError, parse_event, verify_signature
@@ -69,15 +69,30 @@ def _service(
 
 class PlansResponse(BaseModel):
     client_token: str | None
-    plans: list[PlanInfo]
+    plans: list[PricedPlan]
+
+
+def get_price_lookup(settings: Settings = Depends(get_settings_dep)) -> PriceLookup | None:
+    """How to read prices from Paddle, or None when billing has no API key. A dependency so tests
+    (and any alternative price source) never need a live Paddle call."""
+    try:
+        return PaddleClient(settings).list_prices
+    except PaddleConfigError:
+        return None
 
 
 @router.get("/billing/plans")
-async def billing_plans(settings: Settings = Depends(get_settings_dep)) -> PlansResponse:
+async def billing_plans(
+    country: str | None = Query(default=None, pattern=r"^[A-Za-z]{2}$"),
+    settings: Settings = Depends(get_settings_dep),
+    lookup: PriceLookup | None = Depends(get_price_lookup),
+) -> PlansResponse:
     """The tier/interval/byok to price_id catalog for the pricing page, plus the publishable
-    Paddle.js client token. Amounts/currency are fetched by the frontend from Paddle directly, so
-    no price is duplicated here."""
-    return PlansResponse(client_token=settings.paddle_client_token, plans=all_plans(settings))
+    Paddle.js client token. Each plan carries its price as Paddle states it (minor units, with the
+    country override when `country` names a country Paddle prices separately); it is omitted,
+    never guessed, when Paddle can't be asked."""
+    plans = await priced_plans(all_plans(settings), lookup, country=country)
+    return PlansResponse(client_token=settings.paddle_client_token, plans=plans)
 
 
 class CheckoutRequest(BaseModel):
