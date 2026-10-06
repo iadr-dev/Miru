@@ -56,6 +56,8 @@ class AgentQueryRequest(BaseModel):
     # The composer's model pick, sent WITH the message so the very first turn of a new chat honors
     # it (a separate PATCH /threads can only land after the thread exists, i.e. after this turn).
     model: str | None = Field(default=None, max_length=200)
+    # Pro-only multi-step cited web research instead of a normal chat reply (see `research/`).
+    deep_research: bool = False
 
 
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
@@ -73,7 +75,7 @@ async def agent_query(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> StreamingResponse:
     ctx = tool_context_for(user, state)
-    await enforce_pre_turn_gate(state, session, user)
+    await enforce_pre_turn_gate(state, session, user, deep_research=body.deep_research)
     thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
     if body.model is not None and body.model != thread.model_override:
         thread = await store.update_thread(
@@ -119,6 +121,7 @@ async def agent_query(
         web_search_enabled=body.web_search,
         locale=body.locale,
         images=images,
+        deep_research=body.deep_research,
     )
 
 

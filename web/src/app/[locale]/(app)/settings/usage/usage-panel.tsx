@@ -87,7 +87,6 @@ const LABELED_FEATURES = new Set([
   "news_sentiment",
   "theme_discovery",
   "deep_research",
-  "scheduler",
   "tick_minute_k",
 ]);
 

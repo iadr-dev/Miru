@@ -766,7 +766,9 @@
       },
       "webSearch": {
         "sourcesCount": "{count} sources"
-      }
+      },
+      "deepResearchLimit": "You've used today's 5 deep research reports. Try again tomorrow.",
+      "deepResearchNotEntitled": "Deep research is available on the Pro plan."
     },
     "table": {
       "copy": "Copy table",
@@ -1293,7 +1295,8 @@
       "featureMenuItems": {
         "addFiles": "Add files or photos",
         "screenshot": "Take a screenshot",
-        "webSearch": "Web search"
+        "webSearch": "Web search",
+        "deepResearch": "Deep research"
       },
       "attachments": {
         "remove": "Remove attachment",
@@ -1558,7 +1561,6 @@
         "news_sentiment": "News sentiment analysis",
         "theme_discovery": "Theme discovery",
         "deep_research": "Deep research",
-        "scheduler": "Scheduled analysis",
         "tick_minute_k": "Tick / minute candles"
       }
     },

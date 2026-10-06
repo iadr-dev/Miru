@@ -28,6 +28,7 @@ interface, dependencies, and governance obligations.
 | [21-pet-gamification.md](21-pet-gamification.md) | Cosmetic pet/gamification: gacha/pity, XP/leveling, reactive chat companion (decoupled from tiers/analysis) |
 | [22-data-ingest.md](22-data-ingest.md) | Data ingest/ETL: cadence table, whole-market-by-date writers, idempotent atomic-swap Parquet, backfill/gap-fill (governance §9c) |
 | [23-agent-personality.md](23-agent-personality.md) | Agent voice: user-selectable curated personality presets (穩健/白話/簡潔/數據派), style-only, subordinate to guardrails |
+| [24-deep-research.md](24-deep-research.md) | Pro-only budgeted, cited multi-step web research inside a chat turn (structural citations, untrusted pages, SSRF-safe fetch, 5/day) |
 
 Read [../governance.md](../governance.md) first — every module inherits those rules.
 See also [../api-reference.md](../api-reference.md) (all endpoints) and

@@ -62,7 +62,6 @@ FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
     "news_sentiment": Tier.PREMIUM,
     "theme_discovery": Tier.PREMIUM,
     "deep_research": Tier.PRO,
-    "scheduler": Tier.PRO,
     "tick_minute_k": Tier.PRO,
 }
 
@@ -81,6 +80,16 @@ def chat_limit_for(user: User, *, byok_active: bool) -> int | None:
     if byok_active:
         return None
     return TIER_LIMITS[user.tier].chat_limit_per_day
+
+
+# Deep research is Pro-only and capped per UTC day no matter what (each report is many model calls
+# and web fetches). BYOK does not lift it: it is a fair-use bound, not the chat allowance.
+DEEP_RESEARCH_LIMIT_PER_DAY: Final[int] = 5
+
+
+def deep_research_limit_per_day(user: User) -> int:
+    del user  # one limit today; the signature leaves room for per-tier limits
+    return DEEP_RESEARCH_LIMIT_PER_DAY
 
 
 def rate_limit_per_minute(user: User) -> int:
@@ -120,11 +129,13 @@ def entitlement_view(user: User, *, byok_active: bool) -> EntitlementView:
 
 
 __all__ = [
+    "DEEP_RESEARCH_LIMIT_PER_DAY",
     "FEATURE_MIN_TIER",
     "TIER_LIMITS",
     "TierLimits",
     "allowed_features",
     "chat_limit_for",
+    "deep_research_limit_per_day",
     "entitlement_view",
     "feature_allowed",
     "finmind_class_for",

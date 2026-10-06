@@ -415,10 +415,8 @@ like any other tool call. `web_search` is `public` data-class.
   `WebSearchGateway` seam rather than the router (`WEB` has no `(capability, market)` row in
   `source_priority.yaml` — a query/URL isn't `(capability, symbol)`-shaped). `fetch_url` is a
   second, plain `httpx` GET behind the same adapter (no separate config).
-- **No `deep_research` tool/mode is built.** `accounts/entitlements.py::FEATURE_MIN_TIER`
-  reserves the string `"deep_research"` at `Tier.PRO` for a future feature gate, but no tool,
-  skill, or endpoint implements a "multi-step deep research" mode — `feature_allowed(user,
-  "deep_research")` exists as a predicate with nothing behind it yet.
+- **Deep research** is not a tool: it is a Pro-only turn mode built on this adapter's hardened
+  `fetch_page` (SSRF-safe, size-capped) - see [24](24-deep-research.md).
 
 On the Brave path, both tools run through `WebSearchGateway` (`dataaccess/web_search.py`) →
 `WebSearchAdapter`, size-cap `fetch_url`'s extracted text at 20,000 characters (truncated flag

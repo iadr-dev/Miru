@@ -224,6 +224,7 @@ module = [
   "voice.*",
   "scheduler.*",
   "payments.*",
+  "research.*",
   "api.*",
 ]
 disallow_any_explicit = false

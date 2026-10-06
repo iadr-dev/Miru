@@ -520,6 +520,7 @@ class RegenerateRequest(BaseModel):
 
     web_search: bool = False
     locale: str = "zh-TW"
+    deep_research: bool = False
 
 
 @router.post("/threads/{thread_id}/turns/{turn_id}/regenerate")
@@ -569,7 +570,7 @@ async def regenerate_turn(
 
     thread = await _require_owned_thread(store, user_id=user.id, thread_id=thread_id)
     ctx = tool_context_for(user, state)
-    await enforce_pre_turn_gate(state, session, user)
+    await enforce_pre_turn_gate(state, session, user, deep_research=body.deep_research)
 
     new_turn_id = str(uuid.uuid4())
     personality = PersonalityContext(
@@ -589,6 +590,7 @@ async def regenerate_turn(
         regenerate_of=turn_id,
         model_override=thread.model_override,
         web_search_enabled=body.web_search,
+        deep_research=body.deep_research,
     )
 
 
@@ -599,6 +601,7 @@ class EditTurnRequest(BaseModel):
     web_search: bool = False
     locale: str = "zh-TW"
     attachments: tuple[AttachmentInput, ...] = Field(default_factory=tuple)
+    deep_research: bool = False
 
 
 @router.post("/threads/{thread_id}/turns/{turn_id}/edit")
@@ -638,7 +641,7 @@ async def edit_turn(
     # session from the shared factory to atomically bump the usage counter, and SQLite allows
     # only one writer at a time — an uncommitted write already held on this session's connection
     # would deadlock against that second connection (observed as "database is locked").
-    await enforce_pre_turn_gate(state, session, user)
+    await enforce_pre_turn_gate(state, session, user, deep_research=body.deep_research)
 
     new_user_turn = await store.append_turn(
         user_id=user.id,
@@ -665,6 +668,7 @@ async def edit_turn(
         answer_parent_message_id=new_user_turn.messages[-1].id,
         model_override=thread.model_override,
         web_search_enabled=body.web_search,
+        deep_research=body.deep_research,
     )
 
 

@@ -22,9 +22,15 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
-from accounts.entitlements import chat_limit_for, rate_limit_per_minute
+from accounts.entitlements import (
+    chat_limit_for,
+    deep_research_limit_per_day,
+    feature_allowed,
+    rate_limit_per_minute,
+)
 from accounts.models import User
 from accounts.secrets import SqlAlchemySecretStore
+from api.deep_research_turn import run_deep_research_turn
 from api.dependencies import AppState
 from api.errors import ApiError
 from api.sse import format_sse_event
@@ -72,7 +78,9 @@ async def byok_active(session: AsyncSession, state: AppState, *, user_id: str) -
     return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
 
 
-async def enforce_pre_turn_gate(state: AppState, session: AsyncSession, user: User) -> None:
+async def enforce_pre_turn_gate(
+    state: AppState, session: AsyncSession, user: User, *, deep_research: bool = False
+) -> None:
     """Reject a turn before it is created when the caller is over their per-minute request rate or
     would exceed their daily-chat allowance. Shared by every route that starts a real turn
     (`/agent/query`, `regenerate`, `edit`) — a retry/regenerate/edit can never dodge the cap.
@@ -82,7 +90,11 @@ async def enforce_pre_turn_gate(state: AppState, session: AsyncSession, user: Us
     `retry_after_seconds` hint. Daily-chat quota: a reserve-before-act atomic increment of the
     caller's durable UTC-day counter, so the "has headroom?" check and the claim are one operation
     (no TOCTOU) — over-cap callers are refunded and rejected without spending the day's allowance.
-    An unlimited tier (Pro) or an active BYOK key means no daily cap and no counter write."""
+    An unlimited tier (Pro) or an active BYOK key means no daily cap and no counter write.
+
+    `deep_research=True` adds the Pro-only feature check (`403 feature_not_entitled`) and claims
+    one of the caller's daily reports (`429 deep_research_limit_reached`, BYOK does not lift it);
+    that claim is refunded by the turn driver if the run fails or yields no report."""
     verdict = await state.rate_limiter.check(
         user.id,
         max_requests=rate_limit_per_minute(user),
@@ -96,10 +108,15 @@ async def enforce_pre_turn_gate(state: AppState, session: AsyncSession, user: Us
             retryable=True,
         )
 
+    if deep_research:
+        await _claim_deep_research(state, user)
+
     byok = await byok_active(session, state, user_id=user.id)
     limit = chat_limit_for(user, byok_active=byok)
     quota = await state.usage_store.reserve_daily_chat(user_id=user.id, limit=limit)
     if not quota.allowed:
+        if deep_research:
+            await state.usage_store.refund_daily_deep_research(user_id=user.id)
         raise ApiError(
             status_code=429,
             code="chat_limit_reached",
@@ -107,6 +124,25 @@ async def enforce_pre_turn_gate(state: AppState, session: AsyncSession, user: Us
                 f"Daily chat limit reached ({quota.limit} messages/day). "
                 "Upgrade your plan or add your own API key to continue."
             ),
+            retryable=False,
+        )
+
+
+async def _claim_deep_research(state: AppState, user: User) -> None:
+    if not feature_allowed(user, "deep_research"):
+        raise ApiError(
+            status_code=403,
+            code="feature_not_entitled",
+            message="Deep research is available on the Pro plan.",
+            retryable=False,
+        )
+    limit = deep_research_limit_per_day(user)
+    claim = await state.usage_store.reserve_daily_deep_research(user_id=user.id, limit=limit)
+    if not claim.allowed:
+        raise ApiError(
+            status_code=429,
+            code="deep_research_limit_reached",
+            message=f"Daily deep research limit reached ({limit} reports/day). Try again tomorrow.",
             retryable=False,
         )
 
@@ -129,6 +165,7 @@ async def run_and_stream(
     web_search_enabled: bool = False,
     locale: str = "zh-TW",
     images: tuple[ImagePart, ...] = (),
+    deep_research: bool = False,
 ) -> AsyncIterator[str]:
     """Subscribe to the bus first, then drive the orchestrator in a background task so no frame
     published between `turn.start` and `turn.end` is missed. Yields SSE frames until `turn.end`.
@@ -169,6 +206,7 @@ async def run_and_stream(
             web_search_enabled=web_search_enabled,
             locale=locale,
             images=images,
+            deep_research=deep_research,
         )
 
     runner = asyncio.create_task(_noop())
@@ -210,6 +248,7 @@ def start_turn_stream(
     web_search_enabled: bool = False,
     locale: str = "zh-TW",
     images: tuple[ImagePart, ...] = (),
+    deep_research: bool = False,
 ) -> StreamingResponse:
     """Register the turn + return the `StreamingResponse` — the one call every route that starts
     a real turn makes, so registration/streaming plumbing exists in exactly one place."""
@@ -239,6 +278,7 @@ def start_turn_stream(
         web_search_enabled=web_search_enabled,
         locale=locale,
         images=images,
+        deep_research=deep_research,
     )
     return StreamingResponse(stream, media_type="text/event-stream")
 
@@ -291,6 +331,7 @@ async def _drive_turn(
     web_search_enabled: bool = False,
     locale: str = "zh-TW",
     images: tuple[ImagePart, ...] = (),
+    deep_research: bool = False,
 ) -> None:
     event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
     # The registry entry is `RunningTurn` itself — the same live handle `POST .../steer` appends
@@ -316,20 +357,34 @@ async def _drive_turn(
         )
 
     try:
-        result = await state.orchestrator.run(
-            message,
-            tool_context=ctx,
-            event_bus=event_bus,
-            turn_id=turn_id,
-            personality=personality,
-            steering_source=running,
-            model_override=model_override,
-            web_search_enabled=web_search_enabled,
-            locale=locale,
-            images=images,
-            history=history,
-            recall_provider=recall_provider,
-        )
+        if deep_research:
+            outcome = await run_deep_research_turn(
+                state=state,
+                ctx=ctx,
+                event_bus=event_bus,
+                turn_id=turn_id,
+                question=message,
+                locale=locale,
+                model_override=model_override,
+            )
+            result = outcome.result
+            if not outcome.counts_toward_limit:
+                await _refund_deep_research(state, session, user_id)
+        else:
+            result = await state.orchestrator.run(
+                message,
+                tool_context=ctx,
+                event_bus=event_bus,
+                turn_id=turn_id,
+                personality=personality,
+                steering_source=running,
+                model_override=model_override,
+                web_search_enabled=web_search_enabled,
+                locale=locale,
+                images=images,
+                history=history,
+                recall_provider=recall_provider,
+            )
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
         # cancelled frame rather than letting the cancellation propagate as a silent drop.
@@ -337,6 +392,8 @@ async def _drive_turn(
         raise
     except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
         logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
+        if deep_research:
+            await _refund_deep_research(state, session, user_id)
         event_bus.publish(
             TURN_END_KIND, turn_id=turn_id, data={"status": "error", "message": str(exc)}
         )
@@ -358,6 +415,17 @@ async def _drive_turn(
         data={"text": result.final_text, "framework": result.routing.framework},
     )
     event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "done"})
+
+
+async def _refund_deep_research(state: AppState, session: AsyncSession, user_id: str) -> None:
+    """Give back the claimed report after a failed/empty run - best-effort, never fails the turn.
+    The request session is committed first: the refund opens its own session, and SQLite allows
+    one writer at a time (the same reason the pre-turn gate runs before any write)."""
+    try:
+        await session.commit()
+        await state.usage_store.refund_daily_deep_research(user_id=user_id)
+    except Exception as exc:
+        logger.warning("deep_research_refund_failed", user_id=user_id, error=repr(exc))
 
 
 async def _maybe_title_thread(
