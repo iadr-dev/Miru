@@ -79,8 +79,8 @@ class Progress:
 ProgressFn = Callable[[Progress], Awaitable[None]]
 
 
-async def _ignore(_: Progress) -> None:
-    return None
+async def _ignore(progress: Progress) -> None:
+    await asyncio.sleep(0, progress)  # a no-op listener that is still a real awaitable
 
 
 def _unique(queries: list[str], used: set[str]) -> list[str]:
@@ -113,7 +113,7 @@ class _Run:
 
 
 class DeepResearch:
-    def __init__(  # noqa: PLR0913 - two ports, the guard, the budget and two injectable clocks
+    def __init__(  # noqa: PLR0913 — two ports, the guard, the budget and two injectable clocks
         self,
         *,
         model: ResearchModel,

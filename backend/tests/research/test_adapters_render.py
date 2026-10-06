@@ -92,7 +92,9 @@ async def test_the_gateway_port_maps_hits_and_pages() -> None:
     hits = await web.search("q", count=5)
     assert [(h.title, h.url, h.published) for h in hits] == [("T", "https://a.example/x", "1 day")]
     page = await web.fetch("https://a.example/x")
-    assert page is not None and page.text == "body" and page.title == "Page"
+    assert page is not None
+    assert page.text == "body"
+    assert page.title == "Page"
 
 
 async def test_an_unhealthy_source_yields_nothing() -> None:
@@ -153,3 +155,9 @@ def test_page_derived_text_cannot_form_links_or_images() -> None:
     assert "![x](" not in md
     assert "[t](https://evil.example)" not in md
     assert "<b>" not in md
+
+
+def test_a_trailing_backslash_cannot_cancel_the_escape() -> None:
+    hostile = ReportClaim(text="x \\[t](https://evil.example)", source_ids=(1,))
+    md = render_markdown(_report(summary=(hostile,)), "en")
+    assert "\\\\\\[t\\]" in md

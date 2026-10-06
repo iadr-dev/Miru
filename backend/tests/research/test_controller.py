@@ -213,7 +213,8 @@ async def test_pages_are_wrapped_as_untrusted_and_cannot_close_their_own_block()
     write_system = next(system for name, system, _ in model.calls if name == "DraftReport")
     write_user = model.prompts(DraftReport)[0]
     assert "UNTRUSTED" in write_system
-    assert write_user.count("<source") == 1 and write_user.count("</source>") == 1
+    assert write_user.count("<source") == 1
+    assert write_user.count("</source>") == 1
     assert '<source id="1"' in write_user
 
 
@@ -257,21 +258,25 @@ async def test_a_failing_search_or_fetch_is_tolerated() -> None:
     assert [s.id for s in report.sources] == [1]
 
 
-async def test_a_model_that_cannot_plan_or_write_fails_cleanly() -> None:
+async def test_a_model_that_cannot_plan_fails_cleanly() -> None:
     web = FakeWeb({"a": [hit(1)]}, pages_for([hit(1)]))
+    research = _research(ScriptedModel({Plan: [ValueError("bad json")]}), web)
     with pytest.raises(ResearchFailedError, match="plan"):
-        await _research(ScriptedModel({Plan: [ValueError("bad json")]}), web).run(QUESTION)
+        await research.run(QUESTION)
+
+
+async def test_a_model_that_cannot_write_fails_cleanly() -> None:
+    web = FakeWeb({"a": [hit(1)]}, pages_for([hit(1)]))
+    model = ScriptedModel(
+        {
+            Plan: [_plan("a")],
+            GapReview: [GapReview(sufficient=True)],
+            DraftReport: [ValueError("bad json")],
+        }
+    )
+    research = _research(model, web)
     with pytest.raises(ResearchFailedError, match="write"):
-        await _research(
-            ScriptedModel(
-                {
-                    Plan: [_plan("a")],
-                    GapReview: [GapReview(sufficient=True)],
-                    DraftReport: [ValueError("bad json")],
-                }
-            ),
-            web,
-        ).run(QUESTION)
+        await research.run(QUESTION)
 
 
 async def test_a_review_that_fails_just_ends_the_research() -> None:

@@ -23,7 +23,7 @@ from selectolax.parser import HTMLParser
 from config.settings import Settings, get_settings
 from schemas.enums import DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
-from schemas.urlsafety import canonical_url
+from schemas.urlsafety import canonical_url, is_public_host
 from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
@@ -225,22 +225,30 @@ async def _read_following_redirects(
                     raise _UnsafeUrlError("redirect without location")
                 current = urljoin(safe, location)
                 continue
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-            if response.headers.get("content-encoding", "identity").lower() != "identity":
-                raise _UnsafeUrlError("compressed body refused")  # no decompression bombs
-            if content_type not in _READABLE_TYPES:
-                raise _UnsafeUrlError("unsupported content type")
-            chunks: list[bytes] = []
-            size = 0
-            async for chunk in response.aiter_bytes():
-                size += len(chunk)
-                if size > _MAX_PAGE_BYTES:
-                    chunks.append(chunk[: len(chunk) - (size - _MAX_PAGE_BYTES)])
-                    break
-                chunks.append(chunk)
-            return safe, b"".join(chunks), content_type
+            return safe, await _read_capped_body(response), _readable_type(response)
     raise _UnsafeUrlError("too many redirects")
+
+
+def _readable_type(response: httpx.Response) -> str:
+    response.raise_for_status()
+    if response.headers.get("content-encoding", "identity").lower() != "identity":
+        raise _UnsafeUrlError("compressed body refused")  # no decompression bombs
+    content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type not in _READABLE_TYPES:
+        raise _UnsafeUrlError("unsupported content type")
+    return str(content_type)
+
+
+async def _read_capped_body(response: httpx.Response) -> bytes:
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in response.aiter_bytes():
+        size += len(chunk)
+        if size > _MAX_PAGE_BYTES:
+            chunks.append(chunk[: len(chunk) - (size - _MAX_PAGE_BYTES)])
+            break
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 async def _pin_to_public_ip(
@@ -254,15 +262,11 @@ async def _pin_to_public_ip(
         addresses = await resolver(host, port)
     except OSError as exc:
         raise _UnsafeUrlError("dns failure") from exc
-    if not addresses or any(canonical_url(f"http://{_bracket(a)}/") is None for a in addresses):
+    if not addresses or not all(is_public_host(address) for address in addresses):
         raise _UnsafeUrlError("blocked address")
     pinned = httpx.URL(url).copy_with(host=addresses[0])
     headers = {"Host": parts.netloc, "Accept-Encoding": "identity"}
     return str(pinned), headers, {"sni_hostname": host}
-
-
-def _bracket(address: str) -> str:
-    return f"[{address}]" if ":" in address else address
 
 
 def _extract_text(body: bytes, content_type: str) -> tuple[str, str]:

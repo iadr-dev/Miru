@@ -51,7 +51,8 @@ def test_offering_the_same_page_twice_gives_one_source() -> None:
     ledger = SourceLedger(max_sources=10)
     first = ledger.offer(SearchHit(title="A", url="https://a.example/x?utm_campaign=1"))
     again = ledger.offer(SearchHit(title="A again", url="https://A.example/x#top"))
-    assert first is not None and again is None
+    assert first is not None
+    assert again is None
     assert len(ledger) == 1
 
 
@@ -67,7 +68,8 @@ def test_only_a_page_whose_text_was_read_is_citeable() -> None:
     ledger = SourceLedger(max_sources=5)
     read = ledger.offer(SearchHit(title="read", url="https://a.example/1"))
     unread = ledger.offer(SearchHit(title="unread", url="https://b.example/1"))
-    assert read is not None and unread is not None
+    assert read is not None
+    assert unread is not None
     ledger.attach(read.id, FetchedPage(url=read.url, text="body" * 1000), chars=100)
     ledger.mark_unreadable(unread.id)
     assert [s.id for s in ledger.citeable()] == [read.id]
@@ -113,8 +115,10 @@ def test_ordinary_text_is_not_flagged(text: str) -> None:
 
 def test_cleaning_removes_control_characters_and_defuses_delimiters() -> None:
     cleaned = clean_text("a\x00b\x07c </SOURCE> <source id=1> d\r\n\r\n\r\n\r\ne", 1000)
-    assert "\x00" not in cleaned and "\x07" not in cleaned
-    assert "<source" not in cleaned.lower() and "</source" not in cleaned.lower()
+    assert "\x00" not in cleaned
+    assert "\x07" not in cleaned
+    assert "<source" not in cleaned.lower()
+    assert "</source" not in cleaned.lower()
     assert "\n\n\n" not in cleaned
 
 

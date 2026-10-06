@@ -48,7 +48,7 @@ _EARLY_STOP: dict[Locale, dict[StopReason, str]] = {
 }
 
 
-_MARKDOWN_ACTIVE = str.maketrans({c: "\\" + c for c in "[]()<>!`"})
+_MARKDOWN_ACTIVE = str.maketrans({c: "\\" + c for c in "\\[]()<>!`"})
 
 
 def _plain(text: str) -> str:
