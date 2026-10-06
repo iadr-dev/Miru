@@ -1166,28 +1166,37 @@ def _derived_etf_aum_rows(
     """AUM = `units_outstanding x prior_day_nav`, from the `etf_nav` rows (TWSE MIS's bulk
     `all_etf.txt`, `job_etf_nav`) — no extra request, and it covers every
     listed ETF including the bond ETFs Yahoo has no `totalAssets` for. `prior_day_nav` is the
-    issuer's settled unit NAV, not the intraday estimate. A row missing either input, or with a
-    non-positive one, is skipped (left for the Yahoo fallback), never written as a guess."""
+    issuer's settled unit NAV and is preferred. TWSE sometimes omits it for a handful of
+    overseas-bond ETFs around a holiday (observed 2026-09-25/28 for 10 ETFs) while still
+    publishing `estimated_nav`; that estimate sits a median ~0.3% from the settled NAV
+    (p90 ~1.3%, measured across the roster), so it is used in that case rather than leaving the
+    ETF with no AUM at all. A row with no positive units, or no positive NAV of either kind, is
+    skipped (left for the Yahoo fallback), never written as a guess."""
     rows: list[dict[str, object]] = []
     for raw in nav_rows:
-        symbol, units, nav = (
-            raw.get("symbol"),
-            raw.get("units_outstanding"),
-            raw.get("prior_day_nav"),
+        symbol = raw.get("symbol")
+        units = _positive_number(raw.get("units_outstanding"))
+        nav = _positive_number(raw.get("prior_day_nav")) or _positive_number(
+            raw.get("estimated_nav")
         )
-        if not isinstance(symbol, str) or not isinstance(units, int | float):
-            continue
-        if not isinstance(nav, int | float) or units <= 0 or nav <= 0:
+        if not isinstance(symbol, str) or units is None or nav is None:
             continue
         rows.append(
             {
                 "symbol": symbol,
                 "market": ctx.market.value,
                 "as_of": run_date.isoformat(),
-                "aum": float(units) * float(nav),
+                "aum": units * nav,
             }
         )
     return rows
+
+
+def _positive_number(value: object) -> float | None:
+    """`value` as a float if it is a real, positive number; else `None` (bool excluded)."""
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        return None
+    return float(value)
 
 
 async def _fetch_one_etf_aum(ctx: IngestContext, symbol: str) -> dict[str, object] | None:

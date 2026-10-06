@@ -22,7 +22,9 @@ from sources.finmind import FinMindAdapter
 _RUN_DATE = date(2026, 10, 5)
 
 
-def _nav_row(symbol: str, units: int | None, nav: float | None) -> dict[str, object]:
+def _nav_row(
+    symbol: str, units: int | None, nav: float | None, estimated: float | None = None
+) -> dict[str, object]:
     return {
         "symbol": symbol,
         "market": "TW",
@@ -30,6 +32,7 @@ def _nav_row(symbol: str, units: int | None, nav: float | None) -> dict[str, obj
         "fund_name": symbol,
         "units_outstanding": units,
         "prior_day_nav": nav,
+        "estimated_nav": estimated,
     }
 
 
@@ -221,3 +224,40 @@ async def test_a_run_date_before_any_nav_partition_is_skipped_not_derived_from_t
 
     assert run.status is RunStatus.SKIPPED
     assert not ctx.store.has_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 9, 1))
+
+
+async def test_estimated_nav_is_used_only_when_prior_day_nav_is_missing(
+    tmp_path: object,
+) -> None:
+    """TWSE omits `prior_day_nav` for a few overseas-bond ETFs around a holiday while still
+    publishing `estimated_nav`; those get AUM from the estimate. Where both exist, the settled
+    NAV always wins."""
+    yahoo = _StubYahoo({})
+    ctx = _ctx(tmp_path, yahoo=yahoo)
+    _seed_nav(
+        ctx,
+        [
+            _nav_row("0050", 1_000, 100.0, estimated=101.0),  # settled present -> settled wins
+            _nav_row("00836B", 2_000, None, estimated=25.0),  # settled missing -> estimate
+            _nav_row("00858", 3_000, 0.0, estimated=10.0),  # settled unusable -> estimate
+        ],
+    )
+
+    run = await job_etf_aum(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert _aum_by_symbol(ctx) == {"0050": 100_000.0, "00836B": 50_000.0, "00858": 30_000.0}
+    assert yahoo.calls == []
+
+
+@pytest.mark.parametrize("estimated", [None, 0.0, -1.0])
+async def test_no_usable_nav_of_either_kind_is_not_written_as_a_guess(
+    tmp_path: object, estimated: float | None
+) -> None:
+    ctx = _ctx(tmp_path, yahoo=_StubYahoo({}))
+    _seed_nav(ctx, [_nav_row("0050", 1_000, 100.0), _nav_row("00999", 500, None, estimated)])
+
+    run = await job_etf_aum(_RUN_DATE, ctx)
+
+    assert "00999" not in _aum_by_symbol(ctx)
+    assert run.status is RunStatus.PARTIAL
