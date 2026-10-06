@@ -361,7 +361,7 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/billing/plans?country=XX` | tier×interval×BYOK → `price_id` + `price {amount, currency_code}` read from Paddle (minor units, pre-tax; the country override — e.g. TWD for `TW` — when one exists; `price` is `null`, never guessed, if Paddle can't be asked; cached ~10 min) |
-| POST | `/billing/checkout` | Create Paddle checkout `{tier, interval, byok}` — server resolves the `price_id` (`payments/plans.py::price_id_for`) and tags the transaction with the caller's user id for webhook attribution; the client never sends a raw `price_id` |
+| POST | `/billing/checkout` *(409 `already_subscribed` if the caller has a live subscription)* | Create Paddle checkout `{tier, interval, byok}` — server resolves the `price_id` (`payments/plans.py::price_id_for`) and tags the transaction with the caller's user id for webhook attribution; the client never sends a raw `price_id` |
 | GET | `/billing/subscription` | Current subscription; **reconciles-on-read** vs Paddle (self-heals a missed webhook) |
 | POST | `/billing/portal` | Paddle-hosted management URL (update card / cancel / invoices) |
 | GET | `/billing/history` | **Proxies Paddle's transactions API** (no local invoices mirror) |

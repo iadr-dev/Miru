@@ -1380,7 +1380,8 @@
         "US": "美股",
         "GB": "英股",
         "JP": "日股"
-      }
+      },
+      "checkoutUnavailable": "無法開啟結帳視窗，請稍後再試。"
     },
     "profile": {
       "title": "個人資料",
@@ -1491,7 +1492,10 @@
         "completed": "已完成",
         "canceled": "已取消",
         "past_due": "逾期未付"
-      }
+      },
+      "activationWaiting": "付款已收到，正在開通方案…",
+      "activationDelayed": "付款已完成，方案開通可能需要一點時間，稍後重新整理即可。",
+      "changeInPortal": "你已訂閱方案。要變更方案、更新付款方式或取消，請使用上方的「管理訂閱」。"
     },
     "byok": {
       "title": "自帶金鑰",

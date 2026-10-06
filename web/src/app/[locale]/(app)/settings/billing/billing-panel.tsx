@@ -1,8 +1,8 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Checkbox, Select } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsLoading } from "@/components/settings/settings-states";
@@ -15,7 +15,13 @@ import {
   openBillingPortal,
   SettingsApiError,
 } from "@/lib/api/settings";
-import { formatDate, formatMinorAmount, summarizeTransaction } from "@/lib/billing-format";
+import {
+  formatDate,
+  formatMinorAmount,
+  isBillableTransaction,
+  summarizeTransaction,
+} from "@/lib/billing-format";
+import { CHECKOUT_COMPLETED, loadPaddle, paddleLocale, setCheckoutListener } from "@/lib/paddle";
 import {
   BILLING_INTERVALS,
   type BillingTransaction,
@@ -44,22 +50,90 @@ export function BillingPanel(): ReactNode {
   const [interval, setInterval] = useState<(typeof BILLING_INTERVALS)[number]>("monthly");
   const [byok, setByok] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // After Paddle reports a completed payment, the page waits for the webhook to create the
+  // subscription: Paddle, not this browser event, is what grants the plan.
+  const [activation, setActivation] = useState<"idle" | "waiting" | "delayed">("idle");
+  const queryClient = useQueryClient();
 
   const checkoutMutation = useMutation({
-    mutationFn: () => checkout({ tier, interval, byok }),
-    onSuccess: (data) => {
-      if (data.checkout_url) {
-        window.location.assign(data.checkout_url);
+    mutationFn: async () => {
+      const token = plansQuery.data?.client_token;
+      if (!token) {
+        throw new CheckoutUnavailableError("no client token");
       }
+      const [paddle, transaction] = await Promise.all([
+        loadPaddle(token, plansQuery.data?.environment ?? "sandbox"),
+        checkout({ tier, interval, byok }),
+      ]);
+      if (!paddle) {
+        throw new CheckoutUnavailableError("paddle.js did not load");
+      }
+      paddle.Checkout.open({
+        transactionId: transaction.transaction_id,
+        settings: { displayMode: "overlay", theme: "dark", locale: paddleLocale(locale) },
+      });
     },
+    onSuccess: () => setActionError(null),
     onError: (err) => setActionError(billingErrorMessage(err, tc)),
   });
 
+  useEffect(() => {
+    setCheckoutListener((event) => {
+      if (event.name === CHECKOUT_COMPLETED) {
+        setActivation("waiting");
+      }
+    });
+    return () => setCheckoutListener(null);
+  }, []);
+
+  useEffect(() => {
+    if (activation !== "waiting") {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      for (let attempt = 0; attempt < ACTIVATION_POLLS && !cancelled; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, ACTIVATION_POLL_MS));
+        await queryClient.invalidateQueries({ queryKey: ["settings", "subscription"] });
+        const current = queryClient.getQueryData<{ subscription: unknown }>([
+          "settings",
+          "subscription",
+        ]);
+        if (current?.subscription) {
+          await queryClient.invalidateQueries({ queryKey: ["settings", "billing-history"] });
+          await queryClient.invalidateQueries({ queryKey: ["me"] });
+          setActivation("idle");
+          return;
+        }
+      }
+      if (!cancelled) {
+        setActivation("delayed");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activation, queryClient]);
+
+  // Paddle's customer portal opens in a new tab so the user keeps their place in Miru. The tab is
+  // opened inside the click (popup blockers allow that) and pointed at the portal link once the
+  // server has created it; if the browser blocked the tab, the portal opens in this one instead.
   const portalMutation = useMutation({
-    mutationFn: openBillingPortal,
-    onSuccess: (data) => {
-      if (data.portal_url) {
-        window.location.assign(data.portal_url);
+    mutationFn: async (tab: Window | null) => {
+      try {
+        const { portal_url } = await openBillingPortal();
+        if (!portal_url) {
+          throw new CheckoutUnavailableError("no portal url");
+        }
+        if (tab) {
+          tab.opener = null;
+          tab.location.href = portal_url;
+        } else {
+          window.location.assign(portal_url);
+        }
+      } catch (err) {
+        tab?.close();
+        throw err;
       }
     },
     onError: (err) => setActionError(billingErrorMessage(err, tc)),
@@ -83,6 +157,12 @@ export function BillingPanel(): ReactNode {
     (p) => p.tier === tier && p.interval === interval && p.byok === byok,
   );
 
+  // A live subscription is changed or cancelled in Paddle's portal; a second checkout would
+  // bill the user twice (the server refuses it too).
+  const currentSubscription = subscriptionQuery.data?.subscription;
+  const hasLiveSubscription =
+    currentSubscription != null && currentSubscription.status !== "canceled";
+
   const unconfigured =
     plansQuery.isError && plansQuery.error instanceof SettingsApiError
       ? plansQuery.error.code === "billing_unconfigured"
@@ -90,6 +170,11 @@ export function BillingPanel(): ReactNode {
 
   return (
     <>
+      {activation === "idle" ? null : (
+        <p role="status" className="mb-4 text-[13px] text-[var(--text-muted)]">
+          {activation === "waiting" ? t("activationWaiting") : t("activationDelayed")}
+        </p>
+      )}
       <SettingsSection title={t("subscriptionTitle")} className="mb-6">
         {subscriptionQuery.data?.subscription ? (
           <SettingsRow
@@ -100,7 +185,7 @@ export function BillingPanel(): ReactNode {
               variant="outline"
               size="sm"
               disabled={portalMutation.isPending}
-              onClick={() => portalMutation.mutate()}
+              onClick={() => portalMutation.mutate(window.open("", "_blank"))}
             >
               {t("managePlan")}
             </Button>
@@ -118,6 +203,8 @@ export function BillingPanel(): ReactNode {
       <SettingsSection title={t("plansTitle")} className="mb-6">
         {unconfigured ? (
           <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>
+        ) : hasLiveSubscription ? (
+          <p className="text-[13px] text-[var(--text-muted)]">{t("changeInPortal")}</p>
         ) : (
           <PlansForm
             tier={tier}
@@ -244,7 +331,7 @@ function BillingHistorySection({
       </p>
     );
   }
-  const transactions = query.data ?? [];
+  const transactions = (query.data ?? []).filter(isBillableTransaction);
   if (transactions.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("noHistory")}</p>;
   }
@@ -331,7 +418,16 @@ function statusLabel(t: (key: string) => string, status: string): string {
     : status;
 }
 
+/** The checkout overlay can't open: no client token configured, or Paddle.js didn't load. */
+class CheckoutUnavailableError extends Error {}
+
+const ACTIVATION_POLLS = 10;
+const ACTIVATION_POLL_MS = 2000;
+
 function billingErrorMessage(err: unknown, tc: (key: string) => string): string {
+  if (err instanceof CheckoutUnavailableError) {
+    return tc("checkoutUnavailable");
+  }
   if (err instanceof SettingsApiError && err.code === "billing_unconfigured") {
     return tc("billingUnconfigured");
   }

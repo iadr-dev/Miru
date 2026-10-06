@@ -29,11 +29,18 @@ single place that knows these IDs. Amounts/currency come from Paddle, not hardco
 
 1. Pricing page: user picks tier + interval, optionally ticks **BYOK** → frontend resolves
    the `price_id` from `GET /billing/plans`.
-2. `POST /billing/checkout {price_id}` → server creates a **Paddle transaction/checkout**
-   (Paddle API) with `custom_data={user_id}` and returns the checkout URL / client token
-   (Paddle.js overlay).
-3. User pays on Paddle. Paddle is the merchant of record.
-4. Entitlement is granted on the **webhook**, not on redirect (redirect is UX only).
+2. `POST /billing/checkout {tier, interval, byok}` → server creates a **Paddle transaction**
+   (Paddle API) with `custom_data={user_id}` and returns its `transaction_id`. A user who already
+   has a live (non-canceled) subscription gets `409 already_subscribed` — they change or cancel in
+   the Paddle portal (`POST /billing/portal`), never a second checkout.
+3. The browser opens **Paddle.js' checkout overlay** on the settings page
+   (`Paddle.Checkout.open({transactionId})`), initialised with the publishable
+   `PADDLE_CLIENT_TOKEN` + `environment` returned by `GET /billing/plans`. Paddle Billing has no
+   hosted checkout page; the `checkout.url` it returns points at the account's *default payment
+   link* and is not used. Paddle is the merchant of record and collects tax at this step.
+4. Entitlement is granted on the **webhook**, not on the overlay's `checkout.completed` event (which
+   only tells the page to start polling `GET /billing/subscription` until the row appears).
+   The Paddle notification destination must be `<public base>/api/v1/billing/webhook/paddle`.
 
 ## 3. Webhooks → entitlement (source of truth)
 

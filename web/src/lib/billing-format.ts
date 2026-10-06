@@ -30,6 +30,12 @@ export function formatDate(iso: string | null | undefined, locale: string): stri
   return new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date);
 }
 
+/** Paddle creates a draft/ready transaction the moment checkout opens; one never paid is not a bill
+ * and must not show in the user's history. */
+export function isBillableTransaction(tx: Record<string, unknown>): boolean {
+  return tx.status !== "draft" && tx.status !== "ready";
+}
+
 export type TransactionSummary = {
   key: string;
   date: string | null;

@@ -125,6 +125,7 @@ export type PlanInfo = z.infer<typeof planInfoSchema>;
 
 export const plansResponseSchema = z.object({
   client_token: z.string().nullable(),
+  environment: z.enum(["sandbox", "production"]).default("sandbox"),
   plans: z.array(planInfoSchema).default([]),
 });
 export type PlansResponse = z.infer<typeof plansResponseSchema>;
