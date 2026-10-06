@@ -106,7 +106,8 @@ self-heals on the next page load (no separate ledger job needed at this scale).
 | Resume | `POST /billing/resume` | `scheduled_change` cleared, banner gone |
 | Period ends / immediate cancel | webhook `subscription.canceled` | row `canceled`, tier `free`, page shows the plan picker again |
 | Card declined at checkout | Paddle's overlay shows the bank's decline | no subscription is created |
-| Payment fails on renewal | webhook `subscription.past_due` | status `past_due`, tier unchanged during dunning, page shows "update payment method" |
+| Payment fails on renewal | webhook `transaction.payment_failed` -> `subscription.past_due` *(verified in sandbox with the renewal-decline card)* | status `past_due`, tier unchanged during dunning; page shows "update payment method", lists the failed charge as unpaid (no receipt) and no "next charge" date |
+| Recover from past due | customer pays the overdue amount from the card form (`POST /billing/portal?purpose=payment` opens it with the amount due) | `transaction.paid` + `subscription.activated`: status `active` again |
 | Pause | Paddle (dashboard / API `POST /subscriptions/{id}/pause`); the customer portal does not offer it | webhook `subscription.paused`: status `paused`, tier `free`, page shows "paused - no paid features, not billed" + Resume |
 | Resume a pause | `POST /billing/resume` -> Paddle `POST /subscriptions/{id}/resume` (immediately) | webhook `subscription.resumed`: plan tier restored |
 
