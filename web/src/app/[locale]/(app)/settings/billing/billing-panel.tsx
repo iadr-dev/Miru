@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { Checkbox, Select } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
@@ -15,13 +15,26 @@ import {
   openBillingPortal,
   SettingsApiError,
 } from "@/lib/api/settings";
-import { BILLING_INTERVALS, type BillingTransaction, PAYABLE_TIERS } from "@/types/settings";
+import { formatDate, formatMinorAmount, summarizeTransaction } from "@/lib/billing-format";
+import {
+  BILLING_INTERVALS,
+  type BillingTransaction,
+  PAYABLE_TIERS,
+  type PlanInfo,
+  type SubscriptionRecord,
+} from "@/types/settings";
 
 export function BillingPanel(): ReactNode {
   const t = useTranslations("settings.billing");
   const tc = useTranslations("settings.common");
 
-  const plansQuery = useQuery({ queryKey: ["settings", "plans"], queryFn: listPlans });
+  const locale = useLocale();
+  // Paddle prices Taiwan separately (TWD), so a zh-TW UI asks for the Taiwan price.
+  const country = locale === "zh-TW" ? "TW" : undefined;
+  const plansQuery = useQuery({
+    queryKey: ["settings", "plans", country],
+    queryFn: () => listPlans(country),
+  });
   const subscriptionQuery = useQuery({
     queryKey: ["settings", "subscription"],
     queryFn: getSubscription,
@@ -66,6 +79,10 @@ export function BillingPanel(): ReactNode {
     );
   }
 
+  const selectedPlan = plansQuery.data?.plans.find(
+    (p) => p.tier === tier && p.interval === interval && p.byok === byok,
+  );
+
   const unconfigured =
     plansQuery.isError && plansQuery.error instanceof SettingsApiError
       ? plansQuery.error.code === "billing_unconfigured"
@@ -77,7 +94,7 @@ export function BillingPanel(): ReactNode {
         {subscriptionQuery.data?.subscription ? (
           <SettingsRow
             label={t("currentPlan")}
-            hint={statusLabel(t, subscriptionQuery.data.subscription.status)}
+            hint={subscriptionHint(t, subscriptionQuery.data.subscription, locale)}
           >
             <Button
               variant="outline"
@@ -112,12 +129,14 @@ export function BillingPanel(): ReactNode {
             actionError={actionError}
             checkoutPending={checkoutMutation.isPending}
             onCheckout={() => checkoutMutation.mutate()}
+            plan={selectedPlan}
+            locale={locale}
           />
         )}
       </SettingsSection>
 
       <SettingsSection title={t("historyTitle")}>
-        <BillingHistorySection query={historyQuery} />
+        <BillingHistorySection query={historyQuery} locale={locale} />
       </SettingsSection>
     </>
   );
@@ -133,6 +152,8 @@ type PlansFormProps = {
   actionError: string | null;
   checkoutPending: boolean;
   onCheckout: () => void;
+  plan: PlanInfo | undefined;
+  locale: string;
 };
 
 function PlansForm({
@@ -145,6 +166,8 @@ function PlansForm({
   actionError,
   checkoutPending,
   onCheckout,
+  plan,
+  locale,
 }: PlansFormProps): ReactNode {
   const t = useTranslations("settings.billing");
   return (
@@ -180,6 +203,13 @@ function PlansForm({
       <SettingsRow label={t("byok")}>
         <Checkbox checked={byok} onChange={setByok} label={t("byokCheckbox")} />
       </SettingsRow>
+      <SettingsRow label={t("price")} hint={plan?.price ? t("taxNote") : undefined}>
+        <span className="font-medium text-[14px] text-[var(--text)] tabular-nums">
+          {plan?.price
+            ? `${formatMinorAmount(plan.price.amount, plan.price.currency_code, locale)} / ${t(`perInterval.${interval}`)}`
+            : t("priceUnavailable")}
+        </span>
+      </SettingsRow>
       {actionError ? (
         <p role="alert" className="text-[13px] text-[var(--warn)]">
           {actionError}
@@ -194,8 +224,10 @@ function PlansForm({
 
 function BillingHistorySection({
   query,
+  locale,
 }: {
   query: ReturnType<typeof useQuery<BillingTransaction[]>>;
+  locale: string;
 }): ReactNode {
   const t = useTranslations("settings.billing");
   const tc = useTranslations("settings.common");
@@ -216,25 +248,70 @@ function BillingHistorySection({
   if (transactions.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("noHistory")}</p>;
   }
-  return <HistoryList transactions={transactions} />;
+  return <HistoryList transactions={transactions} locale={locale} />;
 }
 
-function HistoryList({ transactions }: { transactions: BillingTransaction[] }): ReactNode {
+function HistoryList({
+  transactions,
+  locale,
+}: {
+  transactions: BillingTransaction[];
+  locale: string;
+}): ReactNode {
+  const t = useTranslations("settings.billing");
   return (
-    <ul className="space-y-2 py-1">
+    <ul className="divide-y divide-[var(--border)]">
       {transactions.map((tx, i) => {
-        const idLike = tx.id ?? tx.transaction_id;
-        const key = typeof idLike === "string" ? idLike : `tx-${i}`;
+        const row = summarizeTransaction(tx, i, locale);
         return (
-          <li key={key} className="rounded-[var(--radius-input)] bg-[var(--surface-2)] p-2">
-            <pre className="overflow-x-auto whitespace-pre-wrap text-[11px] text-[var(--text-muted)]">
-              {JSON.stringify(tx, null, 2)}
-            </pre>
+          <li key={row.key} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+            <span className="text-[var(--text-muted)] tabular-nums">{row.date ?? "—"}</span>
+            <span className="font-medium text-[var(--text)] tabular-nums">{row.amount ?? "—"}</span>
+            <span className="text-[var(--text-muted)]">
+              {row.status ? transactionStatusLabel(t, row.status) : "—"}
+            </span>
           </li>
         );
       })}
     </ul>
   );
+}
+
+const KNOWN_TRANSACTION_STATUSES = [
+  "draft",
+  "ready",
+  "billed",
+  "paid",
+  "completed",
+  "canceled",
+  "past_due",
+] as const;
+
+function transactionStatusLabel(t: (key: string) => string, status: string): string {
+  return (KNOWN_TRANSACTION_STATUSES as readonly string[]).includes(status)
+    ? t(`transactionStatus.${status}`)
+    : status;
+}
+
+/** "Premium · 生效中 · renews on <date>" (or "cancels on <date>"): the facts a subscriber looks
+ * for, from the local subscription row (which the webhook keeps current). */
+function subscriptionHint(
+  t: (key: string, values?: Record<string, string>) => string,
+  subscription: SubscriptionRecord,
+  locale: string,
+): string {
+  const parts = [
+    `${t(`tierOption.${subscription.tier}`)}${subscription.byok ? ` · ${t("byok")}` : ""}`,
+    statusLabel(t, subscription.status),
+  ];
+  const cancelOn = formatDate(subscription.scheduled_cancel_at, locale);
+  const renewOn = formatDate(subscription.current_period_end, locale);
+  if (cancelOn) {
+    parts.push(t("cancelsOn", { date: cancelOn }));
+  } else if (renewOn) {
+    parts.push(t("renewsOn", { date: renewOn }));
+  }
+  return parts.join(" · ");
 }
 
 /** Paddle's own subscription-status vocabulary (active/trialing/past_due/paused/canceled) is a

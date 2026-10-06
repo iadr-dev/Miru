@@ -105,6 +105,14 @@ class PaddleClient:
         data: dict[str, Any] = payload.get("data", {})
         return data
 
+    async def list_prices(self, price_ids: list[str]) -> list[dict[str, Any]]:
+        """Read the given prices (amount, currency, country overrides) — display only."""
+        payload = await self._request(
+            "GET", "/prices", params={"id": ",".join(price_ids), "per_page": "50"}
+        )
+        data: list[dict[str, Any]] = payload.get("data", [])
+        return data
+
     async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
         """Read the live subscription entity — the reconcile-on-read source of truth."""
         payload = await self._request("GET", f"/subscriptions/{subscription_id}")

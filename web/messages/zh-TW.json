@@ -1473,6 +1473,24 @@
         "past_due": "逾期未繳",
         "paused": "已暫停",
         "canceled": "已取消"
+      },
+      "price": "價格",
+      "priceUnavailable": "價格將於結帳頁顯示。",
+      "taxNote": "稅額依帳單地址於結帳時計算。",
+      "perInterval": {
+        "monthly": "月",
+        "annual": "年"
+      },
+      "renewsOn": "下次扣款 {date}",
+      "cancelsOn": "{date} 結束",
+      "transactionStatus": {
+        "draft": "草稿",
+        "ready": "待付款",
+        "billed": "已開立",
+        "paid": "已付款",
+        "completed": "已完成",
+        "canceled": "已取消",
+        "past_due": "逾期未付"
       }
     },
     "byok": {

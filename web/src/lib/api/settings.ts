@@ -214,8 +214,9 @@ export async function pullPet(): Promise<PullOutcome> {
 
 /** `billing_unconfigured` (503) is the expected state whenever Paddle isn't configured (e.g. any
  * local/dev environment) — callers should render an honest degraded state, not treat it as a bug. */
-export async function listPlans(): Promise<PlansResponse> {
-  const raw = await requestJson("/billing/plans");
+export async function listPlans(country?: string): Promise<PlansResponse> {
+  const query = country ? `?country=${encodeURIComponent(country)}` : "";
+  const raw = await requestJson(`/billing/plans${query}`);
   return plansResponseSchema.parse(raw);
 }
 

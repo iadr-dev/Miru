@@ -1473,6 +1473,24 @@
         "past_due": "Past due",
         "paused": "Paused",
         "canceled": "Canceled"
+      },
+      "price": "Price",
+      "priceUnavailable": "The price is shown at checkout.",
+      "taxNote": "Tax is calculated at checkout from your billing address.",
+      "perInterval": {
+        "monthly": "month",
+        "annual": "year"
+      },
+      "renewsOn": "Renews {date}",
+      "cancelsOn": "Ends {date}",
+      "transactionStatus": {
+        "draft": "Draft",
+        "ready": "Awaiting payment",
+        "billed": "Billed",
+        "paid": "Paid",
+        "completed": "Completed",
+        "canceled": "Canceled",
+        "past_due": "Past due"
       }
     },
     "byok": {

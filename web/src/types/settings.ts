@@ -111,11 +111,15 @@ export type PullOutcome = z.infer<typeof pullOutcomeSchema>;
 export const PAYABLE_TIERS = ["premium", "pro"] as const;
 export const BILLING_INTERVALS = ["monthly", "annual"] as const;
 
+/** A price as Paddle states it: `amount` in the currency's minor units (a string). */
+export const planPriceSchema = z.object({ amount: z.string(), currency_code: z.string() });
+
 export const planInfoSchema = z.object({
   price_id: z.string(),
   tier: z.enum(PAYABLE_TIERS),
   interval: z.enum(BILLING_INTERVALS),
   byok: z.boolean(),
+  price: planPriceSchema.nullable().default(null),
 });
 export type PlanInfo = z.infer<typeof planInfoSchema>;
 
