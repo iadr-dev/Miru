@@ -115,11 +115,25 @@ export function BillingPanel(): ReactNode {
     };
   }, [activation, queryClient]);
 
+  // Paddle's customer portal opens in a new tab so the user keeps their place in Miru. The tab is
+  // opened inside the click (popup blockers allow that) and pointed at the portal link once the
+  // server has created it; if the browser blocked the tab, the portal opens in this one instead.
   const portalMutation = useMutation({
-    mutationFn: openBillingPortal,
-    onSuccess: (data) => {
-      if (data.portal_url) {
-        window.location.assign(data.portal_url);
+    mutationFn: async (tab: Window | null) => {
+      try {
+        const { portal_url } = await openBillingPortal();
+        if (!portal_url) {
+          throw new CheckoutUnavailableError("no portal url");
+        }
+        if (tab) {
+          tab.opener = null;
+          tab.location.href = portal_url;
+        } else {
+          window.location.assign(portal_url);
+        }
+      } catch (err) {
+        tab?.close();
+        throw err;
       }
     },
     onError: (err) => setActionError(billingErrorMessage(err, tc)),
@@ -171,7 +185,7 @@ export function BillingPanel(): ReactNode {
               variant="outline"
               size="sm"
               disabled={portalMutation.isPending}
-              onClick={() => portalMutation.mutate()}
+              onClick={() => portalMutation.mutate(window.open("", "_blank"))}
             >
               {t("managePlan")}
             </Button>
