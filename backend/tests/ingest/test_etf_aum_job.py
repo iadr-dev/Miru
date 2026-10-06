@@ -177,3 +177,47 @@ async def test_non_leader_writes_nothing(tmp_path: object) -> None:
 
     assert run.status is RunStatus.SKIPPED
     assert not ctx.store.has_partition(ETF_AUM_DATASET, Market.TW.value, _RUN_DATE)
+
+
+def _seed_nav_on(ctx: IngestContext, day: date, rows: list[dict[str, object]]) -> None:
+    ctx.store.write_partition(ETF_NAV_DATASET, Market.TW.value, day, rows)
+
+
+async def test_a_past_run_date_derives_from_that_days_nav_not_a_later_one(
+    tmp_path: object,
+) -> None:
+    ctx = _ctx(tmp_path, yahoo=None)
+    _seed_nav_on(ctx, date(2026, 10, 1), [_nav_row("0050", 1_000, 100.0)])
+    _seed_nav_on(ctx, date(2026, 10, 5), [_nav_row("0050", 2_000, 200.0)])
+
+    past = await job_etf_aum(date(2026, 10, 2), ctx)  # weekday after 10-01, before 10-05
+    live = await job_etf_aum(date(2026, 10, 5), ctx)
+
+    assert past.status is RunStatus.SUCCESS and live.status is RunStatus.SUCCESS
+    past_rows = ctx.store.read_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 10, 2))
+    live_rows = ctx.store.read_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 10, 5))
+    assert [row["aum"] for row in past_rows] == [100_000.0]  # 10-01's units x NAV
+    assert [row["aum"] for row in live_rows] == [400_000.0]  # 10-05's own
+
+
+async def test_a_run_date_after_every_nav_partition_uses_the_latest(tmp_path: object) -> None:
+    ctx = _ctx(tmp_path, yahoo=None)
+    _seed_nav_on(ctx, date(2026, 10, 1), [_nav_row("0050", 1_000, 100.0)])
+
+    run = await job_etf_aum(date(2026, 10, 9), ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    rows = ctx.store.read_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 10, 9))
+    assert [row["aum"] for row in rows] == [100_000.0]
+
+
+async def test_a_run_date_before_any_nav_partition_is_skipped_not_derived_from_the_future(
+    tmp_path: object,
+) -> None:
+    ctx = _ctx(tmp_path, yahoo=None)
+    _seed_nav_on(ctx, date(2026, 10, 5), [_nav_row("0050", 1_000, 100.0)])
+
+    run = await job_etf_aum(date(2026, 9, 1), ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert not ctx.store.has_partition(ETF_AUM_DATASET, Market.TW.value, date(2026, 9, 1))
