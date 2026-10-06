@@ -76,9 +76,13 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
     if report.summary:
         parts.append(f"### {labels['summary']}\n" + "\n".join(_line(c) for c in report.summary))
     for section in report.sections:
-        parts.append(f"### {section.heading}\n" + "\n".join(_line(c) for c in section.claims))
+        parts.append(
+            f"### {_plain(section.heading)}\n" + "\n".join(_line(c) for c in section.claims)
+        )
     if report.open_questions:
-        parts.append(f"### {labels['open']}\n" + "\n".join(f"- {q}" for q in report.open_questions))
+        parts.append(
+            f"### {labels['open']}\n" + "\n".join(f"- {_plain(q)}" for q in report.open_questions)
+        )
     parts.append(
         f"### {labels['sources']}\n"
         + "\n".join(f"{s.id}. [{_plain(s.title)}]({s.url})" for s in report.sources)
