@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from accounts.auth import issue_access_token
-from api.routers.billing import get_billing_client, get_price_lookup
+from api.routers.billing import get_billing_client, get_optional_billing_client, get_price_lookup
 from config.settings import Settings
 from payments.client import PaddleClient
 from payments.pricing import clear_price_cache
@@ -180,12 +180,13 @@ class _FakePaddle:
         self.scheduled_change: dict[str, str] | None = None
         self.calls: list[tuple[str, str, object]] = []
         self.portal_sessions_fail = False
+        self.status = "active"
 
     def entity(self) -> dict[str, object]:
         return {
             "id": _SUB,
             "customer_id": "ctm_1",
-            "status": "active",
+            "status": self.status,
             "items": [{"price": {"id": self.price_id}}],
             "current_billing_period": {
                 "starts_at": "2026-10-06T00:00:00Z",
@@ -208,6 +209,9 @@ class _FakePaddle:
                 self.price_id = body["items"][0]["price_id"]
             if body and "scheduled_change" in body:
                 self.scheduled_change = body["scheduled_change"]
+            return httpx.Response(200, json={"data": self.entity()})
+        if request.method == "POST" and path == f"/subscriptions/{_SUB}/resume":
+            self.status = "active"
             return httpx.Response(200, json={"data": self.entity()})
         if request.method == "GET" and path == f"/subscriptions/{_SUB}":
             return httpx.Response(200, json={"data": self.entity()})
@@ -244,7 +248,9 @@ def paddle(client: TestClient, billing_settings: Settings) -> _FakePaddle:
         billing_settings,
         client_factory=lambda: httpx.AsyncClient(transport=httpx.MockTransport(fake)),
     )
-    client.app.dependency_overrides[get_billing_client] = lambda: paddle_client  # type: ignore[attr-defined]
+    overrides = client.app.dependency_overrides  # type: ignore[attr-defined]
+    overrides[get_billing_client] = lambda: paddle_client
+    overrides[get_optional_billing_client] = lambda: paddle_client
     return fake
 
 
@@ -334,7 +340,9 @@ def test_a_scheduled_cancel_blocks_plan_changes_until_resumed(
     patch = next(c for c in paddle.calls if c[0] == "PATCH")
     assert patch[2] == {"scheduled_change": None}
     # Nothing left to resume now.
-    assert client.post("/api/v1/billing/resume", headers=headers).json()["code"] == "not_canceling"
+    assert (
+        client.post("/api/v1/billing/resume", headers=headers).json()["code"] == "nothing_to_resume"
+    )
 
 
 def test_an_invoice_link_is_only_for_the_callers_own_transaction(
@@ -368,3 +376,28 @@ def test_the_portal_falls_back_to_the_subscriptions_own_links(
     resp = client.post("/api/v1/billing/portal", headers=headers)
     assert resp.status_code == 200
     assert resp.json() == {"portal_url": "https://portal.example/fallback-card"}
+
+
+def test_a_paused_subscription_can_be_resumed_but_not_changed(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    paddle.status = "paused"
+    # Reading the subscription reconciles with Paddle, so the local row now says paused.
+    assert (
+        client.get("/api/v1/billing/subscription", headers=headers).json()["subscription"]["status"]
+        == "paused"
+    )
+    assert client.get("/api/v1/me", headers=headers).json()["user"]["tier"] == "free"
+
+    pro = {"tier": "pro", "interval": "monthly", "byok": False}
+    blocked = client.post("/api/v1/billing/change-plan", json=pro, headers=headers)
+    assert blocked.json()["code"] == "paused"
+
+    resumed = client.post("/api/v1/billing/resume", headers=headers)
+    assert resumed.status_code == 200
+    assert resumed.json()["subscription"]["status"] == "active"
+    assert ("POST", f"/subscriptions/{_SUB}/resume", {"effective_from": "immediately"}) in (
+        paddle.calls
+    )
+    assert client.get("/api/v1/me", headers=headers).json()["user"]["tier"] == "premium"

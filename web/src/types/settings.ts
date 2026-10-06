@@ -143,7 +143,7 @@ export const subscriptionRecordSchema = z.object({
   paddle_customer_id: z.string().nullable(),
   status: z.string(),
   price_id: z.string(),
-  tier: z.enum(PAYABLE_TIERS),
+  tier: z.enum(["free", ...PAYABLE_TIERS]), // the tier it currently entitles (free when paused/ended)
   byok: z.boolean(),
   current_period_start: z.string().nullable(),
   current_period_end: z.string().nullable(),
