@@ -9,16 +9,20 @@ export function isLiveSubscription(sub: SubscriptionRecord | null | undefined): 
   return sub != null && sub.status !== "canceled";
 }
 
-export type SubscriptionNotice = "pastDue" | "cancelScheduled" | null;
+export type SubscriptionNotice = "pastDue" | "paused" | "cancelScheduled" | null;
 
 /** The one thing a subscriber should be told about right now, if anything. A failed payment
- * outranks a scheduled cancel: it needs action to keep the plan. */
+ * outranks a pause, which outranks a scheduled cancel: each needs action to keep or restore
+ * the plan, most urgent first. */
 export function subscriptionNotice(sub: SubscriptionRecord | null | undefined): SubscriptionNotice {
   if (!isLiveSubscription(sub) || sub == null) {
     return null;
   }
   if (sub.status === "past_due") {
     return "pastDue";
+  }
+  if (sub.status === "paused") {
+    return "paused";
   }
   return sub.scheduled_cancel_at ? "cancelScheduled" : null;
 }
@@ -42,13 +46,16 @@ export function selectionFor(
   return plan ? { tier: plan.tier, interval: plan.interval, byok: plan.byok } : null;
 }
 
-export type ChangeBlock = "cancelScheduled" | "samePlan" | "unavailable";
+export type ChangeBlock = "paused" | "cancelScheduled" | "samePlan" | "unavailable";
 
 /** Why a plan change can't be made right now, or null if it can. */
 export function changeBlockReason(
   sub: SubscriptionRecord,
   target: PlanInfo | undefined,
 ): ChangeBlock | null {
+  if (sub.status === "paused") {
+    return "paused";
+  }
   if (sub.scheduled_cancel_at) {
     return "cancelScheduled";
   }

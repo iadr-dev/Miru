@@ -53,6 +53,8 @@ not parsed JSON) and processes:
 | `subscription.updated` | re-map tier/interval/byok (plan change, BYOK toggle, proration = Paddle's job). If it carries `scheduled_change: {action: cancel, effective_at}`, **display "cancels on <date>" but do NOT downgrade yet** (status stays `active`) |
 | `subscription.canceled` | **the actual downgrade** → `tier=free`, re-mask sponsor. Fires *at* `effective_at` for a scheduled cancel, or immediately when Paddle's dunning exhausts a `past_due` sub. |
 | `subscription.past_due` | grace state; entitlements unchanged during Paddle's dunning retry window |
+| `subscription.paused` | billing is stopped, so nothing is entitled: `tier=free`, status `paused`, the row (and its plan) is kept for the resume. A `subscription.updated` that reports `status: paused` is treated the same |
+| `subscription.resumed` | restores the plan tier from the price (`status: active`) |
 
 - **Idempotent** (`billing_events.paddle_event_id` unique) **and order-safe**: store the
   event's `occurred_at`; apply the mapping only when `occurred_at >= subscriptions.updated_from_event_at`
@@ -105,8 +107,19 @@ self-heals on the next page load (no separate ledger job needed at this scale).
 | Period ends / immediate cancel | webhook `subscription.canceled` | row `canceled`, tier `free`, page shows the plan picker again |
 | Card declined at checkout | Paddle's overlay shows the bank's decline | no subscription is created |
 | Payment fails on renewal | webhook `subscription.past_due` | status `past_due`, tier unchanged during dunning, page shows "update payment method" |
+| Pause | Paddle (dashboard / API `POST /subscriptions/{id}/pause`); the customer portal does not offer it | webhook `subscription.paused`: status `paused`, tier `free`, page shows "paused - no paid features, not billed" + Resume |
+| Resume a pause | `POST /billing/resume` -> Paddle `POST /subscriptions/{id}/resume` (immediately) | webhook `subscription.resumed`: plan tier restored |
+
+`subscriptions.tier` holds the tier the row currently *entitles* (so `free` while paused or ended); the plan being
+paid for is always derivable from `price_id`, which is what the page displays.
 
 Transactions that never charged anything (`draft`, `ready`, `canceled`) are not shown in billing history.
+
+**Testing a renewal failure in sandbox:** subscribe with the "approve the first charge, decline renewals" test
+card (`4000 0027 6000 3184`), then move the billing date with `PATCH /subscriptions/{id}`
+`{next_billed_at, proration_billing_mode: do_not_bill}`. Paddle requires the new date to be at least
+**30 minutes** away (`subscription_next_billed_at_too_soon`), so the renewal - and its decline - happens about 30
+minutes later. The webhook destination must be reachable at that moment.
 A subscriber cannot start a second checkout (`409 already_subscribed`).
 
 ## 6. Config / secrets

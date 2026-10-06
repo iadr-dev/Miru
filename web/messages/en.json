@@ -1504,13 +1504,15 @@
       "changeBlocked": {
         "samePlan": "This is already your current plan.",
         "cancelScheduled": "Your subscription is set to end. Choose Resume subscription before changing plan.",
-        "unavailable": "That combination isn't available."
+        "unavailable": "That combination isn't available.",
+        "paused": "Your subscription is paused. Choose Resume subscription before changing plan."
       },
       "pastDueNotice": "Your last payment failed. Update your payment method or the subscription may be canceled.",
       "cancelScheduledNotice": "Your subscription ends on {date} and then returns to the free plan.",
       "updatePayment": "Update payment method",
       "resumeSubscription": "Resume subscription",
-      "receipt": "Receipt"
+      "receipt": "Receipt",
+      "pausedNotice": "Your subscription is paused: paid features are off and you aren't billed until you resume."
     },
     "byok": {
       "title": "Bring your own key",

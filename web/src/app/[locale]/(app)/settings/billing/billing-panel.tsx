@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
-import { SettingsLoading } from "@/components/settings/settings-states";
+import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
 import {
   changePlan,
@@ -34,6 +34,7 @@ import {
 import { CHECKOUT_COMPLETED, loadPaddle, paddleLocale, setCheckoutListener } from "@/lib/paddle";
 import type {
   BillingTransaction,
+  PlanInfo,
   SubscriptionRecord,
   SubscriptionResponse,
 } from "@/types/settings";
@@ -240,10 +241,15 @@ export function BillingPanel(): ReactNode {
         </p>
       )}
       <SettingsSection title={t("subscriptionTitle")} className="mb-6">
-        {subscriptionQuery.data?.subscription ? (
+        {subscriptionQuery.isError ? (
+          <SettingsError
+            message={tc("errorLoad")}
+            onRetry={() => void subscriptionQuery.refetch()}
+          />
+        ) : subscription && live ? (
           <SettingsRow
             label={t("currentPlan")}
-            hint={subscriptionHint(t, subscriptionQuery.data.subscription, locale)}
+            hint={subscriptionHint(t, subscription, plans, locale)}
           >
             <Button
               variant="outline"
@@ -264,9 +270,11 @@ export function BillingPanel(): ReactNode {
             <p role="status" className="text-[13px] text-[var(--warn)]">
               {notice === "pastDue"
                 ? t("pastDueNotice")
-                : t("cancelScheduledNotice", {
-                    date: formatDate(subscription?.scheduled_cancel_at, locale) ?? "",
-                  })}
+                : notice === "paused"
+                  ? t("pausedNotice")
+                  : t("cancelScheduledNotice", {
+                      date: formatDate(subscription?.scheduled_cancel_at, locale) ?? "",
+                    })}
             </p>
             {notice === "pastDue" ? (
               <Button
@@ -301,7 +309,7 @@ export function BillingPanel(): ReactNode {
       <SettingsSection title={t("plansTitle")} className="mb-6">
         {unconfigured ? (
           <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>
-        ) : live ? (
+        ) : subscriptionQuery.isError ? null : live ? (
           <PlansForm
             tier={tier}
             setTier={setTier}
@@ -438,17 +446,23 @@ function transactionStatusLabel(t: (key: string) => string, status: string): str
 function subscriptionHint(
   t: (key: string, values?: Record<string, string>) => string,
   subscription: SubscriptionRecord,
+  plans: readonly PlanInfo[],
   locale: string,
 ): string {
+  // The plan being paid for comes from its price; `subscription.tier` is what it entitles right
+  // now, which is `free` while paused.
+  const plan = selectionFor(plans, subscription.price_id);
+  const planName = plan ? t(`tierOption.${plan.tier}`) : null;
   const parts = [
-    `${t(`tierOption.${subscription.tier}`)}${subscription.byok ? ` · ${t("byok")}` : ""}`,
+    [planName, (plan?.byok ?? subscription.byok) ? t("byok") : null].filter(Boolean).join(" · "),
     statusLabel(t, subscription.status),
-  ];
+  ].filter(Boolean);
   const cancelOn = formatDate(subscription.scheduled_cancel_at, locale);
   const renewOn = formatDate(subscription.current_period_end, locale);
   if (cancelOn) {
     parts.push(t("cancelsOn", { date: cancelOn }));
-  } else if (renewOn) {
+  } else if (renewOn && subscription.status !== "paused") {
+    // A paused subscription isn't billed, so it has no next charge to announce.
     parts.push(t("renewsOn", { date: renewOn }));
   }
   return parts.join(" · ");

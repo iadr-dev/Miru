@@ -62,6 +62,17 @@ def get_billing_client(settings: Settings = Depends(get_settings_dep)) -> Paddle
     return _client_or_503(settings)
 
 
+def get_optional_billing_client(
+    settings: Settings = Depends(get_settings_dep),
+) -> PaddleClient | None:
+    """Like `get_billing_client`, but `None` (instead of a 503) when billing has no API key: the
+    subscription read then simply serves the local row."""
+    try:
+        return PaddleClient(settings)
+    except PaddleConfigError:
+        return None
+
+
 def _service(
     session: AsyncSession, settings: Settings, *, client: PaddleClient | None = None
 ) -> BillingService:
@@ -174,14 +185,10 @@ async def current_subscription(
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
+    client: PaddleClient | None = Depends(get_optional_billing_client),
 ) -> SubscriptionResponse:
     """The caller's current subscription, reconciled against the live Paddle API so a dropped or
     delayed webhook self-heals on this read. A user with no subscription simply gets `null`."""
-    client: PaddleClient | None = None
-    try:
-        client = PaddleClient(settings)
-    except PaddleConfigError:
-        client = None  # No live reconcile available; fall back to the local row.
     service = _service(session, settings, client=client)
     try:
         record = await service.reconcile_subscription(user_id=user.id)
@@ -242,6 +249,8 @@ async def change_plan(
     against Paddle's subscription API (prorated immediately by Paddle). The local row and tier are
     refreshed from Paddle straight away; the webhook that follows is then a no-op."""
     record = await _live_subscription(session, user.id)
+    if record.status == "paused":
+        raise _conflict("paused", "Resume your subscription before changing plan.")
     if record.scheduled_cancel_at is not None:
         raise _conflict("cancel_scheduled", "Resume your subscription before changing plan.")
     try:
@@ -272,12 +281,17 @@ async def resume_subscription(
     settings: Settings = Depends(get_settings_dep),
     client: PaddleClient = Depends(get_billing_client),
 ) -> SubscriptionResponse:
-    """Undo a scheduled cancellation while the subscription is still running."""
+    """Undo a scheduled cancellation, or restart a paused subscription."""
     record = await _live_subscription(session, user.id)
-    if record.scheduled_cancel_at is None:
-        raise _conflict("not_canceling", "This subscription is not scheduled to cancel.")
+    if record.status != "paused" and record.scheduled_cancel_at is None:
+        raise _conflict(
+            "nothing_to_resume", "This subscription is neither paused nor scheduled to cancel."
+        )
     try:
-        await client.clear_scheduled_change(record.paddle_subscription_id)
+        if record.status == "paused":
+            await client.resume_paused_subscription(record.paddle_subscription_id)
+        else:
+            await client.clear_scheduled_change(record.paddle_subscription_id)
         updated = await _service(session, settings, client=client).reconcile_subscription(
             user_id=user.id
         )

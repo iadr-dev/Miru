@@ -8,7 +8,8 @@ took effect — writes the derived tier cache on `users`. A `scheduled_change: c
 (so the UI can show "cancels on <date>") but does NOT downgrade; only the actual
 `subscription.canceled` event drops the tier to free. `subscription.past_due` is a grace state:
 the row's status changes but the tier is left at the plan tier so entitlements are unchanged
-during Paddle's dunning window.
+during Paddle's dunning window. `subscription.paused` holds the paid tier back (billing is
+stopped, so there is nothing to entitle) and `subscription.resumed` restores it.
 """
 
 from __future__ import annotations
@@ -28,10 +29,25 @@ logger = structlog.get_logger(__name__)
 
 # Events that establish or re-map an active subscription (the price_id drives tier/byok).
 _ENTITLING_EVENTS = frozenset(
-    {"subscription.created", "subscription.activated", "subscription.updated"}
+    {
+        "subscription.created",
+        "subscription.activated",
+        "subscription.updated",
+        "subscription.resumed",
+    }
 )
 _CANCEL_EVENT = "subscription.canceled"
 _PAST_DUE_EVENT = "subscription.past_due"
+_PAUSE_EVENT = "subscription.paused"
+_HANDLED_EVENTS = _ENTITLING_EVENTS | {_CANCEL_EVENT, _PAST_DUE_EVENT, _PAUSE_EVENT}
+# Statuses with nothing to entitle: the subscription has ended, or billing is stopped.
+_NO_ENTITLEMENT_STATUSES = frozenset({"canceled", "paused"})
+
+
+def _tier_for(status: str, plan_tier: Tier) -> Tier:
+    """The tier a subscription in `status` grants: its plan's, unless it has ended or is paused.
+    `past_due` is deliberately not here - it is a grace state while Paddle retries the payment."""
+    return Tier.FREE if status in _NO_ENTITLEMENT_STATUSES else plan_tier
 
 
 def effective_byok_active(*, subscription_byok: bool, has_llm_key: bool) -> bool:
@@ -70,10 +86,7 @@ class BillingService:
         if not first_time:
             return  # Already processed — idempotent no-op.
 
-        if event.event_type not in _ENTITLING_EVENTS and event.event_type not in (
-            _CANCEL_EVENT,
-            _PAST_DUE_EVENT,
-        ):
+        if event.event_type not in _HANDLED_EVENTS:
             logger.info("billing_event_ignored", event_type=event.event_type)
             return
 
@@ -89,15 +102,18 @@ class BillingService:
             logger.warning("billing_event_unknown_price", paddle_subscription_id=entity.id)
             return
 
-        # Cancel drops the derived tier to free; every other handled event keeps the plan tier
-        # (past_due is a grace state — entitlements unchanged — and a scheduled cancel stays
+        # Cancel and pause drop the derived tier to free; every other handled event keeps the plan
+        # tier (past_due is a grace state - entitlements unchanged - and a scheduled cancel stays
         # active until the cancel event itself fires).
         if event.event_type == _CANCEL_EVENT:
-            derived_tier = Tier.FREE
             status = "canceled"
+        elif event.event_type == _PAUSE_EVENT:
+            status = "paused"
+        elif event.event_type == _PAST_DUE_EVENT:
+            status = "past_due"
         else:
-            derived_tier = plan.tier
-            status = "past_due" if event.event_type == _PAST_DUE_EVENT else entity.status
+            status = entity.status
+        derived_tier = _tier_for(status, plan.tier)
 
         update = SubscriptionUpdate(
             user_id=user_id,
@@ -140,8 +156,7 @@ class BillingService:
         except UnknownPriceError:
             return local
 
-        is_canceled = entity.status == "canceled"
-        derived_tier = Tier.FREE if is_canceled else plan.tier
+        derived_tier = _tier_for(entity.status, plan.tier)
         # Reconcile stamps "now" as the applied point via the record's own occurred marker; the
         # live API is authoritative, so it is never treated as out of order against itself.
         update = SubscriptionUpdate(

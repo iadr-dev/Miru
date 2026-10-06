@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { PlanInfo, SubscriptionRecord } from "@/types/settings";
+import {
+  type PlanInfo,
+  type SubscriptionRecord,
+  subscriptionResponseSchema,
+} from "@/types/settings";
 import {
   changeBlockReason,
   findPlan,
@@ -52,6 +56,13 @@ describe("subscriptionNotice", () => {
     expect(subscriptionNotice(sub({ status: "canceled" }))).toBeNull();
   });
 
+  it("flags a paused subscription, ranked between a failed payment and a scheduled cancel", () => {
+    expect(subscriptionNotice(sub({ status: "paused" }))).toBe("paused");
+    expect(
+      subscriptionNotice(sub({ status: "paused", scheduled_cancel_at: "2026-11-06T00:00:00Z" })),
+    ).toBe("paused");
+  });
+
   it("flags a scheduled cancel and a failed payment, the latter first", () => {
     const canceling = sub({ scheduled_cancel_at: "2026-11-06T00:00:00Z" });
     expect(subscriptionNotice(canceling)).toBe("cancelScheduled");
@@ -87,6 +98,7 @@ describe("changeBlockReason", () => {
   it("blocks the current plan, a missing plan, and any change while a cancel is scheduled", () => {
     expect(changeBlockReason(sub(), PLANS[0])).toBe("samePlan");
     expect(changeBlockReason(sub(), undefined)).toBe("unavailable");
+    expect(changeBlockReason(sub({ status: "paused" }), pro)).toBe("paused");
     expect(changeBlockReason(sub({ scheduled_cancel_at: "2026-11-06T00:00:00Z" }), pro)).toBe(
       "cancelScheduled",
     );
@@ -101,5 +113,27 @@ describe("hasReceipt", () => {
     for (const status of ["draft", "ready", "canceled", "past_due", null]) {
       expect(hasReceipt(status)).toBe(false);
     }
+  });
+});
+
+describe("the API's subscription payload", () => {
+  it("parses a paused or ended subscription, whose entitled tier is free", () => {
+    const row = {
+      id: "s1",
+      user_id: "u1",
+      paddle_subscription_id: "sub_1",
+      paddle_customer_id: "ctm_1",
+      status: "paused",
+      price_id: "pri_pm",
+      tier: "free",
+      byok: false,
+      current_period_start: null,
+      current_period_end: null,
+      scheduled_cancel_at: null,
+      created_at: "2026-10-06T00:00:00Z",
+      updated_at: "2026-10-06T00:00:00Z",
+    };
+    const parsed = subscriptionResponseSchema.parse({ subscription: row, byok_active: false });
+    expect(parsed.subscription?.tier).toBe("free");
   });
 });
