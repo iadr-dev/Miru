@@ -12,7 +12,9 @@ import { type ActiveTurnMode, useTurnStore } from "@/app/[locale]/(app)/chat/tur
 import { VoiceModeOverlay } from "@/app/[locale]/(app)/chat/voice-mode-overlay";
 import { useNewThreadStore } from "@/components/shell/new-thread-store";
 import { useRouter } from "@/i18n/navigation";
+import { fetchMe } from "@/lib/api/account";
 import {
+  AgentStreamError,
   type AgentStreamFrame,
   type AttachmentInput,
   streamAgentQuery,
@@ -20,6 +22,19 @@ import {
   streamRegenerateTurn,
 } from "@/lib/api/agent-stream";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
+
+/** The message shown for a failed turn: a known refusal code gets its localized explanation. */
+function turnErrorMessage(err: unknown, t: (key: string) => string): string {
+  if (err instanceof AgentStreamError) {
+    if (err.code === "deep_research_limit_reached") {
+      return t("deepResearchLimit");
+    }
+    if (err.code === "feature_not_entitled") {
+      return t("deepResearchNotEntitled");
+    }
+  }
+  return err instanceof Error ? err.message : t("error");
+}
 
 /**
  * The Chat page client. Orchestrates: thread selection (URL `?thread=`), the persisted-thread cold
@@ -54,6 +69,11 @@ export function ChatClient(): ReactNode {
   // rather than needing a pending/persisted handshake. Defaults to enabled per product decision
   // (mirrors Claude Code's own default), with the user able to toggle it off per turn.
   const [webSearchEnabled, setWebSearchEnabled] = useState(true);
+  // One-shot "Deep research" (Pro): a cited multi-step research run instead of a normal reply.
+  // Each run spends one of the day's reports, so it resets after every send rather than sticking.
+  const [deepResearchEnabled, setDeepResearchEnabled] = useState(false);
+  const meQuery = useQuery({ queryKey: ["me"], queryFn: ({ signal }) => fetchMe(signal) });
+  const canDeepResearch = meQuery.data?.entitlements.features.includes("deep_research") ?? false;
   const { activeTurn, begin, applyFrame, fail, clear } = useTurnStore();
   const abortRef = useRef<AbortController | null>(null);
 
@@ -110,7 +130,7 @@ export function ChatClient(): ReactNode {
       } catch (err) {
         // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
         if (!(err instanceof DOMException && err.name === "AbortError")) {
-          fail(err instanceof Error ? err.message : t("error"));
+          fail(turnErrorMessage(err, t));
           useNewThreadStore.getState().reset();
         }
       } finally {
@@ -178,6 +198,7 @@ export function ChatClient(): ReactNode {
           {
             message,
             web_search: webSearchEnabled,
+            ...(deepResearchEnabled && canDeepResearch ? { deep_research: true } : {}),
             ...(pendingModelOverride !== null ? { model: pendingModelOverride } : {}),
             ...(threadId ? { thread_id: threadId } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
@@ -185,7 +206,14 @@ export function ChatClient(): ReactNode {
           signal,
         ),
       ),
-    [runStream, webSearchEnabled, pendingModelOverride, threadId],
+    [
+      runStream,
+      webSearchEnabled,
+      deepResearchEnabled,
+      canDeepResearch,
+      pendingModelOverride,
+      threadId,
+    ],
   );
 
   // Voice mode's own entrypoint: identical to a typed send (`runTurn`), but the caller wants the
@@ -248,6 +276,7 @@ export function ChatClient(): ReactNode {
         return;
       }
       void runTurn(message, attachments);
+      setDeepResearchEnabled(false);
     },
     [streaming, runTurn],
   );
@@ -317,6 +346,11 @@ export function ChatClient(): ReactNode {
         onModelOverrideChange={onModelOverrideChange}
         webSearchEnabled={webSearchEnabled}
         onWebSearchEnabledChange={setWebSearchEnabled}
+        deepResearch={
+          canDeepResearch
+            ? { enabled: deepResearchEnabled, onChange: setDeepResearchEnabled }
+            : null
+        }
         onOpenVoiceMode={() => setVoiceModeOpen(true)}
       />
 

@@ -35,6 +35,7 @@ from db.models import UsageCounterRow, UsageEventRow
 logger = structlog.get_logger(__name__)
 
 _CHAT_COUNTER = "chat"
+_DEEP_RESEARCH_COUNTER = "deep_research"
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,14 @@ class UsageStore(Protocol):
         self, *, user_id: str, limit: int | None, today: date | None = None
     ) -> ChatQuotaVerdict: ...
 
+    async def reserve_daily_deep_research(
+        self, *, user_id: str, limit: int, today: date | None = None
+    ) -> ChatQuotaVerdict: ...
+
+    async def refund_daily_deep_research(
+        self, *, user_id: str, today: date | None = None
+    ) -> None: ...
+
     async def record_turn(  # noqa: PLR0913 — one field per usage dimension the snapshot carries
         self,
         *,
@@ -115,11 +124,13 @@ class SqlAlchemyUsageStore:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def _increment(self, session: AsyncSession, *, user_id: str, window_key: str) -> int:
+    async def _increment(
+        self, session: AsyncSession, *, user_id: str, window_key: str, counter: str
+    ) -> int:
         now = datetime.now(UTC)
         base = {
             "user_id": user_id,
-            "counter": _CHAT_COUNTER,
+            "counter": counter,
             "window_key": window_key,
             "n": 1,
             "updated_at": now,
@@ -153,15 +164,46 @@ class SqlAlchemyUsageStore:
         is refunded and refused, so a rejected turn does not consume the day's quota."""
         if limit is None:
             return ChatQuotaVerdict(allowed=True, used=0, limit=None)
+        return await self._reserve(_CHAT_COUNTER, user_id=user_id, limit=limit, today=today)
+
+    async def reserve_daily_deep_research(
+        self, *, user_id: str, limit: int, today: date | None = None
+    ) -> ChatQuotaVerdict:
+        """The same reserve-before-act claim for deep-research reports (always finite - a report
+        costs many model calls and web fetches, so BYOK does not lift it)."""
+        return await self._reserve(
+            _DEEP_RESEARCH_COUNTER, user_id=user_id, limit=limit, today=today
+        )
+
+    async def refund_daily_deep_research(self, *, user_id: str, today: date | None = None) -> None:
+        """Give back a claimed report (the run failed or produced nothing). Never below zero."""
+        async with self._session_factory() as session:
+            await session.execute(
+                update(UsageCounterRow)
+                .where(
+                    UsageCounterRow.user_id == user_id,
+                    UsageCounterRow.counter == _DEEP_RESEARCH_COUNTER,
+                    UsageCounterRow.window_key == _day_key(today or datetime.now(UTC).date()),
+                    UsageCounterRow.n > 0,
+                )
+                .values(n=UsageCounterRow.n - 1)
+            )
+            await session.commit()
+
+    async def _reserve(
+        self, counter: str, *, user_id: str, limit: int, today: date | None
+    ) -> ChatQuotaVerdict:
         window_key = _day_key(today or datetime.now(UTC).date())
         async with self._session_factory() as session:
-            used = await self._increment(session, user_id=user_id, window_key=window_key)
+            used = await self._increment(
+                session, user_id=user_id, window_key=window_key, counter=counter
+            )
             if used > limit:
                 await session.execute(
                     update(UsageCounterRow)
                     .where(
                         UsageCounterRow.user_id == user_id,
-                        UsageCounterRow.counter == _CHAT_COUNTER,
+                        UsageCounterRow.counter == counter,
                         UsageCounterRow.window_key == window_key,
                     )
                     .values(n=UsageCounterRow.n - 1)

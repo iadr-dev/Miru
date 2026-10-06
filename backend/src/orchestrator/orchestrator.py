@@ -1154,6 +1154,12 @@ class Orchestrator:
             return self._agent_client
         return self._resolve_agent_client(model_override)
 
+    def agent_client(self, model_override: str | None = None) -> LLMClient:
+        """The AGENT-role client (an injected one in tests, else role-resolved) - for callers
+        outside the orchestrator that need the model the reply agent would use, e.g. deep
+        research."""
+        return self._resolve_client(ModelRole.AGENT, model_override=model_override)
+
     def _resolve_agent_client(self, model_override: str | None) -> LLMClient:
         """The AGENT-role client, honoring a per-thread `model_override` (a `"provider/model"`
         string) when present — see `llm.registry.resolve_role_with_override` for the shared

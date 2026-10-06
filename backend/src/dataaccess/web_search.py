@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from schemas.enums import TLSPolicy
 from schemas.source import SourceResult
-from sources.web_search import WebSearchAdapter
+from sources.web_search import Resolver, WebSearchAdapter
 
 
 class WebSearchGateway:
@@ -32,6 +32,17 @@ class WebSearchGateway:
         self, url: str, *, tls_policy: TLSPolicy = TLSPolicy.STRICT
     ) -> SourceResult:
         return await self._adapter.fetch_url(url, tls_policy=tls_policy)
+
+    async def fetch_page(
+        self,
+        url: str,
+        *,
+        tls_policy: TLSPolicy = TLSPolicy.STRICT,
+        resolver: Resolver | None = None,
+    ) -> SourceResult:
+        if resolver is None:
+            return await self._adapter.fetch_page(url, tls_policy=tls_policy)
+        return await self._adapter.fetch_page(url, tls_policy=tls_policy, resolver=resolver)
 
 
 __all__ = ["WebSearchGateway"]

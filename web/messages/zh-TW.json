@@ -766,7 +766,9 @@
       },
       "webSearch": {
         "sourcesCount": "{count} 個來源"
-      }
+      },
+      "deepResearchLimit": "今天的 5 份深入研究報告已用完，請明天再試。",
+      "deepResearchNotEntitled": "深入研究為 Pro 方案功能。"
     },
     "table": {
       "copy": "複製表格",
@@ -1293,7 +1295,8 @@
       "featureMenuItems": {
         "addFiles": "新增檔案或照片",
         "screenshot": "拍攝截圖",
-        "webSearch": "網路搜尋"
+        "webSearch": "網路搜尋",
+        "deepResearch": "深入研究"
       },
       "attachments": {
         "remove": "移除附件",
@@ -1558,7 +1561,6 @@
         "news_sentiment": "新聞情緒分析",
         "theme_discovery": "主題探索",
         "deep_research": "深度研究",
-        "scheduler": "排程分析",
         "tick_minute_k": "逐筆／分K"
       }
     },

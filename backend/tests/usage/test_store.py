@@ -92,3 +92,18 @@ async def test_concurrent_reservations_never_exceed_cap(session_factory) -> None
         *(store.reserve_daily_chat(user_id="u", limit=5, today=day) for _ in range(25))
     )
     assert sum(1 for v in verdicts if v.allowed) == 5
+
+
+async def test_deep_research_counter_is_separate_and_refundable(session_factory) -> None:
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    await store.reserve_daily_chat(user_id="u", limit=1, today=day)
+
+    first = await store.reserve_daily_deep_research(user_id="u", limit=1, today=day)
+    second = await store.reserve_daily_deep_research(user_id="u", limit=1, today=day)
+    assert (first.allowed, second.allowed) == (True, False)
+
+    await store.refund_daily_deep_research(user_id="u", today=day)
+    await store.refund_daily_deep_research(user_id="u", today=day)  # never below zero
+    again = await store.reserve_daily_deep_research(user_id="u", limit=1, today=day)
+    assert again.allowed is True

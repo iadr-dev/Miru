@@ -8,6 +8,7 @@ import {
   CircleNotchIcon,
   FileIcon,
   GlobeIcon,
+  MagnifyingGlassIcon,
   MicrophoneIcon,
   PaperclipIcon,
   PlusIcon,
@@ -243,6 +244,7 @@ export function Composer({
   onModelOverrideChange,
   webSearchEnabled,
   onWebSearchEnabledChange,
+  deepResearch,
   onOpenVoiceMode,
 }: {
   streaming: boolean;
@@ -252,6 +254,8 @@ export function Composer({
   onModelOverrideChange: (modelId: string) => void;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (enabled: boolean) => void;
+  /** Null when the caller's plan has no deep research (the menu row is then hidden). */
+  deepResearch: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
   onOpenVoiceMode: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
@@ -556,6 +560,7 @@ export function Composer({
               addFilesLabel={t("featureMenuItems.addFiles")}
               webSearchEnabled={webSearchEnabled}
               onWebSearchEnabledChange={onWebSearchEnabledChange}
+              deepResearch={deepResearch}
               onAddFiles={() => fileInputRef.current?.click()}
               onCaptureScreenshot={async () => {
                 const dataUrl = await captureScreenshot();
@@ -1044,6 +1049,7 @@ function FeatureMenu({
   addFilesLabel,
   webSearchEnabled,
   onWebSearchEnabledChange,
+  deepResearch,
   onAddFiles,
   onCaptureScreenshot,
 }: {
@@ -1051,6 +1057,7 @@ function FeatureMenu({
   addFilesLabel: string;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (enabled: boolean) => void;
+  deepResearch: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
   onAddFiles: () => void;
   onCaptureScreenshot: () => void;
 }): ReactNode {
@@ -1096,6 +1103,14 @@ function FeatureMenu({
             checked={webSearchEnabled}
             onSelect={() => onWebSearchEnabledChange(!webSearchEnabled)}
           />
+          {deepResearch !== null ? (
+            <FeatureMenuItem
+              icon={MagnifyingGlassIcon}
+              label={t("featureMenuItems.deepResearch")}
+              checked={deepResearch.enabled}
+              onSelect={() => deepResearch.onChange(!deepResearch.enabled)}
+            />
+          ) : null}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

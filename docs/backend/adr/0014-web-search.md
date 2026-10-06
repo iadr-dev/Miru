@@ -22,11 +22,12 @@ capability that works everywhere and stays governed (non-trading, cite sources).
 - **Governance:** external/unverified → every web-derived claim is **cited (source URL)**,
   caveated, non-trading; results pass the same guardrails and NL-`activity` narration.
 - **Tiers:** basic search available to all (toggle); **`deep_research`** (multi-step
-  search+read+synthesize) is Pro ([12](../modules/12-multi-user-tiers.md)).
+  search+read+synthesize) is Pro ([12](../modules/12-multi-user-tiers.md)); implemented in
+  [24](../modules/24-deep-research.md).
 
 ## Consequences
 - Web search works with every provider incl. local; native is used when it's better.
 - Adds `WEB` as the 12th source adapter and a `native_web_search` capability flag.
 - Citation enforcement is a guardrail concern (claims from web must carry URLs).
 - Cost/rate: Brave key usage + native-search provider costs tracked in `usage`; deep_research
-  bounded by tier quota + concurrency cap.
+  bounded by a hard per-run budget and 5 reports/day.

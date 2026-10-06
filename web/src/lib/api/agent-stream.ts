@@ -21,6 +21,33 @@ import { fetchWithRefresh } from "@/lib/api/auth";
 import { apiUrl } from "@/lib/api/config";
 import { type SseEnvelope, sseEnvelopeSchema } from "@/types/sse";
 
+/** A non-2xx reply from a turn endpoint. `code` is the backend's stable `ApiError.code`
+ * (e.g. `feature_not_entitled`, `deep_research_limit_reached`, `chat_limit_reached`) so the UI can
+ * explain the refusal in the user's language instead of echoing an English message. */
+export class AgentStreamError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null,
+  ) {
+    super(message);
+    this.name = "AgentStreamError";
+  }
+}
+
+async function errorCodeOf(response: Response): Promise<string | null> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === "object" && body !== null && "code" in body) {
+      const code = (body as { code: unknown }).code;
+      return typeof code === "string" ? code : null;
+    }
+  } catch {
+    // not JSON - no code
+  }
+  return null;
+}
+
 export type AgentStreamFrame = {
   kind: string;
   envelope: SseEnvelope;
@@ -38,6 +65,8 @@ export type AgentQueryBody = {
   message: string;
   thread_id?: string;
   web_search?: boolean;
+  /** Pro-only cited multi-step web research instead of a normal reply. */
+  deep_research?: boolean;
   /** Composer model pick; persisted as the thread override so the first turn honors it. */
   model?: string;
   attachments?: AttachmentInput[];
@@ -110,7 +139,11 @@ async function* streamSse(
   });
 
   if (!response.ok || response.body === null) {
-    throw new Error(`${errorContext} failed (${response.status})`);
+    throw new AgentStreamError(
+      `${errorContext} failed (${response.status})`,
+      response.status,
+      await errorCodeOf(response),
+    );
   }
 
   const reader = response.body.getReader();

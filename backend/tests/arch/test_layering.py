@@ -28,6 +28,7 @@ LAYER_ORDER: list[list[str]] = [
         "usage",
         "personality",
         "pets",
+        "research",
     ],  # interaction
     ["agent"],  # runtime
     ["tools"],
