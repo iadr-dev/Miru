@@ -172,3 +172,19 @@ async def test_compressed_bodies_are_refused(monkeypatch: pytest.MonkeyPatch) ->
     result = await _adapter().fetch_page("https://a.example.com/", resolver=_public)
     assert result.health.status is HealthStatus.UNREACHABLE
     assert seen[0].headers["accept-encoding"] == "identity"
+
+
+async def test_a_rejected_response_body_is_never_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Tripwire(httpx.AsyncByteStream):
+        async def __aiter__(self):  # type: ignore[no-untyped-def]
+            raise AssertionError("body was read before the headers were vetted")
+            yield b""
+
+    _serve(
+        monkeypatch,
+        lambda _r: httpx.Response(
+            200, stream=Tripwire(), headers={"content-type": "application/pdf"}
+        ),
+    )
+    result = await _adapter().fetch_page("https://a.example.com/x.pdf", resolver=_public)
+    assert result.health.status is HealthStatus.UNREACHABLE

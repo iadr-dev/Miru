@@ -225,7 +225,8 @@ async def _read_following_redirects(
                     raise _UnsafeUrlError("redirect without location")
                 current = urljoin(safe, location)
                 continue
-            return safe, await _read_capped_body(response), _readable_type(response)
+            content_type = _readable_type(response)  # headers vetted BEFORE any body is read
+            return safe, await _read_capped_body(response), content_type
     raise _UnsafeUrlError("too many redirects")
 
 
