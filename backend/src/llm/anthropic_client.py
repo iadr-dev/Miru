@@ -283,6 +283,7 @@ def _update_message_state(
             output_tokens=event.usage.output_tokens,
             total_tokens=usage.input_tokens + event.usage.output_tokens,
             cached_tokens=usage.cached_tokens,
+            cache_write_tokens=usage.cache_write_tokens,
         )
     if event.type == "message_start":
         return stop_reason, TokenUsage(
@@ -290,6 +291,7 @@ def _update_message_state(
             output_tokens=0,
             total_tokens=event.message.usage.input_tokens,
             cached_tokens=event.message.usage.cache_read_input_tokens or 0,
+            cache_write_tokens=event.message.usage.cache_creation_input_tokens or 0,
         )
     return stop_reason, usage
 
@@ -371,6 +373,7 @@ class AnthropicClient:
             output_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
             cached_tokens=response.usage.cache_read_input_tokens or 0,
+            cache_write_tokens=response.usage.cache_creation_input_tokens or 0,
         )
         return LLMResponse(
             text="".join(text_parts) or None,

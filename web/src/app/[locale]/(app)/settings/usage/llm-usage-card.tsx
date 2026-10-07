@@ -17,12 +17,19 @@ import { SettingsError, SettingsLoading } from "@/components/settings/settings-s
 import { ProviderBadge } from "@/components/usage/provider-badge";
 import { getLlmUsage } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
-import { providerStyle, reportsCost } from "@/lib/provider-style";
-import { formatCostMicros, formatTokens, shortModelName } from "@/lib/usage-format";
+import { providerStyle } from "@/lib/provider-style";
+import {
+  formatCostMicros,
+  formatEstimateMicros,
+  formatTokens,
+  shortModelName,
+} from "@/lib/usage-format";
 import {
   buildPoints,
   buildSeries,
+  type CostKind,
   costByProvider,
+  modelCost,
   OTHER_KEY,
   type Series,
   selectionTotals,
@@ -186,21 +193,36 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
   );
 }
 
-/** A model's charge, or "not reported" - a provider that returns no charge is unknown, not free. */
-function CostCell({ model }: { model: ModelTotals }): ReactNode {
+/** One cost figure in the right form: the provider's own charge, a marked estimate, or "no
+ * price" - never a bare dash, and an estimate always carries the approximately sign. */
+function CostText({ kind, micros }: { kind: CostKind; micros: number }): ReactNode {
   const t = useTranslations("settings.usage.llm");
-  if (!reportsCost(model.provider)) {
-    return (
-      <span className="font-sans text-[12px] text-[var(--text-muted)]" title={t("notReportedHint")}>
-        {t("notReported")}
-      </span>
-    );
+  if (kind === "reported") {
+    return formatCostMicros(micros);
   }
-  return formatCostMicros(model.cost_micros);
+  if (kind === "estimated") {
+    return <span title={t("estimatedHint")}>{formatEstimateMicros(micros)}</span>;
+  }
+  return (
+    <span className="font-sans text-[12px] text-[var(--text-muted)]" title={t("unpricedHint")}>
+      {t("unpriced")}
+    </span>
+  );
 }
 
-/** The cost figure. With a model picked it is that model's; otherwise the reported total, with
- * one line per provider underneath so it is clear which providers it does (not) cover. */
+/** Plain-text form of a cost (an estimate keeps its "≈"). */
+function costString(kind: CostKind, micros: number): string {
+  return kind === "estimated" ? formatEstimateMicros(micros) : formatCostMicros(micros);
+}
+
+function CostCell({ model }: { model: ModelTotals }): ReactNode {
+  const cost = modelCost(model);
+  return <CostText kind={cost.kind} micros={cost.micros} />;
+}
+
+/** The cost figure. With a model picked it is that model's; otherwise the total of what is
+ * reported plus what is estimated (marked "≈" when any part is an estimate), with one line per
+ * provider underneath showing which kind of number each one is. */
 function CostKpi({
   models,
   picked,
@@ -210,28 +232,37 @@ function CostKpi({
 }): ReactNode {
   const t = useTranslations("settings.usage.llm");
   if (picked !== null) {
-    const reported = reportsCost(picked.provider);
+    const cost = modelCost(picked);
+    const value = cost.kind === "unpriced" ? "—" : costString(cost.kind, cost.micros);
     return (
       <Kpi
         label={t("kpi.cost")}
-        value={reported ? formatCostMicros(picked.cost_micros) : "—"}
-        note={reported ? undefined : t("notReportedHint")}
+        value={value}
+        note={
+          cost.kind === "reported"
+            ? undefined
+            : t(cost.kind === "estimated" ? "estimatedHint" : "unpricedHint")
+        }
       />
     );
   }
   const perProvider = costByProvider(models);
-  const reportedTotal = perProvider.reduce((sum, p) => sum + p.costMicros, 0);
+  const known = perProvider.filter((p) => p.kind !== "unpriced");
+  const total = known.reduce((sum, p) => sum + p.costMicros, 0);
+  const hasEstimate = known.some((p) => p.kind === "estimated");
+  const value =
+    known.length === 0 ? "—" : costString(hasEstimate ? "estimated" : "reported", total);
   return (
     <Kpi
       label={t("kpi.cost")}
-      value={perProvider.some((p) => p.reported) ? formatCostMicros(reportedTotal) : "—"}
+      value={value}
       note={
         <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
           {perProvider.map((p) => (
             <li key={p.provider} className="flex justify-between gap-2">
               <span>{providerStyle(p.provider).label}</span>
               <span className="font-num tabular-nums">
-                {p.reported ? formatCostMicros(p.costMicros) : t("notReported")}
+                <CostText kind={p.kind} micros={p.costMicros} />
               </span>
             </li>
           ))}

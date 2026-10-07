@@ -54,6 +54,7 @@ class ModelUsage(BaseModel):
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     cached_tokens: int = Field(default=0, ge=0)
+    cache_write_tokens: int = Field(default=0, ge=0)
     reasoning_tokens: int = Field(default=0, ge=0)
     cost_micros: int = Field(default=0, ge=0)
 
@@ -97,6 +98,7 @@ class UsageAccumulator:
         provider: str = "",
         model: str = "",
         cached_tokens: int = 0,
+        cache_write_tokens: int = 0,
         reasoning_tokens: int = 0,
     ) -> None:
         self._input_tokens += input_tokens
@@ -112,6 +114,7 @@ class UsageAccumulator:
                 input_tokens=seen.input_tokens + input_tokens,
                 output_tokens=seen.output_tokens + output_tokens,
                 cached_tokens=seen.cached_tokens + cached_tokens,
+                cache_write_tokens=seen.cache_write_tokens + cache_write_tokens,
                 reasoning_tokens=seen.reasoning_tokens + reasoning_tokens,
                 cost_micros=seen.cost_micros + cost_micros,
             )

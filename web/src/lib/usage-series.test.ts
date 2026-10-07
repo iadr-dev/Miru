@@ -4,6 +4,7 @@ import {
   buildSeries,
   costByProvider,
   MAX_SERIES,
+  modelCost,
   OTHER_KEY,
   selectionTotals,
 } from "@/lib/usage-series";
@@ -14,12 +15,15 @@ const totals = {
   input_tokens: 0,
   output_tokens: 0,
   cached_tokens: 0,
+  cache_write_tokens: 0,
   reasoning_tokens: 0,
   cost_micros: 0,
+  estimated_cost_micros: 0,
 };
 const model = (provider: string, name: string): ModelTotals => ({
   provider,
   model: name,
+  priced: false,
   ...totals,
 });
 const day = (date: string, by_model: Record<string, number>): DailyUsage => ({
@@ -88,14 +92,29 @@ describe("selectionTotals", () => {
   });
 });
 
-describe("costByProvider", () => {
-  it("sums per provider and marks providers that never report a charge", () => {
+describe("modelCost / costByProvider", () => {
+  const priced = { ...model("openai", "gpt-5.4-mini"), priced: true, estimated_cost_micros: 3000 };
+
+  it("prefers a provider-reported charge, else a list-price estimate, else unknown", () => {
+    expect(modelCost({ ...model("openrouter", "auto"), cost_micros: 1400 })).toEqual({
+      kind: "reported",
+      micros: 1400,
+    });
+    expect(modelCost(priced)).toEqual({ kind: "estimated", micros: 3000 });
+    expect(modelCost(model("acme", "mystery"))).toEqual({ kind: "unpriced", micros: 0 });
+  });
+
+  it("sums per provider and keeps the three kinds apart", () => {
     const costs = costByProvider([
       { ...model("openrouter", "auto"), cost_micros: 1400 },
       { ...model("openrouter", "x"), cost_micros: 100 },
-      model("openai", "gpt-5.4-mini"),
+      priced,
+      model("acme", "mystery"),
     ]);
-    expect(costs[0]).toEqual({ provider: "openrouter", costMicros: 1500, reported: true });
-    expect(costs[1]).toEqual({ provider: "openai", costMicros: 0, reported: false });
+    expect(costs).toEqual([
+      { provider: "openai", costMicros: 3000, kind: "estimated" },
+      { provider: "openrouter", costMicros: 1500, kind: "reported" },
+      { provider: "acme", costMicros: 0, kind: "unpriced" },
+    ]);
   });
 });

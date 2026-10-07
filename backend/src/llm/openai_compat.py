@@ -134,6 +134,7 @@ def _usage_from_raw(usage_raw: dict[str, object]) -> TokenUsage:
         output_tokens=int(cast("int", usage_raw.get("completion_tokens", 0)) or 0),
         total_tokens=int(cast("int", usage_raw.get("total_tokens", 0)) or 0),
         cached_tokens=_detail(usage_raw, "prompt_tokens_details", "cached_tokens"),
+        cache_write_tokens=_detail(usage_raw, "prompt_tokens_details", "cache_write_tokens"),
         reasoning_tokens=_detail(usage_raw, "completion_tokens_details", "reasoning_tokens"),
         cost_micros=_cost_micros(usage_raw),
     )

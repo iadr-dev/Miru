@@ -1022,6 +1022,7 @@ class Orchestrator:
                 provider=step_usage.provider,
                 model=step_usage.model,
                 cached_tokens=step_usage.cached_tokens,
+                cache_write_tokens=step_usage.cache_write_tokens,
                 reasoning_tokens=step_usage.reasoning_tokens,
             )
             for _ in step.tool_messages:

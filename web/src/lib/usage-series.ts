@@ -80,16 +80,32 @@ export function selectionTotals(
   return match ?? windowTotals;
 }
 
-export type ProviderCost = { provider: string; costMicros: number; reported: boolean };
+export type CostKind = "reported" | "estimated" | "unpriced";
+export type ProviderCost = { provider: string; costMicros: number; kind: CostKind };
 
-/** Cost per provider, biggest spender first; `reported` is false for providers whose responses
- * never carry a charge (their cost is unknown, not zero). */
+/** How one model's cost should be shown: the provider's own charge, a list-price estimate, or
+ * nothing known. A provider-reported charge always wins over an estimate. */
+export function modelCost(m: ModelTotals): { kind: CostKind; micros: number } {
+  if (reportsCost(m.provider)) {
+    return { kind: "reported", micros: m.cost_micros };
+  }
+  if (m.priced) {
+    return { kind: "estimated", micros: m.estimated_cost_micros };
+  }
+  return { kind: "unpriced", micros: 0 };
+}
+
+/** Cost per provider (biggest first). A provider is "reported" if it returns charges, "estimated"
+ * if at least one of its models has a list price, otherwise "unpriced" (unknown, not free). */
 export function costByProvider(models: ModelTotals[]): ProviderCost[] {
-  const sums = new Map<string, number>();
+  const sums = new Map<string, { micros: number; kind: CostKind }>();
   for (const m of models) {
-    sums.set(m.provider, (sums.get(m.provider) ?? 0) + m.cost_micros);
+    const cost = modelCost(m);
+    const current = sums.get(m.provider) ?? { micros: 0, kind: "unpriced" as CostKind };
+    const kind = current.kind === "unpriced" ? cost.kind : current.kind;
+    sums.set(m.provider, { micros: current.micros + cost.micros, kind });
   }
   return [...sums.entries()]
-    .map(([provider, costMicros]) => ({ provider, costMicros, reported: reportsCost(provider) }))
+    .map(([provider, v]) => ({ provider, costMicros: v.micros, kind: v.kind }))
     .sort((a, b) => b.costMicros - a.costMicros);
 }

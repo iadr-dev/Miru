@@ -477,7 +477,7 @@ quality-score/alert pipeline remains a dedicated follow-up, not a table in this 
 
 ### `llm_usage` (real, built - per-user LLM consumption for the usage settings)
 One row per `(user_id, turn_id, provider, model)` (unique): `calls`, `input_tokens`, `output_tokens`,
-`cached_tokens`, `reasoning_tokens`, `cost_micros` (the provider-reported charge, 0 otherwise),
+`cached_tokens`, `cache_write_tokens`, `reasoning_tokens`, `cost_micros` (the provider-reported charge, 0 otherwise),
 `byok`, `created_at`. Written from the finished turn's `TurnUsage.models`; read by
 `GET /usage/llm`. `turns.usage` (JSON, nullable) keeps the same snapshot on the assistant turn so a
 reopened thread shows its token line.

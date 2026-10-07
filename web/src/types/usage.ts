@@ -19,8 +19,10 @@ const totalsShape = {
   input_tokens: z.number().int(),
   output_tokens: z.number().int(),
   cached_tokens: z.number().int(),
+  cache_write_tokens: z.number().int().default(0),
   reasoning_tokens: z.number().int(),
   cost_micros: z.number().int(),
+  estimated_cost_micros: z.number().int().default(0),
 };
 
 export const usageTotalsSchema = z.object(totalsShape);
@@ -37,6 +39,7 @@ export type DailyUsage = z.infer<typeof dailyUsageSchema>;
 export const modelTotalsSchema = z.object({
   provider: z.string(),
   model: z.string(),
+  priced: z.boolean().default(false),
   ...totalsShape,
 });
 export type ModelTotals = z.infer<typeof modelTotalsSchema>;

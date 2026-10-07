@@ -122,6 +122,7 @@ async def run_deep_research_turn(
                 provider=call.provider,
                 model=call.model,
                 cached_tokens=call.cached_tokens,
+                cache_write_tokens=call.cache_write_tokens,
                 reasoning_tokens=call.reasoning_tokens,
             ),
         ),
