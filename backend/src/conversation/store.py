@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Protocol, cast, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import structlog
 from sqlalchemy import String, func, or_, select
@@ -162,7 +162,7 @@ def _turn_row_to_model(row: TurnRow, messages: list[Message]) -> Turn:
         parent_turn_id=row.parent_turn_id,
         regenerate_of=row.regenerate_of,
         framework=Framework(row.framework) if row.framework else None,
-        mode=cast("TurnMode", row.mode) if row.mode == "deep_research" else None,
+        mode="deep_research" if row.mode == "deep_research" else None,
         idempotency_key=row.idempotency_key,
         created_at=row.created_at,
         messages=tuple(messages),
