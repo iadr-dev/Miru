@@ -19,7 +19,8 @@ import { getLlmUsage } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { providerStyle } from "@/lib/provider-style";
 import { formatCostMicros, formatTokens, shortModelName } from "@/lib/usage-format";
-import type { DailyUsage, LlmUsageSummary } from "@/types/usage";
+import { buildPoints, buildSeries, OTHER_KEY, type Series } from "@/lib/usage-series";
+import type { DailyUsage, LlmUsageSummary, ModelTotals } from "@/types/usage";
 
 const RANGES = [7, 30, 90] as const;
 type Range = (typeof RANGES)[number];
@@ -98,7 +99,7 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
         />
       </dl>
 
-      <DailyChart daily={summary.daily} providers={summary.providers} />
+      <DailyChart daily={summary.daily} models={summary.models} />
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-[13px]">
@@ -163,23 +164,39 @@ function Kpi({ label, value }: { label: string; value: string }): ReactNode {
   );
 }
 
-function DailyChart({ daily, providers }: { daily: DailyUsage[]; providers: string[] }): ReactNode {
+function seriesLabel(series: Series, otherLabel: string): string {
+  return series.key === OTHER_KEY ? otherLabel : series.model;
+}
+
+function DailyChart({ daily, models }: { daily: DailyUsage[]; models: ModelTotals[] }): ReactNode {
   const t = useTranslations("settings.usage.llm");
   const locale = useLocale();
   const dateFormat = new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" });
-  // One series per provider (keyed by provider id), so a day used on several models is stacked
-  // by who served it rather than lumped into one bar.
-  const points = daily.map((d) => ({
-    label: dateFormat.format(new Date(`${d.date}T00:00:00Z`)),
-    ...d.by_provider,
-  }));
+  // One stacked segment per model, coloured by its provider, so a day spread over several
+  // models (or providers) shows who served what instead of one lump.
+  const series = buildSeries(models);
+  const points = buildPoints(daily, series, (iso) =>
+    dateFormat.format(new Date(`${iso}T00:00:00Z`)),
+  );
+  const otherLabel = t("other");
 
   return (
     <figure className="m-0">
       <figcaption className="mb-2 text-[12px] text-[var(--text-muted)]">
         {t("chartTitle")}
       </figcaption>
-      <div className="h-52 w-full" role="img" aria-label={t("chartTitle")}>
+      <ul className="m-0 mb-3 flex list-none flex-wrap gap-x-4 gap-y-1.5 p-0 text-[12px]">
+        {series.map((s) => (
+          <li key={s.key} className="inline-flex items-center gap-1.5 text-[var(--text)]">
+            <span aria-hidden className="size-2.5 rounded-sm" style={{ background: s.color }} />
+            {seriesLabel(s, otherLabel)}
+            {s.provider ? (
+              <span className="text-[var(--text-muted)]">{providerStyle(s.provider).label}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <div className="h-56 w-full" role="img" aria-label={t("chartTitle")}>
         <ResponsiveContainer width="100%" height="100%">
           <RechartsBarChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
             <CartesianGrid vertical={false} stroke="var(--border)" />
@@ -199,35 +216,100 @@ function DailyChart({ daily, providers }: { daily: DailyUsage[]; providers: stri
               tickFormatter={(value: number) => formatTokens(value)}
             />
             <Tooltip
-              cursor={{ fill: "var(--surface-2)" }}
-              contentStyle={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              formatter={(value, name) => [
-                formatTokens(Number(value)),
-                providerStyle(String(name)).label,
-              ]}
+              cursor={<DashedCursor />}
+              content={
+                <UsageTooltip series={series} otherLabel={otherLabel} totalLabel={t("total")} />
+              }
             />
-            {providers.map((provider) => (
+            {series.map((s) => (
               <Bar
-                key={provider}
-                dataKey={provider}
+                key={s.key}
+                dataKey={s.key}
                 stackId="tokens"
-                fill={providerStyle(provider).color}
+                fill={s.color}
                 isAnimationActive={false}
               />
             ))}
           </RechartsBarChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {providers.map((provider) => (
-          <ProviderBadge key={provider} provider={provider} />
-        ))}
-      </div>
     </figure>
+  );
+}
+
+/** A dashed vertical guide through the hovered day (recharts hands a cursor its bar slot). */
+function DashedCursor({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+}: {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}): ReactNode {
+  const centre = x + width / 2;
+  return (
+    <line
+      x1={centre}
+      x2={centre}
+      y1={y}
+      y2={y + height}
+      stroke="var(--text-muted)"
+      strokeDasharray="4 4"
+    />
+  );
+}
+
+type TooltipEntry = { dataKey?: string | number; value?: number | string };
+
+/** Date, every model that day (largest first) with its provider, then the day's total. */
+export function UsageTooltip({
+  active,
+  payload,
+  label,
+  series,
+  otherLabel,
+  totalLabel,
+}: {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string | number;
+  series: Series[];
+  otherLabel: string;
+  totalLabel: string;
+}): ReactNode {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+  const byKey = new Map(series.map((s) => [s.key, s]));
+  const rows = payload
+    .map((entry) => ({ entry, s: byKey.get(String(entry.dataKey)), value: Number(entry.value) }))
+    .filter((row) => row.s !== undefined && row.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+  return (
+    <div className="min-w-44 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-[12px] shadow-lg">
+      <p className="mb-1.5 font-medium text-[var(--text)]">{label}</p>
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
+        {rows.map(({ s, value }) =>
+          s ? (
+            <li key={s.key} className="flex items-center justify-between gap-4">
+              <span className="inline-flex items-center gap-1.5 text-[var(--text)]">
+                <span aria-hidden className="size-2 rounded-full" style={{ background: s.color }} />
+                {s.provider ? `${providerStyle(s.provider).label} · ` : ""}
+                {seriesLabel(s, otherLabel)}
+              </span>
+              <span className="font-num tabular-nums">{formatTokens(value)}</span>
+            </li>
+          ) : null,
+        )}
+      </ul>
+      <p className="mt-1.5 flex justify-between border-[var(--border)] border-t pt-1.5 text-[var(--text-muted)]">
+        <span>{totalLabel}</span>
+        <span className="font-num tabular-nums">{formatTokens(total)}</span>
+      </p>
+    </div>
   );
 }

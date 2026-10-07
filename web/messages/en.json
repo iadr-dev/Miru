@@ -1572,7 +1572,7 @@
         "description": "Tokens your chats used, by model.",
         "range": "Time range",
         "rangeDays": "{count} days",
-        "chartTitle": "Tokens per day, by provider",
+        "chartTitle": "Tokens per day, by model",
         "byModel": "Usage by model",
         "empty": "No model usage yet. It appears here after your next chat.",
         "kpi": {
@@ -1589,7 +1589,9 @@
           "output": "Output",
           "cost": "Cost"
         },
-        "footnote": "Counts come from each provider's response to our calls. A cost appears only when the provider reports one (OpenRouter). Your provider's own dashboard is the bill of record."
+        "footnote": "Counts come from each provider's response to our calls. A cost appears only when the provider reports one (OpenRouter). Your provider's own dashboard is the bill of record.",
+        "other": "Other",
+        "total": "Total"
       }
     },
     "alerts": {

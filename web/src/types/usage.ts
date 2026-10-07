@@ -29,6 +29,7 @@ export type UsageTotals = z.infer<typeof usageTotalsSchema>;
 export const dailyUsageSchema = z.object({
   date: z.string(),
   by_provider: z.record(z.string(), z.number().int()).default({}),
+  by_model: z.record(z.string(), z.number().int()).default({}),
   ...totalsShape,
 });
 export type DailyUsage = z.infer<typeof dailyUsageSchema>;

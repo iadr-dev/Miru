@@ -85,6 +85,8 @@ class DailyUsage(UsageTotals):
     date: date
     # input + output tokens that day, per provider - what the stacked chart is drawn from.
     by_provider: dict[str, int] = {}
+    # The same, per model, keyed "provider/model" (a provider id never contains "/").
+    by_model: dict[str, int] = {}
 
 
 class ModelTotals(UsageTotals):
@@ -135,6 +137,7 @@ async def summarize_llm_usage(
     per_day: dict[date, UsageTotals] = {}
     per_model: dict[tuple[str, str], UsageTotals] = {}
     day_provider: dict[date, dict[str, int]] = {}
+    day_model: dict[date, dict[str, int]] = {}
     provider_tokens: dict[str, int] = {}
     total = UsageTotals()
     byok_calls = 0
@@ -151,6 +154,9 @@ async def summarize_llm_usage(
         by_provider = day_provider.setdefault(day, {})
         by_provider[row.provider] = by_provider.get(row.provider, 0) + tokens
         provider_tokens[row.provider] = provider_tokens.get(row.provider, 0) + tokens
+        by_model = day_model.setdefault(day, {})
+        model_key = f"{row.provider}/{row.model}"
+        by_model[model_key] = by_model.get(model_key, 0) + tokens
         key = (row.provider, row.model)
         per_model[key] = _add(per_model.get(key, UsageTotals()), row)
         total = _add(total, row)
@@ -160,6 +166,7 @@ async def summarize_llm_usage(
         DailyUsage(
             date=day,
             by_provider=day_provider.get(day, {}),
+            by_model=day_model.get(day, {}),
             **(per_day.get(day) or UsageTotals()).model_dump(),
         )
         for day in (first + timedelta(days=i) for i in range(days))

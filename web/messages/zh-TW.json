@@ -1572,7 +1572,7 @@
         "description": "你的對話依模型統計的 token 用量。",
         "range": "時間範圍",
         "rangeDays": "{count} 天",
-        "chartTitle": "每日 token 用量（依供應商）",
+        "chartTitle": "每日 token 用量（依模型）",
         "byModel": "各模型用量",
         "empty": "目前還沒有模型用量，下次對話後會顯示在這裡。",
         "kpi": {
@@ -1589,7 +1589,9 @@
           "output": "輸出",
           "cost": "費用"
         },
-        "footnote": "數字來自各家供應商對每次呼叫的回應；只有供應商會回報費用時才顯示（例如 OpenRouter）。實際帳單請以供應商後台為準。"
+        "footnote": "數字來自各家供應商對每次呼叫的回應；只有供應商會回報費用時才顯示（例如 OpenRouter）。實際帳單請以供應商後台為準。",
+        "other": "其他",
+        "total": "合計"
       }
     },
     "alerts": {

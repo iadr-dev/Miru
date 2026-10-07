@@ -61,6 +61,7 @@ async def test_summary_is_dense_per_day_and_sorted_per_model(session_factory) ->
     assert summary.providers == ("anthropic", "openrouter")  # biggest first
     assert summary.daily[-1].by_provider == {"anthropic": 1500 + 300, "openrouter": 55}
     assert summary.daily[0].by_provider == {}
+    assert summary.daily[-1].by_model == {"anthropic/sonnet": 1800, "openrouter/auto": 55}
 
 
 async def test_window_excludes_older_rows(session_factory) -> None:
