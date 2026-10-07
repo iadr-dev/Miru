@@ -83,16 +83,18 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
         parts.append(
             f"### {labels['open']}\n" + "\n".join(f"- {_plain(q)}" for q in report.open_questions)
         )
-    parts.append(
-        f"### {labels['sources']}\n"
-        + "\n".join(f"{s.id}. [{_plain(s.title)}]({s.url})" for s in report.sources)
-    )
-    parts.append(f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches)}*")
     markdown = "\n\n".join(parts)
-    # Backstop: the whole document is scanned once more and, as it draws on external market
-    # information, carries the standard non-trading caveat.
+    # Backstop: the prose is scanned once more and, as it draws on external market information,
+    # carries the standard non-trading caveat.
     verdict = check_output(markdown, has_market_data=True)
-    return verdict.redacted_text if verdict.redacted_text is not None else markdown
+    body = verdict.redacted_text if verdict.redacted_text is not None else markdown
+    # The source list is data (validated URLs + page titles), not prose: the scanner's vendor-name
+    # stripping would rewrite a "yahoo" inside a URL and break the link.
+    sources = f"### {labels['sources']}\n" + "\n".join(
+        f"{s.id}. [{_plain(s.title)}]({s.url})" for s in report.sources
+    )
+    scope = f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches)}*"
+    return "\n\n".join([body, sources, scope])
 
 
 __all__ = ["Locale", "failure_text", "render_markdown"]
