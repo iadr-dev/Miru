@@ -56,7 +56,7 @@ from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
 from ingest.us_jobs import job_us_fundamentals, job_us_price_eod
 from ingest.us_universe import job_us_symbol_universe
-from schemas.enums import TLSPolicy
+from schemas.enums import Market, TLSPolicy
 from sources.finmind import FinMindAdapter
 from tests.sources.conftest import load_fixture, make_json_client_factory
 
@@ -273,3 +273,67 @@ def test_derived_compute_batches_are_scheduled() -> None:
         f"Derived-compute batch job(s) not wired into SCHEDULED_JOBS — their cache is never "
         f"populated, only a manual run would: {missing}"
     )
+
+
+def _us_daemon(tmp_path: object, spy: _SpyJob) -> IngestDaemon:
+    jobs = (ScheduledIngestJob("us_price_eod", time_(6, 0), spy, market=Market.US),)
+    return IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs)
+
+
+async def test_us_daily_job_runs_for_the_last_completed_us_session_not_the_taipei_date(
+    tmp_path: object,
+) -> None:
+    """06:01 Taipei on Tue 2024-01-09 is 17:01 EST Mon 01-08 — Monday's session just settled.
+    The job must pull Monday, not the Taipei date (Tuesday), whose session has not opened."""
+    spy = _SpyJob("us_price_eod")
+    daemon = _us_daemon(tmp_path, spy)
+
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 6, 1)) == ["us_price_eod"]
+    assert spy.calls == [date_(2024, 1, 8)]
+
+
+async def test_us_daily_job_pulls_friday_on_taipei_saturday_morning(tmp_path: object) -> None:
+    """Friday's US session lands on Taipei Saturday morning. The old Taipei-weekday gate skipped
+    that run, so Friday sessions were never pulled by the schedule."""
+    spy = _SpyJob("us_price_eod")
+    daemon = _us_daemon(tmp_path, spy)
+
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 13, 6, 1)) == ["us_price_eod"]
+    assert spy.calls == [date_(2024, 1, 12)]
+
+
+async def test_us_daily_job_does_not_repeat_a_session_over_the_weekend(tmp_path: object) -> None:
+    spy = _SpyJob("us_price_eod")
+    daemon = _us_daemon(tmp_path, spy)
+
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 13, 6, 1))  # Sat: Friday's session
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 14, 6, 1)) == []  # Sun
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 15, 6, 1)) == []  # Mon a.m.
+    assert spy.calls == [date_(2024, 1, 12)]
+
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 16, 6, 1)) == ["us_price_eod"]
+    assert spy.calls == [date_(2024, 1, 12), date_(2024, 1, 15)]
+
+
+async def test_us_seed_startup_does_not_replay_the_session_that_already_settled(
+    tmp_path: object,
+) -> None:
+    spy = _SpyJob("us_price_eod")
+    daemon = _us_daemon(tmp_path, spy)
+
+    daemon.seed_startup(now=_taipei(2024, 1, 9, 9, 0))  # booted after the 06:00 window
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 9, 1)) == []
+    assert spy.calls == []
+    # The next morning's new session still fires.
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 6, 1)) == ["us_price_eod"]
+    assert spy.calls == [date_(2024, 1, 9)]
+
+
+async def test_non_us_daily_job_still_uses_the_taipei_date(tmp_path: object) -> None:
+    spy = _SpyJob("price_eod")
+    jobs = (ScheduledIngestJob("price_eod", time_(17, 40), spy),)
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs)
+
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 18, 0))
+
+    assert spy.calls == [date_(2024, 1, 9)]

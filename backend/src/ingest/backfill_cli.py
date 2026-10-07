@@ -70,7 +70,11 @@ from ingest.jobs import (
     job_shareholding_distribution,
 )
 from ingest.journal import JobRun, RunStatus
-from ingest.preflight import last_available_trading_day, run_preflight_if_enabled
+from ingest.preflight import (
+    last_available_trading_day,
+    last_completed_us_session,
+    run_preflight_if_enabled,
+)
 from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
 
@@ -391,7 +395,7 @@ async def run_us_backfill_cli(
     if universe_run.status is RunStatus.FAILED:
         return (universe_run,)
 
-    target = last_available_trading_day(ctx.us_calendar, now=datetime.now(UTC))
+    target = last_completed_us_session(ctx.us_calendar, now=datetime.now(UTC))
     start = ctx.us_calendar.shift_business_days(target, -(years * 250))
     logger.info(
         "ingest_backfill_cli_started",
