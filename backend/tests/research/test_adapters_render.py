@@ -161,3 +161,15 @@ def test_a_trailing_backslash_cannot_cancel_the_escape() -> None:
     hostile = ReportClaim(text="x \\[t](https://evil.example)", source_ids=(1,))
     md = render_markdown(_report(summary=(hostile,)), "en")
     assert "\\\\\\[t\\]" in md
+
+
+def test_headings_and_open_questions_are_escaped_too() -> None:
+    section = ReportSection(
+        heading="![x](https://evil.example/a.png)",
+        claims=(ReportClaim(text="ok", source_ids=(1,)),),
+    )
+    md = render_markdown(
+        _report(sections=(section,), open_questions=("[click](https://evil.example)",)), "en"
+    )
+    assert "![x](" not in md
+    assert "[click](https://evil.example)" not in md
