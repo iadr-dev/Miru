@@ -61,6 +61,12 @@ def _line(claim: ReportClaim) -> str:
     return f"- {_plain(claim.text)} {cites}".rstrip()
 
 
+def _scan_title(title: str) -> str:
+    """Page titles are untrusted prose: they get the same trading-language scan as claims."""
+    verdict = check_output(title, has_market_data=False)
+    return verdict.redacted_text if verdict.redacted_text is not None else title
+
+
 def failure_text(locale: Locale) -> str:
     return _LABELS[locale]["failed"]
 
@@ -88,10 +94,10 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
     # carries the standard non-trading caveat.
     verdict = check_output(markdown, has_market_data=True)
     body = verdict.redacted_text if verdict.redacted_text is not None else markdown
-    # The source list is data (validated URLs + page titles), not prose: the scanner's vendor-name
-    # stripping would rewrite a "yahoo" inside a URL and break the link.
+    # URLs are validated data, not prose: the scanner's vendor-name stripping would rewrite a
+    # "yahoo" inside one and break the link. Titles, which are prose, are scanned one by one.
     sources = f"### {labels['sources']}\n" + "\n".join(
-        f"{s.id}. [{_plain(s.title)}]({s.url})" for s in report.sources
+        f"{s.id}. [{_plain(_scan_title(s.title))}]({s.url})" for s in report.sources
     )
     scope = f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches)}*"
     return "\n\n".join([body, sources, scope])

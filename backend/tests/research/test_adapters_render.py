@@ -182,3 +182,11 @@ def test_source_urls_survive_the_vendor_name_scan() -> None:
         "en",
     )
     assert "](https://tw.stock.yahoo.com/quote/2330.TW)" in md
+
+
+def test_source_titles_are_scanned_for_trading_language() -> None:
+    source = ReportSource(id=1, title="分析師建議買進，目標價 1200", url="https://a.example/x")
+    claim = ReportClaim(text="ok", source_ids=(1,))
+    md = render_markdown(_report(sources=(source,), summary=(claim,), sections=()), "en")
+    assert "目標價" not in md
+    assert "](https://a.example/x)" in md
