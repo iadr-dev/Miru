@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -197,6 +198,9 @@ class Message(BaseModel):
     created_at: datetime
 
 
+TurnMode = Literal["deep_research"]
+
+
 class Turn(BaseModel):
     """One user request -> one agent response cycle. `messages` holds every block on this
     turn (already filtered to the active path by the store — a `Turn` itself never carries
@@ -212,6 +216,7 @@ class Turn(BaseModel):
     parent_turn_id: str | None = None
     regenerate_of: str | None = None
     framework: Framework | None = None
+    mode: TurnMode | None = None
     idempotency_key: str | None = None
     created_at: datetime
     messages: tuple[Message, ...] = Field(default_factory=tuple)
@@ -255,6 +260,7 @@ __all__ = [
     "ToolResultBlock",
     "ToolUseBlock",
     "Turn",
+    "TurnMode",
     "TurnRole",
     "TurnStatus",
     "WebSearchSourcesBlock",
