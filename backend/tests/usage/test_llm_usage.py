@@ -90,3 +90,32 @@ def test_accumulator_groups_calls_by_model() -> None:
         4,
         7,
     )
+
+
+async def test_estimates_are_kept_apart_from_reported_cost(session_factory) -> None:
+    async with session_factory() as session:
+        await write_model_usage(
+            session,
+            user_id="u",
+            turn_id="t1",
+            models=(
+                _usage("openrouter", "auto", 1000, 100, 900),  # provider reported a charge
+                _usage("openai", "gpt-5.4-mini", 1000, 100),  # priced from the list
+                _usage("acme", "mystery", 1000, 100),  # no price known
+            ),
+        )
+        await session.commit()
+        summary = await summarize_llm_usage(
+            session, user_id="u", days=7, today=datetime.now(UTC).date()
+        )
+
+    by_model = {m.model: m for m in summary.models}
+    assert by_model["auto"].cost_micros == 900
+    assert by_model["auto"].estimated_cost_micros == 0  # a reported charge is never re-estimated
+    assert by_model["auto"].priced is True
+    assert by_model["gpt-5.4-mini"].cost_micros == 0
+    assert by_model["gpt-5.4-mini"].estimated_cost_micros == round(1000 * 0.75 + 100 * 4.5)
+    assert by_model["gpt-5.4-mini"].priced is True
+    assert by_model["mystery"].estimated_cost_micros == 0
+    assert by_model["mystery"].priced is False
+    assert summary.totals.estimated_cost_micros == by_model["gpt-5.4-mini"].estimated_cost_micros

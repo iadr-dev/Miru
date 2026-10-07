@@ -788,6 +788,8 @@ class LlmUsageRow(Base):
     input_tokens: Mapped[int] = mapped_column(default=0)
     output_tokens: Mapped[int] = mapped_column(default=0)
     cached_tokens: Mapped[int] = mapped_column(default=0)
+    # server_default so the additive upgrade can add this column to rows written before it existed
+    cache_write_tokens: Mapped[int] = mapped_column(default=0, server_default="0")
     reasoning_tokens: Mapped[int] = mapped_column(default=0)
     cost_micros: Mapped[int] = mapped_column(default=0)
     byok: Mapped[bool] = mapped_column(default=False)

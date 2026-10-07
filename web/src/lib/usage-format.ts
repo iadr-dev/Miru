@@ -31,6 +31,11 @@ export function formatCostMicros(micros: number): string {
   return dollars < 1 ? `$${dollars.toFixed(4)}` : `$${dollars.toFixed(2)}`;
 }
 
+/** An estimated charge, always marked with the approximately sign so it is never read as billed. */
+export function formatEstimateMicros(micros: number): string {
+  return `≈${formatCostMicros(micros)}`;
+}
+
 /** A model id without a redundant `provider/` prefix (OpenRouter ids already carry one). */
 export function shortModelName(provider: string, model: string): string {
   return model.startsWith(`${provider}/`) ? model.slice(provider.length + 1) : model;

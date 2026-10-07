@@ -73,3 +73,12 @@ recording (`UsageAccumulator` fed by every model call) and the final `message` f
 ## 5. Not built yet
 
 Per-user concurrency cap (one report at a time), report export, and reading PDFs.
+
+## 6. Cost shown for a run
+
+Deep research (and chat) usage is recorded per call in `llm_usage`. The settings usage page shows
+the provider-reported charge where there is one (OpenRouter) and otherwise an estimate from
+`llm/pricing.py`: recorded tokens x the provider's published list price, with cache reads at the hit
+rate and cache writes at the write rate, Gemini thinking tokens billed as output, and dated prices
+(Gemini 3.6 Flash steps up on 2027-01-01). Estimates are marked "≈" and never mixed into reported
+charges. Update the price table when a model or price changes.

@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import LlmUsageRow
 from events.usage import ModelUsage
+from llm.pricing import estimate_cost_micros, price_for
 
 MAX_DAYS = 90
 
@@ -47,6 +48,7 @@ async def write_model_usage(
             "input_tokens": usage.input_tokens,
             "output_tokens": usage.output_tokens,
             "cached_tokens": usage.cached_tokens,
+            "cache_write_tokens": usage.cache_write_tokens,
             "reasoning_tokens": usage.reasoning_tokens,
             "cost_micros": usage.cost_micros,
             "byok": byok,
@@ -77,8 +79,11 @@ class UsageTotals(BaseModel):
     input_tokens: int = 0
     output_tokens: int = 0
     cached_tokens: int = 0
+    cache_write_tokens: int = 0
     reasoning_tokens: int = 0
-    cost_micros: int = 0
+    cost_micros: int = 0  # charge the provider itself reported (OpenRouter)
+    # list-price estimate for calls whose provider reports no charge; never added to cost_micros
+    estimated_cost_micros: int = 0
 
 
 class DailyUsage(UsageTotals):
@@ -92,6 +97,8 @@ class DailyUsage(UsageTotals):
 class ModelTotals(UsageTotals):
     provider: str
     model: str
+    # False when we know neither a reported charge nor a list price for this model
+    priced: bool = False
 
 
 class LlmUsageSummary(BaseModel):
@@ -108,14 +115,36 @@ class LlmUsageSummary(BaseModel):
     byok_calls: int
 
 
-def _add(total: UsageTotals, row: LlmUsageRow) -> UsageTotals:
+def _add(total: UsageTotals, row: LlmUsageRow, estimate: int) -> UsageTotals:
     return UsageTotals(
         calls=total.calls + row.calls,
         input_tokens=total.input_tokens + row.input_tokens,
         output_tokens=total.output_tokens + row.output_tokens,
         cached_tokens=total.cached_tokens + row.cached_tokens,
+        cache_write_tokens=total.cache_write_tokens + (row.cache_write_tokens or 0),
         reasoning_tokens=total.reasoning_tokens + row.reasoning_tokens,
         cost_micros=total.cost_micros + row.cost_micros,
+        estimated_cost_micros=total.estimated_cost_micros + estimate,
+    )
+
+
+def _estimate(row: LlmUsageRow, day: date) -> int:
+    """List-price estimate for a row, 0 when the provider reported a charge or the model has no
+    known price. The estimate is kept apart from `cost_micros` so the two are never confused."""
+    if row.cost_micros > 0:
+        return 0
+    return (
+        estimate_cost_micros(
+            provider=row.provider,
+            model=row.model,
+            on=day,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            cached_tokens=row.cached_tokens,
+            cache_write_tokens=row.cache_write_tokens or 0,
+            reasoning_tokens=row.reasoning_tokens,
+        )
+        or 0
     )
 
 
@@ -139,6 +168,7 @@ async def summarize_llm_usage(
     day_provider: dict[date, dict[str, int]] = {}
     day_model: dict[date, dict[str, int]] = {}
     provider_tokens: dict[str, int] = {}
+    priced_models: set[tuple[str, str]] = set()
     total = UsageTotals()
     byok_calls = 0
     for row in rows:
@@ -149,7 +179,8 @@ async def summarize_llm_usage(
             .astimezone(UTC)
             .date()
         )
-        per_day[day] = _add(per_day.get(day, UsageTotals()), row)
+        estimate = _estimate(row, day)
+        per_day[day] = _add(per_day.get(day, UsageTotals()), row, estimate)
         tokens = row.input_tokens + row.output_tokens
         by_provider = day_provider.setdefault(day, {})
         by_provider[row.provider] = by_provider.get(row.provider, 0) + tokens
@@ -158,8 +189,10 @@ async def summarize_llm_usage(
         model_key = f"{row.provider}/{row.model}"
         by_model[model_key] = by_model.get(model_key, 0) + tokens
         key = (row.provider, row.model)
-        per_model[key] = _add(per_model.get(key, UsageTotals()), row)
-        total = _add(total, row)
+        per_model[key] = _add(per_model.get(key, UsageTotals()), row, estimate)
+        if row.cost_micros > 0 or price_for(row.provider, row.model, day) is not None:
+            priced_models.add(key)
+        total = _add(total, row, estimate)
         byok_calls += row.calls if row.byok else 0
 
     daily = tuple(
@@ -174,7 +207,12 @@ async def summarize_llm_usage(
     models = tuple(
         sorted(
             (
-                ModelTotals(provider=provider, model=model, **totals.model_dump())
+                ModelTotals(
+                    provider=provider,
+                    model=model,
+                    priced=(provider, model) in priced_models,
+                    **totals.model_dump(),
+                )
                 for (provider, model), totals in per_model.items()
             ),
             key=lambda m: m.input_tokens + m.output_tokens,
