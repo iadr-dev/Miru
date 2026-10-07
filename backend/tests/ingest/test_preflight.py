@@ -13,7 +13,11 @@ from config.settings import Settings
 from ingest.context import IngestContext
 from ingest.jobs import PRICE_EOD_JOB
 from ingest.leader import AlwaysLeader
-from ingest.preflight import last_available_trading_day, run_preflight_if_enabled
+from ingest.preflight import (
+    last_available_trading_day,
+    last_completed_us_session,
+    run_preflight_if_enabled,
+)
 from ingest.store import ParquetStore
 from schemas.enums import TLSPolicy
 from sources.finmind import FinMindAdapter
@@ -112,3 +116,60 @@ async def test_enabled_preflight_backfills_bounded_dev_window(
 
     assert len(runs) > 0
     assert ctx.store.has_partition(PRICE_EOD_JOB.dataset, "TW", date_(2024, 1, 3))
+
+
+def test_last_completed_us_session_excludes_a_session_that_is_still_open() -> None:
+    """The real incident: 14:14 UTC on 2026-10-07 is 22:14 Taipei (past the 17:30 Taipei FinMind
+    time, so `last_available_trading_day` says "today") but only 10:14 ET — the US 10-07 session
+    is open, so the last *completed* session is 10-06."""
+    calendar = TradingDayCalendar()
+    now = datetime(2026, 10, 7, 14, 14, tzinfo=UTC)
+
+    assert last_available_trading_day(calendar, now=now) == date_(2026, 10, 7)  # the wrong answer
+    assert last_completed_us_session(calendar, now=now) == date_(2026, 10, 6)
+
+
+def test_last_completed_us_session_includes_a_session_once_it_has_settled() -> None:
+    calendar = TradingDayCalendar()
+    # 21:30 UTC = 17:30 EDT, an hour and a half past the 16:00 close.
+    assert last_completed_us_session(
+        calendar, now=datetime(2026, 10, 7, 21, 30, tzinfo=UTC)
+    ) == date_(2026, 10, 7)
+    # 20:30 UTC = 16:30 EDT: closed, but not yet settled.
+    assert last_completed_us_session(
+        calendar, now=datetime(2026, 10, 7, 20, 30, tzinfo=UTC)
+    ) == date_(2026, 10, 6)
+
+
+def test_last_completed_us_session_follows_the_new_york_clock_across_dst() -> None:
+    calendar = TradingDayCalendar()
+    # Winter (EST, UTC-5): 22:01 UTC Mon = 17:01 EST Mon -> Monday settled.
+    assert last_completed_us_session(
+        calendar, now=datetime(2024, 1, 8, 22, 1, tzinfo=UTC)
+    ) == date_(2024, 1, 8)
+    # Summer (EDT, UTC-4): 20:01 UTC = 16:01 EDT, past the close but not settled -> prior day.
+    assert last_completed_us_session(
+        calendar, now=datetime(2024, 7, 8, 20, 1, tzinfo=UTC)
+    ) == date_(2024, 7, 5)
+
+
+def test_last_completed_us_session_walks_back_over_weekends() -> None:
+    calendar = TradingDayCalendar()
+    # Saturday morning ET and Sunday evening ET both resolve to Friday.
+    assert last_completed_us_session(
+        calendar, now=datetime(2026, 10, 3, 12, 0, tzinfo=UTC)
+    ) == date_(2026, 10, 2)
+    assert last_completed_us_session(
+        calendar, now=datetime(2026, 10, 4, 23, 0, tzinfo=UTC)
+    ) == date_(2026, 10, 2)
+
+
+def test_last_completed_us_session_treats_a_naive_now_as_new_york_local() -> None:
+    calendar = TradingDayCalendar()
+
+    assert last_completed_us_session(calendar, now=datetime(2026, 10, 7, 16, 59)) == date_(
+        2026, 10, 6
+    )
+    assert last_completed_us_session(calendar, now=datetime(2026, 10, 7, 17, 0)) == date_(
+        2026, 10, 7
+    )
