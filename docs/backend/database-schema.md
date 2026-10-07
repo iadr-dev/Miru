@@ -147,6 +147,7 @@ proxies Paddle's transactions API / deep-links the portal. See [modules/15](modu
 | status | text | `running`\|`done`\|`cancelled`\|`error` |
 | parent_turn_id | uuid null | turn lineage; branching is on `messages.parent_id` (edit-resend → switch_branch) |
 | regenerate_of | uuid null | regenerate sibling group |
+| mode | text null | `deep_research` when the request asked for it (on the user turn); regenerate/edit re-run the same way |
 | framework | text null | `none`\|`single`\|`subagent`\|`team` |
 | idempotency_key | text null | dedupe resend |
 | created_at | timestamptz | |

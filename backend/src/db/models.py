@@ -86,6 +86,9 @@ class TurnRow(Base):
     parent_turn_id: Mapped[str | None] = mapped_column(default=None)
     regenerate_of: Mapped[str | None] = mapped_column(default=None)
     framework: Mapped[str | None] = mapped_column(default=None)
+    # How the request was made when it is not a plain chat ("deep_research"); regenerate/edit read
+    # it off the user turn so a retry re-runs the same way. App-validated, nullable, additive.
+    mode: Mapped[str | None] = mapped_column(default=None)
     idempotency_key: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(_UTC)
 

@@ -14,7 +14,15 @@ from fastapi.testclient import TestClient
 from api import deep_research_turn
 from config.settings import Settings
 from dataaccess.web_search import WebSearchGateway
-from llm.base import LLMResponse, Message, ModelCapabilities, StopReason, TokenUsage
+from llm.base import (
+    LLMResponse,
+    Message,
+    ModelCapabilities,
+    StopReason,
+    StreamDoneEvent,
+    TextDeltaEvent,
+    TokenUsage,
+)
 from schemas.enums import DataClass, Tier, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.api.conftest import build_test_client, sign_in
@@ -44,6 +52,12 @@ class _ResearchClient:
             body = {"sub_questions": ["revenue"], "queries": ["tsmc revenue"]}
         elif "review research progress" in system:
             body = {"sufficient": True}
+        elif "research report" not in system:
+            return LLMResponse(
+                text="一般對話回答。以上為資訊整理，非投資建議。",
+                stop_reason=StopReason.END_TURN,
+                usage=TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10),
+            )
         else:
             claim = {"text": self._claim, "source_ids": [1]}
             body = {
@@ -57,6 +71,11 @@ class _ResearchClient:
             stop_reason=StopReason.END_TURN,
             usage=TokenUsage(input_tokens=20, output_tokens=10, total_tokens=30),
         )
+
+    async def stream(self, messages, tools=None, *, native_web_search=False):  # type: ignore[no-untyped-def]
+        response = await self.chat(messages, tools, native_web_search=native_web_search)
+        yield TextDeltaEvent(text=response.text or "")
+        yield StreamDoneEvent(stop_reason=response.stop_reason, usage=response.usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:
         return 1
@@ -199,3 +218,90 @@ def test_trading_language_in_a_model_claim_never_reaches_the_report(
         text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
         assert "買進" not in text
         assert "目標價" not in text
+
+
+def _thread(client: TestClient, headers: dict[str, str]) -> dict:  # type: ignore[type-arg]
+    thread_id = client.get("/api/v1/threads", headers=headers).json()["threads"][0]["id"]
+    return client.get(f"/api/v1/threads/{thread_id}", headers=headers).json()
+
+
+def _last(thread: dict, role: str) -> dict:  # type: ignore[type-arg]
+    return [t for t in thread["turns"] if t["role"] == role][-1]
+
+
+def _message_text(resp_text: str) -> str:
+    return next(f for f in _parse_sse(resp_text) if f["event"] == "message")["data"]["text"]
+
+
+def test_regenerate_reruns_a_deep_research_turn_as_deep_research(
+    research_client: TestClient, settings: Settings
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+    thread = _thread(research_client, headers)
+    assert _last(thread, "user")["mode"] == "deep_research"
+
+    resp = research_client.post(
+        f"/api/v1/threads/{thread['id']}/turns/{_last(thread, 'assistant')['id']}/regenerate",
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert "### 來源" in _message_text(resp.text)  # a report again, not a plain chat answer
+
+
+def test_regenerate_counts_against_the_daily_report_limit(
+    research_client: TestClient, settings: Settings
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+    thread = _thread(research_client, headers)
+    url = f"/api/v1/threads/{thread['id']}/turns/{_last(thread, 'assistant')['id']}/regenerate"
+    for _ in range(4):
+        assert research_client.post(url, headers=headers).status_code == 200
+    blocked = research_client.post(url, headers=headers)
+    assert blocked.status_code == 429
+    assert blocked.json()["code"] == "deep_research_limit_reached"
+
+
+def test_regenerate_can_explicitly_drop_back_to_plain_chat(
+    research_client: TestClient, settings: Settings
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+    thread = _thread(research_client, headers)
+    resp = research_client.post(
+        f"/api/v1/threads/{thread['id']}/turns/{_last(thread, 'assistant')['id']}/regenerate",
+        json={"deep_research": False},
+        headers=headers,
+    )
+    assert "### 來源" not in _message_text(resp.text)
+
+
+def test_a_plain_turn_regenerates_as_plain_chat(
+    research_client: TestClient, settings: Settings
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers, deep=False)
+    thread = _thread(research_client, headers)
+    assert _last(thread, "user")["mode"] is None
+    resp = research_client.post(
+        f"/api/v1/threads/{thread['id']}/turns/{_last(thread, 'assistant')['id']}/regenerate",
+        headers=headers,
+    )
+    assert "### 來源" not in _message_text(resp.text)
+
+
+def test_editing_a_deep_research_question_keeps_it_deep_research(
+    research_client: TestClient, settings: Settings
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+    thread = _thread(research_client, headers)
+    resp = research_client.post(
+        f"/api/v1/threads/{thread['id']}/turns/{_last(thread, 'user')['id']}/edit",
+        json={"message": "台積電資本支出呢？"},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert "### 來源" in _message_text(resp.text)
+    assert _last(_thread(research_client, headers), "user")["mode"] == "deep_research"

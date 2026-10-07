@@ -98,6 +98,7 @@ async def agent_query(
         blocks=blocks,
         parent_message_id=await current_leaf(store, thread_id),
         idempotency_key=idempotency_key,
+        mode="deep_research" if body.deep_research else None,
     )
 
     # The streaming correlation id must be the persisted turn's own id — `stream_events.turn_id`

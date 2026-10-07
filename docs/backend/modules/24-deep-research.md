@@ -57,6 +57,11 @@ review failures are tolerated and logged; a plan or write failure raises `Resear
 chat reservation. BYOK does **not** lift the report limit. The claim is **refunded only when our own run fails** (model output unusable, unexpected error);
 an empty result or a user cancel still counts, because the searches and fetches already cost work.
 
+**Regenerate / edit.** The request's mode is stored on the user turn (`turns.mode = 'deep_research'`,
+nullable). `regenerate` and `edit` re-run the way the original ran unless the body says
+`deep_research: true|false` explicitly; a retried report goes through the same gate and spends
+another of the day's 5.
+
 ## 4. Streaming and persistence
 
 Progress reuses existing frames: each stage (planning, `searching: <query>`, `reading N pages`,
@@ -67,5 +72,4 @@ recording (`UsageAccumulator` fed by every model call) and the final `message` f
 
 ## 5. Not built yet
 
-Per-user concurrency cap (one report at a time), regenerate/edit resending the `deep_research`
-flag from the client, report export, and reading PDFs.
+Per-user concurrency cap (one report at a time), report export, and reading PDFs.

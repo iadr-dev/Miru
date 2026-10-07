@@ -35,6 +35,7 @@ from conversation.models import (
     ToolResultBlock,
     ToolUseBlock,
     Turn,
+    TurnMode,
     TurnRole,
     TurnStatus,
     WebSearchSourcesBlock,
@@ -84,6 +85,7 @@ class ConversationStore(Protocol):
         idempotency_key: str | None = None,
         regenerate_of: str | None = None,
         turn_id: str | None = None,
+        mode: TurnMode | None = None,
     ) -> Turn: ...
 
     async def active_path(self, *, thread_id: str) -> list[Message]: ...
@@ -160,6 +162,7 @@ def _turn_row_to_model(row: TurnRow, messages: list[Message]) -> Turn:
         parent_turn_id=row.parent_turn_id,
         regenerate_of=row.regenerate_of,
         framework=Framework(row.framework) if row.framework else None,
+        mode="deep_research" if row.mode == "deep_research" else None,
         idempotency_key=row.idempotency_key,
         created_at=row.created_at,
         messages=tuple(messages),
@@ -254,6 +257,7 @@ class SqlAlchemyConversationStore:
         idempotency_key: str | None = None,
         regenerate_of: str | None = None,
         turn_id: str | None = None,
+        mode: TurnMode | None = None,
     ) -> Turn:
         thread_row = await self._get_thread_row(user_id=user_id, thread_id=thread_id)
         now = datetime.now(UTC)
@@ -264,6 +268,7 @@ class SqlAlchemyConversationStore:
             role=role.value,
             status=TurnStatus.DONE.value,
             framework=framework.value if framework else None,
+            mode=mode,
             idempotency_key=idempotency_key,
             regenerate_of=regenerate_of,
             created_at=now,
