@@ -548,7 +548,9 @@ class AgentLoop:
             text="".join(text_parts) or None,
             tool_calls=tuple(tool_calls),
             stop_reason=stop_reason,
-            usage=usage,
+            usage=usage.model_copy(
+                update={"provider": self._llm.provider_id, "model": self._llm.model_id}
+            ),
         )
 
     async def _run_post_tool_hooks(  # noqa: PLR0913 — mirrors `PostToolHook.__call__`'s shape

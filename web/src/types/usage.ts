@@ -1,0 +1,68 @@
+/**
+ * LLM usage shapes - `GET /usage/today`, `GET /usage/llm`, and the per-turn `usage` SSE frame.
+ * Mirrors `backend/src/api/routers/accounts_extra.py` and `backend/src/usage/llm_usage.py`.
+ *
+ * `cost_micros` is millionths of a USD and is only non-zero where the provider reports a charge
+ * on the response itself (OpenRouter); it is never an estimate.
+ */
+import { z } from "zod";
+
+export const todayUsageSchema = z.object({
+  chats_used: z.number().int(),
+  deep_research_used: z.number().int(),
+  deep_research_limit: z.number().int(),
+});
+export type TodayUsage = z.infer<typeof todayUsageSchema>;
+
+const totalsShape = {
+  calls: z.number().int(),
+  input_tokens: z.number().int(),
+  output_tokens: z.number().int(),
+  cached_tokens: z.number().int(),
+  reasoning_tokens: z.number().int(),
+  cost_micros: z.number().int(),
+};
+
+export const usageTotalsSchema = z.object(totalsShape);
+export type UsageTotals = z.infer<typeof usageTotalsSchema>;
+
+export const dailyUsageSchema = z.object({ date: z.string(), ...totalsShape });
+export type DailyUsage = z.infer<typeof dailyUsageSchema>;
+
+export const modelTotalsSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  ...totalsShape,
+});
+export type ModelTotals = z.infer<typeof modelTotalsSchema>;
+
+export const llmUsageSummarySchema = z.object({
+  days: z.number().int(),
+  daily: z.array(dailyUsageSchema),
+  models: z.array(modelTotalsSchema),
+  totals: usageTotalsSchema,
+  byok_calls: z.number().int(),
+});
+export type LlmUsageSummary = z.infer<typeof llmUsageSummarySchema>;
+
+/** The `usage` SSE frame's `data` - one turn's totals plus the per-model split. */
+export const turnUsageDataSchema = z.object({
+  input_tokens: z.number().int().default(0),
+  output_tokens: z.number().int().default(0),
+  cost_micros: z.number().int().default(0),
+  models: z
+    .array(
+      z.object({
+        provider: z.string(),
+        model: z.string(),
+        calls: z.number().int().default(0),
+        input_tokens: z.number().int().default(0),
+        output_tokens: z.number().int().default(0),
+        cached_tokens: z.number().int().default(0),
+        reasoning_tokens: z.number().int().default(0),
+        cost_micros: z.number().int().default(0),
+      }),
+    )
+    .default([]),
+});
+export type TurnUsageData = z.infer<typeof turnUsageDataSchema>;

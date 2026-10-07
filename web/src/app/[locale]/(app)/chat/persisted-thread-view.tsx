@@ -11,6 +11,7 @@ import {
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
 import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
+import { TokenUsageChip } from "@/app/[locale]/(app)/chat/token-usage-chip";
 import { WebSearchSources } from "@/app/[locale]/(app)/chat/web-search-sources";
 import { type FeedbackRating, submitTurnFeedback } from "@/lib/api/threads";
 import { cn } from "@/lib/cn";
@@ -276,6 +277,7 @@ export function PersistedThreadView({
             {!isUser ? (
               <>
                 <Caveat text={tCaveat("nonTrading")} />
+                <TokenUsageChip usage={turn.usage} />
                 <AssistantTurnActions
                   turn={turn}
                   sourceUserTurn={thread.turns.find((t) => t.id === turn.parent_turn_id) ?? null}

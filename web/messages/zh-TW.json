@@ -1340,6 +1340,9 @@
       "micPermissionDenied": "無法使用麥克風，請檢查瀏覽器的麥克風權限後再試一次。",
       "transcribeError": "無法辨識這段錄音，重新聆聽中。",
       "sendError": "送出時發生問題，重新聆聽中。"
+    },
+    "usage": {
+      "summary": "輸入 {input} · 輸出 {output}"
     }
   },
   "disclaimer": {
@@ -1538,16 +1541,14 @@
     },
     "usage": {
       "title": "用量",
-      "description": "目前方案的用量上限一覽。",
+      "description": "目前方案的用量上限，以及今天已使用的額度。",
       "tier": "方案等級",
       "chatLimit": "每日對話上限",
       "unlimited": "無限制",
       "chatsPerDay": "{count} 則/天",
       "requestsPerMinute": "每分鐘請求數",
-      "finmindClass": "資料存取等級",
       "byokActive": "自帶金鑰已啟用",
       "features": "已啟用功能",
-      "noLiveUsageNote": "此頁僅顯示方案上限，不提供即時用量統計。",
       "tierOption": {
         "free": "免費",
         "premium": "Premium",
@@ -1562,6 +1563,33 @@
         "theme_discovery": "主題探索",
         "deep_research": "深度研究",
         "tick_minute_k": "逐筆／分K"
+      },
+      "deepResearchLimit": "每日深入研究報告",
+      "usedOfLimit": "今日已用 {used} / {limit}",
+      "upgrade": "查看方案並升級",
+      "llm": {
+        "title": "模型用量",
+        "description": "你的對話依模型統計的 token 用量。",
+        "range": "時間範圍",
+        "rangeDays": "{count} 天",
+        "chartTitle": "每日 token 用量",
+        "byModel": "各模型用量",
+        "empty": "目前還沒有模型用量，下次對話後會顯示在這裡。",
+        "kpi": {
+          "calls": "模型呼叫次數",
+          "input": "輸入 token",
+          "output": "輸出 token",
+          "cached": "快取 token",
+          "cost": "費用"
+        },
+        "col": {
+          "model": "模型",
+          "calls": "次數",
+          "input": "輸入",
+          "output": "輸出",
+          "cost": "費用"
+        },
+        "footnote": "數字來自各家供應商對每次呼叫的回應；只有供應商會回報費用時才顯示（例如 OpenRouter）。實際帳單請以供應商後台為準。"
       }
     },
     "alerts": {

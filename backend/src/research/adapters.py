@@ -11,14 +11,14 @@ from pydantic import BaseModel, ValidationError
 
 from dataaccess.web_search import WebSearchGateway
 from governance.textscan import check_output
-from llm.base import LLMClient, Message, MessageRole
+from llm.base import LLMClient, Message, MessageRole, TokenUsage
 from research.ports import FetchedPage, SearchHit
 from schemas.enums import TLSPolicy
 from schemas.source import HealthStatus, SourceResult
 
 logger = structlog.get_logger(__name__)
 
-UsageSink = Callable[[int, int], None]
+UsageSink = Callable[[TokenUsage], None]
 
 
 def _json_object(text: str) -> str:
@@ -50,7 +50,14 @@ class LLMResearchModel:
         for _ in range(2):
             response = await self._client.chat(messages)
             if self._on_usage is not None:
-                self._on_usage(response.usage.input_tokens, response.usage.output_tokens)
+                self._on_usage(
+                    response.usage.model_copy(
+                        update={
+                            "provider": self._client.provider_id,
+                            "model": self._client.model_id,
+                        }
+                    )
+                )
             try:
                 return schema.model_validate_json(_json_object(response.text or ""))
             except (ValueError, ValidationError) as exc:

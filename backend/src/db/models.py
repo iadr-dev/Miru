@@ -89,6 +89,9 @@ class TurnRow(Base):
     # How the request was made when it is not a plain chat ("deep_research"); regenerate/edit read
     # it off the user turn so a retry re-runs the same way. App-validated, nullable, additive.
     mode: Mapped[str | None] = mapped_column(default=None)
+    # The finished turn's `TurnUsage` snapshot (tokens, per-model split) so a reopened thread can
+    # show the same token line the live stream did. Nullable + additive.
+    usage: Mapped[dict[str, object] | None] = mapped_column(JSON, default=None)
     idempotency_key: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(_UTC)
 
@@ -767,6 +770,37 @@ class UsageCounterRow(Base):
     )
 
 
+class LlmUsageRow(Base):
+    """One turn's LLM consumption on one (provider, model) - the source of the usage settings
+    chart. Recorded from each provider's own per-response usage metadata (tokens everywhere, the
+    charge inline on OpenRouter); provider usage-history APIs need admin credentials a user's
+    inference key does not have, so this is the only data we can show. `byok` marks calls made with
+    the user's own key."""
+
+    __tablename__ = "llm_usage"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(index=True)
+    turn_id: Mapped[str]
+    provider: Mapped[str]
+    model: Mapped[str]
+    calls: Mapped[int] = mapped_column(default=0)
+    input_tokens: Mapped[int] = mapped_column(default=0)
+    output_tokens: Mapped[int] = mapped_column(default=0)
+    cached_tokens: Mapped[int] = mapped_column(default=0)
+    reasoning_tokens: Mapped[int] = mapped_column(default=0)
+    cost_micros: Mapped[int] = mapped_column(default=0)
+    byok: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(_UTC)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "turn_id", "provider", "model", name="uq_llm_usage_user_turn_model"
+        ),
+        Index("ix_llm_usage_user_created", "user_id", "created_at"),
+    )
+
+
 class UsageEventRow(Base):
     """The durable per-turn usage rollup — the write-through target of a finished turn's
     `UsageAccumulator.snapshot()`. One row per completed turn: token/tool/cost totals for
@@ -1312,6 +1346,7 @@ __all__ = [
     "AlertRuleRow",
     "BillingEventRow",
     "DevicePushTokenRow",
+    "LlmUsageRow",
     "MemoryRow",
     "MessageRow",
     "NotificationRow",

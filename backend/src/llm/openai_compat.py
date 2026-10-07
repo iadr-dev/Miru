@@ -114,11 +114,28 @@ def _tool_spec_to_wire(spec: ToolSpec) -> dict[str, object]:
     }
 
 
+def _detail(usage_raw: dict[str, object], group: str, field: str) -> int:
+    details = usage_raw.get(group)
+    if not isinstance(details, dict):
+        return 0
+    value = cast("_JsonObject", details).get(field)
+    return int(value) if isinstance(value, int | float) and value > 0 else 0
+
+
+def _cost_micros(usage_raw: dict[str, object]) -> int:
+    """OpenRouter's usage accounting returns the call's charge as `usage.cost` (USD, a float)."""
+    cost = usage_raw.get("cost")
+    return round(float(cost) * 1_000_000) if isinstance(cost, int | float) and cost > 0 else 0
+
+
 def _usage_from_raw(usage_raw: dict[str, object]) -> TokenUsage:
     return TokenUsage(
         input_tokens=int(cast("int", usage_raw.get("prompt_tokens", 0)) or 0),
         output_tokens=int(cast("int", usage_raw.get("completion_tokens", 0)) or 0),
         total_tokens=int(cast("int", usage_raw.get("total_tokens", 0)) or 0),
+        cached_tokens=_detail(usage_raw, "prompt_tokens_details", "cached_tokens"),
+        reasoning_tokens=_detail(usage_raw, "completion_tokens_details", "reasoning_tokens"),
+        cost_micros=_cost_micros(usage_raw),
     )
 
 

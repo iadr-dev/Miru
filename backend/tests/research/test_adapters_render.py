@@ -43,10 +43,12 @@ class StubClient:
 
 async def test_json_is_pulled_out_of_a_fenced_reply_and_usage_is_reported() -> None:
     client = StubClient(['Sure!\n```json\n{"ok": true}\n```'])
-    used: list[tuple[int, int]] = []
-    model = LLMResearchModel(client, on_usage=lambda i, o: used.append((i, o)))  # type: ignore[arg-type]
+    used: list[tuple[int, int, str]] = []
+    model = LLMResearchModel(
+        client, on_usage=lambda u: used.append((u.input_tokens, u.output_tokens, u.model))
+    )  # type: ignore[arg-type]
     assert (await model.generate(system="s", user="u", schema=Answer)).ok is True
-    assert used == [(10, 5)]
+    assert used == [(10, 5, "stub")]
     assert "ONE JSON object" in (client.calls[0][0].content or "")
 
 

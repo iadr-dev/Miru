@@ -305,3 +305,32 @@ def test_editing_a_deep_research_question_keeps_it_deep_research(
     assert resp.status_code == 200
     assert "### 來源" in _message_text(resp.text)
     assert _last(_thread(research_client, headers), "user")["mode"] == "deep_research"
+
+
+def test_token_usage_is_persisted_on_the_turn_and_shows_in_the_usage_endpoints(
+    research_client: TestClient, settings: Settings
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+
+    usage = _last(_thread(research_client, headers), "assistant")["usage"]
+    assert usage["input_tokens"] > 0
+    assert usage["models"][0]["model"] == "stub-model"
+
+    llm = research_client.get("/api/v1/usage/llm?days=7", headers=headers).json()
+    assert llm["totals"]["calls"] >= 3  # plan + review + write
+    assert llm["models"][0]["provider"] == "stub"
+    assert len(llm["daily"]) == 7
+
+    today = research_client.get("/api/v1/usage/today", headers=headers).json()
+    assert today["deep_research_used"] == 1
+    assert today["deep_research_limit"] == 5
+    assert today["chats_used"] == 0  # Pro chat is unlimited, so no chat counter is touched
+
+
+def test_other_users_cannot_see_your_usage(research_client: TestClient, settings: Settings) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+    other, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    llm = research_client.get("/api/v1/usage/llm", headers=other).json()
+    assert llm["totals"]["calls"] == 0

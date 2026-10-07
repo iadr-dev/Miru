@@ -318,6 +318,8 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 | POST | `/auth/oauth/{provider}/link` | Link a provider to the **current** user (multi-provider = one account) |
 | DELETE | `/me/connections/{provider}` | Unlink a provider (refused if last login method) |
 | GET | `/usage/quota` | Resolved limits given tier + BYOK (chats/day, req/min, FinMind class, features) — the entitlement envelope, not live consumption counters |
+| GET | `/usage/today` | What the caller has claimed of today's (UTC) allowances: `chats_used`, `deep_research_used`, `deep_research_limit` |
+| GET | `/usage/llm?days=30` | The caller's own LLM consumption (1-90 days): a zero-filled daily series, per-(provider, model) totals, grand total. Tokens come from each provider's per-response usage metadata; `cost_micros` is non-zero only where the provider reports a charge (OpenRouter). Not the provider's bill - their usage APIs need admin credentials an inference key lacks |
 | GET | `/usage?thread_id=` / `/usage/summary` | **Not built** — no route exists yet; `events/usage.py` is an in-process accumulator with no durable rollup store to serve this from |
 | POST | `/me/keys` | Store BYOK key (encrypted) |
 | DELETE | `/me/keys/{provider}` | Remove BYOK key |

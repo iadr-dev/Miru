@@ -41,6 +41,23 @@ class TokenBreakdown(BaseModel):
         return sum(self.model_dump().values())
 
 
+class ModelUsage(BaseModel):
+    """One turn's LLM consumption on a single (provider, model) - what the usage settings chart
+    is built from. `cost_micros` is only filled where the provider reports a charge inline
+    (OpenRouter); it is 0, not an estimate, everywhere else."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: str
+    model: str
+    calls: int = Field(default=0, ge=0)
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cached_tokens: int = Field(default=0, ge=0)
+    reasoning_tokens: int = Field(default=0, ge=0)
+    cost_micros: int = Field(default=0, ge=0)
+
+
 class TurnUsage(BaseModel):
     """The per-turn accounting snapshot: totals plus the breakdown that explains them."""
 
@@ -53,6 +70,7 @@ class TurnUsage(BaseModel):
     finmind_calls: int = Field(default=0, ge=0)
     cost_micros: int = Field(default=0, ge=0)
     breakdown: TokenBreakdown = Field(default_factory=TokenBreakdown)
+    models: tuple[ModelUsage, ...] = Field(default_factory=tuple)
 
 
 class UsageAccumulator:
@@ -68,11 +86,35 @@ class UsageAccumulator:
         self._finmind_calls = 0
         self._cost_micros = 0
         self._breakdown = TokenBreakdown()
+        self._models: dict[tuple[str, str], ModelUsage] = {}
 
-    def add_llm_call(self, *, input_tokens: int, output_tokens: int, cost_micros: int = 0) -> None:
+    def add_llm_call(  # noqa: PLR0913 - one field per usage dimension a provider reports
+        self,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        cost_micros: int = 0,
+        provider: str = "",
+        model: str = "",
+        cached_tokens: int = 0,
+        reasoning_tokens: int = 0,
+    ) -> None:
         self._input_tokens += input_tokens
         self._output_tokens += output_tokens
         self._cost_micros += cost_micros
+        if provider or model:
+            key = (provider, model)
+            seen = self._models.get(key) or ModelUsage(provider=provider, model=model)
+            self._models[key] = ModelUsage(
+                provider=provider,
+                model=model,
+                calls=seen.calls + 1,
+                input_tokens=seen.input_tokens + input_tokens,
+                output_tokens=seen.output_tokens + output_tokens,
+                cached_tokens=seen.cached_tokens + cached_tokens,
+                reasoning_tokens=seen.reasoning_tokens + reasoning_tokens,
+                cost_micros=seen.cost_micros + cost_micros,
+            )
 
     def add_tool_call(self, *, is_finmind: bool = False) -> None:
         self._tool_calls += 1
@@ -91,6 +133,7 @@ class UsageAccumulator:
             finmind_calls=self._finmind_calls,
             cost_micros=self._cost_micros,
             breakdown=self._breakdown,
+            models=tuple(self._models.values()),
         )
 
     def publish(self, bus: EventBus, *, agent_id: str = "root") -> None:
@@ -104,4 +147,4 @@ class UsageAccumulator:
         )
 
 
-__all__ = ["TokenBreakdown", "TurnUsage", "UsageAccumulator"]
+__all__ = ["ModelUsage", "TokenBreakdown", "TurnUsage", "UsageAccumulator"]
