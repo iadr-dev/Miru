@@ -26,7 +26,11 @@ const totalsShape = {
 export const usageTotalsSchema = z.object(totalsShape);
 export type UsageTotals = z.infer<typeof usageTotalsSchema>;
 
-export const dailyUsageSchema = z.object({ date: z.string(), ...totalsShape });
+export const dailyUsageSchema = z.object({
+  date: z.string(),
+  by_provider: z.record(z.string(), z.number().int()).default({}),
+  ...totalsShape,
+});
 export type DailyUsage = z.infer<typeof dailyUsageSchema>;
 
 export const modelTotalsSchema = z.object({
@@ -38,6 +42,7 @@ export type ModelTotals = z.infer<typeof modelTotalsSchema>;
 
 export const llmUsageSummarySchema = z.object({
   days: z.number().int(),
+  providers: z.array(z.string()).default([]),
   daily: z.array(dailyUsageSchema),
   models: z.array(modelTotalsSchema),
   totals: usageTotalsSchema,

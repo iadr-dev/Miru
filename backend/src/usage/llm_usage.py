@@ -83,6 +83,8 @@ class UsageTotals(BaseModel):
 
 class DailyUsage(UsageTotals):
     date: date
+    # input + output tokens that day, per provider - what the stacked chart is drawn from.
+    by_provider: dict[str, int] = {}
 
 
 class ModelTotals(UsageTotals):
@@ -97,6 +99,7 @@ class LlmUsageSummary(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     days: int
+    providers: tuple[str, ...]  # every provider seen in the window, biggest first
     daily: tuple[DailyUsage, ...]
     models: tuple[ModelTotals, ...]
     totals: UsageTotals
@@ -131,6 +134,8 @@ async def summarize_llm_usage(
 
     per_day: dict[date, UsageTotals] = {}
     per_model: dict[tuple[str, str], UsageTotals] = {}
+    day_provider: dict[date, dict[str, int]] = {}
+    provider_tokens: dict[str, int] = {}
     total = UsageTotals()
     byok_calls = 0
     for row in rows:
@@ -142,13 +147,21 @@ async def summarize_llm_usage(
             .date()
         )
         per_day[day] = _add(per_day.get(day, UsageTotals()), row)
+        tokens = row.input_tokens + row.output_tokens
+        by_provider = day_provider.setdefault(day, {})
+        by_provider[row.provider] = by_provider.get(row.provider, 0) + tokens
+        provider_tokens[row.provider] = provider_tokens.get(row.provider, 0) + tokens
         key = (row.provider, row.model)
         per_model[key] = _add(per_model.get(key, UsageTotals()), row)
         total = _add(total, row)
         byok_calls += row.calls if row.byok else 0
 
     daily = tuple(
-        DailyUsage(date=day, **(per_day.get(day) or UsageTotals()).model_dump())
+        DailyUsage(
+            date=day,
+            by_provider=day_provider.get(day, {}),
+            **(per_day.get(day) or UsageTotals()).model_dump(),
+        )
         for day in (first + timedelta(days=i) for i in range(days))
     )
     models = tuple(
@@ -161,8 +174,14 @@ async def summarize_llm_usage(
             reverse=True,
         )
     )
+    providers = tuple(sorted(provider_tokens, key=lambda p: provider_tokens[p], reverse=True))
     return LlmUsageSummary(
-        days=days, daily=daily, models=models, totals=total, byok_calls=byok_calls
+        days=days,
+        providers=providers,
+        daily=daily,
+        models=models,
+        totals=total,
+        byok_calls=byok_calls,
     )
 
 

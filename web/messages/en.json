@@ -1572,7 +1572,7 @@
         "description": "Tokens your chats used, by model.",
         "range": "Time range",
         "rangeDays": "{count} days",
-        "chartTitle": "Tokens per day",
+        "chartTitle": "Tokens per day, by provider",
         "byModel": "Usage by model",
         "empty": "No model usage yet. It appears here after your next chat.",
         "kpi": {

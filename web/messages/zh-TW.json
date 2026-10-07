@@ -1572,7 +1572,7 @@
         "description": "你的對話依模型統計的 token 用量。",
         "range": "時間範圍",
         "rangeDays": "{count} 天",
-        "chartTitle": "每日 token 用量",
+        "chartTitle": "每日 token 用量（依供應商）",
         "byModel": "各模型用量",
         "empty": "目前還沒有模型用量，下次對話後會顯示在這裡。",
         "kpi": {

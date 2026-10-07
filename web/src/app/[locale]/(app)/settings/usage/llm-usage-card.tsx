@@ -14,8 +14,10 @@ import {
 } from "recharts";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
+import { ProviderBadge } from "@/components/usage/provider-badge";
 import { getLlmUsage } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
+import { providerStyle } from "@/lib/provider-style";
 import { formatCostMicros, formatTokens, shortModelName } from "@/lib/usage-format";
 import type { DailyUsage, LlmUsageSummary } from "@/types/usage";
 
@@ -96,7 +98,7 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
         />
       </dl>
 
-      <DailyChart daily={summary.daily} />
+      <DailyChart daily={summary.daily} providers={summary.providers} />
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-[13px]">
@@ -127,8 +129,8 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
               <tr key={`${m.provider}/${m.model}`} className="border-[var(--border)] border-b">
                 <th scope="row" className="py-2.5 pr-3 text-left font-normal">
                   <span className="text-[var(--text)]">{shortModelName(m.provider, m.model)}</span>
-                  <span className="ml-2 rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[11px] text-[var(--text-muted)]">
-                    {m.provider}
+                  <span className="ml-2">
+                    <ProviderBadge provider={m.provider} />
                   </span>
                 </th>
                 <td className="font-num px-3 py-2.5 text-right tabular-nums">{m.calls}</td>
@@ -161,15 +163,16 @@ function Kpi({ label, value }: { label: string; value: string }): ReactNode {
   );
 }
 
-function DailyChart({ daily }: { daily: DailyUsage[] }): ReactNode {
+function DailyChart({ daily, providers }: { daily: DailyUsage[]; providers: string[] }): ReactNode {
   const t = useTranslations("settings.usage.llm");
   const locale = useLocale();
   const dateFormat = new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" });
+  // One series per provider (keyed by provider id), so a day used on several models is stacked
+  // by who served it rather than lumped into one bar.
   const points = daily.map((d) => ({
-    ...d,
     label: dateFormat.format(new Date(`${d.date}T00:00:00Z`)),
+    ...d.by_provider,
   }));
-  const names = { input_tokens: t("kpi.input"), output_tokens: t("kpi.output") } as const;
 
   return (
     <figure className="m-0">
@@ -205,38 +208,26 @@ function DailyChart({ daily }: { daily: DailyUsage[] }): ReactNode {
               }}
               formatter={(value, name) => [
                 formatTokens(Number(value)),
-                names[name as keyof typeof names] ?? String(name),
+                providerStyle(String(name)).label,
               ]}
             />
-            <Bar
-              dataKey="input_tokens"
-              stackId="t"
-              fill="var(--chart-1)"
-              isAnimationActive={false}
-            />
-            <Bar
-              dataKey="output_tokens"
-              stackId="t"
-              fill="var(--chart-2)"
-              radius={[3, 3, 0, 0]}
-              isAnimationActive={false}
-            />
+            {providers.map((provider) => (
+              <Bar
+                key={provider}
+                dataKey={provider}
+                stackId="tokens"
+                fill={providerStyle(provider).color}
+                isAnimationActive={false}
+              />
+            ))}
           </RechartsBarChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-2 flex gap-4 text-[12px] text-[var(--text-muted)]">
-        <LegendDot color="var(--chart-1)" label={t("kpi.input")} />
-        <LegendDot color="var(--chart-2)" label={t("kpi.output")} />
+      <div className="mt-2 flex flex-wrap gap-2">
+        {providers.map((provider) => (
+          <ProviderBadge key={provider} provider={provider} />
+        ))}
       </div>
     </figure>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }): ReactNode {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span aria-hidden className="size-2.5 rounded-sm" style={{ background: color }} />
-      {label}
-    </span>
   );
 }

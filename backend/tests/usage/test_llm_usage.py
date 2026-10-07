@@ -58,6 +58,9 @@ async def test_summary_is_dense_per_day_and_sorted_per_model(session_factory) ->
     assert [m.model for m in summary.models] == ["sonnet", "auto"]  # largest first
     assert summary.models[0].input_tokens == 1500
     assert summary.totals.cost_micros == 900  # another user's rows never leak in
+    assert summary.providers == ("anthropic", "openrouter")  # biggest first
+    assert summary.daily[-1].by_provider == {"anthropic": 1500 + 300, "openrouter": 55}
+    assert summary.daily[0].by_provider == {}
 
 
 async def test_window_excludes_older_rows(session_factory) -> None:
