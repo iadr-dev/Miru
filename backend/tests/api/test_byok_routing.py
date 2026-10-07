@@ -53,11 +53,18 @@ def test_saved_providers_are_listed_by_name_only(
     byok_client: TestClient, settings: Settings
 ) -> None:
     headers, _ = sign_in(byok_client, settings, tier=Tier.FREE)
-    assert byok_client.get("/api/v1/me/keys", headers=headers).json() == {"providers": []}
+    assert byok_client.get("/api/v1/me/keys", headers=headers).json() == {
+        "providers": [],
+        "keys": [],
+    }
     _save_key(byok_client, headers, "openai")
     _save_key(byok_client, headers, "anthropic")
     listed = byok_client.get("/api/v1/me/keys", headers=headers)
-    assert listed.json() == {"providers": ["anthropic", "openai"]}
+    body = listed.json()
+    assert body["providers"] == ["anthropic", "openai"]
+    assert [k["provider"] for k in body["keys"]] == ["anthropic", "openai"]
+    # a masked preview per provider (last 4 characters), never the key itself
+    assert all(k["hint"].endswith(RAW_KEY[-4:]) for k in body["keys"])
     assert RAW_KEY not in listed.text
 
 

@@ -26,7 +26,7 @@ import {
   streamEditTurn,
   streamRegenerateTurn,
 } from "@/lib/api/agent-stream";
-import { listKeyProviders } from "@/lib/api/settings";
+import { listSavedKeys } from "@/lib/api/settings";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
 
 /** The message shown for a failed turn: a known refusal code gets its localized explanation. */
@@ -317,9 +317,11 @@ export function ChatClient(): ReactNode {
 
   // With their own keys saved, a caller can only run those providers' models (the turn runs on
   // their key). If the current/default model belongs to another provider, move to one they can use.
-  const keysQuery = useQuery({ queryKey: ["byok-keys"], queryFn: listKeyProviders });
+  const keysQuery = useQuery({ queryKey: ["byok-keys"], queryFn: listSavedKeys });
   const byokProviders =
-    keysQuery.data !== undefined && keysQuery.data.length > 0 ? keysQuery.data : null;
+    keysQuery.data !== undefined && keysQuery.data.length > 0
+      ? keysQuery.data.map((k) => k.provider)
+      : null;
   const autoSwitchedRef = useRef<string | null>(null);
   useEffect(() => {
     if (byokProviders === null || (threadId !== null && threadQuery.isLoading)) {

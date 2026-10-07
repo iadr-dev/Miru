@@ -23,6 +23,17 @@ from db.models import UserSecretRow
 
 logger = structlog.get_logger(__name__)
 
+_BULLET = chr(0x2022)
+_HINT_MIN_KEY_LENGTH = 20  # shorter keys show only their tail
+
+
+def key_hint(plaintext: str) -> str:
+    """A masked preview of a key: the first 6 and last 4 characters around bullets (only the last 4
+    for a short key), e.g. `sk-ant••••••••a9f3`. Reveals a small fixed slice, never the key."""
+    key = plaintext.strip()
+    head = key[:6] if len(key) >= _HINT_MIN_KEY_LENGTH else ""
+    return f"{head}{_BULLET * 8}{key[-4:]}"
+
 
 @runtime_checkable
 class SecretStore(Protocol):
@@ -37,6 +48,8 @@ class SecretStore(Protocol):
     async def has_llm_key(self, *, user_id: str) -> bool: ...
 
     async def llm_providers(self, *, user_id: str) -> list[str]: ...
+
+    async def llm_key_hints(self, *, user_id: str) -> dict[str, str | None]: ...
 
 
 class SqlAlchemySecretStore:
@@ -62,12 +75,14 @@ class SqlAlchemySecretStore:
                 kind=kind.value,
                 provider=provider,
                 ciphertext=ciphertext,
+                hint=key_hint(plaintext),
                 created_at=now,
                 updated_at=now,
             )
             self._session.add(row)
         else:
             row.ciphertext = ciphertext
+            row.hint = key_hint(plaintext)
             row.updated_at = now
         await self._session.flush()
         # Never log the plaintext or ciphertext — only the non-secret coordinates.
@@ -114,6 +129,19 @@ class SqlAlchemySecretStore:
         )
         return [row[0] for row in result.all()]
 
+    async def llm_key_hints(self, *, user_id: str) -> dict[str, str | None]:
+        """provider -> masked preview for each saved LLM key (None for keys saved before previews
+        existed). Never the key."""
+        result = await self._session.execute(
+            select(UserSecretRow.provider, UserSecretRow.hint)
+            .where(
+                UserSecretRow.user_id == user_id,
+                UserSecretRow.kind == SecretKind.LLM_KEY.value,
+            )
+            .order_by(UserSecretRow.provider)
+        )
+        return {row[0]: row[1] for row in result.all()}
+
     async def has_llm_key(self, *, user_id: str) -> bool:
         """Whether the user has any BYOK LLM key — the flag that lifts the chat limit."""
         result = await self._session.execute(
@@ -125,4 +153,4 @@ class SqlAlchemySecretStore:
         return result.first() is not None
 
 
-__all__ = ["SecretStore", "SqlAlchemySecretStore"]
+__all__ = ["SecretStore", "SqlAlchemySecretStore", "key_hint"]

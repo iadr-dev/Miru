@@ -1541,7 +1541,12 @@
       },
       "saved": "Saved keys",
       "noneSaved": "No keys saved yet.",
-      "howItWorks": "With a key saved, chat and deep research run on your key and only that provider's models are offered. Remove your keys any time to go back to the shared models under your plan's limits."
+      "howItWorks": "With a key saved, chat and deep research run on your key and only that provider's models are offered. Remove your keys any time to go back to the shared models under your plan's limits.",
+      "replace": "Replace",
+      "cancel": "Cancel",
+      "providerSaved": "{provider} (saved)",
+      "keySavedHint": "A key is saved for this provider. It is stored encrypted and never shown in full.",
+      "selectProvider": "Show {provider} key"
     },
     "usage": {
       "title": "Usage",

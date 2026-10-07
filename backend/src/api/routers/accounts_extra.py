@@ -144,8 +144,14 @@ async def usage_llm(
     return await summarize_llm_usage(session, user_id=user.id, days=days)
 
 
+class SavedKey(BaseModel):
+    provider: str
+    hint: str | None  # masked preview, e.g. "sk-ant••••••••a9f3"; never the key
+
+
 class KeyProviders(BaseModel):
     providers: list[str]
+    keys: list[SavedKey]
 
 
 @router.get("/me/keys")
@@ -154,14 +160,16 @@ async def list_keys(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> KeyProviders:
-    """Which providers the caller has saved an LLM key for - names only, never the keys. The chat
-    model picker uses this: a caller with keys can only run models from those providers."""
+    """Which providers the caller has saved an LLM key for, each with a masked preview - never the
+    keys. The chat model picker uses the names; the settings page shows the previews."""
     try:
         cipher = SecretCipher.from_settings(settings)
     except SecretEncryptionNotConfiguredError:
-        return KeyProviders(providers=[])
+        return KeyProviders(providers=[], keys=[])
+    hints = await SqlAlchemySecretStore(session, cipher).llm_key_hints(user_id=user.id)
     return KeyProviders(
-        providers=await SqlAlchemySecretStore(session, cipher).llm_providers(user_id=user.id)
+        providers=list(hints),
+        keys=[SavedKey(provider=p, hint=h) for p, h in hints.items()],
     )
 
 
