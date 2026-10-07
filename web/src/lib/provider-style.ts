@@ -31,6 +31,14 @@ function fallbackColor(provider: string): string {
   return FALLBACK_COLORS[hash % FALLBACK_COLORS.length] ?? "var(--chart-1)";
 }
 
+/** Providers whose responses carry the call's charge. The others report tokens only, so an empty
+ * cost for them means "not reported", never "free". Mirrors `backend/src/llm/openai_compat.py`. */
+const REPORTS_COST = new Set(["openrouter"]);
+
+export function reportsCost(provider: string): boolean {
+  return REPORTS_COST.has(provider.toLowerCase());
+}
+
 export function providerStyle(provider: string): ProviderStyle {
   const known = KNOWN[provider.toLowerCase()];
   if (known) {

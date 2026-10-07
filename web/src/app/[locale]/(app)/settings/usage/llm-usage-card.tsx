@@ -17,9 +17,16 @@ import { SettingsError, SettingsLoading } from "@/components/settings/settings-s
 import { ProviderBadge } from "@/components/usage/provider-badge";
 import { getLlmUsage } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
-import { providerStyle } from "@/lib/provider-style";
+import { providerStyle, reportsCost } from "@/lib/provider-style";
 import { formatCostMicros, formatTokens, shortModelName } from "@/lib/usage-format";
-import { buildPoints, buildSeries, OTHER_KEY, type Series } from "@/lib/usage-series";
+import {
+  buildPoints,
+  buildSeries,
+  costByProvider,
+  OTHER_KEY,
+  type Series,
+  selectionTotals,
+} from "@/lib/usage-series";
 import type { DailyUsage, LlmUsageSummary, ModelTotals } from "@/types/usage";
 
 const RANGES = [7, 30, 90] as const;
@@ -78,28 +85,35 @@ export function LlmUsageCard(): ReactNode {
 
 function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
   const t = useTranslations("settings.usage.llm");
-  const { totals } = summary;
+  // Picking a model (legend chip or table row) narrows the figures to it and dims the rest of
+  // the chart; picking it again clears. This is how cost is read per model / provider.
+  const [selected, setSelected] = useState<string | null>(null);
+  const toggle = (key: string): void => setSelected((cur) => (cur === key ? null : key));
+  const shown = selectionTotals(summary.models, summary.totals, selected);
+  const pickedModel =
+    selected === null
+      ? null
+      : (summary.models.find((m) => `${m.provider}/${m.model}` === selected) ?? null);
 
-  if (totals.calls === 0) {
+  if (summary.totals.calls === 0) {
     return <p className="py-6 text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
   }
 
-  const hasCost = summary.models.some((m) => m.cost_micros > 0);
   return (
     <div className="flex flex-col gap-5">
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kpi label={t("kpi.calls")} value={formatTokens(totals.calls)} />
-        <Kpi label={t("kpi.input")} value={formatTokens(totals.input_tokens)} />
-        <Kpi label={t("kpi.output")} value={formatTokens(totals.output_tokens)} />
-        <Kpi
-          label={hasCost ? t("kpi.cost") : t("kpi.cached")}
-          value={
-            hasCost ? formatCostMicros(totals.cost_micros) : formatTokens(totals.cached_tokens)
-          }
-        />
+        <Kpi label={t("kpi.calls")} value={formatTokens(shown.calls)} />
+        <Kpi label={t("kpi.input")} value={formatTokens(shown.input_tokens)} />
+        <Kpi label={t("kpi.output")} value={formatTokens(shown.output_tokens)} />
+        <CostKpi models={summary.models} picked={pickedModel} />
       </dl>
 
-      <DailyChart daily={summary.daily} models={summary.models} />
+      <DailyChart
+        daily={summary.daily}
+        models={summary.models}
+        selected={selected}
+        onToggle={toggle}
+      />
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[420px] text-[13px]">
@@ -118,48 +132,129 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
               <th scope="col" className="px-3 py-2 text-right font-medium">
                 {t("col.output")}
               </th>
-              {hasCost ? (
-                <th scope="col" className="py-2 pl-3 text-right font-medium">
-                  {t("col.cost")}
-                </th>
-              ) : null}
+              <th scope="col" className="py-2 pl-3 text-right font-medium">
+                {t("col.cost")}
+              </th>
             </tr>
           </thead>
           <tbody>
-            {summary.models.map((m) => (
-              <tr key={`${m.provider}/${m.model}`} className="border-[var(--border)] border-b">
-                <th scope="row" className="py-2.5 pr-3 text-left font-normal">
-                  <span className="text-[var(--text)]">{shortModelName(m.provider, m.model)}</span>
-                  <span className="ml-2">
-                    <ProviderBadge provider={m.provider} />
-                  </span>
-                </th>
-                <td className="font-num px-3 py-2.5 text-right tabular-nums">{m.calls}</td>
-                <td className="font-num px-3 py-2.5 text-right tabular-nums">
-                  {formatTokens(m.input_tokens)}
-                </td>
-                <td className="font-num px-3 py-2.5 text-right tabular-nums">
-                  {formatTokens(m.output_tokens)}
-                </td>
-                {hasCost ? (
-                  <td className="font-num py-2.5 pl-3 text-right tabular-nums">
-                    {m.cost_micros > 0 ? formatCostMicros(m.cost_micros) : "—"}
+            {summary.models.map((m) => {
+              const key = `${m.provider}/${m.model}`;
+              const active = selected === key;
+              return (
+                <tr
+                  key={key}
+                  className={cn(
+                    "border-[var(--border)] border-b transition-colors",
+                    active ? "bg-[var(--surface-2)]" : null,
+                  )}
+                >
+                  <th scope="row" className="py-1.5 pr-3 text-left font-normal">
+                    <button
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => toggle(key)}
+                      className={cn(
+                        "flex min-h-9 items-center gap-2 rounded-[var(--radius-button)] px-1 text-left",
+                        "!outline-none hover:text-[var(--accent-text)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+                      )}
+                    >
+                      <span className="text-[var(--text)]">
+                        {shortModelName(m.provider, m.model)}
+                      </span>
+                      <ProviderBadge provider={m.provider} />
+                    </button>
+                  </th>
+                  <td className="font-num px-3 py-2.5 text-right tabular-nums">{m.calls}</td>
+                  <td className="font-num px-3 py-2.5 text-right tabular-nums">
+                    {formatTokens(m.input_tokens)}
                   </td>
-                ) : null}
-              </tr>
-            ))}
+                  <td className="font-num px-3 py-2.5 text-right tabular-nums">
+                    {formatTokens(m.output_tokens)}
+                  </td>
+                  <td className="font-num py-2.5 pl-3 text-right tabular-nums">
+                    <CostCell model={m} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+      <p className="text-[12px] text-[var(--text-muted)]">{t("pickHint")}</p>
     </div>
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }): ReactNode {
+/** A model's charge, or "not reported" - a provider that returns no charge is unknown, not free. */
+function CostCell({ model }: { model: ModelTotals }): ReactNode {
+  const t = useTranslations("settings.usage.llm");
+  if (!reportsCost(model.provider)) {
+    return (
+      <span className="font-sans text-[12px] text-[var(--text-muted)]" title={t("notReportedHint")}>
+        {t("notReported")}
+      </span>
+    );
+  }
+  return formatCostMicros(model.cost_micros);
+}
+
+/** The cost figure. With a model picked it is that model's; otherwise the reported total, with
+ * one line per provider underneath so it is clear which providers it does (not) cover. */
+function CostKpi({
+  models,
+  picked,
+}: {
+  models: ModelTotals[];
+  picked: ModelTotals | null;
+}): ReactNode {
+  const t = useTranslations("settings.usage.llm");
+  if (picked !== null) {
+    const reported = reportsCost(picked.provider);
+    return (
+      <Kpi
+        label={t("kpi.cost")}
+        value={reported ? formatCostMicros(picked.cost_micros) : "—"}
+        note={reported ? undefined : t("notReportedHint")}
+      />
+    );
+  }
+  const perProvider = costByProvider(models);
+  const reportedTotal = perProvider.reduce((sum, p) => sum + p.costMicros, 0);
+  return (
+    <Kpi
+      label={t("kpi.cost")}
+      value={perProvider.some((p) => p.reported) ? formatCostMicros(reportedTotal) : "—"}
+      note={
+        <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+          {perProvider.map((p) => (
+            <li key={p.provider} className="flex justify-between gap-2">
+              <span>{providerStyle(p.provider).label}</span>
+              <span className="font-num tabular-nums">
+                {p.reported ? formatCostMicros(p.costMicros) : t("notReported")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      }
+    />
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  note?: ReactNode;
+}): ReactNode {
   return (
     <div className="rounded-[var(--radius-card)] border border-[var(--border)] px-3 py-2.5">
       <dt className="text-[12px] text-[var(--text-muted)]">{label}</dt>
       <dd className="font-num mt-0.5 text-[20px] text-[var(--text)] tabular-nums">{value}</dd>
+      {note ? <div className="mt-1 text-[11px] text-[var(--text-muted)]">{note}</div> : null}
     </div>
   );
 }
@@ -168,7 +263,17 @@ function seriesLabel(series: Series, otherLabel: string): string {
   return series.key === OTHER_KEY ? otherLabel : series.model;
 }
 
-function DailyChart({ daily, models }: { daily: DailyUsage[]; models: ModelTotals[] }): ReactNode {
+function DailyChart({
+  daily,
+  models,
+  selected,
+  onToggle,
+}: {
+  daily: DailyUsage[];
+  models: ModelTotals[];
+  selected: string | null;
+  onToggle: (key: string) => void;
+}): ReactNode {
   const t = useTranslations("settings.usage.llm");
   const locale = useLocale();
   const dateFormat = new Intl.DateTimeFormat(locale, { month: "numeric", day: "numeric" });
@@ -186,15 +291,41 @@ function DailyChart({ daily, models }: { daily: DailyUsage[]; models: ModelTotal
         {t("chartTitle")}
       </figcaption>
       <ul className="m-0 mb-3 flex list-none flex-wrap gap-x-4 gap-y-1.5 p-0 text-[12px]">
-        {series.map((s) => (
-          <li key={s.key} className="inline-flex items-center gap-1.5 text-[var(--text)]">
-            <span aria-hidden className="size-2.5 rounded-sm" style={{ background: s.color }} />
-            {seriesLabel(s, otherLabel)}
-            {s.provider ? (
-              <span className="text-[var(--text-muted)]">{providerStyle(s.provider).label}</span>
-            ) : null}
-          </li>
-        ))}
+        {series.map((s) => {
+          const pickable = s.key !== OTHER_KEY;
+          const dimmed = selected !== null && selected !== s.key;
+          const content = (
+            <>
+              <span aria-hidden className="size-2.5 rounded-sm" style={{ background: s.color }} />
+              {seriesLabel(s, otherLabel)}
+              {s.provider ? (
+                <span className="text-[var(--text-muted)]">{providerStyle(s.provider).label}</span>
+              ) : null}
+            </>
+          );
+          return (
+            <li key={s.key} className={cn("inline-flex", dimmed ? "opacity-50" : null)}>
+              {pickable ? (
+                <button
+                  type="button"
+                  aria-pressed={selected === s.key}
+                  onClick={() => onToggle(s.key)}
+                  className={cn(
+                    "inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-button)] px-1.5 text-[var(--text)]",
+                    "!outline-none hover:bg-[var(--surface-2)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+                    selected === s.key ? "bg-[var(--surface-2)]" : null,
+                  )}
+                >
+                  {content}
+                </button>
+              ) : (
+                <span className="inline-flex min-h-8 items-center gap-1.5 px-1.5 text-[var(--text)]">
+                  {content}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
       <div className="h-56 w-full" role="img" aria-label={t("chartTitle")}>
         <ResponsiveContainer width="100%" height="100%">
@@ -227,6 +358,7 @@ function DailyChart({ daily, models }: { daily: DailyUsage[]; models: ModelTotal
                 dataKey={s.key}
                 stackId="tokens"
                 fill={s.color}
+                fillOpacity={selected === null || selected === s.key ? 1 : 0.2}
                 isAnimationActive={false}
               />
             ))}

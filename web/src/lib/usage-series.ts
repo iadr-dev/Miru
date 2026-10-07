@@ -1,9 +1,9 @@
 /** Turns the per-model usage summary into chart series: one stacked bar segment per model,
  * coloured by its provider (several models of one provider get shades of that colour), with the
  * long tail folded into one "other" segment so the legend stays readable. */
-import { providerStyle } from "@/lib/provider-style";
+import { providerStyle, reportsCost } from "@/lib/provider-style";
 import { shortModelName } from "@/lib/usage-format";
-import type { DailyUsage, ModelTotals } from "@/types/usage";
+import type { DailyUsage, ModelTotals, UsageTotals } from "@/types/usage";
 
 export const OTHER_KEY = "__other__";
 export const MAX_SERIES = 8;
@@ -65,4 +65,31 @@ export function buildPoints(
     }
     return point;
   });
+}
+
+/** The figures for the picked model, or the whole window when nothing is picked. */
+export function selectionTotals(
+  models: ModelTotals[],
+  windowTotals: UsageTotals,
+  selectedKey: string | null,
+): UsageTotals {
+  if (selectedKey === null) {
+    return windowTotals;
+  }
+  const match = models.find((m) => `${m.provider}/${m.model}` === selectedKey);
+  return match ?? windowTotals;
+}
+
+export type ProviderCost = { provider: string; costMicros: number; reported: boolean };
+
+/** Cost per provider, biggest spender first; `reported` is false for providers whose responses
+ * never carry a charge (their cost is unknown, not zero). */
+export function costByProvider(models: ModelTotals[]): ProviderCost[] {
+  const sums = new Map<string, number>();
+  for (const m of models) {
+    sums.set(m.provider, (sums.get(m.provider) ?? 0) + m.cost_micros);
+  }
+  return [...sums.entries()]
+    .map(([provider, costMicros]) => ({ provider, costMicros, reported: reportsCost(provider) }))
+    .sort((a, b) => b.costMicros - a.costMicros);
 }
