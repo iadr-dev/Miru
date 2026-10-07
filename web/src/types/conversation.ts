@@ -11,6 +11,7 @@
  */
 import { z } from "zod";
 import { webSearchSourceSchema } from "@/types/sse";
+import { turnUsageDataSchema } from "@/types/usage";
 
 export const TURN_ROLES = ["user", "assistant"] as const;
 export const TURN_STATUSES = ["running", "done", "cancelled", "error"] as const;
@@ -127,6 +128,8 @@ export const turnSchema = z.object({
   idempotency_key: z.string().nullable().optional(),
   created_at: z.string(),
   messages: z.array(messageSchema).default([]),
+  /** The finished turn's token usage (assistant turns), or null when none was recorded. */
+  usage: turnUsageDataSchema.nullable().optional(),
 });
 export type Turn = z.infer<typeof turnSchema>;
 

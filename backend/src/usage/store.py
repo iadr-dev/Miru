@@ -25,7 +25,7 @@ from datetime import UTC, date, datetime
 from typing import Protocol, cast, runtime_checkable
 
 import structlog
-from sqlalchemy import CursorResult, Insert, update
+from sqlalchemy import CursorResult, Insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -102,6 +102,8 @@ class UsageStore(Protocol):
     async def refund_daily_deep_research(
         self, *, user_id: str, today: date | None = None
     ) -> None: ...
+
+    async def today_counts(self, *, user_id: str, today: date | None = None) -> dict[str, int]: ...
 
     async def record_turn(  # noqa: PLR0913 — one field per usage dimension the snapshot carries
         self,
@@ -212,6 +214,22 @@ class SqlAlchemyUsageStore:
                 return ChatQuotaVerdict(allowed=False, used=limit, limit=limit)
             await session.commit()
             return ChatQuotaVerdict(allowed=True, used=used, limit=limit)
+
+    async def today_counts(self, *, user_id: str, today: date | None = None) -> dict[str, int]:
+        """How much of each daily allowance the caller has claimed so far (UTC day)."""
+        window_key = _day_key(today or datetime.now(UTC).date())
+        async with self._session_factory() as session:
+            rows = await session.execute(
+                select(UsageCounterRow.counter, UsageCounterRow.n).where(
+                    UsageCounterRow.user_id == user_id,
+                    UsageCounterRow.window_key == window_key,
+                )
+            )
+            counts = {counter: int(n) for counter, n in rows.all()}
+        return {
+            "chats": counts.get(_CHAT_COUNTER, 0),
+            "deep_research": counts.get(_DEEP_RESEARCH_COUNTER, 0),
+        }
 
     async def record_turn(  # noqa: PLR0913 — one field per usage dimension the snapshot carries
         self,

@@ -72,6 +72,12 @@ import {
   schedulesResponseSchema,
   subscriptionResponseSchema,
 } from "@/types/settings";
+import {
+  type LlmUsageSummary,
+  llmUsageSummarySchema,
+  type TodayUsage,
+  todayUsageSchema,
+} from "@/types/usage";
 
 export class SettingsApiError extends Error {
   readonly code: string;
@@ -309,6 +315,14 @@ export async function removeKey(provider: string, kind: SecretKind = "llm_key"):
 export async function getUsageQuota(): Promise<EntitlementView> {
   const raw = await requestJson("/usage/quota");
   return entitlementViewSchema.parse(raw);
+}
+
+export async function getTodayUsage(): Promise<TodayUsage> {
+  return todayUsageSchema.parse(await requestJson("/usage/today"));
+}
+
+export async function getLlmUsage(days: number): Promise<LlmUsageSummary> {
+  return llmUsageSummarySchema.parse(await requestJson(`/usage/llm?days=${days}`));
 }
 
 // ---------------------------------------------------------------------------

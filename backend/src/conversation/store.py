@@ -41,6 +41,7 @@ from conversation.models import (
     WebSearchSourcesBlock,
 )
 from db.models import MessageRow, ThreadRow, TurnRow
+from events.usage import TurnUsage
 
 logger = structlog.get_logger(__name__)
 
@@ -86,6 +87,7 @@ class ConversationStore(Protocol):
         regenerate_of: str | None = None,
         turn_id: str | None = None,
         mode: TurnMode | None = None,
+        usage: TurnUsage | None = None,
     ) -> Turn: ...
 
     async def active_path(self, *, thread_id: str) -> list[Message]: ...
@@ -152,6 +154,16 @@ def _content_model_for_type(block_type: MessageBlockType) -> type[MessageBlockCo
     return mapping[block_type]
 
 
+def _stored_usage(row: TurnRow) -> TurnUsage | None:
+    """The persisted usage snapshot, or None if absent / written by an incompatible version."""
+    if not row.usage:
+        return None
+    try:
+        return TurnUsage.model_validate(row.usage)
+    except ValueError:
+        return None
+
+
 def _turn_row_to_model(row: TurnRow, messages: list[Message]) -> Turn:
     return Turn(
         id=row.id,
@@ -166,6 +178,7 @@ def _turn_row_to_model(row: TurnRow, messages: list[Message]) -> Turn:
         idempotency_key=row.idempotency_key,
         created_at=row.created_at,
         messages=tuple(messages),
+        usage=_stored_usage(row),
     )
 
 
@@ -258,6 +271,7 @@ class SqlAlchemyConversationStore:
         regenerate_of: str | None = None,
         turn_id: str | None = None,
         mode: TurnMode | None = None,
+        usage: TurnUsage | None = None,
     ) -> Turn:
         thread_row = await self._get_thread_row(user_id=user_id, thread_id=thread_id)
         now = datetime.now(UTC)
@@ -269,6 +283,7 @@ class SqlAlchemyConversationStore:
             status=TurnStatus.DONE.value,
             framework=framework.value if framework else None,
             mode=mode,
+            usage=usage.model_dump(mode="json") if usage is not None else None,
             idempotency_key=idempotency_key,
             regenerate_of=regenerate_of,
             created_at=now,

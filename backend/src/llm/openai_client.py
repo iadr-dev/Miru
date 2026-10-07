@@ -218,6 +218,8 @@ def _usage_from_response(response: Response) -> TokenUsage:
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         total_tokens=usage.total_tokens,
+        cached_tokens=usage.input_tokens_details.cached_tokens,
+        reasoning_tokens=usage.output_tokens_details.reasoning_tokens,
     )
 
 

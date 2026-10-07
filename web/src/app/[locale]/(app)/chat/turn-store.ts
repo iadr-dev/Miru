@@ -43,6 +43,7 @@ import {
   type WebSearchSource,
   webSearchResultDataSchema,
 } from "@/types/sse";
+import { type TurnUsageData, turnUsageDataSchema } from "@/types/usage";
 
 export type TurnPhase = "thinking" | "done" | "error" | "cancelled";
 
@@ -178,6 +179,8 @@ export type ActiveTurn = {
    * call, e.g. a fan-out with several lanes each searching) — append-only, never deduped, since
    * the "N sources" chip counts every source actually consulted, even repeats across lanes. */
   webSearchSources: WebSearchSource[];
+  /** The latest `usage` frame (the backend re-sends running totals) - null until one arrives. */
+  usage: TurnUsageData | null;
   /** The final answer, in one shot — null until the terminal `message` frame arrives. Always
    * the authoritative full text once set (see `streamingAnswerText` for the live-partial
    * counterpart); a client that missed every `message.delta` still gets the complete answer
@@ -410,7 +413,10 @@ const FRAME_REDUCERS: {
     };
   },
   "synthesis.start": (base) => base,
-  usage: (base) => base,
+  usage: (base, frame) => {
+    const parsed = turnUsageDataSchema.safeParse(frame.envelope.data);
+    return parsed.success ? { ...base, usage: parsed.data } : base;
+  },
 };
 
 export const useTurnStore = create<TurnStore>((set) => ({
@@ -430,6 +436,7 @@ export const useTurnStore = create<TurnStore>((set) => ({
         thinkingChunks: [],
         richCards: [],
         webSearchSources: [],
+        usage: null,
         answerText: null,
         streamingAnswerText: null,
         steeringQueued: [],

@@ -115,8 +115,14 @@ async def run_deep_research_turn(
     research = DeepResearch(
         model=LLMResearchModel(
             client,
-            on_usage=lambda tokens_in, tokens_out: usage.add_llm_call(
-                input_tokens=tokens_in, output_tokens=tokens_out
+            on_usage=lambda call: usage.add_llm_call(
+                input_tokens=call.input_tokens,
+                output_tokens=call.output_tokens,
+                cost_micros=call.cost_micros,
+                provider=call.provider,
+                model=call.model,
+                cached_tokens=call.cached_tokens,
+                reasoning_tokens=call.reasoning_tokens,
             ),
         ),
         web=GatewayWeb(build_gateway(), tls_policy=ctx.tls_policy),
@@ -138,6 +144,7 @@ async def run_deep_research_turn(
     finally:
         lanes.close()
 
+    usage.publish(event_bus)
     sources = tuple(WebSearchSource(url=s.url, title=s.title) for s in report.sources)
     if sources:
         event_bus.publish(

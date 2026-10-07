@@ -142,6 +142,14 @@ class TokenUsage(BaseModel):
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)
     total_tokens: int = Field(ge=0)
+    # Optional detail a provider reports (0 when it does not). `cost_micros` is the provider's own
+    # charge for the call in millionths of a USD - only OpenRouter returns one inline.
+    cached_tokens: int = Field(default=0, ge=0)
+    reasoning_tokens: int = Field(default=0, ge=0)
+    cost_micros: int = Field(default=0, ge=0)
+    # Which client produced the call, stamped by whoever ran it (never by the provider).
+    provider: str = ""
+    model: str = ""
 
 
 class LLMResponse(BaseModel):

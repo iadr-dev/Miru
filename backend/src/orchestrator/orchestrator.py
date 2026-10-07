@@ -1018,6 +1018,11 @@ class Orchestrator:
             usage.add_llm_call(
                 input_tokens=step_usage.input_tokens,
                 output_tokens=step_usage.output_tokens,
+                cost_micros=step_usage.cost_micros,
+                provider=step_usage.provider,
+                model=step_usage.model,
+                cached_tokens=step_usage.cached_tokens,
+                reasoning_tokens=step_usage.reasoning_tokens,
             )
             for _ in step.tool_messages:
                 usage.add_tool_call()

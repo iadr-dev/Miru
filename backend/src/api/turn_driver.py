@@ -60,6 +60,7 @@ from memory.watchlists import WatchlistStore
 from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import PersonalityContext
 from tools.base import ToolContext
+from usage.llm_usage import write_model_usage
 from usage.store import write_turn_usage
 
 _RATE_WINDOW_SECONDS = 60
@@ -470,6 +471,7 @@ async def _record_usage(
             finmind_calls=usage.finmind_calls,
             cost_micros=usage.cost_micros,
         )
+        await write_model_usage(session, user_id=user_id, turn_id=turn_id, models=usage.models)
         await session.commit()
     except Exception as exc:  # a durable-usage write is best-effort — never fail an answered turn
         await session.rollback()
@@ -561,6 +563,7 @@ async def _persist_answer(
         parent_message_id=parent_message_id,
         framework=Framework(result.routing.framework),
         regenerate_of=regenerate_of,
+        usage=result.usage,
     )
 
 

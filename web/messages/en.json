@@ -1340,6 +1340,9 @@
       "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
       "transcribeError": "Couldn't transcribe that — listening again.",
       "sendError": "Something went wrong sending that — listening again."
+    },
+    "usage": {
+      "summary": "{input} in · {output} out"
     }
   },
   "disclaimer": {
@@ -1538,16 +1541,14 @@
     },
     "usage": {
       "title": "Usage",
-      "description": "An overview of your current plan's usage limits.",
+      "description": "Your plan's limits and how much of today's allowance you've used.",
       "tier": "Tier",
       "chatLimit": "Daily chat limit",
       "unlimited": "Unlimited",
       "chatsPerDay": "{count} / day",
       "requestsPerMinute": "Requests per minute",
-      "finmindClass": "Data access tier",
       "byokActive": "Bring-your-own-key active",
       "features": "Enabled features",
-      "noLiveUsageNote": "This page shows plan limits only, not live usage statistics.",
       "tierOption": {
         "free": "Free",
         "premium": "Premium",
@@ -1562,6 +1563,38 @@
         "theme_discovery": "Theme discovery",
         "deep_research": "Deep research",
         "tick_minute_k": "Tick / minute candles"
+      },
+      "deepResearchLimit": "Daily deep research reports",
+      "usedOfLimit": "{used} / {limit} used today",
+      "upgrade": "See plans and upgrade",
+      "llm": {
+        "title": "Model usage",
+        "description": "Tokens your chats used, by model.",
+        "range": "Time range",
+        "rangeDays": "{count} days",
+        "chartTitle": "Tokens per day, by model",
+        "byModel": "Usage by model",
+        "empty": "No model usage yet. It appears here after your next chat.",
+        "kpi": {
+          "calls": "Model calls",
+          "input": "Input tokens",
+          "output": "Output tokens",
+          "cached": "Cached tokens",
+          "cost": "Cost"
+        },
+        "col": {
+          "model": "Model",
+          "calls": "Calls",
+          "input": "Input",
+          "output": "Output",
+          "cost": "Cost"
+        },
+        "footnote": "Counts come from each provider's response to our calls. A cost appears only when the provider reports one (OpenRouter). Your provider's own dashboard is the bill of record.",
+        "other": "Other",
+        "total": "Total",
+        "notReported": "Not reported",
+        "notReportedHint": "This provider doesn't report a cost on its responses, so it is unknown, not free.",
+        "pickHint": "Pick a model (chart legend or table row) to see its own figures and cost."
       }
     },
     "alerts": {

@@ -10,12 +10,12 @@ to a log field.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
-from accounts.entitlements import entitlement_view
+from accounts.entitlements import deep_research_limit_per_day, entitlement_view
 from accounts.models import EntitlementView, SecretKind, User
 from accounts.secrets import SqlAlchemySecretStore
 from accounts.store import UserStore
@@ -30,6 +30,7 @@ from api.dependencies import (
 from api.errors import ApiError
 from config.settings import Settings
 from personality.models import PersonalityPreset
+from usage.llm_usage import MAX_DAYS, LlmUsageSummary, summarize_llm_usage
 
 router = APIRouter(tags=["accounts"])
 
@@ -109,6 +110,37 @@ async def usage_quota(
     usage-rollup store is wired yet — see the report)."""
     byok = await _byok_active(session, settings, user_id=user.id)
     return entitlement_view(user, byok_active=byok)
+
+
+class TodayUsage(BaseModel):
+    chats_used: int
+    deep_research_used: int
+    deep_research_limit: int
+
+
+@router.get("/usage/today")
+async def usage_today(
+    user: User = Depends(require_user), state: AppState = Depends(get_state)
+) -> TodayUsage:
+    """What the caller has claimed of today's (UTC) allowances - the consumption half of the
+    limits `/usage/quota` reports."""
+    counts = await state.usage_store.today_counts(user_id=user.id)
+    return TodayUsage(
+        chats_used=counts["chats"],
+        deep_research_used=counts["deep_research"],
+        deep_research_limit=deep_research_limit_per_day(user),
+    )
+
+
+@router.get("/usage/llm")
+async def usage_llm(
+    days: int = Query(default=30, ge=1, le=MAX_DAYS),
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+) -> LlmUsageSummary:
+    """The caller's own LLM consumption over the last `days` days, from each provider's per-response
+    usage metadata (daily series, per-model totals; cost only where the provider reports it)."""
+    return await summarize_llm_usage(session, user_id=user.id, days=days)
 
 
 class PutKeyRequest(BaseModel):

@@ -161,7 +161,11 @@ def _usage_from_metadata(
     output_tokens = metadata.candidates_token_count or 0
     total_tokens = metadata.total_token_count or (input_tokens + output_tokens)
     return TokenUsage(
-        input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=total_tokens
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
+        cached_tokens=metadata.cached_content_token_count or 0,
+        reasoning_tokens=metadata.thoughts_token_count or 0,
     )
 
 
