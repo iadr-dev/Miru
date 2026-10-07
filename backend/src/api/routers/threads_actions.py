@@ -583,7 +583,9 @@ async def regenerate_turn(
         session, state.settings, user_id=user.id, model_override=thread.model_override
     )
     deep_research = _resolve_deep_research(body.deep_research, source_user_turn)
-    await enforce_pre_turn_gate(state, session, user, deep_research=deep_research)
+    await enforce_pre_turn_gate(
+        state, session, user, deep_research=deep_research, byok=byok is not None
+    )
 
     new_turn_id = str(uuid.uuid4())
     personality = PersonalityContext(
@@ -660,7 +662,9 @@ async def edit_turn(
         session, settings, user_id=user.id, model_override=thread.model_override
     )
     deep_research = _resolve_deep_research(body.deep_research, turn)
-    await enforce_pre_turn_gate(state, session, user, deep_research=deep_research)
+    await enforce_pre_turn_gate(
+        state, session, user, deep_research=deep_research, byok=byok is not None
+    )
 
     new_user_turn = await store.append_turn(
         user_id=user.id,

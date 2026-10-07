@@ -21,7 +21,6 @@ import structlog
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
 from accounts.entitlements import (
     chat_limit_for,
     deep_research_limit_per_day,
@@ -29,7 +28,6 @@ from accounts.entitlements import (
     rate_limit_per_minute,
 )
 from accounts.models import User
-from accounts.secrets import SqlAlchemySecretStore
 from api.deep_research_turn import run_deep_research_turn
 from api.dependencies import AppState
 from api.errors import ApiError
@@ -69,19 +67,13 @@ _RATE_WINDOW_SECONDS = 60
 logger = structlog.get_logger(__name__)
 
 
-async def byok_active(session: AsyncSession, state: AppState, *, user_id: str) -> bool:
-    """Whether the caller has a BYOK LLM key on file — the one flag that lifts the daily-chat cap
-    (the user pays their own inference). A missing/invalid encryption config is treated as no
-    BYOK, never over-granting and never a crash."""
-    try:
-        cipher = SecretCipher.from_settings(state.settings)
-    except SecretEncryptionNotConfiguredError:
-        return False
-    return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
-
-
 async def enforce_pre_turn_gate(
-    state: AppState, session: AsyncSession, user: User, *, deep_research: bool = False
+    state: AppState,
+    session: AsyncSession,
+    user: User,
+    *,
+    deep_research: bool = False,
+    byok: bool,
 ) -> None:
     """Reject a turn before it is created when the caller is over their per-minute request rate or
     would exceed their daily-chat allowance. Shared by every route that starts a real turn
@@ -113,7 +105,9 @@ async def enforce_pre_turn_gate(
     if deep_research:
         await _claim_deep_research(state, user)
 
-    byok = await byok_active(session, state, user_id=user.id)
+    # `byok` is the SAME decision the turn will run on (`api.byok.resolve_byok`), passed in rather
+    # than looked up again here: the cap is lifted only for a turn that really runs on a user key,
+    # so a key deleted between two lookups cannot leave a platform-key turn uncapped.
     limit = chat_limit_for(user, byok_active=byok)
     quota = await state.usage_store.reserve_daily_chat(user_id=user.id, limit=limit)
     if not quota.allowed:
@@ -589,7 +583,6 @@ async def current_leaf(store: ConversationStore, thread_id: str) -> str | None:
 
 
 __all__ = [
-    "byok_active",
     "current_leaf",
     "enforce_pre_turn_gate",
     "run_and_stream",

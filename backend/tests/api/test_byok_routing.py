@@ -142,3 +142,24 @@ def test_the_key_is_never_logged_or_echoed(
     assert _parse_sse(resp.text)[-1]["data"]["status"] == "done"
     assert RAW_KEY not in caplog.text
     assert RAW_KEY not in resp.text
+
+
+def test_the_cap_follows_the_decision_the_turn_runs_on_not_a_second_lookup(
+    byok_client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the turn ends up on a platform key (e.g. the key vanished between two lookups), the
+    daily cap must apply - it is lifted only for a turn that really runs on the user's key."""
+    headers, _ = sign_in(byok_client, settings, tier=Tier.FREE)
+    _save_key(byok_client, headers, "anthropic")
+
+    async def no_byok(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    import api.routers.agent as agent_router  # noqa: PLC0415
+
+    monkeypatch.setattr(agent_router, "resolve_byok", no_byok)
+    for _ in range(3):
+        assert _chat(byok_client, headers).status_code == 200
+    blocked = _chat(byok_client, headers)
+    assert blocked.status_code == 429
+    assert blocked.json()["code"] == "chat_limit_reached"
