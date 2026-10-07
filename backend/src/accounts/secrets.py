@@ -36,6 +36,8 @@ class SecretStore(Protocol):
 
     async def has_llm_key(self, *, user_id: str) -> bool: ...
 
+    async def llm_providers(self, *, user_id: str) -> list[str]: ...
+
 
 class SqlAlchemySecretStore:
     def __init__(self, session: AsyncSession, cipher: SecretCipher) -> None:
@@ -99,6 +101,18 @@ class SqlAlchemySecretStore:
         await self._session.flush()
         logger.info("secret_deleted", user_id=user_id, kind=kind.value, provider=provider)
         return True
+
+    async def llm_providers(self, *, user_id: str) -> list[str]:
+        """The providers the user has saved an LLM key for (names only - never the keys)."""
+        result = await self._session.execute(
+            select(UserSecretRow.provider)
+            .where(
+                UserSecretRow.user_id == user_id,
+                UserSecretRow.kind == SecretKind.LLM_KEY.value,
+            )
+            .order_by(UserSecretRow.provider)
+        )
+        return [row[0] for row in result.all()]
 
     async def has_llm_key(self, *, user_id: str) -> bool:
         """Whether the user has any BYOK LLM key — the flag that lifts the chat limit."""

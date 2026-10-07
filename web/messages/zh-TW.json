@@ -768,7 +768,8 @@
         "sourcesCount": "{count} 個來源"
       },
       "deepResearchLimit": "今天的 5 份深入研究報告已用完，請明天再試。",
-      "deepResearchNotEntitled": "深入研究為 Pro 方案功能。"
+      "deepResearchNotEntitled": "深入研究為 Pro 方案功能。",
+      "byokKeyRequired": "你已加入自己的 API 金鑰，對話只會使用你有金鑰的供應商。請改選其中一家的模型，或移除金鑰以使用共用模型。"
     },
     "table": {
       "copy": "複製表格",
@@ -1522,7 +1523,7 @@
     },
     "byok": {
       "title": "自帶金鑰",
-      "description": "使用自己的 LLM API 金鑰，解除每日對話上限。",
+      "description": "使用你自己的 LLM API 金鑰：該供應商模型的對話會用你的金鑰執行，沒有每日對話上限，費用由供應商直接向你收取。",
       "provider": "供應商",
       "key": "API 金鑰",
       "llmKeyHint": "金鑰僅加密儲存，送出後不會再顯示。",
@@ -1537,7 +1538,10 @@
         "groq": "Groq",
         "cerebras": "Cerebras",
         "openrouter": "OpenRouter"
-      }
+      },
+      "saved": "已儲存的金鑰",
+      "noneSaved": "尚未儲存任何金鑰。",
+      "howItWorks": "儲存金鑰後，對話與深入研究都會用你的金鑰執行，模型清單也只會顯示該供應商的模型。隨時可以移除金鑰，回到方案額度內的共用模型。"
     },
     "usage": {
       "title": "用量",

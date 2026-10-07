@@ -191,6 +191,20 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
   requests via the LLM adapter.
 - BYOK **lifts the daily chat limit** (`chat_limit_for → None`) since the user pays inference.
 - Governance unchanged: keys are never logged, journaled, or echoed; deletable on demand.
+- **Who is a BYOK caller:** anyone with at least one saved LLM key (providers: anthropic, openai,
+  gemini, groq, cerebras, openrouter - `POST /me/keys` rejects others with 422). No subscription
+  is required.
+- **Routing (`api/byok.py`, `llm/registry.py::byok_scope`):** before a turn starts, `resolve_byok`
+  takes the thread's model (else the AGENT role default), decrypts the key for *that model's
+  provider* and runs the whole turn inside `byok_scope`: every role (classifier, lanes, synthesis,
+  title) resolves to that one model on the user's key, with **no fallback to a platform key**. If
+  the user has keys but none for the picked model's provider, the turn is refused
+  (`409 byok_key_required`) - never served on ours, since a BYOK turn is uncapped.
+- The chat picker shows only the providers the caller has keys for (`GET /me/keys` returns names,
+  never keys). Removing the keys restores the plan's normal limits and models.
+- Deep research stays Pro-only with its own 5/day cap (its search/fetch cost is ours), but its
+  model calls run on the user's key. `llm_usage.byok` marks these calls.
+- Not covered yet: scheduled runs (`scheduler/`) still use platform keys and the tier cap.
 
 ## 6. Endpoints
 

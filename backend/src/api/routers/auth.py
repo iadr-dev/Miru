@@ -52,10 +52,12 @@ from accounts.store import (
     LastLoginMethodError,
     UserStore,
 )
+from api.byok import byok_active_for
 from api.dependencies import (
     ACCESS_TOKEN_COOKIE,
     AppState,
     get_session,
+    get_settings_dep,
     get_state,
     get_user_store,
     require_user,
@@ -495,8 +497,13 @@ async def logout(
 
 
 @router.get("/me")
-async def me(user: User = Depends(require_user)) -> MeResponse:
-    return MeResponse(user=user, entitlements=_entitlements(user))
+async def me(
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> MeResponse:
+    byok = await byok_active_for(session, settings, user_id=user.id)
+    return MeResponse(user=user, entitlements=entitlement_view(user, byok_active=byok))
 
 
 @router.get("/me/connections")
@@ -530,12 +537,6 @@ async def unlink_connection(
 def _clear_session_cookies(response: Response) -> None:
     response.delete_cookie(ACCESS_TOKEN_COOKIE)
     response.delete_cookie(REFRESH_TOKEN_COOKIE)
-
-
-def _entitlements(user: User) -> EntitlementView:
-    # BYOK state isn't wired into this router yet (BYOK key management is a later slice); the
-    # entitlement view is computed with byok_active=False until then, which never over-grants.
-    return entitlement_view(user, byok_active=False)
 
 
 __all__ = ["REFRESH_TOKEN_COOKIE", "router"]

@@ -54,6 +54,7 @@ from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import TURN_END_KIND, EventBus
 from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
+from llm.registry import ByokOverride, byok_scope
 from memory.recall import recall
 from memory.store import SqlAlchemyMemoryStore
 from memory.watchlists import WatchlistStore
@@ -167,6 +168,7 @@ async def run_and_stream(
     locale: str = "zh-TW",
     images: tuple[ImagePart, ...] = (),
     deep_research: bool = False,
+    byok: ByokOverride | None = None,
 ) -> AsyncIterator[str]:
     """Subscribe to the bus first, then drive the orchestrator in a background task so no frame
     published between `turn.start` and `turn.end` is missed. Yields SSE frames until `turn.end`.
@@ -190,6 +192,12 @@ async def run_and_stream(
     subscription = event_bus.subscribe()
 
     async def _noop() -> None:
+        # Every LLM call this turn makes (classifier, lanes, synthesis, title) uses the user's
+        # own model and key when `byok` is set; the scope ends with the turn.
+        with byok_scope(byok):
+            await _drive_run()
+
+    async def _drive_run() -> None:
         await _drive_turn(
             state=state,
             store=store,
@@ -208,6 +216,7 @@ async def run_and_stream(
             locale=locale,
             images=images,
             deep_research=deep_research,
+            byok=byok,
         )
 
     runner = asyncio.create_task(_noop())
@@ -250,6 +259,7 @@ def start_turn_stream(
     locale: str = "zh-TW",
     images: tuple[ImagePart, ...] = (),
     deep_research: bool = False,
+    byok: ByokOverride | None = None,
 ) -> StreamingResponse:
     """Register the turn + return the `StreamingResponse` — the one call every route that starts
     a real turn makes, so registration/streaming plumbing exists in exactly one place."""
@@ -280,6 +290,7 @@ def start_turn_stream(
         locale=locale,
         images=images,
         deep_research=deep_research,
+        byok=byok,
     )
     return StreamingResponse(stream, media_type="text/event-stream")
 
@@ -333,6 +344,7 @@ async def _drive_turn(
     locale: str = "zh-TW",
     images: tuple[ImagePart, ...] = (),
     deep_research: bool = False,
+    byok: ByokOverride | None = None,
 ) -> None:
     event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
     # The registry entry is `RunningTurn` itself — the same live handle `POST .../steer` appends
@@ -409,7 +421,9 @@ async def _drive_turn(
         regenerate_of=regenerate_of,
     )
     await _maybe_title_thread(store, user_id=user_id, thread_id=thread_id, message=message)
-    await _record_usage(session, user_id=user_id, turn_id=turn_id, result=result)
+    await _record_usage(
+        session, user_id=user_id, turn_id=turn_id, result=result, byok=byok is not None
+    )
     event_bus.publish(
         "message",
         turn_id=turn_id,
@@ -451,7 +465,7 @@ async def _maybe_title_thread(
 
 
 async def _record_usage(
-    session: AsyncSession, *, user_id: str, turn_id: str, result: OrchestratorResult
+    session: AsyncSession, *, user_id: str, turn_id: str, result: OrchestratorResult, byok: bool
 ) -> None:
     """Write the finished turn's usage rollup through to the durable sink on the request's own
     session (one connection, no second writer contending). Idempotent on `(user_id, turn_id)`, so
@@ -471,7 +485,9 @@ async def _record_usage(
             finmind_calls=usage.finmind_calls,
             cost_micros=usage.cost_micros,
         )
-        await write_model_usage(session, user_id=user_id, turn_id=turn_id, models=usage.models)
+        await write_model_usage(
+            session, user_id=user_id, turn_id=turn_id, models=usage.models, byok=byok
+        )
         await session.commit()
     except Exception as exc:  # a durable-usage write is best-effort — never fail an answered turn
         await session.rollback()

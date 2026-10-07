@@ -321,7 +321,8 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 | GET | `/usage/today` | What the caller has claimed of today's (UTC) allowances: `chats_used`, `deep_research_used`, `deep_research_limit` |
 | GET | `/usage/llm?days=30` | The caller's own LLM consumption (1-90 days): a zero-filled daily series, per-(provider, model) totals, grand total. Tokens come from each provider's per-response usage metadata; `cost_micros` is non-zero only where the provider reports a charge (OpenRouter); `estimated_cost_micros` is a list-price estimate (`llm/pricing.py`) for the rest, kept separate and never added into `cost_micros`; a model with `priced: false` has neither Not the provider's bill - their usage APIs need admin credentials an inference key lacks |
 | GET | `/usage?thread_id=` / `/usage/summary` | **Not built** — no route exists yet; `events/usage.py` is an in-process accumulator with no durable rollup store to serve this from |
-| POST | `/me/keys` | Store BYOK key (encrypted) |
+| GET | `/me/keys` | Providers the caller has saved an LLM key for (names only, never keys) |
+| POST | `/me/keys` | Store BYOK key (encrypted); `422 unsupported_provider` for an unknown provider. With a key saved, turns run on the user's key and model - `409 byok_key_required` if the picked model's provider has no key ([12 §5](modules/12-multi-user-tiers.md)) |
 | DELETE | `/me/keys/{provider}` | Remove BYOK key |
 
 ---

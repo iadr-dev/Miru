@@ -317,6 +317,12 @@ export async function getUsageQuota(): Promise<EntitlementView> {
   return entitlementViewSchema.parse(raw);
 }
 
+/** Providers the caller has saved an LLM key for (names only - the backend never returns keys). */
+export async function listKeyProviders(): Promise<string[]> {
+  const raw = await requestJson("/me/keys");
+  return z.object({ providers: z.array(z.string()) }).parse(raw).providers;
+}
+
 export async function getTodayUsage(): Promise<TodayUsage> {
   return todayUsageSchema.parse(await requestJson("/usage/today"));
 }

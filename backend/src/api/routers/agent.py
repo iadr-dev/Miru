@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
 from api.attachments import AttachmentInput, process_attachments
+from api.byok import resolve_byok
 from api.dependencies import (
     AppState,
     get_session,
@@ -81,6 +82,14 @@ async def agent_query(
         thread = await store.update_thread(
             user_id=user.id, thread_id=thread.id, model_override=body.model
         )
+    try:
+        byok = await resolve_byok(
+            session, settings, user_id=user.id, model_override=thread.model_override
+        )
+    except ApiError:
+        if body.deep_research:  # the gate already claimed a report; this turn will not run
+            await state.usage_store.refund_daily_deep_research(user_id=user.id)
+        raise
     thread_id = thread.id
 
     augmented_message, images, attachment_blocks = await process_attachments(
@@ -123,6 +132,7 @@ async def agent_query(
         locale=body.locale,
         images=images,
         deep_research=body.deep_research,
+        byok=byok,
     )
 
 

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
 from api.attachments import AttachmentInput
+from api.byok import resolve_byok
 from api.dependencies import (
     AppState,
     get_session,
@@ -578,6 +579,9 @@ async def regenerate_turn(
 
     thread = await _require_owned_thread(store, user_id=user.id, thread_id=thread_id)
     ctx = tool_context_for(user, state)
+    byok = await resolve_byok(
+        session, state.settings, user_id=user.id, model_override=thread.model_override
+    )
     deep_research = _resolve_deep_research(body.deep_research, source_user_turn)
     await enforce_pre_turn_gate(state, session, user, deep_research=deep_research)
 
@@ -600,6 +604,7 @@ async def regenerate_turn(
         model_override=thread.model_override,
         web_search_enabled=body.web_search,
         deep_research=deep_research,
+        byok=byok,
     )
 
 
@@ -651,6 +656,9 @@ async def edit_turn(
     # session from the shared factory to atomically bump the usage counter, and SQLite allows
     # only one writer at a time — an uncommitted write already held on this session's connection
     # would deadlock against that second connection (observed as "database is locked").
+    byok = await resolve_byok(
+        session, settings, user_id=user.id, model_override=thread.model_override
+    )
     deep_research = _resolve_deep_research(body.deep_research, turn)
     await enforce_pre_turn_gate(state, session, user, deep_research=deep_research)
 
@@ -681,6 +689,7 @@ async def edit_turn(
         model_override=thread.model_override,
         web_search_enabled=body.web_search,
         deep_research=deep_research,
+        byok=byok,
     )
 
 

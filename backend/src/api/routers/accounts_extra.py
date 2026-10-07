@@ -29,6 +29,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from config.settings import Settings
+from llm.registry import BYOK_PROVIDERS
 from personality.models import PersonalityPreset
 from usage.llm_usage import MAX_DAYS, LlmUsageSummary, summarize_llm_usage
 
@@ -143,6 +144,27 @@ async def usage_llm(
     return await summarize_llm_usage(session, user_id=user.id, days=days)
 
 
+class KeyProviders(BaseModel):
+    providers: list[str]
+
+
+@router.get("/me/keys")
+async def list_keys(
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> KeyProviders:
+    """Which providers the caller has saved an LLM key for - names only, never the keys. The chat
+    model picker uses this: a caller with keys can only run models from those providers."""
+    try:
+        cipher = SecretCipher.from_settings(settings)
+    except SecretEncryptionNotConfiguredError:
+        return KeyProviders(providers=[])
+    return KeyProviders(
+        providers=await SqlAlchemySecretStore(session, cipher).llm_providers(user_id=user.id)
+    )
+
+
 class PutKeyRequest(BaseModel):
     provider: str = Field(min_length=1, max_length=64)
     kind: SecretKind = SecretKind.LLM_KEY
@@ -159,6 +181,13 @@ async def put_key(
     """Store an encrypted BYOK key. The raw key is forwarded straight into the encrypting store
     and never logged; if secret encryption is not configured, the store refuses rather than
     persisting plaintext (surfaced as 503)."""
+    if body.kind is SecretKind.LLM_KEY and body.provider not in BYOK_PROVIDERS:
+        raise ApiError(
+            status_code=422,
+            code="unsupported_provider",
+            message=f"Unsupported provider {body.provider!r}.",
+            retryable=False,
+        )
     try:
         cipher = SecretCipher.from_settings(settings)
     except SecretEncryptionNotConfiguredError as exc:
