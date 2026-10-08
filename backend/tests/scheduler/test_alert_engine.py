@@ -1016,6 +1016,10 @@ async def test_announcement_rule_fires_on_every_day_a_filing_lands(session_facto
     assert len(await notifications(session_factory, user)) == 2
 
 
+def _fullwidth(text: str) -> str:
+    return "".join(chr(ord(ch) + 0xFEE0) if "!" <= ch <= "~" else ch for ch in text)
+
+
 def test_a_subject_cannot_carry_a_tappable_link() -> None:
     r = FakeReader()
     for sneaky in (
@@ -1023,13 +1027,18 @@ def test_a_subject_cannot_carry_a_tappable_link() -> None:
         "請至 www.evil.example 查詢",
         "連絡 ceo@evil.example",
         "伺服器 192.168.1.1 公告",
+        "伺服器192.168.1.1公告",
+        f"詳見 {_fullwidth('www.evil.example')} 公告",
+        f"連絡 {_fullwidth('ceo@evil.example')}",
+        "請至 evil\u3002example 查詢",
+        "請至 123.example 查詢",
     ):
         r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject=sneaky)])
         hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
         assert hit is not None
         quoted = hit.message.split("最新主旨：")[1].split("（你設定")[0]
         assert "://" not in quoted
-        assert not re.search(r"[A-Za-z0-9]\.[A-Za-z]", quoted), quoted
+        assert not re.search(r"[A-Za-z0-9]\.[A-Za-z0-9]", quoted), quoted
         assert "@" not in quoted
         assert "192.168" not in quoted
 
