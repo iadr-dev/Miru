@@ -3,7 +3,8 @@ flagged by rule, and nothing is estimated."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict
 
@@ -173,7 +174,7 @@ async def test_headlines_with_target_prices_or_calls_never_enter_the_brief() -> 
 
 
 async def test_calendar_events_carry_taipei_and_et_times() -> None:
-    today = datetime.now(UTC).astimezone().date().isoformat()
+    today = datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
     calendar = _Stub(
         "get_macro_calendar",
         {

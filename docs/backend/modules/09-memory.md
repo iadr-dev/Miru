@@ -119,14 +119,21 @@ Types:
   only - tone/format instructions (TL;DR, bullets, 語氣, 簡潔, …), which are refused with a pointer to
   Tone settings.
 - **Watchlist changes from chat are built, propose-only** (`propose_watchlist_change`, skill
-  `watchlist-proposal`, card `watchlist_proposal`): `action` add|remove, up to 10 same-market
-  symbols, optional `group_name` (add). The skill also allowlists `get_symbol_directory_search`, so a
-  company name is resolved to a code from the roster instead of guessed, and the card shows each
-  resolved name (an unknown code is flagged and left out). For an add the user picks - or creates -
-  a group per stock/ETF class (a named group that does not exist is pre-filled as "new"); for a
-  remove the card lists which groups hold each symbol. The frontend then calls the ordinary
-  watchlist routes (create group, `PUT`/`DELETE` item - both idempotent). The agent still has no
-  tool that writes the watchlist. Moving between groups and reordering from chat are not built.
+  `watchlist-proposal`, card `watchlist_proposal`). Actions: `add`, `remove`, `move` (symbols to an
+  existing group), and the group-level `rename_group`, `delete_group` (the card states how many
+  symbols go with it) and `reorder_group` (first/last). Up to 10 same-market symbols; the skill also
+  allowlists `get_symbol_directory_search`, so a company name is resolved to a code from the roster
+  instead of guessed, and the card shows each resolved name (an unknown code is flagged and left
+  out). For an add the user picks - or creates - a group per stock/ETF class; a move skips symbols
+  already there, not in the watchlist, or of the wrong class (an ETF cannot go into a stock group);
+  when a name matches both a stock and an ETF group the card asks which. The frontend then calls the
+  ordinary watchlist routes (`POST /watchlists`, `PUT`/`DELETE` item, `POST .../move`, `PATCH` with
+  the group's `If-Match` version, `DELETE /watchlists/{id}`). The agent still has no tool that writes
+  the watchlist. Reordering symbols *within* a group is not built (the move route can only append).
+- A model that prints its tool call as plain JSON instead of calling it (Gemini does, now and then)
+  is handled in `agent.loop`: a reply that is exactly one `{name, arguments}` object naming a tool
+  the turn has is run as that call (`agent.answer_format.recover_textual_tool_call`); anything
+  else stays an ordinary reply.
 - Earlier note on the watchlist side: ADR-0027 describes an `add_to_watchlist` agent tool (write,
   explicit-utterance gated) and a read-only `get_watchlist` MCP tool. Neither exists in
   `tools/` or `mcp/` today — watchlist reads/writes are exposed only as the `/watchlists/*` REST

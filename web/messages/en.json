@@ -1251,7 +1251,44 @@
         "caveat": "This is only a proposal - it is remembered once you tap Save. Memory is background you told us; answers still re-check the data."
       },
       "watchlistProposal": {
-        "title": { "add": "Add to watchlist", "remove": "Remove from watchlist" },
+        "title": {
+          "add": "Add to watchlist",
+          "remove": "Remove from watchlist",
+          "move": "Move to another group",
+          "rename_group": "Rename group",
+          "delete_group": "Delete group",
+          "reorder_group": "Reorder group"
+        },
+        "done": {
+          "add": "Added to your watchlist",
+          "remove": "Removed from your watchlist",
+          "move": "Moved",
+          "rename_group": "Renamed",
+          "delete_group": "Group deleted",
+          "reorder_group": "Order updated"
+        },
+        "move": "Move",
+        "moving": "Moving…",
+        "moveFrom": "{symbol}: from “{from}” to “{to}”",
+        "moveSkip": {
+          "notIn": "{symbol}: not in your watchlist, skipped",
+          "already": "{symbol}: already in this group",
+          "classMismatch": "{symbol}: stocks and ETFs can't share a group, skipped"
+        },
+        "rename": "Rename",
+        "renaming": "Renaming…",
+        "renameTo": "“{from}” → “{to}”",
+        "nameTaken": "A group with that name already exists - pick another.",
+        "delete": "Delete group",
+        "deleting": "Deleting…",
+        "deleteWarning": "This deletes the group “{name}”; its {count} symbols leave it too (cannot be undone).",
+        "reorder": "Reorder",
+        "reordering": "Reordering…",
+        "reorderTo": { "first": "Put “{name}” first", "last": "Put “{name}” last" },
+        "alreadyThere": "“{name}” is already there.",
+        "whichGroup": "Which group",
+        "groupClass": { "stock": "Stocks", "etf": "ETFs" },
+        "groupNotFound": "No watchlist group named “{name}”.",
         "groupFor": { "stock": "Group for the stocks", "etf": "Group for the ETFs" },
         "newGroup": "+ New group",
         "newGroupName": "New group name",

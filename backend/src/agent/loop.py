@@ -39,6 +39,7 @@ on; a Step already dispatching tool calls is never interrupted.
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from typing import cast
 
@@ -46,7 +47,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent import guardrails
-from agent.answer_format import strip_tldr
+from agent.answer_format import recover_textual_tool_call, strip_tldr
 from agent.context_window import compact
 from agent.hooks import (
     AnswerDeltaHook,
@@ -539,6 +540,13 @@ class AgentLoop:
             # streaming client also emits before its final `ToolCallEvent` — carries nothing
             # this Step needs; the client itself already assembles the complete `ToolCallEvent`
             # this loop consumes above, so the fragment is intentionally a no-op here.
+        if not tool_calls and (call := self._recovered_text_call("".join(text_parts))) is not None:
+            # The model wrote its tool call out as text: run it as the call it was meant to be and
+            # drop the raw JSON from the reply.
+            tool_calls.append(call)
+            text_parts.clear()
+            answer_buffer = ""
+            stop_reason = StopReason.TOOL_USE
         # The stream ended with a trailing fragment still held back (either a genuinely final
         # sentence with no more text coming, or a short answer with no terminator at all, e.g.
         # "好的") — flush it now rather than losing it, since no further delta will ever close it.
@@ -553,6 +561,13 @@ class AgentLoop:
                 update={"provider": self._llm.provider_id, "model": self._llm.model_id}
             ),
         )
+
+    def _recovered_text_call(self, text: str) -> ToolCall | None:
+        recovered = recover_textual_tool_call(text, {tool.name for tool in self._tools})
+        if recovered is None:
+            return None
+        name, arguments = recovered
+        return ToolCall(id=f"recovered-{uuid.uuid4().hex[:12]}", name=name, arguments=arguments)
 
     async def _run_post_tool_hooks(  # noqa: PLR0913 — mirrors `PostToolHook.__call__`'s shape
         self,

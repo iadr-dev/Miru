@@ -32,3 +32,40 @@ def test_an_answer_without_one_is_untouched() -> None:
 def test_the_word_inside_a_sentence_is_kept() -> None:
     text = "這份報告不需要 TL;DR 這種摘要。"
     assert strip_tldr(text) == text
+
+
+from agent.answer_format import recover_textual_tool_call  # noqa: E402
+
+KNOWN = {"propose_watchlist_change", "ask_user"}
+
+
+def test_a_reply_that_is_just_a_tool_call_is_recovered() -> None:
+    text = (
+        '{"name": "propose_watchlist_change", "arguments": {"action": "add", "symbols": ["2330"]}}'
+    )
+    assert recover_textual_tool_call(text, KNOWN) == (
+        "propose_watchlist_change",
+        {"action": "add", "symbols": ["2330"]},
+    )
+
+
+def test_a_fenced_or_namespaced_call_is_recovered_too() -> None:
+    fenced = '```json\n{"name": "google:ask_user", "arguments": {"question": "哪一檔？"}}\n```'
+    assert recover_textual_tool_call(fenced, KNOWN) == ("ask_user", {"question": "哪一檔？"})
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "好的，我已經列出提案。",  # ordinary prose
+        '這是範例：{"name": "ask_user", "arguments": {}}',  # prose around it
+        '{"name": "delete_everything", "arguments": {}}',  # not a tool this turn has
+        '{"name": "ask_user", "arguments": [1, 2]}',  # arguments not an object
+        '{"name": "ask_user", "arguments": {}, "extra": 1}',  # extra keys
+        '{"arguments": {}}',  # no name
+        "{not json}",
+        "",
+    ],
+)
+def test_anything_else_is_left_alone(text: str) -> None:
+    assert recover_textual_tool_call(text, KNOWN) is None

@@ -4,6 +4,12 @@ import { CheckCircleIcon, StarIcon } from "@phosphor-icons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import {
+  DeleteBody,
+  MoveBody,
+  RenameBody,
+  ReorderBody,
+} from "@/app/[locale]/(app)/chat/cards/watchlist-group-bodies";
 import { Select, TextInput } from "@/components/settings/form-controls";
 import { Button } from "@/components/ui/button";
 import { useWatchlists } from "@/hooks/use-watchlists";
@@ -14,6 +20,7 @@ import {
   choiceReady,
   type GroupChoice,
   initialChoice,
+  isGroupAction,
   matchingGroups,
   parseWatchlistProposal,
   removalTargets,
@@ -43,7 +50,7 @@ export function WatchlistProposalCard({ data }: { data: Record<string, unknown> 
   const info = useQuery({
     queryKey: ["symbol_info", market, ...(proposal?.symbols ?? [])],
     queryFn: () => getSymbolInfo(proposal?.symbols ?? [], market),
-    enabled: proposal !== null,
+    enabled: proposal !== null && proposal.symbols.length > 0,
     staleTime: 5 * 60_000,
     retry: false,
   });
@@ -83,7 +90,13 @@ export function WatchlistProposalCard({ data }: { data: Record<string, unknown> 
         />
         <div className="min-w-0 flex-1">
           <p className="text-[12px] text-[var(--text-muted)]">{t(`title.${proposal.action}`)}</p>
-          <SymbolList proposal={proposal} names={names} unknown={unknown} />
+          {isGroupAction(proposal.action) ? (
+            <p className="mt-0.5 font-medium text-[14px] text-[var(--text)]">
+              {proposal.group_name} · {proposal.market}
+            </p>
+          ) : (
+            <SymbolList proposal={proposal} names={names} unknown={unknown} />
+          )}
         </div>
       </div>
 
@@ -93,7 +106,7 @@ export function WatchlistProposalCard({ data }: { data: Record<string, unknown> 
           aria-live="polite"
         >
           <CheckCircleIcon size={16} weight="regular" aria-hidden />
-          {proposal.action === "add" ? t("added") : t("removed")}
+          {t(`done.${proposal.action}`)}
         </p>
       ) : (
         <ProposalBody
@@ -151,24 +164,21 @@ function ProposalBody({
   onDone: () => void;
   onDismiss: () => void;
 }): ReactNode {
-  return proposal.action === "add" ? (
-    <AddBody
-      proposal={proposal}
-      groups={groups}
-      loading={loading}
-      unknown={unknown}
-      onDone={onDone}
-      onDismiss={onDismiss}
-    />
-  ) : (
-    <RemoveBody
-      proposal={proposal}
-      groups={groups}
-      loading={loading}
-      onDone={onDone}
-      onDismiss={onDismiss}
-    />
-  );
+  const shared = { proposal, groups, loading, onDone, onDismiss };
+  switch (proposal.action) {
+    case "add":
+      return <AddBody {...shared} unknown={unknown} />;
+    case "remove":
+      return <RemoveBody {...shared} />;
+    case "move":
+      return <MoveBody {...shared} />;
+    case "rename_group":
+      return <RenameBody {...shared} />;
+    case "delete_group":
+      return <DeleteBody {...shared} />;
+    case "reorder_group":
+      return <ReorderBody {...shared} />;
+  }
 }
 
 function AddBody({
