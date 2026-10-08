@@ -60,7 +60,9 @@ FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
     "swot": Tier.PREMIUM,
     "full_score": Tier.PREMIUM,
     "deep_research": Tier.PRO,
-    "tick_minute_k": Tier.PRO,
+    # Tick and minute-K are sponsor-class data, which the tool-dispatch gate unlocks at Premium and
+    # above - so this row says Premium, matching what is actually enforced.
+    "tick_minute_k": Tier.PREMIUM,
 }
 
 
@@ -117,6 +119,11 @@ def chat_limit_for(user: User, *, byok_active: bool) -> int | None:
     return TIER_LIMITS[user.tier].chat_limit_per_day
 
 
+# Voice (speech-to-text, read-aloud) is Free but fair-use bounded, because read-aloud can call a
+# paid TTS provider: a per-minute rate and a per-UTC-day cap, the same for every tier.
+VOICE_REQUESTS_PER_MINUTE: Final[int] = 20
+VOICE_DAILY_LIMIT: Final[int] = 100
+
 # Deep research is Pro-only and capped per UTC day no matter what (each report is many model calls
 # and web fetches). BYOK does not lift it: it is a fair-use bound, not the chat allowance.
 DEEP_RESEARCH_LIMIT_PER_DAY: Final[int] = 5
@@ -167,6 +174,8 @@ __all__ = [
     "DEEP_RESEARCH_LIMIT_PER_DAY",
     "FEATURE_MIN_TIER",
     "TIER_LIMITS",
+    "VOICE_DAILY_LIMIT",
+    "VOICE_REQUESTS_PER_MINUTE",
     "TierLimits",
     "TierSummary",
     "allowed_features",

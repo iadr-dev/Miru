@@ -118,8 +118,8 @@ from then on.
 | Tier | AI chats/day | Req/min | FinMind class | Gated AI features |
 |------|--------------|---------|---------------|-------------------|
 | **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors — real, cache-only reads, [module 20](../modules/20-analytics-scoring.md) §2c); tag screener (`run_tag_screener`/`get_tag_catalog`, public criteria — real, [module 20](../modules/20-analytics-scoring.md) §5T); theme lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`, public); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
-| **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, web_search |
-| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + tick/minute-K, **deep_research** (multi-step web) |
+| **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), tick / minute-K (sponsor-class data), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, web_search |
+| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + **deep_research** (multi-step web, 5 reports/day) |
 
 **Alerts & schedules are not a tier feature** (the alerts v2 design): every signed-in user gets them under uniform fair-use caps (proposed: 50 alert rules, 10 schedules, 20 notifications/day; exceeding → 409 `cap_reached`). Effective when modules/14 P0 ships (v1 still has the Pro gate). Tiers only gate the *data* a notification carries — sponsor values are masked for non-entitled users.
 
@@ -143,8 +143,9 @@ together they are "capability resolution"):
    + governance §9b.) ← this module + §4.
 2. **Tier-feature** — `feature_allowed(user, feature)` (e.g. `deep_research`=Pro,
    `live_quote_stream`=Premium (server-pushed 5s streaming — a *feature* gate, not a data-class gate),
-   `tts_read_aloud`=Premium+; note **STT/voice-input is Free**, quota-bounded not tier-gated —
-   [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
+   `tick_minute_k`=Premium (sponsor-class data); note **voice is Free** - speech-to-text and
+   read-aloud are fair-use bounded (20 requests/min and 100/day each; `429 voice_limit_reached`),
+   not tier-gated — [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
 3. **Per-turn consent** — a request-scoped toggle the *user* flips for that turn (e.g. the
    web-search toggle, [03-tools.md](03-tools.md)): opt-in, not tier.
 
