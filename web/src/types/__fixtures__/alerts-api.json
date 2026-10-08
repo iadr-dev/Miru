@@ -281,9 +281,7 @@
           "skill_ref": "daily-context-brief",
           "inputs": {}
         },
-        "delivery_channels": [
-          "in_app"
-        ],
+        "delivery_channels": ["in_app"],
         "quiet_hours": null,
         "daily_limit": null,
         "enabled": true,
@@ -347,7 +345,5 @@
     "material_announcement",
     "month_revenue_published"
   ],
-  "per_stock_kinds": [
-    "close_price"
-  ]
+  "per_stock_kinds": ["close_price"]
 }
