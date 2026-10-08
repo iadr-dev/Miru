@@ -23,6 +23,7 @@ from typing import Final
 _ZH_TW_LABELS: Final[dict[str, str]] = {
     "active-etf-flow": "正在檢視主動式 ETF 操作與資金流向",
     "alert-proposal": "正在擬定提醒提案，待你確認",
+    "memory-proposal": "正在擬定記憶提案，待你確認",
     "block-trade-and-broker-flow": "正在檢視鉅額交易與分點進出",
     "catalyst-scan": "正在掃描潛在催化事件",
     "chip-flow-review": "正在檢視籌碼流向",
@@ -66,6 +67,7 @@ _ZH_TW_LABELS: Final[dict[str, str]] = {
 _EN_LABELS: Final[dict[str, str]] = {
     "active-etf-flow": "Reviewing active ETF activity and money flow",
     "alert-proposal": "Drafting an alert proposal for you to confirm",
+    "memory-proposal": "Drafting a memory proposal for you to confirm",
     "block-trade-and-broker-flow": "Reviewing block trades and broker flow",
     "catalyst-scan": "Scanning for potential catalysts",
     "chip-flow-review": "Reviewing institutional and margin flows",

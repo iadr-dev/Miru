@@ -51,6 +51,7 @@ from tools import (
     news_tools,
     others_tools,
     propose_alert_tools,
+    propose_memory_tools,
     propose_schedule_tools,
     ptt_tools,
     realtime_tools,
@@ -118,6 +119,7 @@ def build_default_tool_registry(
     registry = build_default_registry(
         ask_user_tools.build_registration_table(),
         propose_alert_tools.build_registration_table(),
+        propose_memory_tools.build_registration_table(),
         propose_schedule_tools.build_registration_table(),
         context_tools.build_registration_table(router),
         health_tools.build_registration_table(router),

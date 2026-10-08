@@ -21,6 +21,7 @@ import {
 import { GroupedBarChart } from "@/app/[locale]/(app)/chat/cards/grouped-bar-chart";
 import { InstitutionalFlowTimeseries } from "@/app/[locale]/(app)/chat/cards/institutional-flow-timeseries";
 import { LeaderboardTable } from "@/app/[locale]/(app)/chat/cards/leaderboard-table";
+import { MemoryProposalCard } from "@/app/[locale]/(app)/chat/cards/memory-proposal-card";
 import { ScheduleProposalCard } from "@/app/[locale]/(app)/chat/cards/schedule-proposal-card";
 import { SnapshotCard } from "@/app/[locale]/(app)/chat/cards/snapshot-card";
 import { ThemeTiersFlow } from "@/app/[locale]/(app)/chat/cards/theme-tiers-flow";
@@ -58,6 +59,9 @@ export function RichCardView({
 }): ReactNode {
   if (card.card_type === "alert_proposal") {
     return <AlertProposalCard data={card.data} />;
+  }
+  if (card.card_type === "memory_proposal") {
+    return <MemoryProposalCard data={card.data} />;
   }
   if (card.card_type === "schedule_proposal") {
     return <ScheduleProposalCard data={card.data} />;
