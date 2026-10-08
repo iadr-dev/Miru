@@ -188,3 +188,42 @@ async def test_recall_ranks_thread_scoped_memory_above_user_scoped_at_equal_over
     assert result is not None
     assert "mem-thread" not in result  # rendered line doesn't leak the raw id
     assert "dividend note" in result
+
+
+async def test_recall_with_ids_reports_the_memories_it_chose() -> None:
+    from memory.recall import recall_with_ids  # noqa: PLC0415
+
+    now = datetime.now(UTC)
+    chosen = Memory(
+        id="m1",
+        user_id="u",
+        scope=MemoryScope.USER,
+        type=MemoryType.PREFERENCE,
+        key="focus",
+        content={"text": "高股息 ETF"},
+        created_at=now,
+        updated_at=now,
+    )
+    block, used = await recall_with_ids(
+        memory_store=_StubMemoryStore([chosen]),  # type: ignore[arg-type]
+        watchlist_store=None,
+        user_id="u",
+        thread_id=None,
+        query="隨便問一個問題",
+    )
+    assert block is not None
+    assert [m.id for m in used] == ["m1"]
+
+
+async def test_recall_with_ids_is_empty_when_there_is_nothing_to_recall() -> None:
+    from memory.recall import recall_with_ids  # noqa: PLC0415
+
+    block, used = await recall_with_ids(
+        memory_store=_StubMemoryStore([]),  # type: ignore[arg-type]
+        watchlist_store=None,
+        user_id="u",
+        thread_id=None,
+        query="x",
+    )
+    assert block is None
+    assert used == []

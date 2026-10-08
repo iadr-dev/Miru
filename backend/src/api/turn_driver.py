@@ -53,7 +53,8 @@ from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import TURN_END_KIND, EventBus
 from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
 from llm.registry import ByokOverride, byok_scope
-from memory.recall import recall
+from memory.recall import recall_with_ids
+from memory.settings import memory_enabled
 from memory.store import SqlAlchemyMemoryStore
 from memory.watchlists import WatchlistStore
 from orchestrator.models import OrchestratorResult
@@ -355,13 +356,18 @@ async def _drive_turn(
     watchlist_store = WatchlistStore(session)
 
     async def recall_provider() -> str | None:
-        return await recall(
+        if not await memory_enabled(session, user_id=user_id):
+            return None  # the user paused memory: recall nothing
+        block, used = await recall_with_ids(
             memory_store=memory_store,
             watchlist_store=watchlist_store,
             user_id=user_id,
             thread_id=thread_id,
             query=message,
         )
+        if used:
+            await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
+        return block
 
     try:
         if deep_research:

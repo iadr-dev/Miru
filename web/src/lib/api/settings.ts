@@ -40,8 +40,10 @@ import {
   type Market,
   type Memory,
   type MemoryScope,
+  type MemorySettings,
   memoriesResponseSchema,
   memorySchema,
+  memorySettingsSchema,
   type Notification,
   type NotificationBadge,
   notificationBadgeSchema,
@@ -581,10 +583,50 @@ export async function removeDevice(token: string): Promise<void> {
 // Memory
 // ---------------------------------------------------------------------------
 
-export async function listMemories(scope?: MemoryScope): Promise<Memory[]> {
-  const suffix = scope ? `?scope=${scope}` : "";
+export async function listMemories(scope?: MemoryScope, query?: string): Promise<Memory[]> {
+  const params = new URLSearchParams();
+  if (scope) {
+    params.set("scope", scope);
+  }
+  if (query?.trim()) {
+    params.set("q", query.trim());
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
   const raw = await requestJson(`/memory${suffix}`);
   return memoriesResponseSchema.parse(raw).memories;
+}
+
+/** Edit a memory's content in place (its name and type stay). */
+export async function updateMemory(
+  memoryId: string,
+  content: Record<string, unknown>,
+): Promise<Memory> {
+  const raw = await requestJson(`/memory/${encodeURIComponent(memoryId)}`, {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ content }),
+  });
+  return memorySchema.parse(raw);
+}
+
+/** Forget everything (or one scope) at once. */
+export async function clearMemories(scope?: MemoryScope): Promise<number> {
+  const suffix = scope ? `?scope=${scope}` : "";
+  const raw = await requestJson(`/memory${suffix}`, { method: "DELETE" });
+  return z.object({ deleted: z.number() }).parse(raw).deleted;
+}
+
+export async function getMemorySettings(): Promise<MemorySettings> {
+  return memorySettingsSchema.parse(await requestJson("/memory/settings"));
+}
+
+export async function setMemoryEnabled(enabled: boolean): Promise<MemorySettings> {
+  const raw = await requestJson("/memory/settings", {
+    method: "PUT",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ enabled }),
+  });
+  return memorySettingsSchema.parse(raw);
 }
 
 export type UpsertMemoryRequest = {

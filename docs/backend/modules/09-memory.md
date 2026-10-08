@@ -125,10 +125,26 @@ Types:
 - Local-first; user can `list` / `delete` memories via API. Deleting a memory is honored
   immediately (no shadow copies).
 
+## Settings page & boundaries
+
+`/settings/memory` shows each memory as readable text (`content.text`; older free-form rows fall back
+to their values), with type labels 分析偏好 / 備忘 / 個股筆記, created/updated time, **last used** and
+use count (stamped by `recall_with_ids` -> `mark_used` each time recall puts a memory in front of the
+model), and a link to the chat it came from (`source_ref = "thread:<id>"`). Search, edit, delete,
+clear-all and the pause switch are all there.
+
+**Memory is not tone.** Voice, tone and verbosity belong to the curated 語氣 presets
+([23](23-agent-personality.md)) - free-text style instructions are deliberately not a thing. Memory
+`preference` records the user's *analysis focus* (markets, horizon, sectors or ETFs followed); the
+settings page says so and links to 語氣設定.
+
 ## Endpoints (added to `api/routers/memory.py`)
 
 ```
-GET    /memory?scope=user                              list memories
+GET    /memory?scope=&q=                               list memories (newest change first); q = key/text contains
+PATCH  /memory/{id}                                    edit content in place (governed; key/type stay)
+DELETE /memory?scope=                                  forget everything (or one scope) -> {deleted}
+GET/PUT /memory/settings                               {enabled}: the user's pause switch (off = nothing recalled, nothing proposed; stored memories kept)
 POST   /memory                                          upsert a memory (preference|finding|entity_note only)
 DELETE /memory/{id}                                     delete
 

@@ -10,6 +10,7 @@ silently-mutated write.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
@@ -49,6 +50,14 @@ class MemoryStore(Protocol):
 
     async def delete(self, *, user_id: str, memory_id: str) -> bool: ...
 
+    async def update(
+        self, *, user_id: str, memory_id: str, content: dict[str, object]
+    ) -> Memory | None: ...
+
+    async def delete_all(self, *, user_id: str, scope: MemoryScope | None = None) -> int: ...
+
+    async def mark_used(self, *, user_id: str, memory_ids: Sequence[str]) -> None: ...
+
 
 def _row_to_memory(row: MemoryRow) -> Memory:
     return Memory(
@@ -62,6 +71,8 @@ def _row_to_memory(row: MemoryRow) -> Memory:
         source_ref=row.source_ref,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        last_used_at=row.last_used_at,
+        use_count=row.use_count or 0,
     )
 
 
@@ -159,6 +170,53 @@ class SqlAlchemyMemoryStore:
         await self._session.flush()
         logger.info("memory_deleted", user_id=user_id, memory_id=memory_id)
         return True
+
+    async def update(
+        self, *, user_id: str, memory_id: str, content: dict[str, object]
+    ) -> Memory | None:
+        """Replace one memory's content (its key and type are its identity and stay). The same
+        governance scan as `upsert` applies; `None` when the memory is not the caller's."""
+        violation = scan_content_for_governance_violations(content)
+        if violation is not None:
+            raise MemoryGovernanceError(violation)
+        result = await self._session.execute(
+            select(MemoryRow).where(MemoryRow.user_id == user_id, MemoryRow.id == memory_id)
+        )
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        row.content = content
+        row.updated_at = datetime.now(UTC)
+        await self._session.flush()
+        logger.info("memory_updated", user_id=user_id, memory_id=memory_id)
+        return _row_to_memory(row)
+
+    async def delete_all(self, *, user_id: str, scope: MemoryScope | None = None) -> int:
+        """Forget everything (or one scope) at once; returns how many were removed."""
+        stmt = select(MemoryRow.id).where(MemoryRow.user_id == user_id)
+        if scope is not None:
+            stmt = stmt.where(MemoryRow.scope == scope.value)
+        ids = list((await self._session.execute(stmt)).scalars().all())
+        if ids:
+            await self._session.execute(
+                delete(MemoryRow).where(MemoryRow.user_id == user_id, MemoryRow.id.in_(ids))
+            )
+            await self._session.flush()
+        logger.info("memory_cleared", user_id=user_id, count=len(ids))
+        return len(ids)
+
+    async def mark_used(self, *, user_id: str, memory_ids: Sequence[str]) -> None:
+        """Stamp the memories recall just put in front of the model."""
+        if not memory_ids:
+            return
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            select(MemoryRow).where(MemoryRow.user_id == user_id, MemoryRow.id.in_(memory_ids))
+        )
+        for row in result.scalars().all():
+            row.last_used_at = now
+            row.use_count = (row.use_count or 0) + 1
+        await self._session.flush()
 
 
 __all__ = ["MemoryStore", "SqlAlchemyMemoryStore"]
