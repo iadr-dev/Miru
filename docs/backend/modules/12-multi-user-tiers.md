@@ -144,8 +144,10 @@ together they are "capability resolution"):
 2. **Tier-feature** — `feature_allowed(user, feature)` (e.g. `deep_research`=Pro,
    `live_quote_stream`=Premium (server-pushed 5s streaming — a *feature* gate, not a data-class gate),
    `tick_minute_k`=Premium (sponsor-class data); note **voice is Free** - speech-to-text and
-   read-aloud are fair-use bounded (20 requests/min and 100/day each; `429 voice_limit_reached`),
-   not tier-gated — [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
+   read-aloud are not tier-gated and have no daily quota while they run on free providers (local
+   Whisper, Edge TTS); every user gets a 20 requests/min abuse bound, and a daily cap of 100 per
+   kind (`429 voice_limit_reached`) applies only if a provider that bills per call (TTS `openai`)
+   is configured, — [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
 3. **Per-turn consent** — a request-scoped toggle the *user* flips for that turn (e.g. the
    web-search toggle, [03-tools.md](03-tools.md)): opt-in, not tier.
 
