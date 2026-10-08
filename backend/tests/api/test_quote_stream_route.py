@@ -153,8 +153,12 @@ async def test_updates_stream_relays_data_updated_from_real_ingest(
     )
 
     async def _run_real_ingest() -> None:
-        # Give the SSE subscription time to land on the broker before the batch publishes.
-        await asyncio.sleep(0.2)
+        # Wait for the SSE subscription to land on the broker before the batch publishes - a
+        # fixed sleep raced app startup on slower machines.
+        for _ in range(250):
+            if broker._bus._subscribers:
+                break
+            await asyncio.sleep(0.02)
         await job_price_eod(date(2024, 1, 2), ingest_ctx)
 
     lines = await collect_sse(
