@@ -83,6 +83,7 @@ _WARM_TOOLS: tuple[str, ...] = (
     "propose_alert",
     "propose_memory",
     "propose_schedule",
+    "propose_watchlist_add",
 )
 _DEGRADED_ALL_LANES = (
     "All analysis lanes were unavailable for this request, so no market context could be "

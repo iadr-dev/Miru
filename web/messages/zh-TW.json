@@ -1250,6 +1250,18 @@
         "errorGeneric": "儲存失敗，請稍後再試。",
         "caveat": "這只是提案，按下「儲存」後才會記住。記憶是你說過的背景，回答時仍會重新查證資料。"
       },
+      "watchlistProposal": {
+        "title": "加入自選股",
+        "group": "自選股群組",
+        "add": "加入",
+        "adding": "加入中…",
+        "dismiss": "略過",
+        "dismissed": "已略過這則提案。",
+        "added": "已加入自選股",
+        "alreadyIn": "已在自選股「{group}」中",
+        "noGroup": "還沒有符合的自選股群組，請先在側欄的自選股建立一個群組。",
+        "errorGeneric": "加入失敗，請稍後再試。"
+      },
       "scheduleProposal": {
         "title": "排程簡報提案",
         "create": "建立",
