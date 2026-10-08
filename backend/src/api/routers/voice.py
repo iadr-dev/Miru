@@ -40,9 +40,16 @@ from voice.service import transcribe as transcribe_service
 _VOICE_WINDOW_SECONDS = 60
 
 
-async def _claim_voice(state: AppState, user: User, kind: VoiceKind) -> None:
-    """Fair-use bound on voice, claimed before any provider work: a per-minute rate and a
-    per-UTC-day cap per kind. Read-aloud can call a paid TTS provider, so it is never unmetered."""
+def _is_paid_provider(settings: Settings, kind: VoiceKind) -> bool:
+    """Only a provider that bills per call is capped per day. Local speech-to-text and the free
+    Edge voices cost nothing per request, so they get no quota - voice is not a paid feature."""
+    return kind == "tts" and settings.voice_tts_provider == "openai"
+
+
+async def _claim_voice(state: AppState, user: User, kind: VoiceKind, *, paid: bool) -> bool:
+    """Bound voice before any provider work. Always a per-minute rate (abuse / CPU protection, the
+    same for every tier). A per-UTC-day cap applies only when `paid` - a provider that bills per
+    call. Returns whether a daily claim was taken, so a failed request can give it back."""
     verdict = await state.rate_limiter.check(
         f"voice:{user.id}",
         max_requests=VOICE_REQUESTS_PER_MINUTE,
@@ -55,6 +62,8 @@ async def _claim_voice(state: AppState, user: User, kind: VoiceKind) -> None:
             message="Too many voice requests. Please slow down and retry shortly.",
             retryable=True,
         )
+    if not paid:
+        return False
     claim = await state.usage_store.reserve_daily_voice(
         user_id=user.id, kind=kind, limit=VOICE_DAILY_LIMIT
     )
@@ -67,6 +76,7 @@ async def _claim_voice(state: AppState, user: User, kind: VoiceKind) -> None:
             ),
             retryable=False,
         )
+    return True
 
 
 router = APIRouter(tags=["voice"])
@@ -145,7 +155,7 @@ async def transcribe(
             retryable=False,
         )
 
-    await _claim_voice(state, user, "stt")
+    claimed = await _claim_voice(state, user, "stt", paid=_is_paid_provider(settings, "stt"))
     watchlist_terms = await _watchlist_terms(session, user_id=user.id)
     try:
         return await transcribe_service(
@@ -156,7 +166,8 @@ async def transcribe(
             symbol_universe=frozenset(watchlist_terms),
         )
     except Exception:
-        await state.usage_store.refund_daily_voice(user_id=user.id, kind="stt")
+        if claimed:
+            await state.usage_store.refund_daily_voice(user_id=user.id, kind="stt")
         raise
 
 
@@ -183,13 +194,14 @@ async def speak(
 ) -> SpeakResponse:
     """TTS read-aloud (Free, fair-use bounded like STT: a per-minute rate and a daily cap). The
     spoken text is caveat-guaranteed before synthesis."""
-    await _claim_voice(state, user, "tts")
+    claimed = await _claim_voice(state, user, "tts", paid=_is_paid_provider(settings, "tts"))
     try:
         audio: SpeechAudio = await speak_service(
             body.text, _speaker(settings), language=body.language
         )
     except Exception:
-        await state.usage_store.refund_daily_voice(user_id=user.id, kind="tts")
+        if claimed:
+            await state.usage_store.refund_daily_voice(user_id=user.id, kind="tts")
         raise
     return SpeakResponse(
         audio_base64=base64.b64encode(audio.audio).decode("ascii"),

@@ -119,8 +119,9 @@ def chat_limit_for(user: User, *, byok_active: bool) -> int | None:
     return TIER_LIMITS[user.tier].chat_limit_per_day
 
 
-# Voice (speech-to-text, read-aloud) is Free but fair-use bounded, because read-aloud can call a
-# paid TTS provider: a per-minute rate and a per-UTC-day cap, the same for every tier.
+# Voice (speech-to-text, read-aloud) is Free for everyone. A per-minute rate always applies (abuse /
+# CPU protection); the per-UTC-day cap applies only when the configured provider bills per call
+# (OpenAI TTS) - local speech-to-text and Edge voices cost nothing, so they have no daily quota.
 VOICE_REQUESTS_PER_MINUTE: Final[int] = 20
 VOICE_DAILY_LIMIT: Final[int] = 100
 

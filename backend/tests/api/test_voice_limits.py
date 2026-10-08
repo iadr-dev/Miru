@@ -1,4 +1,4 @@
-"""Voice is Free but never unmetered: a per-minute rate and a daily cap, refunded on failure."""
+"""Voice is Free: always a per-minute rate; a daily cap only for a provider that bills per call."""
 
 from __future__ import annotations
 
@@ -25,10 +25,11 @@ def _transcribe(client: TestClient, headers: dict[str, str]):
     return client.post("/api/v1/voice/transcribe", json={"audio_base64": AUDIO}, headers=headers)
 
 
-def test_the_daily_cap_applies_to_each_kind_separately(
+def test_a_paid_provider_has_a_daily_cap_per_kind(
     client: TestClient, settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(voice_router, "VOICE_DAILY_LIMIT", 2)
+    monkeypatch.setattr(voice_router, "_is_paid_provider", lambda *_a: True)
     monkeypatch.setattr(voice_router, "VOICE_REQUESTS_PER_MINUTE", 1000)
     headers, _ = sign_in(client, settings, tier=Tier.FREE)
 
@@ -55,6 +56,7 @@ def test_the_per_minute_rate_is_enforced(
 
 def test_limits_are_per_user(client: TestClient, settings, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(voice_router, "VOICE_DAILY_LIMIT", 1)
+    monkeypatch.setattr(voice_router, "_is_paid_provider", lambda *_a: True)
     monkeypatch.setattr(voice_router, "VOICE_REQUESTS_PER_MINUTE", 1000)
     first, _ = sign_in(client, settings, tier=Tier.FREE)
     second, _ = sign_in(client, settings, tier=Tier.FREE)
@@ -67,6 +69,7 @@ def test_a_provider_failure_gives_the_claim_back(
     client: TestClient, settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(voice_router, "VOICE_DAILY_LIMIT", 1)
+    monkeypatch.setattr(voice_router, "_is_paid_provider", lambda *_a: True)
     monkeypatch.setattr(voice_router, "VOICE_REQUESTS_PER_MINUTE", 1000)
     headers, _ = sign_in(client, settings, tier=Tier.FREE)
 
@@ -90,3 +93,27 @@ def test_the_published_bounds_are_sane() -> None:
 def test_tick_and_minute_k_row_matches_what_the_tools_enforce() -> None:
     # Those tools are sponsor-class data, unlocked at Premium - the row must say so, not Pro.
     assert entitlements.FEATURE_MIN_TIER["tick_minute_k"] is Tier.PREMIUM
+
+
+def test_free_providers_have_no_daily_quota(
+    client: TestClient, settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Local speech-to-text and the free voices cost nothing per call: voice is not a paid
+    feature, so there is no daily cap (only the per-minute abuse bound)."""
+    monkeypatch.setattr(
+        voice_router, "VOICE_DAILY_LIMIT", 1
+    )  # would block the 2nd call if it applied
+    monkeypatch.setattr(voice_router, "VOICE_REQUESTS_PER_MINUTE", 1000)
+    headers, _ = sign_in(client, settings, tier=Tier.FREE)
+    assert [_speak(client, headers).status_code for _ in range(5)] == [200] * 5
+    assert [_transcribe(client, headers).status_code for _ in range(5)] == [200] * 5
+
+
+def test_only_a_provider_that_bills_per_call_counts_as_paid() -> None:
+    from config.settings import Settings  # noqa: PLC0415
+
+    assert voice_router._is_paid_provider(Settings(voice_tts_provider="openai"), "tts")
+    assert not voice_router._is_paid_provider(Settings(voice_tts_provider="edge_tts"), "tts")
+    assert not voice_router._is_paid_provider(Settings(voice_tts_provider="stub"), "tts")
+    # local speech-to-text is never billed per call
+    assert not voice_router._is_paid_provider(Settings(voice_stt_provider="faster_whisper"), "stt")
