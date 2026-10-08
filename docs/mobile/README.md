@@ -1,4 +1,4 @@
-# 了然 · Miru — Mobile Client Design Spec (index)
+# Miru — Mobile Client Design Spec (index)
 
 Design/blueprint for the **mobile-first client**. Grounded in the backend abilities
 ([../backend/](../backend/)) and the UX research foundation. Companion to the web dashboard
