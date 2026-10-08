@@ -113,6 +113,14 @@ class MonthRevenuePublished(_Template):
     kind: Literal["month_revenue_published"] = "month_revenue_published"
 
 
+class MaterialAnnouncementPublished(_Template):
+    """The company filed a 重大訊息 (material announcement) with the exchange. An event, not a
+    state: it says a filing exists - the notification quotes the filer's own subject line as data,
+    and never characterises it."""
+
+    kind: Literal["material_announcement"] = "material_announcement"
+
+
 RuleCondition = Annotated[
     ClosePrice
     | DailyChange
@@ -121,6 +129,7 @@ RuleCondition = Annotated[
     | AttentionListEntry
     | DispositionListEntry
     | MonthRevenuePublished
+    | MaterialAnnouncementPublished
     | MarginBalanceChange
     | EtfPremiumDiscount,
     Field(discriminator="kind"),
@@ -134,6 +143,7 @@ ConditionModel = (
     | AttentionListEntry
     | DispositionListEntry
     | MonthRevenuePublished
+    | MaterialAnnouncementPublished
     | MarginBalanceChange
     | EtfPremiumDiscount
 )
@@ -147,10 +157,16 @@ TW_ONLY_KINDS: Final = frozenset(
         "attention_entry",
         "disposition_entry",
         "month_revenue_published",
+        "material_announcement",
         "margin_balance_change",
         "etf_premium_discount",
     }
 )
+
+# Templates that report a discrete event rather than a state that stays true. A state template
+# fires on its false->true transition; an event is a new occurrence every day it happens, so
+# yesterday's filing must not silence today's.
+EVENT_KINDS: Final = frozenset({"material_announcement"})
 
 
 # Templates whose threshold is a value in the stock's own units (a price). They mean something only
@@ -170,6 +186,7 @@ _FLAG_PHRASE: Final = {
     "attention_entry": "列入注意股名單",
     "disposition_entry": "列入處置股名單",
     "month_revenue_published": "公布月營收",
+    "material_announcement": "公布重大訊息",
 }
 
 
@@ -207,6 +224,7 @@ def investor_label(investor: str) -> str:
 
 
 __all__ = [
+    "EVENT_KINDS",
     "MAX_HISTORY_DAYS",
     "NON_ADVICE_FOOTER",
     "PER_STOCK_KINDS",
@@ -219,6 +237,7 @@ __all__ = [
     "EtfPremiumDiscount",
     "InstitutionalStreak",
     "MarginBalanceChange",
+    "MaterialAnnouncementPublished",
     "MonthRevenuePublished",
     "RuleCondition",
     "TriggerMode",

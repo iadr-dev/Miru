@@ -15,6 +15,7 @@ export function presetsFor(market: Market, isEtf: boolean): AlertCondition[] {
       { kind: "attention_entry" },
       { kind: "disposition_entry" },
       { kind: "month_revenue_published" },
+      { kind: "material_announcement" },
       { kind: "institutional_streak", investor: "foreign", direction: "buy", days: 3 },
       { kind: "margin_balance_change", side: "margin", direction: "up", percent: 10 },
     );

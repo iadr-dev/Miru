@@ -75,6 +75,7 @@ from scheduler.models import (
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.store import SqlAlchemySchedulerStore
 from scheduler.templates import (
+    EVENT_KINDS,
     NON_ADVICE_FOOTER,
     ConditionModel,
     capability_of,
@@ -480,7 +481,8 @@ class SchedulerWorker:
             met_map[symbol] = evaluation.met
             if not evaluation.met:
                 continue
-            if rule.trigger_mode is not TriggerMode.EVERY_OCCURRENCE and was_met:
+            edge = rule.trigger_mode is not TriggerMode.EVERY_OCCURRENCE
+            if edge and was_met and rule.condition.kind not in EVENT_KINDS:
                 continue  # still true since the last evaluation — fire on the transition only
             if _in_cooldown(rule, state, now):
                 continue
@@ -492,7 +494,9 @@ class SchedulerWorker:
                 source_id=rule.id if rule.symbol else f"{rule.id}:{symbol}",
                 channels=channels,
                 title=f"{symbol} - {describe(rule.condition)}",
-                body=_safe_body(evaluation.message, rule.condition, symbol),
+                body=_safe_body(
+                    evaluation.message, rule.condition, symbol, evaluation.plain_message
+                ),
                 trigger_date=as_of,
                 deep_link={"route": "stock", "symbol": symbol},
                 hold_external=hold_external,
@@ -1027,14 +1031,23 @@ def _external_body(body: str) -> str:
     return text
 
 
-def _safe_body(message: str, condition: ConditionModel, symbol: str) -> str:
+def _safe_body(
+    message: str, condition: ConditionModel, symbol: str, plain_message: str | None = None
+) -> str:
     """The notification body with the non-advice footer, passed through the same output scan an
     interactive answer gets. The templates are fixed fact phrasing so this should never trip; if
     it ever does, fail closed to a minimal template instead of sending flagged text."""
     body = f"{message}\n{NON_ADVICE_FOOTER}"
-    if check_output(body, has_market_data=False).reason == "trading_language_redacted":
-        return f"{symbol} 的條件已達成：{describe(condition)}\n{NON_ADVICE_FOOTER}"
-    return body
+    if check_output(body, has_market_data=False).reason is None:
+        return body
+    # Any rewrite at all (trading language, a vendor name) means the text is not sent as is.
+    # A message that quotes third-party text retries once without the quote before giving up
+    # on the specifics - the fact that something was filed is still worth telling.
+    if plain_message is not None:
+        plain = f"{plain_message}\n{NON_ADVICE_FOOTER}"
+        if check_output(plain, has_market_data=False).reason is None:
+            return plain
+    return f"{symbol} 的條件已達成：{describe(condition)}\n{NON_ADVICE_FOOTER}"
 
 
 def as_utc(moment: datetime) -> datetime:

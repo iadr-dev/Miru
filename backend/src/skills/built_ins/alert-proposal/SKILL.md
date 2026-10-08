@@ -43,6 +43,8 @@ outputs: markdown
    - 列入注意股 → `attention_entry` (TW only)
    - 列入處置股 → `disposition_entry` (TW only)
    - 公布月營收 → `month_revenue_published` (TW only; it only says the figure was published)
+   - 公司公布重大訊息 → `material_announcement` (TW only; it only says a filing exists today, the
+     alert quotes the issuer's subject line and never interprets it)
    - 融資/融券餘額單日增減 X% → `margin_balance_change` (TW only)
    - ETF 折價/溢價達 X% → `etf_premium_discount` (TW ETF codes only; the NAV is an issuer estimate)
 3. If the user did not state the threshold the condition needs, ask for it with `ask_user`

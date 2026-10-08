@@ -24,6 +24,7 @@ describe("alerts API contract (real backend responses)", () => {
       "etf_premium_discount",
       "institutional_streak",
       "margin_balance_change",
+      "material_announcement",
       "month_revenue_published",
       "volume_surge",
     ]);

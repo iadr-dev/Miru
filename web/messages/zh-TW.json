@@ -1727,6 +1727,7 @@
           "attention_entry": "列入注意股",
           "disposition_entry": "列入處置股",
           "month_revenue_published": "公布月營收",
+          "material_announcement": "公司公布重大訊息",
           "margin_balance_change": "融資融券餘額變動",
           "etf_premium_discount": "ETF 折溢價"
         },
@@ -1798,7 +1799,8 @@
         "hint": {
           "attention_entry": "當這檔股票出現在交易所公布的注意股名單時通知你，不需要額外設定。",
           "disposition_entry": "當這檔股票出現在交易所公布的處置股名單時通知你，並附上處置期間，不需要額外設定。",
-          "month_revenue_published": "當這檔股票公布月營收時通知你；通知只說明已公布，實際數字請到個股頁查看。不需要額外設定。"
+          "month_revenue_published": "當這檔股票公布月營收時通知你；通知只說明已公布，實際數字請到個股頁查看。不需要額外設定。",
+          "material_announcement": "當這檔股票向交易所公布重大訊息時通知你；通知會引用公司公告的主旨原文，僅為資料，不含任何解讀。不需要額外設定。"
         },
         "marginSide": "項目",
         "marginSideOption": {
@@ -1854,6 +1856,7 @@
         "attention_entry": "列入注意股名單",
         "disposition_entry": "列入處置股名單",
         "month_revenue_published": "公布月營收",
+        "material_announcement": "公布重大訊息",
         "margin_balance_change": {
           "margin": {
             "up": "融資餘額單日增加達 {percent}%",

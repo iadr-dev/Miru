@@ -65,6 +65,7 @@ def test_generate(client: TestClient, settings: Settings) -> None:
         {"kind": "attention_entry"},
         {"kind": "disposition_entry"},
         {"kind": "month_revenue_published"},
+        {"kind": "material_announcement"},
         {"kind": "margin_balance_change", "side": "margin", "direction": "up", "percent": 10},
         {"kind": "etf_premium_discount", "direction": "premium", "percent": 1},
     ]
