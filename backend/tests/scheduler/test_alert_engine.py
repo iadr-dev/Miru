@@ -4,6 +4,7 @@ against an in-memory fake reader, no Parquet and no network."""
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -1013,3 +1014,29 @@ async def test_announcement_rule_fires_on_every_day_a_filing_lands(session_facto
     assert await signal(worker, cap, day(1)) == [rule.id]
     assert await signal(worker, cap, day(2)) == []
     assert len(await notifications(session_factory, user)) == 2
+
+
+def test_a_subject_cannot_carry_a_tappable_link() -> None:
+    r = FakeReader()
+    for sneaky in (
+        "詳見 https://evil.example/pay 公告",
+        "請至 www.evil.example 查詢",
+        "連絡 ceo@evil.example",
+        "伺服器 192.168.1.1 公告",
+    ):
+        r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject=sneaky)])
+        hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+        assert hit is not None
+        quoted = hit.message.split("最新主旨：")[1].split("（你設定")[0]
+        assert "://" not in quoted
+        assert not re.search(r"[A-Za-z0-9]\.[A-Za-z]", quoted), quoted
+        assert "@" not in quoted
+        assert "192.168" not in quoted
+
+
+def test_ordinary_numbers_in_a_subject_survive() -> None:
+    r = FakeReader()
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject="每股配發現金 3.5 元")])
+    hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert hit is not None
+    assert "3.5" in hit.message

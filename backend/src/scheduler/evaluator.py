@@ -13,6 +13,7 @@ Edge-triggering, cooldown and delivery are the worker's concern.
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Protocol
 
@@ -273,9 +274,20 @@ _SUBJECT_MAX = 40
 _SUBJECT_DROP = {ord(ch): " " for ch in "<>[]()`*_#\\|「」『』\"'。！？!?；;"}
 
 
+# Chat and mail clients turn a bare URL, domain or address into a tappable link, which would make a
+# filing's subject a phishing vector. Break those shapes up: a scheme/path/mailbox separator becomes
+# a space, a dot before letters (a domain) becomes a middle dot, and an IPv4 quad is removed.
+_IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+_URL_SEPARATOR = re.compile(r"[:/@\\]+")
+_DOMAIN_DOT = re.compile(r"\.(?=[A-Za-z])")
+
+
 def _quoted_subject(raw: object) -> str:
     text = "".join(ch if ch.isprintable() else " " for ch in str(raw or ""))
-    text = " ".join(text.translate(_SUBJECT_DROP).split())
+    text = text.translate(_SUBJECT_DROP)
+    text = _IPV4.sub(" ", text)
+    text = _DOMAIN_DOT.sub("·", _URL_SEPARATOR.sub(" ", text))
+    text = " ".join(text.split())
     return text if len(text) <= _SUBJECT_MAX else f"{text[:_SUBJECT_MAX]}…"
 
 
