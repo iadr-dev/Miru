@@ -1251,16 +1251,23 @@
         "caveat": "This is only a proposal - it is remembered once you tap Save. Memory is background you told us; answers still re-check the data."
       },
       "watchlistProposal": {
-        "title": "Add to watchlist",
-        "group": "Watchlist group",
+        "title": { "add": "Add to watchlist", "remove": "Remove from watchlist" },
+        "groupFor": { "stock": "Group for the stocks", "etf": "Group for the ETFs" },
+        "newGroup": "+ New group",
+        "newGroupName": "New group name",
         "add": "Add",
         "adding": "Adding…",
+        "remove": "Remove",
+        "removing": "Removing…",
         "dismiss": "Skip",
         "dismissed": "Skipped this proposal.",
         "added": "Added to your watchlist",
-        "alreadyIn": "Already in “{group}”",
-        "noGroup": "No matching watchlist group yet - create one in the sidebar watchlist first.",
-        "errorGeneric": "Couldn't add it. Please try again."
+        "removed": "Removed from your watchlist",
+        "unknownSymbol": "Unknown code - won't be added",
+        "removeFrom": "{symbol}: remove from “{groups}”",
+        "skipNotIn": "{symbol}: not in your watchlist",
+        "notInWatchlist": "None of these are in your watchlist right now.",
+        "errorGeneric": "Not everything went through. Please try again (what finished is kept)."
       },
       "scheduleProposal": {
         "title": "Scheduled briefing proposal",
