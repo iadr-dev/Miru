@@ -118,11 +118,15 @@ Types:
   value shapes such as `sk-…`/bearer tokens), raw payloads, trading language, and - for `preference`
   only - tone/format instructions (TL;DR, bullets, 語氣, 簡潔, …), which are refused with a pointer to
   Tone settings.
-- **Watchlist additions from chat are built, propose-only** (`propose_watchlist_add`, skill
-  `watchlist-proposal`, card `watchlist_proposal`): the card lists the user's own groups for that
-  market / stock-or-ETF class, and the frontend calls the ordinary
-  `PUT /watchlists/{id}/items/{symbol}` (idempotent) when the user taps 加入. The agent still has no
-  tool that writes the watchlist. Removing or reordering from chat is not built.
+- **Watchlist changes from chat are built, propose-only** (`propose_watchlist_change`, skill
+  `watchlist-proposal`, card `watchlist_proposal`): `action` add|remove, up to 10 same-market
+  symbols, optional `group_name` (add). The skill also allowlists `get_symbol_directory_search`, so a
+  company name is resolved to a code from the roster instead of guessed, and the card shows each
+  resolved name (an unknown code is flagged and left out). For an add the user picks - or creates -
+  a group per stock/ETF class (a named group that does not exist is pre-filled as "new"); for a
+  remove the card lists which groups hold each symbol. The frontend then calls the ordinary
+  watchlist routes (create group, `PUT`/`DELETE` item - both idempotent). The agent still has no
+  tool that writes the watchlist. Moving between groups and reordering from chat are not built.
 - Earlier note on the watchlist side: ADR-0027 describes an `add_to_watchlist` agent tool (write,
   explicit-utterance gated) and a read-only `get_watchlist` MCP tool. Neither exists in
   `tools/` or `mcp/` today — watchlist reads/writes are exposed only as the `/watchlists/*` REST
