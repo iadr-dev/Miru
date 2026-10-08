@@ -55,6 +55,7 @@ async def build_scheduler_from_settings(settings: Settings | None = None) -> Sch
         brief_tool=tool_registry.get_tool("get_morning_brief"),
         public_base_url=resolved.webhook_base_url,
         link_secret=resolved.jwt_secret_key,
+        settings=resolved,
         router=router,
         entitlement_resolver=EntitlementResolver(tls_policy=resolved.tls_policy),
         channels=build_default_channels(resolved, live=True),

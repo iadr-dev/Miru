@@ -147,7 +147,10 @@ together they are "capability resolution"):
    read-aloud are not tier-gated and have no daily quota while they run on free providers (local
    Whisper, Edge TTS); every user gets a 20 requests/min abuse bound, and a daily cap of 100 per
    kind (`429 voice_limit_reached`) applies only if a provider that bills per call (TTS `openai`)
-   is configured, — [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
+   is configured — [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
+   **Model picker (platform key):** a Free account may pick only the light models
+   (`FREE_PLATFORM_MODELS`; others -> `403 model_requires_upgrade`, shown locked in the picker via
+   `entitlements.platform_models`); paid tiers and BYOK callers (their own key) are unrestricted.
 3. **Per-turn consent** — a request-scoped toggle the *user* flips for that turn (e.g. the
    web-search toggle, [03-tools.md](03-tools.md)): opt-in, not tier.
 

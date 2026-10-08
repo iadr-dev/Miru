@@ -559,3 +559,94 @@ async def test_an_empty_watchlist_is_reported_not_run(session_factory) -> None:
         job = (await SqlAlchemySchedulerStore(session).list_jobs(user_id=user))[0]
     assert job.status is JobStatus.ERROR
     assert job.status_reason == "watchlist_empty"
+
+
+class _KeyProbeOrchestrator(_StubOrchestrator):
+    """Records which LLM key was in scope while the skill ran."""
+
+    def __init__(self, answer: str) -> None:
+        super().__init__(answer)
+        self.seen: list[object] = []
+
+    async def run_skill(self, skill_ref: str, message: str, **kwargs: object) -> OrchestratorResult:
+        from llm.registry import _byok  # noqa: PLC0415
+
+        self.seen.append(_byok.get())
+        return await super().run_skill(skill_ref, message, **kwargs)
+
+
+async def _save_key(session_factory, settings, user_id: str, provider: str) -> None:
+    from accounts.crypto import SecretCipher  # noqa: PLC0415
+    from accounts.models import SecretKind  # noqa: PLC0415
+    from accounts.secrets import SqlAlchemySecretStore  # noqa: PLC0415
+
+    async with session_factory() as session:
+        await SqlAlchemySecretStore(session, SecretCipher.from_settings(settings)).put(
+            user_id=user_id, kind=SecretKind.LLM_KEY, provider=provider, plaintext="sk-user-key"
+        )
+        await session.commit()
+
+
+def _byok_settings():
+    from cryptography.fernet import Fernet  # noqa: PLC0415
+
+    from config.settings import Settings  # noqa: PLC0415
+
+    return Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        secret_encryption_keys=Fernet.generate_key().decode(),
+    )
+
+
+async def test_a_scheduled_run_uses_the_owners_own_key_and_skips_the_chat_cap(
+    session_factory,
+) -> None:
+    from llm.registry import agent_model_spec  # noqa: PLC0415
+
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    provider, _ = agent_model_spec(None, settings)
+    await _save_key(session_factory, settings, user, provider)
+    await _make_job(session_factory, user)
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+    ctx = _ctx(
+        session_factory,
+        orchestrator=orch,
+        router=_StubRouter({}),
+        leader=AlwaysLeader(),
+        quota_gate=DenyAllQuotaGate(),  # would refuse a platform-key run
+    )
+    from dataclasses import replace  # noqa: PLC0415
+
+    worker = SchedulerWorker(replace(ctx, settings=settings))
+    assert len(await worker.run_due_jobs()) == 1
+    (seen,) = orch.seen
+    assert seen is not None
+    assert seen.provider_id == provider  # type: ignore[attr-defined]
+
+
+async def test_a_scheduled_run_never_falls_back_to_the_platform_key(session_factory) -> None:
+    from dataclasses import replace  # noqa: PLC0415
+
+    from llm.registry import agent_model_spec  # noqa: PLC0415
+
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    default_provider, _ = agent_model_spec(None, settings)
+    other = "gemini" if default_provider != "gemini" else "anthropic"
+    await _save_key(session_factory, settings, user, other)
+    job = await _make_job(session_factory, user)
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+    ctx = _ctx(
+        session_factory,
+        orchestrator=orch,
+        router=_StubRouter({}),
+        leader=AlwaysLeader(),
+        quota_gate=AllowAllQuotaGate(),
+    )
+    worker = SchedulerWorker(replace(ctx, settings=settings))
+    assert await worker.run_due_jobs() == []
+    assert orch.calls == []
+    async with session_factory() as session:
+        refreshed = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
+        assert refreshed.status is JobStatus.SKIPPED_QUOTA

@@ -4,6 +4,7 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -191,6 +192,7 @@ export function HolderAccumulationRows({
           ),
         )}
       </ul>
+      <LockedRowsNote rows={rows} />
     </>
   );
 }

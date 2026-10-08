@@ -33,6 +33,8 @@ from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker
 from events.rate_limit import AsyncRateLimiter
 from orchestrator.orchestrator import Orchestrator
+from payments.service import BillingService
+from payments.store import SqlAlchemySubscriptionStore
 from personality.registry import PersonalityRegistry
 from skills.registry import SkillRegistry
 from tools.base import ToolContext, dispatch_tool
@@ -103,10 +105,26 @@ def _extract_token(request: Request) -> str | None:
     return request.cookies.get(ACCESS_TOKEN_COOKIE)
 
 
+async def _load_user(
+    session: AsyncSession, settings: Settings, store: UserStore, user_id: str
+) -> User:
+    """Load the user, dropping a paid tier whose payment has been failing past the grace window -
+    the one entitlement change that no webhook announces (it is the absence of a payment)."""
+    user = await store.get(user_id=user_id)
+    if user.tier.value == "free":
+        return user
+    return await BillingService(
+        store=SqlAlchemySubscriptionStore(session),
+        user_store=store,
+        settings=settings,
+    ).lapse_if_overdue(user)
+
+
 async def optional_user(
     request: Request,
     state: AppState = Depends(get_state),
     store: UserStore = Depends(get_user_store),
+    session: AsyncSession = Depends(get_session),
 ) -> User | None:
     """Resolve the caller to a `User`, or `None` if unauthenticated — never raises on a
     missing/invalid credential (public routes tolerate anonymous callers)."""
@@ -115,7 +133,7 @@ async def optional_user(
         return None
     try:
         user_id = decode_access_token(token, settings=state.settings)
-        return await store.get(user_id=user_id)
+        return await _load_user(session, state.settings, store, user_id)
     except (InvalidAccessTokenError, UserNotFoundError):
         return None
 
@@ -124,6 +142,7 @@ async def require_user(
     request: Request,
     state: AppState = Depends(get_state),
     store: UserStore = Depends(get_user_store),
+    session: AsyncSession = Depends(get_session),
 ) -> User:
     """Resolve the caller to a `User` or raise 401 — for routes that require sign-in (AI chat,
     anything user-scoped)."""
@@ -137,7 +156,7 @@ async def require_user(
         )
     try:
         user_id = decode_access_token(token, settings=state.settings)
-        return await store.get(user_id=user_id)
+        return await _load_user(session, state.settings, store, user_id)
     except (InvalidAccessTokenError, UserNotFoundError) as exc:
         raise ApiError(
             status_code=status.HTTP_401_UNAUTHORIZED,

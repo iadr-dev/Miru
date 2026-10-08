@@ -79,6 +79,8 @@
   "market": {
     "title": "Market",
     "teaser": {
+      "rowsLocked": "Some ranks are available on a higher plan.",
+      "rowsCta": "See plans",
       "cta": "Unlock full data ({tier})",
       "tier": {
         "premium": "Premium",
@@ -1321,6 +1323,7 @@
       "voiceError": "Couldn't transcribe your recording. Please try again.",
       "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
       "modelMenu": {
+        "locked": "Paid plan",
         "trigger": "Model: {model}",
         "default": "Server default",
         "category": {

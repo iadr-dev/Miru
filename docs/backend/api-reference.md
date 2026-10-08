@@ -368,6 +368,7 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 | GET | `/billing/subscription` | Current subscription; **reconciles-on-read** vs Paddle (self-heals a missed webhook) |
 | POST | `/billing/portal?purpose=overview\|payment` | Link into Paddle's customer portal, via a portal session: `overview` = portal home (plan, payments, cancel); `payment` = the update-payment-method form (past-due fix). Falls back to the subscription's own management links |
 | POST | `/billing/change-plan` | Move the live subscription to another `{tier, interval, byok}` (Paddle's PATCH subscription, prorated immediately); local row + tier refreshed from Paddle at once. 404 `no_subscription`, 409 `same_plan` / `cancel_scheduled`, 400 `unknown_plan` |
+| POST | `/billing/sync` | Recover a checkout whose webhook never arrived: body `{transaction_id}`; adopts the subscription only if that Paddle transaction was opened for the caller. Returns the subscription (or `null` while the payment has none yet) |
 | POST | `/billing/resume` | Undo a scheduled cancellation (clears Paddle's `scheduled_change`) **or** restart a paused subscription. 409 `nothing_to_resume` if it is neither |
 | GET | `/billing/invoice/{transaction_id}` | Link to Paddle's invoice PDF; only for a transaction in the caller's own history (404 otherwise) |
 | GET | `/billing/history` | **Proxies Paddle's transactions API** (no local invoices mirror) |

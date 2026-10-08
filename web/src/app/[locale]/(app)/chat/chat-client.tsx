@@ -328,6 +328,9 @@ export function ChatClient(): ReactNode {
     keysQuery.data !== undefined && keysQuery.data.length > 0
       ? keysQuery.data.map((k) => k.provider)
       : null;
+  // Without own keys the turn runs on the shared key, which only covers the plan's models.
+  const platformModels =
+    byokProviders === null ? (meQuery.data?.entitlements.platform_models ?? null) : null;
   const autoSwitchedRef = useRef<string | null>(null);
   useEffect(() => {
     if (byokProviders === null || (threadId !== null && threadQuery.isLoading)) {
@@ -343,6 +346,19 @@ export function ChatClient(): ReactNode {
       onModelOverrideChange(next);
     }
   }, [byokProviders, modelOverride, threadId, threadQuery.isLoading, onModelOverrideChange]);
+
+  // A thread left on a model this plan doesn't include (e.g. after a downgrade) moves to one it does.
+  useEffect(() => {
+    const fallback = platformModels?.[0];
+    if (
+      fallback !== undefined &&
+      modelOverride !== null &&
+      !platformModels?.includes(modelOverride) &&
+      !(threadId !== null && threadQuery.isLoading)
+    ) {
+      onModelOverrideChange(fallback);
+    }
+  }, [platformModels, modelOverride, threadId, threadQuery.isLoading, onModelOverrideChange]);
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col">
@@ -386,6 +402,7 @@ export function ChatClient(): ReactNode {
         onWebSearchEnabledChange={setWebSearchEnabled}
         deepResearchLocked={meQuery.data !== undefined && !canDeepResearch}
         byokProviders={byokProviders}
+        platformModels={platformModels}
         deepResearch={
           canDeepResearch
             ? { enabled: deepResearchEnabled, onChange: setDeepResearchEnabled }

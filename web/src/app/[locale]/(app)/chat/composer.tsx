@@ -8,6 +8,7 @@ import {
   CircleNotchIcon,
   FileIcon,
   GlobeIcon,
+  LockIcon,
   MagnifyingGlassIcon,
   MicrophoneIcon,
   PaperclipIcon,
@@ -268,6 +269,7 @@ export function Composer({
   deepResearch,
   deepResearchLocked,
   byokProviders,
+  platformModels,
   onOpenVoiceMode,
 }: {
   streaming: boolean;
@@ -285,6 +287,9 @@ export function Composer({
   /** Providers the caller has their own key for, or null when they have none. With keys, only
    * those providers' models can be used (they run on the caller's key). */
   byokProviders: string[] | null;
+  /** Models the caller's plan includes on the shared key, or null for no restriction. The rest
+   * show locked with the way to upgrade. Ignored with own keys (their turns run on their key). */
+  platformModels: string[] | null;
   onOpenVoiceMode: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
@@ -686,6 +691,7 @@ export function Composer({
               label={t("model")}
               selected={modelOptionFor(modelOverride)}
               allowedProviders={byokProviders}
+              platformModels={platformModels}
               onSelect={onModelOverrideChange}
             />
           </div>
@@ -1204,14 +1210,17 @@ function ModelMenu({
   label,
   selected,
   allowedProviders,
+  platformModels,
   onSelect,
 }: {
   label: string;
   selected: ModelOption | null;
   allowedProviders: string[] | null;
+  platformModels: string[] | null;
   onSelect: (modelId: string) => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const selectedLabel = selected?.label ?? t("modelMenu.default");
   // A caller with their own keys can only run those providers' models.
@@ -1257,22 +1266,36 @@ function ModelMenu({
               <DropdownMenu.Label className="px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
                 {t(`modelMenu.category.${category.key}`)}
               </DropdownMenu.Label>
-              {category.models.map((model) => (
-                <DropdownMenu.Item
-                  key={model.id}
-                  onSelect={() => onSelect(model.id)}
-                  className={cn(
-                    "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
-                    "text-[var(--text)] text-sm outline-none transition-colors",
-                    "data-[highlighted]:bg-[var(--surface-2)]",
-                  )}
-                >
-                  <span className="flex-1">{model.label}</span>
-                  {model.id === selected?.id ? (
-                    <CheckIcon size={14} weight="regular" className="text-[var(--accent)]" />
-                  ) : null}
-                </DropdownMenu.Item>
-              ))}
+              {category.models.map((model) => {
+                const locked = platformModels !== null && !platformModels.includes(model.id);
+                return (
+                  <DropdownMenu.Item
+                    key={model.id}
+                    onSelect={() =>
+                      locked ? router.push("/settings/billing") : onSelect(model.id)
+                    }
+                    className={cn(
+                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                      "text-sm outline-none transition-colors",
+                      locked ? "text-[var(--text-muted)]" : "text-[var(--text)]",
+                      "data-[highlighted]:bg-[var(--surface-2)]",
+                    )}
+                  >
+                    <span className="flex-1">{model.label}</span>
+                    {locked ? (
+                      <LockIcon
+                        size={14}
+                        weight="regular"
+                        aria-label={t("modelMenu.locked")}
+                        className="text-[var(--text-muted)]"
+                      />
+                    ) : null}
+                    {model.id === selected?.id ? (
+                      <CheckIcon size={14} weight="regular" className="text-[var(--accent)]" />
+                    ) : null}
+                  </DropdownMenu.Item>
+                );
+              })}
             </div>
           ))}
         </DropdownMenu.Content>

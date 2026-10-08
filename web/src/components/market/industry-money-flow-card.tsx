@@ -4,6 +4,7 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type { IndustryChainMoneyFlowRow } from "@/types/market";
@@ -77,15 +78,18 @@ function IndustryMoneyFlowRows({
   const locale = useLocale();
 
   return (
-    <ul className="flex flex-col gap-2.5">
-      {rows.map((row) =>
-        row.locked ? (
-          <LockedIndustryMoneyFlowRow key={row.rank} rank={row.rank} />
-        ) : (
-          <IndustryMoneyFlowRowItem key={row.industry} row={row} locale={locale} t={t} />
-        ),
-      )}
-    </ul>
+    <>
+      <ul className="flex flex-col gap-2.5">
+        {rows.map((row) =>
+          row.locked ? (
+            <LockedIndustryMoneyFlowRow key={row.rank} rank={row.rank} />
+          ) : (
+            <IndustryMoneyFlowRowItem key={row.industry} row={row} locale={locale} t={t} />
+          ),
+        )}
+      </ul>
+      <LockedRowsNote rows={rows} />
+    </>
   );
 }
 

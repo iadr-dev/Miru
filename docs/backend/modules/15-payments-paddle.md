@@ -52,7 +52,7 @@ not parsed JSON) and processes:
 | `subscription.created` / `subscription.activated` | set `tier` + `byok` from price_id; store subscription |
 | `subscription.updated` | re-map tier/interval/byok (plan change, BYOK toggle, proration = Paddle's job). If it carries `scheduled_change: {action: cancel, effective_at}`, **display "cancels on <date>" but do NOT downgrade yet** (status stays `active`) |
 | `subscription.canceled` | **the actual downgrade** → `tier=free`, re-mask sponsor. Fires *at* `effective_at` for a scheduled cancel, or immediately when Paddle's dunning exhausts a `past_due` sub. |
-| `subscription.past_due` | grace state; entitlements unchanged during Paddle's dunning retry window |
+| `subscription.past_due` | grace state; entitlements unchanged for `PAST_DUE_GRACE` (7 days) while Paddle retries. Past that the tier lapses to free - evaluated when the user is loaded (`api/dependencies._load_user`), since no webhook announces the absence of a payment - and a successful payment's `subscription.updated`/`activated` restores it |
 | `subscription.paused` | billing is stopped, so nothing is entitled: `tier=free`, status `paused`, the row (and its plan) is kept for the resume. A `subscription.updated` that reports `status: paused` is treated the same |
 | `subscription.resumed` | restores the plan tier from the price (`status: active`) |
 
@@ -66,6 +66,12 @@ not parsed JSON) and processes:
 - On downgrade to `free`, sponsor data reverts to masked teaser automatically (governance §4).
 - Card-update, invoices/PDFs, dunning, proration, tax, and **refunds/disputes are handled by
   Paddle** (MoR); the app reacts to refunds only via `subscription.canceled`. We build none of it.
+
+**Lost first webhook.** The checkout's transaction id is kept by the page; if the subscription has
+not appeared after two polls it calls `POST /billing/sync {transaction_id}`. The server reads the
+transaction from Paddle, adopts the subscription it created **only if** the transaction's
+`custom_data.user_id` is the caller (one account can never claim another's purchase), and sets the
+tier. Same upsert as the webhook, so the late webhook is then a no-op.
 
 ## 4. BYOK coupling
 

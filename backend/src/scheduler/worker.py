@@ -39,16 +39,20 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from accounts.byok import ByokKeyRequiredError, resolve_byok_override
 from accounts.hooks import EntitlementResolver
 from accounts.models import User
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError
 from agent.loop import RichCard
+from config.settings import Settings
 from conversation.models import CaveatBlock, MessageBlockType, RichCardBlock, TextBlock, TurnRole
 from conversation.store import SqlAlchemyConversationStore, ThreadNotFoundError
 from dataaccess.router import DataAccessRouter
 from events.bus import EventBus
 from governance.textscan import check_output
 from ingest.leader import LeaderElection, get_default_leader_election
+from llm.registry import ByokOverride, byok_scope
+from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import Orchestrator, PersonalityContext
 from scheduler.delivery.base import (
     DeliveryChannel,
@@ -83,7 +87,8 @@ from schemas.enums import Capability, Market
 from schemas.schedule_templates import MAX_TARGETS, WATCHLIST_INPUT
 from tools.base import Tool, dispatch_tool
 from tools.morning_brief_models import GetMorningBriefOutput, MorningBriefInput
-from usage.store import SqlAlchemyUsageStore
+from usage.llm_usage import write_model_usage
+from usage.store import SqlAlchemyUsageStore, write_turn_usage
 
 logger = structlog.get_logger(__name__)
 
@@ -138,6 +143,8 @@ class SchedulerContext:
     # Public HTTPS base URL and signing secret for the one-click email unsubscribe link.
     public_base_url: str | None = None
     link_secret: str | None = None
+    # Needed to resolve the owner's own LLM key (BYOK); None runs every job on the platform key.
+    settings: Settings | None = None
 
 
 class SchedulerWorker:
@@ -191,7 +198,26 @@ class SchedulerWorker:
                 self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
                 return False
 
-            if not await self._ctx.quota_gate.allows(user_id=user.id, tier=user.tier):
+            # A user with saved LLM keys runs on THEIR key (and so is not held to the chat cap);
+            # one whose keys don't cover the default model is skipped, never moved onto ours.
+            try:
+                byok = await self._byok_for(session, user)
+            except ByokKeyRequiredError:
+                await store.set_job_status(
+                    job_id=job.id,
+                    status=JobStatus.SKIPPED_QUOTA,
+                    last_run=now,
+                    next_run=self._next_run(job, now),
+                    reason="byok_key_required",
+                )
+                await session.commit()
+                self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
+                logger.info("schedule_job_skipped_byok_key", job_id=job.id)
+                return False
+
+            if byok is None and not await self._ctx.quota_gate.allows(
+                user_id=user.id, tier=user.tier
+            ):
                 # Advance next_run too: with a real resolver the job stays "due" otherwise, and
                 # an over-quota job must be skipped once per cadence, not retried every poll.
                 await store.set_job_status(
@@ -241,18 +267,19 @@ class SchedulerWorker:
                 data={"job_id": job.id, "skill": job.action.skill_ref},
             )
             try:
-                result = await self._ctx.orchestrator.run_skill(
-                    job.action.skill_ref,
-                    self._job_message(job, inputs),
-                    tool_context=tool_context,
-                    event_bus=self._ctx.event_bus,
-                    turn_id=job.id,
-                    # A scheduled run has no live thread to carry a per-thread override, so the
-                    # owner's own personality preference is the only resolvable level below the
-                    # default — same precedence the interactive path uses, just missing the
-                    # (absent) thread tier.
-                    personality=PersonalityContext(user_preference=user.personality_id),
-                )
+                with byok_scope(byok):
+                    result = await self._ctx.orchestrator.run_skill(
+                        job.action.skill_ref,
+                        self._job_message(job, inputs),
+                        tool_context=tool_context,
+                        event_bus=self._ctx.event_bus,
+                        turn_id=job.id,
+                        # A scheduled run has no live thread to carry a per-thread override, so
+                        # the owner's own personality preference is the only resolvable level
+                        # below the default — same precedence the interactive path uses, just
+                        # missing the (absent) thread tier.
+                        personality=PersonalityContext(user_preference=user.personality_id),
+                    )
             except Exception as exc:
                 await store.set_job_status(
                     job_id=job.id,
@@ -271,6 +298,13 @@ class SchedulerWorker:
                 text=result.final_text,
                 cards=result.rich_cards,
                 job=job,
+            )
+            await self._record_usage(
+                session,
+                user_id=user.id,
+                run_id=f"{job.id}:{now.isoformat()}",
+                result=result,
+                byok=byok is not None,
             )
             await self._deliver(
                 store,
@@ -754,6 +788,48 @@ class SchedulerWorker:
             retryable=receipt.retryable,
         )
 
+    async def _byok_for(self, session: AsyncSession, user: User) -> ByokOverride | None:
+        """The owner's own key and default model for this run, or None to use the platform's."""
+        if self._ctx.settings is None:
+            return None
+        return await resolve_byok_override(
+            session, self._ctx.settings, user_id=user.id, model_override=None
+        )
+
+    @staticmethod
+    async def _record_usage(
+        session: AsyncSession,
+        *,
+        user_id: str,
+        run_id: str,
+        result: OrchestratorResult,
+        byok: bool,
+    ) -> None:
+        """Write the run's model usage to the same ledger interactive turns use, so scheduled
+        runs show on the owner's usage page. One id per run (a job fires many times). Best-effort:
+        a failed write is rolled back and logged, never failing the run."""
+        usage = result.usage
+        if usage is None:
+            return
+        try:
+            await write_turn_usage(
+                session,
+                user_id=user_id,
+                turn_id=run_id,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                tool_calls=usage.tool_calls,
+                finmind_calls=usage.finmind_calls,
+                cost_micros=usage.cost_micros,
+            )
+            await write_model_usage(
+                session, user_id=user_id, turn_id=run_id, models=usage.models, byok=byok
+            )
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            logger.warning("schedule_usage_record_failed", run_id=run_id, error=repr(exc))
+
     async def _load_user(self, session: AsyncSession, user_id: str) -> User | None:
         try:
             return await SqlAlchemyUserStore(session).get(user_id=user_id)
@@ -1022,6 +1098,7 @@ def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collabora
     brief_tool: Tool | None = None,
     public_base_url: str | None = None,
     link_secret: str | None = None,
+    settings: Settings | None = None,
 ) -> SchedulerWorker:
     """Assemble a worker with the single-process defaults (always-leader). The quota gate defaults
     to the real `UsageQuotaGate` over the same durable daily-chat counter interactive turns use, so
@@ -1041,6 +1118,7 @@ def build_scheduler_worker(  # noqa: PLR0913 — one seam per injected collabora
             brief_tool=brief_tool,
             public_base_url=public_base_url,
             link_secret=link_secret,
+            settings=settings,
         )
     )
 

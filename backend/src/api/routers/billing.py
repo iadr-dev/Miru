@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
@@ -211,6 +211,29 @@ async def _subscription_response(
             has_llm_key=await _has_llm_key(session, settings, user_id=user_id),
         )
     return SubscriptionResponse(subscription=record, byok_active=byok)
+
+
+class SyncRequest(BaseModel):
+    transaction_id: str = Field(min_length=1, max_length=100)
+
+
+@router.post("/billing/sync")
+async def sync_checkout(
+    body: SyncRequest,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+    client: PaddleClient = Depends(get_billing_client),
+) -> SubscriptionResponse:
+    """Recover a checkout whose webhook never arrived: look the transaction up at Paddle and adopt
+    the subscription it created, provided the transaction was opened for this very account."""
+    try:
+        record = await _service(session, settings, client=client).adopt_transaction(
+            user=user, transaction_id=body.transaction_id
+        )
+    except PaddleApiError as exc:
+        raise _provider_error("Could not confirm the payment yet.") from exc
+    return await _subscription_response(session, settings, user_id=user.id, record=record)
 
 
 def _provider_error(message: str) -> ApiError:

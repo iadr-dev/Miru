@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
 from api.attachments import AttachmentInput, process_attachments
-from api.byok import resolve_byok
+from api.byok import enforce_platform_model, resolve_byok
 from api.dependencies import (
     AppState,
     get_session,
@@ -78,12 +78,9 @@ async def agent_query(
     ctx = tool_context_for(user, state)
     # Decide BYOK first (it needs the model the turn will use), then let the gate act on that one
     # decision - a refusal here happens before anything is claimed.
-    byok = await resolve_byok(
-        session,
-        settings,
-        user_id=user.id,
-        model_override=await _model_for_turn(store, user.id, body),
-    )
+    model = await _model_for_turn(store, user.id, body)
+    byok = await resolve_byok(session, settings, user_id=user.id, model_override=model)
+    enforce_platform_model(user, model, byok=byok is not None)
     await enforce_pre_turn_gate(
         state, session, user, deep_research=body.deep_research, byok=byok is not None
     )
