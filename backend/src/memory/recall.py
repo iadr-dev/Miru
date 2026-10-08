@@ -53,7 +53,7 @@ def _render_memory_line(memory: Memory) -> str:
     return f"- [{memory.type.value}] {memory.key}: {memory.content}"
 
 
-async def recall(  # noqa: PLR0913 — one field per recall-scoping dimension
+async def recall_with_ids(  # noqa: PLR0913 — one field per recall-scoping dimension
     *,
     memory_store: MemoryStore,
     watchlist_store: WatchlistStoreProtocol | None,
@@ -61,10 +61,11 @@ async def recall(  # noqa: PLR0913 — one field per recall-scoping dimension
     thread_id: str | None,
     query: str,
     max_memories: int = 5,
-) -> str | None:
+) -> tuple[str | None, list[Memory]]:
     """Select up to `max_memories` relevant long-term memories plus the watchlist snapshot
-    projection, and render the compact memory block — or `None` if there is nothing to
-    recall, so the caller never injects an empty/near-empty system message."""
+    projection, and render the compact memory block - or `None` if there is nothing to
+    recall, so the caller never injects an empty/near-empty system message. Also returns the
+    memories it chose, so the caller can show the user which ones informed the answer."""
     memories = await memory_store.list(user_id=user_id)
     query_tokens = _tokenize(query)
 
@@ -100,8 +101,29 @@ async def recall(  # noqa: PLR0913 — one field per recall-scoping dimension
     lines.extend(_render_memory_line(memory) for memory in selected)
 
     if not lines:
-        return None
-    return _MEMORY_BLOCK_PREFACE + "\n" + "\n".join(lines)
+        return None, []
+    return _MEMORY_BLOCK_PREFACE + "\n" + "\n".join(lines), selected
 
 
-__all__ = ["recall"]
+async def recall(  # noqa: PLR0913 — one field per recall-scoping dimension
+    *,
+    memory_store: MemoryStore,
+    watchlist_store: WatchlistStoreProtocol | None,
+    user_id: str,
+    thread_id: str | None,
+    query: str,
+    max_memories: int = 5,
+) -> str | None:
+    """The rendered memory block alone (see `recall_with_ids`)."""
+    block, _ = await recall_with_ids(
+        memory_store=memory_store,
+        watchlist_store=watchlist_store,
+        user_id=user_id,
+        thread_id=thread_id,
+        query=query,
+        max_memories=max_memories,
+    )
+    return block
+
+
+__all__ = ["recall", "recall_with_ids"]

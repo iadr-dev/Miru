@@ -21,6 +21,7 @@ from accounts.models import User
 from api.dependencies import get_session, require_user
 from api.errors import ApiError
 from memory.models import Memory, MemoryGovernanceError, MemoryScope, MemoryType
+from memory.settings import memory_enabled, set_memory_enabled
 from memory.store import SqlAlchemyMemoryStore
 from memory.watchlists import (
     StaleWatchlistVersionError,
@@ -53,13 +54,93 @@ def _watchlist_store(session: AsyncSession = Depends(get_session)) -> WatchlistS
 # ---- memory --------------------------------------------------------------------------------
 
 
+def _searchable_text(memory: Memory) -> str:
+    values = [memory.key, *(str(v) for v in memory.content.values())]
+    return " ".join(values).lower()
+
+
 @router.get("/memory")
 async def list_memory(
     scope: MemoryScope | None = Query(None),
+    q: str | None = Query(None, max_length=100),
     user: User = Depends(require_user),
     store: SqlAlchemyMemoryStore = Depends(_memory_store),
 ) -> dict[str, list[Memory]]:
-    return {"memories": await store.list(user_id=user.id, scope=scope)}
+    """The caller's memories, most recently changed first; `q` keeps the ones whose key or text
+    contains it."""
+    memories = await store.list(user_id=user.id, scope=scope)
+    needle = (q or "").strip().lower()
+    if needle:
+        memories = [m for m in memories if needle in _searchable_text(m)]
+    memories.sort(key=lambda m: m.updated_at, reverse=True)
+    return {"memories": memories}
+
+
+class MemorySettings(BaseModel):
+    enabled: bool
+
+
+@router.get("/memory/settings")
+async def get_memory_settings(
+    user: User = Depends(require_user), session: AsyncSession = Depends(get_session)
+) -> MemorySettings:
+    return MemorySettings(enabled=await memory_enabled(session, user_id=user.id))
+
+
+@router.put("/memory/settings")
+async def put_memory_settings(
+    body: MemorySettings,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+) -> MemorySettings:
+    """Pause or resume long-term memory. Pausing keeps what is stored; it just stops being used."""
+    await set_memory_enabled(session, user_id=user.id, enabled=body.enabled)
+    return body
+
+
+class ClearMemoryResponse(BaseModel):
+    deleted: int
+
+
+@router.delete("/memory")
+async def clear_memory(
+    scope: MemoryScope | None = Query(None),
+    user: User = Depends(require_user),
+    store: SqlAlchemyMemoryStore = Depends(_memory_store),
+) -> ClearMemoryResponse:
+    """Forget everything (or one scope) in one go."""
+    return ClearMemoryResponse(deleted=await store.delete_all(user_id=user.id, scope=scope))
+
+
+class UpdateMemoryRequest(BaseModel):
+    content: dict[str, object]
+
+
+@router.patch("/memory/{memory_id}")
+async def update_memory(
+    memory_id: str,
+    body: UpdateMemoryRequest,
+    user: User = Depends(require_user),
+    store: SqlAlchemyMemoryStore = Depends(_memory_store),
+) -> Memory:
+    """Edit a memory's content in place (its key and type stay)."""
+    try:
+        updated = await store.update(user_id=user.id, memory_id=memory_id, content=body.content)
+    except MemoryGovernanceError as exc:
+        raise ApiError(
+            status_code=_HTTP_422_UNPROCESSABLE,
+            code="memory_rejected",
+            message=str(exc),
+            retryable=False,
+        ) from exc
+    if updated is None:
+        raise ApiError(
+            status_code=status.HTTP_404_NOT_FOUND,
+            code="memory_not_found",
+            message=f"Memory {memory_id} not found.",
+            retryable=False,
+        )
+    return updated
 
 
 class UpsertMemoryRequest(BaseModel):

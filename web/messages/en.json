@@ -1966,7 +1966,7 @@
     },
     "memory": {
       "title": "Memory",
-      "description": "Preferences, findings, and notes 了然 remembers — review or delete anytime.",
+      "description": "What 了然 remembers about your analysis focus - search, edit, pause or delete anytime.",
       "scopeFilter": "Scope filter",
       "scopeAll": "All",
       "scopeOption": {
@@ -1977,25 +1977,51 @@
       "createCta": "Add memory",
       "deleteLabel": "Delete memory \"{key}\"",
       "typeOption": {
-        "preference": "Preference",
-        "finding": "Finding",
-        "entity_note": "Note",
+        "preference": "Analysis preference",
+        "finding": "Note",
+        "entity_note": "Stock note",
         "watchlist": "Watchlist"
       },
+      "listTitle": "What I remember",
+      "enabled": "Use memory",
+      "enabledHint": "When on, 了然 draws on the memories below before answering. When off it neither uses nor adds any; what is saved is kept.",
+      "pausedNotice": "Memory is paused: answers do not use any memory right now.",
+      "search": "Search memories",
+      "searchPlaceholder": "Search by name or content",
+      "noResults": "No matching memories.",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "editLabel": "Edit memory \"{key}\"",
+      "clearAll": "Clear all memories",
+      "clearConfirm": "Clear all {count} memories? This cannot be undone.",
+      "clearConfirmYes": "Yes, clear",
+      "created": "Added {date}",
+      "updated": "Updated {date}",
+      "lastUsed": "Last used {date}",
+      "neverUsed": "Not used yet",
+      "usedTimes": "Used {count} times",
+      "fromChat": "From a chat",
+      "toneTitle": "Answer tone",
+      "toneHint": "Tone is managed in Tone settings. Memory only keeps your analysis focus (markets, horizon, sectors or ETFs you follow) - it does not change how Miru talks.",
+      "toneLink": "Go to Tone settings",
+      "watchlistHint": "Your watchlist is managed in the sidebar; answers draw on it too.",
+      "textExample": "e.g. I mostly follow high-dividend ETFs and prefer a long-term view",
+
       "form": {
         "title": "Add memory",
         "key": "Key",
         "type": "Type",
-        "content": "Content (JSON)",
+        "content": "Content",
         "cancel": "Cancel",
         "submit": "Create memory",
         "errorGeneric": "Something went wrong. Please try again later.",
-        "errorKeyRequired": "Please enter a key.",
-        "errorContentInvalid": "Content must be a valid JSON object.",
+        "errorKeyRequired": "Please enter some content.",
+        "errorRejected": "That can't be saved (no keys, and no buy/sell advice).",
         "typeOption": {
-          "preference": "Preference",
-          "finding": "Finding",
-          "entity_note": "Note"
+          "preference": "Analysis preference",
+          "finding": "Note",
+          "entity_note": "Stock note"
         }
       }
     }

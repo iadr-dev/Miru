@@ -115,3 +115,35 @@ async def test_list_scopes_by_user(db_session: AsyncSession) -> None:
 
     assert len(listed) == 1
     assert listed[0].user_id == "user-1"
+
+
+async def test_mark_used_stamps_the_time_and_counts_each_use(db_session) -> None:
+    store = SqlAlchemyMemoryStore(db_session)
+    memory = await store.upsert(
+        user_id="u1",
+        scope=MemoryScope.USER,
+        type=MemoryType.PREFERENCE,
+        key="focus",
+        content={"text": "高股息 ETF"},
+    )
+    assert memory.last_used_at is None
+    assert memory.use_count == 0
+    await store.mark_used(user_id="u1", memory_ids=[memory.id])
+    await store.mark_used(user_id="u1", memory_ids=[memory.id])
+    (again,) = await store.list(user_id="u1")
+    assert again.last_used_at is not None
+    assert again.use_count == 2
+
+
+async def test_mark_used_ignores_another_users_memory(db_session) -> None:
+    store = SqlAlchemyMemoryStore(db_session)
+    memory = await store.upsert(
+        user_id="u1",
+        scope=MemoryScope.USER,
+        type=MemoryType.FINDING,
+        key="k",
+        content={"text": "x"},
+    )
+    await store.mark_used(user_id="someone-else", memory_ids=[memory.id])
+    (same,) = await store.list(user_id="u1")
+    assert same.use_count == 0

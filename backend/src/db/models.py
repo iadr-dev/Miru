@@ -193,6 +193,10 @@ class MemoryRow(Base):
     source_ref: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)
+    # When recall last put this memory in front of the model, and how often (the settings
+    # page shows both). server_default so the additive upgrade can add the columns.
+    last_used_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
+    use_count: Mapped[int] = mapped_column(default=0, server_default="0")
 
     __table_args__ = (
         CheckConstraint("scope IN ('user','thread')", name="ck_memories_scope"),
@@ -337,6 +341,9 @@ class UserRow(Base):
     nationality: Mapped[str | None] = mapped_column(default=None)
     tier: Mapped[str] = mapped_column(default="free")
     personality_id: Mapped[str] = mapped_column(default="steady")
+    # The user's switch for long-term memory: off = nothing is recalled into a turn and
+    # nothing new is saved (existing memories are kept, not deleted).
+    memory_enabled: Mapped[bool] = mapped_column(default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)
     deleted_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)

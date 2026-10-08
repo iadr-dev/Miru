@@ -463,8 +463,13 @@ export const memorySchema = z.object({
   source_ref: z.string().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
+  last_used_at: z.string().nullable().default(null),
+  use_count: z.number().int().default(0),
 });
 export type Memory = z.infer<typeof memorySchema>;
+
+export const memorySettingsSchema = z.object({ enabled: z.boolean() });
+export type MemorySettings = z.infer<typeof memorySettingsSchema>;
 
 export const memoriesResponseSchema = z.object({
   memories: z.array(memorySchema).default([]),

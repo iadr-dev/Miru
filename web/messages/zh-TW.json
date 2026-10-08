@@ -1966,7 +1966,7 @@
     },
     "memory": {
       "title": "記憶",
-      "description": "了然記住的偏好、發現與備註，可隨時檢視或刪除。",
+      "description": "了然記住的分析重點，可隨時搜尋、編輯、暫停或刪除。",
       "scopeFilter": "範圍篩選",
       "scopeAll": "全部",
       "scopeOption": {
@@ -1977,25 +1977,51 @@
       "createCta": "新增記憶",
       "deleteLabel": "刪除記憶「{key}」",
       "typeOption": {
-        "preference": "偏好",
-        "finding": "發現",
-        "entity_note": "備註",
+        "preference": "分析偏好",
+        "finding": "備忘",
+        "entity_note": "個股筆記",
         "watchlist": "自選股"
       },
+      "listTitle": "已記住的內容",
+      "enabled": "使用記憶",
+      "enabledHint": "開啟時，了然會在回答前參考下列記憶；關閉後不會參考也不會新增，已存的記憶會保留。",
+      "pausedNotice": "記憶已暫停：目前的回答不會參考任何記憶。",
+      "search": "搜尋記憶",
+      "searchPlaceholder": "搜尋名稱或內容",
+      "noResults": "沒有符合的記憶。",
+      "edit": "編輯",
+      "save": "儲存",
+      "cancel": "取消",
+      "editLabel": "編輯記憶「{key}」",
+      "clearAll": "清除全部記憶",
+      "clearConfirm": "確定要清除全部 {count} 則記憶嗎？此動作無法復原。",
+      "clearConfirmYes": "確定清除",
+      "created": "建立於 {date}",
+      "updated": "更新於 {date}",
+      "lastUsed": "最近使用 {date}",
+      "neverUsed": "尚未被使用",
+      "usedTimes": "已使用 {count} 次",
+      "fromChat": "來自對話",
+      "toneTitle": "回答語氣",
+      "toneHint": "語氣由「語氣設定」管理；記憶只用來記住你的分析重點（市場、期間、關注的族群或 ETF），不用來調整說話風格。",
+      "toneLink": "前往語氣設定",
+      "watchlistHint": "自選股清單在側欄管理，了然回答時也會參考。",
+      "textExample": "例如：我主要關注高股息 ETF，偏好長期觀點",
+
       "form": {
         "title": "新增記憶",
         "key": "名稱",
         "type": "類型",
-        "content": "內容（JSON）",
+        "content": "內容",
         "cancel": "取消",
         "submit": "建立記憶",
         "errorGeneric": "發生問題，請稍後再試。",
-        "errorKeyRequired": "請輸入名稱。",
-        "errorContentInvalid": "內容必須是有效的 JSON 物件。",
+        "errorKeyRequired": "請輸入內容。",
+        "errorRejected": "這段內容無法儲存（不可包含金鑰或買賣建議）。",
         "typeOption": {
-          "preference": "偏好",
-          "finding": "發現",
-          "entity_note": "備註"
+          "preference": "分析偏好",
+          "finding": "備忘",
+          "entity_note": "個股筆記"
         }
       }
     }

@@ -101,6 +101,8 @@ class Memory(BaseModel):
     source_ref: str | None = None
     created_at: datetime
     updated_at: datetime
+    last_used_at: datetime | None = None
+    use_count: int = 0
 
     @model_validator(mode="after")
     def _scope_thread_consistency(self) -> Memory:
