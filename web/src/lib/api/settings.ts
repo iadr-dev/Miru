@@ -266,6 +266,17 @@ export async function getInvoiceUrl(transactionId: string): Promise<string | nul
   return invoiceResponseSchema.parse(raw).url;
 }
 
+/** Ask the server to confirm a checkout with Paddle directly - the fallback when the webhook that
+ * normally creates the subscription is slow or lost. */
+export async function syncCheckout(transactionId: string): Promise<SubscriptionResponse> {
+  const raw = await requestJson("/billing/sync", {
+    method: "POST",
+    headers: jsonHeaders(),
+    body: JSON.stringify({ transaction_id: transactionId }),
+  });
+  return subscriptionResponseSchema.parse(raw);
+}
+
 export async function getSubscription(): Promise<SubscriptionResponse> {
   const raw = await requestJson("/billing/subscription");
   return subscriptionResponseSchema.parse(raw);

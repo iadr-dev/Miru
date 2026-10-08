@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
 from api.attachments import AttachmentInput
-from api.byok import resolve_byok
+from api.byok import enforce_platform_model, resolve_byok
 from api.dependencies import (
     AppState,
     get_session,
@@ -582,6 +582,7 @@ async def regenerate_turn(
     byok = await resolve_byok(
         session, state.settings, user_id=user.id, model_override=thread.model_override
     )
+    enforce_platform_model(user, thread.model_override, byok=byok is not None)
     deep_research = _resolve_deep_research(body.deep_research, source_user_turn)
     await enforce_pre_turn_gate(
         state, session, user, deep_research=deep_research, byok=byok is not None
@@ -661,6 +662,7 @@ async def edit_turn(
     byok = await resolve_byok(
         session, settings, user_id=user.id, model_override=thread.model_override
     )
+    enforce_platform_model(user, thread.model_override, byok=byok is not None)
     deep_research = _resolve_deep_research(body.deep_research, turn)
     await enforce_pre_turn_gate(
         state, session, user, deep_research=deep_research, byok=byok is not None

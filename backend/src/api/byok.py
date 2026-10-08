@@ -9,17 +9,16 @@ message instead of silently spending ours.
 
 from __future__ import annotations
 
-import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from accounts.byok import ByokKeyRequiredError, resolve_byok_override
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
-from accounts.models import SecretKind
+from accounts.entitlements import platform_model_allowed
+from accounts.models import User
 from accounts.secrets import SqlAlchemySecretStore
 from api.errors import ApiError
 from config.settings import Settings
-from llm.registry import ByokOverride, agent_model_spec
-
-logger = structlog.get_logger(__name__)
+from llm.registry import ByokOverride
 
 
 async def resolve_byok(
@@ -27,31 +26,31 @@ async def resolve_byok(
 ) -> ByokOverride | None:
     """None for a normal (platform-key) turn; a `ByokOverride` for a BYOK turn."""
     try:
-        cipher = SecretCipher.from_settings(settings)
-    except SecretEncryptionNotConfiguredError:
-        return None  # nothing can have been stored, so nobody is a BYOK caller
-    store = SqlAlchemySecretStore(session, cipher)
-    providers = await store.llm_providers(user_id=user_id)
-    if not providers:
-        return None
-    try:
-        provider, model = agent_model_spec(model_override, settings)
-    except ValueError:
-        provider, model = "", ""
-    key = await store.get(user_id=user_id, kind=SecretKind.LLM_KEY, provider=provider)
-    if key is None:
-        logger.info("byok_key_missing_for_model", user_id=user_id, provider=provider)
+        return await resolve_byok_override(
+            session, settings, user_id=user_id, model_override=model_override
+        )
+    except ByokKeyRequiredError as exc:
         raise ApiError(
             status_code=409,
             code="byok_key_required",
             message=(
                 "You've added your own API key for "
-                f"{', '.join(providers)}. Pick a model from one of those providers, or remove "
+                f"{', '.join(exc.providers)}. Pick a model from one of those providers, or remove "
                 "your keys to use the shared models under your plan's limits."
             ),
             retryable=False,
+        ) from exc
+
+
+def enforce_platform_model(user: User, model_override: str | None, *, byok: bool) -> None:
+    """A turn on the platform key may only use the models the caller's plan includes."""
+    if not platform_model_allowed(user, model_override, byok_active=byok):
+        raise ApiError(
+            status_code=403,
+            code="model_requires_upgrade",
+            message="That model is included with a paid plan. Pick a lighter model, or upgrade.",
+            retryable=False,
         )
-    return ByokOverride(provider_id=provider, model_id=model, api_key=key)
 
 
 async def byok_active_for(session: AsyncSession, settings: Settings, *, user_id: str) -> bool:
@@ -64,4 +63,4 @@ async def byok_active_for(session: AsyncSession, settings: Settings, *, user_id:
     return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
 
 
-__all__ = ["byok_active_for", "resolve_byok"]
+__all__ = ["byok_active_for", "enforce_platform_model", "resolve_byok"]

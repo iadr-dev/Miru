@@ -37,6 +37,8 @@ export const entitlementViewSchema = z.object({
   finmind_class: z.enum(TIERS),
   byok_active: z.boolean(),
   features: z.array(z.string()).default([]),
+  // Models pickable on the shared key; null = unrestricted (paid plan, or own keys).
+  platform_models: z.array(z.string()).nullable().default(null),
 });
 export type EntitlementView = z.infer<typeof entitlementViewSchema>;
 

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 
+import structlog
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,6 +79,8 @@ async def _claim_voice(state: AppState, user: User, kind: VoiceKind, *, paid: bo
         )
     return True
 
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["voice"])
 
@@ -203,6 +206,9 @@ async def speak(
         if claimed:
             await state.usage_store.refund_daily_voice(user_id=user.id, kind="tts")
         raise
+    if claimed:
+        # A provider that bills per call: leave a cost trail (characters synthesized) for ops.
+        logger.info("voice_paid_tts", user_id=user.id, chars=len(audio.spoken_text))
     return SpeakResponse(
         audio_base64=base64.b64encode(audio.audio).decode("ascii"),
         content_type=audio.content_type,

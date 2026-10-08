@@ -8,6 +8,12 @@ sponsor values) on top of [ADR-0009](../adr/0009-scheduler-governance-amendment.
 **Status:** v2 design, P0 in progress. §1 lists the v1 gaps; §9 is the phased roadmap.
 
 **Implemented (backend, `scheduler/`):**
+- **BYOK.** A scheduled run resolves the owner's own key exactly like an interactive turn
+  (`accounts/byok.py`): with a saved key it runs on THEIR key and default model (`byok_scope`),
+  is not held to the daily chat cap, and is recorded in the usage ledger with `byok=true`. If their
+  keys don't cover the default model's provider the run is skipped and reported
+  (`byok_key_required`), never moved onto the platform key. Every run (platform or BYOK) writes its
+  model usage under a per-run id.
 - `triggers.py` resolves `next_run` (market events on trading days in the market timezone; 5-field
   cron with lists/ranges/steps); set on create and after every run. Pro gate removed; fair-use
   caps (`caps.py`, 409 `cap_reached`).

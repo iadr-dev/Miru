@@ -113,6 +113,13 @@ class PaddleClient:
         data: list[dict[str, Any]] = payload.get("data", [])
         return data
 
+    async def get_transaction(self, transaction_id: str) -> dict[str, Any]:
+        """Read one transaction - its `subscription_id` and `custom_data` tell which subscription a
+        checkout produced and for whom."""
+        payload = await self._request("GET", f"/transactions/{transaction_id}")
+        data: dict[str, Any] = payload.get("data", {})
+        return data
+
     async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
         """Read the live subscription entity — the reconcile-on-read source of truth."""
         payload = await self._request("GET", f"/subscriptions/{subscription_id}")

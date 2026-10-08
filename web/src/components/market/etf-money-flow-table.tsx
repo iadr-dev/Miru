@@ -4,6 +4,7 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
@@ -88,6 +89,7 @@ export function EtfMoneyFlowTable({
             ),
           )}
         </ul>
+        <LockedRowsNote rows={rows} />
       </div>
     </div>
   );

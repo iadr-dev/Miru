@@ -14,8 +14,11 @@ stopped, so there is nothing to entitle) and `subscription.resumed` restores it.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import structlog
 
+from accounts.models import User
 from accounts.store import UserStore
 from config.settings import Settings
 from payments.client import PaddleClient
@@ -42,12 +45,30 @@ _PAUSE_EVENT = "subscription.paused"
 _HANDLED_EVENTS = _ENTITLING_EVENTS | {_CANCEL_EVENT, _PAST_DUE_EVENT, _PAUSE_EVENT}
 # Statuses with nothing to entitle: the subscription has ended, or billing is stopped.
 _NO_ENTITLEMENT_STATUSES = frozenset({"canceled", "paused"})
+# A checkout transaction only proves a purchase once it has been paid.
+_PAID_TRANSACTION_STATUSES = frozenset({"paid", "completed"})
 
 
-def _tier_for(status: str, plan_tier: Tier) -> Tier:
-    """The tier a subscription in `status` grants: its plan's, unless it has ended or is paused.
-    `past_due` is deliberately not here - it is a grace state while Paddle retries the payment."""
-    return Tier.FREE if status in _NO_ENTITLEMENT_STATUSES else plan_tier
+# How long a failed payment keeps the paid tier while Paddle retries it, counted from the moment the
+# subscription went past_due. After that the tier lapses to free until a payment goes through.
+PAST_DUE_GRACE = timedelta(days=7)
+
+
+def _past_due_lapsed(past_due_since: datetime | None, *, now: datetime | None = None) -> bool:
+    if past_due_since is None:
+        return False
+    since = past_due_since if past_due_since.tzinfo else past_due_since.replace(tzinfo=UTC)
+    return (now or datetime.now(UTC)) - since > PAST_DUE_GRACE
+
+
+def _tier_for(status: str, plan_tier: Tier, *, past_due_since: datetime | None = None) -> Tier:
+    """The tier a subscription in `status` grants: its plan's, unless it has ended, is paused, or
+    has been past_due for longer than `PAST_DUE_GRACE` (a grace window while Paddle retries)."""
+    if status in _NO_ENTITLEMENT_STATUSES:
+        return Tier.FREE
+    if status == "past_due" and _past_due_lapsed(past_due_since):
+        return Tier.FREE
+    return plan_tier
 
 
 def effective_byok_active(*, subscription_byok: bool, has_llm_key: bool) -> bool:
@@ -156,7 +177,11 @@ class BillingService:
         except UnknownPriceError:
             return local
 
-        derived_tier = _tier_for(entity.status, plan.tier)
+        derived_tier = _tier_for(
+            entity.status,
+            plan.tier,
+            past_due_since=local.updated_from_event_at if local.status == "past_due" else None,
+        )
         # Reconcile stamps "now" as the applied point via the record's own occurred marker; the
         # live API is authoritative, so it is never treated as out of order against itself.
         update = SubscriptionUpdate(
@@ -170,12 +195,83 @@ class BillingService:
             current_period_start=entity.period_start(),
             current_period_end=entity.period_end(),
             scheduled_cancel_at=entity.scheduled_cancel_at(),
-            occurred_at=local.updated_from_event_at,
+            occurred_at=(
+                datetime.now(UTC)
+                if entity.status == "past_due" and local.status != "past_due"
+                else local.updated_from_event_at
+            ),
         )
         record = await self._store.upsert_from_event(update)
         if record is not None:
             await self._user_store.set_tier(user_id=user_id, tier=derived_tier)
         return record or local
+
+    async def adopt_transaction(
+        self, *, user: User, transaction_id: str
+    ) -> SubscriptionRecord | None:
+        """Self-heal a lost first webhook: the checkout's transaction names the subscription it
+        created. Only a transaction tagged with THIS user's id is adopted, so one account can never
+        claim another's purchase, and only a PAID one, and only when the subscription is not yet
+        recorded (the lost-first-webhook case - an existing record is reconciled, never reset).
+        Returns the local record, or `None` while the payment has not produced a subscription."""
+        if self._client is None:
+            return None
+        transaction = await self._client.get_transaction(transaction_id)
+        custom_data: dict[str, object] = transaction.get("custom_data") or {}
+        subscription_id = transaction.get("subscription_id")
+        if custom_data.get("user_id") != user.id or not subscription_id:
+            return None
+        if transaction.get("status") not in _PAID_TRANSACTION_STATUSES:
+            return None
+        known = await self._store.get_by_paddle_id(paddle_subscription_id=str(subscription_id))
+        if known is not None:
+            # Already recorded: this is no longer the lost-first-webhook case, and re-adopting
+            # would restart the clocks (e.g. a past_due grace window). Reconcile instead - it
+            # keeps them.
+            return (
+                await self.reconcile_subscription(user_id=user.id)
+                if known.user_id == user.id
+                else None
+            )
+        entity = PaddleSubscriptionEntity.model_validate(
+            await self._client.get_subscription(str(subscription_id))
+        )
+        try:
+            plan = resolve_plan(entity.first_price_id() or "", self._settings)
+        except UnknownPriceError:
+            return None
+        tier = _tier_for(entity.status, plan.tier)
+        record = await self._store.upsert_from_event(
+            SubscriptionUpdate(
+                user_id=user.id,
+                paddle_subscription_id=entity.id,
+                paddle_customer_id=entity.customer_id,
+                status=entity.status,
+                price_id=plan.price_id,
+                tier=tier,
+                byok=plan.byok,
+                current_period_start=entity.period_start(),
+                current_period_end=entity.period_end(),
+                scheduled_cancel_at=entity.scheduled_cancel_at(),
+                occurred_at=datetime.now(UTC),
+            )
+        )
+        if record is not None:
+            await self._user_store.set_tier(user_id=user.id, tier=tier)
+        return record or await self._store.get_for_user(user_id=user.id)
+
+    async def lapse_if_overdue(self, user: User) -> User:
+        """Drop a paid user to free once their payment has been failing past the grace window.
+        Cheap for the common case (free users and healthy subscribers return immediately)."""
+        if user.tier is Tier.FREE:
+            return user
+        record = await self._store.get_for_user(user_id=user.id)
+        if record is None or record.status != "past_due":
+            return user
+        if not _past_due_lapsed(record.updated_from_event_at):
+            return user
+        logger.info("billing_past_due_lapsed", user_id=user.id)
+        return await self._user_store.set_tier(user_id=user.id, tier=Tier.FREE)
 
     async def _resolve_user_id(self, entity: PaddleSubscriptionEntity) -> str | None:
         """The user id comes from the checkout's `custom_data`; if a later webhook omits it, fall

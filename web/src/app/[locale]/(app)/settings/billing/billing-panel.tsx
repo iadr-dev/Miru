@@ -16,6 +16,7 @@ import {
   openBillingPortal,
   resumeSubscription,
   SettingsApiError,
+  syncCheckout,
 } from "@/lib/api/settings";
 import {
   formatDate,
@@ -64,6 +65,8 @@ export function BillingPanel(): ReactNode {
   // After Paddle reports a completed payment, the page waits for the webhook to create the
   // subscription: Paddle, not this browser event, is what grants the plan.
   const [activation, setActivation] = useState<"idle" | "waiting" | "delayed">("idle");
+  // The open checkout's transaction, so a lost webhook can be recovered by asking Paddle directly.
+  const transactionId = useRef<string | null>(null);
   const queryClient = useQueryClient();
 
   const checkoutMutation = useMutation({
@@ -79,6 +82,7 @@ export function BillingPanel(): ReactNode {
       if (!paddle) {
         throw new CheckoutUnavailableError("paddle.js did not load");
       }
+      transactionId.current = transaction.transaction_id;
       paddle.Checkout.open({
         transactionId: transaction.transaction_id,
         settings: { displayMode: "overlay", theme: "dark", locale: paddleLocale(locale) },
@@ -105,6 +109,10 @@ export function BillingPanel(): ReactNode {
     void (async () => {
       for (let attempt = 0; attempt < ACTIVATION_POLLS && !cancelled; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, ACTIVATION_POLL_MS));
+        if (attempt === SYNC_AFTER_POLLS && transactionId.current) {
+          // The webhook is late (or lost): confirm the payment with Paddle ourselves.
+          await syncCheckout(transactionId.current).catch(() => undefined);
+        }
         await queryClient.invalidateQueries({ queryKey: ["settings", "subscription"] });
         const current = queryClient.getQueryData<{ subscription: unknown }>([
           "settings",
@@ -521,6 +529,7 @@ function downloadFile(url: string): void {
 }
 
 const ACTIVATION_POLLS = 10;
+const SYNC_AFTER_POLLS = 2;
 const ACTIVATION_POLL_MS = 2000;
 
 function billingErrorMessage(err: unknown, tc: (key: string) => string): string {

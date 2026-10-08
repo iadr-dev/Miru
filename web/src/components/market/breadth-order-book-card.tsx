@@ -14,6 +14,7 @@ import {
   YAxis,
 } from "recharts";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import type {
@@ -328,6 +329,7 @@ function IndexContributionColumn({
           ),
         )}
       </ul>
+      <LockedRowsNote rows={rows} />
     </div>
   );
 }

@@ -130,6 +130,37 @@ VOICE_DAILY_LIMIT: Final[int] = 100
 DEEP_RESEARCH_LIMIT_PER_DAY: Final[int] = 5
 
 
+# Models a Free account may pick when the turn runs on OUR key (BYOK turns run on the caller's own
+# key and are unrestricted). These are the low-cost ones; the heavier models need a paid plan, so a
+# 3-chats-a-day account cannot spend the premium-model price on every turn. The platform default
+# model (no pick) is always allowed. Keep in step with the picker catalog in the web composer.
+FREE_PLATFORM_MODELS: Final[frozenset[str]] = frozenset(
+    {
+        "anthropic/claude-haiku-4-5-20251001",
+        "openai/gpt-4o-mini",
+        "openai/gpt-5.4-mini",
+        "gemini/gemini-3.5-flash-lite",
+        "gemini/gemini-3.5-flash",
+        "openrouter/meta-llama/llama-3.3-70b-instruct",
+        "openrouter/deepseek/deepseek-chat-v3.1",
+        "openrouter/deepseek/deepseek-v4-flash",
+        "ollama/qwen3.6:latest",
+    }
+)
+
+
+def platform_models_for(user: User, *, byok_active: bool) -> tuple[str, ...] | None:
+    """The models `user` may pick on the platform key, or `None` for no restriction."""
+    if byok_active or user.tier is not Tier.FREE:
+        return None
+    return tuple(sorted(FREE_PLATFORM_MODELS))
+
+
+def platform_model_allowed(user: User, model_override: str | None, *, byok_active: bool) -> bool:
+    allowed = platform_models_for(user, byok_active=byok_active)
+    return allowed is None or model_override is None or model_override in allowed
+
+
 def deep_research_limit_per_day(user: User) -> int:
     del user  # one limit today; the signature leaves room for per-tier limits
     return DEEP_RESEARCH_LIMIT_PER_DAY
@@ -168,12 +199,14 @@ def entitlement_view(user: User, *, byok_active: bool) -> EntitlementView:
         finmind_class=finmind_class_for(user),
         byok_active=byok_active,
         features=allowed_features(user),
+        platform_models=platform_models_for(user, byok_active=byok_active),
     )
 
 
 __all__ = [
     "DEEP_RESEARCH_LIMIT_PER_DAY",
     "FEATURE_MIN_TIER",
+    "FREE_PLATFORM_MODELS",
     "TIER_LIMITS",
     "VOICE_DAILY_LIMIT",
     "VOICE_REQUESTS_PER_MINUTE",
@@ -186,6 +219,8 @@ __all__ = [
     "feature_allowed",
     "finmind_class_for",
     "limits_for",
+    "platform_model_allowed",
+    "platform_models_for",
     "rate_limit_per_minute",
     "tier_catalog",
 ]

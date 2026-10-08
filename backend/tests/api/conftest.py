@@ -148,6 +148,7 @@ def settings() -> Settings:
         google_redirect_uri=None,
         voice_stt_provider="stub",
         voice_tts_provider="stub",
+        secret_encryption_keys=None,
     )
 
 

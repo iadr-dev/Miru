@@ -73,6 +73,8 @@ class EntitlementView(BaseModel):
     finmind_class: Tier  # free | sponsor-equivalent — drives data_class unmask
     byok_active: bool
     features: tuple[str, ...]  # feature ids allowed at this tier
+    # Models pickable on the platform key; None = unrestricted (paid tier, or BYOK).
+    platform_models: tuple[str, ...] | None = None
 
 
 __all__ = [

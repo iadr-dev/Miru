@@ -337,3 +337,186 @@ async def test_a_late_paused_event_cannot_undo_a_newer_resume(
         )
     )
     assert (await users.get(user_id=user_id)).tier is Tier.PREMIUM
+
+
+async def test_past_due_lapses_to_free_after_the_grace_window(
+    db_session, settings: Settings
+) -> None:
+    user_id = await make_user(db_session)
+    svc = _service(db_session, settings)
+    users = SqlAlchemyUserStore(db_session)
+    long_ago = datetime.now(UTC) - timedelta(days=30)
+    await svc.handle_webhook_event(
+        _event(
+            event_id="e1",
+            event_type="subscription.created",
+            occurred_at=long_ago,
+            user_id=user_id,
+        )
+    )
+    await svc.handle_webhook_event(
+        _event(
+            event_id="e2",
+            event_type="subscription.past_due",
+            occurred_at=long_ago + timedelta(hours=1),
+            user_id=user_id,
+            status="past_due",
+        )
+    )
+    paid = await users.get(user_id=user_id)
+    assert paid.tier is Tier.PREMIUM  # the webhook itself grants the grace window
+    assert (await svc.lapse_if_overdue(paid)).tier is Tier.FREE
+    assert (await users.get(user_id=user_id)).tier is Tier.FREE
+
+
+async def test_recent_past_due_keeps_the_paid_tier(db_session, settings: Settings) -> None:
+    user_id = await make_user(db_session)
+    svc = _service(db_session, settings)
+    users = SqlAlchemyUserStore(db_session)
+    now = datetime.now(UTC)
+    await svc.handle_webhook_event(
+        _event(event_id="e1", event_type="subscription.created", occurred_at=now, user_id=user_id)
+    )
+    await svc.handle_webhook_event(
+        _event(
+            event_id="e2",
+            event_type="subscription.past_due",
+            occurred_at=now + timedelta(seconds=1),
+            user_id=user_id,
+            status="past_due",
+        )
+    )
+    user = await users.get(user_id=user_id)
+    assert (await svc.lapse_if_overdue(user)).tier is Tier.PREMIUM
+
+
+class _FakePaddleApi:
+    def __init__(
+        self,
+        *,
+        owner: str,
+        subscription_id: str | None,
+        status: str = "completed",
+        sub_status: str = "active",
+    ) -> None:
+        self._status = status
+        self._sub_status = sub_status
+        self._owner = owner
+        self._subscription_id = subscription_id
+
+    async def get_transaction(self, transaction_id: str) -> dict[str, Any]:
+        return {
+            "id": transaction_id,
+            "subscription_id": self._subscription_id,
+            "status": self._status,
+            "custom_data": {"user_id": self._owner},
+        }
+
+    async def get_subscription(self, subscription_id: str) -> dict[str, Any]:
+        return {
+            "id": subscription_id,
+            "customer_id": "ctm_1",
+            "status": self._sub_status,
+            "items": [{"price": {"id": PRICE_PRO_MONTHLY}}],
+            "current_billing_period": {
+                "starts_at": "2024-05-01T00:00:00Z",
+                "ends_at": "2024-06-01T00:00:00Z",
+            },
+        }
+
+
+def _service_with(session, settings: Settings, api: _FakePaddleApi) -> BillingService:
+    return BillingService(
+        store=SqlAlchemySubscriptionStore(session),
+        user_store=SqlAlchemyUserStore(session),
+        settings=settings,
+        client=api,  # type: ignore[arg-type]
+    )
+
+
+async def test_a_lost_first_webhook_is_recovered_from_the_checkout_transaction(
+    db_session, settings: Settings
+) -> None:
+    user_id = await make_user(db_session)
+    users = SqlAlchemyUserStore(db_session)
+    svc = _service_with(
+        db_session, settings, _FakePaddleApi(owner=user_id, subscription_id="sub_9")
+    )
+    record = await svc.adopt_transaction(
+        user=await users.get(user_id=user_id), transaction_id="txn_1"
+    )
+    assert record is not None
+    assert record.tier is Tier.PRO
+    assert (await users.get(user_id=user_id)).tier is Tier.PRO
+
+
+async def test_a_transaction_for_another_account_is_never_adopted(
+    db_session, settings: Settings
+) -> None:
+    user_id = await make_user(db_session)
+    users = SqlAlchemyUserStore(db_session)
+    svc = _service_with(
+        db_session, settings, _FakePaddleApi(owner="someone-else", subscription_id="sub_9")
+    )
+    assert (
+        await svc.adopt_transaction(user=await users.get(user_id=user_id), transaction_id="txn_1")
+        is None
+    )
+    assert (await users.get(user_id=user_id)).tier is Tier.FREE
+
+
+async def test_a_transaction_without_a_subscription_yet_adopts_nothing(
+    db_session, settings: Settings
+) -> None:
+    user_id = await make_user(db_session)
+    users = SqlAlchemyUserStore(db_session)
+    svc = _service_with(db_session, settings, _FakePaddleApi(owner=user_id, subscription_id=None))
+    assert (
+        await svc.adopt_transaction(user=await users.get(user_id=user_id), transaction_id="txn_1")
+        is None
+    )
+
+
+async def test_adopting_a_transaction_never_restarts_a_past_due_grace_window(
+    db_session, settings: Settings
+) -> None:
+    """The sync endpoint must not be a way to refresh the past_due clock with an old transaction."""
+    user_id = await make_user(db_session)
+    users = SqlAlchemyUserStore(db_session)
+    long_ago = datetime.now(UTC) - timedelta(days=30)
+    hooks = _service(db_session, settings)
+    for event_id, kind, status, shift in (
+        ("e1", "subscription.created", "active", 0),
+        ("e2", "subscription.past_due", "past_due", 1),
+    ):
+        await hooks.handle_webhook_event(
+            _event(
+                event_id=event_id,
+                event_type=kind,
+                occurred_at=long_ago + timedelta(hours=shift),
+                user_id=user_id,
+                status=status,
+            )
+        )
+    svc = _service_with(
+        db_session,
+        settings,
+        _FakePaddleApi(owner=user_id, subscription_id="sub_1", sub_status="past_due"),
+    )
+    await svc.adopt_transaction(user=await users.get(user_id=user_id), transaction_id="txn_1")
+    overdue = await users.get(user_id=user_id)
+    assert (await svc.lapse_if_overdue(overdue)).tier is Tier.FREE
+
+
+async def test_an_unpaid_transaction_adopts_nothing(db_session, settings: Settings) -> None:
+    user_id = await make_user(db_session)
+    users = SqlAlchemyUserStore(db_session)
+    svc = _service_with(
+        db_session,
+        settings,
+        _FakePaddleApi(owner=user_id, subscription_id="sub_9", status="draft"),
+    )
+    assert (
+        await svc.adopt_transaction(user=await users.get(user_id=user_id), transaction_id="txn_1")
+        is None
+    )
