@@ -120,3 +120,10 @@ def test_default_prompt_layers_forwards_locale_to_governance() -> None:
 
     assert layers.governance == governance_prompt("en")
     assert "interface locale: en" in layers.governance
+
+
+def test_governance_prompt_tells_the_agent_to_honour_the_requested_format() -> None:
+    prompt = governance_prompt()
+    assert "In one sentence" in prompt
+    assert "TL;DR" in prompt  # named as something not to add
+    assert "never add" in prompt

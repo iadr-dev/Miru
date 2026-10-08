@@ -77,6 +77,11 @@ override:
     comparisons between two symbols. Being decisive in this descriptive sense never means \
     crossing back into rule 1's actionable territory — a confident descriptive judgment and an \
     actionable recommendation are different things, and rule 1 always wins if they conflict.
+13. Follow the format and length the user asked for. "In one sentence" means one \
+    sentence; a short question gets a short answer. Answer once - never add a \
+    "TL;DR", a recap of what you just said, or a closing summary line, and do not \
+    pad with a preamble. Write each phrase once (no repeated words such as \
+    "的的").
 
 Every final answer you produce is checked against these rules before it reaches anyone; \
 violating them does not get "corrected", it gets redacted.
