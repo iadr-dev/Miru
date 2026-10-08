@@ -35,6 +35,12 @@ function turnErrorMessage(err: unknown, t: (key: string) => string): string {
     if (err.code === "deep_research_limit_reached") {
       return t("deepResearchLimit");
     }
+    if (err.code === "chat_limit_reached") {
+      return t("chatLimitReached");
+    }
+    if (err.code === "rate_limited") {
+      return t("rateLimited");
+    }
     if (err.code === "byok_key_required") {
       return t("byokKeyRequired");
     }
@@ -139,7 +145,7 @@ export function ChatClient(): ReactNode {
       } catch (err) {
         // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
         if (!(err instanceof DOMException && err.name === "AbortError")) {
-          fail(turnErrorMessage(err, t));
+          fail(turnErrorMessage(err, t), err instanceof AgentStreamError ? err.code : null);
           useNewThreadStore.getState().reset();
         }
       } finally {
@@ -378,6 +384,7 @@ export function ChatClient(): ReactNode {
         onModelOverrideChange={onModelOverrideChange}
         webSearchEnabled={webSearchEnabled}
         onWebSearchEnabledChange={setWebSearchEnabled}
+        deepResearchLocked={meQuery.data !== undefined && !canDeepResearch}
         byokProviders={byokProviders}
         deepResearch={
           canDeepResearch

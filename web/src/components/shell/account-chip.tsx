@@ -97,7 +97,9 @@ export function AccountChip({ me, collapsed }: { me: MeResponse; collapsed: bool
           <div className="pt-1">
             <MenuLink href="/settings" icon={GearIcon} label={t("settings")} />
             <LanguageSubmenu />
-            <MenuLink href="/settings/billing" icon={ArrowCircleUpIcon} label={t("upgrade")} />
+            {tier === "pro" ? null : (
+              <MenuLink href="/settings/billing" icon={ArrowCircleUpIcon} label={t("upgrade")} />
+            )}
           </div>
           <DropdownMenu.Separator className="my-1 h-px bg-[var(--border)]" />
           <DropdownMenu.Item

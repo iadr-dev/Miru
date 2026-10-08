@@ -769,7 +769,10 @@
       },
       "deepResearchLimit": "You've used today's 5 deep research reports. Try again tomorrow.",
       "deepResearchNotEntitled": "Deep research is available on the Pro plan.",
-      "byokKeyRequired": "You've added your own API key, so chat runs on your providers only. Pick a model from one of them, or remove your keys to use the shared models."
+      "byokKeyRequired": "You've added your own API key, so chat runs on your providers only. Pick a model from one of them, or remove your keys to use the shared models.",
+      "chatLimitReached": "You've used today's free chats. Upgrade your plan, or add your own API key to keep going.",
+      "rateLimited": "Too many requests - please wait a moment and try again.",
+      "seePlans": "See plans"
     },
     "table": {
       "copy": "Copy table",
@@ -1297,7 +1300,8 @@
         "addFiles": "Add files or photos",
         "screenshot": "Take a screenshot",
         "webSearch": "Web search",
-        "deepResearch": "Deep research"
+        "deepResearch": "Deep research",
+        "deepResearchLocked": "Deep research (Pro)"
       },
       "attachments": {
         "remove": "Remove attachment",
@@ -1519,7 +1523,17 @@
       "updatePayment": "Update payment method",
       "resumeSubscription": "Resume subscription",
       "receipt": "Receipt",
-      "pausedNotice": "Your subscription is paused: paid features are off and you aren't billed until you resume."
+      "pausedNotice": "Your subscription is paused: paid features are off and you aren't billed until you resume.",
+      "compare": {
+        "title": "What each plan includes",
+        "current": "Your plan",
+        "chatsPerDay": "{count} chats a day",
+        "chatsUnlimited": "Unlimited chats",
+        "requestsPerMinute": "{count} requests a minute",
+        "sponsorData": "Branch, ownership and holder data",
+        "noSponsorData": "Public data only",
+        "deepResearch": "Deep research, {count} reports a day"
+      }
     },
     "byok": {
       "title": "Bring your own key",
@@ -1568,8 +1582,6 @@
         "ai_summary": "AI summaries",
         "swot": "SWOT analysis",
         "full_score": "Full score breakdown",
-        "news_sentiment": "News sentiment analysis",
-        "theme_discovery": "Theme discovery",
         "deep_research": "Deep research",
         "tick_minute_k": "Tick / minute candles"
       },

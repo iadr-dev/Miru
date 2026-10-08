@@ -197,6 +197,8 @@ export type ActiveTurn = {
   steeringQueued: string[];
   /** Set when `turn.end` carries `status:"error"` (errors ride the terminal frame, no `error` event). */
   errorMessage: string | null;
+  /** The backend's stable error code when the turn was refused (a limit, a missing plan...). */
+  errorCode: string | null;
 };
 
 type TurnStore = {
@@ -208,7 +210,7 @@ type TurnStore = {
   /** Fold one SSE frame into the active turn. */
   applyFrame: (frame: AgentStreamFrame) => void;
   /** A transport-level failure (the stream threw before a terminal frame) → calm error phase. */
-  fail: (message: string) => void;
+  fail: (message: string, code?: string | null) => void;
   clear: () => void;
 };
 
@@ -441,6 +443,7 @@ export const useTurnStore = create<TurnStore>((set) => ({
         streamingAnswerText: null,
         steeringQueued: [],
         errorMessage: null,
+        errorCode: null,
       },
     }),
 
@@ -461,11 +464,18 @@ export const useTurnStore = create<TurnStore>((set) => ({
       return { activeTurn: FRAME_REDUCERS[frame.kind](base, frame) };
     }),
 
-  fail: (message) =>
+  fail: (message, code = null) =>
     set((state) =>
       state.activeTurn === null
         ? state
-        : { activeTurn: { ...state.activeTurn, phase: "error", errorMessage: message } },
+        : {
+            activeTurn: {
+              ...state.activeTurn,
+              phase: "error",
+              errorMessage: message,
+              errorCode: code,
+            },
+          },
     ),
 
   clear: () => set({ activeTurn: null }),

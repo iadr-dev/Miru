@@ -29,6 +29,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "@/i18n/navigation";
 import type { AttachmentInput } from "@/lib/api/agent-stream";
 import {
   ACCEPTED_ATTACHMENT_MEDIA_TYPES,
@@ -265,6 +266,7 @@ export function Composer({
   webSearchEnabled,
   onWebSearchEnabledChange,
   deepResearch,
+  deepResearchLocked,
   byokProviders,
   onOpenVoiceMode,
 }: {
@@ -277,6 +279,9 @@ export function Composer({
   onWebSearchEnabledChange: (enabled: boolean) => void;
   /** Null when the caller's plan has no deep research (the menu row is then hidden). */
   deepResearch: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
+  /** True when the caller's plan has no deep research: the row is shown locked, with the way to
+   * upgrade, rather than hidden. */
+  deepResearchLocked: boolean;
   /** Providers the caller has their own key for, or null when they have none. With keys, only
    * those providers' models can be used (they run on the caller's key). */
   byokProviders: string[] | null;
@@ -585,6 +590,7 @@ export function Composer({
               webSearchEnabled={webSearchEnabled}
               onWebSearchEnabledChange={onWebSearchEnabledChange}
               deepResearch={deepResearch}
+              deepResearchLocked={deepResearchLocked}
               onAddFiles={() => fileInputRef.current?.click()}
               onCaptureScreenshot={async () => {
                 const dataUrl = await captureScreenshot();
@@ -1075,6 +1081,7 @@ function FeatureMenu({
   webSearchEnabled,
   onWebSearchEnabledChange,
   deepResearch,
+  deepResearchLocked,
   onAddFiles,
   onCaptureScreenshot,
 }: {
@@ -1083,10 +1090,12 @@ function FeatureMenu({
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (enabled: boolean) => void;
   deepResearch: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
+  deepResearchLocked: boolean;
   onAddFiles: () => void;
   onCaptureScreenshot: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
+  const router = useRouter();
   const [open, setOpen] = useState(false);
 
   return (
@@ -1134,6 +1143,12 @@ function FeatureMenu({
               label={t("featureMenuItems.deepResearch")}
               checked={deepResearch.enabled}
               onSelect={() => deepResearch.onChange(!deepResearch.enabled)}
+            />
+          ) : deepResearchLocked ? (
+            <FeatureMenuItem
+              icon={MagnifyingGlassIcon}
+              label={t("featureMenuItems.deepResearchLocked")}
+              onSelect={() => router.push("/settings/billing")}
             />
           ) : null}
         </DropdownMenu.Content>
