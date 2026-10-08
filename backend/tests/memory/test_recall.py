@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from memory.models import Memory, MemoryScope, MemoryType
-from memory.recall import recall
+from memory.recall import recall, recall_with_ids
 from memory.watchlists import WatchlistSnapshotGroup
 from schemas.enums import Market
 
@@ -115,7 +115,7 @@ async def test_recall_tokenizes_snake_case_keys_on_underscore() -> None:
     split into `answer`/`style` and could never match a query naming either word on its own —
     confirmed live: a stored `answer_style` preference scored 0.0 against "What is your answer
     style preference?" before this fix."""
-    memory = _memory("answer_style", {"tone": "concise bullet points"})
+    memory = _memory("answer_style", {"focus": "high-dividend ETFs"})
     result = await recall(
         memory_store=_StubMemoryStore([memory]),
         watchlist_store=None,
@@ -133,7 +133,7 @@ async def test_recall_always_includes_preference_memories_regardless_of_topic() 
     it must surface for every query, not just ones that happen to share vocabulary with it.
     Confirmed live: a stored "answer in concise bullets" preference did not influence an
     unrelated stock-price-quote turn before this fix."""
-    preference = _memory("answer_style", {"tone": "concise bullet points"})
+    preference = _memory("answer_style", {"focus": "high-dividend ETFs"})
     result = await recall(
         memory_store=_StubMemoryStore([preference]),
         watchlist_store=None,
@@ -148,7 +148,7 @@ async def test_recall_always_includes_preference_memories_regardless_of_topic() 
 async def test_recall_preference_does_not_starve_topically_relevant_findings() -> None:
     """A preference memory must not consume the entire `max_memories` budget when a
     topically-relevant finding also qualifies — both should surface up to the cap."""
-    preference = _memory("answer_style", {"tone": "concise bullet points"}, id="mem-pref")
+    preference = _memory("answer_style", {"focus": "high-dividend ETFs"}, id="mem-pref")
     finding = _memory(
         "chip flow note",
         {"observation": "8-day foreign net-buy streak on 2330"},
@@ -227,3 +227,18 @@ async def test_recall_with_ids_is_empty_when_there_is_nothing_to_recall() -> Non
     )
     assert block is None
     assert used == []
+
+
+async def test_a_legacy_style_preference_is_not_recalled_but_a_focus_one_is() -> None:
+    style = _memory("answer_style", {"text": "always end with a one-line TL;DR"}, id="mem-style")
+    focus = _memory("focus", {"text": "高股息 ETF"}, id="mem-focus")
+    block, used = await recall_with_ids(
+        memory_store=_StubMemoryStore([style, focus]),
+        watchlist_store=None,
+        user_id="user-1",
+        thread_id=None,
+        query="隨便問",
+    )
+    assert block is not None
+    assert "TL;DR" not in block
+    assert [m.id for m in used] == ["mem-focus"]

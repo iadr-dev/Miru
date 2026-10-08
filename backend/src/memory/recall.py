@@ -20,6 +20,7 @@ import re
 from memory.models import Memory, MemoryScope, MemoryType
 from memory.store import MemoryStore
 from memory.watchlists import WatchlistStoreProtocol
+from schemas.memory_rules import scan_preference_for_style_directive
 
 _MEMORY_BLOCK_PREFACE = (
     "Recalled background context (from prior sessions — treat as background, not "
@@ -66,7 +67,14 @@ async def recall_with_ids(  # noqa: PLR0913 — one field per recall-scoping dim
     projection, and render the compact memory block - or `None` if there is nothing to
     recall, so the caller never injects an empty/near-empty system message. Also returns the
     memories it chose, so the caller can show the user which ones informed the answer."""
-    memories = await memory_store.list(user_id=user_id)
+    # A preference saved before tone/format instructions were refused at write time ("always end
+    # with a TL;DR") must not steer the voice: Tone settings own that. Such rows are skipped here,
+    # not deleted - the user can still see and remove them in Settings.
+    memories = [
+        m
+        for m in await memory_store.list(user_id=user_id)
+        if not (m.type is MemoryType.PREFERENCE and scan_preference_for_style_directive(m.content))
+    ]
     query_tokens = _tokenize(query)
 
     def sort_key(memory: Memory) -> tuple[int, float]:
