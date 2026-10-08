@@ -17,11 +17,13 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from accounts.entitlements import VOICE_DAILY_LIMIT, VOICE_REQUESTS_PER_MINUTE
 from accounts.models import User
-from api.dependencies import get_session, get_settings_dep, require_user
+from api.dependencies import AppState, get_session, get_settings_dep, get_state, require_user
 from api.errors import ApiError
 from config.settings import Settings
 from memory.watchlists import WatchlistStore
+from usage.store import VoiceKind
 from voice.models import SpeechAudio, Transcript
 from voice.providers import (
     EdgeTTSSpeaker,
@@ -34,6 +36,38 @@ from voice.providers import (
 )
 from voice.service import speak as speak_service
 from voice.service import transcribe as transcribe_service
+
+_VOICE_WINDOW_SECONDS = 60
+
+
+async def _claim_voice(state: AppState, user: User, kind: VoiceKind) -> None:
+    """Fair-use bound on voice, claimed before any provider work: a per-minute rate and a
+    per-UTC-day cap per kind. Read-aloud can call a paid TTS provider, so it is never unmetered."""
+    verdict = await state.rate_limiter.check(
+        f"voice:{user.id}",
+        max_requests=VOICE_REQUESTS_PER_MINUTE,
+        window_seconds=_VOICE_WINDOW_SECONDS,
+    )
+    if not verdict.allowed:
+        raise ApiError(
+            status_code=429,
+            code="rate_limited",
+            message="Too many voice requests. Please slow down and retry shortly.",
+            retryable=True,
+        )
+    claim = await state.usage_store.reserve_daily_voice(
+        user_id=user.id, kind=kind, limit=VOICE_DAILY_LIMIT
+    )
+    if not claim.allowed:
+        raise ApiError(
+            status_code=429,
+            code="voice_limit_reached",
+            message=(
+                f"Daily voice limit reached ({VOICE_DAILY_LIMIT} requests/day). Try again tomorrow."
+            ),
+            retryable=False,
+        )
+
 
 router = APIRouter(tags=["voice"])
 
@@ -90,6 +124,7 @@ async def transcribe(
     user: User = Depends(require_user),
     settings: Settings = Depends(get_settings_dep),
     session: AsyncSession = Depends(get_session),
+    state: AppState = Depends(get_state),
 ) -> Transcript:
     """STT → transcript + confidence. Returns text only; never creates a turn (the client
     confirms/edits, then calls `POST /agent/query`)."""
@@ -110,14 +145,19 @@ async def transcribe(
             retryable=False,
         )
 
+    await _claim_voice(state, user, "stt")
     watchlist_terms = await _watchlist_terms(session, user_id=user.id)
-    return await transcribe_service(
-        audio,
-        _transcriber(settings),
-        language=body.language,
-        watchlist_terms=watchlist_terms,
-        symbol_universe=frozenset(watchlist_terms),
-    )
+    try:
+        return await transcribe_service(
+            audio,
+            _transcriber(settings),
+            language=body.language,
+            watchlist_terms=watchlist_terms,
+            symbol_universe=frozenset(watchlist_terms),
+        )
+    except Exception:
+        await state.usage_store.refund_daily_voice(user_id=user.id, kind="stt")
+        raise
 
 
 class SpeakRequest(BaseModel):
@@ -139,11 +179,18 @@ async def speak(
     body: SpeakRequest,
     user: User = Depends(require_user),
     settings: Settings = Depends(get_settings_dep),
+    state: AppState = Depends(get_state),
 ) -> SpeakResponse:
-    """TTS read-aloud (Free, quota-bounded like STT). The spoken text is caveat-guaranteed
-    before synthesis."""
-    del user  # accepted for the auth boundary only — TTS is unrestricted by tier
-    audio: SpeechAudio = await speak_service(body.text, _speaker(settings), language=body.language)
+    """TTS read-aloud (Free, fair-use bounded like STT: a per-minute rate and a daily cap). The
+    spoken text is caveat-guaranteed before synthesis."""
+    await _claim_voice(state, user, "tts")
+    try:
+        audio: SpeechAudio = await speak_service(
+            body.text, _speaker(settings), language=body.language
+        )
+    except Exception:
+        await state.usage_store.refund_daily_voice(user_id=user.id, kind="tts")
+        raise
     return SpeakResponse(
         audio_base64=base64.b64encode(audio.audio).decode("ascii"),
         content_type=audio.content_type,

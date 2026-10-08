@@ -50,8 +50,9 @@ export const speakResponseSchema = z.object({
 });
 export type SpeakResponse = z.infer<typeof speakResponseSchema>;
 
-/** `POST /voice/speak` — TTS read-aloud (Premium+; a 403 `feature_not_entitled` surfaces as a
- * thrown error same as any other non-2xx, the caller decides how to show it). Mirrors
+/** `POST /voice/speak` — TTS read-aloud (Free, fair-use bounded: a 429 `rate_limited` or
+ * `voice_limit_reached` surfaces as a thrown error like any other non-2xx, the caller decides how
+ * to show it). Mirrors
  * `voice.py::SpeakRequest` (`{text, language}`). */
 export async function speakText(text: string, language: string): Promise<SpeakResponse> {
   const response = await fetchWithRefresh(apiUrl("/voice/speak"), {

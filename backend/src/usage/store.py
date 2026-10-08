@@ -22,7 +22,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Protocol, cast, runtime_checkable
+from typing import Literal, Protocol, cast, runtime_checkable
 
 import structlog
 from sqlalchemy import CursorResult, Insert, select, update
@@ -36,6 +36,8 @@ logger = structlog.get_logger(__name__)
 
 _CHAT_COUNTER = "chat"
 _DEEP_RESEARCH_COUNTER = "deep_research"
+_VOICE_COUNTERS = {"stt": "voice_stt", "tts": "voice_tts"}
+VoiceKind = Literal["stt", "tts"]
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,14 @@ class UsageStore(Protocol):
     ) -> None: ...
 
     async def today_counts(self, *, user_id: str, today: date | None = None) -> dict[str, int]: ...
+
+    async def reserve_daily_voice(
+        self, *, user_id: str, kind: VoiceKind, limit: int, today: date | None = None
+    ) -> ChatQuotaVerdict: ...
+
+    async def refund_daily_voice(
+        self, *, user_id: str, kind: VoiceKind, today: date | None = None
+    ) -> None: ...
 
     async def record_turn(  # noqa: PLR0913 — one field per usage dimension the snapshot carries
         self,
@@ -177,14 +187,28 @@ class SqlAlchemyUsageStore:
             _DEEP_RESEARCH_COUNTER, user_id=user_id, limit=limit, today=today
         )
 
+    async def reserve_daily_voice(
+        self, *, user_id: str, kind: VoiceKind, limit: int, today: date | None = None
+    ) -> ChatQuotaVerdict:
+        """The same reserve-before-act claim for voice requests (separate STT / TTS counters)."""
+        return await self._reserve(_VOICE_COUNTERS[kind], user_id=user_id, limit=limit, today=today)
+
+    async def refund_daily_voice(
+        self, *, user_id: str, kind: VoiceKind, today: date | None = None
+    ) -> None:
+        await self._refund(_VOICE_COUNTERS[kind], user_id=user_id, today=today)
+
     async def refund_daily_deep_research(self, *, user_id: str, today: date | None = None) -> None:
         """Give back a claimed report (the run failed or produced nothing). Never below zero."""
+        await self._refund(_DEEP_RESEARCH_COUNTER, user_id=user_id, today=today)
+
+    async def _refund(self, counter: str, *, user_id: str, today: date | None) -> None:
         async with self._session_factory() as session:
             await session.execute(
                 update(UsageCounterRow)
                 .where(
                     UsageCounterRow.user_id == user_id,
-                    UsageCounterRow.counter == _DEEP_RESEARCH_COUNTER,
+                    UsageCounterRow.counter == counter,
                     UsageCounterRow.window_key == _day_key(today or datetime.now(UTC).date()),
                     UsageCounterRow.n > 0,
                 )
