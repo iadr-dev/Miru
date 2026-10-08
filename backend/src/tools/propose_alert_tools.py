@@ -49,9 +49,9 @@ class ProposeAlertInput(BaseModel):
             "volume_surge (multiple, optional window). Taiwan only: institutional_streak "
             "(investor foreign|trust|dealer, direction buy|sell, days 2-20), attention_entry, "
             "disposition_entry, month_revenue_published, material_announcement (a 重大訊息 was "
-            "filed), margin_balance_change (side "
-            "margin|short, direction up|down, percent) and etf_premium_discount (direction "
-            "premium|discount, percent; ETF codes only)."
+            "filed; optional keyword the subject must contain, max 20 chars, e.g. 股利), "
+            "margin_balance_change (side margin|short, direction up|down, percent) and "
+            "etf_premium_discount (direction premium|discount, percent; ETF codes only)."
         )
     )
 

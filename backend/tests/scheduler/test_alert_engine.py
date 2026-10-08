@@ -1049,3 +1049,52 @@ def test_ordinary_numbers_in_a_subject_survive() -> None:
     hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
     assert hit is not None
     assert "3.5" in hit.message
+
+
+def test_a_keyword_keeps_only_filings_whose_subject_contains_it() -> None:
+    r = FakeReader()
+    r.put(
+        ANNOUNCEMENTS,
+        day(0),
+        [
+            announcement_row("2330", day(0), subject="公告本公司董事會決議股利分派"),
+            announcement_row("2330", day(0), subject="公告背書保證"),
+        ],
+    )
+    hit = evaluate(MaterialAnnouncementPublished(keyword="股利"), r, day(0))
+    assert hit is not None
+    assert hit.met is True
+    assert "1 則" in hit.message
+    assert "背書" not in hit.message
+    miss = evaluate(MaterialAnnouncementPublished(keyword="法說會"), r, day(0))
+    assert miss is not None
+    assert miss.met is False
+
+
+def test_a_keyword_match_ignores_case() -> None:
+    r = FakeReader()
+    r.put(
+        ANNOUNCEMENTS,
+        day(0),
+        [announcement_row("2330", day(0), subject="Board approves ESG report")],
+    )
+    hit = evaluate(MaterialAnnouncementPublished(keyword="esg"), r, day(0))
+    assert hit is not None
+    assert hit.met is True
+
+
+def test_the_keyword_appears_in_the_rule_description() -> None:
+    from scheduler.templates import describe  # noqa: PLC0415
+
+    assert describe(MaterialAnnouncementPublished()) == "公布重大訊息"
+    assert describe(MaterialAnnouncementPublished(keyword="股利")) == "公布含「股利」的重大訊息"
+
+
+@pytest.mark.parametrize("bad", ["<script>", "[x](http://e.example)", "目標價 1200", "字" * 21])
+def test_an_unsafe_or_overlong_keyword_is_refused(bad: str) -> None:
+    with pytest.raises(ValueError):
+        MaterialAnnouncementPublished(keyword=bad)
+
+
+def test_a_blank_keyword_means_no_filter() -> None:
+    assert MaterialAnnouncementPublished(keyword="   ").keyword is None
