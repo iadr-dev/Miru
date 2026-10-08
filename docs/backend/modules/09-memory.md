@@ -145,6 +145,10 @@ turn's stored usage snapshot (`TurnUsage.memories_used`), so a live answer and a
 show a collapsible "參考了 N 則記憶" line under the answer with the memory texts and a link to manage
 them. Nothing is reported while the pause switch is off.
 
+**Legacy style memories are ignored.** A `preference` saved before the write-time tone/format guard
+existed (e.g. "always end with a TL;DR") is skipped by `recall` - it can no longer steer the voice -
+but it is not deleted: it stays visible in Settings for the user to remove.
+
 **Memory is not tone.** Voice, tone and verbosity belong to the curated 語氣 presets
 ([23](23-agent-personality.md)) - free-text style instructions are deliberately not a thing. Memory
 `preference` records the user's *analysis focus* (markets, horizon, sectors or ETFs followed); the
