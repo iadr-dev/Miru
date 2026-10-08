@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { SavedToast, SettingsError, SettingsLoading } from "@/components/settings/settings-states";
@@ -9,11 +9,13 @@ import { fetchMe } from "@/lib/api/account";
 import { listPersonalityPresets, updateProfile } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 
-/** 了然的語氣 preset picker — radio-card row, selected = `--accent` hairline + tint. Labels come from the API (`name_zh`/`name_en`),
- * never hardcoded guesses. */
+/** Miru 的語氣 preset picker - radio-card row, selected = `--accent` hairline + tint. Each preset's
+ * name and description are translated per locale (`settings.personality.preset.<id>`); a preset the
+ * messages don't know yet falls back to the API's own `name_zh`/`name_en`/`description`. */
 export function PersonalityPanel(): ReactNode {
   const t = useTranslations("settings.personality");
   const tc = useTranslations("settings.common");
+  const locale = useLocale();
   const queryClient = useQueryClient();
   const [saved, setSaved] = useState(false);
 
@@ -75,10 +77,15 @@ export function PersonalityPanel(): ReactNode {
                   : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--text-muted)]",
               )}
             >
-              <span className="font-medium text-[14px] text-[var(--text)]">{preset.name_zh}</span>
-              <span className="text-[12px] text-[var(--text-muted)]">{preset.name_en}</span>
+              <span className="font-medium text-[14px] text-[var(--text)]">
+                {t.has(`preset.${preset.id}.name`)
+                  ? t(`preset.${preset.id}.name`)
+                  : localizedName(preset, locale)}
+              </span>
               <span className="mt-1 text-[13px] text-[var(--text-muted)] leading-relaxed">
-                {preset.description}
+                {t.has(`preset.${preset.id}.description`)
+                  ? t(`preset.${preset.id}.description`)
+                  : preset.description}
               </span>
             </button>
           );
@@ -87,4 +94,8 @@ export function PersonalityPanel(): ReactNode {
       {saved ? <SavedToast message={tc("saved")} /> : null}
     </SettingsSection>
   );
+}
+
+function localizedName(preset: { name_zh: string; name_en: string }, locale: string): string {
+  return locale === "zh-TW" ? preset.name_zh : preset.name_en;
 }

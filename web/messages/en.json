@@ -1,7 +1,7 @@
 {
   "brand": {
-    "name": "了然 · Miru",
-    "logoAlt": "了然 · Miru logo"
+    "name": "Miru",
+    "logoAlt": "Miru logo"
   },
   "topbar": {
     "signIn": "Sign in",
@@ -42,8 +42,8 @@
   },
   "auth": {
     "modal": {
-      "signInTitle": "Sign in to 了然 · Miru",
-      "registerTitle": "Create your 了然 · Miru account",
+      "signInTitle": "Sign in to Miru",
+      "registerTitle": "Create your Miru account",
       "signInSubtitle": "Continue with your account.",
       "registerSubtitle": "Create an account to start chatting with Miru.",
       "close": "Close",
@@ -1305,7 +1305,7 @@
       }
     },
     "caveat": {
-      "nonTrading": "了然 · Miru 提供的分析為資料觀察，不構成投資建議。"
+      "nonTrading": "Miru 提供的分析為資料觀察，不構成投資建議。"
     },
     "composer": {
       "placeholder": "Ask me anything about Taiwan stocks…",
@@ -1373,18 +1373,18 @@
     }
   },
   "disclaimer": {
-    "text": "Analysis from 了然 · Miru is data observation, not investment advice."
+    "text": "Analysis from Miru is data observation, not investment advice."
   },
   "meta": {
-    "title": "了然 · Miru — AI analysis companion for Taiwan stocks",
-    "description": "了然 · Miru is an AI analysis companion for Taiwan stocks & ETFs — data, the tape, and the flows. Its analysis is data observation, not investment advice."
+    "title": "Miru — AI analysis companion for Taiwan stocks",
+    "description": "Miru is an AI analysis companion for Taiwan stocks & ETFs — data, the tape, and the flows. Its analysis is data observation, not investment advice."
   },
   "settings": {
     "nav": {
       "label": "Settings navigation",
       "profile": "Profile",
       "connections": "Connections",
-      "personality": "Personality",
+      "personality": "Miru's voice",
       "pets": "Pets",
       "billing": "Billing",
       "byok": "Bring your own key",
@@ -1454,8 +1454,23 @@
       "errorLastMethod": "This is your only sign-in method, so it can't be unlinked."
     },
     "personality": {
-      "title": "Personality",
-      "description": "Choose the tone and style you'd like replies in."
+      "title": "Miru's voice",
+      "description": "Choose the tone and style you'd like replies in.",
+      "preset": {
+        "steady": {
+          "name": "Steady Analyst",
+          "description": "Balanced and cautious; explains the trade-offs both ways."
+        },
+        "coach": {
+          "name": "Plain-language Coach",
+          "description": "Explains jargon in plain words, encouraging, teaches as it goes."
+        },
+        "concise": {
+          "name": "Concise",
+          "description": "Bullet points, terse, leads with the takeaway."
+        },
+        "data": { "name": "Data-first", "description": "Numbers first, tables, minimal prose." }
+      }
     },
     "pets": {
       "title": "Pets",
@@ -1985,7 +2000,7 @@
     },
     "memory": {
       "title": "Memory",
-      "description": "What 了然 remembers about your analysis focus - search, edit, pause or delete anytime.",
+      "description": "What Miru remembers about your analysis focus - search, edit, pause or delete anytime.",
       "scopeFilter": "Scope filter",
       "scopeAll": "All",
       "scopeOption": {
@@ -2003,7 +2018,7 @@
       },
       "listTitle": "What I remember",
       "enabled": "Use memory",
-      "enabledHint": "When on, 了然 draws on the memories below before answering. When off it neither uses nor adds any; what is saved is kept.",
+      "enabledHint": "When on, Miru draws on the memories below before answering. When off it neither uses nor adds any; what is saved is kept.",
       "pausedNotice": "Memory is paused: answers do not use any memory right now.",
       "search": "Search memories",
       "searchPlaceholder": "Search by name or content",

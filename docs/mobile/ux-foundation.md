@@ -1,4 +1,4 @@
-# 了然 · Miru — Mobile UX Research Foundation
+# Miru — Mobile UX Research Foundation
 
 The **research/UX foundation** for the mobile client: who it's for, the situations they use it in,
 the core task loops, and the mobile-specific principles the per-screen and interaction specs build
@@ -27,7 +27,7 @@ and the per-screen docs [home.md](home.md), [watchlist.md](watchlist.md), [chat.
 Mobile is **not the web workbench shrunk**. It is the surface for the two jobs a phone does best:
 
 - **Glance** — orient in seconds without typing (存股 morning check, commute peek, alert tap-through).
-- **Converse** — ask 了然 in natural language / voice, get a streamed, caveated answer with follow-ups.
+- **Converse** — ask Miru in natural language / voice, get a streamed, caveated answer with follow-ups.
 
 Everything deep (multi-panel Stock Detail, screener funnel tables, side-by-side agent lanes) stays
 **desktop-primary** ([README §3](README.md)); mobile shows the

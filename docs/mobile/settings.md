@@ -1,7 +1,7 @@
 # 設定 / Settings (tab 5 — the config hub)
 
 The config + overflow hub (Home·Stock·Chat·Screener·**Settings**). Calm, low-density — **not** a data
-surface. Hosts **Alerts/Schedules** (the mobile alerts home), 了然的語氣 Personality, 夥伴 Pets, and
+surface. Hosts **Alerts/Schedules** (the mobile alerts home), Miru 的語氣 Personality, 夥伴 Pets, and
 account config. (**Screener is no longer here** — it was promoted to its own tab, [screener.md](screener.md).)
 Parent index: [README.md](README.md) §2. UX rationale: [ux-foundation.md](ux-foundation.md).
 Behaviour/state: [interaction-spec.md](interaction-spec.md). Web parity:
@@ -18,7 +18,7 @@ the web app.
 |----------|---------|----------|
 | **提醒與排程 / Alerts & Schedules** | price/event **alert rules** + **scheduled jobs** (create/list/edit/delete) — the alerts home on mobile | `/alerts`, `/schedules` ([14](../backend/modules/14-scheduler-alerts.md)) |
 | **主題 / Themes** 🔒 | LLM-discovered themes + 資金流向 (also reachable from [screener.md](screener.md) Row-2) | `/analytics/themes` (Premium) |
-| **了然的語氣 / Agent style** | 穩健/白話/簡潔/數據派 preset picker ("Miru's voice", never "advisor") | `/personality/presets`, `PATCH /me {personality_id}` ([23](../backend/modules/23-agent-personality.md)) |
+| **Miru 的語氣 / Agent style** | 穩健/白話/簡潔/數據派 preset picker ("Miru's voice", never "advisor") | `/personality/presets`, `PATCH /me {personality_id}` ([23](../backend/modules/23-agent-personality.md)) |
 | **夥伴 / Pets** | collection · gacha · equip · streak (cosmetic, no tier gate) | `/pets/*` ([21](../backend/modules/21-pet-gamification.md)) |
 | 方案與帳單 / Billing | plans, BYOK checkbox, portal, history | `/billing/*` ([15](../backend/modules/15-payments-paddle.md)) |
 | API 金鑰 / BYOK | store/remove keys | `/me/keys` |
@@ -40,7 +40,7 @@ the web app.
 │  🎯 主題 Themes                    🔒→ │
 ├───────────────────────────────────────┤
 │ 個人化                                  │
-│  🗣 了然的語氣  (穩健)               →  │
+│  🗣 Miru 的語氣  (穩健)               →  │
 │  🐦 夥伴 Pets   Sisi 🔥12           →  │
 ├───────────────────────────────────────┤
 │ 帳號與用量                              │
@@ -86,8 +86,8 @@ validation, alert-rule empty/create/validate/delete-confirm, keyboard/focus) =
   Schedules (scheduled jobs) share the pattern.
 - **Controls.** Inputs radius 10px `--surface` + `1px --border`, focus-visible `--accent` ring; toggles/
   segmented pickers use `--accent` active fill; primary buttons radius 12px `--accent`; ≥44px targets.
-- **了然的語氣** = radio-card row (穩健/白話/簡潔/數據派), selected = `--accent` hairline + `--accent-weak`
-  tint; framed **「了然的語氣」**, never "choose your advisor" (protects the non-trading promise).
+- **Miru 的語氣** = radio-card row (穩健/白話/簡潔/數據派), selected = `--accent` hairline + `--accent-weak`
+  tint; framed **「Miru 的語氣」**, never "choose your advisor" (protects the non-trading promise).
 - **夥伴 / Pets** = gacha/collection grid (cosmetic, no tier gate); **reduced-motion → static** (no
   shake/pop/gacha animation). Streak chip mirrors the Home 夥伴 block.
 - **用量** = quota bars in `--accent` (tabular-nums). **方案與帳單** = plan cards + BYOK checkbox (BYOK

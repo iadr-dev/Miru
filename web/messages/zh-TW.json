@@ -1,7 +1,7 @@
 {
   "brand": {
-    "name": "了然 · Miru",
-    "logoAlt": "了然 · Miru 標誌"
+    "name": "Miru",
+    "logoAlt": "Miru 標誌"
   },
   "topbar": {
     "signIn": "登入",
@@ -42,8 +42,8 @@
   },
   "auth": {
     "modal": {
-      "signInTitle": "登入 了然 · Miru",
-      "registerTitle": "註冊 了然 · Miru",
+      "signInTitle": "登入 Miru",
+      "registerTitle": "註冊 Miru",
       "signInSubtitle": "使用你的帳號繼續。",
       "registerSubtitle": "建立帳號，開始與 Miru 對話。",
       "close": "關閉",
@@ -1246,7 +1246,7 @@
         "manage": "管理記憶",
         "paused": "記憶目前已暫停，不會儲存。",
         "turnOn": "前往開啟",
-        "errorRejected": "這段內容無法儲存（不可包含金鑰、買賣建議，語氣設定請到「了然的語氣」）。",
+        "errorRejected": "這段內容無法儲存（不可包含金鑰、買賣建議，語氣設定請到「Miru 的語氣」）。",
         "errorGeneric": "儲存失敗，請稍後再試。",
         "caveat": "這只是提案，按下「儲存」後才會記住。記憶是你說過的背景，回答時仍會重新查證資料。"
       },
@@ -1305,7 +1305,7 @@
       }
     },
     "caveat": {
-      "nonTrading": "了然 · Miru 提供的分析為資料觀察，不構成投資建議。"
+      "nonTrading": "Miru 提供的分析為資料觀察，不構成投資建議。"
     },
     "composer": {
       "placeholder": "問我任何台股問題…",
@@ -1373,18 +1373,18 @@
     }
   },
   "disclaimer": {
-    "text": "了然 · Miru 提供的分析為資料觀察，不構成投資建議。"
+    "text": "Miru 提供的分析為資料觀察，不構成投資建議。"
   },
   "meta": {
-    "title": "了然 · Miru — 台股 AI 分析夥伴",
-    "description": "了然 · Miru 是台股與 ETF 的 AI 分析夥伴，帶你看資料、看盤面、看籌碼；提供的分析為資料觀察，不構成投資建議。"
+    "title": "Miru — 台股 AI 分析夥伴",
+    "description": "Miru 是台股與 ETF 的 AI 分析夥伴，帶你看資料、看盤面、看籌碼；提供的分析為資料觀察，不構成投資建議。"
   },
   "settings": {
     "nav": {
       "label": "設定導覽",
       "profile": "個人資料",
       "connections": "帳號連結",
-      "personality": "了然的語氣",
+      "personality": "Miru 的語氣",
       "pets": "夥伴",
       "billing": "訂閱方案",
       "byok": "自帶金鑰",
@@ -1454,8 +1454,14 @@
       "errorLastMethod": "這是你唯一的登入方式，無法取消連結。"
     },
     "personality": {
-      "title": "了然的語氣",
-      "description": "選擇你偏好的回覆語氣與風格。"
+      "title": "Miru 的語氣",
+      "description": "選擇你偏好的回覆語氣與風格。",
+      "preset": {
+        "steady": { "name": "穩健分析師", "description": "平衡、審慎，兩面的取捨都會說明。" },
+        "coach": { "name": "白話教練", "description": "用白話解釋術語，語氣鼓勵，邊回答邊教學。" },
+        "concise": { "name": "簡潔派", "description": "條列重點、字句精簡，先給結論。" },
+        "data": { "name": "數據派", "description": "數字優先，多用表格，少用文字。" }
+      }
     },
     "pets": {
       "title": "夥伴",
@@ -1948,7 +1954,7 @@
         "complained": "電子郵件已暫停：你的信箱曾將郵件標為垃圾信。請更新帳號信箱後才會再收到。",
         "unsubscribed": "你已取消訂閱電子郵件通知。想重新開啟，請勾選上方的電子郵件。"
       },
-      "lineAddFriend": "加入了然 LINE 官方帳號為好友",
+      "lineAddFriend": "加入 Miru LINE 官方帳號為好友",
       "lineLink": "連結 LINE",
       "lineLinked": "已連結 LINE。",
       "lineUnlink": "解除連結",
@@ -1985,7 +1991,7 @@
     },
     "memory": {
       "title": "記憶",
-      "description": "了然記住的分析重點，可隨時搜尋、編輯、暫停或刪除。",
+      "description": "Miru 記住的分析重點，可隨時搜尋、編輯、暫停或刪除。",
       "scopeFilter": "範圍篩選",
       "scopeAll": "全部",
       "scopeOption": {
@@ -2003,7 +2009,7 @@
       },
       "listTitle": "已記住的內容",
       "enabled": "使用記憶",
-      "enabledHint": "開啟時，了然會在回答前參考下列記憶；關閉後不會參考也不會新增，已存的記憶會保留。",
+      "enabledHint": "開啟時，Miru 會在回答前參考下列記憶；關閉後不會參考也不會新增，已存的記憶會保留。",
       "pausedNotice": "記憶已暫停：目前的回答不會參考任何記憶。",
       "search": "搜尋記憶",
       "searchPlaceholder": "搜尋名稱或內容",
@@ -2024,7 +2030,7 @@
       "toneTitle": "回答語氣",
       "toneHint": "語氣由「語氣設定」管理；記憶只用來記住你的分析重點（市場、期間、關注的族群或 ETF），不用來調整說話風格。",
       "toneLink": "前往語氣設定",
-      "watchlistHint": "自選股清單在側欄管理，了然回答時也會參考。",
+      "watchlistHint": "自選股清單在側欄管理，Miru 回答時也會參考。",
       "textExample": "例如：我主要關注高股息 ETF，偏好長期觀點",
 
       "form": {

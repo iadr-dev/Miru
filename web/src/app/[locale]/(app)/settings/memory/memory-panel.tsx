@@ -35,7 +35,7 @@ import {
 
 const SEARCH_DEBOUNCE_MS = 250;
 
-/** 記憶 - what 了然 remembers about the user's analysis focus: readable cards the user can search,
+/** 記憶 - what Miru remembers about the user's analysis focus: readable cards the user can search,
  * edit, delete or clear, an on/off switch, and where each memory came from and when it was last
  * used. Tone is deliberately not here (語氣設定 owns it). */
 export function MemoryPanel(): ReactNode {
