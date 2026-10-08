@@ -107,11 +107,17 @@ Types:
   There is no in-chat "remember my watchlist X" natural-language write path — the client/UI
   would have to call this endpoint itself; the agent has no tool that calls
   `MemoryStore.upsert`.
-- **Agent-proposed saves are not built.** No tool in `tools/` calls into `memory.store`, and no
-  orchestrator/loop code writes a `Memory` after a turn. The idea that "the agent may propose
-  saving a finding, written only after the turn, tagged with `source_ref`" describes an intended
-  future capability, not current behavior — today a finding/preference/entity_note is only
-  written by a direct `POST /memory` call from outside the agent loop.
+- **Agent-proposed saves are built, propose-only.** The `propose_memory` tool (warm set +
+  `memory-proposal` skill; `tools/propose_memory_tools.py`) validates what the model assembled from
+  "記住…" and returns a `memory_proposal` card. It performs no I/O and saves nothing: the user taps
+  儲存 and the frontend calls the ordinary `POST /memory` with `source_ref = "thread:<id>"`. The card
+  shows a link to turn memory back on instead of the button while the pause switch is off, and detects
+  an identical existing memory ("already remembered"). The argument is `memory_type`, not `type`
+  (Gemini mis-handles a function argument literally named "type"). The checks live in
+  `schemas/memory_rules.py` so the tool and the store share them: credentials (key names **and**
+  value shapes such as `sk-…`/bearer tokens), raw payloads, trading language, and - for `preference`
+  only - tone/format instructions (TL;DR, bullets, 語氣, 簡潔, …), which are refused with a pointer to
+  Tone settings.
 - Same gap on the watchlist side: ADR-0027 describes an `add_to_watchlist` agent tool (write,
   explicit-utterance gated) and a read-only `get_watchlist` MCP tool. Neither exists in
   `tools/` or `mcp/` today — watchlist reads/writes are exposed only as the `/watchlists/*` REST

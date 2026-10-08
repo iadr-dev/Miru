@@ -169,12 +169,18 @@ def _usage_from_metadata(
     )
 
 
+def _bare_tool_name(name: str | None) -> str:
+    """Gemini sometimes namespaces a function call it was given ("google:propose_alert"), most
+    often with native web search on; our tools are registered under their bare names."""
+    return (name or "").rsplit(":", 1)[-1]
+
+
 def _function_call_to_tool_call(
     call: genai_types.FunctionCall, index: int, signature: bytes | None = None
 ) -> ToolCall:
     return ToolCall(
         id=call.id or f"{call.name}_{index}",
-        name=call.name or "",
+        name=_bare_tool_name(call.name),
         arguments=dict(call.args or {}),
         continuation=base64.b64encode(signature).decode("ascii") if signature else None,
     )

@@ -18,13 +18,13 @@ async def test_upsert_then_list_round_trips(db_session: AsyncSession) -> None:
         scope=MemoryScope.USER,
         type=MemoryType.PREFERENCE,
         key="verbosity",
-        content={"level": "concise"},
+        content={"focus": "etf"},
     )
     listed = await store.list(user_id="user-1")
 
     assert written.key == "verbosity"
     assert len(listed) == 1
-    assert listed[0].content == {"level": "concise"}
+    assert listed[0].content == {"focus": "etf"}
 
 
 async def test_upsert_with_same_key_updates_in_place(db_session: AsyncSession) -> None:
@@ -34,20 +34,20 @@ async def test_upsert_with_same_key_updates_in_place(db_session: AsyncSession) -
         scope=MemoryScope.USER,
         type=MemoryType.PREFERENCE,
         key="verbosity",
-        content={"level": "concise"},
+        content={"focus": "etf"},
     )
     await store.upsert(
         user_id="user-1",
         scope=MemoryScope.USER,
         type=MemoryType.PREFERENCE,
         key="verbosity",
-        content={"level": "verbose"},
+        content={"focus": "stocks"},
     )
 
     listed = await store.list(user_id="user-1")
 
     assert len(listed) == 1
-    assert listed[0].content == {"level": "verbose"}
+    assert listed[0].content == {"focus": "stocks"}
 
 
 async def test_delete_removes_the_row_and_is_idempotent(db_session: AsyncSession) -> None:
@@ -101,14 +101,14 @@ async def test_list_scopes_by_user(db_session: AsyncSession) -> None:
         scope=MemoryScope.USER,
         type=MemoryType.PREFERENCE,
         key="verbosity",
-        content={"level": "concise"},
+        content={"focus": "etf"},
     )
     await store.upsert(
         user_id="user-2",
         scope=MemoryScope.USER,
         type=MemoryType.PREFERENCE,
         key="verbosity",
-        content={"level": "verbose"},
+        content={"focus": "stocks"},
     )
 
     listed = await store.list(user_id="user-1")
@@ -147,3 +147,48 @@ async def test_mark_used_ignores_another_users_memory(db_session) -> None:
     await store.mark_used(user_id="someone-else", memory_ids=[memory.id])
     (same,) = await store.list(user_id="u1")
     assert same.use_count == 0
+
+
+async def test_a_preference_that_is_a_style_instruction_is_refused(db_session) -> None:
+    store = SqlAlchemyMemoryStore(db_session)
+    with pytest.raises(MemoryGovernanceError, match="Tone settings"):
+        await store.upsert(
+            user_id="u1",
+            scope=MemoryScope.USER,
+            type=MemoryType.PREFERENCE,
+            key="style",
+            content={"text": "always end with a one-line TL;DR"},
+        )
+    # a note may legitimately mention tone (e.g. an earnings-call observation)
+    await store.upsert(
+        user_id="u1",
+        scope=MemoryScope.USER,
+        type=MemoryType.FINDING,
+        key="call",
+        content={"text": "管理層語氣偏保守"},
+    )
+
+
+async def test_editing_a_preference_into_a_style_instruction_is_refused(db_session) -> None:
+    store = SqlAlchemyMemoryStore(db_session)
+    memory = await store.upsert(
+        user_id="u1",
+        scope=MemoryScope.USER,
+        type=MemoryType.PREFERENCE,
+        key="focus",
+        content={"text": "高股息 ETF"},
+    )
+    with pytest.raises(MemoryGovernanceError, match="Tone settings"):
+        await store.update(user_id="u1", memory_id=memory.id, content={"text": "請用條列式"})
+
+
+async def test_a_secret_written_into_free_text_is_refused(db_session) -> None:
+    store = SqlAlchemyMemoryStore(db_session)
+    with pytest.raises(MemoryGovernanceError, match="credential"):
+        await store.upsert(
+            user_id="u1",
+            scope=MemoryScope.USER,
+            type=MemoryType.FINDING,
+            key="note",
+            content={"text": "my key is sk-abcdef123456789"},
+        )

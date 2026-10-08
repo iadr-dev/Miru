@@ -25,6 +25,7 @@ from memory.models import (
     MemoryScope,
     MemoryType,
     scan_content_for_governance_violations,
+    scan_preference_for_style_directive,
 )
 
 logger = structlog.get_logger(__name__)
@@ -107,6 +108,8 @@ class SqlAlchemyMemoryStore:
         # keeps this store's public contract "governance violations raise
         # `MemoryGovernanceError`", not "raise a pydantic error that happens to wrap one".
         violation = scan_content_for_governance_violations(content)
+        if violation is None and type is MemoryType.PREFERENCE:
+            violation = scan_preference_for_style_directive(content)
         if violation is not None:
             raise MemoryGovernanceError(violation)
 
@@ -185,6 +188,10 @@ class SqlAlchemyMemoryStore:
         row = result.scalar_one_or_none()
         if row is None:
             return None
+        if row.type == MemoryType.PREFERENCE.value:
+            style = scan_preference_for_style_directive(content)
+            if style is not None:
+                raise MemoryGovernanceError(style)
         row.content = content
         row.updated_at = datetime.now(UTC)
         await self._session.flush()

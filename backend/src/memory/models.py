@@ -5,12 +5,16 @@ recommendations before they ever reach the store.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from enum import StrEnum
-from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from schemas.memory_rules import (
+    STYLE_DIRECTIVE_MESSAGE,
+    scan_content_for_governance_violations,
+    scan_preference_for_style_directive,
+)
 
 
 class MemoryScope(StrEnum):
@@ -33,51 +37,6 @@ class MemoryGovernanceError(ValueError):
     """Raised by `Memory`'s own validation when content looks like a credential, a raw
     source payload, or a trading recommendation — never silently dropped, never silently
     written; the caller sees exactly why the write was refused."""
-
-
-# Keyword/pattern heuristics — a deliberate first pass (documented precedent:
-# `agent/guardrails.py` uses the same style of keyword/pattern matching for the identical
-# reason: cheap, auditable, and good enough to catch the obvious cases without an LLM call on
-# every memory write).
-_CREDENTIAL_KEY_MARKERS: Final[tuple[str, ...]] = (
-    "api_key",
-    "apikey",
-    "access_token",
-    "refresh_token",
-    "secret",
-    "password",
-    "ciphertext",
-    "private_key",
-)
-_RAW_PAYLOAD_KEY_MARKERS: Final[tuple[str, ...]] = ("raw_payload", "raw_response", "source_payload")
-_TRADING_PATTERNS: Final[tuple[re.Pattern[str], ...]] = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        r"\byou should (buy|sell|hold)\b",
-        r"\b(buy|sell|hold)\s+(rating|signal|recommendation|call)\b",
-        r"\bprice target\b",
-        r"\btarget price\b",
-        r"\bposition siz(e|ing)\b",
-        r"目標價",
-        r"買進建議",
-        r"賣出建議",
-    )
-)
-
-
-def scan_content_for_governance_violations(content: dict[str, object]) -> str | None:
-    """Return a human-readable reason if `content` violates a governance rule, else `None`.
-    Checks key names (credentials/raw payloads are conventionally under a recognizable key)
-    and string values (trading language can appear in free text regardless of key name)."""
-    for key, value in content.items():
-        lowered_key = key.lower()
-        if any(marker in lowered_key for marker in _CREDENTIAL_KEY_MARKERS):
-            return f"content key {key!r} looks like a credential — never stored in memory"
-        if any(marker in lowered_key for marker in _RAW_PAYLOAD_KEY_MARKERS):
-            return f"content key {key!r} looks like a raw source payload — never stored verbatim"
-        if isinstance(value, str) and any(pattern.search(value) for pattern in _TRADING_PATTERNS):
-            return f"content key {key!r} contains trading-recommendation language"
-    return None
 
 
 class Memory(BaseModel):
@@ -119,9 +78,11 @@ class Memory(BaseModel):
 
 
 __all__ = [
+    "STYLE_DIRECTIVE_MESSAGE",
     "Memory",
     "MemoryGovernanceError",
     "MemoryScope",
     "MemoryType",
     "scan_content_for_governance_violations",
+    "scan_preference_for_style_directive",
 ]

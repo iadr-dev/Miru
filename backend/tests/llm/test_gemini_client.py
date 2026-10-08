@@ -422,3 +422,12 @@ def test_function_call_thought_signature_round_trips() -> None:
     part = _function_call_part(call)
     assert part.thought_signature == b"sig-bytes"
     assert _function_call_part(ToolCall(id="x", name="n", arguments={})).thought_signature is None
+
+
+def test_a_namespaced_function_call_name_is_reduced_to_the_registered_tool_name() -> None:
+    call = _function_call_to_tool_call(
+        genai_types.FunctionCall(name="google:propose_memory", args={"text": "x"}), 0
+    )
+    assert call.name == "propose_memory"
+    plain = _function_call_to_tool_call(genai_types.FunctionCall(name="propose_alert", args={}), 0)
+    assert plain.name == "propose_alert"

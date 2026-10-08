@@ -1235,6 +1235,21 @@
         "errorGeneric": "建立失敗，請稍後再試。",
         "caveat": "這只是提案，按下「建立」後才會生效。提醒會在收盤後資料更新時比對，非投資建議。"
       },
+      "memoryProposal": {
+        "title": "記憶提案",
+        "save": "儲存",
+        "saving": "儲存中…",
+        "dismiss": "略過",
+        "dismissed": "已略過這則提案。",
+        "saved": "已儲存這則記憶",
+        "alreadySet": "你已經記住這件事了",
+        "manage": "管理記憶",
+        "paused": "記憶目前已暫停，不會儲存。",
+        "turnOn": "前往開啟",
+        "errorRejected": "這段內容無法儲存（不可包含金鑰、買賣建議，語氣設定請到「了然的語氣」）。",
+        "errorGeneric": "儲存失敗，請稍後再試。",
+        "caveat": "這只是提案，按下「儲存」後才會記住。記憶是你說過的背景，回答時仍會重新查證資料。"
+      },
       "scheduleProposal": {
         "title": "排程簡報提案",
         "create": "建立",

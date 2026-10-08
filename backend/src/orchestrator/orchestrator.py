@@ -81,6 +81,7 @@ _WARM_TOOLS: tuple[str, ...] = (
     "get_canonical_context",
     "get_source_health",
     "propose_alert",
+    "propose_memory",
     "propose_schedule",
 )
 _DEGRADED_ALL_LANES = (

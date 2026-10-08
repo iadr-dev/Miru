@@ -1235,6 +1235,21 @@
         "errorGeneric": "Couldn't create the alert. Please try again.",
         "caveat": "This is only a proposal — it takes effect when you tap Create. Alerts are checked when end-of-day data updates. Not investment advice."
       },
+      "memoryProposal": {
+        "title": "Memory proposal",
+        "save": "Save",
+        "saving": "Saving…",
+        "dismiss": "Skip",
+        "dismissed": "Skipped this proposal.",
+        "saved": "Saved to memory",
+        "alreadySet": "Already remembered",
+        "manage": "Manage memory",
+        "paused": "Memory is paused, so nothing is saved.",
+        "turnOn": "Turn it on",
+        "errorRejected": "That can't be saved (no keys or buy/sell advice; tone lives in Tone settings).",
+        "errorGeneric": "Couldn't save. Please try again.",
+        "caveat": "This is only a proposal - it is remembered once you tap Save. Memory is background you told us; answers still re-check the data."
+      },
       "scheduleProposal": {
         "title": "Scheduled briefing proposal",
         "create": "Create",
