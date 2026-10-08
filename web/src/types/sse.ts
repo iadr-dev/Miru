@@ -66,6 +66,7 @@ export const SSE_EVENT_KINDS = [
   "rich_card",
   "synthesis.start",
   "usage",
+  "memory.used",
   "steering.accepted",
   "message",
   "message.delta",

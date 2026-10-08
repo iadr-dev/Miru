@@ -43,7 +43,12 @@ import {
   type WebSearchSource,
   webSearchResultDataSchema,
 } from "@/types/sse";
-import { type TurnUsageData, turnUsageDataSchema } from "@/types/usage";
+import {
+  type MemoryRef,
+  memoryUsedDataSchema,
+  type TurnUsageData,
+  turnUsageDataSchema,
+} from "@/types/usage";
 
 export type TurnPhase = "thinking" | "done" | "error" | "cancelled";
 
@@ -181,6 +186,8 @@ export type ActiveTurn = {
   webSearchSources: WebSearchSource[];
   /** The latest `usage` frame (the backend re-sends running totals) - null until one arrives. */
   usage: TurnUsageData | null;
+  /** The long-term memories recall put in front of the model this turn (from `memory.used`). */
+  memoriesUsed: MemoryRef[];
   /** The final answer, in one shot — null until the terminal `message` frame arrives. Always
    * the authoritative full text once set (see `streamingAnswerText` for the live-partial
    * counterpart); a client that missed every `message.delta` still gets the complete answer
@@ -415,6 +422,10 @@ const FRAME_REDUCERS: {
     };
   },
   "synthesis.start": (base) => base,
+  "memory.used": (base, frame) => {
+    const parsed = memoryUsedDataSchema.safeParse(frame.envelope.data);
+    return parsed.success ? { ...base, memoriesUsed: parsed.data.memories } : base;
+  },
   usage: (base, frame) => {
     const parsed = turnUsageDataSchema.safeParse(frame.envelope.data);
     return parsed.success ? { ...base, usage: parsed.data } : base;
@@ -439,6 +450,7 @@ export const useTurnStore = create<TurnStore>((set) => ({
         richCards: [],
         webSearchSources: [],
         usage: null,
+        memoriesUsed: [],
         answerText: null,
         streamingAnswerText: null,
         steeringQueued: [],

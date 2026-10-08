@@ -19,6 +19,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
 import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
+import { MemoryUsedChip } from "@/app/[locale]/(app)/chat/memory-used-chip";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
 import { TokenUsageChip } from "@/app/[locale]/(app)/chat/token-usage-chip";
 import {
@@ -100,6 +101,7 @@ export function ActiveTurnView({
             <AnswerMarkdown text={turn.answerText} />
             <WebSearchSources sources={turn.webSearchSources} />
             <Caveat text={tCaveat("nonTrading")} />
+            <MemoryUsedChip memories={turn.memoriesUsed} />
             <TokenUsageChip usage={turn.usage} />
             {/* No retry/feedback target here — this overlay is about to be replaced by the
              * persisted-history render once the thread query settles (see `ChatClient`'s

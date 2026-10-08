@@ -59,6 +59,18 @@ class ModelUsage(BaseModel):
     cost_micros: int = Field(default=0, ge=0)
 
 
+class MemoryRef(BaseModel):
+    """A long-term memory that informed this turn - shown to the user under the answer. `text` is
+    a short snippet (the memory is the user's own), enough to recognise it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    key: str
+    type: str
+    text: str = ""
+
+
 class TurnUsage(BaseModel):
     """The per-turn accounting snapshot: totals plus the breakdown that explains them."""
 
@@ -72,6 +84,8 @@ class TurnUsage(BaseModel):
     cost_micros: int = Field(default=0, ge=0)
     breakdown: TokenBreakdown = Field(default_factory=TokenBreakdown)
     models: tuple[ModelUsage, ...] = Field(default_factory=tuple)
+    # The memories recall put in front of the model this turn (empty when none or memory is off).
+    memories_used: tuple[MemoryRef, ...] = Field(default_factory=tuple)
 
 
 class UsageAccumulator:

@@ -51,8 +51,10 @@ from conversation.store import (
 from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import TURN_END_KIND, EventBus
+from events.usage import MemoryRef, TurnUsage
 from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
 from llm.registry import ByokOverride, byok_scope
+from memory.models import Memory
 from memory.recall import recall_with_ids
 from memory.settings import memory_enabled
 from memory.store import SqlAlchemyMemoryStore
@@ -355,6 +357,8 @@ async def _drive_turn(
     memory_store = SqlAlchemyMemoryStore(session)
     watchlist_store = WatchlistStore(session)
 
+    memories_used: list[MemoryRef] = []
+
     async def recall_provider() -> str | None:
         if not await memory_enabled(session, user_id=user_id):
             return None  # the user paused memory: recall nothing
@@ -367,6 +371,12 @@ async def _drive_turn(
         )
         if used:
             await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
+            memories_used[:] = [_memory_ref(m) for m in used]
+            event_bus.publish(
+                "memory.used",
+                turn_id=turn_id,
+                data={"memories": [r.model_dump() for r in memories_used]},
+            )
         return block
 
     try:
@@ -412,6 +422,7 @@ async def _drive_turn(
         )
         return
 
+    result = _with_memories(result, turn_id=turn_id, memories=memories_used)
     await _persist_answer(
         store,
         user_id=user_id,
@@ -462,6 +473,30 @@ async def _maybe_title_thread(
         await store.update_thread(user_id=user_id, thread_id=thread_id, title=title)
     except Exception as exc:  # cosmetic — never fail an already-answered turn over a title
         logger.warning("thread_titling_failed", thread_id=thread_id, error=repr(exc))
+
+
+_MEMORY_SNIPPET_CHARS = 80
+
+
+def _memory_ref(memory: Memory) -> MemoryRef:
+    raw = memory.content.get("text")
+    text = raw if isinstance(raw, str) else " ".join(str(v) for v in memory.content.values())
+    flat = " ".join(text.split())
+    snippet = flat if len(flat) <= _MEMORY_SNIPPET_CHARS else f"{flat[:_MEMORY_SNIPPET_CHARS]}…"
+    return MemoryRef(id=memory.id, key=memory.key, type=memory.type.value, text=snippet)
+
+
+def _with_memories(
+    result: OrchestratorResult, *, turn_id: str, memories: list[MemoryRef]
+) -> OrchestratorResult:
+    """The result with the memories the turn used recorded on its usage snapshot, so a reopened
+    thread can still show which memories informed an answer."""
+    if not memories:
+        return result
+    usage = result.usage or TurnUsage(turn_id=turn_id)
+    return result.model_copy(
+        update={"usage": usage.model_copy(update={"memories_used": tuple(memories)})}
+    )
 
 
 async def _record_usage(

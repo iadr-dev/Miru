@@ -1364,6 +1364,10 @@
       "transcribeError": "Couldn't transcribe that — listening again.",
       "sendError": "Something went wrong sending that — listening again."
     },
+    "memoryUsed": {
+      "summary": "Used {count} memories",
+      "manage": "Manage memory"
+    },
     "usage": {
       "summary": "{input} in · {output} out"
     }

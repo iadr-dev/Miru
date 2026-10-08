@@ -139,6 +139,12 @@ use count (stamped by `recall_with_ids` -> `mark_used` each time recall puts a m
 model), and a link to the chat it came from (`source_ref = "thread:<id>"`). Search, edit, delete,
 clear-all and the pause switch are all there.
 
+**Which memories informed an answer.** `recall_with_ids` returns the memories it chose; the turn
+driver publishes a `memory.used` SSE event (`{memories:[{id,key,type,text}]}`) and records them on the
+turn's stored usage snapshot (`TurnUsage.memories_used`), so a live answer and a reopened thread both
+show a collapsible "參考了 N 則記憶" line under the answer with the memory texts and a link to manage
+them. Nothing is reported while the pause switch is off.
+
 **Memory is not tone.** Voice, tone and verbosity belong to the curated 語氣 presets
 ([23](23-agent-personality.md)) - free-text style instructions are deliberately not a thing. Memory
 `preference` records the user's *analysis focus* (markets, horizon, sectors or ETFs followed); the

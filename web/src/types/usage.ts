@@ -54,6 +54,18 @@ export const llmUsageSummarySchema = z.object({
 });
 export type LlmUsageSummary = z.infer<typeof llmUsageSummarySchema>;
 
+/** A long-term memory that informed a turn (shown under the answer). */
+export const memoryRefSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  type: z.string(),
+  text: z.string().default(""),
+});
+export type MemoryRef = z.infer<typeof memoryRefSchema>;
+
+/** The `memory.used` SSE frame's `data`. */
+export const memoryUsedDataSchema = z.object({ memories: z.array(memoryRefSchema).default([]) });
+
 /** The `usage` SSE frame's `data` - one turn's totals plus the per-model split. */
 export const turnUsageDataSchema = z.object({
   input_tokens: z.number().int().default(0),
@@ -73,5 +85,7 @@ export const turnUsageDataSchema = z.object({
       }),
     )
     .default([]),
+  // Present on a stored turn (and only there): the memories that informed it.
+  memories_used: z.array(memoryRefSchema).default([]),
 });
 export type TurnUsageData = z.infer<typeof turnUsageDataSchema>;

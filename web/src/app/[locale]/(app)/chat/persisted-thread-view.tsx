@@ -10,6 +10,7 @@ import {
 } from "@/app/[locale]/(app)/chat/active-turn-view";
 import { AnswerMarkdown } from "@/app/[locale]/(app)/chat/answer-markdown";
 import { Caveat } from "@/app/[locale]/(app)/chat/caveat";
+import { MemoryUsedChip } from "@/app/[locale]/(app)/chat/memory-used-chip";
 import { RichCardView } from "@/app/[locale]/(app)/chat/rich-card";
 import { TokenUsageChip } from "@/app/[locale]/(app)/chat/token-usage-chip";
 import { WebSearchSources } from "@/app/[locale]/(app)/chat/web-search-sources";
@@ -277,6 +278,7 @@ export function PersistedThreadView({
             {!isUser ? (
               <>
                 <Caveat text={tCaveat("nonTrading")} />
+                <MemoryUsedChip memories={turn.usage?.memories_used ?? []} />
                 <TokenUsageChip usage={turn.usage} />
                 <AssistantTurnActions
                   turn={turn}
