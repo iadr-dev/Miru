@@ -83,6 +83,7 @@ export function fieldsFor(kind: AlertTemplateKind): readonly ConditionFieldKey[]
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
+    case "material_announcement":
       return [];
   }
 }
@@ -114,6 +115,7 @@ function candidateFor(draft: ConditionDraft, nums: Record<ConditionFieldKey, num
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
+    case "material_announcement":
       return { kind: draft.kind };
   }
 }
@@ -188,6 +190,7 @@ export function conditionSummary(condition: AlertCondition): {
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
+    case "material_announcement":
       return { key: condition.kind, values: {} };
   }
 }
@@ -243,6 +246,7 @@ export function draftFromCondition(condition: AlertCondition): ConditionDraft {
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
+    case "material_announcement":
       return base;
   }
 }
@@ -304,6 +308,7 @@ export const TW_ONLY_TEMPLATE_KINDS: readonly AlertTemplateKind[] = [
   "attention_entry",
   "disposition_entry",
   "month_revenue_published",
+  "material_announcement",
   "margin_balance_change",
   "etf_premium_discount",
 ];

@@ -26,6 +26,7 @@ describe("presetsFor", () => {
       "attention_entry",
       "disposition_entry",
       "month_revenue_published",
+      "material_announcement",
       "institutional_streak",
       "margin_balance_change",
       "daily_change",

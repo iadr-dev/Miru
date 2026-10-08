@@ -4,6 +4,7 @@ against an in-memory fake reader, no Parquet and no network."""
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,7 @@ from ingest.jobs import (
     ETF_NAV_DATASET,
     INSTITUTIONAL_FLOW_JOB,
     MARGIN_SHORT_JOB,
+    MATERIAL_ANNOUNCEMENTS_DATASET,
     MONTH_REVENUE_JOB,
     PRICE_EOD_JOB,
 )
@@ -36,6 +38,7 @@ from scheduler.templates import (
     EtfPremiumDiscount,
     InstitutionalStreak,
     MarginBalanceChange,
+    MaterialAnnouncementPublished,
     MonthRevenuePublished,
     VolumeSurge,
     capability_of,
@@ -846,6 +849,7 @@ ALL_TEMPLATES = [
     AttentionListEntry(),
     DispositionListEntry(),
     MonthRevenuePublished(),
+    MaterialAnnouncementPublished(),
     MarginBalanceChange(side="margin", direction="up", percent=1),
     EtfPremiumDiscount(direction="premium", percent=1),
 ]
@@ -882,3 +886,166 @@ async def test_margin_and_etf_rules_fire_and_the_sweep_finds_both_datasets(sessi
     reader.put(ETF_NAV_DATASET, TODAY, [nav_row("0050", 1.5)])
     fired = await make_worker(session_factory, reader).reconcile_alerts()
     assert sorted(fired) == sorted([margin.id, etf.id])
+
+
+def announcement_row(
+    symbol: str,
+    announced: date,
+    *,
+    subject: str = "公告本公司董事會決議股利分派",
+    time: str = "17:30:00",
+):
+    return {
+        "symbol": symbol,
+        "company_name": "台積電",
+        "announced_date": announced.isoformat(),
+        "announced_time": time,
+        "subject": subject,
+        "detail": "",
+        "category": "其他",
+    }
+
+
+ANNOUNCEMENTS = MATERIAL_ANNOUNCEMENTS_DATASET
+
+
+def test_announcement_counts_only_filings_dated_the_evaluation_day() -> None:
+    r = FakeReader()
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0))])
+    hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert hit is not None
+    assert hit.met is True
+    assert "重大訊息" in hit.message
+    assert "公告本公司董事會決議股利分派" in hit.message
+
+
+def test_announcement_ignores_old_filings_and_other_symbols() -> None:
+    r = FakeReader()
+    r.put(
+        ANNOUNCEMENTS, day(0), [announcement_row("2330", day(-2)), announcement_row("2317", day(0))]
+    )
+    result = evaluate(MaterialAnnouncementPublished(), r, day(0), symbol="2330")
+    assert result is not None
+    assert result.met is False
+    assert evaluate(MaterialAnnouncementPublished(), r, day(1)) is None  # nothing ingested that day
+
+
+def test_announcement_reports_the_count_and_the_latest_subject() -> None:
+    r = FakeReader()
+    r.put(
+        ANNOUNCEMENTS,
+        day(0),
+        [
+            announcement_row("2330", day(0), subject="較早的公告", time="09:00:00"),
+            announcement_row("2330", day(0), subject="較晚的公告", time="17:00:00"),
+        ],
+    )
+    hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert hit is not None
+    assert "2 則" in hit.message
+    assert "較晚的公告" in hit.message
+    assert "較早的公告" not in hit.message
+
+
+def test_announcement_subject_is_clipped_and_stripped_of_markup() -> None:
+    r = FakeReader()
+    nasty = "<script>alert(1)</script> [點此](http://evil.example) " + "長" * 80
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject=nasty)])
+    hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert hit is not None
+    for ch in "<>[]()`":
+        assert ch not in hit.message.split("最新主旨：")[1].split("（你設定")[0]
+    assert "…" in hit.message
+    assert len(hit.message) < 200
+
+
+def test_announcement_template_reads_its_own_dataset_and_capability() -> None:
+    assert dataset_of(MaterialAnnouncementPublished()) == ANNOUNCEMENTS
+    assert capability_of(MaterialAnnouncementPublished()) is Capability.CORPORATE_ACTIONS
+    assert probe_dataset(Capability.CORPORATE_ACTIONS, Market.TW) == ANNOUNCEMENTS
+
+
+def test_announcement_phrasing_passes_the_output_guardrail() -> None:
+    r = FakeReader()
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0))])
+    result = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert result is not None
+    body = _safe_body(result.message, MaterialAnnouncementPublished(), "2330")
+    assert check_output(body, has_market_data=False).reason != "trading_language_redacted"
+
+
+def test_a_subject_that_trips_the_scan_is_dropped_but_the_fact_is_kept() -> None:
+    # A filing's own wording is third-party text. If the scan rewrites it, the notification drops
+    # the quote yet still says a filing exists.
+    r = FakeReader()
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject="建議買進 目標價 1200")])
+    result = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert result is not None
+    assert result.plain_message is not None
+    body = _safe_body(result.message, MaterialAnnouncementPublished(), "2330", result.plain_message)
+    assert "目標價" not in body
+    assert "重大訊息" in body
+    assert "非投資建議" in body
+
+
+def test_a_subject_cannot_break_out_of_its_quotation() -> None:
+    r = FakeReader()
+    sneaky = "股利公告」。本公司建議投資人逢低承接「"
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject=sneaky)])
+    hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert hit is not None
+    quoted = hit.message.split("最新主旨：")[1].split("（你設定")[0]
+    assert quoted.count("「") == 1
+    assert quoted.count("」") == 1
+    assert "。" not in quoted
+
+
+async def test_announcement_rule_fires_on_every_day_a_filing_lands(session_factory) -> None:
+    # An event, not a state: a filing today must not be silenced by one yesterday.
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    rule = await create_rule(session_factory, user, MaterialAnnouncementPublished())
+    reader = FakeReader()
+    worker = make_worker(session_factory, reader)
+    reader.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0))])
+    reader.put(ANNOUNCEMENTS, day(1), [announcement_row("2330", day(1))])
+    reader.put(ANNOUNCEMENTS, day(2), [])
+    cap = Capability.CORPORATE_ACTIONS
+    assert await signal(worker, cap, day(0)) == [rule.id]
+    assert await signal(worker, cap, day(1)) == [rule.id]
+    assert await signal(worker, cap, day(2)) == []
+    assert len(await notifications(session_factory, user)) == 2
+
+
+def _fullwidth(text: str) -> str:
+    return "".join(chr(ord(ch) + 0xFEE0) if "!" <= ch <= "~" else ch for ch in text)
+
+
+def test_a_subject_cannot_carry_a_tappable_link() -> None:
+    r = FakeReader()
+    for sneaky in (
+        "詳見 https://evil.example/pay 公告",
+        "請至 www.evil.example 查詢",
+        "連絡 ceo@evil.example",
+        "伺服器 192.168.1.1 公告",
+        "伺服器192.168.1.1公告",
+        f"詳見 {_fullwidth('www.evil.example')} 公告",
+        f"連絡 {_fullwidth('ceo@evil.example')}",
+        "請至 evil\u3002example 查詢",
+        "請至 123.example 查詢",
+    ):
+        r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject=sneaky)])
+        hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+        assert hit is not None
+        quoted = hit.message.split("最新主旨：")[1].split("（你設定")[0]
+        assert "://" not in quoted
+        assert not re.search(r"[A-Za-z0-9]\.[A-Za-z0-9]", quoted), quoted
+        assert "@" not in quoted
+        assert "192.168" not in quoted
+
+
+def test_ordinary_numbers_in_a_subject_survive() -> None:
+    r = FakeReader()
+    r.put(ANNOUNCEMENTS, day(0), [announcement_row("2330", day(0), subject="每股配發現金 3.5 元")])
+    hit = evaluate(MaterialAnnouncementPublished(), r, day(0))
+    assert hit is not None
+    assert "3.5" in hit.message

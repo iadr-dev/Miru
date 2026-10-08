@@ -14,11 +14,13 @@ from ingest.jobs import (
     ETF_NAV_DATASET,
     INSTITUTIONAL_FLOW_JOB,
     MARGIN_SHORT_JOB,
+    MATERIAL_ANNOUNCEMENTS_DATASET,
     MONTH_REVENUE_JOB,
     PRICE_EOD_JOB,
 )
 from ingest.us_jobs import US_PRICE_EOD_DATASET
 from schemas.alerts import (
+    EVENT_KINDS,
     MAX_HISTORY_DAYS,
     NON_ADVICE_FOOTER,
     AttentionListEntry,
@@ -29,6 +31,7 @@ from schemas.alerts import (
     EtfPremiumDiscount,
     InstitutionalStreak,
     MarginBalanceChange,
+    MaterialAnnouncementPublished,
     MonthRevenuePublished,
     RuleCondition,
     VolumeSurge,
@@ -46,6 +49,7 @@ _KIND_SOURCE: dict[str, tuple[Capability, str]] = {
     "attention_entry": (Capability.ATTENTION_STOCKS, ATTENTION_STOCKS_DATASET),
     "disposition_entry": (Capability.DISPOSITION_EVENTS, DISPOSITION_EVENTS_DATASET),
     "month_revenue_published": (Capability.MONTH_REVENUE, MONTH_REVENUE_JOB.dataset),
+    "material_announcement": (Capability.CORPORATE_ACTIONS, MATERIAL_ANNOUNCEMENTS_DATASET),
     "margin_balance_change": (Capability.MARGIN_SHORT, MARGIN_SHORT_JOB.dataset),
     "etf_premium_discount": (Capability.ETF_NAV, ETF_NAV_DATASET),
 }
@@ -93,6 +97,7 @@ def probe_dataset(capability: Capability, market: Market) -> str:
 
 
 __all__ = [
+    "EVENT_KINDS",
     "MAX_HISTORY_DAYS",
     "NON_ADVICE_FOOTER",
     "AttentionListEntry",
@@ -103,6 +108,7 @@ __all__ = [
     "EtfPremiumDiscount",
     "InstitutionalStreak",
     "MarginBalanceChange",
+    "MaterialAnnouncementPublished",
     "MonthRevenuePublished",
     "RuleCondition",
     "VolumeSurge",

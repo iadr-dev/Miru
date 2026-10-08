@@ -296,6 +296,7 @@ export const ALERT_TEMPLATE_KINDS = [
   "attention_entry",
   "disposition_entry",
   "month_revenue_published",
+  "material_announcement",
   "margin_balance_change",
   "etf_premium_discount",
 ] as const;
@@ -330,6 +331,7 @@ export const alertConditionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("attention_entry") }),
   z.object({ kind: z.literal("disposition_entry") }),
   z.object({ kind: z.literal("month_revenue_published") }),
+  z.object({ kind: z.literal("material_announcement") }),
   z.object({
     kind: z.literal("margin_balance_change"),
     side: z.enum(["margin", "short"]),

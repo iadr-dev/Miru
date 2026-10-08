@@ -24,7 +24,7 @@ sponsor values) on top of [ADR-0009](../adr/0009-scheduler-governance-amendment.
   and a fail-closed `check_output` guard on every body. **Implemented templates (all `public`
   data):** `close_price`, `daily_change`, `volume_surge`, `institutional_streak`,
   `attention_entry`, `disposition_entry`, `month_revenue_published`, `margin_balance_change`,
-  `etf_premium_discount`. The legacy free-text `metric`/`threshold` model and the 60s price poll are
+  `etf_premium_discount`, `material_announcement`. The legacy free-text `metric`/`threshold` model and the 60s price poll are
   removed.
 - Fresh schema (no migration during dev): `alert_rules` v2 columns, `alert_preferences.timezone`,
   `alert_eval_marks`, `web` push platform. `GET /me/alert-preferences`, `POST /notifications/read`.
@@ -195,7 +195,8 @@ those group templates are offered but will not fire until the data is ingested.
 | 風險名單 | enters/leaves 注意股; enters 處置股; disposal period ends; 暫停交易 | `ATTENTION_STOCKS`, `DISPOSITION_EVENTS`, `TRADING_SUSPENSION` |
 | 公司事件 | 月營收 published (optional YoY ≷ X%); 除權息 T-n days; 法說會 / 股東會 T-n; 財報 published | `MONTH_REVENUE`, `CALENDAR_EVENTS` (types in `calendar/models.py`) |
 | ETF | 折溢價 ≷ X%; 主動式 ETF holding change; ETF 配息 announced | `ETF_NAV` / `PREMIUM`, `ACTIVE_ETF_HOLDING_CHANGE`, `DIVIDENDS` |
-| 新聞 (P3) | 重大訊息 / news mention | `STOCK_NEWS` |
+| 公司公告 | **Built:** `material_announcement` - a MOPS 重大訊息 was filed today (event, no parameters) | `CORPORATE_ACTIONS` (`material_announcements`, ingested daily) |
+| 媒體新聞 (P3) | news mention for the symbol | `STOCK_NEWS` - **not built** (see below) |
 
 **Sponsor-class templates (pinned):** 分點/券商 (`CHIP_BROKER*`), 官股 (`GOVERNMENT_BANK_BUYSELL`),
 主動式 ETF 持股變化 (`ACTIVE_ETF_HOLDING_CHANGE`) and any other capability `data-catalog.md` marks
@@ -463,6 +464,25 @@ GET    /alerts/symbol-check           ?symbol&market → {checked, exists}: does
 No `feature_not_entitled` 403 on any of these. Chat gains `propose_alert` / `propose_schedule`
 tools that return an `alert_proposal` rich card; creation happens only on the user's confirm.
 
+### 重大訊息 alert (`material_announcement`)
+
+Reads the ingested `material_announcements` partition (forward-only daily dump from MOPS; no
+per-user fetch). It is an **event**, not a state (`schemas.alerts.EVENT_KINDS`): the edge-trigger that
+silences a state template while it stays true does not apply, so a filing today is never suppressed by
+one yesterday (the per-day dedupe key still prevents double-notifying the same day). Only rows whose
+`announced_date` is the evaluation day count, so a feed echoing older filings cannot look new.
+
+**Third-party text.** The issuer's subject line is quoted as data inside a fixed sentence
+(「公布 N 則重大訊息，最新主旨：「…」」): control characters and markup/link characters
+(`< > [ ] ( ) \` * _ # \ |`) are removed and it is clipped to 40 characters. The finished body
+still passes `_safe_body`/`check_output`; if the scan rewrites anything (routine buyback/disposal
+subjects often read like trading language) the notification retries once WITHOUT the quote - still
+saying that N filings exist - and only then falls to the fixed line. Quote marks and sentence
+terminators in a subject are replaced by spaces, so it cannot break out of its quotation. One
+notification per rule+symbol per day: the daily ingest writes one partition, and a later same-day
+filing is not re-notified. It never characterises the filing and is never fed to
+an LLM. Keyword filtering and media-news (`STOCK_NEWS`, per-symbol, not ingested) are not built.
+
 ## 9. Phased roadmap
 
 - **P0 — make it real:** `next_run` + trigger resolution; event-driven evaluation; inbox + read
@@ -474,7 +494,7 @@ tools that return an `alert_proposal` rich card; creation happens only on the us
 **Status.** Built (channels are web/browser, email, LINE, Telegram — no native APNs/FCM): holiday-aware `next_run`, watchlist scope (alerts and the multi-stock briefing),
 quiet hours in the user's timezone with a held-notification digest, the 通知紀錄 history view, the
 nonexistent-ticker warning, and real senders for LINE / Telegram / email (Resend) / browser Web Push (with Telegram
-linking and a LINE add-friend link). **Also built:** the 晨間摘要 (see §5). **Not built:** news alerts, night-session futures / DXY / pre-market movers in the morning report, and a TW-ETF management-fee source (the exchange's ETF pages and SITCA do not publish
+linking and a LINE add-friend link). **Also built:** the 晨間摘要 (see §5). **Also built:** `material_announcement` (MOPS 重大訊息, see below). **Not built:** media-news alerts, night-session futures / DXY / pre-market movers in the morning report, and a TW-ETF management-fee source (the exchange's ETF pages and SITCA do not publish
 it in a machine-readable form, so the ETF comparison keeps showing the custody fee alone). The
 external senders are covered by fake-transport tests only — none has been exercised against the
 live provider, and legal review still gates turning any of them on in production.

@@ -13,6 +13,8 @@ Edge-triggering, cooldown and delivery are the worker's concern.
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import date, timedelta
 from typing import Protocol
 
@@ -27,6 +29,7 @@ from scheduler.templates import (
     EtfPremiumDiscount,
     InstitutionalStreak,
     MarginBalanceChange,
+    MaterialAnnouncementPublished,
     MonthRevenuePublished,
     VolumeSurge,
     dataset_of,
@@ -55,6 +58,8 @@ class Evaluation(BaseModel):
 
     met: bool
     message: str
+    # A version of `message` without any third-party text, for when the scan rejects the quote.
+    plain_message: str | None = None
 
 
 class SnapshotView:
@@ -154,6 +159,9 @@ def evaluate_condition(  # noqa: PLR0911 — one early return per template kind
 
     if isinstance(condition, (MarginBalanceChange, EtfPremiumDiscount)):
         return _eval_single_row(condition, symbol, market, as_of, view)
+
+    if isinstance(condition, MaterialAnnouncementPublished):
+        return _eval_announcement(condition, symbol=symbol, market=market, as_of=as_of, view=view)
 
     if isinstance(condition, MonthRevenuePublished):
         return _eval_month_revenue(condition, symbol=symbol, market=market, as_of=as_of, view=view)
@@ -256,6 +264,67 @@ def _eval_month_revenue(
     year, month = row.get("revenue_year"), row.get("revenue_month")
     label = f"{year} 年 {month} 月" if year and month else "最新"
     return Evaluation(met=True, message=_message(symbol, f"公布{label}月營收", condition))
+
+
+# The issuer's subject line is third-party text. It is quoted as data, clipped, and stripped of
+# anything that could be read as markup or a link by a channel that renders it.
+_SUBJECT_MAX = 40
+# Markup/link characters, the quote marks our own sentence uses, and sentence terminators (the
+# output scan splits on those) become a space, so a subject can neither break out of its
+# quotation nor read as sentences of ours.
+_SUBJECT_DROP = {ord(ch): " " for ch in "<>[]()`*_#\\|「」『』\"'。！？!?；;"}
+
+
+# Chat and mail clients turn a bare URL, domain or address into a tappable link, which would make a
+# filing's subject a phishing vector. Break those shapes up: a scheme/path/mailbox separator becomes
+# a space, a dot that is not between two digits (a domain) becomes a middle dot, and an IPv4
+# quad is removed.
+_IPV4 = re.compile(r"(?<!\d)\d{1,3}(?:\.\d{1,3}){3}(?!\d)")
+_URL_SEPARATOR = re.compile(r"[:/@\\]+")
+_DOMAIN_DOT = re.compile(r"(?<!\d)\.|\.(?!\d)")
+
+
+def _quoted_subject(raw: object) -> str:
+    # NFKC first: fullwidth dots, slashes, colons and @ collapse to the ASCII forms the filters see.
+    folded = unicodedata.normalize("NFKC", str(raw or ""))
+    text = "".join(ch if ch.isprintable() else " " for ch in folded)
+    text = text.translate(_SUBJECT_DROP)
+    text = _IPV4.sub(" ", text)
+    text = _DOMAIN_DOT.sub("·", _URL_SEPARATOR.sub(" ", text))
+    text = " ".join(text.split())
+    return text if len(text) <= _SUBJECT_MAX else f"{text[:_SUBJECT_MAX]}…"
+
+
+def _eval_announcement(
+    condition: MaterialAnnouncementPublished,
+    *,
+    symbol: str,
+    market: Market,
+    as_of: date,
+    view: SnapshotView,
+) -> Evaluation | None:
+    """MOPS 重大訊息 is an event feed: most days a symbol has no row. Only rows announced on the
+    evaluation day itself count, so a feed that echoes older filings cannot make one look new. The
+    message states that filings exist and quotes the latest subject - it never characterises it."""
+    dataset = dataset_of(condition, market)
+    if view.latest_partition_date(dataset, market, on_or_before=as_of, max_back_days=0) is None:
+        return None
+    todays = [
+        r
+        for r in view.rows(dataset, market, as_of, symbol)
+        if _day_text(r.get("announced_date")) == as_of.isoformat()
+    ]
+    if not todays:
+        return Evaluation(met=False, message=_message(symbol, "本日無重大訊息", condition))
+    latest = max(todays, key=lambda r: str(r.get("announced_time", "")))
+    subject = _quoted_subject(latest.get("subject"))
+    count = f"{len(todays)} 則" if len(todays) > 1 else "1 則"
+    quote = f"，最新主旨：「{subject}」" if subject else ""
+    return Evaluation(
+        met=True,
+        message=_message(symbol, f"公布 {count}重大訊息{quote}", condition),
+        plain_message=_message(symbol, f"公布 {count}重大訊息", condition),
+    )
 
 
 def _eval_single_row(

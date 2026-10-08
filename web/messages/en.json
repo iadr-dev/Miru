@@ -1727,6 +1727,7 @@
           "attention_entry": "Attention-stock listing",
           "disposition_entry": "Disposition-list listing",
           "month_revenue_published": "Monthly revenue published",
+          "material_announcement": "Material announcement filed",
           "margin_balance_change": "Margin / short balance change",
           "etf_premium_discount": "ETF premium / discount"
         },
@@ -1798,7 +1799,8 @@
         "hint": {
           "attention_entry": "You'll be notified when this stock appears on the exchange's attention-stock list. Nothing else to set.",
           "disposition_entry": "You'll be notified when this stock appears on the exchange's disposition list, with the disposition period. Nothing else to set.",
-          "month_revenue_published": "You'll be notified when this stock publishes its monthly revenue. The alert only says it was published — see the stock page for the figures. Nothing else to set."
+          "month_revenue_published": "You'll be notified when this stock publishes its monthly revenue. The alert only says it was published — see the stock page for the figures. Nothing else to set.",
+          "material_announcement": "You'll be notified when this company files a material announcement (重大訊息) with the exchange. The alert quotes the company's own subject line as data, with no interpretation. Nothing else to set."
         },
         "marginSide": "Balance",
         "marginSideOption": {
@@ -1854,6 +1856,7 @@
         "attention_entry": "Listed as an attention stock",
         "disposition_entry": "Listed as a disposition stock",
         "month_revenue_published": "Monthly revenue published",
+        "material_announcement": "Material announcement filed",
         "margin_balance_change": {
           "margin": {
             "up": "Margin balance up {percent}% or more in a day",
