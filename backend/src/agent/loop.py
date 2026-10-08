@@ -46,6 +46,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent import guardrails
+from agent.answer_format import strip_tldr
 from agent.context_window import compact
 from agent.hooks import (
     AnswerDeltaHook,
@@ -708,6 +709,7 @@ class AgentLoop:
     async def _finalize_output(self, text: str, *, journal: Journal, step_index: int) -> str:
         """The mandatory `pre_output` hook — runs on every final answer with no
         config path to skip it."""
+        text = strip_tldr(text)
         verdict = guardrails.check_output(text)
         journal.record_output_guardrail(
             step_index=step_index, allowed=verdict.allowed, reason=verdict.reason
