@@ -3,10 +3,14 @@ import {
   addAlreadyDone,
   assetClassOf,
   choiceReady,
+  findGroups,
   initialChoice,
+  isGroupAction,
   matchingGroups,
+  movePlan,
   parseWatchlistProposal,
   removalTargets,
+  reorderPlan,
   splitByClass,
   symbolsToAdd,
   type WatchlistProposal,
@@ -154,5 +158,100 @@ describe("removal and 'already there'", () => {
   it("treats an add as done only when every symbol is already somewhere", () => {
     expect(addAlreadyDone(groups, add({ symbols: ["2330", "2409"] }))).toBe(true);
     expect(addAlreadyDone(groups, add({ symbols: ["2330", "3481"] }))).toBe(false);
+  });
+});
+
+describe("group actions", () => {
+  it("parses the group-level proposals", () => {
+    expect(
+      parseWatchlistProposal({
+        action: "rename_group",
+        market: "TW",
+        symbols: [],
+        group_name: "面板",
+        new_name: "顯示器",
+        position: null,
+      }),
+    ).toMatchObject({ action: "rename_group", group_name: "面板", new_name: "顯示器" });
+    expect(
+      parseWatchlistProposal({
+        action: "reorder_group",
+        market: "TW",
+        group_name: "a",
+        position: "first",
+      })?.symbols,
+    ).toEqual([]);
+    expect(
+      parseWatchlistProposal({ action: "reorder_group", market: "TW", position: "middle" }),
+    ).toBeNull();
+  });
+
+  it("knows which actions act on a group", () => {
+    expect(isGroupAction("delete_group")).toBe(true);
+    expect(isGroupAction("move")).toBe(false);
+    expect(isGroupAction("add")).toBe(false);
+  });
+
+  it("finds groups by name, ignoring case and spacing", () => {
+    const groups = [group("a", { name: "Semis" }), group("b", { name: "面板" })];
+    expect(findGroups(groups, "TW", " semis ").map((v) => v.group.id)).toEqual(["a"]);
+    expect(findGroups(groups, "TW", "none")).toEqual([]);
+    expect(findGroups(groups, "US", "面板")).toEqual([]);
+    expect(findGroups(groups, "TW", null)).toEqual([]);
+  });
+});
+
+describe("movePlan", () => {
+  const groups = [
+    group("a", {}, ["2330", "2409"]),
+    group("b", {}, ["3481"]),
+    group("e", { asset_class: "etf" }, ["0050"]),
+  ];
+  const target = groups[1];
+  const move = (symbols: string[]): WatchlistProposal => ({
+    action: "move",
+    market: "TW",
+    symbols,
+    group_name: "b",
+  });
+
+  it("moves symbols from the group holding them", () => {
+    if (!target) throw new Error("fixture");
+    const plan = movePlan(groups, move(["2330", "2409"]), target);
+    expect(plan.steps.map((s) => [s.symbol, s.fromId])).toEqual([
+      ["2330", "a"],
+      ["2409", "a"],
+    ]);
+    expect(plan.skipped).toEqual([]);
+  });
+
+  it("skips what is already there, not in the watchlist, or of the wrong class", () => {
+    if (!target) throw new Error("fixture");
+    const plan = movePlan(groups, move(["3481", "9999", "0050"]), target);
+    expect(plan.steps).toEqual([]);
+    expect(plan.skipped).toEqual([
+      { symbol: "3481", reason: "already" },
+      { symbol: "9999", reason: "notIn" },
+      { symbol: "0050", reason: "classMismatch" },
+    ]);
+  });
+});
+
+describe("reorderPlan", () => {
+  const groups = [group("a"), group("b"), group("c"), group("e", { asset_class: "etf" })];
+  const [a, b, c, e] = groups;
+
+  it("puts a group before the first sibling or after the last", () => {
+    if (!a || !b || !c) throw new Error("fixture");
+    expect(reorderPlan(groups, c, "first")).toEqual({ noop: false, afterId: null, beforeId: "a" });
+    expect(reorderPlan(groups, a, "last")).toEqual({ noop: false, afterId: "c", beforeId: null });
+    expect(reorderPlan(groups, b, "first").beforeId).toBe("a");
+  });
+
+  it("does nothing when it is already there, and only compares groups of its own class", () => {
+    if (!a || !c || !e) throw new Error("fixture");
+    expect(reorderPlan(groups, a, "first").noop).toBe(true);
+    expect(reorderPlan(groups, c, "last").noop).toBe(true);
+    expect(reorderPlan(groups, e, "first").noop).toBe(true);
   });
 });

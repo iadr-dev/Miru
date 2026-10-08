@@ -1251,7 +1251,44 @@
         "caveat": "這只是提案，按下「儲存」後才會記住。記憶是你說過的背景，回答時仍會重新查證資料。"
       },
       "watchlistProposal": {
-        "title": { "add": "加入自選股", "remove": "從自選股移除" },
+        "title": {
+          "add": "加入自選股",
+          "remove": "從自選股移除",
+          "move": "搬到其他群組",
+          "rename_group": "群組改名",
+          "delete_group": "刪除群組",
+          "reorder_group": "調整群組順序"
+        },
+        "done": {
+          "add": "已加入自選股",
+          "remove": "已從自選股移除",
+          "move": "已搬移完成",
+          "rename_group": "已改名",
+          "delete_group": "已刪除群組",
+          "reorder_group": "已調整順序"
+        },
+        "move": "搬移",
+        "moving": "搬移中…",
+        "moveFrom": "{symbol}：從「{from}」搬到「{to}」",
+        "moveSkip": {
+          "notIn": "{symbol}：不在自選股中，略過",
+          "already": "{symbol}：已經在這個群組",
+          "classMismatch": "{symbol}：個股與 ETF 不能放進同一種群組，略過"
+        },
+        "rename": "改名",
+        "renaming": "改名中…",
+        "renameTo": "「{from}」→「{to}」",
+        "nameTaken": "已有同名群組，請換一個名稱。",
+        "delete": "刪除群組",
+        "deleting": "刪除中…",
+        "deleteWarning": "將刪除群組「{name}」，其中的 {count} 檔標的會一併從這個群組移除（無法復原）。",
+        "reorder": "調整順序",
+        "reordering": "調整中…",
+        "reorderTo": { "first": "把「{name}」排到最前面", "last": "把「{name}」排到最後面" },
+        "alreadyThere": "「{name}」已經在那個位置了。",
+        "whichGroup": "要處理哪個群組",
+        "groupClass": { "stock": "個股", "etf": "ETF" },
+        "groupNotFound": "找不到名為「{name}」的自選股群組。",
         "groupFor": { "stock": "個股要放入的群組", "etf": "ETF 要放入的群組" },
         "newGroup": "＋ 新增群組",
         "newGroupName": "新群組名稱",

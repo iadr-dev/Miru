@@ -833,3 +833,32 @@ async def test_hide_cards_for_drops_the_card_but_the_model_still_reads_the_data(
     assert hidden.rich_cards == ()
     tool_text = hidden.steps[0].tool_messages[0].tool_results[0].content
     assert "2330" in tool_text  # the model still got the data
+
+
+async def test_a_tool_call_written_out_as_the_reply_is_run_as_the_call_it_was_meant_to_be() -> None:
+    """Gemini sometimes answers with the call as plain JSON instead of calling it; the loop runs it
+    as a tool call and the raw JSON never becomes the answer."""
+    llm = StubLLMClient(
+        script=[
+            make_text_response('{"name": "echo_tool", "arguments": {"text": "hello"}}'),
+            make_text_response("done"),
+        ]
+    )
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=4)
+
+    result = await loop.run_turn("say hello", tool_context=ToolContext())
+
+    assert [call.tool_name for call in result.tool_calls] == ["echo_tool"]
+    assert result.final_text.startswith("done")
+    assert "echo_tool" not in result.final_text
+
+
+async def test_json_that_is_not_a_known_tool_stays_an_ordinary_reply() -> None:
+    reply = '{"name": "not_a_tool", "arguments": {}}'
+    llm = StubLLMClient(script=[make_text_response(reply)])
+    loop = AgentLoop(llm, tools=[EchoTool()], max_steps=4)
+
+    result = await loop.run_turn("hi", tool_context=ToolContext())
+
+    assert result.tool_calls == ()
+    assert "not_a_tool" in result.final_text
