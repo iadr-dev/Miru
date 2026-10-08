@@ -420,6 +420,8 @@ export const LABELED_FIELDS = new Set([
   "end_date",
   "data_available",
   "unavailable_reason",
+  // get_symbol_directory_search (the roster the lookup read)
+  "roster_date",
 ]);
 
 /** Raw enum values a card cell can carry, per column, with a translated label in
@@ -538,6 +540,7 @@ const LABELED_CARD_TYPES = new Set([
   "analyst_consensus",
   "morning_brief",
   "esg_score",
+  "symbol_search",
 ]);
 
 /** Resolves `cardType` to its translated label via the `chat.cards.types` namespace, falling
