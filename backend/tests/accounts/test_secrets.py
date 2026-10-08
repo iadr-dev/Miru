@@ -70,3 +70,15 @@ async def test_plaintext_secret_never_logged(db_session) -> None:
         for value in kwargs.values():
             assert "sk-TOP-SECRET" not in str(value)
     assert captured  # a log line was in fact emitted
+
+
+def test_key_hint_shows_only_a_small_fixed_slice() -> None:
+    from accounts.secrets import key_hint  # noqa: PLC0415
+
+    long_key = "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ-a9f3"
+    hint = key_hint(long_key)
+    assert hint.startswith("sk-ant")
+    assert hint.endswith("a9f3")
+    assert long_key not in hint
+    assert len(hint) == 6 + 8 + 4
+    assert key_hint("short-key-123") == chr(0x2022) * 8 + "-123"  # short keys show the tail only

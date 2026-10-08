@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
 from api.attachments import AttachmentInput, process_attachments
+from api.byok import resolve_byok
 from api.dependencies import (
     AppState,
     get_session,
@@ -75,7 +76,17 @@ async def agent_query(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> StreamingResponse:
     ctx = tool_context_for(user, state)
-    await enforce_pre_turn_gate(state, session, user, deep_research=body.deep_research)
+    # Decide BYOK first (it needs the model the turn will use), then let the gate act on that one
+    # decision - a refusal here happens before anything is claimed.
+    byok = await resolve_byok(
+        session,
+        settings,
+        user_id=user.id,
+        model_override=await _model_for_turn(store, user.id, body),
+    )
+    await enforce_pre_turn_gate(
+        state, session, user, deep_research=body.deep_research, byok=byok is not None
+    )
     thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
     if body.model is not None and body.model != thread.model_override:
         thread = await store.update_thread(
@@ -123,7 +134,23 @@ async def agent_query(
         locale=body.locale,
         images=images,
         deep_research=body.deep_research,
+        byok=byok,
     )
+
+
+async def _model_for_turn(
+    store: ConversationStore, user_id: str, body: AgentQueryRequest
+) -> str | None:
+    """The model override this request will end up with: the composer's pick, else the existing
+    thread's. A thread that does not exist is left for `_resolve_thread` to report (404)."""
+    if body.model is not None:
+        return body.model
+    if body.thread_id is None:
+        return None
+    try:
+        return (await store.get_thread(user_id=user_id, thread_id=body.thread_id)).model_override
+    except ThreadNotFoundError:
+        return None
 
 
 async def _resolve_thread(

@@ -192,6 +192,26 @@ async function captureScreenshot(): Promise<string | null> {
  * catalog doesn't (yet) list still shows a real trigger label via the raw id rather than
  * silently falling back to the default, which would misrepresent what the thread is actually
  * configured to use. */
+/** The provider half of a catalog id ("openrouter/x-ai/grok-4.7" -> "openrouter"). */
+export function modelProvider(modelId: string): string {
+  return modelId.split("/")[0] ?? "";
+}
+
+/** The provider the backend uses when a thread has picked no model (its AGENT role default). */
+export const DEFAULT_MODEL_PROVIDER = "anthropic";
+
+/** The first catalog model served by any of `providers` - the model to switch to when the current
+ * one belongs to a provider the caller has no key for. */
+export function firstModelFor(providers: string[]): string | null {
+  for (const category of MODEL_CATEGORIES) {
+    const match = category.models.find((m) => providers.includes(modelProvider(m.id)));
+    if (match) {
+      return match.id;
+    }
+  }
+  return null;
+}
+
 function modelOptionFor(modelOverride: string | null | undefined): ModelOption | null {
   if (!modelOverride) {
     return null;
@@ -245,6 +265,7 @@ export function Composer({
   webSearchEnabled,
   onWebSearchEnabledChange,
   deepResearch,
+  byokProviders,
   onOpenVoiceMode,
 }: {
   streaming: boolean;
@@ -256,6 +277,9 @@ export function Composer({
   onWebSearchEnabledChange: (enabled: boolean) => void;
   /** Null when the caller's plan has no deep research (the menu row is then hidden). */
   deepResearch: { enabled: boolean; onChange: (enabled: boolean) => void } | null;
+  /** Providers the caller has their own key for, or null when they have none. With keys, only
+   * those providers' models can be used (they run on the caller's key). */
+  byokProviders: string[] | null;
   onOpenVoiceMode: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
@@ -655,6 +679,7 @@ export function Composer({
             <ModelMenu
               label={t("model")}
               selected={modelOptionFor(modelOverride)}
+              allowedProviders={byokProviders}
               onSelect={onModelOverrideChange}
             />
           </div>
@@ -1163,15 +1188,25 @@ function FeatureMenuItem({
 function ModelMenu({
   label,
   selected,
+  allowedProviders,
   onSelect,
 }: {
   label: string;
   selected: ModelOption | null;
+  allowedProviders: string[] | null;
   onSelect: (modelId: string) => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
   const [open, setOpen] = useState(false);
   const selectedLabel = selected?.label ?? t("modelMenu.default");
+  // A caller with their own keys can only run those providers' models.
+  const visibleCategories = MODEL_CATEGORIES.map((category) => ({
+    ...category,
+    models:
+      allowedProviders === null
+        ? category.models
+        : category.models.filter((m) => allowedProviders.includes(modelProvider(m.id))),
+  })).filter((category) => category.models.length > 0);
 
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
@@ -1199,7 +1234,7 @@ function ModelMenu({
             "max-h-[360px] overflow-y-auto bg-[var(--surface)] p-1.5 shadow-2xl",
           )}
         >
-          {MODEL_CATEGORIES.map((category, index) => (
+          {visibleCategories.map((category, index) => (
             <div key={category.key}>
               {index > 0 ? (
                 <DropdownMenu.Separator className="my-1 h-px bg-[var(--border)]" />

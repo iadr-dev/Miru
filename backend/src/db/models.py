@@ -407,6 +407,9 @@ class UserSecretRow(Base):
     kind: Mapped[str]
     provider: Mapped[str]
     ciphertext: Mapped[bytes]
+    # A masked preview (first 6 + last 4 characters) so the settings page can show WHICH key is
+    # saved without ever returning it. Null for rows saved before this column existed.
+    hint: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)
 

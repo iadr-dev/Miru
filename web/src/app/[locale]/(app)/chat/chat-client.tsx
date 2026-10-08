@@ -5,7 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ActiveTurnView } from "@/app/[locale]/(app)/chat/active-turn-view";
-import { Composer } from "@/app/[locale]/(app)/chat/composer";
+import {
+  Composer,
+  DEFAULT_MODEL_PROVIDER,
+  firstModelFor,
+  modelProvider,
+} from "@/app/[locale]/(app)/chat/composer";
 import { EmptyState } from "@/app/[locale]/(app)/chat/empty-state";
 import { PersistedThreadView } from "@/app/[locale]/(app)/chat/persisted-thread-view";
 import { type ActiveTurnMode, useTurnStore } from "@/app/[locale]/(app)/chat/turn-store";
@@ -21,6 +26,7 @@ import {
   streamEditTurn,
   streamRegenerateTurn,
 } from "@/lib/api/agent-stream";
+import { listSavedKeys } from "@/lib/api/settings";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
 
 /** The message shown for a failed turn: a known refusal code gets its localized explanation. */
@@ -28,6 +34,9 @@ function turnErrorMessage(err: unknown, t: (key: string) => string): string {
   if (err instanceof AgentStreamError) {
     if (err.code === "deep_research_limit_reached") {
       return t("deepResearchLimit");
+    }
+    if (err.code === "byok_key_required") {
+      return t("byokKeyRequired");
     }
     if (err.code === "feature_not_entitled") {
       return t("deepResearchNotEntitled");
@@ -306,6 +315,29 @@ export function ChatClient(): ReactNode {
   const showEmpty = !hasThread && activeTurn === null;
   const modelOverride = pendingModelOverride ?? threadQuery.data?.model_override ?? null;
 
+  // With their own keys saved, a caller can only run those providers' models (the turn runs on
+  // their key). If the current/default model belongs to another provider, move to one they can use.
+  const keysQuery = useQuery({ queryKey: ["byok-keys"], queryFn: listSavedKeys });
+  const byokProviders =
+    keysQuery.data !== undefined && keysQuery.data.length > 0
+      ? keysQuery.data.map((k) => k.provider)
+      : null;
+  const autoSwitchedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (byokProviders === null || (threadId !== null && threadQuery.isLoading)) {
+      return;
+    }
+    const current = modelOverride === null ? DEFAULT_MODEL_PROVIDER : modelProvider(modelOverride);
+    if (byokProviders.includes(current)) {
+      return;
+    }
+    const next = firstModelFor(byokProviders);
+    if (next !== null && autoSwitchedRef.current !== next) {
+      autoSwitchedRef.current = next;
+      onModelOverrideChange(next);
+    }
+  }, [byokProviders, modelOverride, threadId, threadQuery.isLoading, onModelOverrideChange]);
+
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -346,6 +378,7 @@ export function ChatClient(): ReactNode {
         onModelOverrideChange={onModelOverrideChange}
         webSearchEnabled={webSearchEnabled}
         onWebSearchEnabledChange={setWebSearchEnabled}
+        byokProviders={byokProviders}
         deepResearch={
           canDeepResearch
             ? { enabled: deepResearchEnabled, onChange: setDeepResearchEnabled }

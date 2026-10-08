@@ -768,7 +768,8 @@
         "sourcesCount": "{count} sources"
       },
       "deepResearchLimit": "You've used today's 5 deep research reports. Try again tomorrow.",
-      "deepResearchNotEntitled": "Deep research is available on the Pro plan."
+      "deepResearchNotEntitled": "Deep research is available on the Pro plan.",
+      "byokKeyRequired": "You've added your own API key, so chat runs on your providers only. Pick a model from one of them, or remove your keys to use the shared models."
     },
     "table": {
       "copy": "Copy table",
@@ -1522,7 +1523,7 @@
     },
     "byok": {
       "title": "Bring your own key",
-      "description": "Use your own LLM API key to lift the daily chat limit.",
+      "description": "Use your own LLM API key: chats on that provider's models run on your key, with no daily chat limit. Your provider bills you directly.",
       "provider": "Provider",
       "key": "API key",
       "llmKeyHint": "Your key is stored encrypted and never shown again after saving.",
@@ -1537,7 +1538,15 @@
         "groq": "Groq",
         "cerebras": "Cerebras",
         "openrouter": "OpenRouter"
-      }
+      },
+      "saved": "Saved keys",
+      "noneSaved": "No keys saved yet.",
+      "howItWorks": "With a key saved, chat and deep research run on your key and only that provider's models are offered. Remove your keys any time to go back to the shared models under your plan's limits.",
+      "replace": "Replace",
+      "cancel": "Cancel",
+      "providerSaved": "{provider} (saved)",
+      "keySavedHint": "A key is saved for this provider. It is stored encrypted and never shown in full.",
+      "selectProvider": "Show {provider} key"
     },
     "usage": {
       "title": "Usage",

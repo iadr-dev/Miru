@@ -19,7 +19,10 @@ entry of the supported catalog applies, not a hardcoded core decision.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Generator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final
 
@@ -90,15 +93,17 @@ def _api_key_for(provider_id: str, settings: Settings) -> str | None:
     }.get(provider_id)
 
 
-def _require_api_key(provider_id: str, settings: Settings) -> str:
-    key = _api_key_for(provider_id, settings)
+def _require_api_key(provider_id: str, settings: Settings, api_key: str | None = None) -> str:
+    key = api_key or _api_key_for(provider_id, settings)
     if not key:
         raise ProviderNotConfiguredError(f"{provider_id}_api_key is not configured")
     return key
 
 
-def _build_openai_compat_client(provider_id: str, model_id: str, settings: Settings) -> LLMClient:
-    key = _require_api_key(provider_id, settings)
+def _build_openai_compat_client(
+    provider_id: str, model_id: str, settings: Settings, api_key: str | None = None
+) -> LLMClient:
+    key = _require_api_key(provider_id, settings, api_key)
     # OpenRouter has its own native web-search plugin (`openai_compat._body` appends
     # `openrouter:web_search` when this capability is set) — Groq/Cerebras have no
     # equivalent, so they keep the default `ModelCapabilities()` (native_web_search=False).
@@ -116,12 +121,20 @@ def _build_openai_compat_client(provider_id: str, model_id: str, settings: Setti
     )
 
 
-def build_client(provider_id: str, model_id: str, settings: Settings | None = None) -> LLMClient:
+def build_client(
+    provider_id: str,
+    model_id: str,
+    settings: Settings | None = None,
+    *,
+    api_key: str | None = None,
+) -> LLMClient:
     """Construct the concrete `LLMClient` for `(provider_id, model_id)`.
 
     Raises `ProviderNotConfiguredError` if the provider needs a key that isn't set (Ollama
     is the sole keyless exception) — never raises at *import* time, and never performs
     network I/O itself (construction of the concrete client is likewise network-free).
+
+    `api_key` is a user's own key (BYOK); when given it is used instead of the server's key.
     """
     settings = settings or get_settings()
 
@@ -131,26 +144,26 @@ def build_client(provider_id: str, model_id: str, settings: Settings | None = No
     if provider_id == "anthropic":
         return AnthropicClient(
             model_id=model_id,
-            api_key=_require_api_key(provider_id, settings),
+            api_key=_require_api_key(provider_id, settings, api_key),
             max_tokens=settings.llm_max_output_tokens,
         )
 
     if provider_id == "openai":
         return OpenAIClient(
             model_id=model_id,
-            api_key=_require_api_key(provider_id, settings),
+            api_key=_require_api_key(provider_id, settings, api_key),
             max_tokens=settings.llm_max_output_tokens,
         )
 
     if provider_id == "gemini":
         return GeminiClient(
             model_id=model_id,
-            api_key=_require_api_key(provider_id, settings),
+            api_key=_require_api_key(provider_id, settings, api_key),
             max_output_tokens=settings.llm_max_output_tokens,
         )
 
     if provider_id in _OPENAI_COMPAT_BASE_URLS:
-        return _build_openai_compat_client(provider_id, model_id, settings)
+        return _build_openai_compat_client(provider_id, model_id, settings, api_key)
 
     # No client implementation for this provider id — a config that names one fails loudly
     # here rather than silently falling back to a different vendor.
@@ -261,6 +274,56 @@ def _parse_role_chain(spec: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in spec.split(",") if part.strip())
 
 
+# Providers a user can bring their own key for (every one with a hosted, key-authenticated API).
+BYOK_PROVIDERS: Final[frozenset[str]] = frozenset(
+    {"anthropic", "openai", "gemini", "groq", "cerebras", "openrouter"}
+)
+
+
+@dataclass(frozen=True)
+class ByokOverride:
+    """One turn's "use the user's own model and key for every LLM call" instruction."""
+
+    provider_id: str
+    model_id: str
+    api_key: str = field(repr=False)  # never printed or logged
+
+
+_byok: ContextVar[ByokOverride | None] = ContextVar("byok_override", default=None)
+
+
+@contextmanager
+def byok_scope(override: ByokOverride | None) -> Generator[None]:
+    """While active, every role resolution in this task uses the user's model and key - the
+    classifier, sub-agents and synthesis included - and never falls back to a platform key. The
+    plaintext key lives only in this context for the duration of the turn."""
+    token = _byok.set(override)
+    try:
+        yield
+    finally:
+        _byok.reset(token)
+
+
+def agent_model_spec(
+    model_override: str | None, settings: Settings | None = None
+) -> tuple[str, str]:
+    """`(provider, model)` the interactive reply agent would use: the user's pick, else the
+    AGENT role's first configured model."""
+    settings = settings or get_settings()
+    if model_override:
+        return _split_provider_model(model_override)
+    override = settings.model_role_agent
+    chain = _parse_role_chain(override) if override else _DEFAULT_ROLE_MODELS[ModelRole.AGENT]
+    return _split_provider_model(chain[0])
+
+
+def _byok_client(settings: Settings) -> LLMClient | None:
+    active = _byok.get()
+    if active is None:
+        return None
+    return build_client(active.provider_id, active.model_id, settings, api_key=active.api_key)
+
+
 def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient:
     """Map a **role** (never a model) to its configured fallback chain of `(provider, model)`
     pairs and construct a client for it. An offline profile can point every role at
@@ -268,6 +331,8 @@ def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient
     entry's client directly; a multi-entry chain returns a `FallbackLLMClient` that tries each
     in order on failure."""
     settings = settings or get_settings()
+    if (byok_client := _byok_client(settings)) is not None:
+        return byok_client
     role_overrides: dict[ModelRole, str | None] = {
         ModelRole.CLASSIFIER: settings.model_role_classifier,
         ModelRole.AGENT: settings.model_role_agent,
@@ -325,6 +390,8 @@ def resolve_role_with_override(
     plumbing the user has no mental model of and never named here, so callers simply don't pass
     an override through to them — this function itself does not enforce that carve-out."""
     settings = settings or get_settings()
+    if (byok_client := _byok_client(settings)) is not None:
+        return byok_client
     if model_override is None:
         return resolve_role(role, settings)
     try:
@@ -341,10 +408,14 @@ def resolve_role_with_override(
 
 
 __all__ = [
+    "BYOK_PROVIDERS",
+    "ByokOverride",
     "FallbackLLMClient",
     "ModelRole",
     "ProviderNotConfiguredError",
+    "agent_model_spec",
     "build_client",
+    "byok_scope",
     "default_client",
     "resolve_role",
     "resolve_role_with_override",
