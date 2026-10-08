@@ -74,6 +74,7 @@ from ingest.jobs import (
 )
 from ingest.journal import JobRun
 from ingest.leader import get_default_leader_election
+from ingest.preflight import last_completed_us_session
 from ingest.publisher_binding import resolve_data_update_publisher
 from ingest.store import ParquetStore
 from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_price_eod
@@ -309,10 +310,18 @@ class IngestDaemon:
         # The local day on which each job last fired (or was skipped), so a job fires at most once
         # per local day regardless of how often the loop polls.
         self._last_handled: dict[str, date_] = {}
+        # The US session each daily US job last ran for — a daily US job fires for the last
+        # *completed US session*, not the Taipei date, so a Sunday/Monday-morning pass (no new
+        # session since Friday) must not re-pull Friday.
+        self._last_session: dict[str, date_] = {}
         self._seeded = False
 
     def _local(self, now: datetime) -> datetime:
         return now.astimezone(self._tz) if now.tzinfo is not None else now.replace(tzinfo=self._tz)
+
+    @staticmethod
+    def _is_us_daily(job: ScheduledIngestJob) -> bool:
+        return job.market is Market.US and job.cadence is Cadence.DAILY
 
     def seed_startup(self, *, now: datetime | None = None) -> None:
         """Mark every daily job whose fire time already elapsed today as handled, so the first pass
@@ -323,6 +332,10 @@ class IngestDaemon:
         for job in self._jobs:
             if job.cadence is Cadence.DAILY and local.time() >= job.fire_time:
                 self._last_handled[job.name] = local.date()
+                if self._is_us_daily(job):
+                    self._last_session[job.name] = last_completed_us_session(
+                        self._ctx.us_calendar, now=local
+                    )
         self._seeded = True
 
     def _is_due(self, job: ScheduledIngestJob, today: date_) -> bool:
@@ -357,6 +370,16 @@ class IngestDaemon:
             # next window's fire (or an explicit gap-fill) retries, matching the job's no-retry
             # contract.
             self._last_handled[job.name] = today
+            run_date = today
+            if self._is_us_daily(job):
+                # US daily jobs run for the last completed US session, not the Taipei date: at
+                # 06:00 Taipei the Taipei date's session has not opened yet (it asked Yahoo for
+                # data that did not exist), and a Taipei Saturday/Sunday morning is exactly when
+                # Friday's session lands, which the Taipei weekday gate below would have skipped.
+                run_date = last_completed_us_session(self._ctx.us_calendar, now=local)
+                if self._last_session.get(job.name) == run_date:
+                    continue  # no new session since this job last ran (e.g. Sunday, Monday a.m.)
+                self._last_session[job.name] = run_date
             # Monthly reference-data jobs are not tied to the market calendar (the classification
             # roster is published independent of trading sessions), so only daily market pulls are
             # trading-day-gated. Uses the extrapolating check (not the strict allow-list one) —
@@ -367,24 +390,24 @@ class IngestDaemon:
             # otherwise) — see `ScheduledIngestJob.market`'s own field comment for why this must
             # not default to the TW calendar for every job regardless of which market it serves.
             calendar = self._ctx.us_calendar if job.market is Market.US else self._ctx.calendar
-            if job.cadence is Cadence.DAILY and not calendar.is_trading_day_extrapolating(today):
+            if job.cadence is Cadence.DAILY and not calendar.is_trading_day_extrapolating(run_date):
                 logger.info(
                     "ingest_job_skipped_non_trading_day",
                     job=job.name,
-                    run_date=today.isoformat(),
+                    run_date=run_date.isoformat(),
                 )
                 continue
             try:
-                result = await job.run(today, self._ctx)
+                result = await job.run(run_date, self._ctx)
             except Exception:
                 # Isolate a job's failure so one bad pull never blocks the others in this pass;
                 # already marked handled, so it retries next day rather than looping now.
-                logger.exception("ingest_job_errored", job=job.name, run_date=today.isoformat())
+                logger.exception("ingest_job_errored", job=job.name, run_date=run_date.isoformat())
                 continue
             logger.info(
                 "ingest_job_fired",
                 job=job.name,
-                run_date=today.isoformat(),
+                run_date=run_date.isoformat(),
                 status=result.status.value,
                 rows_written=result.rows_written,
             )

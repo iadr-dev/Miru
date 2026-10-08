@@ -31,6 +31,10 @@ from ingest.journal import JobRun
 logger = structlog.get_logger(__name__)
 
 _TAIPEI = ZoneInfo("Asia/Taipei")
+_NEW_YORK = ZoneInfo("America/New_York")
+# US cash sessions close 16:00 ET; an hour later Yahoo has landed the day's bars for the liquid
+# names (thin OTC tickers can still post a day late, which a re-pull handles).
+_US_SESSION_SETTLED_TIME = time_(17, 0)
 
 # TaiwanStockPrice's documented FinMind `Update:` time (Taipei-local) — before this, "today" is
 # not yet published, so the preflight targets yesterday instead.
@@ -66,6 +70,28 @@ def last_available_trading_day(calendar: TradingDayCalendar, *, now: datetime) -
     # "Most recent AVAILABLE trading day" must walk backward, never forward — `target` itself
     # is not a trading day here (e.g. a weekend/holiday), so the answer is a real day already in
     # the past, not a future date that hasn't traded yet.
+    return calendar.previous_trading_day(target, inclusive=False)
+
+
+def last_completed_us_session(calendar: TradingDayCalendar, *, now: datetime) -> date_:
+    """The most recent US trading session whose bars have settled — the US counterpart of
+    `last_available_trading_day`, on the New York clock instead of the Taipei one.
+
+    `last_available_trading_day` decides by the Taipei 17:30 FinMind publish time. Applied to a US
+    job that is wrong in both directions: Taipei 22:00 is 10:00 ET, so it returned *today's* US
+    session while that session was still open (a half-day partition), and the daemon passed the
+    Taipei date as the US `run_date`, so the 06:00 Taipei pull asked Yahoo for a session that had
+    not started yet. A session is settled `_US_SESSION_SETTLED_TIME` (ET) of its own date, an hour
+    after the 16:00 close; before that the answer is the previous trading day.
+
+    `now` may be any timezone-aware instant. A naive `now` is assumed to already be New York local
+    time. Walks backward over weekends and holidays, never forward (same as
+    `last_available_trading_day`)."""
+    local = now.astimezone(_NEW_YORK) if now.tzinfo is not None else now
+    today = local.date()
+    target = today if local.time() >= _US_SESSION_SETTLED_TIME else today - _ONE_DAY
+    if calendar.is_trading_day_extrapolating(target):
+        return target
     return calendar.previous_trading_day(target, inclusive=False)
 
 
@@ -109,4 +135,4 @@ async def run_preflight_if_enabled(
     return await backfill_range(spec, ctx, start=start, end=target, only_missing=True)
 
 
-__all__ = ["last_available_trading_day", "run_preflight_if_enabled"]
+__all__ = ["last_available_trading_day", "last_completed_us_session", "run_preflight_if_enabled"]
