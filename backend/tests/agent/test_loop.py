@@ -159,6 +159,7 @@ CARD_OPTED_TOOLS: dict[str, str] = {
     # propose_alert_tools.py
     "propose_alert": "alert_proposal",
     "propose_memory": "memory_proposal",
+    "propose_watchlist_add": "watchlist_proposal",
     "propose_schedule": "schedule_proposal",
     "get_annual_fundamentals": "annual_fundamentals",
     "get_revenue_seasonality": "revenue_seasonality",

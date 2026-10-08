@@ -26,6 +26,7 @@ import { ScheduleProposalCard } from "@/app/[locale]/(app)/chat/cards/schedule-p
 import { SnapshotCard } from "@/app/[locale]/(app)/chat/cards/snapshot-card";
 import { ThemeTiersFlow } from "@/app/[locale]/(app)/chat/cards/theme-tiers-flow";
 import { TimeseriesChart } from "@/app/[locale]/(app)/chat/cards/timeseries-chart";
+import { WatchlistProposalCard } from "@/app/[locale]/(app)/chat/cards/watchlist-proposal-card";
 import type { RichCard } from "@/types/conversation";
 
 /**
@@ -62,6 +63,9 @@ export function RichCardView({
   }
   if (card.card_type === "memory_proposal") {
     return <MemoryProposalCard data={card.data} />;
+  }
+  if (card.card_type === "watchlist_proposal") {
+    return <WatchlistProposalCard data={card.data} />;
   }
   if (card.card_type === "schedule_proposal") {
     return <ScheduleProposalCard data={card.data} />;

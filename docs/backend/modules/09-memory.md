@@ -118,7 +118,12 @@ Types:
   value shapes such as `sk-…`/bearer tokens), raw payloads, trading language, and - for `preference`
   only - tone/format instructions (TL;DR, bullets, 語氣, 簡潔, …), which are refused with a pointer to
   Tone settings.
-- Same gap on the watchlist side: ADR-0027 describes an `add_to_watchlist` agent tool (write,
+- **Watchlist additions from chat are built, propose-only** (`propose_watchlist_add`, skill
+  `watchlist-proposal`, card `watchlist_proposal`): the card lists the user's own groups for that
+  market / stock-or-ETF class, and the frontend calls the ordinary
+  `PUT /watchlists/{id}/items/{symbol}` (idempotent) when the user taps 加入. The agent still has no
+  tool that writes the watchlist. Removing or reordering from chat is not built.
+- Earlier note on the watchlist side: ADR-0027 describes an `add_to_watchlist` agent tool (write,
   explicit-utterance gated) and a read-only `get_watchlist` MCP tool. Neither exists in
   `tools/` or `mcp/` today — watchlist reads/writes are exposed only as the `/watchlists/*` REST
   surface (`api/routers/memory.py`) and the read-through `WatchlistStore.snapshot()` projection

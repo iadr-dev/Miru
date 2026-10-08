@@ -1250,6 +1250,18 @@
         "errorGeneric": "Couldn't save. Please try again.",
         "caveat": "This is only a proposal - it is remembered once you tap Save. Memory is background you told us; answers still re-check the data."
       },
+      "watchlistProposal": {
+        "title": "Add to watchlist",
+        "group": "Watchlist group",
+        "add": "Add",
+        "adding": "Adding…",
+        "dismiss": "Skip",
+        "dismissed": "Skipped this proposal.",
+        "added": "Added to your watchlist",
+        "alreadyIn": "Already in “{group}”",
+        "noGroup": "No matching watchlist group yet - create one in the sidebar watchlist first.",
+        "errorGeneric": "Couldn't add it. Please try again."
+      },
       "scheduleProposal": {
         "title": "Scheduled briefing proposal",
         "create": "Create",
