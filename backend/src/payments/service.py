@@ -45,6 +45,8 @@ _PAUSE_EVENT = "subscription.paused"
 _HANDLED_EVENTS = _ENTITLING_EVENTS | {_CANCEL_EVENT, _PAST_DUE_EVENT, _PAUSE_EVENT}
 # Statuses with nothing to entitle: the subscription has ended, or billing is stopped.
 _NO_ENTITLEMENT_STATUSES = frozenset({"canceled", "paused"})
+# A checkout transaction only proves a purchase once it has been paid.
+_PAID_TRANSACTION_STATUSES = frozenset({"paid", "completed"})
 
 
 # How long a failed payment keeps the paid tier while Paddle retries it, counted from the moment the
@@ -209,8 +211,9 @@ class BillingService:
     ) -> SubscriptionRecord | None:
         """Self-heal a lost first webhook: the checkout's transaction names the subscription it
         created. Only a transaction tagged with THIS user's id is adopted, so one account can never
-        claim another's purchase. Returns the local record, or `None` while the payment has not
-        produced a subscription yet."""
+        claim another's purchase, and only a PAID one, and only when the subscription is not yet
+        recorded (the lost-first-webhook case - an existing record is reconciled, never reset).
+        Returns the local record, or `None` while the payment has not produced a subscription."""
         if self._client is None:
             return None
         transaction = await self._client.get_transaction(transaction_id)
@@ -218,6 +221,18 @@ class BillingService:
         subscription_id = transaction.get("subscription_id")
         if custom_data.get("user_id") != user.id or not subscription_id:
             return None
+        if transaction.get("status") not in _PAID_TRANSACTION_STATUSES:
+            return None
+        known = await self._store.get_by_paddle_id(paddle_subscription_id=str(subscription_id))
+        if known is not None:
+            # Already recorded: this is no longer the lost-first-webhook case, and re-adopting
+            # would restart the clocks (e.g. a past_due grace window). Reconcile instead - it
+            # keeps them.
+            return (
+                await self.reconcile_subscription(user_id=user.id)
+                if known.user_id == user.id
+                else None
+            )
         entity = PaddleSubscriptionEntity.model_validate(
             await self._client.get_subscription(str(subscription_id))
         )
