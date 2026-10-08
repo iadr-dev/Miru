@@ -67,6 +67,9 @@ function errorMessageKey(error: unknown, editing: boolean): string {
   return editing ? "errorUpdate" : "errorCreate";
 }
 
+/** Matches the backend's `MAX_KEYWORD_LENGTH`. */
+const KEYWORD_MAX_LENGTH = 20;
+
 const NUMERIC_FIELD_STEP: Record<ConditionFieldKey, string> = {
   value: "any",
   percent: "any",
@@ -454,6 +457,17 @@ export function AlertForm({
               </Select>
             </Field>
           </>
+        ) : null}
+        {draft.kind === "material_announcement" ? (
+          <Field label={t("keyword")} htmlFor="alert-keyword" className="sm:col-span-2">
+            <TextInput
+              id="alert-keyword"
+              maxLength={KEYWORD_MAX_LENGTH}
+              placeholder={t("keywordPlaceholder")}
+              value={draft.keyword}
+              onChange={(e) => update({ keyword: e.target.value })}
+            />
+          </Field>
         ) : null}
         {draft.kind === "etf_premium_discount" ? (
           <Field label={t("navSide")} htmlFor="alert-nav-side">

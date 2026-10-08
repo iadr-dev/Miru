@@ -33,6 +33,8 @@ export type ConditionDraft = {
   multiple: string;
   window: string;
   days: string;
+  /** 重大訊息 only: optional text the filing's subject must contain. */
+  keyword: string;
 };
 
 export const DEFAULT_DRAFT: ConditionDraft = {
@@ -48,6 +50,7 @@ export const DEFAULT_DRAFT: ConditionDraft = {
   multiple: "",
   window: "20",
   days: "3",
+  keyword: "",
 };
 
 export type BuildResult =
@@ -112,10 +115,14 @@ function candidateFor(draft: ConditionDraft, nums: Record<ConditionFieldKey, num
       };
     case "etf_premium_discount":
       return { kind: draft.kind, direction: draft.navSide, percent: nums.percent };
+    case "material_announcement":
+      return {
+        kind: draft.kind,
+        keyword: draft.keyword.trim() === "" ? null : draft.keyword.trim(),
+      };
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
-    case "material_announcement":
       return { kind: draft.kind };
   }
 }
@@ -157,7 +164,7 @@ export function buildCondition(draft: ConditionDraft): BuildResult {
  * Every variant has its own fully-written message, so no sentence is composed at runtime. */
 export function conditionSummary(condition: AlertCondition): {
   key: string;
-  values: Record<string, number>;
+  values: Record<string, number | string>;
 } {
   switch (condition.kind) {
     case "close_price":
@@ -187,10 +194,13 @@ export function conditionSummary(condition: AlertCondition): {
         key: `etf_premium_discount.${condition.direction}`,
         values: { percent: condition.percent },
       };
+    case "material_announcement":
+      return condition.keyword
+        ? { key: "material_announcement_keyword", values: { keyword: condition.keyword } }
+        : { key: condition.kind, values: {} };
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
-    case "material_announcement":
       return { key: condition.kind, values: {} };
   }
 }
@@ -243,10 +253,11 @@ export function draftFromCondition(condition: AlertCondition): ConditionDraft {
       };
     case "etf_premium_discount":
       return { ...base, navSide: condition.direction, percent: String(condition.percent) };
+    case "material_announcement":
+      return { ...base, keyword: condition.keyword ?? "" };
     case "attention_entry":
     case "disposition_entry":
     case "month_revenue_published":
-    case "material_announcement":
       return base;
   }
 }

@@ -390,3 +390,35 @@ describe("mergeStaleEdit", () => {
     expect(merged.conflict).toBe(true);
   });
 });
+
+describe("重大訊息 keyword", () => {
+  const draft = { ...DEFAULT_DRAFT, kind: "material_announcement" as const };
+
+  it("builds with no keyword, a trimmed keyword, or a blank one meaning no filter", () => {
+    expect(buildCondition({ ...draft, keyword: "" })).toEqual({
+      ok: true,
+      condition: { kind: "material_announcement", keyword: null },
+    });
+    expect(buildCondition({ ...draft, keyword: "  股利 " })).toEqual({
+      ok: true,
+      condition: { kind: "material_announcement", keyword: "股利" },
+    });
+  });
+
+  it("refuses a keyword over the backend's 20-character limit", () => {
+    expect(buildCondition({ ...draft, keyword: "字".repeat(21) }).ok).toBe(false);
+  });
+
+  it("summarises with or without the keyword and round-trips into the form", () => {
+    expect(conditionSummary({ kind: "material_announcement", keyword: null }).key).toBe(
+      "material_announcement",
+    );
+    expect(conditionSummary({ kind: "material_announcement", keyword: "股利" })).toEqual({
+      key: "material_announcement_keyword",
+      values: { keyword: "股利" },
+    });
+    expect(draftFromCondition({ kind: "material_announcement", keyword: "股利" }).keyword).toBe(
+      "股利",
+    );
+  });
+});

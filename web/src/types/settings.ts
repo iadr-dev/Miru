@@ -331,7 +331,11 @@ export const alertConditionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("attention_entry") }),
   z.object({ kind: z.literal("disposition_entry") }),
   z.object({ kind: z.literal("month_revenue_published") }),
-  z.object({ kind: z.literal("material_announcement") }),
+  z.object({
+    kind: z.literal("material_announcement"),
+    // Only filings whose subject contains this text (backend: max 20 chars, no markup).
+    keyword: z.string().trim().min(1).max(20).nullable().optional(),
+  }),
   z.object({
     kind: z.literal("margin_balance_change"),
     side: z.enum(["margin", "short"]),

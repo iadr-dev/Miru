@@ -1768,6 +1768,8 @@
           "down": "下跌"
         },
         "percent": "幅度 (%)",
+        "keyword": "標題關鍵字（選填）",
+        "keywordPlaceholder": "例如：股利、法說會",
         "multiple": "倍數",
         "window": "均量天數",
         "investor": "法人",
@@ -1825,7 +1827,7 @@
           "attention_entry": "當這檔股票出現在交易所公布的注意股名單時通知你，不需要額外設定。",
           "disposition_entry": "當這檔股票出現在交易所公布的處置股名單時通知你，並附上處置期間，不需要額外設定。",
           "month_revenue_published": "當這檔股票公布月營收時通知你；通知只說明已公布，實際數字請到個股頁查看。不需要額外設定。",
-          "material_announcement": "當這檔股票向交易所公布重大訊息時通知你；通知會引用公司公告的主旨原文，僅為資料，不含任何解讀。不需要額外設定。"
+          "material_announcement": "當這檔股票向交易所公布重大訊息時通知你；可選填關鍵字，只在主旨含該字詞時通知。通知會引用公司公告的主旨原文，僅為資料，不含任何解讀。"
         },
         "marginSide": "項目",
         "marginSideOption": {
@@ -1882,6 +1884,7 @@
         "disposition_entry": "列入處置股名單",
         "month_revenue_published": "公布月營收",
         "material_announcement": "公布重大訊息",
+        "material_announcement_keyword": "公布含「{keyword}」的重大訊息",
         "margin_balance_change": {
           "margin": {
             "up": "融資餘額單日增加達 {percent}%",

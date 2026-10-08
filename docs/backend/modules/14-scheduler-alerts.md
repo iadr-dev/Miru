@@ -481,7 +481,11 @@ saying that N filings exist - and only then falls to the fixed line. Quote marks
 terminators in a subject are replaced by spaces, so it cannot break out of its quotation. One
 notification per rule+symbol per day: the daily ingest writes one partition, and a later same-day
 filing is not re-notified. It never characterises the filing and is never fed to
-an LLM. Keyword filtering and media-news (`STOCK_NEWS`, per-symbol, not ingested) are not built.
+an LLM. **Keyword (built).** `material_announcement` takes an optional `keyword` (<= 20 chars): the rule
+only fires on filings whose subject contains it (case-insensitive). It is the user's own text echoed
+into the rule's title, so it is whitespace-normalised and refused if it holds markup/control
+characters or trading language (the shared `schemas.memory_rules` scan). Media-news (`STOCK_NEWS`,
+per-symbol, not ingested) is not built.
 
 ## 9. Phased roadmap
 

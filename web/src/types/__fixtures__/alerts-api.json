@@ -2,8 +2,8 @@
   "alerts": {
     "alerts": [
       {
-        "id": "6672af31-15e2-4abf-a521-c426dcc83496",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "7d7ce293-3cdf-4216-8c98-e1361c5794dd",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -16,7 +16,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.921398",
+        "expires_at": "2027-01-06T14:46:35.766482",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -25,12 +25,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.921404",
-        "updated_at": "2026-10-08T06:07:25.921404"
+        "created_at": "2026-10-08T14:46:35.766487",
+        "updated_at": "2026-10-08T14:46:35.766487"
       },
       {
-        "id": "02a4392e-d87d-4226-9982-a24ef860972c",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "d07b393f-5f1d-4b52-8bf6-675a811ebdc7",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -44,7 +44,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.909673",
+        "expires_at": "2027-01-06T14:46:35.755649",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -53,23 +53,24 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.909680",
-        "updated_at": "2026-10-08T06:07:25.909680"
+        "created_at": "2026-10-08T14:46:35.755655",
+        "updated_at": "2026-10-08T14:46:35.755655"
       },
       {
-        "id": "f109df4a-6994-4a70-a530-1bed0f412825",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "becc8073-0583-431b-a558-b5cc8e195903",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
         "origin_watchlist_id": null,
         "condition": {
-          "kind": "material_announcement"
+          "kind": "material_announcement",
+          "keyword": null
         },
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.898466",
+        "expires_at": "2027-01-06T14:46:35.744283",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -78,12 +79,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.898472",
-        "updated_at": "2026-10-08T06:07:25.898472"
+        "created_at": "2026-10-08T14:46:35.744289",
+        "updated_at": "2026-10-08T14:46:35.744289"
       },
       {
-        "id": "4b4a3846-7fa3-46e2-a985-19c56aa9946c",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "0e7b77fc-cacc-43a7-9827-c5a7a0e2aff1",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -94,7 +95,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.886943",
+        "expires_at": "2027-01-06T14:46:35.731920",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -103,12 +104,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.886948",
-        "updated_at": "2026-10-08T06:07:25.886948"
+        "created_at": "2026-10-08T14:46:35.731926",
+        "updated_at": "2026-10-08T14:46:35.731926"
       },
       {
-        "id": "06c8c7cb-8691-4c8f-bd0e-c5743b8a0963",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "45e615b9-7352-433f-b379-82bd7cc89dc1",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -119,7 +120,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.875936",
+        "expires_at": "2027-01-06T14:46:35.720417",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -128,12 +129,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.875942",
-        "updated_at": "2026-10-08T06:07:25.875942"
+        "created_at": "2026-10-08T14:46:35.720423",
+        "updated_at": "2026-10-08T14:46:35.720423"
       },
       {
-        "id": "7b37a354-1166-42da-a2f7-b160e2a0c27e",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "cb64b609-080f-4432-96ef-84cf648a0b8d",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -144,7 +145,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.864923",
+        "expires_at": "2027-01-06T14:46:35.705488",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -153,12 +154,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.864928",
-        "updated_at": "2026-10-08T06:07:25.864928"
+        "created_at": "2026-10-08T14:46:35.705493",
+        "updated_at": "2026-10-08T14:46:35.705493"
       },
       {
-        "id": "263f31f2-5546-47d8-ac10-51969eab2205",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "1586db93-c074-4667-b44d-81a2484146a1",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -172,7 +173,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.853804",
+        "expires_at": "2027-01-06T14:46:35.694149",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -181,12 +182,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.853810",
-        "updated_at": "2026-10-08T06:07:25.853810"
+        "created_at": "2026-10-08T14:46:35.694155",
+        "updated_at": "2026-10-08T14:46:35.694155"
       },
       {
-        "id": "ed1a7513-eaa4-40a5-8aae-4945884c34cc",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "6d994845-592f-4656-8149-e0c767ba32aa",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -199,7 +200,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.842831",
+        "expires_at": "2027-01-06T14:46:35.677978",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -208,12 +209,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.842836",
-        "updated_at": "2026-10-08T06:07:25.842836"
+        "created_at": "2026-10-08T14:46:35.677984",
+        "updated_at": "2026-10-08T14:46:35.677984"
       },
       {
-        "id": "cf60993f-23cb-4520-8aae-600cd20b56cd",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "5d8717d2-1fb2-4461-ab1f-ae5805f309c5",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -226,7 +227,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.831345",
+        "expires_at": "2027-01-06T14:46:35.665815",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -235,12 +236,12 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.831355",
-        "updated_at": "2026-10-08T06:07:25.831355"
+        "created_at": "2026-10-08T14:46:35.665823",
+        "updated_at": "2026-10-08T14:46:35.665823"
       },
       {
-        "id": "23615cf3-8435-4638-a770-426be08f0116",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "08c7adf5-fe18-4e9f-93be-9e49cadf1f6d",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "symbol": "2330",
         "market": "TW",
         "watchlist_id": null,
@@ -253,7 +254,7 @@
         "trigger_mode": "once_per_day",
         "cooldown_seconds": null,
         "state": {},
-        "expires_at": "2027-01-06T06:07:25.814272",
+        "expires_at": "2027-01-06T14:46:35.651792",
         "auto_paused_reason": null,
         "explain": false,
         "channels": [],
@@ -262,16 +263,16 @@
         "enabled": true,
         "last_triggered": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:25.814281",
-        "updated_at": "2026-10-08T06:07:25.814281"
+        "created_at": "2026-10-08T14:46:35.651800",
+        "updated_at": "2026-10-08T14:46:35.651800"
       }
     ]
   },
   "schedules": {
     "schedules": [
       {
-        "id": "dee148f2-03a5-47d5-abf6-664767483b29",
-        "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+        "id": "cf3be18b-4250-44bb-b440-0355068dc5d2",
+        "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
         "trigger": {
           "type": "market_event",
           "spec": "after_close",
@@ -286,18 +287,18 @@
         "daily_limit": null,
         "enabled": true,
         "last_run": null,
-        "next_run": "2026-10-08T06:30:00",
+        "next_run": "2026-10-12T06:30:00",
         "status": "ok",
         "status_reason": null,
         "thread_id": null,
         "version": 0,
-        "created_at": "2026-10-08T06:07:26.057313",
-        "updated_at": "2026-10-08T06:07:26.057313"
+        "created_at": "2026-10-08T14:46:35.898087",
+        "updated_at": "2026-10-08T14:46:35.898087"
       }
     ]
   },
   "preferences_default": {
-    "user_id": "99754c89-704e-4384-b72c-73ff451b0f8e",
+    "user_id": "ef88b2e0-3771-4ba7-8335-d051a21b576d",
     "channels": [],
     "enabled_categories": [],
     "quiet_hours": {
@@ -307,7 +308,7 @@
     "morning_digest": false,
     "digest_thread_id": null,
     "timezone": "Asia/Taipei",
-    "updated_at": "2026-10-08T06:07:26.081087Z"
+    "updated_at": "2026-10-08T14:46:35.919051Z"
   },
   "badge": {
     "unread_notifications": 0,

@@ -18,14 +18,18 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from schemas.enums import Market
+from schemas.memory_rules import scan_content_for_governance_violations
 
 NON_ADVICE_FOOTER: Final = "本通知為你設定條件的資料提醒，非投資建議。"
 
 # How many prior trading days a history-dependent template reads (bounded — never a scan).
 MAX_HISTORY_DAYS: Final = 60
+
+MAX_KEYWORD_LENGTH: Final = 20
+_KEYWORD_FORBIDDEN: Final = "<>[]()`*_#\\|\"'"
 
 _INVESTOR_LABEL: Final = {"foreign": "外資", "trust": "投信", "dealer": "自營商"}
 
@@ -119,6 +123,24 @@ class MaterialAnnouncementPublished(_Template):
     and never characterises it."""
 
     kind: Literal["material_announcement"] = "material_announcement"
+    # Only notify when the filing's subject contains this text (e.g. 股利, 法說會). The user's own
+    # words, shown back in the rule's title, so they are kept short, free of markup/control
+    # characters, and held to the same no-trading-language rule as everything else we display.
+    keyword: str | None = Field(default=None, max_length=MAX_KEYWORD_LENGTH)
+
+    @field_validator("keyword")
+    @classmethod
+    def _clean_keyword(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            return None
+        if not cleaned.isprintable() or any(ch in cleaned for ch in _KEYWORD_FORBIDDEN):
+            raise ValueError("keyword may not contain markup or control characters")
+        if scan_content_for_governance_violations({"keyword": cleaned}) is not None:
+            raise ValueError("keyword may not contain trading language")
+        return cleaned
 
 
 RuleCondition = Annotated[
@@ -208,6 +230,8 @@ def describe(condition: ConditionModel) -> str:
     elif isinstance(condition, EtfPremiumDiscount):
         side = "溢價" if condition.direction == "premium" else "折價"
         phrase = f"預估{side}幅度達 {condition.percent:g}%"
+    elif isinstance(condition, MaterialAnnouncementPublished) and condition.keyword:
+        phrase = f"公布含「{condition.keyword}」的重大訊息"
     else:
         phrase = _FLAG_PHRASE[condition.kind]
     return phrase
@@ -226,6 +250,7 @@ def investor_label(investor: str) -> str:
 __all__ = [
     "EVENT_KINDS",
     "MAX_HISTORY_DAYS",
+    "MAX_KEYWORD_LENGTH",
     "NON_ADVICE_FOOTER",
     "PER_STOCK_KINDS",
     "TW_ONLY_KINDS",

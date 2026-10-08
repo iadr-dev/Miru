@@ -309,13 +309,15 @@ def _eval_announcement(
     dataset = dataset_of(condition, market)
     if view.latest_partition_date(dataset, market, on_or_before=as_of, max_back_days=0) is None:
         return None
+    needle = (condition.keyword or "").casefold()
     todays = [
         r
         for r in view.rows(dataset, market, as_of, symbol)
         if _day_text(r.get("announced_date")) == as_of.isoformat()
+        and needle in str(r.get("subject", "")).casefold()
     ]
     if not todays:
-        return Evaluation(met=False, message=_message(symbol, "本日無重大訊息", condition))
+        return Evaluation(met=False, message=_message(symbol, "本日無符合的重大訊息", condition))
     latest = max(todays, key=lambda r: str(r.get("announced_time", "")))
     subject = _quoted_subject(latest.get("subject"))
     count = f"{len(todays)} 則" if len(todays) > 1 else "1 則"
