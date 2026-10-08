@@ -39,6 +39,7 @@ import type {
   SubscriptionResponse,
 } from "@/types/settings";
 import { type BillingInterval, type PayableTier, PlansForm } from "./plans-form";
+import { TierComparison } from "./tier-comparison";
 
 export function BillingPanel(): ReactNode {
   const t = useTranslations("settings.billing");
@@ -304,6 +305,13 @@ export function BillingPanel(): ReactNode {
             {subscriptionQuery.data?.byok_active ? tc("yes") : tc("no")}
           </span>
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title={t("compare.title")} className="mb-6">
+        <TierComparison
+          tiers={plansQuery.data?.tiers ?? []}
+          current={subscriptionQuery.data?.subscription?.tier ?? "free"}
+        />
       </SettingsSection>
 
       <SettingsSection title={t("plansTitle")} className="mb-6">

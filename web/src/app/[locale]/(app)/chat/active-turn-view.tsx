@@ -27,6 +27,7 @@ import {
   type LaneGroup,
 } from "@/app/[locale]/(app)/chat/turn-store";
 import { WebSearchSources } from "@/app/[locale]/(app)/chat/web-search-sources";
+import { Link } from "@/i18n/navigation";
 import type { FeedbackRating } from "@/lib/api/threads";
 import { audioBase64ToObjectUrl, speakText } from "@/lib/api/voice";
 import { cn } from "@/lib/cn";
@@ -118,7 +119,7 @@ export function ActiveTurnView({
         ) : null}
 
         {turn.phase === "error" ? (
-          <InlineError message={turn.errorMessage} fallback={t("error")} />
+          <InlineError message={turn.errorMessage} fallback={t("error")} code={turn.errorCode} />
         ) : null}
         {turn.phase === "cancelled" ? (
           <p className="mt-2 text-[var(--text-muted)] text-sm">{t("cancelled")}</p>
@@ -667,13 +668,23 @@ export function ProcessSubEntryRow({
   );
 }
 
+/** Refusals that are solved by a plan or a key, so the error offers the way out. */
+const UPGRADE_CODES = new Set([
+  "chat_limit_reached",
+  "deep_research_limit_reached",
+  "feature_not_entitled",
+]);
+
 function InlineError({
   message,
   fallback,
+  code,
 }: {
   message: string | null;
   fallback: string;
+  code?: string | null;
 }): ReactNode {
+  const tUpgrade = useTranslations("chat.turn");
   return (
     <div
       role="alert"
@@ -685,6 +696,17 @@ function InlineError({
       <WarningIcon size={16} weight="regular" aria-hidden className="mt-0.5 text-[var(--warn)]" />
       <span className="text-[var(--text)]">
         {message && message.length > 0 ? message : fallback}
+        {code && UPGRADE_CODES.has(code) ? (
+          <>
+            {" "}
+            <Link
+              href="/settings/billing"
+              className="text-[var(--accent-text)] underline-offset-2 hover:underline"
+            >
+              {tUpgrade("seePlans")}
+            </Link>
+          </>
+        ) : null}
       </span>
     </div>
   );

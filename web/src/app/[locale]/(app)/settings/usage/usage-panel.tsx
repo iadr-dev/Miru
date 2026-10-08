@@ -8,6 +8,7 @@ import { SettingsRow, SettingsSection } from "@/components/settings/settings-sec
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Link } from "@/i18n/navigation";
 import { getTodayUsage, getUsageQuota } from "@/lib/api/settings";
+import { featureLabel } from "@/lib/feature-labels";
 
 /** 用量 — the plan's limits, how much of today's allowance is used, and (below) the caller's own
  * model usage. Allowances use a real used/limit bar because the backend now reports consumption. */
@@ -156,22 +157,4 @@ function AllowanceRow({
       </div>
     </SettingsRow>
   );
-}
-
-/** `EntitlementView.features` is a backend enum-key list (`accounts/entitlements.py`'s
- * `FEATURE_MIN_TIER`) — falls back to the raw key for a feature this map hasn't caught up to
- * yet, same pattern as `cardTypeLabel`. */
-const LABELED_FEATURES = new Set([
-  "live_quote_stream",
-  "ai_summary",
-  "swot",
-  "full_score",
-  "news_sentiment",
-  "theme_discovery",
-  "deep_research",
-  "tick_minute_k",
-]);
-
-function featureLabel(t: ReturnType<typeof useTranslations>, feature: string): string {
-  return LABELED_FEATURES.has(feature) ? t(`featureOption.${feature}`) : feature;
 }

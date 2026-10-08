@@ -59,11 +59,46 @@ FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
     "ai_summary": Tier.PREMIUM,
     "swot": Tier.PREMIUM,
     "full_score": Tier.PREMIUM,
-    "news_sentiment": Tier.PREMIUM,
-    "theme_discovery": Tier.PREMIUM,
     "deep_research": Tier.PRO,
     "tick_minute_k": Tier.PRO,
 }
+
+
+class TierSummary(BaseModel):
+    """One tier as the pricing page shows it - a projection of the two tables above, so the page
+    can never promise a limit or feature the enforcement code does not know about."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tier: Tier
+    chat_limit_per_day: int | None  # None = unlimited
+    requests_per_minute: int
+    sponsor_data: bool  # branch/ownership/holder data unmasked
+    features: tuple[str, ...]
+    deep_research_limit_per_day: int | None  # None when the tier has no deep research
+
+
+def tier_catalog() -> list[TierSummary]:
+    """Free, Premium and Pro side by side, in order."""
+    summaries: list[TierSummary] = []
+    for tier in (Tier.FREE, Tier.PREMIUM, Tier.PRO):
+        limits = TIER_LIMITS[tier]
+        features = tuple(
+            sorted(f for f, minimum in FEATURE_MIN_TIER.items() if _tier_at_least(tier, minimum))
+        )
+        summaries.append(
+            TierSummary(
+                tier=tier,
+                chat_limit_per_day=limits.chat_limit_per_day,
+                requests_per_minute=limits.requests_per_minute,
+                sponsor_data=limits.finmind_class is not Tier.FREE,
+                features=features,
+                deep_research_limit_per_day=(
+                    DEEP_RESEARCH_LIMIT_PER_DAY if "deep_research" in features else None
+                ),
+            )
+        )
+    return summaries
 
 
 def _tier_at_least(tier: Tier, minimum: Tier) -> bool:
@@ -133,6 +168,7 @@ __all__ = [
     "FEATURE_MIN_TIER",
     "TIER_LIMITS",
     "TierLimits",
+    "TierSummary",
     "allowed_features",
     "chat_limit_for",
     "deep_research_limit_per_day",
@@ -141,4 +177,5 @@ __all__ = [
     "finmind_class_for",
     "limits_for",
     "rate_limit_per_minute",
+    "tier_catalog",
 ]

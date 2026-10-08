@@ -123,10 +123,22 @@ export const planInfoSchema = z.object({
 });
 export type PlanInfo = z.infer<typeof planInfoSchema>;
 
+/** One tier as the pricing page shows it - mirrors `accounts.entitlements.TierSummary`. */
+export const tierSummarySchema = z.object({
+  tier: z.enum(["free", ...PAYABLE_TIERS]),
+  chat_limit_per_day: z.number().int().nullable(),
+  requests_per_minute: z.number().int(),
+  sponsor_data: z.boolean(),
+  features: z.array(z.string()).default([]),
+  deep_research_limit_per_day: z.number().int().nullable().default(null),
+});
+export type TierSummary = z.infer<typeof tierSummarySchema>;
+
 export const plansResponseSchema = z.object({
   client_token: z.string().nullable(),
   environment: z.enum(["sandbox", "production"]).default("sandbox"),
   plans: z.array(planInfoSchema).default([]),
+  tiers: z.array(tierSummarySchema).default([]),
 });
 export type PlansResponse = z.infer<typeof plansResponseSchema>;
 

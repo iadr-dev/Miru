@@ -401,3 +401,12 @@ def test_a_paused_subscription_can_be_resumed_but_not_changed(
         paddle.calls
     )
     assert client.get("/api/v1/me", headers=headers).json()["user"]["tier"] == "premium"
+
+
+def test_plans_response_carries_the_tier_comparison(client) -> None:
+    tiers = client.get("/api/v1/billing/plans").json()["tiers"]
+    assert [t["tier"] for t in tiers] == ["free", "premium", "pro"]
+    assert tiers[0]["chat_limit_per_day"] == 3
+    assert tiers[2]["chat_limit_per_day"] is None
+    assert tiers[2]["deep_research_limit_per_day"] == 5
+    assert "deep_research" not in tiers[1]["features"]

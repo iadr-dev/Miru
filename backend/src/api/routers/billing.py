@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
+from accounts.entitlements import TierSummary, tier_catalog
 from accounts.models import User
 from accounts.secrets import SqlAlchemySecretStore
 from accounts.store import SqlAlchemyUserStore
@@ -89,6 +90,8 @@ class PlansResponse(BaseModel):
     # `sandbox` | `production` - which Paddle the browser's Paddle.js must talk to.
     environment: str
     plans: list[PricedPlan]
+    # What each tier includes (limits + features), for the side-by-side comparison.
+    tiers: list[TierSummary]
 
 
 def get_price_lookup(settings: Settings = Depends(get_settings_dep)) -> PriceLookup | None:
@@ -115,6 +118,7 @@ async def billing_plans(
         client_token=settings.paddle_client_token,
         environment=settings.paddle_environment,
         plans=plans,
+        tiers=tier_catalog(),
     )
 
 

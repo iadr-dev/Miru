@@ -769,7 +769,10 @@
       },
       "deepResearchLimit": "今天的 5 份深入研究報告已用完，請明天再試。",
       "deepResearchNotEntitled": "深入研究為 Pro 方案功能。",
-      "byokKeyRequired": "你已加入自己的 API 金鑰，對話只會使用你有金鑰的供應商。請改選其中一家的模型，或移除金鑰以使用共用模型。"
+      "byokKeyRequired": "你已加入自己的 API 金鑰，對話只會使用你有金鑰的供應商。請改選其中一家的模型，或移除金鑰以使用共用模型。",
+      "chatLimitReached": "今天的免費對話次數已用完。升級方案，或加入你自己的 API 金鑰就能繼續。",
+      "rateLimited": "請求太頻繁，請稍候再試。",
+      "seePlans": "查看方案"
     },
     "table": {
       "copy": "複製表格",
@@ -1297,7 +1300,8 @@
         "addFiles": "新增檔案或照片",
         "screenshot": "拍攝截圖",
         "webSearch": "網路搜尋",
-        "deepResearch": "深入研究"
+        "deepResearch": "深入研究",
+        "deepResearchLocked": "深入研究（Pro 方案）"
       },
       "attachments": {
         "remove": "移除附件",
@@ -1519,7 +1523,17 @@
       "updatePayment": "更新付款方式",
       "resumeSubscription": "繼續訂閱",
       "receipt": "收據",
-      "pausedNotice": "訂閱已暫停，暫停期間不享有付費方案，也不會扣款。"
+      "pausedNotice": "訂閱已暫停，暫停期間不享有付費方案，也不會扣款。",
+      "compare": {
+        "title": "各方案包含什麼",
+        "current": "目前方案",
+        "chatsPerDay": "每日 {count} 則對話",
+        "chatsUnlimited": "無限對話",
+        "requestsPerMinute": "每分鐘 {count} 次請求",
+        "sponsorData": "分點、籌碼與股權資料",
+        "noSponsorData": "僅公開資料",
+        "deepResearch": "深入研究，每日 {count} 份報告"
+      }
     },
     "byok": {
       "title": "自帶金鑰",
@@ -1568,8 +1582,6 @@
         "ai_summary": "AI 摘要",
         "swot": "SWOT 分析",
         "full_score": "完整評分",
-        "news_sentiment": "新聞情緒分析",
-        "theme_discovery": "主題探索",
         "deep_research": "深度研究",
         "tick_minute_k": "逐筆／分K"
       },
