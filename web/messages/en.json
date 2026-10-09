@@ -1125,6 +1125,7 @@
         "unavailable_note": "Unavailable Note",
         "end_date": "End Date",
         "data_available": "Data Available",
+        "roster_date": "Roster date",
         "unavailable_reason": "Unavailable Reason",
         "sub_industry": "Sub-industry",
         "year": "Year",
@@ -1143,6 +1144,7 @@
         "units_outstanding_change": "Units change"
       },
       "types": {
+        "symbol_search": "Symbol search",
         "margin_short": "Margin/Short Balances",
         "margin_short_total_market": "Market-Wide Margin/Short Balances",
         "institutional_flow_wide": "Institutional Flow (Full)",

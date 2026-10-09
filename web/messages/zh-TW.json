@@ -1125,6 +1125,7 @@
         "unavailable_note": "無法取得原因說明",
         "end_date": "結束日期",
         "data_available": "資料是否可用",
+        "roster_date": "名單日期",
         "unavailable_reason": "無法取得原因",
         "sub_industry": "細分產業",
         "year": "年度",
@@ -1143,6 +1144,7 @@
         "units_outstanding_change": "單位數增減"
       },
       "types": {
+        "symbol_search": "代號搜尋",
         "margin_short": "融資融券",
         "margin_short_total_market": "全市場融資融券",
         "institutional_flow_wide": "三大法人買賣（完整版）",

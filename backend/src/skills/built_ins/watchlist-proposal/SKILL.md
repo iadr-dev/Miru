@@ -12,6 +12,7 @@ inputs:
     type: string
     required: false
 tools: [propose_watchlist_change, get_symbol_directory_search, ask_user]
+hide_cards: [get_symbol_directory_search]
 output_structure:
   - '一張提案卡：動作、每檔標的的代號與名稱、要放入的群組（可選現有群組或新增群組），或要改名／刪除／調整順序的群組'
   - '僅一句話說明：提案已顯示在畫面上，需由使用者確認並按下按鈕才會生效（不列點、不加 TL;DR、不重述卡片內容）'

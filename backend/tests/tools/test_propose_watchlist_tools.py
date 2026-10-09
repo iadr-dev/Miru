@@ -149,3 +149,10 @@ def test_it_is_reachable_from_a_normal_turn_and_from_its_skill() -> None:
 def test_watchlist_phrasing_routes_to_the_watchlist_skill(message: str) -> None:
     registry = build_skill_registry()
     assert _keyword_fallback(message, registry).skills == ("watchlist-proposal",)
+
+
+def test_the_name_lookup_is_internal_so_its_card_is_hidden_in_this_flow() -> None:
+    # The proposal card already shows each resolved name; a raw "Symbol search" metadata card
+    # beside it is noise.
+    skill = build_skill_registry().get("watchlist-proposal")
+    assert "get_symbol_directory_search" in skill.frontmatter.hide_cards
