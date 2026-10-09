@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Literal, Protocol, get_args, runtime_checkable
+from typing import Literal, Protocol, TypeGuard, get_args, runtime_checkable
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -139,6 +139,10 @@ class WatchlistStoreProtocol(Protocol):
     async def watches(self, *, user_id: str, symbol: str) -> bool: ...
 
 
+def _is_watchlist_color(value: str | None) -> TypeGuard[WatchlistColor]:
+    return value in WATCHLIST_COLORS
+
+
 def _group_to_model(row: WatchlistRow) -> WatchlistGroup:
     return WatchlistGroup(
         id=row.id,
@@ -148,7 +152,7 @@ def _group_to_model(row: WatchlistRow) -> WatchlistGroup:
         asset_class=row.asset_class,
         sort_order=row.sort_order,
         is_default=row.is_default,
-        color=row.color if row.color in WATCHLIST_COLORS else None,
+        color=row.color if _is_watchlist_color(row.color) else None,
         version=row.version,
         created_at=row.created_at,
         updated_at=row.updated_at,
