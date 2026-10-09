@@ -13,6 +13,7 @@ import {
 } from "@/app/[locale]/(app)/chat/composer";
 import { EmptyState } from "@/app/[locale]/(app)/chat/empty-state";
 import { PersistedThreadView } from "@/app/[locale]/(app)/chat/persisted-thread-view";
+import { PetCompanion, type PetNotice } from "@/app/[locale]/(app)/chat/pet-companion";
 import { type ActiveTurnMode, useTurnStore } from "@/app/[locale]/(app)/chat/turn-store";
 import { VoiceModeOverlay } from "@/app/[locale]/(app)/chat/voice-mode-overlay";
 import { useNewThreadStore } from "@/components/shell/new-thread-store";
@@ -69,6 +70,8 @@ function turnErrorMessage(err: unknown, t: (key: string) => string): string {
  * once a thread already exists PATCHes immediately. Either way the two branches share one
  * `applyModelOverride` so the persisted value and the query-cache invalidation stay in sync.
  */
+const PET_NOTICE_MS = 8000;
+
 /** The chat's own 語氣 pick: a pending one wins, and a pending "default" means follow the account
  * (no pick of its own). */
 function chosenTone(pending: string | null, persisted: string | null): string | null {
@@ -90,6 +93,8 @@ export function ChatClient(): ReactNode {
   // Same handshake for the per-chat 語氣 pick: held until the thread exists, then sent as
   // `personality` with the first message.
   const [pendingTone, setPendingTone] = useState<string | null>(null);
+  // What the equipped pet just earned (a level-up or a pull), shown beside it for a few seconds.
+  const [petNotice, setPetNotice] = useState<PetNotice | null>(null);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   // Per-turn "Web search" toggle from the composer's feature menu. Unlike `modelOverride`, this
   // isn't a thread property persisted via `PATCH /threads/{id}` — it's a request-body flag on
@@ -135,6 +140,20 @@ export function ChatClient(): ReactNode {
   );
 
   // Best-effort like `applyModelOverride`; "default" clears the chat's own pick.
+  // Refresh the pet's level/pulls after a turn and say what it earned, then let the note fade.
+  const announcePet = useCallback(
+    (leveledTo: number | null, pullsEarned: number): void => {
+      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-active"] });
+      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-progress"] });
+      if (leveledTo === null && pullsEarned === 0) {
+        return;
+      }
+      setPetNotice({ leveledTo, pullsEarned });
+      window.setTimeout(() => setPetNotice(null), PET_NOTICE_MS);
+    },
+    [queryClient],
+  );
+
   const applyToneOverride = useCallback(
     async (targetThreadId: string, presetId: string): Promise<void> => {
       try {
@@ -224,6 +243,7 @@ export function ChatClient(): ReactNode {
       // text still exists once the persisted-history refetch below takes over the render.
       const finishedTurn = useTurnStore.getState().activeTurn;
       const answerText = finishedTurn?.phase === "done" ? (finishedTurn.answerText ?? null) : null;
+      announcePet(finishedTurn?.petLeveledTo ?? null, finishedTurn?.petPullsEarned ?? 0);
 
       // Reconcile with persisted history, then drop the live overlay once it lands.
       await queryClient.invalidateQueries({ queryKey: ["threads"] });
@@ -233,7 +253,17 @@ export function ChatClient(): ReactNode {
       clear();
       return answerText;
     },
-    [threadId, pendingModelOverride, pendingTone, begin, consumeStream, clear, queryClient, router],
+    [
+      threadId,
+      pendingModelOverride,
+      pendingTone,
+      announcePet,
+      begin,
+      consumeStream,
+      clear,
+      queryClient,
+      router,
+    ],
   );
 
   const runTurn = useCallback(
@@ -436,6 +466,7 @@ export function ChatClient(): ReactNode {
         )}
       </div>
 
+      <PetCompanion thinking={streaming} notice={petNotice} />
       <Composer
         streaming={streaming}
         onSend={onSend}

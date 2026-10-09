@@ -47,6 +47,8 @@ import {
   type MemoryRef,
   memoryUsedDataSchema,
   personalityUsedDataSchema,
+  petLeveledDataSchema,
+  petPullEarnedDataSchema,
   type TurnUsageData,
   turnUsageDataSchema,
 } from "@/types/usage";
@@ -191,6 +193,9 @@ export type ActiveTurn = {
   memoriesUsed: MemoryRef[];
   /** The 語氣 preset id that styled this turn (from `personality.used`), null until it arrives. */
   personality: string | null;
+  /** What the equipped pet earned this turn (from `pet.leveled` / `pet.pull_earned`). */
+  petLeveledTo: number | null;
+  petPullsEarned: number;
   /** The final answer, in one shot — null until the terminal `message` frame arrives. Always
    * the authoritative full text once set (see `streamingAnswerText` for the live-partial
    * counterpart); a client that missed every `message.delta` still gets the complete answer
@@ -429,6 +434,14 @@ const FRAME_REDUCERS: {
     const parsed = memoryUsedDataSchema.safeParse(frame.envelope.data);
     return parsed.success ? { ...base, memoriesUsed: parsed.data.memories } : base;
   },
+  "pet.leveled": (base, frame) => {
+    const parsed = petLeveledDataSchema.safeParse(frame.envelope.data);
+    return parsed.success ? { ...base, petLeveledTo: parsed.data.level } : base;
+  },
+  "pet.pull_earned": (base, frame) => {
+    const parsed = petPullEarnedDataSchema.safeParse(frame.envelope.data);
+    return parsed.success ? { ...base, petPullsEarned: parsed.data.count } : base;
+  },
   "personality.used": (base, frame) => {
     const parsed = personalityUsedDataSchema.safeParse(frame.envelope.data);
     return parsed.success ? { ...base, personality: parsed.data.personality } : base;
@@ -459,6 +472,8 @@ export const useTurnStore = create<TurnStore>((set) => ({
         usage: null,
         memoriesUsed: [],
         personality: null,
+        petLeveledTo: null,
+        petPullsEarned: 0,
         answerText: null,
         streamingAnswerText: null,
         steeringQueued: [],

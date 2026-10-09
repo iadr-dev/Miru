@@ -68,6 +68,8 @@ export const SSE_EVENT_KINDS = [
   "usage",
   "memory.used",
   "personality.used",
+  "pet.leveled",
+  "pet.pull_earned",
   "steering.accepted",
   "message",
   "message.delta",

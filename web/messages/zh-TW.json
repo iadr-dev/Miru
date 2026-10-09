@@ -1427,6 +1427,13 @@
       "transcribeError": "無法辨識這段錄音，重新聆聽中。",
       "sendError": "送出時發生問題，重新聆聽中。"
     },
+    "pet": {
+      "claim": "領取你的第一位夥伴",
+      "level": "Lv {level}",
+      "xp": "夥伴經驗值",
+      "leveled": "升級了！現在是 Lv {level}",
+      "pullEarned": "獲得 {count} 次新的抽取機會"
+    },
     "personalityUsed": {
       "summary": "語氣：{name}"
     },

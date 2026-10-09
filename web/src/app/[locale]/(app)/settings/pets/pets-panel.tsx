@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { SettingsSection } from "@/components/settings/settings-section";
@@ -17,6 +17,7 @@ import {
   SettingsApiError,
 } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
+import { petName } from "@/lib/pets";
 import type { PetCatalogEntry, PetRarity } from "@/types/settings";
 
 const RARITY_STYLE: Record<PetRarity, string> = {
@@ -32,6 +33,7 @@ const RARITY_STYLE: Record<PetRarity, string> = {
  * No tier gate. */
 export function PetsPanel(): ReactNode {
   const t = useTranslations("settings.pets");
+  const locale = useLocale();
   const tc = useTranslations("settings.common");
   const queryClient = useQueryClient();
   const [pullMessage, setPullMessage] = useState<string | null>(null);
@@ -55,7 +57,9 @@ export function PetsPanel(): ReactNode {
   const pullMutation = useMutation({
     mutationFn: pullPet,
     onSuccess: (outcome) => {
-      setPullMessage(t("pullResult", { pet: outcome.pet_id }));
+      setPullMessage(
+        t("pullResult", { pet: petName(catalogQuery.data ?? [], outcome.pet_id, locale) }),
+      );
       void queryClient.invalidateQueries({ queryKey: ["settings", "pets-owned"] });
       void queryClient.invalidateQueries({ queryKey: ["settings", "pet-progress"] });
       void queryClient.invalidateQueries({ queryKey: ["settings", "pet-active"] });

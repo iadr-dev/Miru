@@ -1427,6 +1427,13 @@
       "transcribeError": "Couldn't transcribe that — listening again.",
       "sendError": "Something went wrong sending that — listening again."
     },
+    "pet": {
+      "claim": "Claim your first companion",
+      "level": "Lv {level}",
+      "xp": "Companion experience",
+      "leveled": "Level up! Now Lv {level}",
+      "pullEarned": "{count, plural, one {You earned # new pull} other {You earned # new pulls}}"
+    },
     "personalityUsed": {
       "summary": "Voice: {name}"
     },
