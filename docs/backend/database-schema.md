@@ -244,7 +244,7 @@ no dual-write. Reverses the earlier "not shipped" decision → [adr/0027](adr/00
 | name | text | e.g. `半導體`; per-user + tab unique (below) |
 | market | text | CHECK `IN ('TW','US')` — the **true market** ([modules/19](modules/19-data-access-router.md) `Market`); no longer polluted by ETF. **Now stale vs. the real `schemas.enums.Market` enum**, which also has `GB`/`JP`/`EU`/`GLOBAL` (all real, adapter-backed since the yfinance/FinMind-international expansion, [module 01](modules/01-sources.md)) — this CHECK predates that expansion (ADR-0027) and would reject a GB/JP/EU watchlist row today |
 | asset_class | text | CHECK `IN ('stock','etf')` — **instrument type**; the rail's "ETF tab" = `market='TW' AND asset_class='etf'` (resolved ADR-0027 A1) |
-| sort_order | text | **lexorank/fractional key** (not int) — collision-free reorder |
+| sort_order | text | **lexorank/fractional key** (not int) — collision-free reorder. A new group gets a key after the last one in its tab; `list_groups` orders by `(sort_order, created_at, id)` and re-keys any tied groups (data from before this) so the order is stored, never left to the database |
 | is_default | bool default false | auto-created group; ≤1 true per (user, market, asset_class) |
 | color | text null | label colour: one of `chart-1`..`chart-6` (the web's non-signed chart tokens, never 漲/跌 colours); null = none |
 | version | int default 0 | optimistic lock (rename/recolour/reorder, multi-device) |

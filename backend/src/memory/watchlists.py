@@ -180,13 +180,29 @@ class WatchlistStore:
         self, *, user_id: str, name: str, market: Market, asset_class: str, is_default: bool = False
     ) -> WatchlistGroup:
         now = datetime.now(UTC)
+        # A new group goes to the end of its tab. (Every group used to get the same key, so the
+        # order between them was whatever the database returned - and any update to a row, a
+        # rename or a colour, could reshuffle the rail.)
+        last = (
+            await self._session.execute(
+                select(WatchlistRow.sort_order)
+                .where(
+                    WatchlistRow.user_id == user_id,
+                    WatchlistRow.market == market.value,
+                    WatchlistRow.asset_class == asset_class,
+                    WatchlistRow.deleted_at.is_(None),
+                )
+                .order_by(WatchlistRow.sort_order.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
         row = WatchlistRow(
             id=str(uuid.uuid4()),
             user_id=user_id,
             name=name,
             market=market.value,
             asset_class=asset_class,
-            sort_order=midpoint_key(None, None),
+            sort_order=midpoint_key(last, None),
             is_default=is_default,
             version=0,
             created_at=now,
@@ -244,9 +260,37 @@ class WatchlistStore:
         result = await self._session.execute(
             select(WatchlistRow)
             .where(WatchlistRow.user_id == user_id, WatchlistRow.deleted_at.is_(None))
-            .order_by(WatchlistRow.market, WatchlistRow.asset_class, WatchlistRow.sort_order)
+            .order_by(
+                WatchlistRow.market,
+                WatchlistRow.asset_class,
+                WatchlistRow.sort_order,
+                WatchlistRow.created_at,
+                WatchlistRow.id,
+            )
         )
-        return [_group_to_model(row) for row in result.scalars().all()]
+        rows = list(result.scalars().all())
+        if self._rekey_tied_groups(rows):
+            await self._session.flush()
+        return [_group_to_model(row) for row in rows]
+
+    @staticmethod
+    def _rekey_tied_groups(rows: list[WatchlistRow]) -> bool:
+        """Give groups that share a sort key (data from before new groups were appended) distinct
+        keys in their current, creation-ordered sequence, so their order is stored rather than left
+        to the database. Rows already in order keep their keys; returns whether anything changed."""
+        changed = False
+        previous: WatchlistRow | None = None
+        for row in rows:
+            same_tab = (
+                previous is not None
+                and previous.market == row.market
+                and previous.asset_class == row.asset_class
+            )
+            if previous is not None and same_tab and row.sort_order <= previous.sort_order:
+                row.sort_order = midpoint_key(previous.sort_order, None)
+                changed = True
+            previous = row
+        return changed
 
     async def add_item(
         self, *, user_id: str, watchlist_id: str, symbol: str, note: str | None = None
