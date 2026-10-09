@@ -35,6 +35,7 @@ from api.dependencies import (
     tool_context_for,
 )
 from api.errors import ApiError
+from api.personality_choice import personality_patch
 from api.turn_driver import current_leaf, enforce_pre_turn_gate, start_turn_stream
 from config.settings import Settings
 from conversation.models import MessageBlockContent, MessageBlockType, TextBlock, Thread, TurnRole
@@ -57,6 +58,9 @@ class AgentQueryRequest(BaseModel):
     # The composer's model pick, sent WITH the message so the very first turn of a new chat honors
     # it (a separate PATCH /threads can only land after the thread exists, i.e. after this turn).
     model: str | None = Field(default=None, max_length=200)
+    # This chat's 語氣 (a preset id, or "default" to follow the account setting), sent WITH the
+    # message for the same reason as `model`: a new chat has no thread to PATCH yet.
+    personality: str | None = Field(default=None, max_length=50)
     # Pro-only multi-step cited web research instead of a normal chat reply (see `research/`).
     deep_research: bool = False
 
@@ -88,6 +92,14 @@ async def agent_query(
     if body.model is not None and body.model != thread.model_override:
         thread = await store.update_thread(
             user_id=user.id, thread_id=thread.id, model_override=body.model
+        )
+    clear_tone, tone = personality_patch(state, body.personality)
+    if clear_tone or (tone is not None and tone != thread.personality_override):
+        thread = await store.update_thread(
+            user_id=user.id,
+            thread_id=thread.id,
+            personality_override=tone,
+            clear_personality_override=clear_tone,
         )
     thread_id = thread.id
 

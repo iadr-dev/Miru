@@ -60,7 +60,13 @@ export async function createThread(title = ""): Promise<Thread> {
  * instead of clobbering. */
 export async function patchThread(
   threadId: string,
-  patch: { title?: string; starred?: boolean; archived?: boolean; model_override?: string },
+  patch: {
+    title?: string;
+    starred?: boolean;
+    archived?: boolean;
+    model_override?: string;
+    personality_override?: string;
+  },
   expectedVersion: number,
 ): Promise<Thread> {
   const response = await fetchWithRefresh(apiUrl(`/threads/${encodeURIComponent(threadId)}`), {

@@ -31,6 +31,7 @@ from api.dependencies import (
     tool_context_for,
 )
 from api.errors import ApiError
+from api.personality_choice import personality_patch
 from api.sse import format_sse_event
 from api.turn_driver import enforce_pre_turn_gate, start_turn_stream
 from api.turn_registry import RunningTurn
@@ -88,6 +89,8 @@ class PatchThreadRequest(BaseModel):
     archived: bool | None = None
     tags: tuple[str, ...] | None = None
     model_override: str | None = Field(default=None, max_length=200)
+    # A preset id for this chat only, or "default" to follow the account's 語氣 setting again.
+    personality_override: str | None = Field(default=None, max_length=50)
 
 
 @router.patch("/threads/{thread_id}")
@@ -96,10 +99,12 @@ async def patch_thread(
     body: PatchThreadRequest,
     user: User = Depends(require_user),
     store: ConversationStore = Depends(_store),
+    state: AppState = Depends(get_state),
     if_match: int | None = Header(default=None, alias="If-Match"),
 ) -> Thread:
     """Rename / star / archive / tag. `If-Match: <version>` enforces optimistic concurrency —
     a stale version means another device edited first, surfaced as 409."""
+    clear_tone, tone = personality_patch(state, body.personality_override)
     try:
         return await store.update_thread(
             user_id=user.id,
@@ -109,6 +114,8 @@ async def patch_thread(
             archived=body.archived,
             tags=body.tags,
             model_override=body.model_override,
+            personality_override=tone,
+            clear_personality_override=clear_tone,
             expected_version=if_match,
         )
     except ThreadNotFoundError as exc:

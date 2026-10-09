@@ -1395,6 +1395,11 @@
       },
       "voiceError": "無法辨識這段錄音，請再試一次。",
       "micPermissionDenied": "無法使用麥克風，請檢查瀏覽器的麥克風權限後再試一次。",
+      "toneMenu": {
+        "trigger": "語氣：{name}",
+        "follow": "跟隨帳號設定",
+        "heading": "此對話的語氣"
+      },
       "modelMenu": {
         "locked": "需付費方案",
         "trigger": "模型：{model}",
@@ -1421,6 +1426,9 @@
       "micPermissionDenied": "無法使用麥克風，請檢查瀏覽器的麥克風權限後再試一次。",
       "transcribeError": "無法辨識這段錄音，重新聆聽中。",
       "sendError": "送出時發生問題，重新聆聽中。"
+    },
+    "personalityUsed": {
+      "summary": "語氣：{name}"
     },
     "memoryUsed": {
       "summary": "參考了 {count} 則記憶",

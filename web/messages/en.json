@@ -1395,6 +1395,11 @@
       },
       "voiceError": "Couldn't transcribe your recording. Please try again.",
       "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
+      "toneMenu": {
+        "trigger": "Voice: {name}",
+        "follow": "Follow account setting",
+        "heading": "Voice for this chat"
+      },
       "modelMenu": {
         "locked": "Paid plan",
         "trigger": "Model: {model}",
@@ -1421,6 +1426,9 @@
       "micPermissionDenied": "Couldn't access your microphone. Check your browser's mic permission and try again.",
       "transcribeError": "Couldn't transcribe that — listening again.",
       "sendError": "Something went wrong sending that — listening again."
+    },
+    "personalityUsed": {
+      "summary": "Voice: {name}"
     },
     "memoryUsed": {
       "summary": "Used {count} memories",

@@ -67,6 +67,7 @@ export const SSE_EVENT_KINDS = [
   "synthesis.start",
   "usage",
   "memory.used",
+  "personality.used",
   "steering.accepted",
   "message",
   "message.delta",
