@@ -333,6 +333,13 @@ function WatchlistTabPanel({
   );
 }
 
+/** The group name's text colour: the chosen chart token pulled toward the theme's text colour, so
+ * it stays readable on the rail in both light and dark (the raw chart tokens only promise the 3:1
+ * graphical-element contrast, not the 4.5:1 body text needs). */
+function groupTextColor(color: WatchlistColor): string {
+  return `color-mix(in srgb, var(--${color}) 70%, var(--text))`;
+}
+
 function WatchlistGroupSection({
   view,
   market,
@@ -430,16 +437,10 @@ function WatchlistGroupSection({
           <button
             type="button"
             onClick={() => setRenaming(true)}
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-medium text-[13px] text-[var(--text)] hover:underline"
+            className="min-w-0 flex-1 truncate text-left font-medium text-[13px] text-[var(--text)] hover:underline"
+            style={view.group.color ? { color: groupTextColor(view.group.color) } : undefined}
           >
-            {view.group.color ? (
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: `var(--${view.group.color})` }}
-              />
-            ) : null}
-            <span className="truncate">{view.group.name}</span>
+            {view.group.name}
           </button>
         )}
         <GroupColorMenu
