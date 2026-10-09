@@ -52,5 +52,5 @@ async def test_the_tone_hint_is_off_until_the_user_opts_in(db_session) -> None:
     store = SqlAlchemyPetStore(db_session, rng=random.Random(1))
     assert (await store.ensure_stats(user_id=user_id)).hint_enabled is False
     await store.pull(user_id=user_id)
-    assert (await store.set_hint_enabled(user_id=user_id, enabled=True)).hint_enabled is True
+    assert (await store.set_preferences(user_id=user_id, hint_enabled=True)).hint_enabled is True
     assert pet_hint_for(await store.active_pet(user_id=user_id)) is not None

@@ -511,6 +511,8 @@ class UserPetStatsRow(Base):
     xp_today: Mapped[int] = mapped_column(default=0, server_default="0")
     # Whether the equipped pet may flavour replies (off until the user opts in).
     hint_enabled: Mapped[bool] = mapped_column(default=False, server_default="0")
+    # Whether the companion avatar and its notices show in chat (on by default).
+    companion_visible: Mapped[bool] = mapped_column(default=True, server_default="1")
 
 
 # ---- Scheduler & alerts (Phase 10) ---------------------------------------------------------

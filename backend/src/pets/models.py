@@ -65,6 +65,7 @@ class PetStats(BaseModel):
     available_pulls: int
     pity_counter: int
     hint_enabled: bool = False
+    companion_visible: bool = True
 
 
 class PullOutcome(BaseModel):

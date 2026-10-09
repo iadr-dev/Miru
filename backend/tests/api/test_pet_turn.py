@@ -22,10 +22,16 @@ def _chat(client: TestClient, headers: dict[str, str]) -> list[dict[str, object]
 
 def test_pet_replies_are_off_until_the_user_opts_in(client: TestClient, settings: Settings) -> None:
     headers, _ = sign_in(client, settings, tier=Tier.FREE)
-    assert client.get("/api/v1/pets/settings", headers=headers).json() == {"hint_enabled": False}
+    assert client.get("/api/v1/pets/settings", headers=headers).json() == {
+        "hint_enabled": False,
+        "companion_visible": True,
+    }
     on = client.patch("/api/v1/pets/settings", json={"hint_enabled": True}, headers=headers)
-    assert on.json() == {"hint_enabled": True}
-    assert client.get("/api/v1/pets/settings", headers=headers).json() == {"hint_enabled": True}
+    assert on.json() == {"hint_enabled": True, "companion_visible": True}
+    hidden = client.patch(
+        "/api/v1/pets/settings", json={"companion_visible": False}, headers=headers
+    )
+    assert hidden.json() == {"hint_enabled": True, "companion_visible": False}
 
 
 def test_a_chat_levels_the_equipped_pet_and_says_so(client: TestClient, settings: Settings) -> None:

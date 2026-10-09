@@ -99,6 +99,12 @@ export const petProgressSchema = z.object({
 });
 export type PetProgress = z.infer<typeof petProgressSchema>;
 
+export const petSettingsSchema = z.object({
+  hint_enabled: z.boolean(),
+  companion_visible: z.boolean(),
+});
+export type PetSettings = z.infer<typeof petSettingsSchema>;
+
 export const pullOutcomeSchema = z.object({
   pet_id: z.string(),
   rarity: z.enum(PET_RARITIES),

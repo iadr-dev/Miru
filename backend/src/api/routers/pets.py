@@ -117,9 +117,16 @@ async def progress(
 
 
 class PetSettings(BaseModel):
-    """`hint_enabled`: may the equipped pet flavour replies? Off until the user opts in."""
+    """`hint_enabled`: may the equipped pet flavour replies? Off until the user opts in.
+    `companion_visible`: show the avatar and its notices in chat (on by default)."""
 
     hint_enabled: bool
+    companion_visible: bool
+
+
+class PetSettingsPatch(BaseModel):
+    hint_enabled: bool | None = None
+    companion_visible: bool | None = None
 
 
 @router.get("/pets/settings")
@@ -128,17 +135,19 @@ async def get_settings(
     store: SqlAlchemyPetStore = Depends(_store),
 ) -> PetSettings:
     stats = await store.ensure_stats(user_id=user.id)
-    return PetSettings(hint_enabled=stats.hint_enabled)
+    return PetSettings(hint_enabled=stats.hint_enabled, companion_visible=stats.companion_visible)
 
 
 @router.patch("/pets/settings")
 async def update_settings(
-    body: PetSettings,
+    body: PetSettingsPatch,
     user: User = Depends(require_user),
     store: SqlAlchemyPetStore = Depends(_store),
 ) -> PetSettings:
-    stats = await store.set_hint_enabled(user_id=user.id, enabled=body.hint_enabled)
-    return PetSettings(hint_enabled=stats.hint_enabled)
+    stats = await store.set_preferences(
+        user_id=user.id, hint_enabled=body.hint_enabled, companion_visible=body.companion_visible
+    )
+    return PetSettings(hint_enabled=stats.hint_enabled, companion_visible=stats.companion_visible)
 
 
 @router.post("/pets/pull", status_code=status.HTTP_201_CREATED)
