@@ -133,6 +133,7 @@ def _contains_trading_language(sentence: str) -> bool:
 
 
 _VENDOR_NAME_REPLACEMENT: Final[str] = "the data provider"
+_URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://[^\s)\]>\"']+")
 
 
 def _strip_vendor_names(text: str) -> tuple[str, bool]:
@@ -140,8 +141,22 @@ def _strip_vendor_names(text: str) -> tuple[str, bool]:
     in place — unlike trading-language redaction, this never discards the surrounding
     sentence (the vendor name is normally a single incidental word inside otherwise-fine
     prose, not the whole clause's reason for existing)."""
-    cleaned, count = _VENDOR_NAME_PATTERN.subn(_VENDOR_NAME_REPLACEMENT, text)
-    return cleaned, count > 0
+    # A URL is an address, not prose: rewriting `tw.stock.yahoo.com` into "tw.stock.the data
+    # provider.com" breaks the very link a web-search answer cites, so URLs pass through as-is.
+    pieces: list[str] = []
+    changed = False
+    last = 0
+    for url in _URL_PATTERN.finditer(text):
+        cleaned, count = _VENDOR_NAME_PATTERN.subn(
+            _VENDOR_NAME_REPLACEMENT, text[last : url.start()]
+        )
+        pieces.append(cleaned)
+        pieces.append(url.group(0))
+        changed = changed or count > 0
+        last = url.end()
+    cleaned, count = _VENDOR_NAME_PATTERN.subn(_VENDOR_NAME_REPLACEMENT, text[last:])
+    pieces.append(cleaned)
+    return "".join(pieces), changed or count > 0
 
 
 def split_sentences(text: str) -> list[str]:

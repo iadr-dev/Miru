@@ -415,3 +415,12 @@ def test_scan_sentence_leaves_clean_text_untouched() -> None:
 def test_scan_sentence_strips_vendor_names() -> None:
     result = scan_sentence(" Data sourced from FinMind.")
     assert "finmind" not in result.lower()
+
+
+def test_vendor_name_scrub_leaves_cited_urls_intact() -> None:
+    """A web-search answer cites real addresses; rewriting the host would break the link, while
+    the vendor name in prose is still replaced."""
+    text = "來源：[新聞](https://tw.stock.yahoo.com/quote/2330.TW/news)，資料由 FinMind 提供。"
+    result = check_output(text).redacted_text or ""
+    assert "https://tw.stock.yahoo.com/quote/2330.TW/news" in result
+    assert "finmind" not in result.lower()
