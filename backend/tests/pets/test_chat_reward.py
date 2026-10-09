@@ -4,6 +4,7 @@ opt-in tone hint."""
 from __future__ import annotations
 
 import random
+from datetime import date
 
 from pets import config
 from pets.persona import pet_hint_for
@@ -54,3 +55,16 @@ async def test_the_tone_hint_is_off_until_the_user_opts_in(db_session) -> None:
     await store.pull(user_id=user_id)
     assert (await store.set_preferences(user_id=user_id, hint_enabled=True)).hint_enabled is True
     assert pet_hint_for(await store.active_pet(user_id=user_id)) is not None
+
+
+async def test_a_new_login_day_feeds_the_equipped_pet_once(db_session) -> None:
+    user_id = await make_user(db_session)
+    store = SqlAlchemyPetStore(db_session, rng=random.Random(1))
+    await store.ensure_stats(user_id=user_id)
+    await store.pull(user_id=user_id)
+    await store.register_login(user_id=user_id, today=date(2026, 10, 1))
+    pet = await store.active_pet(user_id=user_id)
+    assert pet is not None and pet.xp == config.XP_PER_STREAK_DAY
+    await store.register_login(user_id=user_id, today=date(2026, 10, 1))  # same day: nothing more
+    pet = await store.active_pet(user_id=user_id)
+    assert pet is not None and pet.xp == config.XP_PER_STREAK_DAY

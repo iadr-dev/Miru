@@ -61,6 +61,7 @@ export const petCatalogEntrySchema = z.object({
   name_zh: z.string(),
   rarity: z.enum(PET_RARITIES),
   description: z.string(),
+  description_zh: z.string().default(""),
 });
 export type PetCatalogEntry = z.infer<typeof petCatalogEntrySchema>;
 

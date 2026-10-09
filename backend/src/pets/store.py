@@ -285,6 +285,14 @@ class SqlAlchemyPetStore:
         row.last_login_date = today.isoformat()
         if row.streak_days % config.STREAK_DAYS_PER_BONUS_PULL == 0:
             row.available_pulls += 1
+        # Showing up on a new day also feeds the equipped pet.
+        active = await self._session.execute(
+            select(UserPetRow).where(UserPetRow.user_id == user_id, UserPetRow.is_active.is_(True))
+        )
+        pet_row = active.scalar_one_or_none()
+        if pet_row is not None:
+            self._apply_xp(pet_row, config.XP_PER_STREAK_DAY, stats=row)
+            pet_row.updated_at = datetime.now(UTC)
         await self._session.flush()
         return _row_to_stats(row)
 

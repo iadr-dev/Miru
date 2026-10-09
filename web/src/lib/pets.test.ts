@@ -9,6 +9,7 @@ const catalog: PetCatalogEntry[] = [
     name_zh: "石虎小珊",
     rarity: "rare",
     description: "",
+    description_zh: "",
   },
 ];
 

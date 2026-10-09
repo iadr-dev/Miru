@@ -34,6 +34,7 @@ class PetCatalogEntry(BaseModel):
     name_zh: str = Field(min_length=1)
     rarity: Rarity
     description: str = Field(min_length=1)
+    description_zh: str = Field(min_length=1)
 
 
 class OwnedPet(BaseModel):
