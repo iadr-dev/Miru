@@ -4,10 +4,11 @@ import { PawPrintIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { PetAvatar } from "@/components/pets/pet-avatar";
 import { Link } from "@/i18n/navigation";
 import { getActivePet, getPetProgress, getPetSettings, listPetCatalog } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
-import { petName, RARITY_RING, RARITY_TEXT, xpFraction } from "@/lib/pets";
+import { petName, xpFraction } from "@/lib/pets";
 
 export type PetNotice = { leveledTo: number | null; pullsEarned: number };
 
@@ -57,20 +58,12 @@ export function PetCompanion({
 
   return (
     <div className="mx-auto mb-2 flex w-fit max-w-full items-center gap-2.5 text-[12px] text-[var(--text-muted)]">
-      <span
-        aria-hidden
-        className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full border-2 bg-[var(--surface)]",
-          entry ? RARITY_RING[entry.rarity] : "border-[var(--border)]",
-          thinking && "motion-safe:animate-pulse",
-        )}
-      >
-        <PawPrintIcon
-          size={16}
-          weight="regular"
-          className={entry ? RARITY_TEXT[entry.rarity] : undefined}
-        />
-      </span>
+      <PetAvatar
+        petId={pet.pet_id}
+        rarity={entry?.rarity ?? "common"}
+        size={36}
+        className={cn(thinking && "motion-safe:animate-pulse")}
+      />
       <div className="min-w-0">
         <p className="truncate">
           <span className="text-[var(--text)]">{name}</span>

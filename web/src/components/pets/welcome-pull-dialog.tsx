@@ -5,10 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useRef, useState } from "react";
+import { PetAvatar } from "@/components/pets/pet-avatar";
 import { Button } from "@/components/ui/button";
 import { getPetProgress, listPetCatalog, pullPet } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
-import { petName, RARITY_RING, RARITY_TEXT, shouldOfferWelcomePull } from "@/lib/pets";
+import { petName, RARITY_TEXT, shouldOfferWelcomePull } from "@/lib/pets";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { PullOutcome } from "@/types/settings";
 
@@ -170,24 +171,16 @@ function Reveal({
   const tw = useTranslations("settings.pets.welcome");
   return (
     <>
-      <motion.span
-        className={cn(
-          "mx-auto flex size-20 items-center justify-center rounded-full border-2 bg-[var(--surface-2)]",
-          RARITY_RING[outcome.rarity],
-        )}
+      <motion.div
+        className="mx-auto w-fit"
         initial={reduceMotion ? false : { scale: 0.6, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={
           reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 16 }
         }
       >
-        <PawPrintIcon
-          size={36}
-          weight="regular"
-          className={RARITY_TEXT[outcome.rarity]}
-          aria-hidden
-        />
-      </motion.span>
+        <PetAvatar petId={outcome.pet_id} rarity={outcome.rarity} size={96} label={name} />
+      </motion.div>
       <h2 id="welcome-pull-title" className="mt-4 font-semibold text-[var(--text)] text-lg">
         {tw("revealTitle", { name })}
       </h2>

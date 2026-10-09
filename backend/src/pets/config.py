@@ -19,6 +19,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="思思藍鵲",
         rarity=Rarity.LEGENDARY,
         description="The Taiwan Blue Magpie flagship companion — bright, loyal, watches the board.",
+        description_zh="台灣藍鵲旗艦夥伴——明亮、忠誠，總在關注盤面。",
     ),
     PetCatalogEntry(
         pet_id="formosan_black_bear",
@@ -26,6 +27,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="台灣黑熊小月",
         rarity=Rarity.LEGENDARY,
         description="A 台灣黑熊 (Formosan black bear) — the island's iconic apex companion.",
+        description_zh="台灣黑熊，島上最具代表性的夥伴，沉穩而可靠。",
     ),
     # Rare (3)
     PetCatalogEntry(
@@ -34,6 +36,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="石虎小珊",
         rarity=Rarity.RARE,
         description="A 石虎 (Taiwan leopard cat) — rare, quiet, and observant.",
+        description_zh="石虎，稀有、安靜、觀察入微。",
     ),
     PetCatalogEntry(
         pet_id="spoonbill",
@@ -41,6 +44,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="黑面琵鷺阿琵",
         rarity=Rarity.RARE,
         description="A 黑面琵鷺 (black-faced spoonbill) — a graceful seasonal visitor.",
+        description_zh="黑面琵鷺，優雅的季節訪客。",
     ),
     PetCatalogEntry(
         pet_id="mikado_pheasant",
@@ -48,6 +52,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="帝雉小帝",
         rarity=Rarity.RARE,
         description="A 帝雉 (Mikado pheasant) — Taiwan's high-mountain 'king of pheasants.'",
+        description_zh="帝雉，台灣高山的「雉中之王」。",
     ),
     # Uncommon (4)
     PetCatalogEntry(
@@ -56,6 +61,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="櫻花鉤吻鮭小鉤",
         rarity=Rarity.UNCOMMON,
         description="A 櫻花鉤吻鮭 (Formosan landlocked salmon) — persistent, swims upstream.",
+        description_zh="櫻花鉤吻鮭，堅持不懈、逆流而上。",
     ),
     PetCatalogEntry(
         pet_id="sika_deer",
@@ -63,6 +69,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="水鹿小鹿",
         rarity=Rarity.UNCOMMON,
         description="A 水鹿 (Formosan sika deer) — calm, sure-footed on mountain trails.",
+        description_zh="水鹿，沉著穩健，山徑上步伐扎實。",
     ),
     PetCatalogEntry(
         pet_id="formosan_macaque",
@@ -70,6 +77,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="台灣獼猴阿猴",
         rarity=Rarity.UNCOMMON,
         description="A 台灣獼猴 (Formosan rock macaque) — clever, social, and quick.",
+        description_zh="台灣獼猴，機靈、愛交朋友、動作敏捷。",
     ),
     PetCatalogEntry(
         pet_id="formosan_serow",
@@ -77,6 +85,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="台灣長鬃山羊小絨",
         rarity=Rarity.UNCOMMON,
         description="A 台灣長鬃山羊 (Formosan serow) — a sure-footed high-altitude climber.",
+        description_zh="台灣長鬃山羊，高海拔的穩健攀登者。",
     ),
     # Common (6)
     PetCatalogEntry(
@@ -85,6 +94,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="麻雀小雀",
         rarity=Rarity.COMMON,
         description="A cheerful everyday sparrow companion.",
+        description_zh="隨處可見的開朗麻雀夥伴。",
     ),
     PetCatalogEntry(
         pet_id="bamboo_partridge",
@@ -92,6 +102,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="竹雞阿竹",
         rarity=Rarity.COMMON,
         description="A 竹雞 (Chinese bamboo partridge) — grounded and dependable.",
+        description_zh="竹雞，踏實可靠。",
     ),
     PetCatalogEntry(
         pet_id="crested_serpent_eagle",
@@ -99,6 +110,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="大冠鷲小鷲",
         rarity=Rarity.COMMON,
         description="A 大冠鷲 (crested serpent eagle) — sharp-eyed, circles high over the market.",
+        description_zh="大冠鷲，目光銳利，在市場上空盤旋。",
     ),
     PetCatalogEntry(
         pet_id="flying_squirrel",
@@ -106,6 +118,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="白面鼯鼠小鼯",
         rarity=Rarity.COMMON,
         description="A 白面鼯鼠 (white-faced flying squirrel) — a nimble nighttime glider.",
+        description_zh="白面鼯鼠，夜裡靈活滑翔。",
     ),
     PetCatalogEntry(
         pet_id="wild_boar",
@@ -113,6 +126,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="台灣野豬小豬",
         rarity=Rarity.COMMON,
         description="A 台灣野豬 (Formosan wild boar) — stubborn, sturdy, and always foraging.",
+        description_zh="台灣野豬，倔強、結實，總在覓食。",
     ),
     PetCatalogEntry(
         pet_id="pangolin",
@@ -120,6 +134,7 @@ CATALOG: Final[tuple[PetCatalogEntry, ...]] = (
         name_zh="穿山甲小鯪",
         rarity=Rarity.COMMON,
         description="A 穿山甲 (Formosan pangolin) — armored, patient, and endearingly shy.",
+        description_zh="穿山甲，披著鱗甲、有耐心、有點害羞。",
     ),
 )
 

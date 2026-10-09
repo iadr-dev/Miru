@@ -33,6 +33,8 @@ Our pet catalog (`config`, code-defined — not a DB table) is a fixed set of **
 台灣長鬃山羊 / 穿山甲…). **No combat stats** — the only per-owned-pet state is `level` + `xp`;
 rarity is purely a drop-weight + a companion-persona tier.
 
+**Art and 圖鑑.** Each catalog entry also carries `description_zh`. The web draws every pet as a flat SVG portrait (`web/src/components/pets/pet-art.tsx`, natural colours, theme-independent) on a rarity-ringed badge (`PetAvatar`); the 圖鑑 on the Pets page shows a greyed silhouette for pets not yet drawn and, for owned ones, the description, level, XP bar and equip control. A pet id the build has no art for falls back to a paw icon.
+
 ## 2. Data model (relational — Postgres/SQLite, **not** the market-data store)
 
 Pet/user state is app state → the app DB (module `db/`), scoped by `user_id` like everything
@@ -71,7 +73,7 @@ code). Consumes **1 `available_pulls`** (atomic reserve-before-act, so a double-
   (100, ten rewarded chats) per **Taipei day** (`user_pet_stats.xp_day`/`xp_today`). Past the cap
   nothing is granted and `chat_count` does not move, so spamming earns nothing; failed or cancelled
   turns earn nothing. (b) **Login streak** - `GET /me` calls `register_login` (idempotent per Taipei
-  day). (c) **Duplicate pulls** - `PetStore.pull` awards `XP_PER_DUPLICATE`.
+  day). (c) **New login day** - the first `GET /me` of a Taipei day also gives the equipped pet `XP_PER_STREAK_DAY` (15). (d) **Duplicate pulls** - `PetStore.pull` awards `XP_PER_DUPLICATE`.
 - **Milestone bonus pulls** — crossing configured levels (`pets.config.LEVEL_MILESTONE_PULLS =
   {5: 1, 10: 2, 20: 3}`) and every `CHATS_PER_BONUS_PULL` (25) chats / every
   `STREAK_DAYS_PER_BONUS_PULL` (7) day streak grant `available_pulls`. One-time per milestone
