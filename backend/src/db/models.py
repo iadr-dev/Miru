@@ -506,6 +506,11 @@ class UserPetStatsRow(Base):
     chat_count: Mapped[int] = mapped_column(default=0)
     available_pulls: Mapped[int] = mapped_column(default=1)
     pity_counter: Mapped[int] = mapped_column(default=0)
+    # Daily chat-XP cap: the Taipei day the counter belongs to, and the XP granted on it.
+    xp_day: Mapped[str | None] = mapped_column(default=None)
+    xp_today: Mapped[int] = mapped_column(default=0, server_default="0")
+    # Whether the equipped pet may flavour replies (off until the user opts in).
+    hint_enabled: Mapped[bool] = mapped_column(default=False, server_default="0")
 
 
 # ---- Scheduler & alerts (Phase 10) ---------------------------------------------------------

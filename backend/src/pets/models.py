@@ -64,6 +64,7 @@ class PetStats(BaseModel):
     chat_count: int
     available_pulls: int
     pity_counter: int
+    hint_enabled: bool = False
 
 
 class PullOutcome(BaseModel):
@@ -78,7 +79,19 @@ class PullOutcome(BaseModel):
     auto_equipped: bool = False
 
 
+class ChatReward(BaseModel):
+    """What one completed chat earned the equipped pet (all zero past the daily cap)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    xp: int = 0
+    pet_id: str | None = None
+    leveled_to: int | None = None
+    pulls_earned: int = 0
+
+
 __all__ = [
+    "ChatReward",
     "ObtainedVia",
     "OwnedPet",
     "PetCatalogEntry",

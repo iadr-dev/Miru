@@ -64,6 +64,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from config.settings import Settings
+from pets.store import SqlAlchemyPetStore
 
 logger = structlog.get_logger(__name__)
 
@@ -503,6 +504,8 @@ async def me(
     settings: Settings = Depends(get_settings_dep),
 ) -> MeResponse:
     byok = await byok_active_for(session, settings, user_id=user.id)
+    # The first page load of a Taipei day counts as that day's login for the pet streak.
+    await SqlAlchemyPetStore(session).register_login(user_id=user.id)
     return MeResponse(user=user, entitlements=entitlement_view(user, byok_active=byok))
 
 
