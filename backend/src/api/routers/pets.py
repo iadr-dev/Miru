@@ -9,6 +9,7 @@ stats row plus the code-defined milestone/completion constants.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
@@ -83,6 +84,10 @@ class PetProgress(PetStats):
     owned_count: int
     chats_per_bonus_pull: int
     streak_days_per_bonus_pull: int
+    xp_per_level: int
+    max_level: int
+    daily_chat_xp_cap: int
+    xp_per_chat: int
     pity_rare_at: int
     pity_legendary_at: int
     level_milestones: dict[int, int]
@@ -101,10 +106,39 @@ async def progress(
         owned_count=len(owned),
         chats_per_bonus_pull=config.CHATS_PER_BONUS_PULL,
         streak_days_per_bonus_pull=config.STREAK_DAYS_PER_BONUS_PULL,
+        xp_per_level=config.XP_PER_LEVEL,
+        max_level=config.MAX_LEVEL,
+        daily_chat_xp_cap=config.DAILY_CHAT_XP_CAP,
+        xp_per_chat=config.XP_PER_CHAT,
         pity_rare_at=config.PITY_RARE_AT,
         pity_legendary_at=config.PITY_LEGENDARY_AT,
         level_milestones=dict(config.LEVEL_MILESTONE_PULLS),
     )
+
+
+class PetSettings(BaseModel):
+    """`hint_enabled`: may the equipped pet flavour replies? Off until the user opts in."""
+
+    hint_enabled: bool
+
+
+@router.get("/pets/settings")
+async def get_settings(
+    user: User = Depends(require_user),
+    store: SqlAlchemyPetStore = Depends(_store),
+) -> PetSettings:
+    stats = await store.ensure_stats(user_id=user.id)
+    return PetSettings(hint_enabled=stats.hint_enabled)
+
+
+@router.patch("/pets/settings")
+async def update_settings(
+    body: PetSettings,
+    user: User = Depends(require_user),
+    store: SqlAlchemyPetStore = Depends(_store),
+) -> PetSettings:
+    stats = await store.set_hint_enabled(user_id=user.id, enabled=body.hint_enabled)
+    return PetSettings(hint_enabled=stats.hint_enabled)
 
 
 @router.post("/pets/pull", status_code=status.HTTP_201_CREATED)

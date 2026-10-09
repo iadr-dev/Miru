@@ -263,6 +263,7 @@ implying TW ETFs get the same treatment as non-TW ones.
 | PUT | `/pets/{record_id}/equip` | Equip (atomic unequip-others) |
 | GET | `/pets/progress` | Streak, chat_count, pulls, pity, milestones, completion |
 | POST | `/pets/pull` | Gacha pull (reserve-before-act on `available_pulls`) |
+| GET/PATCH | `/pets/settings` | `{hint_enabled}`: may the equipped pet flavour replies (default off) |
 
 Companion reactions stream over the chat SSE as additive `pet.reaction` / `pet.leveled` /
 `pet.pull_earned` events (rendered in a separate UI region; ignorable with no effect on answers).

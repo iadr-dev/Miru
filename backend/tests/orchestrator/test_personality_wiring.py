@@ -220,3 +220,30 @@ async def test_two_distinct_presets_render_distinguishable_prompts(
     assert steady_prompt != coach_prompt
     assert _STEADY_MARKER in steady_prompt and _STEADY_MARKER not in coach_prompt
     assert _COACH_MARKER in coach_prompt and _COACH_MARKER not in steady_prompt
+
+
+async def test_pet_hint_reaches_the_prompt_after_the_personality_and_only_when_given(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    routing = Routing(framework="none", skills=(), reason="greeting")
+
+    async def prompt_with(hint: str | None) -> str:
+        agent_client = StubLLMClient(script=[make_text_response("Hi! informational only.")])
+        orch = Orchestrator(
+            registry=registry,
+            tool_lookup=tool_lookup,
+            classifier=_StaticClassifier(registry, routing),
+            agent_client=agent_client,
+            personality_registry=default_registry(),
+        )
+        await orch.run(
+            "hello",
+            tool_context=ToolContext(),
+            personality=PersonalityContext(user_preference="coach", pet_hint=hint),
+        )
+        return _system_prompt(agent_client)
+
+    with_hint = await prompt_with("（陪伴提示：測試夥伴）")
+    assert "陪伴提示：測試夥伴" in with_hint
+    assert with_hint.index(_COACH_MARKER) < with_hint.index("陪伴提示：測試夥伴")
+    assert "陪伴提示" not in await prompt_with(None)

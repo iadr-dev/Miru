@@ -18,6 +18,7 @@ import random
 import uuid
 from datetime import UTC, date, datetime
 from typing import Protocol, runtime_checkable
+from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy import select
@@ -25,9 +26,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import UserPetRow, UserPetStatsRow
 from pets import config
-from pets.models import ObtainedVia, OwnedPet, PetStats, PullOutcome, Rarity
+from pets.models import ChatReward, ObtainedVia, OwnedPet, PetStats, PullOutcome, Rarity
 
 logger = structlog.get_logger(__name__)
+
+_TAIPEI = ZoneInfo("Asia/Taipei")
+
+
+def _taipei_today() -> date:
+    return datetime.now(_TAIPEI).date()
 
 
 class NoPullsAvailableError(RuntimeError):
@@ -50,7 +57,11 @@ class PetStore(Protocol):
 
     async def pull(self, *, user_id: str) -> PullOutcome: ...
 
-    async def grant_chat_xp(self, *, user_id: str) -> None: ...
+    async def grant_chat_xp(self, *, user_id: str) -> ChatReward: ...
+
+    async def register_login(self, *, user_id: str, today: date | None = None) -> PetStats: ...
+
+    async def set_hint_enabled(self, *, user_id: str, enabled: bool) -> PetStats: ...
 
 
 def _row_to_pet(row: UserPetRow) -> OwnedPet:
@@ -76,6 +87,7 @@ def _row_to_stats(row: UserPetStatsRow) -> PetStats:
         chat_count=row.chat_count,
         available_pulls=row.available_pulls,
         pity_counter=row.pity_counter,
+        hint_enabled=row.hint_enabled,
     )
 
 
@@ -181,28 +193,59 @@ class SqlAlchemyPetStore:
             pet_id=pet_id, rarity=rarity, is_duplicate=False, auto_equipped=auto_equip
         )
 
-    async def grant_chat_xp(self, *, user_id: str) -> None:
-        """Award chat XP to the equipped pet + bump `chat_count`, granting a bonus pull every
-        N chats. Called from the turn-lifecycle `post_turn` path (wired above this layer)."""
+    async def grant_chat_xp(self, *, user_id: str) -> ChatReward:
+        """Reward one completed chat: XP to the equipped pet, capped per Taipei day
+        (`DAILY_CHAT_XP_CAP`), with a bonus pull every N rewarded chats. Past the cap nothing is
+        granted and `chat_count` does not move, so spamming messages earns nothing. A user who
+        never opened the pet page is seeded first (their free pull waits for them)."""
+        await self.ensure_stats(user_id=user_id)
         stats = await self._stats_row(user_id)
-        if stats is None:
-            return
+        if stats is None:  # pragma: no cover - ensure_stats just created it
+            return ChatReward()
+        today = _taipei_today().isoformat()
+        if stats.xp_day != today:
+            stats.xp_day = today
+            stats.xp_today = 0
+        if stats.xp_today + config.XP_PER_CHAT > config.DAILY_CHAT_XP_CAP:
+            return ChatReward()
+        stats.xp_today += config.XP_PER_CHAT
         stats.chat_count += 1
+        pulls_before = stats.available_pulls
         if stats.chat_count % config.CHATS_PER_BONUS_PULL == 0:
             stats.available_pulls += 1
         active = await self._session.execute(
             select(UserPetRow).where(UserPetRow.user_id == user_id, UserPetRow.is_active.is_(True))
         )
         row = active.scalar_one_or_none()
+        leveled_to: int | None = None
+        pet_id: str | None = None
         if row is not None:
+            level_before = row.level
             self._apply_xp(row, config.XP_PER_CHAT, stats=stats)
             row.updated_at = datetime.now(UTC)
+            pet_id = row.pet_id
+            leveled_to = row.level if row.level > level_before else None
         await self._session.flush()
+        return ChatReward(
+            xp=config.XP_PER_CHAT,
+            pet_id=pet_id,
+            leveled_to=leveled_to,
+            pulls_earned=stats.available_pulls - pulls_before,
+        )
+
+    async def set_hint_enabled(self, *, user_id: str, enabled: bool) -> PetStats:
+        await self.ensure_stats(user_id=user_id)
+        stats = await self._stats_row(user_id)
+        if stats is None:  # pragma: no cover - ensure_stats just created it
+            raise PetNotFoundError(user_id)
+        stats.hint_enabled = enabled
+        await self._session.flush()
+        return _row_to_stats(stats)
 
     async def register_login(self, *, user_id: str, today: date | None = None) -> PetStats:
         """Streak logic on login: consecutive-day → streak++; every 7-day streak → +1 pull.
         Idempotent within the same day."""
-        today = today or datetime.now(UTC).date()
+        today = today or _taipei_today()
         row = await self._stats_row(user_id)
         if row is None:
             # First-ever login = day 1 of the streak.

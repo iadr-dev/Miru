@@ -170,24 +170,37 @@ class PersonalityContext:
     turn_override: str | None = None
     thread_override: str | None = None
     user_preference: str | None = None
+    # The equipped pet's tone hint (None unless the user opted in); the last styling layer.
+    pet_hint: str | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class StyleFragments:
+    """The styling layers resolved for one turn: the 語氣 fragment and the optional pet hint."""
+
+    personality: str
+    pet_hint: str | None = None
 
 
 def _resolve_personality_fragment(
     registry: PersonalityRegistry, personality: PersonalityContext | None
-) -> str:
+) -> StyleFragments:
     ctx = personality or PersonalityContext()
-    return registry.resolve_fragment(
+    fragment = registry.resolve_fragment(
         turn_override=ctx.turn_override,
         thread_override=ctx.thread_override,
         user_preference=ctx.user_preference,
     )
+    return StyleFragments(personality=fragment, pet_hint=ctx.pet_hint)
 
 
 def _skill_prompt_layers(
-    skill: Skill | None, personality_fragment: str, locale: str
+    skill: Skill | None, personality_fragment: StyleFragments, locale: str
 ) -> PromptLayers:
     base = default_prompt_layers(locale)
-    layers = dataclasses.replace(base, personality=personality_fragment)
+    layers = dataclasses.replace(
+        base, personality=personality_fragment.personality, pet_hint=personality_fragment.pet_hint
+    )
     if skill is None:
         return layers
     return dataclasses.replace(layers, skill_body=skill.body)
@@ -491,7 +504,7 @@ class Orchestrator:
         routing: Routing,
         tool_context: ToolContext,
         usage: UsageAccumulator,
-        personality_fragment: str,
+        personality_fragment: StyleFragments,
         model_override: str | None = None,
         *,
         event_bus: EventBus | None = None,
@@ -516,7 +529,9 @@ class Orchestrator:
         loop = self._build_loop(
             tools=[],
             prompt_layers=dataclasses.replace(
-                default_prompt_layers(locale), personality=personality_fragment
+                default_prompt_layers(locale),
+                personality=personality_fragment.personality,
+                pet_hint=personality_fragment.pet_hint,
             ),
             max_steps=1,
             role=ModelRole.AGENT,
@@ -551,7 +566,7 @@ class Orchestrator:
         event_bus: EventBus | None,
         turn_id: str | None,
         usage: UsageAccumulator,
-        personality_fragment: str,
+        personality_fragment: StyleFragments,
         steering_source: SteeringSource | None = None,
         locale: str = "zh-TW",
         model_override: str | None = None,
@@ -640,7 +655,7 @@ class Orchestrator:
         event_bus: EventBus | None,
         turn_id: str | None,
         usage: UsageAccumulator,
-        personality_fragment: str,
+        personality_fragment: StyleFragments,
         locale: str = "zh-TW",
         model_override: str | None = None,
         history: tuple[Message, ...] = (),
@@ -692,7 +707,7 @@ class Orchestrator:
         event_bus: EventBus | None,
         turn_id: str | None,
         usage: UsageAccumulator,
-        personality_fragment: str,
+        personality_fragment: StyleFragments,
         locale: str = "zh-TW",
         model_override: str | None = None,
         history: tuple[Message, ...] = (),
@@ -748,7 +763,7 @@ class Orchestrator:
         turn_id: str | None,
         degraded: bool,
         usage: UsageAccumulator,
-        personality_fragment: str,
+        personality_fragment: StyleFragments,
         prior_findings: str | None = None,
         locale: str = "zh-TW",
         history: tuple[Message, ...] = (),
@@ -857,7 +872,7 @@ class Orchestrator:
         turn_id: str | None,
         agent_id: str,
         usage: UsageAccumulator,
-        personality_fragment: str,
+        personality_fragment: StyleFragments,
         locale: str = "zh-TW",
         history: tuple[Message, ...] = (),
     ) -> LaneResult:

@@ -142,6 +142,7 @@ PITY_LEGENDARY_AT: Final[int] = 50
 MAX_LEVEL: Final[int] = 30
 XP_PER_LEVEL: Final[int] = 100  # flat curve; surplus rolls over on level-up
 XP_PER_CHAT: Final[int] = 10
+DAILY_CHAT_XP_CAP: Final[int] = 100  # ten rewarded chats per Taipei day
 XP_PER_DUPLICATE: Final[int] = 25
 XP_PER_STREAK_DAY: Final[int] = 15
 
@@ -159,6 +160,7 @@ __all__ = [
     "CATALOG",
     "CATALOG_BY_ID",
     "CHATS_PER_BONUS_PULL",
+    "DAILY_CHAT_XP_CAP",
     "LEVEL_MILESTONE_PULLS",
     "MAX_LEVEL",
     "PITY_LEGENDARY_AT",

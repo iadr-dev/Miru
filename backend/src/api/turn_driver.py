@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 from collections.abc import AsyncIterator
 
 import structlog
@@ -31,6 +32,7 @@ from accounts.models import User
 from api.deep_research_turn import run_deep_research_turn
 from api.dependencies import AppState
 from api.errors import ApiError
+from api.pet_turn import pet_hint_for_user, reward_completed_chat
 from api.sse import format_sse_event
 from conversation.models import (
     Framework,
@@ -355,6 +357,9 @@ async def _drive_turn(
     # to and `.../cancel` flips — so the loop's `drain()` calls read exactly what a concurrent
     # steer request queued, with no second queue to keep in sync.
     running = state.turn_registry.get(turn_id)
+    personality = dataclasses.replace(
+        personality, pet_hint=await pet_hint_for_user(session, user_id=user_id)
+    )
     history = await _load_history(store, user_id=user_id, thread_id=thread_id, turn_id=turn_id)
 
     # Long-term-memory recall block for this turn's root reply agent (injected as a `pre_llm`
@@ -448,6 +453,7 @@ async def _drive_turn(
         turn_id=turn_id,
         data={"text": result.final_text, "framework": result.routing.framework},
     )
+    await reward_completed_chat(session, event_bus=event_bus, turn_id=turn_id, user_id=user_id)
     event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "done"})
 
 
