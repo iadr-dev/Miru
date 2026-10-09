@@ -42,7 +42,7 @@ def test_selection_precedence() -> None:
 def test_resolve_fragment_is_the_preset_text() -> None:
     registry = default_registry()
     fragment = registry.resolve_fragment(user_preference="coach")
-    assert "白話" in fragment
+    assert "plain-language" in fragment
 
 
 def test_unknown_get_raises() -> None:
@@ -66,7 +66,7 @@ def test_personality_layer_is_below_governance_in_assembled_prompt() -> None:
     )
     prompt = assemble_system_prompt(layers)
     # Governance is first; personality is appended after it, never before.
-    assert prompt.index("GOVERNANCE FLOOR") < prompt.index("白話")
+    assert prompt.index("GOVERNANCE FLOOR") < prompt.index("plain-language coach")
 
 
 @pytest.mark.governance
@@ -94,3 +94,12 @@ def test_every_preset_fragment_is_caveat_safe_styling_only() -> None:
         verdict = check_output(preset.fragment, has_market_data=False)
         # A pure styling fragment must not trigger a trading-language redaction.
         assert verdict.reason != "trading_language_redacted", preset.id
+
+
+@pytest.mark.governance
+def test_every_preset_tells_the_model_to_answer_in_the_users_language() -> None:
+    """The fragments are written in Chinese; without this clause a preset can pull an English
+    question into a Chinese answer (seen live with the coach preset), overriding governance
+    rule 8. Each fragment must carry the language-following instruction itself."""
+    for preset in default_registry().all_presets():
+        assert "language of the user's most recent message" in preset.fragment, preset.id

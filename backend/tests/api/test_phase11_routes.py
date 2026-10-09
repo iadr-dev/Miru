@@ -361,7 +361,18 @@ class TestAccountsExtra:
         headers, _ = signed_in_user
         resp = client.get("/api/v1/personality/presets", headers=headers)
         assert resp.status_code == 200
-        assert len(resp.json()["presets"]) > 0
+        presets = resp.json()["presets"]
+        assert len(presets) > 0
+        # The picker gets names and a description - never the prompt text behind a preset.
+        for preset in presets:
+            assert set(preset) == {
+                "id",
+                "name_zh",
+                "name_en",
+                "description",
+                "default",
+                "version",
+            }
 
     def test_usage_quota(self, client: TestClient, signed_in_user) -> None:
         headers, _ = signed_in_user

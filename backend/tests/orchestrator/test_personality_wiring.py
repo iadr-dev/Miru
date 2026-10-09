@@ -23,8 +23,8 @@ from tools.base import Tool, ToolContext
 # Distinguishing substrings unique to each starter preset's `fragment` (see
 # `src/personality/presets/*.yaml`) — used to assert the *specific* resolved preset's text
 # landed in the system prompt, not just "some" personality layer.
-_STEADY_MARKER = "穩健"
-_COACH_MARKER = "白話教練"
+_STEADY_MARKER = "steady, objective"
+_COACH_MARKER = "plain-language coach"
 
 
 def _system_prompt(client: StubLLMClient) -> str:

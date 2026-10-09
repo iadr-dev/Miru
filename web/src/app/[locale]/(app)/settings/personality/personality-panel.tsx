@@ -27,6 +27,7 @@ export function PersonalityPanel(): ReactNode {
 
   const mutation = useMutation({
     mutationFn: (personality_id: string) => updateProfile({ personality_id }),
+    onMutate: () => setSaved(false),
     onSuccess: (data) => {
       queryClient.setQueryData(["me"], { user: data.user, entitlements: data.entitlements });
       setSaved(true);
@@ -60,7 +61,7 @@ export function PersonalityPanel(): ReactNode {
 
   return (
     <SettingsSection title={t("title")} description={t("description")}>
-      <div className="grid gap-3 py-1 sm:grid-cols-2">
+      <div role="radiogroup" aria-label={t("title")} className="grid gap-3 py-1 sm:grid-cols-2">
         {(presetsQuery.data ?? []).map((preset) => {
           const selected = preset.id === active;
           return (
@@ -69,7 +70,8 @@ export function PersonalityPanel(): ReactNode {
               type="button"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate(preset.id)}
-              aria-pressed={selected}
+              role="radio"
+              aria-checked={selected}
               className={cn(
                 "flex min-h-11 flex-col gap-1 rounded-[var(--radius-input)] border p-3 text-left transition-colors",
                 selected
@@ -91,6 +93,11 @@ export function PersonalityPanel(): ReactNode {
           );
         })}
       </div>
+      {mutation.isError ? (
+        <p role="alert" className="pt-2 text-[13px] text-[var(--warn)]">
+          {tc("errorGeneric")}
+        </p>
+      ) : null}
       {saved ? <SavedToast message={tc("saved")} /> : null}
     </SettingsSection>
   );
