@@ -1546,6 +1546,18 @@
       }
     },
     "pets": {
+      "welcome": {
+        "title": "Meet your first companion",
+        "body": "You have a free pull. Draw a companion that keeps you company while you chat. It is just for fun and never changes your answers or limits.",
+        "pull": "Draw",
+        "pulling": "Drawing...",
+        "later": "Later",
+        "error": "Couldn't draw right now. Please try again.",
+        "revealTitle": "You got {name}!",
+        "equipped": "Equipped as your companion.",
+        "duplicate": "Already yours - converted to {xp} XP.",
+        "start": "Start chatting"
+      },
       "title": "Pets",
       "progressTitle": "Collection progress",
       "collectionTitle": "Collection",

@@ -42,3 +42,10 @@ export function xpFraction(
   }
   return Math.min(1, Math.max(0, xp / progress.xp_per_level));
 }
+
+/** Offer the free first pull only to someone with no pet yet and a pull waiting. */
+export function shouldOfferWelcomePull(
+  progress: Pick<PetProgress, "owned_count" | "available_pulls"> | undefined,
+): boolean {
+  return progress !== undefined && progress.owned_count === 0 && progress.available_pulls > 0;
+}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { WelcomePullDialog } from "@/components/pets/welcome-pull-dialog";
 import { AuthGuard } from "@/components/shell/auth-guard";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TopBar } from "@/components/shell/top-bar";
@@ -57,6 +58,7 @@ export function AppShell({
           ) : null}
 
           {modal}
+          <WelcomePullDialog />
         </div>
       )}
     </AuthGuard>
