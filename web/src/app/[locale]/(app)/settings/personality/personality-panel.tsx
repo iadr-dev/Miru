@@ -61,7 +61,7 @@ export function PersonalityPanel(): ReactNode {
 
   return (
     <SettingsSection title={t("title")} description={t("description")}>
-      <div role="radiogroup" aria-label={t("title")} className="grid gap-3 py-1 sm:grid-cols-2">
+      <div role="group" aria-label={t("title")} className="grid gap-3 py-1 sm:grid-cols-2">
         {(presetsQuery.data ?? []).map((preset) => {
           const selected = preset.id === active;
           return (
@@ -70,8 +70,7 @@ export function PersonalityPanel(): ReactNode {
               type="button"
               disabled={mutation.isPending}
               onClick={() => mutation.mutate(preset.id)}
-              role="radio"
-              aria-checked={selected}
+              aria-pressed={selected}
               className={cn(
                 "flex min-h-11 flex-col gap-1 rounded-[var(--radius-input)] border p-3 text-left transition-colors",
                 selected
