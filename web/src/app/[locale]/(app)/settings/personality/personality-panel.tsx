@@ -61,7 +61,8 @@ export function PersonalityPanel(): ReactNode {
 
   return (
     <SettingsSection title={t("title")} description={t("description")}>
-      <div role="group" aria-label={t("title")} className="grid gap-3 py-1 sm:grid-cols-2">
+      <fieldset className="m-0 grid min-w-0 gap-3 border-0 p-0 py-1 sm:grid-cols-2">
+        <legend className="sr-only">{t("title")}</legend>
         {(presetsQuery.data ?? []).map((preset) => {
           const selected = preset.id === active;
           return (
@@ -91,7 +92,7 @@ export function PersonalityPanel(): ReactNode {
             </button>
           );
         })}
-      </div>
+      </fieldset>
       {mutation.isError ? (
         <p role="alert" className="pt-2 text-[13px] text-[var(--warn)]">
           {tc("errorGeneric")}
