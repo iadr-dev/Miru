@@ -309,7 +309,7 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 |--------|------|---------|
 | GET | `/me` | Profile + tier + entitlements |
 | PATCH | `/me` | Update profile (display_name, birthday, phone+country code, nationality, **personality_id** — agent-voice preset, [modules/23](modules/23-agent-personality.md)) |
-| GET | `/personality/presets` | List agent-voice presets (id, name, description, tone) for the Settings picker |
+| GET | `/personality/presets` | List agent-voice presets (id, names, description, default, version - never the prompt text) for the Settings picker |
 | POST | `/auth/oauth/{provider}` | Begin OAuth (google/line) — stashes `state`+PKCE `code_verifier`(+LINE `nonce`) in httpOnly cookies and returns `{authorization_url, retry_authorization_url?}` JSON for the client to navigate to (the route itself does not issue an HTTP redirect) |
 | GET | `/auth/oauth/{provider}/callback` | OAuth redirect target (`?code&state`) — verify state, exchange code (secret + `code_verifier`), upsert user+oauth_account, issue JWT. LINE auto-login failure → retry w/ `disable_auto_login=true` |
 | POST | `/auth/refresh` | Rotate JWT access token via refresh token |
