@@ -69,6 +69,10 @@ export const memoryUsedDataSchema = z.object({ memories: z.array(memoryRefSchema
 /** The `personality.used` SSE frame's `data`. */
 export const personalityUsedDataSchema = z.object({ personality: z.string() });
 
+/** The `pet.leveled` / `pet.pull_earned` SSE frames' `data`. */
+export const petLeveledDataSchema = z.object({ pet_id: z.string(), level: z.number().int() });
+export const petPullEarnedDataSchema = z.object({ count: z.number().int() });
+
 /** The `usage` SSE frame's `data` - one turn's totals plus the per-model split. */
 export const turnUsageDataSchema = z.object({
   input_tokens: z.number().int().default(0),

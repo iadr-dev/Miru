@@ -92,6 +92,10 @@ export const petProgressSchema = z.object({
   pity_rare_at: z.number().int(),
   pity_legendary_at: z.number().int(),
   level_milestones: z.record(z.string(), z.number().int()).default({}),
+  xp_per_level: z.number().int().default(100),
+  max_level: z.number().int().default(30),
+  daily_chat_xp_cap: z.number().int().default(100),
+  xp_per_chat: z.number().int().default(10),
 });
 export type PetProgress = z.infer<typeof petProgressSchema>;
 
