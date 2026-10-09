@@ -55,6 +55,24 @@ orchestrator change required. Regardless of which personality fragment is resolv
 appended **after** the governance layer and never bypasses this backstop (see the governance
 invariant at the top of this doc, and [05](05-agent-runtime.md) §guardrails).
 
+## 1a. Audit notes (live-tested)
+
+- **Contract.** `GET /personality/presets` returns only what the picker needs (`id`, `name_zh`,
+  `name_en`, `description`, `default`, `version`) - the governance-reviewed prompt `fragment` stays
+  on the server. `PATCH /me {personality_id}` refuses an unknown id with 422; a stale stored id
+  falls through to the default at resolve time.
+- **Fragments are written in English and carry the language clause themselves** ("answer in the
+  language of the user's most recent message"). Chinese fragments pulled an English question into a
+  Chinese answer (seen live with the coach preset, overriding governance rule 8). A test pins the
+  clause on every preset. Remaining limitation: `gpt-4o-mini` still drifts to Chinese for English
+  questions on this Taiwan-themed prompt regardless of preset (Gemini does not), so it is a model
+  trait, not a tone-setting bug.
+- **Effect size.** Presets are soft: with `gpt-4o-mini`, `data` produces a table for comparisons
+  but not for conceptual questions, `concise` is bullets for English and looser for Chinese, `coach`
+  adds a takeaway + example. A preset never overrides what the user asks for ("in one sentence").
+- **Not built (unchanged):** turn/thread overrides have no API; the resolved preset id/version is
+  not journaled.
+
 ## 2. Preset registry (`personality/presets/` — file-defined, like skills)
 
 Each preset is a curated definition: a **prompt fragment** + **tone parameters**. Discovered

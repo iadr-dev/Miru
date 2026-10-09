@@ -30,7 +30,6 @@ from api.dependencies import (
 from api.errors import ApiError
 from config.settings import Settings
 from llm.registry import BYOK_PROVIDERS
-from personality.models import PersonalityPreset
 from usage.llm_usage import MAX_DAYS, LlmUsageSummary, summarize_llm_usage
 
 router = APIRouter(tags=["accounts"])
@@ -92,12 +91,36 @@ async def update_me(
     return ProfileResponse(user=updated, entitlements=entitlement_view(updated, byok_active=byok))
 
 
+class PersonalityPresetView(BaseModel):
+    """What the Settings picker needs to show a preset. The preset's prompt `fragment` stays on the
+    server: it is governance-reviewed system-prompt text, not something a client needs."""
+
+    id: str
+    name_zh: str
+    name_en: str
+    description: str
+    default: bool
+    version: str
+
+
 @router.get("/personality/presets")
 async def personality_presets(
     state: AppState = Depends(get_state),
-) -> dict[str, list[PersonalityPreset]]:
-    """The agent-voice presets for the Settings picker (id, names, description, tone)."""
-    return {"presets": state.personality_registry.all_presets()}
+) -> dict[str, list[PersonalityPresetView]]:
+    """The agent-voice presets for the Settings picker (id, names, description)."""
+    return {
+        "presets": [
+            PersonalityPresetView(
+                id=p.id,
+                name_zh=p.name_zh,
+                name_en=p.name_en,
+                description=p.description,
+                default=p.default,
+                version=p.version,
+            )
+            for p in state.personality_registry.all_presets()
+        ]
+    }
 
 
 @router.get("/usage/quota")
