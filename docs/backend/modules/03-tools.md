@@ -103,11 +103,12 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   除權息/ETF配息 + CB 賣回權/到期 events, classed `sponsor` as a whole (its CB slice is
   Sponsor-tier); this tool remains the separate, narrower yfinance-native non-TW feed bundle.
 - `get_sector_overview` / `get_industry_overview` — yfinance sector/industry overview (non-TW).
-  *Design's `get_sector_indices` (TW 未含金融電子/產業分類 sub-indices) has no real tool.*
+  *Design's `get_sector_indices` (TW 未含金融電子/產業分類 sub-indices) has no real tool; the
+  whole-market TW industry heatmap is `get_sector_heatmap` (`market_tools.py`, web-only).*
 - `get_market_status` — yfinance market open/closed status (non-TW).
-- `run_equity_screener_us` — yfinance-backed US/GB/JP/EU equity screener. Deliberately **not**
-  named `run_screener` — that generic name is reserved for the design's separate,
-  not-yet-built `analytics/`-owned gates→setup→rank funnel (see [20](20-analytics-scoring.md)).
+- `run_equity_screener_us` — yfinance-backed US/GB/JP/EU equity screener. Not to be confused with
+  `run_screener` (`screener_tools.py`), the analytics-owned gates→setup funnel for TW/US/ETF that
+  the web Screener uses (see [20](20-analytics-scoring.md)).
 - `get_margin_short` / `get_margin_short_total_market` — 融資融券 per-stock / whole-market.
 - `get_institutional_flow_wide` / `get_institutional_flow_total_market` — wide-format /
   whole-market 三大法人.
@@ -136,16 +137,17 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_price_limit` — 漲跌停價.
 - `get_international_stock` — FinMind's own US/GB/EU/JP roster+price bundle (non-yfinance path).
 - `get_active_etf_roster` — free-tier whole-market active-ETF roster.
-- `get_finmind_stock_news` — FinMind's own news dataset (distinct from the RSS/GDELT/Finnhub
-  aggregator the design also names). Design's `get_stock_news` (multi-source aggregator with a
-  `category` param) **has no real tool** — `sources/news.py`/`sources/ptt.py` were explicitly
-  excluded from tool-wrapping this pass (confirmed in `others_tools.py`'s own docstring: "no
-  `news` aggregator tool exists yet per the explicit scope decision to skip
-  `sources/news.py`/`sources/ptt.py` entirely"). `get_social_buzz`/`get_trending_buzz` (PTT)
-  likewise have **no real tool** for the same reason.
+- `get_finmind_stock_news` — FinMind's own news dataset. The design's `get_stock_news` (multi-source
+  aggregator) and `get_social_buzz`/`get_trending_buzz` (PTT) became three real tools, all
+  `public` and **web-only** (REST routes, no skill - so the chat agent cannot call them; the
+  `news-sentiment` skill is still not built): `get_news_feed` (`news_tools.py`, RSS + optional
+  Finnhub), `get_ptt_board` and `get_ptt_stock_search` (`ptt_tools.py`; unverified chatter,
+  attention signal only).
 - `get_etf_fund_info` — TW ETF fund-level metadata (issuer, tracked index, units outstanding) —
   not per-constituent holdings or NAV/IOPV (documented gap in the adapter itself). *Design's
-  `get_etf_nav_premium`/`get_etf_aum`/`get_etf_beneficiaries` have no real tool.*
+  `get_etf_nav_premium`/`get_etf_aum` became `get_etf_premium_discount` (`etf_pcf_tools.py`: a bounded
+  premium/discount-to-NAV history plus the latest AUM) and the AUM column of `get_etf_list`;
+  `get_etf_beneficiaries` has no real tool.*
 - `get_etf_overlap` (`etf_overlap_tools.py`) — the Reddit-r/ETFs-sourced 3+-fund overlap-checker:
   fans `Capability.FUND_HOLDINGS` out over 3–10 caller-named **non-TW** ETFs/funds (same
   `US`/`GB`/`JP`/`EU` restriction as `get_fund_holdings`) and computes which requested ETFs hold
@@ -268,29 +270,14 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   recurrence triggers (每天, 每週, 定期, 排程…) are weighted so "每天開盤前幫我看…" routes here and
   not to the one-off `daily-context-brief`.
 
-**Confirmed not built (no matching `Capability`/adapter at all, not just no tool):**
-`get_disposition_stocks`/`get_disposition_forecast`/`get_attention_stocks` (only the narrower,
-Sponsor-gated `get_disposition_securities` below exists — no TPEX 注意股 adapter). (`get_esg_score`
-and `get_analyst_consensus` were previously listed here as not built — both are real, registered
-tools; see `analyst_tools.py` in the list above.)
+**Design names with no tool of that name:** `get_disposition_stocks`/`get_disposition_forecast`/
+`get_attention_stocks` are covered by two real tools instead: the narrower, Sponsor-gated
+`get_disposition_securities` (below) and `get_disposition_board` (`disposition_board_tools.py`,
+Sponsor, web-only: 注意/處置 buckets with price, institutional flow, margin ratio and a rule-based
+"days until next disposition" projection). There is still no TPEX 注意股 adapter.
+(`get_esg_score` and `get_analyst_consensus` are real, registered tools; see `analyst_tools.py`
+in the list above.)
 
-### `sponsor` — Premium/Pro only (masked teaser otherwise)
-- `get_chip_flows` — 分點券商進出 (FinMind Sponsor).
-- `get_government_bank_flows` — 八大官股 (Sponsor).
-- `get_active_etf_report` — 主動式ETF **操作日報** (forward view of one ETF): per-holding
-  **狀態 新增/刪除/加碼/減碼** (a *derived classification* of the張數 delta vs prev-day partition),
-  變動張數, 變動幅度, 目前權重 + 權重變動%, plus 基金規模較前日 & 折溢價 header. All Δ/較前日 fields are
-  **diffed-on-write** (§22.4), not stored twice.
-- `get_etf_money_flow` — cross-ETF 資金流向: 主動式檔數/持有市值 per stock, 流入/流出排行,
-  多空共識 (買賣檔數) — aggregated over active-ETF holdings (Sponsor). Design's reverse-view
-  `get_etfs_holding_stock` has no real tool.
-- `get_industry_money_flow` / `get_industry_chain_classification` — 產業鏈資金流 / 分類 (Sponsor).
-- `get_shareholder_dispersion` — 股東人數/千張大戶比率 (股權分散) concentration signal (Sponsor;
-  the original design documented this `public` — the real `TaiwanStockHoldingSharesPer` dataset
-  is FinMind Sponsor-tier, so the tool mirrors that).
-- `get_margin_maintenance` — 大盤融資維持率 (Sponsor; same public→sponsor correction as above).
-- `get_chip_broker_agg` — 分點進出彙總.
-- `get_block_trade_broker_report` / `get_block_trade` — 鉅額交易 broker-level / plain.
 - `get_loan_collateral_balance` — 資金貸與/質押 collateral balance (**note:** this is a balance
   figure, not the 質押比/背書保證/訴訟裁罰 governance-risk composite the design's
   `governance-risk` skill wants — see [08-skills.md](08-skills.md)).
@@ -337,32 +324,50 @@ after-hours institutional-flow variants (`derivatives_tools.py`); `DAY_TRADING_S
 reached transparently through `get_price_quote`'s router fallback, so a dedicated tool would be
 a redundant view).
 
-**No real tool at all (Premium-tier design intent, not yet an adapter or a tool):**
-`get_realtime_snapshot`, `build_live_context` (`TAIFEX_MIS` context is staged behind
-`enable_taifex_mis_validation` in `context/builder.py`, not exposed as a tool).
+**Design names with no tool of that name:** `get_realtime_snapshot` and `build_live_context`
+(`TAIFEX_MIS` context is staged behind `enable_taifex_mis_validation` in `context/builder.py`, not
+exposed as a tool). The real live reads are `get_live_quote_snapshot` (`live_tools.py`, TWSE MIS
+best-5, free), `get_tick_snapshot`/`get_futures_snapshot`/`get_options_snapshot`
+(`realtime_tools.py`, Sponsor) and `get_live_price_quote` (US WebSocket tick, `market_tools.py`).
+
+### Which tools the chat agent can call
+The agent only ever sees tools from three places: the **matched skill's allowlist**
+(`orchestrator._tools_for`), the **warm set** used when no skill matches (`get_canonical_context`,
+`get_source_health`, `propose_alert`/`propose_memory`/`propose_schedule`/`propose_watchlist_change`),
+and `web_search` + `fetch_url`, added only when the chat's *Web search* toggle is on (see the
+web-search section below). Every other registered tool is reachable by the **web through REST**
+(`api/routers/market_rest.py`, `analytics.py`, `themes.py` dispatch them by name) and by MCP's
+`search_tools`, but **not by the chat agent**. About 40 tools are in that web-only group (market
+heatmaps/rankings/strips, `get_news_feed`, `get_price_history`, `get_technical_indicators`,
+`get_stock_summary`, `get_trend_score`, `run_screener`, ...). That is by design for dashboards,
+but a capability the agent should have needs a skill that lists the tool.
 
 ### `public`/AI — derived analytics & scoring ([20](20-analytics-scoring.md))
-**None of these exist as real tools.** `analytics/` today is three flat modules
-(`indicators.py`, `score.py`, `models.py`) with no `scoring/`, `screener/`, `summary/`, or
-`themes/` subpackages — module 20's own implementation-status note is authoritative here; this
-doc does not re-litigate it. The design intent (kept for forward reference only): `get_indicators`,
-`get_score`, `get_score_breakdown`, `get_ai_summary`, `get_swot`, `run_screener`,
-`get_factor_catalog`, `get_screener_presets`, `save_screen`/`list_screens`/`delete_screen`,
-`get_top_stocks`, `get_theme_flow`, `get_themes`, `get_figure_events` — all **not built**, tracked
-against [20](20-analytics-scoring.md), not this registry.
+Registered tools (module 20 owns the engines behind them):
 
-**Not in this registry:** the **pet/gamification** system ([21](21-pet-gamification.md)) is a
-cosmetic companion with its own `/pets/*` endpoints — it is **not** an agent tool, grants no
-data/analysis, and never enters the tool-dispatch or entitlement path.
+| Tool | Module | Class | Used by |
+|------|--------|-------|---------|
+| `get_stock_score`, `get_score_leaderboard` | `score_tools.py` | public | `stock-score` skill |
+| `get_trend_score` | `trend_score_tools.py` | public | web AI panel (no skill) |
+| `get_stock_summary` (headline, narrative, SWOT) | `summary_tools.py` | sponsor | web AI panel (no skill) |
+| `run_tag_screener`, `get_tag_catalog` | `screener_tools.py` | public | `stock-screener` skill |
+| `run_screener`, `get_factor_catalog`, `get_screener_presets` | `screener_tools.py` | public | web Screener (no skill) |
+| `get_technical_indicators` (MA/Bollinger/KD/MACD, support/resistance, patterns) | `technical_tools.py` | public | web (no skill) |
+| `get_themes`, `get_theme_members`, `get_symbol_themes`, `get_theme_tiers` | `theme_tools.py` | public | `theme-lookup` skill (`get_themes` is web-only) |
+| `get_supply_chain_edges`, `get_theme_tier_heatmap` | `theme_tools.py` | public | web (no skill) |
 
-Tool names are stable public identifiers (used by the LLM and over MCP); the domain
-filenames they live in are internal.
+Design names that have no tool of that name: `get_indicators` (= `get_technical_indicators`),
+`get_score` (= `get_stock_score`), `get_score_breakdown` (the factor breakdown is inside
+`get_stock_score`), `get_ai_summary`/`get_swot` (= `get_stock_summary`), `get_top_stocks`
+(= `get_score_leaderboard`). Saved screens are REST routes on the store, not tools
+(`save_screen`/`list_screens`/`delete_screen`). **Not built:** `get_theme_flow` and
+`get_figure_events`.
 
 ## Deferred / lazy tool loading
 
-With **100–107 tools** (100 when the registry is built with no `session_factory`/
-`market_data_reader`; 107 in the full production wiring with both supplied), sending every
-schema every turn wastes context. Following Pi's
+With **172 tools** in the full production wiring (fewer when the registry is built without the
+`session_factory`, `market_data_reader` or summary LLM), sending every schema every turn wastes
+context. Following Pi's
 `splitDeferredTools()`, the registry splits tools into:
 - **immediate** — **the canonical core set** whose full schemas are always sent (defined **here**,
   the single source of truth; other docs reference this list, never re-enumerate it). The real,
@@ -374,8 +379,8 @@ schema every turn wastes context. Following Pi's
   is the basic price-quote read the design meant. **The MCP projection exposes the exact same
   5-tool immediate core, not a subset** — `mcp/app.py::build_mcp_server` registers a dedicated
   MCP tool for every name in `registry.immediate_tools()`, verified end-to-end against the real
-  97-tool registry `tests/mcp/test_app_real_registry.py` builds (its own fixture wires a stub
-  session factory/Parquet reader but not the full 107-tool production set)
+  registry `tests/mcp/test_app_real_registry.py` builds (its own fixture wires a stub
+  session factory/Parquet reader but not the full production set)
   (`test_real_immediate_tools_are_registered_as_dedicated_mcp_tools` asserts all 5 names,
   including `get_company_profile`/`get_price_quote`, appear as dedicated MCP tools).
 - **deferred** — the long tail (everything else: per-signal chip/ETF/derivatives/MOPS/analyst/

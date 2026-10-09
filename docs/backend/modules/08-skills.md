@@ -206,21 +206,23 @@ own `SKILL.md` `boundaries`/output-structure, mirroring `company-profile`'s esta
 `missing_fields` pattern: `catalyst-scan` (no 董事會決議/庫藏股/法說會/自結 adapter),
 `governance-risk` (no 背書保證/訴訟裁罰 adapter), `disposition-watch` (no TPEX 注意股 adapter,
 no escalation forecast), `etf-compare` (no NAV/折溢價/受益人數/fees/yield adapter),
-`market-breadth-and-flow` (no 漲跌分佈/家數 or 指數貢獻排行 adapter).
+`market-breadth-and-flow` (its skill does not use `get_advance_decline`/`get_index_contribution`,
+which now exist as web-only tools).
 
 **Audit — which of the 9 originally-not-built rows above remain not built, and why:**
 - **Still blocked, no real tool covers any of the stated scope:** `news-sentiment` (news/PTT
   tools were explicitly excluded from wrapping this pass — see [03-tools.md](03-tools.md)),
   `analyst-consensus` (the `analyst_consensus` capability exists in `sources/yfinance/` and
-  feeds context-building, but no tool wraps it), `market-calendar` (the TW-first
-  `get_calendar_events` this skill needs has no real tool — only the narrower, non-TW
-  `get_calendar_events_feed`, now used by `international-equity-snapshot`, exists),
-  `market-pulse` (加權/櫃買 breadth + 指數貢獻排行 have no real tool — only the plain
-  `get_taiex_index_snapshot` index level exists, now used by `market-breadth-and-flow`).
-- **Blocked on [module 20](20-analytics-scoring.md), confirmed unchanged:** `technical-read`
-  (`get_indicators`), `ai-summary-swot` (`get_ai_summary`/`get_swot`) — `analytics/` still has no
-  `indicators/` or `summary/` subpackage, so neither has a real tool of that name in `tools/`
-  today. Not re-litigated by this pass — tracked against module 20.
+  feeds context-building, but no tool wraps it),
+  `market-calendar` (the TW-first `get_calendar_events` now exists - `calendar_tools.py`, Sponsor,
+  web-only - but no skill uses it; the skill that exists, `international-equity-snapshot`, uses the
+  non-TW `get_calendar_events_feed`),
+  `market-pulse` (`get_advance_decline` and `get_index_contribution` now exist as web-only tools,
+  and `get_taiex_index_snapshot` is used by `market-breadth-and-flow`; no `market-pulse` skill
+  wraps the breadth tools).
+- **Tool exists, no skill wraps it:** `technical-read` (`get_technical_indicators`) and
+  `ai-summary-swot` (`get_stock_summary`; Sponsor) - the engines landed in module 20 and the tools
+  are registered, but they are used only by the web, so the chat agent cannot call them yet.
 - **No longer blocked — now built:** `multi-factor-score` and `stock-screener` were tracked here
   as blocked on module 20's `analytics/scoring/` and `analytics/screener/` subpackages; both
   subpackages have since landed (`get_stock_score`/`get_score_leaderboard` in `score_tools.py`,
@@ -233,6 +235,7 @@ no escalation forecast), `etf-compare` (no NAV/折溢價/受益人數/fees/yield
   (industry-chain + concept themes, memberships, tiers) is built and now reachable — the
   `theme-lookup` skill above wraps the three real `theme_tools.py` tools
   (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`). What remains not built is the
-  richer `theme-discovery` framing (`get_themes`/`get_theme_flow` — LLM-surfaced themes ranked by
-  資金流向), which is a scoring/flow concern still tracked against module 20, distinct from the
+  richer `theme-discovery` framing (`get_theme_flow` - LLM-surfaced themes ranked by
+  資金流向; `get_themes` itself is real but web-only), which is a scoring/flow concern still
+  tracked against module 20, distinct from the
   now-live relational theme *lookup*.
