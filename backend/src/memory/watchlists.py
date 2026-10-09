@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, get_args, runtime_checkable
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -84,6 +84,12 @@ def midpoint_key(lo: str | None, hi: str | None) -> str:
     return "".join(result_chars) + _LEXORANK_START
 
 
+# The label colours a group can wear. They map to the web's non-signed `--chart-1..6` tokens, so
+# a group colour can never be mistaken for 漲 (red) or 跌 (green).
+WatchlistColor = Literal["chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "chart-6"]
+WATCHLIST_COLORS: tuple[str, ...] = get_args(WatchlistColor)
+
+
 class WatchlistGroup(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -94,6 +100,7 @@ class WatchlistGroup(BaseModel):
     asset_class: str
     sort_order: str
     is_default: bool
+    color: WatchlistColor | None = None
     version: int
     created_at: datetime
     updated_at: datetime
@@ -141,6 +148,7 @@ def _group_to_model(row: WatchlistRow) -> WatchlistGroup:
         asset_class=row.asset_class,
         sort_order=row.sort_order,
         is_default=row.is_default,
+        color=row.color if row.color in WATCHLIST_COLORS else None,
         version=row.version,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -353,6 +361,25 @@ class WatchlistStore:
         logger.info("watchlist_group_renamed", user_id=user_id, watchlist_id=watchlist_id)
         return _group_to_model(row)
 
+    async def set_group_color(
+        self,
+        *,
+        user_id: str,
+        watchlist_id: str,
+        color: WatchlistColor | None,
+        expected_version: int | None = None,
+    ) -> WatchlistGroup:
+        """Colour a group's label from the fixed palette, or clear it with `None`."""
+        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id)
+        if expected_version is not None and row.version != expected_version:
+            raise StaleWatchlistVersionError(watchlist_id)
+        row.color = color
+        row.version += 1
+        row.updated_at = datetime.now(UTC)
+        await self._session.flush()
+        logger.info("watchlist_group_colored", user_id=user_id, watchlist_id=watchlist_id)
+        return _group_to_model(row)
+
     async def _group_sort_order(self, *, user_id: str, watchlist_id: str | None) -> str | None:
         if watchlist_id is None:
             return None
@@ -489,7 +516,9 @@ class WatchlistStore:
 
 
 __all__ = [
+    "WATCHLIST_COLORS",
     "StaleWatchlistVersionError",
+    "WatchlistColor",
     "WatchlistGroup",
     "WatchlistItem",
     "WatchlistItemNotFoundError",

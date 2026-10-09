@@ -289,7 +289,7 @@ data); only the live-quote column inherits the Premium+ gate via `/quote/stream`
 |--------|------|---------|
 | GET | `/watchlists?market=TW` | My groups for a market tab (ordered); omit `market` → all. **Not built: no default-preset seeding on register** — `memory/watchlists.py`'s `list_groups` is a plain per-user query with no seed/bootstrap step, so a brand-new user's rail is genuinely cold-empty until they create a group; there is no `config.default_watchlist_presets` anywhere in this codebase. Each group's item list is returned inline (no separate `item_count` field on the group view today) |
 | POST | `/watchlists` | Create group `{name, market, asset_class?}` (`asset_class` defaults to `stock`; appended, lexorank end key) |
-| PATCH | `/watchlists/{id}` | Rename `{name}` and/or reorder `{after_id\|before_id}`; `If-Match: <version>` |
+| PATCH | `/watchlists/{id}` | Rename `{name}`, set `{color}` (`chart-1`..`chart-6`, or `"none"` to clear; others → 422) and/or reorder `{after_id\|before_id}`; `If-Match: <version>` |
 | DELETE | `/watchlists/{id}` | Soft-delete group + cascade items |
 | POST | `/watchlists/reorder` | Bulk reorder `{ordered_ids[]}` — full-array fallback for a big reshuffle |
 | GET | `/watchlists/{id}/items` | Items in a group (usually returned inline by the group GET) |

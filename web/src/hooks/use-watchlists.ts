@@ -10,10 +10,11 @@ import {
   removeWatchlistItem,
   renameWatchlist,
   reorderWatchlistGroup,
+  setWatchlistColor,
   WatchlistApiError,
 } from "@/lib/api/watchlist";
 import type { Market } from "@/types/settings";
-import type { WatchlistAssetClass, WatchlistGroupView } from "@/types/watchlist";
+import type { WatchlistAssetClass, WatchlistColor, WatchlistGroupView } from "@/types/watchlist";
 
 const QUERY_KEY_ROOT = "watchlists" as const;
 
@@ -185,6 +186,37 @@ export function useRenameWatchlist(market: Market) {
       queryClient.setQueryData<WatchlistGroupView[]>(queryKey(market), (current) =>
         (current ?? []).map((view) =>
           view.group.id === watchlistId ? { ...view, group: { ...view.group, name } } : view,
+        ),
+      );
+      return { previous };
+    },
+    onError: (_error, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey(market), context.previous);
+      }
+    },
+    onSettled: () => invalidate(queryClient, market),
+  });
+}
+
+export function useSetWatchlistColor(market: Market) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      watchlistId,
+      color,
+      version,
+    }: {
+      watchlistId: string;
+      color: WatchlistColor | null;
+      version: number;
+    }) => setWatchlistColor(watchlistId, color, version),
+    onMutate: async ({ watchlistId, color }) => {
+      await queryClient.cancelQueries({ queryKey: queryKey(market) });
+      const previous = queryClient.getQueryData<WatchlistGroupView[]>(queryKey(market));
+      queryClient.setQueryData<WatchlistGroupView[]>(queryKey(market), (current) =>
+        (current ?? []).map((view) =>
+          view.group.id === watchlistId ? { ...view, group: { ...view.group, color } } : view,
         ),
       );
       return { previous };

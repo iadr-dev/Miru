@@ -13,6 +13,7 @@ import {
   listWatchlistItemsResponseSchema,
   listWatchlistsResponseSchema,
   type WatchlistAssetClass,
+  type WatchlistColor,
   type WatchlistGroup,
   type WatchlistGroupView,
   type WatchlistItem,
@@ -108,6 +109,20 @@ export async function renameWatchlist(
     method: "PATCH",
     headers: { ...jsonHeaders(), ...versionHeaders(version) },
     body: JSON.stringify({ name }),
+  });
+  return watchlistGroupSchema.parse(raw);
+}
+
+/** Colours a group's label from the palette; `null` clears it (sent as the server's "none"). */
+export async function setWatchlistColor(
+  watchlistId: string,
+  color: WatchlistColor | null,
+  version: number,
+): Promise<WatchlistGroup> {
+  const raw = await requestJson(`/watchlists/${encodeURIComponent(watchlistId)}`, {
+    method: "PATCH",
+    headers: { ...jsonHeaders(), ...versionHeaders(version) },
+    body: JSON.stringify({ color: color ?? "none" }),
   });
   return watchlistGroupSchema.parse(raw);
 }

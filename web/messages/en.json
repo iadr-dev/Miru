@@ -661,6 +661,16 @@
       "alertGroupPerStockHint": "Each stock gets its own level, created together",
       "dragItem": "Drag to reorder stock",
       "removeItem": "Remove from this group",
+      "colorGroup": "Set colour for {name}",
+      "color": {
+        "chart-1": "Blue",
+        "chart-2": "Violet",
+        "chart-3": "Amber",
+        "chart-4": "Teal",
+        "chart-5": "Pink",
+        "chart-6": "Slate",
+        "none": "No colour"
+      },
       "deleteGroup": "Delete group",
       "deleteGroupConfirmTitle": "Delete group?",
       "deleteGroupConfirmBody": "Delete the \"{name}\" group? Its stocks will be removed too — this can't be undone.",

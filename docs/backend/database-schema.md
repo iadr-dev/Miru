@@ -246,7 +246,8 @@ no dual-write. Reverses the earlier "not shipped" decision → [adr/0027](adr/00
 | asset_class | text | CHECK `IN ('stock','etf')` — **instrument type**; the rail's "ETF tab" = `market='TW' AND asset_class='etf'` (resolved ADR-0027 A1) |
 | sort_order | text | **lexorank/fractional key** (not int) — collision-free reorder |
 | is_default | bool default false | auto-created group; ≤1 true per (user, market, asset_class) |
-| version | int default 0 | optimistic lock (rename/reorder, multi-device) |
+| color | text null | label colour: one of `chart-1`..`chart-6` (the web's non-signed chart tokens, never 漲/跌 colours); null = none |
+| version | int default 0 | optimistic lock (rename/recolour/reorder, multi-device) |
 | created_at, updated_at, deleted_at | timestamptz | soft-delete |
 | index | `(user_id, market, asset_class, sort_order)`; partial-unique `(user_id, market, asset_class, name) WHERE deleted_at IS NULL` | |
 
