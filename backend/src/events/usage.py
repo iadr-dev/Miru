@@ -86,6 +86,8 @@ class TurnUsage(BaseModel):
     models: tuple[ModelUsage, ...] = Field(default_factory=tuple)
     # The memories recall put in front of the model this turn (empty when none or memory is off).
     memories_used: tuple[MemoryRef, ...] = Field(default_factory=tuple)
+    # The 語氣 preset (id) that shaped this answer, so a reopened thread can still say which.
+    personality: str | None = None
 
 
 class UsageAccumulator:

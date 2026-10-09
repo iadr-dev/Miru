@@ -43,6 +43,11 @@ import {
 } from "@/lib/api/attachments";
 import { transcribeAudio } from "@/lib/api/voice";
 import { cn } from "@/lib/cn";
+import {
+  FOLLOW_ACCOUNT_TONE,
+  isPersonalityPresetId,
+  PERSONALITY_PRESET_IDS,
+} from "@/lib/personality";
 
 /** A model catalog entry offered by the model-selector dropdown. */
 type ModelOption = {
@@ -264,6 +269,8 @@ export function Composer({
   onStop,
   modelOverride,
   onModelOverrideChange,
+  toneOverride,
+  onToneOverrideChange,
   webSearchEnabled,
   onWebSearchEnabledChange,
   deepResearch,
@@ -277,6 +284,10 @@ export function Composer({
   onStop: () => void;
   modelOverride: string | null;
   onModelOverrideChange: (modelId: string) => void;
+  /** This chat's own 語氣 preset id, or null to follow the account setting. */
+  toneOverride: string | null;
+  /** A preset id, or `FOLLOW_ACCOUNT_TONE` to clear the chat's own pick. */
+  onToneOverrideChange: (presetId: string) => void;
   webSearchEnabled: boolean;
   onWebSearchEnabledChange: (enabled: boolean) => void;
   /** Null when the caller's plan has no deep research (the menu row is then hidden). */
@@ -686,7 +697,7 @@ export function Composer({
             </p>
           ) : null}
 
-          <div className="flex items-center px-1 pb-0.5">
+          <div className="flex items-center gap-1 px-1 pb-0.5">
             <ModelMenu
               label={t("model")}
               selected={modelOptionFor(modelOverride)}
@@ -694,6 +705,7 @@ export function Composer({
               platformModels={platformModels}
               onSelect={onModelOverrideChange}
             />
+            <ToneMenu selected={toneOverride} onSelect={onToneOverrideChange} />
           </div>
         </div>
       </form>
@@ -1297,6 +1309,76 @@ function ModelMenu({
                 );
               })}
             </div>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+/** The per-chat 語氣 picker: one of the presets, or "follow account setting" (the default, which
+ * clears the chat's own pick). Controlled like `ModelMenu` - the caller persists the choice. */
+function ToneMenu({
+  selected,
+  onSelect,
+}: {
+  selected: string | null;
+  onSelect: (presetId: string) => void;
+}): ReactNode {
+  const t = useTranslations("chat.composer.toneMenu");
+  const tp = useTranslations("settings.personality.preset");
+  const current = selected !== null && isPersonalityPresetId(selected) ? selected : null;
+  const currentName = current === null ? t("follow") : tp(`${current}.name`);
+  const rows: { id: string; label: string; active: boolean }[] = [
+    { id: FOLLOW_ACCOUNT_TONE, label: t("follow"), active: current === null },
+    ...PERSONALITY_PRESET_IDS.map((id) => ({
+      id,
+      label: tp(`${id}.name`),
+      active: current === id,
+    })),
+  ];
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={t("heading")}
+          className={cn(
+            "inline-flex h-8 items-center gap-1 rounded-[var(--radius-button)] px-2.5",
+            "text-[12px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
+            "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+          )}
+        >
+          <span>{t("trigger", { name: currentName })}</span>
+          <CaretDownIcon size={12} weight="regular" aria-hidden />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side="top"
+          align="start"
+          sideOffset={8}
+          className="z-50 w-56 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-2xl"
+        >
+          <DropdownMenu.Label className="px-2.5 py-1 text-[11px] text-[var(--text-muted)]">
+            {t("heading")}
+          </DropdownMenu.Label>
+          {rows.map((row) => (
+            <DropdownMenu.Item
+              key={row.id}
+              onSelect={() => onSelect(row.id)}
+              className={cn(
+                "flex min-h-9 cursor-pointer items-center gap-2 rounded-[var(--radius-button)] px-2.5",
+                "text-[var(--text)] text-sm outline-none transition-colors",
+                "data-[highlighted]:bg-[var(--surface-2)]",
+              )}
+            >
+              <span className="flex-1">{row.label}</span>
+              {row.active ? (
+                <CheckIcon size={14} weight="regular" className="text-[var(--accent)]" />
+              ) : null}
+            </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>

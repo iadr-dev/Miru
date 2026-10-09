@@ -110,6 +110,8 @@ class ConversationStore(Protocol):
         archived: bool | None = None,
         tags: tuple[str, ...] | None = None,
         model_override: str | None = None,
+        personality_override: str | None = None,
+        clear_personality_override: bool = False,
         expected_version: int | None = None,
     ) -> Thread: ...
 
@@ -379,6 +381,8 @@ class SqlAlchemyConversationStore:
         archived: bool | None = None,
         tags: tuple[str, ...] | None = None,
         model_override: str | None = None,
+        personality_override: str | None = None,
+        clear_personality_override: bool = False,
         expected_version: int | None = None,
     ) -> Thread:
         """Patch thread metadata (rename/star/archive/tag/model-override). `expected_version`
@@ -407,6 +411,10 @@ class SqlAlchemyConversationStore:
             row.tags = list(tags)
         if model_override is not None:
             row.model_override = model_override
+        if clear_personality_override:
+            row.personality_override = None  # back to following the account's setting
+        elif personality_override is not None:
+            row.personality_override = personality_override
         row.version += 1
         row.updated_at = datetime.now(UTC)
         await self._session.flush()

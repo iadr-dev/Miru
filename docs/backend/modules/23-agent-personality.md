@@ -70,8 +70,11 @@ invariant at the top of this doc, and [05](05-agent-runtime.md) §guardrails).
 - **Effect size.** Presets are soft: with `gpt-4o-mini`, `data` produces a table for comparisons
   but not for conceptual questions, `concise` is bullets for English and looser for Chinese, `coach`
   adds a takeaway + example. A preset never overrides what the user asks for ("in one sentence").
-- **Not built (unchanged):** turn/thread overrides have no API; the resolved preset id/version is
-  not journaled.
+- **Visible and recorded.** Each turn publishes `personality.used` `{personality}` (the resolved
+  preset id) right after `turn.start`, and the id is stored in `turns.usage.personality`, so the web
+  shows 「語氣：…」 under the answer live and after reload. The version is still not journaled.
+- **Taiwan wording.** Governance rule 14 pins market terms (本益比, 殖利率, 融資/融券, 外資/投信/自營商,
+  漲跌幅, 成交量, 市值), independent of the preset.
 
 ## 2. Preset registry (`personality/presets/` — file-defined, like skills)
 
@@ -113,16 +116,14 @@ durable record — there is no code path that persists "this turn was shaped by 
 
 - **Where set:** Settings → *Agent style*; stored on the user (`users.personality_id`,
   [database-schema](../database-schema.md) §1). New users default to `steady`.
-- **Per-thread override (real seam, not yet settable):** the resolution reads
-  `threads.personality_override` and `PersonalityContext.thread_override` honors it, but there is
-  currently **no route that writes it** — a per-thread pin isn't settable from the API yet even
-  though `_resolve_personality_fragment` would apply it immediately if it were.
-- **Per-turn override (not yet built):** `PersonalityContext.turn_override` exists in the
-  dataclass and the registry's precedence honors it, but `POST /agent/query`'s real request body
-  is just `{message, thread_id?}` ([api-reference](../api-reference.md) §1) — there is no
-  `personality`/`model`/`skill_hint` per-turn field today, so `turn_override` is always `None` in
-  practice. Resolution order once both land: **turn override → thread override → user setting →
-  `steady`**; today only the last two are reachable.
+- **Per-chat override (settable):** `PATCH /threads/{id} {personality_override}` pins a preset for
+  that chat; the id `"default"` clears the pin so the chat follows the account again; an unknown id
+  is `422 unknown_personality`. `POST /agent/query` accepts the same `personality` field (applied
+  and persisted as the thread override before the turn, so a pick made before the first message
+  still styles it). The composer has a 語氣 menu next to the model menu.
+- **Per-turn override (not built):** `PersonalityContext.turn_override` is honored by the registry but
+  has no producer. Resolution order: **turn override → thread override → user setting → `steady`**;
+  in practice the last three are reachable.
 - **Concurrency:** resolved **per turn** from the current setting (like entitlement,
   [16](16-infrastructure.md) §10) — a mid-thread change applies to the next turn, no stale voice.
 - **Interaction with the pet persona:** both are *styling* layers; **personality is [2], pet is

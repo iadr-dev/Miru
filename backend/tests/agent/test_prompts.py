@@ -127,3 +127,10 @@ def test_governance_prompt_tells_the_agent_to_honour_the_requested_format() -> N
     assert "In one sentence" in prompt
     assert "TL;DR" in prompt  # named as something not to add
     assert "never add" in prompt
+
+
+def test_governance_prompt_pins_taiwan_market_terminology() -> None:
+    prompt = governance_prompt()
+    assert "本益比" in prompt
+    assert "殖利率" in prompt
+    assert "市盈率" in prompt  # named only as the term NOT to use

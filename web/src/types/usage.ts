@@ -66,6 +66,9 @@ export type MemoryRef = z.infer<typeof memoryRefSchema>;
 /** The `memory.used` SSE frame's `data`. */
 export const memoryUsedDataSchema = z.object({ memories: z.array(memoryRefSchema).default([]) });
 
+/** The `personality.used` SSE frame's `data`. */
+export const personalityUsedDataSchema = z.object({ personality: z.string() });
+
 /** The `usage` SSE frame's `data` - one turn's totals plus the per-model split. */
 export const turnUsageDataSchema = z.object({
   input_tokens: z.number().int().default(0),
@@ -87,5 +90,7 @@ export const turnUsageDataSchema = z.object({
     .default([]),
   // Present on a stored turn (and only there): the memories that informed it.
   memories_used: z.array(memoryRefSchema).default([]),
+  // Also stored-turn only: the 語氣 preset id that styled the reply.
+  personality: z.string().nullable().default(null),
 });
 export type TurnUsageData = z.infer<typeof turnUsageDataSchema>;

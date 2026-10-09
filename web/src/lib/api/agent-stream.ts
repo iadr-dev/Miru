@@ -69,6 +69,8 @@ export type AgentQueryBody = {
   deep_research?: boolean;
   /** Composer model pick; persisted as the thread override so the first turn honors it. */
   model?: string;
+  /** Composer 語氣 pick (a preset id, or "default" = follow the account); persisted as the thread override. */
+  personality?: string;
   attachments?: AttachmentInput[];
 };
 

@@ -28,6 +28,7 @@ import {
 } from "@/lib/api/agent-stream";
 import { listSavedKeys } from "@/lib/api/settings";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
+import { FOLLOW_ACCOUNT_TONE } from "@/lib/personality";
 
 /** The message shown for a failed turn: a known refusal code gets its localized explanation. */
 function turnErrorMessage(err: unknown, t: (key: string) => string): string {
@@ -68,6 +69,15 @@ function turnErrorMessage(err: unknown, t: (key: string) => string): string {
  * once a thread already exists PATCHes immediately. Either way the two branches share one
  * `applyModelOverride` so the persisted value and the query-cache invalidation stay in sync.
  */
+/** The chat's own 語氣 pick: a pending one wins, and a pending "default" means follow the account
+ * (no pick of its own). */
+function chosenTone(pending: string | null, persisted: string | null): string | null {
+  if (pending === null) {
+    return persisted;
+  }
+  return pending === FOLLOW_ACCOUNT_TONE ? null : pending;
+}
+
 export function ChatClient(): ReactNode {
   const t = useTranslations("chat.turn");
   const router = useRouter();
@@ -77,6 +87,9 @@ export function ChatClient(): ReactNode {
 
   const [threadId, setThreadId] = useState<string | null>(urlThreadId);
   const [pendingModelOverride, setPendingModelOverride] = useState<string | null>(null);
+  // Same handshake for the per-chat 語氣 pick: held until the thread exists, then sent as
+  // `personality` with the first message.
+  const [pendingTone, setPendingTone] = useState<string | null>(null);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   // Per-turn "Web search" toggle from the composer's feature menu. Unlike `modelOverride`, this
   // isn't a thread property persisted via `PATCH /threads/{id}` — it's a request-body flag on
@@ -116,6 +129,20 @@ export function ChatClient(): ReactNode {
         await queryClient.invalidateQueries({ queryKey: ["thread", targetThreadId] });
       } catch {
         // Swallow — see function docstring above.
+      }
+    },
+    [queryClient],
+  );
+
+  // Best-effort like `applyModelOverride`; "default" clears the chat's own pick.
+  const applyToneOverride = useCallback(
+    async (targetThreadId: string, presetId: string): Promise<void> => {
+      try {
+        const current = await getThread(targetThreadId);
+        await patchThread(targetThreadId, { personality_override: presetId }, current.version);
+        await queryClient.invalidateQueries({ queryKey: ["thread", targetThreadId] });
+      } catch {
+        // Swallow - the pick is a convenience; the next one retries the same PATCH.
       }
     },
     [queryClient],
@@ -189,6 +216,9 @@ export function ChatClient(): ReactNode {
       if (pendingModelOverride !== null) {
         setPendingModelOverride(null);
       }
+      if (pendingTone !== null) {
+        setPendingTone(null);
+      }
 
       // Captured before `clear()` wipes the overlay — the only place the finished turn's answer
       // text still exists once the persisted-history refetch below takes over the render.
@@ -203,7 +233,7 @@ export function ChatClient(): ReactNode {
       clear();
       return answerText;
     },
-    [threadId, pendingModelOverride, begin, consumeStream, clear, queryClient, router],
+    [threadId, pendingModelOverride, pendingTone, begin, consumeStream, clear, queryClient, router],
   );
 
   const runTurn = useCallback(
@@ -215,6 +245,7 @@ export function ChatClient(): ReactNode {
             web_search: webSearchEnabled,
             ...(deepResearchEnabled && canDeepResearch ? { deep_research: true } : {}),
             ...(pendingModelOverride !== null ? { model: pendingModelOverride } : {}),
+            ...(pendingTone !== null ? { personality: pendingTone } : {}),
             ...(threadId ? { thread_id: threadId } : {}),
             ...(attachments.length > 0 ? { attachments } : {}),
           },
@@ -227,6 +258,7 @@ export function ChatClient(): ReactNode {
       deepResearchEnabled,
       canDeepResearch,
       pendingModelOverride,
+      pendingTone,
       threadId,
     ],
   );
@@ -316,10 +348,22 @@ export function ChatClient(): ReactNode {
     [threadId, applyModelOverride],
   );
 
+  const onToneOverrideChange = useCallback(
+    (presetId: string): void => {
+      if (threadId === null) {
+        setPendingTone(presetId);
+        return;
+      }
+      void applyToneOverride(threadId, presetId);
+    },
+    [threadId, applyToneOverride],
+  );
+
   const hasThread = threadId !== null;
   const hasHistory = threadQuery.data && threadQuery.data.turns.length > 0;
   const showEmpty = !hasThread && activeTurn === null;
   const modelOverride = pendingModelOverride ?? threadQuery.data?.model_override ?? null;
+  const toneOverride = chosenTone(pendingTone, threadQuery.data?.personality_override ?? null);
 
   // With their own keys saved, a caller can only run those providers' models (the turn runs on
   // their key). If the current/default model belongs to another provider, move to one they can use.
@@ -398,6 +442,8 @@ export function ChatClient(): ReactNode {
         onStop={onStop}
         modelOverride={modelOverride}
         onModelOverrideChange={onModelOverrideChange}
+        toneOverride={toneOverride}
+        onToneOverrideChange={onToneOverrideChange}
         webSearchEnabled={webSearchEnabled}
         onWebSearchEnabledChange={setWebSearchEnabled}
         deepResearchLocked={meQuery.data !== undefined && !canDeepResearch}

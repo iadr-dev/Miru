@@ -344,6 +344,13 @@ async def _drive_turn(
     byok: ByokOverride | None = None,
 ) -> None:
     event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
+    # Which 語氣 preset will shape this answer (turn > chat > account > default), shown under it.
+    tone_id = state.personality_registry.resolve(
+        turn_override=personality.turn_override,
+        thread_override=personality.thread_override,
+        user_preference=personality.user_preference,
+    ).id
+    event_bus.publish("personality.used", turn_id=turn_id, data={"personality": tone_id})
     # The registry entry is `RunningTurn` itself — the same live handle `POST .../steer` appends
     # to and `.../cancel` flips — so the loop's `drain()` calls read exactly what a concurrent
     # steer request queued, with no second queue to keep in sync.
@@ -423,6 +430,7 @@ async def _drive_turn(
         return
 
     result = _with_memories(result, turn_id=turn_id, memories=memories_used)
+    result = _with_personality(result, turn_id=turn_id, preset_id=tone_id)
     await _persist_answer(
         store,
         user_id=user_id,
@@ -497,6 +505,14 @@ def _with_memories(
     return result.model_copy(
         update={"usage": usage.model_copy(update={"memories_used": tuple(memories)})}
     )
+
+
+def _with_personality(
+    result: OrchestratorResult, *, turn_id: str, preset_id: str
+) -> OrchestratorResult:
+    """The result with the 語氣 preset recorded on its usage snapshot."""
+    usage = result.usage or TurnUsage(turn_id=turn_id)
+    return result.model_copy(update={"usage": usage.model_copy(update={"personality": preset_id})})
 
 
 async def _record_usage(

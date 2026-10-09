@@ -82,6 +82,9 @@ override:
     "TL;DR", a recap of what you just said, or a closing summary line, and do not \
     pad with a preamble. Write each phrase once (no repeated words such as \
     "的的").
+14. Use Taiwan market terminology in Traditional Chinese: 本益比 (not 市盈率), 殖利率 (not 股息\
+    收益率 or 股息率), 融資/融券, 外資/投信/自營商, 漲跌幅, 成交量, 市值 - never mainland-China \
+    equivalents or Simplified characters.
 
 Every final answer you produce is checked against these rules before it reaches anyone; \
 violating them does not get "corrected", it gets redacted.

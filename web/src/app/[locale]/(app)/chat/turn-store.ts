@@ -46,6 +46,7 @@ import {
 import {
   type MemoryRef,
   memoryUsedDataSchema,
+  personalityUsedDataSchema,
   type TurnUsageData,
   turnUsageDataSchema,
 } from "@/types/usage";
@@ -188,6 +189,8 @@ export type ActiveTurn = {
   usage: TurnUsageData | null;
   /** The long-term memories recall put in front of the model this turn (from `memory.used`). */
   memoriesUsed: MemoryRef[];
+  /** The 語氣 preset id that styled this turn (from `personality.used`), null until it arrives. */
+  personality: string | null;
   /** The final answer, in one shot — null until the terminal `message` frame arrives. Always
    * the authoritative full text once set (see `streamingAnswerText` for the live-partial
    * counterpart); a client that missed every `message.delta` still gets the complete answer
@@ -426,6 +429,10 @@ const FRAME_REDUCERS: {
     const parsed = memoryUsedDataSchema.safeParse(frame.envelope.data);
     return parsed.success ? { ...base, memoriesUsed: parsed.data.memories } : base;
   },
+  "personality.used": (base, frame) => {
+    const parsed = personalityUsedDataSchema.safeParse(frame.envelope.data);
+    return parsed.success ? { ...base, personality: parsed.data.personality } : base;
+  },
   usage: (base, frame) => {
     const parsed = turnUsageDataSchema.safeParse(frame.envelope.data);
     return parsed.success ? { ...base, usage: parsed.data } : base;
@@ -451,6 +458,7 @@ export const useTurnStore = create<TurnStore>((set) => ({
         webSearchSources: [],
         usage: null,
         memoriesUsed: [],
+        personality: null,
         answerText: null,
         streamingAnswerText: null,
         steeringQueued: [],
