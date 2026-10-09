@@ -93,6 +93,27 @@ async def test_chat_normalizes_text_response(monkeypatch: pytest.MonkeyPatch) ->
     assert result.usage.total_tokens == 8
 
 
+async def test_chat_keeps_reasoning_text_out_of_the_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Thought parts are not the answer: a JSON-only caller (deep research, the classifier) must
+    get just the answer part, as `stream()` already does."""
+    client = _client()
+    response = _response(
+        parts=[
+            _thought_part("Okay, so the user wants JSON..."),
+            genai_types.Part.from_text(text='{"a": 1}'),
+        ]
+    )
+    monkeypatch.setattr(
+        client._client.aio.models, "generate_content", AsyncMock(return_value=response)
+    )
+
+    result = await client.chat([Message(role=MessageRole.USER, content="hi")])
+
+    assert result.text == '{"a": 1}'
+
+
 async def test_chat_sends_image_part_alongside_text(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _client()
     response = _response(parts=[genai_types.Part.from_text(text="ok")])
