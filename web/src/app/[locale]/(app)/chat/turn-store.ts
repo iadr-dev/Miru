@@ -235,8 +235,16 @@ function upsertLane(lanes: LaneView[], next: LaneView): LaneView[] {
     return [...lanes, next];
   }
   // Keep the lane's original `seq` (its first-seen position) — later frames only update
-  // status/activity, they must not drag the lane's timeline position forward.
-  const updated: LaneView = { ...existing, ...next, seq: existing.seq };
+  // status/activity, they must not drag the lane's timeline position forward. `skill`/`activity`
+  // arrive on `agent.spawned` only; a later `agent.progress`/`agent.done` carries null for both and
+  // must not erase them, or a finished lane falls back to showing its raw agent id.
+  const updated: LaneView = {
+    ...existing,
+    ...next,
+    seq: existing.seq,
+    skill: next.skill ?? existing.skill,
+    activity: next.activity ?? existing.activity,
+  };
   return lanes.map((lane) => (lane.agentId === next.agentId ? updated : lane));
 }
 
