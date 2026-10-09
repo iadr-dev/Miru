@@ -362,6 +362,11 @@ class GeminiClient:
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         for index, part in enumerate(parts or []):
+            if part.text and part.thought:
+                # Reasoning text, not the answer: `stream()` surfaces it as a thinking event, and
+                # here it must stay out of `text` or a JSON-only caller (deep research, the
+                # classifier) gets prose with the object buried in it.
+                continue
             if part.text:
                 text_parts.append(part.text)
             elif part.function_call is not None:
