@@ -1537,6 +1537,18 @@
       }
     },
     "pets": {
+      "welcome": {
+        "title": "認識你的第一位夥伴",
+        "body": "你有一次免費抽取。抽出一位陪你聊天的夥伴，純粹好玩，不會改變分析結果，也不影響任何額度。",
+        "pull": "抽取",
+        "pulling": "抽取中...",
+        "later": "稍後再說",
+        "error": "目前無法抽取，請再試一次。",
+        "revealTitle": "你抽到了 {name}！",
+        "equipped": "已裝備為你的夥伴。",
+        "duplicate": "你已擁有，已轉為 {xp} 點經驗值。",
+        "start": "開始聊天"
+      },
       "title": "夥伴",
       "progressTitle": "收集進度",
       "collectionTitle": "圖鑑",

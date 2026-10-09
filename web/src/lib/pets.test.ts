@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { petName, xpFraction } from "@/lib/pets";
+import { petName, shouldOfferWelcomePull, xpFraction } from "@/lib/pets";
 import type { PetCatalogEntry } from "@/types/settings";
 
 const catalog: PetCatalogEntry[] = [
@@ -29,5 +29,14 @@ describe("xpFraction", () => {
   });
   it("reads as full at max level", () => {
     expect(xpFraction(30, 0, progress)).toBe(1);
+  });
+});
+
+describe("shouldOfferWelcomePull", () => {
+  it("is for a user with no pet and a pull waiting", () => {
+    expect(shouldOfferWelcomePull({ owned_count: 0, available_pulls: 1 })).toBe(true);
+    expect(shouldOfferWelcomePull({ owned_count: 1, available_pulls: 1 })).toBe(false);
+    expect(shouldOfferWelcomePull({ owned_count: 0, available_pulls: 0 })).toBe(false);
+    expect(shouldOfferWelcomePull(undefined)).toBe(false);
   });
 });
