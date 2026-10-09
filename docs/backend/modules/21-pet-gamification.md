@@ -125,8 +125,9 @@ GET  /pets/active           my equipped pet
 PUT  /pets/{record_id}/equip   equip (atomic: unequip others in one tx)
 GET  /pets/progress         streak, chat_count, pulls, pity, milestones, completion
 POST /pets/pull             gacha pull (reserve-before-act on available_pulls)
-GET  /pets/settings         { hint_enabled }  (pet-flavoured replies, default off)
-PATCH /pets/settings        { hint_enabled }
+GET  /pets/settings         { hint_enabled, companion_visible }
+PATCH /pets/settings        partial of the same: hint_enabled = pet-flavoured replies (default off),
+                            companion_visible = avatar + notices in chat (default on)
 ```
 All scoped by `user_id`; standard session auth. No tier check anywhere in this module
 (cosmetic-only invariant, §governance).

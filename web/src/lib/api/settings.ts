@@ -55,12 +55,14 @@ import {
   type PersonalityPreset,
   type PetCatalogEntry,
   type PetProgress,
+  type PetSettings,
   type PlansResponse,
   type PortalResponse,
   type PullOutcome,
   personalityPresetsResponseSchema,
   petCatalogEntrySchema,
   petProgressSchema,
+  petSettingsSchema,
   plansResponseSchema,
   portalResponseSchema,
   pullOutcomeSchema,
@@ -208,6 +210,19 @@ export async function equipPet(recordId: string): Promise<OwnedPet> {
 export async function getPetProgress(): Promise<PetProgress> {
   const raw = await requestJson("/pets/progress");
   return petProgressSchema.parse(raw);
+}
+
+export async function getPetSettings(): Promise<PetSettings> {
+  return petSettingsSchema.parse(await requestJson("/pets/settings"));
+}
+
+export async function updatePetSettings(patch: Partial<PetSettings>): Promise<PetSettings> {
+  const raw = await requestJson("/pets/settings", {
+    method: "PATCH",
+    headers: jsonHeaders(),
+    body: JSON.stringify(patch),
+  });
+  return petSettingsSchema.parse(raw);
 }
 
 /** `409 no_pulls_available` is an expected outcome, not exceptional — callers should disable the

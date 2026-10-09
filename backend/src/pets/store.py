@@ -61,7 +61,13 @@ class PetStore(Protocol):
 
     async def register_login(self, *, user_id: str, today: date | None = None) -> PetStats: ...
 
-    async def set_hint_enabled(self, *, user_id: str, enabled: bool) -> PetStats: ...
+    async def set_preferences(
+        self,
+        *,
+        user_id: str,
+        hint_enabled: bool | None = None,
+        companion_visible: bool | None = None,
+    ) -> PetStats: ...
 
 
 def _row_to_pet(row: UserPetRow) -> OwnedPet:
@@ -88,6 +94,7 @@ def _row_to_stats(row: UserPetStatsRow) -> PetStats:
         available_pulls=row.available_pulls,
         pity_counter=row.pity_counter,
         hint_enabled=row.hint_enabled,
+        companion_visible=row.companion_visible,
     )
 
 
@@ -233,12 +240,22 @@ class SqlAlchemyPetStore:
             pulls_earned=stats.available_pulls - pulls_before,
         )
 
-    async def set_hint_enabled(self, *, user_id: str, enabled: bool) -> PetStats:
+    async def set_preferences(
+        self,
+        *,
+        user_id: str,
+        hint_enabled: bool | None = None,
+        companion_visible: bool | None = None,
+    ) -> PetStats:
+        """Update the pet preferences that were given; the others keep their value."""
         await self.ensure_stats(user_id=user_id)
         stats = await self._stats_row(user_id)
         if stats is None:  # pragma: no cover - ensure_stats just created it
             raise PetNotFoundError(user_id)
-        stats.hint_enabled = enabled
+        if hint_enabled is not None:
+            stats.hint_enabled = hint_enabled
+        if companion_visible is not None:
+            stats.companion_visible = companion_visible
         await self._session.flush()
         return _row_to_stats(stats)
 

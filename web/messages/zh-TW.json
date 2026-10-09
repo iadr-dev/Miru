@@ -1537,6 +1537,14 @@
       }
     },
     "pets": {
+      "settingsTitle": "夥伴設定",
+      "settingsHint": "夥伴純粹好玩，不會改變你的分析結果、資料或額度。",
+      "showCompanion": "在對話中顯示夥伴",
+      "showCompanionHint": "訊息框旁的頭像、等級條與升級提示。",
+      "flavourReplies": "讓夥伴為回覆添點語氣",
+      "flavourRepliesHint": "讓 Miru 的措辭多一點溫度。預設關閉；資料與免責聲明不會改變。",
+      "level": "Lv {level}",
+      "xp": "經驗值",
       "welcome": {
         "title": "認識你的第一位夥伴",
         "body": "你有一次免費抽取。抽出一位陪你聊天的夥伴，純粹好玩，不會改變分析結果，也不影響任何額度。",

@@ -620,6 +620,7 @@ Cosmetic-only — **no tier/entitlement/data linkage**. App state, `user_id`-sco
 | xp_day | date null | the Taipei day `xp_today` belongs to (daily chat-XP cap) |
 | xp_today | int default 0 | chat XP granted on `xp_day` (cap `DAILY_CHAT_XP_CAP`) |
 | hint_enabled | bool default false | may the equipped pet flavour replies (opt-in) |
+| companion_visible | bool default true | show the companion avatar and notices in chat |
 - **Concurrency:** pull consumes `available_pulls` via **reserve-before-act** (atomic decrement);
   XP/streak/chat increments are atomic upserts — parallel turns/devices can't double-grant or
   lose an update ([modules/16](modules/16-infrastructure.md) §10). No market data, no PII beyond

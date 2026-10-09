@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { Link } from "@/i18n/navigation";
-import { getActivePet, getPetProgress, listPetCatalog } from "@/lib/api/settings";
+import { getActivePet, getPetProgress, getPetSettings, listPetCatalog } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { petName, RARITY_RING, RARITY_TEXT, xpFraction } from "@/lib/pets";
 
@@ -26,6 +26,7 @@ export function PetCompanion({
   const locale = useLocale();
   const active = useQuery({ queryKey: ["settings", "pet-active"], queryFn: getActivePet });
   const progress = useQuery({ queryKey: ["settings", "pet-progress"], queryFn: getPetProgress });
+  const settings = useQuery({ queryKey: ["settings", "pet-settings"], queryFn: getPetSettings });
   const catalog = useQuery({
     queryKey: ["settings", "pet-catalog"],
     queryFn: listPetCatalog,
@@ -34,7 +35,7 @@ export function PetCompanion({
 
   const pet = active.data ?? null;
   const stats = progress.data;
-  if (!stats || active.isLoading) {
+  if (!stats || active.isLoading || settings.data?.companion_visible === false) {
     return null;
   }
   if (!pet) {

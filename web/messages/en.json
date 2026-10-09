@@ -1546,6 +1546,14 @@
       }
     },
     "pets": {
+      "settingsTitle": "Companion settings",
+      "settingsHint": "Your companion is just for fun. It never changes your answers, data or limits.",
+      "showCompanion": "Show companion in chat",
+      "showCompanionHint": "The avatar, level bar and level-up notes beside the message box.",
+      "flavourReplies": "Let it flavour replies",
+      "flavourRepliesHint": "A touch of warmth in how Miru phrases things. Off by default; data and caveats never change.",
+      "level": "Lv {level}",
+      "xp": "Experience",
       "welcome": {
         "title": "Meet your first companion",
         "body": "You have a free pull. Draw a companion that keeps you company while you chat. It is just for fun and never changes your answers or limits.",
