@@ -15,6 +15,7 @@ import {
 import { getPriceHistory } from "@/lib/api/market";
 import { createAlertsBatch, SettingsApiError } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
+import { groupNameStyle } from "@/lib/watchlist-color";
 import type { WatchlistItem } from "@/types/watchlist";
 
 /** The most stocks one batch can hold (mirrors the backend's `_MAX_BATCH`). */
@@ -178,7 +179,7 @@ export function PerStockForm({
         <Select id="perstock-group" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
           <option value="">{t("groupPlaceholder")}</option>
           {(groups.data ?? []).map((g) => (
-            <option key={g.group.id} value={g.group.id}>
+            <option key={g.group.id} value={g.group.id} style={groupNameStyle(g.group)}>
               {g.group.name}
             </option>
           ))}

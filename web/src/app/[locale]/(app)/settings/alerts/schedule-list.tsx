@@ -32,6 +32,7 @@ import {
   templateOfJob,
   watchlistOfJob,
 } from "@/lib/schedules/templates";
+import { groupNameStyle } from "@/lib/watchlist-color";
 import type { ScheduleJob } from "@/types/settings";
 
 /** Schedules — scheduled briefings (docs/backend/modules/14 §4). Template-first, like alerts: the
@@ -379,7 +380,11 @@ function ScheduleForm({ onDone, job }: { onDone: () => void; job?: ScheduleJob }
             >
               <option value="">{t("watchlistPlaceholder")}</option>
               {(groups.data ?? []).map((view) => (
-                <option key={view.group.id} value={view.group.id}>
+                <option
+                  key={view.group.id}
+                  value={view.group.id}
+                  style={groupNameStyle(view.group)}
+                >
                   {view.group.name}
                 </option>
               ))}
