@@ -46,14 +46,19 @@ export function SettingsDialog({ children }: { children: ReactNode }): ReactNode
         </Dialog.Overlay>
         <Dialog.Content
           className={cn(
-            "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(880px,92vw)] -translate-x-1/2 -translate-y-1/2",
-            "overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)]",
+            // A fixed frame: the dialog keeps one size whichever section is open, so the nav never
+            // moves under the cursor; a long section scrolls inside it. On a small screen it fills
+            // the viewport instead of floating.
+            "fixed inset-0 z-50 h-[100dvh] w-screen",
+            "lg:inset-auto lg:top-1/2 lg:left-1/2 lg:h-[min(680px,85vh)] lg:w-[min(880px,92vw)]",
+            "lg:-translate-x-1/2 lg:-translate-y-1/2",
+            "overflow-hidden border border-[var(--border)] lg:rounded-[var(--radius-card)]",
             "bg-[var(--surface)] shadow-2xl",
             "flex flex-col lg:flex-row",
           )}
         >
           <Dialog.Title className="sr-only">{t("settingsTitle")}</Dialog.Title>
-          <div className="shrink-0 border-[var(--border)] border-b p-4 lg:w-56 lg:border-r lg:border-b-0 lg:p-5">
+          <div className="shrink-0 border-[var(--border)] border-b p-3 pr-14 lg:w-56 lg:overflow-y-auto lg:overflow-x-hidden lg:border-r lg:border-b-0 lg:p-5">
             <SettingsNav />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-6">
