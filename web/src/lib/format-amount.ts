@@ -40,6 +40,9 @@ export function formatAmount(
     currency,
     currencyDisplay: "symbol",
     notation: "compact",
+    // Pinned both ends: ICU versions disagree on the currency default (one gives "$3.2T", another
+    // "$3.20T"), and the label must not change with the runtime.
+    minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(value);
 }
