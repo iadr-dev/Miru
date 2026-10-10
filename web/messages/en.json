@@ -401,6 +401,7 @@
         "advancing": "Advancing",
         "declining": "Declining",
         "unchanged": "Unchanged",
+        "breadthCountSeries": "Stocks",
         "breadthUnavailable": "No breadth data for today.",
         "bucketDownOver5": "< -5%",
         "bucketDown3to5": "-5% ~ -3%",

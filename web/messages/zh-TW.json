@@ -401,6 +401,7 @@
         "advancing": "上漲",
         "declining": "下跌",
         "unchanged": "平盤",
+        "breadthCountSeries": "家數",
         "breadthUnavailable": "今日查無漲跌家數資料。",
         "bucketDownOver5": "< -5%",
         "bucketDown3to5": "-5% ~ -3%",
