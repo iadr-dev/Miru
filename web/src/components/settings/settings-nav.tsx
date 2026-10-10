@@ -13,13 +13,13 @@ export function SettingsNav(): ReactNode {
   const pathname = usePathname();
 
   return (
-    <nav aria-label={t("label")} className="shrink-0 lg:w-56">
-      <ul className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] lg:divide-y-0 lg:rounded-none lg:border-0 lg:bg-transparent">
+    <nav aria-label={t("label")} className="shrink-0 lg:w-full">
+      <ul className="flex [scrollbar-width:none] divide-x divide-[var(--border)] overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] lg:block lg:divide-x-0 lg:divide-y-0 lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent">
         {SETTINGS_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
-            <li key={item.href}>
+            <li key={item.href} className="shrink-0 lg:shrink">
               <Link
                 href={item.href}
                 replace
