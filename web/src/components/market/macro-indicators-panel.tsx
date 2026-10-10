@@ -37,7 +37,7 @@ export function MacroIndicatorsPanel(): ReactNode {
   });
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <QueryState query={query} skeleton={<CardSkeletonBody height={280} />}>
         {(data) => {
           if (isMaskedTeaser(data)) {

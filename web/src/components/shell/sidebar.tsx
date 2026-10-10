@@ -27,10 +27,13 @@ export function Sidebar({
   collapsed,
   onToggle,
   me,
+  fluid = false,
 }: {
   collapsed: boolean;
   onToggle: () => void;
   me: MeResponse;
+  /** Fill the parent's width instead of the fixed rail widths (the phone drawer). */
+  fluid?: boolean;
 }): ReactNode {
   const t = useTranslations();
   const pathname = usePathname();
@@ -56,7 +59,7 @@ export function Sidebar({
       className={cn(
         "flex h-full flex-col border-[var(--border)] border-r bg-[var(--surface)]",
         "transition-all duration-300 ease-out",
-        collapsed ? "w-16" : "w-60",
+        fluid ? "w-full" : collapsed ? "w-16" : "w-60",
       )}
     >
       {/* Header: logo + collapse toggle */}
@@ -108,8 +111,13 @@ export function Sidebar({
           title={collapsed ? t("nav.newChat") : undefined}
           className={cn(
             "inline-flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-button)]",
-            "bg-[var(--accent)] font-medium text-[15px] text-[var(--bg)] transition-opacity",
-            "hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
+            // A tonal button, not a solid block: the sidebar's orange stays a quiet signature, and
+            // the solid fill is kept for the actions inside a page (send, save, confirm).
+            "border border-[color-mix(in_srgb,var(--accent)_45%,transparent)] bg-[var(--accent-weak)]",
+            "font-medium text-[15px] text-[var(--accent-text)]",
+            "transition-[background-color,border-color] duration-[var(--dur-base)] ease-[var(--ease-out)]",
+            "hover:border-[var(--accent)] hover:bg-[color-mix(in_srgb,var(--accent)_22%,var(--accent-weak))]",
+            "active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
             collapsed ? "justify-center px-0" : "justify-start px-4",
           )}
         >

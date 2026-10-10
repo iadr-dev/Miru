@@ -102,7 +102,7 @@ export function MacroCalendarPanel(): ReactNode {
   });
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         {query.data && query.data.events.length > 0 ? (
@@ -249,7 +249,7 @@ function MacroDayStrip({
               className={cn(
                 "flex flex-col items-center gap-0.5 rounded-[var(--radius-input)] py-1.5 text-[11px] transition-colors",
                 !isSelected && "text-[var(--text-muted)] hover:bg-[var(--surface-2)]",
-                isSelected && "bg-[var(--accent)] font-semibold text-[color:#06231F]",
+                isSelected && "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]",
                 iso === todayIso && !isSelected && "ring-1 ring-[var(--accent)]",
               )}
             >

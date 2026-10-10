@@ -14,7 +14,7 @@ export function SettingsNav(): ReactNode {
 
   return (
     <nav aria-label={t("label")} className="shrink-0 lg:w-full">
-      <ul className="flex [scrollbar-width:none] divide-x divide-[var(--border)] overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] lg:block lg:divide-x-0 lg:divide-y-0 lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent">
+      <ul className="flex [scrollbar-width:none] divide-x divide-[var(--border)] overflow-x-auto surface-card lg:block lg:divide-x-0 lg:divide-y-0 lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent">
         {SETTINGS_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);

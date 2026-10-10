@@ -15,12 +15,7 @@ export function SettingsSection({
   className?: string;
 }): ReactNode {
   return (
-    <section
-      className={cn(
-        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
-        className,
-      )}
-    >
+    <section className={cn("surface-card p-4 sm:p-5", className)}>
       <h2 className="font-semibold text-[18px] text-[var(--text)]">{title}</h2>
       {description ? (
         <p className="mt-1 text-[13px] text-[var(--text-muted)] leading-relaxed">{description}</p>

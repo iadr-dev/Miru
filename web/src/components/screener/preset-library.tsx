@@ -97,7 +97,7 @@ export function PresetLibrary({
           className={cn(
             "min-h-9 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
             category === ALL_CATEGORY
-              ? "bg-[var(--accent)] text-[var(--bg)]"
+              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
               : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
           )}
         >
@@ -116,7 +116,7 @@ export function PresetLibrary({
               className={cn(
                 "min-h-9 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
                 active
-                  ? "bg-[var(--accent)] text-[var(--bg)]"
+                  ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
                   : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
             >

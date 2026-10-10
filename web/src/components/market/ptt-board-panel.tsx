@@ -34,7 +34,7 @@ export function PttBoardPanel(): ReactNode {
   });
 
   return (
-    <section className="flex min-h-[70vh] w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex min-h-[70vh] w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       <div role="tablist" aria-label={t("title")} className="flex flex-wrap gap-1.5">
@@ -48,7 +48,7 @@ export function PttBoardPanel(): ReactNode {
             className={cn(
               "rounded-[var(--radius-pill)] px-3 py-1.5 text-[12.5px] transition-colors",
               board === key
-                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                 : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

@@ -47,7 +47,7 @@ export function PriceMomentumCard({
   const t = useTranslations("market.cards.priceMomentum");
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <PriceMomentumControls
@@ -89,7 +89,7 @@ export function PriceMomentumControls({
             className={cn(
               "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
               period === p
-                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >
@@ -107,7 +107,7 @@ export function PriceMomentumControls({
             className={cn(
               "rounded-[var(--radius-pill)] px-3.5 py-1 text-[12px] transition-colors",
               direction === d
-                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

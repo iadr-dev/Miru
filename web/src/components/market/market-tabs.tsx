@@ -35,7 +35,7 @@ export function MarketTabSwitcher(): ReactNode {
           className={cn(
             "min-h-11 rounded-[var(--radius-pill)] px-5 text-[13px] transition-colors",
             active === tab
-              ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+              ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
               : "text-[var(--text-muted)] hover:text-[var(--text)]",
           )}
         >

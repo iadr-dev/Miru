@@ -278,7 +278,7 @@ function CalendarDayCell({
         "flex min-h-14 flex-col items-start gap-0.5 rounded-[var(--radius-input)] px-1 py-1.5 text-[13px] transition-colors sm:min-h-24",
         !inMonth && "text-[var(--text-muted)] opacity-40",
         inMonth && !isSelected && "text-[var(--text)] hover:bg-[var(--surface-2)]",
-        isSelected && "bg-[var(--accent)] font-semibold text-[color:#06231F]",
+        isSelected && "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]",
         isToday && !isSelected && "ring-1 ring-[var(--accent)]",
       )}
     >

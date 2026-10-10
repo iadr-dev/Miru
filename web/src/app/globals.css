@@ -8,9 +8,12 @@
  * CSS variables (--font-sans, --font-num) consumed here.
  */
 @theme inline {
+  --color-on-accent: var(--on-accent);
   --color-bg: var(--bg);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-strong: var(--border-strong);
   --color-border: var(--border);
   --color-text: var(--text);
   --color-text-muted: var(--text-muted);
@@ -22,6 +25,11 @@
   --color-down: var(--down);
   --color-down-weak: var(--down-weak);
   --color-warn: var(--warn);
+  --color-warn-weak: var(--warn-weak);
+  --color-info: var(--info);
+  --color-info-weak: var(--info-weak);
+  --color-success: var(--success);
+  --color-success-weak: var(--success-weak);
 
   --radius-card: var(--radius-card);
   --radius-input: var(--radius-input);
@@ -30,6 +38,7 @@
 
   --font-sans: var(--font-noto-sans-tc), "Inter", system-ui, sans-serif;
   --font-num: var(--font-plex-mono), ui-monospace, monospace;
+  --font-serif: var(--font-source-serif), "Noto Serif TC", "Songti TC", Georgia, serif;
 }
 
 html,
@@ -39,10 +48,85 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Height of the phone bottom tab bar (0 from md up, where the sidebar takes over); includes the
+   home-indicator inset. Pages that fill the viewport subtract it. */
+:root {
+  --bottom-nav-h: calc(3.75rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  :root {
+    --bottom-nav-h: 0px;
+  }
+}
+
+/* Never let a long token (URL, ticker run) push the page sideways on narrow screens. */
+html,
+body {
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/**
+ * The card material, defined once: radius, hairline border, surface fill and the resting
+ * elevation. Components compose it (`surface-card p-4 sm:p-5`) instead of repeating the four classes, so a
+ * change to the material is one edit. `surface-card-interactive` adds the hover lift for cards
+ * that are clickable.
+ */
+@utility surface-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+
+@utility surface-card-interactive {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+
+.surface-card-interactive:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-2);
+}
+
+/* A label sitting on a saturated or dark fill (heatmap cells): a soft backing in the page colour so
+   the text stays readable whatever the fill, in both themes. Set the text colour separately. */
+@utility heat-pill {
+  background-color: color-mix(in srgb, var(--bg) 62%, transparent);
+  border-radius: 6px;
+  padding: 0 6px;
+}
+
+/* Skeleton shimmer: a slow highlight sweep, not a pulse. Collapsed by the reduced-motion rule. */
+@keyframes skeleton-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background-color: var(--surface-2);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--text) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s var(--ease-in-out) infinite;
 }
 
 /* Body CJK air: 16px / line-height 1.7. */
@@ -51,11 +135,42 @@ body {
   line-height: 1.7;
 }
 
+@layer base {
+  /* Titles: a touch of tracking opens the dense CJK strokes and reads more composed. */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: 0.012em;
+  }
+}
+
+/* Display serif: big figures and Latin headings. Lining, tabular numerals so a changing price never
+   jitters; light by default - a large thin figure reads as quiet, a heavy one as shouting. */
+.font-display,
+[class~="font-display"] {
+  font-family: var(--font-serif);
+  font-variant-numeric: lining-nums tabular-nums;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
 /* Tabular numerals wherever the mono face is used — flicker-free, column-aligned. */
 .font-num,
 [class~="font-num"] {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
+}
+
+/* Text selection and in-text highlights pick up the palette instead of the browser blue. */
+::selection {
+  background-color: var(--selection);
+  color: inherit;
+}
+
+mark {
+  background-color: var(--highlight);
+  color: inherit;
+  border-radius: 3px;
 }
 
 /* Focus-visible ring: 2px --accent, both themes, never removed (web/CLAUDE.md §7). */
@@ -138,5 +253,48 @@ body {
 @keyframes market-rainbow-spin {
   to {
     --rainbow-angle: 360deg;
+  }
+}
+
+/* Tab strips never wrap their labels; when they outgrow a narrow screen they scroll sideways
+   (scrollbar hidden) instead of crushing each tab into a vertical stack of characters. */
+[role="tab"] {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* A strip with hidden tabs fades the edge(s) that still have more (set by TabStripScroll). */
+[role="tablist"][data-fade-end] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+
+[role="tablist"][data-fade-start] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+}
+
+[role="tablist"][data-fade-start][data-fade-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent
+  );
+}
+
+@media (max-width: 767px) {
+  /* Pill-style strips that wrapped to two rows become one scrollable row. */
+  [role="tablist"] {
+    flex-wrap: nowrap !important;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  [role="tablist"]::-webkit-scrollbar {
+    display: none;
   }
 }

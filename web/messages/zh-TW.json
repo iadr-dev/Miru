@@ -1,4 +1,9 @@
 {
+  "common": {
+    "toast": {
+      "dismiss": "關閉"
+    }
+  },
   "brand": {
     "name": "Miru",
     "logoAlt": "Miru 標誌"
@@ -424,7 +429,8 @@
         "positive": "正貢獻前幾名",
         "negative": "負貢獻前幾名",
         "unavailable": "今日查無指數貢獻資料。",
-        "updatedAt": "資料日期：{date}"
+        "updatedAt": "資料日期：{date}",
+        "estimateNote": "依各股市值與漲跌幅估算，並非證交所公布的流通調整後貢獻點數。"
       },
       "etfList": {
         "title": "ETF 列表",
@@ -602,7 +608,10 @@
     "expand": "展開側欄",
     "collapse": "收合側欄",
     "primary": "主要導覽",
-    "comingSoon": "即將推出"
+    "comingSoon": "即將推出",
+    "more": "更多",
+    "close": "關閉選單",
+    "mobile": "主要導覽"
   },
   "shell": {
     "search": {
@@ -677,7 +686,8 @@
       "deleteGroupConfirmBody": "確定要刪除「{name}」分組嗎？分組內的股票將一併移除，此操作無法復原。",
       "deleteGroupConfirm": "刪除",
       "cancel": "取消",
-      "resizeHandle": "調整自選欄寬度"
+      "resizeHandle": "調整自選欄寬度",
+      "mutationFailed": "這個操作未完成，已為你還原。"
     },
     "sisi": {
       "streak": "連續 {days} 天",
@@ -1297,12 +1307,21 @@
         "deleteWarning": "將刪除群組「{name}」，其中的 {count} 檔標的會一併從這個群組移除（無法復原）。",
         "reorder": "調整順序",
         "reordering": "調整中…",
-        "reorderTo": { "first": "把「{name}」排到最前面", "last": "把「{name}」排到最後面" },
+        "reorderTo": {
+          "first": "把「{name}」排到最前面",
+          "last": "把「{name}」排到最後面"
+        },
         "alreadyThere": "「{name}」已經在那個位置了。",
         "whichGroup": "要處理哪個群組",
-        "groupClass": { "stock": "個股", "etf": "ETF" },
+        "groupClass": {
+          "stock": "個股",
+          "etf": "ETF"
+        },
         "groupNotFound": "找不到名為「{name}」的自選股群組。",
-        "groupFor": { "stock": "個股要放入的群組", "etf": "ETF 要放入的群組" },
+        "groupFor": {
+          "stock": "個股要放入的群組",
+          "etf": "ETF 要放入的群組"
+        },
         "newGroup": "＋ 新增群組",
         "newGroupName": "新群組名稱",
         "add": "加入",
@@ -1541,10 +1560,22 @@
       "title": "Miru 的語氣",
       "description": "選擇你偏好的回覆語氣與風格。",
       "preset": {
-        "steady": { "name": "穩健分析師", "description": "平衡、審慎，兩面的取捨都會說明。" },
-        "coach": { "name": "白話教練", "description": "用白話解釋術語，語氣鼓勵，邊回答邊教學。" },
-        "concise": { "name": "簡潔派", "description": "條列重點、字句精簡，先給結論。" },
-        "data": { "name": "數據派", "description": "數字優先，多用表格，少用文字。" }
+        "steady": {
+          "name": "穩健分析師",
+          "description": "平衡、審慎，兩面的取捨都會說明。"
+        },
+        "coach": {
+          "name": "白話教練",
+          "description": "用白話解釋術語，語氣鼓勵，邊回答邊教學。"
+        },
+        "concise": {
+          "name": "簡潔派",
+          "description": "條列重點、字句精簡，先給結論。"
+        },
+        "data": {
+          "name": "數據派",
+          "description": "數字優先，多用表格，少用文字。"
+        }
       }
     },
     "pets": {
@@ -2139,7 +2170,6 @@
       "toneLink": "前往語氣設定",
       "watchlistHint": "自選股清單在側欄管理，Miru 回答時也會參考。",
       "textExample": "例如：我主要關注高股息 ETF，偏好長期觀點",
-
       "form": {
         "title": "新增記憶",
         "key": "名稱",
@@ -2218,13 +2248,26 @@
         "downstream": "下游"
       },
       "supplyChainTitle": "供應鏈關係圖",
-      "supplyChainHint": "焦點股與其供應／客戶／競爭關係，滑鼠移至節點可查看細節。",
+      "supplyChainHint": "焦點股與其供應商、客戶與同業。供貨方向由左至右；點選名稱可前往該股。",
       "supplyChainUnavailable": "此股票尚無供應鏈關係資料。",
       "supplyChainGraphAria": "{name} 的供應鏈關係圖，共 {count} 條關係",
       "edgeType": {
         "supplies": "供應",
         "customer": "客戶",
         "competes": "競爭"
+      },
+      "supplyChainSuppliers": "上游供應商",
+      "supplyChainCustomers": "下游客戶",
+      "supplyChainCompetitors": "同業競爭",
+      "supplyChainFlow": "{name}",
+      "supplyChainNoSuppliers": "尚無已知供應商資料。",
+      "supplyChainNoCustomers": "尚無已知客戶資料。",
+      "supplyChainShowAll": "顯示全部（再 {count} 家）",
+      "supplyChainShowLess": "收合",
+      "supplyChainRole": {
+        "supplier": "供應商",
+        "customer": "客戶",
+        "competitor": "同業競爭"
       }
     },
     "ai": {

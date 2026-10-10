@@ -1,6 +1,6 @@
 "use client";
 
-import { LockIcon } from "@phosphor-icons/react";
+import { CaretDownIcon, LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
@@ -85,6 +85,8 @@ export function BreadthOrderBookCard({
   const tContribution = useTranslations("market.cards.indexContribution");
   const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
+  // The contribution list is the secondary read on this card: closed by default, one tap to open.
+  const [contributionOpen, setContributionOpen] = useState(false);
 
   const bucketData = BUCKET_ORDER.map((key) => ({
     key,
@@ -99,7 +101,7 @@ export function BreadthOrderBookCard({
     negativeContributors.length > COLLAPSED_CONTRIBUTOR_COUNT;
 
   return (
-    <section className="flex h-full w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex h-full w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       {breadth.data_available ? (
@@ -180,51 +182,80 @@ export function BreadthOrderBookCard({
 
       {indexContribution ? (
         <div className="mt-4 border-[var(--border)] border-t pt-3">
-          <div className="mb-1 flex items-center gap-2">
-            <h3 className="font-medium text-[13px] text-[var(--text)]">{tContribution("title")}</h3>
-            <span className="rounded-[var(--radius-pill)] bg-[var(--warn)]/15 px-2 py-0.5 text-[11px] text-[var(--warn)]">
-              {tContribution("estimateBadge")}
+          <button
+            type="button"
+            aria-expanded={contributionOpen}
+            onClick={() => setContributionOpen((prev) => !prev)}
+            className="flex min-h-11 w-full items-center justify-between gap-2 rounded-[var(--radius-input)] text-left"
+          >
+            <span className="flex items-center gap-2">
+              <span className="font-medium text-[13px] text-[var(--text)]">
+                {tContribution("title")}
+              </span>
+              <span className="rounded-[var(--radius-pill)] bg-[var(--warn-weak)] px-2 py-0.5 text-[11px] text-[var(--warn)]">
+                {tContribution("estimateBadge")}
+              </span>
             </span>
-          </div>
+            <CaretDownIcon
+              size={14}
+              weight="regular"
+              aria-hidden
+              className={cn(
+                "shrink-0 text-[var(--text-muted)] transition-transform duration-[var(--dur-base)]",
+                contributionOpen && "rotate-180",
+              )}
+            />
+          </button>
 
-          <p className="mb-3 text-[11px] text-[var(--text-muted)]">
-            {indexContribution.contribution_caveat}
-          </p>
+          {contributionOpen ? (
+            <div className="pt-1">
+              <p className="mb-3 text-[11px] text-[var(--text-muted)]">
+                {tContribution("estimateNote")}
+              </p>
+              {hasContributors ? (
+                <>
+                  <IndexContributionColumns
+                    positiveContributors={positiveContributors.slice(
+                      0,
+                      COLLAPSED_CONTRIBUTOR_COUNT,
+                    )}
+                    negativeContributors={negativeContributors.slice(
+                      0,
+                      COLLAPSED_CONTRIBUTOR_COUNT,
+                    )}
+                    positiveLabel={tContribution("positive")}
+                    negativeLabel={tContribution("negative")}
+                  />
 
-          {hasContributors ? (
-            <>
-              <IndexContributionColumns
-                positiveContributors={positiveContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
-                negativeContributors={negativeContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
-                positiveLabel={tContribution("positive")}
-                negativeLabel={tContribution("negative")}
-              />
+                  {hasMoreContributors ? (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(true)}
+                      className={cn(
+                        "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                        "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                      )}
+                    >
+                      <span>
+                        {t("expandContribution", {
+                          count: Math.max(positiveContributors.length, negativeContributors.length),
+                        })}
+                      </span>
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-[13px] text-[var(--text-muted)]">
+                  {tContribution("unavailable")}
+                </p>
+              )}
 
-              {hasMoreContributors ? (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(true)}
-                  className={cn(
-                    "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                    "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                  )}
-                >
-                  <span>
-                    {t("expandContribution", {
-                      count: Math.max(positiveContributors.length, negativeContributors.length),
-                    })}
-                  </span>
-                </button>
+              {indexContribution.trade_date ? (
+                <p className="mt-3 text-[11px] text-[var(--text-muted)]">
+                  {tContribution("updatedAt", { date: indexContribution.trade_date })}
+                </p>
               ) : null}
-            </>
-          ) : (
-            <p className="text-[13px] text-[var(--text-muted)]">{tContribution("unavailable")}</p>
-          )}
-
-          {indexContribution.trade_date ? (
-            <p className="mt-3 text-[11px] text-[var(--text-muted)]">
-              {tContribution("updatedAt", { date: indexContribution.trade_date })}
-            </p>
+            </div>
           ) : null}
 
           <ExpandModal

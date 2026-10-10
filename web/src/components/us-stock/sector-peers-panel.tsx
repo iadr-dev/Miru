@@ -46,7 +46,7 @@ export function SectorPeersPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={420} />
       </section>
     );
@@ -60,7 +60,7 @@ export function SectorPeersPanel({
     data.industry_peers.length === 0
   ) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>
       </section>
@@ -122,7 +122,7 @@ function IndustriesTreemapSection({
   const ranked = [...rows].sort((a, b) => b.market_weight - a.market_weight);
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{title}</h2>
         <button
@@ -191,7 +191,7 @@ function SectorStatsCards({ stats }: { readonly stats: SectorOverviewStats }): R
   ];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map(([label, value, color]) => (
           <div key={label}>
@@ -234,7 +234,7 @@ function PeerCard({
   );
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{title}</h2>
       {companyRows.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{emptyLabel}</p>

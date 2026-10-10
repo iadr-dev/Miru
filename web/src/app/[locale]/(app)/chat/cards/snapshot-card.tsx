@@ -191,9 +191,7 @@ export function SnapshotCard({ card_type, data }: { card_type: string; data: unk
   if (data && typeof data === "object" && (data as Record<string, unknown>).found === false) {
     const message = (data as Record<string, unknown>).message;
     return typeof message === "string" && message.length > 0 ? (
-      <p className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4 text-[13px] text-[var(--text-muted)]">
-        {message}
-      </p>
+      <p className="mt-3 surface-card p-4 text-[13px] text-[var(--text-muted)]">{message}</p>
     ) : null;
   }
 
@@ -214,7 +212,7 @@ export function SnapshotCard({ card_type, data }: { card_type: string; data: unk
   const typeLabel = cardTypeLabel(t, card_type);
 
   return (
-    <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <div className="mt-3 surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <span className="font-medium text-[13px] text-[var(--text-muted)]">
           {symbol ?? typeLabel}

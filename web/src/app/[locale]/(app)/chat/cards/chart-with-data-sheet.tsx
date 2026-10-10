@@ -65,7 +65,7 @@ export function ChartWithDataSheet({
   const columns = columnsFor(rows);
 
   return (
-    <div className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4">
+    <div className="mt-3 surface-card p-4">
       {children}
       {rows.length > 0 && columns.length > 0 ? (
         <div className="mt-3 border-[var(--border)] border-t pt-3">

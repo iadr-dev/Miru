@@ -33,10 +33,7 @@ export function AskUserCard({
   }
 
   return (
-    <div
-      className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4"
-      aria-live="off"
-    >
+    <div className="mt-3 surface-card p-4" aria-live="off">
       <div className="flex items-start gap-2">
         <QuestionIcon
           size={18}

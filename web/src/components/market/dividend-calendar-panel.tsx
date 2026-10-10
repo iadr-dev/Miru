@@ -45,7 +45,7 @@ export function DividendCalendarPanel({ market }: { readonly market: Market }): 
   };
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
       <QueryState query={query} skeleton={<CardSkeletonBody height={480} />}>
         {(data) => {

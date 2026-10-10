@@ -1,11 +1,13 @@
 "use client";
 
+import { BellSimpleIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { toNotificationView } from "@/components/shell/notification-payload";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Link } from "@/i18n/navigation";
 import { listNotifications, markNotificationsRead } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
@@ -45,7 +47,9 @@ export function NotificationHistory(): ReactNode {
 
   const items = (query.data ?? []).map(toNotificationView);
   if (items.length === 0) {
-    return <p className="py-6 text-center text-[14px] text-[var(--text-muted)]">{t("empty")}</p>;
+    return (
+      <EmptyState compact icon={<BellSimpleIcon size={20} weight="regular" />} title={t("empty")} />
+    );
   }
   const unread = items.filter((item) => item.unread).length;
 

@@ -111,7 +111,6 @@ export function PetsPanel(): ReactNode {
     );
   }
 
-  const ownedByPetId = new Set((ownedQuery.data ?? []).map((p) => p.pet_id));
   const activeRecordId = activeQuery.data?.id ?? null;
   const progress = progressQuery.data;
   const canPull = (progress?.available_pulls ?? 0) > 0;

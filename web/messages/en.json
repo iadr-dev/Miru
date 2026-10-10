@@ -1,4 +1,9 @@
 {
+  "common": {
+    "toast": {
+      "dismiss": "Dismiss"
+    }
+  },
   "brand": {
     "name": "Miru",
     "logoAlt": "Miru logo"
@@ -424,7 +429,8 @@
         "positive": "Top positive",
         "negative": "Top negative",
         "unavailable": "No contribution data for today.",
-        "updatedAt": "As of {date}"
+        "updatedAt": "As of {date}",
+        "estimateNote": "Estimated from each stock's market value and price change. It is not the exchange's official float-adjusted contribution figure."
       },
       "etfList": {
         "title": "ETF List",
@@ -602,7 +608,10 @@
     "expand": "Expand sidebar",
     "collapse": "Collapse sidebar",
     "primary": "Primary",
-    "comingSoon": "Coming soon"
+    "comingSoon": "Coming soon",
+    "more": "More",
+    "close": "Close menu",
+    "mobile": "Main navigation"
   },
   "shell": {
     "search": {
@@ -677,7 +686,8 @@
       "deleteGroupConfirmBody": "Delete the \"{name}\" group? Its stocks will be removed too — this can't be undone.",
       "deleteGroupConfirm": "Delete",
       "cancel": "Cancel",
-      "resizeHandle": "Resize watchlist panel"
+      "resizeHandle": "Resize watchlist panel",
+      "mutationFailed": "That did not go through, so it was undone."
     },
     "sisi": {
       "streak": "{days}-day streak",
@@ -1297,12 +1307,21 @@
         "deleteWarning": "This deletes the group “{name}”; its {count} symbols leave it too (cannot be undone).",
         "reorder": "Reorder",
         "reordering": "Reordering…",
-        "reorderTo": { "first": "Put “{name}” first", "last": "Put “{name}” last" },
+        "reorderTo": {
+          "first": "Put “{name}” first",
+          "last": "Put “{name}” last"
+        },
         "alreadyThere": "“{name}” is already there.",
         "whichGroup": "Which group",
-        "groupClass": { "stock": "Stocks", "etf": "ETFs" },
+        "groupClass": {
+          "stock": "Stocks",
+          "etf": "ETFs"
+        },
         "groupNotFound": "No watchlist group named “{name}”.",
-        "groupFor": { "stock": "Group for the stocks", "etf": "Group for the ETFs" },
+        "groupFor": {
+          "stock": "Group for the stocks",
+          "etf": "Group for the ETFs"
+        },
         "newGroup": "+ New group",
         "newGroupName": "New group name",
         "add": "Add",
@@ -1553,7 +1572,10 @@
           "name": "Concise",
           "description": "Bullet points, terse, leads with the takeaway."
         },
-        "data": { "name": "Data-first", "description": "Numbers first, tables, minimal prose." }
+        "data": {
+          "name": "Data-first",
+          "description": "Numbers first, tables, minimal prose."
+        }
       }
     },
     "pets": {
@@ -2148,7 +2170,6 @@
       "toneLink": "Go to Tone settings",
       "watchlistHint": "Your watchlist is managed in the sidebar; answers draw on it too.",
       "textExample": "e.g. I mostly follow high-dividend ETFs and prefer a long-term view",
-
       "form": {
         "title": "Add memory",
         "key": "Key",
@@ -2227,13 +2248,26 @@
         "downstream": "Downstream"
       },
       "supplyChainTitle": "Supply Chain Graph",
-      "supplyChainHint": "The focus stock's supply/customer/competitor relationships — hover a node for details.",
+      "supplyChainHint": "The company in focus, its suppliers, customers and peers. Supply flows left to right; select a name to open that stock.",
       "supplyChainUnavailable": "No supply-chain relationship data for this stock yet.",
       "supplyChainGraphAria": "{name}'s supply-chain graph, {count} relationships",
       "edgeType": {
         "supplies": "Supplies",
         "customer": "Customer",
         "competes": "Competes"
+      },
+      "supplyChainSuppliers": "Upstream suppliers",
+      "supplyChainCustomers": "Downstream customers",
+      "supplyChainCompetitors": "Competitors",
+      "supplyChainFlow": "{name}",
+      "supplyChainNoSuppliers": "No known suppliers on record.",
+      "supplyChainNoCustomers": "No known customers on record.",
+      "supplyChainShowAll": "Show all ({count} more)",
+      "supplyChainShowLess": "Show fewer",
+      "supplyChainRole": {
+        "supplier": "supplier",
+        "customer": "customer",
+        "competitor": "competitor"
       }
     },
     "ai": {

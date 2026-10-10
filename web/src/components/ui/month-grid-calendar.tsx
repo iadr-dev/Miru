@@ -83,7 +83,7 @@ export function MonthGridCalendar({
                 "flex min-h-12 flex-col items-center gap-1 rounded-[var(--radius-input)] py-1.5 text-[12px] transition-colors",
                 !inMonth && "text-[var(--text-muted)] opacity-40",
                 inMonth && !isSelected && "text-[var(--text)] hover:bg-[var(--surface-2)]",
-                isSelected && "bg-[var(--accent)] font-semibold text-[color:#06231F]",
+                isSelected && "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]",
                 iso === todayIso && !isSelected && "ring-1 ring-[var(--accent)]",
               )}
             >

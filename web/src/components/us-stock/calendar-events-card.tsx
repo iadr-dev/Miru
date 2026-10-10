@@ -41,7 +41,7 @@ export function UsMarketCalendarCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={220} />
       </section>
     );
@@ -79,7 +79,7 @@ export function UsMarketCalendarCard({
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("calendarTitle")}</h2>
         {events.length > 0 ? (

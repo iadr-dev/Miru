@@ -65,7 +65,7 @@ export function TrackerPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={320} />
       </section>
     );
@@ -75,7 +75,7 @@ export function TrackerPanel({
 
   if (isMaskedTeaser(data)) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <SponsorTeaser
           headline={t("sponsorLocked")}
@@ -89,7 +89,7 @@ export function TrackerPanel({
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">
           {t("title")}
@@ -116,7 +116,7 @@ export function TrackerPanel({
             className={cn(
               "rounded-[var(--radius-pill)] px-3 py-1.5 text-[12.5px] transition-colors",
               subTab === key
-                ? "bg-[var(--accent)] text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

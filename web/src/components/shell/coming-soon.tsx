@@ -14,7 +14,7 @@ export function ComingSoon({
 }): ReactNode {
   return (
     <div className="flex min-h-full items-center justify-center p-6">
-      <div className="w-full max-w-lg rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-8 text-center">
+      <div className="w-full max-w-lg surface-card p-8 text-center">
         <div className="mx-auto grid size-12 place-items-center rounded-[var(--radius-button)] bg-[var(--surface-2)]">
           <Icon size={24} weight="regular" className="text-[var(--text-muted)]" />
         </div>

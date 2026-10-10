@@ -150,7 +150,7 @@ export function GateBar({
             className={cn(
               "flex min-h-9 items-center gap-1 rounded-[var(--radius-pill)] px-2.5 font-medium text-[12px] transition-colors",
               (overrides.exclude_leveraged_inverse ?? true)
-                ? "bg-[var(--accent)] text-[var(--bg)]"
+                ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
                 : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >
@@ -223,7 +223,7 @@ export function GateBar({
                   className={cn(
                     "flex min-h-9 items-center gap-1 rounded-[var(--radius-pill)] px-2.5 font-medium text-[12px] transition-colors",
                     active
-                      ? "bg-[var(--accent)] text-[var(--bg)]"
+                      ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
                       : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
                   )}
                 >

@@ -1,109 +1,276 @@
 /**
  * Single source of truth for the design tokens.
- * Set once at :root per theme; components read only var(--token) — never a hardcoded hex.
+ * Set once at :root per theme; components read only var(--token) - never a hardcoded hex.
  * This file is the palette the shared mobile client is expected to consume too, so values
  * live here and nowhere else.
  *
- * Off-black / off-white only (never pure #000/#fff). One accent (藍鵲 teal), chrome-only.
- * 紅漲綠跌: --up is 漲 red, --down is 跌 green — market-data tokens, never chrome, always
- * paired with ▲▼ + sign in components.
+ * Direction: warm and quiet, in the spirit of a maison's boutique - ivory and saddle-leather
+ * neutrals, one signature orange, a handful of deep jewel tones. Three layers:
+ *
+ *   1. PRIMITIVES (:root, theme-independent): named palette anchors and tonal ramps. Nothing in a
+ *      component reads these directly; they are the vocabulary the semantic layer is built from.
+ *   2. SEMANTIC (per theme): what a colour *means* - surface, border, text, accent, market
+ *      up/down, status, categorical chart series. Components read only these.
+ *   3. SCALES (:root): radius, motion.
+ *
+ * Rules that do not move:
+ *   - Off-black / off-white only (never pure #000/#fff). Neutrals are warm, never blue-grey.
+ *   - ONE accent (Orange H), chrome-only: buttons, selection, focus, active tabs. Never a price.
+ *   - 紅漲綠跌: --up is 漲 red, --down is 跌 green - market-data tokens, never chrome, always
+ *     paired with ▲▼ + sign in components. No other token may reuse their meaning.
+ *   - Status colours (--info, --success, --warn) and the categorical chart series are never
+ *     signed: they must not be mistaken for 漲/跌.
+ *   - Every text/background pair below was checked: body text >= 4.5:1 on every surface, muted
+ *     text >= 4.5:1 on --surface and --surface-2, graphical colours >= 3:1.
  */
 
+/* ------------------------------------------------------------------------------------------
+ * 1. PRIMITIVES
+ * ---------------------------------------------------------------------------------------- */
+:root {
+  /* Anchors - named for the materials and house colours that inspired them. */
+  --hx-orange: #f37021; /* the signature box orange */
+  --hx-ebene: #14110f; /* ebony: the darkest brown-black */
+  --hx-creme: #f6f1e8; /* cream paper */
+  --hx-ivoire: #fffdf9; /* ivory: the lightest surface */
+  --hx-etoupe: #a99d8e; /* etoupe: warm grey-brown, the muted-text hue */
+  --hx-fauve: #b9803c; /* fauve: saddle-leather gold */
+  --hx-rouge: #d42a20; /* rouge H: deep red (漲) */
+  --hx-vert: #0e9e6b; /* cypress green (跌) */
+  --hx-bleu: #2f66c4; /* sapphire blue */
+  --hx-anemone: #7b55d0; /* anemone violet */
+  --hx-azalee: #b8426f; /* azalea rose */
+  --hx-ocre: #b8860b; /* ochre yellow */
+  --hx-cypres: #0e8f80; /* cypress teal */
+
+  /* Warm neutral ramp: cream (50) to ebony (950), mixed in a perceptual space so the steps are even. */
+  --neutral-50: color-mix(in oklab, var(--hx-ivoire) 100%, var(--hx-ebene));
+  --neutral-100: color-mix(in oklab, var(--hx-ivoire) 92%, var(--hx-ebene));
+  --neutral-200: color-mix(in oklab, var(--hx-ivoire) 82%, var(--hx-ebene));
+  --neutral-300: color-mix(in oklab, var(--hx-ivoire) 68%, var(--hx-ebene));
+  --neutral-400: color-mix(in oklab, var(--hx-ivoire) 54%, var(--hx-ebene));
+  --neutral-500: color-mix(in oklab, var(--hx-ivoire) 42%, var(--hx-ebene));
+  --neutral-600: color-mix(in oklab, var(--hx-ivoire) 32%, var(--hx-ebene));
+  --neutral-700: color-mix(in oklab, var(--hx-ivoire) 22%, var(--hx-ebene));
+  --neutral-800: color-mix(in oklab, var(--hx-ivoire) 14%, var(--hx-ebene));
+  --neutral-900: color-mix(in oklab, var(--hx-ivoire) 8%, var(--hx-ebene));
+  --neutral-950: var(--hx-ebene);
+
+  /* Hue ramps: 100 (tint) / 300 / 500 (the anchor) / 700 / 900 (shade), one per anchor hue. */
+  --orange-100: color-mix(in oklab, var(--hx-orange) 14%, var(--hx-ivoire));
+  --orange-300: color-mix(in oklab, var(--hx-orange) 50%, var(--hx-ivoire));
+  --orange-500: var(--hx-orange);
+  --orange-700: color-mix(in oklab, var(--hx-orange) 70%, var(--hx-ebene));
+  --orange-900: color-mix(in oklab, var(--hx-orange) 36%, var(--hx-ebene));
+
+  --fauve-100: color-mix(in oklab, var(--hx-fauve) 14%, var(--hx-ivoire));
+  --fauve-300: color-mix(in oklab, var(--hx-fauve) 50%, var(--hx-ivoire));
+  --fauve-500: var(--hx-fauve);
+  --fauve-700: color-mix(in oklab, var(--hx-fauve) 70%, var(--hx-ebene));
+  --fauve-900: color-mix(in oklab, var(--hx-fauve) 36%, var(--hx-ebene));
+
+  --rouge-100: color-mix(in oklab, var(--hx-rouge) 12%, var(--hx-ivoire));
+  --rouge-300: color-mix(in oklab, var(--hx-rouge) 50%, var(--hx-ivoire));
+  --rouge-500: var(--hx-rouge);
+  --rouge-700: color-mix(in oklab, var(--hx-rouge) 70%, var(--hx-ebene));
+  --rouge-900: color-mix(in oklab, var(--hx-rouge) 34%, var(--hx-ebene));
+
+  --vert-100: color-mix(in oklab, var(--hx-vert) 12%, var(--hx-ivoire));
+  --vert-300: color-mix(in oklab, var(--hx-vert) 50%, var(--hx-ivoire));
+  --vert-500: var(--hx-vert);
+  --vert-700: color-mix(in oklab, var(--hx-vert) 70%, var(--hx-ebene));
+  --vert-900: color-mix(in oklab, var(--hx-vert) 34%, var(--hx-ebene));
+
+  --bleu-100: color-mix(in oklab, var(--hx-bleu) 12%, var(--hx-ivoire));
+  --bleu-300: color-mix(in oklab, var(--hx-bleu) 50%, var(--hx-ivoire));
+  --bleu-500: var(--hx-bleu);
+  --bleu-700: color-mix(in oklab, var(--hx-bleu) 70%, var(--hx-ebene));
+  --bleu-900: color-mix(in oklab, var(--hx-bleu) 34%, var(--hx-ebene));
+
+  --anemone-100: color-mix(in oklab, var(--hx-anemone) 12%, var(--hx-ivoire));
+  --anemone-300: color-mix(in oklab, var(--hx-anemone) 50%, var(--hx-ivoire));
+  --anemone-500: var(--hx-anemone);
+  --anemone-700: color-mix(in oklab, var(--hx-anemone) 70%, var(--hx-ebene));
+  --anemone-900: color-mix(in oklab, var(--hx-anemone) 34%, var(--hx-ebene));
+
+  --azalee-100: color-mix(in oklab, var(--hx-azalee) 12%, var(--hx-ivoire));
+  --azalee-300: color-mix(in oklab, var(--hx-azalee) 50%, var(--hx-ivoire));
+  --azalee-500: var(--hx-azalee);
+  --azalee-700: color-mix(in oklab, var(--hx-azalee) 70%, var(--hx-ebene));
+  --azalee-900: color-mix(in oklab, var(--hx-azalee) 34%, var(--hx-ebene));
+
+  --ocre-100: color-mix(in oklab, var(--hx-ocre) 14%, var(--hx-ivoire));
+  --ocre-300: color-mix(in oklab, var(--hx-ocre) 50%, var(--hx-ivoire));
+  --ocre-500: var(--hx-ocre);
+  --ocre-700: color-mix(in oklab, var(--hx-ocre) 70%, var(--hx-ebene));
+  --ocre-900: color-mix(in oklab, var(--hx-ocre) 36%, var(--hx-ebene));
+
+  --cypres-100: color-mix(in oklab, var(--hx-cypres) 12%, var(--hx-ivoire));
+  --cypres-300: color-mix(in oklab, var(--hx-cypres) 50%, var(--hx-ivoire));
+  --cypres-500: var(--hx-cypres);
+  --cypres-700: color-mix(in oklab, var(--hx-cypres) 70%, var(--hx-ebene));
+  --cypres-900: color-mix(in oklab, var(--hx-cypres) 34%, var(--hx-ebene));
+}
+
+/* ------------------------------------------------------------------------------------------
+ * 2. SEMANTIC - dark (default): "Ebene", ebony and saddle leather
+ * ---------------------------------------------------------------------------------------- */
 :root,
 :root[data-theme="dark"] {
-  --bg: #0b0e13;
-  --surface: #12161d;
-  --surface-2: #1a1f28;
-  --border: #232a35;
-  --text: #e6eaf0;
-  --text-muted: #8a93a3;
-  --accent: #2dd4bf;
-  --accent-weak: #123c39;
-  /* --accent already clears 4.5:1 as text in dark mode, so the text-safe variant is a no-op
-     alias here — see the light-theme block below for why light mode needs a real darken. */
+  /* Surfaces: a warm brown-black, each step a touch lighter. */
+  --bg: #100d0b;
+  --surface: #1d1916;
+  --surface-2: #27211d;
+  /* Third step: hovered / selected rows and chips sitting on --surface-2. */
+  --surface-3: #312b26;
+  --border: #342d27;
+  /* Stronger hairline for hover / focus-within edges; --border stays the resting edge. */
+  --border-strong: #4c4238;
+
+  /* Text: cream, never white. Muted is etoupe, tuned to hold 6:1+ on every surface. */
+  --text: #f4ede3;
+  --text-muted: #a99d8e;
+
+  /* Accent - Orange H, chrome-only. --accent-weak is the quiet wash behind an active state. */
+  --accent: #f2873a;
+  --accent-weak: #3b2314;
   --accent-text: var(--accent);
-  /* TW market convention — RED UP / GREEN DOWN */
+  /* Text/icon ON an --accent fill (filled buttons, selected pills). */
+  --on-accent: #2a1304;
+
+  /* TW market convention - RED UP / GREEN DOWN. Market data only. */
   --up: #f0483e;
-  --up-weak: #2a1512;
+  --up-weak: #2e1713;
   --down: #1fb574;
-  --down-weak: #0e2a1e;
-  --warn: #f5a524;
-  /* categorical chart series (never signed, distinct from up/down + accent) */
-  --chart-1: #6aa9ff;
-  --chart-2: #c08cff;
-  --chart-3: #f5a524;
-  --chart-4: #4fd1c5;
-  --chart-5: #e06c9f;
-  --chart-6: #93a3b8;
-  /* Extended categorical set for a chart tracking more than 6 simultaneous series (e.g. the
-     financial-statement trend chart's 10 tracked line items) — same categorical-only rule as
-     --chart-1..6 (never signed, never --up/--down), just four more distinct hues so a
-     10-series chart never has to repeat a color. */
+  --down-weak: #12261c;
+
+  /* Status - never signed, never 漲/跌. warn = ochre yellow (kept clear of the orange accent). */
+  --warn: #e5b53d;
+  --warn-weak: #33280f;
+  --info: #6aa0f0;
+  --info-weak: #16233b;
+  --success: #3fb8a5;
+  --success-weak: #11302b;
+
+  /* Categorical chart series (never signed): sapphire, anemone, ochre, cypress, azalea, etoupe. */
+  --chart-1: #6aa0f0;
+  --chart-2: #b58ae0;
+  --chart-3: #e5b53d;
+  --chart-4: #4fb5a5;
+  --chart-5: #e27aa3;
+  --chart-6: #a39787;
+  /* Extended set for a chart tracking more than 6 series (never signed either). */
   --chart-7: #7dd3fc;
-  --chart-8: #fb923c;
-  --chart-9: #a3e635;
-  --chart-10: #f472b6;
-  --grid: #1a1f28;
-  --crosshair: #8a93a3;
-  /* --chart-4 as body *text* needs the 4.5:1 text threshold, not the 3:1 graphical-element
-     threshold it's tuned for — this variant is AA-safe as text in each theme (dark mode's
-     --chart-4 already clears 4.5:1, so it's reused as-is here). */
+  --chart-8: #f2873a;
+  --chart-9: #a3c76a;
+  --chart-10: #f08fb5;
+  --grid: #27211d;
+  --crosshair: #a99d8e;
+  /* --chart-4 as body *text* needs the 4.5:1 threshold; already met in dark. */
   --chart-4-text: var(--chart-4);
+
+  /* Icon identities: the sun is warm gold, the moon a soft periwinkle, the favourites star gold.
+     Chrome only - none of these is a market colour. */
+  --sun: #f0b34a;
+  --moon: #a9b9f2;
+  --star: #f0b34a;
+
+  /* Interaction washes. */
+  --overlay: rgb(12 9 7 / 0.62);
+  --selection: rgb(242 135 58 / 0.32);
+  --highlight: rgb(229 181 61 / 0.22);
+
+  /* Elevation (dark): a 1px top highlight + a soft drop. 1 = resting card, 2 = hovered /
+     raised, 3 = floating (menus, dialogs). */
+  --shadow-1: inset 0 1px 0 rgb(255 240 220 / 0.04), 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: inset 0 1px 0 rgb(255 240 220 / 0.05), 0 6px 20px rgb(0 0 0 / 0.42);
+  --shadow-3: 0 16px 48px rgb(0 0 0 / 0.58);
 
   color-scheme: dark;
 }
 
+/* ------------------------------------------------------------------------------------------
+ * 2. SEMANTIC - light: "Creme", cream paper and ivory
+ * ---------------------------------------------------------------------------------------- */
 :root[data-theme="light"] {
-  --bg: #f7f8fa;
-  --surface: #ffffff;
-  --surface-2: #f0f2f5;
-  --border: #e2e6ec;
-  --text: #0e1319;
-  --text-muted: #5b6472;
-  --accent: #0e9e8e;
-  --accent-weak: #dcf5f1;
-  /* --accent (#0e9e8e) measures ~3.33:1 on white — meets the 3:1 graphical-element threshold
-     it's tuned for (icons, borders, focus rings), but not 4.5:1 for body text. Darkened
-     text-only variant for the few places --accent is used as a text/link color (retry links,
-     markdown links/inline-code) — same hue, AA-safe at 4.5:1+ against every light surface this
-     app puts text on; graphical uses stay on the untouched --accent token. */
-  --accent-text: #0a7367;
+  --bg: #f6f1e8;
+  --surface: #fffdf9;
+  --surface-2: #f0e9dd;
+  --surface-3: #e6ddcd;
+  --border: #e4daca;
+  --border-strong: #cdbfa8;
+
+  --text: #221c16;
+  --text-muted: #6a5f52;
+
+  /* #b94a14 is 5.1:1 on ivory (graphical) and carries cream text at 4.9:1. For accent used as
+     *text* (links, retry) the darker --accent-text keeps 6:1+. */
+  --accent: #b94a14;
+  --accent-weak: #fbe4d3;
+  --accent-text: #9a3c0c;
+  --on-accent: #fff7ee;
+
   --up: #d42a20;
-  --up-weak: #fce9e7;
+  --up-weak: #fce6e2;
   --down: #0e9e6b;
-  --down-weak: #e3f6ee;
-  /* #b26a00 measured ~4.24:1 on white — just under the 4.5:1 AA text threshold; darkened to
-     restore AA while staying the same amber hue (chrome/graphical uses of --warn at 3px+ borders
-     etc. are unaffected by the text-contrast requirement, so this is a like-for-like darken, not
-     a hue change). */
-  --warn: #996000;
-  --chart-1: #3b6fd4;
-  --chart-2: #7c5ce0;
-  --chart-3: #b07d00;
-  --chart-4: #0e9e8e;
-  --chart-5: #c64c7e;
-  --chart-6: #64748b;
-  /* Light-theme counterparts of the extended set above — same hues, darkened for the light
-     surface (same convention every --chart-1..6 pair already follows). */
+  --down-weak: #ddf2e8;
+
+  /* Ochre darkened to hold 5.4:1 as text on ivory. */
+  --warn: #8a6200;
+  --warn-weak: #f8ecc8;
+  --info: #2f66c4;
+  --info-weak: #dce8fa;
+  --success: #0b7e70;
+  --success-weak: #d8f0ec;
+
+  --chart-1: #2f66c4;
+  --chart-2: #7b55d0;
+  --chart-3: #9a6a00;
+  --chart-4: #0e8f80;
+  --chart-5: #b8426f;
+  --chart-6: #5f6b7a;
   --chart-7: #0284c7;
   --chart-8: #c2410c;
   --chart-9: #4d7c0f;
   --chart-10: #be185d;
-  --grid: #e2e6ec;
-  --crosshair: #5b6472;
-  /* --chart-4 (#0e9e8e) measures ~3.33:1 on white — meets the 3:1 graphical-element threshold
-     it's tuned for, but not the 4.5:1 text threshold. Darkened text-only variant for the one
-     place it's used as text (pet rarity labels); the token itself is untouched for graphical
-     uses (chart series, fills) where 3:1 is correct. */
+  --grid: #e4daca;
+  --crosshair: #6a5f52;
+  /* --chart-4 is 3.9:1 on ivory - fine for graphics, short of the 4.5:1 text threshold. */
   --chart-4-text: #0a7166;
+
+  /* Icon identities (light): deeper so they hold 3:1+ on cream. */
+  --sun: #b36d00;
+  --moon: #4a5fb0;
+  --star: #a86f00;
+
+  --overlay: rgb(34 28 22 / 0.42);
+  --selection: rgb(185 74 20 / 0.22);
+  --highlight: rgb(184 134 11 / 0.2);
+
+  /* Elevation (light): warm-tinted shadows so they read as paper, not grey. */
+  --shadow-1: 0 1px 2px rgb(60 40 20 / 0.07), 0 1px 1px rgb(60 40 20 / 0.04);
+  --shadow-2: 0 6px 20px rgb(60 40 20 / 0.11), 0 1px 2px rgb(60 40 20 / 0.06);
+  --shadow-3: 0 16px 48px rgb(60 40 20 / 0.2);
 
   color-scheme: light;
 }
 
-/* Radius scale (locked) + spacing base as tokens. */
+/* ------------------------------------------------------------------------------------------
+ * 3. SCALES
+ * ---------------------------------------------------------------------------------------- */
+/* Radius scale (locked) + motion scale as tokens. */
 :root {
   --radius-card: 16px;
   --radius-input: 10px;
   --radius-pill: 999px;
   --radius-button: 12px;
+
+  /* Motion scale - one set of durations and curves for every transition. Restrained and
+     purposeful: feedback is fast, entrances are a touch slower, nothing is magnitude-scaled. The
+     global reduced-motion rule in globals.css still collapses all of it. */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 }

@@ -46,7 +46,7 @@ export function FundHoldingsPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={360} />
       </section>
     );
@@ -56,7 +56,7 @@ export function FundHoldingsPanel({
 
   if (data.holdings.length === 0 && data.sector_weightings.length === 0) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)] leading-[1.6]">
           {t("unavailable")}
@@ -70,7 +70,7 @@ export function FundHoldingsPanel({
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       {sectorSlices.length > 0 ? (
-        <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+        <section className="surface-card p-4 sm:p-5 xl:col-span-2">
           <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("sectorTitle")}</h2>
           <DonutWithLegend slices={sectorSlices} />
         </section>
@@ -130,7 +130,7 @@ function HoldingsCard({
   );
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("holdingsTitle")}</h2>
       <div className="overflow-x-auto">{table(collapsedRows)}</div>
       {ranked.length > DATA_SHEET_COLLAPSED_ROW_COUNT ? (

@@ -126,7 +126,7 @@ export function TechnicalAnalysisPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={480} />
       </section>
     );
@@ -134,7 +134,7 @@ export function TechnicalAnalysisPanel({
   const data = query.data;
   if (!data?.data_available || data.bars.length === 0) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       </section>
@@ -147,7 +147,7 @@ export function TechnicalAnalysisPanel({
   const bucketed = bucketBars(data.bars, timeframe);
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <div className="flex flex-wrap items-center gap-3">
@@ -222,7 +222,7 @@ function TimeframeToggle({
           className={cn(
             "rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-colors",
             value === opt
-              ? "bg-[var(--accent)] text-[color:#06231F]"
+              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
               : "text-[var(--text-muted)] hover:text-[var(--text)]",
           )}
         >
@@ -253,7 +253,7 @@ function RangeToggle({
           className={cn(
             "rounded-[var(--radius-pill)] px-2 py-1 font-medium text-[11px] transition-colors",
             value === opt
-              ? "bg-[var(--accent)] text-[color:#06231F]"
+              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
               : "text-[var(--text-muted)] hover:text-[var(--text)]",
           )}
         >
@@ -329,7 +329,7 @@ function StructureToggleRow({
         className={cn(
           "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
           showSupportResistance
-            ? "bg-[var(--accent)] text-[color:#06231F]"
+            ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
             : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
         )}
       >
@@ -342,7 +342,7 @@ function StructureToggleRow({
         className={cn(
           "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
           showPatterns
-            ? "bg-[var(--accent)] text-[color:#06231F]"
+            ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
             : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
         )}
       >
@@ -409,7 +409,7 @@ function OverlayToggleRow({
             className={cn(
               "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
               active
-                ? "bg-[var(--accent)] text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
                 : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

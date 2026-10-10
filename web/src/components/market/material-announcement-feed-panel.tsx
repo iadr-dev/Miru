@@ -40,7 +40,7 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
   });
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
       <QueryState query={query} skeleton={<CardSkeletonBody height={380} />}>
         {(data) => {
@@ -89,7 +89,7 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
                         className={cn(
                           "rounded-[var(--radius-pill)] px-2.5 py-1 font-num text-[11px] tabular-nums transition-colors",
                           (tradeDate ?? data.report_date) === date
-                            ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                            ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                             : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
                         )}
                       >
@@ -158,7 +158,7 @@ function CategoryChip({
         active
           ? color
             ? "font-semibold"
-            : "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+            : "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
           : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
       )}
     >

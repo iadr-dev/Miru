@@ -57,7 +57,7 @@ export function PetCompanion({
   const message = noticeMessage(notice, t);
 
   return (
-    <div className="mx-auto mb-2 flex w-fit max-w-full items-center gap-2.5 text-[12px] text-[var(--text-muted)]">
+    <div className="mx-auto mb-2 flex w-fit max-w-full items-center gap-2.5 text-[12px] text-[var(--text-muted)] [@media(max-height:500px)]:hidden">
       <PetAvatar
         petId={pet.pet_id}
         rarity={entry?.rarity ?? "common"}

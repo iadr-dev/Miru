@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
 
 /**
@@ -16,13 +17,7 @@ export function CardSkeleton({
   readonly className?: string;
 }): ReactNode {
   return (
-    <section
-      aria-hidden
-      className={cn(
-        "flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
-        className,
-      )}
-    >
+    <section aria-hidden className={cn("surface-card flex w-full flex-col p-5", className)}>
       <CardSkeletonBody height={height} />
     </section>
   );
@@ -41,9 +36,9 @@ export function CardSkeletonBody({
   readonly className?: string;
 }): ReactNode {
   return (
-    <div aria-hidden className={cn("animate-pulse space-y-3", className)} style={{ height }}>
-      <div className="h-4 w-1/3 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-      <div className="h-full rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
+    <div aria-hidden className={cn("flex flex-col gap-3", className)} style={{ height }}>
+      <Skeleton className="h-4 w-1/3 shrink-0" />
+      <Skeleton className="min-h-0 flex-1" />
     </div>
   );
 }

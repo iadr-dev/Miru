@@ -38,7 +38,7 @@ export function ActiveReportPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={420} />
       </section>
     );
@@ -47,7 +47,7 @@ export function ActiveReportPanel({
 
   if (isMaskedTeaser(query.data)) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <SponsorTeaser
           headline={t("title")}
           preview={query.data.preview}
@@ -71,7 +71,7 @@ export function ActiveReportBody({ data }: { readonly data: ActiveEtfReportData 
 
   if (data.report_date == null) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
       </section>
@@ -102,7 +102,7 @@ function ActiveReportSummaryCard({
   };
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-baseline justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <span className="text-[11px] text-[var(--text-muted)]">
@@ -170,7 +170,7 @@ function ActiveReportHoldingsCard({
   const locale = useLocale();
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("holdingsTitle")}</h2>
       {data.rows.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("noChanges")}</p>

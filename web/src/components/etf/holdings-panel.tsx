@@ -49,7 +49,7 @@ export function HoldingsPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={360} />
       </section>
     );
@@ -58,7 +58,7 @@ export function HoldingsPanel({
 
   if (isMaskedTeaser(query.data)) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <SponsorTeaser
           headline={t("title")}
           preview={query.data.preview}
@@ -73,7 +73,7 @@ export function HoldingsPanel({
   const data = query.data;
   if (data.report_date == null || data.current_holdings.length === 0) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)] leading-[1.6]">
           {t("passiveUnavailable")}
@@ -90,7 +90,7 @@ export function HoldingsPanel({
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <div className="mb-3 flex items-baseline justify-between gap-2">
           <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
           <span className="text-[11px] text-[var(--text-muted)]">
@@ -115,7 +115,7 @@ export function HoldingsPanel({
               className={cn(
                 "min-h-8 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
                 subTab === key
-                  ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                  ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
             >
@@ -310,7 +310,7 @@ function DataSheetCard({
   const t = useTranslations("etf.holdings");
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{title}</h2>
       <div className="overflow-x-auto">{children}</div>
       {totalCount > DATA_SHEET_COLLAPSED_ROW_COUNT && !expanded ? (

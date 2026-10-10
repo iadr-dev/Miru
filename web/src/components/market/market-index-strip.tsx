@@ -190,7 +190,7 @@ export function PublicStripItem({ item }: { readonly item: MarketIndexStripItem 
   const labelKey = ITEM_LABEL_KEY[item.key];
   const label = labelKey ? t(labelKey) : item.label;
   return (
-    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 surface-card px-3 py-2">
       <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
       <StripItemValue
         value={formatNumber(item.value, "zh-TW", { decimals: 2 })}
@@ -214,7 +214,7 @@ function SponsorStripItem({
   }
   if (item === "unavailable") {
     return (
-      <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+      <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 surface-card px-3 py-2">
         <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
         <span className="font-num text-[15px] text-[var(--text-muted)] tabular-nums">—</span>
       </div>
@@ -224,7 +224,7 @@ function SponsorStripItem({
     return <LockedStripItem label={label} />;
   }
   return (
-    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 surface-card px-3 py-2">
       <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
       <StripItemValue value={item.value} changePct={item.changePct} />
     </div>
@@ -236,11 +236,11 @@ function SponsorStripItem({
  * place of the real value, never `SponsorTeaser`'s panel-sized lock+preview+CTA layout. */
 function LockedStripItem({ label }: { readonly label: string }): ReactNode {
   return (
-    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2">
+    <div className="flex min-w-[128px] shrink-0 flex-col gap-0.5 surface-card px-3 py-2">
       <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
       <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
         <LockIcon size={11} weight="regular" aria-hidden />
-        <span aria-hidden className="font-num text-[15px] tabular-nums">
+        <span aria-hidden className="font-display text-[17px] tabular-nums">
           ••••
         </span>
       </span>
@@ -267,7 +267,7 @@ function StripItemValue({
       }
       className="flex items-baseline gap-1.5"
     >
-      <span aria-hidden className="font-num text-[15px] text-[var(--text)] tabular-nums">
+      <span aria-hidden className="font-display text-[17px] text-[var(--text)] tabular-nums">
         {value}
       </span>
       {changePct !== null ? (

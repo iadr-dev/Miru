@@ -27,9 +27,11 @@ import type { MeResponse, Tier } from "@/types/account";
 export function TopBar({
   me,
   onToggleWatchlist,
+  watchlistOpen,
 }: {
   me: MeResponse;
   onToggleWatchlist: () => void;
+  watchlistOpen: boolean;
 }): ReactNode {
   const t = useTranslations("shell");
   const pathname = usePathname();
@@ -38,34 +40,55 @@ export function TopBar({
   return (
     <header
       className={cn(
-        "glass sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 px-3 sm:px-4",
+        "glass sticky top-0 z-30 shrink-0 pt-[env(safe-area-inset-top)]",
+        "pr-[max(0.75rem,env(safe-area-inset-right))] pl-[max(0.75rem,env(safe-area-inset-left))] sm:px-4",
         "border-[var(--border)] border-b bg-[color-mix(in_srgb,var(--surface)_72%,transparent)]",
         "backdrop-blur-[20px] backdrop-saturate-150",
       )}
     >
-      <SearchPlaceholder />
-      {onMarketPage ? <MarketTabSwitcher /> : null}
+      <div className="flex h-14 items-center gap-1 xs:gap-2">
+        <SearchPlaceholder />
+        {onMarketPage ? (
+          <div className="hidden md:block">
+            <MarketTabSwitcher />
+          </div>
+        ) : null}
 
-      <div className="ml-auto flex items-center gap-1 sm:gap-2">
-        <NotificationsBell />
-        <TierBadge tier={me.entitlements.tier} />
-        <div className="mx-0.5 hidden h-6 w-px bg-[var(--border)] sm:block" />
-        <LanguageSwitcher />
-        <ThemeToggle />
-        <button
-          type="button"
-          onClick={onToggleWatchlist}
-          aria-label={t("watchlist.toggle")}
-          title={t("watchlist.toggle")}
-          className={cn(
-            "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
-            "text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
-          )}
-        >
-          <StarIcon size={20} weight="regular" />
-        </button>
-        <AccountMenu me={me} />
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-2">
+          <NotificationsBell />
+          <TierBadge tier={me.entitlements.tier} />
+          <div className="mx-0.5 hidden h-6 w-px bg-[var(--border)] sm:block" />
+          {/* Theme + language fold into the phone drawer below `sm`, where the bar has no room. */}
+          <div className="hidden items-center gap-1 sm:flex sm:gap-2">
+            <LanguageSwitcher />
+            <ThemeToggle />
+          </div>
+          <button
+            type="button"
+            onClick={onToggleWatchlist}
+            aria-label={t("watchlist.toggle")}
+            aria-pressed={watchlistOpen}
+            title={t("watchlist.toggle")}
+            className={cn(
+              "inline-flex size-11 items-center justify-center rounded-[var(--radius-button)]",
+              "transition-colors hover:bg-[var(--surface-2)]",
+              // Lit gold while the watchlist is open; back to the quiet default when it closes.
+              watchlistOpen
+                ? "text-[var(--star)]"
+                : "text-[var(--text-muted)] hover:text-[var(--text)]",
+            )}
+          >
+            <StarIcon size={20} weight={watchlistOpen ? "fill" : "regular"} />
+          </button>
+          <AccountMenu me={me} />
+        </div>
       </div>
+      {/* Phones/tablets: the market switcher gets its own row so it never fights the actions. */}
+      {onMarketPage ? (
+        <div className="overflow-x-auto pb-2 lg:hidden">
+          <MarketTabSwitcher />
+        </div>
+      ) : null}
     </header>
   );
 }
@@ -97,7 +120,7 @@ function SearchPlaceholder(): ReactNode {
         onClick={() => setOpen(true)}
         aria-label={t("label")}
         className={cn(
-          "flex min-h-11 max-w-md flex-1 items-center gap-2 rounded-[var(--radius-input)] px-3",
+          "flex min-h-11 min-w-0 max-w-md flex-1 items-center gap-2 rounded-[var(--radius-input)] px-2.5 sm:px-3",
           "border border-[var(--border)] bg-[var(--surface)] text-left text-[var(--text-muted)] text-sm",
           "transition-colors hover:border-[var(--text-muted)]",
         )}
@@ -107,7 +130,7 @@ function SearchPlaceholder(): ReactNode {
         <kbd
           className={cn(
             "hidden rounded-[6px] border border-[var(--border)] bg-[var(--surface-2)] px-1.5",
-            "py-0.5 font-num text-[11px] text-[var(--text-muted)] sm:inline",
+            "py-0.5 font-num text-[11px] text-[var(--text-muted)] xl:inline",
           )}
         >
           {t("hint")}
@@ -162,7 +185,7 @@ function AccountMenu({ me }: { me: MeResponse }): ReactNode {
           type="button"
           aria-label={t("menu")}
           className={cn(
-            "inline-flex size-11 items-center justify-center rounded-full",
+            "inline-flex size-11 shrink-0 items-center justify-center rounded-full",
             "bg-[var(--surface-2)] text-[var(--text-muted)] transition-colors",
             "hover:text-[var(--text)]",
             "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",

@@ -135,7 +135,7 @@ function LiveQuoteLadder({
   const snapshot = query.data?.snapshot;
   if (!snapshot) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("ladderTitle")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("ladderUnavailable")}</p>
       </section>
@@ -151,7 +151,7 @@ function LiveQuoteLadder({
   );
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("ladderTitle")}</h2>
         <span className="font-num text-[18px] text-[var(--text)] tabular-nums">
@@ -296,7 +296,7 @@ function IntradayLineChart({
   if (!data) return null;
 
   return (
-    <section className="flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("lineChartTitle")}</h2>
       {locked && isMaskedTeaser(data) ? (
         <SponsorTeaser
@@ -399,7 +399,7 @@ function IntradayKbarChart({
   if (!data) return null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("kbarTitle")}</h2>
       {locked && isMaskedTeaser(data) ? (
         <SponsorTeaser
@@ -447,7 +447,7 @@ function DayTradingRatioBar({
   // Buy/sell amounts are raw TWD; `formatCompactNumber` renders them as "83.8億" style rather
   // than a wall of digits, matching every other large-TWD-amount stat elsewhere on this page.
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-2 font-semibold text-[15px] text-[var(--text)]">{t("dayTradingTitle")}</h2>
       <div className="grid grid-cols-3 gap-3 text-[13px]">
         <Stat
@@ -596,7 +596,7 @@ function DetailStatsPanel({
   const lastTradeSize = tickRows.at(-1)?.volume ?? null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-2 font-semibold text-[15px] text-[var(--text)]">{t("detailTitle")}</h2>
       <div className="grid grid-cols-3 gap-3 text-[13px]">
         <LimitPricePill
@@ -718,7 +718,7 @@ function PriceTickList({
   if (!data) return null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("tickTitle")}</h2>
       <p className="mb-3 text-[11px] text-[var(--warn)]">{t("tickReplayNotice")}</p>
       {locked && isMaskedTeaser(data) ? (

@@ -135,7 +135,7 @@ function TrendScoreCard({
   if (!data) return null;
 
   return (
-    <section className="flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex flex-col surface-card p-4 sm:p-5">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("trendScoreTitle")}</h2>
         {data.as_of ? (
@@ -412,7 +412,7 @@ function ScoreGaugeCard({
   ];
 
   return (
-    <section className="flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex flex-col surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("scoreTitle")}</h2>
         <div
@@ -430,7 +430,7 @@ function ScoreGaugeCard({
               className={cn(
                 "min-h-8 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
                 profile === key
-                  ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                  ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
             >
@@ -550,7 +550,7 @@ function SummaryCard({
   if (!query.data) return null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <SponsorGatedBody
         data={
           "locked" in query.data ? query.data : { ...query.data, data_available: query.data.found }
