@@ -14,6 +14,18 @@ export type WatchlistAssetClass = z.infer<typeof watchlistAssetClassSchema>;
 
 export const watchlistMarketSchema = z.enum(MARKETS);
 
+/** The label colours a group can wear: the non-signed `--chart-1..6` tokens, so a group colour
+ * can never read as 漲 (red) or 跌 (green). Mirrors `memory.watchlists.WatchlistColor`. */
+export const WATCHLIST_COLORS = [
+  "chart-1",
+  "chart-2",
+  "chart-3",
+  "chart-4",
+  "chart-5",
+  "chart-6",
+] as const;
+export type WatchlistColor = (typeof WATCHLIST_COLORS)[number];
+
 export const watchlistGroupSchema = z.object({
   id: z.string(),
   user_id: z.string(),
@@ -22,6 +34,8 @@ export const watchlistGroupSchema = z.object({
   asset_class: watchlistAssetClassSchema,
   sort_order: z.string(),
   is_default: z.boolean(),
+  // An unknown key from a newer server is shown uncoloured rather than failing the whole list.
+  color: z.enum(WATCHLIST_COLORS).nullable().optional().catch(null),
   version: z.number(),
   created_at: z.string(),
   updated_at: z.string(),

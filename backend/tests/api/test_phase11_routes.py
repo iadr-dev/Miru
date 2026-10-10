@@ -390,3 +390,53 @@ class TestAccountsExtra:
         )
         assert resp.status_code == 503
         assert resp.json()["code"] == "secret_storage_unavailable"
+
+
+class TestWatchlistGroupColor:
+    def _group(self, client: TestClient, headers: dict[str, str]) -> dict[str, object]:
+        resp = client.post(
+            "/api/v1/watchlists", json={"name": "Core", "market": "TW"}, headers=headers
+        )
+        assert resp.status_code == 201
+        return resp.json()
+
+    def test_a_group_starts_uncoloured_can_wear_a_palette_colour_and_can_clear_it(
+        self, client: TestClient, signed_in_user
+    ) -> None:
+        headers, _ = signed_in_user
+        group = self._group(client, headers)
+        assert group["color"] is None
+        gid = group["id"]
+
+        painted = client.patch(
+            f"/api/v1/watchlists/{gid}",
+            json={"color": "chart-3"},
+            headers={**headers, "If-Match": str(group["version"])},
+        )
+        assert painted.status_code == 200
+        assert painted.json()["color"] == "chart-3"
+        listed = client.get("/api/v1/watchlists", params={"market": "TW"}, headers=headers).json()
+        view = next(v for v in listed["watchlists"] if v["group"]["id"] == gid)
+        assert view["group"]["color"] == "chart-3"
+
+        cleared = client.patch(f"/api/v1/watchlists/{gid}", json={"color": "none"}, headers=headers)
+        assert cleared.json()["color"] is None
+
+    def test_a_colour_outside_the_palette_is_refused(
+        self, client: TestClient, signed_in_user
+    ) -> None:
+        headers, _ = signed_in_user
+        gid = self._group(client, headers)["id"]
+        for bad in ("red", "#ff0000", "up"):
+            resp = client.patch(f"/api/v1/watchlists/{gid}", json={"color": bad}, headers=headers)
+            assert resp.status_code == 422
+
+    def test_a_stale_version_is_refused(self, client: TestClient, signed_in_user) -> None:
+        headers, _ = signed_in_user
+        group = self._group(client, headers)
+        resp = client.patch(
+            f"/api/v1/watchlists/{group['id']}",
+            json={"color": "chart-1"},
+            headers={**headers, "If-Match": "999"},
+        )
+        assert resp.status_code == 409

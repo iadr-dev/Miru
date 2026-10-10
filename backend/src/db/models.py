@@ -221,6 +221,8 @@ class WatchlistRow(Base):
     asset_class: Mapped[str]
     sort_order: Mapped[str]
     is_default: Mapped[bool] = mapped_column(default=False)
+    # Optional label colour: a palette key (`WATCHLIST_COLORS`), None = no colour.
+    color: Mapped[str | None] = mapped_column(default=None)
     version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)

@@ -661,6 +661,16 @@
       "alertGroupPerStockHint": "每檔各設自己的價位，一次建立",
       "dragItem": "拖曳排序股票",
       "removeItem": "從此分組移除",
+      "colorGroup": "設定 {name} 的顏色",
+      "color": {
+        "chart-1": "藍色",
+        "chart-2": "紫色",
+        "chart-3": "琥珀色",
+        "chart-4": "青綠色",
+        "chart-5": "粉紅色",
+        "chart-6": "灰藍色",
+        "none": "無顏色"
+      },
       "deleteGroup": "刪除分組",
       "deleteGroupConfirmTitle": "刪除分組？",
       "deleteGroupConfirmBody": "確定要刪除「{name}」分組嗎？分組內的股票將一併移除，此操作無法復原。",

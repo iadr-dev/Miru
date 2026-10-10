@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.models import WatchlistRow
 from memory.watchlists import WatchlistStore, midpoint_key
 from schemas.enums import Market
 
@@ -189,3 +192,60 @@ async def test_seed_default_presets_symbols_round_trip_through_watches(
 
     assert await store.watches(user_id="user-1", symbol="2330") is True
     assert await store.watches(user_id="user-1", symbol="9999") is False
+
+
+async def test_new_groups_go_to_the_end_in_a_stored_order(db_session: AsyncSession) -> None:
+    store = WatchlistStore(db_session)
+    names = ["A", "B", "C", "D"]
+    for name in names:
+        await store.create_group(
+            user_id="u-order", name=name, market=Market.TW, asset_class="stock"
+        )
+    groups = await store.list_groups("u-order")
+    keys = [g.sort_order for g in groups]
+    assert [g.name for g in groups] == names
+    assert keys == sorted(set(keys))  # distinct and ascending
+
+
+async def test_recolouring_or_renaming_a_group_does_not_move_it(
+    db_session: AsyncSession,
+) -> None:
+    store = WatchlistStore(db_session)
+    created = [
+        await store.create_group(user_id="u-keep", name=n, market=Market.TW, asset_class="stock")
+        for n in ["A", "B", "C"]
+    ]
+    await store.set_group_color(user_id="u-keep", watchlist_id=created[0].id, color="chart-3")
+    await store.rename_group(user_id="u-keep", watchlist_id=created[1].id, name="B2")
+    await db_session.flush()
+    groups = await store.list_groups("u-keep")
+    assert [g.id for g in groups] == [g.id for g in created]
+    assert groups[0].color == "chart-3"
+
+
+async def test_groups_that_share_a_sort_key_are_given_distinct_keys_in_creation_order(
+    db_session: AsyncSession,
+) -> None:
+    base = datetime(2026, 10, 1, tzinfo=UTC)
+    for i, name in enumerate(["first", "second", "third"]):
+        db_session.add(
+            WatchlistRow(
+                id=f"legacy-{i}",
+                user_id="u-legacy",
+                name=name,
+                market="TW",
+                asset_class="stock",
+                sort_order="m",
+                is_default=False,
+                version=0,
+                created_at=base + timedelta(minutes=i),
+                updated_at=base,
+            )
+        )
+    await db_session.flush()
+    store = WatchlistStore(db_session)
+    groups = await store.list_groups("u-legacy")
+    assert [g.name for g in groups] == ["first", "second", "third"]
+    assert len({g.sort_order for g in groups}) == 3
+    # stored now: a later read returns the same order
+    assert [g.name for g in await store.list_groups("u-legacy")] == ["first", "second", "third"]

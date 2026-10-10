@@ -13,6 +13,8 @@ inherits the Premium+ gate.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Header, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +27,7 @@ from memory.settings import memory_enabled, set_memory_enabled
 from memory.store import SqlAlchemyMemoryStore
 from memory.watchlists import (
     StaleWatchlistVersionError,
+    WatchlistColor,
     WatchlistGroup,
     WatchlistItem,
     WatchlistItemNotFoundError,
@@ -280,6 +283,8 @@ async def create_watchlist(
 
 class PatchWatchlistRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    # A palette key sets the label colour; "none" clears it; omitted leaves it alone.
+    color: WatchlistColor | Literal["none"] | None = None
     after_id: str | None = None
     before_id: str | None = None
 
@@ -292,7 +297,8 @@ async def patch_watchlist(
     store: WatchlistStore = Depends(_watchlist_store),
     if_match: int | None = Header(default=None, alias="If-Match"),
 ) -> WatchlistGroup:
-    """Rename and/or reorder a group. `If-Match: <version>` enforces optimistic concurrency."""
+    """Rename, recolour and/or reorder a group. `If-Match: <version>` enforces optimistic
+    concurrency."""
     try:
         group = await store.get_group(user_id=user.id, watchlist_id=watchlist_id)
         if body.name is not None:
@@ -302,13 +308,20 @@ async def patch_watchlist(
                 name=body.name,
                 expected_version=if_match,
             )
+        if body.color is not None:
+            group = await store.set_group_color(
+                user_id=user.id,
+                watchlist_id=watchlist_id,
+                color=None if body.color == "none" else body.color,
+                expected_version=if_match if body.name is None else None,
+            )
         if body.after_id is not None or body.before_id is not None:
             group = await store.reorder_group(
                 user_id=user.id,
                 watchlist_id=watchlist_id,
                 after_id=body.after_id,
                 before_id=body.before_id,
-                expected_version=if_match if body.name is None else None,
+                expected_version=if_match if body.name is None and body.color is None else None,
             )
         return group
     except WatchlistNotFoundError as exc:

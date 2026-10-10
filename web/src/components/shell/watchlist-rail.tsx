@@ -20,8 +20,11 @@ import {
   BellSimpleIcon,
   CaretDownIcon,
   CaretRightIcon,
+  CheckIcon,
   DotsSixVerticalIcon,
+  PaletteIcon,
   PlusIcon,
+  ProhibitIcon,
   StarIcon,
   TrashIcon,
   XIcon,
@@ -43,12 +46,19 @@ import {
   useRemoveWatchlistItem,
   useRenameWatchlist,
   useReorderWatchlistGroup,
+  useSetWatchlistColor,
   useWatchlists,
 } from "@/hooks/use-watchlists";
 import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
-import type { WatchlistAssetClass, WatchlistGroupView, WatchlistItem } from "@/types/watchlist";
+import {
+  WATCHLIST_COLORS,
+  type WatchlistAssetClass,
+  type WatchlistColor,
+  type WatchlistGroupView,
+  type WatchlistItem,
+} from "@/types/watchlist";
 
 type WatchlistTab = "tw" | "us" | "etf";
 const TABS: readonly WatchlistTab[] = ["tw", "us", "etf"];
@@ -323,6 +333,13 @@ function WatchlistTabPanel({
   );
 }
 
+/** The group name's text colour: the chosen chart token pulled toward the theme's text colour, so
+ * it stays readable on the rail in both light and dark (the raw chart tokens only promise the 3:1
+ * graphical-element contrast, not the 4.5:1 body text needs). */
+function groupTextColor(color: WatchlistColor): string {
+  return `color-mix(in srgb, var(--${color}) 70%, var(--text))`;
+}
+
 function WatchlistGroupSection({
   view,
   market,
@@ -340,6 +357,7 @@ function WatchlistGroupSection({
   const [nameDraft, setNameDraft] = useState(view.group.name);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const renameMutation = useRenameWatchlist(market);
+  const colorMutation = useSetWatchlistColor(market);
   const deleteMutation = useDeleteWatchlist(market);
   const router = useRouter();
   const alertable = market === "TW" || market === "US";
@@ -420,10 +438,22 @@ function WatchlistGroupSection({
             type="button"
             onClick={() => setRenaming(true)}
             className="min-w-0 flex-1 truncate text-left font-medium text-[13px] text-[var(--text)] hover:underline"
+            style={view.group.color ? { color: groupTextColor(view.group.color) } : undefined}
           >
             {view.group.name}
           </button>
         )}
+        <GroupColorMenu
+          name={view.group.name}
+          color={view.group.color ?? null}
+          onPick={(color) =>
+            colorMutation.mutate({
+              watchlistId: view.group.id,
+              color,
+              version: view.group.version,
+            })
+          }
+        />
         <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
           {view.items.length}
         </span>
@@ -652,5 +682,66 @@ function WatchlistStockRow({
         <XIcon size={12} weight="bold" aria-hidden />
       </button>
     </li>
+  );
+}
+
+/** Pick a group's label colour from the palette (or none). The swatches are the non-signed chart
+ * tokens, so a group colour is never confused with a price move. */
+function GroupColorMenu({
+  name,
+  color,
+  onPick,
+}: {
+  readonly name: string;
+  readonly color: WatchlistColor | null;
+  readonly onPick: (color: WatchlistColor | null) => void;
+}): ReactNode {
+  const t = useTranslations("shell.watchlist");
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          aria-label={t("colorGroup", { name })}
+          className="flex size-8 shrink-0 items-center justify-center text-[var(--text-muted)] opacity-0 transition-opacity hover:text-[var(--text)] focus-visible:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+        >
+          <PaletteIcon size={14} weight="regular" aria-hidden />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={6}
+          className="z-50 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-2 shadow-lg"
+        >
+          <div className="flex items-center gap-1">
+            {WATCHLIST_COLORS.map((key) => (
+              <DropdownMenu.Item
+                key={key}
+                aria-label={t(`color.${key}`)}
+                onSelect={() => onPick(key)}
+                className="!outline-none flex size-9 cursor-pointer items-center justify-center rounded-full data-[highlighted]:bg-[var(--surface-2)]"
+              >
+                <span
+                  className="flex size-5 items-center justify-center rounded-full"
+                  style={{ backgroundColor: `var(--${key})` }}
+                >
+                  {color === key ? (
+                    <CheckIcon size={12} weight="bold" className="text-[var(--bg)]" aria-hidden />
+                  ) : null}
+                </span>
+              </DropdownMenu.Item>
+            ))}
+            <DropdownMenu.Item
+              aria-label={t("color.none")}
+              onSelect={() => onPick(null)}
+              className="!outline-none flex size-9 cursor-pointer items-center justify-center rounded-full text-[var(--text-muted)] data-[highlighted]:bg-[var(--surface-2)]"
+            >
+              <ProhibitIcon size={16} weight="regular" aria-hidden />
+            </DropdownMenu.Item>
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
