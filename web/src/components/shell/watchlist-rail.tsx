@@ -38,7 +38,7 @@ import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ResizableRailHandle } from "@/components/shell/resizable-rail-handle";
-import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
+import { type SymbolQuote, useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import {
   useCreateWatchlist,
   useDeleteWatchlist,
@@ -178,6 +178,13 @@ function WatchlistTabPanel({
 
   const allGroups = (query.data ?? []).filter((view) => view.group.asset_class === assetClass);
   const groupIds = allGroups.map((view) => view.group.id);
+  // One batched quotes read for the whole tab (every symbol in every group), handed down to the
+  // rows - never one request per row.
+  const tabSymbols = [
+    ...new Set(allGroups.flatMap((view) => view.items.map((item) => item.symbol))),
+  ];
+  const { quotes } = useSymbolQuotes(tabSymbols, market);
+  const quoteBySymbol = new Map(quotes.map((quote) => [quote.code, quote]));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -287,6 +294,7 @@ function WatchlistTabPanel({
                   key={view.group.id}
                   view={view}
                   market={market}
+                  quoteBySymbol={quoteBySymbol}
                   reduceMotion={reduceMotion ?? false}
                   onItemDragEnd={(event) => handleItemDragEnd(event, view.group.id, view.items)}
                 />
@@ -345,11 +353,13 @@ function WatchlistTabPanel({
 function WatchlistGroupSection({
   view,
   market,
+  quoteBySymbol,
   reduceMotion,
   onItemDragEnd,
 }: {
   readonly view: WatchlistGroupView;
   readonly market: Market;
+  readonly quoteBySymbol: ReadonlyMap<string, SymbolQuote>;
   readonly reduceMotion: boolean;
   readonly onItemDragEnd: (event: DragEndEvent) => void;
 }): ReactNode {
@@ -527,6 +537,7 @@ function WatchlistGroupSection({
                       key={item.id}
                       item={item}
                       market={market}
+                      quote={quoteBySymbol.get(item.symbol)}
                       watchlistId={view.group.id}
                       reduceMotion={reduceMotion}
                     />
@@ -599,16 +610,16 @@ function WatchlistStockRow({
   market,
   watchlistId,
   reduceMotion,
+  quote,
 }: {
   readonly item: WatchlistItem;
   readonly market: Market;
+  readonly quote: SymbolQuote | undefined;
   readonly watchlistId: string;
   readonly reduceMotion: boolean;
 }): ReactNode {
   const t = useTranslations("shell.watchlist");
   const removeMutation = useRemoveWatchlistItem(market);
-  const { quotes } = useSymbolQuotes([item.symbol], market);
-  const quote = quotes[0];
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });

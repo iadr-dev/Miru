@@ -77,6 +77,7 @@ import {
   type SectorRotationRrgResponse,
   type StockHeatmapResponse,
   type SymbolInfoResponse,
+  type SymbolQuotesResponse,
   scoreLeaderboardDataSchema,
   sectorConstituentsResponseSchema,
   sectorHeatmapResponseSchema,
@@ -84,6 +85,7 @@ import {
   sectorRotationRrgResponseSchema,
   stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
+  symbolQuotesResponseSchema,
   type TagScreenerResponse,
   type TickSnapshotResponse,
   type TwMarketRankingsResponse,
@@ -325,6 +327,20 @@ export async function getPriceHistory(
   search.set("days", String(days));
   const raw = await requestJson(`/market/price-history?${search.toString()}`);
   return priceHistoryResponseSchema.parse(raw);
+}
+
+/** GET /market/quotes — the list-row view for up to 20 symbols in one call (name, latest close,
+ * DAILY change/change %, volume, sparkline over `days`). Lists use this rather than combining
+ * `getSymbolInfo` + `getPriceHistory` client-side. */
+export async function getSymbolQuotes(
+  symbols: readonly string[],
+  market: Market,
+  days: number,
+): Promise<SymbolQuotesResponse> {
+  const search = symbolsSearchParams(symbols, market);
+  search.set("days", String(days));
+  const raw = await requestJson(`/market/quotes?${search.toString()}`);
+  return symbolQuotesResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

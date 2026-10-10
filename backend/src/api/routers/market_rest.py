@@ -773,6 +773,25 @@ async def price_history(
     )
 
 
+@router.get("/market/quotes")
+async def symbol_quotes(
+    symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
+    market: Market = Query(Market.TW),
+    days: int = Query(20, ge=2, le=60, description="Sparkline window in trading days, 2-60."),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """The list-row view for up to 20 symbols: name, latest close, DAILY change/change %,
+    volume and a sparkline, in one call. Lists use this instead of combining `symbol-info` +
+    `price-history` client-side, so every surface shows the same daily change."""
+    return await _dispatch(
+        state,
+        "get_symbol_quotes",
+        {"symbols": _split_symbols(symbols), "market": market.value, "days": days},
+        ctx,
+    )
+
+
 # ---- derivatives ---------------------------------------------------------------------------
 
 
