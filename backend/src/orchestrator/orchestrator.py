@@ -145,8 +145,9 @@ def _maybe_add_web_search(
     Falls back to the additive Brave-tool behavior when the client has no native mechanism —
     looked up from the same `tool_lookup` dict `_tools_for`/`_warm_tools` resolve from, so a
     deployment that hasn't registered the web-search tools (no Brave key configured) silently
-    grants nothing rather than raising. Only ever called for the `none`/`single` framework
-    paths — fan-out lanes never see this, mirroring `model_override`'s SUBAGENT carve-out."""
+    grants nothing rather than raising. Called for the `none`/`single` root agents and, when the
+    user switched web search on, for every fan-out lane too (the toggle is the user's explicit
+    opt-in; `model_override` keeps its SUBAGENT carve-out)."""
     if not web_search_enabled:
         return tools, False
     if client.capabilities.native_web_search:
@@ -348,11 +349,13 @@ class Orchestrator:
         the turn, not any one lane's `agent_id`; wiring it there is future scope, not silently
         dropped functionality today.
 
-        `model_override`/`web_search_enabled`/`images` are per-turn knobs consulted only by the
-        `none`/`single` framework paths (the interactive root-agent lane) — fan-out lanes
-        (`subagent`/`team`) never see any of them, mirroring the SUBAGENT-role carve-out
-        `_resolve_client` already enforces for `model_override` (an attached image is part of
-        the user's own turn, not something a fan-out sub-agent lane independently receives).
+        `model_override`/`images` are per-turn knobs consulted only by the `none`/`single`
+        framework paths (the interactive root-agent lane) — fan-out lanes (`subagent`/`team`)
+        never see them, mirroring the SUBAGENT-role carve-out `_resolve_client` already enforces
+        for `model_override` (an attached image is part of the user's own turn, not something a
+        fan-out sub-agent lane independently receives). `web_search_enabled` is the exception: it
+        is the user's explicit opt-in, so every fan-out lane gets web search too and the lane
+        sources are merged into the turn's `web_search_sources`.
 
         `history` is prior turns from the same thread (oldest first, caller-supplied — the
         orchestrator has no `conversation` access per the dependency rule, so it never fetches
@@ -421,6 +424,7 @@ class Orchestrator:
                     locale=locale,
                     model_override=model_override,
                     history=history,
+                    web_search_enabled=web_search_enabled,
                 )
             else:
                 result = await self._run_team(
@@ -435,6 +439,7 @@ class Orchestrator:
                     locale=locale,
                     model_override=model_override,
                     history=history,
+                    web_search_enabled=web_search_enabled,
                 )
         except TurnCeilingExceededError as exc:
             logger.warning(
@@ -659,6 +664,7 @@ class Orchestrator:
         locale: str = "zh-TW",
         model_override: str | None = None,
         history: tuple[Message, ...] = (),
+        web_search_enabled: bool = False,
     ) -> OrchestratorResult:
         skills, dropped, reservation = await self._start_fanout(routing, budget, tool_context)
 
@@ -675,6 +681,7 @@ class Orchestrator:
                 personality_fragment=personality_fragment,
                 locale=locale,
                 history=history,
+                web_search_enabled=web_search_enabled,
             )
 
         outcomes = await asyncio.gather(
@@ -711,6 +718,7 @@ class Orchestrator:
         locale: str = "zh-TW",
         model_override: str | None = None,
         history: tuple[Message, ...] = (),
+        web_search_enabled: bool = False,
     ) -> OrchestratorResult:
         skills, dropped, reservation = await self._start_fanout(routing, budget, tool_context)
         lanes: list[LaneResult] = []
@@ -731,6 +739,7 @@ class Orchestrator:
                     prior_findings=prior,
                     locale=locale,
                     history=history,
+                    web_search_enabled=web_search_enabled,
                 )
             except Exception as exc:
                 # A teammate's failure is a missing dimension, isolated the same way a parallel
@@ -767,6 +776,7 @@ class Orchestrator:
         prior_findings: str | None = None,
         locale: str = "zh-TW",
         history: tuple[Message, ...] = (),
+        web_search_enabled: bool = False,
     ) -> LaneResult:
         """Run one lane's Step loop, with one corrective retry on an empty/degraded result then
         drop-with-flag. Sub-agents are read-only + independent, so the retry is
@@ -827,6 +837,7 @@ class Orchestrator:
             personality_fragment=personality_fragment,
             locale=locale,
             history=history,
+            web_search_enabled=web_search_enabled,
         )
         if lane.completeness == "empty":
             lane = await self._run_lane_attempt(
@@ -842,6 +853,7 @@ class Orchestrator:
                 personality_fragment=personality_fragment,
                 locale=locale,
                 history=history,
+                web_search_enabled=web_search_enabled,
             )
             if lane.completeness == "empty":
                 lane = lane.model_copy(
@@ -875,6 +887,7 @@ class Orchestrator:
         personality_fragment: StyleFragments,
         locale: str = "zh-TW",
         history: tuple[Message, ...] = (),
+        web_search_enabled: bool = False,
     ) -> LaneResult:
         loop = self._build_loop(
             tools=tools,
@@ -884,6 +897,7 @@ class Orchestrator:
             event_bus=event_bus,
             turn_id=turn_id,
             agent_id=agent_id,
+            web_search_enabled=web_search_enabled,
             locale=locale,
             hide_cards_for=frozenset(skill.frontmatter.hide_cards),
         )
@@ -1137,9 +1151,8 @@ class Orchestrator:
 
             pre_llm_hooks = [MemoryRecallPreLLMHook(recall_provider)]
         client = self._resolve_client(role, model_override=model_override)
-        # `web_search_enabled` is only ever passed for the `none`/`single` framework paths
-        # (`_run_none`/`_run_single`) — fan-out lanes never pass it, so `native_web_search`
-        # resolves to `False` for every SUBAGENT-role loop regardless of this turn's toggle.
+        # `web_search_enabled` is the user's per-turn opt-in and reaches every framework path,
+        # fan-out lanes included; the resolved client decides native vs Brave-tool grounding.
         tools, native_web_search = _maybe_add_web_search(
             tools, self._tool_lookup, client, web_search_enabled=web_search_enabled
         )

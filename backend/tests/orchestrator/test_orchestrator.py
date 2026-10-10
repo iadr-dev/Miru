@@ -941,11 +941,11 @@ async def test_web_search_enabled_native_client_still_false_when_toggle_off(
     assert agent_client.native_web_search_calls == [False]
 
 
-async def test_web_search_enabled_not_granted_to_subagent_fanout_lanes(
+async def test_web_search_enabled_granted_to_subagent_fanout_lanes(
     registry: SkillRegistry, tool_lookup: dict[str, Tool]
 ) -> None:
-    """A `subagent`-framework turn with `web_search=True` never grants the tools to its
-    fan-out lanes — the SUBAGENT-role carve-out mirroring `model_override`'s own."""
+    """The user's web-search toggle is an explicit opt-in, so every fan-out lane gets the
+    web tools too (the lanes' own sources are merged into the turn)."""
     routing = Routing(
         framework="subagent",
         skills=("chip-flow-review", "company-profile"),
@@ -965,6 +965,37 @@ async def test_web_search_enabled_not_granted_to_subagent_fanout_lanes(
     )
 
     result = await orch.run("analyze 2330", tool_context=ToolContext(), web_search_enabled=True)
+
+    assert "merged both" in result.final_text
+    for _messages, tools in lane_client.calls:
+        tool_names = {tool.name for tool in (tools or ())}
+        assert "web_search" in tool_names
+        assert "fetch_url" in tool_names
+
+
+async def test_web_search_disabled_not_granted_to_subagent_fanout_lanes(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    """Without the user's web-search toggle, fan-out lanes never get the web tools."""
+    routing = Routing(
+        framework="subagent",
+        skills=("chip-flow-review", "company-profile"),
+        reason="two independent dimensions",
+    )
+    lane_client = LaneAwareClient(
+        {
+            "Chip-flow review": "chip lane finding. informational.",
+            "Company profile": "profile lane finding. informational.",
+        }
+    )
+    synth = Synthesizer(
+        client=StubLLMClient(script=[make_text_response("merged both. info only.")])
+    )
+    orch = _orchestrator(
+        registry, tool_lookup, routing, subagent_client=lane_client, synthesizer=synth
+    )
+
+    result = await orch.run("analyze 2330", tool_context=ToolContext(), web_search_enabled=False)
 
     assert "merged both" in result.final_text
     for _messages, tools in lane_client.calls:
