@@ -16,7 +16,10 @@ import { Starfield } from "./starfield";
 const INTRO_DURATION_S = 1.15;
 const BADGE_HEIGHT = 0.35;
 const LABEL_HEIGHT = 0.95;
-const CAMERA_START: readonly [number, number, number] = [0, 11, 12];
+// Far enough back that the whole compass ring (radius 8.8) stays in frame as the camera orbits:
+// its near edge sits ~19 deg below the view centre, inside the 45 deg fov's 22.5 deg half-angle with
+// room for the badges. The old [0, 11, 12] put that edge ~31 deg down, cut off at the bottom.
+const CAMERA_START: readonly [number, number, number] = [0, 16, 17.4];
 const AUTO_ROTATE_RADIANS_PER_SECOND = 0.05;
 
 /** Eases 0→1 over `INTRO_DURATION_S` seconds via `useFrame` — the single shared "boot the
