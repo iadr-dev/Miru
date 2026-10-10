@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { fetchMe, UnauthenticatedError } from "@/lib/api/account";
+import { startSessionKeepAlive } from "@/lib/api/auth";
 import type { MeResponse } from "@/types/account";
 
 /**
@@ -39,6 +40,11 @@ export function AuthGuard({ children }: { children: (me: MeResponse) => ReactNod
       router.replace("/");
     }
   }, [isUnauthenticated, router]);
+
+  // Keep the short-lived access token fresh while signed in, so live streams and public data
+  // routes never fall back to anonymous (free-tier) answers mid-session.
+  const signedIn = query.isSuccess;
+  useEffect(() => (signedIn ? startSessionKeepAlive() : undefined), [signedIn]);
 
   if (query.isSuccess) {
     return <>{children(query.data)}</>;

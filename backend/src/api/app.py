@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from accounts.hooks import EntitlementResolver
+from api.auth_expired import AUTH_EXPIRED_HEADER, AuthExpiredHeaderMiddleware
 from api.dependencies import AppState
 from api.errors import register_exception_handlers
 from api.quote_stream import CalendarMarketOpenGate, LiveQuoteManagerLike, ToolQuoteFetcher
@@ -120,6 +121,9 @@ def create_app(
         data_update_broker=resolved_data_update_broker,
     )
 
+    # Added before CORS so CORS wraps it (Starlette applies the last-added middleware outermost);
+    # the header must also be exposed or a cross-origin client can't read it.
+    app.add_middleware(AuthExpiredHeaderMiddleware)
     if allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -127,6 +131,7 @@ def create_app(
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=[AUTH_EXPIRED_HEADER],
         )
 
     register_exception_handlers(app)

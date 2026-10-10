@@ -153,6 +153,7 @@ export async function logout(): Promise<void> {
 }
 
 let inFlightRefresh: Promise<boolean> | null = null;
+let lastRefreshAt = 0;
 
 async function requestRefresh(): Promise<boolean> {
   try {
@@ -161,6 +162,7 @@ async function requestRefresh(): Promise<boolean> {
       credentials: "include",
       headers: { accept: "application/json" },
     });
+    if (response.ok) lastRefreshAt = Date.now();
     return response.ok;
   } catch {
     return false;
@@ -202,7 +204,7 @@ export function refreshSession(): Promise<boolean> {
  * caller's normal status handling covers that case unchanged. */
 export async function fetchWithRefresh(url: string, init: RequestInit): Promise<Response> {
   const response = await fetch(url, init);
-  if (response.status !== 401) {
+  if (!needsRefresh(response)) {
     return response;
   }
   const refreshed = await refreshSession();
@@ -210,4 +212,39 @@ export async function fetchWithRefresh(url: string, init: RequestInit): Promise<
     return response;
   }
   return fetch(url, init);
+}
+
+/** The backend answers public data routes anonymously when the access token has expired (so a
+ * logged-out visitor with a stale cookie still works) but flags it with `X-Auth-Expired: 1`
+ * (`backend/src/api/auth_expired.py`). Without honouring that flag a signed-in Pro user would be
+ * served free-tier teasers as a plain 200 and never refresh. If the refresh fails the anonymous
+ * answer is still the right one, so it is returned as-is. */
+const AUTH_EXPIRED_HEADER = "x-auth-expired";
+
+function needsRefresh(response: Response): boolean {
+  return response.status === 401 || response.headers.get(AUTH_EXPIRED_HEADER) === "1";
+}
+
+/** Renew the access token before it lapses (~15 min) instead of only after a request fails.
+ * Live streams (`EventSource`) can't react to a 401 and reconnect with whatever cookie exists, so
+ * without this a reconnect after expiry runs as anonymous (masked sponsor quotes). Refreshes on an
+ * interval while signed in, and when a hidden tab comes back after the interval has passed (timers
+ * are throttled in background tabs). Shares `refreshSession`'s single in-flight request, so it
+ * never races a 401-triggered refresh into the backend's reuse detection. Returns a stop function. */
+const KEEP_ALIVE_MS = 12 * 60 * 1000;
+
+export function startSessionKeepAlive(): () => void {
+  lastRefreshAt = Date.now();
+  const refreshIfDue = (): void => {
+    if (Date.now() - lastRefreshAt >= KEEP_ALIVE_MS) void refreshSession();
+  };
+  const timer = window.setInterval(refreshIfDue, KEEP_ALIVE_MS);
+  const onVisible = (): void => {
+    if (document.visibilityState === "visible") refreshIfDue();
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  return () => {
+    window.clearInterval(timer);
+    document.removeEventListener("visibilitychange", onVisible);
+  };
 }
