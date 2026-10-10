@@ -9,7 +9,8 @@ import { RankPanel, type RankPanelRow } from "./rank-panel";
 import { RotationCanvas } from "./rotation-canvas";
 import { colorForQuadrant, type RotationQuadrant } from "./rrg-layout";
 
-const SCENE_HEIGHT_PX = 640;
+// Taller than the old fixed 640px so the scene reads large; scales with the viewport, capped.
+const SCENE_HEIGHT = "clamp(420px, 72vh, 760px)";
 
 const QUADRANT_LEGEND_ORDER: readonly RotationQuadrant[] = [
   "leading",
@@ -86,7 +87,7 @@ export function SectorRotationScene({
   return (
     <div
       className="relative w-full overflow-hidden rounded-[var(--radius-card)] bg-[#05070b]"
-      style={{ height: SCENE_HEIGHT_PX }}
+      style={{ height: SCENE_HEIGHT }}
     >
       <div className="absolute inset-0">
         <RotationCanvas

@@ -504,6 +504,32 @@ export const priceHistoryResponseSchema = z.object({
 });
 export type PriceHistoryResponse = z.infer<typeof priceHistoryResponseSchema>;
 
+// GET /market/quotes — get_symbol_quotes (backend/src/tools/market_tools.py). The list-row view:
+// `change`/`change_pct` are always the DAILY move, computed server-side; the sparkline window is
+// separate. A requested symbol with no data still gets a row with null fields.
+export const symbolQuoteRowSchema = z.object({
+  symbol: z.string(),
+  name: z.string().nullable(),
+  industry_category: z.string().nullable(),
+  trade_date: z.string().nullable(),
+  close: z.number().nullable(),
+  prev_close: z.number().nullable(),
+  change: z.number().nullable(),
+  change_pct: z.number().nullable(),
+  volume: z.number().nullable(),
+  sparkline: z.array(z.number()).default([]),
+});
+export type SymbolQuoteRow = z.infer<typeof symbolQuoteRowSchema>;
+
+export const symbolQuotesResponseSchema = z.object({
+  market: z.string(),
+  end_date: z.string().nullable(),
+  data_available: z.boolean(),
+  unavailable_reason: z.string().nullable().optional(),
+  rows: z.array(symbolQuoteRowSchema).default([]),
+});
+export type SymbolQuotesResponse = z.infer<typeof symbolQuotesResponseSchema>;
+
 // ---------------------------------------------------------------------------
 // 10. GET /analytics/rankings — get_score_leaderboard (public composite AI score)
 // ---------------------------------------------------------------------------

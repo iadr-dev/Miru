@@ -108,6 +108,9 @@ export const trendScoreDimensionSchema = z.object({
   value: z.number().min(0).max(100).nullable(),
   description: z.string(),
   unavailable_reason: z.string().nullable(),
+  // True only when the caller's tier gates this dimension (分點 is Sponsor-tier); a null value
+  // with `locked: false` means the data simply isn't there yet.
+  locked: z.boolean().default(false),
 });
 export type TrendScoreDimension = z.infer<typeof trendScoreDimensionSchema>;
 

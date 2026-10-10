@@ -30,6 +30,9 @@ from tools.market_tools import (
     GetStockHeatmapTool,
     GetSymbolInfoInput,
     GetSymbolInfoTool,
+    GetSymbolQuotesInput,
+    GetSymbolQuotesOutput,
+    GetSymbolQuotesTool,
 )
 
 _TODAY = date(2025, 6, 2)
@@ -471,3 +474,55 @@ async def test_price_history_us_resolves_us_price_eod_dataset(tmp_path: Path) ->
         closes_by_symbol.setdefault(row.symbol, []).append(row.close)
     assert closes_by_symbol["AAPL"] == [200.0, 220.0]
     assert closes_by_symbol["BRK-B"] == [400.0, 380.0]
+
+
+# ---------------------------------------------------------------------------
+# get_symbol_quotes — the list-row view behind `useSymbolQuotes`.
+# ---------------------------------------------------------------------------
+
+
+async def test_symbol_quotes_change_is_daily_whatever_the_sparkline_window(
+    tmp_path: Path,
+) -> None:
+    """A 20-day sparkline window must not turn 漲跌% into a 20-day change: the change is
+    always the latest close vs. the previous trading day's close."""
+    store = ParquetStore(root=tmp_path)
+    _write_tw_fixture(store)
+    tool = GetSymbolQuotesTool(store)
+
+    output = await tool.run(
+        GetSymbolQuotesInput(symbols=("2454", "2330"), market=Market.TW, days=20), ToolContext()
+    )
+
+    assert isinstance(output, GetSymbolQuotesOutput)
+    assert [row.symbol for row in output.rows] == ["2454", "2330"]  # request order kept
+    tsmc = output.rows[1]
+    assert tsmc.name == "台積電"
+    assert tsmc.close == 110.0
+    assert tsmc.prev_close == 100.0
+    assert tsmc.change == 10.0
+    assert tsmc.change_pct is not None
+    assert round(tsmc.change_pct, 6) == 10.0
+    assert tsmc.volume == 1200
+    assert tsmc.sparkline == (100.0, 110.0)
+    mediatek = output.rows[0]
+    assert mediatek.change_pct is not None
+    assert round(mediatek.change_pct, 6) == -4.0
+
+
+async def test_symbol_quotes_unknown_symbol_keeps_an_empty_row(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    _write_tw_fixture(store)
+    tool = GetSymbolQuotesTool(store)
+
+    output = await tool.run(
+        GetSymbolQuotesInput(symbols=("9999",), market=Market.TW), ToolContext()
+    )
+
+    assert isinstance(output, GetSymbolQuotesOutput)
+    (row,) = output.rows
+    assert row.symbol == "9999"
+    assert row.name is None
+    assert row.close is None
+    assert row.change_pct is None
+    assert row.sparkline == ()

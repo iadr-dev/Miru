@@ -38,7 +38,8 @@ import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ResizableRailHandle } from "@/components/shell/resizable-rail-handle";
-import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
+import { Skeleton } from "@/components/ui/skeleton";
+import { type SymbolQuote, useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import {
   useCreateWatchlist,
   useDeleteWatchlist,
@@ -178,6 +179,13 @@ function WatchlistTabPanel({
 
   const allGroups = (query.data ?? []).filter((view) => view.group.asset_class === assetClass);
   const groupIds = allGroups.map((view) => view.group.id);
+  // One batched quotes read for the whole tab (every symbol in every group), handed down to the
+  // rows - never one request per row.
+  const tabSymbols = [
+    ...new Set(allGroups.flatMap((view) => view.items.map((item) => item.symbol))),
+  ];
+  const { quotes, isLoading: quotesLoading } = useSymbolQuotes(tabSymbols, market);
+  const quoteBySymbol = new Map(quotes.map((quote) => [quote.code, quote]));
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -287,6 +295,8 @@ function WatchlistTabPanel({
                   key={view.group.id}
                   view={view}
                   market={market}
+                  quoteBySymbol={quoteBySymbol}
+                  quotesLoading={quotesLoading}
                   reduceMotion={reduceMotion ?? false}
                   onItemDragEnd={(event) => handleItemDragEnd(event, view.group.id, view.items)}
                 />
@@ -345,11 +355,15 @@ function WatchlistTabPanel({
 function WatchlistGroupSection({
   view,
   market,
+  quoteBySymbol,
+  quotesLoading,
   reduceMotion,
   onItemDragEnd,
 }: {
   readonly view: WatchlistGroupView;
   readonly market: Market;
+  readonly quoteBySymbol: ReadonlyMap<string, SymbolQuote>;
+  readonly quotesLoading: boolean;
   readonly reduceMotion: boolean;
   readonly onItemDragEnd: (event: DragEndEvent) => void;
 }): ReactNode {
@@ -527,6 +541,8 @@ function WatchlistGroupSection({
                       key={item.id}
                       item={item}
                       market={market}
+                      quote={quoteBySymbol.get(item.symbol)}
+                      quoteLoading={quotesLoading}
                       watchlistId={view.group.id}
                       reduceMotion={reduceMotion}
                     />
@@ -599,16 +615,20 @@ function WatchlistStockRow({
   market,
   watchlistId,
   reduceMotion,
+  quote,
+  quoteLoading,
 }: {
   readonly item: WatchlistItem;
   readonly market: Market;
+  readonly quote: SymbolQuote | undefined;
+  /** True while the tab's batched quotes read is in flight: rows shimmer instead of showing the
+   * bare code and "—", which reads as "no data". */
+  readonly quoteLoading: boolean;
   readonly watchlistId: string;
   readonly reduceMotion: boolean;
 }): ReactNode {
   const t = useTranslations("shell.watchlist");
   const removeMutation = useRemoveWatchlistItem(market);
-  const { quotes } = useSymbolQuotes([item.symbol], market);
-  const quote = quotes[0];
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
   });
@@ -621,6 +641,7 @@ function WatchlistStockRow({
   const up = hasChange && pctChange >= 0;
   const color = hasChange ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
   const name = quote?.name ?? item.symbol;
+  const pending = quoteLoading && quote?.price == null;
   const router = useRouter();
   const alertable = market === "TW" || market === "US";
 
@@ -646,20 +667,26 @@ function WatchlistStockRow({
         <DotsSixVerticalIcon size={12} weight="bold" aria-hidden />
       </button>
       <SymbolLink symbol={item.symbol} market={market} className="min-w-0 flex-1 truncate">
-        <span className="truncate text-[13px] text-[var(--text)] hover:underline">{name}</span>
+        {pending && quote?.name == null ? (
+          <Skeleton className="inline-block h-3 w-12 align-middle" />
+        ) : (
+          <span className="truncate text-[13px] text-[var(--text)] hover:underline">{name}</span>
+        )}
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{item.symbol}</span>
       </SymbolLink>
       <span aria-hidden className="h-[20px] w-10 shrink-0">
-        <Sparkline values={quote?.sparkline ?? []} color={color} />
+        {pending ? (
+          <Skeleton className="h-full w-full" />
+        ) : (
+          <Sparkline values={quote?.sparkline ?? []} color={color} />
+        )}
       </span>
       <span
         aria-hidden
         className="w-16 shrink-0 text-right font-num text-[12px] tabular-nums"
         style={{ color }}
       >
-        {quote?.price !== null && quote?.price !== undefined
-          ? formatNumber(quote.price, "zh-TW", { decimals: 1 })
-          : "—"}
+        <RailPrice pending={pending} price={quote?.price ?? null} />
       </span>
       {alertable ? (
         <button
@@ -689,6 +716,17 @@ function WatchlistStockRow({
 
 /** Pick a group's label colour from the palette (or none). The swatches are the non-signed chart
  * tokens, so a group colour is never confused with a price move. */
+function RailPrice({
+  pending,
+  price,
+}: {
+  readonly pending: boolean;
+  readonly price: number | null;
+}): ReactNode {
+  if (pending) return <Skeleton className="ml-auto h-3 w-12" />;
+  return price === null ? "—" : formatNumber(price, "zh-TW", { decimals: 1 });
+}
+
 function GroupColorMenu({
   name,
   color,

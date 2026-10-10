@@ -5804,6 +5804,119 @@ class GetPriceHistoryTool(BaseTool):
         return GetPriceHistoryOutput(market=market, start_date=start, end_date=latest, rows=rows)
 
 
+class GetSymbolQuotesInput(BaseModel):
+    """Same bounds as `get_price_history`: ≤20 symbols, a 2-60 trading-day sparkline window."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbols: tuple[str, ...] = Field(min_length=1, max_length=_MAX_BATCH_SYMBOLS)
+    market: Market = Market.TW
+    days: int = Field(default=20, ge=2, le=_MAX_PRICE_HISTORY_DAYS)
+
+
+class SymbolQuoteRow(BaseModel):
+    """One list row. `change`/`change_pct` are always the DAILY move (latest close vs. the
+    previous trading day's close), whatever `days` the sparkline spans; `None` when fewer than
+    two bars exist. `name` is `None` for a symbol absent from the roster, never a placeholder."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    name: str | None = None
+    industry_category: str | None = None
+    trade_date: date_ | None = None
+    close: float | None = None
+    prev_close: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
+    volume: int | None = None
+    sparkline: tuple[float, ...] = Field(default_factory=tuple)
+
+
+class GetSymbolQuotesOutput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    market: str
+    end_date: date_ | None = None
+    data_available: bool = True
+    unavailable_reason: str | None = None
+    # In request order, one per requested symbol (a symbol with no data still gets a row with
+    # null fields, so a list keeps its shape).
+    rows: tuple[SymbolQuoteRow, ...] = Field(default_factory=tuple)
+
+
+def _quote_row(symbol: str, info: StockInfoRow | None, bars: list[EODBar]) -> SymbolQuoteRow:
+    bars.sort(key=lambda bar: bar.trade_date)
+    last = bars[-1] if bars else None
+    prev = bars[-2] if len(bars) >= 2 else None  # noqa: PLR2004 — the previous trading day
+    change = change_pct = None
+    if last is not None and prev is not None and prev.close != 0:
+        change = last.close - prev.close
+        change_pct = (last.close / prev.close - 1) * 100
+    return SymbolQuoteRow(
+        symbol=symbol,
+        name=info.name if info else None,
+        industry_category=(info.industry_category or None) if info else None,
+        trade_date=last.trade_date if last else None,
+        close=last.close if last else None,
+        prev_close=prev.close if prev else None,
+        change=change,
+        change_pct=change_pct,
+        volume=last.volume if last else None,
+        sparkline=tuple(bar.close for bar in bars),
+    )
+
+
+class GetSymbolQuotesTool(BaseTool):
+    """`get_symbol_quotes` — the list-row view (name + latest close + daily change + volume +
+    sparkline) for up to 20 symbols in one call. Composes `get_symbol_info` and
+    `get_price_history` server-side so every list (leaderboard, watchlist, rankings, screener)
+    shows the SAME daily change, instead of each client caller merging two reads and picking
+    its own %-change window. Web-only like `get_price_history` until a skill lists it."""
+
+    name = "get_symbol_quotes"
+    description = (
+        "Get name, latest close, daily change and change %, volume, and a closing-price "
+        "sparkline for up to 20 stock/ETF symbols in one bounded call."
+    )
+    input_model: type[BaseModel] = GetSymbolQuotesInput
+    output_model: type[BaseModel] = GetSymbolQuotesOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = None
+
+    def __init__(self, store: ParquetStore) -> None:
+        self._info = GetSymbolInfoTool(store)
+        self._history = GetPriceHistoryTool(store)
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(GetSymbolQuotesInput, args)
+        info = await self._info.run(
+            GetSymbolInfoInput(symbols=typed.symbols, market=typed.market), ctx
+        )
+        history = await self._history.run(
+            GetPriceHistoryInput(symbols=typed.symbols, market=typed.market, days=typed.days), ctx
+        )
+        assert isinstance(info, GetSymbolInfoOutput)  # noqa: S101 — narrows the BaseTool return
+        assert isinstance(history, GetPriceHistoryOutput)  # noqa: S101
+        info_by_symbol: dict[str, StockInfoRow] = {}
+        for row in info.rows:
+            info_by_symbol.setdefault(row.symbol, row)  # the roster repeats a symbol per category
+        bars_by_symbol: dict[str, list[EODBar]] = {}
+        for bar in history.rows:
+            bars_by_symbol.setdefault(bar.symbol, []).append(bar)
+        rows = tuple(
+            _quote_row(symbol, info_by_symbol.get(symbol), bars_by_symbol.get(symbol, []))
+            for symbol in dict.fromkeys(typed.symbols)
+        )
+        return GetSymbolQuotesOutput(
+            market=typed.market.value,
+            end_date=history.end_date,
+            data_available=history.data_available,
+            unavailable_reason=history.unavailable_reason,
+            rows=rows,
+        )
+
+
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
     """This module's `(tool, immediate)` registration table.
 
@@ -5842,6 +5955,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetSymbolInfoTool(store), False),
         (GetSymbolDirectorySearchTool(store), False),
         (GetPriceHistoryTool(store), False),
+        (GetSymbolQuotesTool(store), False),
         (GetEtfListTool(store), False),
         (GetDividendCalendarTool(store), False),
     ]
@@ -5926,6 +6040,9 @@ __all__ = [
     "GetSymbolInfoInput",
     "GetSymbolInfoOutput",
     "GetSymbolInfoTool",
+    "GetSymbolQuotesInput",
+    "GetSymbolQuotesOutput",
+    "GetSymbolQuotesTool",
     "HolderAccumulationRow",
     "HolderThreshold",
     "HolderWindow",
@@ -5942,5 +6059,6 @@ __all__ = [
     "SectorRrgSeries",
     "SectorRrgWeekPoint",
     "StockHeatmapRow",
+    "SymbolQuoteRow",
     "build_registration_table",
 ]

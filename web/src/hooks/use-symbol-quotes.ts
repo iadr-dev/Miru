@@ -1,24 +1,24 @@
 "use client";
 
 /**
- * The shared base raw-data model for "one row per stock/ETF symbol" surfaces (the AI
- * leaderboard, a watchlist, an ETF roster, …): `{code, name, price, changePct, sparkline,
+ * The shared row model for "one row per stock/ETF symbol" surfaces (the AI leaderboard, a
+ * watchlist, an ETF roster, rankings, the screener): `{code, name, price, changePct, sparkline,
  * volume}`.
- * Combines two real, batched (≤20 symbols) backend routes —
- * `GET /market/symbol-info` (name/industry) and `GET /market/price-history` (bounded OHLCV
- * window) — into one typed shape per symbol, so every caller enriches a bare symbol list the
- * same way instead of re-deriving name/price/chg%/sparkline logic per screen.
  *
- * Every field is honestly nullable: a symbol absent from `symbol-info`'s roster (delisted,
- * mistyped) gets `name: null`; a symbol with fewer than 2 price-history bars gets
- * `changePct: null` and an empty `sparkline` — never a fabricated name or an interpolated price.
- * `changePct` is computed here (first vs. last close in the fetched window), not asserted by the
- * backend — see `PriceHistoryBar`'s own docstring for why that tool stays a pure data read.
+ * Backed by one batched (≤20 symbols) backend route, `GET /market/quotes`
+ * (`get_symbol_quotes`), which joins the roster name with the price window and computes the
+ * change server-side. `changePct` is therefore always the DAILY move (latest close vs. the
+ * previous trading day), whatever window the sparkline spans: the same number the stock header
+ * and every list show. Combining `symbol-info` + `price-history` in the browser
+ * used to let each caller pick its own window, so a 20-day move appeared under 漲跌%.
+ *
+ * Every field is honestly nullable: a symbol absent from the roster gets `name: null`; a symbol
+ * with fewer than 2 bars gets `changePct: null` and a short `sparkline`, never a fabricated value.
  */
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { getPriceHistory, getSymbolInfo } from "@/lib/api/market";
-import type { PriceHistoryBar, SymbolInfoRow } from "@/types/market";
+import { getSymbolQuotes } from "@/lib/api/market";
+import type { SymbolQuoteRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 export type SymbolQuote = {
@@ -26,28 +26,20 @@ export type SymbolQuote = {
   /** `null` when the symbol isn't in the current whole-market roster — never a placeholder. */
   name: string | null;
   industryCategory: string | null;
-  /** Latest close in the fetched history window, or `null` if no bar was found. */
+  /** Latest close, or `null` if no bar was found. */
   price: number | null;
-  /** `(latest close / earliest close - 1) * 100` over the fetched window — `null` when fewer
-   * than 2 bars exist for this symbol (nothing to compare). NOT a single-day change unless the
-   * caller requested a 2-day window; callers needing "today vs. yesterday" should pass a small
-   * `days` value to `useSymbolQuotes`. */
+  /** Daily change %, latest close vs. the previous trading day's close (computed by the
+   * backend). `null` when fewer than 2 bars exist. */
   changePct: number | null;
-  /** Ascending-by-date closes over the fetched window — feeds a sparkline directly. Empty when
-   * no bars were found (never a single synthetic point). */
+  /** Ascending-by-date closes over the requested window — feeds a sparkline directly. */
   sparkline: readonly number[];
-  /** The latest fetched bar's own volume — `null` if no bar was found. NOT a period-cumulative
-   * sum (a caller wanting "volume over the whole window" would need to sum `sparkline`'s own
-   * bars separately); this mirrors `price`'s own "latest bar" semantics. */
+  /** The latest bar's volume, or `null` if no bar was found. */
   volume: number | null;
 };
 
-const DEFAULT_HISTORY_DAYS = 20;
-const MAX_BATCH_SYMBOLS = 20; // mirrors lib/api/market.ts's own bound on the backend's ≤20 guardrail
+const DEFAULT_SPARKLINE_DAYS = 20;
+const MAX_BATCH_SYMBOLS = 20; // the backend's per-call bound
 
-/** Splits an arbitrarily long symbol list into ≤20-symbol chunks — callers (e.g. a leaderboard's
- * expanded 50-row view) may exceed the backend's per-call cap, so this hook batches internally
- * rather than pushing that bound onto every caller. */
 function chunk<T>(items: readonly T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
@@ -56,99 +48,59 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return chunks;
 }
 
-function buildQuotes(
-  symbols: readonly string[],
-  infoRows: readonly SymbolInfoRow[] | undefined,
-  historyBars: readonly PriceHistoryBar[] | undefined,
-): SymbolQuote[] {
-  const infoBySymbol = new Map((infoRows ?? []).map((row) => [row.symbol, row]));
-  const barsBySymbol = new Map<string, PriceHistoryBar[]>();
-  for (const bar of historyBars ?? []) {
-    const existing = barsBySymbol.get(bar.symbol);
-    if (existing) {
-      existing.push(bar);
-    } else {
-      barsBySymbol.set(bar.symbol, [bar]);
-    }
-  }
-
-  return symbols.map((code) => {
-    const info = infoBySymbol.get(code);
-    const bars = (barsBySymbol.get(code) ?? [])
-      .slice()
-      .sort((a, b) => a.trade_date.localeCompare(b.trade_date));
-    const first = bars[0];
-    const last = bars.at(-1);
-    const changePct =
-      bars.length >= 2 && first && last && first.close !== 0
-        ? (last.close / first.close - 1) * 100
-        : null;
-    return {
-      code,
-      name: info?.name ?? null,
-      industryCategory: info?.industry_category ?? null,
-      price: last?.close ?? null,
-      changePct,
-      sparkline: bars.map((bar) => bar.close),
-      volume: last?.volume ?? null,
-    };
-  });
+function toQuote(code: string, row: SymbolQuoteRow | undefined): SymbolQuote {
+  return {
+    code,
+    name: row?.name ?? null,
+    industryCategory: row?.industry_category ?? null,
+    price: row?.close ?? null,
+    changePct: row?.change_pct ?? null,
+    sparkline: row?.sparkline ?? [],
+    volume: row?.volume ?? null,
+  };
 }
 
 /**
- * Fetches and merges `symbol-info` + `price-history` for up to 20 symbols in two batched calls
- * (never one call per symbol) and returns one `SymbolQuote` per requested symbol, in the same
- * order. `enabled: symbols.length > 0` — an empty list issues no request rather than a
- * guaranteed-422 round-trip.
+ * Returns one `SymbolQuote` per requested symbol, in order, from one request per 20 symbols.
+ * Call it ONCE per list with every symbol in it, never once per row: a per-row call turns a
+ * 40-row list into 40 requests that queue behind the browser's per-origin connection limit.
+ * `days` sets only the sparkline window; the change is always daily.
  */
 export function useSymbolQuotes(
   symbols: readonly string[],
   market: Market,
-  days = DEFAULT_HISTORY_DAYS,
+  days = DEFAULT_SPARKLINE_DAYS,
 ): { quotes: SymbolQuote[]; isLoading: boolean; isError: boolean } {
   const batches = chunk(symbols, MAX_BATCH_SYMBOLS);
 
-  const infoQueries = useQueries({
+  const results = useQueries({
     queries: batches.map((batch) => ({
-      queryKey: ["symbol_info", market, ...batch],
-      queryFn: () => getSymbolInfo(batch, market),
-      enabled: batch.length > 0,
-    })),
-  });
-  const historyQueries = useQueries({
-    queries: batches.map((batch) => ({
-      queryKey: ["price_history", market, days, ...batch],
-      queryFn: () => getPriceHistory(batch, market, days),
+      queryKey: ["symbol_quotes", market, days, ...batch],
+      queryFn: () => getSymbolQuotes(batch, market, days),
       enabled: batch.length > 0,
     })),
   });
 
-  const infoRows = infoQueries.flatMap((q) => q.data?.rows ?? []);
-  const historyRows = historyQueries.flatMap((q) => q.data?.rows ?? []);
-
-  // `useMemo`'s dependency array must stay a fixed length across renders, but the number of
-  // ≤20-symbol batches (and thus how many query results feed this) varies with `symbols.length`
-  // — so instead of spreading the batch results as separate deps, we fold them into single
-  // stable fingerprints. Without this, `quotes` was a brand-new array identity on every render
-  // regardless of whether any underlying data changed, which defeats every downstream
-  // `useMemo`/`useReactTable` memoization keyed on it (e.g. `ScreenerTable`'s `rows` and its
-  // TanStack Table instance, which fully rebuilds its row/sort model whenever `data`'s identity
-  // changes) — confirmed as a real source of excessive re-render cost on a 50-row screener page.
+  // `useMemo` deps must stay a fixed length, but the batch count varies with `symbols.length`,
+  // so fold the inputs into stable fingerprints: the symbol list, and each batch's last update
+  // time (which changes whenever its data does). Without this, `quotes` would be a new array
+  // every render and defeat downstream memoization (e.g. the screener's TanStack Table).
   const symbolsKey = symbols.join(",");
-  const infoRowsKey = infoRows.map((r) => r.symbol).join(",");
-  const historyRowsKey = historyRows.length;
-  // Intentionally keyed on the *Key fingerprints above (stable strings/counts), not the arrays
-  // themselves, since `symbols`/`infoRows`/`historyRows` are rebuilt every render regardless of
-  // real data change.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: see comment above
-  const quotes = useMemo(
-    () => buildQuotes(symbols, infoRows, historyRows),
-    [symbolsKey, infoRowsKey, historyRowsKey],
-  );
+  const dataKey = results.map((q) => q.dataUpdatedAt).join(",");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the fingerprints above
+  const quotes = useMemo(() => {
+    const rowBySymbol = new Map<string, SymbolQuoteRow>();
+    for (const result of results) {
+      for (const row of result.data?.rows ?? []) {
+        rowBySymbol.set(row.symbol, row);
+      }
+    }
+    return symbols.map((code) => toQuote(code, rowBySymbol.get(code)));
+  }, [symbolsKey, dataKey]);
 
   return {
     quotes,
-    isLoading: infoQueries.some((q) => q.isLoading) || historyQueries.some((q) => q.isLoading),
-    isError: infoQueries.some((q) => q.isError) || historyQueries.some((q) => q.isError),
+    isLoading: results.some((q) => q.isLoading),
+    isError: results.some((q) => q.isError),
   };
 }

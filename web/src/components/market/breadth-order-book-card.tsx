@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretDownIcon, LockIcon } from "@phosphor-icons/react";
+import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
@@ -86,7 +86,6 @@ export function BreadthOrderBookCard({
   const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
   // The contribution list is the secondary read on this card: closed by default, one tap to open.
-  const [contributionOpen, setContributionOpen] = useState(false);
 
   const bucketData = BUCKET_ORDER.map((key) => ({
     key,
@@ -182,81 +181,53 @@ export function BreadthOrderBookCard({
 
       {indexContribution ? (
         <div className="mt-4 border-[var(--border)] border-t pt-3">
-          <button
-            type="button"
-            aria-expanded={contributionOpen}
-            onClick={() => setContributionOpen((prev) => !prev)}
-            className="flex min-h-11 w-full items-center justify-between gap-2 rounded-[var(--radius-input)] text-left"
-          >
-            <span className="flex items-center gap-2">
-              <span className="font-medium text-[13px] text-[var(--text)]">
-                {tContribution("title")}
-              </span>
-              <span className="rounded-[var(--radius-pill)] bg-[var(--warn-weak)] px-2 py-0.5 text-[11px] text-[var(--warn)]">
-                {tContribution("estimateBadge")}
-              </span>
+          <div className="flex min-h-11 items-center gap-2">
+            <h3 className="font-medium text-[13px] text-[var(--text)]">{tContribution("title")}</h3>
+            <span className="rounded-[var(--radius-pill)] bg-[var(--warn-weak)] px-2 py-0.5 text-[11px] text-[var(--warn)]">
+              {tContribution("estimateBadge")}
             </span>
-            <CaretDownIcon
-              size={14}
-              weight="regular"
-              aria-hidden
-              className={cn(
-                "shrink-0 text-[var(--text-muted)] transition-transform duration-[var(--dur-base)]",
-                contributionOpen && "rotate-180",
-              )}
-            />
-          </button>
+          </div>
 
-          {contributionOpen ? (
-            <div className="pt-1">
-              <p className="mb-3 text-[11px] text-[var(--text-muted)]">
-                {tContribution("estimateNote")}
+          <div className="pt-1">
+            <p className="mb-3 text-[11px] text-[var(--text-muted)]">
+              {tContribution("estimateNote")}
+            </p>
+            {hasContributors ? (
+              <>
+                <IndexContributionColumns
+                  positiveContributors={positiveContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+                  negativeContributors={negativeContributors.slice(0, COLLAPSED_CONTRIBUTOR_COUNT)}
+                  positiveLabel={tContribution("positive")}
+                  negativeLabel={tContribution("negative")}
+                />
+
+                {hasMoreContributors ? (
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(true)}
+                    className={cn(
+                      "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
+                      "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
+                    )}
+                  >
+                    <span>
+                      {t("expandContribution", {
+                        count: Math.max(positiveContributors.length, negativeContributors.length),
+                      })}
+                    </span>
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-[13px] text-[var(--text-muted)]">{tContribution("unavailable")}</p>
+            )}
+
+            {indexContribution.trade_date ? (
+              <p className="mt-3 text-[11px] text-[var(--text-muted)]">
+                {tContribution("updatedAt", { date: indexContribution.trade_date })}
               </p>
-              {hasContributors ? (
-                <>
-                  <IndexContributionColumns
-                    positiveContributors={positiveContributors.slice(
-                      0,
-                      COLLAPSED_CONTRIBUTOR_COUNT,
-                    )}
-                    negativeContributors={negativeContributors.slice(
-                      0,
-                      COLLAPSED_CONTRIBUTOR_COUNT,
-                    )}
-                    positiveLabel={tContribution("positive")}
-                    negativeLabel={tContribution("negative")}
-                  />
-
-                  {hasMoreContributors ? (
-                    <button
-                      type="button"
-                      onClick={() => setExpanded(true)}
-                      className={cn(
-                        "mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)]",
-                        "bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]",
-                      )}
-                    >
-                      <span>
-                        {t("expandContribution", {
-                          count: Math.max(positiveContributors.length, negativeContributors.length),
-                        })}
-                      </span>
-                    </button>
-                  ) : null}
-                </>
-              ) : (
-                <p className="text-[13px] text-[var(--text-muted)]">
-                  {tContribution("unavailable")}
-                </p>
-              )}
-
-              {indexContribution.trade_date ? (
-                <p className="mt-3 text-[11px] text-[var(--text-muted)]">
-                  {tContribution("updatedAt", { date: indexContribution.trade_date })}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+          </div>
 
           <ExpandModal
             open={expanded}

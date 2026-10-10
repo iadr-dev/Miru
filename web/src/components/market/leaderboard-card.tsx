@@ -7,12 +7,13 @@ import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
-import { PREVIEW_ROWS } from "@/lib/density";
 import type { LeaderboardDirection, ScoreBand, ScoreResult } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass } from "@/types/watchlist";
 
-const COLLAPSED_ROW_COUNT = PREVIEW_ROWS;
+// Ten, not the shared six: this card shares a row with 漲跌家數 (breadth + 指數貢獻排行), which is
+// taller, so six rows left a gap; ten fill the card and show more of the ranking at a glance.
+const COLLAPSED_ROW_COUNT = 10;
 
 const BAND_TOKEN: Record<ScoreBand, string> = {
   偏多: "var(--up)",

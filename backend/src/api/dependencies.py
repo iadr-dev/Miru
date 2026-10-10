@@ -25,6 +25,7 @@ from accounts.auth import InvalidAccessTokenError, decode_access_token
 from accounts.hooks import EntitlementResolver
 from accounts.models import User
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError, UserStore
+from api.auth_expired import AUTH_EXPIRED_STATE_KEY
 from api.errors import ApiError
 from api.turn_registry import TurnRegistry
 from config.settings import Settings
@@ -127,14 +128,21 @@ async def optional_user(
     session: AsyncSession = Depends(get_session),
 ) -> User | None:
     """Resolve the caller to a `User`, or `None` if unauthenticated — never raises on a
-    missing/invalid credential (public routes tolerate anonymous callers)."""
+    missing/invalid credential (public routes tolerate anonymous callers). A token that was
+    presented but has expired is still served as anonymous, but flagged on the request so
+    `AuthExpiredHeaderMiddleware` tells the client to refresh and retry; otherwise a signed-in
+    paid user is silently served free-tier teasers (see `api/auth_expired.py`)."""
     token = _extract_token(request)
     if not token:
         return None
     try:
         user_id = decode_access_token(token, settings=state.settings)
+    except InvalidAccessTokenError:
+        setattr(request.state, AUTH_EXPIRED_STATE_KEY, True)
+        return None
+    try:
         return await _load_user(session, state.settings, store, user_id)
-    except (InvalidAccessTokenError, UserNotFoundError):
+    except UserNotFoundError:
         return None
 
 

@@ -298,7 +298,9 @@ function TrendDimensionRow({
   readonly color: string;
 }): ReactNode {
   const t = useTranslations("stock.ai");
-  const locked = dimension.name === "broker_concentration" && dimension.value === null;
+  // Locked only when the API says the tier gates it; a null value on its own just means no data
+  // yet (e.g. 分點 not ingested), which must not read as an upgrade prompt to a Pro user.
+  const locked = dimension.locked;
   const hasValue = dimension.value !== null;
 
   return (
@@ -331,7 +333,7 @@ function TrendDimensionRow({
           ? t("dimensionLocked")
           : hasValue
             ? t(`dimensionCaption.${dimension.name}` as const)
-            : (dimension.unavailable_reason ?? t("dimensionUnavailable"))}
+            : t("dimensionUnavailable")}
       </p>
     </div>
   );
