@@ -52,8 +52,10 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-        <RainbowBorderCard className="flex">
+      {/* Grid rows stretch, so the two cards side by side always share one height (a card's own
+          footer is pinned to its bottom with mt-auto). */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <RainbowBorderCard className="flex h-full">
           <QueryState query={leaderboardQuery} skeleton={<CardSkeleton height={430} />}>
             {(data) => (
               <LeaderboardCard
@@ -68,7 +70,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        <RainbowBorderCard className="flex">
+        <RainbowBorderCard className="flex h-full">
           <QueryState query={breadthQuery} skeleton={<CardSkeleton height={560} />}>
             {(breadth) =>
               isUs ? (
@@ -88,18 +90,18 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        <RainbowBorderCard className="flex">
+        <RainbowBorderCard className="flex h-full">
           {isUs ? <RankingsCard market={market} /> : <TwRankingsCard />}
         </RainbowBorderCard>
 
         {isUs ? (
           // Fills the grid cell 重大訊息 occupies for TW (MOPS-only, no US equivalent) with a
           // real US-backed alternative instead of leaving it empty.
-          <RainbowBorderCard>
+          <RainbowBorderCard className="flex h-full">
             <EarningsCalendarPanel />
           </RainbowBorderCard>
         ) : (
-          <RainbowBorderCard>
+          <RainbowBorderCard className="flex h-full">
             <MaterialAnnouncementFeedPanel market={market} />
           </RainbowBorderCard>
         )}
