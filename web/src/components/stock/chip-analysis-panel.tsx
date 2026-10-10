@@ -3,7 +3,7 @@
 import { LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -36,6 +36,7 @@ import {
   getStockMarginShort,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { FLOW_CHART_TRADING_DAYS, groupFlowByPeriod } from "@/lib/flow-periods";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { ChipBrokerTopRow, DayTradingRow, MarginShortRow } from "@/types/stock-detail";
@@ -665,6 +666,19 @@ type SummaryPeriod = (typeof SUMMARY_PERIODS)[number];
 // month ≈20 trading days) rather than a literal single day/week/month window, since the flow
 // data this reads is trading-day-indexed, not calendar-indexed.
 const SUMMARY_PERIOD_TRADING_DAYS: Record<SummaryPeriod, number> = { day: 1, week: 5, month: 20 };
+// The 摘要 chart's window: ~3 months, read with calendar-day slack for holidays. Price history is
+// capped at 60 trading days by the backend, so the close line covers the latest ~3 months.
+const FLOW_CHART_CALENDAR_DAYS = 100;
+const FLOW_CHART_PRICE_DAYS = 60;
+
+/** The default and the 3-month reads overlap; keep one row per (date, investor). */
+function uniqueFlowRows<T extends { trade_date: string; investor: string }>(
+  rows: readonly T[],
+): T[] {
+  const seen = new Map<string, T>();
+  for (const row of rows) seen.set(`${row.trade_date}|${row.investor}`, row);
+  return [...seen.values()];
+}
 
 /** 三大法人's 摘要 sub-tab — a top totals row (三大法人 combined + 外資/投信/自營商, each 累計
  * 買賣超 + estimated %-of-shares-outstanding, each card tinted by its own bucket color) plus
@@ -706,9 +720,17 @@ function InstitutionalTotalsBody({
     queryKey: ["stock_foreign_shareholding", symbol, market],
     queryFn: () => getForeignShareholding(symbol, market),
   });
+  // The chart spans ~3 months whatever the period; 日/週/月 only sets the bar size. The default
+  // read above is about a month, so ask for 3 months too and merge (a throttled upstream that
+  // returns nothing for the longer range still leaves the month on screen).
+  const chartStart = useMemo(() => isoDaysAgo(FLOW_CHART_CALENDAR_DAYS), []);
+  const longFlowQuery = useQuery({
+    queryKey: ["stock_institutional_flow", symbol, market, chartStart],
+    queryFn: () => getStockInstitutionalFlow(symbol, market, { startDate: chartStart }),
+  });
   const priceQuery = useQuery({
-    queryKey: ["price_history", symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS],
-    queryFn: () => getPriceHistory([symbol], market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS),
+    queryKey: ["price_history", symbol, market, FLOW_CHART_PRICE_DAYS],
+    queryFn: () => getPriceHistory([symbol], market, FLOW_CHART_PRICE_DAYS),
   });
 
   if (flowQuery.isLoading || shareholdingQuery.isLoading) return <CardSkeletonBody height={320} />;
@@ -758,16 +780,25 @@ function InstitutionalTotalsBody({
     },
     { foreign: 0, trust: 0, dealer: 0 },
   );
-  const periodPoints = windowDates.map((trade_date) => {
-    const bucket = byDate.get(trade_date);
-    return {
-      trade_date,
-      foreign: bucket?.foreign ?? 0,
-      trust: bucket?.trust ?? 0,
-      dealer: bucket?.dealer ?? 0,
-      price: priceByDate.get(trade_date) ?? null,
-    };
-  });
+  const chartByDate = bucketedFlowByDate(
+    uniqueFlowRows([...(longFlowQuery.data?.rows ?? []), ...flowRows]),
+  );
+  const chartDates = [...chartByDate.keys()]
+    .sort((a, b) => a.localeCompare(b))
+    .slice(-FLOW_CHART_TRADING_DAYS);
+  const chartBars = groupFlowByPeriod(
+    chartDates.map((trade_date) => {
+      const bucket = chartByDate.get(trade_date);
+      return {
+        trade_date,
+        foreign: bucket?.foreign ?? 0,
+        trust: bucket?.trust ?? 0,
+        dealer: bucket?.dealer ?? 0,
+        price: priceByDate.get(trade_date) ?? null,
+      };
+    }),
+    period,
+  );
 
   const totalsCards: {
     key: string;
@@ -884,11 +915,13 @@ function InstitutionalTotalsBody({
       </div>
       <div style={{ width: "100%", height: 160 }}>
         <ResponsiveContainer>
-          <ComposedChart data={periodPoints} margin={{ left: 8, right: 8, bottom: 8 }}>
+          <ComposedChart data={chartBars} margin={{ left: 8, right: 8, bottom: 8 }}>
             <CartesianGrid vertical={false} stroke="var(--grid)" />
             <XAxis
-              dataKey="trade_date"
+              dataKey="label"
               tick={{ fill: "var(--text-muted)", fontSize: 9 }}
+              tickFormatter={(label: string) => (period === "month" ? label : label.slice(5))}
+              minTickGap={16}
               stroke="var(--border)"
             />
             <YAxis
