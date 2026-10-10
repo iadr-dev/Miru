@@ -113,7 +113,7 @@ function ValuationRiverCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={340} />
       </section>
     );
@@ -125,7 +125,7 @@ function ValuationRiverCard({
   const band = query.data?.band;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("valuationRiverTitle")}</h2>
         <RangeSelect
@@ -385,7 +385,7 @@ export function AnalystConsensusCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={220} />
       </section>
     );
@@ -400,7 +400,7 @@ export function AnalystConsensusCard({
   });
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">
         {t("analystConsensusTitle")}
       </h2>
@@ -664,7 +664,7 @@ function StockEventsCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={260} />
       </section>
     );
@@ -674,7 +674,7 @@ function StockEventsCard({
 
   if (isMaskedTeaser(data)) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <SponsorTeaser
           headline={t("eventsTitle")}
           preview={data.preview}
@@ -720,7 +720,7 @@ function StockEventsCard({
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("eventsTitle")}</h2>
         {events.length > 0 ? (
@@ -760,7 +760,7 @@ function ViewToggleButton({
       className={cn(
         "rounded-[var(--radius-pill)] px-3 py-1 text-[12px] transition-colors",
         active
-          ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+          ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
           : "text-[var(--text-muted)] hover:text-[var(--text)]",
       )}
     >

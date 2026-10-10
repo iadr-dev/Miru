@@ -10,11 +10,12 @@ import { TwMarketRankingRows } from "@/components/market/tw-market-ranking-rows"
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getHolderAccumulation, getTwMarketRankings } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
+import { PREVIEW_ROWS } from "@/lib/density";
 import { isMaskedTeaser, type TwRankingKind } from "@/types/market";
 
 // Same "fetch the full backend cap once, show 10 inline, expand the rest in a modal" convention
 // `RankingsCard` (the US sibling) uses.
-const COLLAPSED_ROW_COUNT = 10;
+const COLLAPSED_ROW_COUNT = PREVIEW_ROWS;
 const FETCH_TOP_N = 50;
 // 大戶買賣's own existing threshold/window default (`ChipDataPanel`'s own initial state) — this
 // compact tab shows one fixed slice rather than carrying over `HolderAccumulationCard`'s full
@@ -65,7 +66,7 @@ export function TwRankingsCard(): ReactNode {
   const [tab, setTab] = useState<TwRankingsTab>("dealer_streak");
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       <div
@@ -107,7 +108,7 @@ function TwRankingTabButton({
       className={cn(
         "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
         active
-          ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+          ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
           : "text-[var(--text-muted)] hover:text-[var(--text)]",
       )}
     >

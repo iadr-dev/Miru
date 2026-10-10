@@ -144,120 +144,126 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
   }, [rows, sortKey, sortDirection, quoteBySymbol, changePctFor, volumeFor, extraSortable]);
 
   return (
-    <>
-      <div
-        className={cn(
-          "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
-          gridCols,
-        )}
-      >
-        {showRank ? <span aria-hidden /> : null}
-        <span aria-hidden>{t("columnName")}</span>
-        <span aria-hidden className="text-right">
-          {t("columnPrice")}
-        </span>
-        <SortableHeaderCell
-          label={t("columnChange")}
-          active={sortKey === "change"}
-          direction={sortDirection}
-          onClick={() => toggleSort("change")}
-        />
-        <span aria-hidden className="text-center">
-          {t("columnSparkline")}
-        </span>
-        <SortableHeaderCell
-          label={t("columnVolume")}
-          active={sortKey === "volume"}
-          direction={sortDirection}
-          onClick={() => toggleSort("volume")}
-        />
-        {extraSortable ? (
+    // Phones scroll the dense grid sideways at a readable minimum width instead of crushing the
+    // name column to a sliver.
+    <div className="-mx-1 overflow-x-auto px-1">
+      <div className="min-w-[34rem] md:min-w-0">
+        <div
+          className={cn(
+            "grid items-center gap-2.5 border-[var(--border)] border-b pb-1.5 text-[11px] text-[var(--text-muted)]",
+            gridCols,
+          )}
+        >
+          {showRank ? <span aria-hidden /> : null}
+          <span aria-hidden>{t("columnName")}</span>
+          <span aria-hidden className="text-right">
+            {t("columnPrice")}
+          </span>
           <SortableHeaderCell
-            label={extraSortable.label}
-            active={sortKey === "extra"}
+            label={t("columnChange")}
+            active={sortKey === "change"}
             direction={sortDirection}
-            onClick={() => toggleSort("extra")}
+            onClick={() => toggleSort("change")}
           />
-        ) : (
-          extraHeader
-        )}
-        <span aria-hidden />
-      </div>
-      <ul className="divide-y divide-[var(--border)]">
-        {sortedRows.map((row) => {
-          const quote = quoteBySymbol.get(row.symbol);
-          const pctChange = changePctFor ? changePctFor(row) : quote?.changePct;
-          const hasChange = pctChange !== null && pctChange !== undefined;
-          const up = hasChange && pctChange >= 0;
-          const color = hasChange ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
-          const name = row.name ?? quote?.name ?? row.symbol;
-          const rank = showRank ? rows.indexOf(row) + 1 : null;
-          const volume = volumeFor ? volumeFor(row) : quote?.volume;
-          const price = priceFor ? priceFor(row) : quote?.price;
-          return (
-            <li
-              key={row.symbol}
-              role="group"
-              aria-label={`${name} ${row.symbol} ${
-                hasChange
-                  ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
-                  : t("empty")
-              }${extraAriaLabel ? ` ${extraAriaLabel(row)}` : ""}`}
-              className={cn("grid items-center gap-2.5 py-2.5", gridCols)}
-            >
-              {showRank ? (
-                <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
-                  {rank}
+          <span aria-hidden className="text-center">
+            {t("columnSparkline")}
+          </span>
+          <SortableHeaderCell
+            label={t("columnVolume")}
+            active={sortKey === "volume"}
+            direction={sortDirection}
+            onClick={() => toggleSort("volume")}
+          />
+          {extraSortable ? (
+            <SortableHeaderCell
+              label={extraSortable.label}
+              active={sortKey === "extra"}
+              direction={sortDirection}
+              onClick={() => toggleSort("extra")}
+            />
+          ) : (
+            extraHeader
+          )}
+          <span aria-hidden />
+        </div>
+        <ul className="divide-y divide-[var(--border)]">
+          {sortedRows.map((row) => {
+            const quote = quoteBySymbol.get(row.symbol);
+            const pctChange = changePctFor ? changePctFor(row) : quote?.changePct;
+            const hasChange = pctChange !== null && pctChange !== undefined;
+            const up = hasChange && pctChange >= 0;
+            const color = hasChange ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
+            const name = row.name ?? quote?.name ?? row.symbol;
+            const rank = showRank ? rows.indexOf(row) + 1 : null;
+            const volume = volumeFor ? volumeFor(row) : quote?.volume;
+            const price = priceFor ? priceFor(row) : quote?.price;
+            return (
+              <li
+                key={row.symbol}
+                role="group"
+                aria-label={`${name} ${row.symbol} ${
+                  hasChange
+                    ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
+                    : t("empty")
+                }${extraAriaLabel ? ` ${extraAriaLabel(row)}` : ""}`}
+                className={cn("grid items-center gap-2.5 py-2.5", gridCols)}
+              >
+                {showRank ? (
+                  <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
+                    {rank}
+                  </span>
+                ) : null}
+                <SymbolLink
+                  symbol={row.symbol}
+                  market={market}
+                  className="truncate text-[14px] text-[var(--text)] hover:underline"
+                >
+                  {name}
+                  <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">
+                    {row.symbol}
+                  </span>
+                </SymbolLink>
+                <span
+                  aria-hidden
+                  className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
+                >
+                  {price !== null && price !== undefined
+                    ? formatNumber(price, "zh-TW", { decimals: 1 })
+                    : "—"}
                 </span>
-              ) : null}
-              <SymbolLink
-                symbol={row.symbol}
-                market={market}
-                className="truncate text-[14px] text-[var(--text)] hover:underline"
-              >
-                {name}
-                <span className="ml-1.5 text-[11.5px] text-[var(--text-muted)]">{row.symbol}</span>
-              </SymbolLink>
-              <span
-                aria-hidden
-                className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
-              >
-                {price !== null && price !== undefined
-                  ? formatNumber(price, "zh-TW", { decimals: 1 })
-                  : "—"}
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[11.5px] tabular-nums"
-                style={{ color }}
-              >
-                {hasChange
-                  ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
-                  : "—"}
-              </span>
-              <span aria-hidden className="h-[26px]">
-                <Sparkline values={quote?.sparkline ?? []} color={color} />
-              </span>
-              <span
-                aria-hidden
-                className="text-right font-num text-[11.5px] text-[var(--text-muted)] tabular-nums"
-              >
-                {volume !== null && volume !== undefined
-                  ? formatNumber(volume, "zh-TW", { decimals: 0 })
-                  : "—"}
-              </span>
-              {extraCell ? extraCell(row, quote) : null}
-              <WatchlistStarButton
-                symbol={row.symbol}
-                market={market}
-                assetClass={assetClass}
-                size="compact"
-              />
-            </li>
-          );
-        })}
-      </ul>
-    </>
+                <span
+                  aria-hidden
+                  className="text-right font-num text-[11.5px] tabular-nums"
+                  style={{ color }}
+                >
+                  {hasChange
+                    ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
+                    : "—"}
+                </span>
+                <span aria-hidden className="h-[26px]">
+                  <Sparkline values={quote?.sparkline ?? []} color={color} />
+                </span>
+                <span
+                  aria-hidden
+                  className="text-right font-num text-[11.5px] text-[var(--text-muted)] tabular-nums"
+                >
+                  {volume !== null && volume !== undefined
+                    ? formatNumber(volume, "zh-TW", { decimals: 0 })
+                    : "—"}
+                </span>
+                {extraCell ? extraCell(row, quote) : null}
+                <WatchlistStarButton
+                  symbol={row.symbol}
+                  market={market}
+                  assetClass={assetClass}
+                  size="compact"
+                />
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    </div>
   );
 }
 

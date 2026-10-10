@@ -1,6 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import { toast } from "@/components/ui/toast";
 import {
   addWatchlistItem,
   createWatchlist,
@@ -26,6 +28,14 @@ function queryKey(market: Market): readonly [typeof QUERY_KEY_ROOT, Market] {
  * /watchlists?market=`); ETF and stock groups for the same market share one query, since the
  * backend's own `asset_class` split is a client-side filter over the same response, not a
  * separate fetch. */
+
+/** A watchlist action is applied optimistically and rolled back if the server refuses it; say so,
+ * so the row snapping back is never a silent surprise. */
+function useMutationFailedToast(): () => void {
+  const t = useTranslations("shell.watchlist");
+  return () => toast.error(t("mutationFailed"));
+}
+
 export function useWatchlists(market: Market) {
   return useQuery({
     queryKey: queryKey(market),
@@ -58,6 +68,7 @@ function invalidate(queryClient: ReturnType<typeof useQueryClient>, market: Mark
  * example there. */
 export function useAddWatchlistItem(market: Market) {
   const queryClient = useQueryClient();
+  const notifyFailed = useMutationFailedToast();
   return useMutation({
     mutationFn: ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) =>
       addWatchlistItem(watchlistId, symbol),
@@ -90,6 +101,7 @@ export function useAddWatchlistItem(market: Market) {
       return { previous };
     },
     onError: (_error, _vars, context) => {
+      notifyFailed();
       if (context?.previous) {
         queryClient.setQueryData(queryKey(market), context.previous);
       }
@@ -100,6 +112,7 @@ export function useAddWatchlistItem(market: Market) {
 
 export function useRemoveWatchlistItem(market: Market) {
   const queryClient = useQueryClient();
+  const notifyFailed = useMutationFailedToast();
   return useMutation({
     mutationFn: ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) =>
       removeWatchlistItem(watchlistId, symbol),
@@ -116,6 +129,7 @@ export function useRemoveWatchlistItem(market: Market) {
       return { previous };
     },
     onError: (_error, _vars, context) => {
+      notifyFailed();
       if (context?.previous) {
         queryClient.setQueryData(queryKey(market), context.previous);
       }
@@ -128,6 +142,7 @@ export function useRemoveWatchlistItem(market: Market) {
  * this tab" semantics (mirrors `watches()`'s reverse-query being tab-wide, not per-group). */
 export function useUnstarSymbolEverywhere(market: Market) {
   const queryClient = useQueryClient();
+  const notifyFailed = useMutationFailedToast();
   return useMutation({
     mutationFn: async ({
       symbol,
@@ -151,6 +166,7 @@ export function useUnstarSymbolEverywhere(market: Market) {
       return { previous };
     },
     onError: (_error, _vars, context) => {
+      notifyFailed();
       if (context?.previous) {
         queryClient.setQueryData(queryKey(market), context.previous);
       }
@@ -170,6 +186,7 @@ export function useCreateWatchlist(market: Market) {
 
 export function useRenameWatchlist(market: Market) {
   const queryClient = useQueryClient();
+  const notifyFailed = useMutationFailedToast();
   return useMutation({
     mutationFn: ({
       watchlistId,
@@ -191,6 +208,7 @@ export function useRenameWatchlist(market: Market) {
       return { previous };
     },
     onError: (_error, _vars, context) => {
+      notifyFailed();
       if (context?.previous) {
         queryClient.setQueryData(queryKey(market), context.previous);
       }
@@ -201,6 +219,7 @@ export function useRenameWatchlist(market: Market) {
 
 export function useSetWatchlistColor(market: Market) {
   const queryClient = useQueryClient();
+  const notifyFailed = useMutationFailedToast();
   return useMutation({
     mutationFn: ({
       watchlistId,
@@ -222,6 +241,7 @@ export function useSetWatchlistColor(market: Market) {
       return { previous };
     },
     onError: (_error, _vars, context) => {
+      notifyFailed();
       if (context?.previous) {
         queryClient.setQueryData(queryKey(market), context.previous);
       }
@@ -232,6 +252,7 @@ export function useSetWatchlistColor(market: Market) {
 
 export function useDeleteWatchlist(market: Market) {
   const queryClient = useQueryClient();
+  const notifyFailed = useMutationFailedToast();
   return useMutation({
     mutationFn: (watchlistId: string) => deleteWatchlist(watchlistId),
     onMutate: async (watchlistId) => {
@@ -243,6 +264,7 @@ export function useDeleteWatchlist(market: Market) {
       return { previous };
     },
     onError: (_error, _vars, context) => {
+      notifyFailed();
       if (context?.previous) {
         queryClient.setQueryData(queryKey(market), context.previous);
       }

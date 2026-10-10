@@ -109,10 +109,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
     view === "heatmap" ? t("title") : view === "stock" ? t("viewStockHeatmap") : t("rotationTitle");
 
   return (
-    <section
-      aria-label={viewTitle}
-      className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5"
-    >
+    <section aria-label={viewTitle} className="flex w-full flex-col surface-card p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
         <div
           role="group"
@@ -128,7 +125,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
               className={cn(
                 "rounded-[var(--radius-pill)] px-3 py-1 text-[12px] transition-colors",
                 view === v
-                  ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                  ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                   : "text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
             >

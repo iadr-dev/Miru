@@ -155,10 +155,10 @@ export function AssetHeader({
   const composite = scoreQuery.data?.found ? scoreQuery.data.result?.composite : undefined;
 
   return (
-    <header className="sticky top-0 z-10 border-[var(--border)] border-b bg-[var(--surface)] px-5 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h1 className="truncate font-semibold text-[20px] text-[var(--text)]">
+    <header className="z-10 border-[var(--border)] border-b bg-[var(--surface)] px-4 py-4 sm:sticky sm:top-0 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <h1 className="max-w-full truncate font-semibold text-[20px] text-[var(--text)]">
             {symbolInfo?.name ?? symbol}
           </h1>
           <span className="font-num text-[15px] text-[var(--text-muted)] tabular-nums">
@@ -218,7 +218,7 @@ export function AssetHeader({
         >
           <span
             aria-hidden
-            className="font-num text-[28px] tabular-nums"
+            className="font-display font-light text-[34px] tabular-nums leading-none"
             style={{ color: priceColor }}
           >
             {formatNumber(price, locale, { decimals: 2 })}

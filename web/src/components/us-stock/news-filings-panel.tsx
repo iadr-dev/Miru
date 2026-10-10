@@ -31,7 +31,7 @@ export function NewsFilingsPanel({
   const [subTab, setSubTab] = useState<NewsFilingsSubTab>("news");
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <div className="surface-card p-4 sm:p-5">
       <div role="tablist" aria-label={t("label")} className="mb-3 flex flex-wrap gap-1.5">
         {(["news", "filings"] as const).map((key) => (
           <button
@@ -43,7 +43,7 @@ export function NewsFilingsPanel({
             className={cn(
               "rounded-[var(--radius-pill)] px-3 py-1.5 text-[12.5px] transition-colors",
               subTab === key
-                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                 : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

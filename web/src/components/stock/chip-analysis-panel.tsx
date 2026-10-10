@@ -230,12 +230,7 @@ function SummaryColumn({
 }): ReactNode {
   const t = useTranslations("stock.chipAnalysis");
   return (
-    <section
-      className={cn(
-        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
-        SUMMARY_ROW_MIN_HEIGHT,
-      )}
-    >
+    <section className={cn("surface-card p-4 sm:p-5", SUMMARY_ROW_MIN_HEIGHT)}>
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("column.summary")}</h2>
       <h3 className="mb-2 font-medium text-[13px] text-[var(--text-muted)]">
         {t("summarySection.institutional")}
@@ -258,12 +253,7 @@ function BrokersColumn({
 }): ReactNode {
   const t = useTranslations("stock.chipAnalysis");
   return (
-    <section
-      className={cn(
-        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
-        SUMMARY_ROW_MIN_HEIGHT,
-      )}
-    >
+    <section className={cn("surface-card p-4 sm:p-5", SUMMARY_ROW_MIN_HEIGHT)}>
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("column.brokers")}</h2>
       <ChipFlowsBody symbol={symbol} market={market} />
     </section>
@@ -292,7 +282,7 @@ function SubTabRow<T extends string>({
           className={cn(
             "rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-colors",
             active === tab
-              ? "bg-[var(--accent)] text-[color:#06231F]"
+              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
               : "text-[var(--text-muted)] hover:text-[var(--text)]",
           )}
         >
@@ -314,12 +304,7 @@ function InstitutionalColumn({
   const [subTab, setSubTab] = useState<InstitutionalSubTab>("flow");
 
   return (
-    <section
-      className={cn(
-        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
-        INSTITUTIONAL_ROW_MIN_HEIGHT,
-      )}
-    >
+    <section className={cn("surface-card p-4 sm:p-5", INSTITUTIONAL_ROW_MIN_HEIGHT)}>
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">
         {t("column.institutional")}
       </h2>
@@ -347,12 +332,7 @@ function MarginShortColumn({
   const [subTab, setSubTab] = useState<MarginSubTab>("margin");
 
   return (
-    <section
-      className={cn(
-        "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5",
-        INSTITUTIONAL_ROW_MIN_HEIGHT,
-      )}
-    >
+    <section className={cn("surface-card p-4 sm:p-5", INSTITUTIONAL_ROW_MIN_HEIGHT)}>
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">
         {t("column.marginShort")}
       </h2>

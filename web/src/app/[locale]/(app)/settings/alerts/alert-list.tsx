@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BellSimpleIcon,
   CaretDownIcon,
   CaretRightIcon,
   PencilSimpleIcon,
@@ -14,6 +15,7 @@ import { ConfirmDialog } from "@/components/settings/confirm-dialog";
 import { ToggleSwitch } from "@/components/settings/form-controls";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { conditionSummary, ruleStatus } from "@/lib/alerts/condition";
 import { deleteAlert, listAlerts, updateAlert } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
@@ -125,13 +127,17 @@ export function AlertList({ preset }: { preset?: AlertFormPreset }): ReactNode {
   return (
     <div>
       {alerts.length === 0 && !creating ? (
-        <div className="py-6 text-center">
-          <p className="text-[14px] text-[var(--text-muted)]">{t("empty")}</p>
-          <Button variant="filled" size="sm" className="mt-3" onClick={() => setCreating(true)}>
-            <PlusIcon size={16} weight="regular" aria-hidden />
-            {t("createCta")}
-          </Button>
-        </div>
+        <EmptyState
+          compact
+          icon={<BellSimpleIcon size={20} weight="regular" />}
+          title={t("empty")}
+          action={
+            <Button variant="filled" size="sm" onClick={() => setCreating(true)}>
+              <PlusIcon size={16} weight="regular" aria-hidden />
+              {t("createCta")}
+            </Button>
+          }
+        />
       ) : (
         <>
           <ul className="divide-y divide-[var(--border)]">

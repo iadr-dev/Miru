@@ -21,6 +21,7 @@ import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { PREVIEW_ROWS } from "@/lib/density";
 import type { Market } from "@/types/settings";
 import {
   FINANCIAL_STATEMENT_TYPES,
@@ -187,7 +188,7 @@ function MonthRevenueCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={420} />
       </section>
     );
@@ -211,7 +212,7 @@ function MonthRevenueCard({
   const rowsDesc = [...trend].reverse();
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("monthRevenueTitle")}</h2>
         <div className="flex items-center gap-2">
@@ -546,7 +547,7 @@ function FinancialStatementCard({
 
         <div className="mt-4">
           <FinancialStatementTable
-            items={topItems}
+            items={topItems.slice(0, PREVIEW_ROWS)}
             periods={chartPeriods}
             valueByItemAndPeriod={valueByItemAndPeriod}
             locale={locale}
@@ -554,7 +555,7 @@ function FinancialStatementCard({
           />
         </div>
 
-        {periods.length > STATEMENT_COLLAPSED_PERIOD_COUNT ? (
+        {periods.length > STATEMENT_COLLAPSED_PERIOD_COUNT || topItems.length > PREVIEW_ROWS ? (
           <button
             type="button"
             onClick={() => setExpanded(true)}
@@ -571,7 +572,7 @@ function FinancialStatementCard({
   }
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("statementTitle")}</h2>
         {latestPeriod ? (
@@ -591,7 +592,7 @@ function FinancialStatementCard({
             className={cn(
               "rounded-[var(--radius-pill)] px-3 py-1.5 text-[12.5px] transition-colors",
               statementType === key
-                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                 : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >

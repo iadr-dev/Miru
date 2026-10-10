@@ -13,7 +13,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
  * `--accent` is chrome-only, so the filled CTA uses it here. Every variant meets the 44px
  * minimum touch target and inherits the global focus-visible ring. */
 const VARIANTS: Record<Variant, string> = {
-  filled: "bg-[var(--accent)] text-[var(--bg)] hover:opacity-90 font-medium",
+  filled: "bg-[var(--accent)] text-[var(--on-accent)] hover:opacity-90 font-medium",
   ghost: "bg-transparent text-[var(--text)] hover:bg-[var(--surface-2)]",
   outline:
     "bg-transparent text-[var(--text)] border border-[var(--border)] hover:bg-[var(--surface-2)]",

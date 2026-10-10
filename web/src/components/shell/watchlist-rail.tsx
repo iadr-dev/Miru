@@ -82,10 +82,13 @@ export function WatchlistRail({
   onClose,
   width,
   onWidthChange,
+  sheet = false,
 }: {
   readonly onClose: () => void;
   readonly width: number;
   readonly onWidthChange: (width: number) => void;
+  /** Rendered inside the below-`lg` sheet: fills its container, no resize handle. */
+  readonly sheet?: boolean;
 }): ReactNode {
   const t = useTranslations("shell.watchlist");
   const [tab, setTab] = useState<WatchlistTab>("tw");
@@ -93,16 +96,21 @@ export function WatchlistRail({
 
   return (
     <div className="flex h-full">
-      <ResizableRailHandle
-        width={width}
-        onWidthChange={onWidthChange}
-        onCollapse={onClose}
-        ariaLabel={t("resizeHandle")}
-      />
+      {sheet ? null : (
+        <ResizableRailHandle
+          width={width}
+          onWidthChange={onWidthChange}
+          onCollapse={onClose}
+          ariaLabel={t("resizeHandle")}
+        />
+      )}
       <aside
         aria-label={t("title")}
-        style={{ width }}
-        className="flex h-full flex-col border-[var(--border)] border-l bg-[var(--surface)]"
+        style={sheet ? undefined : { width }}
+        className={cn(
+          "flex h-full flex-col bg-[var(--surface)]",
+          sheet ? "w-full" : "border-[var(--border)] border-l",
+        )}
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-[var(--border)] border-b px-4">
           <span className="inline-flex items-center gap-2 font-semibold text-[15px] text-[var(--text)]">

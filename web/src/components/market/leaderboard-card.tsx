@@ -7,11 +7,12 @@ import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
+import { PREVIEW_ROWS } from "@/lib/density";
 import type { LeaderboardDirection, ScoreBand, ScoreResult } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass } from "@/types/watchlist";
 
-const COLLAPSED_ROW_COUNT = 10;
+const COLLAPSED_ROW_COUNT = PREVIEW_ROWS;
 
 const BAND_TOKEN: Record<ScoreBand, string> = {
   偏多: "var(--up)",
@@ -66,7 +67,7 @@ export function LeaderboardCard({
   const allQuoteBySymbol = new Map(allQuotes.map((q) => [q.code, q]));
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
@@ -83,7 +84,7 @@ export function LeaderboardCard({
                 className={cn(
                   "rounded-[var(--radius-pill)] px-3.5 py-1 text-[12px] transition-colors",
                   direction === d
-                    ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                    ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                     : "text-[var(--text-muted)] hover:text-[var(--text)]",
                 )}
               >

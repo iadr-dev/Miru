@@ -75,7 +75,7 @@ function TrailingReturnsCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={260} />
       </section>
     );
@@ -92,7 +92,7 @@ function TrailingReturnsCard({
     : [];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
       {chartData.length === 0 ? (
         <p className="text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>
@@ -199,7 +199,7 @@ export function OverviewPanel({
 
   if (!info) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>
       </section>
@@ -281,7 +281,7 @@ export function OverviewPanel({
         )}
       </section>
 
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <dl className="flex flex-col gap-3">
           {rows.map(({ label, value }) => (

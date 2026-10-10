@@ -1,6 +1,6 @@
 "use client";
 
-import { PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { CalendarBlankIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useState } from "react";
@@ -8,6 +8,7 @@ import { ConfirmDialog } from "@/components/settings/confirm-dialog";
 import { Select, TextInput, ToggleSwitch } from "@/components/settings/form-controls";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Link } from "@/i18n/navigation";
 import {
   createSchedule,
@@ -123,13 +124,17 @@ export function ScheduleList(): ReactNode {
   return (
     <div>
       {schedules.length === 0 && !creating ? (
-        <div className="py-6 text-center">
-          <p className="text-[14px] text-[var(--text-muted)]">{t("empty")}</p>
-          <Button variant="filled" size="sm" className="mt-3" onClick={() => setCreating(true)}>
-            <PlusIcon size={16} weight="regular" aria-hidden />
-            {t("createCta")}
-          </Button>
-        </div>
+        <EmptyState
+          compact
+          icon={<CalendarBlankIcon size={20} weight="regular" />}
+          title={t("empty")}
+          action={
+            <Button variant="filled" size="sm" onClick={() => setCreating(true)}>
+              <PlusIcon size={16} weight="regular" aria-hidden />
+              {t("createCta")}
+            </Button>
+          }
+        />
       ) : (
         <>
           <ul className="divide-y divide-[var(--border)]">

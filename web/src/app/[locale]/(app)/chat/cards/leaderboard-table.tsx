@@ -39,7 +39,7 @@ export function LeaderboardTable({ data }: { data: unknown }): ReactNode {
   const isNumericColumn = numericColumnsFor(displayRows, columns);
 
   return (
-    <div className="mt-3 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)]">
+    <div className="mt-3 overflow-x-auto surface-card">
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr className="bg-[var(--surface-2)]">

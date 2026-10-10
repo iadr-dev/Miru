@@ -32,7 +32,7 @@ export function FundProfileCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={120} />
       </section>
     );
@@ -64,7 +64,7 @@ export function FundProfileCard({
   ];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
       <div className="grid grid-cols-3 gap-3">
         {stats.map(([label, value, color]) => (

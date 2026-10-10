@@ -130,7 +130,7 @@ export function SavedScreens({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-3">
+    <div className="flex flex-col gap-2 surface-card p-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 font-medium text-[12px] text-[var(--text-muted)]">
           <BookmarkSimpleIcon size={13} weight="fill" className="text-[var(--accent)]" />

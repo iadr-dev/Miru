@@ -152,7 +152,7 @@ export function InstitutionalFlowCard({
   );
 
   return (
-    <section className="flex h-full w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex h-full w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{tCard("title")}</h2>
       {chartData.length > 0 ? chart : null}
 

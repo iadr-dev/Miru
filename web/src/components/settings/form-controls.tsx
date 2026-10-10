@@ -1,6 +1,11 @@
 "use client";
 
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type {
+  InputHTMLAttributes,
+  ReactNode,
+  SelectHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 import { cn } from "@/lib/cn";
 
 type TextInputProps = InputHTMLAttributes<HTMLInputElement>;
@@ -13,6 +18,25 @@ export function TextInput({ className, ...rest }: TextInputProps): ReactNode {
       className={cn(
         "min-h-11 w-full rounded-[var(--radius-input)] border border-[var(--border)]",
         "bg-[var(--surface)] px-3 text-[14px] text-[var(--text)] placeholder:text-[var(--text-muted)]",
+        "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+/** Multi-line text, styled like `TextInput` so a form never mixes two field looks. */
+export function Textarea({
+  className,
+  ...rest
+}: TextareaHTMLAttributes<HTMLTextAreaElement>): ReactNode {
+  return (
+    <textarea
+      className={cn(
+        "w-full rounded-[var(--radius-input)] border border-[var(--border)]",
+        "bg-[var(--surface)] px-3 py-2 text-[14px] text-[var(--text)] leading-relaxed",
+        "placeholder:text-[var(--text-muted)]",
         "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
         className,
       )}

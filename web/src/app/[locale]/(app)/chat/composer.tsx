@@ -697,7 +697,7 @@ export function Composer({
             </p>
           ) : null}
 
-          <div className="flex items-center gap-1 px-1 pb-0.5">
+          <div className="flex min-w-0 items-center gap-1 px-1 pb-0.5">
             <ModelMenu
               label={t("model")}
               selected={modelOptionFor(modelOverride)}
@@ -1251,12 +1251,12 @@ function ModelMenu({
           type="button"
           aria-label={label}
           className={cn(
-            "inline-flex h-8 items-center gap-1 rounded-[var(--radius-button)] px-2.5",
+            "inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-[var(--radius-button)] px-2.5",
             "text-[12px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
             "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
           )}
         >
-          <span>{t("modelMenu.trigger", { model: selectedLabel })}</span>
+          <span className="truncate">{t("modelMenu.trigger", { model: selectedLabel })}</span>
           <CaretDownIcon size={12} weight="regular" aria-hidden />
         </button>
       </DropdownMenu.Trigger>
@@ -1345,12 +1345,12 @@ function ToneMenu({
           type="button"
           aria-label={t("heading")}
           className={cn(
-            "inline-flex h-8 items-center gap-1 rounded-[var(--radius-button)] px-2.5",
+            "inline-flex h-8 min-w-0 max-w-full items-center gap-1 rounded-[var(--radius-button)] px-2.5",
             "text-[12px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]",
             "!outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]",
           )}
         >
-          <span>{t("trigger", { name: currentName })}</span>
+          <span className="truncate">{t("trigger", { name: currentName })}</span>
           <CaretDownIcon size={12} weight="regular" aria-hidden />
         </button>
       </DropdownMenu.Trigger>

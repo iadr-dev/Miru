@@ -94,7 +94,7 @@ export function ThemeCards(): ReactNode {
               className={cn(
                 "min-h-9 rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
                 kindFilter === key
-                  ? "bg-[var(--accent)] text-[var(--bg)]"
+                  ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
                   : "border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
             >

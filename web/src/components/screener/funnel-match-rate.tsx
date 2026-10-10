@@ -22,7 +22,7 @@ export function FunnelMatchRate({
   const rate = universe > 0 ? Math.round((setup / universe) * 100) : 0;
 
   return (
-    <div className="flex flex-col gap-1.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-3">
+    <div className="flex flex-col gap-1.5 surface-card p-3">
       <div className="flex items-center justify-between">
         <span className="text-[12px] text-[var(--text-muted)]">{t("matchRate")}</span>
         <span aria-live="off" className="font-num text-[13px] text-[var(--accent)] tabular-nums">

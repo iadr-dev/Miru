@@ -63,7 +63,7 @@ export function HolderAccumulationCard({
   const previewRows = rows.slice(0, COLLAPSED_ROW_COUNT);
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -77,7 +77,7 @@ export function HolderAccumulationCard({
                 className={cn(
                   "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
                   threshold === th
-                    ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                    ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                     : "text-[var(--text-muted)] hover:text-[var(--text)]",
                 )}
               >
@@ -95,7 +95,7 @@ export function HolderAccumulationCard({
                 className={cn(
                   "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
                   window === w
-                    ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                    ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                     : "text-[var(--text-muted)] hover:text-[var(--text)]",
                 )}
               >

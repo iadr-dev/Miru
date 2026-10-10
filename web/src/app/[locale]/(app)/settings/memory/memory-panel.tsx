@@ -1,14 +1,21 @@
 "use client";
 
-import { MagnifyingGlassIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import {
+  BrainIcon,
+  MagnifyingGlassIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/settings/confirm-dialog";
-import { Select, TextInput, ToggleSwitch } from "@/components/settings/form-controls";
+import { Select, Textarea, TextInput, ToggleSwitch } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Link } from "@/i18n/navigation";
 import { fetchMe } from "@/lib/api/account";
 import {
@@ -241,9 +248,17 @@ function MemoryList({
   }
   if (memories.length === 0) {
     return (
-      <p className="py-6 text-center text-[14px] text-[var(--text-muted)]">
-        {searching ? t("noResults") : t("empty")}
-      </p>
+      <EmptyState
+        compact
+        icon={
+          searching ? (
+            <MagnifyingGlassIcon size={20} weight="regular" />
+          ) : (
+            <BrainIcon size={20} weight="regular" />
+          )
+        }
+        title={searching ? t("noResults") : t("empty")}
+      />
     );
   }
   return (
@@ -339,9 +354,6 @@ function MemoryMeta({ memory }: { memory: Memory }): ReactNode {
   );
 }
 
-const textareaClass =
-  "!outline-none w-full rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface)] p-2 text-[14px] text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]";
-
 function MemoryEditor({
   memory,
   onDone,
@@ -364,12 +376,11 @@ function MemoryEditor({
 
   return (
     <div className="space-y-2">
-      <textarea
+      <Textarea
         aria-label={t("editLabel", { key: memory.key })}
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        className={textareaClass}
       />
       {error ? (
         <p role="alert" className="text-[12px] text-[var(--warn)]">
@@ -450,13 +461,12 @@ function MemoryForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => 
         <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor="memory-content">
           {t("content")}
         </label>
-        <textarea
+        <Textarea
           id="memory-content"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={tm("textExample")}
           rows={3}
-          className={textareaClass}
         />
       </div>
       {error ? (

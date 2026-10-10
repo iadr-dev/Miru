@@ -282,8 +282,7 @@ export function SectorHeatmapTreemap({
       ref={containerRef}
       role="group"
       aria-label={t("title")}
-      className="relative w-full overflow-hidden rounded-[var(--radius-input)]"
-      style={{ aspectRatio: `${LAYOUT_WIDTH} / ${LAYOUT_HEIGHT}` }}
+      className="relative w-full overflow-hidden rounded-[var(--radius-input)] aspect-[100/85] sm:aspect-[100/60]"
     >
       {tiles.map((tile, index) => {
         const { row } = tile;
@@ -351,7 +350,7 @@ export function SectorHeatmapTreemap({
           >
             <span
               className={cn(
-                "max-w-full truncate font-semibold text-[color:#0e1319] leading-tight",
+                "heat-pill max-w-full truncate font-semibold text-[var(--text)] leading-tight",
                 textSize.label,
               )}
             >
@@ -359,7 +358,7 @@ export function SectorHeatmapTreemap({
             </span>
             <span
               className={cn(
-                "font-num text-[color:#0e1319]/85 tabular-nums leading-tight",
+                "heat-pill font-num text-[var(--text)] tabular-nums leading-tight",
                 textSize.pct,
               )}
             >

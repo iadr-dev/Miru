@@ -52,8 +52,8 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <RainbowBorderCard className="flex h-full">
+      <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+        <RainbowBorderCard className="flex">
           <QueryState query={leaderboardQuery} skeleton={<CardSkeleton height={430} />}>
             {(data) => (
               <LeaderboardCard
@@ -68,7 +68,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        <RainbowBorderCard className="flex h-full">
+        <RainbowBorderCard className="flex">
           <QueryState query={breadthQuery} skeleton={<CardSkeleton height={560} />}>
             {(breadth) =>
               isUs ? (
@@ -88,7 +88,7 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
           </QueryState>
         </RainbowBorderCard>
 
-        <RainbowBorderCard className="flex h-full">
+        <RainbowBorderCard className="flex">
           {isUs ? <RankingsCard market={market} /> : <TwRankingsCard />}
         </RainbowBorderCard>
 

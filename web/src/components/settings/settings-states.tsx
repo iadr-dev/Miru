@@ -75,7 +75,7 @@ export function SavedToast({ message }: { message: string }): ReactNode {
 export function RequiresProNotice({ onUpgrade }: { onUpgrade: () => void }): ReactNode {
   const t = useTranslations("settings.common");
   return (
-    <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-6 text-center">
+    <div className="surface-card p-6 text-center">
       <p className="text-[var(--text)] text-sm">{t("requiresPro")}</p>
       <Button variant="outline" size="sm" className="mt-3" onClick={onUpgrade}>
         {t("goToBilling")}

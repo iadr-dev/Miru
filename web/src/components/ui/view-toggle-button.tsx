@@ -24,7 +24,7 @@ export function ViewToggleButton({
       className={cn(
         "rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-colors",
         active
-          ? "bg-[var(--accent)] text-[color:#06231F]"
+          ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
           : "text-[var(--text-muted)] hover:text-[var(--text)]",
       )}
     >

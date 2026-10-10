@@ -58,10 +58,7 @@ export function ScheduleProposalCard({ data }: { data: Record<string, unknown> }
   }
 
   return (
-    <section
-      aria-label={t("title")}
-      className="mt-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-4"
-    >
+    <section aria-label={t("title")} className="mt-3 surface-card p-4">
       <div className="flex items-start gap-2">
         <CalendarCheckIcon
           size={18}

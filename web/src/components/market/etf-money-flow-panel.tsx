@@ -41,7 +41,7 @@ export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): Reac
   });
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <QueryState query={query} skeleton={<CardSkeletonBody height={560} />}>
         {(data) => {
           if (!data.data_available) {
@@ -80,7 +80,7 @@ export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): Reac
                       className={cn(
                         "rounded-[var(--radius-pill)] px-3.5 py-1 text-[12px] transition-colors",
                         direction === d
-                          ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                          ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                           : "text-[var(--text-muted)] hover:text-[var(--text)]",
                       )}
                     >

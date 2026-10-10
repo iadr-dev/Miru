@@ -68,7 +68,7 @@ export function DividendCalendarCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={200} />
       </section>
     );
@@ -78,7 +78,7 @@ export function DividendCalendarCard({
   const events = data?.data_available ? data.events.filter((event) => event.symbol === symbol) : [];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <div className="flex gap-1 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-0.5">

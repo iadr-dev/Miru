@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 const SIDEBAR_KEY = "miru-sidebar-collapsed";
 const WATCHLIST_KEY = "miru-watchlist-open";
@@ -135,4 +135,29 @@ export function useWatchlistOpen(): {
   }, []);
 
   return { open, toggle, close };
+}
+
+/** Live `matchMedia` match, SSR-safe (false on the server and first paint, then the real value).
+ * Used only to decide which overlay to mount; static show/hide is done in CSS so layout never
+ * waits on JS. */
+export function useMediaQuery(query: string): boolean {
+  const subscribe = useCallback(
+    (onChange: () => void): (() => void) => {
+      const mql = window.matchMedia(query);
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    },
+    [query],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
+/** True from the `lg` breakpoint (1024px) up, where the watchlist docks as a rail; below it the
+ * watchlist is a sheet. */
+export function useIsDesktopRail(): boolean {
+  return useMediaQuery("(min-width: 1024px)");
 }

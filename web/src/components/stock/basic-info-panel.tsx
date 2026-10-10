@@ -107,7 +107,7 @@ export function ProfileCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={220} />
       </section>
     );
@@ -115,29 +115,23 @@ export function ProfileCard({
   if (!query.data) return null;
   const p = query.data;
 
-  // Financial-snapshot stats — the numbers a reader scans first, given equal visual weight as a
+  // Financial-snapshot stats - the numbers a reader scans first, given equal visual weight as a
   // stat row (bigger figures, top of the card). Distinct from the identity fields below, which
-  // are reference facts (who/where), not something that moves day to day. Each stat gets its own
-  // `--chart-1..6` hue (categorical, not signed) so the row reads as differentiated data points
-  // rather than a flat grey list.
-  const stats: [string, string, string][] = [
-    [t("marketValue"), formatCompactNumber(p.market_value ?? null, locale), "var(--chart-1)"],
-    [t("per"), formatNumber(p.per ?? null, locale, { decimals: 1 }), "var(--chart-2)"],
-    [
-      t("dividendYield"),
-      p.dividend_yield != null ? `${p.dividend_yield.toFixed(2)}%` : "—",
-      "var(--chart-3)",
-    ],
-    [t("eps"), formatNumber(p.eps ?? null, locale, { decimals: 2 }), "var(--chart-4)"],
+  // are reference facts (who/where). The figures stay in the text colour: a different hue per stat
+  // carries no meaning (and none of them is a price move), so colour is kept for what it means.
+  const stats: [string, string][] = [
+    [t("marketValue"), formatCompactNumber(p.market_value ?? null, locale)],
+    [t("per"), formatNumber(p.per ?? null, locale, { decimals: 1 })],
+    [t("dividendYield"), p.dividend_yield != null ? `${p.dividend_yield.toFixed(2)}%` : "—"],
+    [t("eps"), formatNumber(p.eps ?? null, locale, { decimals: 2 })],
     [
       t("revenueYoy"),
       // `revenue_yoy` is a plain ratio off the backend (`analytics/fundamentals.py::
       // compute_revenue_yoy`/`tools/market_tools.py::_yfinance_revenue_yoy_and_margins`, e.g.
-      // `0.05` for +5%) — unlike `dividend_yield` above, which yfinance/FinMind already report
+      // `0.05` for +5%) - unlike `dividend_yield` above, which yfinance/FinMind already report
       // percent-scaled. Multiply by 100 here, the one narrow place this ratio becomes a display
       // percentage.
       p.revenue_yoy != null ? `${(p.revenue_yoy * 100).toFixed(2)}%` : "—",
-      "var(--chart-5)",
     ],
   ];
   const identity: [string, string][] = [
@@ -150,14 +144,14 @@ export function ProfileCard({
   ];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("profileTitle")}</h2>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {stats.map(([label, value, color]) => (
+        {stats.map(([label, value]) => (
           <div key={label}>
             <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
-            <p className="font-num text-[16px] tabular-nums" style={{ color }}>
+            <p className="font-display text-[22px] text-[var(--text)] tabular-nums leading-tight">
               {value}
             </p>
           </div>
@@ -194,7 +188,7 @@ function ThemeChipsCard({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
         <CardSkeletonBody height={60} />
       </section>
     );
@@ -203,7 +197,7 @@ function ThemeChipsCard({
   if (themes.length === 0) return null;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("themesTitle")}</h2>
       <div className="flex flex-wrap gap-1.5">
         {themes.map((theme) => {
@@ -253,7 +247,7 @@ function InsiderShareholdingCard({
 
   if (holdingsQuery.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={200} />
       </section>
     );
@@ -263,7 +257,7 @@ function InsiderShareholdingCard({
   const transferRows = transferQuery.data?.rows ?? [];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("insiderTitle")}</h2>
         <div className="flex gap-1 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-0.5">
@@ -435,7 +429,7 @@ function AnnouncementsCard({
 
   if (announcementsQuery.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={200} />
       </section>
     );
@@ -453,7 +447,7 @@ function AnnouncementsCard({
       : [];
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("announcementsTitle")}</h2>
         <div className="flex gap-1 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-0.5">
@@ -654,7 +648,7 @@ export function EsgCard({
   const { total_esg_score, esg_risk_percentile } = query.data.esg;
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("esgTitle")}</h2>
       <div className="flex items-baseline gap-3">
         <span className="font-num text-[22px] text-[var(--text)] tabular-nums">

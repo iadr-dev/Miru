@@ -435,7 +435,7 @@ export function ChatClient(): ReactNode {
   }, [platformModels, modelOverride, threadId, threadQuery.isLoading, onModelOverrideChange]);
 
   return (
-    <div className="flex h-[calc(100dvh-3.5rem)] flex-col">
+    <div className="flex h-[calc(100dvh-3.5rem-var(--bottom-nav-h)-env(safe-area-inset-top))] flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
         {showEmpty ? (
           <EmptyState onPick={onSend} />

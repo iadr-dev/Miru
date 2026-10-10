@@ -49,7 +49,7 @@ export function PremiumDiscountPanel({
 
   if (query.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={420} />
       </section>
     );
@@ -59,7 +59,7 @@ export function PremiumDiscountPanel({
   const data = query.data;
   if (!data.data_available || data.rows.length === 0) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <p className="mt-3 text-[13px] text-[var(--text-muted)]">
           {data.unavailable_reason ?? t("unavailable")}
@@ -103,7 +103,7 @@ function PremiumDiscountBarCard({
   }));
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <div className="mb-3 flex items-baseline justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         {currentAum != null ? (
@@ -188,7 +188,7 @@ function PriceNavLineCard({
   }));
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("priceNavTitle")}</h2>
       <div className="h-[220px] w-full">
         <ResponsiveContainer>
@@ -255,7 +255,7 @@ function PremiumDiscountTableCard({
   const locale = useLocale();
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5 xl:col-span-2">
+    <section className="surface-card p-4 sm:p-5 xl:col-span-2">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("dataSheetTitle")}</h2>
       <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">

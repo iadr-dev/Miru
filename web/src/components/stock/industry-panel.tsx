@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
+import { SupplyChainGraph } from "@/components/stock/supply-chain-graph";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import {
@@ -15,7 +16,7 @@ import {
   getThemeTierHeatmap,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
-import { heatColor } from "@/lib/heat-color";
+import { heatTint } from "@/lib/heat-color";
 import type { Market } from "@/types/settings";
 import type { SubIndustryHeat, SupplyChainEdge } from "@/types/stock-detail";
 
@@ -40,7 +41,7 @@ type IndustryView = (typeof VIEWS)[number];
  *    curated (editorially verified) or heuristic (keyword-classified) via a dotted vs solid
  *    border — a heuristic assignment is a real classification, never presented with the same
  *    confidence as a curated one.
- * 2. **供應鏈** (`SupplyChainGraphView`) — every real supply/customer/competitor edge involving
+ * 2. **供應鏈** (`SupplyChainGraph`) — every real supply/customer/competitor edge involving
  *    this symbol (`get_supply_chain_edges`), rendered as a focus-node radial graph.
  *
  * A symbol with no theme membership yet renders an honest empty state, never a fabricated
@@ -65,7 +66,7 @@ export function IndustryPanel({
 
   if (themesQuery.isLoading) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <CardSkeletonBody height={280} />
       </section>
     );
@@ -91,7 +92,7 @@ export function IndustryPanel({
             className={cn(
               "min-h-9 rounded-[var(--radius-pill)] px-3.5 text-[13px] transition-colors",
               view === key
-                ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+                ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >
@@ -101,7 +102,7 @@ export function IndustryPanel({
       </div>
 
       {!industryTheme ? (
-        <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+        <section className="surface-card p-4 sm:p-5">
           <p className="text-[13px] text-[var(--text-muted)]">{t("noIndustryTheme")}</p>
         </section>
       ) : view === "tiers" ? (
@@ -111,7 +112,7 @@ export function IndustryPanel({
           market={market}
         />
       ) : (
-        <SupplyChainGraphView symbol={symbol} market={market} />
+        <SupplyChainGraph symbol={symbol} market={market} />
       )}
     </div>
   );
@@ -143,7 +144,7 @@ function TierHeatmapView({
 
   if (!data.data_available) {
     return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+      <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">
           {t("tierChainTitle", { name: themeName })}
         </h2>
@@ -161,7 +162,7 @@ function TierHeatmapView({
   };
 
   return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">
         {t("tierChainTitle", { name: themeName })}
       </h2>
@@ -185,11 +186,20 @@ function TierHeatmapView({
           ),
         )}
       </div>
-      {data.trade_date ? (
-        <p className="mt-3 text-[11px] text-[var(--text-muted)]">
-          {t("asOfDate", { date: data.trade_date })}
-        </p>
-      ) : null}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+        {data.trade_date ? <span>{t("asOfDate", { date: data.trade_date })}</span> : null}
+        {[...data.upstream, ...data.midstream, ...data.downstream].some(
+          (sub) => sub.tier_source === "heuristic",
+        ) ? (
+          <span className="flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="inline-block h-3 w-5 rounded-[3px] border border-[var(--border-strong)] border-dashed"
+            />
+            {t("heuristicHint")}
+          </span>
+        ) : null}
+      </div>
 
       <SubIndustryMembersModal
         themeKey={themeKey}
@@ -216,6 +226,7 @@ function SubIndustryTile({
   const pctLabel = hasChange
     ? `${formatNumber(sub.pct_change ?? 0, locale, { decimals: 2 })}%`
     : t("noPriceData");
+  const tint = hasChange ? heatTint(sub.pct_change ?? 0) : null;
   return (
     <button
       type="button"
@@ -223,19 +234,37 @@ function SubIndustryTile({
       aria-label={`${sub.sub_industry} ${pctLabel} — ${t("viewMembers")}`}
       title={sub.tier_source === "heuristic" ? t("heuristicHint") : t("curatedHint")}
       className={cn(
-        "flex min-w-[104px] flex-col gap-0.5 rounded-[var(--radius-input)] border-2 px-3 py-2 text-left transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]",
-        sub.tier_source === "heuristic" ? "border-dashed" : "border-solid",
+        "flex min-w-[112px] flex-col gap-0.5 rounded-[var(--radius-input)] border px-3 py-2 text-left",
+        "transition-[filter,border-color] duration-[var(--dur-base)] ease-[var(--ease-out)]",
+        "hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]",
+        sub.tier_source === "heuristic"
+          ? "border-[var(--border-strong)] border-dashed"
+          : "border-[var(--border)] border-solid",
       )}
       style={{
-        backgroundColor: hasChange ? heatColor(sub.pct_change ?? 0) : "var(--surface-2)",
-        borderColor: "var(--bg)",
+        backgroundColor: tint ? tint.background : "var(--surface-2)",
+        boxShadow: tint ? `inset 3px 0 0 ${tint.edge}` : undefined,
       }}
     >
-      <span className="truncate font-medium text-[12.5px] text-[color:#0e1319]">
+      <span
+        className={cn(
+          "truncate font-medium text-[12.5px]",
+          hasChange ? "text-[var(--text)]" : "text-[var(--text-muted)]",
+        )}
+      >
         {sub.sub_industry}
       </span>
-      <span className="font-num text-[12px] text-[color:#0e1319] tabular-nums">
-        {arrow}
+      <span
+        className={cn(
+          "font-num text-[12px] tabular-nums",
+          hasChange ? "text-[var(--text)]" : "text-[var(--text-muted)]",
+        )}
+      >
+        {arrow ? (
+          <span aria-hidden style={{ color: tint?.edge }}>
+            {arrow}
+          </span>
+        ) : null}
         {pctLabel}
       </span>
     </button>
@@ -298,157 +327,5 @@ function SubIndustryMembersModal({
         />
       )}
     </ExpandModal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 供應鏈 — get_supply_chain_edges (public)
-// ---------------------------------------------------------------------------
-
-interface GraphNode {
-  symbol: string;
-  name: string;
-  edgeType: SupplyChainEdge["edge_type"];
-  angle: number;
-}
-
-function SupplyChainGraphView({
-  symbol,
-  market,
-}: {
-  readonly symbol: string;
-  readonly market: Market;
-}): ReactNode {
-  const t = useTranslations("stock.industry");
-  const query = useQuery({
-    queryKey: ["supply_chain_edges", symbol, market],
-    queryFn: () => getSupplyChainEdges(symbol, market),
-  });
-  const [hovered, setHovered] = useState<string | null>(null);
-
-  const nodes = useMemo<GraphNode[]>(() => {
-    const edges = query.data?.edges ?? [];
-    const peers = edges.map((edge) => {
-      const isFocusFrom = edge.from_symbol === symbol;
-      return {
-        symbol: isFocusFrom ? edge.to_symbol : edge.from_symbol,
-        name: isFocusFrom ? edge.to_name : edge.from_name,
-        edgeType: edge.edge_type,
-      };
-    });
-    return peers.map((peer, index) => ({
-      ...peer,
-      angle: (index / Math.max(peers.length, 1)) * 2 * Math.PI,
-    }));
-  }, [query.data, symbol]);
-
-  if (query.isLoading) return <CardSkeletonBody height={420} />;
-  const data = query.data;
-  if (!data) return null;
-
-  if (data.edge_count === 0) {
-    return (
-      <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-        <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">
-          {t("supplyChainTitle")}
-        </h2>
-        <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("supplyChainUnavailable")}</p>
-      </section>
-    );
-  }
-
-  const radius = 42;
-  const focusName =
-    data.edges.find((e) => e.from_symbol === symbol)?.from_name ??
-    data.edges.find((e) => e.to_symbol === symbol)?.to_name ??
-    symbol;
-
-  return (
-    <section className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
-      <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("supplyChainTitle")}</h2>
-      <p className="mb-4 text-[11px] text-[var(--text-muted)]">{t("supplyChainHint")}</p>
-      <p className="sr-only">
-        {t("supplyChainGraphAria", { name: focusName, count: data.edge_count })}
-      </p>
-      <div className="relative mx-auto aspect-square w-full max-w-[420px]">
-        <svg
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          viewBox="-50 -50 100 100"
-          aria-hidden
-          role="presentation"
-        >
-          {nodes.map((node) => {
-            const x = radius * Math.cos(node.angle);
-            const y = radius * Math.sin(node.angle);
-            const isHovered = hovered === node.symbol;
-            return (
-              <line
-                key={node.symbol}
-                x1={0}
-                y1={0}
-                x2={x}
-                y2={y}
-                stroke={EDGE_TYPE_COLOR[node.edgeType]}
-                strokeWidth={isHovered ? 1.4 : 0.6}
-                strokeOpacity={isHovered || hovered === null ? 0.85 : 0.25}
-              />
-            );
-          })}
-        </svg>
-
-        <div
-          className="absolute top-1/2 left-1/2 flex size-16 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-2 border-[var(--accent)] bg-[var(--surface-2)] text-center"
-          aria-hidden
-        >
-          <span className="truncate px-1 font-semibold text-[11px] text-[var(--text)]">
-            {focusName}
-          </span>
-        </div>
-
-        {nodes.map((node) => {
-          const x = radius * Math.cos(node.angle);
-          const y = radius * Math.sin(node.angle);
-          return (
-            <button
-              key={node.symbol}
-              type="button"
-              onMouseEnter={() => setHovered(node.symbol)}
-              onMouseLeave={() =>
-                setHovered((current) => (current === node.symbol ? null : current))
-              }
-              onFocus={() => setHovered(node.symbol)}
-              onBlur={() => setHovered((current) => (current === node.symbol ? null : current))}
-              aria-label={`${node.name} — ${t(`edgeType.${node.edgeType}` as const)}`}
-              className="absolute flex max-w-[92px] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 rounded-[var(--radius-input)] px-1.5 py-1 text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-              style={{
-                left: `${50 + x}%`,
-                top: `${50 + y}%`,
-                backgroundColor: hovered === node.symbol ? "var(--surface-3)" : "transparent",
-              }}
-            >
-              <span
-                aria-hidden
-                className="size-2.5 rounded-full"
-                style={{ backgroundColor: EDGE_TYPE_COLOR[node.edgeType] }}
-              />
-              <span className="truncate text-[11px] text-[var(--text)]">{node.name}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-4 flex flex-wrap justify-center gap-4 text-[11px] text-[var(--text-muted)]">
-        {(["supplies", "customer", "competes"] as const).map((edgeType) => (
-          <span key={edgeType} className="flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="size-2 rounded-full"
-              style={{ backgroundColor: EDGE_TYPE_COLOR[edgeType] }}
-            />
-            {t(`edgeType.${edgeType}` as const)}
-          </span>
-        ))}
-      </div>
-    </section>
   );
 }

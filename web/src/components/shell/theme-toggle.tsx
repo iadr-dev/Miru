@@ -45,9 +45,9 @@ export function ThemeToggle(): ReactNode {
       )}
     >
       {theme === "dark" ? (
-        <MoonIcon size={20} weight="regular" />
+        <MoonIcon size={20} weight="fill" className="text-[var(--moon)]" />
       ) : (
-        <SunIcon size={20} weight="regular" />
+        <SunIcon size={20} weight="fill" className="text-[var(--sun)]" />
       )}
     </button>
   );

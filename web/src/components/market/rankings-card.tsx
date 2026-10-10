@@ -8,13 +8,14 @@ import { UsMarketRankingRows } from "@/components/market/us-market-ranking-rows"
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getUsMarketRankings } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
+import { PREVIEW_ROWS } from "@/lib/density";
 import type { RankingKind } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 // Same collapsed-row-count + "fetch the full backend cap, show 10, expand the rest in a modal"
 // convention `PriceMomentumBody`/`LeaderboardCard` use — one fetch serves both the inline preview
 // and the modal, so opening "展開完整" never re-fetches.
-const COLLAPSED_ROW_COUNT = 10;
+const COLLAPSED_ROW_COUNT = PREVIEW_ROWS;
 const FETCH_TOP_N = 50;
 const RANKING_TABS = [
   "trending",
@@ -38,7 +39,7 @@ export function RankingsCard({ market }: { market: Market }): ReactNode {
   const [tab, setTab] = useState<RankingKind>("trending");
 
   return (
-    <section className="flex w-full flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-5">
+    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       <div
@@ -84,7 +85,7 @@ function RankingTabButton({
       className={cn(
         "rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] transition-colors",
         active
-          ? "bg-[var(--accent)] font-semibold text-[color:#06231F]"
+          ? "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
           : "text-[var(--text-muted)] hover:text-[var(--text)]",
       )}
     >
