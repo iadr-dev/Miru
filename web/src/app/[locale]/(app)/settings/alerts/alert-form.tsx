@@ -28,6 +28,7 @@ import {
   updateAlert,
 } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
+import { groupNameStyle } from "@/lib/watchlist-color";
 import {
   ALERT_MARKETS,
   ALERT_TRIGGER_MODES,
@@ -329,7 +330,11 @@ export function AlertForm({
             >
               <option value="">{t("watchlistPlaceholder")}</option>
               {(groups.data ?? []).map((view) => (
-                <option key={view.group.id} value={view.group.id}>
+                <option
+                  key={view.group.id}
+                  value={view.group.id}
+                  style={groupNameStyle(view.group)}
+                >
                   {view.group.name}
                 </option>
               ))}

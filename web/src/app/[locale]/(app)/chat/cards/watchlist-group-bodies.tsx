@@ -11,6 +11,7 @@ import {
   renameWatchlist,
   reorderWatchlistGroup,
 } from "@/lib/api/watchlist";
+import { groupNameStyle } from "@/lib/watchlist-color";
 import {
   findGroups,
   movePlan,
@@ -127,7 +128,7 @@ function MatchPicker({
       className="w-52"
     >
       {matches.map((v) => (
-        <option key={v.group.id} value={v.group.id}>
+        <option key={v.group.id} value={v.group.id} style={groupNameStyle(v.group)}>
           {v.group.name} · {t(`groupClass.${v.group.asset_class}`)}
         </option>
       ))}

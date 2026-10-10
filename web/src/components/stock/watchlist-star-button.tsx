@@ -12,6 +12,7 @@ import {
   watchesSymbol,
 } from "@/hooks/use-watchlists";
 import { cn } from "@/lib/cn";
+import { groupNameStyle } from "@/lib/watchlist-color";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass } from "@/types/watchlist";
 
@@ -134,6 +135,7 @@ export function WatchlistStarButton({
                     type="button"
                     onClick={() => handleAddToOnlyGroup(view.group.id)}
                     className="flex min-h-11 w-full items-center rounded-[var(--radius-input)] px-2.5 text-left text-[13px] text-[var(--text)] transition-colors hover:bg-[var(--surface-2)]"
+                    style={groupNameStyle(view.group)}
                   >
                     {view.group.name}
                   </button>

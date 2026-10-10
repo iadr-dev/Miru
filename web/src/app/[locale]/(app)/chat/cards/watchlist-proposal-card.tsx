@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useWatchlists } from "@/hooks/use-watchlists";
 import { getSymbolInfo } from "@/lib/api/market";
 import { addWatchlistItem, createWatchlist, removeWatchlistItem } from "@/lib/api/watchlist";
+import { groupNameStyle } from "@/lib/watchlist-color";
 import {
   addAlreadyDone,
   choiceReady,
@@ -296,7 +297,7 @@ function GroupPicker({
         className="w-44"
       >
         {candidates.map((v) => (
-          <option key={v.group.id} value={v.group.id}>
+          <option key={v.group.id} value={v.group.id} style={groupNameStyle(v.group)}>
             {v.group.name}
           </option>
         ))}
