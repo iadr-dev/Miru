@@ -139,6 +139,9 @@ export function BreadthOrderBookCard({
                   stroke="var(--border)"
                 />
                 <Tooltip
+                  // A faint wash behind the hovered column, not Recharts' default light-grey slab,
+                  // which is a harsh block on the dark theme and hides the bar's own colour.
+                  cursor={{ fill: "var(--text)", opacity: 0.08 }}
                   contentStyle={{
                     background: "var(--surface-2)",
                     border: "1px solid var(--border)",
@@ -152,7 +155,7 @@ export function BreadthOrderBookCard({
                   }
                   formatter={(value) => formatNumber(value as number, locale)}
                 />
-                <Bar dataKey="count" radius={3}>
+                <Bar dataKey="count" name={t("breadthCountSeries")} radius={3}>
                   {bucketData.map((point) => (
                     <Cell
                       key={point.key}

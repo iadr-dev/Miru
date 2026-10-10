@@ -187,6 +187,9 @@ function extractRows(data: unknown, dataKey: string | null): Record<string, unkn
   return [];
 }
 
+/** The hover wash behind a bar: faint and theme-aware, instead of Recharts' default light-grey slab. */
+const BAR_HOVER_CURSOR = { fill: "var(--text)", opacity: 0.08 } as const;
+
 const TOOLTIP_STYLE = {
   contentStyle: {
     background: "var(--surface-2)",
@@ -451,6 +454,7 @@ function renderPlot(
         <ReferenceLine x={0} stroke="var(--border)" />
         <Tooltip
           {...TOOLTIP_STYLE}
+          cursor={BAR_HOVER_CURSOR}
           labelFormatter={(key) => fieldLabel(t, String(key))}
           formatter={(value) => formatNumber(asNumber(value), locale)}
         />
@@ -492,6 +496,7 @@ function renderPlot(
       />
       <Tooltip
         {...TOOLTIP_STYLE}
+        cursor={hint.mark === "bar" ? BAR_HOVER_CURSOR : undefined}
         formatter={(value) => `${formatNumber(asNumber(value), locale)}${unitSuffix(hint.title)}`}
         labelFormatter={(key) => String(key)}
       />
