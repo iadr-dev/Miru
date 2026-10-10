@@ -9,6 +9,7 @@ import {
   ComposedChart,
   Legend,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -528,16 +529,18 @@ function FinancialStatementCard({
                 formatter={(value) => statementLegendFormatter(value, isItemVisible)}
                 wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
               />
+              {/* Grouped bars, one per item per quarter: statement figures are discrete period
+                  amounts, and side-by-side bars compare a quarter's items (and a loss below zero)
+                  more clearly than smoothed lines that imply values between quarters. */}
+              <ReferenceLine y={0} stroke="var(--border-strong)" />
               {topItems.map((item, i) => (
-                <Line
+                <Bar
                   key={item}
-                  type="monotone"
                   dataKey={item}
                   name={item}
-                  stroke={STATEMENT_LINE_COLORS[i % STATEMENT_LINE_COLORS.length]}
-                  strokeWidth={2}
-                  dot={false}
-                  connectNulls
+                  fill={STATEMENT_LINE_COLORS[i % STATEMENT_LINE_COLORS.length]}
+                  radius={[3, 3, 0, 0]}
+                  maxBarSize={18}
                   hide={!isItemVisible(item)}
                 />
               ))}
