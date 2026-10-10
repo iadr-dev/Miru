@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -20,7 +20,7 @@ import {
   getSymbolThemes,
 } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
-import { cn } from "@/lib/cn";
+import { formatAmount } from "@/lib/format-amount";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type {
@@ -114,13 +114,14 @@ export function ProfileCard({
   }
   if (!query.data) return null;
   const p = query.data;
+  const currency = market === "US" ? "USD" : "TWD";
 
   // Financial-snapshot stats - the numbers a reader scans first, given equal visual weight as a
   // stat row (bigger figures, top of the card). Distinct from the identity fields below, which
   // are reference facts (who/where). The figures stay in the text colour: a different hue per stat
   // carries no meaning (and none of them is a price move), so colour is kept for what it means.
   const stats: [string, string][] = [
-    [t("marketValue"), formatCompactNumber(p.market_value ?? null, locale)],
+    [t("marketValue"), formatAmount(p.market_value, locale, currency)],
     [t("per"), formatNumber(p.per ?? null, locale, { decimals: 1 })],
     [t("dividendYield"), p.dividend_yield != null ? `${p.dividend_yield.toFixed(2)}%` : "—"],
     [t("eps"), formatNumber(p.eps ?? null, locale, { decimals: 2 })],
@@ -138,7 +139,7 @@ export function ProfileCard({
     [t("chairman"), p.chairman ?? "—"],
     [t("auditor"), p.auditor ?? "—"],
     [t("headquarters"), p.headquarters ?? "—"],
-    [t("capital"), formatNumber(p.capital ?? null, locale)],
+    [t("capital"), formatAmount(p.capital, locale, currency)],
     [t("spokesperson"), p.spokesperson ?? "—"],
     [t("foundingDate"), p.founding_date ?? "—"],
   ];
