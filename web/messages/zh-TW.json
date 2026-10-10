@@ -2280,7 +2280,7 @@
       "noHistoryYet": "尚無歷史走勢資料。",
       "asOfDate": "資料日期：{date}",
       "dimensionLocked": "分點資料部分未解鎖",
-      "dimensionUnavailable": "無資料",
+      "dimensionUnavailable": "此項目前暫無資料",
       "dimension": {
         "technical": "技術面",
         "chip_flow": "籌碼動能",

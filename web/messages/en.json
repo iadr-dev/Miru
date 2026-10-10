@@ -2280,7 +2280,7 @@
       "noHistoryYet": "No historical trend data yet.",
       "asOfDate": "As of {date}",
       "dimensionLocked": "Broker data partly locked",
-      "dimensionUnavailable": "No data",
+      "dimensionUnavailable": "No data for this yet",
       "dimension": {
         "technical": "Technical",
         "chip_flow": "Chip Flow",
