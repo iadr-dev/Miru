@@ -1383,6 +1383,32 @@ const HOLDINGS_TABLE_COLLAPSED_ROW_COUNT = 6;
  * Table below mirrors the chart 1:1 — 外資's real 張數+% columns, 投信/自營商's estimated
  * cumulative-net columns, both sharing this component's own merge so chart and table can't
  * diverge. */
+const HOLDINGS_SERIES = ["foreign_shares", "trust_estimate", "dealer_estimate"] as const;
+type HoldingsSeries = (typeof HOLDINGS_SERIES)[number];
+const HOLDINGS_SERIES_BUCKET: Record<HoldingsSeries, InstitutionalBucket> = {
+  foreign_shares: "foreign",
+  trust_estimate: "trust",
+  dealer_estimate: "dealer",
+};
+
+function isHoldingsSeries(value: unknown): value is HoldingsSeries {
+  return HOLDINGS_SERIES.some((series) => series === value);
+}
+
+/** Legend/tooltip label for a 持股 chart series: 收盤價, 外資, or 投信/自營商 (估算). */
+function holdingsSeriesLabel(
+  name: string,
+  t: ReturnType<typeof useTranslations>,
+  tFields: ReturnType<typeof useTranslations>,
+): string {
+  if (name === "price") return tFields("fields.close");
+  if (!isHoldingsSeries(name)) return name;
+  const bucket = HOLDINGS_SERIES_BUCKET[name];
+  return name === "foreign_shares"
+    ? bucketLabel(t, bucket)
+    : t("estimateLegend", { label: bucketLabel(t, bucket) });
+}
+
 function ForeignShareholdingBody({
   symbol,
   market,
@@ -1394,6 +1420,18 @@ function ForeignShareholdingBody({
   const tFields = useTranslations("chat.cards");
   const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
+  // 外資 holds ~100x what the 投信/自營商 estimates do, so on one axis their bars vanish;
+  // clicking a legend item hides that series and the axis rescales to what is left.
+  const [hiddenSeries, setHiddenSeries] = useState<ReadonlySet<HoldingsSeries>>(new Set());
+  const toggleSeries = (series: HoldingsSeries): void => {
+    setHiddenSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(series)) next.delete(series);
+      else next.add(series);
+      return next;
+    });
+  };
+  const seriesLabel = (name: string): string => holdingsSeriesLabel(name, t, tFields);
   const shareholdingQuery = useQuery({
     queryKey: ["stock_foreign_shareholding", symbol, market],
     queryFn: () => getForeignShareholding(symbol, market),
@@ -1505,57 +1543,42 @@ function ForeignShareholdingBody({
                 name === "price"
                   ? formatNumber(Number(value), locale)
                   : t("lotUnit", { value: formatNumber(Number(value), locale) }),
-                name === "price"
-                  ? tFields("fields.close")
-                  : name === "foreign_shares"
-                    ? bucketLabel(t, "foreign")
-                    : name === "trust_estimate"
-                      ? t("estimateLegend", { label: bucketLabel(t, "trust") })
-                      : t("estimateLegend", { label: bucketLabel(t, "dealer") }),
+                seriesLabel(String(name)),
               ]}
             />
             <Legend
-              formatter={(value) => {
-                if (value === "price") return tFields("fields.close");
-                if (value === "foreign_shares") return bucketLabel(t, "foreign");
-                if (value === "trust_estimate")
-                  return t("estimateLegend", { label: bucketLabel(t, "trust") });
-                return t("estimateLegend", { label: bucketLabel(t, "dealer") });
+              onClick={(entry) => {
+                const key = entry.dataKey;
+                if (isHoldingsSeries(key)) toggleSeries(key);
               }}
+              formatter={(value) => (
+                <span
+                  style={{
+                    cursor: value === "price" ? "default" : "pointer",
+                    opacity: isHoldingsSeries(value) && hiddenSeries.has(value) ? 0.4 : 1,
+                  }}
+                >
+                  {seriesLabel(String(value))}
+                </span>
+              )}
               wrapperStyle={{ fontSize: 11, color: "var(--text-muted)" }}
             />
-            <Line
-              yAxisId="holdings"
-              type="monotone"
-              dataKey="foreign_shares"
-              name="foreign_shares"
-              stroke={BUCKET_COLORS.foreign}
-              strokeWidth={2}
-              dot={false}
-              connectNulls
-            />
-            <Line
-              yAxisId="holdings"
-              type="monotone"
-              dataKey="trust_estimate"
-              name="trust_estimate"
-              stroke={BUCKET_COLORS.trust}
-              strokeWidth={2}
-              strokeDasharray="4 3"
-              dot={false}
-              connectNulls
-            />
-            <Line
-              yAxisId="holdings"
-              type="monotone"
-              dataKey="dealer_estimate"
-              name="dealer_estimate"
-              stroke={BUCKET_COLORS.dealer}
-              strokeWidth={2}
-              strokeDasharray="4 3"
-              dot={false}
-              connectNulls
-            />
+            <ReferenceLine yAxisId="holdings" y={0} stroke="var(--border-strong)" />
+            {HOLDINGS_SERIES.map((series) => (
+              <Bar
+                key={series}
+                yAxisId="holdings"
+                dataKey={series}
+                name={series}
+                fill={BUCKET_COLORS[HOLDINGS_SERIES_BUCKET[series]]}
+                // The 投信/自營商 values are estimates from cumulative flow, not reported holdings;
+                // a lighter fill keeps that distinction the dashed lines used to carry.
+                fillOpacity={series === "foreign_shares" ? 1 : 0.6}
+                radius={[2, 2, 0, 0]}
+                maxBarSize={14}
+                hide={hiddenSeries.has(series)}
+              />
+            ))}
             <Line
               yAxisId="price"
               type="monotone"
