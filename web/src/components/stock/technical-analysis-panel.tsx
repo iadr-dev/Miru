@@ -12,12 +12,10 @@ import {
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
-import { ExpandModal } from "@/components/ui/expand-modal";
 import {
   getForeignShareholding,
   getSecuritiesLending,
@@ -110,10 +108,10 @@ export function TechnicalAnalysisPanel({
   const [timeframe, setTimeframe] = useState<Timeframe>("day");
   const [range, setRange] = useState<RangeKey>("1y");
   const [visibleMa, setVisibleMa] = useState<ReadonlySet<MaWindow>>(new Set([5, 10, 20]));
-  const [subOverlays, setSubOverlays] = useState<ReadonlySet<SubOverlay>>(new Set(["bollinger"]));
-  const [showSupportResistance, setShowSupportResistance] = useState(true);
-  const [showPatterns, setShowPatterns] = useState(true);
-  const [expanded, setExpanded] = useState(false);
+  // A clean first view, like TradingView: only MA5/10/20 are on; every other overlay is opt-in.
+  const [subOverlays, setSubOverlays] = useState<ReadonlySet<SubOverlay>>(new Set());
+  const [showSupportResistance, setShowSupportResistance] = useState(false);
+  const [showPatterns, setShowPatterns] = useState(false);
 
   const today = useMemo(() => new Date(), []);
   const startDate = useMemo(() => rangeStartDate(range, today), [range, today]);
@@ -179,22 +177,6 @@ export function TechnicalAnalysisPanel({
         endDate={endDate}
         t={t}
       />
-
-      <button
-        type="button"
-        onClick={() => setExpanded(true)}
-        className="mt-3 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
-      >
-        {t("datasheetTitle")}
-      </button>
-      <ExpandModal
-        open={expanded}
-        title={t("datasheetTitle")}
-        closeLabel={t("collapse")}
-        onClose={() => setExpanded(false)}
-      >
-        <Datasheet bars={data.bars} t={t} />
-      </ExpandModal>
 
       <p className="mt-3 text-[11px] text-[var(--text-muted)]">{data.non_trading_caveat}</p>
     </section>
@@ -1223,81 +1205,4 @@ function BigHoldersPane({
   }
   if (byDate.length === 0) return null;
   return <div ref={containerRef} className="h-32 w-full" />;
-}
-
-function formatChangePercent(changePct: number, up: boolean, down: boolean): string {
-  let arrow = "";
-  if (up) arrow = "▲";
-  else if (down) arrow = "▼";
-  const sign = changePct >= 0 ? "+" : "";
-  return `${arrow}${sign}${changePct.toFixed(2)}%`;
-}
-
-function Datasheet({
-  bars,
-  t,
-}: {
-  readonly bars: readonly EodBar[];
-  readonly t: ReturnType<typeof useTranslations>;
-}): ReactNode {
-  const locale = useLocale();
-  const ordered = [...bars].sort((a, b) => b.trade_date.localeCompare(a.trade_date));
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[13px]">
-        <thead className="sticky top-0 bg-[var(--surface)]">
-          <tr className="border-[var(--border)] border-b text-[11px] text-[var(--text-muted)]">
-            <th className="px-2 py-1.5 text-left font-medium">{t("datasheet.date")}</th>
-            <th className="px-2 py-1.5 text-right font-medium">{t("datasheet.open")}</th>
-            <th className="px-2 py-1.5 text-right font-medium">{t("datasheet.high")}</th>
-            <th className="px-2 py-1.5 text-right font-medium">{t("datasheet.low")}</th>
-            <th className="px-2 py-1.5 text-right font-medium">{t("datasheet.close")}</th>
-            <th className="px-2 py-1.5 text-right font-medium">{t("datasheet.changePercent")}</th>
-            <th className="px-2 py-1.5 text-right font-medium">{t("datasheet.volume")}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--border)]">
-          {ordered.map((bar, i) => {
-            const prev = ordered[i + 1];
-            const changePct =
-              prev && prev.close !== 0 ? ((bar.close - prev.close) / prev.close) * 100 : null;
-            const up = changePct !== null && changePct > 0;
-            const down = changePct !== null && changePct < 0;
-            return (
-              <tr key={bar.trade_date}>
-                <td className="px-2 py-1.5 font-num text-[var(--text)] tabular-nums">
-                  {bar.trade_date}
-                </td>
-                <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(bar.open, locale, { decimals: 2 })}
-                </td>
-                <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(bar.high, locale, { decimals: 2 })}
-                </td>
-                <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(bar.low, locale, { decimals: 2 })}
-                </td>
-                <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(bar.close, locale, { decimals: 2 })}
-                </td>
-                <td
-                  className={cn(
-                    "px-2 py-1.5 text-right font-num tabular-nums",
-                    up && "text-[var(--up)]",
-                    down && "text-[var(--down)]",
-                    !up && !down && "text-[var(--text-muted)]",
-                  )}
-                >
-                  {changePct === null ? "—" : formatChangePercent(changePct, up, down)}
-                </td>
-                <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
-                  {formatNumber(Math.round(bar.volume / 1000), locale)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
 }
