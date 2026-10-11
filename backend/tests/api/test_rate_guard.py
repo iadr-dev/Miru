@@ -6,6 +6,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import cast
 
+import structlog
 from fastapi import Request
 from starlette.datastructures import Headers
 
@@ -49,6 +50,23 @@ def test_a_data_route_answers_429_with_the_envelope_once_the_caller_is_over(
     }
     assert second.headers["retry-after"] == "17"
     assert any(caller.startswith("read:ip:") for caller in limiter.counts)
+
+
+def test_a_rejection_is_logged_by_route_without_identifying_the_caller(
+    settings: Settings,
+) -> None:
+    limiter = _Recorder(allow=0)
+    with (
+        structlog.testing.capture_logs() as logs,
+        build_test_client(settings, agent_answer="x", rate_limiter=limiter) as client,
+    ):
+        client.get("/api/v1/market/index-strip")
+
+    events = [entry for entry in logs if entry["event"] == "rate_limited"]
+    assert len(events) == 1
+    assert events[0]["route"] == "/market/index-strip"
+    assert events[0]["caller_kind"] == "address"
+    assert "testclient" not in str(events[0]).lower()
 
 
 def test_sign_in_endpoints_are_limited_by_address(settings: Settings) -> None:
