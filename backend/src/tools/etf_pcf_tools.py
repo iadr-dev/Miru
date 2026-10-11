@@ -222,7 +222,7 @@ def _trailing_series(returns: EtfTrailingReturns | None) -> tuple[TrailingReturn
 
 class GetEtfTrailingReturnsTool(BaseTool):
     """`get_etf_trailing_returns` — wraps `Capability.ETF_TRAILING_RETURNS` (see
-    `EtfTrailingReturns`'s own docstring in `schemas/capabilities.py` for why this is computed
+    `EtfTrailingReturns`'s own docstring in `schemas/capabilities/` for why this is computed
     from a dedicated split/dividend-adjusted yfinance history fetch rather than this codebase's
     ingested — unadjusted — `price_eod` bars). `returns` is `None` only on a genuine fetch
     failure (unreachable/stale); a `None` individual horizon field inside a present `returns` is

@@ -1,5 +1,5 @@
 """`etf_trailing_returns` capability domain — see `EtfTrailingReturns`'s own docstring
-(`schemas/capabilities.py`) for why this reads a dedicated split/dividend-adjusted history fetch
+(`schemas/capabilities/`) for why this reads a dedicated split/dividend-adjusted history fetch
 rather than yfinance's own `.info` return fields or this codebase's ingested (unadjusted)
 `price_eod` bars.
 """

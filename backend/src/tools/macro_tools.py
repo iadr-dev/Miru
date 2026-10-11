@@ -39,7 +39,7 @@ class GetMacroIndicatorsInput(BaseModel):
     is accepted for interface symmetry with every other tool but is not itself forwarded to the
     router (each sub-fetch uses the `Market` its own dataset is actually modeled under —
     `exchange_rate` is TW-scoped, `gold_price`/`crude_oil_prices`/`central_bank_rate` are
-    GLOBAL, `government_bond_yield`/`fear_greed_index` are US — see `schemas/capabilities.py`)."""
+    GLOBAL, `government_bond_yield`/`fear_greed_index` are US — see `schemas/capabilities/`)."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
