@@ -83,8 +83,12 @@ class TurnRow(Base):
     user_id: Mapped[str] = mapped_column(index=True)  # denormalized for isolation queries
     role: Mapped[str]
     status: Mapped[str] = mapped_column(default="running")
-    parent_turn_id: Mapped[str | None] = mapped_column(default=None)
-    regenerate_of: Mapped[str | None] = mapped_column(default=None)
+    parent_turn_id: Mapped[str | None] = mapped_column(
+        ForeignKey(_TURNS_ID_FK, ondelete="SET NULL"), default=None
+    )
+    regenerate_of: Mapped[str | None] = mapped_column(
+        ForeignKey(_TURNS_ID_FK, ondelete="SET NULL"), default=None
+    )
     framework: Mapped[str | None] = mapped_column(default=None)
     # How the request was made when it is not a plain chat ("deep_research"); regenerate/edit read
     # it off the user turn so a retry re-runs the same way. App-validated, nullable, additive.
@@ -129,7 +133,9 @@ class MessageRow(Base):
     id: Mapped[str] = mapped_column(primary_key=True)
     turn_id: Mapped[str] = mapped_column(ForeignKey(_TURNS_ID_FK, ondelete="CASCADE"))
     user_id: Mapped[str] = mapped_column(index=True)  # denormalized for isolation + FTS
-    parent_id: Mapped[str | None] = mapped_column(default=None)
+    parent_id: Mapped[str | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), default=None
+    )
     seq: Mapped[int]
     type: Mapped[str]
     content: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
@@ -549,7 +555,9 @@ class ScheduleJobRow(Base):
     # Why the last run was skipped or failed — shown on the schedule row instead of a bare status.
     status_reason: Mapped[str | None] = mapped_column(default=None)
     # The one persistent thread every run of this schedule appends to (created on the first run).
-    thread_id: Mapped[str | None] = mapped_column(default=None)
+    thread_id: Mapped[str | None] = mapped_column(
+        ForeignKey("threads.id", ondelete="SET NULL"), default=None
+    )
     version: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     updated_at: Mapped[datetime] = mapped_column(_UTC)

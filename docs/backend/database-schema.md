@@ -692,5 +692,10 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
   yet — see §4) — add it to the TTL purge job if unbounded growth matters once that pipeline lands.
   `billing_events`/`journal_entries`/`usage_events` grow unbounded → **time-range partition (monthly)
   on Postgres** for cheap detach/drop (their PKs include/allow `created_at` in the partition key).
-- **Account deletion (GDPR-style):** a "delete my account + all data" flow purges/anonymizes
-  across all `user_id`-scoped tables, not just per-resource soft-delete.
+- **Account deletion (GDPR-style):** `accounts/erasure.py::erase_user` purges every table that has
+  a `user_id` column (found from the ORM metadata, so new tables are covered automatically; a test
+  fails if a table keyed by a differently named user column is missed) and then the `users` row.
+  Not yet exposed through an endpoint: cancelling the Paddle subscription first and the web
+  confirmation flow are still to do.
+- **Dangling-pointer guards:** `turns.parent_turn_id`/`regenerate_of`, `messages.parent_id` and
+  `schedule_jobs.thread_id` are foreign keys with `ON DELETE SET NULL`.
