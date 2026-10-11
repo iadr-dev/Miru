@@ -55,11 +55,13 @@ jobs:
       - name: pyright (strict)
         run: uv run pyright src
 
-      - name: Default suite (non-network)
-        run: uv run pytest
-
       - name: Governance suite
+        # Runs first so a guardrail regression fails fast, and the default suite below excludes
+        # it: it used to run in both, paying for the same 273 tests twice.
         run: uv run pytest -m governance
+
+      - name: Default suite (non-network, governance already ran)
+        run: uv run pytest -m "not network and not governance"
 
   dual-dialect-migrations:
     name: dual-dialect schema (SQLite + Postgres)
