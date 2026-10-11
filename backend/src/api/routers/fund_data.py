@@ -38,10 +38,11 @@ from api.dependencies import (
     tool_context_for,
 )
 from api.errors import ApiError
+from api.rate_guard import guard_reads
 from schemas.enums import Market
 from tools.base import ToolContext
 
-router = APIRouter(tags=["fund-data"])
+router = APIRouter(tags=["fund-data"], dependencies=[Depends(guard_reads)])
 
 # The numeric literal, matching `api/errors.py`'s own convention — the `status.HTTP_422_*`
 # constant's name churns across Starlette versions (entity → content) and emits a deprecation

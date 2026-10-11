@@ -46,8 +46,10 @@ class ApiError(Exception):
         code: str,
         message: str,
         retryable: bool = False,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
+        self.headers = headers
         self.status_code = status_code
         self.code = code
         self.message = message
@@ -96,6 +98,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return _render(
             exc.status_code,
             ErrorBody(code=exc.code, message=exc.message, retryable=exc.retryable),
+            headers=exc.headers,
         )
 
     @app.exception_handler(RequestValidationError)
