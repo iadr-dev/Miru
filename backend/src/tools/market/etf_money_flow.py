@@ -13,7 +13,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, is_entitled, parse_args
+from tools.base import SyncStoreTool, ToolContext, is_entitled, parse_args
 from tools.market._common import (
     closes_by_symbol,
     latest_ingested_date_on_or_before,
@@ -143,7 +143,7 @@ def _mask_etf_money_flow_rows_beyond(
     return tuple(masked)
 
 
-class GetEtfMoneyFlowTool(BaseTool):
+class GetEtfMoneyFlowTool(SyncStoreTool):
     """`get_etf_money_flow` — cross-ETF 資金流向 aggregated over every active ETF's ingested
     holdings for a bounded date range: 主動式檔數/持有市值 per stock, 流入/流出排行, 多空共識.
 
@@ -165,13 +165,14 @@ class GetEtfMoneyFlowTool(BaseTool):
     input_model: type[BaseModel] = GetEtfMoneyFlowInput
     output_model: type[BaseModel] = GetEtfMoneyFlowOutput
     data_class = DataClass.SPONSOR
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "etf_money_flow"
     supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetEtfMoneyFlowInput, args)
         calendar = real_calendar(self._store, typed.market.value)
         window_dates = calendar.business_days_between(typed.start_date, typed.end_date)

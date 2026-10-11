@@ -15,7 +15,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import MarketValueRow
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import SyncStoreTool, ToolContext, parse_args
 from tools.market._common import (
     closes_by_symbol,
     industry_by_symbol_for,
@@ -261,7 +261,7 @@ def _market_values_by_symbol(
     return market_values
 
 
-class GetSectorHeatmapTool(BaseTool):
+class GetSectorHeatmapTool(SyncStoreTool):
     """`get_sector_heatmap` — 產業別漲跌熱力圖: joins the already-ingested `STOCK_INFO_JOB` roster
     (each symbol's `industry_category`) against the same two-day `PRICE_EOD_JOB` close window
     `GetAdvanceDeclineTool`/`GetIndexContributionTool` resolve (`two_day_window`), grouping each
@@ -286,12 +286,13 @@ class GetSectorHeatmapTool(BaseTool):
     input_model: type[BaseModel] = GetSectorHeatmapInput
     output_model: type[BaseModel] = GetSectorHeatmapOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "sector_heatmap"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetSectorHeatmapInput, args)
         market = typed.market.value
@@ -423,7 +424,7 @@ class GetSectorConstituentsOutput(BaseModel):
     rows: tuple[SectorConstituentRow, ...] = Field(default_factory=tuple)
 
 
-class GetSectorConstituentsTool(BaseTool):
+class GetSectorConstituentsTool(SyncStoreTool):
     """`get_sector_constituents` — the per-stock drill-down for one `get_sector_heatmap` tile:
     every member symbol's own close-to-close percentage change, close, volume, and turnover for
     a chosen industry (or, if `industry` is omitted, every symbol ranked together). Reads the
@@ -446,12 +447,13 @@ class GetSectorConstituentsTool(BaseTool):
     input_model: type[BaseModel] = GetSectorConstituentsInput
     output_model: type[BaseModel] = GetSectorConstituentsOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "sector_constituents"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetSectorConstituentsInput, args)
         market = typed.market.value
@@ -608,7 +610,7 @@ def _stock_heatmap_size_value(
     return turnover if turnover is not None else float(volume)
 
 
-class GetStockHeatmapTool(BaseTool):
+class GetStockHeatmapTool(SyncStoreTool):
     """`get_stock_heatmap` — 股票熱力圖: the flat, per-stock counterpart to `get_sector_heatmap`'s
     per-industry aggregate tiles (finviz's own individual-ticker map, not its industry-region
     view). Joins the same already-ingested `STOCK_INFO_JOB` roster + two-day `PRICE_EOD_JOB`
@@ -631,12 +633,13 @@ class GetStockHeatmapTool(BaseTool):
     input_model: type[BaseModel] = GetStockHeatmapInput
     output_model: type[BaseModel] = GetStockHeatmapOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "stock_heatmap"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetStockHeatmapInput, args)
         market = typed.market.value

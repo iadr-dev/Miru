@@ -13,7 +13,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import StockInfoRow
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, is_entitled, parse_args
+from tools.base import SyncStoreTool, ToolContext, is_entitled, parse_args
 from tools.market._common import (
     closes_by_symbol,
     latest_dataset_date,
@@ -170,7 +170,7 @@ class GetHolderAccumulationOutput(BaseModel):
     rows: tuple[HolderAccumulationRow, ...] = Field(default_factory=tuple)
 
 
-class GetHolderAccumulationTool(BaseTool):
+class GetHolderAccumulationTool(SyncStoreTool):
     """`get_holder_accumulation` — 大戶加碼股: which symbols grew a chosen large-holder tier's
     share-of-custody the most over 1-4 weekly snapshots, computed from the already-ingested
     `SHAREHOLDING_DISTRIBUTION_JOB` partitions (`ingest/jobs.py`) — never a per-symbol live
@@ -201,6 +201,7 @@ class GetHolderAccumulationTool(BaseTool):
     input_model: type[BaseModel] = GetHolderAccumulationInput
     output_model: type[BaseModel] = GetHolderAccumulationOutput
     data_class = DataClass.SPONSOR
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "holder_accumulation"
     supports_row_preview: bool = True
 
@@ -234,7 +235,7 @@ class GetHolderAccumulationTool(BaseTool):
             totals[symbol] = (prior_percent + float(percent), prior_shares + int(unit))
         return totals
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetHolderAccumulationInput, args)
         market = typed.market.value
 

@@ -13,7 +13,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow
 from schemas.enums import DataClass
-from tools.base import BaseTool, ToolContext, is_entitled, parse_args
+from tools.base import SyncStoreTool, ToolContext, is_entitled, parse_args
 from tools.common import SymbolInput
 from tools.market._common import (
     HoldingStatus,
@@ -357,7 +357,7 @@ def _etf_position_event_counts(
     )
 
 
-class GetEtfsHoldingStockTool(BaseTool):
+class GetEtfsHoldingStockTool(SyncStoreTool):
     """`get_etfs_holding_stock` — the reverse of `get_active_etf_report`: every active-
     management ETF currently holding one target stock, with three derived views (持有張數排行/
     權重排行/建清倉) computed from the same already-ingested `ACTIVE_ETF_HOLDING_JOB`/
@@ -388,6 +388,7 @@ class GetEtfsHoldingStockTool(BaseTool):
     input_model: type[BaseModel] = GetEtfsHoldingStockInput
     output_model: type[BaseModel] = GetEtfsHoldingStockOutput
     data_class = DataClass.SPONSOR
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "etfs_holding_stock"
     supports_row_preview: bool = True
 
@@ -443,7 +444,7 @@ class GetEtfsHoldingStockTool(BaseTool):
             }
         return _etf_position_events(changes_by_date, holdings_by_date_and_etf, event_dates)
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetEtfsHoldingStockInput, args)
         market = typed.market.value
         target = typed.as_of or date_.today()

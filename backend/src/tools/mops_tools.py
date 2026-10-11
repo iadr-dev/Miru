@@ -28,7 +28,7 @@ from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from schemas.source import HealthStatus
 from tools._rows import fetch_rows
-from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.base import BaseTool, SyncStoreTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
 
 
@@ -223,7 +223,7 @@ class GetMaterialAnnouncementFeedOutput(BaseModel):
     rows: tuple[MaterialAnnouncementRow, ...] = Field(default_factory=tuple)
 
 
-class GetMaterialAnnouncementFeedTool(BaseTool):
+class GetMaterialAnnouncementFeedTool(SyncStoreTool):
     """`get_material_announcement_feed` — 重大訊息 whole-market feed for one day, read from the
     already-ingested `material_announcements` partition tree (`job_material_announcements`,
     `ingest/jobs.py`) — never a live fetch. Distinct from `get_material_announcements`
@@ -249,7 +249,7 @@ class GetMaterialAnnouncementFeedTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetMaterialAnnouncementFeedInput, args)
         market = typed.market.value
@@ -309,7 +309,7 @@ class GetInsiderTransferDeclarationOutput(BaseModel):
     rows: tuple[InsiderTransferDeclarationRow, ...] = Field(default_factory=tuple)
 
 
-class GetInsiderTransferDeclarationTool(BaseTool):
+class GetInsiderTransferDeclarationTool(SyncStoreTool):
     """`get_insider_transfer_declarations` — 內部人股權轉讓事前申報 whole-market feed for one
     day, read from the already-ingested `insider_transfer_declaration` partition tree
     (`job_insider_transfer_declaration`, `ingest/jobs.py`, `t187ap12_L` only — see
@@ -330,7 +330,7 @@ class GetInsiderTransferDeclarationTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetInsiderTransferDeclarationInput, args)
         market = typed.market.value

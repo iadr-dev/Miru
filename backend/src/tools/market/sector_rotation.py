@@ -16,7 +16,7 @@ from schemas.capabilities import EODBar, InstitutionalFlowRow, StockInfoRow
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from tools._rows import fetch_rows
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import BaseTool, SyncStoreTool, ToolContext, parse_args
 from tools.market._common import ingested_dates, latest_dataset_date, unavailable_reason_for_window
 
 # How many recent trading days `get_sector_rotation` plots — a rank-bump chart needs enough
@@ -83,7 +83,7 @@ def _net_flow_by_symbol_for_date(
     return net
 
 
-class GetSectorRotationTool(BaseTool):
+class GetSectorRotationTool(SyncStoreTool):
     """`get_sector_rotation` — daily industry ranking by net institutional flow (`buy - sell`
     summed across every investor category) over the last `_SECTOR_ROTATION_WINDOW_TRADING_DAYS`
     trading days, the data a rank-bump chart plots (one line per industry, Y = daily rank).
@@ -111,12 +111,13 @@ class GetSectorRotationTool(BaseTool):
     input_model: type[BaseModel] = GetSectorRotationInput
     output_model: type[BaseModel] = GetSectorRotationOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "sector_rotation"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetSectorRotationInput, args)
         market = typed.market.value

@@ -12,7 +12,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import MarketValueWeightRow
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, is_entitled, parse_args
+from tools.base import SyncStoreTool, ToolContext, is_entitled, parse_args
 from tools.market._common import (
     closes_by_symbol,
     real_calendar,
@@ -106,7 +106,7 @@ class GetIndexContributionOutput(BaseModel):
     negative_contributors: tuple[IndexContributionRow, ...] = Field(default_factory=tuple)
 
 
-class GetIndexContributionTool(BaseTool):
+class GetIndexContributionTool(SyncStoreTool):
     """`get_index_contribution` — an APPROXIMATE per-symbol index-contribution estimate,
     `weight_per x pct_change` (close-to-close), joining the already-ingested
     `MARKET_VALUE_WEIGHT_JOB` weight partition against `PRICE_EOD_JOB` closes for the same
@@ -136,13 +136,14 @@ class GetIndexContributionTool(BaseTool):
     input_model: type[BaseModel] = GetIndexContributionInput
     output_model: type[BaseModel] = GetIndexContributionOutput
     data_class = DataClass.SPONSOR
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "index_contribution"
     supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetIndexContributionInput, args)
         market = typed.market.value
         calendar = real_calendar(self._store, market)

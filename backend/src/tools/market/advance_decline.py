@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ingest.store import ParquetStore
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import SyncStoreTool, ToolContext, parse_args
 from tools.market._common import (
     closes_by_symbol,
     price_eod_dataset_for,
@@ -95,7 +95,7 @@ def _advance_decline_bucket_name(pct: float) -> str:
     return f"{'up' if sign > 0 else 'down'}_{step}"
 
 
-class GetAdvanceDeclineTool(BaseTool):
+class GetAdvanceDeclineTool(SyncStoreTool):
     """`get_advance_decline` — whole-market advance/decline breadth for one trading day: every
     symbol's close-to-close percentage change, bucketed into >5%/3-5%/2-3%/1-2%/0-1% on both
     the up- and down-side plus `unchanged`, read from the already-ingested `PRICE_EOD_JOB`
@@ -118,12 +118,13 @@ class GetAdvanceDeclineTool(BaseTool):
     input_model: type[BaseModel] = GetAdvanceDeclineInput
     output_model: type[BaseModel] = GetAdvanceDeclineOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "advance_decline"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetAdvanceDeclineInput, args)
         market = typed.market.value

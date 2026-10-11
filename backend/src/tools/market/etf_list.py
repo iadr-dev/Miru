@@ -21,7 +21,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingRow, DividendEvent, EtfExpenseInfo
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import SyncStoreTool, ToolContext, parse_args
 from tools.market._common import (
     ETF_AUM_CAVEAT,
     closes_by_symbol,
@@ -338,7 +338,7 @@ def _etf_list_row(
     )
 
 
-class GetEtfListTool(BaseTool):
+class GetEtfListTool(SyncStoreTool):
     """`get_etf_list` — the whole-market TW ETF list (~300 symbols): price/change/volume/
     1-week-return from `PRICE_EOD_JOB`, name from `EtfNavRow.fund_name` (`etf_nav`), AUM from
     `EtfAumRow.aum` (`etf_aum`, Yahoo's own `totalAssets`), expense-ratio floor from
@@ -373,12 +373,13 @@ class GetEtfListTool(BaseTool):
     input_model: type[BaseModel] = GetEtfListInput
     output_model: type[BaseModel] = GetEtfListOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "etf_list"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetEtfListInput, args)
         market = typed.market.value
