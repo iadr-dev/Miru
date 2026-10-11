@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from schemas.enums import TLSPolicy
@@ -37,12 +37,12 @@ class Settings(BaseSettings):
     tls_policy: TLSPolicy = TLSPolicy.STRICT
 
     # ---- LLM providers (modules/04) — set only the ones in use ----
-    anthropic_api_key: str | None = None
-    openai_api_key: str | None = None
-    gemini_api_key: str | None = None
-    groq_api_key: str | None = None
-    cerebras_api_key: str | None = None
-    openrouter_api_key: str | None = None
+    anthropic_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
+    groq_api_key: SecretStr | None = None
+    cerebras_api_key: SecretStr | None = None
+    openrouter_api_key: SecretStr | None = None
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3.6"
 
@@ -78,10 +78,10 @@ class Settings(BaseSettings):
     orch_max_tokens_per_turn: int = 1_500_000
 
     # ---- Data providers ----
-    finmind_api_key: str | None = None
+    finmind_api_key: SecretStr | None = None
     finmind_base_url: str = "https://api.finmindtrade.com/api/v4"
-    brave_search_api_key: str | None = None
-    finnhub_key: str | None = None
+    brave_search_api_key: SecretStr | None = None
+    finnhub_key: SecretStr | None = None
     yf_tz_cache_dir: str = "./.cache/yf_tz"
 
     # ---- Voice (modules/, api/routers/voice.py) ----
@@ -90,28 +90,30 @@ class Settings(BaseSettings):
     voice_max_audio_seconds: int = 60
 
     # ---- Auth ----
-    jwt_secret_key: str | None = None
+    jwt_secret_key: SecretStr | None = None
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 30
-    secret_encryption_keys: str | None = None  # comma-separated Fernet keys (accounts/crypto.py)
+    secret_encryption_keys: SecretStr | None = (
+        None  # comma-separated Fernet keys (accounts/crypto.py)
+    )
 
     # ---- OAuth sign-in (modules/12, adr/0022) ----
     google_client_id: str | None = None
-    google_client_secret: str | None = None
+    google_client_secret: SecretStr | None = None
     google_redirect_uri: str | None = None
     line_channel_id: str | None = None
-    line_channel_secret: str | None = None
+    line_channel_secret: SecretStr | None = None
     line_redirect_uri: str | None = None
     # Log in with Telegram (OpenID Connect). Register the redirect URI under the bot's "Login
     # Widget" in @BotFather; it shows the client id (the bot's numeric id — derived from
     # TELEGRAM_BOT_TOKEN when unset) and the client secret.
     telegram_login_client_id: str | None = None
-    telegram_login_client_secret: str | None = None
+    telegram_login_client_secret: SecretStr | None = None
     telegram_login_redirect_uri: str | None = None
 
     # ---- Notification delivery channels (modules/14) — distinct from LINE Login above ----
-    line_messaging_channel_access_token: str | None = Field(
+    line_messaging_channel_access_token: SecretStr | None = Field(
         default=None,
         validation_alias=AliasChoices(
             "line_messaging_channel_access_token", "line_messaging_access_token"
@@ -119,28 +121,28 @@ class Settings(BaseSettings):
     )
     # The official account's basic id (e.g. "@123abcde"), used to build the add-friend link.
     line_bot_basic_id: str | None = None
-    line_messaging_channel_secret: str | None = None
-    telegram_bot_token: str | None = None
+    line_messaging_channel_secret: SecretStr | None = None
+    telegram_bot_token: SecretStr | None = None
     telegram_bot_username: str | None = None
-    telegram_webhook_secret: str | None = None
+    telegram_webhook_secret: SecretStr | None = None
     # Email goes out through Resend's HTTP API. The from-address must be on a domain verified in
     # Resend (SPF/DKIM), e.g. "Miru <alerts@your-domain.com>".
-    resend_api_key: str | None = None
+    resend_api_key: SecretStr | None = None
     # Signing secret (`whsec_…`) Resend shows when the webhook is added in its dashboard; without it
     # the bounce/complaint webhook refuses every request.
-    resend_webhook_secret: str | None = None
+    resend_webhook_secret: SecretStr | None = None
     email_from_address: str | None = None
     # Browser notifications (Web Push, VAPID). The public key is handed to the browser so it can
     # subscribe; the private key signs each push and never leaves the server.
     vapid_public_key: str | None = None
-    vapid_private_key: str | None = None
+    vapid_private_key: SecretStr | None = None
     vapid_subject: str = "mailto:noreply@miru.app"
 
     # ---- Paddle / billing (modules/15) — MoR; webhook is entitlement source of truth ----
-    paddle_api_key: str | None = None
+    paddle_api_key: SecretStr | None = None
     paddle_client_token: str | None = None
     paddle_environment: str = "sandbox"  # sandbox | production
-    paddle_webhook_secret: str | None = None
+    paddle_webhook_secret: SecretStr | None = None
     # 8 price IDs = {premium,pro} x {monthly,annual} x {standard,BYOK} — payments/plans.py
     paddle_price_premium_monthly: str | None = None
     paddle_price_premium_annual: str | None = None
@@ -218,3 +220,10 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Construct Settings fresh from the current environment (no caching — tests override env)."""
     return Settings()
+
+
+def reveal(secret: SecretStr | None) -> str | None:
+    """The plain string behind a secret setting, for the one place that must hand it to a library
+    or compare it. Everywhere else keeps the `SecretStr`, whose repr is masked, so printing or
+    logging a settings object can never leak a key."""
+    return secret.get_secret_value() if secret is not None else None

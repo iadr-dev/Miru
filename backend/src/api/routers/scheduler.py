@@ -39,6 +39,7 @@ from api.dependencies import (
     tool_context_for,
 )
 from api.errors import ApiError
+from config.settings import reveal
 from scheduler.caps import MAX_ALERT_RULES, MAX_SCHEDULES
 from scheduler.delivery.push_endpoint import subscription_endpoint_allowed
 from scheduler.delivery.transport import HttpxTransport, OutboundTransport
@@ -864,7 +865,7 @@ async def _unsubscribe_target(
     token: str, state: AppState, users: UserStore
 ) -> tuple[User, str] | None:
     """The account a valid unsubscribe token names and its email, or None if it is invalid."""
-    secret = state.settings.jwt_secret_key
+    secret = reveal(state.settings.jwt_secret_key)
     parts = split_token(token)
     if parts is None or not secret:
         return None
@@ -1007,7 +1008,7 @@ async def resend_webhook(
     `email.suppressed`. The address is recorded and never emailed again. A soft bounce, delivery
     and open events are acknowledged and ignored. The request must carry a valid Svix signature;
     with no secret configured every request is refused."""
-    secret = state.settings.resend_webhook_secret
+    secret = reveal(state.settings.resend_webhook_secret)
     body = await request.body()
     headers = {k.lower(): v for k, v in request.headers.items()}
     if not secret or not _resend_signature_ok(secret, headers, body):
@@ -1079,8 +1080,8 @@ async def line_webhook(
     the link (the user blocked the account, so pushes would fail)."""
     settings = state.settings
     secret, token = (
-        settings.line_messaging_channel_secret,
-        settings.line_messaging_channel_access_token,
+        reveal(settings.line_messaging_channel_secret),
+        reveal(settings.line_messaging_channel_access_token),
     )
     body = await request.body()
     expected = (
@@ -1151,7 +1152,7 @@ async def telegram_webhook(
     """Telegram calls this for every message to the bot. Only `/start <token>` matters: it binds
     the sender's chat to the account that issued the token. The secret header proves the call is
     Telegram's; anything else is ignored with a 200 so Telegram does not retry."""
-    expected = state.settings.telegram_webhook_secret
+    expected = reveal(state.settings.telegram_webhook_secret)
     if (
         not expected
         or secret is None

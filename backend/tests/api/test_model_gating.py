@@ -7,6 +7,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from accounts.crypto import generate_key
 from accounts.entitlements import FREE_PLATFORM_MODELS
@@ -22,7 +23,7 @@ LIGHT = "anthropic/claude-haiku-4-5-20251001"
 
 @pytest.fixture
 def keyed_client(settings: Settings, agent_answer: str) -> Iterator[TestClient]:
-    with_keys = settings.model_copy(update={"secret_encryption_keys": generate_key()})
+    with_keys = settings.model_copy(update={"secret_encryption_keys": SecretStr(generate_key())})
     with build_test_client(with_keys, agent_answer=agent_answer) as client:
         yield client
 

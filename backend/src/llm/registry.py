@@ -28,7 +28,7 @@ from typing import Final
 
 import structlog
 
-from config.settings import Settings, get_settings
+from config.settings import Settings, get_settings, reveal
 from llm.anthropic_client import AnthropicClient
 from llm.base import LLMClient, LLMEvent, LLMResponse, Message, ModelCapabilities, ToolSpec
 from llm.gemini_client import GeminiClient
@@ -84,12 +84,12 @@ class ProviderNotConfiguredError(RuntimeError):
 
 def _api_key_for(provider_id: str, settings: Settings) -> str | None:
     return {
-        "anthropic": settings.anthropic_api_key,
-        "openai": settings.openai_api_key,
-        "gemini": settings.gemini_api_key,
-        "groq": settings.groq_api_key,
-        "cerebras": settings.cerebras_api_key,
-        "openrouter": settings.openrouter_api_key,
+        "anthropic": reveal(settings.anthropic_api_key),
+        "openai": reveal(settings.openai_api_key),
+        "gemini": reveal(settings.gemini_api_key),
+        "groq": reveal(settings.groq_api_key),
+        "cerebras": reveal(settings.cerebras_api_key),
+        "openrouter": reveal(settings.openrouter_api_key),
     }.get(provider_id)
 
 

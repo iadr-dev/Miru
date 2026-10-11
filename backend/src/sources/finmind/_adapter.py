@@ -14,7 +14,7 @@ from typing import cast
 import httpx
 import structlog
 
-from config.settings import Settings, get_settings
+from config.settings import Settings, get_settings, reveal
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -180,7 +180,7 @@ class FinMindAdapter:
         endpoint = config.special_endpoint or _DATA_ENDPOINT
         url = f"{base_url}{endpoint}"
         headers: dict[str, str] = {}
-        token = self._settings.finmind_api_key
+        token = reveal(self._settings.finmind_api_key)
         if token:
             headers["Authorization"] = f"Bearer {token}"  # never logged
 

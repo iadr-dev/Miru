@@ -25,7 +25,7 @@ from urllib.parse import quote
 
 import structlog
 
-from config.settings import Settings
+from config.settings import Settings, reveal
 from scheduler.delivery.base import (
     DeliveryChannel,
     DeliveryNotification,
@@ -117,7 +117,7 @@ class LineMessagingChannel:
     _PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
     def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
-        self._token = settings.line_messaging_channel_access_token
+        self._token = reveal(settings.line_messaging_channel_access_token)
         self._transport = transport
 
     def build_request(
@@ -150,7 +150,7 @@ class TelegramChannel:
     kind = DeliveryChannelKind.TELEGRAM
 
     def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
-        self._token = settings.telegram_bot_token
+        self._token = reveal(settings.telegram_bot_token)
         self._transport = transport
 
     def build_request(
@@ -183,7 +183,7 @@ class EmailChannel:
     _URL = "https://api.resend.com/emails"
 
     def __init__(self, settings: Settings, transport: OutboundTransport | None = None) -> None:
-        self._key = settings.resend_api_key
+        self._key = reveal(settings.resend_api_key)
         self._from = settings.email_from_address
         self._transport = transport
 
@@ -377,7 +377,8 @@ def build_default_channels(
     web_push: WebPushSender | None = None
     if live and settings.vapid_private_key and settings.vapid_public_key:
         web_push = PywebpushSender(
-            private_key=settings.vapid_private_key, subject=settings.vapid_subject
+            private_key=settings.vapid_private_key.get_secret_value(),
+            subject=settings.vapid_subject,
         )
     return {
         DeliveryChannelKind.IN_APP: InAppChannel(),

@@ -24,7 +24,7 @@ from jwt import PyJWKClient
 from pydantic import BaseModel, ConfigDict
 
 from accounts.models import OAuthProvider
-from config.settings import Settings
+from config.settings import Settings, reveal
 
 logger = structlog.get_logger(__name__)
 
@@ -169,7 +169,7 @@ class GoogleOAuthProvider:
         if not settings.google_redirect_uri:
             raise OAuthConfigError("google redirect uri not configured")
         self._client_id = settings.google_client_id
-        self._client_secret = settings.google_client_secret
+        self._client_secret = settings.google_client_secret.get_secret_value()
         self._redirect_uri = settings.google_redirect_uri
         self._client_factory = client_factory
         self._signing_key_client = signing_key_client
@@ -272,7 +272,7 @@ class LineOAuthProvider:
         if not settings.line_redirect_uri:
             raise OAuthConfigError("line redirect uri not configured")
         self._channel_id = settings.line_channel_id
-        self._channel_secret = settings.line_channel_secret
+        self._channel_secret = settings.line_channel_secret.get_secret_value()
         self._redirect_uri = settings.line_redirect_uri
         self._client_factory = client_factory
 
@@ -356,7 +356,7 @@ def telegram_client_id(settings: Settings) -> str | None:
     the colon)."""
     if settings.telegram_login_client_id:
         return settings.telegram_login_client_id
-    token = settings.telegram_bot_token
+    token = reveal(settings.telegram_bot_token)
     return token.partition(":")[0] if token and ":" in token else None
 
 
@@ -383,7 +383,7 @@ class TelegramOAuthProvider:
         if not settings.telegram_login_redirect_uri:
             raise OAuthConfigError("telegram login redirect uri not configured")
         self._client_id = client_id
-        self._client_secret = settings.telegram_login_client_secret
+        self._client_secret = settings.telegram_login_client_secret.get_secret_value()
         self._redirect_uri = settings.telegram_login_redirect_uri
         self._client_factory = client_factory
         self._signing_key_client = signing_key_client
