@@ -11,13 +11,21 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query
 
 from accounts.models import User
-from api.dependencies import AppState, get_state, optional_user, tool_context_for
-from api.errors import ApiError
+from api.dependencies import (
+    AppState,
+    dispatch_validated_tool,
+    get_state,
+    optional_user,
+    tool_context_for,
+)
 from schemas.enums import Market
-from tools.base import ToolContext, dispatch_tool
+from tools.base import ToolContext
+
+_dispatch = dispatch_validated_tool
+
 
 router = APIRouter(tags=["themes"])
 
@@ -27,22 +35,6 @@ def _context(
     state: AppState = Depends(get_state),
 ) -> ToolContext:
     return tool_context_for(user, state)
-
-
-async def _dispatch(
-    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
-) -> dict[str, object]:
-    tool = state.tool_registry.get_tool(tool_name)
-    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
-        raise ApiError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            code="tool_unavailable",
-            message=f"Tool {tool_name} is not registered.",
-            retryable=False,
-        )
-    validated = tool.input_model.model_validate(args)
-    result = await dispatch_tool(tool, validated, ctx)
-    return result.model_dump(mode="json")
 
 
 @router.get("/themes")

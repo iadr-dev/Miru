@@ -28,6 +28,7 @@ from typing import cast
 import structlog
 
 from analytics import patterns
+from analytics.coerce import as_float, as_int
 from analytics.indicators import PriceBar
 from analytics.screener import chip_streaks, events, momentum
 from analytics.screener.catalog import (
@@ -86,22 +87,6 @@ _PRICE_LOOKBACK_DAYS = 260
 _CHIP_LOOKBACK_DAYS = 12
 
 
-def _as_float(value: object) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
-def _as_int(value: object) -> int:
-    if isinstance(value, bool):
-        return 0
-    if isinstance(value, (int, float)):
-        return int(value)
-    return 0
-
-
 def _trade_date_key(row: dict[str, object]) -> str:
     value = row.get("trade_date")
     return value if isinstance(value, str) else str(value)
@@ -114,9 +99,9 @@ def _bars_for_symbol(rows: Sequence[dict[str, object]]) -> tuple[PriceBar, ...]:
     ordered = sorted(rows, key=_trade_date_key)
     bars: list[PriceBar] = []
     for row in ordered:
-        close = _as_float(row.get("close"))
-        high = _as_float(row.get("high"))
-        low = _as_float(row.get("low"))
+        close = as_float(row.get("close"))
+        high = as_float(row.get("high"))
+        low = as_float(row.get("low"))
         if close is None or close <= 0 or high is None or low is None:
             continue
         bars.append(
@@ -124,9 +109,9 @@ def _bars_for_symbol(rows: Sequence[dict[str, object]]) -> tuple[PriceBar, ...]:
                 high=high,
                 low=low,
                 close=close,
-                volume=_as_int(row.get("volume")),
-                open=_as_float(row.get("open")),
-                turnover=_as_float(row.get("turnover")),
+                volume=as_int(row.get("volume")),
+                open=as_float(row.get("open")),
+                turnover=as_float(row.get("turnover")),
             )
         )
     return tuple(bars)
@@ -141,7 +126,7 @@ def _daily_net_by_investor(rows: Sequence[dict[str, object]]) -> dict[str, list[
         if not isinstance(investor, str):
             continue
         day = _trade_date_key(row)
-        net = float(_as_int(row.get("buy")) - _as_int(row.get("sell")))
+        net = float(as_int(row.get("buy")) - as_int(row.get("sell")))
         # A category can appear once per (symbol, day); sum defensively in case of duplicates.
         by_investor[investor][day] = by_investor[investor].get(day, 0.0) + net
     return {
@@ -247,7 +232,7 @@ def _daily_balances_by_field(rows: Sequence[dict[str, object]], field: str) -> l
     by_day: dict[str, float] = {}
     for row in rows:
         day = _trade_date_key(row)
-        value = _as_float(row.get(field))
+        value = as_float(row.get(field))
         if value is not None:
             by_day[day] = value
     return [value for _, value in sorted(by_day.items())]

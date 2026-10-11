@@ -9,6 +9,7 @@ from datetime import timedelta
 from pydantic import BaseModel, ConfigDict, Field
 
 from ingest.jobs import ACTIVE_ETF_HOLDING_CHANGE_JOB, ACTIVE_ETF_HOLDING_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow
 from schemas.enums import DataClass
@@ -20,7 +21,6 @@ from tools.market._common import (
     ingested_dates,
     latest_ingested_date_on_or_before,
     prior_report_date,
-    rows_from_store,
     shares_outstanding_by_symbol,
 )
 

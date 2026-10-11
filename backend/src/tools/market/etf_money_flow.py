@@ -9,6 +9,7 @@ from datetime import date as date_
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ingest.jobs import ACTIVE_ETF_HOLDING_CHANGE_JOB, ACTIVE_ETF_HOLDING_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow
 from schemas.enums import DataClass, Market
@@ -17,7 +18,6 @@ from tools.market._common import (
     closes_by_symbol,
     latest_ingested_date_on_or_before,
     real_calendar,
-    rows_from_store,
     shares_outstanding_by_symbol,
 )
 

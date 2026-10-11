@@ -17,6 +17,7 @@ from ingest.jobs import (
     ETF_EXPENSE_RATIO_DATASET,
     PRICE_EOD_JOB,
 )
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingRow, DividendEvent, EtfExpenseInfo
 from schemas.enums import DataClass, Market
@@ -28,7 +29,6 @@ from tools.market._common import (
     etf_nav_names,
     latest_dataset_date,
     real_calendar,
-    rows_from_store,
     two_day_window,
     unavailable_reason_for_window,
 )

@@ -24,6 +24,7 @@ import structlog
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.parse import optional_float, to_float
 from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
@@ -135,12 +136,12 @@ class TwseOpenApiAdapter:
             "symbol": sym.id,
             "market": sym.market.value,
             "trade_date": match.get("Date"),
-            "open": _to_float(match.get("OpeningPrice")),
-            "high": _to_float(match.get("HighestPrice")),
-            "low": _to_float(match.get("LowestPrice")),
-            "close": _to_float(match.get("ClosingPrice")),
+            "open": to_float(match.get("OpeningPrice")),
+            "high": to_float(match.get("HighestPrice")),
+            "low": to_float(match.get("LowestPrice")),
+            "close": to_float(match.get("ClosingPrice")),
             "volume": _to_int(match.get("TradeVolume")),
-            "turnover": _to_float(match.get("TradeValue")),
+            "turnover": to_float(match.get("TradeValue")),
         }
         return _result(
             payload={"bar": bar}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
@@ -251,17 +252,8 @@ def _map_ex_rights_row(row: dict[str, object]) -> list[dict[str, object]]:
     return events
 
 
-def _to_float(value: object) -> float:
-    if value is None:
-        return 0.0
-    try:
-        return float(str(value).replace(",", ""))
-    except ValueError:
-        return 0.0
-
-
 def _to_int(value: object) -> int:
-    return int(_to_float(value))
+    return int(to_float(value))
 
 
 def _unavailable(cap: Capability, sym: Symbol) -> SourceResult:
@@ -291,7 +283,7 @@ def _roc_to_iso_date(roc: str) -> date | None:
     from `sources/mops.py`'s own private helper of the same name — both live/announcement-style
     TWSE OpenAPI feeds use the same ROC-offset convention, but `sources/mops.py` doesn't export
     its version, and each `sources/*.py` module in this package already duplicates its own small
-    parsing helpers (`_to_float`/`_to_int` are duplicated verbatim between this module and
+    parsing helpers (`to_float`/`_to_int` are duplicated verbatim between this module and
     `sources/tpex_openapi.py`) rather than reaching across modules for a private name."""
     digits = roc.strip()
     if len(digits) != _ROC_DATE_LEN or not digits.isdigit():
@@ -348,8 +340,8 @@ def _map_attention_stock_row(row: dict[str, object]) -> dict[str, object] | None
         "company_name": str(row.get("Name", "")),
         "flagged_date": flagged_date.isoformat(),
         "reason": str(row.get("TradingInfoForAttention", "")),
-        "close": _to_float(row.get("ClosingPrice")) or None,
-        "pe": _optional_float(row.get("PriceEarningRatio") or row.get("PE")),
+        "close": to_float(row.get("ClosingPrice")) or None,
+        "pe": optional_float(row.get("PriceEarningRatio") or row.get("PE")),
         "security_type": "twse",
     }
 
@@ -376,15 +368,6 @@ def _map_disposition_event_row(row: dict[str, object]) -> dict[str, object] | No
         "detail": str(row.get("Detail", "")) or None,
         "security_type": "twse",
     }
-
-
-def _optional_float(value: object) -> float | None:
-    if value is None or str(value).strip().upper() == "N/A":
-        return None
-    try:
-        return float(str(value).replace(",", ""))
-    except ValueError:
-        return None
 
 
 async def _fetch_whole_market_rows(

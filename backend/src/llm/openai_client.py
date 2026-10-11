@@ -71,6 +71,7 @@ from llm.base import (
     ToolCallEvent,
     ToolSpec,
 )
+from llm.shared import parse_json_object
 
 logger = structlog.get_logger(__name__)
 
@@ -198,18 +199,6 @@ def _tool_spec_to_param(spec: ToolSpec) -> dict[str, Any]:
     }
 
 
-def _parse_json_object(raw: str) -> dict[str, object]:
-    """Parse a (possibly empty/malformed) assembled tool-call-arguments JSON fragment into a
-    typed `dict[str, object]`, never raising and never letting an `Any` escape this module."""
-    if not raw:
-        return {}
-    try:
-        parsed: object = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
-
-
 def _usage_from_response(response: Response) -> TokenUsage:
     usage = response.usage
     if usage is None:
@@ -246,7 +235,7 @@ def _stop_reason_from_response(response: Response) -> StopReason:
 
 def _tool_calls_from_response(response: Response) -> tuple[ToolCall, ...]:
     return tuple(
-        ToolCall(id=item.call_id, name=item.name, arguments=_parse_json_object(item.arguments))
+        ToolCall(id=item.call_id, name=item.name, arguments=parse_json_object(item.arguments))
         for item in response.output
         if item.type == "function_call"
     )
@@ -403,7 +392,7 @@ class OpenAIClient:
         for slot in pending.values():
             yield ToolCallEvent(
                 tool_call=ToolCall(
-                    id=slot["id"], name=slot["name"], arguments=_parse_json_object(slot["args"])
+                    id=slot["id"], name=slot["name"], arguments=parse_json_object(slot["args"])
                 )
             )
         yield StreamDoneEvent(stop_reason=stop_reason, usage=usage)

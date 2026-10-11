@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import ETF_AUM_DATASET, ETF_NAV_DATASET
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import (
     EtfAumRow,
@@ -358,7 +359,7 @@ class GetEtfPremiumDiscountTool(BaseTool):
         # read from the latest partition for that `as_of` (the freshest read of that day's
         # disclosure) — never concatenate raw partition rows into a history with repeats.
         by_as_of: dict[date_, EtfNavRow] = {}
-        for row in _rows_from_store(EtfNavRow, raw_rows):
+        for row in rows_from_store(EtfNavRow, raw_rows):
             if row.symbol == typed.id:
                 by_as_of[row.as_of] = row
         rows = tuple(sorted(by_as_of.values(), key=lambda row: row.as_of))
@@ -396,22 +397,10 @@ class GetEtfPremiumDiscountTool(BaseTool):
         if not aum_dates:
             return None, None
         raw_aum = self._store.read_partition(ETF_AUM_DATASET, market, max(aum_dates))
-        for row in _rows_from_store(EtfAumRow, raw_aum):
+        for row in rows_from_store(EtfAumRow, raw_aum):
             if row.symbol == symbol and row.aum is not None:
                 return row.aum, _ETF_AUM_CAVEAT
         return None, None
-
-
-def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
-    """Local copy of `tools/market/_common.py::rows_from_store` — not imported cross-module
-    (private to
-    its own file). Drops the Hive-partition bookkeeping columns (`dataset`/`date`/`v`) DuckDB's
-    read-back resurfaces alongside the written row data, before validating against this
-    `extra="forbid"` model."""
-    field_names = set(model.model_fields)
-    return [
-        model.model_validate({k: v for k, v in row.items() if k in field_names}) for row in raw_rows
-    ]
 
 
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:

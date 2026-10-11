@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from analytics.symbol_universe import SymbolType, classify_symbol_type, is_scoreable_symbol
 from ingest.jobs import STOCK_INFO_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from ingest.us_universe import US_SYMBOL_UNIVERSE_DATASET
 from schemas.capabilities import EODBar, StockInfoRow, SymbolDirectorySearchRow
@@ -20,7 +21,6 @@ from tools.market._common import (
     names_by_symbol_for,
     price_eod_dataset_for,
     real_calendar,
-    rows_from_store,
     unavailable_reason_for_window,
 )
 

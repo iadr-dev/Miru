@@ -107,10 +107,6 @@ def _tier_at_least(tier: Tier, minimum: Tier) -> bool:
     return _TIER_RANK[tier] >= _TIER_RANK[minimum]
 
 
-def limits_for(tier: Tier) -> TierLimits:
-    return TIER_LIMITS[tier]
-
-
 def chat_limit_for(user: User, *, byok_active: bool) -> int | None:
     """Daily AI-chat cap. `None` = unlimited. BYOK lifts the cap (the user pays inference) —
     this is the ONLY thing BYOK changes about entitlement."""
@@ -218,7 +214,6 @@ __all__ = [
     "entitlement_view",
     "feature_allowed",
     "finmind_class_for",
-    "limits_for",
     "platform_model_allowed",
     "platform_models_for",
     "rate_limit_per_minute",

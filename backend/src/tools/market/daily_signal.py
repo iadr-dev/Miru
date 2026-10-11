@@ -10,6 +10,7 @@ from typing import NamedTuple
 from pydantic import BaseModel, ConfigDict, Field
 
 from ingest.jobs import ACTIVE_ETF_HOLDING_CHANGE_JOB, ACTIVE_ETF_HOLDING_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow
 from schemas.enums import DataClass, Market
@@ -20,7 +21,6 @@ from tools.market._common import (
     closes_by_symbol,
     ingested_dates,
     latest_ingested_date_on_or_before,
-    rows_from_store,
 )
 
 

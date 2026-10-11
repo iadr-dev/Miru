@@ -474,11 +474,6 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     )
 
 
-async def build_ingest_daemon_from_settings(settings: Settings | None = None) -> IngestDaemon:
-    """The composition root the ingest process invokes."""
-    return IngestDaemon(await build_ingest_context_from_settings(settings))
-
-
 __all__ = [
     "SCHEDULED_JOBS",
     "Cadence",
@@ -486,5 +481,4 @@ __all__ = [
     "IngestJobFn",
     "ScheduledIngestJob",
     "build_ingest_context_from_settings",
-    "build_ingest_daemon_from_settings",
 ]

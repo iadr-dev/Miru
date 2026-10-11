@@ -11,7 +11,6 @@ Constructing this client never touches the network (SDK client construction is l
 
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncIterator
 from typing import Any, Final, cast
 
@@ -39,6 +38,7 @@ from llm.base import (
     WebSearchResultEvent,
     WebSearchSource,
 )
+from llm.shared import parse_json_object
 
 logger = structlog.get_logger(__name__)
 
@@ -170,18 +170,6 @@ def _thinking_param() -> ThinkingConfigParam:
     the budget_tokens fallback the task brief allows for pre-4.7-style models — only called
     when `ModelCapabilities.extended_thinking` is `True` for exactly those models."""
     return cast("ThinkingConfigParam", {"type": "adaptive"})
-
-
-def _parse_json_object(raw: str) -> dict[str, object]:
-    """Parse a (possibly empty/malformed) assembled tool-call-arguments JSON fragment into a
-    typed `dict[str, object]`, never raising and never letting an `Any` escape this module."""
-    if not raw:
-        return {}
-    try:
-        parsed: object = json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
-    return cast("dict[str, object]", parsed) if isinstance(parsed, dict) else {}
 
 
 def _web_search_result_event(
@@ -437,7 +425,7 @@ class AnthropicClient:
         for slot in pending.values():
             yield ToolCallEvent(
                 tool_call=ToolCall(
-                    id=slot["id"], name=slot["name"], arguments=_parse_json_object(slot["args"])
+                    id=slot["id"], name=slot["name"], arguments=parse_json_object(slot["args"])
                 )
             )
         yield StreamDoneEvent(stop_reason=stop_reason, usage=usage)

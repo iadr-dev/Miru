@@ -32,6 +32,7 @@ import structlog
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.parse import to_float
 from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
@@ -117,7 +118,7 @@ class TaifexOpenApiAdapter:
             "market": sym.market.value,
             "trade_date": match.get("Date"),
             "contract_month": match.get("ContractMonth"),
-            "settlement_price": _to_float(match.get("SettlementPrice")),
+            "settlement_price": to_float(match.get("SettlementPrice")),
             "volume": _to_int(match.get("Volume")),
             "open_interest": _to_int(match.get("OpenInterest")),
         }
@@ -126,17 +127,8 @@ class TaifexOpenApiAdapter:
         )
 
 
-def _to_float(value: object) -> float:
-    if value is None:
-        return 0.0
-    try:
-        return float(str(value).replace(",", ""))
-    except ValueError:
-        return 0.0
-
-
 def _to_int(value: object) -> int:
-    return int(_to_float(value))
+    return int(to_float(value))
 
 
 def _unavailable(cap: Capability, sym: Symbol) -> SourceResult:

@@ -28,6 +28,7 @@ from ingest.jobs import (
     INSTITUTIONAL_FLOW_JOB,
     PRICE_EOD_JOB,
 )
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import (
     AttentionStockRow,
@@ -131,16 +132,6 @@ class _SymbolEnrichment(NamedTuple):
     self_assessed_row: SelfAssessedEarningsRow | None
 
 
-def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
-    """Same drop-storage-bookkeeping-columns-before-validating helper
-    `tools/mops_tools.py::_rows_from_store` already documents — duplicated here (not imported)
-    since it's private to that module."""
-    field_names = set(model.model_fields)
-    return [
-        model.model_validate({k: v for k, v in row.items() if k in field_names}) for row in raw_rows
-    ]
-
-
 def _calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
     """Same construction `tools/market/_common.py::real_calendar` uses — duplicated here since
     `tools/` modules don't import each other's private helpers."""
@@ -217,7 +208,7 @@ def _institutional_net_by_symbol(
         return {}
     raw_rows = store.read_partition(dataset, market, trade_date)
     net: dict[str, int] = {}
-    for row in _rows_from_store(InstitutionalFlowRow, raw_rows):
+    for row in rows_from_store(InstitutionalFlowRow, raw_rows):
         net[row.symbol] = net.get(row.symbol, 0) + (row.buy - row.sell)
     return net
 
@@ -288,7 +279,7 @@ class GetDispositionBoardTool(BaseTool):
                 "job_attention_stocks/job_disposition_events first run; there is no backfill.",
             )
 
-        disposition_rows = _rows_from_store(
+        disposition_rows = rows_from_store(
             DispositionEventRow,
             self._store.read_partition(DISPOSITION_EVENTS_DATASET, market, report_date),
         )
@@ -309,7 +300,7 @@ class GetDispositionBoardTool(BaseTool):
             if not self._store.has_partition(ATTENTION_STOCKS_DATASET, market, day):
                 continue
             observed_days += 1
-            for attention_row in _rows_from_store(
+            for attention_row in rows_from_store(
                 AttentionStockRow, self._store.read_partition(ATTENTION_STOCKS_DATASET, market, day)
             ):
                 flag_counts[attention_row.symbol] = flag_counts.get(attention_row.symbol, 0) + 1

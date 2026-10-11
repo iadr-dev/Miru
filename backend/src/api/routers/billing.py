@@ -16,11 +16,10 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
 from accounts.entitlements import TierSummary, tier_catalog
 from accounts.models import User
-from accounts.secrets import SqlAlchemySecretStore
 from accounts.store import SqlAlchemyUserStore
+from api.byok import byok_active_for
 from api.dependencies import (
     get_session,
     get_settings_dep,
@@ -208,7 +207,7 @@ async def _subscription_response(
     if record is not None:
         byok = effective_byok_active(
             subscription_byok=record.byok,
-            has_llm_key=await _has_llm_key(session, settings, user_id=user_id),
+            has_llm_key=await byok_active_for(session, settings, user_id=user_id),
         )
     return SubscriptionResponse(subscription=record, byok_active=byok)
 
@@ -486,14 +485,6 @@ async def billing_history(
             retryable=True,
         ) from exc
     return {"transactions": transactions}
-
-
-async def _has_llm_key(session: AsyncSession, settings: Settings, *, user_id: str) -> bool:
-    try:
-        cipher = SecretCipher.from_settings(settings)
-    except SecretEncryptionNotConfiguredError:
-        return False
-    return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
 
 
 __all__ = ["router"]

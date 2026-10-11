@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import STOCK_INFO_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow, StockInfoRow
 from schemas.enums import Capability, DataClass
@@ -27,7 +28,6 @@ from tools.market._common import (
     etf_aum_by_symbol,
     latest_dataset_date,
     prior_report_date,
-    rows_from_store,
 )
 
 _ETF_REPORT_LOOKBACK_DAYS = 10  # bounded per-symbol window to find "target day + prior day"
