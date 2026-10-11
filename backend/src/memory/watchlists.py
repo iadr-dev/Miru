@@ -405,6 +405,19 @@ class WatchlistStore:
         )
         return [_item_to_model(row) for row in result.scalars().all()]
 
+    async def items_by_group(self, user_id: str) -> dict[str, list[WatchlistItem]]:
+        """Every item the user has, grouped by watchlist id, in one query — what the list and
+        snapshot paths use instead of one `list_items` round trip per group."""
+        result = await self._session.execute(
+            select(WatchlistItemRow)
+            .where(WatchlistItemRow.user_id == user_id)
+            .order_by(WatchlistItemRow.sort_order)
+        )
+        grouped: dict[str, list[WatchlistItem]] = {}
+        for row in result.scalars().all():
+            grouped.setdefault(row.watchlist_id, []).append(_item_to_model(row))
+        return grouped
+
     async def rename_group(
         self, *, user_id: str, watchlist_id: str, name: str, expected_version: int | None = None
     ) -> WatchlistGroup:
@@ -553,14 +566,10 @@ class WatchlistStore:
         """The read-through projection `memory.recall` renders into the compact memory block —
         one entry per non-deleted group, symbols in the group's own sort order."""
         groups = await self.list_groups(user_id)
+        items = await self.items_by_group(user_id)
         snapshots: list[WatchlistSnapshotGroup] = []
         for group in groups:
-            items_result = await self._session.execute(
-                select(WatchlistItemRow)
-                .where(WatchlistItemRow.watchlist_id == group.id)
-                .order_by(WatchlistItemRow.sort_order)
-            )
-            symbols = tuple(row.symbol for row in items_result.scalars().all())
+            symbols = tuple(item.symbol for item in items.get(group.id, []))
             snapshots.append(
                 WatchlistSnapshotGroup(
                     name=group.name,

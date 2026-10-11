@@ -260,13 +260,17 @@ class SqlAlchemyConversationStore:
             select(TurnRow).where(TurnRow.thread_id == thread_id).order_by(TurnRow.created_at)
         )
         turn_rows = turns_result.scalars().all()
-        turns: list[Turn] = []
-        for turn_row in turn_rows:
+        # One query for every turn's messages (was one per turn: 1 + T queries per thread open).
+        messages_by_turn: dict[str, list[Message]] = {row.id: [] for row in turn_rows}
+        if turn_rows:
             messages_result = await self._session.execute(
-                select(MessageRow).where(MessageRow.turn_id == turn_row.id).order_by(MessageRow.seq)
+                select(MessageRow)
+                .where(MessageRow.turn_id.in_(messages_by_turn))
+                .order_by(MessageRow.turn_id, MessageRow.seq)
             )
-            messages = [_message_row_to_model(row) for row in messages_result.scalars().all()]
-            turns.append(_turn_row_to_model(turn_row, messages))
+            for message_row in messages_result.scalars().all():
+                messages_by_turn[message_row.turn_id].append(_message_row_to_model(message_row))
+        turns = [_turn_row_to_model(row, messages_by_turn[row.id]) for row in turn_rows]
         return _thread_row_to_model(thread_row, turns)
 
     async def append_turn(  # noqa: PLR0913 — matches the Protocol's own shape above

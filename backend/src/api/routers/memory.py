@@ -255,12 +255,12 @@ async def list_watchlists(
             user_id=user.id, market=preset_market, asset_class=preset_asset_class
         )
     groups = await store.list_groups(user.id)
-    views: list[WatchlistGroupView] = []
-    for group in groups:
-        if market is not None and group.market is not market:
-            continue
-        items = await store.list_items(user_id=user.id, watchlist_id=group.id)
-        views.append(WatchlistGroupView(group=group, items=tuple(items)))
+    items_by_group = await store.items_by_group(user.id)
+    views = [
+        WatchlistGroupView(group=group, items=tuple(items_by_group.get(group.id, [])))
+        for group in groups
+        if market is None or group.market is market
+    ]
     return {"watchlists": views}
 
 
