@@ -1,11 +1,13 @@
 """`docs/backend/api-reference.md` carries a generated route index. This fails the moment a route is
 added, removed or renamed without regenerating it, so the documented surface cannot drift from the
-code:
+code. To refresh it after a route change:
 
-    cd backend/src && uv run python -m api.route_inventory --write
+    cd backend && UPDATE_API_REFERENCE=1 uv run pytest tests/api/test_api_reference_sync.py
 """
 
 from __future__ import annotations
+
+import os
 
 from api.route_inventory import (
     ROUTES_BEGIN,
@@ -13,17 +15,22 @@ from api.route_inventory import (
     reference_path,
     render_markdown,
     route_rows,
+    splice,
 )
 
 
 def test_route_index_in_api_reference_matches_the_code() -> None:
-    document = reference_path().read_text(encoding="utf-8").replace("\r\n", "\n")
+    path = reference_path()
+    document = path.read_text(encoding="utf-8").replace("\r\n", "\n")
+    if os.environ.get("UPDATE_API_REFERENCE") == "1":
+        path.write_text(splice(document, render_markdown(route_rows())), encoding="utf-8")
+        document = path.read_text(encoding="utf-8")
     begin = document.index(ROUTES_BEGIN)
     end = document.index(ROUTES_END) + len(ROUTES_END)
 
     assert document[begin:end] == render_markdown(route_rows()), (
         "docs/backend/api-reference.md route index is stale; regenerate it with "
-        "`cd backend/src && uv run python -m api.route_inventory --write`"
+        "`cd backend && UPDATE_API_REFERENCE=1 uv run pytest tests/api/test_api_reference_sync.py`"
     )
 
 
