@@ -34,7 +34,10 @@ ROUTES_END = "<!-- ROUTES:END -->"
 ROUTER_SECTIONS: tuple[tuple[str, str, bool], ...] = (
     ("context", "Context, quotes & source health", True),
     ("market", "Quotes & live streams", True),
-    ("market_rest", "Market, stock-detail, derivatives & macro data", True),
+    ("market_rest.market", "Market, stock-detail, derivatives & macro data", True),
+    ("market_rest.symbols", "Market, stock-detail, derivatives & macro data", True),
+    ("market_rest.macro_news", "Market, stock-detail, derivatives & macro data", True),
+    ("market_rest.stock", "Market, stock-detail, derivatives & macro data", True),
     ("analytics", "Analytics, scoring & screener", True),
     ("themes", "Themes & supply chain", True),
     ("fund_data", "Funds, analysts & ETF overlap", True),

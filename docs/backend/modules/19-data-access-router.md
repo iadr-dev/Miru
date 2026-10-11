@@ -174,7 +174,7 @@ still open work, not yet started.
 
 ## Real frontend consumer of the market REST routes
 
-The 7 real `market_rest.py` routes (`/market/institutional-ranking`, `/market/margin-maintenance`,
+The 7 real `market_rest/` routes (`/market/institutional-ranking`, `/market/margin-maintenance`,
 `/market/day-trading`, `/market/etf-money-flow`, `/market/industry-flow`, `/macro`,
 `/macro/business-indicator`) now have a real consumer: `web/src/app/[locale]/(app)/market/
 market-panel.tsx` + `web/src/lib/api/market.ts` ship the first real `/market` dashboard (git

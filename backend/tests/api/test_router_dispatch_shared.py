@@ -13,7 +13,17 @@ import pytest
 
 from api.dependencies import dispatch_validated_tool
 
-_ROUTERS_WITH_A_DISPATCH = ("analytics", "context", "market", "themes", "market_rest", "fund_data")
+_ROUTERS_WITH_A_DISPATCH = (
+    "analytics",
+    "context",
+    "market",
+    "themes",
+    "market_rest.market",
+    "market_rest.symbols",
+    "market_rest.macro_news",
+    "market_rest.stock",
+    "fund_data",
+)
 
 
 @pytest.mark.parametrize("module_name", _ROUTERS_WITH_A_DISPATCH)

@@ -358,7 +358,7 @@ The agent only ever sees tools from three places: the **matched skill's allowlis
 `get_source_health`, `propose_alert`/`propose_memory`/`propose_schedule`/`propose_watchlist_change`),
 and `web_search` + `fetch_url`, added only when the chat's *Web search* toggle is on (see the
 web-search section below). Every other registered tool is reachable by the **web through REST**
-(`api/routers/market_rest.py`, `analytics.py`, `themes.py` dispatch them by name) and by MCP's
+(`api/routers/market_rest/`, `analytics.py`, `themes.py` dispatch them by name) and by MCP's
 `search_tools`, but **not by the chat agent**. About 40 tools are in that web-only group (market
 heatmaps/rankings/strips, `get_news_feed`, `get_price_history`, `get_symbol_quotes` (the list-row view: name, close, daily
 change %, volume, sparkline), `get_technical_indicators`,
