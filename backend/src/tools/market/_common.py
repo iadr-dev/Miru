@@ -6,8 +6,6 @@ from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from datetime import date as date_
 from enum import StrEnum
 
-from pydantic import BaseModel
-
 from analytics.scoring_batch import US_PRICE_EOD_DATASET, US_SECTOR_CLASS_DATASET
 from analytics.symbol_universe import is_scoreable_symbol
 from ingest.jobs import (
@@ -17,6 +15,7 @@ from ingest.jobs import (
     PRICE_EOD_JOB,
     STOCK_INFO_JOB,
 )
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from ingest.us_universe import US_SYMBOL_UNIVERSE_DATASET
 from schemas.capabilities import EtfAumRow, MarketValueRow, SectorClassification, StockInfoRow
@@ -64,18 +63,6 @@ def classify_holding_status(
     if buy > sell:
         return HoldingStatus.INCREASED
     return HoldingStatus.DECREASED
-
-
-def rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
-    """`ParquetStore.read_partition`/`read_range` hand back DuckDB's own read-back of a
-    Hive-partitioned glob, which resurfaces the partition-key columns (`dataset`/`date`/`v`)
-    alongside the written row data — those are storage bookkeeping, not part of any
-    `schemas.capabilities` contract, so they are dropped before validating against a
-    `extra="forbid"` model rather than relaxing that model's strictness."""
-    field_names = set(model.model_fields)
-    return [
-        model.model_validate({k: v for k, v in row.items() if k in field_names}) for row in raw_rows
-    ]
 
 
 def prior_report_date(dates: list[date_], target: date_) -> date_ | None:

@@ -9,6 +9,7 @@ from enum import IntEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from ingest.jobs import SHAREHOLDING_DISTRIBUTION_JOB, STOCK_INFO_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import StockInfoRow
 from schemas.enums import DataClass, Market
@@ -16,7 +17,6 @@ from tools.base import BaseTool, ToolContext, is_entitled, parse_args
 from tools.market._common import (
     closes_by_symbol,
     latest_dataset_date,
-    rows_from_store,
     unavailable_reason_for_window,
 )
 

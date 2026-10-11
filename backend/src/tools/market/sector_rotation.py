@@ -10,18 +10,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import INSTITUTIONAL_FLOW_JOB, STOCK_INFO_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import EODBar, InstitutionalFlowRow, StockInfoRow
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from tools._rows import fetch_rows
 from tools.base import BaseTool, ToolContext, parse_args
-from tools.market._common import (
-    ingested_dates,
-    latest_dataset_date,
-    rows_from_store,
-    unavailable_reason_for_window,
-)
+from tools.market._common import ingested_dates, latest_dataset_date, unavailable_reason_for_window
 
 # How many recent trading days `get_sector_rotation` plots — a rank-bump chart needs enough
 # points to show real crossings but stays readable on one screen; 10 matches this dashboard's

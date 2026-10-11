@@ -29,6 +29,7 @@ import structlog
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
+from sources.parse import optional_float, to_float
 from sources.tls import build_async_client
 
 logger = structlog.get_logger(__name__)
@@ -131,29 +132,20 @@ class TpexOpenApiAdapter:
             "symbol": sym.id,
             "market": sym.market.value,
             "trade_date": match.get("Date"),
-            "open": _to_float(match.get("Open")),
-            "high": _to_float(match.get("High")),
-            "low": _to_float(match.get("Low")),
-            "close": _to_float(match.get("Close")),
+            "open": to_float(match.get("Open")),
+            "high": to_float(match.get("High")),
+            "low": to_float(match.get("Low")),
+            "close": to_float(match.get("Close")),
             "volume": _to_int(match.get("TradingShares")),
-            "turnover": _to_float(match.get("TransactionAmount")),
+            "turnover": to_float(match.get("TransactionAmount")),
         }
         return _result(
             payload={"bar": bar}, health=SourceHealth(status=HealthStatus.OK, detail="ok")
         )
 
 
-def _to_float(value: object) -> float:
-    if value is None:
-        return 0.0
-    try:
-        return float(str(value).replace(",", ""))
-    except ValueError:
-        return 0.0
-
-
 def _to_int(value: object) -> int:
-    return int(_to_float(value))
+    return int(to_float(value))
 
 
 def _unavailable(cap: Capability, sym: Symbol) -> SourceResult:
@@ -222,8 +214,8 @@ def _map_attention_stock_row(row: dict[str, object]) -> dict[str, object] | None
         "company_name": str(row.get("CompanyName", "")),
         "flagged_date": flagged_date.isoformat(),
         "reason": str(row.get("TradingInformation", "")),
-        "close": _optional_float(row.get("ClosePrice")),
-        "pe": _optional_float(row.get("PriceEarningRatio")),
+        "close": optional_float(row.get("ClosePrice")),
+        "pe": optional_float(row.get("PriceEarningRatio")),
         "security_type": "tpex",
     }
 
@@ -252,15 +244,6 @@ def _map_disposition_event_row(row: dict[str, object]) -> dict[str, object] | No
         "detail": None,
         "security_type": "tpex",
     }
-
-
-def _optional_float(value: object) -> float | None:
-    if value is None or str(value).strip().upper() == "N/A":
-        return None
-    try:
-        return float(str(value).replace(",", ""))
-    except ValueError:
-        return None
 
 
 async def _fetch_whole_market_rows(

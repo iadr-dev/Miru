@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from config.settings import get_settings
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import INSIDER_TRANSFER_DECLARATION_DATASET, MATERIAL_ANNOUNCEMENTS_DATASET
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import (
     DirectorShareholding,
@@ -187,16 +188,6 @@ class GetSelfAssessedEarningsTool(BaseTool):
         )
 
 
-def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
-    """Same drop-storage-bookkeeping-columns-before-validating helper
-    `tools/market/_common.py::rows_from_store` already documents — duplicated here (not imported)
-    since it's private to that module and this file has no other reason to import from it."""
-    field_names = set(model.model_fields)
-    return [
-        model.model_validate({k: v for k, v in row.items() if k in field_names}) for row in raw_rows
-    ]
-
-
 def _resolve_feed_date(available_dates: tuple[date_, ...], requested: date_ | None) -> date_ | None:
     """The date to actually read: `requested` if it's one of `available_dates`, else the latest
     available date, else `None` (nothing ingested yet). Never guesses a date that was never
@@ -274,7 +265,7 @@ class GetMaterialAnnouncementFeedTool(BaseTool):
             )
 
         raw_rows = self._store.read_partition(MATERIAL_ANNOUNCEMENTS_DATASET, market, report_date)
-        all_rows = _rows_from_store(MaterialAnnouncementRow, raw_rows)
+        all_rows = rows_from_store(MaterialAnnouncementRow, raw_rows)
 
         # Computed from the WHOLE day's rows, never the category-filtered subset below — a
         # caller with one category chip active must still see every other chip's real count,
@@ -359,7 +350,7 @@ class GetInsiderTransferDeclarationTool(BaseTool):
         raw_rows = self._store.read_partition(
             INSIDER_TRANSFER_DECLARATION_DATASET, market, report_date
         )
-        rows = _rows_from_store(InsiderTransferDeclarationRow, raw_rows)
+        rows = rows_from_store(InsiderTransferDeclarationRow, raw_rows)
 
         return GetInsiderTransferDeclarationOutput(
             market=market,

@@ -55,6 +55,7 @@ from analytics.symbol_universe import SymbolType, classify_symbol_type, is_score
 from dataaccess.screener import run_equity_screener
 from ingest.jobs import DIVIDENDS_JOB
 from ingest.reader import ParquetMarketDataReader
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import DividendEvent, EtfExpenseInfo, FinancialStatementLine
 from schemas.enums import Market
@@ -201,16 +202,6 @@ def _gated_tw_universe(store: ParquetStore, gates: GateDefaults) -> tuple[set[st
     return survivors, as_of
 
 
-def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
-    """Same drop-storage-bookkeeping-columns-before-validating helper
-    `tools/market/_common.py::rows_from_store` already documents — duplicated here (not imported)
-    since it's private to that module and this file has no other reason to import from it."""
-    field_names = set(model.model_fields)
-    return [
-        model.model_validate({k: v for k, v in row.items() if k in field_names}) for row in raw_rows
-    ]
-
-
 def _etf_expense_ratios_by_symbol(store: ParquetStore, market: str) -> dict[str, float]:
     """Every ETF's latest disclosed expense-ratio floor — same `etf_expense_ratio` partition and
     `EtfExpenseInfo.total_expense_ratio_pct_approx` field `get_etf_list` already bulk-joins
@@ -224,7 +215,7 @@ def _etf_expense_ratios_by_symbol(store: ParquetStore, market: str) -> dict[str,
     raw = store.read_partition(ETF_EXPENSE_RATIO_DATASET, market, max(dates))
     return {
         row.symbol: row.total_expense_ratio_pct_approx
-        for row in _rows_from_store(EtfExpenseInfo, raw)
+        for row in rows_from_store(EtfExpenseInfo, raw)
         if row.total_expense_ratio_pct_approx is not None
     }
 
@@ -253,7 +244,7 @@ def _etf_ttm_distribution_by_symbol(
     if not known_dates:
         return {}
     raw_rows = store.read_range(DIVIDENDS_JOB.dataset, market, known_dates)
-    events = _rows_from_store(DividendEvent, raw_rows)
+    events = rows_from_store(DividendEvent, raw_rows)
     by_symbol: dict[str, list[float]] = {}
     for event in events:
         if classify_symbol_type(event.symbol) is SymbolType.STOCK:

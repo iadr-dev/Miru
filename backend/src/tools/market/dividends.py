@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from analytics.symbol_universe import SymbolType, classify_symbol_type
 from dataaccess.router import DataAccessRouter
 from ingest.jobs import DIVIDENDS_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import DividendEvent
 from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
@@ -18,7 +19,7 @@ from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
 from tools.base import BaseTool, ToolContext, parse_args
 from tools.common import DateRangeInput
-from tools.market._common import RowList, etf_nav_names, real_calendar, rows_from_store
+from tools.market._common import RowList, etf_nav_names, real_calendar
 
 
 class GetDividendScheduleOutput(BaseModel):

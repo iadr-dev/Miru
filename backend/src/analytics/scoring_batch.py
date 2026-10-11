@@ -38,6 +38,7 @@ import pandas as pd
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from analytics.coerce import as_float, as_int
 from analytics.fundamentals import (
     BALANCE_SHEET_DATASET,
     CASH_FLOW_DATASET,
@@ -301,22 +302,6 @@ def _trailing_trading_days(ctx: IngestContext, run_date: date_, count: int) -> t
     return calendar.business_days_between(start, run_date)
 
 
-def _as_float(value: object) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
-def _as_int(value: object) -> int:
-    if isinstance(value, bool):
-        return 0
-    if isinstance(value, (int, float)):
-        return int(value)
-    return 0
-
-
 # A composite momentum/quality/value score is not a meaningful product for a short-lived,
 # leverage-derivative warrant series — and scoring the full warrant-inclusive universe is also
 # what pushes this batch's per-symbol working set (bars/MA-series/signal dicts held for the
@@ -377,9 +362,9 @@ def _bars_by_symbol(
     )
     for symbol, trade_date, open_, high, low, close, volume, turnover in price_tuples:
         del trade_date  # only used for the sort above; not part of PriceBar
-        close_f = _as_float(close)
-        high_f = _as_float(high)
-        low_f = _as_float(low)
+        close_f = as_float(close)
+        high_f = as_float(high)
+        low_f = as_float(low)
         if close_f is None or close_f <= 0 or high_f is None or low_f is None:
             continue
         by_symbol[str(symbol)].append(
@@ -387,9 +372,9 @@ def _bars_by_symbol(
                 high=high_f,
                 low=low_f,
                 close=close_f,
-                volume=_as_int(volume),
-                open=_as_float(open_),
-                turnover=_as_float(turnover),
+                volume=as_int(volume),
+                open=as_float(open_),
+                turnover=as_float(turnover),
             )
         )
     for symbol, bars in by_symbol.items():
@@ -423,8 +408,8 @@ def _flow_rows_by_symbol(
                 market=market,
                 trade_date=date_.fromisoformat(trade_date),
                 investor=investor,
-                buy=_as_int(buy),
-                sell=_as_int(sell),
+                buy=as_int(buy),
+                sell=as_int(sell),
             )
         )
     return by_symbol
@@ -1179,7 +1164,7 @@ def _reference_index_closes(price_frame: pd.DataFrame, market: Market) -> tuple[
     )
     closes: list[float] = []
     for close in cast("list[object]", index_rows["close"].tolist()):
-        close_f = _as_float(close)
+        close_f = as_float(close)
         if close_f is not None:
             closes.append(close_f)
     return tuple(closes)

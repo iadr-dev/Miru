@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from analytics.symbol_universe import is_scoreable_symbol
 from ingest.jobs import MARKET_VALUE_JOB
+from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import MarketValueRow
 from schemas.enums import DataClass, Market
@@ -22,7 +23,6 @@ from tools.market._common import (
     names_by_symbol_for,
     price_eod_dataset_for,
     real_calendar,
-    rows_from_store,
     two_day_window,
     unavailable_reason_for_window,
 )

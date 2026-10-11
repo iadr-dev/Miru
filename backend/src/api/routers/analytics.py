@@ -21,6 +21,7 @@ from analytics.models import ScoreProfile
 from analytics.scoring_store import LeaderboardDirection, LeaderboardUniverse
 from api.dependencies import (
     AppState,
+    dispatch_validated_tool,
     get_session,
     get_state,
     optional_user,
@@ -36,7 +37,10 @@ from memory.screener_screens import (
 )
 from schemas.enums import Market
 from schemas.screener import ScreenerOperator
-from tools.base import ToolContext, dispatch_tool
+from tools.base import ToolContext
+
+_dispatch = dispatch_validated_tool
+
 
 router = APIRouter(tags=["analytics"])
 
@@ -46,22 +50,6 @@ def _context(
     state: AppState = Depends(get_state),
 ) -> ToolContext:
     return tool_context_for(user, state)
-
-
-async def _dispatch(
-    state: AppState, tool_name: str, args: dict[str, object], ctx: ToolContext
-) -> dict[str, object]:
-    tool = state.tool_registry.get_tool(tool_name)
-    if tool is None:  # pragma: no cover — registry always has these; guards a wiring regression
-        raise ApiError(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            code="tool_unavailable",
-            message=f"Tool {tool_name} is not registered.",
-            retryable=False,
-        )
-    validated = tool.input_model.model_validate(args)
-    result = await dispatch_tool(tool, validated, ctx)
-    return result.model_dump(mode="json")
 
 
 @router.get("/analytics/{symbol}/score")
