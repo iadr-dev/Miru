@@ -48,6 +48,7 @@ from conversation.store import (
 from events.bus import Event
 from events.factory import StreamReader
 from events.kinds import EventKind
+from events.turn_control import ControlMessage, ControlOp
 from feedback.store import FeedbackRecord, FeedbackStore, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
@@ -350,16 +351,20 @@ async def steer_turn(
     """
     await _require_owned_thread(store, user_id=user.id, thread_id=thread_id)
     running = state.turn_registry.active_for_thread(thread_id)
-    if running is None or running.user_id != user.id:
+    if running is not None and running.user_id == user.id:
+        running.steer(body.message)
+        return {"status": "accepted"}
+    # Not running on this worker: with several workers the turn may be on another one.
+    remote = await state.turn_control.find(thread_id=thread_id)
+    if remote is None or remote.user_id != user.id:
         raise ApiError(
             status_code=status.HTTP_409_CONFLICT,
             code="no_running_turn",
             message="No running turn to steer on this thread.",
             retryable=False,
         )
-    running.steering.append(body.message)
-    running.event_bus.publish(
-        EventKind.STEERING_ACCEPTED, turn_id=running.turn_id, data={"message": body.message}
+    await state.turn_control.send(
+        remote.turn_id, ControlMessage(op=ControlOp.STEER, text=body.message)
     )
     return {"status": "accepted"}
 
@@ -399,14 +404,18 @@ async def cancel_turn(
     turn that already finished/never existed is a 404, not a hang."""
     await _require_owned_thread(store, user_id=user.id, thread_id=thread_id)
     running = state.turn_registry.get(turn_id)
-    if running is None or running.user_id != user.id or running.thread_id != thread_id:
+    if running is not None and running.user_id == user.id and running.thread_id == thread_id:
+        running.request_cancel()
+        return {"status": "cancelling"}
+    remote = await state.turn_control.find(turn_id=turn_id)
+    if remote is None or remote.user_id != user.id or remote.thread_id != thread_id:
         raise ApiError(
             status_code=status.HTTP_404_NOT_FOUND,
             code="turn_not_found",
             message=f"No running turn {turn_id} on this thread.",
             retryable=False,
         )
-    running.request_cancel()
+    await state.turn_control.send(turn_id, ControlMessage(op=ControlOp.CANCEL))
     return {"status": "cancelling"}
 
 

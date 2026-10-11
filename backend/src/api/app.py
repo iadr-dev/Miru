@@ -52,6 +52,7 @@ from events.factory import EventBusFactory, build_event_bus_factory
 from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker, build_data_update_broker, build_quote_feed
 from events.rate_limit import AsyncRateLimiter, build_rate_limiter
+from events.turn_control import TurnControl, build_turn_control
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry, default_registry
 from skills.registry import SkillRegistry
@@ -74,6 +75,7 @@ def create_app(
     quote_feed: QuoteFeed | None = None,
     data_update_broker: DataUpdateBroker | None = None,
     live_quote_manager: LiveQuoteManagerLike | None = None,
+    turn_control: TurnControl | None = None,
     allowed_origins: list[str] | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
@@ -119,6 +121,7 @@ def create_app(
         usage_store=usage_store or SqlAlchemyUsageStore(session_factory),
         quote_feed=resolved_quote_feed,
         data_update_broker=resolved_data_update_broker,
+        turn_control=turn_control or build_turn_control(resolved_settings),
     )
 
     # Added before CORS so CORS wraps it (Starlette applies the last-added middleware outermost);

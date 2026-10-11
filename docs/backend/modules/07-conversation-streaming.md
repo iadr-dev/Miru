@@ -280,6 +280,13 @@ cards reflect the masked section once the turn completes; see the §2 implementa
   `asyncio.Task` — so a driver that never itself polls the token is still interrupted, not just
   one that cooperates. In-flight tool calls for the current Step are read-only and safe to let
   finish. Emits `turn.end{status: "cancelled"}`.
+- **Cancel/steer across workers:** the registry is per process. With `EVENT_BUS_BACKEND=redis` the
+  worker running a turn also announces it (`turn:running:{turn_id}`, `turn:thread:{thread_id}`,
+  refreshed while it listens) and subscribes to `turn-ctl:{turn_id}`
+  (`events/turn_control.py`). A `cancel`/`steer` request that lands on another worker finds the
+  turn there (owner and thread are checked, so another user's turn is a 404/409), publishes the
+  command, and the owner applies it with `RunningTurn.apply`. On the default memory backend the
+  control is a no-op and only the local registry is used.
 - **Idempotency:** `POST /agent/query` accepts an `Idempotency-Key`, recorded on the persisted
   user turn (`turns.idempotency_key`) so a retried request doesn't spawn a duplicate turn.
   `conversation.turn_lifecycle.TurnLifecycle` (a separate, tested state machine with its own

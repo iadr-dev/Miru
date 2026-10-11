@@ -34,6 +34,7 @@ from api.dependencies import AppState
 from api.errors import ApiError
 from api.pet_turn import pet_hint_for_user, reward_completed_chat
 from api.sse import format_sse_event
+from api.turn_registry import RunningTurn
 from conversation.models import (
     Framework,
     MessageBlockContent,
@@ -223,6 +224,8 @@ async def run_and_stream(
     running = state.turn_registry.get(turn_id)
     if running is not None:
         running.task = runner
+        if state.turn_control.enabled:
+            running.control_task = asyncio.create_task(_serve_control(state, running))
     try:
         async for event in subscription:
             yield format_sse_event(event)
@@ -232,6 +235,12 @@ async def run_and_stream(
         runner.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await runner
+        if running is not None and running.control_task is not None:
+            running.control_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await running.control_task
+            with contextlib.suppress(Exception):
+                await state.turn_control.withdraw(turn_id=turn_id, thread_id=thread_id)
         state.turn_registry.unregister(turn_id)
         # A Redis-backed bus runs a background mirror-writer; drain + stop it so the per-turn bus
         # leaves no dangling task. The in-process bus has no such handle (duck-typed, optional).
@@ -239,6 +248,21 @@ async def run_and_stream(
         if closer is not None:
             with contextlib.suppress(Exception):
                 await closer()
+
+
+async def _serve_control(state: AppState, running: RunningTurn) -> None:
+    """Announce this turn to the other workers and apply the cancel/steer commands they relay."""
+    control = state.turn_control
+    try:
+        await control.announce(
+            turn_id=running.turn_id, user_id=running.user_id, thread_id=running.thread_id
+        )
+        async for command in control.listen(running.turn_id, running.thread_id):
+            running.apply(command)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("turn_control_failed", turn_id=running.turn_id)
 
 
 def start_turn_stream(
