@@ -249,7 +249,7 @@ All six are `public`/keyless, all `B·S` cadence per their own table above (week
 as noted), and all registered under a dedicated `[tdcc]` adapter — not a FinMind fallback path.
 
 **Why `tdcc_shareholding_distribution` stays separate from FinMind's `TaiwanStockHoldingSharesPer`
-(§2 elsewhere)**, per `schemas/capabilities.py`'s own docstring: same underlying concept (holding-
+(§2 elsewhere)**, per `schemas/capabilities/`'s own docstring: same underlying concept (holding-
 level distribution), but a different upstream source, and deliberately given a distinct
 `Capability` name rather than folded into one — so this remains a real duplicate-by-design pair,
 not dead weight to prune. Callers needing 股東人數/千張大戶比率 can use either the FinMind
