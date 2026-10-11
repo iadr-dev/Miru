@@ -8,17 +8,33 @@ product/app state (threads, memory, schedules…).
 **Conventions**
 - Base path `/api/v1`. Auth via session cookie or `Authorization: Bearer`.
 - Anonymous allowed for public market/context reads; AI chat requires sign-in.
-- Errors: JSON `{code, message, retryable}`. Unentitled AI features return a **teaser
-  envelope** `{locked, required_tier, preview}` (HTTP 200), never 401 — see
+- Errors: JSON `{code, message, retryable}` for errors the app raises (`ApiError`) and for request
+  validation (422, first message only). Unknown paths (404) and wrong methods (405) still return
+  FastAPI's default `{"detail": ...}`. Unentitled AI features return a **teaser envelope**
+  `{locked, required_tier, preview}` (HTTP 200), never 401 — see
   [modules/12](modules/12-multi-user-tiers.md).
 - `Idempotency-Key` honored on turn-creating POSTs.
-- **Read-model freshness** (cache coherence — [modules/16](modules/16-infrastructure.md) §3a):
-  every cacheable read (`/quote`, `/analytics/*`,
-  `/market/*`) returns an **`as_of`** timestamp (value production time) + a strong **`ETag`**;
-  `If-None-Match` → **`304`**. `Cache-Control: private, max-age=0, stale-while-revalidate=<class
-  boundary>`. A **`data.updated`** SSE event (`{capability, market, as_of, scope}`) fires when a
-  derived-compute batch lands so clients invalidate precisely instead of waiting a TTL. The `quote`
-  SSE payload carries per-tick `as_of` + `market_open`.
+- **Expired access token on a public route.** Routes that allow anonymous callers still answer a
+  caller whose access token has expired (as anonymous, so a logged-out visitor with a stale cookie
+  works) but add the response header **`X-Auth-Expired: 1`** (`api/auth_expired.py`, exposed through
+  CORS). The web client treats that like a 401: it refreshes the session and retries once
+  (`fetchWithRefresh`), and keeps the token fresh in the background while signed in.
+- **Response typing.** Data routes return the tool's output as a plain JSON object
+  (`dict[str, object]`); the OpenAPI schema therefore does not describe their bodies. The contract
+  lives in each tool's Pydantic output model and the web client's Zod schemas (`web/src/types/`).
+- **Caching is not implemented yet.** The design (an `as_of` on every cacheable read, a strong
+  `ETag`, `If-None-Match` → `304`, `Cache-Control: private, max-age=0,
+  stale-while-revalidate=<class boundary>`) is **not** in the API code today: no route sets `ETag`
+  or `Cache-Control`, and the web client relies on TanStack Query's own staleness instead. What does
+  exist: a **`data.updated`** SSE event (`{capability, market, as_of, scope}`) fires when a
+  derived-compute batch lands so clients invalidate precisely instead of waiting a TTL, and the
+  `quote` SSE payload carries per-tick `as_of` + `market_open`. See
+  [modules/16](modules/16-infrastructure.md) §3a for the design.
+- **List-row quotes.** Any list of symbols (leaderboards, watchlists, rankings, the screener) reads
+  `GET /market/quotes` once per list: name, latest close, **daily** change and change %, volume and
+  a sparkline for up to 20 symbols. Never call it per row.
+- **Units.** `revenue_yoy` is a ratio (`0.05` = +5%); `dividend_yield` and `*_pct` fields are
+  already percentages. Check the field's name and the tool's output model before formatting.
 
 ---
 
@@ -51,15 +67,19 @@ parallel sub-agent lanes** (Claude Code-style); **`activity`** carries human-rea
 narration (the primary line), while `thinking.delta`/tool internals are opt-in detail.
 Full semantics + run-tree: [modules/07](modules/07-conversation-streaming.md).
 
-> **Implementation status.** Real today: `turn.start`, `route.decided`, `agent.spawned`,
-> `agent.progress`, `agent.done`, `steering.accepted` (now genuinely mid-flight-redirecting, not
-> just recorded), `caveat`, `synthesis.start`, `usage`, `turn.end`, `tool.result`, and `rich_card`.
-> **Not yet built:** `activity`, `message.delta`, `thinking.delta`, `tool.proposed`,
-> `tool.started`, `tool.locked`, `tool.blocked`, `ask_user`, `follow_up`,
-> `pet.reaction`/`pet.leveled`/`pet.pull_earned` — the agent loop returns one whole `TurnResult`
-> per turn, not a token/tool-level stream, so a masked `sponsor` tool result comes back inline in
-> the final answer/`tool.result` payload rather than as a dedicated `tool.locked` frame. See
-> [modules/07](modules/07-conversation-streaming.md)'s own implementation-status note for detail.
+> **Implementation status.** The kinds are defined once, in `backend/src/events/kinds.py`
+> (`EventKind`); a test keeps that list equal to the web client's `SSE_EVENT_KINDS`
+> (`web/src/types/sse.ts`).
+> **Emitted today (chat turn stream):** `turn.start`, `route.decided`, `agent.spawned`,
+> `agent.progress`, `agent.done`, `tool.start`, `tool.result`, `thinking.delta`,
+> `web_search.result`, `rich_card`, `synthesis.start`, `usage`, `memory.used`, `personality.used`,
+> `pet.leveled`, `pet.pull_earned`, `steering.accepted`, `message`, `message.delta`, `turn.end`.
+> `data.updated` is the separate `/updates/stream` feed; `alert.fired` and `schedule.*` are internal
+> scheduler events.
+> **Not emitted:** `activity`, `tool.proposed`, `tool.started`, `tool.locked`, `tool.blocked`,
+> `follow_up`, `caveat`, `pet.reaction` (a masked `sponsor` tool result comes back inline in the
+> `tool.result` payload rather than as a dedicated `tool.locked` frame). See
+> [modules/07](modules/07-conversation-streaming.md) for the full designed vocabulary.
 
 ---
 
@@ -102,7 +122,7 @@ Raw audio is discarded after transcription (PII/PDPA); low-confidence/ambiguous 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|
 | GET | `/context/{package}` | Canonical or conversation package (`canonical`, `conversation`) | public |
-| GET | `/search?q=&market=US` | **Symbol type-ahead — real coverage is narrower than the design.** `api/routers/context.py`'s `symbol_search` dispatches the one built search tool (`get_symbol_search`, yfinance-backed) for **US/GB/JP/EU only**; `market=TW` (and ETF) returns HTTP 501 `not_supported` — there is no ingested `TaiwanStockInfo`/ETF-list/registered-US-symbol universe search service backing a TW/ETF type-ahead today, so the client-cacheable grouped-TW/ETF/US-with-主題/產業-matches shape below is design, not built | public |
+| GET | `/search?q=&market=TW` | Symbol type-ahead. Two backing tools, never merged: `market=TW` → `get_symbol_directory_search` (a scan over the ingested `TaiwanStockInfo` roster, stocks + ETFs, ranked symbol-prefix > name-prefix > substring); US/GB/JP/EU → `get_symbol_search` (yfinance). Any other market returns HTTP 501 `not_supported` | public |
 | GET | `/quote?symbols=&market=` | EOD / last-snapshot price (`price_eod`) — one-shot | public |
 | GET | `/quote/stream?symbols=&market=` | **Live-ish quote feed (SSE)** — `quote` events (each with `as_of` + `market_open`) pushed ~5s while market-open via the shared demand-driven poller (governance §9b, [modules/16](modules/16-infrastructure.md) §2a); delayed snapshot, not true streaming | **Premium+ (masked teaser / EOD otherwise)** |
 | GET | `/updates/stream` | **Cache-invalidation feed (SSE)** — `data.updated` events `{capability, market, as_of, scope}` when a derived-compute batch lands ([modules/16](modules/16-infrastructure.md) §3a, [modules/22](modules/22-data-ingest.md) §2); lets clients revalidate precisely | public |
@@ -125,7 +145,7 @@ check. See [modules/17](modules/17-devops-operations.md).
 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|
-| GET | `/analytics/{symbol}/indicators?set=ma,kd,macd,rsi,bollinger,volume,sr,wave` | Indicator + 量能/支撐壓力/N波 values + series | public |
+| GET | `/stock/technical-indicators?symbol=&market=&start_date=&end_date=` | Indicator series (MA/KD/MACD/RSI/Bollinger/volume) behind the K-line chart; lives under `/stock/*`, **not** `/analytics/{symbol}/indicators` | public |
 | GET | `/analytics/{symbol}/score?market=TW&profile=swing\|position` | **real** — cached lean 5-factor 多空 composite + 偏多/中性/偏空 + breakdown + regime/non-trading/normalization caveats; `found=false` if today's batch hasn't scored this symbol yet (cache-only, never live-computed) | public |
 | GET | `/analytics/{symbol}/summary` | AI 智能摘要 + 市場定位 + SWOT | Premium+ (teaser otherwise) |
 | GET | `/analytics/screener/factors?market=TW\|US\|ETF` | Bilingual catalog + **per-market `fields[]`** (unit/min/max/step/enum/preset-chips) + presets | public |
@@ -165,10 +185,8 @@ screens need these as HTTP, not just agent tools.
 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|
-| GET | `/market/overview` | index + breadth + regime (`get_market_context`) | public |
 | GET | `/market/advance-decline` | 漲跌家數 + >5%/3–5% buckets (`get_advance_decline`) | public |
 | GET | `/market/index-contribution?index=TAIEX` | per-stock 點貢獻 (`get_index_contribution`) | public |
-| GET | `/market/sectors` | 產業別 sub-indices + rotation (`get_sector_indices`) | public |
 | GET | `/market/institutional-ranking` | top net-buy/sell stocks (whole-market 三大法人) | public |
 | GET | `/market/margin-maintenance` | 大盤融資維持率 risk (`get_margin_maintenance`) | public |
 | GET | `/market/day-trading` | 當沖熱門/比重排行 (`get_day_trading`) | public |
@@ -178,14 +196,12 @@ screens need these as HTTP, not just agent tools.
 | GET | `/macro` | 匯率/利率/債殖利率/黃金/原油 + Fear-Greed (`get_macro_indicators`) | public |
 | GET | `/macro/business-indicator` | 景氣對策信號 燈號 (`get_business_indicator`) | public |
 
-> **Implementation status.** 8 of the 12 rows above are real, wired routes
-> (`api/routers/market_rest.py`): `/market/institutional-ranking`, `/market/margin-maintenance`,
-> `/market/day-trading`, `/market/etf-money-flow`, `/market/industry-flow`,
-> `/derivatives/{contract}`, `/macro`, `/macro/business-indicator`. **`/market/overview`,
-> `/market/advance-decline`, `/market/index-contribution`, and `/market/sectors` are not
-> built** — their named tools (`get_market_context`/`get_advance_decline`/
-> `get_index_contribution`/`get_sector_indices`) were verified not to exist in the registry, so
-> the routes were skipped rather than faked (see [DEVELOPMENT.md](DEVELOPMENT.md) Phase 11).
+> **Implementation status.** The rows above are real, wired routes (`api/routers/market_rest.py`),
+> and `/market/advance-decline` and `/market/index-contribution` are built too (the 每日焦點
+> breadth card). **`/market/overview` and `/market/sectors` are not built** (no `get_market_context`
+> / `get_sector_indices` tool exists), so they are not listed. The full, generated list of every
+> route (about 75 under `/market/*`, plus the whole `/stock/*` family) is the **Route index** at
+> the end of this document.
 
 All non-trading, caveated; derivatives framed as descriptive positioning (not a directional call).
 
@@ -287,7 +303,7 @@ data); only the live-quote column inherits the Premium+ gate via `/quote/stream`
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/watchlists?market=TW` | My groups for a market tab (ordered); omit `market` → all. **Not built: no default-preset seeding on register** — `memory/watchlists.py`'s `list_groups` is a plain per-user query with no seed/bootstrap step, so a brand-new user's rail is genuinely cold-empty until they create a group; there is no `config.default_watchlist_presets` anywhere in this codebase. Each group's item list is returned inline (no separate `item_count` field on the group view today) |
+| GET | `/watchlists?market=TW` | My groups for a market tab (ordered); omit `market` → all. The first read for a user seeds the default preset groups (`WatchlistStore.seed_default_presets`, from `config/watchlist_presets.py`), so a new user's rail is not cold-empty; it never re-seeds over a user's own edits or deletions (so this GET can write on a first load). Each group's item list is returned inline (no separate `item_count` field on the group view today) |
 | POST | `/watchlists` | Create group `{name, market, asset_class?}` (`asset_class` defaults to `stock`; appended, lexorank end key) |
 | PATCH | `/watchlists/{id}` | Rename `{name}`, set `{color}` (`chart-1`..`chart-6`, or `"none"` to clear; others → 422) and/or reorder `{after_id\|before_id}`; `If-Match: <version>` |
 | DELETE | `/watchlists/{id}` | Soft-delete group + cascade items |
@@ -298,9 +314,9 @@ data); only the live-quote column inherits the Premium+ gate via `/quote/stream`
 | PATCH | `/watchlists/{id}/items/{item_id}` | Set/clear `{note, clear_note?}` — note-only; **no reorder-within-group on this route today** (`PatchItemRequest` carries no `after_id`/`before_id`) |
 | POST | `/watchlists/{id}/items/{item_id}/move` | Move item to another group `{target_watchlist_id, after_id?}` |
 
-**Batch quotes = reuse §4** — the rail fans its symbols into `GET /quote?symbols=…&market=TW` (EOD,
-free) and `GET /quote/stream?symbols=…` (live-ish, Premium+). No new quote surface. Sparkline/candle
-series via `GET /analytics/{symbol}/indicators` (§4a).
+**Batch quotes** — the rail reads its symbols through `GET /market/quotes?symbols=…&market=…` once
+per tab (name, latest close, daily change %, sparkline; ≤20 symbols per call, chunked by the client)
+and may overlay `GET /quote/stream?symbols=…` (live-ish, Premium+). Never one call per row.
 
 ---
 
@@ -340,18 +356,16 @@ series via `GET /analytics/{symbol}/indicators` (§4a).
 | GET | `/alerts` | List mine |
 | PATCH | `/alerts/{id}` | Partial edit (implemented): send only changed fields — `condition`, `trigger_mode`, `cooldown_seconds`, `expires_in_days` (null = never), `explain`, `channels`, `quiet_hours`, `daily_limit`, `enabled`; optional `expected_version` → 409 `stale_version` on mismatch; scope fields and unknown fields → 422 |
 | DELETE | `/alerts/{id}` | Delete |
-| POST | `/alerts/proposals` | v2: parse-only rule draft for the chat confirm card (creates nothing) |
 | POST | `/notifications/read` | v2: mark read `{ids[]}` or `{all:true}` |
-| POST | `/me/channels/line`, `/me/channels/telegram` | v2: start/complete external channel binding |
 | GET | `/notifications` | Delivered notifications |
 | GET | `/notifications/badge` | Lightweight counts `{unread_notifications, unread_threads, pending_alerts}` — mobile tab-island + bell dots (glyph+count, never color-alone) |
 | GET/PUT | `/me/alert-preferences` | Channels, quiet hours, `timezone` (IANA, validated), daily cap, digest (v2 adds `GET`; `PUT` replaces the whole record) |
 | GET | `/me/channels` | Which external channels can reach the caller now `{email, push, line, telegram, telegram_available}` |
-| POST / DELETE | `/me/channels/line/link`, `/me/channels/line` | Issue a one-time LINE code (`{code, add_friend_url, expires_in_seconds}`) / unlink |
+| POST / DELETE | `/me/channels/line/link` (issue code), `/me/channels/line` (unlink) | Issue a one-time LINE code (`{code, add_friend_url, expires_in_seconds}`) / unlink |
 | POST | `/webhooks/resend` | Resend webhook (Svix signature required, else 403): permanent bounce / complaint / Resend suppression → address suppressed |
 | GET / POST | `/email/unsubscribe?token=` | One-click email unsubscribe: GET shows a confirmation page, POST unsubscribes (RFC 8058 target). Invalid token → 400 |
 | POST | `/channels/line/webhook` | LINE webhook, `X-Line-Signature` required (403 otherwise); binds the sender when a message carries a valid code |
-| POST / DELETE | `/me/channels/telegram/link`, `/me/channels/telegram` | Issue a one-time Telegram link (`{url, expires_in_seconds}`) / unlink |
+| POST / DELETE | `/me/channels/telegram/link` (issue link), `/me/channels/telegram` (unlink) | Issue a one-time Telegram link (`{url, expires_in_seconds}`) / unlink |
 | POST | `/webhooks/telegram` | Bot webhook, `X-Telegram-Bot-Api-Secret-Token` required (403 otherwise); binds the chat on `/start <token>` |
 | POST | `/alerts/batch` | 逐檔設定: up to 30 per-stock rules at once `{items:[{symbol,market,condition}], origin_watchlist_id?, trigger_mode?, expires_in_days?}`, all or nothing (409 `cap_reached`; 422 `template_market_mismatch` / duplicate stock; 404 `watchlist_not_found`). `POST /alerts` with a `watchlist_id` refuses a price-level condition (422 `template_scope_mismatch`) |
 | GET | `/alerts/symbol-check` | `?symbol&market` → `{checked, exists}`; whether the ticker has price data (a hint, never blocks creation) |
@@ -438,6 +452,323 @@ see [modules/03-tools.md](modules/03-tools.md) — 5 of which are immediate, the
 |-----|---------|
 | `canonical://{symbol}` | Canonical package as a resource |
 | `health://sources` | Source-health snapshot |
+
+---
+
+## 10. Route index (generated)
+
+Every REST route the code serves, grouped by router, with its auth requirement, the tool that backs
+it and that tool's data class. **Generated, do not edit by hand:** run
+`cd backend && UPDATE_API_REFERENCE=1 uv run pytest tests/api/test_api_reference_sync.py` after adding,
+removing or renaming a route. `tests/api/test_api_reference_sync.py` fails when a route is missing from this table, so the
+list cannot drift from the code. The hand-written sections above add the behaviour and caveats a
+table cannot carry.
+
+<!-- ROUTES:BEGIN (generated by tests/api/test_api_reference_sync.py) -->
+
+214 routes. **Auth**: `user` = sign-in required (401 otherwise); `optional` = anonymous allowed, the caller's tier applies when signed in; `none` = no auth dependency (probes, webhooks verified by signature, OAuth). **Tier** is the backing tool's data class: `sponsor` data is masked for unentitled callers with the HTTP 200 teaser envelope.
+
+
+#### Context, quotes & source health
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/context/{package}` | optional | `build_conversation_package`, `get_canonical_context` | public | The canonical (`canonical`) or AI-safe conversation (`conversation`) package for one symbol. |
+| GET | `/api/v1/search` | optional | `get_symbol_directory_search`, `get_symbol_search` | public | Symbol type-ahead over the free-text search capability. |
+| GET | `/api/v1/quote/stream` | optional | — | — | Live-ish quote feed (SSE) via the shared demand-driven poller. |
+| GET | `/api/v1/updates/stream` | optional | — | — | Cache-invalidation feed (SSE): `data.updated` frames when a derived-compute batch lands. |
+
+#### Quotes & live streams
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/health` | optional | `get_source_health` | public | Source-health view for the given symbols (currentness + which upstreams are OK/stale). |
+| GET | `/api/v1/sources` | optional | `get_source_matrix` | public | The adapter/capability matrix — which `(capability, market)` pairs each source declares. |
+| GET | `/api/v1/quote` | optional | `get_price_quote` | public | Latest end-of-day price bar per symbol (one-shot; the live-ish feed is a separate SSE). |
+
+#### Market, stock-detail, derivatives & macro data
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/market/index-strip` | optional | `get_market_index_strip` | public | TW-tab ticker-strip public items (加權指數/櫃買指數/美元/黃金/原油) |
+| GET | `/api/v1/market/us-index-strip` | optional | `get_us_market_index_strip` | public | US-tab ticker-strip public items (S&P500/Dow Jones/Nasdaq/SOX/VIX/US 10Y yield/Fed funds rate) |
+| GET | `/api/v1/market/tick-snapshot` | optional | `get_tick_snapshot` | sponsor | One bounded intraday tick-level snapshot for one stock/ETF or index code (Sponsor-tier) |
+| GET | `/api/v1/market/futures-snapshot` | optional | `get_futures_snapshot` | sponsor | One bounded intraday futures-contract snapshot (Sponsor-tier) |
+| GET | `/api/v1/market/institutional-ranking` | optional | `get_institutional_flow_total_market` | public | Whole-market three-major-institutional-investor buy/sell totals by category. |
+| GET | `/api/v1/market/margin-maintenance` | optional | `get_margin_maintenance` | sponsor | Whole-market margin-maintenance-ratio (融資維持率) risk gauge (Sponsor-tier). |
+| GET | `/api/v1/market/day-trading` | optional | `get_day_trading` | public | Day-trading (當沖) eligibility + volume/value for one stock. |
+| GET | `/api/v1/market/dividend-schedule` | optional | `get_dividend_schedule` | public | Announced dividend/ex-dividend (除權息) schedule for one stock/ETF symbol. |
+| GET | `/api/v1/market/etf-money-flow` | optional | `get_etf_money_flow` | sponsor | Cross-ETF 資金流向 over a bounded date range (Sponsor-tier). |
+| GET | `/api/v1/market/daily-signal` | optional | `get_daily_signal` | sponsor | 今日訊號 — whole-market, single-day active-ETF operations signal aggregated across every active ETF (Sponsor-tier). |
+| GET | `/api/v1/market/industry-flow` | optional | `get_industry_money_flow` | sponsor | Whole-market industry-chain money-flow (產業鏈資金流) aggregate (Sponsor-tier). |
+| GET | `/api/v1/market/margin-short-balance` | optional | `get_margin_short_total_market` | public | Whole-market margin-purchase/short-sale total by category. |
+| GET | `/api/v1/market/advance-decline` | optional | `get_advance_decline` | public | Whole-market advance/decline breadth for one trading day (defaults to the latest available day) — the backing tool's input is a single `trade_date`,… |
+| GET | `/api/v1/market/order-book-stats` | optional | `get_order_book_stats` | public | Whole-exchange 5-second order-book/trade aggregate (委買委賣統計) — upstream is single-day per request, so only `start_date`/`end_date` (via `_market_args`… |
+| GET | `/api/v1/market/price-momentum` | optional | `get_price_momentum` | public | Whole-market top-N gainers/losers by pure close-to-close percentage change over a chosen lookback period (day/week/month trading days) — single-facto… |
+| GET | `/api/v1/market/us-rankings` | optional | `get_us_market_rankings` | public | US-only 排行榜 multi-tab ranking: `trending` (Yahoo's own most-active screen), `market_cap`/ `revenue`/`roe`/`volume` (a bounded Yahoo screener query so… |
+| GET | `/api/v1/market/tw-rankings` | optional | `get_tw_market_rankings` | public | TW-only 排行榜 multi-tab ranking (6 of its 7 tabs — 大戶買賣 reuses `/market/holder-accumulation` verbatim instead of this route): dealer/trust/foreign cons… |
+| GET | `/api/v1/market/holder-accumulation` | optional | `get_holder_accumulation` | sponsor | 大戶加碼股 — whole-market ranking of which stocks grew a chosen large-holder tier (>=200/400/800/1,000張) share-of-custody the most over 1-4 weekly 集保戶股權分散… |
+| GET | `/api/v1/market/index-contribution` | optional | `get_index_contribution` | sponsor | APPROXIMATE per-symbol index-contribution estimate for one trading day (market-cap weight x price change) — not TWSE's official float-adjusted figure… |
+| GET | `/api/v1/market/sector-heatmap` | optional | `get_sector_heatmap` | public | Whole-market industry/sector heatmap (產業別漲跌熱力圖) for one trading day (defaults to the latest available day): each industry's average percentage change… |
+| GET | `/api/v1/market/stock-heatmap` | optional | `get_stock_heatmap` | public | Whole-market flat per-stock heatmap (股票熱力圖) for one trading day (defaults to the latest available day): the top-ranked stocks' own percentage change… |
+| GET | `/api/v1/market/sector-constituents` | optional | `get_sector_constituents` | public | Per-stock drill-down (close-to-close % change, close, volume, turnover) for one `/market/sector-heatmap` industry tile, or every symbol ranked togeth… |
+| GET | `/api/v1/market/sector-rotation` | optional | `get_sector_rotation` | public | Daily industry ranking by net institutional flow over the last 10 trading days ending at `end_date` (defaults to the latest available day) — the data… |
+| GET | `/api/v1/market/sector-rotation-rrg` | optional | `get_sector_rotation_rrg` | public | Real weekly Relative Rotation Graph (RS-Ratio x RS-Momentum, JdK construction) for TWSE's published industry sub-indices against TAIEX, ending at `en… |
+| GET | `/api/v1/market/etf-list` | optional | `get_etf_list` | public | Whole-market Taiwan-listed ETF list for one trading day (defaults to the latest available day): price/change/volume/1-week-return, AUM, expense-ratio… |
+| GET | `/api/v1/market/dividend-calendar` | optional | `get_dividend_calendar` | public | 股息日曆 — every Taiwan-listed ETF's 除息日/最後購買日/股利發放日 landing within one requested calendar month (defaults to the current month). |
+| GET | `/api/v1/market/big-holder-accumulation` | optional | `get_shareholder_dispersion` | sponsor | 股權分散 shareholding-level distribution (千張大戶比率) for one stock — a chip-concentration signal (Sponsor-tier). |
+| GET | `/api/v1/market/active-etf-report` | optional | `get_active_etf_report` | sponsor | 主動式ETF 操作日報 for one active-management ETF — required `symbol`, plus an optional single `trade_date` (the backing tool's own field name; not a start/e… |
+| GET | `/api/v1/market/international-index` | optional | `get_international_stock` | public | FinMind's own roster-info + EOD-price bundle for one US/GB/EU/JP quote symbol — a distinct dataset family from the yfinance-primary `price_eod` path… |
+| GET | `/api/v1/market/material-announcements` | optional | `get_material_announcements` | public | Today's MOPS material-announcement (重大訊息) disclosures for one stock. |
+| GET | `/api/v1/market/material-announcement-feed` | optional | `get_material_announcement_feed` | public | 重大訊息 whole-market feed for one day (defaults to the latest day MOPS ingest has captured), optionally filtered to one derived category bucket, with a… |
+| GET | `/api/v1/market/insider-transfer-declarations` | optional | `get_insider_transfer_declarations` | public | 內部人股權轉讓事前申報 (insider advance-transfer-plan declaration) whole-market feed for one day (defaults to the latest day MOPS ingest has captured) — `t187ap… |
+| GET | `/api/v1/market/disposition-board` | optional | `get_disposition_board` | sponsor | 處置王-style disposition board: 風險股/處置中/即將出關 buckets, read from the ingest-owned `attention_stocks`/`disposition_events` partitions plus already-ingeste… |
+| GET | `/api/v1/market/tag-catalog` | optional | `get_tag_catalog` | public | The discoverable tap-tile screener tag list, grouped by category with bilingual labels — `get_tag_catalog` takes no input, so this route dispatches w… |
+| GET | `/api/v1/market/tag-screener` | optional | `run_tag_screener` | public | Tap-tile tag screener over the nightly-computed flag partition. |
+| GET | `/api/v1/market/symbol-info` | optional | `get_symbol_info` | public | Batched symbol->name (+ industry/security-type) lookup, e.g. |
+| GET | `/api/v1/market/price-history` | optional | `get_price_history` | public | A bounded trailing-day OHLCV window for up to 20 symbols — the data behind a sparkline or a client-computed %-change, for any bare-symbol list (leade… |
+| GET | `/api/v1/market/quotes` | optional | `get_symbol_quotes` | public | The list-row view for up to 20 symbols: name, latest close, DAILY change/change %, volume and a sparkline, in one call. |
+| GET | `/api/v1/derivatives/taiex-vix` | optional | `get_taiex_vix` | sponsor | 臺指選擇權波動率指數 (TAIEX option VIX) reading series — whole-market, Sponsor-tier. |
+| GET | `/api/v1/derivatives/{contract}` | optional | `get_derivatives_institutional`, `get_futures_options_daily`, `get_put_call_ratio` | public/sponsor | 期/選 daily OI/price, put/call positioning, and institutional/large-trader positioning for one contract code — descriptive positioning context, not a d… |
+| GET | `/api/v1/macro` | optional | `get_macro_indicators` | sponsor | 匯率/利率/黃金/原油/美債殖利率/Fear-Greed macro-context report (Sponsor-tier). |
+| GET | `/api/v1/macro/business-indicator` | optional | `get_business_indicator` | sponsor | Monthly 景氣對策信號 business-climate indicator (Sponsor-tier). |
+| GET | `/api/v1/market/macro-calendar` | optional | `get_macro_calendar` | public | US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/actual |
+| GET | `/api/v1/market/news-feed` | optional | `get_news_feed` | public | 即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub |
+| GET | `/api/v1/market/ptt-board` | optional | `get_ptt_board` | public | PTT — one board's index-listing (title/author/push-count/post-tag/posted_date) |
+| GET | `/api/v1/stock/company-profile` | optional | `get_company_profile` | public | AssetHeader + 基本資料's 個股資訊卡/財務快照 — the composite profile card |
+| GET | `/api/v1/stock/insider-shareholding` | optional | `get_insider_shareholding` | public | 基本資料's 內部人/董監持股·質押比 — MOPS 董監事持股餘額 |
+| GET | `/api/v1/stock/insider-transfer-declarations` | optional | `get_insider_transfer_declarations` | public | 基本資料's 董監事持股 card, 持股轉讓 sub-tab — 內部人股權轉讓事前申報, filtered to one symbol server-side (the underlying `get_insider_transfer_declarations` tool is a whole… |
+| GET | `/api/v1/stock/esg-score` | optional | `get_esg_score` | public | 基本資料's ESG風險卡 |
+| GET | `/api/v1/stock/disposition-securities` | optional | `get_disposition_securities` | sponsor | 基本資料's 處置/注意 banner — 處置有價證券 announcement rows |
+| GET | `/api/v1/stock/dividend-result` | optional | `get_dividend_result` | public | 財務分析's 股利政策 (settled-result half) — 除權除息結果 |
+| GET | `/api/v1/stock/dividend-policy-summary` | optional | `get_dividend_policy_summary` | public | 財務分析's 股利政策 card — the one-call composite report (announced events, per-year cash+stock totals, 現金殖利率/配息率/填息成功率 stats, per-event fill results) |
+| GET | `/api/v1/stock/month-revenue` | optional | `get_month_revenue` | public | 財務分析's 月營收趨勢 — 月營收 filing + pre-computed MoM/YoY |
+| GET | `/api/v1/stock/financial-statement` | optional | `get_financial_statement` | public | 財務分析's 財務結構/獲利趨勢 sub-tabs (損益表/資產負債表/現金流) — one statement type per call |
+| GET | `/api/v1/stock/institutional-flow` | optional | `get_institutional_flow` | public | 籌碼分析's 法人 sub-tab — per-symbol 三大法人買賣 + pre-computed rolling net |
+| GET | `/api/v1/stock/margin-short` | optional | `get_margin_short` | public | 籌碼分析's 融資券 sub-tab — per-symbol 融資融劵 balance |
+| GET | `/api/v1/stock/securities-lending` | optional | `get_securities_lending` | public | 籌碼分析's 借券 sub-tab — 借券成交 rows |
+| GET | `/api/v1/stock/chip-flows` | optional | `get_chip_flows` | sponsor | 籌碼分析's 分點 sub-tab — 分點/broker-level trading rows |
+| GET | `/api/v1/stock/government-bank-flows` | optional | `get_government_bank_flows` | sponsor | 籌碼分析's 摘要 sub-tab's 4th 法人籤碼 category — 八大行庫 (eight government-bank) buy/sell rows |
+| GET | `/api/v1/stock/valuation-ratios` | optional | `get_valuation_ratios` | public | 研究圖表's 估值河流 — daily PER/PBR/殖利率 + pre-computed band |
+| GET | `/api/v1/stock/analyst-consensus` | optional | `get_analyst_consensus` | public | 研究圖表's 分析師深度 — target-price/rating consensus |
+| GET | `/api/v1/stock/sec-filings` | optional | `get_sec_filings` | public | The 新聞公告 tab's SEC filings list — most-recent 10-K/10-Q/8-K/etc. |
+| GET | `/api/v1/stock/live-price-quote` | optional | `get_live_price_quote` | public | `AssetHeader`'s one-shot price read for US symbols |
+| GET | `/api/v1/stock/calendar-events-feed` | optional | `get_calendar_events_feed` | public | The US 總覽 tab's upcoming-events calendar — earnings/IPO/economic calendars bundled from `yfinance.Calendars` |
+| GET | `/api/v1/stock/peers` | optional | `get_stock_peers` | public | The 產業同業 tab's sector/industry peer list — resolves the symbol's own classification then fetches its peers |
+| GET | `/api/v1/stock/calendar-events` | optional | `get_calendar_events` | sponsor | 研究圖表's 個股事件calendar — feed-sourced 除權息/CB events |
+| GET | `/api/v1/stock/finmind-news` | optional | `get_finmind_stock_news` | public | 相關新聞's 財經新聞 sub-tab — FinMind's own per-symbol news dataset (single trading day per request upstream) |
+| GET | `/api/v1/stock/foreign-shareholding` | optional | `get_foreign_shareholding` | public | 籌碼分析's 三大法人 column, 持股 sub-tab — daily 外資持股比 (foreign-ownership ratio/ limit) |
+| GET | `/api/v1/stock/day-trading` | optional | `get_day_trading` | public | 籌碼分析's 融資券 column, 當沖 sub-tab — day-trading eligibility + volume/value |
+| GET | `/api/v1/stock/technical-indicators` | optional | `get_technical_indicators` | public | 技術分析's K線 chart data source — MA/Bollinger/KD/MACD series, 支撐/壓力 levels, and candlestick-pattern hits over a date range |
+| GET | `/api/v1/stock/shareholder-dispersion` | optional | `get_shareholder_dispersion` | sponsor | 技術分析/籌碼分析's 散戶 副圖 overlay — 股東人數/千張大戶比率 concentration series |
+| GET | `/api/v1/stock/etfs-holding-stock` | optional | `get_etfs_holding_stock` | sponsor | 追蹤 tab's ETF持有 card — every active-management ETF holding one stock, with 持有張數排行/權重排行/建清倉 sub-views |
+| GET | `/api/v1/stock/live-quote` | optional | `get_live_quote_snapshot` | public | 即時 tab's 五檔 ladder — one bounded TWSE MIS best-5 bid/ask + last-trade snapshot |
+| GET | `/api/v1/stock/price-limit` | optional | `get_price_limit` | public | 看盤 tab's 詳細 stats row — daily 參考/漲停/跌停 price |
+| GET | `/api/v1/stock/intraday-kbar` | optional | `get_intraday_kbar` | sponsor | 即時 tab's 分K chart — minute-bar series for one trading day |
+| GET | `/api/v1/stock/price-tick` | optional | `get_price_tick` | sponsor | 即時 tab's 逐筆 list — tick-by-tick trade history for one trading day |
+| GET | `/api/v1/stock/ptt-search` | optional | `get_ptt_stock_search` | public | 相關新聞's PTT sub-tab — best-effort per-symbol search of Stock/Tech_Job/Warrant board posts (matched against post BODY text, not just the title) |
+
+#### Analytics, scoring & screener
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/analytics/{symbol}/score` | optional | `get_stock_score` | public | The stock-detail-page read: the cached composite + band + five-factor breakdown for one symbol, or `found=False` if today's batch has not yet compute… |
+| GET | `/api/v1/analytics/{symbol}/summary` | optional | `get_stock_summary` | sponsor | The stock-detail-page AI-summary read: the cached (or freshly generated) headline + narrative + SWOT grounded in today's cached composite score. |
+| GET | `/api/v1/analytics/rankings` | optional | `get_score_leaderboard` | public | The whole-TW-universe leaderboard: top-N strongest (`direction=bullish`) or weakest (`direction=bearish`) cached composite scores — a sort-and-slice… |
+| GET | `/api/v1/analytics/{symbol}/trend-score` | optional | `get_trend_score` | public | The 趨勢評分 tab read: the six-dimension trend-score composite (five cache-backed, one computed live for the requested symbol) plus trailing history for… |
+| GET | `/api/v1/analytics/screener/factors` | optional | `get_factor_catalog` | public | The per-market screener factor/signal catalog the condition builder discovers from (README.md §2.1) — `get_factor_catalog`. |
+| GET | `/api/v1/analytics/screener/presets` | optional | `get_screener_presets` | public | Named starting-point condition sets for the `PresetLibrary` (README.md §3) — `get_screener_presets`. |
+| POST | `/api/v1/analytics/screener/run` | optional | `run_screener` | public | Run the gates->setup screener funnel (README.md §1/§5) — `run_screener`. |
+| GET | `/api/v1/analytics/screener/screens` | user | — | — | `SavedScreens`'s list read (README.md §6) — every screen the caller has saved for this market, most-recently-updated first. |
+| POST | `/api/v1/analytics/screener/screens` | user | — | — | Save the builder's current state as a new named screen (README.md §6). |
+| PATCH | `/api/v1/analytics/screener/screens/{screen_id}` | user | — | — | Rename and/or replace a saved screen's conditions in place — the "dirty -> update" path (README.md §6), distinct from creating a new screen via `POST… |
+| DELETE | `/api/v1/analytics/screener/screens/{screen_id}` | user | — | — | Idempotent delete — deleting a screen that isn't there (already gone, or never the caller's) is a no-op, never a 404, matching `DELETE /watchlists/{i… |
+
+#### Themes & supply chain
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/themes` | optional | `get_themes` | public | The discovery-level theme catalog (screener README.md §6 主題 Themes sub-tab) — every active theme with its member count. |
+| GET | `/api/v1/themes/{key}` | optional | `get_theme_members` | public | One theme's identity + its member symbols, each with sub-industry/confidence/source. |
+| GET | `/api/v1/themes/{key}/tiers` | optional | `get_theme_tiers` | public | One theme's sub-industries grouped into upstream/midstream/downstream, each assignment marked curated (editorial) or heuristic (automatically classif… |
+| GET | `/api/v1/symbols/{symbol}/themes` | optional | `get_symbol_themes` | public | The reverse lookup: every theme one symbol belongs to. |
+| GET | `/api/v1/themes/{key}/tier-heatmap` | optional | `get_theme_tier_heatmap` | public | 個股 > 產業分析's 產業鏈 tier-tile view — a theme's upstream/midstream/downstream sub-industry tiles, each colored by that sub-industry's own members' real av… |
+| GET | `/api/v1/symbols/{symbol}/supply-chain` | optional | `get_supply_chain_edges` | public | 個股 > 產業分析's 供應鏈關係圖 card — every supply/customer/competitor edge involving one symbol, from either side. |
+
+#### Funds, analysts & ETF overlap
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/funds/{symbol}/options-chain` | optional | `get_options_chain` | public | Option chain (calls + puts, one expiry) for one non-TW symbol. |
+| GET | `/api/v1/funds/{symbol}/institutional-holders` | optional | `get_institutional_holders` | public | Institutional + mutual-fund holder rows for one non-TW symbol. |
+| GET | `/api/v1/funds/{symbol}/insider-activity` | optional | `get_insider_activity` | public | Insider (Form-4-derived) transaction rows for one non-TW symbol. |
+| GET | `/api/v1/funds/{symbol}/holdings` | optional | `get_fund_holdings` | public | Top-holdings + sector-weighting rows for one non-TW ETF/mutual fund. |
+| GET | `/api/v1/funds/{symbol}/profile` | optional | `get_fund_profile` | public | AUM/category/issuer/YTD-return/distribution-yield/inception-date for one non-TW ETF/mutual fund — the fund-equivalent of `/stock/company-profile`. |
+| GET | `/api/v1/funds/{symbol}/fund-info` | optional | `get_etf_fund_info` | public | Fund-level reference info for one TW listed ETF (issuer, tracked index, units outstanding, listed/inception dates, manager person, custodian bank) —… |
+| GET | `/api/v1/funds/{symbol}/expense-ratio` | optional | `get_etf_expense_ratio` | public | Internal-fee (內扣費用) disclosure for one TW fund/ETF: management fee, custody fee, custodian bank, and an approximate TER floor (management + custody). |
+| GET | `/api/v1/funds/{symbol}/theme-tags` | optional | `get_etf_theme_tags` | public | TWSE's own 主題/因子 (theme/factor) editorial tags plus 受益人次(萬人) holder count for one TW listed ETF (e.g. |
+| GET | `/api/v1/funds/{symbol}/trailing-returns` | optional | `get_etf_trailing_returns` | public | One listed ETF's price return over 6 fixed trailing horizons (1個月/1季/半年/1年/3年/5年), computed from a single split/dividend-adjusted price-history fetch. |
+| GET | `/api/v1/funds/{symbol}/premium-discount` | optional | `get_etf_premium_discount` | public | 折溢價 (premium/discount to NAV) history + latest AUM for one TW ETF, over a bounded trailing trading-day window. |
+| GET | `/api/v1/funds/overlap` | optional | `get_etf_overlap` | public | Constituent-overlap comparison across 3+ non-TW ETFs/funds — the explicit fix for 'existing tools only compare 2 funds at a time'. |
+| GET | `/api/v1/funds/comparison` | optional | `get_fund_comparison` | public | Total-return-with-dividends-reinvested comparison across 1+ symbols in any market (including TW) — a single symbol is a legitimate call too (e.g. |
+
+#### Agent turns
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/v1/agent/query` | user | — | — | Agent query |
+
+#### Threads
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/v1/threads` | user | — | — | Create thread |
+| GET | `/api/v1/threads` | user | — | — | List threads |
+| GET | `/api/v1/threads/{thread_id}` | user | — | — | Get thread |
+| DELETE | `/api/v1/threads/{thread_id}` | user | — | — | Delete thread |
+
+#### Thread & turn actions
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| PATCH | `/api/v1/threads/{thread_id}` | user | — | — | Rename / star / archive / tag. |
+| POST | `/api/v1/threads/{thread_id}/fork` | user | — | — | Fork from a turn into a fresh thread (shares no message rows with the source). |
+| GET | `/api/v1/threads/search` | user | — | — | Full-text-ish search over the caller's own thread titles + message text. |
+| GET | `/api/v1/threads/{thread_id}/export` | user | — | — | Export a thread + its history as JSON or Markdown. |
+| GET | `/api/v1/threads/{thread_id}/stream` | user | — | — | Attach to a thread's running turn and stream its remaining frames, with durable `Last-Event-ID` resume when the transport backend supports it. |
+| POST | `/api/v1/threads/{thread_id}/steer` | user | — | — | Queue a steering message into the running turn (redirect, no cancel). |
+| POST | `/api/v1/threads/{thread_id}/switch-branch` | user | — | — | Switch the active path to another message (an O(1) leaf-pointer flip). |
+| POST | `/api/v1/threads/{thread_id}/turns/{turn_id}/cancel` | user | — | — | Cancel a running turn (stops its SSE with a cancelled frame). |
+| POST | `/api/v1/threads/{thread_id}/turns/{turn_id}/feedback` | user | — | — | Record 👍/👎 + an optional short comment on a turn — a real, persisted write. |
+| POST | `/api/v1/threads/{thread_id}/turns/{turn_id}/regenerate` | user | — | — | Re-run the same user input that produced `turn_id`'s assistant answer, producing a NEW sibling assistant turn — a version, not an edit of history. |
+| POST | `/api/v1/threads/{thread_id}/turns/{turn_id}/edit` | user | — | — | Edit a user message + resend — creates a NEW branch: a new user turn as a sibling of the original (same parent message), with a new assistant turn as… |
+
+#### Voice
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/v1/voice/transcribe` | user | — | — | STT → transcript + confidence. |
+| POST | `/api/v1/voice/speak` | user | — | — | TTS read-aloud (Free, fair-use bounded like STT: a per-minute rate and a daily cap). |
+
+#### Memory & watchlists
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/memory` | user | — | — | The caller's memories, most recently changed first; `q` keeps the ones whose key or text contains it. |
+| GET | `/api/v1/memory/settings` | user | — | — | Get memory settings |
+| PUT | `/api/v1/memory/settings` | user | — | — | Pause or resume long-term memory. |
+| DELETE | `/api/v1/memory` | user | — | — | Forget everything (or one scope) in one go. |
+| PATCH | `/api/v1/memory/{memory_id}` | user | — | — | Edit a memory's content in place (its key and type stay). |
+| POST | `/api/v1/memory` | user | — | — | Upsert memory |
+| DELETE | `/api/v1/memory/{memory_id}` | user | — | — | Delete memory |
+| GET | `/api/v1/watchlists` | user | — | — | List watchlists |
+| POST | `/api/v1/watchlists` | user | — | — | Create watchlist |
+| PATCH | `/api/v1/watchlists/{watchlist_id}` | user | — | — | Rename, recolour and/or reorder a group. |
+| DELETE | `/api/v1/watchlists/{watchlist_id}` | user | — | — | Delete watchlist |
+| POST | `/api/v1/watchlists/reorder` | user | — | — | Reorder watchlists |
+| GET | `/api/v1/watchlists/{watchlist_id}/items` | user | — | — | List watchlist items |
+| PUT | `/api/v1/watchlists/{watchlist_id}/items/{symbol}` | user | — | — | Star toggle — add. |
+| DELETE | `/api/v1/watchlists/{watchlist_id}/items/{symbol}` | user | — | — | Star toggle — remove. |
+| PATCH | `/api/v1/watchlists/{watchlist_id}/items/{item_id}` | user | — | — | Patch watchlist item |
+| POST | `/api/v1/watchlists/{watchlist_id}/items/{item_id}/move` | user | — | — | Move watchlist item |
+
+#### Pets
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/pets/catalog` | none | — | — | The full code-defined catalog (rarity, bilingual names, descriptions) — no auth needed to browse, but kept behind the same router group for locality. |
+| GET | `/api/v1/pets` | user | — | — | My pets |
+| GET | `/api/v1/pets/active` | user | — | — | Active pet |
+| PUT | `/api/v1/pets/{record_id}/equip` | user | — | — | Equip |
+| GET | `/api/v1/pets/progress` | user | — | — | Progress |
+| GET | `/api/v1/pets/settings` | user | — | — | Get settings |
+| PATCH | `/api/v1/pets/settings` | user | — | — | Update settings |
+| POST | `/api/v1/pets/pull` | user | — | — | Gacha pull (reserve-before-act on `available_pulls` in the store). |
+
+#### Auth & OAuth
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/v1/auth/oauth/{provider}` | none | — | — | Begin sign-in: generate CSRF `state` (+ PKCE/nonce for LINE), stash them in httpOnly cookies, and return the provider authorize URL for the client to… |
+| POST | `/api/v1/auth/oauth/{provider}/link` | user | — | — | Begin linking a provider to the already-signed-in user — same as begin, but the callback will attach the verified identity to the current account ins… |
+| GET | `/api/v1/auth/oauth/{provider}/start` | none | — | — | Second half of a link started from another origin: redeem the ticket, set the flow cookies on *this* origin (the one the provider will redirect back… |
+| GET | `/api/v1/auth/oauth/{provider}/callback` | none | — | — | OAuth redirect target: verify `state`, exchange the code, verify the ID token, resolve the identity (login/signup or link), issue the session cookies… |
+| POST | `/api/v1/auth/refresh` | none | — | — | Rotate the refresh token and mint a fresh access token. |
+| POST | `/api/v1/auth/logout` | none | — | — | Revoke the current refresh session and clear the auth cookies. |
+| GET | `/api/v1/me` | user | — | — | Me |
+| GET | `/api/v1/me/connections` | user | — | — | Connections |
+| DELETE | `/api/v1/me/connections/{provider}` | user | — | — | Unlink a provider — refused if it is the account's only remaining login method. |
+
+#### Account, BYOK keys & usage
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| PATCH | `/api/v1/me` | user | — | — | Update me |
+| GET | `/api/v1/personality/presets` | none | — | — | The agent-voice presets for the Settings picker (id, names, description). |
+| GET | `/api/v1/usage/quota` | user | — | — | The caller's resolved limits (chats/day, req/min, FinMind class) given tier + BYOK. |
+| GET | `/api/v1/usage/today` | user | — | — | What the caller has claimed of today's (UTC) allowances - the consumption half of the limits `/usage/quota` reports. |
+| GET | `/api/v1/usage/llm` | user | — | — | The caller's own LLM consumption over the last `days` days, from each provider's per-response usage metadata (daily series, per-model totals; cost on… |
+| GET | `/api/v1/me/keys` | user | — | — | Which providers the caller has saved an LLM key for, each with a masked preview - never the keys. |
+| POST | `/api/v1/me/keys` | user | — | — | Store an encrypted BYOK key. |
+| DELETE | `/api/v1/me/keys/{provider}` | user | — | — | Remove a BYOK key. |
+
+#### Billing (Paddle)
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/api/v1/billing/plans` | none | — | — | The tier/interval/byok to price_id catalog for the pricing page, plus the publishable Paddle.js client token. |
+| POST | `/api/v1/billing/checkout` | user | — | — | Create a Paddle checkout transaction for the selected plan, tagged with the user id so the webhook can attribute the resulting subscription back to t… |
+| GET | `/api/v1/billing/subscription` | user | — | — | The caller's current subscription, reconciled against the live Paddle API so a dropped or delayed webhook self-heals on this read. |
+| POST | `/api/v1/billing/sync` | user | — | — | Recover a checkout whose webhook never arrived: look the transaction up at Paddle and adopt the subscription it created, provided the transaction was… |
+| POST | `/api/v1/billing/change-plan` | user | — | — | Move the caller's live subscription to another tier / interval / BYOK variant. |
+| POST | `/api/v1/billing/resume` | user | — | — | Undo a scheduled cancellation, or restart a paused subscription. |
+| GET | `/api/v1/billing/invoice/{transaction_id}` | user | — | — | A short-lived link to Paddle's tax-compliant invoice PDF. |
+| POST | `/api/v1/billing/portal` | user | — | — | A link into Paddle's customer portal. |
+| POST | `/api/v1/billing/webhook/paddle` | none | — | — | Process a Paddle webhook — the entitlement source of truth. |
+| GET | `/api/v1/billing/history` | user | — | — | Proxy Paddle's transactions API for the caller's subscription — Paddle owns the tax- compliant invoices/PDFs, so nothing is mirrored locally. |
+
+#### Alerts, schedules, notifications & channels
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| POST | `/api/v1/schedules` | user | — | — | Create schedule |
+| GET | `/api/v1/schedules` | user | — | — | List schedules |
+| PATCH | `/api/v1/schedules/{job_id}` | user | — | — | Update schedule |
+| DELETE | `/api/v1/schedules/{job_id}` | user | — | — | Delete schedule |
+| POST | `/api/v1/alerts` | user | — | — | Create alert |
+| POST | `/api/v1/alerts/batch` | user | — | — | All-or-nothing: every item is validated and the fair-use cap is checked for the whole batch before anything is written, and the request runs in one t… |
+| GET | `/api/v1/alerts/symbol-check` | user | `get_price_quote` | public | Does this ticker have any price data? A pre-flight the alert form calls so a typo (`APPLE` for `AAPL`) is flagged *before* a rule is saved that could… |
+| GET | `/api/v1/alerts` | user | — | — | List alerts |
+| PATCH | `/api/v1/alerts/{alert_id}` | user | — | — | Update alert |
+| DELETE | `/api/v1/alerts/{alert_id}` | user | — | — | Delete alert |
+| GET | `/api/v1/notifications` | user | — | — | List notifications |
+| POST | `/api/v1/notifications/read` | user | — | — | Mark notifications read — `{ids: [...]}` for specific ones, `{all: true}` for everything. |
+| GET | `/api/v1/notifications/badge` | user | — | — | Notifications badge |
+| GET | `/api/v1/me/alert-preferences` | user | — | — | The user's current defaults; a user who never saved any gets the empty defaults (in-app only, no quiet hours) rather than a 404, so the settings form… |
+| PUT | `/api/v1/me/alert-preferences` | user | — | — | Put alert preferences |
+| GET | `/api/v1/me/channels` | user | — | — | Get channel status |
+| POST | `/api/v1/me/channels/telegram/link` | user | — | — | Issue a one-time link: the user opens it, taps Start in the bot, and the webhook below binds that chat to their account. |
+| DELETE | `/api/v1/me/channels/telegram` | user | — | — | Unlink telegram |
+| POST | `/api/v1/me/channels/line/link` | user | — | — | Issue a one-time code. |
+| DELETE | `/api/v1/me/channels/line` | user | — | — | Unlink line |
+| GET | `/api/v1/email/unsubscribe` | none | — | — | A confirmation page, not the action: mail scanners open links, so a GET must not unsubscribe anyone. |
+| POST | `/api/v1/email/unsubscribe` | none | — | — | The one-click unsubscribe (RFC 8058: mail clients POST `List-Unsubscribe=One-Click` here) and the confirmation button's target. |
+| POST | `/api/v1/email/resubscribe` | none | — | — | Undo an unsubscribe with the same signed link. |
+| POST | `/api/v1/webhooks/resend` | none | — | — | Resend reports what happened to each email. |
+| POST | `/api/v1/channels/line/webhook` | none | — | — | LINE calls this for every event on the official account (the URL is registered in the LINE console). |
+| POST | `/api/v1/webhooks/telegram` | none | — | — | Telegram calls this for every message to the bot. |
+| POST | `/api/v1/me/devices` | user | — | — | Register device |
+| DELETE | `/api/v1/me/devices/{token:path}` | user | — | — | Unregister device |
+
+#### Ops probes (app root, not under /api/v1)
+
+| Method | Path | Auth | Tool | Tier | Summary |
+|---|---|---|---|---|---|
+| GET | `/livez` | none | — | — | Livez |
+| GET | `/readyz` | none | — | — | Readyz |
+| GET | `/startupz` | none | — | — | Startupz |
+
+<!-- ROUTES:END -->
 
 ---
 

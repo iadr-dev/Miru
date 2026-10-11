@@ -18,6 +18,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from events.bus import EventBus
+from events.kinds import EventKind
 
 
 class TokenBreakdown(BaseModel):
@@ -159,7 +160,7 @@ class UsageAccumulator:
         """Emit the current snapshot as a live `usage` event."""
         usage = self.snapshot()
         bus.publish(
-            "usage",
+            EventKind.USAGE,
             turn_id=self._turn_id,
             agent_id=agent_id,
             data=usage.model_dump(mode="json"),

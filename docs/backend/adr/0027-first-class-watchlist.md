@@ -47,7 +47,7 @@ model — a single `memories(type='watchlist')` JSON blob with generic `/memory`
 ## Consequences
 - The rail's rich behaviors are all backed; the reverse-query star state is O(1) via `(user_id, symbol)`.
 - Migration is expand-contract: backfill existing `memories` blobs → tables, dual-read during
-  rollout, then stop writing the blob (dual-dialect Alembic).
+  rollout, then stop writing the blob (a dual-dialect migration once Alembic is adopted at the first production release).
 - Adds one write capability to an otherwise read-only agent tool set — bounded to product state,
   non-trading, and kept off the public MCP surface.
 - **A1 resolved:** `market` (CHECK `TW|US`, the true [modules/19](../modules/19-data-access-router.md)

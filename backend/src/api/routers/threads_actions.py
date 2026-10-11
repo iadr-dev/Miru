@@ -45,8 +45,9 @@ from conversation.store import (
     ThreadNotFoundError,
     TurnNotFoundError,
 )
-from events.bus import TURN_END_KIND, Event
+from events.bus import Event
 from events.factory import StreamReader
+from events.kinds import EventKind
 from feedback.store import FeedbackRecord, FeedbackStore, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
@@ -259,7 +260,7 @@ def _attach_local_or_empty(
             if event.seq <= after_seq:
                 continue  # already delivered before the drop — never re-send (no duplicate)
             yield format_sse_event(event)
-            if event.kind == TURN_END_KIND:
+            if event.kind == EventKind.TURN_END:
                 break
 
     return StreamingResponse(_attach_local(), media_type=_SSE_MEDIA_TYPE)
@@ -308,7 +309,7 @@ async def _resume_stream(
         for event in await reader.replay_since(turn_id, after_seq):
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == TURN_END_KIND:
+            if event.kind == EventKind.TURN_END:
                 return
         # Follow live from the queue, de-duplicating against what replay already covered.
         while True:
@@ -317,7 +318,7 @@ async def _resume_stream(
                 continue
             yield format_sse_event(event)
             last_emitted = max(last_emitted, event.seq)
-            if event.kind == TURN_END_KIND:
+            if event.kind == EventKind.TURN_END:
                 return
     finally:
         buffer_task.cancel()
@@ -358,7 +359,7 @@ async def steer_turn(
         )
     running.steering.append(body.message)
     running.event_bus.publish(
-        "steering.accepted", turn_id=running.turn_id, data={"message": body.message}
+        EventKind.STEERING_ACCEPTED, turn_id=running.turn_id, data={"message": body.message}
     )
     return {"status": "accepted"}
 

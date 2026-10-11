@@ -16,6 +16,7 @@ import structlog
 from api.dependencies import AppState
 from dataaccess.web_search import WebSearchGateway
 from events.bus import EventBus
+from events.kinds import EventKind
 from events.usage import UsageAccumulator
 from llm.base import WebSearchSource
 from orchestrator.models import OrchestratorResult, Routing
@@ -74,7 +75,7 @@ class _Lanes:
         agent_id = f"deep_research:{uuid.uuid4().hex[:8]}"
         activity = self._labels[progress.stage].format(detail=progress.detail)
         self._bus.publish(
-            "agent.spawned",
+            EventKind.AGENT_SPAWNED,
             turn_id=self._turn_id,
             agent_id=agent_id,
             parent_agent_id=_ROOT_AGENT_ID,
@@ -91,7 +92,7 @@ class _Lanes:
     def close(self) -> None:
         if self._open is not None:
             self._bus.publish(
-                "agent.done",
+                EventKind.AGENT_DONE,
                 turn_id=self._turn_id,
                 agent_id=self._open,
                 data={"agent_id": self._open, "status": "ok"},
@@ -149,7 +150,7 @@ async def run_deep_research_turn(
     sources = tuple(WebSearchSource(url=s.url, title=s.title) for s in report.sources)
     if sources:
         event_bus.publish(
-            "web_search.result",
+            EventKind.WEB_SEARCH_RESULT,
             turn_id=turn_id,
             agent_id=_ROOT_AGENT_ID,
             data={

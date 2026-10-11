@@ -20,11 +20,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# The one lifecycle `kind` every turn-driving path (turn_driver, turn_lifecycle) publishes on
-# completion/cancel/error, and every SSE consumer (threads_actions' resume/attach paths) checks
-# for to know a stream is over — named here, in the shared envelope module, so it is one string
-# literal instead of copies drifting across publisher and subscriber sides.
-TURN_END_KIND = "turn.end"
+from events.kinds import EventKind
 
 
 class Event(BaseModel):
@@ -52,7 +48,7 @@ class EventBus(Protocol):
 
     def publish(  # noqa: PLR0913 — one field per correlation-envelope dimension
         self,
-        kind: str,
+        kind: EventKind,
         *,
         turn_id: str | None = None,
         agent_id: str | None = None,
@@ -61,7 +57,7 @@ class EventBus(Protocol):
         data: dict[str, object] | None = None,
     ) -> Event: ...
 
-    def subscribe(self, kinds: list[str] | None = None) -> AsyncIterator[Event]: ...
+    def subscribe(self, kinds: list[EventKind] | None = None) -> AsyncIterator[Event]: ...
 
 
 class InMemoryEventBus:
@@ -74,7 +70,7 @@ class InMemoryEventBus:
     """
 
     def __init__(self) -> None:
-        self._subscribers: dict[int, tuple[list[str] | None, asyncio.Queue[Event]]] = {}
+        self._subscribers: dict[int, tuple[list[EventKind] | None, asyncio.Queue[Event]]] = {}
         self._next_subscriber_id = itertools.count()
         self._seq_counters: dict[str | None, int] = {}
 
@@ -85,7 +81,7 @@ class InMemoryEventBus:
 
     def publish(  # noqa: PLR0913 — mirrors EventBus's own shape above
         self,
-        kind: str,
+        kind: EventKind,
         *,
         turn_id: str | None = None,
         agent_id: str | None = None,
@@ -108,7 +104,7 @@ class InMemoryEventBus:
                 queue.put_nowait(event)
         return event
 
-    async def subscribe(self, kinds: list[str] | None = None) -> AsyncIterator[Event]:
+    async def subscribe(self, kinds: list[EventKind] | None = None) -> AsyncIterator[Event]:
         """Yield every published event matching `kinds` (or every event, if `kinds` is
         `None`) until the caller stops iterating — cancelling the surrounding task is how a
         subscriber unsubscribes; there is no explicit `unsubscribe()` call."""
@@ -122,4 +118,4 @@ class InMemoryEventBus:
             self._subscribers.pop(subscriber_id, None)
 
 
-__all__ = ["TURN_END_KIND", "Event", "EventBus", "InMemoryEventBus"]
+__all__ = ["Event", "EventBus", "InMemoryEventBus"]

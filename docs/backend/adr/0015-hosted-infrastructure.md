@@ -32,7 +32,7 @@ they break the moment more than one backend process runs (i.e. production).
 6. **Observability:** distributed tracing on the `turn_id/agent_id/node_id/seq` envelope;
    SLIs/SLOs; scraper-drift monitoring; dashboards/alerting.
 7. **Secrets:** KMS envelope encryption + rotation; decrypt in-process at call time only.
-8. **Migrations & lifecycle:** Alembic (dual-dialect CI); time-partitioning + concrete
+8. **Migrations & lifecycle:** Alembic (dual-dialect CI) **from the first production release** (until then `create_all` + additive upgrade, see database-schema); time-partitioning + concrete
    retention/purge (see database-schema).
 9. **Concurrency model (modules/16 §10):** every shared-state hot path has a declared safety
    mechanism for stateless multi-worker operation — atomic upserts/`INCR` (counters, rate/quota

@@ -52,7 +52,8 @@ from conversation.store import (
 )
 from conversation.title_generator import generate_title
 from conversation.turn_lifecycle import SimpleCancelToken
-from events.bus import TURN_END_KIND, EventBus
+from events.bus import EventBus
+from events.kinds import EventKind
 from events.usage import MemoryRef, TurnUsage
 from llm.base import ImagePart, Message, MessageRole, ToolCall, ToolResultPart
 from llm.registry import ByokOverride, byok_scope
@@ -225,7 +226,7 @@ async def run_and_stream(
     try:
         async for event in subscription:
             yield format_sse_event(event)
-            if event.kind == TURN_END_KIND:
+            if event.kind == EventKind.TURN_END:
                 break
     finally:
         runner.cancel()
@@ -345,14 +346,14 @@ async def _drive_turn(
     deep_research: bool = False,
     byok: ByokOverride | None = None,
 ) -> None:
-    event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
+    event_bus.publish(EventKind.TURN_START, turn_id=turn_id, data={"thread_id": thread_id})
     # Which 語氣 preset will shape this answer (turn > chat > account > default), shown under it.
     tone_id = state.personality_registry.resolve(
         turn_override=personality.turn_override,
         thread_override=personality.thread_override,
         user_preference=personality.user_preference,
     ).id
-    event_bus.publish("personality.used", turn_id=turn_id, data={"personality": tone_id})
+    event_bus.publish(EventKind.PERSONALITY_USED, turn_id=turn_id, data={"personality": tone_id})
     # The registry entry is `RunningTurn` itself — the same live handle `POST .../steer` appends
     # to and `.../cancel` flips — so the loop's `drain()` calls read exactly what a concurrent
     # steer request queued, with no second queue to keep in sync.
@@ -385,7 +386,7 @@ async def _drive_turn(
             await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
             memories_used[:] = [_memory_ref(m) for m in used]
             event_bus.publish(
-                "memory.used",
+                EventKind.MEMORY_USED,
                 turn_id=turn_id,
                 data={"memories": [r.model_dump() for r in memories_used]},
             )
@@ -423,14 +424,14 @@ async def _drive_turn(
     except asyncio.CancelledError:
         # A cancel request (via the turn registry) hard-stops the driver — end the stream with a
         # cancelled frame rather than letting the cancellation propagate as a silent drop.
-        event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "cancelled"})
+        event_bus.publish(EventKind.TURN_END, turn_id=turn_id, data={"status": "cancelled"})
         raise
     except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
         logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
         if deep_research:
             await _refund_deep_research(state, session, user_id)
         event_bus.publish(
-            TURN_END_KIND, turn_id=turn_id, data={"status": "error", "message": str(exc)}
+            EventKind.TURN_END, turn_id=turn_id, data={"status": "error", "message": str(exc)}
         )
         return
 
@@ -449,12 +450,12 @@ async def _drive_turn(
         session, user_id=user_id, turn_id=turn_id, result=result, byok=byok is not None
     )
     event_bus.publish(
-        "message",
+        EventKind.MESSAGE,
         turn_id=turn_id,
         data={"text": result.final_text, "framework": result.routing.framework},
     )
     await reward_completed_chat(session, event_bus=event_bus, turn_id=turn_id, user_id=user_id)
-    event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "done"})
+    event_bus.publish(EventKind.TURN_END, turn_id=turn_id, data={"status": "done"})
 
 
 async def _refund_deep_research(state: AppState, session: AsyncSession, user_id: str) -> None:

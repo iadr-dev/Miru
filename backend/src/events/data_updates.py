@@ -26,11 +26,10 @@ import structlog
 from redis.asyncio import Redis
 
 from events.bus import Event, InMemoryEventBus
+from events.kinds import EventKind
 from schemas.enums import Capability, Market
 
 logger = structlog.get_logger(__name__)
-
-_KIND = "data.updated"
 
 
 def _payload(capability: Capability, market: Market, as_of: str, scope: str) -> dict[str, object]:
@@ -55,7 +54,7 @@ class RedisDataUpdatePublisher:
         self, *, capability: Capability, market: Market, as_of: str, scope: str
     ) -> None:
         event = Event(
-            kind=_KIND,
+            kind=EventKind.DATA_UPDATED,
             seq=0,
             ts=datetime.now(UTC),
             data=_payload(capability, market, as_of, scope),
@@ -103,10 +102,10 @@ class InMemoryDataUpdateBroker:
     async def publish_data_updated(
         self, *, capability: Capability, market: Market, as_of: str, scope: str
     ) -> None:
-        self._bus.publish(_KIND, data=_payload(capability, market, as_of, scope))
+        self._bus.publish(EventKind.DATA_UPDATED, data=_payload(capability, market, as_of, scope))
 
     def updates(self) -> AsyncIterator[Event]:
-        return self._bus.subscribe([_KIND])
+        return self._bus.subscribe([EventKind.DATA_UPDATED])
 
 
 __all__ = [

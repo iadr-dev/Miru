@@ -177,8 +177,13 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
 - **Money as integer micro-units** — SQLite `REAL` loses precision; no `Decimal` columns.
 - **CHECK constraints, not native ENUM** for all constrained text (`tier`/`status`/`role`/`type`/
   `data_class`…).
-- **Alembic dual-dialect CI** — every migration applies on **both** SQLite and Postgres
-  (`dual_dialect` marker); expand-contract for message-tree / `stream_events` changes.
+- **Schema provisioning (development stage): no Alembic.** `Base.metadata.create_all()` plus
+  `db/additive_upgrade.py` (adds missing columns/indexes/named uniques, never drops or rewrites) run
+  at every process start. A destructive or data-dependent model change means rebuilding the dev
+  database - keep the schema fresh and clean rather than carrying migration history. **Alembic is
+  adopted when the first production version ships:** a baseline migration generated from the models,
+  then forward-only migrations that apply on **both** SQLite and Postgres in CI (`dual_dialect`
+  marker), expand-contract for message-tree / `stream_events` changes.
 - Set `PRAGMA foreign_keys=ON` per SQLite connection or `ON DELETE CASCADE` silently no-ops.
 - Per-user isolation: session-scoped store wrapper injects `WHERE user_id = ?`; Postgres RLS as
   prod backstop.

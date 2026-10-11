@@ -369,7 +369,7 @@ per-phase status (what's actually built, tested, and verified vs. still pending)
 11. Interfaces (FastAPI routers, then MCP/FastMCP server + MCP principal/entitlement)
 12. **Infrastructure & operations** ([modules/16](modules/16-infrastructure.md) +
     [modules/17](modules/17-devops-operations.md)): Redis event transport + cache, DuckDB/Parquet
-    market-data tier, migrations (Alembic dual-dialect), observability/tracing, secrets/KMS,
+    market-data tier, migrations (`create_all` + additive upgrade now; Alembic from the first production release), observability/tracing, secrets/KMS,
     deployment topology, circuit breakers, cost ceilings — plus CI/CD, containers, probes,
     graceful SSE drain, DR, Redis HA, PII residency, runbooks, feature flags
 13. Hardening (test profiles, governance + per-user isolation + context-efficiency +

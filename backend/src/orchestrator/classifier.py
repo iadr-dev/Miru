@@ -19,6 +19,7 @@ from typing import cast
 import structlog
 
 from events.bus import EventBus
+from events.kinds import EventKind
 from llm.base import LLMClient, Message, MessageRole
 from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
 from orchestrator.models import Framework, Routing
@@ -185,7 +186,7 @@ class IntentClassifier:
         routing = await self._classify_inner(message, history=history)
         if event_bus is not None:
             event_bus.publish(
-                "route.decided",
+                EventKind.ROUTE_DECIDED,
                 turn_id=turn_id,
                 data={
                     "framework": routing.framework,

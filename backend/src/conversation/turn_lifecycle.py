@@ -19,7 +19,8 @@ import structlog
 from agent.loop import AgentLoop, TurnCancelledError
 from conversation.models import Framework, MessageBlockType, TextBlock, TurnRole
 from conversation.store import ConversationStore
-from events.bus import TURN_END_KIND, EventBus
+from events.bus import EventBus
+from events.kinds import EventKind
 from tools.base import ToolContext
 
 logger = structlog.get_logger(__name__)
@@ -126,7 +127,9 @@ class TurnLifecycle:
             self._idempotency_seen[(thread_id, idempotency_key)] = turn_id
 
         self._states[turn_id] = TurnLifecycleState.ACCEPTED
-        self._event_bus.publish("turn.start", turn_id=turn_id, data={"thread_id": thread_id})
+        self._event_bus.publish(
+            EventKind.TURN_START, turn_id=turn_id, data={"thread_id": thread_id}
+        )
         self._transition(turn_id, TurnLifecycleState.RUNNING)
 
         loop.cancel_token = cancel_token
@@ -144,12 +147,14 @@ class TurnLifecycle:
                 framework=Framework.SINGLE,
                 idempotency_key=idempotency_key,
             )
-            self._event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "cancelled"})
+            self._event_bus.publish(
+                EventKind.TURN_END, turn_id=turn_id, data={"status": "cancelled"}
+            )
             return TurnHandle(turn_id=turn_id, cancel_token=cancel_token)
         except Exception as exc:
             self._transition(turn_id, TurnLifecycleState.ERROR)
             self._event_bus.publish(
-                TURN_END_KIND, turn_id=turn_id, data={"status": "error", "message": str(exc)}
+                EventKind.TURN_END, turn_id=turn_id, data={"status": "error", "message": str(exc)}
             )
             logger.error("turn_errored", turn_id=turn_id, error=str(exc))
             raise
@@ -164,7 +169,7 @@ class TurnLifecycle:
             framework=Framework.SINGLE,
             idempotency_key=idempotency_key,
         )
-        self._event_bus.publish(TURN_END_KIND, turn_id=turn_id, data={"status": "done"})
+        self._event_bus.publish(EventKind.TURN_END, turn_id=turn_id, data={"status": "done"})
         return TurnHandle(turn_id=turn_id, cancel_token=cancel_token)
 
     async def _current_leaf(self, thread_id: str) -> str | None:
