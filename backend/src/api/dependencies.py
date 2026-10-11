@@ -33,6 +33,7 @@ from events.factory import EventBusFactory
 from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker
 from events.rate_limit import AsyncRateLimiter
+from events.turn_control import TurnControl
 from orchestrator.orchestrator import Orchestrator
 from payments.service import BillingService
 from payments.store import SqlAlchemySubscriptionStore
@@ -63,6 +64,7 @@ class AppState:
     usage_store: UsageStore
     quote_feed: QuoteFeed
     data_update_broker: DataUpdateBroker
+    turn_control: TurnControl
 
 
 def get_state(request: Request) -> AppState:

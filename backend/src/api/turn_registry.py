@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 
 from conversation.turn_lifecycle import SimpleCancelToken
 from events.bus import EventBus
+from events.kinds import EventKind
+from events.turn_control import ControlMessage, ControlOp
 
 
 @dataclass
@@ -33,6 +35,8 @@ class RunningTurn:
     event_bus: EventBus
     cancel_token: SimpleCancelToken
     task: asyncio.Task[None] | None = None
+    # Listens for cancel/steer relayed from other workers (None on the single-process backend).
+    control_task: asyncio.Task[None] | None = None
     steering: list[str] = field(default_factory=list[str])
 
     def request_cancel(self) -> None:
@@ -42,6 +46,21 @@ class RunningTurn:
         self.cancel_token.cancel()
         if self.task is not None:
             self.task.cancel()
+
+    def steer(self, text: str) -> None:
+        """Queue a steering message and tell the client it was accepted (the one place both the
+        local route and a command relayed from another worker go through)."""
+        self.steering.append(text)
+        self.event_bus.publish(
+            EventKind.STEERING_ACCEPTED, turn_id=self.turn_id, data={"message": text}
+        )
+
+    def apply(self, command: ControlMessage) -> None:
+        """Carry out a command that arrived from another worker."""
+        if command.op is ControlOp.CANCEL:
+            self.request_cancel()
+        else:
+            self.steer(command.text)
 
     def drain(self) -> tuple[str, ...]:
         """`agent.hooks.SteeringSource` — the running `AgentLoop`'s reach-in for the queue
