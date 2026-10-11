@@ -12,77 +12,41 @@ Skips (never fails) when `TEST_POSTGRES_URL` is unset; the CI concurrency leg se
 from __future__ import annotations
 
 import asyncio
-import os
-import uuid
-from collections.abc import AsyncIterator
-from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from db.base import Base, make_engine, make_session_factory
-from db.models import UserRow
 from memory.watchlists import StaleWatchlistVersionError, WatchlistStore
 from schemas.enums import Market
+from tests.pg_support import insert_user
 
 pytestmark = pytest.mark.concurrency
 
 _EDITORS = 8
 
 
-@pytest.fixture
-async def session_factory() -> AsyncIterator[async_sessionmaker[object]]:
-    pg_url = os.environ.get("TEST_POSTGRES_URL")
-    if not pg_url:
-        pytest.skip("TEST_POSTGRES_URL not set - Postgres concurrency check skipped")
-    engine = make_engine(pg_url)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    try:
-        yield make_session_factory(engine)
-    finally:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
-
-
-async def _user_with_group(factory: async_sessionmaker[object]) -> tuple[str, str]:
-    now = datetime.now(UTC)
-    user_id = str(uuid.uuid4())
-    async with factory() as session:  # type: ignore[union-attr]
-        session.add(
-            UserRow(
-                id=user_id,
-                email=f"{user_id}@example.test",
-                display_name="Race",
-                tier="free",
-                personality_id="steady",
-                created_at=now,
-                updated_at=now,
-            )
-        )
-        await session.commit()
+async def _group_for(factory: async_sessionmaker[object], user_id: str) -> str:
     async with factory() as session:  # type: ignore[union-attr]
         group = await WatchlistStore(session).create_group(
             user_id=user_id, name="start", market=Market.TW, asset_class="stock"
         )
         await session.commit()
-    return user_id, group.id
+    return group.id
 
 
 async def test_concurrent_edits_from_the_same_version_let_exactly_one_win(
-    session_factory: async_sessionmaker[object],
+    pg_session_factory: async_sessionmaker[object],
 ) -> None:
-    user_id, group_id = await _user_with_group(session_factory)
-
+    user_id = await insert_user(pg_session_factory)
+    group_id = await _group_for(pg_session_factory, user_id)
     # Every editor connects first, then all start together: a fresh connection takes tens of
     # milliseconds, so without the barrier the first editor would finish before the others had
     # even connected and nothing would overlap.
     start = asyncio.Barrier(_EDITORS)
 
     async def rename(index: int) -> bool:
-        async with session_factory() as session:  # type: ignore[union-attr]
+        async with pg_session_factory() as session:  # type: ignore[union-attr]
             await session.execute(text("select 1"))
             await start.wait()
             try:
@@ -101,6 +65,6 @@ async def test_concurrent_edits_from_the_same_version_let_exactly_one_win(
     outcomes = await asyncio.gather(*(rename(i) for i in range(_EDITORS)))
 
     assert sum(outcomes) == 1, f"{sum(outcomes)} editors saved from version 0; exactly one may win"
-    async with session_factory() as session:  # type: ignore[union-attr]
+    async with pg_session_factory() as session:  # type: ignore[union-attr]
         groups = await WatchlistStore(session).list_groups(user_id)
     assert [g.version for g in groups if g.id == group_id] == [1]

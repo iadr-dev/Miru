@@ -34,15 +34,16 @@ def test_open_ended_ranges_are_accepted() -> None:
     assert MarketOnlyInput(market=Market.TW, end_date=_TODAY).start_date is None
 
 
+def _build(model: str, start: date, end: date) -> DateRangeInput | MarketOnlyInput:
+    if model == "symbol":
+        return DateRangeInput(id="2330", market=Market.TW, start_date=start, end_date=end)
+    return MarketOnlyInput(market=Market.TW, start_date=start, end_date=end)
+
+
 @pytest.mark.parametrize("model", ["symbol", "market"])
 def test_an_inverted_range_is_rejected(model: str) -> None:
     with pytest.raises(ValidationError, match="is after end_date"):
-        if model == "symbol":
-            DateRangeInput(
-                id="2330", market=Market.TW, start_date=_TODAY, end_date=date(2026, 1, 1)
-            )
-        else:
-            MarketOnlyInput(market=Market.TW, start_date=_TODAY, end_date=date(2026, 1, 1))
+        _build(model, _TODAY, date(2026, 1, 1))
 
 
 @pytest.mark.parametrize("model", ["symbol", "market"])
@@ -51,7 +52,4 @@ def test_a_range_wider_than_the_cap_is_rejected(model: str) -> None:
     assert (_TODAY - start).days > MAX_DATE_RANGE_DAYS
 
     with pytest.raises(ValidationError, match="wider than"):
-        if model == "symbol":
-            DateRangeInput(id="2330", market=Market.TW, start_date=start, end_date=_TODAY)
-        else:
-            MarketOnlyInput(market=Market.TW, start_date=start, end_date=_TODAY)
+        _build(model, start, _TODAY)
