@@ -8,8 +8,10 @@ Cancelling an external billing subscription is the caller's job and must happen 
 
 from __future__ import annotations
 
+from typing import cast
+
 import structlog
-from sqlalchemy import delete
+from sqlalchemy import CursorResult, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import Base
@@ -38,11 +40,12 @@ async def erase_user(session: AsyncSession, user_id: str) -> dict[str, int]:
         result = await session.execute(
             delete(tables[name]).where(tables[name].c.user_id == user_id)
         )
-        count = int(result.rowcount or 0)  # type: ignore[attr-defined]
+        count = int(cast("CursorResult[tuple[()]]", result).rowcount or 0)
         if count:
             removed[name] = count
     users = await session.execute(delete(UserRow).where(UserRow.id == user_id))
-    if users.rowcount:  # type: ignore[attr-defined]
-        removed[UserRow.__tablename__] = int(users.rowcount)  # type: ignore[attr-defined]
+    deleted_users = int(cast("CursorResult[tuple[()]]", users).rowcount or 0)
+    if deleted_users:
+        removed[UserRow.__tablename__] = deleted_users
     logger.info("account_erased", user_id=user_id, tables=len(removed))
     return removed

@@ -47,6 +47,7 @@ import structlog
 from redis.asyncio import Redis
 
 from events.bus import Event
+from events.pubsub import close_pubsub
 from schemas.enums import Market
 
 logger = structlog.get_logger(__name__)
@@ -209,7 +210,7 @@ class RedisQuoteTransport:
                     yield _decode(data)
         finally:
             await pubsub.unsubscribe(*channels)
-            await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py PubSub.aclose lacks a stub
+            await close_pubsub(pubsub)
 
 
 class InMemoryQuoteTransport:

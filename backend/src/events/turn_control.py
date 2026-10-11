@@ -23,6 +23,7 @@ import structlog
 from redis.asyncio import Redis
 
 from config.settings import Settings
+from events.pubsub import close_pubsub
 
 logger = structlog.get_logger(__name__)
 
@@ -155,7 +156,7 @@ class RedisTurnControl:
                     logger.warning("turn_control_bad_message", turn_id=turn_id)
         finally:
             await pubsub.unsubscribe()
-            await pubsub.aclose()  # type: ignore[no-untyped-call]
+            await close_pubsub(pubsub)
 
 
 def _text(value: bytes | str) -> str:
