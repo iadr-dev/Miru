@@ -27,6 +27,7 @@ from redis.asyncio import Redis
 
 from events.bus import Event, InMemoryEventBus
 from events.kinds import EventKind
+from events.pubsub import close_pubsub
 from schemas.enums import Capability, Market
 
 logger = structlog.get_logger(__name__)
@@ -89,7 +90,7 @@ class RedisDataUpdateReader:
                     yield Event.model_validate(json.loads(text))
         finally:
             await pubsub.unsubscribe(self._channel)
-            await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py PubSub.aclose lacks a stub
+            await close_pubsub(pubsub)
 
 
 class InMemoryDataUpdateBroker:

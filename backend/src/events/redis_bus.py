@@ -40,6 +40,7 @@ from redis.asyncio import Redis
 
 from events.bus import Event
 from events.kinds import EventKind
+from events.pubsub import close_pubsub
 from events.stream_store import StreamEventStore
 
 logger = structlog.get_logger(__name__)
@@ -188,7 +189,7 @@ class RedisStreamReader:
                     yield _decode(data)
         finally:
             await pubsub.unsubscribe(channel)
-            await pubsub.aclose()  # type: ignore[no-untyped-call]  # redis-py PubSub.aclose lacks a stub annotation
+            await close_pubsub(pubsub)
 
 
 __all__ = ["RedisEventBus", "RedisStreamReader", "channel_for"]
