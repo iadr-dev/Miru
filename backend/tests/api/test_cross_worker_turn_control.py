@@ -125,6 +125,6 @@ async def test_a_relayed_command_acts_on_the_running_turn() -> None:
     running.apply(ControlMessage(op=ControlOp.CANCEL))
 
     assert running.drain() == ("focus",)
-    assert running.cancel_token.is_cancelled
+    assert running.cancel_token.is_cancelled()
     event = await asyncio.wait_for(first_event, 5)
     assert event.kind == EventKind.STEERING_ACCEPTED
