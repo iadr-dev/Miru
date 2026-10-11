@@ -1,13 +1,10 @@
 /**
  * 自選股 (watchlist) API client — mirrors `backend/src/api/routers/memory.py`'s `/watchlists/*`
- * routes exactly. Follows `lib/api/settings.ts`'s established convention: `fetchWithRefresh` +
- * `apiUrl` + Zod-parse-at-the-boundary + a typed error class + a dedicated `requestJson` (method/
- * body support, `expectBody:false` for 204s) — kept as this file's own copy rather than importing
- * `settings.ts`'s, since the two are meant to evolve independently per backend router area.
+ * routes exactly. Requests go through the shared `lib/api/http.ts` seam (credentials, refresh on
+ * 401, the `{code, message, retryable}` envelope parsed into `WatchlistApiError`) and every
+ * response is Zod-parsed at the boundary.
  */
-import { fetchWithRefresh } from "@/lib/api/auth";
-import { apiUrl } from "@/lib/api/config";
-import { apiErrorSchema } from "@/lib/api/schemas";
+import { ApiRequestError, createRequestJson, jsonHeaders } from "@/lib/api/http";
 import type { Market } from "@/types/settings";
 import {
   listWatchlistItemsResponseSchema,
@@ -21,55 +18,15 @@ import {
   watchlistItemSchema,
 } from "@/types/watchlist";
 
-export class WatchlistApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly retryable: boolean;
+export class WatchlistApiError extends ApiRequestError {
   constructor(code: string, message: string, status: number, retryable: boolean) {
-    super(message);
-    this.name = "WatchlistApiError";
-    this.code = code;
-    this.status = status;
-    this.retryable = retryable;
+    super("WatchlistApiError", code, message, status, retryable);
   }
 }
 
-async function requestJson(
-  path: string,
-  init: RequestInit & { expectBody?: boolean } = {},
-): Promise<unknown> {
-  const { expectBody = true, ...rest } = init;
-  const response = await fetchWithRefresh(apiUrl(path), {
-    credentials: "include",
-    headers: { accept: "application/json", ...rest.headers },
-    ...rest,
-  });
-  if (!response.ok) {
-    const parsed = apiErrorSchema.safeParse(await response.json().catch(() => null));
-    if (parsed.success) {
-      throw new WatchlistApiError(
-        parsed.data.code,
-        parsed.data.message,
-        response.status,
-        parsed.data.retryable,
-      );
-    }
-    throw new WatchlistApiError(
-      "unknown_error",
-      `Request failed (${response.status})`,
-      response.status,
-      response.status >= 500,
-    );
-  }
-  if (!expectBody || response.status === 204) {
-    return null;
-  }
-  return response.json();
-}
-
-function jsonHeaders(): HeadersInit {
-  return { "content-type": "application/json" };
-}
+const requestJson = createRequestJson(
+  (code, message, status, retryable) => new WatchlistApiError(code, message, status, retryable),
+);
 
 /** `If-Match: <version>` is how the backend's optimistic `version` CAS is threaded through — a
  * stale write raises `WatchlistApiError` with `status === 409`, `retryable === true`. */

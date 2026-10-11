@@ -11,9 +11,8 @@
  */
 
 import { z } from "zod";
-import { fetchWithRefresh, type OAuthProvider } from "@/lib/api/auth";
-import { apiUrl } from "@/lib/api/config";
-import { apiErrorSchema } from "@/lib/api/schemas";
+import type { OAuthProvider } from "@/lib/api/auth";
+import { ApiRequestError, createRequestJson, jsonHeaders } from "@/lib/api/http";
 import {
   type Account,
   type EntitlementView,
@@ -83,55 +82,15 @@ import {
   todayUsageSchema,
 } from "@/types/usage";
 
-export class SettingsApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly retryable: boolean;
+export class SettingsApiError extends ApiRequestError {
   constructor(code: string, message: string, status: number, retryable: boolean) {
-    super(message);
-    this.name = "SettingsApiError";
-    this.code = code;
-    this.status = status;
-    this.retryable = retryable;
+    super("SettingsApiError", code, message, status, retryable);
   }
 }
 
-async function requestJson(
-  path: string,
-  init: RequestInit & { expectBody?: boolean } = {},
-): Promise<unknown> {
-  const { expectBody = true, ...rest } = init;
-  const response = await fetchWithRefresh(apiUrl(path), {
-    credentials: "include",
-    headers: { accept: "application/json", ...rest.headers },
-    ...rest,
-  });
-  if (!response.ok) {
-    const parsed = apiErrorSchema.safeParse(await response.json().catch(() => null));
-    if (parsed.success) {
-      throw new SettingsApiError(
-        parsed.data.code,
-        parsed.data.message,
-        response.status,
-        parsed.data.retryable,
-      );
-    }
-    throw new SettingsApiError(
-      "unknown_error",
-      `Request failed (${response.status})`,
-      response.status,
-      response.status >= 500,
-    );
-  }
-  if (!expectBody || response.status === 204) {
-    return null;
-  }
-  return response.json();
-}
-
-function jsonHeaders(): HeadersInit {
-  return { "content-type": "application/json" };
-}
+const requestJson = createRequestJson(
+  (code, message, status, retryable) => new SettingsApiError(code, message, status, retryable),
+);
 
 // ---------------------------------------------------------------------------
 // Profile — PATCH /me

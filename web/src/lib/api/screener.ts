@@ -1,12 +1,10 @@
 /**
  * Screener API client — mirrors `backend/src/api/routers/analytics.py`'s `/analytics/screener/*`
- * routes exactly. Follows `lib/api/watchlist.ts`'s established convention: `fetchWithRefresh` +
- * `apiUrl` + Zod-parse-at-the-boundary + a typed error class + a dedicated `requestJson` (method/
- * body support, `expectBody:false` for 204s).
+ * routes exactly. Requests go through the shared `lib/api/http.ts` seam (credentials, refresh on
+ * 401, the `{code, message, retryable}` envelope parsed into `ScreenerApiError`) and every response
+ * is Zod-parsed at the boundary.
  */
-import { fetchWithRefresh } from "@/lib/api/auth";
-import { apiUrl } from "@/lib/api/config";
-import { apiErrorSchema } from "@/lib/api/schemas";
+import { ApiRequestError, createRequestJson, jsonHeaders } from "@/lib/api/http";
 import {
   type FactorCatalog,
   factorCatalogResponseSchema,
@@ -22,55 +20,15 @@ import {
   screenerScreensResponseSchema,
 } from "@/types/screener";
 
-export class ScreenerApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly retryable: boolean;
+export class ScreenerApiError extends ApiRequestError {
   constructor(code: string, message: string, status: number, retryable: boolean) {
-    super(message);
-    this.name = "ScreenerApiError";
-    this.code = code;
-    this.status = status;
-    this.retryable = retryable;
+    super("ScreenerApiError", code, message, status, retryable);
   }
 }
 
-async function requestJson(
-  path: string,
-  init: RequestInit & { expectBody?: boolean } = {},
-): Promise<unknown> {
-  const { expectBody = true, ...rest } = init;
-  const response = await fetchWithRefresh(apiUrl(path), {
-    credentials: "include",
-    headers: { accept: "application/json", ...rest.headers },
-    ...rest,
-  });
-  if (!response.ok) {
-    const parsed = apiErrorSchema.safeParse(await response.json().catch(() => null));
-    if (parsed.success) {
-      throw new ScreenerApiError(
-        parsed.data.code,
-        parsed.data.message,
-        response.status,
-        parsed.data.retryable,
-      );
-    }
-    throw new ScreenerApiError(
-      "unknown_error",
-      `Request failed (${response.status})`,
-      response.status,
-      response.status >= 500,
-    );
-  }
-  if (!expectBody || response.status === 204) {
-    return null;
-  }
-  return response.json();
-}
-
-function jsonHeaders(): HeadersInit {
-  return { "content-type": "application/json" };
-}
+const requestJson = createRequestJson(
+  (code, message, status, retryable) => new ScreenerApiError(code, message, status, retryable),
+);
 
 // ---------------------------------------------------------------------------
 // GET /analytics/screener/factors

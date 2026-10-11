@@ -4,9 +4,8 @@
  * so this client only ever calls routes that exist). Follows `lib/api/settings.ts`'s established
  * convention: `fetchWithRefresh` + `apiUrl` + Zod-parse-at-the-boundary + a typed error class.
  */
-import { fetchWithRefresh } from "@/lib/api/auth";
-import { apiUrl } from "@/lib/api/config";
-import { apiErrorSchema } from "@/lib/api/schemas";
+
+import { ApiRequestError, createRequestJson } from "@/lib/api/http";
 import {
   type AdvanceDeclineResponse,
   advanceDeclineResponseSchema,
@@ -98,45 +97,17 @@ import {
 } from "@/types/market";
 import type { Market } from "@/types/settings";
 
-export class MarketApiError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly retryable: boolean;
+export class MarketApiError extends ApiRequestError {
   constructor(code: string, message: string, status: number, retryable: boolean) {
-    super(message);
-    this.name = "MarketApiError";
-    this.code = code;
-    this.status = status;
-    this.retryable = retryable;
+    super("MarketApiError", code, message, status, retryable);
   }
 }
 
-// Exported so `lib/api/stock-detail.ts` (a separate feature file, per-symbol shaped rather than
-// whole-market) reuses this exact error-handling seam instead of duplicating it.
-export async function requestJson(path: string): Promise<unknown> {
-  const response = await fetchWithRefresh(apiUrl(path), {
-    credentials: "include",
-    headers: { accept: "application/json" },
-  });
-  if (!response.ok) {
-    const parsed = apiErrorSchema.safeParse(await response.json().catch(() => null));
-    if (parsed.success) {
-      throw new MarketApiError(
-        parsed.data.code,
-        parsed.data.message,
-        response.status,
-        parsed.data.retryable,
-      );
-    }
-    throw new MarketApiError(
-      "unknown_error",
-      `Request failed (${response.status})`,
-      response.status,
-      response.status >= 500,
-    );
-  }
-  return response.json();
-}
+// Exported so `lib/api/stock-detail.ts`, `etf-detail.ts` and `search.ts` reuse this exact
+// error-handling seam instead of duplicating it.
+export const requestJson = createRequestJson(
+  (code, message, status, retryable) => new MarketApiError(code, message, status, retryable),
+);
 
 type DateRangeParams = { startDate?: string; endDate?: string };
 
