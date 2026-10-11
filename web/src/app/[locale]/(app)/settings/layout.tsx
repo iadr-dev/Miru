@@ -18,7 +18,11 @@ export default async function SettingsLayout({
   setRequestLocale(locale);
   return (
     <div className="mx-auto flex min-h-full max-w-4xl flex-col gap-6 p-6 lg:flex-row lg:gap-10">
-      <SettingsNav />
+      {/* The nav fills whatever box it is given (the dialog gives it `lg:w-56` too), so the page
+          must bound it or it takes the whole row and squeezes the content to a sliver. */}
+      <div className="shrink-0 lg:w-56">
+        <SettingsNav />
+      </div>
       <div className="min-w-0 flex-1">
         <div className="mx-auto max-w-[640px]">{children}</div>
       </div>
