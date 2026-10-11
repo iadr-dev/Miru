@@ -678,8 +678,11 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
 - Partial indexes + `ON CONFLICT` upsert are portable (SQLite ≥ 3.24 / 3.8).
 
 ## Migrations & retention
-- **Migrations:** Alembic; every migration must apply on **both SQLite and Postgres in CI**
-  (expand-contract for message-tree / `stream_events` changes). See [modules/16](modules/16-infrastructure.md) §9.
+- **Migrations:** none yet, by design. In development the schema is provisioned by
+  `create_all()` + `db/additive_upgrade.py` and rebuilt when a change is destructive. **Alembic is
+  adopted at the first production release** (baseline from the models, then forward-only
+  migrations that must apply on **both SQLite and Postgres in CI**, expand-contract for
+  message-tree / `stream_events` changes). See [modules/16](modules/16-infrastructure.md) §9.
 - **Retention (concrete):** `stream_events` — **TTL purge** (delete where `created_at < now() − N`,
   kept > turn completion); **not** time-partitioned (would break `UNIQUE(turn_id, event_seq)`, see the
   table note). Soft-deleted `threads` purged on a scheduled job **with PII scrub** — profile PII
