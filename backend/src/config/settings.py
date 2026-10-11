@@ -30,6 +30,17 @@ class Settings(BaseSettings):
 
     # ---- Datastores ----
     database_url: str = "sqlite+aiosqlite:///./dev.db"
+    # Postgres connection pool (ignored for SQLite). Each process (api, scheduler, ingest, mcp)
+    # has its own pool, so size them against the server's max_connections across all replicas.
+    db_pool_size: int = 10
+    db_max_overflow: int = 10
+    # Seconds before an idle pooled connection is replaced (stays under typical proxy/firewall
+    # idle cut-offs). `pool_pre_ping` additionally tests a connection before handing it out, so a
+    # restart or failover of the database shows up as a retried checkout, not a user-facing error.
+    db_pool_recycle_seconds: int = 1800
+    # Server-side cap on one statement; a runaway query is cancelled instead of holding a
+    # connection. 0 disables it.
+    db_statement_timeout_ms: int = 30_000
     duckdb_path: str = "./data/duckdb"
     parquet_root: str = "./data/parquet"
 

@@ -48,7 +48,7 @@ from api.routers import (
 )
 from api.turn_registry import TurnRegistry
 from config.settings import Settings, get_settings
-from db.base import ensure_schema_for
+from db.base import dispose_engine_for, ensure_schema_for
 from events.factory import EventBusFactory, build_event_bus_factory
 from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker, build_data_update_broker, build_quote_feed
@@ -96,6 +96,7 @@ def create_app(
             # gap this doesn't fix) — not repeating that gap for the new manager.
             if live_quote_manager is not None:
                 await live_quote_manager.aclose()
+            await dispose_engine_for(session_factory)
 
     app = FastAPI(title="Miro API", version="0.1.0", lifespan=_lifespan)
 

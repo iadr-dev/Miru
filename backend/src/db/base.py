@@ -26,8 +26,31 @@ class Base(DeclarativeBase):
 
 
 def make_engine(database_url: str | None = None) -> AsyncEngine:
-    url = database_url or get_settings().database_url
-    return create_async_engine(url, future=True)
+    settings = get_settings()
+    url = database_url or settings.database_url
+    if not url.startswith("postgresql"):
+        # SQLite (dev/tests): its pool has different semantics and nothing to health-check.
+        return create_async_engine(url, future=True)
+    connect_args: dict[str, object] = {}
+    if settings.db_statement_timeout_ms > 0:
+        connect_args["server_settings"] = {
+            "statement_timeout": str(settings.db_statement_timeout_ms)
+        }
+    return create_async_engine(
+        url,
+        future=True,
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_recycle=settings.db_pool_recycle_seconds,
+        connect_args=connect_args,
+    )
+
+
+async def dispose_engine_for(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Close the pool behind a session factory at shutdown, so connections are returned to the
+    server cleanly instead of being dropped when the process exits."""
+    await session_factory.kw["bind"].dispose()
 
 
 def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
