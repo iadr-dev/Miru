@@ -8,9 +8,10 @@ product/app state (threads, memory, schedules…).
 **Conventions**
 - Base path `/api/v1`. Auth via session cookie or `Authorization: Bearer`.
 - Anonymous allowed for public market/context reads; AI chat requires sign-in.
-- Errors: JSON `{code, message, retryable}` for errors the app raises (`ApiError`) and for request
-  validation (422, first message only). Unknown paths (404) and wrong methods (405) still return
-  FastAPI's default `{"detail": ...}`. Unentitled AI features return a **teaser envelope**
+- Errors: JSON `{code, message, retryable}` for every error: ones the app raises (`ApiError`),
+  request validation (422, first problem with its location, e.g. `query.symbol`), and the
+  framework's own (unknown path `not_found`, wrong method `method_not_allowed` with the `Allow`
+  header). Unentitled AI features return a **teaser envelope**
   `{locked, required_tier, preview}` (HTTP 200), never 401 — see
   [modules/12](modules/12-multi-user-tiers.md).
 - `Idempotency-Key` honored on turn-creating POSTs.
