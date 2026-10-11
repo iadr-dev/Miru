@@ -266,6 +266,24 @@ export function retryAfterMs(response: Response): number | null {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
 }
 
+type RateLimitListener = (retryAfterSeconds: number | null) => void;
+const rateLimitListeners = new Set<RateLimitListener>();
+
+/** Be told when a request finally comes back rate-limited (after any retries), so the UI can say
+ * so once instead of every caller showing its own generic failure. Returns the unsubscribe. */
+export function onRateLimited(listener: RateLimitListener): () => void {
+  rateLimitListeners.add(listener);
+  return () => {
+    rateLimitListeners.delete(listener);
+  };
+}
+
+function announceRateLimited(response: Response): void {
+  const wait = retryAfterMs(response);
+  const seconds = wait === null ? null : Math.max(1, Math.ceil(wait / 1000));
+  for (const listener of rateLimitListeners) listener(seconds);
+}
+
 async function fetchHonouringRateLimit(url: string, init: RequestInit): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
   const safe = method === "GET" || method === "HEAD";
@@ -280,6 +298,7 @@ async function fetchHonouringRateLimit(url: string, init: RequestInit): Promise<
     await new Promise((resolve) => setTimeout(resolve, wait + Math.random() * 250));
     response = await fetch(url, init);
   }
+  if (response.status === 429) announceRateLimited(response);
   return response;
 }
 

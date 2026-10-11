@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DELETE_ACCOUNT_CONFIRMATION, deleteAccount, fetchWithRefresh } from "@/lib/api/auth";
+import {
+  DELETE_ACCOUNT_CONFIRMATION,
+  deleteAccount,
+  fetchWithRefresh,
+  onRateLimited,
+} from "@/lib/api/auth";
 
 describe("fetchWithRefresh", () => {
   beforeEach(() => {
@@ -169,5 +174,56 @@ describe("rate-limited reads", () => {
 
     expect((await pending).status).toBe(429);
     expect(fetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("rate-limit announcements", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("announces a request that is still rate limited, with the wait in seconds", async () => {
+    const heard = vi.fn();
+    const stop = onRateLimited(heard);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(null, { status: 429, headers: { "retry-after": "45" } }),
+    );
+
+    await fetchWithRefresh("/x", { credentials: "include" });
+    stop();
+
+    expect(heard).toHaveBeenCalledWith(45);
+  });
+
+  it("stays quiet when a retry gets through", async () => {
+    const heard = vi.fn();
+    const stop = onRateLimited(heard);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 429, headers: { "retry-after": "1" } }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    const pending = fetchWithRefresh("/x", { credentials: "include" });
+    await vi.advanceTimersByTimeAsync(1_500);
+    await pending;
+    stop();
+
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it("announces a rate-limited write too (it is never retried)", async () => {
+    const heard = vi.fn();
+    const stop = onRateLimited(heard);
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 429 }));
+
+    await fetchWithRefresh("/x", { method: "POST" });
+    stop();
+
+    expect(heard).toHaveBeenCalledWith(null);
   });
 });

@@ -2,7 +2,9 @@
   "common": {
     "toast": {
       "dismiss": "Dismiss"
-    }
+    },
+    "rateLimited": "Too many requests right now. Please try again in a moment.",
+    "rateLimitedWait": "Too many requests right now. Please try again in {seconds} s."
   },
   "brand": {
     "name": "Miru",
