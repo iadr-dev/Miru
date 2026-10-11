@@ -539,7 +539,8 @@ def _us_catalog() -> FactorCatalog:
 #
 # Every field below is readable as an already-ingested **whole-market partition** for the whole
 # TW-ETF universe in one read — the exact same partitions/joins `get_etf_list` already assembles
-# for its own whole-market aggregate view (`market_tools.py::_gather_etf_list_inputs`); this
+# for its own whole-market aggregate view (`tools/market/etf_list.py::_gather_etf_list_inputs`);
+# this
 # catalog just exposes those already-computed fields as screener-filterable factors instead of
 # duplicating their derivation. 受益人數 (`get_etf_theme_tags`) and 主動ETF 操作日報
 # (`get_active_etf_report`) are still excluded — genuine **per-symbol** tool reads with no

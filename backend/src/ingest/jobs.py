@@ -102,7 +102,7 @@ class WholeMarketJobSpec:
     scheduler to use — this phase does not schedule anything.
 
     `row_model` is the canonical `schemas.capabilities` row shape for this dataset — the same
-    model any reader (`_rows_from_store` in `tools/market_tools.py`, `fetch_rows` in
+    model any reader (`_rows_from_store` in `tools/market/`, `fetch_rows` in
     `tools/_rows.py`) validates a read-back row against. `run_whole_market_job` validates every
     row against it BEFORE writing, so a malformed upstream row (a `None`/missing field FinMind's
     raw JSON happens to carry for one row of one day) is caught and dropped at the one ingest

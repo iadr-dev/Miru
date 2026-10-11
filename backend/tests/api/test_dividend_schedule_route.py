@@ -1,5 +1,5 @@
 """The new `/market/dividend-schedule` REST route, driven through the REAL FastAPI route via
-`TestClient` — proving it dispatches through the real registry (`tools/market_tools.py`) exactly
+`TestClient` — proving it dispatches through the real registry (`tools/market/`) exactly
 as `tests/api/test_fund_data_routes.py`'s stub-router-swap pattern does for the funds routes.
 `get_dividend_schedule`'s tool is `DataClass.PUBLIC`, so no masked-teaser assertion is needed here
 (see `test_phase11_governance.py` for the Sponsor-tier masking coverage).

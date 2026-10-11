@@ -21,7 +21,7 @@ import type {
 } from "@/types/stock-detail";
 
 // FinMind's `TaiwanStockActiveETFHolding.shares` is raw 股 (individual shares), not 張 (board
-// lots of 1,000 shares) — see `GetEtfsHoldingStockTool`'s own docstring in `market_tools.py`.
+// lots of 1,000 shares) — see `GetEtfsHoldingStockTool`'s own docstring in `tools/market/`.
 // The reference app's 持有張數/建清倉 views both report 張, so every raw share count rendered here
 // is converted at the display boundary; `stock_capital_pct`/`weight_pct` stay untouched (already
 // ratios, unit-independent).
@@ -258,7 +258,7 @@ function RowPreviewCta({ t }: { readonly t: ReturnType<typeof useTranslations> }
 }
 
 /** governance.md §4 top-N-preview exception's row-level lock: the row's own value is never
- * sent for a `locked` row (nulled server-side in `market_tools.py`), so this renders a fixed
+ * sent for a `locked` row (nulled server-side in `tools/market/`), so this renders a fixed
  * placeholder + lock icon rather than reading any field — there is no real number to blur here,
  * unlike `SponsorTeaser`'s whole-card CSS blur over real content. */
 function LockedValueCell(): ReactNode {

@@ -29,7 +29,7 @@ package yet by the time this function runs, `fastmcp`'s own import graph (or Pyt
 machinery resolving some unrelated `import calendar`) can cache the *stdlib* module under the
 bare `calendar` name during that swapped-path window — and that wrong module then stays cached
 under the real name for the rest of the process, breaking every later
-`from calendar.trading_days import TradingDayCalendar` in `tools/market_tools.py` with
+`from calendar.trading_days import TradingDayCalendar` in `tools/market/` with
 "'calendar' is not a package". This function evicts and restores `calendar`/`calendar.*`
 exactly the same way it does for `mcp`/`mcp.*`, so this bootstrap can safely run *before*
 anything in this process has imported the project's `tools`/`calendar` packages — a caller no

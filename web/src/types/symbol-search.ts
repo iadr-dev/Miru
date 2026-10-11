@@ -2,7 +2,7 @@
  * `GET /search` contracts — mirrors `backend/src/api/routers/context.py`'s `symbol_search`
  * route, which dispatches to one of two distinct tools depending on `market`:
  * - `market=TW` → `get_symbol_directory_search` (`GetSymbolDirectorySearchOutput`,
- *   `backend/src/tools/market_tools.py`) — a scan over the ingested `TaiwanStockInfo` roster.
+ *   `backend/src/tools/market/`) — a scan over the ingested `TaiwanStockInfo` roster.
  * - `market=US/GB/JP/EU` → `get_symbol_search` (`GetSymbolSearchOutput`,
  *   `backend/src/tools/analyst_tools.py`) — `yfinance.Search`, live per request.
  *

@@ -37,7 +37,7 @@ _CAVEAT_UNAVAILABLE = (
 )
 
 
-# The exact field set `tools/market_tools.py::LivePriceTick` declares (`extra="forbid"`) — the
+# The exact field set `tools/market/quotes.py::LivePriceTick` declares (`extra="forbid"`) — the
 # raw decoded `PricingData` WS message carries several fields that model doesn't map
 # (`id`/`time`/`exchange`/`quote_type`/`last_size`/`price_hint`/...), so a live tick must be
 # narrowed to this set before crossing the tool boundary, same as `_snapshot_tick`'s own

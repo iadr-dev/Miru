@@ -2,13 +2,14 @@
 screener (TW has no Yahoo-style screener endpoint — `market_ranking_tools.py`'s own module
 docstring: "there is no TW/GB/JP/EU equivalent screener path in this codebase today"). Every kind
 here is OUR OWN aggregation over already-ingested whole-market Parquet partitions, following
-`GetPriceMomentumTool`'s own read pattern (`market_tools.py`): read the store directly via
+`GetPriceMomentumTool`'s own read pattern (`tools/market/`): read the store directly via
 `ParquetStore.read_partition`/`read_range`, never a per-symbol live fan-out and never a live
 whole-market FinMind fetch at request time (`fetch_whole_market` is `ingest/`-only — the
 governance "no full-market scan" rule).
 
 The 7th tab (大戶買賣) is NOT part of this module — it reuses `get_holder_accumulation`
-(`market_tools.py::GetHolderAccumulationTool`) verbatim, wired separately at the frontend/route
+(`tools/market/holder_accumulation.py::GetHolderAccumulationTool`) verbatim, wired separately at
+the frontend/route
 layer, since that tool already has the exact Sponsor-gated shape this tab needs.
 
 Streak tabs (dealer/trust/foreign) read `INSTITUTIONAL_FLOW_DATASET`

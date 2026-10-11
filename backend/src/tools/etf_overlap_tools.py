@@ -41,7 +41,8 @@ silently dropped from the request — it simply contributes no rows to the overl
 Total-return-with-dividends-reinvested comparison across 1-10 symbols, **any market** — unlike
 the overlap-checker, this is legitimately buildable for TW too, because it only needs
 `Capability.PRICE_EOD` (real for TW) + `Capability.DIVIDENDS` (real for TW, wraps the same read
-`market_tools.GetDividendScheduleTool` exposes as `get_dividend_schedule`) — no per-constituent
+`tools.market.dividends.GetDividendScheduleTool` exposes as `get_dividend_schedule`) — no
+per-constituent
 holdings/NAV involved. `lookback_days` is bounded to `_MAX_LOOKBACK_DAYS` (~55yr) rather than the
 original 10yr cap, since a single-symbol call (e.g. the ETF detail page's own "年化報酬(成立以來)"
 stat) needs to span all the way back to a fund's real `inception_date`, not just a recent window.

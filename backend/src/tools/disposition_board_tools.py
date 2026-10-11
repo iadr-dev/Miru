@@ -142,7 +142,7 @@ def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, obje
 
 
 def _calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
-    """Same construction `market_tools.py::_real_calendar` uses — duplicated here since
+    """Same construction `tools/market/_common.py::real_calendar` uses — duplicated here since
     `tools/` modules don't import each other's private helpers."""
     known_dates = store.list_partition_dates(PRICE_EOD_JOB.dataset, market)
     if not known_dates:
@@ -169,7 +169,8 @@ def _two_latest_dates_on_or_before(
 ) -> tuple[date_ | None, date_ | None]:
     """`(latest, prior)` — the two most recent dates `dataset`+`market` has an actually-written
     partition for, at or before `on_or_before`. Same shape as
-    `market_tools.py::_two_latest_ingested_dates_on_or_before` (duplicated, not imported — that
+    `tools/market/daily_signal.py::_two_latest_ingested_dates_on_or_before` (duplicated, not
+    imported — that
     module's helper is private) — needed because `PRICE_EOD_JOB`/`INSTITUTIONAL_FLOW_JOB` lag
     behind `disposition_events`'s own report date in a sparse dev backfill (their upstream
     cadence isn't 1:1 with TWSE/TPEx's snapshot-only feed); reading exactly `report_date`'s own
@@ -727,7 +728,7 @@ def _parse_matching_interval_minutes(*texts: str | None) -> int | None:
 
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
     """This module's `(tool, immediate)` registration table — builds its own `ParquetStore` from
-    `config.settings`, same self-contained-construction pattern `mops_tools.py`/`market_tools.py`
+    `config.settings`, same self-contained-construction pattern `mops_tools.py`/`tools/market/`
     already use, since the one call site (`tools/__init__.py`) only ever passes `router`."""
     store = ParquetStore(root=get_settings().parquet_root)
     return [(GetDispositionBoardTool(store, router), False)]

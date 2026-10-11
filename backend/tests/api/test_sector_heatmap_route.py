@@ -1,5 +1,5 @@
 """The new `/market/sector-heatmap` REST route, driven through the REAL FastAPI route via
-`TestClient` — proving it dispatches through the real registry (`tools/market_tools.py`) exactly
+`TestClient` — proving it dispatches through the real registry (`tools/market/`) exactly
 as `tests/api/test_tag_screener_routes.py`'s stub-router-swap pattern does for the tag-screener
 routes. `get_sector_heatmap`'s tool is `DataClass.PUBLIC`, so no masked-teaser assertion is
 needed here (see `test_phase11_governance.py` for the Sponsor-tier masking coverage).
@@ -29,7 +29,7 @@ def _client_with_store(
     monkeypatch: pytest.MonkeyPatch,
 ) -> TestClient:
     """A real `TestClient` whose `get_sector_heatmap`/`get_advance_decline` family reads a real
-    `ParquetStore` rooted at `tmp_path`. `market_tools.build_registration_table` builds its own
+    `ParquetStore` rooted at `tmp_path`. `tools.market.build_registration_table` builds its own
     `ParquetStore` straight from a fresh `config.settings.get_settings()` call (not the `settings`
     object handed to `build_test_client`), so the env var is what has to move, not a `Settings`
     field."""

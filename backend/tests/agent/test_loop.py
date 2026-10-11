@@ -20,7 +20,7 @@ from tests.llm.stubs import StubLLMClient, make_text_response, make_tool_call_re
 from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
 from tools.base import ToolContext
-from tools.market_tools import GetChipFlowsTool
+from tools.market import GetChipFlowsTool
 from tools.propose_alert_tools import ProposeAlertTool
 
 # The full card-opted-in tool set: every tool whose typed output is chart/table/gauge-shaped
@@ -28,7 +28,7 @@ from tools.propose_alert_tools import ProposeAlertTool
 # or an accidental rename in any tool module is caught, and so the opted-in set stays an
 # explicit, reviewable list rather than something spread silently across a dozen tool files.
 CARD_OPTED_TOOLS: dict[str, str] = {
-    # market_tools.py
+    # tools/market/
     "get_price_quote": "price_quote",
     "get_live_price_quote": "live_price_quote",
     "get_chip_flows": "chip_flows",

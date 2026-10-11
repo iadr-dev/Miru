@@ -4,7 +4,7 @@ FinMind-coverage expansion.
 
 This is a plain generic function, not a dynamic tool-class factory — every concrete tool in
 this expansion is still its own explicitly-named `BaseTool` subclass (matching the existing
-house style in `market_tools.py`); this helper only spares each one from re-deriving the same
+house style in `tools/market/`); this helper only spares each one from re-deriving the same
 five-line `payload.get(key) -> validate each row` dance.
 """
 

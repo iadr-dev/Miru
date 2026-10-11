@@ -189,7 +189,7 @@ class GetSelfAssessedEarningsTool(BaseTool):
 
 def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
     """Same drop-storage-bookkeeping-columns-before-validating helper
-    `tools/market_tools.py::_rows_from_store` already documents — duplicated here (not imported)
+    `tools/market/_common.py::rows_from_store` already documents — duplicated here (not imported)
     since it's private to that module and this file has no other reason to import from it."""
     field_names = set(model.model_fields)
     return [
@@ -375,7 +375,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     `get_insider_transfer_declarations` read the ingest-owned Parquet store directly (see their
     own class docstrings for why), so this function builds its own `ParquetStore` from
     `config.settings` here — same self-contained-construction pattern
-    `market_tools.build_registration_table` already uses for its own store-reading tools,
+    `tools.market.build_registration_table` already uses for its own store-reading tools,
     rather than changing this function's signature (its one call site, `tools/__init__.py`,
     only ever passes `router`)."""
     store = ParquetStore(root=get_settings().parquet_root)

@@ -4,7 +4,7 @@ each dispatches through the real registry exactly as `test_dividend_schedule_rou
 stub-router-swap pattern does. Single-capability tools get a full stub-router assertion; the two
 composed tools (`get_company_profile`, `get_calendar_events`) only get a wiring/masking check
 since stubbing every one of their several sub-fetches adds little beyond what
-`tests/tools/test_market_tools.py`/`tests/tools/test_calendar_tools.py` already cover for the
+`tests/tools/test_tools/market/`/`tests/tools/test_calendar_tools.py` already cover for the
 tools themselves.
 """
 
@@ -730,7 +730,7 @@ class TestSponsorMaskedRoutes:
 class TestCompanyProfileRoute:
     """`get_company_profile` composes 6 capabilities — a stub router answering all 6 (rather
     than the single-capability helper above) proves the route wires through the real registry
-    without ever reaching a live adapter; per-field enrichment is `test_market_tools.py`'s job."""
+    without ever reaching a live adapter; per-field enrichment is `test_tools/market/`'s job."""
 
     def _client(self, settings: Settings, agent_answer: str) -> TestClient:
         client = build_test_client(settings, agent_answer=agent_answer)

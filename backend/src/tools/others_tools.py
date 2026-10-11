@@ -1,6 +1,6 @@
 """Remaining FinMind Others-category tools not already covered elsewhere —
 `active_etf_info` (the free-tier ETF roster; the sponsor-tier holdings/holding-change side is
-`get_active_etf_report`/`get_etf_money_flow` in `market_tools.py`) and `get_finmind_stock_news`,
+`get_active_etf_report`/`get_etf_money_flow` in `tools/market/`) and `get_finmind_stock_news`,
 FinMind's own per-symbol news dataset — distinct from `sources/news.py`'s RSS/Finnhub aggregator,
 which `tools/news_tools.py` wraps separately (`get_news_feed`)."""
 

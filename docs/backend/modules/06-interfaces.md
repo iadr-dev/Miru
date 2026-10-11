@@ -93,8 +93,8 @@ principal is entitled — same rule as the API.
 | `get_canonical_context(symbols, fields?)` | public | `context/canonical.py` |
 | `build_conversation_package(symbols, window?)` | public | `context/conversation.py` |
 | `get_source_health()` | public | `context/source_health.py` |
-| `get_company_profile(id, market)` | public | `tools/market_tools.py` |
-| `get_price_quote(id, market)` | public | `tools/market_tools.py` |
+| `get_company_profile(id, market)` | public | `tools/market/` |
+| `get_price_quote(id, market)` | public | `tools/market/` |
 | `search_tools(intent)` / `execute_tool(id, args)` | public | deferred long-tail access (92 tools) |
 | (via `execute_tool`) `get_chip_flows`, `get_government_bank_flows`, `get_realtime_snapshot`, … | sponsor | FinMind Sponsor (teaser if unentitled) |
 

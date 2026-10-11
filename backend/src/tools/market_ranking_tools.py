@@ -1,6 +1,6 @@
 """`get_us_market_rankings` — the 排行榜 multi-tab US-market ranking card's backend: 熱門美股
 (Yahoo's own `most_actives` named screen), 市值/營收/ROE/成交量 (a custom `ScreenerQuery` sorted
-by the matching Yahoo screener field). Distinct from `market_tools.py`'s `get_price_momentum`
+by the matching Yahoo screener field). Distinct from `tools/market/`'s `get_price_momentum`
 (a pure close-to-close %-change ranking computed from OUR OWN ingested `us_price_eod` partitions)
 — every ranking here is a live, bounded Yahoo screener call (`dataaccess/screener.py`), never a
 whole-market scan of our own store: Yahoo's screener endpoint itself does the sorting/filtering
@@ -10,7 +10,7 @@ same governance posture — see that tool's docstring in `analyst_tools.py`).
 **US-only by construction, no `market` param needed.** Every query condition includes
 `region=us` (mirroring `ingest/us_universe.py::_band_query`'s own condition) — there is no
 TW/GB/JP/EU equivalent screener path in this codebase today, so this tool simply has no market
-axis to branch on, unlike `market_tools.py`'s tools which take a real `market: Market` field.
+axis to branch on, unlike `tools/market/`'s tools which take a real `market: Market` field.
 
 **The one real bug this module guards against, confirmed live against the real yfinance
 package**: Yahoo's `totalrevenues.lasttwelvemonths`/`returnonequity.lasttwelvemonths` screener

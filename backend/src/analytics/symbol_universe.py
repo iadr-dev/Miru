@@ -65,7 +65,7 @@ class SymbolType(StrEnum):
 
 
 def is_scoreable_symbol(symbol: str, market: Market = Market.TW) -> bool:
-    """Scalar predicate for a plain `dict`/loop-shaped reader (e.g. `tools/market_tools.py`'s
+    """Scalar predicate for a plain `dict`/loop-shaped reader (e.g. `tools/market/`'s
     `_closes_by_symbol`) — same rule as `scoreable_symbol_mask`, just per-value instead of
     vectorized. `Market.US` is unconditionally scoreable — see the module docstring's `market`
     section for why the TW length/prefix rule doesn't apply and no pre-filter is needed."""
