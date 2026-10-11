@@ -20,7 +20,9 @@ fix."""
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
+from collections.abc import AsyncIterator
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -38,6 +40,8 @@ if sys.platform == "win32":
 # import `markitdown`/`magika` transitively — `dotenv.find_dotenv` returning "" makes magika's own
 # `load_dotenv(find_dotenv())` call a no-op ("" means "no file found").
 import dotenv
+import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 
 def _no_dotenv_file(*_args: object, **_kwargs: object) -> str:
@@ -45,3 +49,24 @@ def _no_dotenv_file(*_args: object, **_kwargs: object) -> str:
 
 
 dotenv.find_dotenv = _no_dotenv_file
+
+
+@pytest.fixture
+async def pg_session_factory() -> AsyncIterator[async_sessionmaker[object]]:
+    """A session factory over a REAL Postgres (every table created, dropped afterwards) for the
+    concurrency tests: SQLite has one writer, so a race is latent there. Skips (never fails) when
+    `TEST_POSTGRES_URL` is unset; the CI concurrency leg sets it against a service container."""
+    pg_url = os.environ.get("TEST_POSTGRES_URL")
+    if not pg_url:
+        pytest.skip("TEST_POSTGRES_URL not set - Postgres concurrency check skipped")
+    from db.base import Base, make_engine, make_session_factory  # noqa: PLC0415 - keep import light
+
+    engine = make_engine(pg_url)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    try:
+        yield make_session_factory(engine)
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await engine.dispose()

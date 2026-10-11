@@ -1,13 +1,14 @@
 """`PetStore` — SQLAlchemy-backed cosmetic pet state (`user_pets` / `user_pet_stats`).
 
-All mutations follow the codebase's concurrency discipline: a pull **reserves before acting**
-(atomic decrement of `available_pulls`, refund on failure), and XP/streak/chat increments are
-read-modify-write inside the caller's transaction — for cosmetic state on dev SQLite this is the
-reference single-process shape; the Protocol is what a Redis/Postgres atomic backing would swap
-in behind, with no call-site change.
+Every mutation that reads a counter and writes it back (a pull, chat XP, the login streak) first
+takes a row lock on the user's `user_pet_stats` row (`SELECT … FOR UPDATE`, a no-op on SQLite, which
+has a single writer anyway). Two concurrent requests for the same user therefore run one after
+the other, so a pull cannot be spent twice, the daily XP cap cannot be exceeded and a counter
+update cannot be lost. `UNIQUE(user_id, pet_id)` on `user_pets` is the backstop for the same rule.
 
-`_ensure_stats` lazily seeds a user's stats row with `available_pulls=1` (the free register
-pull) on first pet-endpoint access.
+`ensure_stats` lazily seeds a user's stats row with `available_pulls=1` (the free register
+pull) on first pet-endpoint access, with `INSERT … ON CONFLICT DO NOTHING` so two first requests
+cannot both create it.
 
 No tier/entitlement check appears anywhere in this module — cosmetic-only invariant.
 """
@@ -22,6 +23,8 @@ from zoneinfo import ZoneInfo
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import UserPetRow, UserPetStatsRow
@@ -105,12 +108,11 @@ class SqlAlchemyPetStore:
         self._rng = rng or random.Random()  # noqa: S311 — cosmetic gacha, not cryptographic
 
     async def ensure_stats(self, *, user_id: str) -> PetStats:
-        row = await self._stats_row(user_id)
-        if row is None:
-            row = UserPetStatsRow(user_id=user_id, available_pulls=1)
-            self._session.add(row)
-            await self._session.flush()
+        if await self._insert_stats_if_absent(user_id=user_id, values={"available_pulls": 1}):
             logger.info("pet_stats_seeded", user_id=user_id)
+        row = await self._stats_row(user_id)
+        if row is None:  # pragma: no cover - the insert above guarantees the row exists
+            raise PetNotFoundError(user_id)
         return _row_to_stats(row)
 
     async def list_pets(self, *, user_id: str) -> list[OwnedPet]:
@@ -132,7 +134,9 @@ class SqlAlchemyPetStore:
         if target is None:
             raise PetNotFoundError(record_id)
         result = await self._session.execute(
-            select(UserPetRow).where(UserPetRow.user_id == user_id, UserPetRow.is_active.is_(True))
+            select(UserPetRow)
+            .where(UserPetRow.user_id == user_id, UserPetRow.is_active.is_(True))
+            .with_for_update()
         )
         for row in result.scalars().all():
             row.is_active = False
@@ -147,12 +151,9 @@ class SqlAlchemyPetStore:
         return _row_to_pet(target)
 
     async def pull(self, *, user_id: str) -> PullOutcome:
-        stats = await self._stats_row(user_id)
-        if stats is None:
-            stats = UserPetStatsRow(user_id=user_id, available_pulls=1)
-            self._session.add(stats)
-            await self._session.flush()
-        # Reserve-before-act: refuse if none available; decrement first.
+        stats = await self._locked_stats(user_id, seed={"available_pulls": 1})
+        # Reserve-before-act: refuse if none available; decrement first. The row lock taken above
+        # makes this check-and-decrement atomic per user.
         if stats.available_pulls <= 0:
             raise NoPullsAvailableError("no available pulls")
         stats.available_pulls -= 1
@@ -205,10 +206,7 @@ class SqlAlchemyPetStore:
         (`DAILY_CHAT_XP_CAP`), with a bonus pull every N rewarded chats. Past the cap nothing is
         granted and `chat_count` does not move, so spamming messages earns nothing. A user who
         never opened the pet page is seeded first (their free pull waits for them)."""
-        await self.ensure_stats(user_id=user_id)
-        stats = await self._stats_row(user_id)
-        if stats is None:  # pragma: no cover - ensure_stats just created it
-            return ChatReward()
+        stats = await self._locked_stats(user_id, seed={"available_pulls": 1})
         today = _taipei_today().isoformat()
         if stats.xp_day != today:
             stats.xp_day = today
@@ -263,17 +261,18 @@ class SqlAlchemyPetStore:
         """Streak logic on login: consecutive-day → streak++; every 7-day streak → +1 pull.
         Idempotent within the same day."""
         today = today or _taipei_today()
-        row = await self._stats_row(user_id)
-        if row is None:
-            # First-ever login = day 1 of the streak.
-            row = UserPetStatsRow(
-                user_id=user_id,
-                available_pulls=1,
-                streak_days=1,
-                last_login_date=today.isoformat(),
-            )
-            self._session.add(row)
-            await self._session.flush()
+        # First-ever login = day 1 of the streak. The insert only wins for one of two concurrent
+        # first logins; the loser falls through to the locked, normal path below.
+        first_login = await self._insert_stats_if_absent(
+            user_id=user_id,
+            values={
+                "available_pulls": 1,
+                "streak_days": 1,
+                "last_login_date": today.isoformat(),
+            },
+        )
+        row = await self._locked_stats(user_id)
+        if first_login:
             return _row_to_stats(row)
         last = date.fromisoformat(row.last_login_date) if row.last_login_date else None
         if last == today:
@@ -348,6 +347,36 @@ class SqlAlchemyPetStore:
             select(UserPetStatsRow).where(UserPetStatsRow.user_id == user_id)
         )
         return result.scalar_one_or_none()
+
+    async def _insert_stats_if_absent(self, *, user_id: str, values: dict[str, object]) -> bool:
+        """Create the user's stats row unless it exists; True when this call created it.
+        `INSERT … ON CONFLICT DO NOTHING` so two simultaneous first requests cannot both insert."""
+        insert = (
+            pg_insert if self._session.get_bind().dialect.name == "postgresql" else sqlite_insert
+        )
+        result = await self._session.execute(
+            insert(UserPetStatsRow)
+            .values(user_id=user_id, **values)
+            .on_conflict_do_nothing(index_elements=[UserPetStatsRow.user_id])
+            .returning(UserPetStatsRow.user_id)
+        )
+        return result.first() is not None
+
+    async def _locked_stats(
+        self, user_id: str, *, seed: dict[str, object] | None = None
+    ) -> UserPetStatsRow:
+        """The user's stats row under a row lock (`SELECT … FOR UPDATE`), held until the caller's
+        transaction ends, so concurrent mutations for one user run one at a time. `seed` creates
+        the row first when it does not exist yet."""
+        if seed is not None:
+            await self._insert_stats_if_absent(user_id=user_id, values=seed)
+        result = await self._session.execute(
+            select(UserPetStatsRow)
+            .where(UserPetStatsRow.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one()
 
     async def _pet_row(self, *, user_id: str, record_id: str) -> UserPetRow | None:
         result = await self._session.execute(

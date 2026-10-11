@@ -10,10 +10,26 @@ from __future__ import annotations
 from calendar.trading_days import TradingDayCalendar
 from datetime import date as date_
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.enums import Market
 from schemas.market import Symbol
+
+# The widest range any real caller asks for is the dividend history's "all" (30 years). Anything
+# past this is a typo or an attempt to make the upstream fetch decades of rows (and mint a new
+# cache key per distinct range), so it is rejected at validation time rather than forwarded.
+MAX_DATE_RANGE_DAYS = 31 * 366
+
+
+def check_date_range(start: date_ | None, end: date_ | None) -> None:
+    """Reject an inverted or absurdly wide `[start, end]`; either end may be open (`None`)."""
+    if start is not None and end is not None:
+        if start > end:
+            msg = f"start_date {start.isoformat()} is after end_date {end.isoformat()}"
+            raise ValueError(msg)
+        if (end - start).days > MAX_DATE_RANGE_DAYS:
+            msg = f"date range is wider than {MAX_DATE_RANGE_DAYS} days"
+            raise ValueError(msg)
 
 
 class SymbolInput(BaseModel):
@@ -40,6 +56,11 @@ class DateRangeInput(SymbolInput):
 
     start_date: date_ | None = None
     end_date: date_ | None = None
+
+    @model_validator(mode="after")
+    def _valid_range(self) -> DateRangeInput:
+        check_date_range(self.start_date, self.end_date)
+        return self
 
     def date_params(self) -> dict[str, object]:
         """Render the optional range as `DataAccessRouter.fetch(**params)` kwargs."""
@@ -70,6 +91,11 @@ class MarketOnlyInput(BaseModel):
     start_date: date_ | None = None
     end_date: date_ | None = None
 
+    @model_validator(mode="after")
+    def _valid_range(self) -> MarketOnlyInput:
+        check_date_range(self.start_date, self.end_date)
+        return self
+
     def to_symbol(self) -> Symbol:
         return Symbol(id="", market=self.market)
 
@@ -96,4 +122,11 @@ def candidate_trading_days(start: date_, end: date_, *, limit: int) -> tuple[dat
     return tuple(reversed(all_days[-limit:]))
 
 
-__all__ = ["DateRangeInput", "MarketOnlyInput", "SymbolInput", "candidate_trading_days"]
+__all__ = [
+    "MAX_DATE_RANGE_DAYS",
+    "DateRangeInput",
+    "MarketOnlyInput",
+    "SymbolInput",
+    "candidate_trading_days",
+    "check_date_range",
+]

@@ -478,6 +478,9 @@ class UserPetRow(Base):
 
     __table_args__ = (
         CheckConstraint("obtained_via IN ('pull','admin')", name="ck_user_pets_obtained_via"),
+        # One row per (user, catalog pet): a duplicate pull converts to XP, so two rows for the same
+        # pet can only come from a race, and `_owned_pet_row` would then raise on every later pull.
+        UniqueConstraint("user_id", "pet_id", name="uq_user_pets_user_pet"),
         Index("ix_user_pets_user_active", "user_id", "is_active"),
         # At most one equipped pet per user — partial-unique index. SQLite stores booleans as
         # 0/1 so its predicate must compare against `1`; Postgres accepts the bare boolean column
