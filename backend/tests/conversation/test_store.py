@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from conversation.models import MessageBlockType, TextBlock, TurnRole
+from conversation.models import MessageBlockType, TextBlock, ThinkingBlock, TurnRole
 from conversation.store import SqlAlchemyConversationStore, ThreadNotFoundError
 from db.models import ThreadRow
 
@@ -152,3 +152,28 @@ async def test_delete_thread_soft_deletes(db_session: AsyncSession) -> None:
 
     listed = await store.list_threads(user_id="user-1")
     assert listed == []
+
+
+async def test_search_matches_visible_text_but_not_thinking_or_other_users(
+    db_session: AsyncSession,
+) -> None:
+    store = SqlAlchemyConversationStore(db_session)
+    said = await store.create_thread(user_id="user-1", title="a")
+    thought = await store.create_thread(user_id="user-1", title="b")
+    other = await store.create_thread(user_id="user-2", title="c")
+    for thread, user, block_type, block in (
+        (said, "user-1", MessageBlockType.TEXT, TextBlock(text="台積電 法說會重點")),
+        (thought, "user-1", MessageBlockType.THINKING, ThinkingBlock(text="台積電 internal")),
+        (other, "user-2", MessageBlockType.TEXT, TextBlock(text="台積電 mine")),
+    ):
+        await store.append_turn(
+            user_id=user,
+            thread_id=thread.id,
+            role=TurnRole.ASSISTANT,
+            blocks=[(block_type, block)],
+            parent_message_id=None,
+        )
+
+    found = await store.search_threads(user_id="user-1", query="台積電")
+
+    assert [t.id for t in found] == [said.id]

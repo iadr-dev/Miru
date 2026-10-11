@@ -24,6 +24,7 @@ from __future__ import annotations
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from datetime import date as date_
 
+import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -442,6 +443,22 @@ class GetThemeTierHeatmapTool(BaseTool):
         self._session_factory = session_factory
         self._store = store
 
+    def _read_prices(
+        self, market: str
+    ) -> tuple[date_, date_, dict[str, float], dict[str, float]] | None:
+        """Every blocking Parquet read the heatmap needs, in one pass; `None` = nothing ingested."""
+        calendar = _real_calendar(self._store, market)
+        trade_date = _latest_price_date(self._store, market)
+        if trade_date is None:
+            return None
+        prior_date = calendar.shift_business_days(trade_date, -1)
+        return (
+            trade_date,
+            prior_date,
+            _closes_by_symbol(self._store, market, trade_date),
+            _closes_by_symbol(self._store, market, prior_date),
+        )
+
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx
         typed = parse_args(GetThemeTiersInput, args)
@@ -458,18 +475,15 @@ class GetThemeTierHeatmapTool(BaseTool):
             tiers = await store.get_theme_tiers(theme_key=typed.theme_key)
             members = await store.get_theme_member_details(theme_key=typed.theme_key)
 
-        calendar = _real_calendar(self._store, market)
-        trade_date = _latest_price_date(self._store, market)
-        if trade_date is None:
+        prices = await anyio.to_thread.run_sync(self._read_prices, market)
+        if prices is None:
             return GetThemeTierHeatmapOutput(
                 theme_key=theme.key,
                 found=True,
                 data_available=False,
                 unavailable_reason="No price data ingested yet for this market.",
             )
-        prior_date = calendar.shift_business_days(trade_date, -1)
-        today_closes = _closes_by_symbol(self._store, market, trade_date)
-        prior_closes = _closes_by_symbol(self._store, market, prior_date)
+        trade_date, prior_date, today_closes, prior_closes = prices
 
         symbols_by_sub_industry: dict[str, list[str]] = {}
         for member in members:

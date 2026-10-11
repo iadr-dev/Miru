@@ -3,7 +3,7 @@
 A screener request is shaped around a *query* (a set of field conditions over a whole
 universe), not a `(capability, symbol)` pair — there is no symbol to scope a fetch to, so these
 types deliberately do not extend the per-capability normalized-row pattern in
-`schemas/capabilities.py`. They are the typed input/output contract for
+`schemas/capabilities/`. They are the typed input/output contract for
 `sources/yfinance.run_screener` (see that function's docstring for why it lives outside
 `SourceAdapter.fetch()`).
 

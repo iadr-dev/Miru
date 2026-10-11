@@ -6,6 +6,7 @@ from datetime import date as date_
 from datetime import timedelta
 from typing import cast
 
+import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataaccess.router import DataAccessRouter
@@ -399,8 +400,9 @@ class GetActiveEtfReportTool(BaseTool):
             report_holdings=report_holdings,
             has_prior_day=prior_date is not None,
         )
-        fund_size, fund_size_prior, fund_size_change_pct, fund_size_caveat = (
-            _fund_size_with_aum_fallback(
+
+        def read_fund_size() -> tuple[float | None, float | None, float | None, str | None]:
+            return _fund_size_with_aum_fallback(
                 self._store,
                 symbol.market.value,
                 symbol.id,
@@ -411,22 +413,36 @@ class GetActiveEtfReportTool(BaseTool):
                     (report_holdings, prior_holdings),
                 ),
             )
-        )
+
+        # The Parquet reads below are blocking; run them in a worker thread so they cannot
+        # stall the event loop (the upstream fetches around them are already awaited).
+        (
+            fund_size,
+            fund_size_prior,
+            fund_size_change_pct,
+            fund_size_caveat,
+        ) = await anyio.to_thread.run_sync(read_fund_size)
 
         units_outstanding = await self._fetch_units_outstanding(symbol, ctx)
-        estimated_nav_per_unit, estimated_premium_discount_pct = _estimated_nav_fields(
-            self._store,
-            symbol,
-            report_date,
-            (fund_size, units_outstanding),
-        )
+
+        def read_nav_and_holdings() -> tuple[
+            tuple[float | None, float | None], tuple[ActiveEtfHoldingWeightRow, ...]
+        ]:
+            return (
+                _estimated_nav_fields(
+                    self._store, symbol, report_date, (fund_size, units_outstanding)
+                ),
+                _active_etf_current_holdings(self._store, symbol.market.value, report_holdings),
+            )
+
+        (
+            (estimated_nav_per_unit, estimated_premium_discount_pct),
+            current_holdings,
+        ) = await anyio.to_thread.run_sync(read_nav_and_holdings)
         estimation_caveat = (
             _ESTIMATED_NAV_CAVEAT
             if estimated_nav_per_unit is not None or estimated_premium_discount_pct is not None
             else None
-        )
-        current_holdings = _active_etf_current_holdings(
-            self._store, symbol.market.value, report_holdings
         )
 
         return GetActiveEtfReportOutput(

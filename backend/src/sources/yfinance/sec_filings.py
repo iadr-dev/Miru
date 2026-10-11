@@ -1,6 +1,6 @@
 """`sec_filings` capability domain — wraps `Ticker.get_sec_filings()`, US-only (no equivalent feed
 exists for any other market this codebase serves; see `Capability.SEC_FILINGS`'s own enum comment
-and `SecFiling`'s own docstring in `schemas/capabilities.py`).
+and `SecFiling`'s own docstring in `schemas/capabilities/`).
 """
 
 from __future__ import annotations
