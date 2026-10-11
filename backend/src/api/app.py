@@ -25,6 +25,7 @@ from accounts.hooks import EntitlementResolver
 from api.auth_expired import AUTH_EXPIRED_HEADER, AuthExpiredHeaderMiddleware
 from api.dependencies import AppState
 from api.errors import register_exception_handlers
+from api.etag import ConditionalGetMiddleware
 from api.quote_stream import CalendarMarketOpenGate, LiveQuoteManagerLike, ToolQuoteFetcher
 from api.routers import (
     accounts_extra,
@@ -126,6 +127,8 @@ def create_app(
 
     # Added before CORS so CORS wraps it (Starlette applies the last-added middleware outermost);
     # the header must also be exposed or a cross-origin client can't read it.
+    # Innermost of the three, so a 304 still gets the auth-expired header and CORS headers.
+    app.add_middleware(ConditionalGetMiddleware)
     app.add_middleware(AuthExpiredHeaderMiddleware)
     if allowed_origins:
         app.add_middleware(

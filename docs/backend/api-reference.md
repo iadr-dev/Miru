@@ -20,6 +20,11 @@ product/app state (threads, memory, schedules…).
   `rate_limited`, `retryable: true`, with `Retry-After`. Set `TRUSTED_PROXY_COUNT` to the number
   of your own reverse proxies in front of the API so the caller is read from `X-Forwarded-For`
   that many hops from the right (default 0 = header ignored, since clients can forge it).
+- Conditional GET: every 200 JSON `GET` carries a weak `ETag` (a hash of the body) and
+  `Cache-Control: private, no-cache`; send `If-None-Match` to get `304 Not Modified` with no body.
+  Browsers do this on their own. The tag changes with the bytes, so a different tier's masking or
+  new data is never served stale. A payload that embeds a fetch timestamp changes on every
+  request and so never revalidates; responses that set cookies and event streams are not tagged.
 - `Idempotency-Key` honored on turn-creating POSTs.
 - **Expired access token on a public route.** Routes that allow anonymous callers still answer a
   caller whose access token has expired (as anonymous, so a logged-out visitor with a stale cookie
