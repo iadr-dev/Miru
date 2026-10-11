@@ -11,6 +11,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from events.bus import EventBus
+from events.kinds import EventKind
 from pets import pet_hint_for
 from pets.store import SqlAlchemyPetStore
 
@@ -43,9 +44,11 @@ async def reward_completed_chat(
         return
     if reward.leveled_to is not None and reward.pet_id is not None:
         event_bus.publish(
-            "pet.leveled",
+            EventKind.PET_LEVELED,
             turn_id=turn_id,
             data={"pet_id": reward.pet_id, "level": reward.leveled_to},
         )
     if reward.pulls_earned > 0:
-        event_bus.publish("pet.pull_earned", turn_id=turn_id, data={"count": reward.pulls_earned})
+        event_bus.publish(
+            EventKind.PET_PULL_EARNED, turn_id=turn_id, data={"count": reward.pulls_earned}
+        )

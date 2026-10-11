@@ -42,6 +42,7 @@ from agent.prompts import PromptLayers, default_prompt_layers
 from config.settings import Settings, get_settings
 from events.bus import EventBus
 from events.hooks import RecallBlockProvider
+from events.kinds import EventKind
 from events.usage import UsageAccumulator
 from llm.base import ImagePart, LLMClient, Message, WebSearchSource
 from llm.registry import (
@@ -788,7 +789,7 @@ class Orchestrator:
         activity = skill_activity_label(skill_name, locale=locale)
         if event_bus is not None:
             event_bus.publish(
-                "agent.spawned",
+                EventKind.AGENT_SPAWNED,
                 turn_id=turn_id,
                 agent_id=agent_id,
                 parent_agent_id=_ROOT_AGENT_ID,
@@ -804,7 +805,7 @@ class Orchestrator:
         if degraded:
             if event_bus is not None:
                 event_bus.publish(
-                    "agent.progress",
+                    EventKind.AGENT_PROGRESS,
                     turn_id=turn_id,
                     agent_id=agent_id,
                     data={"agent_id": agent_id, "status": "degraded", "phase": "quota"},
@@ -865,7 +866,7 @@ class Orchestrator:
         self._emit_cards(lane.rich_cards, event_bus=event_bus, turn_id=turn_id, agent_id=agent_id)
         if event_bus is not None:
             event_bus.publish(
-                "agent.done",
+                EventKind.AGENT_DONE,
                 turn_id=turn_id,
                 agent_id=agent_id,
                 data={"agent_id": agent_id, "status": lane.status},
@@ -949,7 +950,7 @@ class Orchestrator:
     ) -> OrchestratorResult:
         if event_bus is not None:
             event_bus.publish(
-                "synthesis.start",
+                EventKind.SYNTHESIS_START,
                 turn_id=turn_id,
                 agent_id=_ROOT_AGENT_ID,
                 data={"from_agents": [lane.agent_id for lane in lanes if lane.succeeded]},
@@ -1008,7 +1009,7 @@ class Orchestrator:
             return
         for card in cards:
             event_bus.publish(
-                "rich_card",
+                EventKind.RICH_CARD,
                 turn_id=turn_id,
                 agent_id=agent_id,
                 data={"card_type": card.card_type, "data": card.data},

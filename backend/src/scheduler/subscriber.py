@@ -22,11 +22,11 @@ from typing import Protocol
 import structlog
 
 from events.bus import Event
+from events.kinds import EventKind
 from schemas.enums import Capability, Market
 
 logger = structlog.get_logger(__name__)
 
-_DATA_UPDATED_KIND = "data.updated"
 _RESUBSCRIBE_DELAY_SECONDS = 5.0
 
 UpdateSource = Callable[[], AsyncIterator[Event]]
@@ -42,7 +42,7 @@ def parse_update(event: Event) -> tuple[Capability, Market, str] | None:
     """The `(capability, market, as_of)` a `data.updated` event carries, or None if it is some
     other event or malformed. The signal is untrusted plumbing: a bad field is a skip, never a
     crash."""
-    if event.kind != _DATA_UPDATED_KIND:
+    if event.kind != EventKind.DATA_UPDATED:
         return None
     data = event.data
     try:

@@ -49,6 +49,7 @@ from conversation.models import CaveatBlock, MessageBlockType, RichCardBlock, Te
 from conversation.store import SqlAlchemyConversationStore, ThreadNotFoundError
 from dataaccess.router import DataAccessRouter
 from events.bus import EventBus
+from events.kinds import EventKind
 from governance.textscan import check_output
 from ingest.leader import LeaderElection, get_default_leader_election
 from llm.registry import ByokOverride, byok_scope
@@ -187,7 +188,9 @@ class SchedulerWorker:
                 # Owner account is gone — auto-disable so the orphaned job never fires again.
                 await store.set_job_status(job_id=job.id, status=JobStatus.ERROR, disable=True)
                 await session.commit()
-                self._emit("schedule.disabled", user_id=job.user_id, data={"job_id": job.id})
+                self._emit(
+                    EventKind.SCHEDULE_DISABLED, user_id=job.user_id, data={"job_id": job.id}
+                )
                 logger.info("schedule_job_auto_disabled", job_id=job.id, reason="owner_missing")
                 return False
 
@@ -196,7 +199,7 @@ class SchedulerWorker:
             quiet = job.quiet_hours or (prefs.quiet_hours if prefs else None)
             if _within_quiet_hours(quiet, now, tz_name):
                 # The job stays due, so it runs on the first pass after the window closes.
-                self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
+                self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
                 return False
 
             # A user with saved LLM keys runs on THEIR key (and so is not held to the chat cap);
@@ -212,7 +215,7 @@ class SchedulerWorker:
                     reason="byok_key_required",
                 )
                 await session.commit()
-                self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
+                self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
                 logger.info("schedule_job_skipped_byok_key", job_id=job.id)
                 return False
 
@@ -229,7 +232,9 @@ class SchedulerWorker:
                     reason="chat_quota_exhausted",
                 )
                 await session.commit()
-                self._emit("schedule.skipped_quota", user_id=user.id, data={"job_id": job.id})
+                self._emit(
+                    EventKind.SCHEDULE_SKIPPED_QUOTA, user_id=user.id, data={"job_id": job.id}
+                )
                 logger.info("schedule_job_skipped_quota", job_id=job.id)
                 return False
 
@@ -239,7 +244,9 @@ class SchedulerWorker:
                 ),
                 job.daily_limit,
             ):
-                self._emit("schedule.skipped_limit", user_id=user.id, data={"job_id": job.id})
+                self._emit(
+                    EventKind.SCHEDULE_SKIPPED_LIMIT, user_id=user.id, data={"job_id": job.id}
+                )
                 return False
 
             inputs = await self._resolved_inputs(store, job)
@@ -254,7 +261,7 @@ class SchedulerWorker:
                     reason="watchlist_empty",
                 )
                 await session.commit()
-                self._emit("schedule.skipped", user_id=user.id, data={"job_id": job.id})
+                self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
                 return False
 
             # Mark running so a crash mid-run is detectable as an orphaned run.
@@ -263,7 +270,7 @@ class SchedulerWorker:
 
             tool_context = self._ctx.entitlement_resolver.tool_context_for(user)
             self._emit(
-                "schedule.run",
+                EventKind.SCHEDULE_RUN,
                 user_id=user.id,
                 data={"job_id": job.id, "skill": job.action.skill_ref},
             )
@@ -486,7 +493,9 @@ class SchedulerWorker:
                 continue  # still true since the last evaluation — fire on the transition only
             if _in_cooldown(rule, state, now):
                 continue
-            self._emit("alert.fired", user_id=user.id, data={"alert_id": rule.id, "symbol": symbol})
+            self._emit(
+                EventKind.ALERT_FIRED, user_id=user.id, data={"alert_id": rule.id, "symbol": symbol}
+            )
             await self._deliver(
                 store,
                 user=user,
@@ -909,7 +918,7 @@ class SchedulerWorker:
         )
         return thread_id
 
-    def _emit(self, kind: str, *, user_id: str, data: dict[str, object]) -> None:
+    def _emit(self, kind: EventKind, *, user_id: str, data: dict[str, object]) -> None:
         if self._ctx.event_bus is not None:
             self._ctx.event_bus.publish(kind, data={"user_id": user_id, **data})
 

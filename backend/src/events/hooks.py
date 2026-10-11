@@ -31,6 +31,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from events.bus import EventBus
+from events.kinds import EventKind
 from llm.base import Message, MessageRole, WebSearchSource
 
 
@@ -57,7 +58,7 @@ class EventBusPreToolHook:
 
     async def __call__(self, *, step_index: int, tool_name: str) -> None:
         self._bus.publish(
-            "tool.start",
+            EventKind.TOOL_START,
             turn_id=self._turn_id,
             agent_id=self._agent_id,
             data={
@@ -91,7 +92,7 @@ class EventBusPostToolHook:
     ) -> None:
         del result_summary  # journal/LLM-facing shape — never the frontend's own `summary`
         self._bus.publish(
-            "tool.result",
+            EventKind.TOOL_RESULT,
             turn_id=self._turn_id,
             agent_id=self._agent_id,
             data={
@@ -120,7 +121,7 @@ class EventBusThinkingHook:
 
     async def __call__(self, *, text: str) -> None:
         self._bus.publish(
-            "thinking.delta",
+            EventKind.THINKING_DELTA,
             turn_id=self._turn_id,
             agent_id=self._agent_id,
             data={"agent_id": self._agent_id, "text": text},
@@ -143,7 +144,7 @@ class EventBusAnswerDeltaHook:
 
     async def __call__(self, *, text: str) -> None:
         self._bus.publish(
-            "message.delta",
+            EventKind.MESSAGE_DELTA,
             turn_id=self._turn_id,
             agent_id=self._agent_id,
             data={"agent_id": self._agent_id, "text": text},
@@ -163,7 +164,7 @@ class EventBusWebSearchHook:
 
     async def __call__(self, *, sources: tuple[WebSearchSource, ...]) -> None:
         self._bus.publish(
-            "web_search.result",
+            EventKind.WEB_SEARCH_RESULT,
             turn_id=self._turn_id,
             agent_id=self._agent_id,
             data={

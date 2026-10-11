@@ -39,6 +39,7 @@ import structlog
 from redis.asyncio import Redis
 
 from events.bus import Event
+from events.kinds import EventKind
 from events.stream_store import StreamEventStore
 
 logger = structlog.get_logger(__name__)
@@ -80,7 +81,7 @@ class RedisEventBus:
         self._store = stream_store
         self._channel_prefix = channel_prefix
         self._seq_counters: dict[str | None, int] = {}
-        self._subscribers: dict[int, tuple[list[str] | None, asyncio.Queue[Event]]] = {}
+        self._subscribers: dict[int, tuple[list[EventKind] | None, asyncio.Queue[Event]]] = {}
         self._next_subscriber_id = itertools.count()
         self._outbox: asyncio.Queue[Event] = asyncio.Queue()
         self._writer_task: asyncio.Task[None] | None = None
@@ -92,7 +93,7 @@ class RedisEventBus:
 
     def publish(  # noqa: PLR0913 — mirrors EventBus's own shape
         self,
-        kind: str,
+        kind: EventKind,
         *,
         turn_id: str | None = None,
         agent_id: str | None = None,
@@ -117,7 +118,7 @@ class RedisEventBus:
         self._outbox.put_nowait(event)
         return event
 
-    async def subscribe(self, kinds: list[str] | None = None) -> AsyncIterator[Event]:
+    async def subscribe(self, kinds: list[EventKind] | None = None) -> AsyncIterator[Event]:
         """The local, in-process fan-out for the worker running this turn — one queue per
         subscriber, drained until the caller stops iterating (cancelling the task unsubscribes).
         Cross-worker consumers do not use this; they use `RedisStreamReader`."""
