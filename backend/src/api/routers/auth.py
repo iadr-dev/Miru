@@ -36,6 +36,7 @@ from accounts.auth import (
     require_jwt_secret,
 )
 from accounts.entitlements import entitlement_view
+from accounts.erasure import erase_user
 from accounts.models import EntitlementView, OAuthAccount, OAuthProvider, User
 from accounts.oauth_flow import (
     StateMismatchError,
@@ -64,7 +65,10 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from api.rate_guard import guard_auth
+from api.routers.billing import get_optional_billing_client
 from config.settings import Settings
+from payments.client import PaddleApiError, PaddleClient
+from payments.store import SqlAlchemySubscriptionStore
 from pets.store import SqlAlchemyPetStore
 
 logger = structlog.get_logger(__name__)
@@ -508,6 +512,69 @@ async def me(
     # The first page load of a Taipei day counts as that day's login for the pet streak.
     await SqlAlchemyPetStore(session).register_login(user_id=user.id)
     return MeResponse(user=user, entitlements=entitlement_view(user, byok_active=byok))
+
+
+DELETE_CONFIRMATION = "DELETE"
+
+
+class DeleteAccountRequest(BaseModel):
+    # The caller must type this word: a guard against an accidental or scripted call.
+    confirm: str
+
+
+async def _cancel_billing_or_refuse(
+    session: AsyncSession, client: PaddleClient | None, *, user_id: str
+) -> None:
+    """Stop any live subscription before the account goes. Erasing the account while Paddle keeps
+    charging would leave a customer billed with nothing to show for it, so a failure here
+    aborts the whole deletion (nothing is erased) and the caller can retry."""
+    subscription = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user_id)
+    if subscription is None or subscription.status == "canceled":
+        return
+    if client is None:
+        raise ApiError(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            code="billing_unconfigured",
+            message="Cancel your subscription before deleting the account.",
+            retryable=False,
+        )
+    try:
+        await client.cancel_subscription(subscription.paddle_subscription_id)
+    except PaddleApiError as exc:
+        # Paddle refuses to cancel one that is already cancelled: that is the state we want.
+        live = await client.get_subscription(subscription.paddle_subscription_id)
+        if live.get("status") != "canceled":
+            raise ApiError(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                code="billing_cancel_failed",
+                message="Could not cancel the subscription. Nothing was deleted; please retry.",
+                retryable=True,
+            ) from exc
+
+
+@router.delete("/me", dependencies=[Depends(guard_auth)])
+async def delete_account(
+    body: DeleteAccountRequest,
+    response: Response,
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    client: PaddleClient | None = Depends(get_optional_billing_client),
+) -> dict[str, bool]:
+    """Permanently delete the caller's account and every row stored for it (GDPR/PDPA erasure).
+
+    Requires `{"confirm": "DELETE"}`. Any live Paddle subscription is cancelled first; if that
+    fails nothing is erased. Signs the caller out (clears the auth cookies)."""
+    if body.confirm != DELETE_CONFIRMATION:
+        raise ApiError(
+            status_code=422,
+            code="invalid_request",
+            message=f'Type "{DELETE_CONFIRMATION}" to confirm deleting the account.',
+            retryable=False,
+        )
+    await _cancel_billing_or_refuse(session, client, user_id=user.id)
+    await erase_user(session, user.id)
+    _clear_session_cookies(response)
+    return {"deleted": True}
 
 
 @router.get("/me/connections")

@@ -1534,7 +1534,20 @@
       "nationality": "Nationality",
       "nationalityPlaceholder": "Select nationality",
       "countrySearchPlaceholder": "Search countries",
-      "countrySearchEmpty": "No matching countries"
+      "countrySearchEmpty": "No matching countries",
+      "delete": {
+        "title": "Delete account",
+        "description": "Permanently delete your account and all of its data, including chats, watchlists, alerts and your subscription. This cannot be undone.",
+        "action": "Delete account",
+        "dialogTitle": "Delete your account?",
+        "dialogDescription": "We cancel your subscription first, then permanently erase all your data. This cannot be undone.",
+        "typePrompt": "Type {word} to confirm",
+        "confirm": "Delete permanently",
+        "deleting": "Deleting…",
+        "cancel": "Cancel",
+        "errorBilling": "We couldn't cancel your subscription, so nothing was deleted. Please try again.",
+        "errorGeneric": "We couldn't delete the account. Please try again."
+      }
     },
     "connections": {
       "title": "Connections",

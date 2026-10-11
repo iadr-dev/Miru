@@ -180,6 +180,7 @@ class _FakePaddle:
         self.scheduled_change: dict[str, str] | None = None
         self.calls: list[tuple[str, str, object]] = []
         self.portal_sessions_fail = False
+        self.cancel_fails = False
         self.status = "active"
 
     def entity(self) -> dict[str, object]:
@@ -209,6 +210,11 @@ class _FakePaddle:
                 self.price_id = body["items"][0]["price_id"]
             if body and "scheduled_change" in body:
                 self.scheduled_change = body["scheduled_change"]
+            return httpx.Response(200, json={"data": self.entity()})
+        if request.method == "POST" and path == f"/subscriptions/{_SUB}/cancel":
+            if self.cancel_fails:
+                return httpx.Response(500, json={"error": {}})
+            self.status = "canceled"
             return httpx.Response(200, json={"data": self.entity()})
         if request.method == "POST" and path == f"/subscriptions/{_SUB}/resume":
             self.status = "active"
@@ -410,3 +416,65 @@ def test_plans_response_carries_the_tier_comparison(client) -> None:
     assert tiers[2]["chat_limit_per_day"] is None
     assert tiers[2]["deep_research_limit_per_day"] == 5
     assert "deep_research" not in tiers[1]["features"]
+
+
+# ---- account deletion -----------------------------------------------------------------------
+
+
+def test_deleting_the_account_cancels_billing_then_erases_the_user(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+
+    response = client.request("DELETE", "/api/v1/me", json={"confirm": "DELETE"}, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True}
+    assert ("POST", f"/subscriptions/{_SUB}/cancel", {"effective_from": "immediately"}) in (
+        paddle.calls
+    )
+    # The user, and the access token minted for them, no longer resolve to anyone.
+    assert client.get("/api/v1/me", headers=headers).status_code == 401
+
+
+def test_a_failed_billing_cancel_aborts_the_deletion_and_erases_nothing(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    paddle.cancel_fails = True
+
+    response = client.request("DELETE", "/api/v1/me", json={"confirm": "DELETE"}, headers=headers)
+
+    assert response.status_code == 502
+    assert response.json()["code"] == "billing_cancel_failed"
+    assert response.json()["retryable"] is True
+    assert client.get("/api/v1/me", headers=headers).status_code == 200
+
+
+def test_the_confirmation_word_is_required(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+
+    response = client.request("DELETE", "/api/v1/me", json={"confirm": "yes"}, headers=headers)
+
+    assert response.status_code == 422
+    assert paddle.calls == [] or all("/cancel" not in path for _, path, _ in paddle.calls)
+    assert client.get("/api/v1/me", headers=headers).status_code == 200
+
+
+def test_a_user_without_a_subscription_is_erased_without_calling_paddle(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers, _ = sign_in(client, billing_settings, tier=Tier.FREE)
+
+    response = client.request("DELETE", "/api/v1/me", json={"confirm": "DELETE"}, headers=headers)
+
+    assert response.status_code == 200
+    assert paddle.calls == []
+
+
+def test_deleting_requires_sign_in(client: TestClient) -> None:
+    response = client.request("DELETE", "/api/v1/me", json={"confirm": "DELETE"})
+
+    assert response.status_code == 401

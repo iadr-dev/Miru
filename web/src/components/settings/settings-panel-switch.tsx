@@ -9,12 +9,12 @@ import { MemoryPanel } from "@/app/[locale]/(app)/settings/memory/memory-panel";
 import { NotificationsPanel } from "@/app/[locale]/(app)/settings/notifications/notifications-panel";
 import { PersonalityPanel } from "@/app/[locale]/(app)/settings/personality/personality-panel";
 import { PetsPanel } from "@/app/[locale]/(app)/settings/pets/pets-panel";
-import { ProfileForm } from "@/app/[locale]/(app)/settings/profile/profile-form";
+import { ProfilePanel } from "@/app/[locale]/(app)/settings/profile/profile-panel";
 import { UsagePanel } from "@/app/[locale]/(app)/settings/usage/usage-panel";
 import type { SettingsNavItem } from "@/components/settings/settings-nav-items";
 
 const PANELS: Record<SettingsNavItem["messageKey"], () => ReactNode> = {
-  profile: ProfileForm,
+  profile: ProfilePanel,
   connections: ConnectionsPanel,
   personality: PersonalityPanel,
   pets: PetsPanel,
@@ -31,6 +31,6 @@ const PANELS: Record<SettingsNavItem["messageKey"], () => ReactNode> = {
  * drift into rendering different content for the same URL. */
 export function SettingsPanelSwitch({ segment }: { segment: string | undefined }): ReactNode {
   const key = (segment ?? "profile") as SettingsNavItem["messageKey"];
-  const Panel = PANELS[key] ?? ProfileForm;
+  const Panel = PANELS[key] ?? ProfilePanel;
   return <Panel />;
 }

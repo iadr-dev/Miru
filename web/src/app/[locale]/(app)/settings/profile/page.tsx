@@ -1,6 +1,6 @@
 import { setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
-import { ProfileForm } from "./profile-form";
+import { ProfilePanel } from "./profile-panel";
 
 export default async function ProfilePage({
   params,
@@ -9,5 +9,5 @@ export default async function ProfilePage({
 }): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
-  return <ProfileForm />;
+  return <ProfilePanel />;
 }

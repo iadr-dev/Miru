@@ -18,6 +18,8 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   onCancel,
+  children,
+  confirmDisabled = false,
 }: {
   open: boolean;
   title: string;
@@ -26,6 +28,10 @@ export function ConfirmDialog({
   cancelLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Extra content under the description (e.g. a type-to-confirm field). */
+  children?: ReactNode;
+  /** Blocks both the confirm button and the Enter shortcut. */
+  confirmDisabled?: boolean;
 }): ReactNode {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -33,7 +39,11 @@ export function ConfirmDialog({
     onCancel();
   }, [onCancel]);
 
-  useFocusTrap(dialogRef, open, close, onConfirm);
+  const confirm = useCallback(() => {
+    if (!confirmDisabled) onConfirm();
+  }, [confirmDisabled, onConfirm]);
+
+  useFocusTrap(dialogRef, open, close, confirm);
 
   const titleId = "confirm-dialog-title";
   const descId = "confirm-dialog-description";
@@ -88,11 +98,12 @@ export function ConfirmDialog({
                 {description}
               </p>
             ) : null}
+            {children ? <div className="mt-4">{children}</div> : null}
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={close}>
                 {cancelLabel}
               </Button>
-              <Button variant="filled" size="sm" onClick={onConfirm}>
+              <Button variant="filled" size="sm" onClick={confirm} disabled={confirmDisabled}>
                 {confirmLabel}
               </Button>
             </div>

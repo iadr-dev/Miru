@@ -1534,7 +1534,20 @@
       "nationality": "國籍",
       "nationalityPlaceholder": "選擇國籍",
       "countrySearchPlaceholder": "搜尋國家",
-      "countrySearchEmpty": "找不到符合的國家"
+      "countrySearchEmpty": "找不到符合的國家",
+      "delete": {
+        "title": "刪除帳號",
+        "description": "永久刪除你的帳號與所有資料，包含對話、自選股、提醒與訂閱。此操作無法復原。",
+        "action": "刪除帳號",
+        "dialogTitle": "確定要刪除帳號？",
+        "dialogDescription": "我們會先取消你的訂閱，再永久刪除所有資料。刪除後無法復原。",
+        "typePrompt": "請輸入 {word} 以確認",
+        "confirm": "永久刪除",
+        "deleting": "刪除中…",
+        "cancel": "取消",
+        "errorBilling": "無法取消訂閱，因此沒有刪除任何資料。請稍後再試。",
+        "errorGeneric": "無法刪除帳號，請稍後再試。"
+      }
     },
     "connections": {
       "title": "帳號連結",

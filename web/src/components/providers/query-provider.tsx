@@ -15,7 +15,10 @@ export function QueryProvider({ children }: { children: ReactNode }): ReactNode 
           queries: {
             staleTime: 30_000,
             gcTime: 5 * 60_000,
-            retry: 1,
+            // One quick retry for a blip; a 429 was already waited out and retried at the fetch
+            // layer, so retrying it again here would only hit the limiter harder.
+            retry: (failureCount, error) =>
+              failureCount < 1 && (error as { status?: number }).status !== 429,
             refetchOnWindowFocus: false,
           },
         },
