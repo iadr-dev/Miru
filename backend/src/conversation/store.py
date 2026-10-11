@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
 import structlog
-from sqlalchemy import String, func, or_, select
+from sqlalchemy import String, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from conversation.models import (
@@ -486,7 +486,9 @@ class SqlAlchemyConversationStore:
                 # Only the prose a person reads: thinking traces and tool payloads are large JSON
                 # that would otherwise be cast to text and scanned, and a hit inside one is not
                 # something the user can see in the thread.
-                MessageRow.type == MessageBlockType.TEXT.value,
+                # A literal, not a bound parameter: the partial trigram index on Postgres is only
+                # chosen when the planner can see `type = 'text'` in the statement text itself.
+                MessageRow.type == literal_column(f"'{MessageBlockType.TEXT.value}'"),
                 or_(
                     func.lower(func.cast(MessageRow.content, String)).like(pattern),
                     func.lower(func.cast(MessageRow.content, String)).like(json_pattern),

@@ -699,5 +699,10 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
   first and erases nothing if that fails, then erases and signs the caller out. Settings →
   Profile has the typed-confirmation dialog. Two things it does not touch: `billing_events` (a
   global webhook log with no user column) and any uploaded attachment files.
+- **Chat search index (Postgres only):** `db/postgres_search.py` creates `pg_trgm` and a partial
+  trigram GIN index `ix_messages_text_trgm` on `lower(CAST(content AS VARCHAR)) WHERE type = 'text'`
+  at startup, so `search_threads` no longer scans every message a user owns. It lives outside the
+  model because it needs an extension and an operator class SQLite lacks; if the database user
+  cannot create the extension, a warning is logged and search stays correct but slower.
 - **Dangling-pointer guards:** `turns.parent_turn_id`/`regenerate_of`, `messages.parent_id` and
   `schedule_jobs.thread_id` are foreign keys with `ON DELETE SET NULL`.
