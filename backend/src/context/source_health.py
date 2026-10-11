@@ -16,7 +16,6 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 from context.canonical import CanonicalPackage
-from context.observation import ObservationRun
 from schemas.enums import Capability
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
@@ -86,18 +85,9 @@ def source_health_from_canonical(package: CanonicalPackage) -> SourceHealthRepor
     return SourceHealthReport(symbol=package.symbol, entries=entries)
 
 
-def source_health_from_observation(run: ObservationRun) -> SourceHealthReport:
-    """Derive a single-entry M5Q report from one Bounded Observation run."""
-    return SourceHealthReport(
-        symbol=run.symbol,
-        entries=(_entry_from_result(run.capability, run.result),),
-    )
-
-
 __all__ = [
     "SourceHealthEntry",
     "SourceHealthReport",
     "build_source_health_report",
     "source_health_from_canonical",
-    "source_health_from_observation",
 ]

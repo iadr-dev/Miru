@@ -72,7 +72,7 @@ from analytics.models import (
 )
 from analytics.normalization import combine_zscores, zscore, zscore_to_percentile
 from analytics.symbol_universe import SymbolType
-from schemas.capabilities import AnalystConsensus, EODBar, InstitutionalFlowRow
+from schemas.capabilities import AnalystConsensus, InstitutionalFlowRow
 from schemas.enums import Market
 
 _NON_TRADING_CAVEAT = (
@@ -992,12 +992,6 @@ def compute_etf_factor_breakdown(inputs: EtfFactorInputs) -> EtfScoreBreakdown:
     )
 
 
-def eod_bars_to_closes(bars: Sequence[EODBar]) -> list[float]:
-    """Bars must already be sorted ascending by `trade_date` — this is a pure reshape, not a
-    sort, matching `analytics.indicators`'s "caller is responsible for ordering" contract."""
-    return [bar.close for bar in bars]
-
-
 __all__ = [
     "EtfFactorInputs",
     "FactorInputs",
@@ -1010,7 +1004,6 @@ __all__ = [
     "compute_etf_factor_breakdown",
     "compute_stock_factor_breakdown",
     "compute_us_stock_factor_breakdown",
-    "eod_bars_to_closes",
     "eps_trend_delta",
     "net_buy_20d_trend",
     "normalization_caveat",

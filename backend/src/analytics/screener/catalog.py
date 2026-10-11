@@ -388,12 +388,6 @@ def all_tags() -> tuple[TagDefinition, ...]:
     return CATALOG
 
 
-def get_tag(key: str) -> TagDefinition | None:
-    """The definition for `key`, or `None` for an unknown key — never raises, so a stale/typo'd
-    query token degrades to "unknown tag" rather than an error."""
-    return _BY_KEY.get(key)
-
-
 def tag_keys() -> frozenset[str]:
     """Every known tag key — the batch job iterates this to know what to evaluate, and the read
     seam checks requested tokens against it to report unknown ones."""
@@ -408,6 +402,5 @@ __all__ = [
     "TagCategory",
     "TagDefinition",
     "all_tags",
-    "get_tag",
     "tag_keys",
 ]

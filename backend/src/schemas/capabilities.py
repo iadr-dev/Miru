@@ -1623,22 +1623,6 @@ class TickSnapshotRow(BaseModel):
     tick_type: str
 
 
-class FutOptTickInfoRow(BaseModel):
-    """`futopt_tick_info` — one row of the whole futures/options real-time-quote contract
-    reference roster. Free tier; static list, not a per-date time series."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    market: Market
-    code: str
-    call_put: str
-    as_of: date_
-    name: str
-    listing_date: date_ | None = None
-    expire_price: float | None = None
-    update_date: str | None = None
-
-
 class FuturesSnapshotRow(BaseModel):
     """`futures_snapshot` — one bounded intraday futures-contract snapshot. Sponsor-only."""
 
