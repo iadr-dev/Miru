@@ -16,11 +16,8 @@ from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tools.base import ToolContext
-from tools.market_tools import (
-    SECTOR_RRG_INDEX_IDS,
-    GetSectorRotationRrgInput,
-    GetSectorRotationRrgTool,
-)
+from tools.market import GetSectorRotationRrgInput, GetSectorRotationRrgTool
+from tools.market.sector_rotation import SECTOR_RRG_INDEX_IDS
 
 
 class _PerSymbolAdapter:

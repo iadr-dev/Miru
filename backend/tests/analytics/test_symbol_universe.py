@@ -37,7 +37,7 @@ def test_scoreable_symbol_mask_keeps_plain_equities_and_etfs_drops_warrants() ->
 
 
 def test_is_scoreable_symbol_matches_the_vectorized_mask() -> None:
-    """The scalar predicate (used by `tools/market_tools.py`'s dict-shaped readers) must agree
+    """The scalar predicate (used by `tools/market/`'s dict-shaped readers) must agree
     with the vectorized mask (used by `analytics/scoring_batch.py`'s DataFrame-shaped reader) on
     every case — same classification rule, two call shapes."""
     cases = {

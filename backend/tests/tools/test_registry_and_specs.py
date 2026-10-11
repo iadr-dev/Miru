@@ -99,21 +99,21 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
         "ask_user",  # ask_user_tools
         "propose_alert",  # propose_alert_tools
         "propose_schedule",  # propose_schedule_tools
-        "get_advance_decline",  # market_tools
-        "get_live_price_quote",  # market_tools
-        "get_index_contribution",  # market_tools
-        "get_sector_heatmap",  # market_tools
-        "get_sector_constituents",  # market_tools
-        "get_stock_heatmap",  # market_tools
-        "get_sector_rotation",  # market_tools
-        "get_sector_rotation_rrg",  # market_tools
-        "get_price_momentum",  # market_tools
-        "get_holder_accumulation",  # market_tools
-        "get_symbol_info",  # market_tools
-        "get_symbol_directory_search",  # market_tools
-        "get_price_history",  # market_tools
-        "get_symbol_quotes",  # market_tools
-        "get_etf_list",  # market_tools
+        "get_advance_decline",  # tools/market
+        "get_live_price_quote",  # tools/market
+        "get_index_contribution",  # tools/market
+        "get_sector_heatmap",  # tools/market
+        "get_sector_constituents",  # tools/market
+        "get_stock_heatmap",  # tools/market
+        "get_sector_rotation",  # tools/market
+        "get_sector_rotation_rrg",  # tools/market
+        "get_price_momentum",  # tools/market
+        "get_holder_accumulation",  # tools/market
+        "get_symbol_info",  # tools/market
+        "get_symbol_directory_search",  # tools/market
+        "get_price_history",  # tools/market
+        "get_symbol_quotes",  # tools/market
+        "get_etf_list",  # tools/market
         "get_tick_snapshot",  # realtime_tools
         "get_futures_snapshot",  # realtime_tools
         "get_options_snapshot",  # realtime_tools

@@ -11,7 +11,7 @@ to know *what* is available and *how current* it is without ever seeing a raw pa
 `build_conversation_package` is the one exception by design: it already returns the Mode-C
 `ConversationFact` shape (`context/conversation.py`), which is payload-free by construction, so
 this module passes it through unchanged rather than re-summarizing an already-safe artifact.
-Capability-specific tools that *do* return real structured data (e.g. `market_tools.py`'s
+Capability-specific tools that *do* return real structured data (e.g. `tools/market/`'s
 dividend-schedule tool) do so via `schemas.capabilities`' typed per-capability models instead —
 a different, equally-safe path for the single-capability case.
 """

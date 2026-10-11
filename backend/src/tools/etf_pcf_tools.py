@@ -403,7 +403,8 @@ class GetEtfPremiumDiscountTool(BaseTool):
 
 
 def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
-    """Local copy of `market_tools.py::_rows_from_store` — not imported cross-module (private to
+    """Local copy of `tools/market/_common.py::rows_from_store` — not imported cross-module
+    (private to
     its own file). Drops the Hive-partition bookkeeping columns (`dataset`/`date`/`v`) DuckDB's
     read-back resurfaces alongside the written row data, before validating against this
     `extra="forbid"` model."""
@@ -416,7 +417,7 @@ def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, obje
 def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]]:
     """`get_etf_premium_discount` reads the ingest-owned Parquet store directly (see its class
     docstring), so this function builds its own `ParquetStore` from `config.settings` here,
-    same pattern `market_tools.py::build_registration_table` uses for its own store-reading
+    same pattern `tools/market/__init__.py::build_registration_table` uses for its own store-reading
     tools alongside its router-backed ones."""
     store = ParquetStore(root=get_settings().parquet_root)
     return [

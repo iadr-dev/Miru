@@ -353,7 +353,7 @@ class GetSupplyChainEdgesTool(BaseTool):
 
 
 def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
-    """The real trading-day calendar for `market` — duplicated from `tools/market_tools.py`'s
+    """The real trading-day calendar for `market` — duplicated from `tools/market/`'s
     own private helper of the same name/shape rather than imported, matching this codebase's
     existing convention that each tool module builds its own store-reading helpers instead of
     reaching into another module's private functions."""
@@ -365,7 +365,7 @@ def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
 
 def _closes_by_symbol(store: ParquetStore, market: str, trade_date: date_) -> dict[str, float]:
     """Every real equity/ETF symbol's closing price on `trade_date` — same read + warrant-
-    filtering `tools/market_tools.py::_closes_by_symbol` performs, duplicated here for the same
+    filtering `tools/market/_common.py::closes_by_symbol` performs, duplicated here for the same
     reason `_real_calendar` above is."""
     raw_bars = store.read_partition(PRICE_EOD_JOB.dataset, market, trade_date)
     closes: dict[str, float] = {}
@@ -506,7 +506,7 @@ class GetThemeTierHeatmapTool(BaseTool):
 
 def _latest_price_date(store: ParquetStore, market: str) -> date_ | None:
     """The most recent trading day this market's `PRICE_EOD_JOB` partition tree actually has —
-    same lookup `tools/market_tools.py::_latest_dataset_date` performs, duplicated here for the
+    same lookup `tools/market/_common.py::latest_dataset_date` performs, duplicated here for the
     same cross-module-private-import reason `_real_calendar` above documents."""
     known_dates = store.list_partition_dates(PRICE_EOD_JOB.dataset, market)
     return max(known_dates) if known_dates else None
@@ -519,7 +519,8 @@ def build_registration_table(
     reads. Unlike the router-backed tool groups, these read the relational theme store, so this
     table takes the app's session factory rather than the data-access router;
     `get_theme_tier_heatmap` additionally builds its own `ParquetStore` (same
-    `tools/market_tools.py::build_registration_table` pattern) since it also needs real prices."""
+    `tools/market/__init__.py::build_registration_table` pattern) since it also needs real
+    prices."""
     store = ParquetStore(root=get_settings().parquet_root)
     tools: list[tuple[Tool, bool]] = [
         (GetThemesTool(session_factory), False),

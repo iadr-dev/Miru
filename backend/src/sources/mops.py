@@ -18,7 +18,8 @@ this package. Three datasets are covered here:
 - `t187ap03_L` — 基本資料 (basic company-profile identity fields: chairman/capital/spokesperson/
   auditor/founding date/headquarters/website/industry code). Whole-market current dump, one row
   per company. `timing_class=REFERENCE` — this is exactly the "MOPS-only identity fields" set
-  `tools/market_tools.py::_MOPS_ONLY_MISSING_FIELDS` previously always omitted for lack of any
+  `tools/market/company_profile.py::_MOPS_ONLY_MISSING_FIELDS` previously always omitted for lack
+  of any
   adapter; `Capability.PROFILE` (declared in `schemas/enums.py` but unwired until now) is this
   dataset's capability.
 

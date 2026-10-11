@@ -3,7 +3,7 @@
  * otherwise render verbatim: field keys (across every "snapshot"-shaped card type —
  * `company_profile`, `price_quote`, `stock_score`, `etf_fund_info`) and the `card_type` string
  * itself (shown as a corner label on every card, and as the flat-fallback's own caption). Mirrors
- * the field names on `backend/src/tools/market_tools.py::GetCompanyProfileOutput`,
+ * the field names on `backend/src/tools/market/company_profile.py::GetCompanyProfileOutput`,
  * `score_tools.py::ScoreResult`, `etf_pcf_tools.py::EtfFundInfo`, `schemas/capabilities.py::
  * EODBar`, and every `card_type` literal in `card-registry.ts`'s `CARD_TYPE_SHAPE` map — a
  * backend field/card-type rename needs its label updated here too (no generated linkage, so this

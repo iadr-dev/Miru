@@ -13,7 +13,7 @@ faked. `get_advance_decline`, `get_index_contribution`, and `get_sector_heatmap`
 — previously in the same absent list (`get_sector_indices` was the placeholder name for the
 heatmap concept before its two real ingredients — `STOCK_INFO_JOB`'s industry roster and
 `PRICE_EOD_JOB`'s closes — were identified) — are now real, derived-store-backed tools
-(`tools/market_tools.py`) and have routes below (`/market/advance-decline`,
+(`tools/market/`) and have routes below (`/market/advance-decline`,
 `/market/index-contribution`, `/market/sector-heatmap`). `get_taiex_vix`
 (`/derivatives/taiex-vix`) and `get_international_stock` (`/market/international-index`) are
 likewise real, already-built tools that simply lacked routes before this pass — never listed in

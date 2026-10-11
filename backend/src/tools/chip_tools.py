@@ -1,5 +1,5 @@
 """Chip/institutional-flow tools — the FinMind Chip/Institutional-category datasets not already
-wired in `market_tools.py` (`institutional_flow`, `chip_broker`). Every tool here follows the
+wired in `tools/market/` (`institutional_flow`, `chip_broker`). Every tool here follows the
 same "fetch one capability, validate its rows" shape (`tools/_rows.py`); `data_class` mirrors
 each dataset's own `DataClass` in `sources/finmind/chip_institutional.py`/`others.py` exactly —
 several of these are Sponsor-tier and must stay gated.
@@ -437,7 +437,8 @@ class GetGovernmentBankFlowsOutput(_RowsOutput):
 
 
 _GOVERNMENT_BANK_MAX_TRADING_DAYS = 10  # Same upstream shape as `chip_broker` (see
-# `market_tools.py::_CHIP_BROKER_MAX_TRADING_DAYS`'s own docstring): `TaiwanStockGovernmentBank
+# `tools/market/chip_flows.py::_CHIP_BROKER_MAX_TRADING_DAYS`'s own docstring):
+# `TaiwanStockGovernmentBank
 # BuySell` 400s if `end_date` is present at all (confirmed empirically — the dataset's own
 # `no_end_date_param=True` in chip_institutional.py), so a multi-day request fans out to one
 # call per trading day here, capped the same way 分點's own fan-out is.
@@ -500,7 +501,7 @@ class GetGovernmentBankFlowsTool(BaseTool):
 
         # Every per-day fetch shares the same `source_id`/`currentness_caveat` (one adapter, one
         # dataset) — the last result's health represents the most recent day's own fetch outcome,
-        # same convention `GetChipFlowsTool` (market_tools.py) already uses for its own fan-out.
+        # same convention `GetChipFlowsTool` (tools/market/) already uses for its own fan-out.
         representative, _ = results[-1]
         return GetGovernmentBankFlowsOutput(
             source_id=representative.source_id,
@@ -517,7 +518,7 @@ class GetWarrantChipBrokerOutput(_RowsOutput):
 class GetWarrantChipBrokerTool(BaseTool):
     """`get_warrant_chip_broker` — wraps `Capability.WARRANT_CHIP_BROKER`
     (`TaiwanStockWarrantTradingDailyReport`, 權證分點進出, Sponsor-tier). The warrant-side
-    counterpart to `market_tools.GetChipFlowsTool`'s equity 分點 report — same row shape
+    counterpart to `tools.market.chip_flows.GetChipFlowsTool`'s equity 分點 report — same row shape
     (`ChipBrokerRow`), different underlying dataset, kept as its own tool rather than folded
     into `get_chip_flows` since a warrant code and an equity code are never interchangeable
     inputs to the same call. Single trading day per request upstream — `no_end_date_param=True`
@@ -968,7 +969,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
     real latest trading day from `PRICE_EOD_JOB`'s own ingested calendar, since the FinMind
     adapter's generic 30-day-lookback default silently breaks this dataset's single-day
     semantics) — built here from `config.settings` rather than threaded through this function's
-    own signature, same self-contained-store pattern `market_tools.build_registration_table`
+    own signature, same self-contained-store pattern `tools.market.build_registration_table`
     already uses for its own store-reading tools."""
     store = ParquetStore(root=get_settings().parquet_root)
     return [

@@ -3,7 +3,7 @@ routed capability.
 
 TWSE/TPEX OpenAPI's EOD snapshots (`price_eod`) are already wired as same-capability priority-2
 fallbacks behind FinMind in `config/source_priority.yaml` — `get_price_quote`
-(`tools/market_tools.py`) already reaches them transparently through the router's own
+(`tools/market/`) already reaches them transparently through the router's own
 fallback, so a second, TWSE/TPEX-specific tool would just be a redundant view over the same
 capability and is deliberately not built here.
 

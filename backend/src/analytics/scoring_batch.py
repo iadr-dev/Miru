@@ -132,7 +132,7 @@ ACTIVE_ETF_HOLDING_CHANGE_DATASET = "TaiwanStockActiveETFHoldingChange"
 # cash-out, delisting; e.g. 2888 新光金控's 2025 merger into 台新新光金控) never reaches the score
 # universe. Without this, `job_scoring_batch` keeps producing a `ScoreResult` for a symbol
 # `get_symbol_info` can no longer name, since that tool's roster join is the only place "still
-# listed" is ever checked (`tools/market_tools.py::GetSymbolInfoTool`'s own docstring) — the
+# listed" is ever checked (`tools/market/symbols.py::GetSymbolInfoTool`'s own docstring) — the
 # leaderboard would show a bare code with no name forever, not just for one stale day.
 STOCK_INFO_DATASET = "TaiwanStockInfo"
 
@@ -241,7 +241,8 @@ _TAIEX_CORRELATION_LOOKBACK_DAYS = 60  # comfortably above `taiex_correlation_sc
 # `_TAIEX_CORR_MIN_POINTS + 1` (11) floor, without re-reading the full 260-day momentum window
 # this dimension has no use for.
 
-# `_SECTOR_ROTATION_WINDOW_TRADING_DAYS` in `tools/market_tools.py::GetSectorRotationTool` — kept
+# `_SECTOR_ROTATION_WINDOW_TRADING_DAYS` in
+# `tools/market/sector_rotation.py::GetSectorRotationTool` — kept
 # as a local duplicate constant per this codebase's stated convention (see the module-level
 # rationale in `job_trend_score_batch`'s own docstring: `analytics/` may not import `tools/`,
 # the dependency-rule direction backend/CLAUDE.md §3 enforces, so the small rank-computation
@@ -265,7 +266,7 @@ _MA_WINDOWS: tuple[int, ...] = (50, 150, 200)
 
 def _active_roster_symbols(ctx: IngestContext, market_str: str) -> frozenset[str] | None:
     """Every symbol the *latest* `STOCK_INFO_JOB` roster partition actually lists — the same
-    "latest real date" lookup `tools/market_tools.py::_latest_dataset_date` performs, inlined here
+    "latest real date" lookup `tools/market/_common.py::latest_dataset_date` performs, inlined here
     rather than imported since `analytics/` may not depend on `tools/` (dependency rule, backend/
     CLAUDE.md §3). Returns `None`, not an empty set, when the roster has never been ingested for
     this market — the caller must treat that as "no roster to filter against" and skip filtering,
@@ -1206,7 +1207,7 @@ def _sector_rotation_ranks_by_industry(
     flow_by_symbol: Mapping[str, list[InstitutionalFlowRow]],
     industry_by_symbol: Mapping[str, str],
 ) -> dict[str, list[int]]:
-    """Duplicates `tools/market_tools.py::GetSectorRotationTool`'s own daily-industry-rank
+    """Duplicates `tools/market/sector_rotation.py::GetSectorRotationTool`'s own daily-industry-rank
     arithmetic (sum `buy - sell` across every investor category, per industry, per day; rank
     industries by that sum, most-inflow-first) rather than importing it — that tool lives in
     `tools/`, a HIGHER layer than `analytics/` (backend/CLAUDE.md §3's one-way dependency rule),
@@ -1429,7 +1430,8 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     project-wide pattern.
 
     **Sector rotation's rank-computation logic** is duplicated from
-    `tools/market_tools.py::GetSectorRotationTool` into `_sector_rotation_ranks_by_industry`
+    `tools/market/sector_rotation.py::GetSectorRotationTool` into
+    `_sector_rotation_ranks_by_industry`
     above, rather than imported — `tools/` sits ABOVE `analytics/` in the one-way dependency
     order (backend/CLAUDE.md §3), so `analytics/` may never import it; pulling the small
     arithmetic down into `analytics/` (not leaving it only in `tools/`) is the correct-direction

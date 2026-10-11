@@ -1,5 +1,5 @@
 """Fundamental-category tools — the FinMind Fundamental-category datasets not already wired in
-`market_tools.py` (`dividends`). `financials`/`balance_sheet`/`cash_flow_statement` (income
+`tools/market/` (`dividends`). `financials`/`balance_sheet`/`cash_flow_statement` (income
 statement, balance sheet, cash-flow statement) are folded into one `get_financial_statement`
 tool alongside a `statement_type` selector rather than three near-duplicate tools, matching the
 same shared row shape their adapters already share

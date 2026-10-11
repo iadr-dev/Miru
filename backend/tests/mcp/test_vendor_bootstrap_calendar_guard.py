@@ -5,7 +5,7 @@ also guard: this project's own top-level `calendar` package (`src/calendar/`) co
 Before the fix, calling `bootstrap_vendor_sdk()` (e.g. via any `import mcp.app`) in a fresh
 process BEFORE anything had imported this project's own `calendar`/`tools` packages would leave
 the *stdlib* `calendar` module permanently cached under the bare `calendar` name — breaking every
-later `from calendar.trading_days import TradingDayCalendar` in `tools/market_tools.py` with
+later `from calendar.trading_days import TradingDayCalendar` in `tools/market/` with
 "'calendar' is not a package". This only ever passed accidentally in the existing test suite
 because some other import (a conftest, a fixture module) always happened to import the real
 `calendar` package first in the same process — this test isolates the ordering in a genuinely

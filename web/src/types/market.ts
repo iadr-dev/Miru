@@ -504,7 +504,7 @@ export const priceHistoryResponseSchema = z.object({
 });
 export type PriceHistoryResponse = z.infer<typeof priceHistoryResponseSchema>;
 
-// GET /market/quotes — get_symbol_quotes (backend/src/tools/market_tools.py). The list-row view:
+// GET /market/quotes — get_symbol_quotes (backend/src/tools/market/). The list-row view:
 // `change`/`change_pct` are always the DAILY move, computed server-side; the sparkline window is
 // separate. A requested symbol with no data still gets a row with null fields.
 export const symbolQuoteRowSchema = z.object({
@@ -1022,7 +1022,7 @@ export type MarginShortBalanceResponse = z.infer<typeof marginShortBalanceRespon
 
 // ---------------------------------------------------------------------------
 // 16. GET /market/etf-list — get_etf_list (public whole-market ETF list). Every field
-//     mirrors `EtfListRow` (backend/src/tools/market_tools.py) field-for-field — a backend
+//     mirrors `EtfListRow` (backend/src/tools/market/) field-for-field — a backend
 //     rename becomes a compile error here, not a silent runtime mismatch.
 // ---------------------------------------------------------------------------
 
@@ -1068,7 +1068,7 @@ export type EtfListResponse = z.infer<typeof etfListResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // 18. GET /market/dividend-calendar — get_dividend_calendar (public, ETF-only 股息日曆). Every
-//     field mirrors `DividendCalendarEventRow` (backend/src/tools/market_tools.py) field-for-
+//     field mirrors `DividendCalendarEventRow` (backend/src/tools/market/) field-for-
 //     field — a backend rename becomes a compile error here, not a silent runtime mismatch.
 // ---------------------------------------------------------------------------
 
@@ -1194,7 +1194,7 @@ export type SortDirection = "asc" | "desc";
 // ---------------------------------------------------------------------------
 // 17. GET /market/daily-signal — get_daily_signal (Sponsor-tier). Mirrors
 //     `DailySignalRow`/`DailySignalHighlight`/`GetDailySignalOutput`
-//     (backend/src/tools/market_tools.py) field-for-field.
+//     (backend/src/tools/market/) field-for-field.
 // ---------------------------------------------------------------------------
 
 export const HOLDING_STATUSES = ["新增", "刪除", "加碼", "減碼", "no_prior_data"] as const;

@@ -11,7 +11,7 @@ The sixth dimension, `broker_concentration`, is deliberately NEVER batch-compute
 (分點) has no whole-market request form (Sponsor-tier, per-symbol/per-broker fetch only; see
 `ingest/jobs.py`'s `STUBBED_DATASETS` comment). This tool computes it on demand, for just the one
 requested symbol, via a live `Capability.CHIP_BROKER` fetch (mirroring
-`tools/market_tools.py::GetChipFlowsTool`'s own fetch shape, capped at the same
+`tools/market/chip_flows.py::GetChipFlowsTool`'s own fetch shape, capped at the same
 `_CHIP_BROKER_MAX_TRADING_DAYS` window) and re-blends the full six-dimension composite at request
 time — the one dimension in this tool that is genuinely live, not a cache read. An unentitled
 (non-Sponsor) caller gets the batch's five-dimension composite with `broker_concentration`

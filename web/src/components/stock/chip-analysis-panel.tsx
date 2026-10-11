@@ -53,7 +53,7 @@ type RollingNetWindow = (typeof ROLLING_NET_WINDOWS)[number];
 /** 分點's 買賣超 tab period selector — days back from today, mapped to `getStockChipFlows`'s
  * `start_date` param. `get_chip_flows`'s upstream (`TaiwanStockTradingDailyReport`) is
  * single-trading-day-per-call, so the tool fans out to one call per day and merges — bounded
- * server-side to `_CHIP_BROKER_MAX_TRADING_DAYS` (10, see `market_tools.py`) so one page load
+ * server-side to `_CHIP_BROKER_MAX_TRADING_DAYS` (10, see `tools/market/`) so one page load
  * never issues more than 10 sequential Sponsor-tier FinMind calls. This selector's own widest
  * option (10日) matches that cap exactly — a wider window here would silently be truncated
  * server-side to the same 10 days anyway, so the UI never offers one. The reference app's own
@@ -987,9 +987,9 @@ function InstitutionalTotalsBody({
 /** 摘要's 法人籌碼 chart — reference app's own 摘要表 shows one bar chart of net buy/sell per
  * investor category, with a lookback-window selector (5日/10日/20日), not a flat number list.
  * `get_institutional_flow`'s `rolling_net` already pre-sums exactly those 3 windows server-side
- * (see that field's own docstring in `market_tools.py`) — this just picks which window's number
+ * (see that field's own docstring in `tools/market/`) — this just picks which window's number
  * feeds each bar, no client-side re-summing of raw rows. */
-/** `_net_over_trailing`'s client-side mirror (`market_tools.py`) for the one category
+/** `_net_over_trailing`'s client-side mirror (`tools/market/`) for the one category
  * (`GOVERNMENT_BANK_BUYSELL`) that has no server-side pre-summed `rolling_net` — the same
  * "trailing N distinct trading days present in rows, null if fewer exist" rule, applied to
  * `get_government_bank_flows`'s raw per-bank rows (summed across every bank sharing a
@@ -1056,7 +1056,7 @@ function InstitutionalSummaryBody({
 
   // A category with no real activity in any of the 3 rolling windows renders as a bare
   // zero-height bar with a label and nothing else. Two distinct "no data" shapes from the
-  // backend's own `_net_over_trailing` (market_tools.py, and this file's own
+  // backend's own `_net_over_trailing` (tools/market/, and this file's own
   // `governmentBankRollingNet` mirror for 八大行庫): `null` when fewer than the window's
   // trading days exist yet (八大行庫's own fan-out is capped at 10 days, so its `net_20d` is
   // always `null` — same "not enough history for this window yet" case any category can hit),
@@ -1071,7 +1071,7 @@ function InstitutionalSummaryBody({
     (row.net_20d == null || row.net_20d === 0);
   // `rolling_net`'s `net_5d`/`net_10d`/`net_20d` are pre-summed server-side from
   // `get_institutional_flow`'s own raw-shares `buy`/`sell` (`_net_over_trailing`,
-  // market_tools.py) — same TWSE T86-confirmed shares unit as `bucketedFlowByDate`'s bucket sums
+  // tools/market/) — same TWSE T86-confirmed shares unit as `bucketedFlowByDate`'s bucket sums
   // elsewhere in this panel (see `NetFlowCell`'s own docstring); `governmentBankRollingNet`'s
   // client-side mirror sums the same raw-shares `buy`/`sell` off `get_government_bank_flows`.
   // Converted to 張 here, once, before either the chart or its data sheet renders a number.
@@ -2190,7 +2190,7 @@ function SecuritiesLendingBody({
  * server-side now (`GetChipFlowsTool.run`, not this component) — governance.md §4's row-level
  * preview exception (`supports_row_preview=True`) needs the ranking to happen backend-side so
  * the mask applies to the SAME rows this table renders, not to the raw per-day feed underneath
- * them; see `market_tools.py`'s own `_broker_top_rows`/`_mask_broker_top_rows_beyond`. 成交比重
+ * them; see `tools/market/`'s own `_broker_top_rows`/`_mask_broker_top_rows_beyond`. 成交比重
  * is each broker's share of the window's TOTAL REPORTED 分點 volume (`total_volume`), not
  * exchange-wide turnover — `get_chip_flows` only carries branch-level rows, no whole-market
  * volume figure, so this is the honest denominator available. 主力集中% divides `main_force_net`
@@ -2325,7 +2325,7 @@ function ChipFlowsBody({
 const BROKER_TOP_COLLAPSED_ROW_COUNT = 8;
 
 /** governance.md §4 row-level preview exception's locked-row placeholder — the row's own value
- * is never sent for a `locked` row (nulled server-side in `market_tools.py`), so this renders a
+ * is never sent for a `locked` row (nulled server-side in `tools/market/`), so this renders a
  * fixed placeholder + lock icon rather than reading any field, mirroring
  * `tracker-panel.tsx`'s own `LockedValueCell`. */
 function LockedBrokerCell(): ReactNode {

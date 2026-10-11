@@ -1,5 +1,5 @@
 """Technical-category tools — the FinMind Technical-category datasets not already wired in
-`market_tools.py` (`price_eod`). Reference rosters/calendars are market-level
+`tools/market/` (`price_eod`). Reference rosters/calendars are market-level
 (`MarketOnlyInput`); everything else is per-symbol (`DateRangeInput`). `data_class` mirrors
 each dataset's own `DataClass` in `sources/finmind/technical.py` exactly.
 """

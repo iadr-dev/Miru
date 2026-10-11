@@ -90,7 +90,7 @@ composes Layers 1–3 and never does I/O itself.
   Real output is exactly the feed-sourced half of `calendar/events.py::get_calendar_events`
   (除權息/ETF配息 + CB 賣回權/到期); it does not accept a type/state filter argument today —
   every composed event is returned and the caller filters client-side if needed.
-- `get_dividend_schedule` (`tools/market_tools.py`) — per-stock/ETF 除權息 + 配息 timeline
+- `get_dividend_schedule` (`tools/market/`) — per-stock/ETF 除權息 + 配息 timeline
   (wraps `Capability.DIVIDENDS` directly, `public`) — the #1 retail view.
 - **No `market-calendar` skill exists yet.** `backend/src/skills/built_ins/` has no calendar-
   themed skill today; a "what's coming up for my watchlist / this week" brief is aspirational,

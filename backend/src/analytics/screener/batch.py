@@ -50,7 +50,8 @@ INSTITUTIONAL_FLOW_DATASET = "TaiwanStockInstitutionalInvestorsBuySell"
 MARGIN_SHORT_DATASET = "TaiwanStockMarginPurchaseShortSale"
 SHAREHOLDING_DISTRIBUTION_DATASET = "TaiwanStockHoldingSharesPer"
 
-# The same tier-label scheme `tools/market_tools.py::_HOLDER_TIER_LABELS`/`_HOLDER_THRESHOLDS`
+# The same tier-label scheme
+# `tools/market/holder_accumulation.py::_HOLDER_TIER_LABELS`/`_HOLDER_THRESHOLDS`
 # confirms live against TDCC's own web query tool and FinMind's `TaiwanStockHoldingSharesPer` —
 # duplicated here (not imported) since that module lives in `tools/`, which `analytics/` may not
 # import from (dependency rule, `backend/CLAUDE.md` §3). Only the two boundaries this pass's tags

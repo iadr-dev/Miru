@@ -53,8 +53,30 @@ analogue of `guardrails.check_output`.
 
 ## Registered tools (grouped)
 
+**Package layout.** A tool group stays one module until it grows past a few hundred lines; the
+market-data group is a package, `tools/market/`, with one module per category so no file is a
+wall of code:
+
+| Module | Tools |
+|---|---|
+| `quotes.py` | `get_price_quote`, `get_live_price_quote` |
+| `symbols.py` | `get_symbol_info`, `get_symbol_directory_search`, `get_price_history`, `get_symbol_quotes` |
+| `dividends.py` | `get_dividend_schedule`, `get_dividend_calendar` |
+| `chip_flows.py` | `get_institutional_flow`, `get_chip_flows` |
+| `company_profile.py` | `get_company_profile` |
+| `etf_report.py` / `etf_money_flow.py` / `etf_holdings.py` / `etf_list.py` / `daily_signal.py` | the active-ETF tools |
+| `advance_decline.py`, `momentum.py`, `holder_accumulation.py`, `index_contribution.py` | breadth and ranking tools |
+| `heatmaps.py` | `get_sector_heatmap`, `get_sector_constituents`, `get_stock_heatmap` |
+| `sector_rotation.py` | `get_sector_rotation`, `get_sector_rotation_rrg` |
+| `_common.py` | store-read helpers and models used by more than one of the above |
+
+Each tool class sits next to its input/output models and private helpers. A helper or model used by
+two or more modules lives in `_common.py` and has a public name; modules import only from
+`_common`, never from each other. `tools/market/__init__.py` re-exports the public names and
+builds the registration table. New category-sized tool groups should follow the same shape.
+
 **Real count: `tools/__init__.py` imports 24 domain tool-group modules** (`context_tools.py`,
-`health_tools.py`, `market_tools.py`, `mops_tools.py`, `calendar_tools.py`, `live_tools.py`,
+`health_tools.py`, `tools/market/`, `mops_tools.py`, `calendar_tools.py`, `live_tools.py`,
 `gov_api_tools.py`, `etf_pcf_tools.py`, `etf_overlap_tools.py`, `web_search_tools.py`,
 `analyst_tools.py`, `chip_tools.py`, `technical_tools.py`, `fundamental_tools.py`,
 `derivatives_tools.py`, `convertible_bond_tools.py`, `macro_tools.py`, `international_tools.py`,
@@ -104,7 +126,7 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   Sponsor-tier); this tool remains the separate, narrower yfinance-native non-TW feed bundle.
 - `get_sector_overview` / `get_industry_overview` — yfinance sector/industry overview (non-TW).
   *Design's `get_sector_indices` (TW 未含金融電子/產業分類 sub-indices) has no real tool; the
-  whole-market TW industry heatmap is `get_sector_heatmap` (`market_tools.py`, web-only).*
+  whole-market TW industry heatmap is `get_sector_heatmap` (`tools/market/`, web-only).*
 - `get_market_status` — yfinance market open/closed status (non-TW).
 - `run_equity_screener_us` — yfinance-backed US/GB/JP/EU equity screener. Not to be confused with
   `run_screener` (`screener_tools.py`), the analytics-owned gates→setup funnel for TW/US/ETF that
@@ -328,7 +350,7 @@ a redundant view).
 (`TAIFEX_MIS` context is staged behind `enable_taifex_mis_validation` in `context/builder.py`, not
 exposed as a tool). The real live reads are `get_live_quote_snapshot` (`live_tools.py`, TWSE MIS
 best-5, free), `get_tick_snapshot`/`get_futures_snapshot`/`get_options_snapshot`
-(`realtime_tools.py`, Sponsor) and `get_live_price_quote` (US WebSocket tick, `market_tools.py`).
+(`realtime_tools.py`, Sponsor) and `get_live_price_quote` (US WebSocket tick, `tools/market/`).
 
 ### Which tools the chat agent can call
 The agent only ever sees tools from three places: the **matched skill's allowlist**
@@ -374,7 +396,7 @@ context. Following Pi's
   the single source of truth; other docs reference this list, never re-enumerate it). The real,
   wired-up core (`tools/registry.py`'s `immediate=True` registrations) is exactly:
   `get_canonical_context`, `build_conversation_package` (`context_tools.py`), `get_source_health`
-  (`health_tools.py`), `get_company_profile`, `get_price_quote` (`market_tools.py`) — **5 tools**.
+  (`health_tools.py`), `get_company_profile`, `get_price_quote` (`tools/market/`) — **5 tools**.
   This is narrower than the design's originally-named 6-tool core: `get_market_context` has no
   real tool at all (see above), and there is no separate immediate news tool; `get_price_quote`
   is the basic price-quote read the design meant. **The MCP projection exposes the exact same

@@ -203,7 +203,7 @@ def _gated_tw_universe(store: ParquetStore, gates: GateDefaults) -> tuple[set[st
 
 def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, object]]) -> list[T]:
     """Same drop-storage-bookkeeping-columns-before-validating helper
-    `tools/market_tools.py::_rows_from_store` already documents — duplicated here (not imported)
+    `tools/market/_common.py::rows_from_store` already documents — duplicated here (not imported)
     since it's private to that module and this file has no other reason to import from it."""
     field_names = set(model.model_fields)
     return [
@@ -214,7 +214,8 @@ def _rows_from_store[T: BaseModel](model: type[T], raw_rows: list[dict[str, obje
 def _etf_expense_ratios_by_symbol(store: ParquetStore, market: str) -> dict[str, float]:
     """Every ETF's latest disclosed expense-ratio floor — same `etf_expense_ratio` partition and
     `EtfExpenseInfo.total_expense_ratio_pct_approx` field `get_etf_list` already bulk-joins
-    (`tools/market_tools.py::_etf_expense_ratios_by_symbol`), duplicated here rather than imported
+    (`tools/market/etf_list.py::_etf_expense_ratios_by_symbol`), duplicated here rather than
+    imported
     since that function lives in the `tools/` layer, which `analytics/` may not import from
     (dependency rule, `backend/CLAUDE.md` §3)."""
     dates = store.list_partition_dates(ETF_EXPENSE_RATIO_DATASET, market)
@@ -229,7 +230,7 @@ def _etf_expense_ratios_by_symbol(store: ParquetStore, market: str) -> dict[str,
 
 
 def _etf_distribution_frequency(event_count: int) -> str | None:
-    """Same TWSE-convention cadence classification `tools/market_tools.py::
+    """Same TWSE-convention cadence classification `tools/market/etf_list.py::
     _etf_distribution_frequency` documents — an OBSERVED-cadence read from real cash-distribution
     events, never the issuer's declared policy. `None` for a count that doesn't match a clean
     cadence, rather than guessing the nearest bucket."""
@@ -240,7 +241,7 @@ def _etf_ttm_distribution_by_symbol(
     store: ParquetStore, market: str, as_of: date_
 ) -> dict[str, tuple[float, int]]:
     """Every ETF-shaped symbol's trailing-12-month cash-distribution total and event count — same
-    computation `tools/market_tools.py::_etf_ttm_distribution_by_symbol` documents in full,
+    computation `tools/market/etf_list.py::_etf_ttm_distribution_by_symbol` documents in full,
     duplicated here for the same dependency-rule reason as `_etf_expense_ratios_by_symbol` above."""
     partition_window_start = as_of - timedelta(days=_TTM_DIVIDEND_LOOKBACK_DAYS)
     ttm_cutoff = as_of - timedelta(days=365)
@@ -284,7 +285,8 @@ def _etf_trailing_returns_by_symbol(
     shared `price_eod` read spanning the longest window (~1 year) — first-vs-last close within
     each shorter window's own slice of that same series, never a separate read per window. A
     plain `TradingDayCalendar()`, the same naive Mon-Fri-minus-holidays instance
-    `tools/market_tools.py::_calendar` uses for this exact purpose. `symbols=etf_symbols` makes
+    `tools/market/_common.py::real_calendar` uses for this exact purpose. `symbols=etf_symbols`
+    makes
     `read_range` filter at the DuckDB SQL layer rather than materializing all ~2000 TW symbols'
     ~250-day price history (a measured ~500K-row whole-market read) just to keep the ~300 ETF
     rows — the exact blowup `read_range`'s own docstring warns an unfiltered multi-day read
@@ -464,7 +466,8 @@ _FUNDAMENTALS_LOOKBACK_DAYS = 450
 
 def _latest_period_eps(lines: Sequence[FinancialStatementLine]) -> float | None:
     """This symbol's most recent reported period's EPS line — `_EPS_ITEM_NAMES`'s TW label
-    (`"EPS"`) confirmed real and already relied on by `tools/market_tools.py::_latest_eps`."""
+    (`"EPS"`) confirmed real and already relied on by
+    `tools/market/company_profile.py::_latest_eps`."""
     periods = sorted({line.period_end for line in lines}, reverse=True)
     for period in periods:
         for line in lines:

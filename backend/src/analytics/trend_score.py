@@ -32,7 +32,8 @@ lack of ingested data is disclosed and dropped, never defaulted to a fake neutra
   symbol's own price direction (see `margin_credit_trend_score`'s own docstring for the exact
   rule) — a single-symbol read, no comparison universe needed.
 - **分點集中度 (broker concentration)** — NEW: `concentration_days_pct`/`main_force_net`, factored
-  out of `tools/market_tools.py::GetChipFlowsTool` into `concentration_days_pct` below so both the
+  out of `tools/market/chip_flows.py::GetChipFlowsTool` into `concentration_days_pct` below so both
+  the
   existing 分點 tool and this module share one implementation rather than two copies of the same
   arithmetic.
 - **板塊輪動 (sector rotation)** — NEW: how this symbol's own industry's `get_sector_rotation` rank
@@ -312,14 +313,14 @@ def margin_credit_trend_score(
 
 
 # ---------------------------------------------------------------------------
-# 分點集中度 (broker concentration) — factored out of market_tools.py::GetChipFlowsTool.
+# 分點集中度 (broker concentration) — factored out of tools/market/chip_flows.py::GetChipFlowsTool.
 # ---------------------------------------------------------------------------
 
 
 def concentration_days_pct(rows: Sequence[ChipBrokerRow], overall_net: int) -> float | None:
     """集中天數% — the % of trading days within the fetched range where that day's own net
     buy/sell stayed same-signed as the range's overall net. Shared verbatim with
-    `tools/market_tools.py::GetChipFlowsTool` (that tool's own `_concentration_days_pct` should
+    `tools/market/chip_flows.py::GetChipFlowsTool` (that tool's own `_concentration_days_pct` should
     delegate here rather than duplicate this arithmetic) — one implementation, two callers."""
     by_date: dict[object, int] = {}
     for row in rows:

@@ -956,7 +956,7 @@ export type ShareholderDispersionResponse = z.infer<typeof shareholderDispersion
 
 // ---------------------------------------------------------------------------
 // GET /stock/etfs-holding-stock — get_etfs_holding_stock (Sponsor-tier). Mirrors
-// `GetEtfsHoldingStockOutput`/`market_tools.py` field-for-field. 追蹤 tab's ETF持有 card
+// `GetEtfsHoldingStockOutput`/`tools/market/` field-for-field. 追蹤 tab's ETF持有 card
 // (active-management ETFs only).
 // ---------------------------------------------------------------------------
 

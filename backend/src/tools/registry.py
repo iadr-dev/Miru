@@ -9,7 +9,7 @@ tools split into:
   set once (`get_canonical_context`, `get_market_context`, `get_company_profile`,
   `build_conversation_package`, `get_source_health`, + the basic news/price-quote read) — the
   single source of truth; this registry does not re-derive or override that list, it is
-  wired in `tools/context_tools.py`/`tools/market_tools.py` at registration time (see each
+  wired in `tools/context_tools.py`/`tools/market/` at registration time (see each
   module's docstring for exactly which of the named core tools this phase built vs.
   deferred a build of because the underlying capability doesn't exist yet).
 - **deferred** — the long tail, exposed to the model only as a compact index (name + one-line
