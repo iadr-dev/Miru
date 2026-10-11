@@ -285,3 +285,14 @@
 276	- Nothing here weakens governance: caching preserves currentness caveats; secrets stay
 277	  encrypted; per-user isolation holds across cache/Redis keys (namespaced by `user_id`).
 278	
+
+## Postgres engine settings
+
+`db/base.py::make_engine` gives a Postgres engine `pool_pre_ping` (a stale connection after a restart
+or failover is replaced at checkout instead of surfacing as an error), a bounded pool
+(`DB_POOL_SIZE` + `DB_MAX_OVERFLOW`, per process, so size them against the server's
+`max_connections` across all replicas), `DB_POOL_RECYCLE_SECONDS` for idle connections, and a
+server-side `statement_timeout` (`DB_STATEMENT_TIMEOUT_MS`, 0 disables) so a runaway query is
+cancelled instead of holding a connection. SQLite keeps its defaults. The API disposes the pool on
+shutdown.
+
