@@ -265,7 +265,7 @@ class TestDividendCalendarRoute:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Pins `market_rest.py`'s `_dispatch` catching `pydantic.ValidationError` and
+        """Pins `market_rest/`'s `_dispatch` catching `pydantic.ValidationError` and
         rendering it as a 422 `invalid_request` envelope (matching `fund_data.py`'s own
         convention) rather than falling through to the catch-all 500 handler."""
         client = _client_with_store(settings, agent_answer, tmp_path, monkeypatch)

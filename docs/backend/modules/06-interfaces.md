@@ -11,7 +11,7 @@ The complete endpoint list is in [../api-reference.md](../api-reference.md).
   (file → mounted concerns): `agent.py` (`/agent/query`), `threads.py` + `threads_actions.py`
   (`/threads`, fork/steer/regenerate/edit/feedback/export), `context.py` (canonical/conversation
   reads, `/search`, `/quote/stream`, `/updates/stream`), `market.py` (`/health`, `/sources`,
-  `/quote`), `market_rest.py` (`/market/*`, `/derivatives/*`, `/macro*`), `fund_data.py`
+  `/quote`), `market_rest/` (`/market/*`, `/derivatives/*`, `/macro*`), `fund_data.py`
   (`/funds/*`), `themes.py` (`/themes/*`, `/symbols/{symbol}/themes`), `analytics.py`
   (`/analytics/{symbol}/score`, `/analytics/rankings` — the only two `/analytics/*` routes backed
   by real code today; screener/summary/themes-scoring routes named in

@@ -196,7 +196,7 @@ screens need these as HTTP, not just agent tools.
 | GET | `/macro` | 匯率/利率/債殖利率/黃金/原油 + Fear-Greed (`get_macro_indicators`) | public |
 | GET | `/macro/business-indicator` | 景氣對策信號 燈號 (`get_business_indicator`) | public |
 
-> **Implementation status.** The rows above are real, wired routes (`api/routers/market_rest.py`),
+> **Implementation status.** The rows above are real, wired routes (`api/routers/market_rest/`),
 > and `/market/advance-decline` and `/market/index-contribution` are built too (the 每日焦點
 > breadth card). **`/market/overview` and `/market/sectors` are not built** (no `get_market_context`
 > / `get_sector_indices` tool exists), so they are not listed. The full, generated list of every
