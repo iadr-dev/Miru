@@ -25,6 +25,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from api.quote_stream import entitlement_transform, quote_tool_name_for
+from api.rate_guard import guard_reads
 from api.sse import format_sse_event
 from schemas.enums import Market, Tier
 from tools.base import ToolContext
@@ -32,7 +33,7 @@ from tools.base import ToolContext
 _dispatch = dispatch_validated_tool
 
 
-router = APIRouter(tags=["context"])
+router = APIRouter(tags=["context"], dependencies=[Depends(guard_reads)])
 
 _CANONICAL = "canonical"
 _CONVERSATION = "conversation"

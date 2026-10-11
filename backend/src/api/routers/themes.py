@@ -21,13 +21,14 @@ from api.dependencies import (
     optional_user,
     tool_context_for,
 )
+from api.rate_guard import guard_reads
 from schemas.enums import Market
 from tools.base import ToolContext
 
 _dispatch = dispatch_validated_tool
 
 
-router = APIRouter(tags=["themes"])
+router = APIRouter(tags=["themes"], dependencies=[Depends(guard_reads)])
 
 
 def _context(

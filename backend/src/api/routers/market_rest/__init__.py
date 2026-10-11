@@ -25,11 +25,12 @@ lacked routes before this pass.
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from api.rate_guard import guard_reads
 from api.routers.market_rest import macro_news, market, stock, symbols
 
-router = APIRouter(tags=["market-data"])
+router = APIRouter(tags=["market-data"], dependencies=[Depends(guard_reads)])
 for _part in (market, symbols, macro_news, stock):
     router.include_router(_part.router)
 

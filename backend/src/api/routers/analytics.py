@@ -29,6 +29,7 @@ from api.dependencies import (
     tool_context_for,
 )
 from api.errors import ApiError
+from api.rate_guard import guard_reads
 from memory.screener_screens import (
     ScreenerScreen,
     ScreenerScreenNameConflictError,
@@ -42,7 +43,7 @@ from tools.base import ToolContext
 _dispatch = dispatch_validated_tool
 
 
-router = APIRouter(tags=["analytics"])
+router = APIRouter(tags=["analytics"], dependencies=[Depends(guard_reads)])
 
 
 def _context(

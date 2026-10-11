@@ -63,6 +63,7 @@ from api.dependencies import (
     require_user,
 )
 from api.errors import ApiError
+from api.rate_guard import guard_auth
 from config.settings import Settings
 from pets.store import SqlAlchemyPetStore
 
@@ -161,7 +162,7 @@ class BeginAuthResponse(BaseModel):
     retry_authorization_url: str | None = None
 
 
-@router.post("/auth/oauth/{provider}")
+@router.post("/auth/oauth/{provider}", dependencies=[Depends(guard_auth)])
 async def begin_oauth(
     provider: str,
     response: Response,
@@ -198,7 +199,7 @@ async def begin_oauth(
     )
 
 
-@router.post("/auth/oauth/{provider}/link")
+@router.post("/auth/oauth/{provider}/link", dependencies=[Depends(guard_auth)])
 async def begin_oauth_link(
     provider: str,
     request: Request,
@@ -378,7 +379,7 @@ def _oauth_error_redirect(
     return redirect
 
 
-@router.get("/auth/oauth/{provider}/callback")
+@router.get("/auth/oauth/{provider}/callback", dependencies=[Depends(guard_auth)])
 async def oauth_callback(
     provider: str,
     request: Request,
@@ -434,7 +435,7 @@ async def oauth_callback(
     return redirect
 
 
-@router.post("/auth/refresh")
+@router.post("/auth/refresh", dependencies=[Depends(guard_auth)])
 async def refresh(
     request: Request,
     response: Response,
