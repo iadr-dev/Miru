@@ -237,7 +237,7 @@
 228	
 229	## 9. Migrations & data lifecycle
 230	
-231	- **Migrations:** Alembic (SQLAlchemy); every migration must apply on **both SQLite and
+231	- **Migrations:** none yet, by design (development stage): `create_all()` + the additive upgrade keep the schema current and a destructive change rebuilds the dev database. **Alembic is adopted at the first production release**; from then every migration must apply on **both SQLite and
 232	  Postgres** in CI (expand-contract for evolving the message-tree / `stream_events` schema).
 233	- **Retention / partitioning:** see [../database-schema.md](../database-schema.md) — `usage_events`/
 234	  `journal_entries`/`billing_events` time-range partitioned on Postgres (monthly; cheap detach/drop);
