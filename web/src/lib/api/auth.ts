@@ -152,6 +152,45 @@ export async function logout(): Promise<void> {
   }
 }
 
+/** The word the user must type to confirm deleting their account (the backend checks it too). */
+export const DELETE_ACCOUNT_CONFIRMATION = "DELETE";
+
+export type DeleteAccountResult =
+  | { ok: true }
+  | { ok: false; code: string; message: string; retryable: boolean };
+
+/** Permanently delete the signed-in account and all its data (DELETE /me). The backend cancels
+ * any Paddle subscription first and erases nothing if that fails, so a failure is safe to retry.
+ * Resolves with the outcome instead of throwing, so the dialog can show the reason inline. */
+export async function deleteAccount(): Promise<DeleteAccountResult> {
+  let response: Response;
+  try {
+    response = await fetch(apiUrl("/me"), {
+      method: "DELETE",
+      credentials: "include",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ confirm: DELETE_ACCOUNT_CONFIRMATION }),
+    });
+  } catch {
+    return { ok: false, code: "network_error", message: "", retryable: true };
+  }
+  if (response.ok) return { ok: true };
+  try {
+    const parsed = apiErrorSchema.safeParse(await response.json());
+    if (parsed.success) {
+      return {
+        ok: false,
+        code: parsed.data.code,
+        message: parsed.data.message,
+        retryable: parsed.data.retryable,
+      };
+    }
+  } catch {
+    // fall through to the generic failure
+  }
+  return { ok: false, code: "unknown", message: "", retryable: response.status >= 500 };
+}
+
 let inFlightRefresh: Promise<boolean> | null = null;
 let lastRefreshAt = 0;
 
@@ -203,7 +242,7 @@ export function refreshSession(): Promise<boolean> {
  * Returns the second response as-is (still possibly 401, if the refresh itself failed) — the
  * caller's normal status handling covers that case unchanged. */
 export async function fetchWithRefresh(url: string, init: RequestInit): Promise<Response> {
-  const response = await fetch(url, init);
+  const response = await fetchHonouringRateLimit(url, init);
   if (!needsRefresh(response)) {
     return response;
   }
@@ -211,7 +250,37 @@ export async function fetchWithRefresh(url: string, init: RequestInit): Promise<
   if (!refreshed) {
     return response;
   }
-  return fetch(url, init);
+  return fetchHonouringRateLimit(url, init);
+}
+
+/** A rate-limited (429) read is retried after the server's `Retry-After`, with a little jitter so
+ * a page's parallel requests do not all return at the same instant. Only safe methods are retried
+ * (never a POST/DELETE that might have taken effect), only for a short wait (a long one is handed
+ * back to the caller to show), and at most `RATE_LIMIT_RETRIES` times. */
+const RATE_LIMIT_RETRIES = 2;
+const RATE_LIMIT_MAX_WAIT_MS = 10_000;
+
+export function retryAfterMs(response: Response): number | null {
+  const raw = response.headers.get("retry-after");
+  const seconds = raw === null ? Number.NaN : Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+}
+
+async function fetchHonouringRateLimit(url: string, init: RequestInit): Promise<Response> {
+  const method = (init.method ?? "GET").toUpperCase();
+  const safe = method === "GET" || method === "HEAD";
+  let response = await fetch(url, init);
+  for (
+    let attempt = 0;
+    safe && response.status === 429 && attempt < RATE_LIMIT_RETRIES;
+    attempt++
+  ) {
+    const wait = retryAfterMs(response);
+    if (wait === null || wait > RATE_LIMIT_MAX_WAIT_MS || init.signal?.aborted) break;
+    await new Promise((resolve) => setTimeout(resolve, wait + Math.random() * 250));
+    response = await fetch(url, init);
+  }
+  return response;
 }
 
 /** The backend answers public data routes anonymously when the access token has expired (so a

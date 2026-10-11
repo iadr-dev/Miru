@@ -162,6 +162,17 @@ class PaddleClient:
         data: dict[str, Any] = payload.get("data", {})
         return data
 
+    async def cancel_subscription(self, subscription_id: str) -> dict[str, Any]:
+        """Cancel a subscription right away (no further charge, no end-of-period grace) - used when
+        the account itself is being deleted."""
+        payload = await self._request(
+            "POST",
+            f"/subscriptions/{subscription_id}/cancel",
+            json={"effective_from": "immediately"},
+        )
+        data: dict[str, Any] = payload.get("data", {})
+        return data
+
     async def clear_scheduled_change(self, subscription_id: str) -> dict[str, Any]:
         """Remove a pending scheduled change (a cancel that has not taken effect yet)."""
         payload = await self._request(

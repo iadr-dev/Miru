@@ -695,7 +695,9 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
 - **Account deletion (GDPR-style):** `accounts/erasure.py::erase_user` purges every table that has
   a `user_id` column (found from the ORM metadata, so new tables are covered automatically; a test
   fails if a table keyed by a differently named user column is missed) and then the `users` row.
-  Not yet exposed through an endpoint: cancelling the Paddle subscription first and the web
-  confirmation flow are still to do.
+  Exposed as `DELETE /me` (body `{"confirm": "DELETE"}`): it cancels any live Paddle subscription
+  first and erases nothing if that fails, then erases and signs the caller out. Settings →
+  Profile has the typed-confirmation dialog. Two things it does not touch: `billing_events` (a
+  global webhook log with no user column) and any uploaded attachment files.
 - **Dangling-pointer guards:** `turns.parent_turn_id`/`regenerate_of`, `messages.parent_id` and
   `schedule_jobs.thread_id` are foreign keys with `ON DELETE SET NULL`.
