@@ -32,9 +32,12 @@ LAYER_ORDER: list[list[str]] = [
     ],  # interaction
     ["agent"],  # runtime
     ["tools"],
-    ["context", "calendar", "analytics", "ingest"],
+    ["context", "calendar", "analytics", "ingest", "llm", "attachments"],
     ["dataaccess"],
     ["sources"],
+    # Foundation: persistence and shared contracts, importable from every layer above.
+    ["db"],
+    ["schemas", "config", "governance"],
 ]
 
 LAYER_INDEX: dict[str, int] = {module: i for i, layer in enumerate(LAYER_ORDER) for module in layer}
