@@ -9,6 +9,8 @@ every tier."""
 
 from __future__ import annotations
 
+import ipaddress
+
 from fastapi import Depends, Request
 
 from accounts.models import User
@@ -21,15 +23,21 @@ READ_ANONYMOUS_PER_MINUTE = 240
 AUTH_PER_MINUTE = 30
 
 
-def client_address(request: Request, *, trust_forwarded_for: bool) -> str:
-    """The caller's address. Behind a reverse proxy every request arrives from the proxy, so the
-    first `X-Forwarded-For` hop is used - but only when the deployment says the header is set by
-    its own proxy (otherwise any client could spoof its way out of the limit)."""
-    if trust_forwarded_for:
-        forwarded = request.headers.get("x-forwarded-for", "")
-        first = forwarded.split(",")[0].strip()
-        if first:
-            return first
+def client_address(request: Request, *, trusted_proxy_count: int) -> str:
+    """The caller's address. Behind `trusted_proxy_count` reverse proxies every request arrives
+    from the nearest one, and each proxy appends the address it saw to `X-Forwarded-For`; so the
+    caller is the entry that many hops from the RIGHT. Anything to its left was supplied by the
+    client and is ignored, otherwise a client could rotate a forged value to dodge the limit.
+    With no trusted proxy the header is ignored altogether."""
+    if trusted_proxy_count > 0:
+        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",")]
+        hops = [h for h in hops if h]
+        if len(hops) >= trusted_proxy_count:
+            candidate = hops[-trusted_proxy_count]
+            try:
+                return str(ipaddress.ip_address(candidate))
+            except ValueError:
+                pass  # not an address: fall back to the socket peer rather than key on junk
     return request.client.host if request.client else "unknown"
 
 
@@ -57,12 +65,12 @@ async def guard_reads(
     if user is not None:
         await _enforce(state, f"read:user:{user.id}", per_minute=READ_SIGNED_IN_PER_MINUTE)
         return
-    address = client_address(request, trust_forwarded_for=state.settings.trust_forwarded_for)
+    address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
     await _enforce(state, f"read:ip:{address}", per_minute=READ_ANONYMOUS_PER_MINUTE)
 
 
 async def guard_auth(request: Request, state: AppState = Depends(get_state)) -> None:
-    address = client_address(request, trust_forwarded_for=state.settings.trust_forwarded_for)
+    address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
     await _enforce(state, f"auth:ip:{address}", per_minute=AUTH_PER_MINUTE)
 
 

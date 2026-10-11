@@ -17,8 +17,9 @@ product/app state (threads, memory, schedules…).
 - Rate limits (abuse protection, same for every tier): data-read routes 600/min per signed-in user
   or 240/min per anonymous address; sign-in endpoints (`/auth/oauth/*`, `/auth/refresh`) 30/min per
   address; chat turns and voice have their own limits. Over the limit: HTTP 429, code
-  `rate_limited`, `retryable: true`, with `Retry-After`. Set `TRUST_FORWARDED_FOR=true` only behind
-  your own reverse proxy so the real client address is read from `X-Forwarded-For`.
+  `rate_limited`, `retryable: true`, with `Retry-After`. Set `TRUSTED_PROXY_COUNT` to the number
+  of your own reverse proxies in front of the API so the caller is read from `X-Forwarded-For`
+  that many hops from the right (default 0 = header ignored, since clients can forge it).
 - `Idempotency-Key` honored on turn-creating POSTs.
 - **Expired access token on a public route.** Routes that allow anonymous callers still answer a
   caller whose access token has expired (as anonymous, so a logged-out visitor with a stale cookie

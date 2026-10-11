@@ -79,9 +79,23 @@ def _request(forwarded: str | None, host: str = "10.0.0.1") -> Request:
     )
 
 
-def test_forwarded_for_is_honoured_only_when_the_proxy_is_trusted() -> None:
-    request = _request("203.0.113.9, 10.0.0.1")
+def test_forwarded_for_is_ignored_without_a_trusted_proxy() -> None:
+    request = _request("203.0.113.9")
 
-    assert client_address(request, trust_forwarded_for=True) == "203.0.113.9"
-    assert client_address(request, trust_forwarded_for=False) == "10.0.0.1"
-    assert client_address(_request(None), trust_forwarded_for=True) == "10.0.0.1"
+    assert client_address(request, trusted_proxy_count=0) == "10.0.0.1"
+
+
+def test_the_caller_is_counted_from_the_right_so_a_forged_prefix_is_ignored() -> None:
+    # The client sent "6.6.6.6"; our one proxy appended the address it actually saw.
+    forged = _request("6.6.6.6, 203.0.113.9")
+    # Two proxies of ours: the client, then proxy 1's peer, appended by proxy 2.
+    two_hops = _request("6.6.6.6, 203.0.113.9, 10.1.1.1")
+
+    assert client_address(forged, trusted_proxy_count=1) == "203.0.113.9"
+    assert client_address(two_hops, trusted_proxy_count=2) == "203.0.113.9"
+
+
+def test_a_short_or_garbage_header_falls_back_to_the_socket_peer() -> None:
+    assert client_address(_request("203.0.113.9"), trusted_proxy_count=2) == "10.0.0.1"
+    assert client_address(_request("not-an-ip"), trusted_proxy_count=1) == "10.0.0.1"
+    assert client_address(_request(None), trusted_proxy_count=1) == "10.0.0.1"

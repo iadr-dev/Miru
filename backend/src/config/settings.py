@@ -171,9 +171,10 @@ class Settings(BaseSettings):
     rate_limiter_backend: str = "memory"  # memory | redis
     redis_url: str = "redis://localhost:6379/0"
     rate_limit_key_prefix: str = "ratelimit"
-    # Whether `X-Forwarded-For` is set by our own reverse proxy (so the first hop is the real
-    # client). Leave off when the API is exposed directly: any client could forge the header.
-    trust_forwarded_for: bool = False
+    # How many reverse proxies of our own sit in front of the API (each appends the address it saw
+    # to `X-Forwarded-For`). 0 = exposed directly: the header is ignored, since any client could
+    # forge it. The caller is the entry that many hops from the right of the header.
+    trusted_proxy_count: int = 0
     data_updated_key_prefix: str = "data.updated"
     # "module:callable" the ingest process resolves to build its real `data.updated` publisher.
     # Named rather than imported because `ingest/` sits below `events/` and may not import it;
