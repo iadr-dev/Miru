@@ -114,3 +114,52 @@ def _inspect_tables_and_indexes(sync_conn: object) -> tuple[set[str], set[str]]:
             uc["name"] for uc in inspector.get_unique_constraints(table_name) if uc.get("name")
         )
     return table_names, index_names
+
+
+async def test_chat_search_uses_the_trigram_index_on_postgres(database_url: str) -> None:
+    """The trigram index exists, the store's search statement has the exact shape it serves, and
+    Postgres plans that shape through the index rather than scanning every message."""
+    if not database_url.startswith("postgresql"):
+        pytest.skip("trigram search index is Postgres-only")
+    from sqlalchemy import event, text  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import AsyncSession  # noqa: PLC0415
+
+    from conversation.store import SqlAlchemyConversationStore  # noqa: PLC0415
+    from db.postgres_search import MESSAGE_TEXT_INDEX  # noqa: PLC0415
+
+    engine = make_engine(database_url)
+    try:
+        await ensure_schema(engine)
+        statements: list[str] = []
+
+        def _record(conn_, cursor, statement, parameters, context, executemany):  # noqa: PLR0913, PLR0917
+            statements.append(statement)
+
+        event.listen(engine.sync_engine, "before_cursor_execute", _record)
+        async with AsyncSession(engine) as session:
+            await SqlAlchemyConversationStore(session).search_threads(user_id="u", query="x")
+        search = next(sql for sql in statements if "messages.content" in sql)
+        # The index is on lower(CAST(content AS VARCHAR)) WHERE type = 'text'; the planner can only
+        # use it if the statement spells both out (a bound `type = $1` hides the predicate).
+        assert "lower(CAST(messages.content AS VARCHAR))" in search
+        assert "messages.type = 'text'" in search
+
+        async with engine.connect() as conn:
+            await conn.exec_driver_sql("SET enable_seqscan = off")
+            plan = "\n".join(
+                str(row[0])
+                for row in await conn.exec_driver_sql(
+                    "EXPLAIN SELECT 1 FROM messages WHERE type = 'text' "
+                    "AND lower(CAST(content AS VARCHAR)) LIKE '%台積電%'"
+                )
+            )
+            present = (
+                await conn.execute(
+                    text("SELECT 1 FROM pg_indexes WHERE indexname = :name"),
+                    {"name": MESSAGE_TEXT_INDEX},
+                )
+            ).scalar()
+        assert present == 1
+        assert MESSAGE_TEXT_INDEX in plan, plan
+    finally:
+        await engine.dispose()

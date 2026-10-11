@@ -13,6 +13,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from config import get_settings
 from db.additive_upgrade import apply_additive_upgrade
+from db.postgres_search import ensure_postgres_search_index
 
 
 class Base(DeclarativeBase):
@@ -50,6 +51,8 @@ async def ensure_schema(engine: AsyncEngine) -> None:
     # Existing tables keep their shape under `create_all`; add any column/index/unique key the
     # models gained since (additive only — never drops or rewrites; see db/additive_upgrade.py).
     await apply_additive_upgrade(engine, Base.metadata)
+    # Postgres-only extras the portable model cannot express (the chat-search trigram index).
+    await ensure_postgres_search_index(engine)
 
 
 async def ensure_schema_for(session_factory: async_sessionmaker[AsyncSession]) -> None:
