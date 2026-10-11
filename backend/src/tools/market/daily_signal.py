@@ -14,7 +14,7 @@ from ingest.rows import rows_from_store
 from ingest.store import ParquetStore
 from schemas.capabilities import ActiveEtfHoldingChangeRow, ActiveEtfHoldingRow
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, is_entitled, parse_args
+from tools.base import SyncStoreTool, ToolContext, is_entitled, parse_args
 from tools.market._common import (
     HoldingStatus,
     classify_holding_status,
@@ -336,7 +336,7 @@ def _daily_signal_highlight_if_significant(
     return _daily_signal_highlight(row, held_market_value_delta=held_market_value_delta)
 
 
-class GetDailySignalTool(BaseTool):
+class GetDailySignalTool(SyncStoreTool):
     """`get_daily_signal` — 今日訊號: whole-market, single-day 操作日報 aggregated across EVERY
     active ETF (never one ETF — that per-symbol drill-down is `get_active_etf_report`, used on
     the stock/ETF detail page). For each stock with a nonzero cross-ETF share change today:
@@ -359,13 +359,14 @@ class GetDailySignalTool(BaseTool):
     input_model: type[BaseModel] = GetDailySignalInput
     output_model: type[BaseModel] = GetDailySignalOutput
     data_class = DataClass.SPONSOR
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "daily_signal"
     supports_row_preview: bool = True
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetDailySignalInput, args)
         market = typed.market.value
         target = typed.trade_date or date_.today()

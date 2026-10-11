@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ingest.store import ParquetStore
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import SyncStoreTool, ToolContext, parse_args
 from tools.market._common import (
     closes_by_symbol,
     latest_dataset_date,
@@ -75,7 +75,7 @@ class GetPriceMomentumOutput(BaseModel):
     top_losers: tuple[PriceMomentumRow, ...] = Field(default_factory=tuple)
 
 
-class GetPriceMomentumTool(BaseTool):
+class GetPriceMomentumTool(SyncStoreTool):
     """`get_price_momentum` — 本日/本週/本月強勢股/弱勢股: pure close-to-close percentage change
     over a caller-chosen trading-day lookback (1/5/21 trading days — never a calendar-day
     offset, `TradingDayCalendar.shift_business_days`), ranked independently from
@@ -100,12 +100,13 @@ class GetPriceMomentumTool(BaseTool):
     input_model: type[BaseModel] = GetPriceMomentumInput
     output_model: type[BaseModel] = GetPriceMomentumOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "price_momentum"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — this tool only reads the ingest-owned Parquet store
         typed = parse_args(GetPriceMomentumInput, args)
         market = typed.market.value

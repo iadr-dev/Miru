@@ -29,7 +29,7 @@ from schemas.capabilities import (
 from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
-from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.base import BaseTool, SyncStoreTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
 
 
@@ -313,7 +313,7 @@ class GetEtfPremiumDiscountOutput(BaseModel):
     chart_hint: ChartHint | None = None
 
 
-class GetEtfPremiumDiscountTool(BaseTool):
+class GetEtfPremiumDiscountTool(SyncStoreTool):
     """`get_etf_premium_discount` — one TW ETF's 折溢價 (premium/discount to NAV) history over a
     bounded trailing window, read directly from the already-ingested `etf_nav` Parquet store (no
     router fetch — same "read the ingest-owned store, never re-fetch live" posture as
@@ -333,7 +333,7 @@ class GetEtfPremiumDiscountTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetEtfPremiumDiscountInput, args)
         market = typed.market.value

@@ -14,7 +14,7 @@ from ingest.store import ParquetStore
 from ingest.us_universe import US_SYMBOL_UNIVERSE_DATASET
 from schemas.capabilities import EODBar, StockInfoRow, SymbolDirectorySearchRow
 from schemas.enums import DataClass, Market
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import BaseTool, SyncStoreTool, ToolContext, parse_args
 from tools.market._common import (
     industry_by_symbol_for,
     latest_dataset_date,
@@ -55,7 +55,7 @@ class GetSymbolInfoOutput(BaseModel):
     rows: tuple[StockInfoRow, ...] = Field(default_factory=tuple)
 
 
-class GetSymbolInfoTool(BaseTool):
+class GetSymbolInfoTool(SyncStoreTool):
     """`get_symbol_info` — batched symbol->name (+ industry/security-type) lookup against the
     whole-market `STOCK_INFO_JOB` roster the ingest layer already writes daily. This is the one
     real gap the AI leaderboard (and any other bare-symbol list) has today: `ScoreResult`/
@@ -80,7 +80,7 @@ class GetSymbolInfoTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetSymbolInfoInput, args)
         market = typed.market.value
@@ -159,7 +159,7 @@ class GetSymbolDirectorySearchOutput(BaseModel):
     rows: tuple[SymbolDirectorySearchRow, ...] = Field(default_factory=tuple)
 
 
-class GetSymbolDirectorySearchTool(BaseTool):
+class GetSymbolDirectorySearchTool(SyncStoreTool):
     """`get_symbol_directory_search` — free-text symbol/name type-ahead over the ingested
     `STOCK_INFO_JOB` roster (stocks + ETFs together, warrants excluded via `is_scoreable_symbol`).
     Ranks exact-prefix-on-symbol first, then prefix-on-name, then substring-anywhere — a plain
@@ -179,7 +179,7 @@ class GetSymbolDirectorySearchTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetSymbolDirectorySearchInput, args)
         market = typed.market.value
@@ -268,7 +268,7 @@ class GetPriceHistoryOutput(BaseModel):
     rows: tuple[EODBar, ...] = Field(default_factory=tuple)
 
 
-class GetPriceHistoryTool(BaseTool):
+class GetPriceHistoryTool(SyncStoreTool):
     """`get_price_history` — a bounded multi-day OHLCV window for up to 20 symbols, read from the
     already-ingested `PRICE_EOD_JOB` partitions (never a per-symbol live fetch). Backs a
     sparkline and a client-computed chg% for any symbol list (leaderboard rows, a watchlist, an
@@ -289,7 +289,7 @@ class GetPriceHistoryTool(BaseTool):
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx  # no router fetch — reads the ingest-owned Parquet store directly
         typed = parse_args(GetPriceHistoryInput, args)
         market = typed.market.value

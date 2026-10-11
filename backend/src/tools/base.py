@@ -34,8 +34,13 @@ Design notes (judgment calls):
 
 from __future__ import annotations
 
+import asyncio
+import time
+import weakref
+from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
+import anyio.to_thread
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -133,6 +138,102 @@ class BaseTool:
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:  # pragma: no cover
         raise NotImplementedError
+
+
+@dataclass
+class _CacheEntry:
+    stored_at: float
+    token: object
+    result: BaseModel
+
+
+class _ResultCache:
+    """One tool instance's cached results and in-flight computations."""
+
+    def __init__(self) -> None:
+        self.entries: dict[str, _CacheEntry] = {}
+        self.inflight: dict[str, asyncio.Future[BaseModel]] = {}
+
+
+_MAX_CACHED_RESULTS = 128
+
+
+class SyncStoreTool(BaseTool):
+    """A tool whose whole body is blocking work (Parquet/DuckDB reads, pandas, row validation).
+
+    Subclasses implement the plain synchronous `run_sync`; `run` hands it to a worker thread, so a
+    slow read cannot freeze the event loop. Done inline in an `async def`, one heavy request (the
+    sector-rotation heatmap took ~9 s) stalls every other request on the process, including
+    trivial ones. A tool that also awaits upstream I/O should instead extract just its store
+    reads into a sync helper and run that through `anyio.to_thread.run_sync`.
+
+    A worker thread still shares the GIL, so CPU-bound Python (validating tens of thousands of
+    rows) slows other requests down even off the loop. The data only changes when the daily
+    ingest lands, so a whole-market derivation can opt into a result cache: set
+    `cache_ttl_seconds > 0` and a result is reused while the store's freshness token (which
+    changes whenever ingest writes new data) is unchanged and the entry is younger than the TTL.
+    The key is the arguments plus the caller's tier (row-preview tools mask by entitlement).
+    Identical simultaneous requests share one computation (single-flight).
+
+    Thread-safety: the stores open a fresh DuckDB connection per read and keep no per-request
+    state, so concurrent worker threads are safe; contextvars (structlog bindings) are copied
+    into the thread by anyio."""
+
+    # Seconds a result may be reused while the store is unchanged; 0 (the default) never caches.
+    cache_ttl_seconds: float = 0.0
+
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:  # pragma: no cover
+        raise NotImplementedError
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        store = getattr(self, "_store", None)
+        market = getattr(args, "market", None)
+        if self.cache_ttl_seconds <= 0 or store is None or market is None:
+            return await self._compute(args, ctx)
+
+        token = store.freshness_token(getattr(market, "value", str(market)))
+        key = f"{ctx.tier.value}|{args.model_dump_json()}"
+        cache = _result_caches.setdefault(self, _ResultCache())
+        now = time.monotonic()
+        entry = cache.entries.get(key)
+        if (
+            entry is not None
+            and entry.token == token
+            and now - entry.stored_at < self.cache_ttl_seconds
+        ):
+            return entry.result
+        pending = cache.inflight.get(key)
+        if pending is not None:
+            try:
+                return await asyncio.shield(pending)
+            except Exception:
+                return await self._compute(args, ctx)
+
+        future: asyncio.Future[BaseModel] = asyncio.get_running_loop().create_future()
+        cache.inflight[key] = future
+        try:
+            result = await self._compute(args, ctx)
+        except Exception as exc:
+            future.set_exception(exc)
+            future.exception()  # mark retrieved: nobody may be waiting
+            raise
+        except BaseException:
+            future.cancel()
+            raise
+        else:
+            cache.entries[key] = _CacheEntry(now, token, result)
+            while len(cache.entries) > _MAX_CACHED_RESULTS:
+                cache.entries.pop(next(iter(cache.entries)))
+            future.set_result(result)
+            return result
+        finally:
+            cache.inflight.pop(key, None)
+
+    async def _compute(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        return await anyio.to_thread.run_sync(self.run_sync, args, ctx)
+
+
+_result_caches: weakref.WeakKeyDictionary[SyncStoreTool, _ResultCache] = weakref.WeakKeyDictionary()
 
 
 class MaskedTeaser(BaseModel):

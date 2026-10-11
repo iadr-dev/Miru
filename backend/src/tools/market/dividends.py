@@ -17,7 +17,7 @@ from schemas.capabilities import DividendEvent
 from schemas.chart_hint import ChartHint, FieldDef, FieldType, Mark
 from schemas.enums import Capability, DataClass, Market
 from schemas.source import HealthStatus
-from tools.base import BaseTool, ToolContext, parse_args
+from tools.base import BaseTool, SyncStoreTool, ToolContext, parse_args
 from tools.common import DateRangeInput
 from tools.market._common import RowList, etf_nav_names, real_calendar
 
@@ -141,7 +141,7 @@ class GetDividendCalendarOutput(BaseModel):
     events: tuple[DividendCalendarEventRow, ...] = Field(default_factory=tuple)
 
 
-class GetDividendCalendarTool(BaseTool):
+class GetDividendCalendarTool(SyncStoreTool):
     """`get_dividend_calendar` — 股息日曆: every TW-listed ETF's 除息日/最後購買日/股利發放日
     landing within one requested calendar month, read from the already-ingested `dividends`
     (`TaiwanStockDividend`) partition tree (`DIVIDENDS_JOB`) — never a live per-symbol fetch.
@@ -166,12 +166,13 @@ class GetDividendCalendarTool(BaseTool):
     input_model: type[BaseModel] = GetDividendCalendarInput
     output_model: type[BaseModel] = GetDividendCalendarOutput
     data_class = DataClass.PUBLIC
+    cache_ttl_seconds = 300.0  # whole-market derivation; recomputed when ingest writes new data
     card_type: str | None = "dividend_calendar"
 
     def __init__(self, store: ParquetStore) -> None:
         self._store = store
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+    def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx
         typed = parse_args(GetDividendCalendarInput, args)
         market = typed.market.value
