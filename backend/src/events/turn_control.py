@@ -137,8 +137,11 @@ class RedisTurnControl:
         await pubsub.subscribe(f"{_CHANNEL_PREFIX}{turn_id}")
         try:
             while True:
-                raw = await pubsub.get_message(
-                    ignore_subscribe_messages=True, timeout=_REFRESH_EVERY_SECONDS
+                raw = cast(
+                    dict[str, bytes | str] | None,
+                    await pubsub.get_message(
+                        ignore_subscribe_messages=True, timeout=_REFRESH_EVERY_SECONDS
+                    ),
                 )
                 # Keep the announcement alive for as long as this turn is being listened to.
                 await self._redis.expire(f"{_RUNNING_PREFIX}{turn_id}", ANNOUNCE_TTL_SECONDS)
