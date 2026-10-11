@@ -15,9 +15,11 @@ import math
 import re
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date as date_
 from typing import NamedTuple
 
+import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 
 from config.settings import get_settings
@@ -238,6 +240,24 @@ class GetDispositionBoardInput(BaseModel):
 _ENRICHMENT_CONCURRENCY = 8
 
 
+@dataclass(frozen=True)
+class _BoardStoreData:
+    """What `GetDispositionBoardTool._read_store` hands back from its thread."""
+
+    report_date: date_
+    by_symbol_disposition: dict[str, DispositionEventRow]
+    calendar: TradingDayCalendar
+    flag_counts: dict[str, int]
+    flag_names: dict[str, set[str]]
+    attention_info: dict[str, AttentionStockRow]
+    observed_days: int
+    roster: list[str]
+    price_date: date_ | None
+    closes: dict[str, _BarInfo]
+    prior_closes: dict[str, float]
+    institutional_net: dict[str, int]
+
+
 class GetDispositionBoardTool(BaseTool):
     """`get_disposition_board` — 處置王-style board: 風險股 (at_risk) / 處置中 (in_disposition) /
     即將出關 (exiting_soon) buckets, joined with price/institutional-flow/margin. 自結發布 is out
@@ -265,19 +285,16 @@ class GetDispositionBoardTool(BaseTool):
         self._store = store
         self._router = router
 
-    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        typed = parse_args(GetDispositionBoardInput, args)
-        market = typed.market.value
+    def _read_store(self, market: str) -> _BoardStoreData | None:
+        """Every blocking Parquet/DuckDB read this board needs, in one synchronous pass.
 
+        `run` calls this through `anyio.to_thread.run_sync`: done inline, the roughly dozen
+        partition reads plus validating thousands of rows froze the whole event loop for about a
+        second, stalling every other request (a trivial `/pets/progress` took ~900 ms instead of
+        ~20 ms while the board built). `None` means no disposition report has been ingested yet."""
         report_date = _latest_dataset_date(self._store, DISPOSITION_EVENTS_DATASET, market)
         if report_date is None:
-            return GetDispositionBoardOutput(
-                market=market,
-                data_available=False,
-                unavailable_reason="Disposition-board ingest has not captured any day yet for "
-                "this market — history only starts accumulating once "
-                "job_attention_stocks/job_disposition_events first run; there is no backfill.",
-            )
+            return None
 
         disposition_rows = rows_from_store(
             DispositionEventRow,
@@ -327,6 +344,47 @@ class GetDispositionBoardTool(BaseTool):
         institutional_net = (
             _institutional_net_by_symbol(self._store, market, flow_date) if flow_date else {}
         )
+
+        return _BoardStoreData(
+            report_date=report_date,
+            by_symbol_disposition=by_symbol_disposition,
+            calendar=calendar,
+            flag_counts=flag_counts,
+            flag_names=flag_names,
+            attention_info=attention_info,
+            observed_days=observed_days,
+            roster=roster,
+            price_date=price_date,
+            closes=closes,
+            prior_closes=prior_closes,
+            institutional_net=institutional_net,
+        )
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        typed = parse_args(GetDispositionBoardInput, args)
+        market = typed.market.value
+
+        data = await anyio.to_thread.run_sync(self._read_store, market)
+        if data is None:
+            return GetDispositionBoardOutput(
+                market=market,
+                data_available=False,
+                unavailable_reason="Disposition-board ingest has not captured any day yet for "
+                "this market — history only starts accumulating once "
+                "job_attention_stocks/job_disposition_events first run; there is no backfill.",
+            )
+        report_date = data.report_date
+        by_symbol_disposition = data.by_symbol_disposition
+        calendar = data.calendar
+        flag_counts = data.flag_counts
+        flag_names = data.flag_names
+        attention_info = data.attention_info
+        observed_days = data.observed_days
+        roster = data.roster
+        price_date = data.price_date
+        closes = data.closes
+        prior_closes = data.prior_closes
+        institutional_net = data.institutional_net
 
         enrichments = await self._enrich_roster(
             roster,
