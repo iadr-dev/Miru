@@ -115,7 +115,7 @@ markers = [
 - Callers name a **capability + (symbol, market)** — **never a source id**. A `sources/*` import
   outside `dataaccess/` / `ingest/` is a layering violation.
 - **ONLY `sources/` performs network I/O.** No `httpx`/`requests`/`socket`/scraper/SDK network
-  call anywhere else. The architecture test greps for network imports outside `sources/`. The
+  call anywhere else. `tests/arch/test_network_io.py` fails on a network-client import outside `sources/` unless the module is on its reviewed allow-list (Redis transport, LLM/voice vendors, billing, OAuth, delivery). The
   Redis/DuckDB cache is a **caching `SourceAdapter` wrapper inside `sources/`** — `context/` never
   opens a socket/Redis/DuckDB itself (infra §3).
 - **Async end-to-end.** Source/tool/LLM I/O is `async`. **Blocking SDKs/scrapers** (FinMind,
