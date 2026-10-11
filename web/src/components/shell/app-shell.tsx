@@ -17,6 +17,7 @@ import {
 } from "@/components/shell/use-shell-ui";
 import { WatchlistRail } from "@/components/shell/watchlist-rail";
 import { Toaster } from "@/components/ui/toast";
+import { RateLimitNotice } from "./rate-limit-notice";
 
 /**
  * The authenticated app frame, responsive across the device range:
@@ -92,6 +93,7 @@ export function AppShell({
           {modal}
           <WelcomePullDialog />
           <Toaster />
+          <RateLimitNotice />
           <TabStripScroll />
         </div>
       )}

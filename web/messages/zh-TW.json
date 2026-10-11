@@ -2,7 +2,9 @@
   "common": {
     "toast": {
       "dismiss": "關閉"
-    }
+    },
+    "rateLimited": "目前請求過於頻繁，請稍後再試。",
+    "rateLimitedWait": "目前請求過於頻繁，請在 {seconds} 秒後再試。"
   },
   "brand": {
     "name": "Miru",
