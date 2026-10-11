@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import ipaddress
 
+import structlog
 from fastapi import Depends, Request
 
 from accounts.models import User
 from api.dependencies import AppState, get_state, optional_user
 from api.errors import ApiError
+
+logger = structlog.get_logger(__name__)
 
 _WINDOW_SECONDS = 60
 READ_SIGNED_IN_PER_MINUTE = 600
@@ -44,12 +47,23 @@ def client_address(request: Request, *, trusted_proxy_count: int) -> str:
     return request.client.host if request.client else "unknown"
 
 
-async def _enforce(state: AppState, caller: str, *, per_minute: int) -> None:
+async def _enforce(request: Request, state: AppState, caller: str, *, per_minute: int) -> None:
     verdict = await state.rate_limiter.check(
         caller, max_requests=per_minute, window_seconds=_WINDOW_SECONDS
     )
     if verdict.allowed:
         return
+    # Counted per route and caller kind (never the user id or address): a steady stream of these
+    # for ordinary users means a limit is set too low. `route` is the path template, so it stays
+    # low-cardinality.
+    route = getattr(request.scope.get("route"), "path", request.url.path)
+    logger.warning(
+        "rate_limited",
+        bucket=caller.split(":", 1)[0],
+        caller_kind="user" if ":user:" in caller else "address",
+        route=route,
+        limit_per_minute=per_minute,
+    )
     retry_after = max(1, int(verdict.retry_after_seconds or _WINDOW_SECONDS))
     raise ApiError(
         status_code=429,
@@ -66,15 +80,15 @@ async def guard_reads(
     user: User | None = Depends(optional_user),
 ) -> None:
     if user is not None:
-        await _enforce(state, f"read:user:{user.id}", per_minute=READ_SIGNED_IN_PER_MINUTE)
+        await _enforce(request, state, f"read:user:{user.id}", per_minute=READ_SIGNED_IN_PER_MINUTE)
         return
     address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
-    await _enforce(state, f"read:ip:{address}", per_minute=READ_ANONYMOUS_PER_MINUTE)
+    await _enforce(request, state, f"read:ip:{address}", per_minute=READ_ANONYMOUS_PER_MINUTE)
 
 
 async def guard_auth(request: Request, state: AppState = Depends(get_state)) -> None:
     address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
-    await _enforce(state, f"auth:ip:{address}", per_minute=AUTH_PER_MINUTE)
+    await _enforce(request, state, f"auth:ip:{address}", per_minute=AUTH_PER_MINUTE)
 
 
 __all__ = ["guard_auth", "guard_reads"]
