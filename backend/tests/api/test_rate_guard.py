@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import cast
 
 from fastapi import Request
+from starlette.datastructures import Headers
 
 from api.rate_guard import client_address
 from config.settings import Settings
@@ -68,12 +69,12 @@ def test_routes_outside_the_guarded_set_are_not_counted(settings: Settings) -> N
     assert limiter.counts == {}
 
 
-def _request(forwarded: str | None, host: str = "10.0.0.1") -> Request:
-    headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+def _request(*forwarded: str, host: str = "10.0.0.1") -> Request:
+    """A request carrying one `X-Forwarded-For` header line per argument."""
     return cast(
         Request,
         SimpleNamespace(
-            headers={k.decode(): v.decode() for k, v in headers},
+            headers=Headers(raw=[(b"x-forwarded-for", line.encode()) for line in forwarded]),
             client=SimpleNamespace(host=host),
         ),
     )
@@ -98,4 +99,11 @@ def test_the_caller_is_counted_from_the_right_so_a_forged_prefix_is_ignored() ->
 def test_a_short_or_garbage_header_falls_back_to_the_socket_peer() -> None:
     assert client_address(_request("203.0.113.9"), trusted_proxy_count=2) == "10.0.0.1"
     assert client_address(_request("not-an-ip"), trusted_proxy_count=1) == "10.0.0.1"
-    assert client_address(_request(None), trusted_proxy_count=1) == "10.0.0.1"
+    assert client_address(_request(), trusted_proxy_count=1) == "10.0.0.1"
+
+
+def test_a_forged_first_header_line_cannot_pad_the_list() -> None:
+    # Two header lines: the client's own, then the one our proxy added.
+    request = _request("6.6.6.6", "203.0.113.9")
+
+    assert client_address(request, trusted_proxy_count=1) == "203.0.113.9"

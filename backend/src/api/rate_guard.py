@@ -30,7 +30,10 @@ def client_address(request: Request, *, trusted_proxy_count: int) -> str:
     client and is ignored, otherwise a client could rotate a forged value to dodge the limit.
     With no trusted proxy the header is ignored altogether."""
     if trusted_proxy_count > 0:
-        hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",")]
+        # A request may carry several header lines; a proxy appends to the combined list, so
+        # count over all of them (reading only the first line would let a client pad it).
+        combined = ",".join(request.headers.getlist("x-forwarded-for"))
+        hops = [h.strip() for h in combined.split(",")]
         hops = [h for h in hops if h]
         if len(hops) >= trusted_proxy_count:
             candidate = hops[-trusted_proxy_count]
