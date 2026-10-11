@@ -10,6 +10,7 @@ messages, and `fork_thread` copies no messages at all (a fresh thread whose firs
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
@@ -469,6 +470,9 @@ class SqlAlchemyConversationStore:
         Portable across SQLite/Postgres (`LIKE lower(...)` rather than a dialect-specific FTS
         index) — good enough for the top-bar palette; a real FTS index is a later optimization."""
         pattern = f"%{query.lower()}%"
+        # SQLite stores JSON with non-ASCII escaped (台...), so CJK text only matches the
+        # escaped form there; Postgres keeps the characters as-is.
+        json_pattern = f"%{json.dumps(query.lower())[1:-1]}%"
         title_match = select(ThreadRow.id).where(
             ThreadRow.user_id == user_id,
             ThreadRow.deleted_at.is_(None),
@@ -479,7 +483,14 @@ class SqlAlchemyConversationStore:
             .join(MessageRow, MessageRow.turn_id == TurnRow.id)
             .where(
                 MessageRow.user_id == user_id,
-                func.lower(func.cast(MessageRow.content, String)).like(pattern),
+                # Only the prose a person reads: thinking traces and tool payloads are large JSON
+                # that would otherwise be cast to text and scanned, and a hit inside one is not
+                # something the user can see in the thread.
+                MessageRow.type == MessageBlockType.TEXT.value,
+                or_(
+                    func.lower(func.cast(MessageRow.content, String)).like(pattern),
+                    func.lower(func.cast(MessageRow.content, String)).like(json_pattern),
+                ),
             )
         )
         result = await self._session.execute(
