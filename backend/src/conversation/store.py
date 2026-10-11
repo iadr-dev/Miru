@@ -236,10 +236,19 @@ class SqlAlchemyConversationStore:
         result = await self._session.execute(stmt)
         return [_thread_row_to_model(row, []) for row in result.scalars().all()]
 
-    async def _get_thread_row(self, *, user_id: str, thread_id: str) -> ThreadRow:
-        result = await self._session.execute(
-            select(ThreadRow).where(ThreadRow.id == thread_id, ThreadRow.user_id == user_id)
-        )
+    async def _get_thread_row(
+        self, *, user_id: str, thread_id: str, lock: bool = False
+    ) -> ThreadRow:
+        """The user's thread row.
+
+        `lock=True` takes a row lock (`SELECT … FOR UPDATE`, a no-op on SQLite) for the edit
+        paths, so a second concurrent edit waits and then sees the fresh `version`; without
+        it two editors could both pass the version check and the last write would silently
+        win."""
+        statement = select(ThreadRow).where(ThreadRow.id == thread_id, ThreadRow.user_id == user_id)
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        result = await self._session.execute(statement)
         row = result.scalar_one_or_none()
         if row is None:
             raise ThreadNotFoundError(thread_id)
@@ -398,7 +407,7 @@ class SqlAlchemyConversationStore:
         override can PATCH a resolvable `"provider/model"` string back to the default, and a
         dedicated clear affordance can be added later if a real need for it shows up.
         """
-        row = await self._get_thread_row(user_id=user_id, thread_id=thread_id)
+        row = await self._get_thread_row(user_id=user_id, thread_id=thread_id, lock=True)
         if expected_version is not None and row.version != expected_version:
             raise StaleThreadVersionError(thread_id)
         if title is not None:

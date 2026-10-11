@@ -371,14 +371,23 @@ class WatchlistStore:
         )
         return result.first() is not None
 
-    async def _group_row(self, *, user_id: str, watchlist_id: str) -> WatchlistRow:
-        result = await self._session.execute(
-            select(WatchlistRow).where(
-                WatchlistRow.id == watchlist_id,
-                WatchlistRow.user_id == user_id,
-                WatchlistRow.deleted_at.is_(None),
-            )
+    async def _group_row(
+        self, *, user_id: str, watchlist_id: str, lock: bool = False
+    ) -> WatchlistRow:
+        """One of the user's live groups.
+
+        `lock=True` takes a row lock (`SELECT … FOR UPDATE`, a no-op on SQLite) for the edit
+        paths, so a second concurrent edit waits and then sees the fresh `version`; without
+        it two editors could both pass the version check and the last write would silently
+        win."""
+        statement = select(WatchlistRow).where(
+            WatchlistRow.id == watchlist_id,
+            WatchlistRow.user_id == user_id,
+            WatchlistRow.deleted_at.is_(None),
         )
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        result = await self._session.execute(statement)
         row = result.scalar_one_or_none()
         if row is None:
             raise WatchlistNotFoundError(watchlist_id)
@@ -399,7 +408,7 @@ class WatchlistStore:
     async def rename_group(
         self, *, user_id: str, watchlist_id: str, name: str, expected_version: int | None = None
     ) -> WatchlistGroup:
-        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id)
+        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id, lock=True)
         if expected_version is not None and row.version != expected_version:
             raise StaleWatchlistVersionError(watchlist_id)
         row.name = name
@@ -418,7 +427,7 @@ class WatchlistStore:
         expected_version: int | None = None,
     ) -> WatchlistGroup:
         """Colour a group's label from the fixed palette, or clear it with `None`."""
-        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id)
+        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id, lock=True)
         if expected_version is not None and row.version != expected_version:
             raise StaleWatchlistVersionError(watchlist_id)
         row.color = color
@@ -444,7 +453,7 @@ class WatchlistStore:
     ) -> WatchlistGroup:
         """Move a group between two neighbors via a fresh lexorank key. A `None` neighbor means
         "no bound on that side" (move to an end)."""
-        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id)
+        row = await self._group_row(user_id=user_id, watchlist_id=watchlist_id, lock=True)
         if expected_version is not None and row.version != expected_version:
             raise StaleWatchlistVersionError(watchlist_id)
         lo = await self._group_sort_order(user_id=user_id, watchlist_id=after_id)

@@ -432,12 +432,21 @@ class SqlAlchemySchedulerStore:
         logger.info("schedule_job_created", user_id=user_id, job_id=row.id)
         return _job_to_model(row)
 
-    async def _get_job_row(self, *, user_id: str, job_id: str) -> ScheduleJobRow:
-        result = await self._session.execute(
-            select(ScheduleJobRow).where(
-                ScheduleJobRow.id == job_id, ScheduleJobRow.user_id == user_id
-            )
+    async def _get_job_row(
+        self, *, user_id: str, job_id: str, lock: bool = False
+    ) -> ScheduleJobRow:
+        """The user's schedule row.
+
+        `lock=True` takes a row lock (`SELECT … FOR UPDATE`, a no-op on SQLite) for the edit
+        paths, so a second concurrent edit waits and then sees the fresh `version`; without
+        it two editors could both pass the version check and the last write would silently
+        win."""
+        statement = select(ScheduleJobRow).where(
+            ScheduleJobRow.id == job_id, ScheduleJobRow.user_id == user_id
         )
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        result = await self._session.execute(statement)
         row = result.scalar_one_or_none()
         if row is None:
             raise ScheduleJobNotFoundError(job_id)
@@ -467,7 +476,7 @@ class SqlAlchemySchedulerStore:
         `StaleVersionError` (-> 409). Every edit bumps `version`. A new trigger or re-enabling takes
         the caller-resolved `next_run` (the router owns trigger resolution) and clears the last
         run's status reason."""
-        row = await self._get_job_row(user_id=user_id, job_id=job_id)
+        row = await self._get_job_row(user_id=user_id, job_id=job_id, lock=True)
         if expected_version is not None and row.version != expected_version:
             raise StaleVersionError(job_id)
         given = patch.model_fields_set
@@ -599,10 +608,21 @@ class SqlAlchemySchedulerStore:
         logger.info("alert_rule_created", user_id=user_id, alert_id=row.id)
         return _alert_to_model(row)
 
-    async def _get_alert_row(self, *, user_id: str, alert_id: str) -> AlertRuleRow:
-        result = await self._session.execute(
-            select(AlertRuleRow).where(AlertRuleRow.id == alert_id, AlertRuleRow.user_id == user_id)
+    async def _get_alert_row(
+        self, *, user_id: str, alert_id: str, lock: bool = False
+    ) -> AlertRuleRow:
+        """The user's alert rule row.
+
+        `lock=True` takes a row lock (`SELECT … FOR UPDATE`, a no-op on SQLite) for the edit
+        paths, so a second concurrent edit waits and then sees the fresh `version`; without
+        it two editors could both pass the version check and the last write would silently
+        win."""
+        statement = select(AlertRuleRow).where(
+            AlertRuleRow.id == alert_id, AlertRuleRow.user_id == user_id
         )
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        result = await self._session.execute(statement)
         row = result.scalar_one_or_none()
         if row is None:
             raise AlertRuleNotFoundError(alert_id)
@@ -633,7 +653,7 @@ class SqlAlchemySchedulerStore:
         "is it true now vs. last time" is meaningless across a different condition — and any
         edit that re-enables, re-conditions or re-dates a rule clears a prior auto-pause reason.
         Engine-side writes go through `save_alert_state`, which does not bump `version`."""
-        row = await self._get_alert_row(user_id=user_id, alert_id=alert_id)
+        row = await self._get_alert_row(user_id=user_id, alert_id=alert_id, lock=True)
         if expected_version is not None and row.version != expected_version:
             raise StaleVersionError(alert_id)
         given = patch.model_fields_set
