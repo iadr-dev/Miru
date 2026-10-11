@@ -19,7 +19,7 @@ from typing import Protocol, runtime_checkable
 
 import structlog
 from pydantic import TypeAdapter
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -162,6 +162,7 @@ def _pref_to_model(row: AlertPreferenceRow) -> AlertPreference:
     )
 
 
+_HELD_SCAN_BATCH = 500
 _INBOX_CHANNEL = DeliveryChannelKind.IN_APP.value
 _BRIEF_PER_KIND = 5
 
@@ -966,16 +967,37 @@ class SqlAlchemySchedulerStore:
         self, *, since: datetime, limit: int = 500
     ) -> list[Notification]:
         """External-channel notifications parked during a user's quiet hours (`payload.held`).
-        The JSON flag is filtered in Python (portable across SQLite/Postgres); the window + channel
-        predicates keep the scan small."""
-        stmt = (
-            select(NotificationRow)
-            .where(NotificationRow.channel != _INBOX_CHANNEL, NotificationRow.delivered_at >= since)
-            .order_by(NotificationRow.delivered_at)
-            .limit(limit)
-        )
-        rows = (await self._session.execute(stmt)).scalars().all()
-        return [_notification_to_model(r) for r in rows if r.payload.get("held") is True]
+        The JSON flag is filtered in Python (portable across SQLite/Postgres), so the window is
+        read in keyset-paged batches until `limit` held rows are found or the window is exhausted;
+        a single `LIMIT` before the filter would starve held rows behind many already-sent ones."""
+        held: list[Notification] = []
+        cursor: tuple[datetime, str] | None = None
+        while len(held) < limit:
+            stmt = (
+                select(NotificationRow)
+                .where(
+                    NotificationRow.channel != _INBOX_CHANNEL,
+                    NotificationRow.delivered_at >= since,
+                )
+                .order_by(NotificationRow.delivered_at, NotificationRow.id)
+                .limit(_HELD_SCAN_BATCH)
+            )
+            if cursor is not None:
+                stmt = stmt.where(
+                    or_(
+                        NotificationRow.delivered_at > cursor[0],
+                        and_(
+                            NotificationRow.delivered_at == cursor[0],
+                            NotificationRow.id > cursor[1],
+                        ),
+                    )
+                )
+            rows = (await self._session.execute(stmt)).scalars().all()
+            held.extend(_notification_to_model(r) for r in rows if r.payload.get("held") is True)
+            if len(rows) < _HELD_SCAN_BATCH:
+                break
+            cursor = (rows[-1].delivered_at, rows[-1].id)
+        return held[:limit]
 
     async def release_held_notifications(self, *, ids: tuple[str, ...]) -> int:
         if not ids:

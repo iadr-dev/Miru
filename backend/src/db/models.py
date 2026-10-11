@@ -143,9 +143,8 @@ class MessageRow(Base):
             "'steering','branch_summary','compaction','attachment','web_search_sources')",
             name="ck_messages_type",
         ),
-        Index("ix_messages_turn_seq", "turn_id", "seq"),
+        UniqueConstraint("turn_id", "seq", name="uq_messages_turn_seq"),
         Index("ix_messages_parent", "parent_id"),
-        Index("ix_messages_user", "user_id"),
     )
 
 
@@ -566,7 +565,6 @@ class ScheduleJobRow(Base):
         CheckConstraint(
             "status IN ('ok','running','skipped_quota','error')", name="ck_schedule_jobs_status"
         ),
-        Index("ix_schedule_jobs_user", "user_id"),
         # The due-jobs worker scans only enabled jobs by next_run — a partial index.
         Index(
             "ix_schedule_jobs_due",
@@ -626,7 +624,6 @@ class AlertRuleRow(Base):
             name="ck_alert_rules_trigger_mode",
         ),
         Index("ix_alert_rules_watchlist", "watchlist_id"),
-        Index("ix_alert_rules_user", "user_id"),
         # The alert-engine scan — a partial index over only enabled rules.
         Index(
             "ix_alert_rules_scan",
@@ -685,7 +682,6 @@ class DevicePushTokenRow(Base):
             "platform IN ('ios','android','web')", name="ck_device_push_tokens_platform"
         ),
         UniqueConstraint("user_id", "token", name="uq_device_push_tokens_user_token"),
-        Index("ix_device_push_tokens_user", "user_id"),
     )
 
 
@@ -753,6 +749,8 @@ class NotificationRow(Base):
         CheckConstraint("source IN ('schedule','alert','digest')", name="ck_notifications_source"),
         UniqueConstraint("user_id", "dedupe_key", name="uq_notifications_user_dedupe"),
         Index("ix_notifications_user_delivered", "user_id", "delivered_at"),
+        # The cross-user quiet-hours release scan filters on delivered_at alone.
+        Index("ix_notifications_delivered", "delivered_at"),
         # The unread-badge scan — a partial index over only unread rows.
         Index(
             "ix_notifications_unread",
@@ -884,7 +882,6 @@ class SubscriptionRow(Base):
             name="ck_subscriptions_status",
         ),
         CheckConstraint("tier IN ('free','premium','pro')", name="ck_subscriptions_tier"),
-        Index("ix_subscriptions_user", "user_id"),
     )
 
 
