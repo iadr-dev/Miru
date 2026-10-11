@@ -445,7 +445,9 @@ async def paddle_webhook(
         )
     try:
         verify_signature(
-            raw_body, request.headers.get("Paddle-Signature"), settings.paddle_webhook_secret
+            raw_body,
+            request.headers.get("Paddle-Signature"),
+            settings.paddle_webhook_secret.get_secret_value(),
         )
     except SignatureVerificationError as exc:
         raise ApiError(

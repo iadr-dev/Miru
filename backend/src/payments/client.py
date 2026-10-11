@@ -62,7 +62,7 @@ class PaddleClient:
     ) -> None:
         if not settings.paddle_api_key:
             raise PaddleConfigError("paddle api key not configured")
-        self._api_key = settings.paddle_api_key
+        self._api_key = settings.paddle_api_key.get_secret_value()
         self._base_url = _base_url_for(settings.paddle_environment)
         self._client_factory = client_factory
 

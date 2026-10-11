@@ -203,6 +203,7 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
 
 ## 8. Security
 
+- **Credential settings are `SecretStr`** (`config/settings.py`): their repr is masked, so a printed or logged settings object cannot leak a key. Unwrap with `reveal(...)` / `.get_secret_value()` only at the call that needs the plain value; `tests/config/test_secret_settings.py` fails on a credential-looking setting typed as a plain `str`.
 - **`.env` gitignored**; secrets via env at runtime, KMS envelope-encrypted at rest
   (`user_secrets.ciphertext` for BYOK). Decrypt in-process at call time only.
 - **BYOK** keys encrypted at rest, read at call time; a removed key fails that one call gracefully

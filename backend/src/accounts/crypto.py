@@ -16,7 +16,7 @@ from __future__ import annotations
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from config import get_settings
-from config.settings import Settings
+from config.settings import Settings, reveal
 
 
 class SecretEncryptionNotConfiguredError(RuntimeError):
@@ -49,7 +49,7 @@ class SecretCipher:
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> SecretCipher:
         settings = settings or get_settings()
-        raw = settings.secret_encryption_keys
+        raw = reveal(settings.secret_encryption_keys)
         keys = [part.strip() for part in raw.split(",")] if raw else []
         keys = [key for key in keys if key]
         return cls(keys)

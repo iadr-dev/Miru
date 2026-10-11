@@ -14,7 +14,7 @@ No network I/O at construction time.
 from __future__ import annotations
 
 from accounts.hooks import EntitlementResolver
-from config.settings import Settings, get_settings
+from config.settings import Settings, get_settings, reveal
 from dataaccess.composition import build_default_router
 from db.base import ensure_schema_for
 from events.live_quote_factory import build_data_update_broker
@@ -54,7 +54,7 @@ async def build_scheduler_from_settings(settings: Settings | None = None) -> Sch
         orchestrator=orchestrator,
         brief_tool=tool_registry.get_tool("get_morning_brief"),
         public_base_url=resolved.webhook_base_url,
-        link_secret=resolved.jwt_secret_key,
+        link_secret=reveal(resolved.jwt_secret_key),
         settings=resolved,
         router=router,
         entitlement_resolver=EntitlementResolver(tls_policy=resolved.tls_policy),

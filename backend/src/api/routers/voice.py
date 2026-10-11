@@ -22,7 +22,7 @@ from accounts.entitlements import VOICE_DAILY_LIMIT, VOICE_REQUESTS_PER_MINUTE
 from accounts.models import User
 from api.dependencies import AppState, get_session, get_settings_dep, get_state, require_user
 from api.errors import ApiError
-from config.settings import Settings
+from config.settings import Settings, reveal
 from memory.watchlists import WatchlistStore
 from usage.store import VoiceKind
 from voice.models import SpeechAudio, Transcript
@@ -117,7 +117,7 @@ def _speaker(settings: Settings) -> Speaker:
     if settings.voice_tts_provider == "edge_tts":
         return EdgeTTSSpeaker()
     if settings.voice_tts_provider == "openai":
-        return OpenAITTSSpeaker(api_key=settings.openai_api_key)
+        return OpenAITTSSpeaker(api_key=reveal(settings.openai_api_key))
     raise ApiError(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         code="voice_provider_unconfigured",

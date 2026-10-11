@@ -20,7 +20,7 @@ import httpx
 import structlog
 from selectolax.parser import HTMLParser
 
-from config.settings import Settings, get_settings
+from config.settings import Settings, get_settings, reveal
 from schemas.enums import DataClass, TimingClass, TLSPolicy
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from schemas.urlsafety import canonical_url, is_public_host
@@ -83,7 +83,7 @@ class WebSearchAdapter:
         self, query: str, *, tls_policy: TLSPolicy = TLSPolicy.STRICT, count: int = 10
     ) -> SourceResult:
         """`search(query) -> [{title, url, snippet, published}]`."""
-        key = self._settings.brave_search_api_key
+        key = reveal(self._settings.brave_search_api_key)
         if not key:
             return _result(
                 payload={},

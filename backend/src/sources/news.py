@@ -36,7 +36,7 @@ import feedparser
 import httpx
 import structlog
 
-from config.settings import Settings, get_settings
+from config.settings import Settings, get_settings, reveal
 from schemas.capabilities import NewsItem
 from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
@@ -232,7 +232,7 @@ class NewsAdapter:
                     errors.append(f"{feed.source}: {type(exc).__name__}")
                     logger.warning("news_rss_fetch_failed", source=feed.source, error=str(exc))
 
-        finnhub_key = self._settings.finnhub_key
+        finnhub_key = reveal(self._settings.finnhub_key)
         if finnhub_key:
             try:
                 if is_tw:

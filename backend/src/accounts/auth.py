@@ -68,7 +68,7 @@ def _hash_token(raw_token: str) -> str:
 def _require_secret(settings: Settings) -> str:
     if not settings.jwt_secret_key:
         raise AuthConfigError("JWT_SECRET_KEY is not configured")
-    return settings.jwt_secret_key
+    return settings.jwt_secret_key.get_secret_value()
 
 
 def require_jwt_secret(settings: Settings) -> str:
