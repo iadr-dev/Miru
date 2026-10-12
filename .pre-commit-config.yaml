@@ -1,0 +1,42 @@
+# Local pre-commit gate: the cheap checks, so a push does not wait for CI to find a lint error.
+# Install once:  uv tool install pre-commit && pre-commit install
+# The full gate (mypy strict, pyright strict, the test suites) stays in CI and in the commands in
+# backend/CLAUDE.md and web/OVERVIEW.md.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: '^(web/pnpm-lock.yaml|backend/uv.lock)$'
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-yaml
+      - id: check-json
+        exclude: '^web/(tsconfig|\.vscode).*$'
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: '^backend/'
+      - id: ruff-format
+        files: '^backend/'
+
+  - repo: local
+    hooks:
+      - id: biome
+        name: biome (web lint + format check)
+        entry: pnpm --dir web exec biome check --no-errors-on-unmatched
+        language: system
+        files: '^web/.*\.(ts|tsx|js|jsx|json|css)$'
+        pass_filenames: false
+      - id: backend-layering
+        name: backend architecture tests (layering, network I/O, explicit Any)
+        entry: uv run --project backend pytest backend/tests/arch -q -p no:cacheprovider
+        language: system
+        files: '^backend/(src|tests/arch)/.*\.py$'
+        pass_filenames: false

@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import time
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -55,6 +56,27 @@ logger = structlog.get_logger(__name__)
 
 _MANIFEST_NAME = "_manifest.json"
 _TMP_DIRNAME = ".tmp"
+
+
+_RENAME_ATTEMPTS = 5
+_RENAME_PAUSE_SECONDS = 0.1
+
+
+def _rename_with_retry(src: Path, dst: Path) -> None:
+    """`src.rename(dst)`, retried briefly on `PermissionError`.
+
+    On Windows a just-written directory can be held for a moment by the writer's own file handles
+    or by a virus scanner/indexer, and the rename fails with 'access denied' although nothing is
+    wrong. A short bounded retry rides that out; on Linux it never triggers. The rename itself is
+    still the single atomic step, so the swap stays all-or-nothing."""
+    for attempt in range(1, _RENAME_ATTEMPTS + 1):
+        try:
+            src.rename(dst)
+            return
+        except PermissionError:
+            if attempt == _RENAME_ATTEMPTS:
+                raise
+            time.sleep(_RENAME_PAUSE_SECONDS * attempt)
 
 
 @dataclass(frozen=True)
@@ -143,7 +165,7 @@ class ParquetStore:
             con.close()
 
         version_dir = partition_dir / f"v={version_id}"
-        tmp_dir.rename(version_dir)  # atomic within one filesystem
+        _rename_with_retry(tmp_dir, version_dir)  # atomic within one filesystem
         self._flip_manifest(partition_dir, version_id)
         self._sweep_old_versions(partition_dir, keep_version=version_id)
 

@@ -33,6 +33,17 @@ uv run pytest -m "not network"  # default suite (§7)
 uv run pre-commit run -a
 ```
 
+Guards beyond the per-PR suite:
+- `.pre-commit-config.yaml` (repo root): cheap local gate (ruff, biome, whitespace/YAML/JSON,
+  the architecture tests). Install once: `uv tool install pre-commit && pre-commit install`.
+- `dependency-audit` workflow: `pip-audit` over `uv.lock` on lockfile changes and weekly. Fix with
+  `uv lock --upgrade-package <name>`.
+- `coverage` workflow (weekly/on demand): `[tool.coverage.report] fail_under = 90` (measured 92.8%).
+  Locally: `COVERAGE_CORE=sysmon uv run pytest --cov=src`.
+- `tests/api/test_openapi_contract.py`: the API contract snapshot (`openapi_contract.json`); a removed
+  route, newly required input or dropped status code fails with the breaking changes listed. Accept
+  an intended change with `UPDATE_OPENAPI_CONTRACT=1` and commit the snapshot.
+
 ### pyproject.toml — tool stanzas
 ```toml
 [tool.ruff]
