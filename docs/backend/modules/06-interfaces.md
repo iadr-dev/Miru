@@ -17,7 +17,7 @@ The complete endpoint list is in [../api-reference.md](../api-reference.md).
   by real code today; screener/summary/themes-scoring routes named in
   [api-reference.md](../api-reference.md) §4a are not yet built), `auth.py` + `accounts_extra.py`
   (OAuth, `/me`, personality presets, usage quota, BYOK keys), `billing.py` (Paddle), `memory.py`
-  (long-term memory + the relational watchlist rail), `scheduler.py` (`/schedules`, `/alerts`,
+  (long-term memory + the relational watchlist rail), `scheduler/` (`/schedules`, `/alerts`,
   `/notifications`, `/me/alert-preferences`, `/me/devices`), `voice.py` (transcribe/speak),
   `pets.py`, `probes.py` (`/livez`/`/readyz`/`/startupz`, mounted unprefixed). **The authoritative
   endpoint list is [api-reference.md](../api-reference.md)** — this module owns cross-cutting

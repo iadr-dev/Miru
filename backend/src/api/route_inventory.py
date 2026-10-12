@@ -50,7 +50,11 @@ ROUTER_SECTIONS: tuple[tuple[str, str, bool], ...] = (
     ("auth", "Auth & OAuth", True),
     ("accounts_extra", "Account, BYOK keys & usage", True),
     ("billing", "Billing (Paddle)", True),
-    ("scheduler", "Alerts, schedules, notifications & channels", True),
+    ("scheduler.schedules", "Alerts, schedules, notifications & channels", True),
+    ("scheduler.alerts", "Alerts, schedules, notifications & channels", True),
+    ("scheduler.notifications", "Alerts, schedules, notifications & channels", True),
+    ("scheduler.channels", "Alerts, schedules, notifications & channels", True),
+    ("scheduler.email", "Alerts, schedules, notifications & channels", True),
     ("probes", "Ops probes (app root, not under /api/v1)", False),
 )
 
