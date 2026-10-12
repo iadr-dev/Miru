@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import cast
 
 import structlog
-from sqlalchemy import CursorResult, delete, or_, select
+from sqlalchemy import ColumnElement, CursorResult, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import Base
@@ -39,25 +39,48 @@ def user_scoped_tables() -> list[str]:
 async def _erase_billing_events(session: AsyncSession, user_id: str) -> int:
     """Delete the webhook envelopes that belong to this user.
 
-    An envelope is theirs if it names them in `custom_data.user_id`, or concerns one of their
-    subscriptions or customer ids (later events for a subscription often omit `custom_data`).
-    Must run before the subscription rows are deleted, which is where those ids come from."""
-    rows = (
+    `billing_events.raw_payload` holds the Paddle event's `data` object itself (see
+    `BillingService.handle_webhook_event`), so `id`, `subscription_id`, `customer_id` and
+    `custom_data` are top-level keys. An event is the user's if it names them in
+    `custom_data.user_id`, or concerns one of their subscriptions or customers (later events for a
+    subscription often omit `custom_data`).
+
+    Two guards against deleting someone else's record: an event that names a *different* user is
+    never matched by id, and a customer id that another user's subscription also references (Paddle
+    reuses a customer for the same email) is not matched at all. Must run before the subscription
+    rows are deleted, which is where the ids come from."""
+    own = (
         await session.execute(
             select(
                 SubscriptionRow.paddle_subscription_id, SubscriptionRow.paddle_customer_id
             ).where(SubscriptionRow.user_id == user_id)
         )
     ).all()
-    subscription_ids = {row[0] for row in rows if row[0]}
-    customer_ids = {row[1] for row in rows if row[1]}
-    data = BillingEventRow.raw_payload["data"]
-    conditions = [data["custom_data"]["user_id"].as_string() == user_id]
-    if subscription_ids:
-        conditions.append(data["id"].as_string().in_(subscription_ids))
-        conditions.append(data["subscription_id"].as_string().in_(subscription_ids))
+    subscription_ids = {row[0] for row in own if row[0]}
+    customer_ids = {row[1] for row in own if row[1]}
     if customer_ids:
-        conditions.append(data["customer_id"].as_string().in_(customer_ids))
+        shared = (
+            await session.execute(
+                select(SubscriptionRow.paddle_customer_id).where(
+                    SubscriptionRow.paddle_customer_id.in_(customer_ids),
+                    SubscriptionRow.user_id != user_id,
+                )
+            )
+        ).scalars()
+        customer_ids -= set(shared)
+
+    payload = BillingEventRow.raw_payload
+    named_user = payload["custom_data"]["user_id"].as_string()
+    by_id: list[ColumnElement[bool]] = []
+    if subscription_ids:
+        by_id.append(payload["id"].as_string().in_(subscription_ids))
+        by_id.append(payload["subscription_id"].as_string().in_(subscription_ids))
+    if customer_ids:
+        by_id.append(payload["customer_id"].as_string().in_(customer_ids))
+        by_id.append(payload["id"].as_string().in_(customer_ids))  # customer.* events
+    conditions = [named_user == user_id]
+    if by_id:
+        conditions.append(and_(or_(*by_id), or_(named_user.is_(None), named_user == user_id)))
     result = await session.execute(delete(BillingEventRow).where(or_(*conditions)))
     return int(cast("CursorResult[tuple[()]]", result).rowcount or 0)
 
