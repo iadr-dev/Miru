@@ -38,7 +38,7 @@ export function ThemeTiersFlow({ data }: { data: unknown }): ReactNode {
   }
 
   return (
-    <div className="mt-3 surface-card p-4">
+    <div className="surface-card mt-3 p-4">
       {themeKey ? (
         <p className="mb-3 text-[13px] text-[var(--text-muted)]">
           {t("fields.theme_key")}: <span className="text-[var(--text)]">{themeKey}</span>

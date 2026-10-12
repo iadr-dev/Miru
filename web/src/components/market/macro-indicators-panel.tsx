@@ -37,7 +37,7 @@ export function MacroIndicatorsPanel(): ReactNode {
   });
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <QueryState query={query} skeleton={<CardSkeletonBody height={280} />}>
         {(data) => {
           if (isMaskedTeaser(data)) {
@@ -152,7 +152,7 @@ function MacroStat({
       style={{ backgroundColor: `color-mix(in srgb, ${tint} 10%, var(--surface) 90%)` }}
     >
       <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
-      <p className="font-num mt-1 text-[18px] text-[var(--text)] tabular-nums">{value}</p>
+      <p className="mt-1 font-num text-[18px] text-[var(--text)] tabular-nums">{value}</p>
     </div>
   );
 }

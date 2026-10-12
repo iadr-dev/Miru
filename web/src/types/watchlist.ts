@@ -65,7 +65,3 @@ export type WatchlistGroupView = z.infer<typeof watchlistGroupViewSchema>;
 export const listWatchlistsResponseSchema = z.object({
   watchlists: z.array(watchlistGroupViewSchema).default([]),
 });
-
-export const listWatchlistItemsResponseSchema = z.object({
-  items: z.array(watchlistItemSchema).default([]),
-});

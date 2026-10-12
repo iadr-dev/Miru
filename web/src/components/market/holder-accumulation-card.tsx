@@ -65,7 +65,7 @@ export function HolderAccumulationCard({
   const previewRows = rows.slice(0, COLLAPSED_ROW_COUNT);
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         <div className="flex flex-wrap items-center gap-2">

@@ -39,7 +39,7 @@ export function RankingsCard({ market }: { market: Market }): ReactNode {
   const [tab, setTab] = useState<RankingKind>("trending");
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       <div

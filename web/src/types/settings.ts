@@ -11,7 +11,6 @@
  * `pets.py`, `billing.py`, `scheduler.py`, `memory.py`). Parse-don't-trust at the seam.
  */
 import { z } from "zod";
-import { entitlementViewSchema, TIERS } from "@/types/account";
 
 // ---------------------------------------------------------------------------
 // Connections — `OAuthAccount` from `backend/src/accounts/models.py`, surfaced via
@@ -226,8 +225,6 @@ export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 // ---------------------------------------------------------------------------
 // Usage quota — re-exports the shared entitlement envelope (limits only, no live consumption).
 // ---------------------------------------------------------------------------
-
-export { entitlementViewSchema as usageQuotaSchema };
 
 // ---------------------------------------------------------------------------
 // Scheduler shared shapes
@@ -494,5 +491,3 @@ export const memoriesResponseSchema = z.object({
 // The universal `{code, message, retryable}` error envelope, re-exported here for convenience —
 // canonical definition is `lib/api/schemas.ts::apiErrorSchema`.
 // ---------------------------------------------------------------------------
-
-export { TIERS };

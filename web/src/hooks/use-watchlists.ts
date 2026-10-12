@@ -13,7 +13,6 @@ import {
   renameWatchlist,
   reorderWatchlistGroup,
   setWatchlistColor,
-  WatchlistApiError,
 } from "@/lib/api/watchlist";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass, WatchlistColor, WatchlistGroupView } from "@/types/watchlist";
@@ -308,5 +307,3 @@ export function useMoveWatchlistItem(market: Market) {
     onSettled: () => invalidate(queryClient, market),
   });
 }
-
-export { WatchlistApiError };

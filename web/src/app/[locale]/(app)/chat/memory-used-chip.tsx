@@ -22,7 +22,7 @@ export function MemoryUsedChip({ memories }: { memories: MemoryRef[] }): ReactNo
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-button)] !outline-none hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="!outline-none inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-button)] hover:text-[var(--text)] focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
         <BrainIcon size={14} weight="regular" aria-hidden />
         <span>{t("summary", { count: memories.length })}</span>

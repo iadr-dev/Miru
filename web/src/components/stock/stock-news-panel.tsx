@@ -171,7 +171,7 @@ function NewsRow({ row }: { readonly row: StockNewsRow }): ReactNode {
     </>
   );
   return (
-    <li className="border-b border-[var(--border)] py-2.5">
+    <li className="border-[var(--border)] border-b py-2.5">
       {href ? (
         <a
           href={href}
@@ -336,7 +336,7 @@ function PttPostRow({ post }: { readonly post: PttStockSearchPost }): ReactNode 
     </>
   );
   return (
-    <li className="border-b border-[var(--border)] py-2.5">
+    <li className="border-[var(--border)] border-b py-2.5">
       {href ? (
         <a
           href={href}

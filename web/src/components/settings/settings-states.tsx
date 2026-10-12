@@ -3,7 +3,6 @@
 import { WarningIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
 /** Plain-data loading skeleton for a Settings sub-page (no narration —
@@ -66,20 +65,6 @@ export function SavedToast({ message }: { message: string }): ReactNode {
       )}
     >
       {message}
-    </div>
-  );
-}
-
-/** Calm "requires Pro" gate message for the 403 `feature_not_entitled` path — plain copy, no 馬賽克
- * teaser (馬賽克 never appears in Settings). */
-export function RequiresProNotice({ onUpgrade }: { onUpgrade: () => void }): ReactNode {
-  const t = useTranslations("settings.common");
-  return (
-    <div className="surface-card p-6 text-center">
-      <p className="text-[var(--text)] text-sm">{t("requiresPro")}</p>
-      <Button variant="outline" size="sm" className="mt-3" onClick={onUpgrade}>
-        {t("goToBilling")}
-      </Button>
     </div>
   );
 }

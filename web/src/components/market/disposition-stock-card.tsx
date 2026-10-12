@@ -55,7 +55,7 @@ export function DispositionStockCard({
 
   if (card.locked) {
     return (
-      <div className="flex flex-col surface-card p-4">
+      <div className="surface-card flex flex-col p-4">
         <div className="flex items-center justify-between gap-2">
           <span className="inline-flex items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
             <LockIcon size={13} weight="regular" aria-hidden />
@@ -91,7 +91,7 @@ export function DispositionStockCard({
   }
 
   return (
-    <div className="flex flex-col surface-card p-4">
+    <div className="surface-card flex flex-col p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-medium text-[14px] text-[var(--text)]">

@@ -78,7 +78,7 @@ export function GateBar({
             min={0}
             value={overrides.min_price ?? 0}
             onChange={(event) => onChange({ ...overrides, min_price: Number(event.target.value) })}
-            className="min-h-11 w-24 rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface)] pl-5 pr-2 text-[var(--text)] text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            className="min-h-11 w-24 rounded-[var(--radius-input)] border border-[var(--border)] bg-[var(--surface)] pr-2 pl-5 text-[var(--text)] text-sm tabular-nums focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
           />
         </span>
       </label>

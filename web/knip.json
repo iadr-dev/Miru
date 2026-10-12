@@ -1,0 +1,18 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "next": true,
+  "vitest": true,
+  "entry": [
+    "src/app/**/{page,layout,error,not-found,loading,default,route,template,global-error}.tsx"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignoreDependencies": ["tailwindcss"],
+  "ignoreExportsUsedInFile": true,
+  "rules": {
+    "types": "off",
+    "exports": "error",
+    "files": "error",
+    "dependencies": "error",
+    "duplicates": "off"
+  }
+}

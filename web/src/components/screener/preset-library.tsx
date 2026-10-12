@@ -83,7 +83,7 @@ export function PresetLibrary({
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t("search")}
             aria-label={t("search")}
-            className="min-h-11 w-48 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] pl-8 pr-3 text-[var(--text)] text-sm focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            className="min-h-11 w-48 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] pr-3 pl-8 text-[var(--text)] text-sm focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
           />
         </div>
       </div>

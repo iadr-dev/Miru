@@ -39,13 +39,7 @@ export const COUNTRIES: readonly CountryEntry[] = phoneCountries
     return { iso2, nameEn, nameZh, dialCode };
   })
   .sort((a, b) => a.nameEn.localeCompare(b.nameEn));
-
-const BY_ISO2 = new Map(COUNTRIES.map((c) => [c.iso2, c]));
 const BY_DIAL_CODE = new Map(COUNTRIES.map((c) => [c.dialCode, c]));
-
-export function countryByIso2(iso2: string): CountryEntry | undefined {
-  return BY_ISO2.get(iso2.toUpperCase());
-}
 
 /** Dial codes aren't unique to one country (e.g. `+1` spans the US/Canada/Caribbean) — this
  * returns the dataset's first match, which is the conventional "primary" country for that code. */

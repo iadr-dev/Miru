@@ -79,7 +79,7 @@ export function WatchlistProposalCard({ data }: { data: Record<string, unknown> 
   }
 
   return (
-    <section aria-label={t(`title.${proposal.action}`)} className="mt-3 surface-card p-4">
+    <section aria-label={t(`title.${proposal.action}`)} className="surface-card mt-3 p-4">
       <div className="flex items-start gap-2">
         <StarIcon
           size={18}

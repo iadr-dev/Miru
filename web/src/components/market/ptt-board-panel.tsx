@@ -34,7 +34,7 @@ export function PttBoardPanel(): ReactNode {
   });
 
   return (
-    <section className="flex min-h-[70vh] w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex min-h-[70vh] w-full flex-col p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       <div role="tablist" aria-label={t("title")} className="flex flex-wrap gap-1.5">
@@ -149,7 +149,7 @@ function PttPostRow({ post }: { readonly post: PttPost }): ReactNode {
   );
 
   return (
-    <li className="border-b border-[var(--border)] py-2.5">
+    <li className="border-[var(--border)] border-b py-2.5">
       {href ? (
         <a
           href={href}

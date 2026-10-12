@@ -100,7 +100,7 @@ export function BreadthOrderBookCard({
     negativeContributors.length > COLLAPSED_CONTRIBUTOR_COUNT;
 
   return (
-    <section className="flex h-full w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex h-full w-full flex-col p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       {breadth.data_available ? (

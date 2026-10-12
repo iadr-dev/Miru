@@ -167,7 +167,7 @@ export function MarginMaintenanceCard({
   });
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
 
       <div className="mt-3 flex flex-wrap items-center gap-6">

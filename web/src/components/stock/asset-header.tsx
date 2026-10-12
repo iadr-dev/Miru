@@ -238,7 +238,7 @@ export function AssetHeader({
         {band ? (
           <a
             href="#stock-score-gauge"
-            className="rounded-[var(--radius-pill)] px-2.5 py-1 text-[12px] font-medium transition-opacity hover:opacity-80"
+            className="rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-opacity hover:opacity-80"
             style={{ backgroundColor: `${BAND_TOKEN[band]}1F`, color: BAND_TOKEN[band] }}
           >
             {band}

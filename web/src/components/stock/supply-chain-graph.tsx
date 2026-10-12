@@ -361,7 +361,7 @@ function PeerNode({
         <span className="block truncate font-medium text-[13px] text-[var(--text)] leading-tight">
           {peer.name}
         </span>
-        <span className="font-num block text-[11px] text-[var(--text-muted)] leading-tight">
+        <span className="block font-num text-[11px] text-[var(--text-muted)] leading-tight">
           {peer.symbol}
         </span>
       </span>
@@ -387,7 +387,7 @@ function FocusNode({
       className={cn(
         "flex flex-col items-center justify-center gap-0.5 rounded-[var(--radius-card)] border-2",
         "border-[var(--accent)] bg-[var(--surface-2)] px-3 py-3 text-center",
-        inline ? "w-full" : "-translate-y-1/2 absolute top-1/2 right-3 left-3",
+        inline ? "w-full" : "absolute top-1/2 right-3 left-3 -translate-y-1/2",
       )}
     >
       <span className="truncate font-semibold text-[15px] text-[var(--text)]">{name}</span>
@@ -403,7 +403,7 @@ function ChangeBadge({ value }: { readonly value: number }): ReactNode {
   const flat = value === 0;
   return (
     <span
-      className="font-num shrink-0 text-[11px] tabular-nums"
+      className="shrink-0 font-num text-[11px] tabular-nums"
       style={{ color: flat ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)" }}
     >
       {flat ? "" : up ? "▲" : "▼"}

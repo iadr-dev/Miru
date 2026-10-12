@@ -145,7 +145,7 @@ function FlatCard({ card }: { card: RichCard }): ReactNode {
   const typeLabel = cardTypeLabel(t, card.card_type);
 
   return (
-    <figure className="mt-3 surface-card p-4 sm:p-5" aria-label={typeLabel}>
+    <figure className="surface-card mt-3 p-4 sm:p-5" aria-label={typeLabel}>
       <figcaption className="mb-3 inline-flex items-center gap-2 font-medium text-[13px] text-[var(--text-muted)]">
         <CardsIcon size={16} weight="regular" aria-hidden />
         {typeLabel}

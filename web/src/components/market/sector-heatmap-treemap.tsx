@@ -283,7 +283,7 @@ export function SectorHeatmapTreemap({
       ref={containerRef}
       role="group"
       aria-label={t("title")}
-      className="relative w-full overflow-hidden rounded-[var(--radius-input)] aspect-[100/85] sm:aspect-[100/60]"
+      className="relative aspect-[100/85] w-full overflow-hidden rounded-[var(--radius-input)] sm:aspect-[100/60]"
     >
       {tiles.map((tile, index) => {
         const { row } = tile;

@@ -34,7 +34,7 @@ export function MobileTabBar({
       className={cn(
         "glass fixed inset-x-0 bottom-0 z-40 flex border-[var(--border)] border-t md:hidden",
         "bg-[color-mix(in_srgb,var(--surface)_88%,transparent)] backdrop-blur-[20px]",
-        "pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]",
+        "pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]",
       )}
     >
       {NAV_ITEMS.map((item) => {

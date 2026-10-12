@@ -34,11 +34,6 @@ export const ACCEPTED_ATTACHMENT_MEDIA_TYPES = [...IMAGE_MEDIA_TYPES, ...DOCUMEN
 /** Mirrors `backend/src/api/attachments.py`'s `_MAX_ATTACHMENTS_PER_REQUEST`. */
 export const MAX_ATTACHMENTS_PER_TURN = 10;
 
-/** Mirrors `backend/src/config/settings.py`'s `max_attachment_size_bytes` default. A deployment
- * that changes the server setting only loses the client-side early-reject convenience, never
- * correctness — the server's own check is still authoritative. */
-export const MAX_ATTACHMENT_SIZE_BYTES = 10_000_000;
-
 /** One attachment staged in the composer before send: the wire payload plus what the UI needs to
  * render a preview/remove row without re-deriving it. `previewUrl` is only set for an image (an
  * object URL for the thumbnail); a document shows its filename/icon instead; `pastedText` is only

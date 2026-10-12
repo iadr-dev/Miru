@@ -143,7 +143,7 @@ function PageNav({
         tabIndex={hasMultiplePages ? undefined : -1}
         disabled={page === 0}
         onClick={() => onPageChange(Math.max(0, page - 1))}
-        className="min-h-9 rounded-[var(--radius-pill)] border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-muted)] disabled:opacity-40 hover:text-[var(--text)]"
+        className="min-h-9 rounded-[var(--radius-pill)] border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-40"
       >
         ‹
       </button>
@@ -155,7 +155,7 @@ function PageNav({
         tabIndex={hasMultiplePages ? undefined : -1}
         disabled={page >= pageCount - 1}
         onClick={() => onPageChange(Math.min(pageCount - 1, page + 1))}
-        className="min-h-9 rounded-[var(--radius-pill)] border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-muted)] disabled:opacity-40 hover:text-[var(--text)]"
+        className="min-h-9 rounded-[var(--radius-pill)] border border-[var(--border)] px-2.5 text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-40"
       >
         ›
       </button>
