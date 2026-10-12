@@ -196,8 +196,8 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
   `Base.metadata.create_all()` under a Postgres advisory lock (`db/schema_lock.py`, so api,
   scheduler, ingest and mcp starting together cannot race on an empty database). With the default
   `SCHEMA_UPGRADE_MODE=strict`, an existing database that is behind the models makes startup fail
-  with the exact way out: `uv run python -m db.reset --yes` (or `docker compose run --rm api python
-  -m db.reset --yes`), which rebuilds the **app** database only - never the market data
+  with the exact way out: `uv run python -m db.reset --yes` (or `docker compose run --rm --no-deps
+  --entrypoint python api -m db.reset --yes` - the image entrypoint ignores a plain command), which rebuilds the **app** database only - never the market data
   (Parquet/DuckDB) or Redis - and refuses outside `ENV=development`. Keep the schema fresh and clean
   rather than carrying migration history; `SCHEMA_UPGRADE_MODE=additive` (data-preserving ADD
   COLUMN/INDEX/UNIQUE via `db/additive_upgrade.py`) is an opt-in escape hatch. **Alembic is adopted
