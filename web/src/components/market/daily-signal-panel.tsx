@@ -15,7 +15,8 @@ import { QueryState } from "@/components/ui/query-state";
 import { getDailySignal } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber } from "@/lib/format-number";
-import type { DailySignalHighlight, HoldingStatus } from "@/types/market";
+import type { HoldingStatus } from "@/types/market/etf";
+import type { DailySignalHighlight } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
 const STATUS_FILTERS: readonly HoldingStatus[] = ["新增", "刪除", "加碼", "減碼"];

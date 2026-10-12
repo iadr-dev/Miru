@@ -11,7 +11,7 @@ import { getNewsFeed } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { sourceLogoUrl } from "@/lib/source-logo";
-import type { NewsFeedItem } from "@/types/market";
+import type { NewsFeedItem } from "@/types/market/news";
 import type { Market } from "@/types/settings";
 
 const NEWS_QUERY_BY_MARKET: Record<Market, string> = {

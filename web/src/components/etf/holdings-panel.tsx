@@ -12,7 +12,7 @@ import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { ActiveEtfHoldingWeightRow } from "@/types/etf-detail";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 const DONUT_COLORS = [

@@ -8,7 +8,7 @@ import { formatNumber } from "@/lib/format-number";
 import { heatColor } from "@/lib/heat-color";
 import { DIRECTION_COLOR, DIRECTION_GLYPH, directionOf } from "@/lib/signed";
 import { squarifyGeneric, type TreemapTile } from "@/lib/treemap";
-import type { SectorHeatmapSizeBy, StockHeatmapRow } from "@/types/market";
+import type { SectorHeatmapSizeBy, StockHeatmapRow } from "@/types/market/sectors";
 
 // Same arbitrary wide-card layout box `SectorHeatmapTreemap` uses — every render position is a
 // percentage of these, so the box's real pixel size is whatever the surrounding card gives it.

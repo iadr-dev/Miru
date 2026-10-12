@@ -4,7 +4,7 @@ import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { type ReactNode, useMemo, useRef, useState } from "react";
 import { sectorIconKeyForIndustry } from "@/lib/sector-rotation-icons";
-import type { SectorRrgSeries } from "@/types/market";
+import type { SectorRrgSeries } from "@/types/market/sectors";
 import { CometTail } from "./comet-tail";
 import { CompassRing } from "./compass-ring";
 import { QuadrantFloor } from "./quadrant-floor";

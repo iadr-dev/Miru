@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { squarify } from "@/components/market/sector-heatmap-treemap";
-import type { SectorHeatmapRow } from "@/types/market";
+import type { SectorHeatmapRow } from "@/types/market/sectors";
 
 function row(overrides: Partial<SectorHeatmapRow>): SectorHeatmapRow {
   return {

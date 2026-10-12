@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { squarifyByWeight } from "@/components/us-stock/sector-industries-treemap";
-import type { SectorIndustryWeightRow } from "@/types/stock-detail";
+import type { SectorIndustryWeightRow } from "@/types/stock/profile";
 
 function row(overrides: Partial<SectorIndustryWeightRow>): SectorIndustryWeightRow {
   return {

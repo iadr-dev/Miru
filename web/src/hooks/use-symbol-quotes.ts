@@ -18,7 +18,7 @@
 import { useQueries } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { getSymbolQuotes } from "@/lib/api/market";
-import type { SymbolQuoteRow } from "@/types/market";
+import type { SymbolQuoteRow } from "@/types/market/quotes";
 import type { Market } from "@/types/settings";
 
 export type SymbolQuote = {

@@ -8,7 +8,8 @@ import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { QueryState } from "@/components/ui/query-state";
 import { getMacroIndicators } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
-import { isMaskedTeaser, type MacroIndicatorsData } from "@/types/market";
+import type { MacroIndicatorsData } from "@/types/market/macro";
+import { isMaskedTeaser } from "@/types/market/shared";
 
 const FED_COUNTRY_CODE = "FED";
 // `symbol` on both rows is FinMind's own free-text `name` field (e.g. "WTI"/"Brent",

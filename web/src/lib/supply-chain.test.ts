@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { groupPeers, peerRole } from "@/lib/supply-chain";
-import type { SupplyChainEdge } from "@/types/stock-detail";
+import type { SupplyChainEdge } from "@/types/stock/profile";
 
 const edge = (from: string, type: SupplyChainEdge["edge_type"], to: string): SupplyChainEdge => ({
   from_symbol: from,

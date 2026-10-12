@@ -4,7 +4,7 @@ import { useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { useRotationPlayback } from "@/hooks/use-rotation-playback";
-import type { SectorRrgSeries } from "@/types/market";
+import type { SectorRrgSeries } from "@/types/market/sectors";
 import { RankPanel, type RankPanelRow } from "./rank-panel";
 import { RotationCanvas } from "./rotation-canvas";
 import { colorForQuadrant, type RotationQuadrant } from "./rrg-layout";

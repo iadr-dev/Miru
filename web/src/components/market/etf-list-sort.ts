@@ -1,4 +1,4 @@
-import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
+import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market/etf";
 
 // desc for every numeric column (largest-first, matching the reference app's own default
 // ordering); asc for name (alphabetical is the natural default there, not "largest name").

@@ -10,7 +10,7 @@ import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionColor, formatSignedChange } from "@/lib/signed";
-import type { EtfMoneyFlowRow } from "@/types/market";
+import type { EtfMoneyFlowRow } from "@/types/market/flows";
 import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_1fr_0.8fr_0.9fr_28px]";

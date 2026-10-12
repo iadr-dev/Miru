@@ -12,7 +12,9 @@ import {
 } from "@/lib/api/market";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import { isMaskedTeaser, type MarketIndexStripItem, type MaskedTeaser } from "@/types/market";
+import type { MarketIndexStripItem } from "@/types/market/quotes";
+import type { MaskedTeaser } from "@/types/market/shared";
+import { isMaskedTeaser } from "@/types/market/shared";
 
 const SCROLL_STEP_PX = 240;
 

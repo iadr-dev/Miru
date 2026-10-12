@@ -3,7 +3,7 @@
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import type { MaterialAnnouncementRow } from "@/types/market";
+import type { MaterialAnnouncementRow } from "@/types/market/disclosures";
 
 // Same collapsed-row-count convention `DAILY_SIGNAL_COLLAPSED_ROW_COUNT`/`COLLAPSED_EVENT_COUNT`
 // (dividend calendar) use — enough rows visible inline while keeping this card's height

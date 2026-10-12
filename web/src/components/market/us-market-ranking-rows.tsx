@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
-import type { MarketRankingRow } from "@/types/market";
+import type { MarketRankingRow } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_28px]";

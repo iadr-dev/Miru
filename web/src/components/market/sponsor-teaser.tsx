@@ -5,7 +5,8 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
-import { isMaskedTeaser, type MaskedTeaser } from "@/types/market";
+import type { MaskedTeaser } from "@/types/market/shared";
+import { isMaskedTeaser } from "@/types/market/shared";
 
 /**
  * 馬賽克 (mosaic) teaser for a Sponsor-tier tool result the caller isn't entitled to — the

@@ -23,7 +23,7 @@ import { Link } from "@/i18n/navigation";
 import { getGovernmentBankFlows } from "@/lib/api/stock-detail";
 import { fieldLabel } from "@/lib/field-labels";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 const ROLLING_NET_WINDOWS = ["5d", "10d", "20d"] as const;

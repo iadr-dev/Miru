@@ -11,14 +11,14 @@ import { Link } from "@/i18n/navigation";
 import { getEtfsHoldingStock } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 import type {
   EtfHoldingRankRow,
   EtfPositionEvent,
   EtfPositionEventCounts,
   EtfWeightRankRow,
-} from "@/types/stock-detail";
+} from "@/types/stock/ownership";
 
 // FinMind's `TaiwanStockActiveETFHolding.shares` is raw 股 (individual shares), not 張 (board
 // lots of 1,000 shares) — see `GetEtfsHoldingStockTool`'s own docstring in `tools/market/`.

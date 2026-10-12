@@ -30,7 +30,7 @@ import {
 } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
-import type { DayTradingRow, MarginShortRow } from "@/types/stock-detail";
+import type { DayTradingRow, MarginShortRow } from "@/types/stock/chip";
 
 const MARGIN_TABLE_COLLAPSED_ROW_COUNT = 6;
 

@@ -27,9 +27,9 @@ import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
 import { getStockScore, getStockSummary, getTrendScore } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
-import type { SymbolType } from "@/types/market";
+import type { SymbolType } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
-import type { TrendScoreDimension } from "@/types/stock-detail";
+import type { TrendScoreDimension } from "@/types/stock/ai";
 
 type ScoreProfile = "swing" | "position";
 const PROFILES: readonly ScoreProfile[] = ["swing", "position"];

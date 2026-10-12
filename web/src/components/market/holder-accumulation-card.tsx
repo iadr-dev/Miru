@@ -11,7 +11,7 @@ import { SignedChange } from "@/components/ui/signed-change";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, formatSignedChange } from "@/lib/signed";
-import type { HolderAccumulationRow, HolderThreshold, HolderWindow } from "@/types/market";
+import type { HolderAccumulationRow, HolderThreshold, HolderWindow } from "@/types/market/rankings";
 
 const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_1.1fr_0.9fr_28px]";
 const THRESHOLDS = [200, 400, 800, 1000] as const satisfies readonly HolderThreshold[];

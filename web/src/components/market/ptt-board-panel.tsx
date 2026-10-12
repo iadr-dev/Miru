@@ -9,7 +9,7 @@ import { QueryState } from "@/components/ui/query-state";
 import { getPttBoard } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
-import { PTT_BOARDS, type PttBoardName, type PttPost } from "@/types/market";
+import { PTT_BOARDS, type PttBoardName, type PttPost } from "@/types/market/news";
 
 // This sub-tab has no sibling card next to it, so its own post list needs to fill the tab's
 // width/height on its own — 40 items across a 2-column grid, same reasoning

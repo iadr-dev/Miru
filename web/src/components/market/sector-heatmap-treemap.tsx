@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { heatColor } from "@/lib/heat-color";
 import { DIRECTION_COLOR, DIRECTION_GLYPH, directionOf } from "@/lib/signed";
-import type { SectorHeatmapRow, SectorHeatmapSizeBy } from "@/types/market";
+import type { SectorHeatmapRow, SectorHeatmapSizeBy } from "@/types/market/sectors";
 
 /** One laid-out tile: the source row plus a normalized [0,1] rectangle within the treemap's own
  * content box (converted to percentages at render time so the layout is pure CSS, no fixed px). */

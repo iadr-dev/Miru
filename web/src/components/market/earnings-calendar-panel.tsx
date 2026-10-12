@@ -9,7 +9,7 @@ import { QueryState } from "@/components/ui/query-state";
 import { getCalendarEventsFeed } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
-import type { EarningsCalendarRow } from "@/types/stock-detail";
+import type { EarningsCalendarRow } from "@/types/stock/events";
 
 const EVENT_DOT_COLOR = "var(--chart-1)";
 const US_MARKET: Market = "US";

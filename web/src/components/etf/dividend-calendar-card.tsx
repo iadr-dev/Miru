@@ -9,7 +9,7 @@ import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getDividendCalendar } from "@/lib/api/market";
 import { formatNumber } from "@/lib/format-number";
-import type { DividendCalendarEventRow } from "@/types/market";
+import type { DividendCalendarEventRow } from "@/types/market/etf";
 import type { Market } from "@/types/settings";
 
 const DECEMBER = 12;

@@ -12,7 +12,7 @@ import { RankingsCard } from "@/components/market/rankings-card";
 import { TwRankingsCard } from "@/components/market/tw-rankings-card";
 import { QueryState } from "@/components/ui/query-state";
 import { getAdvanceDecline, getIndexContribution, getScoreLeaderboard } from "@/lib/api/market";
-import type { LeaderboardDirection } from "@/types/market";
+import type { LeaderboardDirection } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
 /**

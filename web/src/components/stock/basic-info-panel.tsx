@@ -21,14 +21,12 @@ import {
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { formatAmount } from "@/lib/format-amount";
 import { formatNumber } from "@/lib/format-number";
-import { isMaskedTeaser } from "@/types/market";
+import type { InsiderTransferDeclarationRow } from "@/types/market/disclosures";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
-import type {
-  CalendarEventOut,
-  InsiderShareholdingResponse,
-  InsiderTransferDeclarationRow,
-  MaterialAnnouncement,
-} from "@/types/stock-detail";
+import type { CalendarEventOut } from "@/types/stock/events";
+import type { InsiderShareholdingResponse } from "@/types/stock/ownership";
+import type { MaterialAnnouncement } from "@/types/stock/profile";
 
 const ANNOUNCEMENTS_COLLAPSED_ROW_COUNT = 5;
 const INSIDER_COLLAPSED_ROW_COUNT = 5;

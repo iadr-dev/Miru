@@ -21,7 +21,7 @@ import type {
   AdvanceDeclineResponse,
   IndexContributionResponse,
   IndexContributionRow,
-} from "@/types/market";
+} from "@/types/market/breadth";
 import type { Market } from "@/types/settings";
 
 const BUCKET_ORDER = [

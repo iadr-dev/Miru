@@ -23,7 +23,9 @@ import { formatNumber } from "@/lib/format-number";
 import { FRESHNESS } from "@/lib/freshness";
 import { directionColor, directionGlyph } from "@/lib/signed";
 import { isEtfSymbolType } from "@/lib/symbol-type";
-import type { EtfListRow, ScoreBand, SymbolType } from "@/types/market";
+import type { EtfListRow } from "@/types/market/etf";
+import type { ScoreBand } from "@/types/market/rankings";
+import type { SymbolType } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 const HISTORY_DAYS_FOR_CHANGE = 2;

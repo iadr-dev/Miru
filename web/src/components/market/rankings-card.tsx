@@ -9,7 +9,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { getUsMarketRankings } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
-import type { RankingKind } from "@/types/market";
+import type { RankingKind } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
 // Same collapsed-row-count + "fetch the full backend cap, show 10, expand the rest in a modal"

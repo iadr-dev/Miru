@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { formatSignedChange } from "@/lib/signed";
-import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
+import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market/etf";
 import type { Market } from "@/types/settings";
 
 const ETF_ROW_GRID_COLS = "grid-cols-[1.4fr_0.8fr_0.9fr_1fr_0.8fr_1fr_1fr_0.8fr_28px]";

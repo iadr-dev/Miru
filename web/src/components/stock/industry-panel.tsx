@@ -16,7 +16,7 @@ import { formatNumber } from "@/lib/format-number";
 import { heatTint } from "@/lib/heat-color";
 import { directionGlyph } from "@/lib/signed";
 import type { Market } from "@/types/settings";
-import type { SubIndustryHeat } from "@/types/stock-detail";
+import type { SubIndustryHeat } from "@/types/stock/profile";
 
 const TIER_ORDER = ["upstream", "midstream", "downstream"] as const;
 type TierName = (typeof TIER_ORDER)[number];

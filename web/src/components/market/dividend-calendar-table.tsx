@@ -7,7 +7,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { buildMonthGrid, toIsoDate } from "@/lib/month-grid";
-import type { DividendCalendarEventRow } from "@/types/market";
+import type { DividendCalendarEventRow } from "@/types/market/etf";
 
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 // Same collapsed-row-count convention `DAILY_SIGNAL_COLLAPSED_ROW_COUNT`/`HolderAccumulationCard`

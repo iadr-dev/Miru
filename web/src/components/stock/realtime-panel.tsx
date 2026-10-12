@@ -26,7 +26,7 @@ import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { resolveToken } from "@/lib/resolve-css-token";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 // TWSE MIS is a single-shot snapshot (never a poll/stream) — the client re-fetches on this

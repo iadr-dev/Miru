@@ -30,7 +30,7 @@ import {
   type FinancialStatementLine,
   type FinancialStatementType,
   type MonthRevenueTrendPoint,
-} from "@/types/stock-detail";
+} from "@/types/stock/fundamentals";
 
 type PeriodType = FinancialStatementLine["period_type"];
 const PERIOD_TYPES: readonly PeriodType[] = ["annual", "quarterly", "ttm"];
