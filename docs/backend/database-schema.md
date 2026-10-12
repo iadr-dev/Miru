@@ -697,8 +697,11 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
   fails if a table keyed by a differently named user column is missed) and then the `users` row.
   Exposed as `DELETE /me` (body `{"confirm": "DELETE"}`): it cancels any live Paddle subscription
   first and erases nothing if that fails, then erases and signs the caller out. Settings →
-  Profile has the typed-confirmation dialog. Two things it does not touch: `billing_events` (a
-  global webhook log with no user column) and any uploaded attachment files.
+  Profile has the typed-confirmation dialog. It also scrubs the `billing_events` webhook ledger:
+  that table has no user column, but each stored envelope names the user (`custom_data.user_id`)
+  or their subscription/customer ids, and those rows are deleted. Uploaded attachments are not
+  stored as files (they are processed in memory; only the extracted text and metadata persist, in
+  `messages`), so there is nothing else to purge.
 - **Chat search index (Postgres only):** `db/postgres_search.py` creates `pg_trgm` and a partial
   trigram GIN index `ix_messages_text_trgm` on `lower(CAST(content AS VARCHAR)) WHERE type = 'text'`
   at startup, so `search_threads` no longer scans every message a user owns. It lives outside the
