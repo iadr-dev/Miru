@@ -739,8 +739,13 @@ before any identity exists.
   `POSTGRES_USER` a container or managed instance starts with is a superuser. Startup raises
   `RlsNotEnforcedError` if RLS is on but the connected role is exempt. In compose, a fresh volume
   creates `miru_app` (`docker/postgres-init`); use it with `DB_USER=miru_app ROW_LEVEL_SECURITY=true`.
-  An existing volume's tables belong to `miru`, so rebuild it (`docker compose down -v` empties the
-  app database; market data is a separate volume) before switching.
+  On a volume that already exists the init script does not run, and its tables belong to the
+  superuser. Convert it in place, without losing data: create the role, hand it the tables
+  (`ALTER TABLE ... OWNER TO miru_app` for each, plus `GRANT ALL ON SCHEMA public` and
+  `ALTER DATABASE ... OWNER TO miru_app`), stop the services, set `DB_USER=miru_app` and
+  `ROW_LEVEL_SECURITY=true` in `backend/.env`, and start them again; startup then applies the
+  policies. (The alternative is `docker compose down -v`, which empties the app database; market
+  data is a separate volume.) This is how the dev database was switched on.
 * **Verified** by `tests/db/test_rls.py` (isolation without a WHERE, WITH CHECK, fail-closed,
   identity surviving a commit, superuser rejected) and by running the API suite against Postgres
   with RLS on (`RLS_TEST_POSTGRES_URL=... ROW_LEVEL_SECURITY=true pytest tests/api`: 411 of 421
