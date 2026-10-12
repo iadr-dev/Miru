@@ -42,7 +42,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E","F","W","I","N","UP","B","A","C4","SIM","TID","PTH","ASYNC","RUF","ANN","T20","S","PL"]
-ignore = ["ANN401"]  # explicit Any ONLY where justified with a noqa + reason
+ignore = []  # ANN401 is ON: explicit Any only at an untyped 3rd-party edge, with a noqa + reason
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 # enforce the DEPENDENCY RULE (§3): a layer may not import an upper layer;
 # sources/* may not be imported outside dataaccess/ or ingest/.
@@ -87,7 +87,10 @@ markers = [
 - `from __future__ import annotations` at the top of every module.
 - **Full type hints** on all public functions/methods/attrs (incl. `-> None`).
 - **No `Any` escapes.** Isolate unavoidable 3rd-party edges (duckdb/yfinance) in the adapter with
-  `# noqa: ANN401 — <reason>`. `Any` never crosses a layer seam.
+  `# noqa: ANN401 — <reason>`. `Any` never crosses a layer seam. Enforced: ruff `ANN401` is on, and
+  `tests/arch/test_explicit_any.py` fails a `noqa: ANN401` with no reason. An untyped library
+  (yfinance, pandas, PyJWT keys, the Anthropic stream-event union) gets one named alias per module
+  (`type YfObject = Any`) instead of scattered `Any`.
 - **Pydantic v2 everywhere** for models / contracts / tool I/O / config:
   ```python
   class SourceResult(BaseModel):

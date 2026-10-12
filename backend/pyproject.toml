@@ -104,7 +104,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "TID", "PTH", "ASYNC", "RUF", "ANN", "T20", "S", "PL"]
-ignore = ["ANN401"] # explicit Any ONLY where justified with a noqa + reason
+ignore = [] # explicit Any ONLY where justified with a noqa + reason
 # zh-TW-first product (personality fragments, pet persona hints, spoken-caveat text) — fullwidth
 # CJK punctuation is correct typography, not a confusable to flag (RUF001/RUF002/RUF003).
 allowed-confusables = ["，", "；", "：", "（", "）", "、", "。", "「", "」", "〇", "！", "？"]

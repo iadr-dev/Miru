@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
-
 from sqlalchemy import event
+from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.pool import ConnectionPoolEntry
 
 
 def enable_sqlite_foreign_keys(engine: AsyncEngine) -> None:
@@ -14,7 +14,7 @@ def enable_sqlite_foreign_keys(engine: AsyncEngine) -> None:
 
     @event.listens_for(engine.sync_engine, "connect")
     def _set_sqlite_pragma(  # pyright: ignore[reportUnusedFunction] — registered via decorator
-        dbapi_connection: Any, _connection_record: Any
+        dbapi_connection: DBAPIConnection, _connection_record: ConnectionPoolEntry
     ) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
