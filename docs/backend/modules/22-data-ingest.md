@@ -191,7 +191,7 @@ never scores/flags stale or partial data.
 
 **On completion → cache-invalidation signal.** The seam for this is real
 (`ingest/data_updates.py`'s `DataUpdatePublisher` Protocol + `NoOpDataUpdatePublisher` default,
-wired onto `IngestContext.data_update_publisher`), and **every job in `ingest/jobs.py` and
+wired onto `IngestContext.data_update_publisher`), and **every job in `ingest/jobs/` and
 `ingest/us_jobs.py` that feeds a cached dataset calls
 `publish_data_updated({capability, market, as_of, scope})`** on landing — only the leader publishes
 (same `is_leader()` gate as the write itself). The daemon binds the **real Redis publisher** via
@@ -549,3 +549,14 @@ DuckDB/Parquet is correct; ClickHouse would be premature ops + cost.
 - FinMind token stays env-only, decrypt-at-call, never crosses the scheduler boundary in
   plaintext (governance §6, infra §8). Ingest writes the shared derived store, not per-user
   state; currentness caveats are preserved through the cache tier and propagate to output.
+
+## Where the job code lives
+
+`backend/src/ingest/jobs/` is a package; `ingest.jobs` re-exports every public name, so
+`from ingest.jobs import job_price_eod, ALL_WHOLE_MARKET_JOBS` is unchanged. `specs` holds
+`WholeMarketJobSpec` and the dataset table; `whole_market` the shared runner and the one-line
+whole-market job functions; `shareholding`, `etf`, `disclosures` (MOPS) and `risk_lists` (attention
+stocks, disposition events) the jobs with their own fetch logic. Modules import only downward
+(`specs` <- `whole_market` <- the rest). A test that stubs a fetcher patches it on the module that
+calls it (for example `ingest.jobs.risk_lists`), not on the package.
+
