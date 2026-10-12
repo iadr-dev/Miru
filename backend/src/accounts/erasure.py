@@ -1,7 +1,7 @@
 """Account erasure (GDPR/PDPA "delete my account and all data").
 
 Most per-user tables carry a `user_id` that is a bare indexed column rather than a foreign key to
-`users` (the isolation-scoping design in `db/models.py`), so deleting the `users` row would leave
+`users` (the isolation-scoping design in `db/models/`), so deleting the `users` row would leave
 those rows behind. This purges every table that has a `user_id` column - discovered from the ORM
 metadata, so a table added later is covered without remembering to list it - and then the user.
 Cancelling an external billing subscription is the caller's job and must happen first."""
