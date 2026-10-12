@@ -181,7 +181,7 @@ buy/sell/target/sizing; scores ship their breakdown; analyst externals attribute
 > **Implementation status.** `/analytics/{symbol}/score` and `/analytics/rankings` (marked
 > **real** above) are backed by real code: `api/routers/analytics.py`, dispatched through
 > `tools/score_tools.py`'s `get_stock_score`/`get_score_leaderboard` onto the relational
-> `stock_scores` cache the daily `analytics/scoring_batch.py` batch writes. None of the other
+> `stock_scores` cache the daily `analytics/scoring_batch/` batch writes. None of the other
 > `/analytics/*` endpoints above are backed by real code yet — no `scoring/`/`screener/`/
 > `summary/`/`themes/` subpackages, no `run_screener`/`get_top_stocks`/`get_ai_summary`/
 > `get_swot`/`get_themes` tool ([module 20](modules/20-analytics-scoring.md) implementation-status

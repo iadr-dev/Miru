@@ -426,7 +426,7 @@ stored universe before persistence (the fabrication safeguard; see modules/20-an
 - No `user_id` — platform-wide reference data, like the theme tables above, not per-user state.
   Unlike the theme tables, this one carries a date (`as_of`): a score is genuinely a new value
   every trading day, so it is a same-day snapshot cache rather than slow-moving classification
-  data — replaced (upserted) once a day by `analytics/scoring_batch.py::job_scoring_batch`, never
+  data — replaced (upserted) once a day by `analytics/scoring_batch/::job_scoring_batch`, never
   accumulated as a history. Read through `analytics/scoring_store.py`'s `get_cached_score`
   (point lookup) and `get_leaderboard` (sort-and-slice), never as raw rows above that seam.
 

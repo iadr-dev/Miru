@@ -3,7 +3,7 @@ shared by every reader of the whole-market `TaiwanStockPrice` partition that nee
 real stocks", not "how many rows".
 
 Confirmed live against a single day's `TaiwanStockPrice` partition (originally measured in
-`analytics/scoring_batch.py`, before this module existed): plain equities are 4-digit numeric
+`analytics/scoring_batch/`, before this module existed): plain equities are 4-digit numeric
 codes (~2.3K/day); ETFs are `00`-prefixed 5-6-digit codes (~350/day, e.g. `0050`, `006201`,
 `00631L`); warrants are 6-digit numeric codes NOT starting with `00` (~17.1K/day — the dominant
 share of the raw partition) plus a residual few hundred 5-char preferred-share/other exotic codes
@@ -97,7 +97,7 @@ def classify_symbol_type(symbol: str, market: Market = Market.TW) -> SymbolType:
 
 def scoreable_symbol_mask(symbols: pd.Series, market: Market = Market.TW) -> pd.Series:
     """Vectorized counterpart of `is_scoreable_symbol`, for a columnar `DataFrame`-shaped reader
-    (e.g. `analytics/scoring_batch.py`'s whole-market price window) — a mask over the whole
+    (e.g. `analytics/scoring_batch/`'s whole-market price window) — a mask over the whole
     frame, not a per-row Python check, so the excluded ~90% of rows never reach per-symbol
     processing at all. `Market.US` unconditionally passes every row — see `is_scoreable_symbol`."""
     if market is Market.US:

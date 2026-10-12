@@ -149,7 +149,7 @@ async def _us_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     (the same `ParquetStore`/`LeaderElection`/session factory the TW jobs already use), not a
     fresh copy. Graceful degradation for the momentum/trend_quality-only US case (no
     institutional-flow/market-value/ETF datasets ingested for US) already lives inside
-    `job_scoring_batch` itself — see `analytics/scoring_batch.py`'s own market-branching
+    `job_scoring_batch` itself — see `analytics/scoring_batch/`'s own market-branching
     comments — so no US-specific logic belongs in this wrapper."""
     return await job_scoring_batch(run_date, replace(ctx, market=Market.US))
 
@@ -423,7 +423,7 @@ def _build_calendar(store: ParquetStore, dataset: str, market: str) -> TradingDa
     through, and a market's real holiday calendar can't be predicted from weekday math alone
     (TW: 國慶日/農曆春節/清明/228; US: Thanksgiving/Juneteenth/etc.) — every one of those real
     holidays previously miscounted as a trading day silently starved every TW lookback window
-    that assumes N calendar-weekdays == N trading days (see `analytics/scoring_batch.py`'s
+    that assumes N calendar-weekdays == N trading days (see `analytics/scoring_batch/`'s
     `_PRICE_LOOKBACK_DAYS`, which needs ≥252 real trading days and was landing on as few as 239
     out of a 260-weekday window before this fix). TW and US calendars are built and kept separate
     (`IngestContext.calendar` vs `.us_calendar`) since their holiday sets diverge — a shared

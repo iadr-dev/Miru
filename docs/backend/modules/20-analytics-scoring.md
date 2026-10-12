@@ -19,7 +19,7 @@ the composite is computed over available factors with the gap disclosed — neve
 
 > **Implementation status vs. this spec.** The 5-factor score engine (§2) is real and shipped —
 > `analytics/score.py`, `analytics/models.py`, `analytics/normalization.py`,
-> `analytics/fundamentals.py`, `analytics/scoring_batch.py`, `analytics/scoring_store.py`, the
+> `analytics/fundamentals.py`, `analytics/scoring_batch/`, `analytics/scoring_store.py`, the
 > `get_stock_score`/`get_score_leaderboard` tools, and `/analytics/{symbol}/score` +
 > `/analytics/rankings`. The **tap-tile tag screener** (a new §5a below) is real and shipped
 > too, entirely separate from — and simpler than — the gates→setup→rank funnel this doc's §5
@@ -100,7 +100,7 @@ described (never a trade):
 These structure signals are inputs to the technical factor (§2) and the `technical-read` skill
 ([08](08-skills.md)); the tool `get_indicators` accepts `set=...,volume,sr,wave` to include them.
 
-## 2. Multi-factor 多空 score (`analytics/score.py`, `analytics/models.py`, `analytics/scoring_batch.py`, `analytics/scoring_store.py`)
+## 2. Multi-factor 多空 score (`analytics/score.py`, `analytics/models.py`, `analytics/scoring_batch/`, `analytics/scoring_store.py`)
 
 > **Implementation status.** This whole section is real and shipped, but the factor set, weights,
 > and mechanics below are corrected from an earlier draft — verify against `analytics/score.py`
@@ -627,3 +627,13 @@ obligation applies from the moment it ships, not before:
   governance control, not just a data-quality one: it is what makes it safe to let an LLM propose
   theme constituents at all, and it runs on every code path including the verifier fail-open
   branch.
+
+## Where the batch code lives
+
+`backend/src/analytics/scoring_batch/` is a package; `analytics.scoring_batch` re-exports the public
+names (`job_scoring_batch`, `job_trend_score_batch`, the `*_DATASET` constants). `datasets` holds
+the dataset names and lookback windows, `inputs` the loading/reshaping of stored data into
+per-symbol series and universes, `scoring` the multi-factor batch and its per-symbol scorers, and
+`trend` the trend-score batch. Modules import only downward
+(`datasets` <- `inputs` <- `scoring` <- `trend`).
+

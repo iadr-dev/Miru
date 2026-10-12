@@ -1,5 +1,5 @@
 """The relational read/write seam over `trend_scores` — the cached six-dimension 趨勢評分
-(trend score) table the daily batch job (`analytics/scoring_batch.py::job_trend_score_batch`)
+(trend score) table the daily batch job (`analytics/scoring_batch/::job_trend_score_batch`)
 writes and both the detail-page point-lookup tool and the trend-chart's ranged-history read use.
 
 Mirrors `analytics/scoring_store.py`'s shape (caller owns the session/transaction boundary; every

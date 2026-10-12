@@ -78,7 +78,7 @@ def price_eod_dataset_for(market: str) -> str:
     ("TaiwanStockPrice") until this function existed; passing `market=US` into any of them
     unmodified would look up that TW dataset name under `market=US` and find nothing — US's
     whole-market OHLCV lives under a different dataset name entirely (`US_PRICE_EOD_DATASET`,
-    `ingest/us_jobs.py::job_us_price_eod`). Mirrors `analytics/scoring_batch.py::
+    `ingest/us_jobs.py::job_us_price_eod`). Mirrors `analytics/scoring_batch/::
     _price_eod_dataset`'s identical branch — kept as a separate function here (not imported)
     because that one takes a `Market` enum member, this one the `.value` string every caller in
     this module already has in hand."""

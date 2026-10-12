@@ -165,7 +165,7 @@ def _streak_rows(
     )
     investor = _STREAK_INVESTOR_BY_KIND[kind]
     # Positional tuples, not attribute access: pandas has no stub-backed row types here (same
-    # idiom as `analytics/scoring_batch.py::_flow_rows_by_symbol`).
+    # idiom as `analytics/scoring_batch/::_flow_rows_by_symbol`).
     flow_tuples = cast(
         "Iterable[tuple[object, object, object, object, object]]",
         frame.itertuples(index=False, name=None),

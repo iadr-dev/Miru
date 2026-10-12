@@ -178,7 +178,7 @@ class StockSummaryRow(Base):
 
 class TrendScoreRow(Base):
     """One symbol's 趨勢評分 (trend score) composite for one trading day — the write target of
-    `analytics/scoring_batch.py::job_trend_score_batch` and the read target of both the
+    `analytics/scoring_batch/::job_trend_score_batch` and the read target of both the
     detail-page point lookup and the chart's ranged history read.
 
     Unlike `StockScoreRow` (a same-day snapshot cache the batch *replaces* daily), this table
