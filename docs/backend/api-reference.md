@@ -765,14 +765,14 @@ table cannot carry.
 | DELETE | `/api/v1/me/channels/telegram` | user | — | — | Unlink telegram |
 | POST | `/api/v1/me/channels/line/link` | user | — | — | Issue a one-time code. |
 | DELETE | `/api/v1/me/channels/line` | user | — | — | Unlink line |
-| GET | `/api/v1/email/unsubscribe` | none | — | — | A confirmation page, not the action: mail scanners open links, so a GET must not unsubscribe anyone. |
-| POST | `/api/v1/email/unsubscribe` | none | — | — | The one-click unsubscribe (RFC 8058: mail clients POST `List-Unsubscribe=One-Click` here) and the confirmation button's target. |
-| POST | `/api/v1/email/resubscribe` | none | — | — | Undo an unsubscribe with the same signed link. |
-| POST | `/api/v1/webhooks/resend` | none | — | — | Resend reports what happened to each email. |
 | POST | `/api/v1/channels/line/webhook` | none | — | — | LINE calls this for every event on the official account (the URL is registered in the LINE console). |
 | POST | `/api/v1/webhooks/telegram` | none | — | — | Telegram calls this for every message to the bot. |
 | POST | `/api/v1/me/devices` | user | — | — | Register device |
 | DELETE | `/api/v1/me/devices/{token:path}` | user | — | — | Unregister device |
+| GET | `/api/v1/email/unsubscribe` | none | — | — | A confirmation page, not the action: mail scanners open links, so a GET must not unsubscribe anyone. |
+| POST | `/api/v1/email/unsubscribe` | none | — | — | The one-click unsubscribe (RFC 8058: mail clients POST `List-Unsubscribe=One-Click` here) and the confirmation button's target. |
+| POST | `/api/v1/email/resubscribe` | none | — | — | Undo an unsubscribe with the same signed link. |
+| POST | `/api/v1/webhooks/resend` | none | — | — | Resend reports what happened to each email. |
 
 #### Ops probes (app root, not under /api/v1)
 
