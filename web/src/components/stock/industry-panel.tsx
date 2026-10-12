@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { heatTint } from "@/lib/heat-color";
+import { directionGlyph } from "@/lib/signed";
 import type { Market } from "@/types/settings";
 import type { SubIndustryHeat, SupplyChainEdge } from "@/types/stock-detail";
 
@@ -221,8 +222,7 @@ function SubIndustryTile({
   const t = useTranslations("stock.industry");
   const locale = useLocale();
   const hasChange = sub.pct_change !== null && sub.pct_change !== undefined;
-  const up = hasChange && (sub.pct_change ?? 0) >= 0;
-  const arrow = !hasChange ? "" : up ? "▲" : (sub.pct_change ?? 0) < 0 ? "▼" : "";
+  const arrow = hasChange ? directionGlyph(sub.pct_change ?? 0, 2) : "";
   const pctLabel = hasChange
     ? `${formatNumber(sub.pct_change ?? 0, locale, { decimals: 2 })}%`
     : t("noPriceData");

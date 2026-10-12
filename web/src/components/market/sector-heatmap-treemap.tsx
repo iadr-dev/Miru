@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { heatColor } from "@/lib/heat-color";
+import { DIRECTION_COLOR, DIRECTION_GLYPH, directionOf } from "@/lib/signed";
 import type { SectorHeatmapRow, SectorHeatmapSizeBy } from "@/types/market";
 
 /** One laid-out tile: the source row plus a normalized [0,1] rectangle within the treemap's own
@@ -286,11 +287,10 @@ export function SectorHeatmapTreemap({
     >
       {tiles.map((tile, index) => {
         const { row } = tile;
-        const up = row.avg_pct_change >= 0;
-        const arrow = up ? "▲" : row.avg_pct_change < 0 ? "▼" : "";
-        const sign = up && row.avg_pct_change > 0 ? "+" : "";
-        const pctLabel = `${sign}${formatNumber(row.avg_pct_change, locale, { decimals: 2 })}%`;
-        const direction = up ? t("up") : row.avg_pct_change < 0 ? t("down") : t("flat");
+        const dir = directionOf(row.avg_pct_change, 2);
+        const arrow = DIRECTION_GLYPH[dir];
+        const pctLabel = `${formatNumber(Math.abs(row.avg_pct_change), locale, { decimals: 2 })}%`;
+        const direction = t(dir);
         const isSelected = selected === row.industry;
         const textSize = tileTextSize(tile);
         return (
@@ -393,7 +393,7 @@ export function SectorHeatmapTreemap({
               >
                 <p className="font-semibold text-[12px] text-[var(--text)]">{row.industry}</p>
                 <p className="mt-1 font-num text-[13px] text-[color:var(--text)] tabular-nums">
-                  <span style={{ color: up ? "var(--up)" : "var(--down)" }}>
+                  <span style={{ color: DIRECTION_COLOR[dir] }}>
                     {arrow}
                     {pctLabel}
                   </span>

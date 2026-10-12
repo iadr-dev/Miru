@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { DispositionBoardCardRow } from "@/types/market";
 
 const FLAG_ORDER = ["資", "券", "沖", "警", "處", "注"] as const;
@@ -46,7 +47,7 @@ export function DispositionStockCard({
 }): ReactNode {
   const t = useTranslations("market.cards.dispositionBoard");
   const changeUp = card.change_pct !== null && card.change_pct >= 0;
-  const changeColor = card.change_pct !== null ? (changeUp ? "var(--up)" : "var(--down)") : null;
+  const changeColor = card.change_pct !== null ? directionColor(card.change_pct ?? 0) : null;
   const activeFlags = new Set(card.flags);
   const ma5 = movingAverage(sparkline, 5);
   const ma10 = movingAverage(sparkline, 10);
@@ -131,7 +132,7 @@ export function DispositionStockCard({
             className="font-num text-[13px] tabular-nums"
             style={{ color: changeColor ?? undefined }}
           >
-            {changeUp ? "▲" : "▼"}
+            {directionGlyph(card.change_pct ?? 0)}
             {formatNumber(Math.abs(card.change_pct), "zh-TW", { decimals: 2 })}%
           </span>
         ) : null}

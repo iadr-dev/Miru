@@ -23,6 +23,7 @@ import { getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { Market } from "@/types/settings";
 import {
   FINANCIAL_STATEMENT_TYPES,
@@ -378,13 +379,12 @@ function PctCell({ value }: { readonly value: number | null | undefined }): Reac
       <td className="px-2 py-1.5 text-right font-num text-[var(--text-muted)] tabular-nums">—</td>
     );
   }
-  const up = value >= 0;
   return (
     <td
       className="px-2 py-1.5 text-right font-num tabular-nums"
-      style={{ color: up ? "var(--up)" : "var(--down)" }}
+      style={{ color: directionColor(value) }}
     >
-      {up ? "▲" : "▼"} {Math.abs(value * 100).toFixed(1)}%
+      {directionGlyph(value)} {Math.abs(value * 100).toFixed(1)}%
     </td>
   );
 }

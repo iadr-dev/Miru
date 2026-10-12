@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph, formatSignedChange } from "@/lib/signed";
 
 export const MARGIN_SUB_TABS = ["margin", "short", "ratio", "dayTrading", "lending"] as const;
 
@@ -119,13 +120,12 @@ export function NetFlowCell({
   readonly locale: string;
 }): ReactNode {
   const t = useTranslations("stock.chipAnalysis");
-  const up = value >= 0;
   return (
     <td
       className="px-2 py-1.5 text-right font-num tabular-nums"
-      style={{ color: up ? "var(--up)" : "var(--down)" }}
+      style={{ color: directionColor(value) }}
     >
-      {up ? "▲" : "▼"} {t("lotUnit", { value: formatNumber(Math.abs(value), locale) })}
+      {directionGlyph(value)} {t("lotUnit", { value: formatNumber(Math.abs(value), locale) })}
     </td>
   );
 }
@@ -153,6 +153,5 @@ export function SnapshotStat({
 }
 
 export function formatSignedNumber(value: number, locale: string): string {
-  const sign = value >= 0 ? "▲" : "▼";
-  return `${sign} ${formatNumber(Math.abs(value), locale)}`;
+  return formatSignedChange(value, locale);
 }

@@ -24,6 +24,7 @@ import {
 } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { EtfTrailingReturns } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 
@@ -123,10 +124,7 @@ function TrailingReturnsCard({
               />
               <Bar dataKey="returnPct" radius={2}>
                 {chartData.map((point) => (
-                  <Cell
-                    key={point.horizon}
-                    fill={point.returnPct >= 0 ? "var(--up)" : "var(--down)"}
-                  />
+                  <Cell key={point.horizon} fill={directionColor(point.returnPct)} />
                 ))}
               </Bar>
             </BarChart>
@@ -250,9 +248,9 @@ export function OverviewPanel({
         ) : ytdReturn.value != null ? (
           <div
             className="mt-1 font-num text-[28px] tabular-nums"
-            style={{ color: ytdReturn.value >= 0 ? "var(--up)" : "var(--down)" }}
+            style={{ color: directionColor(ytdReturn.value) }}
           >
-            {ytdReturn.value >= 0 ? "▲" : "▼"}
+            {directionGlyph(ytdReturn.value)}
             {formatNumber(Math.abs(ytdReturn.value), locale, { decimals: 1 })}%
           </div>
         ) : (

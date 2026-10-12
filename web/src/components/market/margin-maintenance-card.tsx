@@ -17,6 +17,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { TableWithActions } from "@/components/ui/table-actions";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { MarginMaintenanceRow, MarginShortTotalMarketRow } from "@/types/market";
 
 /** FinMind's `TaiwanStockTotalMarginPurchaseShortSale`'s real `name` category values —
@@ -89,11 +90,8 @@ function renderMarginDelta(against: number | null, value: number, locale: string
   }
   const delta = value - against;
   return (
-    <span
-      className="font-num tabular-nums"
-      style={{ color: delta >= 0 ? "var(--up)" : "var(--down)" }}
-    >
-      {delta >= 0 ? "▲" : "▼"}
+    <span className="font-num tabular-nums" style={{ color: directionColor(delta) }}>
+      {directionGlyph(delta)}
       {formatNumber(Math.abs(delta), locale, { decimals: 2 })}%
     </span>
   );
@@ -287,9 +285,9 @@ export function MarginMaintenanceCard({
                 </span>
                 <span
                   className="text-right font-num tabular-nums"
-                  style={{ color: row.return_ >= 0 ? "var(--up)" : "var(--down)" }}
+                  style={{ color: directionColor(row.return_) }}
                 >
-                  {row.return_ >= 0 ? "▲" : "▼"}
+                  {directionGlyph(row.return_)}
                   {formatNumber(Math.abs(row.return_), locale)}
                 </span>
               </li>

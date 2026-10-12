@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { resolveToken } from "@/lib/resolve-css-token";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -502,7 +503,7 @@ function ChangeStat({
     return <Stat label={label} value="—" />;
   }
   const isUp = change >= 0;
-  const color = isUp ? "var(--up)" : "var(--down)";
+  const color = directionColor(change);
   return (
     <div>
       <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
@@ -513,7 +514,7 @@ function ChangeStat({
         style={{ color }}
       >
         <span aria-hidden>
-          {isUp ? "▲" : "▼"}
+          {directionGlyph(change)}
           {formatNumber(Math.abs(change), locale, { decimals: 2 })} (
           {Math.abs(changePct).toFixed(2)}%)
         </span>

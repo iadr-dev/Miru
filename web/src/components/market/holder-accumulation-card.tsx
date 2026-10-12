@@ -7,8 +7,10 @@ import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { SignedChange } from "@/components/ui/signed-change";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, formatSignedChange } from "@/lib/signed";
 import type { HolderAccumulationRow, HolderThreshold, HolderWindow } from "@/types/market";
 
 const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_1.1fr_0.9fr_28px]";
@@ -228,12 +230,11 @@ function LockedHolderAccumulationRow({ rank }: { readonly rank: number }): React
  * `.map` stays a simple locked/unlocked branch. */
 function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRow }): ReactNode {
   const change = row.percent_of_custody_change ?? 0;
-  const up = change >= 0;
-  const color = up ? "var(--up)" : "var(--down)";
+  const color = directionColor(change, 2);
   return (
     <li
       role="group"
-      aria-label={`${row.stock_name} ${row.symbol} ${up ? "▲" : "▼"} ${formatNumber(Math.abs(change), "zh-TW", { decimals: 2 })} pp`}
+      aria-label={`${row.stock_name} ${row.symbol} ${formatSignedChange(change, "zh-TW", { decimals: 2, unit: " pp" })}`}
       className={cn("grid items-center gap-2.5 py-1.5", ROW_GRID_COLS)}
     >
       <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
@@ -260,13 +261,18 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
         <span style={{ color }}>{(row.percent_of_custody_after ?? 0).toFixed(2)}%</span>
       </span>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
-        {up ? "+" : ""}
+        {(row.shares_change ?? 0) > 0 ? "+" : ""}
         {formatNumber((row.shares_change ?? 0) / 1000, "zh-TW", { decimals: 1 })}萬張
       </span>
-      <span aria-hidden className="text-right font-num text-[13px] tabular-nums" style={{ color }}>
-        {up ? "▲" : "▼"}
-        {formatNumber(Math.abs(change), "zh-TW", { decimals: 2 })}%
-      </span>
+      <SignedChange
+        value={change}
+        decimals={2}
+        unit="%"
+        spaced={false}
+        locale="zh-TW"
+        labelled={false}
+        className="text-right text-[13px]"
+      />
       {row.symbol ? (
         <WatchlistStarButton symbol={row.symbol} market="TW" assetClass="stock" size="compact" />
       ) : (

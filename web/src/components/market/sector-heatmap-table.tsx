@@ -2,8 +2,10 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { SignedChange } from "@/components/ui/signed-change";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionOf } from "@/lib/signed";
 import type { SectorHeatmapRow } from "@/types/market";
 
 const ROW_GRID_COLS = "grid-cols-[1.4fr_0.9fr_0.9fr_0.9fr_1fr]";
@@ -46,29 +48,26 @@ export function SectorHeatmapTable({
         </div>
         <ul className="divide-y divide-[var(--border)]">
           {rows.map((row) => {
-            const up = row.avg_pct_change >= 0;
-            const arrow = up ? "▲" : row.avg_pct_change < 0 ? "▼" : "";
-            const sign = up && row.avg_pct_change > 0 ? "+" : "";
-            const color = up ? "var(--up)" : row.avg_pct_change < 0 ? "var(--down)" : "var(--text)";
+            const direction = directionOf(row.avg_pct_change, 2);
             return (
               <li
                 key={row.industry}
                 role="group"
-                aria-label={`${row.industry} ${up ? t("up") : row.avg_pct_change < 0 ? t("down") : t("flat")} ${formatNumber(Math.abs(row.avg_pct_change), locale, { decimals: 2 })}%`}
+                aria-label={`${row.industry} ${t(direction)} ${formatNumber(Math.abs(row.avg_pct_change), locale, { decimals: 2 })}%`}
                 className={cn("grid items-center gap-2.5 py-2", ROW_GRID_COLS)}
               >
                 <span aria-hidden className="truncate text-[13px] text-[var(--text)]">
                   {row.industry}
                 </span>
-                <span
-                  aria-hidden
-                  className="text-right font-num text-[12px] tabular-nums"
-                  style={{ color }}
-                >
-                  {arrow}
-                  {sign}
-                  {formatNumber(row.avg_pct_change, locale, { decimals: 2 })}%
-                </span>
+                <SignedChange
+                  value={row.avg_pct_change}
+                  decimals={2}
+                  unit="%"
+                  spaced={false}
+                  locale={locale}
+                  labelled={false}
+                  className="text-right text-[12px]"
+                />
                 <span
                   aria-hidden
                   className="text-right font-num text-[12px] text-[var(--text-muted)] tabular-nums"
