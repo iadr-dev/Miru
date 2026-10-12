@@ -20,7 +20,7 @@ import { getDividendPolicySummary } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
-import type { DividendEvent } from "@/types/stock-detail";
+import type { DividendEvent, DividendPolicyStats } from "@/types/stock-detail";
 
 const TOOLTIP_STYLE = {
   background: "var(--surface-2)",
@@ -234,15 +234,7 @@ function DividendPolicyStatsStrip({
   stats,
   t,
 }: {
-  readonly stats:
-    | {
-        latest_year_total_dividend?: number | null;
-        cash_dividend_yield_pct?: number | null;
-        payout_ratio_pct?: number | null;
-        fill_rate_pct?: number | null;
-        fill_rate_sample_size: number;
-      }
-    | undefined;
+  readonly stats: DividendPolicyStats | undefined;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const locale = useLocale();

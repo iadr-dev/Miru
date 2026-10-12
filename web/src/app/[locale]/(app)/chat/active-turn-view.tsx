@@ -149,8 +149,8 @@ export function UserBubble({
 }: {
   text: string;
   label: string;
-  onEdit?: (newText: string) => void;
-  onResend?: () => void;
+  onEdit?: ((newText: string) => void) | undefined;
+  onResend?: (() => void) | undefined;
 }): ReactNode {
   const t = useTranslations("chat.turn.actions");
   const [editing, setEditing] = useState(false);
@@ -259,7 +259,7 @@ export function AssistantActions({
   retrying,
 }: {
   text: string;
-  onRetry?: () => void;
+  onRetry?: (() => void) | undefined;
   feedback?: FeedbackRating | null;
   onFeedback?: (rating: FeedbackRating) => void;
   retrying?: boolean;
@@ -446,10 +446,10 @@ function ActionIconButton({
   icon: typeof PencilSimpleIcon;
   label: string;
   onClick: () => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   weight?: "regular" | "fill";
   active?: boolean;
-  spin?: boolean;
+  spin?: boolean | undefined;
 }): ReactNode {
   return (
     <button

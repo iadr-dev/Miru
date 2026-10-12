@@ -20,7 +20,7 @@ import type { WatchlistAssetClass } from "@/types/watchlist";
  * directly authoritative for what it's ranking by). */
 export interface SymbolQuoteRowItem {
   readonly symbol: string;
-  readonly name?: string;
+  readonly name?: string | undefined;
 }
 
 type SortKey = "change" | "volume" | "extra";

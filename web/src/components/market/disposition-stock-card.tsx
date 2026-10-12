@@ -274,7 +274,7 @@ function StatRow({
 }: {
   readonly label: string;
   readonly value: string;
-  readonly valueColor?: string;
+  readonly valueColor?: string | undefined;
 }): ReactNode {
   return (
     <>

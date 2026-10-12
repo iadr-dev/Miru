@@ -89,7 +89,7 @@ export type AlertFormPreset = {
   scope?: "symbol" | "watchlist" | "perStock";
   symbol?: string;
   market?: AlertMarket;
-  groupId?: string;
+  groupId?: string | undefined;
 };
 
 export function AlertForm({
@@ -99,7 +99,7 @@ export function AlertForm({
 }: {
   onDone: () => void;
   rule?: AlertRule;
-  preset?: AlertFormPreset;
+  preset?: AlertFormPreset | undefined;
 }): ReactNode {
   const t = useTranslations("settings.alerts.form");
   const ts = useTranslations("settings.alerts.summary");

@@ -341,7 +341,7 @@ function ArcChart({
                 strokeWidth={0}
               >
                 {slices.map((slice) => (
-                  <Cell key={slice.label} fill={sliceColors[slice.label]} />
+                  <Cell key={slice.label} fill={sliceColors[slice.label] ?? "var(--chart-1)"} />
                 ))}
               </Pie>
               <Tooltip
@@ -491,7 +491,7 @@ function renderPlot(
       />
       <Tooltip
         {...TOOLTIP_STYLE}
-        cursor={hint.mark === "bar" ? BAR_HOVER_CURSOR : undefined}
+        {...(hint.mark === "bar" ? { cursor: BAR_HOVER_CURSOR } : {})}
         formatter={(value) => `${formatNumber(asNumber(value), locale)}${unitSuffix(hint.title)}`}
         labelFormatter={(key) => String(key)}
       />
@@ -514,7 +514,7 @@ function renderPlot(
             type="monotone"
             dataKey={label}
             name={label}
-            stroke={colors[label]}
+            stroke={colors[label] ?? "var(--chart-1)"}
             strokeWidth={2}
             dot={false}
           />
@@ -527,7 +527,7 @@ function renderPlot(
       <AreaChart data={points} margin={{ left: 8, right: 8, bottom: 8 }}>
         {commonAxes}
         {seriesLabels.map((label) => {
-          const color = colors[label];
+          const color = colors[label] ?? "var(--chart-1)";
           return (
             <Area
               key={label}

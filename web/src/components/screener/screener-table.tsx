@@ -178,7 +178,7 @@ export function ScreenerTable({
   readonly survivors: ScreenerSurvivor[];
   readonly columns: ScreenerColumn[];
   readonly market: ScreenerMarket;
-  readonly catalog?: FactorCatalog;
+  readonly catalog?: FactorCatalog | undefined;
 }): ReactNode {
   const t = useTranslations("screener.table");
   const router = useRouter();

@@ -121,8 +121,8 @@ function FeatureMenuItem({
 }): ReactNode {
   return (
     <DropdownMenu.Item
-      disabled={disabled}
-      onSelect={onSelect}
+      disabled={disabled ?? false}
+      {...(onSelect ? { onSelect } : {})}
       className={cn(
         "flex min-h-9 items-center gap-2.5 rounded-[var(--radius-button)] px-2.5",
         "text-[var(--text)] text-sm outline-none transition-colors",

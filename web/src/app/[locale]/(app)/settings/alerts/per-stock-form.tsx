@@ -63,7 +63,7 @@ export function PerStockForm({
   initialGroupId,
 }: {
   onDone: () => void;
-  initialGroupId?: string;
+  initialGroupId?: string | undefined;
 }): ReactNode {
   const t = useTranslations("settings.alerts.perStock");
   const tf = useTranslations("settings.alerts.form");

@@ -192,12 +192,16 @@ export function AssetHeader({
             <motion.span
               aria-hidden
               className="inline-flex"
-              animate={reduceMotion ? undefined : { rotate: [0, 15, -10, 0], scale: [1, 1.15, 1] }}
-              transition={
-                reduceMotion
-                  ? undefined
-                  : { duration: 2.4, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }
-              }
+              {...(reduceMotion
+                ? {}
+                : {
+                    animate: { rotate: [0, 15, -10, 0], scale: [1, 1.15, 1] },
+                    transition: {
+                      duration: 2.4,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "easeInOut",
+                    },
+                  })}
             >
               <SparkleIcon size={16} weight="fill" />
             </motion.span>

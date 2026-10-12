@@ -32,7 +32,7 @@ export function SettingsRow({
   children,
 }: {
   label: string;
-  hint?: string;
+  hint?: string | undefined;
   children: ReactNode;
 }): ReactNode {
   return (

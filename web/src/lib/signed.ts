@@ -44,11 +44,11 @@ export function directionColor(value: number, decimals?: number): string {
 }
 
 export type SignedFormatOptions = {
-  readonly decimals?: number;
+  readonly decimals?: number | undefined;
   /** Appended after the number, e.g. "%". */
-  readonly unit?: string;
+  readonly unit?: string | undefined;
   /** "▲ 1.23" (default) or "▲1.23". */
-  readonly spaced?: boolean;
+  readonly spaced?: boolean | undefined;
 };
 
 /** "▲ 1.23%" / "▼ 0.40%" / "– 0.00%": glyph + absolute value (the glyph carries the sign). */
