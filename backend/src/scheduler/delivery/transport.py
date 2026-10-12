@@ -20,6 +20,8 @@ import requests
 import structlog
 from pywebpush import WebPushException, webpush  # pyright: ignore[reportUnknownVariableType]
 
+from netclient import lease_client
+
 logger = structlog.get_logger(__name__)
 
 # httpx/httpcore log every request URL at INFO, and a Telegram bot token is part of the URL path.
@@ -62,7 +64,7 @@ class HttpxTransport:
         self, url: str, *, headers: dict[str, str], body: dict[str, object]
     ) -> TransportResult:
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS) as client:
+            async with lease_client(timeout=_TIMEOUT_SECONDS) as client:
                 response = await client.post(url, headers=headers, json=body)
         except (httpx.HTTPError, OSError):
             logger.warning("outbound_transport_error")

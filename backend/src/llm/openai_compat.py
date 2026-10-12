@@ -42,6 +42,7 @@ from llm.base import (
     WebSearchResultEvent,
     WebSearchSource,
 )
+from netclient import lease_client
 
 logger = structlog.get_logger(__name__)
 
@@ -379,7 +380,7 @@ class OpenAICompatClient:
         native_web_search: bool = False,
     ) -> LLMResponse:
         body = self._body(messages, tools, stream=False, native_web_search=native_web_search)
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        async with lease_client(timeout=self._timeout) as client:
             try:
                 response = await client.post(
                     f"{self._base_url}/chat/completions", headers=self._headers(), json=body
@@ -435,7 +436,7 @@ class OpenAICompatClient:
         web_search_sources: list[WebSearchSource] = []
 
         async with (
-            httpx.AsyncClient(timeout=self._timeout) as client,
+            lease_client(timeout=self._timeout) as client,
             client.stream(
                 "POST", f"{self._base_url}/chat/completions", headers=self._headers(), json=body
             ) as response,

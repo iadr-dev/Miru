@@ -10,6 +10,7 @@ import pytest
 import llm.openai_compat as openai_compat_module
 from llm.base import Message, MessageRole, StopReason
 from llm.local_client import LocalOllamaClient
+from tests.http_support import OwnedLease
 
 _RealAsyncClient = httpx.AsyncClient
 
@@ -21,7 +22,9 @@ def _patch_json_response(monkeypatch: pytest.MonkeyPatch, body: object) -> None:
     def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
 
 def test_construction_performs_no_network_call() -> None:
