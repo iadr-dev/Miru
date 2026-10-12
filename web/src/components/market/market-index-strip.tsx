@@ -11,6 +11,7 @@ import {
   getTickSnapshot,
 } from "@/lib/api/market";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import { isMaskedTeaser, type MarketIndexStripItem, type MaskedTeaser } from "@/types/market";
 
 const SCROLL_STEP_PX = 240;
@@ -256,7 +257,7 @@ function StripItemValue({
   readonly changePct: number | null;
 }): ReactNode {
   const up = changePct !== null && changePct >= 0;
-  const color = changePct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";
+  const color = changePct === null ? "var(--text-muted)" : directionColor(changePct ?? 0);
   return (
     <span
       role="group"
@@ -272,7 +273,7 @@ function StripItemValue({
       </span>
       {changePct !== null ? (
         <span aria-hidden className="font-num text-[11px] tabular-nums" style={{ color }}>
-          {up ? "▲" : "▼"}
+          {directionGlyph(changePct ?? 0)}
           {formatNumber(Math.abs(changePct), "zh-TW", { decimals: 2 })}%
         </span>
       ) : null}

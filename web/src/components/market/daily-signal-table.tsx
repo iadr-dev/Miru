@@ -8,6 +8,7 @@ import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, formatSignedChange } from "@/lib/signed";
 import type { DailySignalRow, HoldingStatus } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -111,14 +112,7 @@ export function filterDailySignalRows(
  * (no data) — the one place `DailySignalRowItem`'s per-column sign-to-token mapping lives, so
  * that component's own branching stays under the project's cognitive-complexity budget. */
 function signedColor(value: number | null): string {
-  if (value === null) return "var(--text-muted)";
-  return value >= 0 ? "var(--up)" : "var(--down)";
-}
-
-/** ▲/▼ for a boolean "is this an upward move" flag — split out so the `${up ? "▲" : "▼"} ...`
- * template-literal ternary never nests inside an outer null-check ternary. */
-function upDownArrow(up: boolean): string {
-  return up ? "▲" : "▼";
+  return value === null ? "var(--text-muted)" : directionColor(value);
 }
 
 /** governance.md §4 top-N-preview exception's row-level lock: every field but `rank`/`status`
@@ -161,7 +155,6 @@ function DailySignalRowItem({
   readonly locale: string;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
-  const up = (row.change_pct ?? 0) >= 0;
   const color = signedColor(row.change_pct);
   const statusColor = STATUS_TOKEN[row.status];
   const statusLabel = row.status === "no_prior_data" ? t("noPriorData") : row.status;
@@ -170,7 +163,6 @@ function DailySignalRowItem({
   // colored by their own sign, distinct from the status pill's fixed STATUS_TOKEN color.
   const sharesDeltaColor =
     row.shares_delta === 0 ? "var(--text-muted)" : signedColor(row.shares_delta);
-  const pctUp = (row.pct_change ?? 0) >= 0;
   const pctChangeColor = signedColor(row.pct_change);
 
   return (
@@ -178,7 +170,7 @@ function DailySignalRowItem({
       role="group"
       aria-label={`${row.component_stock_name} ${row.component_stock_id} ${statusLabel} ${
         row.change_pct !== null
-          ? `${upDownArrow(up)} ${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+          ? formatSignedChange(row.change_pct, locale, { decimals: 2, unit: "%" })
           : t("noChangeData")
       }`}
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
@@ -200,7 +192,7 @@ function DailySignalRowItem({
           style={{ color: row.change_pct === null ? undefined : color }}
         >
           {row.change_pct !== null
-            ? `${upDownArrow(up)}${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+            ? formatSignedChange(row.change_pct, locale, { decimals: 2, unit: "%", spaced: false })
             : ""}
         </span>
       </span>
@@ -228,7 +220,11 @@ function DailySignalRowItem({
         style={{ color: pctChangeColor }}
       >
         {row.pct_change !== null
-          ? `${upDownArrow(pctUp)}${formatNumber(Math.abs(row.pct_change) * 100, locale, { decimals: 1 })}%`
+          ? formatSignedChange(row.pct_change * 100, locale, {
+              decimals: 1,
+              unit: "%",
+              spaced: false,
+            })
           : "—"}
       </span>
       {row.component_stock_id ? (

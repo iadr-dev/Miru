@@ -4,7 +4,12 @@
       "dismiss": "關閉"
     },
     "rateLimited": "目前請求過於頻繁，請稍後再試。",
-    "rateLimitedWait": "目前請求過於頻繁，請在 {seconds} 秒後再試。"
+    "rateLimitedWait": "目前請求過於頻繁，請在 {seconds} 秒後再試。",
+    "direction": {
+      "up": "上漲",
+      "down": "下跌",
+      "flat": "平盤"
+    }
   },
   "brand": {
     "name": "Miru",

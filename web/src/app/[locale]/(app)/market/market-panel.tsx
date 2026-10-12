@@ -1,6 +1,5 @@
 "use client";
 
-import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { EtfTabContent } from "@/components/market/etf-tab-content";
 import { MarketTabPanels } from "@/components/market/market-tabs";

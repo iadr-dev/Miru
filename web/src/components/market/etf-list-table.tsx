@@ -6,9 +6,11 @@ import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-lis
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { SignedChange } from "@/components/ui/signed-change";
 import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { formatSignedChange } from "@/lib/signed";
 import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
 import type { Market } from "@/types/settings";
 
@@ -226,8 +228,6 @@ function EtfListRowItem({
   readonly locale: string;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
-  const up = (row.change_pct ?? 0) >= 0;
-  const color = row.change_pct === null ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)";
   const badge = SYMBOL_TYPE_BADGE[row.symbol_type];
 
   return (
@@ -235,7 +235,7 @@ function EtfListRowItem({
       role="group"
       aria-label={`${row.name} ${row.symbol} ${
         row.change_pct !== null
-          ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
+          ? formatSignedChange(row.change_pct, locale, { decimals: 2, unit: "%" })
           : t("noChangeData")
       }`}
       className={cn("grid items-center gap-2.5 py-2", ETF_ROW_GRID_COLS)}
@@ -267,19 +267,27 @@ function EtfListRowItem({
       <span aria-hidden className="text-right font-num text-[13px] text-[var(--text)] tabular-nums">
         {row.close !== null ? formatNumber(row.close, locale, { decimals: 2 }) : "—"}
       </span>
-      <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
-        {row.change_pct !== null
-          ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(row.change_pct), locale, { decimals: 2 })}%`
-          : "—"}
-      </span>
+      <SignedChange
+        value={row.change_pct}
+        decimals={2}
+        unit="%"
+        spaced={false}
+        locale={locale}
+        labelled={false}
+        className="text-right text-[12px]"
+      />
       <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
         {row.turnover !== null ? formatCompactNumber(row.turnover, locale) : "—"}
       </span>
-      <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
-        {row.return_1w_pct !== null
-          ? `${row.return_1w_pct >= 0 ? "▲" : "▼"}${formatNumber(Math.abs(row.return_1w_pct), locale, { decimals: 2 })}%`
-          : "—"}
-      </span>
+      <SignedChange
+        value={row.return_1w_pct}
+        decimals={2}
+        unit="%"
+        spaced={false}
+        locale={locale}
+        labelled={false}
+        className="text-right text-[12px]"
+      />
       <span aria-hidden className="text-right font-num text-[12px] text-[var(--text)] tabular-nums">
         {row.distribution_yield_ttm_pct !== null
           ? `${formatNumber(row.distribution_yield_ttm_pct, locale, { decimals: 2 })}%`

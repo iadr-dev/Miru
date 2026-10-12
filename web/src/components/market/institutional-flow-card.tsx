@@ -17,6 +17,7 @@ import { TableWithActions } from "@/components/ui/table-actions";
 import { cn } from "@/lib/cn";
 import { fieldLabel } from "@/lib/field-labels";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { InstitutionalFlowTotalMarketRow } from "@/types/market";
 
 /** The categories worth their own bar series — `total` is excluded from the chart (it would
@@ -183,9 +184,9 @@ export function InstitutionalFlowCard({
                   </span>
                   <span
                     className="text-right font-num tabular-nums"
-                    style={{ color: net >= 0 ? "var(--up)" : "var(--down)" }}
+                    style={{ color: directionColor(net) }}
                   >
-                    {net >= 0 ? "▲" : "▼"}
+                    {directionGlyph(net)}
                     {formatCompactNumber(Math.abs(net), locale)}
                   </span>
                 </li>
@@ -256,9 +257,9 @@ export function InstitutionalFlowCard({
                     </td>
                     <td
                       className="border-[var(--border)] border-b px-3 py-2 text-right font-num tabular-nums"
-                      style={{ color: net >= 0 ? "var(--up)" : "var(--down)" }}
+                      style={{ color: directionColor(net) }}
                     >
-                      {net >= 0 ? "▲" : "▼"}
+                      {directionGlyph(net)}
                       {formatCompactNumber(Math.abs(net), locale)}
                     </td>
                   </tr>

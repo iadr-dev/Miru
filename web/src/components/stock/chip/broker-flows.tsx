@@ -15,6 +15,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getForeignShareholding, getStockChipFlows } from "@/lib/api/stock-detail";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { ChipBrokerTopRow } from "@/types/stock-detail";
@@ -318,13 +319,13 @@ function BrokerTopTableBody({
                 <td className="py-1.5 text-[var(--text)]">{row.broker_name}</td>
                 <td
                   className="py-1.5 text-right font-num tabular-nums"
-                  style={{ color: row.net >= 0 ? "var(--up)" : "var(--down)" }}
+                  style={{ color: directionColor(row.net) }}
                 >
                   {/* `net`/`buy`/`sell` here are `ChipBrokerTopRow`'s backend-ranked figures,
                    * computed server-side from `ChipBrokerRow`'s own raw-shares `buy`/`sell` (see
                    * `ChipFlowsBody`'s own comment above for the FinMind-doc confirmation) —
                    * divided to 張 here to match this table's own 買張/賣張 header labels. */}
-                  {row.net >= 0 ? "▲ " : "▼ "}
+                  {`${directionGlyph(row.net)} `}
                   {t("lotUnit", { value: formatNumber(Math.abs(row.net) / 1000, locale) })}
                 </td>
                 <td className="py-1.5 text-right font-num text-[var(--text)] tabular-nums">

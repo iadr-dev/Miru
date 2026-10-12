@@ -9,6 +9,7 @@ import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import type { SymbolQuote } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, formatSignedChange } from "@/lib/signed";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass } from "@/types/watchlist";
 
@@ -191,8 +192,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
             const quote = quoteBySymbol.get(row.symbol);
             const pctChange = changePctFor ? changePctFor(row) : quote?.changePct;
             const hasChange = pctChange !== null && pctChange !== undefined;
-            const up = hasChange && pctChange >= 0;
-            const color = hasChange ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
+            const color = hasChange ? directionColor(pctChange, 2) : "var(--text-muted)";
             const name = row.name ?? quote?.name ?? row.symbol;
             const rank = showRank ? rows.indexOf(row) + 1 : null;
             const volume = volumeFor ? volumeFor(row) : quote?.volume;
@@ -203,7 +203,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                 role="group"
                 aria-label={`${name} ${row.symbol} ${
                   hasChange
-                    ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
+                    ? formatSignedChange(pctChange, "zh-TW", { decimals: 2, unit: "%" })
                     : t("empty")
                 }${extraAriaLabel ? ` ${extraAriaLabel(row)}` : ""}`}
                 className={cn("grid items-center gap-2.5 py-2.5", gridCols)}
@@ -237,7 +237,11 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                   style={{ color }}
                 >
                   {hasChange
-                    ? `${up ? "▲" : "▼"}${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
+                    ? formatSignedChange(pctChange, "zh-TW", {
+                        decimals: 2,
+                        unit: "%",
+                        spaced: false,
+                      })
                     : "—"}
                 </span>
                 <span aria-hidden className="h-[26px]">

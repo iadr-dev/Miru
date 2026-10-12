@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { iconToSvgElement, sectorIconKeyForIndustry } from "@/lib/sector-rotation-icons";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import { colorForQuadrant, quadrantFor } from "./rrg-layout";
 
 export interface RankPanelRow {
@@ -76,7 +77,6 @@ export function RankPanel({
           const quadrant = quadrantFor(row.rsRatio, row.rsMomentum);
           const color = colorForQuadrant(quadrant);
           const icon = sectorIconKeyForIndustry(row.industryId);
-          const up = row.weeklyChangePct >= 0;
           const isHovered = hoveredSectorId === row.industryId;
           return (
             <li
@@ -98,9 +98,9 @@ export function RankPanel({
               </span>
               <span
                 className="font-num text-[12px] tabular-nums"
-                style={{ color: up ? "var(--up)" : "var(--down)" }}
+                style={{ color: directionColor(row.weeklyChangePct) }}
               >
-                {up ? "▲" : "▼"}
+                {directionGlyph(row.weeklyChangePct)}
                 {formatNumber(Math.abs(row.weeklyChangePct), locale, { decimals: 1 })}%
               </span>
             </li>

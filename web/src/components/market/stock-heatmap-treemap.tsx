@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { heatColor } from "@/lib/heat-color";
+import { DIRECTION_COLOR, DIRECTION_GLYPH, directionOf } from "@/lib/signed";
 import { squarifyGeneric, type TreemapTile } from "@/lib/treemap";
 import type { SectorHeatmapSizeBy, StockHeatmapRow } from "@/types/market";
 
@@ -251,11 +252,10 @@ export function StockHeatmapTreemap({
     >
       {tiles.map((tile, index) => {
         const row = tile.item;
-        const up = row.pct_change >= 0;
-        const arrow = up ? "▲" : row.pct_change < 0 ? "▼" : "";
-        const sign = up && row.pct_change > 0 ? "+" : "";
-        const pctLabel = `${sign}${formatNumber(row.pct_change, locale, { decimals: 2 })}%`;
-        const direction = up ? t("up") : row.pct_change < 0 ? t("down") : t("flat");
+        const dir = directionOf(row.pct_change, 2);
+        const arrow = DIRECTION_GLYPH[dir];
+        const pctLabel = `${formatNumber(Math.abs(row.pct_change), locale, { decimals: 2 })}%`;
+        const direction = t(dir);
         const textSize = tileTextSize(tile);
         return (
           <div
@@ -351,7 +351,7 @@ export function StockHeatmapTreemap({
                   {row.stock_name} {row.symbol}
                 </p>
                 <p className="mt-1 font-num text-[13px] text-[color:var(--text)] tabular-nums">
-                  <span style={{ color: up ? "var(--up)" : "var(--down)" }}>
+                  <span style={{ color: DIRECTION_COLOR[dir] }}>
                     {arrow}
                     {pctLabel}
                   </span>

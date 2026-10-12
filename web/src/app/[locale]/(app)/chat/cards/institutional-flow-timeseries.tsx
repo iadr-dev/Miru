@@ -23,6 +23,7 @@ import {
   formatCompactNumber,
   formatNumber,
 } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 
 /** `institutional_flow`'s raw row shape is `{trade_date, investor, buy, sell}` — one row per
  * (date, category) pair, `investor` a PascalCase category name ("Foreign_Investor",
@@ -261,14 +262,14 @@ export function InstitutionalFlowTimeseries({ data }: { data: unknown }): ReactN
                   </td>
                   <td
                     className="border-[var(--border)] border-b px-3 py-2 text-right font-num tabular-nums"
-                    style={{ color: net >= 0 ? "var(--up)" : "var(--down)" }}
+                    style={{ color: directionColor(net) }}
                     aria-label={
                       net >= 0
                         ? `${categoryLabel(t, category)} ▲ ${formatNumber(net, locale)}`
                         : `${categoryLabel(t, category)} ▼ ${formatNumber(net, locale)}`
                     }
                   >
-                    {net >= 0 ? "▲ " : "▼ "}
+                    {`${directionGlyph(net)} `}
                     {formatNumber(net, locale)}
                   </td>
                 </tr>

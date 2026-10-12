@@ -19,6 +19,7 @@ import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import { isEtfSymbolType } from "@/lib/symbol-type";
 import type { EtfListRow, ScoreBand, SymbolType } from "@/types/market";
 import type { Market } from "@/types/settings";
@@ -134,7 +135,7 @@ export function AssetHeader({
   // yfinance's own `.info`/WebSocket convention — never multiply by 100 again here.
   const changePct = tick?.change_percent ?? eodChangePct;
   const isUp = changePct !== null && changePct >= 0;
-  const priceColor = changePct === null ? "var(--text)" : isUp ? "var(--up)" : "var(--down)";
+  const priceColor = changePct === null ? "var(--text)" : directionColor(changePct ?? 0);
   const ohlc = tick
     ? {
         open: tick.open_price ?? null,
@@ -229,7 +230,7 @@ export function AssetHeader({
               className="font-num text-[15px] tabular-nums"
               style={{ color: priceColor }}
             >
-              {isUp ? "▲" : "▼"}
+              {directionGlyph(changePct ?? 0)}
               {formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%
             </span>
           ) : null}

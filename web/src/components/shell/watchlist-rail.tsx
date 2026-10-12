@@ -52,6 +52,7 @@ import {
 import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
+import { directionColor, formatSignedChange } from "@/lib/signed";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import type { Market } from "@/types/settings";
 import {
@@ -638,8 +639,7 @@ function WatchlistStockRow({
   };
   const pctChange = quote?.changePct ?? null;
   const hasChange = pctChange !== null;
-  const up = hasChange && pctChange >= 0;
-  const color = hasChange ? (up ? "var(--up)" : "var(--down)") : "var(--text-muted)";
+  const color = hasChange ? directionColor(pctChange, 2) : "var(--text-muted)";
   const name = quote?.name ?? item.symbol;
   const pending = quoteLoading && quote?.price == null;
   const router = useRouter();
@@ -651,9 +651,7 @@ function WatchlistStockRow({
       style={{ ...style, opacity: isDragging ? 0.5 : 1 }}
       role="group"
       aria-label={`${name} ${item.symbol} ${
-        hasChange
-          ? `${up ? "▲" : "▼"} ${formatNumber(Math.abs(pctChange), "zh-TW", { decimals: 2 })}%`
-          : t("empty")
+        hasChange ? formatSignedChange(pctChange, "zh-TW", { decimals: 2, unit: "%" }) : t("empty")
       }`}
       className="group flex items-center gap-2 py-2 pr-2 pl-1"
     >

@@ -4,7 +4,12 @@
       "dismiss": "Dismiss"
     },
     "rateLimited": "Too many requests right now. Please try again in a moment.",
-    "rateLimitedWait": "Too many requests right now. Please try again in {seconds} s."
+    "rateLimitedWait": "Too many requests right now. Please try again in {seconds} s.",
+    "direction": {
+      "up": "up",
+      "down": "down",
+      "flat": "flat"
+    }
   },
   "brand": {
     "name": "Miru",

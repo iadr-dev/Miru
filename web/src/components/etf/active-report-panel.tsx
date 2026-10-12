@@ -8,6 +8,7 @@ import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { ActiveEtfReportData, HoldingStatus } from "@/types/etf-detail";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
@@ -232,7 +233,6 @@ function StatCard({
   readonly delta: number | null | undefined;
   readonly locale: string;
 }): ReactNode {
-  const isUp = delta != null && delta >= 0;
   return (
     <div className="flex flex-col gap-1 rounded-[var(--radius-input)] border border-[var(--border)] p-3">
       <span className="text-[12px] text-[var(--text-muted)]">{label}</span>
@@ -240,9 +240,9 @@ function StatCard({
       {delta != null ? (
         <span
           className={cn("font-num text-[12px] tabular-nums")}
-          style={{ color: isUp ? "var(--up)" : "var(--down)" }}
+          style={{ color: directionColor(delta, 2) }}
         >
-          {isUp ? "▲" : "▼"}
+          {directionGlyph(delta, 2)}
           {formatNumber(Math.abs(delta), locale, { decimals: 2 })}%
         </span>
       ) : null}

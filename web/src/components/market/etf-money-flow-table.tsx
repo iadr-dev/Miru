@@ -9,23 +9,11 @@ import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionColor, formatSignedChange } from "@/lib/signed";
 import type { EtfMoneyFlowRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_1fr_0.8fr_0.9fr_28px]";
-
-/** A boolean "is this an upward move" flag's `--up`/`--down` color — pulled out of
- * `EtfMoneyFlowRowItem`'s own ternary chain purely to avoid a nested ternary. */
-function signedColorForUp(up: boolean): string {
-  return up ? "var(--up)" : "var(--down)";
-}
-
-/** ▲/▼ for a boolean "is this an upward move" flag — same purpose as `signedColorForUp`, split
- * out so the `${up ? "▲" : "▼"} ...` template-literal ternary never nests inside the outer
- * `changePct !== null ? ... : ...` check. */
-function upDownArrow(up: boolean): string {
-  return up ? "▲" : "▼";
-}
 
 /**
  * 資金持股 ranked list — one direction (inflow or outflow) at a time, picked by the caller via
@@ -140,8 +128,7 @@ function EtfMoneyFlowRowItem({
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   const changePct = quote?.changePct ?? null;
-  const up = (changePct ?? 0) >= 0;
-  const color = changePct === null ? "var(--text-muted)" : signedColorForUp(up);
+  const color = changePct === null ? "var(--text-muted)" : directionColor(changePct, 2);
   const hasHeldValue = row.held_market_value !== null && row.held_market_value !== undefined;
   const hasHeldShares = row.held_shares !== null && row.held_shares !== undefined;
 
@@ -150,7 +137,7 @@ function EtfMoneyFlowRowItem({
       role="group"
       aria-label={`${quote?.name ?? row.component_stock_name} ${row.component_stock_id} ${
         changePct !== null
-          ? `${upDownArrow(up)} ${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
+          ? formatSignedChange(changePct, locale, { decimals: 2, unit: "%" })
           : t("noChangeData")
       }`}
       className={cn("grid items-center gap-2.5 py-2.5", ROW_GRID_COLS)}
@@ -167,7 +154,7 @@ function EtfMoneyFlowRowItem({
       </SymbolLink>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
         {changePct !== null
-          ? `${upDownArrow(up)}${formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%`
+          ? formatSignedChange(changePct, locale, { decimals: 2, unit: "%", spaced: false })
           : "—"}
       </span>
       <span aria-hidden className="flex flex-col items-end text-right">

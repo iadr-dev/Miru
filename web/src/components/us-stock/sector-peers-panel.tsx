@@ -9,6 +9,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { SectorIndustriesTreemap } from "@/components/us-stock/sector-industries-treemap";
 import { getStockPeers } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
+import { directionColor, directionGlyph } from "@/lib/signed";
 import type { Market } from "@/types/settings";
 import type {
   IndustryOverviewCompanyRow,
@@ -286,12 +287,12 @@ function PeerCard({
                   {row.ytd_return != null ? (
                     <span
                       role="group"
-                      style={{ color: row.ytd_return >= 0 ? "var(--up)" : "var(--down)" }}
+                      style={{ color: directionColor(row.ytd_return) }}
                       aria-label={t("ytdReturnAria", {
                         value: formatNumber(row.ytd_return * 100, locale, { decimals: 1 }),
                       })}
                     >
-                      {row.ytd_return >= 0 ? "▲" : "▼"}
+                      {directionGlyph(row.ytd_return)}
                       {formatNumber(Math.abs(row.ytd_return) * 100, locale, { decimals: 1 })}%
                     </span>
                   ) : null}
