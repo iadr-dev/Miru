@@ -15,6 +15,7 @@ import pytest
 import llm.openai_compat as openai_compat_module
 from llm.base import ImagePart, Message, MessageRole, StopReason, ToolResultPart, ToolSpec
 from llm.openai_compat import OpenAICompatClient, _message_to_wire
+from tests.http_support import OwnedLease
 
 _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatch replaces it
 
@@ -39,7 +40,9 @@ def _patch_json_response(
     def factory(**kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
 
 def _patch_sse_response(monkeypatch: pytest.MonkeyPatch, lines: list[str]) -> None:
@@ -51,7 +54,9 @@ def _patch_sse_response(monkeypatch: pytest.MonkeyPatch, lines: list[str]) -> No
     def factory(**kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
 
 def test_construction_performs_no_network_call() -> None:
@@ -145,7 +150,9 @@ async def test_chat_sends_tool_result_message(monkeypatch: pytest.MonkeyPatch) -
     def factory(**kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
     client = _client()
     await client.chat(
@@ -177,7 +184,9 @@ async def test_chat_appends_openrouter_web_search_tool_when_requested(
     def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
     client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
     await client.chat([Message(role=MessageRole.USER, content="hi")], native_web_search=True)
@@ -201,7 +210,9 @@ async def test_chat_omits_openrouter_web_search_tool_when_not_requested(
     def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
     client = _client(provider_id="openrouter", base_url="https://openrouter.ai/api/v1")
     await client.chat([Message(role=MessageRole.USER, content="hi")])
@@ -225,7 +236,9 @@ async def test_chat_never_appends_openrouter_tool_for_a_different_provider(
     def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
         return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(openai_compat_module.httpx, "AsyncClient", factory)
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
 
     client = _client()  # provider_id="groq" — no native web-search mechanism
     await client.chat([Message(role=MessageRole.USER, content="hi")], native_web_search=True)
