@@ -1,7 +1,10 @@
 """Rebuild the app database from the models (development only).
 
     uv run python -m db.reset --yes
-    docker compose run --rm api python -m db.reset --yes
+    docker compose run --rm --no-deps --entrypoint python api -m db.reset --yes
+
+(The image entrypoint ignores a plain command and starts the API, so it must be overridden. Stop
+the services that hold database connections first, and take a `pg_dump` if the data matters.)
 
 Drops every table the models define and creates them again, so the schema is fresh and clean
 instead of being patched with ALTER TABLE as the models change. This empties the *app* database
