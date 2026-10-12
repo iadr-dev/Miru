@@ -13,13 +13,13 @@
 # None for anything missing here, so a forgotten var degrades quietly (e.g. OAuth 503s
 # `provider_unconfigured` even with real credentials in .env) rather than erroring at startup.
 
-name: miro
+name: miru
 
 x-app-env: &app-env
   # App state on the compose Postgres; async driver required.
-  # `DB_USER=miro_app` (created by docker/postgres-init on a fresh volume) is the ordinary role row-level
-  # security needs; the default `miro` is the container superuser, which Postgres exempts from RLS.
-  DATABASE_URL: postgresql+asyncpg://${DB_USER:-miro}:${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}@postgres:5432/miro
+  # `DB_USER=miru_app` (created by docker/postgres-init on a fresh volume) is the ordinary role row-level
+  # security needs; the default `miru` is the container superuser, which Postgres exempts from RLS.
+  DATABASE_URL: postgresql+asyncpg://${DB_USER:-miru}:${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}@postgres:5432/miru
   ROW_LEVEL_SECURITY: ${ROW_LEVEL_SECURITY:-false}
   # The whole point of the dev-parity stack: real Redis, real Redis-backed transport + limiter,
   # so the code paths that only activate on the redis backend actually run here.
@@ -200,9 +200,9 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: miro
+      POSTGRES_USER: miru
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}
-      POSTGRES_DB: miro
+      POSTGRES_DB: miru
     # Published to the host so a bare `uv run` process (no Docker) can also reach the same
     # Postgres data as the containerized api/scheduler/ingest/mcp services — dev-only convenience,
     # not something a prod deployment would do.
@@ -212,7 +212,7 @@ services:
       - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U miro -d miro"]
+      test: ["CMD-SHELL", "pg_isready -U miru -d miru"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -234,7 +234,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: miro-backend
+    image: miru-backend
     environment:
       <<: *app-env
       SERVICE_ROLE: api
@@ -264,7 +264,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: miro-backend
+    image: miru-backend
     environment:
       <<: *app-env
       SERVICE_ROLE: scheduler
@@ -283,7 +283,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: miro-backend
+    image: miru-backend
     environment:
       <<: *app-env
       SERVICE_ROLE: ingest
@@ -302,7 +302,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: miro-backend
+    image: miru-backend
     environment:
       <<: *app-env
       SERVICE_ROLE: mcp

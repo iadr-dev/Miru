@@ -735,8 +735,8 @@ before any identity exists.
 * **The role matters.** Postgres exempts superusers and BYPASSRLS roles from every policy, and the
   `POSTGRES_USER` a container or managed instance starts with is a superuser. Startup raises
   `RlsNotEnforcedError` if RLS is on but the connected role is exempt. In compose, a fresh volume
-  creates `miro_app` (`docker/postgres-init`); use it with `DB_USER=miro_app ROW_LEVEL_SECURITY=true`.
-  An existing volume's tables belong to `miro`, so rebuild it (`docker compose down -v` empties the
+  creates `miru_app` (`docker/postgres-init`); use it with `DB_USER=miru_app ROW_LEVEL_SECURITY=true`.
+  An existing volume's tables belong to `miru`, so rebuild it (`docker compose down -v` empties the
   app database; market data is a separate volume) before switching.
 * **Verified** by `tests/db/test_rls.py` (isolation without a WHERE, WITH CHECK, fail-closed,
   identity surviving a commit, superuser rejected) and by running the API suite against Postgres

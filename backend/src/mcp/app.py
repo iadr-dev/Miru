@@ -230,7 +230,7 @@ def _register_search_and_execute(
 def build_mcp_server(
     registry: ToolRegistry,
     *,
-    name: str = "miro",
+    name: str = "miru",
     principal_resolver: PrincipalResolver | None = None,
 ) -> FastMCP:
     """Build (never runs) the FastMCP app for one already-assembled `ToolRegistry`.

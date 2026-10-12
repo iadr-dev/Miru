@@ -1,5 +1,5 @@
 [project]
-name = "miro-backend"
+name = "miru-backend"
 version = "0.1.0"
 description = "Governed, non-trading AI Taiwan-stock/ETF agent — backend"
 requires-python = ">=3.13"
