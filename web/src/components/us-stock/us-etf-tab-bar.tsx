@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
 import { AiPanel } from "@/components/stock/ai-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
+import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { FundHoldingsPanel } from "@/components/us-stock/fund-holdings-panel";
 import { NewsFilingsPanel } from "@/components/us-stock/news-filings-panel";
 import { UsStockOverviewPanel } from "@/components/us-stock/overview-panel";
@@ -75,15 +76,17 @@ export function UsEtfTabBar({
         })}
       </div>
 
-      {tab === "overview" ? <UsStockOverviewPanel symbol={symbol} market={market} /> : null}
-      {tab === "holdings" ? <FundHoldingsPanel symbol={symbol} market={market} /> : null}
-      {visitedTechnical ? (
-        <div className={tab === "technical" ? undefined : "hidden"}>
-          <TechnicalAnalysisPanel symbol={symbol} market={market} />
-        </div>
-      ) : null}
-      {tab === "newsFilings" ? <NewsFilingsPanel symbol={symbol} market={market} /> : null}
-      {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
+      <SectionBoundary resetKeys={[tab, symbol]}>
+        {tab === "overview" ? <UsStockOverviewPanel symbol={symbol} market={market} /> : null}
+        {tab === "holdings" ? <FundHoldingsPanel symbol={symbol} market={market} /> : null}
+        {visitedTechnical ? (
+          <div className={tab === "technical" ? undefined : "hidden"}>
+            <TechnicalAnalysisPanel symbol={symbol} market={market} />
+          </div>
+        ) : null}
+        {tab === "newsFilings" ? <NewsFilingsPanel symbol={symbol} market={market} /> : null}
+        {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
+      </SectionBoundary>
     </div>
   );
 }

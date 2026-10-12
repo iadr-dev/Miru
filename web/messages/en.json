@@ -9,6 +9,13 @@
       "up": "up",
       "down": "down",
       "flat": "flat"
+    },
+    "loadFailed": "Some data could not be loaded right now. Please try again shortly.",
+    "panelError": {
+      "title": "This section can't be shown right now",
+      "pageTitle": "This page can't be shown right now",
+      "body": "The rest of the app is unaffected. You can try again.",
+      "retry": "Try again"
     }
   },
   "brand": {

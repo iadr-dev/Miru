@@ -17,6 +17,7 @@ import {
 } from "@/components/shell/use-shell-ui";
 import { WatchlistRail } from "@/components/shell/watchlist-rail";
 import { Toaster } from "@/components/ui/toast";
+import { QueryFailureNotice } from "./query-failure-notice";
 import { RateLimitNotice } from "./rate-limit-notice";
 
 /**
@@ -94,6 +95,7 @@ export function AppShell({
           <WelcomePullDialog />
           <Toaster />
           <RateLimitNotice />
+          <QueryFailureNotice />
           <TabStripScroll />
         </div>
       )}

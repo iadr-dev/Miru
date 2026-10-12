@@ -12,6 +12,7 @@ import { ChipAnalysisPanel } from "@/components/stock/chip-analysis-panel";
 import { RealtimeTab } from "@/components/stock/realtime-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
+import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
 import type { SymbolType } from "@/types/market";
@@ -94,19 +95,23 @@ export function EtfTabBar({
         })}
       </div>
 
-      {tab === "overview" ? <OverviewPanel symbol={symbol} market={market} /> : null}
-      {tab === "realtime" ? <RealtimeTab symbol={symbol} market={market} /> : null}
-      {tab === "activeReport" ? <ActiveReportPanel symbol={symbol} market={market} /> : null}
-      {tab === "holdings" ? <HoldingsPanel symbol={symbol} market={market} /> : null}
-      {tab === "premiumDiscount" ? <PremiumDiscountPanel symbol={symbol} market={market} /> : null}
-      {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
-      {visitedTechnical ? (
-        <div className={tab === "technical" ? undefined : "hidden"}>
-          <TechnicalAnalysisPanel symbol={symbol} market={market} />
-        </div>
-      ) : null}
-      {tab === "ai" ? <AiPanel symbol={symbol} market={market} symbolType={symbolType} /> : null}
-      {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
+      <SectionBoundary resetKeys={[tab, symbol]}>
+        {tab === "overview" ? <OverviewPanel symbol={symbol} market={market} /> : null}
+        {tab === "realtime" ? <RealtimeTab symbol={symbol} market={market} /> : null}
+        {tab === "activeReport" ? <ActiveReportPanel symbol={symbol} market={market} /> : null}
+        {tab === "holdings" ? <HoldingsPanel symbol={symbol} market={market} /> : null}
+        {tab === "premiumDiscount" ? (
+          <PremiumDiscountPanel symbol={symbol} market={market} />
+        ) : null}
+        {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
+        {visitedTechnical ? (
+          <div className={tab === "technical" ? undefined : "hidden"}>
+            <TechnicalAnalysisPanel symbol={symbol} market={market} />
+          </div>
+        ) : null}
+        {tab === "ai" ? <AiPanel symbol={symbol} market={market} symbolType={symbolType} /> : null}
+        {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
+      </SectionBoundary>
     </div>
   );
 }
