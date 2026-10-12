@@ -118,23 +118,6 @@ export interface UpdateScreenerScreenParams {
   gateOverrides?: ScreenerGateOverrides;
 }
 
-export async function updateScreenerScreen(
-  screenId: string,
-  params: UpdateScreenerScreenParams,
-): Promise<ScreenerScreen> {
-  const raw = await requestJson(`/analytics/screener/screens/${encodeURIComponent(screenId)}`, {
-    method: "PATCH",
-    headers: jsonHeaders(),
-    body: JSON.stringify({
-      name: params.name,
-      conditions: params.conditions,
-      match: params.match,
-      gate_overrides: params.gateOverrides,
-    }),
-  });
-  return screenerScreenSchema.parse(raw);
-}
-
 export async function deleteScreenerScreen(screenId: string): Promise<void> {
   await requestJson(`/analytics/screener/screens/${encodeURIComponent(screenId)}`, {
     method: "DELETE",

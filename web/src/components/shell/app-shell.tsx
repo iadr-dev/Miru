@@ -71,7 +71,7 @@ export function AppShell({
             {/* A readable measure: on a very wide screen the page stops stretching and sits centred, so cards
                 and tables keep a comfortable line length instead of spanning 2,000px. The bottom padding
                 clears the phone tab bar (0 from md up). */}
-            <main className="mx-auto min-h-0 w-full max-w-[1600px] flex-1 pb-[var(--bottom-nav-h)] 3xl:max-w-[1840px]">
+            <main className="mx-auto min-h-0 w-full 3xl:max-w-[1840px] max-w-[1600px] flex-1 pb-[var(--bottom-nav-h)]">
               {children}
             </main>
           </div>

@@ -40,7 +40,7 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
   });
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
       <QueryState query={query} skeleton={<CardSkeletonBody height={380} />}>
         {(data) => {

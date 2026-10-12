@@ -98,7 +98,7 @@ export function ByokPanel(): ReactNode {
                       provider: t(`providerOption.${k.provider}`),
                     })}
                     onClick={() => chooseProvider(k.provider as LlmProvider)}
-                    className="rounded-full !outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    className="!outline-none rounded-full focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                   >
                     <ProviderBadge provider={k.provider} />
                   </button>
@@ -135,7 +135,7 @@ export function ByokPanel(): ReactNode {
               type="text"
               readOnly
               value={current?.hint ?? GENERIC_MASK}
-              className="font-num w-56 text-[var(--text-muted)]"
+              className="w-56 font-num text-[var(--text-muted)]"
             />
           ) : (
             <TextInput

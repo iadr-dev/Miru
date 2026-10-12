@@ -7,7 +7,6 @@
 import { ApiRequestError, createRequestJson, jsonHeaders } from "@/lib/api/http";
 import type { Market } from "@/types/settings";
 import {
-  listWatchlistItemsResponseSchema,
   listWatchlistsResponseSchema,
   type WatchlistAssetClass,
   type WatchlistColor,
@@ -107,24 +106,6 @@ export async function deleteWatchlist(watchlistId: string): Promise<void> {
   });
 }
 
-export async function reorderWatchlists(orderedIds: readonly string[]): Promise<void> {
-  await requestJson("/watchlists/reorder", {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify({ ordered_ids: orderedIds }),
-    expectBody: false,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Items
-// ---------------------------------------------------------------------------
-
-export async function getWatchlistItems(watchlistId: string): Promise<WatchlistItem[]> {
-  const raw = await requestJson(`/watchlists/${encodeURIComponent(watchlistId)}/items`);
-  return listWatchlistItemsResponseSchema.parse(raw).items;
-}
-
 /** Idempotent star-add — a repeat add of the same symbol to the same group returns the existing
  * row, never a duplicate (backend's own `WatchlistStore.add_item` guarantee). */
 export async function addWatchlistItem(
@@ -149,22 +130,6 @@ export async function removeWatchlistItem(watchlistId: string, symbol: string): 
     `/watchlists/${encodeURIComponent(watchlistId)}/items/${encodeURIComponent(symbol)}`,
     { method: "DELETE", expectBody: false },
   );
-}
-
-export async function setWatchlistItemNote(
-  watchlistId: string,
-  itemId: string,
-  note: string | null,
-): Promise<WatchlistItem> {
-  const raw = await requestJson(
-    `/watchlists/${encodeURIComponent(watchlistId)}/items/${encodeURIComponent(itemId)}`,
-    {
-      method: "PATCH",
-      headers: jsonHeaders(),
-      body: JSON.stringify(note === null ? { clear_note: true } : { note }),
-    },
-  );
-  return watchlistItemSchema.parse(raw);
 }
 
 /** Move an item to another of the caller's groups (drag-across-groups) — takes the target

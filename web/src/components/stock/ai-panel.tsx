@@ -135,7 +135,7 @@ function TrendScoreCard({
   if (!data) return null;
 
   return (
-    <section className="flex flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex flex-col p-4 sm:p-5">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("trendScoreTitle")}</h2>
         {data.as_of ? (
@@ -414,7 +414,7 @@ function ScoreGaugeCard({
   ];
 
   return (
-    <section className="flex flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex flex-col p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("scoreTitle")}</h2>
         <div

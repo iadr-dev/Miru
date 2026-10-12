@@ -26,7 +26,7 @@ export function EventTimeline({ data }: { data: unknown }): ReactNode {
   const sorted = [...rows].sort((a, b) => (rowDate(b) ?? "").localeCompare(rowDate(a) ?? ""));
 
   return (
-    <ul className="mt-3 flex flex-col divide-y divide-[var(--border)] surface-card">
+    <ul className="surface-card mt-3 flex flex-col divide-y divide-[var(--border)]">
       {sorted.slice(0, MAX_EVENTS).map((row, index) => {
         const date = rowDate(row) ?? "—";
         const summary = eventSummary(row, locale, t);

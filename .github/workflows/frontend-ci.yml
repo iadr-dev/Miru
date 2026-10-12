@@ -47,6 +47,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Dead code (knip - unused files, exports, dependencies)
+        run: pnpm knip
+
       - name: Unit/component suite (vitest)
         run: pnpm test
 

@@ -153,11 +153,3 @@ export function FieldError({ message }: { message: string }): ReactNode {
     </p>
   );
 }
-
-export function Label({ htmlFor, children }: { htmlFor?: string; children: ReactNode }): ReactNode {
-  return (
-    <label htmlFor={htmlFor} className="mb-1 block text-[13px] text-[var(--text-muted)]">
-      {children}
-    </label>
-  );
-}

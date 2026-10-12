@@ -9,16 +9,10 @@ import { ApiRequestError, createRequestJson } from "@/lib/api/http";
 import {
   type AdvanceDeclineResponse,
   advanceDeclineResponseSchema,
-  type BusinessIndicatorResponse,
-  businessIndicatorResponseSchema,
   type DailySignalResponse,
-  type DayTradingResponse,
-  type DerivativesResponse,
   type DispositionBoardResponse,
   type DividendCalendarResponse,
   dailySignalResponseSchema,
-  dayTradingResponseSchema,
-  derivativesResponseSchema,
   dispositionBoardResponseSchema,
   dividendCalendarResponseSchema,
   type EtfListResponse,
@@ -48,7 +42,6 @@ import {
   type MarginShortBalanceResponse,
   type MarketIndexStripResponse,
   type MaterialAnnouncementFeedResponse,
-  type MomentumPeriod,
   macroCalendarResponseSchema,
   macroIndicatorsResponseSchema,
   marginMaintenanceResponseSchema,
@@ -60,11 +53,9 @@ import {
   type OptionVixResponse,
   optionVixResponseSchema,
   type PriceHistoryResponse,
-  type PriceMomentumResponse,
   type PttBoardName,
   type PttBoardResponse,
   priceHistoryResponseSchema,
-  priceMomentumResponseSchema,
   pttBoardResponseSchema,
   type RankingKind,
   type ScoreLeaderboardData,
@@ -72,7 +63,6 @@ import {
   type SectorHeatmapPeriod,
   type SectorHeatmapResponse,
   type SectorHeatmapSizeBy,
-  type SectorRotationResponse,
   type SectorRotationRrgResponse,
   type StockHeatmapResponse,
   type SymbolInfoResponse,
@@ -80,7 +70,6 @@ import {
   scoreLeaderboardDataSchema,
   sectorConstituentsResponseSchema,
   sectorHeatmapResponseSchema,
-  sectorRotationResponseSchema,
   sectorRotationRrgResponseSchema,
   stockHeatmapResponseSchema,
   symbolInfoResponseSchema,
@@ -147,22 +136,6 @@ export async function getMarginMaintenance(
 }
 
 // ---------------------------------------------------------------------------
-// 3. GET /market/day-trading (per-symbol, public)
-// ---------------------------------------------------------------------------
-
-export async function getDayTrading(
-  symbol: string,
-  market: Market,
-  params: DateRangeParams = {},
-): Promise<DayTradingResponse> {
-  const search = dateRangeSearchParams(params);
-  search.set("symbol", symbol);
-  search.set("market", market);
-  const raw = await requestJson(`/market/day-trading?${search.toString()}`);
-  return dayTradingResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
 // 4. GET /market/etf-money-flow (Sponsor-tier, bounded range required)
 // ---------------------------------------------------------------------------
 
@@ -194,23 +167,6 @@ export async function getIndustryFlow(
   search.set("market", market);
   const raw = await requestJson(`/market/industry-flow?${search.toString()}`);
   return industryFlowResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// 6. GET /derivatives/{contract}
-// ---------------------------------------------------------------------------
-
-export async function getDerivatives(
-  contract: string,
-  market: Market,
-  params: DateRangeParams = {},
-): Promise<DerivativesResponse> {
-  const search = dateRangeSearchParams(params);
-  search.set("market", market);
-  const raw = await requestJson(
-    `/derivatives/${encodeURIComponent(contract)}?${search.toString()}`,
-  );
-  return derivativesResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -249,20 +205,6 @@ export async function getMacroCalendar(
   }
   const raw = await requestJson(`/market/macro-calendar?${search.toString()}`);
   return macroCalendarResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// 8. GET /macro/business-indicator (Sponsor-tier)
-// ---------------------------------------------------------------------------
-
-export async function getBusinessIndicator(
-  market: Market,
-  params: DateRangeParams = {},
-): Promise<BusinessIndicatorResponse> {
-  const search = dateRangeSearchParams(params);
-  search.set("market", market);
-  const raw = await requestJson(`/macro/business-indicator?${search.toString()}`);
-  return businessIndicatorResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -334,22 +276,6 @@ export async function getScoreLeaderboard(
   });
   const raw = await requestJson(`/analytics/rankings?${search.toString()}`);
   return scoreLeaderboardDataSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// 11. GET /market/price-momentum (public single-factor ranking)
-// ---------------------------------------------------------------------------
-
-export async function getPriceMomentum(
-  market: Market,
-  period: MomentumPeriod,
-  asOf: string | undefined,
-  topN: number,
-): Promise<PriceMomentumResponse> {
-  const search = new URLSearchParams({ market, period, top_n: String(topN) });
-  if (asOf) search.set("as_of", asOf);
-  const raw = await requestJson(`/market/price-momentum?${search.toString()}`);
-  return priceMomentumResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -483,20 +409,6 @@ export async function getSectorConstituents(
   if (tradeDate) search.set("trade_date", tradeDate);
   const raw = await requestJson(`/market/sector-constituents?${search.toString()}`);
   return sectorConstituentsResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// 14d. GET /market/sector-rotation (public, rank-bump chart data)
-// ---------------------------------------------------------------------------
-
-export async function getSectorRotation(
-  market: Market,
-  endDate?: string,
-): Promise<SectorRotationResponse> {
-  const search = new URLSearchParams({ market });
-  if (endDate) search.set("end_date", endDate);
-  const raw = await requestJson(`/market/sector-rotation?${search.toString()}`);
-  return sectorRotationResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

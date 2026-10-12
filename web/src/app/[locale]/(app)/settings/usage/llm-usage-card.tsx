@@ -59,7 +59,6 @@ export function LlmUsageCard(): ReactNode {
         className="mb-4 inline-flex rounded-[var(--radius-button)] border border-[var(--border)] p-0.5"
       >
         {RANGES.map((value) => (
-          // biome-ignore lint/a11y/useSemanticElements: a segmented control, not a form radio
           <button
             key={value}
             type="button"
@@ -172,14 +171,14 @@ function LlmUsageBody({ summary }: { summary: LlmUsageSummary }): ReactNode {
                       <ProviderBadge provider={m.provider} />
                     </button>
                   </th>
-                  <td className="font-num px-3 py-2.5 text-right tabular-nums">{m.calls}</td>
-                  <td className="font-num px-3 py-2.5 text-right tabular-nums">
+                  <td className="px-3 py-2.5 text-right font-num tabular-nums">{m.calls}</td>
+                  <td className="px-3 py-2.5 text-right font-num tabular-nums">
                     {formatTokens(m.input_tokens)}
                   </td>
-                  <td className="font-num px-3 py-2.5 text-right tabular-nums">
+                  <td className="px-3 py-2.5 text-right font-num tabular-nums">
                     {formatTokens(m.output_tokens)}
                   </td>
-                  <td className="font-num py-2.5 pl-3 text-right tabular-nums">
+                  <td className="py-2.5 pl-3 text-right font-num tabular-nums">
                     <CostCell model={m} />
                   </td>
                 </tr>
@@ -284,7 +283,7 @@ function Kpi({
   return (
     <div className="rounded-[var(--radius-card)] border border-[var(--border)] px-3 py-2.5">
       <dt className="text-[12px] text-[var(--text-muted)]">{label}</dt>
-      <dd className="font-num mt-0.5 text-[20px] text-[var(--text)] tabular-nums">{value}</dd>
+      <dd className="mt-0.5 font-num text-[20px] text-[var(--text)] tabular-nums">{value}</dd>
       {note ? <div className="mt-1 text-[11px] text-[var(--text-muted)]">{note}</div> : null}
     </div>
   );

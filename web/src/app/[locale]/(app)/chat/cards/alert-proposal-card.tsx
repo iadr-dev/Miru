@@ -70,7 +70,7 @@ export function AlertProposalCard({ data }: { data: Record<string, unknown> }): 
   }
 
   return (
-    <section aria-label={t("title")} className="mt-3 surface-card p-4">
+    <section aria-label={t("title")} className="surface-card mt-3 p-4">
       <div className="flex items-start gap-2">
         <BellRingingIcon
           size={18}

@@ -10,8 +10,6 @@ import {
   runScreener,
   type SaveScreenerScreenParams,
   saveScreenerScreen,
-  type UpdateScreenerScreenParams,
-  updateScreenerScreen,
 } from "@/lib/api/screener";
 import { FRESHNESS } from "@/lib/freshness";
 import type {
@@ -117,30 +115,6 @@ export function useSaveScreenerScreen(market: ScreenerMarket) {
   return useMutation({
     mutationFn: (params: SaveScreenerScreenParams) => saveScreenerScreen(params),
     onSuccess: () => invalidateScreens(queryClient, market),
-  });
-}
-
-export function useUpdateScreenerScreen(market: ScreenerMarket) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ screenId, params }: { screenId: string; params: UpdateScreenerScreenParams }) =>
-      updateScreenerScreen(screenId, params),
-    onMutate: async ({ screenId, params }) => {
-      await queryClient.cancelQueries({ queryKey: screensKey(market) });
-      const previous = queryClient.getQueryData<ScreenerScreen[]>(screensKey(market));
-      queryClient.setQueryData<ScreenerScreen[]>(screensKey(market), (current) =>
-        (current ?? []).map((screen) =>
-          screen.id === screenId ? { ...screen, name: params.name ?? screen.name } : screen,
-        ),
-      );
-      return { previous };
-    },
-    onError: (_error, _vars, context) => {
-      if (context?.previous) {
-        queryClient.setQueryData(screensKey(market), context.previous);
-      }
-    },
-    onSettled: () => invalidateScreens(queryClient, market),
   });
 }
 

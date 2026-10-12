@@ -5,7 +5,7 @@
  * Every consumer must also honour reduced motion (`useReducedMotion`) - use `entrance()`, which
  * already does.
  */
-import type { Transition, Variants } from "motion/react";
+import type { Variants } from "motion/react";
 
 /** Seconds, matching `--dur-fast/base/slow`. */
 export const DURATION = { fast: 0.12, base: 0.2, slow: 0.32 } as const;
@@ -15,9 +15,6 @@ export const EASE = {
   out: [0.22, 1, 0.36, 1],
   inOut: [0.65, 0, 0.35, 1],
 } as const;
-
-/** The one spring for things that settle (a popover, a toast): firm, no wobble. */
-export const SPRING: Transition = { type: "spring", stiffness: 380, damping: 32, mass: 0.8 };
 
 /** Delay between siblings in a staggered reveal - short enough that a list never feels slow. */
 export const STAGGER = 0.035;

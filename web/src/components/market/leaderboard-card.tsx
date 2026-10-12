@@ -68,7 +68,7 @@ export function LeaderboardCard({
   const allQuoteBySymbol = new Map(allQuotes.map((q) => [q.code, q]));
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>

@@ -108,7 +108,7 @@ export function NotificationsBell(): ReactNode {
                   <DropdownMenu.Item
                     onSelect={() => openItem(item)}
                     className={cn(
-                      "flex cursor-pointer flex-col gap-1 px-4 py-3 !outline-none",
+                      "!outline-none flex cursor-pointer flex-col gap-1 px-4 py-3",
                       "data-[highlighted]:bg-[var(--surface-2)]",
                     )}
                   >
@@ -137,14 +137,14 @@ export function NotificationsBell(): ReactNode {
           <div className="flex items-center justify-between gap-2 border-[var(--border)] border-t px-2 py-1">
             <DropdownMenu.Item
               onSelect={() => router.push("/settings/alerts")}
-              className="min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--text-muted)] !outline-none data-[highlighted]:bg-[var(--surface-2)]"
+              className="!outline-none min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--text-muted)] data-[highlighted]:bg-[var(--surface-2)]"
             >
               <span className="inline-flex min-h-11 items-center">{t("manage")}</span>
             </DropdownMenu.Item>
             {unread > 0 ? (
               <DropdownMenu.Item
                 onSelect={() => markRead.mutate({ all: true })}
-                className="min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] !outline-none data-[highlighted]:bg-[var(--surface-2)]"
+                className="!outline-none min-h-11 cursor-pointer rounded-[var(--radius-button)] px-3 text-[13px] text-[var(--accent-text)] data-[highlighted]:bg-[var(--surface-2)]"
               >
                 <span className="inline-flex min-h-11 items-center">{t("markAllRead")}</span>
               </DropdownMenu.Item>

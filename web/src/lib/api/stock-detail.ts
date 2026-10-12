@@ -5,7 +5,7 @@
  * from `types/market.ts` — a genuinely different, per-symbol surface. Reuses `market.ts`'s
  * `requestJson`/`MarketApiError` seam rather than duplicating it.
  */
-import { MarketApiError, requestJson } from "@/lib/api/market";
+import { requestJson } from "@/lib/api/market";
 import { type LivePriceQuoteResponse, livePriceQuoteResponseSchema } from "@/types/live-quote";
 import type { Market } from "@/types/settings";
 import {
@@ -20,11 +20,9 @@ import {
   type DayTradingResponse,
   type DispositionSecuritiesResponse,
   type DividendPolicySummaryResponse,
-  type DividendResultResponse,
   dayTradingResponseSchema,
   dispositionSecuritiesResponseSchema,
   dividendPolicySummaryResponseSchema,
-  dividendResultResponseSchema,
   type EsgScoreResponse,
   type EtfsHoldingStockResponse,
   esgScoreResponseSchema,
@@ -87,8 +85,6 @@ import {
   type ValuationRatiosResponse,
   valuationRatiosResponseSchema,
 } from "@/types/stock-detail";
-
-export { MarketApiError };
 
 type DateRangeParams = { startDate?: string; endDate?: string };
 
@@ -218,20 +214,6 @@ export async function getDispositionSecurities(
   const search = symbolDateSearchParams(symbol, market, params);
   const raw = await requestJson(`/stock/disposition-securities?${search.toString()}`);
   return dispositionSecuritiesResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// 6. GET /stock/dividend-result (public)
-// ---------------------------------------------------------------------------
-
-export async function getDividendResult(
-  symbol: string,
-  market: Market,
-  params: DateRangeParams = {},
-): Promise<DividendResultResponse> {
-  const search = symbolDateSearchParams(symbol, market, params);
-  const raw = await requestJson(`/stock/dividend-result?${search.toString()}`);
-  return dividendResultResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

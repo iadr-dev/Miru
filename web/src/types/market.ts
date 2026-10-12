@@ -722,12 +722,6 @@ export type TagScreenerResult = z.infer<typeof tagScreenerResultSchema>;
 
 export const tagScreenerResponseSchema = z.object({ result: tagScreenerResultSchema });
 export type TagScreenerResponse = z.infer<typeof tagScreenerResponseSchema>;
-
-// ---------------------------------------------------------------------------
-// 12. GET /market/holder-accumulation — get_holder_accumulation (Sponsor-tier)
-// ---------------------------------------------------------------------------
-
-export const HOLDER_THRESHOLDS = [200, 400, 800, 1000] as const;
 export const holderThresholdSchema = z.union([
   z.literal(200),
   z.literal(400),
@@ -735,8 +729,6 @@ export const holderThresholdSchema = z.union([
   z.literal(1000),
 ]);
 export type HolderThreshold = z.infer<typeof holderThresholdSchema>;
-
-export const HOLDER_WINDOWS = [1, 2, 3, 4] as const;
 export const holderWindowSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
 export type HolderWindow = z.infer<typeof holderWindowSchema>;
 

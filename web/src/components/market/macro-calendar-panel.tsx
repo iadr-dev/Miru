@@ -102,7 +102,7 @@ export function MacroCalendarPanel(): ReactNode {
   });
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
         {query.data && query.data.events.length > 0 ? (
@@ -569,7 +569,7 @@ function MacroEventCompactRow({ event }: { readonly event: MacroReleaseEventRow 
       >
         {impactLabel}
       </span>
-      <span className="font-num shrink-0 text-[11px] text-[var(--text-muted)] tabular-nums">
+      <span className="shrink-0 font-num text-[11px] text-[var(--text-muted)] tabular-nums">
         {event.date}
       </span>
     </li>

@@ -19,7 +19,7 @@ export function TokenUsageChip({ usage }: { usage: TurnUsageData | null | undefi
     output: formatTokens(usage.output_tokens),
   });
   return (
-    <p className="font-num mt-2 flex flex-wrap items-center gap-x-2 text-[12px] text-[var(--text-muted)] tabular-nums">
+    <p className="mt-2 flex flex-wrap items-center gap-x-2 font-num text-[12px] text-[var(--text-muted)] tabular-nums">
       <span>{detail}</span>
       {names.length > 0 ? <span aria-hidden>·</span> : null}
       {names.length > 0 ? <span>{names.join(", ")}</span> : null}

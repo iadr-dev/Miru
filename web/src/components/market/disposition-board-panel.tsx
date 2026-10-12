@@ -34,7 +34,7 @@ export function DispositionBoardPanel({ market }: { readonly market: Market }): 
   });
 
   return (
-    <section className="flex w-full flex-col surface-card p-4 sm:p-5">
+    <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <QueryState query={query} skeleton={<CardSkeletonBody height={420} />}>
         {(data) => {
           if (!data.data_available) {
