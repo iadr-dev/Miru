@@ -21,6 +21,7 @@ import asyncio
 
 import uvicorn
 
+from config.logging_config import configure_logging
 from config.settings import get_settings
 from db.base import ensure_schema_for
 from mcp.composition import build_mcp_http_app
@@ -28,6 +29,7 @@ from mcp.composition import build_mcp_http_app
 
 def main() -> None:
     settings = get_settings()
+    configure_logging(settings)
     built = build_mcp_http_app(settings)
     # `create_all()` is idempotent, so this is safe even under multiple replicas racing to call
     # it. Run once, synchronously, before `uvicorn.run` starts its own loop — this project's sole

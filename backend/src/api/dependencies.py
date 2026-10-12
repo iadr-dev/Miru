@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
+import structlog
 from fastapi import Depends, Request, status
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -114,6 +115,7 @@ async def _load_user(
     """Load the user, dropping a paid tier whose payment has been failing past the grace window -
     the one entitlement change that no webhook announces (it is the absence of a payment)."""
     user = await store.get(user_id=user_id)
+    structlog.contextvars.bind_contextvars(user_id=user_id)  # on every log line of this request
     if user.tier.value == "free":
         return user
     return await BillingService(
