@@ -1,6 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type UseMutationResult,
+  type UseQueryResult,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   deleteScreenerScreen,
@@ -13,15 +19,18 @@ import {
 } from "@/lib/api/screener";
 import { FRESHNESS } from "@/lib/freshness";
 import type {
+  FactorCatalog,
+  RunScreenerResult,
   ScreenerGateOverrides,
   ScreenerMarket,
+  ScreenerPreset,
   ScreenerRunCondition,
   ScreenerScreen,
 } from "@/types/screener";
 
 const DEBOUNCE_MS = 400;
 
-/** Query keys mirror the backend's own key shape (`web/CLAUDE.md` §3) — `(market, conditions,
+/** Query keys mirror the backend's own key shape (`web/OVERVIEW.md` §3) — `(market, conditions,
  * gateOverrides)` for a run, `market` alone for factors/presets/screens. */
 function factorsKey(market: ScreenerMarket) {
   return ["screener-factors", market] as const;
@@ -44,7 +53,7 @@ function runKey(
 
 /** The per-market factor/signal catalog the condition builder discovers from. Rarely changes —
  * a long `staleTime` avoids refetching on every tab switch. */
-export function useFactorCatalog(market: ScreenerMarket) {
+export function useFactorCatalog(market: ScreenerMarket): UseQueryResult<FactorCatalog> {
   return useQuery({
     queryKey: factorsKey(market),
     queryFn: () => getFactorCatalog(market),
@@ -53,7 +62,7 @@ export function useFactorCatalog(market: ScreenerMarket) {
 }
 
 /** Named presets the `PresetLibrary` loads into the builder. */
-export function useScreenerPresets(market: ScreenerMarket) {
+export function useScreenerPresets(market: ScreenerMarket): UseQueryResult<ScreenerPreset[]> {
   return useQuery({
     queryKey: presetsKey(market),
     queryFn: () => getScreenerPresets(market),
@@ -74,7 +83,7 @@ export interface UseRunScreenerParams {
  * survivor-count probe fires on every builder edit — this hook is what keeps that from firing on
  * every keystroke). Empty `conditions` still runs (gates-only, matching the funnel's own "gates
  * apply even with zero setup conditions" semantics) unless `enabled` is explicitly false. */
-export function useRunScreener(params: UseRunScreenerParams) {
+export function useRunScreener(params: UseRunScreenerParams): UseQueryResult<RunScreenerResult> {
   const debouncedConditions = useDebouncedValue(params.conditions, DEBOUNCE_MS);
   const debouncedGateOverrides = useDebouncedValue(params.gateOverrides, DEBOUNCE_MS);
   const match = params.match ?? "AND";
@@ -99,7 +108,12 @@ export function useRunScreener(params: UseRunScreenerParams) {
 // `use-watchlists.ts`'s mutations.
 // ---------------------------------------------------------------------------
 
-export function useScreenerScreens(market: ScreenerMarket) {
+/** What an optimistic delete snapshots so `onError` can roll it back. */
+interface ScreensSnapshot {
+  previous: ScreenerScreen[] | undefined;
+}
+
+export function useScreenerScreens(market: ScreenerMarket): UseQueryResult<ScreenerScreen[]> {
   return useQuery({
     queryKey: screensKey(market),
     queryFn: () => listScreenerScreens(market),
@@ -110,7 +124,9 @@ function invalidateScreens(queryClient: ReturnType<typeof useQueryClient>, marke
   queryClient.invalidateQueries({ queryKey: screensKey(market) });
 }
 
-export function useSaveScreenerScreen(market: ScreenerMarket) {
+export function useSaveScreenerScreen(
+  market: ScreenerMarket,
+): UseMutationResult<ScreenerScreen, Error, SaveScreenerScreenParams> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (params: SaveScreenerScreenParams) => saveScreenerScreen(params),
@@ -118,7 +134,9 @@ export function useSaveScreenerScreen(market: ScreenerMarket) {
   });
 }
 
-export function useDeleteScreenerScreen(market: ScreenerMarket) {
+export function useDeleteScreenerScreen(
+  market: ScreenerMarket,
+): UseMutationResult<void, Error, string, ScreensSnapshot> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (screenId: string) => deleteScreenerScreen(screenId),

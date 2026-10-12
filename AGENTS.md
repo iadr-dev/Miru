@@ -11,9 +11,9 @@ canonical root file; `CLAUDE.md` points here.
 | Next.js frontend — full standards + toolchain | [`web/OVERVIEW.md`](web/OVERVIEW.md) |
 | Next.js frontend — quick style reference | [`web/CODE-STYLE.md`](web/CODE-STYLE.md) |
 
-> `web/AGENTS.md` / `web/CLAUDE.md` are **Next.js's own auto-generated agent-rules files**
-> (re-written by `next dev`) — not this project's docs. Our frontend standards live at
-> `web/OVERVIEW.md` / `web/CODE-STYLE.md` specifically so the two never collide.
+> `web/AGENTS.md` holds **Next.js's own managed agent-rules block** (re-written by `next dev`).
+> Our frontend standards live in `web/OVERVIEW.md` / `web/CODE-STYLE.md`; `web/CLAUDE.md` is a
+> pointer that imports `OVERVIEW.md` so Claude Code loads the same single source.
 
 ## What this project is
 
@@ -46,7 +46,7 @@ ai-tw-stock/
 │                                 #   skills, events, accounts, payments, feedback, usage,
 │                                 #   scheduler, voice, personality, pets, schemas, db, api, mcp, config
 └─ web/                           # Next.js App Router frontend — see web/OVERVIEW.md
-   ├─ CLAUDE.md · AGENTS.md       # Next.js-owned agent-rules files (not ours — see note above)
+   ├─ CLAUDE.md · AGENTS.md       # pointer to OVERVIEW.md · Next.js-managed block (see note above)
    ├─ OVERVIEW.md · CODE-STYLE.md # our coding standards + quick style reference
    └─ src/                        # app/ (routes), components/, lib/, i18n/, types/
 ```

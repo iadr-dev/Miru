@@ -5,7 +5,7 @@ import { type ReactNode, useState } from "react";
 import { reportQueryFailure } from "@/lib/api/query-failures";
 import { FRESHNESS } from "@/lib/freshness";
 
-/** App-wide TanStack Query client (web/CLAUDE.md §3: client-interactive reads live here — thread
+/** App-wide TanStack Query client (web/OVERVIEW.md §3: client-interactive reads live here — thread
  * list, persisted thread history). One instance per browser session, created lazily so it isn't
  * shared across SSR requests. `staleTime` is conservative: threads are cheap cold reads refetched
  * on turn-end invalidation, not a high-frequency feed. */

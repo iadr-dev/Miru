@@ -5,9 +5,8 @@ repo layout, the non-negotiable governance rules, and architecture invariants). 
 Claude Code and every other agent tool.
 
 Python backend coding standards + toolchain: **[backend/CLAUDE.md](backend/CLAUDE.md)**.
-Frontend (Next.js) coding standards + toolchain: **[web/OVERVIEW.md](web/OVERVIEW.md)** (`web/CLAUDE.md`
-is Next.js 16's own auto-generated agent-rules file — our coding standards live at `OVERVIEW.md`
-so the two never collide).
+Frontend (Next.js) coding standards + toolchain: **[web/OVERVIEW.md](web/OVERVIEW.md)** (the one
+source; `web/CLAUDE.md` only imports it, and `web/AGENTS.md` holds the Next.js-managed block).
 
 **Two things to internalize before any work:**
 1. The spec is authoritative — read `docs/backend/` (esp. `governance.md`) before coding.

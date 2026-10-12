@@ -86,7 +86,7 @@ function useSearchPaletteResults(debouncedQuery: string): {
  * real, distinct queries run in parallel — TW (ingested roster scan) and US (live yfinance
  * search) — normalized into one `SearchHit[]` and regrouped client-side into 公司/ETF sections,
  * matching the reference layout's grouped-with-count-badge sections. Neither market's failure
- * blanks the other's results (web/CLAUDE.md §6).
+ * blanks the other's results (web/OVERVIEW.md §6).
  */
 export function SearchPalette({
   open,

@@ -378,6 +378,7 @@ function IndexContributionRowItem({
   readonly row: IndexContributionRow;
   readonly color: string;
 }): ReactNode {
+  const locale = useLocale();
   const value = row.contribution_estimate ?? 0;
   return (
     <li
@@ -391,7 +392,7 @@ function IndexContributionRowItem({
       </span>
       <span className="shrink-0 font-num text-[13px] tabular-nums" style={{ color }}>
         {value >= 0 ? "+" : ""}
-        {formatNumber(value, "zh-TW", { decimals: 2 })}
+        {formatNumber(value, locale, { decimals: 2 })}
       </span>
     </li>
   );

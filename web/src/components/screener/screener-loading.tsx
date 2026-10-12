@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
-/** Shaped shimmer table rows + ghost builder rows — never a bare spinner (`web/CLAUDE.md` §6,
+/** Shaped shimmer table rows + ghost builder rows — never a bare spinner (`web/OVERVIEW.md` §6,
  * "analysis-generation" class since a screener run is a compute pass: narration line + shimmer). */
 export function ScreenerLoading(): ReactNode {
   const t = useTranslations("screener");

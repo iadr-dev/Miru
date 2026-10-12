@@ -2,7 +2,7 @@
  * Zod schemas mirroring the backend contracts we touch on the entry/auth pass.
  * Mirrors `backend/src/api/routers/auth.py` (BeginAuthResponse) and `backend/src/api/errors.py`
  * (the `{code, message, retryable}` envelope). Parse-don't-trust: a malformed payload fails loud
- * at the seam (web/CLAUDE.md §2). The callback endpoint's own `MeResponse` schema lives in
+ * at the seam (web/OVERVIEW.md §2). The callback endpoint's own `MeResponse` schema lives in
  * `@/types/account` (shared with `lib/api/settings.ts`'s `GET /me`) — not duplicated here.
  */
 import { z } from "zod";

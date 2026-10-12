@@ -29,7 +29,7 @@ import { RateLimitNotice } from "./rate-limit-notice";
  *   watchlist is a full-height sheet.
  *
  * Static show/hide is pure CSS (no layout wait on JS); the sheets/drawer are the only JS-gated
- * pieces. Uses `min-h-[100dvh]` (not `h-screen`) per web/CLAUDE.md §3. Wraps everything in the
+ * pieces. Uses `min-h-[100dvh]` (not `h-screen`) per web/OVERVIEW.md §3. Wraps everything in the
  * client `AuthGuard` so an unauthenticated visitor is bounced before any protected UI paints.
  */
 export function AppShell({

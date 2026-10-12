@@ -525,7 +525,7 @@ function FactorRow({
 
 // Each SWOT quadrant gets its own icon + tint so the 2x2 grid reads at a glance, never
 // color-alone (an icon carries the same favorable/unfavorable signal as the tint) — and never
-// `--up`/`--down` (reserved for signed price/score direction per web/CLAUDE.md §4). 優勢/機會 are
+// `--up`/`--down` (reserved for signed price/score direction per web/OVERVIEW.md §4). 優勢/機會 are
 // the favorable-reading quadrants (tinted `--accent`); 劣勢/威脅 are the caution quadrants (tinted
 // `--warn`) — a plain descriptive framing, not a bullish/bearish call.
 const SWOT_QUADRANTS = [

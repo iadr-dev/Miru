@@ -13,7 +13,7 @@ export const MATERIAL_ANNOUNCEMENT_FEED_COLLAPSED_ROW_COUNT = 5;
 
 // Category badges use distinct categorical tokens (--chart-1..6), never --up/--down — the
 // bucket is a disclosure-type fact (`sources/mops.py::_CATEGORY_BY_CLAUSE`), not a price/%/score
-// signal (web/CLAUDE.md §4). Keyed by the backend's own bucket label, same literal strings
+// signal (web/OVERVIEW.md §4). Keyed by the backend's own bucket label, same literal strings
 // `_CATEGORY_BY_CLAUSE`/`_DEFAULT_CATEGORY` produce. Exported so the chip row
 // (`MaterialAnnouncementFeedPanel`) uses the exact same mapping as these row badges.
 export const MATERIAL_ANNOUNCEMENT_CATEGORY_COLORS: Record<string, string> = {

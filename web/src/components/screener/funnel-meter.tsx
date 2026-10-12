@@ -12,7 +12,7 @@ function pct(count: number, total: number): number {
  * proportional progress bar beneath — README.md §1's funnel, made legible: each stage names
  * itself, its count, and its share of the universe, rather than a bare "0→0→0" tucked in a
  * corner. `aria-live="off"` — this churns on every debounced condition/gate edit, which is
- * exactly the "churn" class `web/CLAUDE.md` §7 says stays silent for screen readers. */
+ * exactly the "churn" class `web/OVERVIEW.md` §7 says stays silent for screen readers. */
 export function FunnelMeter({ funnel }: { readonly funnel: FunnelCounts | undefined }): ReactNode {
   const t = useTranslations("screener.funnel");
   const universe = funnel?.universe ?? 0;

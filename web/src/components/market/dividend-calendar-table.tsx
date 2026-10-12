@@ -18,7 +18,7 @@ const COLLAPSED_EVENT_COUNT = 10;
 
 // 3 distinct categorical dot colors — one per date type (除息日/最後購買日/股利發放日), never
 // --up/--down (this is a date-type classification, not a price/%/score signal, per
-// web/CLAUDE.md §4 — same reasoning `daily-signal-table.tsx`'s own STATUS_TOKEN documents).
+// web/OVERVIEW.md §4 — same reasoning `daily-signal-table.tsx`'s own STATUS_TOKEN documents).
 const DOT_COLOR = {
   ex: "var(--chart-1)",
   lastBuy: "var(--chart-4)",

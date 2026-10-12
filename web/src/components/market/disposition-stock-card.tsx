@@ -1,7 +1,7 @@
 "use client";
 
 import { LockIcon } from "@phosphor-icons/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
@@ -45,6 +45,7 @@ export function DispositionStockCard({
   readonly card: DispositionBoardCardRow;
   readonly sparkline: readonly number[];
 }): ReactNode {
+  const locale = useLocale();
   const t = useTranslations("market.cards.dispositionBoard");
   const changeUp = card.change_pct !== null && card.change_pct >= 0;
   const changeColor = card.change_pct !== null ? directionColor(card.change_pct ?? 0) : null;
@@ -123,7 +124,7 @@ export function DispositionStockCard({
 
       <div className="mt-2 flex items-baseline gap-2">
         <span className="font-num text-[20px] text-[var(--text)] tabular-nums">
-          {card.close !== null ? formatNumber(card.close, "zh-TW", { decimals: 1 }) : "—"}
+          {card.close !== null ? formatNumber(card.close, locale, { decimals: 1 }) : "—"}
         </span>
         {card.change_pct !== null ? (
           <span
@@ -133,7 +134,7 @@ export function DispositionStockCard({
             style={{ color: changeColor ?? undefined }}
           >
             {directionGlyph(card.change_pct ?? 0)}
-            {formatNumber(Math.abs(card.change_pct), "zh-TW", { decimals: 2 })}%
+            {formatNumber(Math.abs(card.change_pct), locale, { decimals: 2 })}%
           </span>
         ) : null}
       </div>
@@ -157,19 +158,19 @@ export function DispositionStockCard({
           label={t("volume")}
           value={
             card.volume !== null
-              ? `${formatNumber(card.volume / 1000, "zh-TW", { decimals: 0 })}${t("lots")}`
+              ? `${formatNumber(card.volume / 1000, locale, { decimals: 0 })}${t("lots")}`
               : "—"
           }
         />
         <StatRow
           label={t("turnover")}
-          value={card.turnover !== null ? `${formatCompactNumber(card.turnover, "zh-TW")}元` : "—"}
+          value={card.turnover !== null ? `${formatCompactNumber(card.turnover, locale)}元` : "—"}
         />
         <StatRow
           label={t("institutionalNet")}
           value={
             card.institutional_net !== null
-              ? formatCompactNumber(card.institutional_net, "zh-TW")
+              ? formatCompactNumber(card.institutional_net, locale)
               : "—"
           }
           valueColor={
@@ -184,7 +185,7 @@ export function DispositionStockCard({
           label={t("marginRatio")}
           value={
             card.margin_ratio !== null
-              ? `${formatNumber(card.margin_ratio, "zh-TW", { decimals: 1 })}%`
+              ? `${formatNumber(card.margin_ratio, locale, { decimals: 1 })}%`
               : "—"
           }
         />
@@ -192,7 +193,7 @@ export function DispositionStockCard({
           label={t("dayTradingRatio")}
           value={
             card.day_trading_ratio !== null
-              ? `${formatNumber(card.day_trading_ratio, "zh-TW", { decimals: 1 })}%`
+              ? `${formatNumber(card.day_trading_ratio, locale, { decimals: 1 })}%`
               : "—"
           }
         />

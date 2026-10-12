@@ -34,7 +34,7 @@ type RollingNetWindow = (typeof ROLLING_NET_WINDOWS)[number];
  * per category (`get_institutional_flow` gives 5 real categories), plus a 6th slot
  * (`GOVERNMENT_BANK_INVESTOR_KEY`) for the Sponsor-tier 八大行庫 series added below, never
  * `--up`/`--down`: those are reserved for signed price/%/score deltas, not a category axis
- * (web/CLAUDE.md §4). */
+ * (web/OVERVIEW.md §4). */
 const INVESTOR_CATEGORY_COLORS: Record<string, string> = {
   Foreign_Investor: "var(--chart-1)",
   Investment_Trust: "var(--chart-2)",

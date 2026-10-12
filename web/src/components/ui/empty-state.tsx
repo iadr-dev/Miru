@@ -8,7 +8,7 @@ import { entrance } from "@/lib/motion";
 /** A calm "nothing here" panel: an icon, a title, one line of help and an optional action.
  * `compact` is for inline coverage gaps ("no data for this range") - it keeps the surrounding
  * frame and has no call to action; the roomier form is for a first-run empty list
- * (web/CLAUDE.md §6 - do not conflate the two). */
+ * (web/OVERVIEW.md §6 - do not conflate the two). */
 export function EmptyState({
   icon,
   title,

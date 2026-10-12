@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 /** How many weeks of playback advance per real second — a fixed, UI-chosen constant (never
- * derived from any sector's own data magnitude, per web/CLAUDE.md §4's non-trading-motion rule:
+ * derived from any sector's own data magnitude, per web/OVERVIEW.md §4's non-trading-motion rule:
  * a bigger move never gets a faster animation). At this rate a ~26-week plotted history takes
  * ~65s to complete one loop — slow enough to actually watch each week's comet-tail/badge motion
  * settle before the next one starts, rather than a blur. This view has no user-facing transport
@@ -25,7 +25,7 @@ const DEFAULT_WEEKS_PER_SECOND = 0.4;
  * their position between the two integer weeks it straddles every frame, which is what makes the
  * playback read as smooth motion rather than a weekly jump-cut. `enabled=false` (reduced motion)
  * freezes `currentWeek` at 0 rather than ticking — the scene shows its final/first state, never
- * an animated loop, per web/CLAUDE.md §7's reduced-motion tiers.
+ * an animated loop, per web/OVERVIEW.md §7's reduced-motion tiers.
  */
 export function useRotationPlayback(
   weekCount: number,

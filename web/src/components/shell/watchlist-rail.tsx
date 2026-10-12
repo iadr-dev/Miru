@@ -32,7 +32,7 @@ import {
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useReducedMotion } from "motion/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
@@ -628,6 +628,7 @@ function WatchlistStockRow({
   readonly watchlistId: string;
   readonly reduceMotion: boolean;
 }): ReactNode {
+  const locale = useLocale();
   const t = useTranslations("shell.watchlist");
   const removeMutation = useRemoveWatchlistItem(market);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -651,7 +652,7 @@ function WatchlistStockRow({
       style={{ ...style, opacity: isDragging ? 0.5 : 1 }}
       role="group"
       aria-label={`${name} ${item.symbol} ${
-        hasChange ? formatSignedChange(pctChange, "zh-TW", { decimals: 2, unit: "%" }) : t("empty")
+        hasChange ? formatSignedChange(pctChange, locale, { decimals: 2, unit: "%" }) : t("empty")
       }`}
       className="group flex items-center gap-2 py-2 pr-2 pl-1"
     >
@@ -721,8 +722,9 @@ function RailPrice({
   readonly pending: boolean;
   readonly price: number | null;
 }): ReactNode {
+  const locale = useLocale();
   if (pending) return <Skeleton className="ml-auto h-3 w-12" />;
-  return price === null ? "—" : formatNumber(price, "zh-TW", { decimals: 1 });
+  return price === null ? "—" : formatNumber(price, locale, { decimals: 1 });
 }
 
 function GroupColorMenu({

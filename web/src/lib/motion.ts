@@ -1,7 +1,7 @@
 /**
  * The motion scale for `motion/react`, mirroring the CSS tokens (`--dur-*`, `--ease-*`) so a JS
  * animation and a CSS transition feel identical. Restrained by design: feedback is quick, an
- * entrance is a short fade-and-rise, and nothing scales with a price move (web/CLAUDE.md §4).
+ * entrance is a short fade-and-rise, and nothing scales with a price move (web/OVERVIEW.md §4).
  * Every consumer must also honour reduced motion (`useReducedMotion`) - use `entrance()`, which
  * already does.
  */

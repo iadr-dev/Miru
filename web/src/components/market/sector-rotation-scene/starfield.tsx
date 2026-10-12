@@ -7,7 +7,7 @@ import type * as THREE from "three";
 const STAR_COUNT = 260;
 const FIELD_RADIUS = 40;
 /** Purely ambient, non-magnitude-scaled rotation speed — never tied to any sector's data
- * (web/CLAUDE.md §4 non-trading-motion), and deliberately independent of `introProgress`: the
+ * (web/OVERVIEW.md §4 non-trading-motion), and deliberately independent of `introProgress`: the
  * spec calls for the starfield to "always exist" as the scene's own backdrop, unlike the
  * floor/ring/badges which fade in on mount. */
 const ROTATION_RADIANS_PER_SECOND = 0.008;

@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 /**
  * The loading-state placeholder for a market card — renders the SAME `<section>` shell (border/
  * padding/radius/background) every real card in this dashboard already uses, so the card's own
- * box never changes size between loading and loaded (web/CLAUDE.md §6: shaped skeleton, never a
+ * box never changes size between loading and loaded (web/OVERVIEW.md §6: shaped skeleton, never a
  * layout shift). `height` should match that specific card's typical loaded content height —
  * passed per call site via `QueryState`'s `skeleton` prop, not a one-size-fits-all guess.
  */

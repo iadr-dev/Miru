@@ -3,7 +3,7 @@
 /**
  * Subscribes to the `data.updated` cache-invalidation feed (`GET /updates/stream`) and
  * invalidates every TanStack Query cache entry the signal names, so a query-key convention of
- * `[capability, market, ...]` (web/CLAUDE.md §3: "query keys mirror the backend key `(capability,
+ * `[capability, market, ...]` (web/OVERVIEW.md §3: "query keys mirror the backend key `(capability,
  * market, symbol[, date])`") gets pushed a fresh refetch the moment the ingest leader's write
  * actually lands — not just whenever `staleTime` happens to next expire.
  *

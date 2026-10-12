@@ -42,7 +42,7 @@ function paintBadgeTexture(icon: SectorIconKey, color: string): HTMLCanvasElemen
   ctx.fill();
 
   // Dark icon on top of the disc (governance's own "graphic + color double-encoding" —
-  // web/CLAUDE.md's colorblind-safety note in `sector-rotation-icons.tsx`'s own docstring),
+  // web/OVERVIEW.md's colorblind-safety note in `sector-rotation-icons.tsx`'s own docstring),
   // painted at a fixed dark tone so it reads against every quadrant color.
   drawIconOnCanvas(ctx, icon, cx, cy, discRadius * 1.35, "#05070b");
 

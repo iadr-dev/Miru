@@ -13,7 +13,7 @@ import type { DispositionBucket } from "@/types/market";
 import type { Market } from "@/types/settings";
 
 // Fixed categorical `--chart-N` tokens, one per bucket — never signed (處置 status is a
-// classification, not a price/%/score, per web/CLAUDE.md §4).
+// classification, not a price/%/score, per web/OVERVIEW.md §4).
 const DISPOSITION_BUCKET_COLOR: Record<DispositionBucket, string> = {
   at_risk: "var(--chart-1)",
   in_disposition: "var(--chart-2)",
@@ -40,7 +40,7 @@ const SIGNAL_TAGS = Object.keys(SIGNAL_TAG_BADGE);
  * no chip" precedent in `asset-header.tsx`, never a skeleton placeholder chip.
  *
  * 外資連買/賣 is the one deliberate exception to this app's "紅漲綠跌 only for price/%/score"
- * rule (`web/CLAUDE.md` §4) — confirmed with the user: a TW reader reads 連買/連賣 direction the
+ * rule (`web/OVERVIEW.md` §4) — confirmed with the user: a TW reader reads 連買/連賣 direction the
  * same way they read price direction, so this badge alone uses `--up`/`--down`. Every other
  * badge here (處置/爆量/量縮/創新高/創新低) stays strictly categorical.
  */

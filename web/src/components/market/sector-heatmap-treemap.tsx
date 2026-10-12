@@ -203,7 +203,7 @@ function sizeMetricLabel(
  * 產業熱力圖 — one tile per industry, sized by `total_turnover` (or `stock_count` when turnover
  * weighting was unavailable) and colored by `avg_pct_change` via the `--up`/`--down` scale
  * (never color-alone: every tile also carries ▲/▼ + sign text and an `aria-label`). Tiles are
- * `role="button"` with roving-tabindex spatial arrow-nav (web/CLAUDE.md §7) — arrow keys move
+ * `role="button"` with roving-tabindex spatial arrow-nav (web/OVERVIEW.md §7) — arrow keys move
  * focus to the geometrically-nearest tile in that direction, Enter/Space toggles selection.
  */
 export function SectorHeatmapTreemap({
@@ -220,7 +220,7 @@ export function SectorHeatmapTreemap({
   readonly selected: string | null;
   readonly onSelect: (industry: string | null) => void;
   /** `query.dataUpdatedAt` from the caller — every tile flashes once, at the SAME duration,
-   * whenever fresh data lands (web/CLAUDE.md §4 "non-trading motion": a bigger % move never
+   * whenever fresh data lands (web/OVERVIEW.md §4 "non-trading motion": a bigger % move never
    * gets a bigger/faster animation, so this is keyed only on "did data just update", never on
    * `avg_pct_change`'s magnitude). */
   readonly updatedAt?: number;

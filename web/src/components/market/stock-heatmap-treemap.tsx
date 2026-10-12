@@ -174,7 +174,7 @@ function sizeMetricLabel(
  * is what actually keeps every tile close to square. Shares `SectorHeatmapTreemap`'s tile chrome
  * (pale `--up`/`--down`-weak color scale, dark `#0e1319` text, hover-tooltip mechanics). A stock
  * tile has no drill-down (it's already the leaf, so no `selected`/`onSelect`). Tiles are
- * `role="button"` with roving-tabindex spatial arrow-nav (web/CLAUDE.md §7).
+ * `role="button"` with roving-tabindex spatial arrow-nav (web/OVERVIEW.md §7).
  */
 export function StockHeatmapTreemap({
   rows,
@@ -190,7 +190,7 @@ export function StockHeatmapTreemap({
    * inline view's readability cut. Omit to lay out every industry present in `rows`. */
   readonly maxIndustries?: number;
   /** `query.dataUpdatedAt` from the caller — every tile flashes once, at the SAME duration,
-   * whenever fresh data lands (web/CLAUDE.md §4 non-trading motion), never scaled by
+   * whenever fresh data lands (web/OVERVIEW.md §4 non-trading motion), never scaled by
    * `pct_change`'s magnitude. */
   readonly updatedAt?: number;
 }): ReactNode {
