@@ -3,7 +3,7 @@
  * can render the Claude/Gemini-style blank breathing placeholder immediately (before the thread
  * even exists server-side) and then a one-shot typewriter reveal once its auto-generated title
  * lands — without `ChatClient` (the chat feature) and `RecentsList` (the shell) needing a direct
- * prop channel between routes. Zustand per web/CLAUDE.md §3: this is exactly the kind of
+ * prop channel between routes. Zustand per web/OVERVIEW.md §3: this is exactly the kind of
  * short-lived cross-surface lifecycle signal that store is for, not scattered React state.
  *
  * Lifecycle: `startPending()` the instant a message is sent with no thread selected → the

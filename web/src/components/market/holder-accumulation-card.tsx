@@ -1,7 +1,7 @@
 "use client";
 
 import { LockIcon } from "@phosphor-icons/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { SymbolLink } from "@/components/market/symbol-link";
@@ -229,12 +229,13 @@ function LockedHolderAccumulationRow({ rank }: { readonly rank: number }): React
 /** One real (never-locked) row — split out of `HolderAccumulationRows` so that component's own
  * `.map` stays a simple locked/unlocked branch. */
 function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRow }): ReactNode {
+  const locale = useLocale();
   const change = row.percent_of_custody_change ?? 0;
   const color = directionColor(change, 2);
   return (
     <li
       role="group"
-      aria-label={`${row.stock_name} ${row.symbol} ${formatSignedChange(change, "zh-TW", { decimals: 2, unit: " pp" })}`}
+      aria-label={`${row.stock_name} ${row.symbol} ${formatSignedChange(change, locale, { decimals: 2, unit: " pp" })}`}
       className={cn("grid items-center gap-2.5 py-1.5", ROW_GRID_COLS)}
     >
       <span aria-hidden className="text-[12px] text-[var(--text-muted)]">
@@ -249,7 +250,7 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
         <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{row.symbol}</span>
         {row.latest_close !== null ? (
           <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">
-            {formatNumber(row.latest_close, "zh-TW", { decimals: 1 })}
+            {formatNumber(row.latest_close, locale, { decimals: 1 })}
           </span>
         ) : null}
       </SymbolLink>
@@ -262,14 +263,14 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
       </span>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
         {(row.shares_change ?? 0) > 0 ? "+" : ""}
-        {formatNumber((row.shares_change ?? 0) / 1000, "zh-TW", { decimals: 1 })}萬張
+        {formatNumber((row.shares_change ?? 0) / 1000, locale, { decimals: 1 })}萬張
       </span>
       <SignedChange
         value={change}
         decimals={2}
         unit="%"
         spaced={false}
-        locale="zh-TW"
+        locale={locale}
         labelled={false}
         className="text-right text-[13px]"
       />

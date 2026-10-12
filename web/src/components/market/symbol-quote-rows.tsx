@@ -1,7 +1,7 @@
 "use client";
 
 import { CaretDownIcon, CaretUpDownIcon, CaretUpIcon } from "@phosphor-icons/react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
@@ -42,7 +42,7 @@ type SortDirection = "asc" | "desc";
  * sort state lives here since both columns are part of this shared base, not caller-owned.
  *
  * Ownership split: this component owns the shared 5 columns' markup, alignment, sort, and a11y
- * (`SymbolLink`/`Sparkline`/▲▼+sign+aria-label, `web/CLAUDE.md` §4); the caller owns its own
+ * (`SymbolLink`/`Sparkline`/▲▼+sign+aria-label, `web/OVERVIEW.md` §4); the caller owns its own
  * grid-column-count string (so a caller with an extra column, or a leading rank number, sizes its
  * own grid), its own header labels for anything beyond the shared 5, and its own row data. */
 export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
@@ -106,6 +106,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
    * extra header (do not also pass `extraHeader` alongside this). */
   readonly extraSortable?: { label: string; valueFor: (row: T) => number | null };
 }): ReactNode {
+  const locale = useLocale();
   const t = useTranslations("market.cards.leaderboard");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -203,7 +204,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                 role="group"
                 aria-label={`${name} ${row.symbol} ${
                   hasChange
-                    ? formatSignedChange(pctChange, "zh-TW", { decimals: 2, unit: "%" })
+                    ? formatSignedChange(pctChange, locale, { decimals: 2, unit: "%" })
                     : t("empty")
                 }${extraAriaLabel ? ` ${extraAriaLabel(row)}` : ""}`}
                 className={cn("grid items-center gap-2.5 py-2.5", gridCols)}
@@ -228,7 +229,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                   className="text-right font-num text-[13px] text-[var(--text)] tabular-nums"
                 >
                   {price !== null && price !== undefined
-                    ? formatNumber(price, "zh-TW", { decimals: 1 })
+                    ? formatNumber(price, locale, { decimals: 1 })
                     : "—"}
                 </span>
                 <span
@@ -237,7 +238,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                   style={{ color }}
                 >
                   {hasChange
-                    ? formatSignedChange(pctChange, "zh-TW", {
+                    ? formatSignedChange(pctChange, locale, {
                         decimals: 2,
                         unit: "%",
                         spaced: false,
@@ -252,7 +253,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
                   className="text-right font-num text-[11.5px] text-[var(--text-muted)] tabular-nums"
                 >
                   {volume !== null && volume !== undefined
-                    ? formatNumber(volume, "zh-TW", { decimals: 0 })
+                    ? formatNumber(volume, locale, { decimals: 0 })
                     : "—"}
                 </span>
                 {extraCell ? extraCell(row, quote) : null}

@@ -2,7 +2,7 @@
 @import "./tokens.css";
 
 /**
- * Tailwind v4 CSS-first theme (web/CLAUDE.md §1). We expose the CSS-variable tokens as Tailwind
+ * Tailwind v4 CSS-first theme (web/OVERVIEW.md §1). We expose the CSS-variable tokens as Tailwind
  * theme values so utilities like `bg-surface` / `text-muted` / `text-up` resolve to the same
  * single-source var — no hardcoded hex ever enters a component. `next/font` provides the two font
  * CSS variables (--font-sans, --font-num) consumed here.
@@ -173,7 +173,7 @@ mark {
   border-radius: 3px;
 }
 
-/* Focus-visible ring: 2px --accent, both themes, never removed (web/CLAUDE.md §7). */
+/* Focus-visible ring: 2px --accent, both themes, never removed (web/OVERVIEW.md §7). */
 :where(a, button, input, textarea, select, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -192,7 +192,7 @@ mark {
   }
 }
 
-/* Glass surfaces fall back to solid --surface under reduced transparency (web/CLAUDE.md §7). */
+/* Glass surfaces fall back to solid --surface under reduced transparency (web/OVERVIEW.md §7). */
 @media (prefers-reduced-transparency: reduce) {
   .glass {
     background-color: var(--surface) !important;

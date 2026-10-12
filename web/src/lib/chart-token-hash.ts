@@ -1,5 +1,5 @@
 // Categorical only — never `--up`/`--down` (those are reserved for signed price/%/score
-// deltas, web/CLAUDE.md §4). No dedicated per-category hue token set exists in tokens.css beyond
+// deltas, web/OVERVIEW.md §4). No dedicated per-category hue token set exists in tokens.css beyond
 // the shared `--chart-1..6` set, so this hashes a label into that set deterministically: the
 // same label always renders the same color. Shared by `SectorChip` and the 概念股 theme chips —
 // both are "pick a stable color for an arbitrary category string" the same way.

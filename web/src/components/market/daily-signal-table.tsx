@@ -15,7 +15,7 @@ import type { Market } from "@/types/settings";
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_0.9fr_28px]";
 
 // Each of the 4 real statuses gets its own distinct categorical --chart-* token (never --up/
-// --down — this is a fund-structure classification, not a price/%/score signal, per web/CLAUDE.md
+// --down — this is a fund-structure classification, not a price/%/score signal, per web/OVERVIEW.md
 // §4). 新增/加碼 share the same "growth" family hue-wise (chart-1/chart-4) and 刪除/減碼 share the
 // same "shrink" family (chart-2/chart-3), but each status still renders as a visually distinct
 // color — 加碼 and 新增 (or 減碼 and 刪除) must never look identical, since the filter chips let a

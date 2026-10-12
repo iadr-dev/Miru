@@ -10,7 +10,7 @@ import { isMaskedTeaser, type MaskedTeaser } from "@/types/market";
 /**
  * 馬賽克 (mosaic) teaser for a Sponsor-tier tool result the caller isn't entitled to — the
  * `{locked, required_tier, preview}` envelope is a normal HTTP 200, never an error
- * (web/CLAUDE.md §4/§8), so this renders inline and never blocks the rest of the page.
+ * (web/OVERVIEW.md §4/§8), so this renders inline and never blocks the rest of the page.
  *
  * The frame/headline/labels stay SHARP — only `children` (the value layer, e.g. a chart/table
  * shaped like the real data) sits under `backdrop-blur` + a diagonal texture overlay, with a

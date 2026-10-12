@@ -33,7 +33,7 @@ const IMPACT_COLOR: Record<string, string> = {
 };
 
 // 前值/預期/實際 each get their own categorical hue (never `--up`/`--down` — that pair is
-// reserved for a real signed price/%/score move per web/CLAUDE.md §4, and none of these three
+// reserved for a real signed price/%/score move per web/OVERVIEW.md §4, and none of these three
 // numbers is being presented as a beat/miss direction, just three distinct data columns that
 // need to read as different at a glance). `--chart-4`/`--chart-2`/`--chart-1` chosen so 實際
 // (the one that just published) is the most attention-grabbing of the three.

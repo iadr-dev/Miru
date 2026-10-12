@@ -41,7 +41,7 @@ const HOLDINGS_TABLE_COLLAPSED_ROW_COUNT = 6;
  * `get_institutional_flow`, rebased to 0 at the window's first date (a running total of real
  * daily flow, not a fabricated absolute holding count) — explicitly labeled as such via
  * `estimateCaveat` (a permanent, non-removable caveat here, same non-negotiable-caveat rule
- * web/CLAUDE.md §4 applies everywhere else) rather than presented as equally real to 外資's line.
+ * web/OVERVIEW.md §4 applies everywhere else) rather than presented as equally real to 外資's line.
  * Table below mirrors the chart 1:1 — 外資's real 張數+% columns, 投信/自營商's estimated
  * cumulative-net columns, both sharing this component's own merge so chart and table can't
  * diverge. */

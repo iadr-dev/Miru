@@ -163,7 +163,7 @@ function PageNav({
   );
 }
 
-/** The ranked survivors, TanStack Table (`web/CLAUDE.md`: "don't hand-roll data grids"), enriched
+/** The ranked survivors, TanStack Table (`web/OVERVIEW.md`: "don't hand-roll data grids"), enriched
  * with real price/change%/volume/sector via `useSymbolQuotes` (the same batched ≤20-symbol read
  * the watchlist rail/leaderboards already use) rather than showing bare symbols. Sponsor columns
  * render a blurred 🔒 cell (README.md §5.2 馬賽克) — no value ever reaches this component for a

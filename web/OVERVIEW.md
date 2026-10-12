@@ -113,8 +113,9 @@ pnpm build                      # next build (must pass typecheck + lint clean)
   copy. A token added/changed in one place must propagate to both; a divergent native hex is a reject.
 - **shadcn/ui own-the-code** — customize the vendored component to the 藍鵲 tokens; **never ship the
   default shadcn skin**. One design system: no mixing MUI/Chakra/Ant in.
-- **Naming:** components `PascalCase.tsx`, hooks `useXxx.ts`, one component per file matching the
-  export; route segments/folders lowercase; `'use client'` leaves suffixed by intent
+- **Naming:** files are kebab-case (`signed-change.tsx` exports `SignedChange`, hooks
+  `use-xxx.ts` export `useXxx`), one main component per file matching the export; route
+  segments/folders lowercase; `'use client'` leaves suffixed by intent
   (`*.client.tsx` optional but consistent). `--font-num` + `tabular-nums` on **every** price/%/score.
 
 ### 2.1 TypeScript language rules (avoid → prefer)
@@ -165,6 +166,33 @@ Grounded in the official TS [Do's and Don'ts](https://www.typescriptlang.org/doc
 - **No `// @ts-ignore`** — use `// @ts-expect-error — <reason>` (fails when the error is fixed, so it
   self-cleans); `ban-ts-comment` is on.
 
+**Readability & maintainability — avoid → prefer:**
+- **Nested ternary → a named helper function or an if/else-if chain.** A ternary whose branch is
+  itself a ternary reads as a puzzle, not a value expression — pull the inner branch into a small
+  named function, or use `let x; if (...) ... else if (...) ...` instead.
+- **Long branching function/effect → decompose into named steps.** A function that inlines many
+  independent pieces of work (e.g. a chart-setup effect drawing several unrelated series/overlays)
+  should extract each independent concern into its own named function called in sequence, rather
+  than one long body with a branch per concern. If you can't summarize what a function does in one
+  short sentence, it's doing too much.
+- **Write-only state → delete it.** Don't build up a collection/ref across a function only to clear
+  it or otherwise never read its contents afterward; if nothing downstream inspects a value, delete
+  it and whatever populates it.
+- **Repeated inline union/shape → a named `type`/`interface`.** The same literal union or object
+  shape appearing in more than one signature should be declared once and reused, not retyped at
+  each call site.
+- **Manual index math → the built-in that says the same thing.** Prefer `array.at(-1)` over
+  `array[array.length - 1]`, `String#replaceAll()` over a global-regex `.replace()`, and other
+  standard-library equivalents over hand-rolled versions — they're shorter, harder to get off-by-one,
+  and read as intent rather than arithmetic.
+- **Duplicated markup/logic across components → one shared component.** A byte-identical (or
+  near-identical) block of markup or logic living in two places should become one component in
+  `components/ui/` that both callers use, with only the surrounding data plumbing staying local to
+  each caller — see `components/ui/month-grid-calendar.tsx` for the pattern.
+- **Apply this section while writing new code, not only when a linter/CI gate flags it after the
+  fact** — treat it as a standing bar for anything you write, the same as the strict-mode/type rules
+  above it, not a reactive checklist you run once red.
+
 **Consequences of the strict flags (§1):** `noUncheckedIndexedAccess` means `arr[i]` / `record[k]` is
 `T | undefined` — **handle the `undefined`**, don't `!` it away. `exactOptionalPropertyTypes` (enable
 if not on): don't pass `undefined` to an optional prop; omit it.
@@ -177,11 +205,15 @@ if not on): don't pass `undefined` to an optional prop; omit it.
   possible; never mark a whole page/layout client to unlock one interactive child
 .
 - **Data-layer ownership — one value, one owner**:
-  - **RSC server-fetch** for cold reads (page data, EOD panels, financials/chip tables, daily/weekly
-    analytics) — `next: { revalidate: <class boundary> }` + `revalidateTag(...)`, never
-    `cache:'no-store'` on a once-a-day value.
-  - **TanStack Query** for client-interactive reads (screener re-probe, chart TF refetch, watchlist
-    quotes) — `staleTime`/`gcTime` from the shared `FRESHNESS[class]` map.
+  - **TanStack Query** for every API read, in client components: pages are thin server shells
+    (`page.tsx`/`layout.tsx` only resolve params and render a client panel), and the data is
+    fetched in the browser because nearly every read depends on the signed-in user's tier (the
+    sponsor-masking envelope) and the session cookie. `staleTime` comes from the shared
+    `FRESHNESS` map in `lib/freshness.ts`; keys for reads more than one component makes come from
+    `lib/api/query-keys.ts`, with a shared hook (`hooks/use-stock-data.ts`) instead of copies.
+    End-of-day data is refreshed the moment ingest writes it by the `data.updated` push
+    (`hooks/use-data-updates.ts`). Server-side fetching (RSC) is only for genuinely public,
+    user-independent data, and none of the current pages need it.
   - **Zustand thin store ONLY** for the live SSE layer, active thread, and theme. Live `quote` ticks
     write here (or to motion values), **never** into the TanStack cache.
 - **Query keys mirror the backend key** `(capability, market, symbol[, date])` — e.g.

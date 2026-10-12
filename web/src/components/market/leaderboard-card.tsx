@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -173,6 +173,7 @@ function LeaderboardRows({
   assetClass: WatchlistAssetClass;
   t: ReturnType<typeof useTranslations>;
 }): ReactNode {
+  const locale = useLocale();
   return (
     <SymbolQuoteRows
       rows={results}
@@ -184,7 +185,7 @@ function LeaderboardRows({
       extraSortable={{ label: t("columnScore"), valueFor: (result) => result.composite }}
       extraAriaLabel={(result) =>
         `${result.band} ${t("scoreAria")} ${
-          result.composite !== null ? formatNumber(result.composite, "zh-TW") : t("empty")
+          result.composite !== null ? formatNumber(result.composite, locale) : t("empty")
         }`
       }
       extraCell={(result) => (
@@ -203,7 +204,7 @@ function LeaderboardRows({
             className="relative font-bold font-num text-[12px] tabular-nums"
             style={{ color: BAND_TOKEN[result.band] }}
           >
-            {result.composite !== null ? formatNumber(result.composite, "zh-TW") : "—"}
+            {result.composite !== null ? formatNumber(result.composite, locale) : "—"}
           </span>
         </span>
       )}

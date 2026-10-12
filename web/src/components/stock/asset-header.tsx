@@ -249,7 +249,7 @@ export function AssetHeader({
 
       {/* 開/高/低/量 are neutral OHLC facts, not signed price/%/score deltas — categorical
           `--chart-1..4` per label (never `--up`/`--down`) just to visually separate the 4
-          labels from each other, web/CLAUDE.md §4. */}
+          labels from each other, web/OVERVIEW.md §4. */}
       <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 font-num text-[12px] tabular-nums">
         {ohlc ? (
           <>
@@ -346,14 +346,14 @@ function EtfStructureBadges({ row }: { readonly row: EtfListRow | undefined }): 
 /** 主題/因子 badge — TWSE's own ETF e添富 editorial tag (高股息/科技主題型/公司治理及ESG/...),
  * colored by the tag LABEL itself via `hashToChartToken` (the same stable categorical-color hash
  * `SectorChip`/`DistributionFrequencyBadge` use), never signed `--up`/`--down`: this is a
- * classification, not a price/%/score, per web/CLAUDE.md §4. */
+ * classification, not a price/%/score, per web/OVERVIEW.md §4. */
 function ThemeTagBadge({ tag }: { readonly tag: string }): ReactNode {
   return <Badge label={tag} color={hashToChartToken(tag)} variant="outline" />;
 }
 
 /** 配息 cadence badge (月配/季配/半年配/年配/不配息) — colored by the frequency LABEL itself via
  * `hashToChartToken` (the same stable categorical-color hash `SectorChip` uses), never signed
- * `--up`/`--down`: this is a cadence classification, not a price/%/score, per web/CLAUDE.md §4.
+ * `--up`/`--down`: this is a cadence classification, not a price/%/score, per web/OVERVIEW.md §4.
  * A distinct color per frequency lets a reader tell 月配 from 年配 at a glance across a list of
  * ETF pages, the same reasoning behind giving each industry its own stable color in the holdings
  * donut/table. */

@@ -3,7 +3,7 @@
  * `backend/src/api/routers/market_rest.py` (base path `/api/v1`), plus `/analytics/{symbol}/score`
  * (`backend/src/api/routers/analytics.py`). Split from `types/market.ts` (which is whole-market
  * shaped) since this page is a genuinely different, per-symbol surface — kept in its own file
- * per web/CLAUDE.md §2's "feature-only types stay co-located" guidance, sized like a feature here
+ * per web/OVERVIEW.md §2's "feature-only types stay co-located" guidance, sized like a feature here
  * rather than dumped into the already-1200-line market file. Sponsor-tier row models are unioned
  * with `maskedTeaserSchema`; row field names mirror `backend/src/schemas/capabilities.py` exactly.
  */

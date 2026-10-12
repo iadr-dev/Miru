@@ -1,6 +1,12 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type UseMutationResult,
+  type UseQueryResult,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "@/components/ui/toast";
 import {
@@ -15,9 +21,25 @@ import {
   setWatchlistColor,
 } from "@/lib/api/watchlist";
 import type { Market } from "@/types/settings";
-import type { WatchlistAssetClass, WatchlistColor, WatchlistGroupView } from "@/types/watchlist";
+import type {
+  WatchlistAssetClass,
+  WatchlistColor,
+  WatchlistGroup,
+  WatchlistGroupView,
+  WatchlistItem,
+} from "@/types/watchlist";
 
 const QUERY_KEY_ROOT = "watchlists" as const;
+
+/** What an optimistic mutation snapshots so `onError` can roll it back. */
+interface GroupsSnapshot {
+  previous: WatchlistGroupView[] | undefined;
+}
+
+interface ItemVars {
+  watchlistId: string;
+  symbol: string;
+}
 
 function queryKey(market: Market): readonly [typeof QUERY_KEY_ROOT, Market] {
   return [QUERY_KEY_ROOT, market];
@@ -35,7 +57,7 @@ function useMutationFailedToast(): () => void {
   return () => toast.error(t("mutationFailed"));
 }
 
-export function useWatchlists(market: Market) {
+export function useWatchlists(market: Market): UseQueryResult<WatchlistGroupView[]> {
   return useQuery({
     queryKey: queryKey(market),
     queryFn: () => getWatchlists(market),
@@ -63,14 +85,15 @@ function invalidate(queryClient: ReturnType<typeof useQueryClient>, market: Mark
 
 /** Optimistic add: the item appears in the target group immediately; a real failure (network,
  * or a 409 if the group was concurrently deleted) rolls back to the pre-mutation snapshot —
- * `web/CLAUDE.md` §5's "optimistic + reconcile" convention, watchlist star is its own named
+ * `web/OVERVIEW.md` §5's "optimistic + reconcile" convention, watchlist star is its own named
  * example there. */
-export function useAddWatchlistItem(market: Market) {
+export function useAddWatchlistItem(
+  market: Market,
+): UseMutationResult<WatchlistItem, Error, ItemVars, GroupsSnapshot> {
   const queryClient = useQueryClient();
   const notifyFailed = useMutationFailedToast();
   return useMutation({
-    mutationFn: ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) =>
-      addWatchlistItem(watchlistId, symbol),
+    mutationFn: ({ watchlistId, symbol }: ItemVars) => addWatchlistItem(watchlistId, symbol),
     onMutate: async ({ watchlistId, symbol }) => {
       await queryClient.cancelQueries({ queryKey: queryKey(market) });
       const previous = queryClient.getQueryData<WatchlistGroupView[]>(queryKey(market));
@@ -109,12 +132,13 @@ export function useAddWatchlistItem(market: Market) {
   });
 }
 
-export function useRemoveWatchlistItem(market: Market) {
+export function useRemoveWatchlistItem(
+  market: Market,
+): UseMutationResult<void, Error, ItemVars, GroupsSnapshot> {
   const queryClient = useQueryClient();
   const notifyFailed = useMutationFailedToast();
   return useMutation({
-    mutationFn: ({ watchlistId, symbol }: { watchlistId: string; symbol: string }) =>
-      removeWatchlistItem(watchlistId, symbol),
+    mutationFn: ({ watchlistId, symbol }: ItemVars) => removeWatchlistItem(watchlistId, symbol),
     onMutate: async ({ watchlistId, symbol }) => {
       await queryClient.cancelQueries({ queryKey: queryKey(market) });
       const previous = queryClient.getQueryData<WatchlistGroupView[]>(queryKey(market));
@@ -139,7 +163,14 @@ export function useRemoveWatchlistItem(market: Market) {
 
 /** Removes `symbol` from every group in `market` — the star toggle's own "remove anywhere in
  * this tab" semantics (mirrors `watches()`'s reverse-query being tab-wide, not per-group). */
-export function useUnstarSymbolEverywhere(market: Market) {
+export function useUnstarSymbolEverywhere(
+  market: Market,
+): UseMutationResult<
+  void,
+  Error,
+  { symbol: string; groups: readonly WatchlistGroupView[] },
+  GroupsSnapshot
+> {
   const queryClient = useQueryClient();
   const notifyFailed = useMutationFailedToast();
   return useMutation({
@@ -174,7 +205,9 @@ export function useUnstarSymbolEverywhere(market: Market) {
   });
 }
 
-export function useCreateWatchlist(market: Market) {
+export function useCreateWatchlist(
+  market: Market,
+): UseMutationResult<WatchlistGroup, Error, { name: string; assetClass: WatchlistAssetClass }> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ name, assetClass }: { name: string; assetClass: WatchlistAssetClass }) =>
@@ -183,7 +216,14 @@ export function useCreateWatchlist(market: Market) {
   });
 }
 
-export function useRenameWatchlist(market: Market) {
+export function useRenameWatchlist(
+  market: Market,
+): UseMutationResult<
+  WatchlistGroup,
+  Error,
+  { watchlistId: string; name: string; version: number },
+  GroupsSnapshot
+> {
   const queryClient = useQueryClient();
   const notifyFailed = useMutationFailedToast();
   return useMutation({
@@ -216,7 +256,14 @@ export function useRenameWatchlist(market: Market) {
   });
 }
 
-export function useSetWatchlistColor(market: Market) {
+export function useSetWatchlistColor(
+  market: Market,
+): UseMutationResult<
+  WatchlistGroup,
+  Error,
+  { watchlistId: string; color: WatchlistColor | null; version: number },
+  GroupsSnapshot
+> {
   const queryClient = useQueryClient();
   const notifyFailed = useMutationFailedToast();
   return useMutation({
@@ -249,7 +296,9 @@ export function useSetWatchlistColor(market: Market) {
   });
 }
 
-export function useDeleteWatchlist(market: Market) {
+export function useDeleteWatchlist(
+  market: Market,
+): UseMutationResult<void, Error, string, GroupsSnapshot> {
   const queryClient = useQueryClient();
   const notifyFailed = useMutationFailedToast();
   return useMutation({
@@ -272,7 +321,13 @@ export function useDeleteWatchlist(market: Market) {
   });
 }
 
-export function useReorderWatchlistGroup(market: Market) {
+export function useReorderWatchlistGroup(
+  market: Market,
+): UseMutationResult<
+  WatchlistGroup,
+  Error,
+  { watchlistId: string; afterId: string | null; beforeId: string | null; version: number }
+> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -290,7 +345,16 @@ export function useReorderWatchlistGroup(market: Market) {
   });
 }
 
-export function useMoveWatchlistItem(market: Market) {
+export function useMoveWatchlistItem(market: Market): UseMutationResult<
+  WatchlistItem,
+  Error,
+  {
+    itemId: string;
+    currentWatchlistId: string;
+    targetWatchlistId: string;
+    afterId?: string | null;
+  }
+> {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({

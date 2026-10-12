@@ -133,7 +133,7 @@ function tileTextSize(tile: WeightTile): { label: string; pct: string } {
 
 // A neutral categorical palette (`--chart-1..6`, cycled by tile index) — NEVER `--up`/`--down`.
 // This treemap sizes tiles by market-weight COMPOSITION, not a price move; coloring it red/green
-// would misleadingly imply a performance signal that doesn't exist here (web/CLAUDE.md §4:
+// would misleadingly imply a performance signal that doesn't exist here (web/OVERVIEW.md §4:
 // 紅漲綠跌 applies only to price/%/score/candles).
 const TILE_COLORS = [
   "var(--chart-1)",

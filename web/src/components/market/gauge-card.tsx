@@ -1,5 +1,6 @@
 "use client";
 
+import { useLocale } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/lib/format-number";
 
@@ -79,6 +80,7 @@ export function GaugeCard({
   rightAxisLabel: string;
   children?: ReactNode;
 }): ReactNode {
+  const locale = useLocale();
   const activeBand = value === null ? null : bands.find((b) => value >= b.min && value < b.max);
   const needleAngle =
     value === null ? GAUGE_MIN_ANGLE : valueToAngleDeg(value, domainMin, domainMax);
@@ -130,14 +132,14 @@ export function GaugeCard({
             role="group"
             aria-label={
               value !== null
-                ? `${title} ${formatNumber(value, "zh-TW", { decimals })}${unit ?? ""}${
+                ? `${title} ${formatNumber(value, locale, { decimals })}${unit ?? ""}${
                     activeBand ? ` ${activeBand.label}` : ""
                   }`
                 : `${title}：資料暫無`
             }
           >
             <div className="font-num text-[30px] text-[var(--text)] tabular-nums leading-none">
-              {value !== null ? formatNumber(value, "zh-TW", { decimals }) : "—"}
+              {value !== null ? formatNumber(value, locale, { decimals }) : "—"}
               {value !== null ? unit : ""}
             </div>
             {activeBand ? (

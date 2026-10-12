@@ -1,4 +1,4 @@
-/** Self-hosted fonts via next/font — never a Google Fonts <link> (web/CLAUDE.md §1).
+/** Self-hosted fonts via next/font — never a Google Fonts <link> (web/OVERVIEW.md §1).
  * Noto Sans TC carries the Traditional-Chinese body face; IBM Plex Mono is the tabular numeric
  * face for every price/%/score. Exposed as CSS variables consumed by globals.css @theme. */
 import { IBM_Plex_Mono, Noto_Sans_TC, Source_Serif_4 } from "next/font/google";

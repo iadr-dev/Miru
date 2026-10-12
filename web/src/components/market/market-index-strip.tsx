@@ -2,7 +2,7 @@
 
 import { CaretLeftIcon, CaretRightIcon, LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useRef } from "react";
 import {
   getFuturesSnapshot,
@@ -38,6 +38,7 @@ type SponsorItem =
  * which overflowed this narrow a container.
  */
 export function MarketIndexStrip(): ReactNode {
+  const locale = useLocale();
   const t = useTranslations("market.cards.indexStrip");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -66,7 +67,7 @@ export function MarketIndexStrip(): ReactNode {
     // Single-row snapshot for one index code — no contract fan-out to pick from.
     const row = rows[0];
     return row
-      ? { value: formatNumber(row.close, "zh-TW", { decimals: 2 }), changePct: row.change_rate }
+      ? { value: formatNumber(row.close, locale, { decimals: 2 }), changePct: row.change_rate }
       : null;
   });
   const futuresItem = toSponsorItem(futuresQuery.data, futuresQuery.isPending, (rows) => {
@@ -79,7 +80,7 @@ export function MarketIndexStrip(): ReactNode {
       null,
     );
     return row
-      ? { value: formatNumber(row.close, "zh-TW", { decimals: 0 }), changePct: row.change_rate }
+      ? { value: formatNumber(row.close, locale, { decimals: 0 }), changePct: row.change_rate }
       : null;
   });
   const vixItem = toSponsorItem(vixQuery.data, vixQuery.isPending, (rows) => {
@@ -91,7 +92,7 @@ export function MarketIndexStrip(): ReactNode {
     const priorDay = [...rows].reverse().find((row) => row.trade_date !== latest.trade_date);
     const changePct =
       priorDay && priorDay.vix !== 0 ? ((latest.vix - priorDay.vix) / priorDay.vix) * 100 : null;
-    return { value: formatNumber(latest.vix, "zh-TW", { decimals: 2 }), changePct };
+    return { value: formatNumber(latest.vix, locale, { decimals: 2 }), changePct };
   });
 
   const isInitialLoad =
@@ -187,6 +188,7 @@ const ITEM_LABEL_KEY: Record<string, string> = {
 /** Exported so `us-market-index-strip.tsx` (an entirely-public strip, no Sponsor items) reuses
  * this same 名稱+值+漲跌% chip rendering rather than duplicating it. */
 export function PublicStripItem({ item }: { readonly item: MarketIndexStripItem }): ReactNode {
+  const locale = useLocale();
   const t = useTranslations("market.cards.indexStrip");
   const labelKey = ITEM_LABEL_KEY[item.key];
   const label = labelKey ? t(labelKey) : item.label;
@@ -194,7 +196,7 @@ export function PublicStripItem({ item }: { readonly item: MarketIndexStripItem 
     <div className="surface-card flex min-w-[128px] shrink-0 flex-col gap-0.5 px-3 py-2">
       <span className="truncate text-[12px] text-[var(--text-muted)]">{label}</span>
       <StripItemValue
-        value={formatNumber(item.value, "zh-TW", { decimals: 2 })}
+        value={formatNumber(item.value, locale, { decimals: 2 })}
         changePct={item.change_pct}
       />
     </div>
@@ -256,6 +258,7 @@ function StripItemValue({
   readonly value: string;
   readonly changePct: number | null;
 }): ReactNode {
+  const locale = useLocale();
   const up = changePct !== null && changePct >= 0;
   const color = changePct === null ? "var(--text-muted)" : directionColor(changePct ?? 0);
   return (
@@ -274,7 +277,7 @@ function StripItemValue({
       {changePct !== null ? (
         <span aria-hidden className="font-num text-[11px] tabular-nums" style={{ color }}>
           {directionGlyph(changePct ?? 0)}
-          {formatNumber(Math.abs(changePct), "zh-TW", { decimals: 2 })}%
+          {formatNumber(Math.abs(changePct), locale, { decimals: 2 })}%
         </span>
       ) : null}
     </span>

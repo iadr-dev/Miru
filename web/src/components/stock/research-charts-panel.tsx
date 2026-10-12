@@ -363,7 +363,7 @@ function ValuationTable({
 /** 分析師深度 — 3 real sub-cards (rating distribution + target-price range, EPS/revenue estimate +
  * long-term-growth estimate, latest upgrade/downgrade), each carrying an "N analysts · as of
  * MM/DD" attribution line so a target price/rating is never presented as this app's own view
- * (web/CLAUDE.md §4 non-trading language rule). Hidden entirely — not an empty scaffold — when
+ * (web/OVERVIEW.md §4 non-trading language rule). Hidden entirely — not an empty scaffold — when
  * `consensus` is null (yfinance tracks no analyst coverage for this symbol, common for small/mid
  * caps), matching the design doc's own "Coverage-gated → hidden when null" rule. */
 /** Exported so `us-stock/overview-panel.tsx` can reuse this exact card — the US 總覽 tab folds in

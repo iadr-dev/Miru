@@ -3,7 +3,7 @@
  * list) and `asset-header.tsx` (the ETF detail page's own header) so the same fund never reads
  * as a different color/label depending on which page it's viewed from. Categorical tokens only
  * (`--chart-1..3`), never `--up`/`--down` — these are fund-structure facts, not price/%/score
- * signals, per web/CLAUDE.md §4.
+ * signals, per web/OVERVIEW.md §4.
  */
 export const SYMBOL_TYPE_BADGE: Record<string, { labelKey: string; color: string }> = {
   etf_leveraged: { labelKey: "leveraged", color: "var(--chart-1)" },

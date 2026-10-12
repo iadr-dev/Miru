@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
-/** Inline calm retry — per `web/CLAUDE.md` §6 `ErrorState` convention (never a blank page). */
+/** Inline calm retry — per `web/OVERVIEW.md` §6 `ErrorState` convention (never a blank page). */
 export function ScreenerError({ onRetry }: { readonly onRetry: () => void }): ReactNode {
   const t = useTranslations("screener");
   return (

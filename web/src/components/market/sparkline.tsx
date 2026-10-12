@@ -7,7 +7,7 @@ const VIEW_HEIGHT = 26;
 
 /**
  * A minimal inline price-history line — no new chart-library dependency for a decorative,
- * few-point trend indicator (`web/CLAUDE.md`'s `lightweight-charts`/`visx`/`recharts` stack is
+ * few-point trend indicator (`web/OVERVIEW.md`'s `lightweight-charts`/`visx`/`recharts` stack is
  * for real interactive charts; this is a tiny presentational SVG, same class as the mockup's own
  * `.lb-spark` polyline). Renders nothing (never a flat fabricated line) when fewer than 2 points
  * exist. Purely decorative: the real values are announced via the row's own `aria-label`

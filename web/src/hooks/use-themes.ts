@@ -1,12 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { type UseQueryResult, useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getThemeMembers, getThemes } from "@/lib/api/theme";
 import { FRESHNESS } from "@/lib/freshness";
-import type { ThemeKind } from "@/types/theme";
+import type { ThemeKind, ThemeMembersResponse, ThemesResponse } from "@/types/theme";
 
-export function useThemes(kind?: ThemeKind) {
+export function useThemes(kind?: ThemeKind): UseQueryResult<ThemesResponse> {
   return useQuery({
     queryKey: queryKeys.themes(kind ?? "all"),
     queryFn: () => getThemes(kind),
@@ -14,7 +14,7 @@ export function useThemes(kind?: ThemeKind) {
   });
 }
 
-export function useThemeMembers(themeKey: string | null) {
+export function useThemeMembers(themeKey: string | null): UseQueryResult<ThemeMembersResponse> {
   return useQuery({
     queryKey: queryKeys.themeMembers(themeKey ?? ""),
     queryFn: () => getThemeMembers(themeKey ?? ""),

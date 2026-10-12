@@ -203,7 +203,7 @@ function EtfListHeaderRow({
               <span>{t(col.labelKey)}</span>
               {active ? (
                 // Sort caret is chrome, not price/%/score data — never `--up`/`--down`
-                // (web/CLAUDE.md §4 reserves those tokens for real 紅漲綠跌 signals).
+                // (web/OVERVIEW.md §4 reserves those tokens for real 紅漲綠跌 signals).
                 <span aria-hidden className="text-[10px] text-[var(--text-muted)]">
                   {sortDirection === "asc" ? "▲" : "▼"}
                 </span>

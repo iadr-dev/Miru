@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * The required, non-removable non-trading caveat (web/CLAUDE.md §4). Rendered as a
+ * The required, non-removable non-trading caveat (web/OVERVIEW.md §4). Rendered as a
  * pinned `--warn`-tinted chip on every analytical answer. There is deliberately no `hidden`/
  * dismissible prop — governance forbids a way to hide it. The text is the governance copy already
  * in the message catalog (`chat.caveat.nonTrading`), not rewritten here.

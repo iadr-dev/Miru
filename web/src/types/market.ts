@@ -5,7 +5,7 @@
  * macro/business-indicator. Every route is a thin projection of a `tools/*.py` tool dispatched
  * through `tools.base.dispatch_tool`, so every Sponsor-tier row model here is unioned with
  * `maskedTeaserSchema` — an unentitled caller gets that shape back at HTTP 200, never an error
- * (web/CLAUDE.md §4/§8). Row field names mirror `backend/src/schemas/capabilities.py` exactly;
+ * (web/OVERVIEW.md §4/§8). Row field names mirror `backend/src/schemas/capabilities.py` exactly;
  * a field renamed there is a compile error here, not a silent runtime mismatch.
  */
 import { z } from "zod";
@@ -1168,7 +1168,7 @@ export type InsiderTransferDeclarationResponse = z.infer<
   typeof insiderTransferDeclarationResponseSchema
 >;
 
-// Frontend-invented UI-only shape (no backend citation needed, web/CLAUDE.md §2) — the
+// Frontend-invented UI-only shape (no backend citation needed, web/OVERVIEW.md §2) — the
 // sortable columns `EtfListTable` lets a caller sort by, and the current sort direction.
 export const ETF_SORT_KEYS = [
   "name",

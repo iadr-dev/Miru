@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
   Bar,
@@ -86,6 +86,7 @@ export function DividendPolicyCard({
   readonly symbol: string;
   readonly market: Market;
 }): ReactNode {
+  const locale = useLocale();
   const t = useTranslations("stock.financials");
   const [range, setRange] = useState<DividendPolicyRange>("10y");
   const [expanded, setExpanded] = useState(false);
@@ -159,7 +160,7 @@ export function DividendPolicyCard({
                   labelStyle={{ color: "var(--text)" }}
                   itemStyle={{ color: "var(--text)" }}
                   cursor={{ fill: "var(--accent)", opacity: 0.08 }}
-                  formatter={(value) => formatNumber(Number(value), "zh-TW", { decimals: 2 })}
+                  formatter={(value) => formatNumber(Number(value), locale, { decimals: 2 })}
                 />
                 <Legend
                   onClick={(entry) => {
@@ -244,6 +245,7 @@ function DividendPolicyStatsStrip({
     | undefined;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
+  const locale = useLocale();
   // Each stat gets its own categorical `--chart-1..6` hue (never `--up`/`--down` — none of these
   // four are a signed price/%/score delta) so the strip reads as 4 distinct at-a-glance figures,
   // matching the reference design's own per-metric coloring.
@@ -252,7 +254,7 @@ function DividendPolicyStatsStrip({
       label: t("totalDividendStat"),
       value:
         stats?.latest_year_total_dividend != null
-          ? formatNumber(stats.latest_year_total_dividend, "zh-TW", { decimals: 2 })
+          ? formatNumber(stats.latest_year_total_dividend, locale, { decimals: 2 })
           : "—",
       color: "var(--chart-1)",
     },

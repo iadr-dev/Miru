@@ -25,7 +25,7 @@ const AUTO_ROTATE_RADIANS_PER_SECOND = 0.05;
 /** Eases 0→1 over `INTRO_DURATION_S` seconds via `useFrame` — the single shared "boot the
  * console" progress every floor/ring/badge in the scene multiplies its own opacity/scale by
  * (spec's own "one intro moment, everything else stays calm" instruction). Skips straight to 1
- * when `reducedMotion` is set, per web/CLAUDE.md §7's reduced-motion tiers. */
+ * when `reducedMotion` is set, per web/OVERVIEW.md §7's reduced-motion tiers. */
 function useIntroProgress(reducedMotion: boolean): number {
   const [progress, setProgress] = useState(reducedMotion ? 1 : 0);
   const elapsedRef = useRef(0);

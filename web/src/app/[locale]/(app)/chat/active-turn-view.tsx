@@ -50,7 +50,7 @@ import { useTypewriter } from "@/lib/use-typewriter";
  * `AnswerMarkdown`, catching up only if a backlog piles up, and snapping to full text instantly
  * under `prefers-reduced-motion`. Once the terminal frame lands, `turn.answerText` takes over as
  * the `aria-live="polite"` final render (the only element with `polite` — thinking/tool/reasoning/
- * streaming-partial narration all stay `off` per web/CLAUDE.md §7). A `subagent`/`team` turn
+ * streaming-partial narration all stay `off` per web/OVERVIEW.md §7). A `subagent`/`team` turn
  * never populates `streamingAnswerText` (see `turn-store.ts`'s module docstring), so those still
  * render exactly as before: nothing, then the complete answer in one shot.
  */

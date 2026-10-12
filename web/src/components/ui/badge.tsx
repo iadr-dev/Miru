@@ -5,7 +5,7 @@ type Variant = "solid" | "outline";
 
 /** The shared shape every categorical chip on this app renders through — `asset-header.tsx`
  * previously hand-rolled this same `<span>` 4 separate times (ETF structure/active badge, theme
- * tag, distribution-frequency badge), only ever varying color/background; per `web/CLAUDE.md`
+ * tag, distribution-frequency badge), only ever varying color/background; per `web/OVERVIEW.md`
  * §2.1 ("duplicated markup across components → one shared component"), this is that one place.
  * `variant="solid"` is the ETF-structure-badge look (opaque `--surface-2` background, colored
  * text); `variant="outline"` is the theme-tag/distribution-frequency look (translucent

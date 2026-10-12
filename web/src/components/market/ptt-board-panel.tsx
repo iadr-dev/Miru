@@ -21,7 +21,7 @@ const PTT_BOARD_COLLAPSED_ROW_COUNT = 40;
  * (Stock/Tech_Job/Warrant → `stock_buzz`, usable-in-analysis buzz signal; Beauty/Gossiping →
  * `offtopic`, never a market claim). Public (`DataClass.PUBLIC`). The push-count "爆" badge uses
  * `--chart-3` (a categorical intensity marker, never `--up`/`--down` — those are reserved for
- * signed price/%/score deltas, web/CLAUDE.md §4).
+ * signed price/%/score deltas, web/OVERVIEW.md §4).
  */
 export function PttBoardPanel(): ReactNode {
   const t = useTranslations("market.cards.pttBoard");
@@ -119,7 +119,7 @@ function PttPostList({ posts }: { readonly posts: readonly PttPost[] }): ReactNo
 
 function PttPostRow({ post }: { readonly post: PttPost }): ReactNode {
   const isHot = post.push_count === "爆" || Number(post.push_count) >= 10;
-  // `post.link` is third-party PTT content, never trusted as-is (web/CLAUDE.md §8) — reject a
+  // `post.link` is third-party PTT content, never trusted as-is (web/OVERVIEW.md §8) — reject a
   // `javascript:`/`data:` URI before it ever reaches an `href`.
   const href = safeHttpUrl(post.link);
   const body = (

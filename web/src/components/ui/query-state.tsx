@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { ApiRequestError } from "@/lib/api/http";
 
-/** Shared loading/empty/error branching for every card's query (web/CLAUDE.md §6) — a shaped
+/** Shared loading/empty/error branching for every card's query (web/OVERVIEW.md §6) — a shaped
  * skeleton while loading, a calm inline error with retry on failure, and the caller's own render
  * function once data is present (which itself may still show a masked teaser or an empty state).
  *

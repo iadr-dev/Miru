@@ -493,7 +493,7 @@ function Stat({ label, value }: { readonly label: string; readonly value: string
 }
 
 /** 漲跌 is a signed price delta, not a neutral stat — 紅漲綠跌 + ▲▼ + sign + `aria-label`
- * carrying direction/value (web/CLAUDE.md §4), matching `AssetHeader`'s own change display. */
+ * carrying direction/value (web/OVERVIEW.md §4), matching `AssetHeader`'s own change display. */
 function ChangeStat({
   label,
   change,

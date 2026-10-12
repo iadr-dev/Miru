@@ -1,5 +1,5 @@
 /**
- * The live-turn Zustand store (web/CLAUDE.md §3: the SSE lifecycle is the one thing that lives in
+ * The live-turn Zustand store (web/OVERVIEW.md §3: the SSE lifecycle is the one thing that lives in
  * Zustand, never scattered React state, never the TanStack cache).
  *
  * Feature-scoped, so it lives co-located with the chat page rather than in `types/`: no other

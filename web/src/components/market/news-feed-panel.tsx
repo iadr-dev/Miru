@@ -109,7 +109,7 @@ function NewsFeedList({ items }: { readonly items: readonly NewsFeedItem[] }): R
 }
 
 function NewsFeedRow({ item }: { readonly item: NewsFeedItem }): ReactNode {
-  // `item.link` is third-party RSS/Finnhub content, never trusted as-is (web/CLAUDE.md §8) —
+  // `item.link` is third-party RSS/Finnhub content, never trusted as-is (web/OVERVIEW.md §8) —
   // reject a `javascript:`/`data:` URI before it ever reaches an `href`.
   const href = safeHttpUrl(item.link);
   const body = (

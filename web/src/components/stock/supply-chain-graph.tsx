@@ -18,7 +18,7 @@ import type { Market } from "@/types/settings";
 import type { SupplyChainEdge } from "@/types/stock-detail";
 
 /** Relationship colours are categorical (the non-signed chart tokens) - never --up/--down, which
- * mean a price move and nothing else (web/CLAUDE.md §4). */
+ * mean a price move and nothing else (web/OVERVIEW.md §4). */
 const ROLE_COLOR: Record<PeerRole, string> = {
   supplier: "var(--chart-1)",
   customer: "var(--chart-2)",

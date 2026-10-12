@@ -6,7 +6,7 @@ import type { SearchHit } from "@/types/symbol-search";
 
 /** One query per market — TW (ingested-roster scan) and US (live yfinance search) are genuinely
  * distinct calls with distinct latency/rate-limit profiles, so a failure in one never blanks the
- * other's results (web/CLAUDE.md §6: "one failing view never blanks the page"). Query key mirrors
+ * other's results (web/OVERVIEW.md §6: "one failing view never blanks the page"). Query key mirrors
  * the backend's own `(capability, market, query)` shape. Relies on `query-provider.tsx`'s default
  * `staleTime`/`gcTime`/`retry` — type-ahead results are cheap, short-lived reads, not a surface
  * with its own freshness class. */

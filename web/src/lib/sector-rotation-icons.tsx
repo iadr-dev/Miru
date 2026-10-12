@@ -228,7 +228,7 @@ function svgChildForOp(op: ShapeOp, index: number): ReactElement {
 /** Renders one icon as a React SVG element — `stroke="currentColor" fill="none"` (except the
  * few filled dots/nodes each icon uses for a pin/solder-point/status light), 24x24 viewBox,
  * matching every other icon in this app's `stroke`-driven convention (Phosphor `weight="regular"`
- * — see web/CLAUDE.md §2). Used in `RankPanel`'s list rows. */
+ * — see web/OVERVIEW.md §2). Used in `RankPanel`'s list rows. */
 export function iconToSvgElement(key: SectorIconKey, size = 16): ReactElement {
   return (
     <svg

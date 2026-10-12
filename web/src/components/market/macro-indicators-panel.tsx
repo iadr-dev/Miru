@@ -64,7 +64,7 @@ export function MacroIndicatorsPanel(): ReactNode {
 }
 
 // A blurred placeholder shape for the masked-teaser preview — never real values, purely for the
-// `SponsorTeaser`'s own blur layer to have something chart-shaped to blur (web/CLAUDE.md §4's
+// `SponsorTeaser`'s own blur layer to have something chart-shaped to blur (web/OVERVIEW.md §4's
 // masked-teaser convention: frame/labels sharp, value layer blurred, never fabricated numbers
 // shown as if real — this shape is discarded, only its layout is ever visible).
 const _PREVIEW_SHAPE: MacroIndicatorsData = {
@@ -130,10 +130,10 @@ function MacroIndicatorsGrid({
 
 /** Frosted-glass stat tile — same `glass` + `color-mix(...)` tint convention
  * `overview-panel.tsx`'s own AUM/YTD-return tiles established (falls back to solid `--surface`
- * under `prefers-reduced-transparency` via the `.glass` class, web/CLAUDE.md §7). Each of the 4
+ * under `prefers-reduced-transparency` via the `.glass` class, web/OVERVIEW.md §7). Each of the 4
  * macro stats gets a distinct categorical tint (`--accent`/`--chart-2`/`--warn`/`--chart-4`) —
  * these are context/theme tints, not signed price data, so `--chart-*`/`--warn` here don't
- * collide with the 紅漲綠跌 `--up`/`--down` reservation (web/CLAUDE.md §4). */
+ * collide with the 紅漲綠跌 `--up`/`--down` reservation (web/OVERVIEW.md §4). */
 function MacroStat({
   label,
   value,

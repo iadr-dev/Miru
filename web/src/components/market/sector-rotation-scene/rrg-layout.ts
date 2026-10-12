@@ -34,13 +34,13 @@ export function quadrantFor(rsRatio: number, rsMomentum: number): RotationQuadra
   return "improving";
 }
 
-/** 紅漲綠跌 governance (web/CLAUDE.md §4) applies to signed price/%/score deltas, not to this
+/** 紅漲綠跌 governance (web/OVERVIEW.md §4) applies to signed price/%/score deltas, not to this
  * quadrant classification (a "leading" sector isn't a price going up — it's a relative-strength
  * bucket), so these are read from `--chart-1..6`-style categorical tokens defined specifically
  * for this view, never `--up`/`--down`. Resolved to concrete hex (not a CSS var) because
  * `SectorBadge` needs a real color value to feed into a three.js `Color`/canvas fill, which
  * cannot read `var(--token)` — this is the one deliberate exception to "CSS-variable tokens only"
- * (web/CLAUDE.md §2), scoped to this 3D scene's own quadrant palette, matching the reference
+ * (web/OVERVIEW.md §2), scoped to this 3D scene's own quadrant palette, matching the reference
  * design's exact hex values (already accessibility-reviewed: 4 hues, each paired with the
  * quadrant's own Chinese label as text, never color-alone).
  */
