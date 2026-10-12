@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -30,6 +32,12 @@ class Settings(BaseSettings):
 
     # ---- Datastores ----
     database_url: str = "sqlite+aiosqlite:///./dev.db"
+    # What startup does about an existing database that is behind the models:
+    #   strict   - refuse to start and say how to reset (the development default: the schema is
+    #              always fresh and clean, never patched with ALTER TABLE);
+    #   additive - add the missing columns/indexes/unique keys in place (data-preserving).
+    # Production moves to Alembic migrations; see db/base.py and backend/CLAUDE.md section 6.
+    schema_upgrade_mode: Literal["strict", "additive"] = "strict"
     # Postgres connection pool (ignored for SQLite). Each process (api, scheduler, ingest, mcp)
     # has its own pool, so size them against the server's max_connections across all replicas.
     db_pool_size: int = 10

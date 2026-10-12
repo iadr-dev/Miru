@@ -137,6 +137,14 @@ def _plan(conn: Connection, metadata: MetaData) -> list[_Step]:
     return sorted(steps, key=lambda step: not step.is_column)
 
 
+async def pending_additive_steps(engine: AsyncEngine, metadata: MetaData) -> list[str]:
+    """What `apply_additive_upgrade` would add, without changing anything - how strict mode tells
+    that an existing database is behind the models."""
+    async with engine.connect() as conn:
+        steps = await conn.run_sync(_plan, metadata)
+    return [step.description for step in steps]
+
+
 async def apply_additive_upgrade(engine: AsyncEngine, metadata: MetaData) -> list[str]:
     """Add whatever `metadata` has that the live schema lacks; returns what was applied.
 
@@ -168,4 +176,4 @@ async def apply_additive_upgrade(engine: AsyncEngine, metadata: MetaData) -> lis
     return applied
 
 
-__all__ = ["apply_additive_upgrade"]
+__all__ = ["apply_additive_upgrade", "pending_additive_steps"]
