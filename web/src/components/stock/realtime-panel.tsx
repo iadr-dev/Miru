@@ -14,6 +14,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryState } from "@/components/ui/query-state";
 import {
   getIntradayKbar,
   getLiveQuote,
@@ -138,7 +139,12 @@ function LiveQuoteLadder({
     return (
       <section className="surface-card p-4 sm:p-5">
         <h2 className="mb-1 font-semibold text-[15px] text-[var(--text)]">{t("ladderTitle")}</h2>
-        <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("ladderUnavailable")}</p>
+        {query.isError ? (
+          // A failed read is not "no ladder": say so and offer a retry.
+          <QueryState query={query}>{() => null}</QueryState>
+        ) : (
+          <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("ladderUnavailable")}</p>
+        )}
       </section>
     );
   }

@@ -15,6 +15,7 @@ import { ResearchChartsPanel } from "@/components/stock/research-charts-panel";
 import { StockNewsPanel } from "@/components/stock/stock-news-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
 import { TrackerPanel } from "@/components/stock/tracker-panel";
+import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
@@ -109,23 +110,25 @@ export function StockTabBar({
         })}
       </div>
 
-      {tab === "basicInfo" ? <BasicInfoPanel symbol={symbol} market={market} /> : null}
-      {tab === "industry" ? <IndustryPanel symbol={symbol} market={market} /> : null}
-      {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
-      {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
-      {visitedTechnical ? (
-        <div className={tab === "technical" ? undefined : "hidden"}>
-          <TechnicalAnalysisPanel symbol={symbol} market={market} />
-        </div>
-      ) : null}
-      {tab === "tracker" ? <TrackerPanel symbol={symbol} market={market} /> : null}
-      {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
-      {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
-      {tab === "research" ? <ResearchChartsPanel symbol={symbol} market={market} /> : null}
-      {tab === "realtime" ? <RealtimeTab symbol={symbol} market={market} /> : null}
-      {!BUILT_TABS.has(tab) ? (
-        <ComingSoon icon={ChartLineIcon} title={t(tab)} body={t("comingSoonBody")} />
-      ) : null}
+      <SectionBoundary resetKeys={[tab, symbol]}>
+        {tab === "basicInfo" ? <BasicInfoPanel symbol={symbol} market={market} /> : null}
+        {tab === "industry" ? <IndustryPanel symbol={symbol} market={market} /> : null}
+        {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
+        {tab === "chipAnalysis" ? <ChipAnalysisPanel symbol={symbol} market={market} /> : null}
+        {visitedTechnical ? (
+          <div className={tab === "technical" ? undefined : "hidden"}>
+            <TechnicalAnalysisPanel symbol={symbol} market={market} />
+          </div>
+        ) : null}
+        {tab === "tracker" ? <TrackerPanel symbol={symbol} market={market} /> : null}
+        {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
+        {tab === "news" ? <StockNewsPanel symbol={symbol} market={market} /> : null}
+        {tab === "research" ? <ResearchChartsPanel symbol={symbol} market={market} /> : null}
+        {tab === "realtime" ? <RealtimeTab symbol={symbol} market={market} /> : null}
+        {!BUILT_TABS.has(tab) ? (
+          <ComingSoon icon={ChartLineIcon} title={t(tab)} body={t("comingSoonBody")} />
+        ) : null}
+      </SectionBoundary>
     </div>
   );
 }

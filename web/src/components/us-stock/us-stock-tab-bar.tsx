@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { AiPanel } from "@/components/stock/ai-panel";
 import { FinancialsPanel } from "@/components/stock/financials-panel";
 import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
+import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { NewsFilingsPanel } from "@/components/us-stock/news-filings-panel";
 import { UsStockOverviewPanel } from "@/components/us-stock/overview-panel";
 import { SectorPeersPanel } from "@/components/us-stock/sector-peers-panel";
@@ -94,16 +95,18 @@ export function UsStockTabBar({
         })}
       </div>
 
-      {tab === "overview" ? <UsStockOverviewPanel symbol={symbol} market={market} /> : null}
-      {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
-      {visitedTechnical ? (
-        <div className={tab === "technical" ? undefined : "hidden"}>
-          <TechnicalAnalysisPanel symbol={symbol} market={market} />
-        </div>
-      ) : null}
-      {tab === "sectorPeers" ? <SectorPeersPanel symbol={symbol} market={market} /> : null}
-      {tab === "newsFilings" ? <NewsFilingsPanel symbol={symbol} market={market} /> : null}
-      {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
+      <SectionBoundary resetKeys={[tab, symbol]}>
+        {tab === "overview" ? <UsStockOverviewPanel symbol={symbol} market={market} /> : null}
+        {tab === "financials" ? <FinancialsPanel symbol={symbol} market={market} /> : null}
+        {visitedTechnical ? (
+          <div className={tab === "technical" ? undefined : "hidden"}>
+            <TechnicalAnalysisPanel symbol={symbol} market={market} />
+          </div>
+        ) : null}
+        {tab === "sectorPeers" ? <SectorPeersPanel symbol={symbol} market={market} /> : null}
+        {tab === "newsFilings" ? <NewsFilingsPanel symbol={symbol} market={market} /> : null}
+        {tab === "ai" ? <AiPanel symbol={symbol} market={market} /> : null}
+      </SectionBoundary>
     </div>
   );
 }

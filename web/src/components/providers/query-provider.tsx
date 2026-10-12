@@ -1,7 +1,8 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
+import { reportQueryFailure } from "@/lib/api/query-failures";
 
 /** App-wide TanStack Query client (web/CLAUDE.md §3: client-interactive reads live here — thread
  * list, persisted thread history). One instance per browser session, created lazily so it isn't
@@ -11,6 +12,14 @@ export function QueryProvider({ children }: { children: ReactNode }): ReactNode 
   const [client] = useState(
     () =>
       new QueryClient({
+        // A read that fails with nothing to show tells the shell, which says so once
+        // (components/shell/query-failure-notice.tsx); a failed background refetch keeps the
+        // last good data on screen and stays quiet.
+        queryCache: new QueryCache({
+          onError: (error, query) => {
+            if (query.state.data === undefined) reportQueryFailure(error);
+          },
+        }),
         defaultOptions: {
           queries: {
             staleTime: 30_000,
