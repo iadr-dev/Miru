@@ -3,6 +3,7 @@
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
 import { reportQueryFailure } from "@/lib/api/query-failures";
+import { FRESHNESS } from "@/lib/freshness";
 
 /** App-wide TanStack Query client (web/CLAUDE.md §3: client-interactive reads live here — thread
  * list, persisted thread history). One instance per browser session, created lazily so it isn't
@@ -22,7 +23,7 @@ export function QueryProvider({ children }: { children: ReactNode }): ReactNode 
         }),
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
+            staleTime: FRESHNESS.standard,
             gcTime: 5 * 60_000,
             // One quick retry for a blip; a 429 was already waited out and retried at the fetch
             // layer, so retrying it again here would only hit the limiter harder.

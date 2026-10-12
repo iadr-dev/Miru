@@ -25,8 +25,8 @@ import {
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
-import { getPriceHistory } from "@/lib/api/market";
-import { getForeignShareholding, getStockInstitutionalFlow } from "@/lib/api/stock-detail";
+import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
+import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
@@ -100,14 +100,8 @@ export function ForeignShareholdingBody({
     queryKey: ["stock_foreign_shareholding", symbol, market],
     queryFn: () => getForeignShareholding(symbol, market),
   });
-  const flowQuery = useQuery({
-    queryKey: ["stock_institutional_flow", symbol, market],
-    queryFn: () => getStockInstitutionalFlow(symbol, market),
-  });
-  const priceQuery = useQuery({
-    queryKey: ["price_history", symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS],
-    queryFn: () => getPriceHistory([symbol], market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS),
-  });
+  const flowQuery = useInstitutionalFlow(symbol, market);
+  const priceQuery = usePriceHistory(symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS);
 
   if (shareholdingQuery.isLoading || flowQuery.isLoading) return <CardSkeletonBody height={280} />;
   const shareholdingRows = [...(shareholdingQuery.data?.rows ?? [])].sort((a, b) =>

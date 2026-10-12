@@ -27,8 +27,8 @@ import {
   SubTabRow,
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
-import { getPriceHistory } from "@/lib/api/market";
-import { getForeignShareholding, getStockInstitutionalFlow } from "@/lib/api/stock-detail";
+import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
+import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { FLOW_CHART_TRADING_DAYS, groupFlowByPeriod } from "@/lib/flow-periods";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
@@ -90,10 +90,7 @@ export function InstitutionalTotalsBody({
       return next;
     });
   };
-  const flowQuery = useQuery({
-    queryKey: ["stock_institutional_flow", symbol, market],
-    queryFn: () => getStockInstitutionalFlow(symbol, market),
-  });
+  const flowQuery = useInstitutionalFlow(symbol, market);
   const shareholdingQuery = useQuery({
     queryKey: ["stock_foreign_shareholding", symbol, market],
     queryFn: () => getForeignShareholding(symbol, market),
@@ -102,14 +99,8 @@ export function InstitutionalTotalsBody({
   // read above is about a month, so ask for 3 months too and merge (a throttled upstream that
   // returns nothing for the longer range still leaves the month on screen).
   const chartStart = useMemo(() => isoDaysAgo(FLOW_CHART_CALENDAR_DAYS), []);
-  const longFlowQuery = useQuery({
-    queryKey: ["stock_institutional_flow", symbol, market, chartStart],
-    queryFn: () => getStockInstitutionalFlow(symbol, market, { startDate: chartStart }),
-  });
-  const priceQuery = useQuery({
-    queryKey: ["price_history", symbol, market, FLOW_CHART_PRICE_DAYS],
-    queryFn: () => getPriceHistory([symbol], market, FLOW_CHART_PRICE_DAYS),
-  });
+  const longFlowQuery = useInstitutionalFlow(symbol, market, chartStart);
+  const priceQuery = usePriceHistory(symbol, market, FLOW_CHART_PRICE_DAYS);
 
   if (flowQuery.isLoading || shareholdingQuery.isLoading) return <CardSkeletonBody height={320} />;
   const flowRows = flowQuery.data?.rows ?? [];

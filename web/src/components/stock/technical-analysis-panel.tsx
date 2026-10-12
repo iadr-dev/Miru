@@ -16,11 +16,11 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
+import { useInstitutionalFlow } from "@/hooks/use-stock-data";
 import {
   getForeignShareholding,
   getSecuritiesLending,
   getShareholderDispersion,
-  getStockInstitutionalFlow,
   getStockMarginShort,
   getTechnicalIndicators,
 } from "@/lib/api/stock-detail";
@@ -1035,10 +1035,7 @@ function InstitutionalFlowPane({
   t,
 }: RangedPaneProps & { readonly t: ReturnType<typeof useTranslations> }): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
-  const query = useQuery({
-    queryKey: ["stock_institutional_flow", symbol, market],
-    queryFn: () => getStockInstitutionalFlow(symbol, market),
-  });
+  const query = useInstitutionalFlow(symbol, market);
   const rows = (query.data?.rows ?? []).filter(
     (r) => r.trade_date >= startDate && r.trade_date <= endDate,
   );

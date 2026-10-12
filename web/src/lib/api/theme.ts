@@ -13,7 +13,10 @@ export async function getThemes(kind?: ThemeKind) {
   return themesResponseSchema.parse(raw);
 }
 
+/** A theme's full membership. One request shape for every caller (screener theme cards, the
+ * stock page's 產業鏈 tiles), so they share one cache entry; `limit` covers the largest themes. */
 export async function getThemeMembers(themeKey: string) {
-  const raw = await requestJson(`/themes/${encodeURIComponent(themeKey)}`);
+  const search = new URLSearchParams({ limit: "1000" });
+  const raw = await requestJson(`/themes/${encodeURIComponent(themeKey)}?${search.toString()}`);
   return themeMembersResponseSchema.parse(raw);
 }

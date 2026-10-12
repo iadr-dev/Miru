@@ -18,8 +18,9 @@ import {
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { isoDaysAgo, SubTabRow, TOOLTIP_STYLE } from "@/components/stock/chip/shared";
 import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { useInstitutionalFlow } from "@/hooks/use-stock-data";
 import { Link } from "@/i18n/navigation";
-import { getGovernmentBankFlows, getStockInstitutionalFlow } from "@/lib/api/stock-detail";
+import { getGovernmentBankFlows } from "@/lib/api/stock-detail";
 import { fieldLabel } from "@/lib/field-labels";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser } from "@/types/market";
@@ -118,10 +119,7 @@ export function InstitutionalSummaryBody({
   const tFields = useTranslations("chat.cards");
   const locale = useLocale();
   const [window, setWindow] = useState<RollingNetWindow>("5d");
-  const query = useQuery({
-    queryKey: ["stock_institutional_flow", symbol, market],
-    queryFn: () => getStockInstitutionalFlow(symbol, market),
-  });
+  const query = useInstitutionalFlow(symbol, market);
   const bankQuery = useQuery({
     queryKey: ["stock_government_bank_flows", symbol, market],
     // `get_government_bank_flows`'s own upstream is single-day-per-call, fanned out server-side

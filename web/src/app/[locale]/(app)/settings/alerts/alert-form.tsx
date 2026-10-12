@@ -28,6 +28,7 @@ import {
   updateAlert,
 } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
+import { FRESHNESS } from "@/lib/freshness";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import {
   ALERT_MARKETS,
@@ -150,7 +151,7 @@ export function AlertForm({
     queryKey: ["settings", "alert-symbol-check", market, settledSymbol],
     queryFn: () => checkAlertSymbol(settledSymbol, market),
     enabled: !editing && scope === "symbol" && settledSymbol !== "",
-    staleTime: 5 * 60_000,
+    staleTime: FRESHNESS.reference,
   });
   const symbolUnknown =
     !editing &&

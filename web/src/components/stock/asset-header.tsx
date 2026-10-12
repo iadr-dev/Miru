@@ -12,13 +12,15 @@ import { TwStockSignalBadges } from "@/components/stock/tw-stock-signal-badges";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { Badge } from "@/components/ui/badge";
 import { useLiveQuote } from "@/hooks/use-live-quote";
+import { usePriceHistory } from "@/hooks/use-stock-data";
 import { getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
-import { getEtfList, getPriceHistory, getSymbolInfo } from "@/lib/api/market";
+import { getEtfList, getSymbolInfo } from "@/lib/api/market";
 import { getLivePriceQuote, getStockScore } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
 import { formatNumber } from "@/lib/format-number";
+import { FRESHNESS } from "@/lib/freshness";
 import { directionColor, directionGlyph } from "@/lib/signed";
 import { isEtfSymbolType } from "@/lib/symbol-type";
 import type { EtfListRow, ScoreBand, SymbolType } from "@/types/market";
@@ -102,10 +104,7 @@ export function AssetHeader({
     queryKey: ["stock_score", symbol, market],
     queryFn: () => getStockScore(symbol, market),
   });
-  const historyQuery = useQuery({
-    queryKey: ["price_history", symbol, market, HISTORY_DAYS_FOR_CHANGE],
-    queryFn: () => getPriceHistory([symbol], market, HISTORY_DAYS_FOR_CHANGE),
-  });
+  const historyQuery = usePriceHistory(symbol, market, HISTORY_DAYS_FOR_CHANGE);
   const bars = [...(historyQuery.data?.rows ?? [])].sort((a, b) =>
     a.trade_date.localeCompare(b.trade_date),
   );
@@ -127,7 +126,7 @@ export function AssetHeader({
     queryKey: ["live_price_quote", symbol, market],
     queryFn: () => getLivePriceQuote(symbol, market),
     enabled: market === "US",
-    staleTime: 15_000,
+    staleTime: FRESHNESS.live,
   });
   const tick = liveQuote.tick ?? liveQuoteSnapshotQuery.data?.tick ?? null;
   const price = tick?.price ?? eodLatestBar?.close ?? null;

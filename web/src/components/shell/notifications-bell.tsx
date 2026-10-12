@@ -8,6 +8,7 @@ import { type ReactNode, useState } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { getNotificationBadge, listNotifications, markNotificationsRead } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
+import { FRESHNESS } from "@/lib/freshness";
 import { parseServerDate } from "@/lib/parse-server-date";
 import { badgeLabel, type NotificationView, toNotificationView } from "./notification-payload";
 
@@ -29,7 +30,7 @@ export function NotificationsBell(): ReactNode {
   const badge = useQuery({
     queryKey: BADGE_KEY,
     queryFn: getNotificationBadge,
-    staleTime: 30_000,
+    staleTime: FRESHNESS.standard,
     refetchOnWindowFocus: true,
     retry: false,
   });

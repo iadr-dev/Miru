@@ -7,6 +7,7 @@ import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/i18n/navigation";
 import { createSchedule, listSchedules, SettingsApiError } from "@/lib/api/settings";
+import { FRESHNESS } from "@/lib/freshness";
 import {
   findExistingJob,
   parseScheduleProposal,
@@ -33,7 +34,7 @@ export function ScheduleProposalCard({ data }: { data: Record<string, unknown> }
     queryKey: SCHEDULES_KEY,
     queryFn: listSchedules,
     enabled: proposal !== null,
-    staleTime: 30_000,
+    staleTime: FRESHNESS.standard,
     retry: false,
   });
 

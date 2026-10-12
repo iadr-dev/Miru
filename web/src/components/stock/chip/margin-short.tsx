@@ -22,7 +22,7 @@ import {
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
-import { getPriceHistory } from "@/lib/api/market";
+import { usePriceHistory } from "@/hooks/use-stock-data";
 import {
   getSecuritiesLending,
   getStockDayTrading,
@@ -207,10 +207,7 @@ export function MarginShortBody({
     queryFn: () => getStockDayTrading(symbol, market),
     enabled: view === "dayTrading",
   });
-  const priceQuery = useQuery({
-    queryKey: ["price_history", symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS],
-    queryFn: () => getPriceHistory([symbol], market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS),
-  });
+  const priceQuery = usePriceHistory(symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS);
   const priceByDate = new Map<string, number>();
   for (const bar of priceQuery.data?.rows ?? []) {
     priceByDate.set(bar.trade_date, bar.close);
