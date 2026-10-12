@@ -290,3 +290,15 @@ markers = [
   "concurrency: shared-state / race tests (Postgres+Redis)",
   "dual_dialect: must pass on SQLite AND Postgres",
 ]
+
+[tool.coverage.run]
+source = ["src"]
+branch = false
+
+[tool.coverage.report]
+# Measured at 92.8% (2836 tests). The floor leaves room for a normal PR and fails a change that
+# lands a large untested module. Enforced by `pytest --cov` (the weekly coverage workflow and any
+# local run); the per-PR suite does not pay for tracing.
+fail_under = 90
+skip_covered = true
+show_missing = true

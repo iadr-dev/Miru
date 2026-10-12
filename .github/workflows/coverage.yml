@@ -1,0 +1,35 @@
+# Test-coverage floor for the backend (pyproject `[tool.coverage.report] fail_under`). Tracing makes
+# the suite roughly twice as slow, so it runs weekly and on demand instead of on every PR.
+name: coverage
+
+on:
+  schedule:
+    - cron: "43 3 * * 0" # Sundays 03:43 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-coverage:
+    name: backend coverage floor
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      UV_PYTHON: "3.13"
+      COVERAGE_CORE: sysmon # the low-overhead tracer (Python 3.12+)
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies (frozen)
+        run: uv sync --all-extras --frozen
+
+      - name: Suite with coverage (fails under the floor)
+        run: uv run pytest --cov=src --cov-report=term-missing:skip-covered

@@ -1,0 +1,48 @@
+# Known-vulnerability audit of the locked backend dependencies (pip-audit against the OSV/PyPI
+# advisory data). Runs when the lockfile changes and weekly, because a new advisory can land on a
+# version we already pin without any code change. One short job, so it costs little.
+name: dependency-audit
+
+on:
+  pull_request:
+    paths:
+      - "backend/uv.lock"
+      - "backend/pyproject.toml"
+      - ".github/workflows/dependency-audit.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend/uv.lock"
+      - "backend/pyproject.toml"
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: dependency-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit (locked dependencies)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      - name: Export the locked set (no project, no hashes)
+        run: uv export --frozen --no-hashes --all-extras --no-emit-project --output-file audit-requirements.txt
+
+      - name: Audit
+        # `--no-deps --disable-pip`: audit exactly the pins in uv.lock without resolving or
+        # installing anything. A vulnerable pin fails the job; upgrade it with
+        # `uv lock --upgrade-package <name>` (or document an accepted risk with `--ignore-vuln`).
+        run: uvx pip-audit -r audit-requirements.txt --disable-pip --no-deps

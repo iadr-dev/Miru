@@ -1,8 +1,8 @@
-# PR gate for the Python backend. Gates run in blocking order: lint/format, then both type
-# checkers, then the fast non-network suite, then the governance suite, then the dual-dialect
-# Alembic check against a real Postgres service container. The default suite stays fast (no service
-# container) — only the dual-dialect job pays for Postgres, so the common path isn't slowed by a DB
-# it doesn't need.
+# PR gate for the Python backend. The lint-type-test job runs lint/format, both type checkers, the
+# governance suite first (a guardrail regression fails fast) and then the rest of the non-network
+# suite. A second job runs the dual-dialect schema check and the concurrency suite against a real
+# Postgres service container; the default suite needs no database, so the common path is not slowed
+# by one. Coverage, dependency audit and the OpenAPI contract live elsewhere (see backend/CLAUDE.md).
 name: backend-ci
 
 on:

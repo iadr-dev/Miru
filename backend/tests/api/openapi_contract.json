@@ -1,0 +1,1934 @@
+{
+ "DELETE /api/v1/alerts/{alert_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:alert_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/analytics/screener/screens/{screen_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:screen_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/me": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/me/channels/line": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "204"
+  ]
+ },
+ "DELETE /api/v1/me/channels/telegram": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "204"
+  ]
+ },
+ "DELETE /api/v1/me/connections/{provider}": {
+  "body_required": false,
+  "required_params": [
+   "path:provider"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/me/devices/{token}": {
+  "body_required": false,
+  "required_params": [
+   "path:token"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/me/keys/{provider}": {
+  "body_required": false,
+  "required_params": [
+   "path:provider"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/memory": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/memory/{memory_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:memory_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/schedules/{job_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:job_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/threads/{thread_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/watchlists/{watchlist_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "DELETE /api/v1/watchlists/{watchlist_id}/items/{symbol}": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol",
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "GET /api/v1/alerts": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/alerts/symbol-check": {
+  "body_required": false,
+  "required_params": [
+   "query:market",
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/rankings": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/screener/factors": {
+  "body_required": false,
+  "required_params": [
+   "query:market"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/screener/presets": {
+  "body_required": false,
+  "required_params": [
+   "query:market"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/screener/screens": {
+  "body_required": false,
+  "required_params": [
+   "query:market"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/{symbol}/score": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/{symbol}/summary": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/analytics/{symbol}/trend-score": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/auth/oauth/{provider}/callback": {
+  "body_required": false,
+  "required_params": [
+   "path:provider",
+   "query:code",
+   "query:state"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/auth/oauth/{provider}/start": {
+  "body_required": false,
+  "required_params": [
+   "path:provider",
+   "query:ticket"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/billing/history": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/billing/invoice/{transaction_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:transaction_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/billing/plans": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/billing/subscription": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/context/{package}": {
+  "body_required": false,
+  "required_params": [
+   "path:package",
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/derivatives/taiex-vix": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/derivatives/{contract}": {
+  "body_required": false,
+  "required_params": [
+   "path:contract"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/email/unsubscribe": {
+  "body_required": false,
+  "required_params": [
+   "query:token"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/comparison": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/overlap": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/expense-ratio": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/fund-info": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/holdings": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/insider-activity": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/institutional-holders": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/options-chain": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/premium-discount": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/profile": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/theme-tags": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/funds/{symbol}/trailing-returns": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/health": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/macro": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/macro/business-indicator": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/active-etf-report": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/advance-decline": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/big-holder-accumulation": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/daily-signal": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/day-trading": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/disposition-board": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/dividend-calendar": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/dividend-schedule": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/etf-list": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/etf-money-flow": {
+  "body_required": false,
+  "required_params": [
+   "query:end_date",
+   "query:start_date"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/futures-snapshot": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/holder-accumulation": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/index-contribution": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/index-strip": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/market/industry-flow": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/insider-transfer-declarations": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/institutional-ranking": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/international-index": {
+  "body_required": false,
+  "required_params": [
+   "query:market",
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/macro-calendar": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/margin-maintenance": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/margin-short-balance": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/material-announcement-feed": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/material-announcements": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/news-feed": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/order-book-stats": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/price-history": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/price-momentum": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/ptt-board": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/quotes": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/sector-constituents": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/sector-heatmap": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/sector-rotation": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/sector-rotation-rrg": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/stock-heatmap": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/symbol-info": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/tag-catalog": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/market/tag-screener": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/tick-snapshot": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/tw-rankings": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/market/us-index-strip": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/market/us-rankings": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/me": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/me/alert-preferences": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/me/channels": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/me/connections": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/me/keys": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/memory": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/memory/settings": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/notifications": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/notifications/badge": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/personality/presets": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/pets": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/pets/active": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/pets/catalog": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/pets/progress": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/pets/settings": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/quote": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/quote/stream": {
+  "body_required": false,
+  "required_params": [
+   "query:symbols"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/schedules": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/search": {
+  "body_required": false,
+  "required_params": [
+   "query:q"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/sources": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/stock/analyst-consensus": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/calendar-events": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/calendar-events-feed": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/chip-flows": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/company-profile": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/day-trading": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/disposition-securities": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/dividend-policy-summary": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/dividend-result": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/esg-score": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/etfs-holding-stock": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/financial-statement": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/finmind-news": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/foreign-shareholding": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/government-bank-flows": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/insider-shareholding": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/insider-transfer-declarations": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/institutional-flow": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/intraday-kbar": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/live-price-quote": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/live-quote": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/margin-short": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/month-revenue": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/peers": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/price-limit": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/price-tick": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/ptt-search": {
+  "body_required": false,
+  "required_params": [
+   "query:company_name",
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/sec-filings": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/securities-lending": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/shareholder-dispersion": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/technical-indicators": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/stock/valuation-ratios": {
+  "body_required": false,
+  "required_params": [
+   "query:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/symbols/{symbol}/supply-chain": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/symbols/{symbol}/themes": {
+  "body_required": false,
+  "required_params": [
+   "path:symbol"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/themes": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/themes/{key}": {
+  "body_required": false,
+  "required_params": [
+   "path:key"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/themes/{key}/tier-heatmap": {
+  "body_required": false,
+  "required_params": [
+   "path:key"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/themes/{key}/tiers": {
+  "body_required": false,
+  "required_params": [
+   "path:key"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/threads": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/threads/search": {
+  "body_required": false,
+  "required_params": [
+   "query:q"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/threads/{thread_id}": {
+  "body_required": false,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/threads/{thread_id}/export": {
+  "body_required": false,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/threads/{thread_id}/stream": {
+  "body_required": false,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/updates/stream": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/usage/llm": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/usage/quota": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/usage/today": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /api/v1/watchlists": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /api/v1/watchlists/{watchlist_id}/items": {
+  "body_required": false,
+  "required_params": [
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "GET /healthz": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /livez": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /readyz": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "GET /startupz": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "PATCH /api/v1/alerts/{alert_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:alert_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/analytics/screener/screens/{screen_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:screen_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/me": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/memory/{memory_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:memory_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/pets/settings": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/schedules/{job_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:job_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/threads/{thread_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/watchlists/{watchlist_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PATCH /api/v1/watchlists/{watchlist_id}/items/{item_id}": {
+  "body_required": true,
+  "required_params": [
+   "path:item_id",
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/agent/query": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/alerts": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/alerts/batch": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/analytics/screener/run": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/analytics/screener/screens": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/auth/logout": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/auth/oauth/{provider}": {
+  "body_required": false,
+  "required_params": [
+   "path:provider"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/auth/oauth/{provider}/link": {
+  "body_required": false,
+  "required_params": [
+   "path:provider"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/auth/refresh": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/billing/change-plan": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/billing/checkout": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/billing/portal": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/billing/resume": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/billing/sync": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/billing/webhook/paddle": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/channels/line/webhook": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/email/resubscribe": {
+  "body_required": false,
+  "required_params": [
+   "query:token"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/email/unsubscribe": {
+  "body_required": false,
+  "required_params": [
+   "query:token"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/me/channels/line/link": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/me/channels/telegram/link": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/me/devices": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/me/keys": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "POST /api/v1/memory": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/notifications/read": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/pets/pull": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "201"
+  ]
+ },
+ "POST /api/v1/schedules": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/fork": {
+  "body_required": true,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/steer": {
+  "body_required": true,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/switch-branch": {
+  "body_required": true,
+  "required_params": [
+   "path:thread_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/turns/{turn_id}/cancel": {
+  "body_required": false,
+  "required_params": [
+   "path:thread_id",
+   "path:turn_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/turns/{turn_id}/edit": {
+  "body_required": true,
+  "required_params": [
+   "path:thread_id",
+   "path:turn_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/turns/{turn_id}/feedback": {
+  "body_required": true,
+  "required_params": [
+   "path:thread_id",
+   "path:turn_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/threads/{thread_id}/turns/{turn_id}/regenerate": {
+  "body_required": false,
+  "required_params": [
+   "path:thread_id",
+   "path:turn_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/voice/speak": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/voice/transcribe": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/watchlists": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "201",
+   "422"
+  ]
+ },
+ "POST /api/v1/watchlists/reorder": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "204",
+   "422"
+  ]
+ },
+ "POST /api/v1/watchlists/{watchlist_id}/items/{item_id}/move": {
+  "body_required": true,
+  "required_params": [
+   "path:item_id",
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "POST /api/v1/webhooks/resend": {
+  "body_required": false,
+  "required_params": [],
+  "responses": [
+   "200"
+  ]
+ },
+ "POST /api/v1/webhooks/telegram": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PUT /api/v1/me/alert-preferences": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PUT /api/v1/memory/settings": {
+  "body_required": true,
+  "required_params": [],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PUT /api/v1/pets/{record_id}/equip": {
+  "body_required": false,
+  "required_params": [
+   "path:record_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ },
+ "PUT /api/v1/watchlists/{watchlist_id}/items/{symbol}": {
+  "body_required": true,
+  "required_params": [
+   "path:symbol",
+   "path:watchlist_id"
+  ],
+  "responses": [
+   "200",
+   "422"
+  ]
+ }
+}

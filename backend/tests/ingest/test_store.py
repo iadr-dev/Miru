@@ -8,6 +8,9 @@ overwrites rather than accumulates.
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
+
+import pytest
 
 from ingest.reader import ParquetMarketDataReader
 from ingest.store import ParquetStore
@@ -241,3 +244,29 @@ def test_read_range_latest_by_key_with_no_written_dates_returns_empty(tmp_path: 
     )
 
     assert rows == []
+
+
+def test_a_transient_permission_error_on_the_swap_rename_is_ridden_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A brief Windows refusal to rename a just-written directory is ridden out."""
+    from ingest import store as store_module  # noqa: PLC0415
+
+    real_rename = Path.rename
+    refusals = {"left": 2}
+
+    def flaky_rename(self: Path, target: Path) -> Path:
+        if refusals["left"] > 0 and self.parent.name == ".tmp":
+            refusals["left"] -= 1
+            raise PermissionError("access denied")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    monkeypatch.setattr(store_module.time, "sleep", lambda _seconds: None)
+    store = ParquetStore(root=tmp_path)
+
+    rows = [{"symbol": "2330", "market": "TW", "trade_date": "2026-01-05", "close": 1.0}]
+    store.write_partition("ds", "TW", date(2026, 1, 5), rows)
+
+    assert refusals["left"] == 0
+    assert store.read_partition("ds", "TW", date(2026, 1, 5))[0]["symbol"] == "2330"
