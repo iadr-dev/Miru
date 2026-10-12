@@ -50,8 +50,8 @@ US_PRICE_EOD_DATASET = "us_price_eod"
 
 # SPY (S&P 500 ETF) rides along in every `job_us_price_eod` pull as the US broad-market
 # reference-index proxy — the direct counterpart to TAIEX riding along in TW's own whole-market
-# `TaiwanStockPrice` partition (`analytics/scoring_batch.py::_TAIEX_SYMBOL`'s own comment).
-# `analytics/scoring_batch.py::_reference_index_closes` reads this symbol back out of the same
+# `TaiwanStockPrice` partition (`analytics/scoring_batch/::_TAIEX_SYMBOL`'s own comment).
+# `analytics/scoring_batch/::_reference_index_closes` reads this symbol back out of the same
 # partition for the US `taiex_correlation`-equivalent trend-score dimension. A real, liquid,
 # continuously-traded ETF (not a synthetic index ticker like `^GSPC`, which yfinance's batch
 # `download()` handles inconsistently across multi-symbol requests) — chosen for the same
@@ -108,7 +108,7 @@ async def demanded_us_symbols(ctx: IngestContext) -> list[str]:
 # for TW, so a US symbol's financials land in the same dataset-name shape a TW symbol's do.
 #
 # `ANALYST_CONSENSUS`/`INSTITUTIONAL_HOLDERS`/`INSIDER_ACTIVITY`/`SECTOR_CLASS` were added
-# alongside the original five so `analytics/scoring_batch.py`'s US-native factor/dimension design
+# alongside the original five so `analytics/scoring_batch/`'s US-native factor/dimension design
 # (`analyst_revision`/`institutional_ownership`/`insider_sentiment`/`sector_momentum` — see that
 # module's own docstring) has a whole-market-ingested dataset to read back nightly, rather than a
 # live per-symbol fetch at score-compute time (which would violate backend/CLAUDE.md §4's "no

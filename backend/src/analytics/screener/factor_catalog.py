@@ -13,7 +13,7 @@ query time is deliberately **not** listed. 本益比/股價淨值比/現金殖�
 `valuation_ratios` whole-market daily (PUBLIC tier), so reading it back is the same "already-
 materialized store" shape `stock_scores` uses, not a live fetch. 近4季ROE/EPS as raw values remain
 a follow-up: the underlying financial-statement partitions are whole-market-ingested too, but
-computing them needs a new batch pass (`analytics/scoring_batch.py`'s per-symbol `fundamentals.py`
+computing them needs a new batch pass (`analytics/scoring_batch/`'s per-symbol `fundamentals.py`
 read, not yet run as a whole-market batch) rather than a one-partition read-back.
 
 US omits 動能 (momentum/technical) and 分析師 (analyst) families this pass: yfinance's screener

@@ -78,7 +78,7 @@ class TradingDayCalendar:
         Used by the day-by-day walking methods below (`next_trading_day`/
         `business_days_between`/`shift_business_days`) AND by every "should today's job run"
         gate (`ingest/jobs.py::_run_if_trading_day`, `ingest/us_jobs.py::job_us_price_eod`,
-        `analytics/scoring_batch.py`/`analytics/screener/batch.py`'s own gates, the daemon's
+        `analytics/scoring_batch/`/`analytics/screener/batch.py`'s own gates, the daemon's
         daily-cadence dispatch check, `calendar/market_hours.py`) — **never** by the plain
         `is_trading_day` (which stays strictly allow-list-authoritative for historical
         gap-detection; see its own docstring).

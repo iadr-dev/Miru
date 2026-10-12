@@ -3,7 +3,7 @@
 Five of the six dimensions (`technical`/`chip_flow`/`margin_credit`/`sector_rotation`/
 `taiex_correlation`) are cache-only, exactly like `score_tools.py`'s `get_stock_score`: the daily
 `job_trend_score_batch` already computed them for the whole universe, so this tool reads
-`trend_scores` back rather than recomputing — see `analytics/scoring_batch.py`'s own
+`trend_scores` back rather than recomputing — see `analytics/scoring_batch/`'s own
 `job_trend_score_batch` docstring for why a live per-symbol recompute of those five would either
 duplicate the whole-universe read or rank against a stale/partial universe.
 

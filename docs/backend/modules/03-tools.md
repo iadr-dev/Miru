@@ -232,7 +232,7 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_stock_score` — the stock-detail-page read: one symbol's cached multi-factor composite
   (momentum/trend_quality/value_guard/quality/revenue_flow) + 偏多/中性/偏空 band, for the `swing`
   (default) or `position` horizon profile. **Cache-only, never live-compute** — reads the
-  `stock_scores` row the daily `analytics/scoring_batch.py` batch wrote; returns `found=false`
+  `stock_scores` row the daily `analytics/scoring_batch/` batch wrote; returns `found=false`
   with a plain-language reason if today's batch hasn't landed yet for this symbol, rather than
   falling back to an expensive (and non-comparable, since every factor is cross-sectional)
   per-symbol live computation. Reads the relational score cache directly (like the theme tools),

@@ -13,7 +13,7 @@ partial universe (a silently different, non-comparable number) — both worse th
 "not yet available" until the next batch lands.
 
 `get_score_leaderboard` is a pure sort-and-slice read over the same cache — the batch write path
-covers the whole universe every night (see `analytics/scoring_batch.py`'s docstring for why
+covers the whole universe every night (see `analytics/scoring_batch/`'s docstring for why
 top-N slicing never happens on the write side), so a "top 20 bullish" query here is just reading
 back an already-complete ranking, never a live rescan.
 

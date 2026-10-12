@@ -1,5 +1,5 @@
 """The relational read/write seam over `stock_scores` — the cached multi-factor composite-score
-table the daily batch job (`analytics/scoring_batch.py`) writes and both the detail-page and
+table the daily batch job (`analytics/scoring_batch/`) writes and both the detail-page and
 leaderboard tools read.
 
 Mirrors `analytics/themes/store.py`'s shape: the caller owns the session/transaction boundary
