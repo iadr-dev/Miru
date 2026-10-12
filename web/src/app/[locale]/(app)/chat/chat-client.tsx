@@ -5,12 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ActiveTurnView } from "@/app/[locale]/(app)/chat/active-turn-view";
+import { Composer } from "@/app/[locale]/(app)/chat/composer";
 import {
-  Composer,
   DEFAULT_MODEL_PROVIDER,
   firstModelFor,
   modelProvider,
-} from "@/app/[locale]/(app)/chat/composer";
+} from "@/app/[locale]/(app)/chat/composer-parts/model-options";
 import { EmptyState } from "@/app/[locale]/(app)/chat/empty-state";
 import { PersistedThreadView } from "@/app/[locale]/(app)/chat/persisted-thread-view";
 import { PetCompanion, type PetNotice } from "@/app/[locale]/(app)/chat/pet-companion";

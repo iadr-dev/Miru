@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { type AuthIntent, AuthModal } from "@/components/auth/auth-modal";
-import { Composer } from "@/components/entry/composer";
+import { EntryComposer } from "@/components/entry/composer";
 import { LanguageSwitcher } from "@/components/shell/language-switcher";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ export function EntryScreen(): ReactNode {
           </p>
 
           <div className="mt-8 w-full">
-            <Composer onAttemptSend={() => openModal("signIn", true)} />
+            <EntryComposer onAttemptSend={() => openModal("signIn", true)} />
           </div>
 
           {promptedFromSend && !modal.open ? (

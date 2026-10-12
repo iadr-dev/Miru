@@ -4,6 +4,7 @@ import { ArrowUpIcon, LockSimpleIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { useTypewriterHints } from "@/hooks/use-typewriter-hints";
+import { autogrowTextarea } from "@/lib/autogrow";
 import { cn } from "@/lib/cn";
 
 type ComposerProps = {
@@ -16,22 +17,14 @@ type ComposerProps = {
 /** The entry composer. It is deliberately NOT a dead input: anonymous users can type, but sending
  * prompts sign-in (the backend requires auth for a turn). We don't build a lie into the UI — the
  * send affordance clearly reads as a sign-in gate via its label + lock hint. */
-export function Composer({ onAttemptSend }: ComposerProps): ReactNode {
+export function EntryComposer({ onAttemptSend }: ComposerProps): ReactNode {
   const t = useTranslations("hero.composer");
   const [draft, setDraft] = useState("");
   const hints = t.raw("hints") as string[];
   const placeholder = useTypewriterHints(hints);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Grows with content up to ~45% of the viewport height (matching the Claude-style composer —
-  // the box itself expands, no inner scrollbar, until it's genuinely too tall to keep growing).
-  const grow = (el: HTMLTextAreaElement): void => {
-    const cap = Math.round(window.innerHeight * 0.45);
-    el.style.height = "auto";
-    const next = Math.min(el.scrollHeight, cap);
-    el.style.height = `${next}px`;
-    el.style.overflowY = el.scrollHeight > cap ? "auto" : "hidden";
-  };
+  const grow = autogrowTextarea;
 
   const submit = (e: FormEvent): void => {
     e.preventDefault();
