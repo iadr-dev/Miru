@@ -4,7 +4,6 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import {
@@ -15,6 +14,7 @@ import {
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getForeignShareholding, getStockChipFlows } from "@/lib/api/stock-detail";
+import { formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { ChipBrokerTopRow } from "@/types/stock-detail";

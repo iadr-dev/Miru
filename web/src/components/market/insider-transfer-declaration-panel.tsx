@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   INSIDER_TRANSFER_DECLARATION_COLLAPSED_ROW_COUNT,
   InsiderTransferDeclarationTable,
 } from "@/components/market/insider-transfer-declaration-table";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryState } from "@/components/ui/query-state";
 import { getInsiderTransferDeclarations } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";

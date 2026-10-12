@@ -2,8 +2,8 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { SectorConstituentRow } from "@/types/market";
 
 const ROW_GRID_COLS = "grid-cols-[1.4fr_0.9fr_0.9fr_0.9fr_1fr]";

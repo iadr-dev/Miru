@@ -22,15 +22,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  asArray,
-  asNumber,
-  formatCompactNumber,
-  formatNumber,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel, valueLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
 import { distinctChartColors, hashToChartToken } from "@/lib/chart-token-hash";
+import { fieldLabel, valueLabel } from "@/lib/field-labels";
+import { asArray, asNumber, formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { type ChartHint, chartHintSchema, type Mark } from "@/types/chart-hint";
 
 /** `arc` (pie/donut) degrades past this many distinct categories — an N-slice pie beyond this is

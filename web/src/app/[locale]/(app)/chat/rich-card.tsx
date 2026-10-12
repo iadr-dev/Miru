@@ -4,14 +4,12 @@ import type { ReactNode } from "react";
 import { AlertProposalCard } from "@/app/[locale]/(app)/chat/cards/alert-proposal-card";
 import { AskUserCard } from "@/app/[locale]/(app)/chat/cards/ask-user-card";
 import { BarChart } from "@/app/[locale]/(app)/chat/cards/bar-chart";
-import { PLUMBING_KEYS } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { shapeForCardType } from "@/app/[locale]/(app)/chat/cards/card-registry";
 import { CompareTable } from "@/app/[locale]/(app)/chat/cards/compare-table";
 import { DataSheet } from "@/app/[locale]/(app)/chat/cards/data-sheet";
 import { DivergingBarChart } from "@/app/[locale]/(app)/chat/cards/diverging-bar-chart";
 import { EventTimeline } from "@/app/[locale]/(app)/chat/cards/event-timeline";
 import { anyRowsPresent, hasSnapshotEntity } from "@/app/[locale]/(app)/chat/cards/extract-rows";
-import { cardTypeLabel, fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { FlowDistribution } from "@/app/[locale]/(app)/chat/cards/flow-distribution";
 import {
   chartHintPayloads,
@@ -27,6 +25,8 @@ import { SnapshotCard } from "@/app/[locale]/(app)/chat/cards/snapshot-card";
 import { ThemeTiersFlow } from "@/app/[locale]/(app)/chat/cards/theme-tiers-flow";
 import { TimeseriesChart } from "@/app/[locale]/(app)/chat/cards/timeseries-chart";
 import { WatchlistProposalCard } from "@/app/[locale]/(app)/chat/cards/watchlist-proposal-card";
+import { cardTypeLabel, fieldLabel } from "@/lib/field-labels";
+import { PLUMBING_KEYS } from "@/lib/format-number";
 import type { RichCard } from "@/types/conversation";
 
 /**

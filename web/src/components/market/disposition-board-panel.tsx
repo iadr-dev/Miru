@@ -3,9 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DispositionStockCard } from "@/components/market/disposition-stock-card";
+import { QueryState } from "@/components/ui/query-state";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { getDispositionBoard } from "@/lib/api/market";
 import { cn } from "@/lib/cn";

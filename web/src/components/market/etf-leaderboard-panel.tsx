@@ -2,9 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeleton } from "@/components/market/card-skeleton";
 import { LeaderboardCard } from "@/components/market/leaderboard-card";
+import { QueryState } from "@/components/ui/query-state";
 import { getScoreLeaderboard } from "@/lib/api/market";
 import type { LeaderboardDirection } from "@/types/market";
 import type { Market } from "@/types/settings";

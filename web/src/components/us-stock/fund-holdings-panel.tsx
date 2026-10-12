@@ -3,13 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-legend";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getFundHoldings } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { FundHoldingRow, FundSectorWeightingRow } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 

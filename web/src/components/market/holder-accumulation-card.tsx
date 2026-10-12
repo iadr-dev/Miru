@@ -3,12 +3,12 @@
 import { LockIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { HolderAccumulationRow, HolderThreshold, HolderWindow } from "@/types/market";
 
 const ROW_GRID_COLS = "grid-cols-[24px_1.3fr_0.8fr_1.1fr_0.9fr_28px]";

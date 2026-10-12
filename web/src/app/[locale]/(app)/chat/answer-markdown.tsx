@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
+import { TableWithActions } from "@/components/ui/table-actions";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 

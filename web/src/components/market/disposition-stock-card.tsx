@@ -3,8 +3,8 @@
 import { LockIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { DispositionBoardCardRow } from "@/types/market";
 
 const FLAG_ORDER = ["資", "券", "沖", "警", "處", "注"] as const;

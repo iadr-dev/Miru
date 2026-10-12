@@ -4,13 +4,13 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { Link } from "@/i18n/navigation";
 import { getEtfsHoldingStock } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type {

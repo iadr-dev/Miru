@@ -12,17 +12,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { TableWithActions } from "@/components/ui/table-actions";
+import { cn } from "@/lib/cn";
+import { fieldLabel } from "@/lib/field-labels";
 import {
   asArray,
   asNumber,
   asString,
   formatCompactNumber,
   formatNumber,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
-import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
-import { cn } from "@/lib/cn";
+} from "@/lib/format-number";
 
 /** `institutional_flow`'s raw row shape is `{trade_date, investor, buy, sell}` — one row per
  * (date, category) pair, `investor` a PascalCase category name ("Foreign_Investor",

@@ -15,9 +15,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { getEtfPremiumDiscount } from "@/lib/api/etf-detail";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { EtfNavRow } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 

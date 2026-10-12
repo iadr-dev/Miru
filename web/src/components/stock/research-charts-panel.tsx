@@ -13,7 +13,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { RangeSelect } from "@/components/stock/range-select";
@@ -25,6 +24,7 @@ import {
   getStockValuationRatios,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { AnalystConsensus, CalendarEventOut, ValuationRatiosRow } from "@/types/stock-detail";

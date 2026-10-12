@@ -14,7 +14,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   BUCKET_COLORS,
@@ -31,6 +30,7 @@ import {
 import { getPriceHistory } from "@/lib/api/market";
 import { getForeignShareholding, getStockInstitutionalFlow } from "@/lib/api/stock-detail";
 import { FLOW_CHART_TRADING_DAYS, groupFlowByPeriod } from "@/lib/flow-periods";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
 const SUMMARY_PERIODS = ["day", "week", "month"] as const;

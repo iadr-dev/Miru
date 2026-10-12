@@ -1,6 +1,6 @@
 import { setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
-import { SettingsPanelSwitch } from "@/components/settings/settings-panel-switch";
+import { SettingsPanelSwitch } from "@/app/[locale]/(app)/settings/settings-panel-switch";
 
 /**
  * Intercepts in-app navigation to `/settings/*` and renders it as a modal over whatever page the

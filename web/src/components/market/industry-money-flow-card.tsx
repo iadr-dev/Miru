@@ -3,10 +3,10 @@
 import { LockIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { IndustryChainMoneyFlowRow } from "@/types/market";
 
 const MAX_BAR_PCT = 40; // clamps the bar-length scale so one dominant chain doesn't flatten the rest

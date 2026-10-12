@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatNumber } from "@/lib/format-number";
 
 /**
  * A banded half-circle gauge for one real numeric value — the mockup's `.gauge-svg-wrap` shape,

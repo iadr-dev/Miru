@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -21,6 +20,7 @@ import {
 } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { formatAmount } from "@/lib/format-amount";
+import { formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type {

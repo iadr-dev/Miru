@@ -3,9 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DividendCalendarTable } from "@/components/market/dividend-calendar-table";
+import { QueryState } from "@/components/ui/query-state";
 import { getDividendCalendar } from "@/lib/api/market";
 import type { Market } from "@/types/settings";
 

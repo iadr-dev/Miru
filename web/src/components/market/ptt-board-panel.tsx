@@ -3,9 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryState } from "@/components/ui/query-state";
 import { getPttBoard } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";

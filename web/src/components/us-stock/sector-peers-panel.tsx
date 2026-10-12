@@ -3,12 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { SectorIndustriesTreemap } from "@/components/us-stock/sector-industries-treemap";
 import { getStockPeers } from "@/lib/api/stock-detail";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 import type {
   IndustryOverviewCompanyRow,

@@ -15,7 +15,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DividendPolicyCard } from "@/components/stock/dividend-policy-card";
 import { RangeSelect } from "@/components/stock/range-select";
@@ -23,6 +22,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 import {
   FINANCIAL_STATEMENT_TYPES,

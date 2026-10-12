@@ -34,7 +34,6 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ResizableRailHandle } from "@/components/shell/resizable-rail-handle";
@@ -52,6 +51,7 @@ import {
 } from "@/hooks/use-watchlists";
 import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import type { Market } from "@/types/settings";
 import {

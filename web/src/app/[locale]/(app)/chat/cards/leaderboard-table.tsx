@@ -2,15 +2,9 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import {
-  asArray,
-  asNumber,
-  asString,
-  formatNumber,
-  PLUMBING_KEYS,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { cn } from "@/lib/cn";
+import { fieldLabel } from "@/lib/field-labels";
+import { asArray, asNumber, asString, formatNumber, PLUMBING_KEYS } from "@/lib/format-number";
 
 const MAX_ROWS = 25;
 

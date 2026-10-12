@@ -12,6 +12,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { fieldLabel } from "@/lib/field-labels";
 import {
   asArray,
   asNumber,
@@ -19,9 +21,7 @@ import {
   formatCompactNumber,
   formatNumber,
   rowDate,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+} from "@/lib/format-number";
 
 type GroupedPoint = { category: string; a: number; b: number };
 type GroupedSeries = { aKey: string; bKey: string; points: GroupedPoint[] };

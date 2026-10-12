@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  fieldLabel,
-  LABELED_FIELDS,
-  valueLabel,
-} from "@/app/[locale]/(app)/chat/cards/field-labels";
-import en from "../../../../../../messages/en.json";
-import zh from "../../../../../../messages/zh-TW.json";
+import { fieldLabel, LABELED_FIELDS, valueLabel } from "@/lib/field-labels";
+import en from "../../messages/en.json";
+import zh from "../../messages/zh-TW.json";
 
 /** A translator over a messages file: `t("fields.year")` reads `chat.cards.fields.year`, and a
  * missing key throws — exactly the failure a mapped-but-untranslated label would cause live. */

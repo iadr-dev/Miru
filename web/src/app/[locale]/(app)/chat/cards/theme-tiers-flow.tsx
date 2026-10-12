@@ -3,7 +3,7 @@
 import { ArrowRightIcon, CheckCircleIcon, LightningIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { asArray, asString } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { asArray, asString } from "@/lib/format-number";
 
 /** `get_theme_tiers`'s three tier buckets — each row is a SUB-INDUSTRY name (e.g. "IC 設計"),
  * not an individual stock ticker; per-ticker membership within a sub-industry is a separate

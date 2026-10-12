@@ -2,8 +2,8 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import { iconToSvgElement, sectorIconKeyForIndustry } from "@/lib/sector-rotation-icons";
 import { colorForQuadrant, quadrantFor } from "./rrg-layout";
 

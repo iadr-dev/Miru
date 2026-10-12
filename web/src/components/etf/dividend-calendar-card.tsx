@@ -3,12 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getDividendCalendar } from "@/lib/api/market";
+import { formatNumber } from "@/lib/format-number";
 import type { DividendCalendarEventRow } from "@/types/market";
 import type { Market } from "@/types/settings";
 
