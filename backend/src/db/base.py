@@ -12,8 +12,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 
 from config import get_settings
-from db.additive_upgrade import apply_additive_upgrade
+from db.additive_upgrade import apply_additive_upgrade, pending_additive_steps
 from db.postgres_search import ensure_postgres_search_index
+from db.schema_lock import schema_lock
 
 
 class Base(DeclarativeBase):
@@ -57,6 +58,24 @@ def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession
     return async_sessionmaker(engine, expire_on_commit=False)
 
 
+_SHOWN = 8  # how many missing items the startup error lists
+
+
+class SchemaOutOfDateError(RuntimeError):
+    """The database exists but is behind the models, and the mode is `strict`."""
+
+    def __init__(self, behind: list[str]) -> None:
+        shown = ", ".join(behind[:_SHOWN]) + (
+            f" (+{len(behind) - _SHOWN} more)" if len(behind) > _SHOWN else ""
+        )
+        super().__init__(
+            f"The database schema is behind the models: {shown}. In development, rebuild it "
+            "with `uv run python -m db.reset --yes` (this empties the app database only, never "
+            "the market data); or set SCHEMA_UPGRADE_MODE=additive to patch it in place."
+        )
+        self.behind = behind
+
+
 async def ensure_schema(engine: AsyncEngine) -> None:
     """Create every table/index/constraint declared on `Base.metadata` that doesn't already
     exist, then add any column/index/unique key an existing table is missing — this project's sole
@@ -69,13 +88,19 @@ async def ensure_schema(engine: AsyncEngine) -> None:
     # `db.models` imports `Base` from this module.
     from db import models  # noqa: F401, PLC0415  # pyright: ignore[reportUnusedImport]
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    # Existing tables keep their shape under `create_all`; add any column/index/unique key the
-    # models gained since (additive only — never drops or rewrites; see db/additive_upgrade.py).
-    await apply_additive_upgrade(engine, Base.metadata)
-    # Postgres-only extras the portable model cannot express (the chat-search trigram index).
-    await ensure_postgres_search_index(engine)
+    async with schema_lock(engine):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        if get_settings().schema_upgrade_mode == "additive":
+            # Existing tables keep their shape under `create_all`; add any column/index/unique
+            # key the models gained since (additive only; see db/additive_upgrade.py).
+            await apply_additive_upgrade(engine, Base.metadata)
+        else:
+            behind = await pending_additive_steps(engine, Base.metadata)
+            if behind:
+                raise SchemaOutOfDateError(behind)
+        # Postgres-only extras the portable model cannot express (the chat-search trigram index).
+        await ensure_postgres_search_index(engine)
 
 
 async def ensure_schema_for(session_factory: async_sessionmaker[AsyncSession]) -> None:

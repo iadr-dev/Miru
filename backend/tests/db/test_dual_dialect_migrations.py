@@ -163,3 +163,19 @@ async def test_chat_search_uses_the_trigram_index_on_postgres(database_url: str)
         assert MESSAGE_TEXT_INDEX in plan, plan
     finally:
         await engine.dispose()
+
+
+async def test_concurrent_startups_do_not_race_on_an_empty_database(database_url: str) -> None:
+    """Compose starts api, scheduler, ingest and mcp together, each calling `ensure_schema`. On an
+    empty Postgres, an unguarded `create_all` can fail with 'relation already exists'; the schema
+    lock serialises them, so every caller finishes cleanly."""
+    if not database_url.startswith("postgresql"):
+        pytest.skip("the startup race and its advisory lock are Postgres-only")
+    import asyncio  # noqa: PLC0415
+
+    engines = [make_engine(database_url) for _ in range(4)]
+    try:
+        await asyncio.gather(*(ensure_schema(engine) for engine in engines))
+    finally:
+        for engine in engines:
+            await engine.dispose()

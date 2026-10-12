@@ -177,13 +177,19 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
 - **Money as integer micro-units** — SQLite `REAL` loses precision; no `Decimal` columns.
 - **CHECK constraints, not native ENUM** for all constrained text (`tier`/`status`/`role`/`type`/
   `data_class`…).
-- **Schema provisioning (development stage): no Alembic.** `Base.metadata.create_all()` plus
-  `db/additive_upgrade.py` (adds missing columns/indexes/named uniques, never drops or rewrites) run
-  at every process start. A destructive or data-dependent model change means rebuilding the dev
-  database - keep the schema fresh and clean rather than carrying migration history. **Alembic is
-  adopted when the first production version ships:** a baseline migration generated from the models,
-  then forward-only migrations that apply on **both** SQLite and Postgres in CI (`dual_dialect`
-  marker), expand-contract for message-tree / `stream_events` changes.
+- **Schema provisioning (development stage): no Alembic, no ALTER TABLE.** Every process start runs
+  `Base.metadata.create_all()` under a Postgres advisory lock (`db/schema_lock.py`, so api,
+  scheduler, ingest and mcp starting together cannot race on an empty database). With the default
+  `SCHEMA_UPGRADE_MODE=strict`, an existing database that is behind the models makes startup fail
+  with the exact way out: `uv run python -m db.reset --yes` (or `docker compose run --rm api python
+  -m db.reset --yes`), which rebuilds the **app** database only - never the market data
+  (Parquet/DuckDB) or Redis - and refuses outside `ENV=development`. Keep the schema fresh and clean
+  rather than carrying migration history; `SCHEMA_UPGRADE_MODE=additive` (data-preserving ADD
+  COLUMN/INDEX/UNIQUE via `db/additive_upgrade.py`) is an opt-in escape hatch. **Alembic is adopted
+  when the first production version ships:** a baseline migration generated from the models, then
+  forward-only migrations that apply on **both** SQLite and Postgres in CI (`dual_dialect` marker),
+  run once as a release step (not by every replica), expand-contract for message-tree /
+  `stream_events` changes.
 - Set `PRAGMA foreign_keys=ON` per SQLite connection or `ON DELETE CASCADE` silently no-ops.
 - Per-user isolation: session-scoped store wrapper injects `WHERE user_id = ?`; Postgres RLS as
   prod backstop.
