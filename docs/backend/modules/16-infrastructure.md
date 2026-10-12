@@ -298,17 +298,19 @@ shutdown.
 
 ## Outbound HTTP clients
 
-`backend/src/netclient/` holds the shared client. `sources.tls.build_async_client` (every market-data
-adapter), the Paddle client and the OAuth providers lease one pooled `httpx.AsyncClient` per event
-loop and settings (TLS verify, timeout, headers) instead of opening a new client, and so a new TCP +
-TLS handshake, for every call. `async with build_async_client(...) as client` is unchanged; leaving
-the block no longer closes the client, and the API closes the pool at shutdown. Idle keep-alive
-connections expire after 15 s, and a failed connection attempt is retried once (nothing was sent, so
-this is safe for any method).
+`backend/src/netclient/` holds the shared connection pool. `sources.tls.build_async_client` (every
+market-data adapter), the Paddle client, the OAuth providers, the OpenAI-compatible LLM client and
+the notification delivery transport all use `async with lease_client(...) as client`. What is
+pooled is the **transport** (keep-alive connections and TLS sessions, per event loop and TLS
+setting), so a call no longer pays a new TCP + TLS handshake. Each lease gets its **own client** on
+top of it: its own cookie jar, headers and timeout. That separation is deliberate: a shared client
+would send a cookie set in answer to one caller's request on the next caller's, a cross-tenant leak
+when callers are different users. Leaving the `async with` does not close the pool; the API closes
+it at shutdown. Idle keep-alive connections expire after 15 s, and a failed connection attempt is
+retried once (nothing was sent, so this is safe for any method).
 
 Status-based retries are opt-in (`retry_reads`) and only for GET/HEAD: up to 3 attempts on a
 connection error, timeout or a 429/502/503/504, exponential backoff with jitter, `Retry-After`
 honoured up to 5 s. The Paddle client uses it; the market-data sources do not, because ingest
 governance is "a failed fetch journals FAILED and the next scheduled run retries", and some
-sources are metered. The LLM clients and notification delivery still open their own clients.
-
+sources are metered. The Anthropic, OpenAI, Gemini and voice SDKs manage their own HTTP clients.
