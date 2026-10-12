@@ -79,7 +79,7 @@ creation path, so §9a bound 1 holds by construction. The rule vocabulary (`Rule
 definition without an upward import (`scheduler` re-exports it). Chat cannot yet propose
 *watchlist-scoped* rules or schedules (`propose_schedule`).
 
-**Dataset availability (verified against `ingest/jobs.py` + `ingest/us_jobs.py`):** every ingest job
+**Dataset availability (verified against `ingest/jobs/` + `ingest/us_jobs.py`):** every ingest job
 calls `publish_data_updated` after a successful write — the shared whole-market runner and each
 bespoke job (attention, disposition, ETF NAV/AUM/expense, announcements, insider, US price/
 fundamentals). The only silent writers are `job_us_symbol_universe` (a roster) and the derived

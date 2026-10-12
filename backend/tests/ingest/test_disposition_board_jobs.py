@@ -11,7 +11,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-import ingest.jobs as jobs_module
+import ingest.jobs.risk_lists as jobs_module
 from config.settings import Settings
 from ingest.context import IngestContext
 from ingest.jobs import (
