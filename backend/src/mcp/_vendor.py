@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import sys
 
-_BOOTSTRAPPED_ATTR = "_miro_mcp_vendor_bootstrapped"
+_BOOTSTRAPPED_ATTR = "_miru_mcp_vendor_bootstrapped"
 
 
 def bootstrap_vendor_sdk() -> None:
@@ -85,7 +85,7 @@ def bootstrap_vendor_sdk() -> None:
     try:
         from fastmcp import FastMCP  # noqa: PLC0415 — must import inside the path-swapped block
 
-        FastMCP(name="_miro_mcp_vendor_bootstrap_probe")
+        FastMCP(name="_miru_mcp_vendor_bootstrap_probe")
     finally:
         sys.path = saved_path
         for name, module in our_submodules.items():

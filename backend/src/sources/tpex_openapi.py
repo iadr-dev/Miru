@@ -41,7 +41,7 @@ _DISPOSITION_EVENTS = f"{_BASE_URL}/tpex_disposal_information"
 
 # Upstream rejects requests with no User-Agent (the "needs UA header" quirk this family is
 # known for) — a plain, honest UA identifying this client, not a browser-spoofing one.
-_HEADERS = {"User-Agent": "Miro-Backend/1.0 (+governed TW-stock/ETF context agent)"}
+_HEADERS = {"User-Agent": "Miru-Backend/1.0 (+governed TW-stock/ETF context agent)"}
 
 _CAVEAT = (
     "TPEX OpenAPI is the official latest end-of-day OTC/emerging-market snapshot only — no "

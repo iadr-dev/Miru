@@ -103,7 +103,7 @@ def create_app(
             await dispose_engine_for(session_factory)
             await aclose_shared_clients()
 
-    app = FastAPI(title="Miro API", version="0.1.0", lifespan=_lifespan)
+    app = FastAPI(title="Miru API", version="0.1.0", lifespan=_lifespan)
 
     resolved_quote_feed = quote_feed or build_quote_feed(
         resolved_settings,

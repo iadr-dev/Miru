@@ -81,13 +81,13 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: miro
+          POSTGRES_USER: miru
           POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.sha }}
-          POSTGRES_DB: miro_test
+          POSTGRES_DB: miru_test
         ports:
           - "5432:5432"
         options: >-
-          --health-cmd "pg_isready -U miro -d miro_test"
+          --health-cmd "pg_isready -U miru -d miru_test"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -110,7 +110,7 @@ jobs:
         # service container above uses the same run-derived password, so the check actually runs
         # in CI while a local `pytest` without a DB still passes.
         env:
-          TEST_POSTGRES_URL: postgresql+asyncpg://miro:${{ env.PGPASSWORD }}@localhost:5432/miro_test
+          TEST_POSTGRES_URL: postgresql+asyncpg://miru:${{ env.PGPASSWORD }}@localhost:5432/miru_test
         run: uv run pytest -m dual_dialect -v
 
       - name: Concurrency suite (real Postgres)
@@ -118,5 +118,5 @@ jobs:
         # writers; reuses the same Postgres service, so it rides along with the dual-dialect job
         # rather than paying for a second container.
         env:
-          TEST_POSTGRES_URL: postgresql+asyncpg://miro:${{ env.PGPASSWORD }}@localhost:5432/miro_test
+          TEST_POSTGRES_URL: postgresql+asyncpg://miru:${{ env.PGPASSWORD }}@localhost:5432/miru_test
         run: uv run pytest -m concurrency -v
