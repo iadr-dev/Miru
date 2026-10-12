@@ -10,6 +10,7 @@ exercised without running the whole OAuth flow (that flow is tested at its own s
 from __future__ import annotations
 
 import asyncio
+import os
 import tempfile
 import threading
 import uuid
@@ -26,7 +27,7 @@ from accounts.auth import issue_access_token
 from api.app import create_app
 from config.settings import Settings
 from db import models  # noqa: F401  # pyright: ignore[reportUnusedImport] — registers ORM models
-from db.base import Base
+from db.base import Base, ensure_schema
 from db.models import UserRow
 from db.sqlite_pragma import enable_sqlite_foreign_keys
 from llm.base import (
@@ -47,6 +48,7 @@ from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from skills.registry import SkillRegistry
+from tests.pg_support import app_role_url
 from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
 from tools.base import BaseTool, ToolContext
@@ -172,15 +174,31 @@ def build_test_app(  # noqa: PLR0913 — one create_app collaborator per paramet
     (`build_test_client`) and the async-streaming tests both build on this."""
     # A temp-file SQLite (not :memory:) so the schema created here is visible to the connections
     # the request-handling opens — an in-memory DB is per-connection.
+    # Opt-in: run the same API suite against a real Postgres with row-level security enforced
+    # (RLS_TEST_POSTGRES_URL=postgresql+asyncpg://..., ROW_LEVEL_SECURITY=true). SQLite otherwise.
+    admin_pg_url = os.environ.get("RLS_TEST_POSTGRES_URL")
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)  # noqa: SIM115 — closed below
     tmp.close()
     db_path = Path(tmp.name)
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")
-    enable_sqlite_foreign_keys(engine)
+    database_url = f"sqlite+aiosqlite:///{db_path.as_posix()}"
 
     async def _create_all() -> None:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        nonlocal database_url
+        if admin_pg_url:
+            # RLS does not apply to superusers, so the app connects as an ordinary role that owns
+            # its tables; the admin connection only clears the previous app's schema.
+            admin = create_async_engine(admin_pg_url)
+            async with admin.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+            await admin.dispose()
+            database_url = await app_role_url(admin_pg_url)
+            engine = create_async_engine(database_url)
+            await ensure_schema(engine)  # tables + (when ROW_LEVEL_SECURITY=true) the policies
+        else:
+            engine = create_async_engine(database_url)
+            enable_sqlite_foreign_keys(engine)
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
         await engine.dispose()
 
     # Run schema-creation on its own event loop in a worker thread, so this builder is safe to
@@ -193,7 +211,7 @@ def build_test_app(  # noqa: PLR0913 — one create_app collaborator per paramet
     thread.start()
     thread.join()
 
-    app_engine = create_async_engine(f"sqlite+aiosqlite:///{db_path.as_posix()}")
+    app_engine = create_async_engine(database_url)
     enable_sqlite_foreign_keys(app_engine)
     session_factory = async_sessionmaker(app_engine, expire_on_commit=False)
     skill_registry = SkillRegistry()

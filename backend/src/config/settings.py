@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     #   additive - add the missing columns/indexes/unique keys in place (data-preserving).
     # Production moves to Alembic migrations; see db/base.py and backend/CLAUDE.md section 6.
     schema_upgrade_mode: Literal["strict", "additive"] = "strict"
+    # Postgres row-level security as a backstop for per-user isolation (db/rls.py). Off by default;
+    # a no-op on SQLite. Turning it on makes the database refuse any query on a user-owned table
+    # that is not running as that user or inside `system_access()`.
+    row_level_security: bool = False
     # Postgres connection pool (ignored for SQLite). Each process (api, scheduler, ingest, mcp)
     # has its own pool, so size them against the server's max_connections across all replicas.
     db_pool_size: int = 10

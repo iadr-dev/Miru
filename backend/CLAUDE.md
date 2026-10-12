@@ -206,8 +206,12 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
   run once as a release step (not by every replica), expand-contract for message-tree /
   `stream_events` changes.
 - Set `PRAGMA foreign_keys=ON` per SQLite connection or `ON DELETE CASCADE` silently no-ops.
-- Per-user isolation: session-scoped store wrapper injects `WHERE user_id = ?`; Postgres RLS as
-  prod backstop.
+- Per-user isolation: session-scoped store wrapper injects `WHERE user_id = ?`; Postgres RLS is the
+  backstop (`db/rls.py`, opt-in `ROW_LEVEL_SECURITY=true`, Postgres only). The app must connect as an
+  ordinary role (not a superuser / BYPASSRLS - startup fails otherwise). A request's authenticated
+  user is bound once in `_load_user`; cross-user work (scheduler/ingest processes, webhooks, the
+  sign-in flow) runs in `system_access()` / the `system_scope` route dependency. Anything that sets
+  neither is denied. New user-owned table: give it a `user_id` column and it is covered automatically.
 
 ## 7. Testing
 

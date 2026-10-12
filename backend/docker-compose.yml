@@ -17,7 +17,10 @@ name: miro
 
 x-app-env: &app-env
   # App state on the compose Postgres; async driver required.
-  DATABASE_URL: postgresql+asyncpg://miro:${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}@postgres:5432/miro
+  # `DB_USER=miro_app` (created by docker/postgres-init on a fresh volume) is the ordinary role row-level
+  # security needs; the default `miro` is the container superuser, which Postgres exempts from RLS.
+  DATABASE_URL: postgresql+asyncpg://${DB_USER:-miro}:${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}@postgres:5432/miro
+  ROW_LEVEL_SECURITY: ${ROW_LEVEL_SECURITY:-false}
   # The whole point of the dev-parity stack: real Redis, real Redis-backed transport + limiter,
   # so the code paths that only activate on the redis backend actually run here.
   REDIS_URL: redis://redis:6379/0
@@ -206,6 +209,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U miro -d miro"]

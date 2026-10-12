@@ -15,6 +15,7 @@ from typing import Protocol, runtime_checkable
 
 import structlog
 
+from db import rls
 from schemas.enums import Tier
 from tools.base import ToolContext
 
@@ -73,6 +74,7 @@ async def resolve_principal(
         return ToolContext()
 
     user_id, tier = resolved
+    rls.bind_user(user_id)  # row-level security: this call acts as that user (db/rls.py)
     return ToolContext(user_id=user_id, tier=tier)
 
 

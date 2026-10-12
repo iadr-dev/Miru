@@ -47,6 +47,7 @@ import structlog
 
 from config.logging_config import configure_logging
 from config.settings import Settings, get_settings
+from db import rls
 from ingest.backfill_cli import (
     run_backfill_cli,
     run_derived_compute_catchup,
@@ -239,6 +240,9 @@ async def run_ingest_loop(
 async def main() -> None:
     settings = get_settings()
     configure_logging(settings)
+    rls.install(enabled=settings.row_level_security)
+    # This process works across all users (ingest and the derived scoring): system work.
+    rls.enter_system_mode()
     ctx = await build_ingest_context_from_settings(settings)
     daemon = IngestDaemon(ctx)
     daemon.seed_startup()

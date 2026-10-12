@@ -19,6 +19,7 @@ from api.dependencies import (
     AppState,
     get_state,
     get_user_store,
+    system_scope,
 )
 from api.errors import ApiError
 from api.routers.scheduler._common import store as _store
@@ -61,7 +62,7 @@ async def _unsubscribe_target(
     return user, user.email
 
 
-@router.get("/email/unsubscribe", response_class=HTMLResponse)
+@router.get("/email/unsubscribe", response_class=HTMLResponse, dependencies=[Depends(system_scope)])
 async def unsubscribe_page(
     token: str = Query(min_length=3, max_length=200),
     state: AppState = Depends(get_state),
@@ -90,7 +91,9 @@ async def unsubscribe_page(
     )
 
 
-@router.post("/email/unsubscribe", response_class=HTMLResponse)
+@router.post(
+    "/email/unsubscribe", response_class=HTMLResponse, dependencies=[Depends(system_scope)]
+)
 async def unsubscribe_action(
     token: str = Query(min_length=3, max_length=200),
     state: AppState = Depends(get_state),
@@ -110,7 +113,9 @@ async def unsubscribe_action(
     return _unsubscribed_page(token)
 
 
-@router.post("/email/resubscribe", response_class=HTMLResponse)
+@router.post(
+    "/email/resubscribe", response_class=HTMLResponse, dependencies=[Depends(system_scope)]
+)
 async def resubscribe_action(
     token: str = Query(min_length=3, max_length=200),
     state: AppState = Depends(get_state),
@@ -180,7 +185,7 @@ def _resend_signature_ok(secret: str, headers: dict[str, str], body: bytes) -> b
     return any(hmac.compare_digest(c.encode(), expected.encode()) for c in candidates)
 
 
-@router.post("/webhooks/resend")
+@router.post("/webhooks/resend", dependencies=[Depends(system_scope)])
 async def resend_webhook(
     request: Request,
     state: AppState = Depends(get_state),

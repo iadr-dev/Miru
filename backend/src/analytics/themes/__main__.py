@@ -32,7 +32,10 @@ from analytics.themes.research import (
 from analytics.themes.store import SqlAlchemyThemeStore
 from config.settings import get_settings
 from dataaccess.web_search import WebSearchGateway
-from db import models  # noqa: F401  # pyright: ignore[reportUnusedImport] — registers ORM models
+from db import (
+    models,  # noqa: F401  # pyright: ignore[reportUnusedImport] — registers ORM models
+    rls,
+)
 from db.base import make_engine, make_session_factory
 from llm.base import LLMClient
 from llm.registry import ModelRole, resolve_role
@@ -97,6 +100,8 @@ async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators, on
 
 async def main() -> None:
     settings = get_settings()
+    rls.install(enabled=settings.row_level_security)
+    rls.enter_system_mode()  # platform-wide reference data, not one user
     run_id = str(uuid.uuid4())
 
     engine = make_engine(settings.database_url)

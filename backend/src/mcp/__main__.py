@@ -23,6 +23,7 @@ import uvicorn
 
 from config.logging_config import configure_logging
 from config.settings import get_settings
+from db import rls
 from db.base import ensure_schema_for
 from mcp.composition import build_mcp_http_app
 
@@ -30,11 +31,13 @@ from mcp.composition import build_mcp_http_app
 def main() -> None:
     settings = get_settings()
     configure_logging(settings)
+    rls.install(enabled=settings.row_level_security)
     built = build_mcp_http_app(settings)
     # `create_all()` is idempotent, so this is safe even under multiple replicas racing to call
     # it. Run once, synchronously, before `uvicorn.run` starts its own loop — this project's sole
     # schema-provisioning mechanism (no Alembic migration chain).
-    asyncio.run(ensure_schema_for(built.session_factory))
+    with rls.system_access():  # provisioning is not on behalf of a user; each call binds its own
+        asyncio.run(ensure_schema_for(built.session_factory))
     uvicorn.run(built.app, host=settings.mcp_host, port=settings.mcp_port)
 
 

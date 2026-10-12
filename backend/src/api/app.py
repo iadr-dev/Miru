@@ -49,6 +49,7 @@ from api.routers import (
 )
 from api.turn_registry import TurnRegistry
 from config.settings import Settings, get_settings
+from db import rls
 from db.base import dispose_engine_for, ensure_schema_for
 from events.factory import EventBusFactory, build_event_bus_factory
 from events.live_quote import QuoteFeed
@@ -82,6 +83,7 @@ def create_app(
     allowed_origins: list[str] | None = None,
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
+    rls.install(enabled=resolved_settings.row_level_security)
 
     @asynccontextmanager
     async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:

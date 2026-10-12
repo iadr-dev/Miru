@@ -716,3 +716,30 @@ identities, secrets, sessions, pets), `scheduler` (schedules, alerts, delivery t
 types and constants are in `_common.py`; `db.models` re-exports every model, so
 `from db.models import ThreadRow` is unchanged. A model's relationships stay inside its module.
 
+## Row-level security (Postgres backstop for per-user isolation)
+
+Every store filters by `user_id`; one query that forgets would leak another user's rows. With
+`ROW_LEVEL_SECURITY=true`, `db/rls.py` adds a `user_isolation` policy (plus `FORCE ROW LEVEL
+SECURITY`) to every table that has a `user_id` column - 24 today, found from the models so a new
+user-owned table is covered automatically - restricting rows to
+`user_id = current_setting('app.user_id')` or a system context (`app.rls_system = 'on'`). Identity
+reaches the database through an `after_begin` hook on every transaction, from a contextvar the auth
+dependency sets, so the stores are unchanged. `users` is left out on purpose: sign-in looks users up
+before any identity exists.
+
+* **Fail closed.** No identity and no system context means no rows and no writes.
+* **System context** (`system_access()` / the `system_scope` route dependency / `enter_system_mode()`
+  for whole processes): the scheduler and ingest daemons, the OAuth callback and refresh/logout, the
+  Paddle, Resend, Telegram and LINE webhooks and the email-unsubscribe pages. Keep it off any route
+  that serves a signed-in user.
+* **The role matters.** Postgres exempts superusers and BYPASSRLS roles from every policy, and the
+  `POSTGRES_USER` a container or managed instance starts with is a superuser. Startup raises
+  `RlsNotEnforcedError` if RLS is on but the connected role is exempt. In compose, a fresh volume
+  creates `miro_app` (`docker/postgres-init`); use it with `DB_USER=miro_app ROW_LEVEL_SECURITY=true`.
+  An existing volume's tables belong to `miro`, so rebuild it (`docker compose down -v` empties the
+  app database; market data is a separate volume) before switching.
+* **Verified** by `tests/db/test_rls.py` (isolation without a WHERE, WITH CHECK, fail-closed,
+  identity surviving a commit, superuser rejected) and by running the API suite against Postgres
+  with RLS on (`RLS_TEST_POSTGRES_URL=... ROW_LEVEL_SECURITY=true pytest tests/api`: 411 of 421
+  pass; the other 10 seed or count rows from their own event loop or outside any request, which the
+  harness does not model).
