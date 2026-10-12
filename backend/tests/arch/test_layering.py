@@ -37,7 +37,7 @@ LAYER_ORDER: list[list[str]] = [
     ["sources"],
     # Foundation: persistence and shared contracts, importable from every layer above.
     ["db"],
-    ["schemas", "config", "governance"],
+    ["schemas", "config", "governance", "netclient"],
 ]
 
 LAYER_INDEX: dict[str, int] = {module: i for i, layer in enumerate(LAYER_ORDER) for module in layer}

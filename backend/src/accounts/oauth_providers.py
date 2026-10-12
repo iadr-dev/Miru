@@ -13,6 +13,7 @@ own server-side `/verify` endpoint for LINE — neither hand-rolls signature cry
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urlencode
 
@@ -25,6 +26,7 @@ from pydantic import BaseModel, ConfigDict
 
 from accounts.models import OAuthProvider
 from config.settings import Settings, reveal
+from netclient import lease_client
 
 logger = structlog.get_logger(__name__)
 
@@ -115,12 +117,13 @@ class OAuthProviderClient(Protocol):
     ) -> VerifiedIdentity: ...
 
 
-HttpClientFactory = Callable[[], httpx.AsyncClient]
+HttpClientFactory = Callable[[], AbstractAsyncContextManager[httpx.AsyncClient]]
 
 
-def _default_client_factory() -> httpx.AsyncClient:
-    # Strict TLS verification (httpx default) — this auth flow never downgrades it.
-    return httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
+def _default_client_factory() -> AbstractAsyncContextManager[httpx.AsyncClient]:
+    # Strict TLS verification (httpx default) — this auth flow never downgrades it. Pooled; no
+    # retries (a token exchange is single-use).
+    return lease_client(timeout=_HTTP_TIMEOUT_SECONDS)
 
 
 async def _post_form(

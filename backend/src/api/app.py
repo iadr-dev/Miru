@@ -55,6 +55,7 @@ from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker, build_data_update_broker, build_quote_feed
 from events.rate_limit import AsyncRateLimiter, build_rate_limiter
 from events.turn_control import TurnControl, build_turn_control
+from netclient import aclose_shared_clients
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry, default_registry
 from skills.registry import SkillRegistry
@@ -98,6 +99,7 @@ def create_app(
             if live_quote_manager is not None:
                 await live_quote_manager.aclose()
             await dispose_engine_for(session_factory)
+            await aclose_shared_clients()
 
     app = FastAPI(title="Miro API", version="0.1.0", lifespan=_lifespan)
 

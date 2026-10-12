@@ -9,9 +9,9 @@ caller and always loudly logged.
 
 from __future__ import annotations
 
-import httpx
 import structlog
 
+from netclient import SharedClientLease, lease_client
 from schemas.enums import TLSPolicy
 
 logger = structlog.get_logger(__name__)
@@ -22,8 +22,8 @@ def build_async_client(
     tls_policy: TLSPolicy = TLSPolicy.STRICT,
     timeout: float = 10.0,
     headers: dict[str, str] | None = None,
-) -> httpx.AsyncClient:
-    """Construct the one `httpx.AsyncClient` used by an adapter for one request/session.
+) -> SharedClientLease:
+    """The pooled `httpx.AsyncClient` an adapter uses, as a lease for `async with ... as client`.
 
     - `strict` (default): full certificate verification. Silent, no log noise.
     - `compatibility`: relaxed verification — still explicitly requested; loudly logged.
@@ -51,4 +51,7 @@ def build_async_client(
             detail="TLS verification DISABLED via explicit opt-in",
         )
 
-    return httpx.AsyncClient(timeout=timeout, headers=headers, verify=verify)
+    # One pooled client per (loop, verify, timeout, headers); `async with` no longer closes it.
+    # No status-based retries here: ingest governance is "a failed fetch journals FAILED and the
+    # next scheduled run retries", and some sources are metered.
+    return lease_client(verify=verify, timeout=timeout, headers=headers)
