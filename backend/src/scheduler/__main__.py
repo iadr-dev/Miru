@@ -23,6 +23,7 @@ import signal
 
 import structlog
 
+from config.logging_config import configure_logging
 from config.settings import get_settings
 from scheduler.composition import build_alert_update_source, build_scheduler_from_settings
 from scheduler.subscriber import run_subscriber
@@ -103,6 +104,7 @@ async def run_scheduler_loop(
 
 async def main() -> None:
     settings = get_settings()
+    configure_logging(settings)
     worker = await build_scheduler_from_settings(settings)
     shutdown = _ShutdownState()
 

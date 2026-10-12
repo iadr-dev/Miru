@@ -111,6 +111,7 @@ markers = [
 
 **DEPENDENCY RULE (one direction only):**
 `interfaces → product → interaction → runtime → tools → context → dataaccess → sources`
+  Configured once per process by `config/logging_config.py::configure_logging` (JSON lines in production, readable console in development; `LOG_FORMAT`/`LOG_LEVEL`); stdlib loggers go through the same pipeline. `api/request_context.py` binds a `request_id` (from a sane `X-Request-ID` or fresh) and, once resolved, `user_id` into every line of a request, echoes the id in the response header, and writes one `http_request` access line.
 - Nothing lower imports anything higher. Enforced by ruff `TID` banned-imports **and** an
   architecture test (`tests/arch/test_layering.py`) that walks the import graph and fails on any
   upward edge. `analytics/`, `ingest/`, `calendar/` read the derived store; they do **not** import

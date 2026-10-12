@@ -27,6 +27,7 @@ from api.dependencies import AppState
 from api.errors import register_exception_handlers
 from api.etag import ConditionalGetMiddleware
 from api.quote_stream import CalendarMarketOpenGate, LiveQuoteManagerLike, ToolQuoteFetcher
+from api.request_context import REQUEST_ID_HEADER, RequestContextMiddleware
 from api.routers import (
     accounts_extra,
     agent,
@@ -131,6 +132,8 @@ def create_app(
     # Innermost of the three, so a 304 still gets the auth-expired header and CORS headers.
     app.add_middleware(ConditionalGetMiddleware)
     app.add_middleware(AuthExpiredHeaderMiddleware)
+    # Outside the other two so it times the whole request and its id is on every response.
+    app.add_middleware(RequestContextMiddleware)
     if allowed_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -138,7 +141,7 @@ def create_app(
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
-            expose_headers=[AUTH_EXPIRED_HEADER],
+            expose_headers=[AUTH_EXPIRED_HEADER, REQUEST_ID_HEADER],
         )
 
     register_exception_handlers(app)

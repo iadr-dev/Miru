@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 
     # ---- Core app config ----
     env: str = "development"  # development | production
+    # Log output: `json` (one object per line, for a log platform), `console` (readable), or `auto`
+    # (json when ENV=production, console otherwise). See config/logging_config.py.
+    log_format: Literal["auto", "json", "console"] = "auto"
+    log_level: str = "INFO"
     ingest_on_startup: bool = False  # MUST be false in production (backend/.env.example)
     dev_backfill_years: int = 3
     webhook_base_url: str = "http://localhost:8000"

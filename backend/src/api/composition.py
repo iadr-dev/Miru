@@ -18,6 +18,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from api.app import create_app
+from config.logging_config import configure_logging
 from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router, build_live_quote_manager
 from orchestrator.composition import (
@@ -33,6 +34,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     """Assemble the fully-wired FastAPI app from real config — the composition root a container
     entrypoint invokes."""
     resolved = settings or get_settings()
+    configure_logging(resolved)
     session_factory = build_session_factory(resolved)
     # One process-lifetime manager, shared between the `YFinanceLiveQuoteAdapter` the router
     # resolves `Capability.LIVE_PRICE_QUOTE` to and `create_app`'s own shutdown hook — otherwise
