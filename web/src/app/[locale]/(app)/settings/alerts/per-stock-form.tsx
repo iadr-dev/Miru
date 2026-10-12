@@ -15,6 +15,7 @@ import {
 import { getPriceHistory } from "@/lib/api/market";
 import { createAlertsBatch, SettingsApiError } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
+import { FRESHNESS } from "@/lib/freshness";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import type { WatchlistItem } from "@/types/watchlist";
 
@@ -91,7 +92,7 @@ export function PerStockForm({
     queryKey: ["settings", "alert-closes", groupId, members.length],
     queryFn: () => loadCloses(members),
     enabled: members.length > 0,
-    staleTime: 60_000,
+    staleTime: FRESHNESS.slow,
   });
 
   // Rebuild the sheet when the group (or its reference closes) change; keep what was typed.

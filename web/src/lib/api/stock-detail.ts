@@ -79,11 +79,9 @@ import {
   supplyChainEdgesResponseSchema,
   symbolThemesResponseSchema,
   type TechnicalIndicatorsResponse,
-  type ThemeMembersResponse,
   type ThemeTierHeatmapResponse,
   type TrendScoreResponse,
   technicalIndicatorsResponseSchema,
-  themeMembersResponseSchema,
   themeTierHeatmapResponseSchema,
   trendScoreResponseSchema,
   type ValuationRatiosResponse,
@@ -622,14 +620,4 @@ export async function getSupplyChainEdges(
 export async function getThemeTierHeatmap(themeKey: string): Promise<ThemeTierHeatmapResponse> {
   const raw = await requestJson(`/themes/${encodeURIComponent(themeKey)}/tier-heatmap`);
   return themeTierHeatmapResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// GET /themes/{key} (public) — 產業分析's 產業鏈 tier-tile click-through member list
-// ---------------------------------------------------------------------------
-
-export async function getThemeMembers(themeKey: string): Promise<ThemeMembersResponse> {
-  const search = new URLSearchParams({ limit: "1000" });
-  const raw = await requestJson(`/themes/${encodeURIComponent(themeKey)}?${search.toString()}`);
-  return themeMembersResponseSchema.parse(raw);
 }

@@ -8,27 +8,18 @@ import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { SupplyChainGraph } from "@/components/stock/supply-chain-graph";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
-import {
-  getSupplyChainEdges,
-  getSymbolThemes,
-  getThemeMembers,
-  getThemeTierHeatmap,
-} from "@/lib/api/stock-detail";
+import { queryKeys } from "@/lib/api/query-keys";
+import { getSymbolThemes, getThemeTierHeatmap } from "@/lib/api/stock-detail";
+import { getThemeMembers } from "@/lib/api/theme";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { heatTint } from "@/lib/heat-color";
 import { directionGlyph } from "@/lib/signed";
 import type { Market } from "@/types/settings";
-import type { SubIndustryHeat, SupplyChainEdge } from "@/types/stock-detail";
+import type { SubIndustryHeat } from "@/types/stock-detail";
 
 const TIER_ORDER = ["upstream", "midstream", "downstream"] as const;
 type TierName = (typeof TIER_ORDER)[number];
-
-const EDGE_TYPE_COLOR: Record<SupplyChainEdge["edge_type"], string> = {
-  supplies: "var(--up)",
-  customer: "var(--chart-2)",
-  competes: "var(--down)",
-};
 
 const VIEWS = ["tiers", "graph"] as const;
 type IndustryView = (typeof VIEWS)[number];
@@ -290,7 +281,7 @@ function SubIndustryMembersModal({
 }): ReactNode {
   const t = useTranslations("stock.industry");
   const membersQuery = useQuery({
-    queryKey: ["theme_members", themeKey],
+    queryKey: queryKeys.themeMembers(themeKey),
     queryFn: () => getThemeMembers(themeKey),
     enabled: subIndustry !== null,
   });

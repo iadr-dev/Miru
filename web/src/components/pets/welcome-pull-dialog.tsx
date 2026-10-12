@@ -9,6 +9,7 @@ import { PetAvatar } from "@/components/pets/pet-avatar";
 import { Button } from "@/components/ui/button";
 import { getPetProgress, listPetCatalog, pullPet } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
+import { FRESHNESS } from "@/lib/freshness";
 import { petName, RARITY_TEXT, shouldOfferWelcomePull } from "@/lib/pets";
 import { useFocusTrap } from "@/lib/use-focus-trap";
 import type { PullOutcome } from "@/types/settings";
@@ -49,7 +50,7 @@ export function WelcomePullDialog(): ReactNode {
   const catalog = useQuery({
     queryKey: ["settings", "pet-catalog"],
     queryFn: listPetCatalog,
-    staleTime: 60 * 60_000,
+    staleTime: FRESHNESS.static,
   });
 
   const pull = useMutation({

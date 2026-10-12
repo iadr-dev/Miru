@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
@@ -27,8 +26,7 @@ import {
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
-import { getPriceHistory } from "@/lib/api/market";
-import { getStockInstitutionalFlow } from "@/lib/api/stock-detail";
+import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
@@ -119,14 +117,8 @@ export function InstitutionalFlowBody({
       return next;
     });
   };
-  const flowQuery = useQuery({
-    queryKey: ["stock_institutional_flow", symbol, market],
-    queryFn: () => getStockInstitutionalFlow(symbol, market),
-  });
-  const priceQuery = useQuery({
-    queryKey: ["price_history", symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS],
-    queryFn: () => getPriceHistory([symbol], market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS),
-  });
+  const flowQuery = useInstitutionalFlow(symbol, market);
+  const priceQuery = usePriceHistory(symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS);
 
   if (flowQuery.isLoading) return <CardSkeletonBody height={220} />;
   const rows = flowQuery.data?.rows ?? [];

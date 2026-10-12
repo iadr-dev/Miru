@@ -13,6 +13,7 @@ import {
   listMemories,
   SettingsApiError,
 } from "@/lib/api/settings";
+import { FRESHNESS } from "@/lib/freshness";
 import { contentFromText, keyFromText } from "@/lib/memory";
 import { findExistingMemory, parseMemoryProposal } from "@/lib/memory-proposal";
 
@@ -38,14 +39,14 @@ export function MemoryProposalCard({ data }: { data: Record<string, unknown> }):
     queryKey: ["settings", "memory-settings"],
     queryFn: getMemorySettings,
     enabled: proposal !== null,
-    staleTime: 30_000,
+    staleTime: FRESHNESS.standard,
     retry: false,
   });
   const memories = useQuery({
     queryKey: [...MEMORY_KEY, "all", ""],
     queryFn: () => listMemories(),
     enabled: proposal !== null,
-    staleTime: 30_000,
+    staleTime: FRESHNESS.standard,
     retry: false,
   });
 

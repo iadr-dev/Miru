@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { useWatchlists } from "@/hooks/use-watchlists";
 import { getSymbolInfo } from "@/lib/api/market";
 import { addWatchlistItem, createWatchlist, removeWatchlistItem } from "@/lib/api/watchlist";
+import { FRESHNESS } from "@/lib/freshness";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import {
   addAlreadyDone,
@@ -52,7 +53,7 @@ export function WatchlistProposalCard({ data }: { data: Record<string, unknown> 
     queryKey: ["symbol_info", market, ...(proposal?.symbols ?? [])],
     queryFn: () => getSymbolInfo(proposal?.symbols ?? [], market),
     enabled: proposal !== null && proposal.symbols.length > 0,
-    staleTime: 5 * 60_000,
+    staleTime: FRESHNESS.reference,
     retry: false,
   });
   const [dismissed, setDismissed] = useState(false);

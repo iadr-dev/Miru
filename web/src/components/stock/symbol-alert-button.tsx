@@ -16,6 +16,7 @@ import {
 import { activeRuleCount, presetsFor, rulesForSymbol } from "@/lib/alerts/presets";
 import { createAlert, listAlerts, SettingsApiError } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
+import { FRESHNESS } from "@/lib/freshness";
 import type { AlertCondition, AlertMarket, Market } from "@/types/settings";
 
 const ALERTS_KEY = ["settings", "alerts"] as const;
@@ -67,7 +68,7 @@ function SymbolAlertPopover({
   const alertsQuery = useQuery({
     queryKey: ALERTS_KEY,
     queryFn: listAlerts,
-    staleTime: 30_000,
+    staleTime: FRESHNESS.standard,
     retry: false,
   });
   const mine = rulesForSymbol(alertsQuery.data ?? [], symbol, market);

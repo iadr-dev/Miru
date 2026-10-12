@@ -9,6 +9,7 @@ import { Link } from "@/i18n/navigation";
 import { conditionSummary } from "@/lib/alerts/condition";
 import { findExistingRule, parseProposal, toCreateRequest } from "@/lib/alerts/proposal";
 import { createAlert, listAlerts, SettingsApiError } from "@/lib/api/settings";
+import { FRESHNESS } from "@/lib/freshness";
 
 const ALERTS_KEY = ["settings", "alerts"] as const;
 
@@ -37,7 +38,7 @@ export function AlertProposalCard({ data }: { data: Record<string, unknown> }): 
     queryKey: ALERTS_KEY,
     queryFn: listAlerts,
     enabled: proposal !== null,
-    staleTime: 30_000,
+    staleTime: FRESHNESS.standard,
     retry: false,
   });
 

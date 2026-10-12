@@ -1,13 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SectorConstituentsTable } from "@/components/market/sector-constituents-table";
 import { SectorHeatmapTable } from "@/components/market/sector-heatmap-table";
 import { SectorHeatmapTreemap } from "@/components/market/sector-heatmap-treemap";
-import { SectorRotationScene } from "@/components/market/sector-rotation-scene";
 import { StockHeatmapTable } from "@/components/market/stock-heatmap-table";
 import { StockHeatmapTreemap } from "@/components/market/stock-heatmap-treemap";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -26,6 +26,13 @@ import {
   type SectorHeatmapSizeBy,
 } from "@/types/market";
 import type { Market } from "@/types/settings";
+
+// The rotation scene is three.js (about 1 MB) and only appears after the user switches to the
+// rotation view, so it is loaded on demand instead of with every visit to /market.
+const SectorRotationScene = dynamic(
+  () => import("@/components/market/sector-rotation-scene").then((m) => m.SectorRotationScene),
+  { ssr: false, loading: () => <CardSkeletonBody height={640} /> },
+);
 
 type SectorView = "heatmap" | "stock" | "rotation";
 const SECTOR_VIEWS = ["heatmap", "stock", "rotation"] as const satisfies readonly SectorView[];

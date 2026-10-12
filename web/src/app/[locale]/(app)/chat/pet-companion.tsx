@@ -8,6 +8,7 @@ import { PetAvatar } from "@/components/pets/pet-avatar";
 import { Link } from "@/i18n/navigation";
 import { getActivePet, getPetProgress, getPetSettings, listPetCatalog } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
+import { FRESHNESS } from "@/lib/freshness";
 import { petName, xpFraction } from "@/lib/pets";
 
 export type PetNotice = { leveledTo: number | null; pullsEarned: number };
@@ -31,7 +32,7 @@ export function PetCompanion({
   const catalog = useQuery({
     queryKey: ["settings", "pet-catalog"],
     queryFn: listPetCatalog,
-    staleTime: 60 * 60_000,
+    staleTime: FRESHNESS.static,
   });
 
   const pet = active.data ?? null;

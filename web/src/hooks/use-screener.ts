@@ -13,6 +13,7 @@ import {
   type UpdateScreenerScreenParams,
   updateScreenerScreen,
 } from "@/lib/api/screener";
+import { FRESHNESS } from "@/lib/freshness";
 import type {
   ScreenerGateOverrides,
   ScreenerMarket,
@@ -49,7 +50,7 @@ export function useFactorCatalog(market: ScreenerMarket) {
   return useQuery({
     queryKey: factorsKey(market),
     queryFn: () => getFactorCatalog(market),
-    staleTime: 5 * 60 * 1000,
+    staleTime: FRESHNESS.reference,
   });
 }
 
@@ -58,7 +59,7 @@ export function useScreenerPresets(market: ScreenerMarket) {
   return useQuery({
     queryKey: presetsKey(market),
     queryFn: () => getScreenerPresets(market),
-    staleTime: 5 * 60 * 1000,
+    staleTime: FRESHNESS.reference,
   });
 }
 
