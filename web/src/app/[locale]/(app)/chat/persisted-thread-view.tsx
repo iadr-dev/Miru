@@ -171,8 +171,8 @@ function renderMessageBlock(
   opts: {
     isUser: boolean;
     youLabel: string;
-    onEditText?: (newText: string) => void;
-    onAskUserPick?: (prompt: string) => void;
+    onEditText?: ((newText: string) => void) | undefined;
+    onAskUserPick?: ((prompt: string) => void) | undefined;
   },
 ): ReactNode {
   const { isUser, youLabel, onEditText, onAskUserPick } = opts;
@@ -255,7 +255,7 @@ export function PersistedThreadView({
   streaming?: boolean;
   onRegenerate?: (assistantTurnId: string, userText: string) => Promise<unknown>;
   onEdit?: (userTurnId: string, newText: string) => void;
-  onAskUserPick?: (prompt: string) => void;
+  onAskUserPick?: ((prompt: string) => void) | undefined;
 }): ReactNode {
   const t = useTranslations("chat.turn");
   const tCaveat = useTranslations("chat.caveat");
@@ -316,7 +316,7 @@ function AssistantTurnActions({
 }: {
   turn: Turn;
   sourceUserTurn: Turn | null;
-  onRetry?: (userText: string) => Promise<unknown>;
+  onRetry?: ((userText: string) => Promise<unknown>) | undefined;
 }): ReactNode {
   const [feedback, setFeedback] = useState<FeedbackRating | null>(null);
   const [retrying, setRetrying] = useState(false);

@@ -5,7 +5,7 @@
  * from `types/market.ts` — a genuinely different, per-symbol surface. Reuses `market.ts`'s
  * `requestJson`/`MarketApiError` seam rather than duplicating it.
  */
-import { requestJson } from "@/lib/api/market";
+import { type DateRangeParams, requestJson } from "@/lib/api/market";
 import { type LivePriceQuoteResponse, livePriceQuoteResponseSchema } from "@/types/live-quote";
 import type { Market } from "@/types/settings";
 import {
@@ -85,8 +85,6 @@ import {
   type ValuationRatiosResponse,
   valuationRatiosResponseSchema,
 } from "@/types/stock-detail";
-
-type DateRangeParams = { startDate?: string; endDate?: string };
 
 function symbolDateSearchParams(
   symbol: string,

@@ -55,9 +55,9 @@ export async function getScreenerPresets(market: ScreenerMarket): Promise<Screen
 export interface RunScreenerParams {
   market: ScreenerMarket;
   conditions: ScreenerRunCondition[];
-  match?: "AND" | "OR";
-  gateOverrides?: ScreenerGateOverrides;
-  countOnly?: boolean;
+  match?: "AND" | "OR" | undefined;
+  gateOverrides?: ScreenerGateOverrides | undefined;
+  countOnly?: boolean | undefined;
   size?: number;
 }
 
@@ -90,8 +90,8 @@ export interface SaveScreenerScreenParams {
   name: string;
   market: ScreenerMarket;
   conditions: ScreenerRunCondition[];
-  match?: "AND" | "OR";
-  gateOverrides?: ScreenerGateOverrides;
+  match?: "AND" | "OR" | undefined;
+  gateOverrides?: ScreenerGateOverrides | undefined;
 }
 
 export async function saveScreenerScreen(
@@ -114,8 +114,8 @@ export async function saveScreenerScreen(
 export interface UpdateScreenerScreenParams {
   name?: string;
   conditions?: ScreenerRunCondition[];
-  match?: "AND" | "OR";
-  gateOverrides?: ScreenerGateOverrides;
+  match?: "AND" | "OR" | undefined;
+  gateOverrides?: ScreenerGateOverrides | undefined;
 }
 
 export async function deleteScreenerScreen(screenId: string): Promise<void> {

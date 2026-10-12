@@ -31,7 +31,7 @@ export function loadPaddle(
   instance ??= initializePaddle({
     token,
     environment,
-    eventCallback: (event) => listener?.({ name: event.name }),
+    eventCallback: (event) => listener?.(event.name ? { name: event.name } : {}),
   });
   return instance;
 }

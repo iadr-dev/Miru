@@ -295,7 +295,7 @@ function TimeseriesLineChart({ rows }: { rows: Record<string, unknown>[] }): Rea
                 key={key}
                 type="monotone"
                 dataKey={key}
-                stroke={LINE_COLORS[index % LINE_COLORS.length]}
+                stroke={LINE_COLORS[index % LINE_COLORS.length] ?? "var(--chart-1)"}
                 dot={false}
                 strokeWidth={2}
               />

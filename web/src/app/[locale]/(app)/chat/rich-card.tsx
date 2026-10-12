@@ -56,7 +56,7 @@ export function RichCardView({
    * because most render sites (persisted history read-only contexts, etc.) never show an
    * `ask_user` card in the first place; when omitted, an `ask_user` card still renders its
    * question/options, just with no-op buttons. */
-  onAskUserPick?: (prompt: string) => void;
+  onAskUserPick?: ((prompt: string) => void) | undefined;
 }): ReactNode {
   if (card.card_type === "alert_proposal") {
     return <AlertProposalCard data={card.data} />;

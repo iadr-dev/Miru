@@ -60,6 +60,7 @@ pnpm build                      # next build (must pass typecheck + lint clean)
 {
   "strict": true,
   "noUncheckedIndexedAccess": true,   // array/record access is T | undefined
+  "exactOptionalPropertyTypes": true, // `x?: T` is "absent", not "undefined"
   "noImplicitOverride": true,
   "verbatimModuleSyntax": true,
   "moduleResolution": "bundler",
@@ -194,8 +195,11 @@ Grounded in the official TS [Do's and Don'ts](https://www.typescriptlang.org/doc
   above it, not a reactive checklist you run once red.
 
 **Consequences of the strict flags (§1):** `noUncheckedIndexedAccess` means `arr[i]` / `record[k]` is
-`T | undefined` — **handle the `undefined`**, don't `!` it away. `exactOptionalPropertyTypes` (enable
-if not on): don't pass `undefined` to an optional prop; omit it.
+`T | undefined` — **handle the `undefined`**, don't `!` it away. `exactOptionalPropertyTypes` (on):
+`x?: T` means "may be absent", not "may be `undefined`". For **our own** props/params that a caller
+forwards (`onEdit={canEdit ? … : undefined}`), declare `x?: T | undefined`. For a **third-party**
+prop (recharts, Radix, motion) omit the key instead — `{...(cond ? { cursor } : {})}` — or give a
+real fallback (`colors[k] ?? "var(--chart-1)"`).
 
 ## 3. Architecture invariants → code rules
 

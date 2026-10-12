@@ -294,7 +294,7 @@ function PeerList({
       style={
         !wrap && height
           ? { minHeight: height, gridTemplateRows: `repeat(${peers.length}, 1fr)` }
-          : undefined
+          : {}
       }
     >
       {peers.map((peer) => (

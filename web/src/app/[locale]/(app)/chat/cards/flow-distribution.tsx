@@ -115,8 +115,11 @@ export function FlowDistribution({ data }: { data: unknown }): ReactNode {
                 // a shareholding-tier row and a "差異數調整" correction row both labeled "1-999")
                 // — the index breaks that tie. Safe here: `points` is a fixed, never-reordered
                 // snapshot from one render's `data` prop.
-                // biome-ignore lint/suspicious/noArrayIndexKey: tie-breaker only, see comment above.
-                <Cell key={`${point.name}|${index}`} fill={BAR_COLORS[index % BAR_COLORS.length]} />
+                <Cell
+                  // biome-ignore lint/suspicious/noArrayIndexKey: tie-breaker only, see comment above.
+                  key={`${point.name}|${index}`}
+                  fill={BAR_COLORS[index % BAR_COLORS.length] ?? "var(--chart-1)"}
+                />
               ))}
             </Bar>
           </BarChart>

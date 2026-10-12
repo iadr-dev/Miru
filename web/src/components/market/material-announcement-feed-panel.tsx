@@ -144,7 +144,7 @@ function CategoryChip({
   readonly active: boolean;
   readonly label: string;
   readonly count: number;
-  readonly color?: string;
+  readonly color?: string | undefined;
   readonly onClick: () => void;
 }): ReactNode {
   return (

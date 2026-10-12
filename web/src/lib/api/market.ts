@@ -98,7 +98,7 @@ export const requestJson = createRequestJson(
   (code, message, status, retryable) => new MarketApiError(code, message, status, retryable),
 );
 
-type DateRangeParams = { startDate?: string; endDate?: string };
+export type DateRangeParams = { startDate?: string | undefined; endDate?: string | undefined };
 
 function dateRangeSearchParams(params: DateRangeParams): URLSearchParams {
   const search = new URLSearchParams();
@@ -417,7 +417,7 @@ export async function getSectorConstituents(
 
 export async function getSectorRotationRrg(
   market: Market,
-  endDate?: string,
+  endDate?: string | undefined,
 ): Promise<SectorRotationRrgResponse> {
   const search = new URLSearchParams({ market });
   if (endDate) search.set("end_date", endDate);

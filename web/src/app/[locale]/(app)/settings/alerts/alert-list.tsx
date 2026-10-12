@@ -27,7 +27,7 @@ import { AlertForm, type AlertFormPreset } from "./alert-form";
 /** Alert-rule list: cold-start empty
  * state with CTA, a plain-language condition line, lifecycle status, last-fired/expiry, enable
  * toggle, and delete via a focus-trapped confirm dialog. */
-export function AlertList({ preset }: { preset?: AlertFormPreset }): ReactNode {
+export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }): ReactNode {
   const t = useTranslations("settings.alerts");
   const ts = useTranslations("settings.alerts.summary");
   const tc = useTranslations("settings.common");

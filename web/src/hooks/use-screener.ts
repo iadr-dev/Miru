@@ -74,7 +74,7 @@ export interface UseRunScreenerParams {
   market: ScreenerMarket;
   conditions: ScreenerRunCondition[];
   match?: "AND" | "OR";
-  gateOverrides?: ScreenerGateOverrides;
+  gateOverrides?: ScreenerGateOverrides | undefined;
   countOnly?: boolean;
   enabled?: boolean;
 }
