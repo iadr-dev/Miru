@@ -747,7 +747,8 @@ before any identity exists.
   policies. (The alternative is `docker compose down -v`, which empties the app database; market
   data is a separate volume.) This is how the dev database was switched on.
 * **Verified** by `tests/db/test_rls.py` (isolation without a WHERE, WITH CHECK, fail-closed,
-  identity surviving a commit, superuser rejected) and by running the API suite against Postgres
-  with RLS on (`RLS_TEST_POSTGRES_URL=... ROW_LEVEL_SECURITY=true pytest tests/api`: 411 of 421
-  pass; the other 10 seed or count rows from their own event loop or outside any request, which the
-  harness does not model).
+  identity surviving a commit, superuser rejected) and by running the whole API suite against
+  Postgres as an ordinary role with RLS on: `RLS_TEST_POSTGRES_URL=postgresql+asyncpg://<admin
+  url> ROW_LEVEL_SECURITY=true uv run pytest tests/api` (421 of 421 pass). Tests that inspect or seed
+  rows use `observe_db` (on the app's own event loop, across users) so they see what a test sees,
+  not what one user sees.

@@ -9,7 +9,7 @@ import asyncio
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from analytics.themes.models import (
     ThemeKind,
@@ -29,8 +29,14 @@ from tools import build_default_tool_registry
 
 
 def _seed_sync(session_factory: async_sessionmaker) -> None:
+    # Seed over a private engine on the same database and throw it away: the app's own pool must
+    # not be touched from this temporary loop (an asyncpg connection stays bound to the loop that
+    # opened it, and the app runs on a different one).
+    seed_engine = create_async_engine(session_factory.kw["bind"].url)
+    seed_factory = async_sessionmaker(seed_engine, expire_on_commit=False)
+
     async def _run() -> None:
-        async with session_factory() as session:
+        async with seed_factory() as session:
             store = SqlAlchemyThemeStore(session)
             await store.upsert_theme(
                 key="半導體",
@@ -66,6 +72,7 @@ def _seed_sync(session_factory: async_sessionmaker) -> None:
                 source=ThemeTierSource.CURATED,
             )
             await session.commit()
+        await seed_engine.dispose()
 
     asyncio.run(_run())
 

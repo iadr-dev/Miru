@@ -9,7 +9,6 @@ carries its non-trading caveat (the orchestrator's guardrail output survives the
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 from fastapi.testclient import TestClient
@@ -18,7 +17,7 @@ from sqlalchemy import func, select
 from db.models import UsageEventRow
 from events.rate_limit import RateLimitVerdict
 from schemas.enums import Tier
-from tests.api.conftest import build_test_client, sign_in
+from tests.api.conftest import build_test_client, observe_db, sign_in
 
 
 def _parse_sse(body: str) -> list[dict[str, object]]:
@@ -257,4 +256,4 @@ class TestPreTurnGate:
                 )
                 return int(result.scalar_one())
 
-        assert asyncio.run(_count()) >= 1
+        assert observe_db(client, _count) >= 1
