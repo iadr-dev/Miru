@@ -2,14 +2,8 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import {
-  asArray,
-  asNumber,
-  asString,
-  formatNumber,
-  PLUMBING_KEYS,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { fieldLabel } from "@/lib/field-labels";
+import { asArray, asNumber, asString, formatNumber, PLUMBING_KEYS } from "@/lib/format-number";
 
 /** 2+ named entities compared on the same fields (`fund_comparison`'s per-symbol rows,
  * `etf_overlap`'s `pairwise_overlap` matrix). Both shapes reduce to "one row per entity, one

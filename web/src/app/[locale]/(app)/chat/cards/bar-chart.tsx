@@ -12,15 +12,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  asArray,
-  asNumber,
-  formatCompactNumber,
-  formatNumber,
-  rowDate,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { fieldLabel } from "@/lib/field-labels";
+import { asArray, asNumber, formatCompactNumber, formatNumber, rowDate } from "@/lib/format-number";
 
 /** Fields that are date/id metadata rather than a plottable metric — same exclusion set
  * `TimeseriesLineChart` uses, kept in sync manually (see that module for why). */

@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-legend";
@@ -11,6 +10,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { ActiveEtfHoldingWeightRow } from "@/types/etf-detail";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";

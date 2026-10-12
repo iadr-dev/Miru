@@ -15,7 +15,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   BUCKET_COLORS,
@@ -28,6 +27,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getPriceHistory } from "@/lib/api/market";
 import { getForeignShareholding, getStockInstitutionalFlow } from "@/lib/api/stock-detail";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
 const HOLDINGS_TABLE_COLLAPSED_ROW_COUNT = 6;

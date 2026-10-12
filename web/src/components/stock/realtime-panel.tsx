@@ -11,7 +11,6 @@ import {
 } from "lightweight-charts";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -23,6 +22,7 @@ import {
   getStockDayTrading,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { resolveToken } from "@/lib/resolve-css-token";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";

@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeleton } from "@/components/market/card-skeleton";
 import { HolderAccumulationCard } from "@/components/market/holder-accumulation-card";
 import { IndustryMoneyFlowCard } from "@/components/market/industry-money-flow-card";
@@ -12,6 +11,7 @@ import { InstitutionalFlowCard } from "@/components/market/institutional-flow-ca
 import { MarginMaintenanceCard } from "@/components/market/margin-maintenance-card";
 import { RainbowBorderCard } from "@/components/market/rainbow-border-card";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
+import { QueryState } from "@/components/ui/query-state";
 import {
   getHolderAccumulation,
   getIndustryFlow,

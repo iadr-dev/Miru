@@ -3,17 +3,11 @@
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import {
-  asArray,
-  asNumber,
-  asString,
-  formatNumber,
-  PLUMBING_KEYS,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { fieldLabel, valueLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { financialStatementItemLabel } from "@/app/[locale]/(app)/chat/cards/financial-statement-labels";
-import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
+import { TableWithActions } from "@/components/ui/table-actions";
 import { cn } from "@/lib/cn";
+import { fieldLabel, valueLabel } from "@/lib/field-labels";
+import { asArray, asNumber, asString, formatNumber, PLUMBING_KEYS } from "@/lib/format-number";
 
 /** Rows shown before the "顯示全部" toggle — a flat roster (`insider_shareholding`,
  * `theme_members`) is routinely 30-40+ records where most carry no notable value (e.g. a

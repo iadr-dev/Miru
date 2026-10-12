@@ -15,13 +15,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { isoDaysAgo, SubTabRow, TOOLTIP_STYLE } from "@/components/stock/chip/shared";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
 import { Link } from "@/i18n/navigation";
 import { getGovernmentBankFlows, getStockInstitutionalFlow } from "@/lib/api/stock-detail";
+import { fieldLabel } from "@/lib/field-labels";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";
 

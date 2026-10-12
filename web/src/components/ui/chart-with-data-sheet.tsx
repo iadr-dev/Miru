@@ -3,15 +3,10 @@
 import { CaretDownIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import {
-  asNumber,
-  asString,
-  formatNumber,
-  PLUMBING_KEYS,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
-import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
+import { TableWithActions } from "@/components/ui/table-actions";
 import { cn } from "@/lib/cn";
+import { fieldLabel } from "@/lib/field-labels";
+import { asNumber, asString, formatNumber, PLUMBING_KEYS } from "@/lib/format-number";
 
 const ROW_LIMIT = 100;
 

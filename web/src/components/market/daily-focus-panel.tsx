@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { BreadthOrderBookCard } from "@/components/market/breadth-order-book-card";
 import { CardSkeleton } from "@/components/market/card-skeleton";
 import { EarningsCalendarPanel } from "@/components/market/earnings-calendar-panel";
@@ -11,6 +10,7 @@ import { MaterialAnnouncementFeedPanel } from "@/components/market/material-anno
 import { RainbowBorderCard } from "@/components/market/rainbow-border-card";
 import { RankingsCard } from "@/components/market/rankings-card";
 import { TwRankingsCard } from "@/components/market/tw-rankings-card";
+import { QueryState } from "@/components/ui/query-state";
 import { getAdvanceDecline, getIndexContribution, getScoreLeaderboard } from "@/lib/api/market";
 import type { LeaderboardDirection } from "@/types/market";
 import type { Market } from "@/types/settings";

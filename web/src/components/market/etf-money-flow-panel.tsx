@@ -3,9 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { EtfMoneyFlowTable } from "@/components/market/etf-money-flow-table";
+import { QueryState } from "@/components/ui/query-state";
 import { getEtfMoneyFlow } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";

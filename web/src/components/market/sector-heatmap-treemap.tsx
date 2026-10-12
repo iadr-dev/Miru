@@ -3,8 +3,8 @@
 import { motion } from "motion/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import { heatColor } from "@/lib/heat-color";
 import type { SectorHeatmapRow, SectorHeatmapSizeBy } from "@/types/market";
 

@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   MATERIAL_ANNOUNCEMENT_CATEGORY_COLORS,
@@ -11,6 +10,7 @@ import {
   MaterialAnnouncementFeedTable,
 } from "@/components/market/material-announcement-feed-table";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryState } from "@/components/ui/query-state";
 import { getMaterialAnnouncementFeed } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";

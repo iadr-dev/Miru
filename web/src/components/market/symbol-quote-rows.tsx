@@ -3,12 +3,12 @@
 import { CaretDownIcon, CaretUpDownIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { Sparkline } from "@/components/market/sparkline";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import type { SymbolQuote } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass } from "@/types/watchlist";
 

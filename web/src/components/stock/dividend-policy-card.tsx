@@ -13,12 +13,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getDividendPolicySummary } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 import type { DividendEvent } from "@/types/stock-detail";
 

@@ -2,8 +2,8 @@
 
 import { QuestionIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { asString } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { asString } from "@/lib/format-number";
 
 /**
  * The `ask_user` card: the model's informational mid-turn clarification

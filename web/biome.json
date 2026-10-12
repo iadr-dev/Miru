@@ -1,6 +1,10 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "ignoreUnknown": true,
     "includes": ["**", "!**/.next", "!**/node_modules", "!**/*.css"]
@@ -11,17 +15,27 @@
     "indentWidth": 2,
     "lineWidth": 100
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
-      "suspicious": { "noExplicitAny": "error" },
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
       "a11y": {
         "recommended": true,
         "useSemanticElements": "off"
       },
-      "nursery": { "useSortedClasses": "warn" },
+      "nursery": {
+        "useSortedClasses": "warn"
+      },
       "style": {
         "useImportType": "error",
         "noDefaultExport": "off"
@@ -34,5 +48,33 @@
       "trailingCommas": "all",
       "semicolons": "always"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "src/components/**",
+        "src/lib/**",
+        "src/hooks/**",
+        "src/types/**",
+        "src/i18n/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@/app/**"],
+                    "message": "Shared code must not import from a route folder (src/app). Move the shared piece into components/, lib/ or hooks/ instead."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

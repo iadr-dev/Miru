@@ -20,7 +20,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { TableExpandModal } from "@/app/[locale]/(app)/chat/table-expand-modal";
+import { TableExpandModal } from "@/components/ui/table-expand-modal";
 import { cn } from "@/lib/cn";
 
 /** A rendered markdown table's data, read back from the DOM after mount (approach (a) from the

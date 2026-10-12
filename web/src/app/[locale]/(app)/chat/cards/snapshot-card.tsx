@@ -2,19 +2,15 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
+import { cardTypeLabel, fieldLabel, valueLabel } from "@/lib/field-labels";
 import {
   asNumber,
   asString,
   formatCompactNumber,
   formatNumber,
   PLUMBING_KEYS,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import {
-  cardTypeLabel,
-  fieldLabel,
-  valueLabel,
-} from "@/app/[locale]/(app)/chat/cards/field-labels";
-import { cn } from "@/lib/cn";
+} from "@/lib/format-number";
 
 /** Large-magnitude monetary fields (market cap / fund size, routinely in the billions of TWD)
  * — the stat grid renders these with `formatCompactNumber` ("194.2億" style) instead of

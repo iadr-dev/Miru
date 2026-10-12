@@ -2,8 +2,8 @@
 
 import { useLocale } from "next-intl";
 import type { ReactNode } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 
 /**
  * A single big tabular stat with a 紅漲綠跌 direction indicator — generic over any signed metric

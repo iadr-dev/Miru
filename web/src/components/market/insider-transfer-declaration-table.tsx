@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatNumber } from "@/lib/format-number";
 import type { InsiderTransferDeclarationRow } from "@/types/market";
 
 // Same collapsed-row-count convention every other market card in this dashboard uses.

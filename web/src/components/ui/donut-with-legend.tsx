@@ -3,7 +3,7 @@
 import { useLocale } from "next-intl";
 import type { ReactNode } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
+import { formatNumber } from "@/lib/format-number";
 
 export type DonutSlice = { label: string; weight: number; color: string };
 

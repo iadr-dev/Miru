@@ -4,8 +4,6 @@ import { LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatCompactNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   DAILY_SIGNAL_COLLAPSED_ROW_COUNT,
@@ -13,8 +11,10 @@ import {
   filterDailySignalRows,
 } from "@/components/market/daily-signal-table";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryState } from "@/components/ui/query-state";
 import { getDailySignal } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber } from "@/lib/format-number";
 import type { DailySignalHighlight, HoldingStatus } from "@/types/market";
 import type { Market } from "@/types/settings";
 

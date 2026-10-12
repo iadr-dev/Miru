@@ -2,8 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 
 export const MARGIN_SUB_TABS = ["margin", "short", "ratio", "dayTrading", "lending"] as const;
 

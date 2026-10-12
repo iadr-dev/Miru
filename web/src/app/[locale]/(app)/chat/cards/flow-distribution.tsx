@@ -12,14 +12,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import {
-  asArray,
-  asNumber,
-  asString,
-  formatNumber,
-  rowDate,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { asArray, asNumber, asString, formatNumber, rowDate } from "@/lib/format-number";
 
 const NAME_KEYS = ["sector", "name", "industry", "investor", "holding_shares_level", "bank_name"];
 const VALUE_KEYS = ["weight", "trading_money_pct", "percent", "net_shares_flow", "buy", "sell"];

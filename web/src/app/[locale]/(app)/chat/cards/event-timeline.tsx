@@ -2,14 +2,8 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import {
-  asArray,
-  asString,
-  formatNumber,
-  PLUMBING_KEYS,
-  rowDate,
-} from "@/app/[locale]/(app)/chat/cards/card-format";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { fieldLabel } from "@/lib/field-labels";
+import { asArray, asString, formatNumber, PLUMBING_KEYS, rowDate } from "@/lib/format-number";
 
 const TITLE_KEYS = ["insider_name", "broker_name", "trade_type", "fiscal_year"];
 /** `symbol`/`market` identify WHICH row this is, already established by the query context (a

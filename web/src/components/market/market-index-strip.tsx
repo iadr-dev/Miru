@@ -4,13 +4,13 @@ import { CaretLeftIcon, CaretRightIcon, LockIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useRef } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import {
   getFuturesSnapshot,
   getMarketIndexStrip,
   getTaiexVix,
   getTickSnapshot,
 } from "@/lib/api/market";
+import { formatNumber } from "@/lib/format-number";
 import { isMaskedTeaser, type MarketIndexStripItem, type MaskedTeaser } from "@/types/market";
 
 const SCROLL_STEP_PX = 240;

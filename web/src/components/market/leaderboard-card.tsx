@@ -2,11 +2,11 @@
 
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { LeaderboardDirection, ScoreBand, ScoreResult } from "@/types/market";
 import type { Market } from "@/types/settings";
 import type { WatchlistAssetClass } from "@/types/watchlist";

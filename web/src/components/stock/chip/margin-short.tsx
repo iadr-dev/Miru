@@ -14,7 +14,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
   INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS,
@@ -29,6 +28,7 @@ import {
   getStockDayTrading,
   getStockMarginShort,
 } from "@/lib/api/stock-detail";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 import type { DayTradingRow, MarginShortRow } from "@/types/stock-detail";
 

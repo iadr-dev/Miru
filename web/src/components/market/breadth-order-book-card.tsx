@@ -13,10 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type {
   AdvanceDeclineResponse,
   IndexContributionResponse,

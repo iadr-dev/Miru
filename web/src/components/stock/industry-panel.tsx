@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { SupplyChainGraph } from "@/components/stock/supply-chain-graph";
@@ -16,6 +15,7 @@ import {
   getThemeTierHeatmap,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import { heatTint } from "@/lib/heat-color";
 import type { Market } from "@/types/settings";
 import type { SubIndustryHeat, SupplyChainEdge } from "@/types/stock-detail";

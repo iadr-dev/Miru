@@ -2,8 +2,8 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useRef, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { SectorIndustryWeightRow } from "@/types/stock-detail";
 
 /** One laid-out tile: the source row plus a normalized rectangle within the treemap's own

@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { QueryState } from "@/app/[locale]/(app)/market/market-panel";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SectorConstituentsTable } from "@/components/market/sector-constituents-table";
 import { SectorHeatmapTable } from "@/components/market/sector-heatmap-table";
@@ -12,6 +11,7 @@ import { SectorRotationScene } from "@/components/market/sector-rotation-scene";
 import { StockHeatmapTable } from "@/components/market/stock-heatmap-table";
 import { StockHeatmapTreemap } from "@/components/market/stock-heatmap-treemap";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryState } from "@/components/ui/query-state";
 import {
   getSectorConstituents,
   getSectorHeatmap,

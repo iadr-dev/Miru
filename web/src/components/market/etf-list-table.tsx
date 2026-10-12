@@ -2,13 +2,13 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-list-sort";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import { ACTIVE_ETF_BADGE_COLOR, SYMBOL_TYPE_BADGE } from "@/lib/etf-badges";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { EtfListRow, EtfSortKey, SortDirection } from "@/types/market";
 import type { Market } from "@/types/settings";
 

@@ -13,9 +13,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { asArray, asNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { ChartWithDataSheet } from "@/app/[locale]/(app)/chat/cards/chart-with-data-sheet";
-import { fieldLabel } from "@/app/[locale]/(app)/chat/cards/field-labels";
+import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { fieldLabel } from "@/lib/field-labels";
+import { asArray, asNumber, formatNumber } from "@/lib/format-number";
 
 /** A `buy`/`sell` field pair this shape knows how to net into one signed bar — each entry names
  * the raw backend field prefix (e.g. `foreign_investor` -> `foreign_investor_buy`/`_sell`) and

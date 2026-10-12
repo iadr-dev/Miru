@@ -3,9 +3,9 @@
 import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import { buildMonthGrid, toIsoDate } from "@/lib/month-grid";
 import type { DividendCalendarEventRow } from "@/types/market";
 

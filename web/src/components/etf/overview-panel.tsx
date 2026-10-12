@@ -13,7 +13,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { DividendCalendarCard } from "@/components/etf/dividend-calendar-card";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import {
@@ -24,6 +23,7 @@ import {
   getFundTotalReturn,
 } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { EtfTrailingReturns } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
 

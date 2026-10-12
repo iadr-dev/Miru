@@ -3,9 +3,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { getFundProfile } from "@/lib/api/etf-detail";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
 /** 總覽 tab's fund-info card — the ETF-equivalent of `ProfileCard` (basic-info-panel.tsx), which

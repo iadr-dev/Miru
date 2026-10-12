@@ -11,12 +11,12 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
-import { TableWithActions } from "@/app/[locale]/(app)/chat/table-actions";
 import type { GaugeBand } from "@/components/market/gauge-card";
 import { GaugeCard } from "@/components/market/gauge-card";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { TableWithActions } from "@/components/ui/table-actions";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { MarginMaintenanceRow, MarginShortTotalMarketRow } from "@/types/market";
 
 /** FinMind's `TaiwanStockTotalMarginPurchaseShortSale`'s real `name` category values —

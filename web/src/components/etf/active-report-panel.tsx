@@ -3,11 +3,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { formatCompactNumber, formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
+import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { ActiveEtfReportData, HoldingStatus } from "@/types/etf-detail";
 import { isMaskedTeaser } from "@/types/market";
 import type { Market } from "@/types/settings";

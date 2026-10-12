@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
-import { formatNumber } from "@/app/[locale]/(app)/chat/cards/card-format";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ChipFlowsBody } from "@/components/stock/chip/broker-flows";
 import { ForeignShareholdingBody } from "@/components/stock/chip/foreign-holdings";
@@ -24,6 +23,7 @@ import {
   getStockMarginShort,
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
 const INSTITUTIONAL_SUB_TABS = ["flow", "holdings", "summary"] as const;
