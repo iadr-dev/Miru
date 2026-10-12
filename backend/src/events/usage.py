@@ -141,9 +141,6 @@ class UsageAccumulator:
         if is_finmind:
             self._finmind_calls += 1
 
-    def set_breakdown(self, breakdown: TokenBreakdown) -> None:
-        self._breakdown = breakdown
-
     def snapshot(self) -> TurnUsage:
         return TurnUsage(
             turn_id=self._turn_id,

@@ -248,13 +248,6 @@ class SqlAlchemyUserStore:
         )
         return [_row_to_oauth(row) for row in result.scalars().all()]
 
-    async def set_personality(self, *, user_id: str, personality_id: str) -> User:
-        row = await self._get_row(user_id)
-        row.personality_id = personality_id
-        row.updated_at = datetime.now(UTC)
-        await self._session.flush()
-        return _row_to_user(row)
-
     async def update_profile(  # noqa: PLR0913 — one field per independently-settable profile attr
         self,
         *,
