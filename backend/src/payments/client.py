@@ -18,12 +18,14 @@ never logged.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from typing import Any
 
 import httpx
 import structlog
 
 from config.settings import Settings
+from netclient import lease_client
 
 logger = structlog.get_logger(__name__)
 
@@ -31,7 +33,9 @@ _SANDBOX_BASE_URL = "https://sandbox-api.paddle.com"
 _PRODUCTION_BASE_URL = "https://api.paddle.com"
 _HTTP_TIMEOUT_SECONDS = 15.0
 
-HttpClientFactory = Callable[[], httpx.AsyncClient]
+# A pooled lease or a plain `httpx.AsyncClient` (tests pass one built on a mock transport): both
+# are used as `async with factory() as client`.
+HttpClientFactory = Callable[[], AbstractAsyncContextManager[httpx.AsyncClient]]
 
 
 class PaddleConfigError(RuntimeError):
@@ -48,9 +52,10 @@ def _base_url_for(environment: str) -> str:
     return _PRODUCTION_BASE_URL if environment == "production" else _SANDBOX_BASE_URL
 
 
-def _default_client_factory() -> httpx.AsyncClient:
-    # Strict TLS verification (httpx default); this billing path never downgrades it.
-    return httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS)
+def _default_client_factory() -> AbstractAsyncContextManager[httpx.AsyncClient]:
+    # Strict TLS verification (httpx default); this billing path never downgrades it. Pooled, and
+    # safe reads (GET) are retried a bounded number of times; writes never are.
+    return lease_client(timeout=_HTTP_TIMEOUT_SECONDS, retry_reads=True)
 
 
 class PaddleClient:

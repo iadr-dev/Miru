@@ -547,7 +547,11 @@ async def test_rule_expiring_in_the_future_is_not_treated_as_expired(session_fac
 # Regression: the engine used Taiwan's `TaiwanStockPrice` dataset name for every market, so a US
 # price alert looked in a partition that never exists and silently never fired.
 
-NY_TODAY = datetime.now(ZoneInfo("America/New_York")).date()
+
+def ny_today():
+    """Evaluated per test, not at import: a module-level date goes stale if the run spans New York's
+    midnight, and the engine would then look at a different day than the test seeded."""
+    return datetime.now(ZoneInfo("America/New_York")).date()
 
 
 async def test_us_price_alert_reads_the_us_dataset_and_fires(session_factory) -> None:
@@ -560,10 +564,10 @@ async def test_us_price_alert_reads_the_us_dataset_and_fires(session_factory) ->
         market=Market.US,
     )
     reader = FakeReader()
-    reader.put(US_PRICE_EOD_DATASET, NY_TODAY, [bar("AAPL", 215.0)], market="US")
+    reader.put(US_PRICE_EOD_DATASET, ny_today(), [bar("AAPL", 215.0)], market="US")
     worker = make_worker(session_factory, reader)
     fired = await worker.handle_data_updated(
-        capability=Capability.PRICE_EOD, market=Market.US, as_of=NY_TODAY.isoformat()
+        capability=Capability.PRICE_EOD, market=Market.US, as_of=ny_today().isoformat()
     )
     assert fired == [rule.id]
     [note] = await notifications(session_factory, user)
@@ -580,7 +584,7 @@ async def test_us_reconcile_sweep_finds_the_us_partition(session_factory) -> Non
         market=Market.US,
     )
     reader = FakeReader()
-    reader.put(US_PRICE_EOD_DATASET, NY_TODAY, [bar("AAPL", 215.0)], market="US")
+    reader.put(US_PRICE_EOD_DATASET, ny_today(), [bar("AAPL", 215.0)], market="US")
     assert await make_worker(session_factory, reader).reconcile_alerts() == [rule.id]
 
 
@@ -595,10 +599,10 @@ async def test_a_us_rule_ignores_the_taiwan_price_partition(session_factory) -> 
     )
     reader = FakeReader()
     # Only a Taiwan-dataset partition exists (even one carrying an "AAPL" row): never US data.
-    reader.put(PRICE, NY_TODAY, [bar("AAPL", 215.0)], market="US")
+    reader.put(PRICE, ny_today(), [bar("AAPL", 215.0)], market="US")
     worker = make_worker(session_factory, reader)
     fired = await worker.handle_data_updated(
-        capability=Capability.PRICE_EOD, market=Market.US, as_of=NY_TODAY.isoformat()
+        capability=Capability.PRICE_EOD, market=Market.US, as_of=ny_today().isoformat()
     )
     assert fired == []
 

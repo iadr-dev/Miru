@@ -46,6 +46,9 @@ ALLOWED: dict[str, str] = {
     "events/redis_bus.py": "Redis event bus",
     "events/turn_control.py": "cross-worker cancel/steer over Redis",
     "usage/finmind_pool.py": "Redis counters for the FinMind quota pool",
+    # The shared pooled HTTP client every outbound caller leases from.
+    "netclient/shared.py": "pooled httpx client",
+    "netclient/retry.py": "bounded retry transport for safe reads",
     # LLM and voice vendors (the model providers are not market-data sources).
     "llm/anthropic_client.py": "Anthropic SDK",
     "llm/gemini_client.py": "Google Gemini SDK",
