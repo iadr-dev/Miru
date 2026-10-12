@@ -133,7 +133,7 @@ authentication. **TTS / read-aloud staying Premium+ is real:** `POST /voice/spea
 teaser (a deliberate difference from the `sponsor` data-masking shape, since this gates a whole
 binary-audio endpoint, not one data field). Cloud ASR/TTS keys as platform secrets is aspirational
 too: `user_secrets.kind`'s CHECK constraint already includes `asr_key`/`tts_key` values
-(`db/models.py`), but no cloud/self-host provider exists to consume them yet — only the stub
+(`db/models/`), but no cloud/self-host provider exists to consume them yet — only the stub
 providers ship. Confirm-before-send and the spoken-caveat rule are real and apply on **both**
 tiers.
 
@@ -171,7 +171,7 @@ consistent with the memory-deletion rule in [09-memory.md](09-memory.md).
 ## 3. Draft & resilience
 
 - **Draft persistence: not built as an API path.** `threads.draft_content` exists as a DB
-  column (`db/models.py`) and is read into the `Thread` model, but no router reads or writes
+  column (`db/models/`) and is read into the `Thread` model, but no router reads or writes
   it — `PatchThreadRequest` (`api/routers/threads_actions.py`) has no `draft_content` field, and
   no other endpoint sets it. Unsent-input persistence is therefore not currently reachable over
   the API despite the column existing.

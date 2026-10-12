@@ -22,8 +22,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import inspect
 
-from db.base import ensure_schema, make_engine
-from db.models import Base
+from db.base import Base, ensure_schema, make_engine
 
 pytestmark = pytest.mark.dual_dialect
 

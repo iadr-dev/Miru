@@ -1,5 +1,5 @@
 """Theme-domain Pydantic contracts — the immutable return/argument shapes the theme repository
-speaks, kept separate from the SQLAlchemy rows in `db/models.py` so callers depend on a typed
+speaks, kept separate from the SQLAlchemy rows in `db/models/` so callers depend on a typed
 domain object, not an ORM row."""
 
 from __future__ import annotations

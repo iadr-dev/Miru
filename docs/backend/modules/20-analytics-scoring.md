@@ -243,7 +243,7 @@ design intent, not yet implemented in `analytics/score.py`:
 
 > **Implementation status.** Nothing in this section exists in code. There is no
 > `analytics/summary/` module, no `compute-ai-summary` job, no `ai_summaries` table (confirmed
-> absent from `db/models.py` — the only score-related table is `stock_scores`), and no
+> absent from `db/models/` — the only score-related table is `stock_scores`), and no
 > `get_ai_summary`/`get_swot` tool. Kept here as genuine design intent, not deleted — it depends
 > on the score engine (§2), which is real, so it is buildable as described whenever this feature
 > is prioritized.

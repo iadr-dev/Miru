@@ -6,7 +6,7 @@ Mirrors `analytics/scoring_store.py`'s shape (caller owns the session/transactio
 read reconstructs a real `TrendScoreResult`/`TrendDimensionResult` domain object, never a raw
 dict) with one genuine difference: `stock_scores` is a same-day snapshot cache a fresh batch pass
 *replaces*, while `trend_scores` is a real time series a caller reads a date RANGE from for a
-chart (see `TrendScoreRow`'s own docstring, `db/models.py`) — hence `get_trend_score_history`
+chart (see `TrendScoreRow`'s own docstring, `db/models/`) — hence `get_trend_score_history`
 below, a read shape `scoring_store.py` has no counterpart for.
 """
 

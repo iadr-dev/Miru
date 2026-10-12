@@ -173,7 +173,7 @@ proxies Paddle's transactions API / deep-links the portal. See [modules/15](modu
 **structured logs (structlog)**, not a DB table — its own module docstring calls a queryable
 per-user/per-thread journal store "an interaction-layer concern, not yet built" and notes the
 `JournalEntry` shape is deliberately DB-sink-ready for when that lands. No `journal_entries`
-table exists in `backend/src/db/models.py` today. The shape below is the design.
+table exists in `backend/src/db/models/` today. The shape below is the design.
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid PK | |
@@ -277,7 +277,7 @@ The rail's three tabs map to: **TW** = `(TW, stock)`, **ETF** = `(TW, etf)`, **U
 
 ## 3b. Saved screens ([modules/20](modules/20-analytics-scoring.md) §5, [api-reference §4a](api-reference.md)) — **design only, not built**
 
-**Not built.** No `saved_screens` table exists in `backend/src/db/models.py`, and the
+**Not built.** No `saved_screens` table exists in `backend/src/db/models/`, and the
 `GET/POST/PATCH/DELETE /analytics/screener/screens` routes it would back are not registered
 either — only `run_tag_screener`/`get_tag_catalog` (the real, shipped tag-flag screener, see
 [api-reference.md](api-reference.md) §4a's implementation-status note) exist today. The table
@@ -582,7 +582,7 @@ does not scope the rule and has no foreign key, so deleting the group leaves an 
 
 ### `skill_registry` — **design only, not built**
 
-**Not built.** No `skill_registry` table exists in `backend/src/db/models.py`. Skills are
+**Not built.** No `skill_registry` table exists in `backend/src/db/models/`. Skills are
 discovered entirely from `<dir>/*/SKILL.md` frontmatter at process startup
 (`skills/registry.py`'s `SkillRegistry.load`) — there is no DB-backed cache/version table today,
 and nothing in this codebase writes one. The shape below is the design, kept for if a queryable
@@ -706,3 +706,13 @@ Two artifacts (the store protocol has one impl per engine — no shared SQL):
   cannot create the extension, a warning is logged and search stays correct but slower.
 - **Dangling-pointer guards:** `turns.parent_turn_id`/`regenerate_of`, `messages.parent_id` and
   `schedule_jobs.thread_id` are foreign keys with `ON DELETE SET NULL`.
+
+## Where the models live
+
+`backend/src/db/models/` is a package, one module per domain: `conversation` (threads, turns,
+messages, replay log, feedback), `memory` (memories, watchlists, saved screens), `accounts` (users,
+identities, secrets, sessions, pets), `scheduler` (schedules, alerts, delivery targets, inbox),
+`billing` (usage and Paddle), `themes` and `scores` (platform-wide derived data). Shared column
+types and constants are in `_common.py`; `db.models` re-exports every model, so
+`from db.models import ThreadRow` is unchanged. A model's relationships stay inside its module.
+
