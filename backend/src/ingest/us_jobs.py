@@ -162,7 +162,7 @@ def _as_int(value: object) -> int | None:
     return int(as_float) if as_float is not None else None
 
 
-def _multi_symbol_row(row: Any, symbol: str, trade_date_iso: str) -> dict[str, object] | None:
+def _multi_symbol_row(row: Any, symbol: str, trade_date_iso: str) -> dict[str, object] | None:  # noqa: ANN401 - pandas Series/DataFrame are untyped (no stubs)
     """One symbol's row out of a MultiIndex-columned frame, or `None` if that symbol has no
     `Close` for this trade date (a genuine gap, e.g. a symbol newly listed after this date)."""
     try:
@@ -184,7 +184,7 @@ def _multi_symbol_row(row: Any, symbol: str, trade_date_iso: str) -> dict[str, o
     }
 
 
-def _single_symbol_row(row: Any, trade_date_iso: str) -> dict[str, object] | None:
+def _single_symbol_row(row: Any, trade_date_iso: str) -> dict[str, object] | None:  # noqa: ANN401 - pandas Series/DataFrame are untyped (no stubs)
     """The single-symbol MultiIndex-collapse case's row — `symbol` is left unset (`None`) since
     this shape carries no symbol column of its own; `job_us_price_eod` backfills it once the one
     requested symbol is known."""
@@ -204,14 +204,14 @@ def _single_symbol_row(row: Any, trade_date_iso: str) -> dict[str, object] | Non
     }
 
 
-def _frame_symbols(columns: Any) -> list[str]:
+def _frame_symbols(columns: Any) -> list[str]:  # noqa: ANN401 - pandas Series/DataFrame are untyped (no stubs)
     if not isinstance(columns, pd.MultiIndex):
         return []
     pairs = cast("list[tuple[Any, Any]]", list(columns))
     return sorted({str(sym) for sym, _field in pairs})
 
 
-def _rows_from_price_frame(frame: Any) -> list[dict[str, object]]:
+def _rows_from_price_frame(frame: Any) -> list[dict[str, object]]:  # noqa: ANN401 - pandas Series/DataFrame are untyped (no stubs)
     """Row-map `batch_download`'s raw `yf.download([...], group_by='ticker')` MultiIndex
     DataFrame into the flat per-symbol-per-day rows `ParquetStore.write_partition` expects — the
     "ingest layer's own row-mapper" responsibility `batch.py`'s docstring calls out explicitly.

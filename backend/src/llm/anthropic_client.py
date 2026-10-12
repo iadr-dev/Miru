@@ -54,6 +54,10 @@ _STOP_REASON_MAP: Final[dict[str, StopReason]] = {
 # has no JSON-schema `input_schema`; Claude drives it itself). Verified against the installed
 # `anthropic` SDK's `WebSearchTool20250305Param` (`anthropic.types`) — `name`/`type` are the
 # only required fields.
+# The SDK's raw stream event is a wide union that also carries its own helper events; the
+# handlers below narrow it by `.type`. Named here so the one explicit `Any` is justified once.
+type StreamEvent = Any
+
 _WEB_SEARCH_TOOL_BLOCK: Final[dict[str, Any]] = {
     "type": "web_search_20250305",
     "name": "web_search",
@@ -190,7 +194,7 @@ def _web_search_result_event(
 
 
 def _content_block_start_event(
-    event: Any, pending: dict[int, dict[str, str]]
+    event: StreamEvent, pending: dict[int, dict[str, str]]
 ) -> ToolCallDeltaEvent | WebSearchResultEvent | None:
     """Extract a tool-call/web-search-result event from one `content_block_start` event, if
     any (split out of `_content_block_event` purely to keep that function's own branch count
@@ -217,7 +221,7 @@ def _content_block_start_event(
 
 
 def _content_block_delta_event(
-    event: Any, pending: dict[int, dict[str, str]]
+    event: StreamEvent, pending: dict[int, dict[str, str]]
 ) -> TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | None:
     """Extract a text/thinking/tool-call delta from one `content_block_delta` event, if any
     (split out of `_content_block_event` for the same PLR0912/PLR0911 reason as
@@ -245,7 +249,7 @@ def _content_block_delta_event(
 
 
 def _content_block_event(
-    event: Any, pending: dict[int, dict[str, str]]
+    event: StreamEvent, pending: dict[int, dict[str, str]]
 ) -> TextDeltaEvent | ThinkingDeltaEvent | ToolCallDeltaEvent | WebSearchResultEvent | None:
     """Extract a text/thinking/tool-call/web-search-result event from one raw stream event, if
     any (helper split out of `AnthropicClient.stream` to keep branch count under the ruff
@@ -259,7 +263,7 @@ def _content_block_event(
 
 
 def _update_message_state(
-    event: Any, stop_reason: StopReason, usage: TokenUsage
+    event: StreamEvent, stop_reason: StopReason, usage: TokenUsage
 ) -> tuple[StopReason, TokenUsage]:
     """Fold `message_start`/`message_delta` events into the running stop-reason/usage state."""
     if event.type == "message_delta":

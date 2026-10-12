@@ -16,6 +16,10 @@ import pandas as pd
 
 from ._shared import _init_tz_cache
 
+# yfinance has no type stubs: a Ticker and what it returns (funds data, filings, option chain) are
+# dynamically shaped. Named once so the explicit `Any` is justified in one place, at this edge.
+type YfObject = Any
+
 
 def _fetch_info_blocking(yahoo_symbol: str) -> dict[str, Any]:
     # `Ticker.get_info()`/frame-returning properties are dynamically-shaped `dict[str,
@@ -83,7 +87,7 @@ def _fetch_ticker_frames_blocking(
     }
 
 
-def _safe_funds_data(ticker: Any) -> Any:  # dynamically-shaped 3rd-party edge
+def _safe_funds_data(ticker: YfObject) -> YfObject:  # dynamically-shaped 3rd-party edge
     """`Ticker.funds_data` raises for a non-fund symbol (an ordinary equity) rather than
     returning `None` — normalize that expected case to `None` here so the handler doesn't need
     its own try/except for what is a routine "this symbol isn't a fund" outcome."""
@@ -93,7 +97,7 @@ def _safe_funds_data(ticker: Any) -> Any:  # dynamically-shaped 3rd-party edge
         return None
 
 
-def _safe_sec_filings(ticker: Any) -> Any:  # dynamically-shaped 3rd-party edge
+def _safe_sec_filings(ticker: YfObject) -> YfObject:  # dynamically-shaped 3rd-party edge
     """`Ticker.get_sec_filings()` raises for a symbol with no EDGAR filing history (e.g. a
     non-US-listed instrument) rather than returning an empty list — normalize that expected case
     to `None` here, matching `_safe_funds_data`'s own convention."""
@@ -201,7 +205,7 @@ def _fetch_market_status_blocking(region: str) -> dict[str, Any]:
     return cast("dict[str, Any]", market.status)
 
 
-def _fetch_option_chain_blocking(yahoo_symbol: str, expiry: str) -> Any:
+def _fetch_option_chain_blocking(yahoo_symbol: str, expiry: str) -> YfObject:
     import yfinance as yf  # noqa: PLC0415
 
     _init_tz_cache()

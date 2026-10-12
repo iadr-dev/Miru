@@ -25,6 +25,10 @@ from ._shared import _init_tz_cache
 _CHUNK_SIZE = 250
 _CHUNK_THROTTLE_SECONDS = 5.0
 
+# What `yfinance.download` returns: a pandas MultiIndex DataFrame, untyped. Named once so the
+# explicit `Any` is justified in one place; the ingest layer reshapes it into typed rows.
+type YfFrame = Any
+
 
 async def batch_download(
     symbols: Sequence[str],
@@ -33,7 +37,7 @@ async def batch_download(
     end: str | None = None,
     interval: str = "1d",
     auto_adjust: bool = True,
-) -> Any:  # returns a raw yfinance/pandas MultiIndex DataFrame, the ingest
+) -> YfFrame:  # returns a raw yfinance/pandas MultiIndex DataFrame, the ingest
     # layer's own row-mapper is responsible for reshaping it, not this adapter
     """Batch multi-symbol OHLCV download (`yfinance.download([...], group_by='ticker')`),
     chunked at `_CHUNK_SIZE` with a pause between chunks — see the module-level comment for why
@@ -52,7 +56,7 @@ async def batch_download(
         symbol_list[i : i + _CHUNK_SIZE] for i in range(0, len(symbol_list), _CHUNK_SIZE)
     ] or [[]]
 
-    def _blocking(chunk: list[str]) -> Any:
+    def _blocking(chunk: list[str]) -> YfFrame:
         import yfinance as yf  # noqa: PLC0415
 
         _init_tz_cache()

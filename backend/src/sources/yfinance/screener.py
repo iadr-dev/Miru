@@ -64,6 +64,10 @@ _SCREENER_OP_MAP: dict[ScreenerOperator, str] = {
 }
 
 
+# The query tree yfinance builds (EquityQuery/ETFQuery/FundQuery) is untyped.
+type YfQuery = Any
+
+
 def _condition_operand(condition: ScreenerCondition) -> list[Any]:
     if condition.op is ScreenerOperator.BETWEEN:
         return [condition.field, condition.value, condition.value2]
@@ -72,7 +76,7 @@ def _condition_operand(condition: ScreenerCondition) -> list[Any]:
     return [condition.field, condition.value]
 
 
-def _build_query(asset_kind: ScreenerAssetKind, q: ScreenerQuery) -> Any:
+def _build_query(asset_kind: ScreenerAssetKind, q: ScreenerQuery) -> YfQuery:
     """Build a `yfinance` `EquityQuery`/`ETFQuery`/`FundQuery` tree from our own condition
     vocabulary. Raises `ValueError` on an unknown field/value for that asset kind — the query
     SDK itself validates against its documented field set; this function never pre-guesses or

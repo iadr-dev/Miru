@@ -150,7 +150,7 @@ async def _post_form(
 
 
 class SigningKeyClient(Protocol):
-    def get_signing_key_from_jwt(self, token: str) -> Any: ...
+    def get_signing_key_from_jwt(self, token: str) -> Any: ...  # noqa: ANN401 - PyJWT returns an untyped PyJWK
 
 
 class GoogleOAuthProvider:
@@ -206,7 +206,7 @@ class GoogleOAuthProvider:
         payload = await _post_form(self._client_factory, GOOGLE_TOKEN_ENDPOINT, data)
         return ProviderTokenResponse.model_validate(payload)
 
-    def _resolve_key(self, id_token: str) -> Any:
+    def _resolve_key(self, id_token: str) -> Any:  # noqa: ANN401 - PyJWT key union (RSA/EC/OKP)
         client = self._signing_key_client or PyJWKClient(GOOGLE_CERTS_URL)
         return client.get_signing_key_from_jwt(id_token).key
 
@@ -430,7 +430,7 @@ class TelegramOAuthProvider:
         )
         return ProviderTokenResponse.model_validate(payload)
 
-    def _resolve_key(self, id_token: str) -> Any:
+    def _resolve_key(self, id_token: str) -> Any:  # noqa: ANN401 - PyJWT key union (RSA/EC/OKP)
         client = self._signing_key_client or PyJWKClient(TELEGRAM_JWKS_URL)
         return client.get_signing_key_from_jwt(id_token).key
 

@@ -84,7 +84,7 @@ class PaddleSubscriptionEntity(BaseModel):
         return value if isinstance(value, str) else None
 
 
-def _parse_dt(value: Any) -> datetime | None:
+def _parse_dt(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
