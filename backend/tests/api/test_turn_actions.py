@@ -16,14 +16,12 @@ the setup pattern established throughout `tests/api/test_rich_card_route.py` and
 
 from __future__ import annotations
 
-import asyncio
-
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from db.models import TurnFeedbackRow
 from schemas.enums import Tier
-from tests.api.conftest import sign_in
+from tests.api.conftest import observe_db, sign_in
 from tests.api.test_routes import _parse_sse
 
 
@@ -39,7 +37,7 @@ def _feedback_row_count(client: TestClient, *, turn_id: str, user_id: str) -> in
             )
             return result.scalar_one()
 
-    return asyncio.run(_count())
+    return observe_db(client, _count)
 
 
 def _create_thread(client: TestClient, headers: dict[str, str], title: str = "t") -> str:

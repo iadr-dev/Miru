@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from config.settings import Settings
+from db import rls
 from scheduler.store import SqlAlchemySchedulerStore
 from schemas.enums import Tier
 from tests.api.conftest import _TEST_JWT_SECRET, build_test_client, sign_in
@@ -87,14 +88,15 @@ def test_an_expired_token_binds_nothing(linked_client: TestClient, settings: Set
     assert linked_client.portal is not None
 
     async def _expired() -> None:
-        async with state.session_factory() as session:
-            await SqlAlchemySchedulerStore(session).start_channel_link(
-                user_id=user_id,
-                channel="telegram",
-                token="old-token",
-                expires_at=datetime.now(UTC) - timedelta(minutes=1),
-            )
-            await session.commit()
+        with rls.system_access():  # seeding another user's link row is observer work
+            async with state.session_factory() as session:
+                await SqlAlchemySchedulerStore(session).start_channel_link(
+                    user_id=user_id,
+                    channel="telegram",
+                    token="old-token",
+                    expires_at=datetime.now(UTC) - timedelta(minutes=1),
+                )
+                await session.commit()
 
     linked_client.portal.call(_expired)
     hook = linked_client.post(

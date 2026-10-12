@@ -14,7 +14,7 @@ import os
 import tempfile
 import threading
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,7 +26,10 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from accounts.auth import issue_access_token
 from api.app import create_app
 from config.settings import Settings
-from db import models  # noqa: F401  # pyright: ignore[reportUnusedImport] — registers ORM models
+from db import (
+    models,  # noqa: F401  # pyright: ignore[reportUnusedImport] — registers ORM models
+    rls,
+)
 from db.base import Base, ensure_schema
 from db.models import UserRow
 from db.sqlite_pragma import enable_sqlite_foreign_keys
@@ -332,6 +335,20 @@ async def _insert_user(session_factory, *, tier: Tier) -> str:
         )
         await session.commit()
     return user_id
+
+
+def observe_db[T](client: TestClient, work: Callable[[], Awaitable[T]]) -> T:
+    """Run `work` against the app's database as an observer: on the app's own event loop (an
+    asyncpg connection is bound to the loop that opened it, so `asyncio.run` would hand it to a
+    different one) and across users (a test inspecting rows is not one user, so row-level security,
+    when the suite runs against Postgres with it on, must not filter its view)."""
+    assert client.portal is not None
+
+    async def _run() -> T:
+        with rls.system_access():
+            return await work()
+
+    return client.portal.call(_run)
 
 
 def sign_in(client: TestClient, settings: Settings, *, tier: Tier) -> tuple[dict[str, str], str]:
