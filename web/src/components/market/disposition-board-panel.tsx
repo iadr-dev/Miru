@@ -13,7 +13,7 @@ import {
   DISPOSITION_BUCKETS,
   type DispositionBoardCardRow,
   type DispositionBucket,
-} from "@/types/market";
+} from "@/types/market/disclosures";
 import type { Market } from "@/types/settings";
 
 /**

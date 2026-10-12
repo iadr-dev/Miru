@@ -15,7 +15,7 @@ import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-pa
 import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
-import type { SymbolType } from "@/types/market";
+import type { SymbolType } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 // 總覽/操作日報/成分股/折溢價 are new, ETF-only panels (`components/etf/*`); 看盤/籌碼/技術/AI/新聞

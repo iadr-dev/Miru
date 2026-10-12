@@ -20,7 +20,7 @@ import {
 } from "@/components/stock/technical/toggles";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
 import type { Market } from "@/types/settings";
-import type { EodBar } from "@/types/stock-detail";
+import type { EodBar } from "@/types/stock/technical";
 
 function rangeStartDate(range: RangeKey, today: Date): string {
   const d = new Date(today);

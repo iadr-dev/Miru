@@ -1,4 +1,4 @@
-import type { SupplyChainEdge } from "@/types/stock-detail";
+import type { SupplyChainEdge } from "@/types/stock/profile";
 
 /** How a peer relates to the company in focus. */
 export type PeerRole = "supplier" | "customer" | "competitor";

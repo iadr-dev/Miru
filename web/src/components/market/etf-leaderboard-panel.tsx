@@ -6,7 +6,7 @@ import { CardSkeleton } from "@/components/market/card-skeleton";
 import { LeaderboardCard } from "@/components/market/leaderboard-card";
 import { QueryState } from "@/components/ui/query-state";
 import { getScoreLeaderboard } from "@/lib/api/market";
-import type { LeaderboardDirection } from "@/types/market";
+import type { LeaderboardDirection } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
 /** AI 多空排行 scoped to the ETF universe — same `get_score_leaderboard` query `TopSplit` already

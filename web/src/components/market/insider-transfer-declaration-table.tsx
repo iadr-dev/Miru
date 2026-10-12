@@ -3,7 +3,7 @@
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/lib/format-number";
-import type { InsiderTransferDeclarationRow } from "@/types/market";
+import type { InsiderTransferDeclarationRow } from "@/types/market/disclosures";
 
 // Same collapsed-row-count convention every other market card in this dashboard uses.
 export const INSIDER_TRANSFER_DECLARATION_COLLAPSED_ROW_COUNT = 10;

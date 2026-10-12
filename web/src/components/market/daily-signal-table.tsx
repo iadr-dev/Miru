@@ -9,7 +9,8 @@ import { WatchlistStarButton } from "@/components/stock/watchlist-star-button";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, formatSignedChange } from "@/lib/signed";
-import type { DailySignalRow, HoldingStatus } from "@/types/market";
+import type { HoldingStatus } from "@/types/market/etf";
+import type { DailySignalRow } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
 const ROW_GRID_COLS = "grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_0.9fr_28px]";

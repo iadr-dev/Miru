@@ -19,8 +19,8 @@ import {
   getMarginMaintenance,
   getMarginShortBalance,
 } from "@/lib/api/market";
-import type { HolderThreshold, HolderWindow } from "@/types/market";
-import { isMaskedTeaser } from "@/types/market";
+import type { HolderThreshold, HolderWindow } from "@/types/market/rankings";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 // The backend caps top_n at 50 for `/market/holder-accumulation` — fetch the full cap so

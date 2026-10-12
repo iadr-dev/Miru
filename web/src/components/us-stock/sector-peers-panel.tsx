@@ -16,7 +16,7 @@ import type {
   SectorIndustryWeightRow,
   SectorOverviewCompanyRow,
   SectorOverviewStats,
-} from "@/types/stock-detail";
+} from "@/types/stock/profile";
 
 const PEER_ROW_LIMIT = 10;
 

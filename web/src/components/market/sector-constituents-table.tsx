@@ -6,7 +6,7 @@ import { SignedChange } from "@/components/ui/signed-change";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionOf } from "@/lib/signed";
-import type { SectorConstituentRow } from "@/types/market";
+import type { SectorConstituentRow } from "@/types/market/sectors";
 
 const ROW_GRID_COLS = "grid-cols-[1.4fr_0.9fr_0.9fr_0.9fr_1fr]";
 

@@ -8,7 +8,7 @@ import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getCalendarEventsFeed } from "@/lib/api/stock-detail";
 import type { Market } from "@/types/settings";
-import type { EarningsCalendarRow } from "@/types/stock-detail";
+import type { EarningsCalendarRow } from "@/types/stock/events";
 
 const EVENT_DOT_COLOR = "var(--chart-1)";
 

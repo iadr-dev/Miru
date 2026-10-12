@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { groupByIndustry, layoutNestedTiles } from "@/components/market/stock-heatmap-treemap";
-import type { StockHeatmapRow } from "@/types/market";
+import type { StockHeatmapRow } from "@/types/market/sectors";
 
 function row(overrides: Partial<StockHeatmapRow>): StockHeatmapRow {
   return {

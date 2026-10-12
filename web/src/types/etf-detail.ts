@@ -1,14 +1,13 @@
 /**
  * ETF-detail-page contracts — mirrors `backend/src/api/routers/fund_data.py`'s
  * `/funds/{symbol}/{fund-info,expense-ratio,premium-discount}` routes plus
- * `market_rest.py`'s `/market/active-etf-report`. Split from `types/stock-detail.ts` the same
- * way that file was split from `types/market.ts` — a genuinely different per-symbol surface
- * (the ETF detail page), even though it shares the `healthStatusSchema`/`maskedTeaserSchema`
- * seams already defined there/in `types/market.ts` rather than redefining them.
+ * `market_rest.py`'s `/market/active-etf-report` — the ETF detail page's own per-symbol
+ * surface. Shared seams (`healthStatusSchema`, `maskedTeaserSchema`, the holding-change status)
+ * are imported from `types/market/`, never redefined.
  */
 import { z } from "zod";
-import { maskedTeaserSchema } from "@/types/market";
-import { healthStatusSchema } from "@/types/stock-detail";
+import { holdingStatusSchema } from "@/types/market/etf";
+import { healthStatusSchema, maskedTeaserSchema } from "@/types/market/shared";
 
 // ---------------------------------------------------------------------------
 // GET /funds/{symbol}/fund-info — get_etf_fund_info (public)
@@ -157,10 +156,6 @@ export type EtfPremiumDiscountResponse = z.infer<typeof etfPremiumDiscountRespon
 // ---------------------------------------------------------------------------
 // GET /market/active-etf-report — get_active_etf_report (sponsor)
 // ---------------------------------------------------------------------------
-
-export const HOLDING_STATUSES = ["新增", "刪除", "加碼", "減碼", "no_prior_data"] as const;
-export const holdingStatusSchema = z.enum(HOLDING_STATUSES);
-export type HoldingStatus = z.infer<typeof holdingStatusSchema>;
 
 export const activeEtfReportRowSchema = z.object({
   component_stock_id: z.string(),

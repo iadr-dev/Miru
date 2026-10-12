@@ -13,7 +13,7 @@ import {
   getStockMarginShort,
 } from "@/lib/api/stock-detail";
 import { resolveToken } from "@/lib/resolve-css-token";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 
 export function MarginShortPane({
   symbol,

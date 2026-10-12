@@ -18,7 +18,7 @@ import { cn } from "@/lib/cn";
 import { fieldLabel } from "@/lib/field-labels";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import type { InstitutionalFlowTotalMarketRow } from "@/types/market";
+import type { InstitutionalFlowTotalMarketRow } from "@/types/market/flows";
 
 /** The categories worth their own bar series — `total` is excluded from the chart (it would
  * dwarf every per-category bar on the same axis) but still shown in the summary table below. */

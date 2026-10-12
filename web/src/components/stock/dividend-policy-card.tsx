@@ -20,7 +20,7 @@ import { getDividendPolicySummary } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
-import type { DividendEvent, DividendPolicyStats } from "@/types/stock-detail";
+import type { DividendEvent, DividendPolicyStats } from "@/types/stock/dividends";
 
 const TOOLTIP_STYLE = {
   background: "var(--surface-2)",

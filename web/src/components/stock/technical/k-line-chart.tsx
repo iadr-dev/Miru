@@ -32,7 +32,7 @@ import {
 } from "@/components/stock/technical/shared";
 import { resolveToken } from "@/lib/resolve-css-token";
 import type { Market } from "@/types/settings";
-import type { EodBar, TechnicalIndicatorsResponse } from "@/types/stock-detail";
+import type { EodBar, TechnicalIndicatorsResponse } from "@/types/stock/technical";
 
 // A multi-year daily window can produce dozens of swing pivots / completed patterns — capping
 // keeps the chart legible (see the call sites below for why).

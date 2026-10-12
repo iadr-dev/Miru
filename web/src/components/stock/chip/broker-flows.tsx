@@ -16,9 +16,9 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { getForeignShareholding, getStockChipFlows } from "@/lib/api/stock-detail";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
-import type { ChipBrokerTopRow } from "@/types/stock-detail";
+import type { ChipBrokerTopRow } from "@/types/stock/chip";
 
 /** 分點's 買賣超 tab period selector — days back from today, mapped to `getStockChipFlows`'s
  * `start_date` param. `get_chip_flows`'s upstream (`TaiwanStockTradingDailyReport`) is

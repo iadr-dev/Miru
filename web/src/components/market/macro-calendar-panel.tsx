@@ -13,7 +13,7 @@ import { getMacroCalendar } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { toIsoDate } from "@/lib/month-grid";
 import { safeHttpUrl } from "@/lib/safe-url";
-import type { MacroReleaseEventRow } from "@/types/market";
+import type { MacroReleaseEventRow } from "@/types/market/macro";
 
 const COLLAPSED_ROW_COUNT = 10;
 // Padding either side of the visible day-strip week / calendar month, in days — generous enough

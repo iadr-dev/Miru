@@ -3,7 +3,7 @@
 import { createChart, HistogramSeries, LineSeries, type Time } from "lightweight-charts";
 import { type ReactNode, useEffect, useRef } from "react";
 import { resolveToken } from "@/lib/resolve-css-token";
-import type { TechnicalIndicatorsResponse } from "@/types/stock-detail";
+import type { TechnicalIndicatorsResponse } from "@/types/stock/technical";
 
 export function KdPane({
   indicators,

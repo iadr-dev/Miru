@@ -24,7 +24,7 @@ import {
   SECTOR_HEATMAP_SIZE_BY_OPTIONS,
   type SectorHeatmapPeriod,
   type SectorHeatmapSizeBy,
-} from "@/types/market";
+} from "@/types/market/sectors";
 import type { Market } from "@/types/settings";
 
 // The rotation scene is three.js (about 1 MB) and only appears after the user switches to the

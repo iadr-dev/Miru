@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 import { entrance, staggerChildren } from "@/lib/motion";
 import { groupPeers, type Peer, type PeerRole } from "@/lib/supply-chain";
 import type { Market } from "@/types/settings";
-import type { SupplyChainEdge } from "@/types/stock-detail";
+import type { SupplyChainEdge } from "@/types/stock/profile";
 
 /** Relationship colours are categorical (the non-signed chart tokens) - never --up/--down, which
  * mean a price move and nothing else (web/OVERVIEW.md §4). */

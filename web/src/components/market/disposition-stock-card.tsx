@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import type { DispositionBoardCardRow } from "@/types/market";
+import type { DispositionBoardCardRow } from "@/types/market/disclosures";
 
 const FLAG_ORDER = ["資", "券", "沖", "警", "處", "注"] as const;
 type Flag = (typeof FLAG_ORDER)[number];

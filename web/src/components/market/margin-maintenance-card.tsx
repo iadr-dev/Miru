@@ -18,7 +18,7 @@ import { TableWithActions } from "@/components/ui/table-actions";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import type { MarginMaintenanceRow, MarginShortTotalMarketRow } from "@/types/market";
+import type { MarginMaintenanceRow, MarginShortTotalMarketRow } from "@/types/market/flows";
 
 /** FinMind's `TaiwanStockTotalMarginPurchaseShortSale`'s real `name` category values —
  * confirmed live against `/market/margin-short-balance`: `MarginPurchase`/`ShortSale` (share

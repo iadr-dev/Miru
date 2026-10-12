@@ -5,7 +5,7 @@
  * a plain equity is a 4-digit-or-shorter numeric code; a TW ETF is `00`-prefixed, up to 6 chars,
  * with a `L`/`R` suffix marking leveraged/inverse products (TWSE's own documented convention).
  */
-import type { SymbolType } from "@/types/market";
+import type { SymbolType } from "@/types/market/shared";
 
 const MAX_ETF_LENGTH = 6;
 const ETF_PREFIX = "00";

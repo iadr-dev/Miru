@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compareRows, DEFAULT_SORT_DIRECTION } from "@/components/market/etf-list-sort";
-import type { EtfListRow } from "@/types/market";
+import type { EtfListRow } from "@/types/market/etf";
 
 function row(overrides: Partial<EtfListRow>): EtfListRow {
   return {

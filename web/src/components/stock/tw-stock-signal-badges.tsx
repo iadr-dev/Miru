@@ -9,7 +9,7 @@ import {
   getTagScreenerForSymbols,
   getTwMarketRankings,
 } from "@/lib/api/market";
-import type { DispositionBucket } from "@/types/market";
+import type { DispositionBucket } from "@/types/market/disclosures";
 import type { Market } from "@/types/settings";
 
 // Fixed categorical `--chart-N` tokens, one per bucket — never signed (處置 status is a

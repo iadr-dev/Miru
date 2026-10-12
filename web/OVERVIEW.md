@@ -97,7 +97,12 @@ pnpm build                      # next build (must pass typecheck + lint clean)
   market, symbol)` key, `FRESHNESS` classes, tier/entitlement. **Hand-written now, migrated to
   generated-from-OpenAPI** once the backend serves `/openapi.json` — a backend contract change must
   then become a **frontend compile error**, not a silent mismatch. Each file cites the backend module
-  it mirrors so reconciliation is mechanical. **Feature-only types stay co-located**
+  it mirrors so reconciliation is mechanical. **One file per domain, a folder per surface** —
+  `types/market/{flows,quotes,rankings,sectors,…}.ts` and `types/stock/{chip,fundamentals,…}.ts`,
+  each listing the routes it mirrors in its header; envelope pieces every contract shares
+  (`MaskedTeaser`/`isMaskedTeaser`, `healthStatusSchema`, `rowsOutputSchema`) live once in
+  `types/market/shared.ts`. Import from the module that owns the name (no barrel `index.ts`), and
+  never redefine a schema another module already exports. **Feature-only types stay co-located**
   (`app/<feature>/types.ts`) — don't dump them in `types/`. Frontend-invented shared shapes (UI/theme
   state) also live in `web/types/` but need no backend citation.
 - **Phosphor icons only** — one family, `weight="regular"`, `strokeWidth` locked globally

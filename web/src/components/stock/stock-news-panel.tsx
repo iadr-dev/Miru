@@ -11,7 +11,7 @@ import { getFinmindStockNews, getPttStockSearch } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
 import type { Market } from "@/types/settings";
-import type { PttStockSearchPost, StockNewsRow } from "@/types/stock-detail";
+import type { PttStockSearchPost, StockNewsRow } from "@/types/stock/news";
 
 const NEWS_COLLAPSED_ROW_COUNT = 20;
 const PTT_COLLAPSED_ROW_COUNT = 20;

@@ -10,7 +10,7 @@ import { type RangedPaneProps, useLineChartPane } from "@/components/stock/techn
 import { useInstitutionalFlow } from "@/hooks/use-stock-data";
 import { getForeignShareholding, getShareholderDispersion } from "@/lib/api/stock-detail";
 import { resolveToken } from "@/lib/resolve-css-token";
-import { isMaskedTeaser } from "@/types/market";
+import { isMaskedTeaser } from "@/types/market/shared";
 
 // 外資 (Foreign_Investor + Foreign_Dealer_Self) / 投信 (Investment_Trust) / 自營商 (Dealer_self +
 // Dealer_Hedging) — the same 3-bucket collapse `chip-analysis-panel.tsx`'s own

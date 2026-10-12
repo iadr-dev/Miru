@@ -9,8 +9,9 @@ import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
-import type { ActiveEtfReportData, HoldingStatus } from "@/types/etf-detail";
-import { isMaskedTeaser } from "@/types/market";
+import type { ActiveEtfReportData } from "@/types/etf-detail";
+import type { HoldingStatus } from "@/types/market/etf";
+import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 
 // `HoldingStatus`'s own zh-TW-string values (新增/刪除/加碼/減碼) are already the display label —

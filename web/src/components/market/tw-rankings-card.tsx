@@ -11,7 +11,8 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { getHolderAccumulation, getTwMarketRankings } from "@/lib/api/market";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
-import { isMaskedTeaser, type TwRankingKind } from "@/types/market";
+import type { TwRankingKind } from "@/types/market/rankings";
+import { isMaskedTeaser } from "@/types/market/shared";
 
 // Same "fetch the full backend cap once, show 10 inline, expand the rest in a modal" convention
 // `RankingsCard` (the US sibling) uses.

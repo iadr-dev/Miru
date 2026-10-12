@@ -7,7 +7,7 @@ import { LockedRowsNote } from "@/components/market/locked-rows-note";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
-import type { IndustryChainMoneyFlowRow } from "@/types/market";
+import type { IndustryChainMoneyFlowRow } from "@/types/market/flows";
 
 const MAX_BAR_PCT = 40; // clamps the bar-length scale so one dominant chain doesn't flatten the rest
 // Same collapsed-row-count convention every other market card in this dashboard uses.
