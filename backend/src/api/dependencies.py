@@ -30,6 +30,7 @@ from api.auth_expired import AUTH_EXPIRED_STATE_KEY
 from api.errors import ApiError
 from api.turn_registry import TurnRegistry
 from config.settings import Settings
+from db import rls
 from events.factory import EventBusFactory
 from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker
@@ -66,6 +67,14 @@ class AppState:
     quote_feed: QuoteFeed
     data_update_broker: DataUpdateBroker
     turn_control: TurnControl
+
+
+async def system_scope() -> AsyncGenerator[None]:
+    """Route dependency for the handful of endpoints that act before (or without) a signed-in
+    user - the sign-in flow, inbound webhooks, token-link pages. Inside it the database does not
+    filter by user (db/rls.py); keep it off every route that serves a signed-in user."""
+    with rls.system_access():
+        yield
 
 
 def get_state(request: Request) -> AppState:
@@ -116,6 +125,8 @@ async def _load_user(
     the one entitlement change that no webhook announces (it is the absence of a payment)."""
     user = await store.get(user_id=user_id)
     structlog.contextvars.bind_contextvars(user_id=user_id)  # on every log line of this request
+    rls.bind_user(user_id)  # the database filters this request's queries to this user (db/rls.py)
+    await rls.bind_session(session)  # ... including the transaction that is already open
     if user.tier.value == "free":
         return user
     return await BillingService(

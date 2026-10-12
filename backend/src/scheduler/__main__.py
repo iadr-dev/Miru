@@ -25,6 +25,7 @@ import structlog
 
 from config.logging_config import configure_logging
 from config.settings import get_settings
+from db import rls
 from scheduler.composition import build_alert_update_source, build_scheduler_from_settings
 from scheduler.subscriber import run_subscriber
 from scheduler.worker import SchedulerWorker
@@ -105,6 +106,9 @@ async def run_scheduler_loop(
 async def main() -> None:
     settings = get_settings()
     configure_logging(settings)
+    rls.install(enabled=settings.row_level_security)
+    # This process works across all users (due jobs, alert sweeps): it is system work, not one user.
+    rls.enter_system_mode()
     worker = await build_scheduler_from_settings(settings)
     shutdown = _ShutdownState()
 

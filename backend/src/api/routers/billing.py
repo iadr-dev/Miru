@@ -24,6 +24,7 @@ from api.dependencies import (
     get_session,
     get_settings_dep,
     require_user,
+    system_scope,
 )
 from api.errors import ApiError
 from config.settings import Settings
@@ -427,7 +428,7 @@ async def _portal_url(
     return str(fallback) if fallback else None
 
 
-@router.post("/billing/webhook/paddle")
+@router.post("/billing/webhook/paddle", dependencies=[Depends(system_scope)])
 async def paddle_webhook(
     request: Request,
     session: AsyncSession = Depends(get_session),

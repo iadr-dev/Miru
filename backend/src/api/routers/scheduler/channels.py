@@ -19,6 +19,7 @@ from api.dependencies import (
     AppState,
     get_state,
     require_user,
+    system_scope,
 )
 from api.errors import ApiError
 from api.routers.scheduler._common import HTTP_422_UNPROCESSABLE as _HTTP_422_UNPROCESSABLE
@@ -239,7 +240,7 @@ async def _line_reply(
     )
 
 
-@router.post("/channels/line/webhook")
+@router.post("/channels/line/webhook", dependencies=[Depends(system_scope)])
 async def line_webhook(
     request: Request,
     state: AppState = Depends(get_state),
@@ -316,7 +317,7 @@ async def line_webhook(
     return {"handled": handled}
 
 
-@router.post("/webhooks/telegram")
+@router.post("/webhooks/telegram", dependencies=[Depends(system_scope)])
 async def telegram_webhook(
     update: dict[str, object],
     state: AppState = Depends(get_state),

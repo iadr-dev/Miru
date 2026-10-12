@@ -101,6 +101,10 @@ async def ensure_schema(engine: AsyncEngine) -> None:
                 raise SchemaOutOfDateError(behind)
         # Postgres-only extras the portable model cannot express (the chat-search trigram index).
         await ensure_postgres_search_index(engine)
+        if get_settings().row_level_security:
+            from db.rls import apply_policies  # noqa: PLC0415 - rls imports Base from this module
+
+            await apply_policies(engine)
 
 
 async def ensure_schema_for(session_factory: async_sessionmaker[AsyncSession]) -> None:

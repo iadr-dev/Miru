@@ -62,6 +62,7 @@ from api.dependencies import (
     get_state,
     get_user_store,
     require_user,
+    system_scope,
 )
 from api.errors import ApiError
 from api.rate_guard import guard_auth
@@ -243,7 +244,7 @@ async def begin_oauth_link(
     return BeginAuthResponse(authorization_url=auth_request.authorization_url)
 
 
-@router.get("/auth/oauth/{provider}/start")
+@router.get("/auth/oauth/{provider}/start", dependencies=[Depends(system_scope)])
 async def start_ticketed_link(
     provider: str,
     ticket: str = Query(min_length=10, max_length=600),
@@ -383,7 +384,9 @@ def _oauth_error_redirect(
     return redirect
 
 
-@router.get("/auth/oauth/{provider}/callback", dependencies=[Depends(guard_auth)])
+@router.get(
+    "/auth/oauth/{provider}/callback", dependencies=[Depends(guard_auth), Depends(system_scope)]
+)
 async def oauth_callback(
     provider: str,
     request: Request,
@@ -439,7 +442,7 @@ async def oauth_callback(
     return redirect
 
 
-@router.post("/auth/refresh", dependencies=[Depends(guard_auth)])
+@router.post("/auth/refresh", dependencies=[Depends(guard_auth), Depends(system_scope)])
 async def refresh(
     request: Request,
     response: Response,
@@ -488,7 +491,7 @@ async def refresh(
     return {"refreshed": True}
 
 
-@router.post("/auth/logout")
+@router.post("/auth/logout", dependencies=[Depends(system_scope)])
 async def logout(
     request: Request,
     response: Response,
