@@ -103,13 +103,17 @@ class PersonalityPresetView(BaseModel):
     version: str
 
 
+class PersonalityPresetsResponse(BaseModel):
+    presets: list[PersonalityPresetView]
+
+
 @router.get("/personality/presets")
 async def personality_presets(
     state: AppState = Depends(get_state),
-) -> dict[str, list[PersonalityPresetView]]:
+) -> PersonalityPresetsResponse:
     """The agent-voice presets for the Settings picker (id, names, description)."""
-    return {
-        "presets": [
+    return PersonalityPresetsResponse(
+        presets=[
             PersonalityPresetView(
                 id=p.id,
                 name_zh=p.name_zh,
@@ -120,7 +124,7 @@ async def personality_presets(
             )
             for p in state.personality_registry.all_presets()
         ]
-    }
+    )
 
 
 @router.get("/usage/quota")

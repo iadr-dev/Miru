@@ -74,7 +74,6 @@ x-app-env: &app-env
   FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
   # Point the offline path at the compose Ollama service when the `ollama` profile is up.
   OLLAMA_BASE_URL: http://ollama:11434
-  OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.6}
   # LLM role/provider overrides — unset = config/settings.py's own per-role defaults apply.
   LLM_PROVIDER: ${LLM_PROVIDER:-}
   LLM_MODEL: ${LLM_MODEL:-}
@@ -158,7 +157,6 @@ x-app-env: &app-env
   # `config/settings.py`'s own defaults by hand.
   VOICE_STT_PROVIDER: ${VOICE_STT_PROVIDER:-faster_whisper}
   VOICE_TTS_PROVIDER: ${VOICE_TTS_PROVIDER:-edge_tts}
-  VOICE_MAX_AUDIO_SECONDS: ${VOICE_MAX_AUDIO_SECONDS:-60}
   # Chat attachments (module: attachments/, api/attachments.py) — image/document upload cap.
   MAX_ATTACHMENT_SIZE_BYTES: ${MAX_ATTACHMENT_SIZE_BYTES:-15000000}
   # Paddle billing (module 15) — unset = /billing/* 503s `billing_unconfigured`.

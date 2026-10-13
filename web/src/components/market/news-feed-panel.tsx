@@ -17,8 +17,6 @@ import type { Market } from "@/types/settings";
 const NEWS_QUERY_BY_MARKET: Record<Market, string> = {
   TW: "台股",
   US: "US stock market",
-  GB: "UK stock market",
-  JP: "Japan stock market",
 };
 
 // This sub-tab has no sibling card next to it (unlike 每日焦點's multi-card grid), so its own

@@ -29,6 +29,9 @@ export const oauthAccountSchema = z.object({
 });
 export type OAuthAccountLike = z.infer<typeof oauthAccountSchema>;
 
+/** `GET /me/connections`. */
+export const connectionsResponseSchema = z.object({ connections: z.array(oauthAccountSchema) });
+
 // ---------------------------------------------------------------------------
 // Personality presets
 // ---------------------------------------------------------------------------
@@ -64,6 +67,9 @@ export const petCatalogEntrySchema = z.object({
 });
 export type PetCatalogEntry = z.infer<typeof petCatalogEntrySchema>;
 
+/** `GET /pets/catalog`. */
+export const petCatalogResponseSchema = z.object({ catalog: z.array(petCatalogEntrySchema) });
+
 export const ownedPetSchema = z.object({
   id: z.string(),
   user_id: z.string(),
@@ -76,6 +82,12 @@ export const ownedPetSchema = z.object({
   updated_at: z.string(),
 });
 export type OwnedPet = z.infer<typeof ownedPetSchema>;
+
+/** `GET /pets`. */
+export const ownedPetsResponseSchema = z.object({ pets: z.array(ownedPetSchema) });
+
+/** `GET /pets/active` — `active` is null until the user equips a pet. */
+export const activePetResponseSchema = z.object({ active: ownedPetSchema.nullable() });
 
 export const petProgressSchema = z.object({
   user_id: z.string(),
@@ -230,7 +242,8 @@ export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 // Scheduler shared shapes
 // ---------------------------------------------------------------------------
 
-export const MARKETS = ["TW", "US", "GB", "JP"] as const;
+/** The markets the app supports — the backend's `UserMarket` (watchlists, alerts, schedules). */
+export const MARKETS = ["TW", "US"] as const;
 export type Market = (typeof MARKETS)[number];
 
 export const DELIVERY_CHANNEL_KINDS = ["in_app", "line", "telegram", "email", "push"] as const;
@@ -291,10 +304,6 @@ export const schedulesResponseSchema = z.object({
 // Alerts — mirrors backend/src/scheduler/templates.py + models.py (docs/backend/modules/14 §3).
 // Open to every signed-in user (modules/14); the backend caps rules per user (409 `cap_reached`).
 // ---------------------------------------------------------------------------
-
-/** Alerts cover TW and US only (the DB CHECK); `MARKETS` keeps GB/JP for the schedule trigger. */
-export const ALERT_MARKETS = ["TW", "US"] as const;
-export type AlertMarket = (typeof ALERT_MARKETS)[number];
 
 export const ALERT_TEMPLATE_KINDS = [
   "close_price",

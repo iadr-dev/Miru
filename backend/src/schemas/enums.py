@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 
 class TimingClass(StrEnum):
@@ -41,6 +42,21 @@ class Market(StrEnum):
     GLOBAL = "GLOBAL"
 
 
+# The markets a user's own records (watchlists, alerts, schedules) can be in — mirrors the
+# `MARKET_TW_US_CHECK` constraint on those tables, so an unsupported market is a 422 at the API
+# instead of a CHECK failure at insert, and the OpenAPI spec says what can actually come back.
+UserMarket = Literal[Market.TW, Market.US]
+
+
+def user_market(value: str) -> UserMarket:
+    """A stored or requested market as a `UserMarket`; raises `ValueError` for any other."""
+    if value == Market.TW:
+        return Market.TW
+    if value == Market.US:
+        return Market.US
+    raise ValueError(f"{value!r} is not a market user records can be in (TW or US)")
+
+
 class Tier(StrEnum):
     """User subscription tier — gates paid data + throughput only, never a recommendation
     (governance.md §9)."""
@@ -48,6 +64,10 @@ class Tier(StrEnum):
     FREE = "free"
     PREMIUM = "premium"
     PRO = "pro"
+
+
+# A tier you can buy. Free is the absence of a subscription, so no plan or price is ever free.
+PaidTier = Literal[Tier.PREMIUM, Tier.PRO]
 
 
 class Capability(StrEnum):

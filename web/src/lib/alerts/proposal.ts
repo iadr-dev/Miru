@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { CreateAlertRequest } from "@/lib/api/settings";
 import {
-  ALERT_MARKETS,
   ALERT_TRIGGER_MODES,
   type AlertRule,
   alertConditionSchema,
+  MARKETS,
 } from "@/types/settings";
 import { sameCondition } from "./condition";
 
@@ -14,7 +14,7 @@ import { sameCondition } from "./condition";
  * deliberately the create-request shape, parsed defensively since it arrives as an open record. */
 export const alertProposalSchema = z.object({
   symbol: z.string().min(1),
-  market: z.enum(ALERT_MARKETS),
+  market: z.enum(MARKETS),
   condition: alertConditionSchema,
   trigger_mode: z.enum(ALERT_TRIGGER_MODES).default("once_per_day"),
   expires_in_days: z.number().int().positive().nullable().default(90),

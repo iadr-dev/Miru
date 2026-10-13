@@ -4,8 +4,7 @@
  * Mirrors `backend/src/accounts/models.py` (`User`, `EntitlementView`, `Tier` from
  * `schemas.enums`) and `backend/src/api/routers/auth.py` (`MeResponse = {user, entitlements}`).
  * This is the shared, reusable shape (the shell top bar reads the tier + account; other features
- * will read the same `/me`). The narrower auth-pass `meResponseSchema` in `lib/api/schemas.ts`
- * predates the `types/` convention and is left as-is for the OAuth-callback landing path.
+ * will read the same `/me`, and `PATCH /me` answers with this envelope too).
  */
 import { z } from "zod";
 

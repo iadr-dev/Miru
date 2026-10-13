@@ -14,17 +14,17 @@ import { z } from "zod";
 import type { OAuthProvider } from "@/lib/api/auth";
 import { ApiRequestError, createRequestJson, jsonHeaders } from "@/lib/api/http";
 import {
-  type Account,
   type EntitlementView,
   entitlementViewSchema,
-  userSchema,
+  type MeResponse,
+  meResponseSchema,
 } from "@/types/account";
 import {
   type AlertCondition,
-  type AlertMarket,
   type AlertPreference,
   type AlertRule,
   type AlertTriggerMode,
+  activePetResponseSchema,
   alertPreferenceSchema,
   alertRuleSchema,
   alertsResponseSchema,
@@ -32,6 +32,7 @@ import {
   billingHistoryResponseSchema,
   type CheckoutResponse,
   checkoutResponseSchema,
+  connectionsResponseSchema,
   type DeliveryChannelKind,
   type DevicePushToken,
   devicePushTokenSchema,
@@ -49,8 +50,8 @@ import {
   notificationsResponseSchema,
   type OAuthAccountLike,
   type OwnedPet,
-  oauthAccountSchema,
   ownedPetSchema,
+  ownedPetsResponseSchema,
   type PersonalityPreset,
   type PetCatalogEntry,
   type PetProgress,
@@ -59,7 +60,7 @@ import {
   type PortalResponse,
   type PullOutcome,
   personalityPresetsResponseSchema,
-  petCatalogEntrySchema,
+  petCatalogResponseSchema,
   petProgressSchema,
   petSettingsSchema,
   plansResponseSchema,
@@ -105,19 +106,14 @@ export type UpdateProfileRequest = Partial<{
   personality_id: string | null;
 }>;
 
-export type ProfileResponse = { user: Account; entitlements: EntitlementView };
-
-export async function updateProfile(body: UpdateProfileRequest): Promise<ProfileResponse> {
+/** `PATCH /me` answers with the same `{user, entitlements}` envelope as `GET /me`. */
+export async function updateProfile(body: UpdateProfileRequest): Promise<MeResponse> {
   const raw = await requestJson("/me", {
     method: "PATCH",
     headers: jsonHeaders(),
     body: JSON.stringify(body),
   });
-  const record = raw as { user: unknown; entitlements: unknown };
-  return {
-    user: userSchema.parse(record.user),
-    entitlements: entitlementViewSchema.parse(record.entitlements),
-  };
+  return meResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +121,8 @@ export async function updateProfile(body: UpdateProfileRequest): Promise<Profile
 // ---------------------------------------------------------------------------
 
 export async function listConnections(): Promise<OAuthAccountLike[]> {
-  const raw = (await requestJson("/me/connections")) as { connections: unknown[] };
-  return raw.connections.map((entry) => oauthAccountSchema.parse(entry));
+  const raw = await requestJson("/me/connections");
+  return connectionsResponseSchema.parse(raw).connections;
 }
 
 export async function unlinkConnection(provider: OAuthProvider): Promise<void> {
@@ -147,18 +143,18 @@ export async function listPersonalityPresets(): Promise<PersonalityPreset[]> {
 // ---------------------------------------------------------------------------
 
 export async function listPetCatalog(): Promise<PetCatalogEntry[]> {
-  const raw = (await requestJson("/pets/catalog")) as { catalog: unknown[] };
-  return raw.catalog.map((entry) => petCatalogEntrySchema.parse(entry));
+  const raw = await requestJson("/pets/catalog");
+  return petCatalogResponseSchema.parse(raw).catalog;
 }
 
 export async function listOwnedPets(): Promise<OwnedPet[]> {
-  const raw = (await requestJson("/pets")) as { pets: unknown[] };
-  return raw.pets.map((pet) => ownedPetSchema.parse(pet));
+  const raw = await requestJson("/pets");
+  return ownedPetsResponseSchema.parse(raw).pets;
 }
 
 export async function getActivePet(): Promise<OwnedPet | null> {
-  const raw = (await requestJson("/pets/active")) as { active: unknown | null };
-  return raw.active ? ownedPetSchema.parse(raw.active) : null;
+  const raw = await requestJson("/pets/active");
+  return activePetResponseSchema.parse(raw).active;
 }
 
 export async function equipPet(recordId: string): Promise<OwnedPet> {
@@ -394,7 +390,7 @@ export async function listAlerts(): Promise<AlertRule[]> {
  * limit inherit the user's alert preferences; `expires_in_days: null` means "never expires". */
 export type CreateAlertRequest = {
   symbol?: string;
-  market?: AlertMarket;
+  market?: Market;
   watchlist_id?: string;
   condition: AlertCondition;
   trigger_mode?: AlertTriggerMode;
@@ -409,7 +405,7 @@ export type CreateAlertRequest = {
 /** One stock's own rule in a per-stock batch. */
 export type BatchAlertItem = {
   symbol: string;
-  market: AlertMarket;
+  market: Market;
   condition: AlertCondition;
 };
 

@@ -16,7 +16,7 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from schemas.enums import DataClass, Market
+from schemas.enums import DataClass, UserMarket
 from schemas.schedule_templates import (
     MAX_TARGETS,
     SCHEDULE_TEMPLATES,
@@ -75,7 +75,7 @@ class ProposeScheduleOutput(BaseModel):
 
     template: ScheduleTemplateId
     targets: list[str]
-    market: Market
+    market: UserMarket
     cadence: str
     # The exact bodies `POST /schedules` takes — the card posts these as-is.
     trigger: dict[str, object]

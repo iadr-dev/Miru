@@ -60,7 +60,7 @@ from scheduler.models import (
     dedupe_key_for,
 )
 from scheduler.templates import ConditionModel, RuleCondition
-from schemas.enums import Market
+from schemas.enums import Market, user_market
 
 logger = structlog.get_logger(__name__)
 
@@ -103,7 +103,7 @@ def _job_to_model(row: ScheduleJobRow) -> ScheduleJob:
         trigger=ScheduleTrigger(
             type=TriggerType(row.trigger_type),
             spec=row.trigger_spec,
-            market=Market(row.trigger_market),
+            market=user_market(row.trigger_market),
         ),
         action=ScheduleAction(skill_ref=row.skill_ref, inputs=row.skill_inputs),
         delivery_channels=_channels(row.delivery_channels),
@@ -126,7 +126,7 @@ def _alert_to_model(row: AlertRuleRow) -> AlertRule:
         id=row.id,
         user_id=row.user_id,
         symbol=row.symbol,
-        market=Market(row.market) if row.market is not None else None,
+        market=user_market(row.market) if row.market is not None else None,
         watchlist_id=row.watchlist_id,
         origin_watchlist_id=row.origin_watchlist_id,
         condition=_CONDITION.validate_python(row.condition),

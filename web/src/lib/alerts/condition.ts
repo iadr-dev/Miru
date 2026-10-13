@@ -3,12 +3,12 @@ import { parseServerDate } from "@/lib/parse-server-date";
 import {
   ALERT_TEMPLATE_KINDS,
   type AlertCondition,
-  type AlertMarket,
   type AlertRule,
   type AlertTemplateKind,
   type AlertTriggerMode,
   alertConditionSchema,
   type INSTITUTIONAL_INVESTORS,
+  type Market,
 } from "@/types/settings";
 
 /** Pure logic behind the alert form and list — no React, no i18n — so it is unit-testable and the
@@ -325,7 +325,7 @@ export const TW_ONLY_TEMPLATE_KINDS: readonly AlertTemplateKind[] = [
 ];
 
 /** The templates that have data for `market` — a US symbol is not offered Taiwan-only ones. */
-export function templatesFor(market: AlertMarket): readonly AlertTemplateKind[] {
+export function templatesFor(market: Market): readonly AlertTemplateKind[] {
   return market === "TW"
     ? ALERT_TEMPLATE_KINDS
     : ALERT_TEMPLATE_KINDS.filter((kind) => !TW_ONLY_TEMPLATE_KINDS.includes(kind));
@@ -338,7 +338,7 @@ export const PER_STOCK_TEMPLATE_KINDS: readonly AlertTemplateKind[] = ["close_pr
 
 /** The templates a watchlist-group rule can use: the scale-free ones (a percent, a multiple, a day
  * count, a list entry) that mean the same thing for every member. */
-export function groupTemplatesFor(market: AlertMarket): readonly AlertTemplateKind[] {
+export function groupTemplatesFor(market: Market): readonly AlertTemplateKind[] {
   return templatesFor(market).filter((kind) => !PER_STOCK_TEMPLATE_KINDS.includes(kind));
 }
 

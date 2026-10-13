@@ -44,7 +44,12 @@ jobs:
       - name: Biome lint + format check
         run: pnpm lint
 
-      - name: Typecheck
+      # web/openapi.json is kept current by backend/tests/api/test_openapi_contract.py; the types
+      # generated from it must match, or the contract checks below would test a stale spec.
+      - name: Generated API types are current
+        run: pnpm gen:api && git diff --exit-code -- src/types/generated/openapi.ts
+
+      - name: Typecheck (includes the API contract checks)
         run: pnpm typecheck
 
       - name: Dead code (knip - unused files, exports, dependencies)

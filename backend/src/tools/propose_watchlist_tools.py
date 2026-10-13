@@ -16,11 +16,10 @@ from typing import Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from schemas.enums import DataClass, Market
+from schemas.enums import DataClass, UserMarket
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 _SYMBOL_PATTERN: Final = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,15}$")
-_PROPOSAL_MARKETS: Final = frozenset({Market.TW, Market.US})
 MAX_SYMBOLS: Final = 10
 MAX_GROUP_NAME: Final = 30
 Action = Literal["add", "remove", "move", "rename_group", "delete_group", "reorder_group"]
@@ -38,7 +37,7 @@ class ProposeWatchlistChangeInput(BaseModel):
             "group named in group_name."
         )
     )
-    market: Market = Field(description="TW or US. All symbols and groups are in this market.")
+    market: UserMarket = Field(description="TW or US. All symbols and groups are in this market.")
     symbols: list[str] = Field(
         default_factory=list,
         max_length=MAX_SYMBOLS,
@@ -88,13 +87,6 @@ class ProposeWatchlistChangeInput(BaseModel):
             raise ValueError("a group name may not contain markup or control characters")
         return cleaned
 
-    @field_validator("market")
-    @classmethod
-    def _supported(cls, value: Market) -> Market:
-        if value not in _PROPOSAL_MARKETS:
-            raise ValueError("watchlists support the TW and US markets only")
-        return value
-
     @model_validator(mode="after")
     def _fields_match_the_action(self) -> Self:
         needs_symbols = self.action in _SYMBOL_ACTIONS
@@ -118,7 +110,7 @@ class ProposeWatchlistChangeOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     action: Action
-    market: Market
+    market: UserMarket
     symbols: list[str]
     group_name: str | None
     new_name: str | None

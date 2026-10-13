@@ -1,5 +1,5 @@
 import type { BatchAlertItem } from "@/lib/api/settings";
-import type { AlertMarket } from "@/types/settings";
+import type { Market } from "@/types/settings";
 
 /** Pure logic behind the per-stock ("逐檔設定") alert sheet — no React, no i18n. One price level
  * cannot mean the same thing for every stock in a group (2,475 vs 185), so each row carries its own
@@ -9,7 +9,7 @@ export type RowComparator = "above" | "below";
 
 export type PerStockRow = {
   symbol: string;
-  market: AlertMarket;
+  market: Market;
   /** The latest close, shown as a reference and used by the quick-fill buttons; null if unknown. */
   close: number | null;
   comparator: RowComparator;

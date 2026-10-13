@@ -7,6 +7,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from schemas.enums import TLSPolicy
 
+# Which Paddle host billing talks to; anything else is a startup error, never a silent fallback.
+PaddleEnvironment = Literal["sandbox", "production"]
+
 
 class Settings(BaseSettings):
     """Runtime config from env (backend/.env — see .env.example for the authoritative list).
@@ -71,7 +74,6 @@ class Settings(BaseSettings):
     cerebras_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3.6"
 
     # ---- LLM routing / agent loop (modules/04, orchestrator) ----
     llm_provider: str | None = None  # optional override; falls back to registry default
@@ -114,7 +116,6 @@ class Settings(BaseSettings):
     # ---- Voice (modules/, api/routers/voice.py) ----
     voice_stt_provider: str = "stub"
     voice_tts_provider: str = "stub"
-    voice_max_audio_seconds: int = 60
 
     # ---- Auth ----
     jwt_secret_key: SecretStr | None = None
@@ -168,7 +169,7 @@ class Settings(BaseSettings):
     # ---- Paddle / billing (modules/15) — MoR; webhook is entitlement source of truth ----
     paddle_api_key: SecretStr | None = None
     paddle_client_token: str | None = None
-    paddle_environment: str = "sandbox"  # sandbox | production
+    paddle_environment: PaddleEnvironment = "sandbox"
     paddle_webhook_secret: SecretStr | None = None
     # 8 price IDs = {premium,pro} x {monthly,annual} x {standard,BYOK} — payments/plans.py
     paddle_price_premium_monthly: str | None = None

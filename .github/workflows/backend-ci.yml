@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "backend/**"
+      - "web/openapi.json" # the spec test_openapi_contract.py keeps current
       - ".github/workflows/backend-ci.yml"
   push:
     branches: [main]

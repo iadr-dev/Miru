@@ -40,9 +40,12 @@ Guards beyond the per-PR suite:
   `uv lock --upgrade-package <name>`.
 - `coverage` workflow (weekly/on demand): `[tool.coverage.report] fail_under = 90` (measured 92.8%).
   Locally: `COVERAGE_CORE=sysmon uv run pytest --cov=src`.
-- `tests/api/test_openapi_contract.py`: the API contract snapshot (`openapi_contract.json`); a removed
-  route, newly required input or dropped status code fails with the breaking changes listed. Accept
-  an intended change with `UPDATE_OPENAPI_CONTRACT=1` and commit the snapshot.
+- `tests/api/test_openapi_contract.py`: the full OpenAPI spec is committed as `web/openapi.json`; any
+  drift from the running app fails, with removed routes, newly required inputs and dropped status
+  codes listed as BREAKING. Accept an intended change with `UPDATE_OPENAPI_CONTRACT=1`, then run
+  `pnpm gen:api` in `web/` and commit both: the web app generates its response types from that spec
+  and checks every API client against them at compile time. A route's response is only checked once
+  the spec describes it, so return a Pydantic model, not `dict[str, Any]`.
 
 ### pyproject.toml — tool stanzas
 ```toml

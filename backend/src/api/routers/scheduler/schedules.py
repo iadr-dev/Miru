@@ -120,12 +120,16 @@ async def create_schedule(
     )
 
 
+class SchedulesResponse(BaseModel):
+    schedules: list[ScheduleJob]
+
+
 @router.get("/schedules")
 async def list_schedules(
     user: User = Depends(require_user),
     store: SchedulerStore = Depends(_store),
-) -> dict[str, list[ScheduleJob]]:
-    return {"schedules": await store.list_jobs(user_id=user.id)}
+) -> SchedulesResponse:
+    return SchedulesResponse(schedules=await store.list_jobs(user_id=user.id))
 
 
 @router.patch("/schedules/{job_id}")

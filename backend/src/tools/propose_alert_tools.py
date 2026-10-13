@@ -27,21 +27,20 @@ from schemas.alerts import (
     describe,
     supports_market,
 )
-from schemas.enums import DataClass, Market
+from schemas.enums import DataClass, UserMarket
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
 # The proposal's lifetime is fixed, not a model-chosen argument: a live model once sent `null`
 # ("never expires") on its own and created a rule nobody asked to be permanent. The user can change
 # it in Settings after confirming the card.
 _DEFAULT_LIFETIME_DAYS: Final = 90
-_PROPOSAL_MARKETS: Final = frozenset({Market.TW, Market.US})
 
 
 class ProposeAlertInput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     symbol: str = Field(min_length=1, max_length=32, description="Stock/ETF code, e.g. 2330.")
-    market: Market = Field(description="TW or US.")
+    market: UserMarket = Field(description="TW or US.")
     condition: RuleCondition = Field(
         description=(
             "What to watch, as `{kind, ...}`. Available for TW and US: close_price "
@@ -63,8 +62,6 @@ class ProposeAlertInput(BaseModel):
 
     @model_validator(mode="after")
     def _supported(self) -> Self:
-        if self.market not in _PROPOSAL_MARKETS:
-            raise ValueError("alerts support the TW and US markets only")
         if not supports_market(self.condition, self.market):
             raise ValueError(f"'{self.condition.kind}' alerts exist for the TW market only")
         return self
@@ -74,7 +71,7 @@ class ProposeAlertOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     symbol: str
-    market: Market
+    market: UserMarket
     condition: RuleCondition
     trigger_mode: TriggerMode
     expires_in_days: int | None

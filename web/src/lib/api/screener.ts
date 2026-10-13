@@ -111,13 +111,6 @@ export async function saveScreenerScreen(
   return screenerScreenSchema.parse(raw);
 }
 
-export interface UpdateScreenerScreenParams {
-  name?: string;
-  conditions?: ScreenerRunCondition[];
-  match?: "AND" | "OR" | undefined;
-  gateOverrides?: ScreenerGateOverrides | undefined;
-}
-
 export async function deleteScreenerScreen(screenId: string): Promise<void> {
   await requestJson(`/analytics/screener/screens/${encodeURIComponent(screenId)}`, {
     method: "DELETE",

@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config.watchlist_presets import presets_for
 from db.models import WatchlistItemRow, WatchlistRow
-from schemas.enums import Market
+from schemas.enums import Market, UserMarket, user_market
 
 logger = structlog.get_logger(__name__)
 
@@ -89,6 +89,18 @@ def midpoint_key(lo: str | None, hi: str | None) -> str:
 WatchlistColor = Literal["chart-1", "chart-2", "chart-3", "chart-4", "chart-5", "chart-6"]
 WATCHLIST_COLORS: tuple[str, ...] = get_args(WatchlistColor)
 
+# A group holds stocks or ETFs, never both — the tables' `asset_class IN ('stock','etf')` CHECK.
+WatchlistAssetClass = Literal["stock", "etf"]
+
+
+def watchlist_asset_class(value: str) -> WatchlistAssetClass:
+    """A stored asset class as the literal; the CHECK guarantees one of the two."""
+    if value == "stock":
+        return "stock"
+    if value == "etf":
+        return "etf"
+    raise ValueError(f"{value!r} is not a watchlist asset class (stock or etf)")
+
 
 class WatchlistGroup(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -96,8 +108,8 @@ class WatchlistGroup(BaseModel):
     id: str
     user_id: str
     name: str
-    market: Market
-    asset_class: str
+    market: UserMarket
+    asset_class: WatchlistAssetClass
     sort_order: str
     is_default: bool
     color: WatchlistColor | None = None
@@ -113,8 +125,8 @@ class WatchlistItem(BaseModel):
     watchlist_id: str
     user_id: str
     symbol: str
-    market: Market
-    asset_class: str
+    market: UserMarket
+    asset_class: WatchlistAssetClass
     note: str | None = None
     sort_order: str
     added_at: datetime
@@ -127,8 +139,8 @@ class WatchlistSnapshotGroup(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
-    market: Market
-    asset_class: str
+    market: UserMarket
+    asset_class: WatchlistAssetClass
     symbols: tuple[str, ...] = Field(default_factory=tuple)
 
 
@@ -148,8 +160,8 @@ def _group_to_model(row: WatchlistRow) -> WatchlistGroup:
         id=row.id,
         user_id=row.user_id,
         name=row.name,
-        market=Market(row.market),
-        asset_class=row.asset_class,
+        market=user_market(row.market),
+        asset_class=watchlist_asset_class(row.asset_class),
         sort_order=row.sort_order,
         is_default=row.is_default,
         color=row.color if _is_watchlist_color(row.color) else None,
@@ -165,8 +177,8 @@ def _item_to_model(row: WatchlistItemRow) -> WatchlistItem:
         watchlist_id=row.watchlist_id,
         user_id=row.user_id,
         symbol=row.symbol,
-        market=Market(row.market),
-        asset_class=row.asset_class,
+        market=user_market(row.market),
+        asset_class=watchlist_asset_class(row.asset_class),
         note=row.note,
         sort_order=row.sort_order,
         added_at=row.added_at,
