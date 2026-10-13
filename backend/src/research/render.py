@@ -51,9 +51,25 @@ _EARLY_STOP: dict[Locale, dict[StopReason, str]] = {
 _MARKDOWN_ACTIVE = str.maketrans({c: "\\" + c for c in "\\[]()<>!`"})
 
 
+_TITLE_MAX_CHARS = 120
+
+
+def _inline(text: str) -> str:
+    """Untrusted text as one line: a newline would end the bullet or link it sits in (a source
+    title can be a whole multi-paragraph post), and a `- ` after one would start a new bullet."""
+    return " ".join(text.split())
+
+
 def _plain(text: str) -> str:
     """Model/page-derived text shown as plain text: no links, images or HTML can be formed."""
-    return text.translate(_MARKDOWN_ACTIVE)
+    return _inline(text).translate(_MARKDOWN_ACTIVE)
+
+
+def _short(text: str) -> str:
+    one_line = _inline(text)
+    if len(one_line) <= _TITLE_MAX_CHARS:
+        return one_line
+    return one_line[: _TITLE_MAX_CHARS - 1].rstrip() + "…"
 
 
 def _line(claim: ReportClaim) -> str:
@@ -97,7 +113,7 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
     # URLs are validated data, not prose: the scanner's vendor-name stripping would rewrite a
     # "yahoo" inside one and break the link. Titles, which are prose, are scanned one by one.
     sources = f"### {labels['sources']}\n" + "\n".join(
-        f"{s.id}. [{_plain(_scan_title(s.title))}]({s.url})" for s in report.sources
+        f"{s.id}. [{_plain(_short(_scan_title(s.title)))}]({s.url})" for s in report.sources
     )
     scope = f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches)}*"
     return "\n\n".join([body, sources, scope])
