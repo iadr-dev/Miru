@@ -85,7 +85,7 @@ def _auth_of(dependant: Dependant) -> str:
     names = set(_dependency_names(dependant))
     if "require_user" in names:
         return "user"
-    if "optional_user" in names:
+    if names & {"optional_user", "optional_user_released"}:
         return "optional"
     return "none"
 
@@ -139,7 +139,10 @@ def route_rows() -> list[RouteRow]:
     for module_name, section, prefixed in ROUTER_SECTIONS:
         module = importlib.import_module(f"api.routers.{module_name}")
         module_file = Path(inspect.getfile(module))
-        for route in module.router.routes:
+        # A module may keep its long-lived SSE routes on a second router (`stream_router`) whose
+        # guard resolves the caller on a short session; both belong to the same section.
+        routers = [r for r in (module.router, getattr(module, "stream_router", None)) if r]
+        for route in (route for router in routers for route in router.routes):
             if not isinstance(route, APIRoute):
                 continue
             tools = tuple(

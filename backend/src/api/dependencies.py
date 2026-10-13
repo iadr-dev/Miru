@@ -161,6 +161,35 @@ async def optional_user(
         return None
 
 
+async def optional_user_released(
+    request: Request,
+    state: AppState = Depends(get_state),
+) -> User | None:
+    """`optional_user` for responses that stay open for a long time (SSE).
+
+    The request-scoped `get_session` commits and closes only when the response ends, and a stream
+    ends when the tab closes - hours later. Resolving the caller on that session would pin one
+    pooled connection, and leave a transaction open and "idle", for every open tab. Here the user
+    is loaded on its own short session that is committed and closed before this returns, so the
+    connection goes straight back to the pool and the stream itself holds nothing."""
+    token = _extract_token(request)
+    if not token:
+        return None
+    try:
+        user_id = decode_access_token(token, settings=state.settings)
+    except InvalidAccessTokenError:
+        setattr(request.state, AUTH_EXPIRED_STATE_KEY, True)
+        return None
+    async with state.session_factory() as session:
+        try:
+            user = await _load_user(session, state.settings, SqlAlchemyUserStore(session), user_id)
+            await session.commit()
+        except UserNotFoundError:
+            await session.rollback()
+            return None
+    return user
+
+
 async def require_user(
     request: Request,
     state: AppState = Depends(get_state),

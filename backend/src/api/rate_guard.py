@@ -15,7 +15,7 @@ import structlog
 from fastapi import Depends, Request
 
 from accounts.models import User
-from api.dependencies import AppState, get_state, optional_user
+from api.dependencies import AppState, get_state, optional_user, optional_user_released
 from api.errors import ApiError
 
 logger = structlog.get_logger(__name__)
@@ -74,11 +74,7 @@ async def _enforce(request: Request, state: AppState, caller: str, *, per_minute
     )
 
 
-async def guard_reads(
-    request: Request,
-    state: AppState = Depends(get_state),
-    user: User | None = Depends(optional_user),
-) -> None:
+async def _guard_read(request: Request, state: AppState, user: User | None) -> None:
     if user is not None:
         await _enforce(request, state, f"read:user:{user.id}", per_minute=READ_SIGNED_IN_PER_MINUTE)
         return
@@ -86,9 +82,27 @@ async def guard_reads(
     await _enforce(request, state, f"read:ip:{address}", per_minute=READ_ANONYMOUS_PER_MINUTE)
 
 
+async def guard_reads(
+    request: Request,
+    state: AppState = Depends(get_state),
+    user: User | None = Depends(optional_user),
+) -> None:
+    await _guard_read(request, state, user)
+
+
+async def guard_streams(
+    request: Request,
+    state: AppState = Depends(get_state),
+    user: User | None = Depends(optional_user_released),
+) -> None:
+    """`guard_reads` for the long-lived SSE routes: the same limits, but the caller is resolved
+    on a short session (see `optional_user_released`) so an open stream holds no connection."""
+    await _guard_read(request, state, user)
+
+
 async def guard_auth(request: Request, state: AppState = Depends(get_state)) -> None:
     address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
     await _enforce(request, state, f"auth:ip:{address}", per_minute=AUTH_PER_MINUTE)
 
 
-__all__ = ["guard_auth", "guard_reads"]
+__all__ = ["guard_auth", "guard_reads", "guard_streams"]
