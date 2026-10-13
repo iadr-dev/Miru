@@ -81,3 +81,157 @@ export function lerpPoint(
     rs_momentum: a.rs_momentum + (b.rs_momentum - a.rs_momentum) * t,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Flat-view helpers: names, label placement, and quadrant transitions
+// ---------------------------------------------------------------------------
+
+/** The quadrants in the order the legend and counts list them (and the order a sector normally
+ * travels them, clockwise: 轉強 -> 領先 -> 走弱 -> 落後). */
+export const QUADRANT_ORDER: readonly RotationQuadrant[] = [
+  "leading",
+  "weakening",
+  "lagging",
+  "improving",
+];
+
+/** A sector's name without TWSE's "類指數"/"指數" suffix, for chips and in-scene labels where the
+ * full index name (電腦及週邊設備類指數) would not fit. Falls back to the full name if stripping
+ * would leave nothing. */
+export function shortSectorName(name: string): string {
+  const trimmed = name.trim();
+  const short = trimmed.replace(/類?指數$/, "");
+  return short.length > 0 ? short : trimmed;
+}
+
+export interface LabelHead {
+  readonly id: string;
+  readonly name: string;
+  readonly x: number;
+  readonly z: number;
+}
+
+export interface LabelOffset {
+  readonly dx: number;
+  readonly dz: number;
+}
+
+// World-space size of one label, tuned to the flat view's default zoom: a CJK character at the
+// label font size is about this wide, plus padding for the pill around it.
+const LABEL_CHAR_WIDTH = 0.34;
+const LABEL_PADDING = 0.5;
+const LABEL_HEIGHT_UNITS = 0.46;
+// Tried in order: just above the head (screen-up is -z), then below, then further out, then
+// shifted sideways - the first spot that overlaps no label already placed wins.
+const LABEL_CANDIDATES: readonly LabelOffset[] = [
+  { dx: 0, dz: -0.62 },
+  { dx: 0, dz: 0.62 },
+  { dx: 0, dz: -1.14 },
+  { dx: 0, dz: 1.14 },
+  { dx: 1.1, dz: -0.62 },
+  { dx: -1.1, dz: -0.62 },
+  { dx: 1.1, dz: 0.62 },
+  { dx: -1.1, dz: 0.62 },
+];
+
+interface Box {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+}
+
+function boxFor(head: LabelHead, offset: LabelOffset): Box {
+  const halfWidth = ([...head.name].length * LABEL_CHAR_WIDTH + LABEL_PADDING) / 2;
+  const centerX = head.x + offset.dx;
+  const centerZ = head.z + offset.dz;
+  return {
+    left: centerX - halfWidth,
+    right: centerX + halfWidth,
+    top: centerZ - LABEL_HEIGHT_UNITS / 2,
+    bottom: centerZ + LABEL_HEIGHT_UNITS / 2,
+  };
+}
+
+function overlaps(a: Box, b: Box): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+
+/** Where to put each sector's name so the names do not pile on top of each other when sectors
+ * cluster (they often do - the earlier hover-only labels were a response to exactly that smear).
+ * Placement is greedy and deterministic: heads are handled in a stable order, each takes the first
+ * candidate spot that overlaps no label already placed, and falls back to the default spot when
+ * everything is taken. Works in world units, so it holds for both the flat and the tilted view. */
+export function layoutLabels(heads: readonly LabelHead[]): Map<string, LabelOffset> {
+  const placed: Box[] = [];
+  const offsets = new Map<string, LabelOffset>();
+  const ordered = [...heads].sort((a, b) => a.z - b.z || a.x - b.x || a.id.localeCompare(b.id));
+  for (const head of ordered) {
+    const fallback = LABEL_CANDIDATES[0] as LabelOffset;
+    const chosen =
+      LABEL_CANDIDATES.find((offset) => {
+        const box = boxFor(head, offset);
+        return !placed.some((other) => overlaps(box, other));
+      }) ?? fallback;
+    placed.push(boxFor(head, chosen));
+    offsets.set(head.id, chosen);
+  }
+  return offsets;
+}
+
+export interface QuadrantTransition {
+  readonly industryId: string;
+  readonly industryName: string;
+  readonly from: RotationQuadrant;
+  readonly to: RotationQuadrant;
+}
+
+interface WeeklySeries {
+  readonly industry_id: string;
+  readonly industry_name: string;
+  readonly points: readonly { readonly rs_ratio: number; readonly rs_momentum: number }[];
+}
+
+/** Which sectors changed quadrant between two whole weeks. Compares the weeks themselves, never the
+ * smoothed in-between positions, so a sector hovering on an axis cannot flicker notices. */
+export function quadrantTransitions(
+  sectors: readonly WeeklySeries[],
+  fromWeek: number,
+  toWeek: number,
+): QuadrantTransition[] {
+  const transitions: QuadrantTransition[] = [];
+  for (const sector of sectors) {
+    const before = sector.points[fromWeek];
+    const after = sector.points[toWeek];
+    if (!before || !after) continue;
+    const from = quadrantFor(before.rs_ratio, before.rs_momentum);
+    const to = quadrantFor(after.rs_ratio, after.rs_momentum);
+    if (from !== to) {
+      transitions.push({
+        industryId: sector.industry_id,
+        industryName: sector.industry_name,
+        from,
+        to,
+      });
+    }
+  }
+  return transitions;
+}
+
+/** How many sectors sit in each quadrant at a whole week. */
+export function quadrantCounts(
+  sectors: readonly WeeklySeries[],
+  week: number,
+): Record<RotationQuadrant, number> {
+  const counts: Record<RotationQuadrant, number> = {
+    leading: 0,
+    weakening: 0,
+    lagging: 0,
+    improving: 0,
+  };
+  for (const sector of sectors) {
+    const point = sector.points[Math.min(Math.max(week, 0), sector.points.length - 1)];
+    if (point) counts[quadrantFor(point.rs_ratio, point.rs_momentum)] += 1;
+  }
+  return counts;
+}

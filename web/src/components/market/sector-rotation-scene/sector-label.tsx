@@ -16,14 +16,16 @@ export function SectorLabel({
   name,
   color,
   hovered,
+  distanceFactor = 10,
 }: {
   readonly position: readonly [number, number, number];
   readonly name: string;
   readonly color: string;
   readonly hovered: boolean;
+  readonly distanceFactor?: number | undefined;
 }): ReactNode {
   return (
-    <Html position={position} center distanceFactor={10} zIndexRange={[10, 0]}>
+    <Html position={position} center distanceFactor={distanceFactor} zIndexRange={[10, 0]}>
       <span
         className={cn(
           "whitespace-nowrap font-medium text-[11px] transition-all duration-150",

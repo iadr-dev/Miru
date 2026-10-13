@@ -80,6 +80,8 @@ export function SectorBadge({
   weight,
   hovered,
   introProgress,
+  onHoverChange,
+  onSelect,
 }: {
   readonly position: readonly [number, number, number];
   readonly icon: SectorIconKey;
@@ -87,6 +89,8 @@ export function SectorBadge({
   readonly weight: number;
   readonly hovered: boolean;
   readonly introProgress: number;
+  readonly onHoverChange: (hovered: boolean) => void;
+  readonly onSelect: () => void;
 }): ReactNode {
   const spriteRef = useRef<THREE.Sprite>(null);
   const texture = useMemo(() => textureFor(icon, color), [icon, color]);
@@ -102,7 +106,20 @@ export function SectorBadge({
   });
 
   return (
-    <sprite ref={spriteRef} position={position}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: a three.js sprite, not DOM; chips give the keyboard path
+    <sprite
+      ref={spriteRef}
+      position={position}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onHoverChange(true);
+      }}
+      onPointerOut={() => onHoverChange(false)}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect();
+      }}
+    >
       <spriteMaterial
         map={texture}
         transparent
