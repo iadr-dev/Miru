@@ -2,7 +2,7 @@
 
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { motion, useReducedMotion } from "motion/react";
+import { type MotionStyle, motion, useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
@@ -290,10 +290,20 @@ function PeerList({
       initial="hidden"
       animate="show"
       variants={staggerChildren(reduceMotion)}
-      className={cn("m-0 list-none p-0", wrap ? "flex flex-wrap gap-2" : "grid gap-2 md:gap-0")}
+      className={cn(
+        "m-0 list-none p-0",
+        wrap
+          ? "flex flex-wrap gap-2"
+          : // The diagram's row height only exists beside the focus node (md and up); stacked on
+            // a phone the list is just as tall as its peers.
+            "grid gap-2 md:min-h-[var(--peer-list-height)] md:grid-rows-[repeat(var(--peer-rows),1fr)] md:gap-0",
+      )}
       style={
         !wrap && height
-          ? { minHeight: height, gridTemplateRows: `repeat(${peers.length}, 1fr)` }
+          ? ({
+              "--peer-list-height": `${height}px`,
+              "--peer-rows": peers.length,
+            } as MotionStyle)
           : {}
       }
     >
