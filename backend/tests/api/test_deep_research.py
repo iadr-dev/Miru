@@ -160,10 +160,17 @@ def test_a_pro_report_is_cited_and_streams_progress(
     assert frames[-1]["data"]["status"] == "done"
 
 
-def test_reports_have_no_daily_cap(research_client: TestClient, settings: Settings) -> None:
+def test_a_burst_of_reports_is_refused_but_there_is_no_daily_cap(
+    research_client: TestClient, settings: Settings
+) -> None:
     headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
-    for _ in range(7):  # the old cap was five a day
+    for _ in range(4):  # the safety rate allows a few starts in a short window
         assert _ask(research_client, headers).status_code == 200
+    burst = _ask(research_client, headers)
+    assert burst.status_code == 429
+    assert burst.json()["code"] == "rate_limited"
+    assert burst.json()["retryable"] is True
+    # ordinary chat is untouched by the research safety rate
     assert _ask(research_client, headers, deep=False).status_code == 200
 
 
@@ -175,7 +182,7 @@ def test_a_run_that_finds_nothing_says_so(
     )
     with build_test_client(settings, agent_answer="x", agent_client=_ResearchClient()) as client:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
-        for _ in range(7):
+        for _ in range(3):
             resp = _ask(client, headers)
             assert resp.status_code == 200
             text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
