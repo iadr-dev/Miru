@@ -34,10 +34,8 @@ ai-tw-stock/
 │  ├─ backend/                    # ← the authoritative backend blueprint (READ THIS FIRST)
 │  │  ├─ README.md                #   index + confirmed decisions + module map
 │  │  ├─ architecture.md          #   layered architecture + DEPENDENCY RULE + repo layout
-│  │  ├─ governance.md            #   NON-NEGOTIABLE rules (non-trading, §9a/§9b/§9c carve-outs)
-│  │  ├─ api-reference.md · database-schema.md · data-catalog.md
-│  │  ├─ modules/ (01–23)         #   one spec per module
-│  │  └─ adr/ (0001–0026)         #   why each decision was made
+│  │  ├─ api-reference.md         #   every endpoint
+│  │  └─ modules/ (01–26)         #   one spec per module (25 = where each governance rule is enforced)
 │  └─ mobile/                     # deferred deliverable — don't build unless asked
 ├─ backend/                       # Python FastAPI backend — see backend/CLAUDE.md
 │  ├─ .env                        # ⚠ LIVE SECRETS — gitignored, never read aloud / commit / log
@@ -51,7 +49,7 @@ ai-tw-stock/
    └─ src/                        # app/ (routes), components/, lib/, i18n/, types/
 ```
 
-## The rules that override everything (governance — `docs/backend/governance.md`)
+## The rules that override everything (governance — enforced per `docs/backend/modules/25-governance-enforcement.md`)
 
 These are inherited from the reference project and are **non-negotiable**. Never relax them to
 make code, a test, or a feature pass:
@@ -63,7 +61,7 @@ make code, a test, or a feature pass:
    router). No socket/HTTP/scraper/SDK call lives outside `sources/`.
 3. **No autonomy over the network** — no full-market scans, no startup network calls (prod), no
    unbounded polling. The three sanctioned scheduled activities are the **only** exceptions:
-   §9a user-authorized jobs · §9b demand-driven live quotes · §9c platform data-ingest.
+   user-authorized scheduled jobs and alerts · demand-driven live quotes · platform data-ingest.
 4. **Caveats + provenance always.** Every output carries a currentness caveat; analyst
    targets/ratings are attributed third-party estimates, never restated as ours; web claims are
    cited or blocked.
@@ -89,12 +87,12 @@ make code, a test, or a feature pass:
 ## Working agreements
 
 - **Read the spec before coding.** Backend work → the relevant `docs/backend/modules/` spec +
-  `governance.md`. Frontend work → `web/OVERVIEW.md`, and check `docs/backend/api-reference.md`
+  the governance rules below. Frontend work → `web/OVERVIEW.md`, and check `docs/backend/api-reference.md`
   before wiring any endpoint (the spec describes more surface than the backend currently
   implements — the code wins on conflict).
   The docs are the source of truth; if code and docs disagree elsewhere, update the docs
-  deliberately (with an ADR, for a backend decision).
-- **Keep docs in sync.** Changing a decision → update the module doc **and** add/update an ADR.
+  deliberately (record why in the module doc and the commit).
+- **Keep docs in sync.** Changing a decision → update the module doc (and say why in it).
   Internal doc links must resolve (there's a link-checker convention; keep anchors valid).
 - **Match surrounding style.** Backend → `backend/CLAUDE.md`. Frontend → `web/OVERVIEW.md` +
   `web/CODE-STYLE.md`. Don't introduce new tools or patterns without cause.
@@ -126,11 +124,10 @@ make code, a test, or a feature pass:
 | Need | Read |
 |------|------|
 | Backend big picture + module map | `docs/backend/README.md`, `architecture.md` |
-| What's allowed / forbidden | `docs/backend/governance.md` |
+| What's allowed / forbidden | the rules below; `backend/CLAUDE.md` §4/§8; `docs/backend/modules/25-governance-enforcement.md` |
 | Python coding rules + toolchain | `backend/CLAUDE.md` |
 | Backend endpoints | `docs/backend/api-reference.md` |
-| Tables + portability | `docs/backend/database-schema.md` |
-| Data sources + ingest cadence | `docs/backend/data-catalog.md`, `modules/22-data-ingest.md` |
-| A past backend decision's rationale | `docs/backend/adr/` |
+| Tables + portability | the models in `backend/src/db/models/`; `backend/CLAUDE.md` §6 |
+| Data sources + ingest cadence | `backend/src/sources/`, `modules/01-sources.md`, `modules/22-data-ingest.md` |
 | TypeScript/Next.js coding rules + toolchain | `web/OVERVIEW.md` |
 | Quick frontend style reference | `web/CODE-STYLE.md` |

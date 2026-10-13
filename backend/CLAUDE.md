@@ -161,7 +161,7 @@ markers = [
   never summarizes away canonical facts/caveats. Uncited web claims + unattributed analyst targets
   are **blocked**.
 - **No full-market scan** — reject tool args requesting the whole market; ingest is the *only*
-  whole-market path (§9c, market-wide **by-date**, never per-symbol).
+  whole-market path (the platform-ingest carve-out: market-wide **by-date**, never per-symbol).
 - **Secrets never logged/committed.** `.env` gitignored; provider/BYOK keys KMS-encrypted,
   decrypt in-process at call time only, never cross the sub-agent/scheduler boundary in plaintext,
   never in prompts/journal/memory/logs (governance §6/§9, infra §8).
