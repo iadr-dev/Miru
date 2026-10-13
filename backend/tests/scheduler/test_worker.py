@@ -11,7 +11,7 @@ import pytest
 
 from accounts.entitlements import TierLimits
 from accounts.hooks import EntitlementResolver
-from agent.guardrails import REDACTION_NOTICE, check_output
+from agent.guardrails import REDACTION_NOTICE_EN, check_output
 from agent.loop import RichCard
 from conversation.models import MessageBlockType
 from conversation.store import SqlAlchemyConversationStore
@@ -307,7 +307,7 @@ async def test_scheduled_run_output_passes_non_trading_guardrail(session_factory
     assert verdict.redacted_text is not None
     assert "should buy" not in verdict.redacted_text.lower()
     assert "strong buy" not in verdict.redacted_text.lower()
-    assert REDACTION_NOTICE in verdict.redacted_text
+    assert REDACTION_NOTICE_EN in verdict.redacted_text
 
 
 async def test_redelivery_is_idempotent(session_factory) -> None:

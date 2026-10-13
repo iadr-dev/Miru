@@ -24,7 +24,8 @@ from typing import Final, cast
 
 from governance.textscan import (
     NON_TRADING_CAVEAT,
-    REDACTION_NOTICE,
+    REDACTION_NOTICE_EN,
+    REDACTION_NOTICE_ZH,
     HookVerdict,
     check_output,
     scan_sentence,
@@ -75,7 +76,8 @@ def check_tool_call(tool_name: str, arguments: Mapping[str, object]) -> HookVerd
 
 __all__ = [
     "NON_TRADING_CAVEAT",
-    "REDACTION_NOTICE",
+    "REDACTION_NOTICE_EN",
+    "REDACTION_NOTICE_ZH",
     "HookVerdict",
     "check_output",
     "check_tool_call",

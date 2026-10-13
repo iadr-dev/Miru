@@ -110,22 +110,35 @@ _NON_TRADING_CAVEAT: Final[str] = (
 
 _NON_TRADING_CAVEAT_ZH: Final[str] = "以上僅為資料觀察，不構成買賣建議。"
 
-_REDACTION_NOTICE: Final[str] = (
+_REDACTION_NOTICE_EN: Final[str] = (
     "A specific trading recommendation or price target was omitted here."
 )
+# Worded to stay clear of `_TRADING_PATTERNS` (no 目標價 / 買進建議 / 賣出建議), so a second scan of
+# an already-redacted text never redacts the notice itself.
+_REDACTION_NOTICE_ZH: Final[str] = "此處已省略具體的買賣操作建議或價位目標。"
 
 _CJK_CHAR: Final[re.Pattern[str]] = re.compile(r"[一-鿿]")
 _LATIN_WORD: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]{2,}")
 
 
-def _caveat_for(text: str) -> str:
-    """The caveat in the language of the answer it is appended to — an English disclaimer under a
-    Traditional-Chinese reply reads as a leak from another product. A Chinese answer has at least
-    as many CJK characters as Latin words (tickers and a few English terms don't flip it); an
-    English answer with a stray Chinese heading stays English."""
+def _is_chinese(text: str) -> bool:
+    """A Chinese text has at least as many CJK characters as Latin words (tickers and a few English
+    terms don't flip it); an English text with a stray Chinese heading stays English."""
     cjk = len(_CJK_CHAR.findall(text))
     latin_words = len(_LATIN_WORD.findall(text))
-    return _NON_TRADING_CAVEAT_ZH if cjk > 0 and cjk >= latin_words else _NON_TRADING_CAVEAT
+    return cjk > 0 and cjk >= latin_words
+
+
+def _caveat_for(text: str) -> str:
+    """The caveat in the language of the answer it is appended to — an English disclaimer under a
+    Traditional-Chinese reply reads as a leak from another product."""
+    return _NON_TRADING_CAVEAT_ZH if _is_chinese(text) else _NON_TRADING_CAVEAT
+
+
+def _notice_for(text: str) -> str:
+    """The redaction notice in the language of the text it replaces a sentence of, for the same
+    reason as the caveat."""
+    return _REDACTION_NOTICE_ZH if _is_chinese(text) else _REDACTION_NOTICE_EN
 
 
 def _contains_trading_language(sentence: str) -> bool:
@@ -205,7 +218,7 @@ def scan_sentence(sentence: str) -> str:
     if not content:
         return sentence
     if _contains_trading_language(content):
-        return prefix + _REDACTION_NOTICE
+        return prefix + _notice_for(content)
     cleaned, _ = _strip_vendor_names(content)
     return prefix + cleaned
 
@@ -251,6 +264,7 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
     violation = False
     vendor_name_stripped = False
     last_was_notice = False
+    notice = _notice_for(text)
     for chunk in split_sentences_streaming(text):
         core = chunk.strip()
         if not core:
@@ -265,7 +279,7 @@ def check_output(text: str, *, has_market_data: bool = True) -> HookVerdict:
             # (confirmed live: 3 separate copies of the same notice in one short answer)
             # rather than as N distinct redactions worth calling out individually.
             if not last_was_notice:
-                cleaned.append(lead + _REDACTION_NOTICE + trail)
+                cleaned.append(lead + notice + trail)
             last_was_notice = True
             continue
         last_was_notice = False
@@ -295,7 +309,8 @@ NON_TRADING_CAVEAT: Final[str] = _NON_TRADING_CAVEAT
 
 # Exposed so callers (tests, any future caller wanting to detect a redaction) check against the
 # real constant rather than hardcoding a substring of its wording, which would silently drift.
-REDACTION_NOTICE: Final[str] = _REDACTION_NOTICE
+REDACTION_NOTICE_EN: Final[str] = _REDACTION_NOTICE_EN
+REDACTION_NOTICE_ZH: Final[str] = _REDACTION_NOTICE_ZH
 
 
 def scan_structured_payload(value: object) -> tuple[object, bool]:
@@ -312,7 +327,7 @@ def scan_structured_payload(value: object) -> tuple[object, bool]:
     """
     if isinstance(value, str):
         if _contains_trading_language(value):
-            return _REDACTION_NOTICE, True
+            return _notice_for(value), True
         return _strip_vendor_names(value)
     if isinstance(value, Mapping):
         mapping = cast("Mapping[object, object]", value)
@@ -337,7 +352,8 @@ def scan_structured_payload(value: object) -> tuple[object, bool]:
 
 __all__ = [
     "NON_TRADING_CAVEAT",
-    "REDACTION_NOTICE",
+    "REDACTION_NOTICE_EN",
+    "REDACTION_NOTICE_ZH",
     "HookVerdict",
     "check_output",
     "scan_sentence",
