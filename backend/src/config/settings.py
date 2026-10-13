@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     # idle cut-offs). `pool_pre_ping` additionally tests a connection before handing it out, so a
     # restart or failover of the database shows up as a retried checkout, not a user-facing error.
     db_pool_recycle_seconds: int = 1800
+    # How long a request waits for a free pooled connection before failing (SQLAlchemy's default
+    # is 30 s, long enough for a saturated pool to stall every request behind it).
+    db_pool_timeout_seconds: int = 10
+    # Server-side cap on how long a session may sit idle INSIDE a transaction before Postgres ends
+    # it. An open transaction holds locks that block DDL and pins a pooled connection, so a leaked
+    # one (a forgotten session, a stuck client) must not live for hours. Long enough for an LLM
+    # turn that holds a transaction across the model call; 0 disables it.
+    db_idle_in_transaction_timeout_ms: int = 300_000
     # Server-side cap on one statement; a runaway query is cancelled instead of holding a
     # connection. 0 disables it.
     db_statement_timeout_ms: int = 30_000

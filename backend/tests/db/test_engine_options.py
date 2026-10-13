@@ -39,7 +39,13 @@ def test_postgres_engine_checks_connections_and_bounds_the_pool(
     assert captured["pool_size"] == 10
     assert captured["max_overflow"] == 10
     assert captured["pool_recycle"] == 1800
-    assert captured["connect_args"] == {"server_settings": {"statement_timeout": "30000"}}
+    assert captured["pool_timeout"] == 10
+    assert captured["connect_args"] == {
+        "server_settings": {
+            "statement_timeout": "30000",
+            "idle_in_transaction_session_timeout": "300000",
+        }
+    }
 
 
 def test_pool_and_timeout_come_from_settings(
@@ -51,7 +57,12 @@ def test_pool_and_timeout_come_from_settings(
     base.make_engine(_PG_URL)
 
     assert captured["pool_size"] == 3
-    assert captured["connect_args"] == {"server_settings": {"statement_timeout": "5000"}}
+    assert captured["connect_args"] == {
+        "server_settings": {
+            "statement_timeout": "5000",
+            "idle_in_transaction_session_timeout": "300000",
+        }
+    }
 
 
 def test_a_zero_timeout_means_no_statement_cap(
@@ -61,7 +72,30 @@ def test_a_zero_timeout_means_no_statement_cap(
 
     base.make_engine(_PG_URL)
 
+    assert captured["connect_args"] == {
+        "server_settings": {"idle_in_transaction_session_timeout": "300000"}
+    }
+
+
+def test_both_server_side_caps_can_be_switched_off(
+    captured: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DB_STATEMENT_TIMEOUT_MS", "0")
+    monkeypatch.setenv("DB_IDLE_IN_TRANSACTION_TIMEOUT_MS", "0")
+
+    base.make_engine(_PG_URL)
+
     assert captured["connect_args"] == {}
+
+
+def test_the_pool_wait_is_configurable(
+    captured: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DB_POOL_TIMEOUT_SECONDS", "4")
+
+    base.make_engine(_PG_URL)
+
+    assert captured["pool_timeout"] == 4
 
 
 def test_sqlite_engine_is_left_at_its_defaults(captured: dict[str, object]) -> None:

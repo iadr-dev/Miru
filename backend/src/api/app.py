@@ -154,6 +154,7 @@ def create_app(
     app.include_router(market.router, prefix=api)
     app.include_router(market_rest.router, prefix=api)
     app.include_router(context.router, prefix=api)
+    app.include_router(context.stream_router, prefix=api)
     app.include_router(auth.router, prefix=api)
     app.include_router(accounts_extra.router, prefix=api)
     app.include_router(billing.router, prefix=api)

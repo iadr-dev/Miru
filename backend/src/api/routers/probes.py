@@ -16,6 +16,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Response, status
 from redis.asyncio import Redis
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from api.dependencies import AppState, get_state
 
@@ -27,10 +29,39 @@ async def livez() -> dict[str, str]:
     return {"status": "ok"}
 
 
+_PROBE_TIMEOUT_SECONDS = 3
+_probe_engines: dict[str, AsyncEngine] = {}
+
+
+def _probe_engine(url: str) -> AsyncEngine:
+    """A tiny engine used only by the probes: no pool, a short connect and statement timeout.
+
+    The probes must keep answering when the application pool is exhausted - that is precisely when
+    the load balancer needs to see a healthy-but-busy replica, not a dead one. Sharing the pool
+    made a saturated replica fail readiness, get ejected, and push its load onto the others."""
+    engine = _probe_engines.get(url)
+    if engine is None:
+        engine = create_async_engine(
+            url,
+            poolclass=NullPool,
+            connect_args={
+                "timeout": _PROBE_TIMEOUT_SECONDS,
+                "server_settings": {"statement_timeout": str(_PROBE_TIMEOUT_SECONDS * 1000)},
+            },
+        )
+        _probe_engines[url] = engine
+    return engine
+
+
 async def _check_postgres(state: AppState) -> bool:
+    url = state.settings.database_url
     try:
-        async with state.session_factory() as session:
-            await session.execute(text("SELECT 1"))
+        if url.startswith("postgresql"):
+            async with _probe_engine(url).connect() as conn:
+                await conn.execute(text("SELECT 1"))
+        else:  # SQLite (dev/tests): there is no pool pressure to isolate from
+            async with state.session_factory() as session:
+                await session.execute(text("SELECT 1"))
         return True
     except Exception:
         return False

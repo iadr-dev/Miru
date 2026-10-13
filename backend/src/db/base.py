@@ -32,11 +32,16 @@ def make_engine(database_url: str | None = None) -> AsyncEngine:
     if not url.startswith("postgresql"):
         # SQLite (dev/tests): its pool has different semantics and nothing to health-check.
         return create_async_engine(url, future=True)
-    connect_args: dict[str, object] = {}
+    server_settings: dict[str, str] = {}
     if settings.db_statement_timeout_ms > 0:
-        connect_args["server_settings"] = {
-            "statement_timeout": str(settings.db_statement_timeout_ms)
-        }
+        server_settings["statement_timeout"] = str(settings.db_statement_timeout_ms)
+    if settings.db_idle_in_transaction_timeout_ms > 0:
+        server_settings["idle_in_transaction_session_timeout"] = str(
+            settings.db_idle_in_transaction_timeout_ms
+        )
+    connect_args: dict[str, object] = (
+        {"server_settings": server_settings} if server_settings else {}
+    )
     return create_async_engine(
         url,
         future=True,
@@ -44,6 +49,7 @@ def make_engine(database_url: str | None = None) -> AsyncEngine:
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
         pool_recycle=settings.db_pool_recycle_seconds,
+        pool_timeout=settings.db_pool_timeout_seconds,
         connect_args=connect_args,
     )
 

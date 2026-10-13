@@ -13,17 +13,18 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from urllib.parse import urlsplit
 
 
-async def collect_sse(
+async def collect_sse(  # noqa: PLR0913 - a test driver with optional hooks, all keyword-only
     app: object,
     path: str,
     *,
     until: Callable[[list[str]], bool],
     timeout_s: float = 5.0,
     on_started: Callable[[], Awaitable[None]] | None = None,
+    headers: Mapping[str, str] | None = None,
 ) -> list[str]:
     """Drive `GET {path}` against the ASGI `app` and return SSE lines once `until(lines)` holds
     (or the timeout elapses), then disconnect. `on_started` runs after the response has started
@@ -38,7 +39,10 @@ async def collect_sse(
         "path": split.path,
         "raw_path": split.path.encode(),
         "query_string": split.query.encode(),
-        "headers": [(b"host", b"test")],
+        "headers": [
+            (b"host", b"test"),
+            *[(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
+        ],
         "server": ("test", 80),
         "client": ("test", 12345),
     }

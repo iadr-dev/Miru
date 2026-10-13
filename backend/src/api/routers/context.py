@@ -21,11 +21,12 @@ from api.dependencies import (
     dispatch_validated_tool,
     get_state,
     optional_user,
+    optional_user_released,
     tool_context_for,
 )
 from api.errors import ApiError
 from api.quote_stream import entitlement_transform, quote_tool_name_for
-from api.rate_guard import guard_reads
+from api.rate_guard import guard_reads, guard_streams
 from api.sse import format_sse_event
 from api.tool_responses import tool_responses
 from schemas.enums import Market, Tier
@@ -35,6 +36,9 @@ _dispatch = dispatch_validated_tool
 
 
 router = APIRouter(tags=["context"], dependencies=[Depends(guard_reads)])
+# The two SSE feeds stay open for as long as a tab does, so they must not hold a database session
+# for that long: their caller is resolved on a short session (`optional_user_released`).
+stream_router = APIRouter(tags=["context"], dependencies=[Depends(guard_streams)])
 
 _CANONICAL = "canonical"
 _CONVERSATION = "conversation"
@@ -117,7 +121,14 @@ async def symbol_search(
     return await _dispatch(state, "get_symbol_search", {"query": q, "market": market.value}, ctx)
 
 
-@router.get("/quote/stream")
+def _stream_context(
+    user: User | None = Depends(optional_user_released),
+    state: AppState = Depends(get_state),
+) -> ToolContext:
+    return tool_context_for(user, state)
+
+
+@stream_router.get("/quote/stream")
 async def quote_stream(
     symbols: str = Query(..., description="Comma-separated symbol ids."),
     market: Market = Query(Market.TW),
@@ -127,9 +138,9 @@ async def quote_stream(
         "mobile connections). The poller serves a symbol at the fastest cadence any subscriber "
         "requested, so a `normal` subscriber is never starved by a co-subscribed `saver`.",
     ),
-    user: User | None = Depends(optional_user),
+    user: User | None = Depends(optional_user_released),
     state: AppState = Depends(get_state),
-    ctx: ToolContext = Depends(_context),
+    ctx: ToolContext = Depends(_stream_context),
 ) -> StreamingResponse:
     """Live-ish quote feed (SSE) via the shared demand-driven poller.
 
@@ -163,10 +174,10 @@ async def quote_stream(
     return StreamingResponse(stream, media_type="text/event-stream")
 
 
-@router.get("/updates/stream")
+@stream_router.get("/updates/stream")
 async def updates_stream(
     state: AppState = Depends(get_state),
-    _user: User | None = Depends(optional_user),
+    _user: User | None = Depends(optional_user_released),
 ) -> StreamingResponse:
     """Cache-invalidation feed (SSE): `data.updated` frames when a derived-compute batch lands.
 
@@ -186,4 +197,4 @@ async def updates_stream(
     return StreamingResponse(_updates(), media_type="text/event-stream")
 
 
-__all__ = ["router"]
+__all__ = ["router", "stream_router"]

@@ -296,6 +296,31 @@ server-side `statement_timeout` (`DB_STATEMENT_TIMEOUT_MS`, 0 disables) so a run
 cancelled instead of holding a connection. SQLite keeps its defaults. The API disposes the pool on
 shutdown.
 
+Two more limits keep one stuck client from taking the whole pool down:
+
+- `DB_POOL_TIMEOUT_SECONDS` (10): a request waits at most this long for a free pooled connection
+  and then fails, instead of queueing for SQLAlchemy's default 30 s behind everyone else.
+- `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` (300000, 0 disables): Postgres ends a session that sits idle
+  inside a transaction. An open transaction pins a connection and holds locks that block DDL, so a
+  leaked one must not live for hours. It is long enough for a chat turn, which holds a transaction
+  across the model call; it is a backstop, not a budget.
+
+**Long-lived responses must not hold a session.** The request-scoped session (`get_session`)
+commits and closes only when the response ends, and an SSE stream ends when the tab closes. So
+`/updates/stream` and `/quote/stream` live on their own router (`context.stream_router`) whose
+caller is resolved by `optional_user_released` on a short session that is committed and closed
+before the stream starts: an open tab holds no connection and no transaction. Test:
+`tests/api/test_stream_sessions.py`.
+
+**Probes do not share the pool.** `/readyz` and `/startupz` open their own non-pooled connection
+with a 3 s limit, so a replica whose application pool is exhausted still reports busy-but-alive
+instead of failing readiness and being ejected (which pushes its load onto the other replicas).
+
+**The schema lock outlasts the statement timeout.** `db/schema_lock.py` takes a transaction-level
+advisory lock with `SET LOCAL statement_timeout = 0`, so processes waiting behind a slow first
+`create_all` wait instead of failing startup with `QueryCanceled`, and nothing leaks back into the
+pool.
+
 ## Outbound HTTP clients
 
 `backend/src/netclient/` holds the shared connection pool. `sources.tls.build_async_client` (every
