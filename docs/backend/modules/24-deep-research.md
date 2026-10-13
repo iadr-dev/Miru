@@ -7,24 +7,50 @@ and gated in [12](12-multi-user-tiers.md). Code: `backend/src/research/`, wired 
 
 ## 1. Shape of a run
 
-**Code runs the loop; the model is only asked to plan, to judge "is this enough?", and to write.**
+**Code runs the loop; the model is only asked to restate, to plan, to judge "is this enough?", and
+to write.**
 
 ```
-plan ─▶ ┌ search ─▶ read ─▶ review ┐ × ≤ 3 rounds ─▶ write ─▶ render
-        └──────────◀───────────────┘  (review asks for new queries, or says "sufficient")
+(restate the question, describe attached images)
+        │
+      plan ─▶ sub-question 1 ┐   each: search ─▶ read ─▶ review  × ≤ 3 rounds
+              sub-question 2 ├─ run at the same time, sharing one budget
+              sub-question N ┘   (web search + Miru market data)
+                                   │
+                              write ─▶ render
 ```
+
+- **Conversation and images.** A follow-up ("那第四季呢？") is first rewritten into one standalone
+  question from the last few turns of the thread (best effort: if that step fails the raw message is
+  used). Attached images are described once by the model and the description is passed to the planner
+  as **context only** - it is never a source, so nothing can be cited to it; a description that reads
+  like instructions is dropped, and a failed description just means no extra context.
+- **Sub-questions in parallel.** The plan has 1-5 independent sub-questions. They run together
+  (`asyncio.gather`) against one shared source ledger and one shared budget. Totals are claimed
+  *before* the await (as in the quota rules of backend/CLAUDE.md §5), so parallel lanes cannot overshoot
+  a ceiling, and `SourceLedger.claim_unread` hands each page to exactly one lane. One lane failing
+  does not end the others.
+- **Miru market data next to the web.** A sub-question about a listed company may also request
+  lookups from a fixed list (`research/datatools.py`: company profile, score, institutional flows,
+  margin/short, monthly revenue, income statement, valuation, analyst consensus, dividends, technical
+  indicators, foreign holding). The model names a tool from that list and a `(symbol, market)` pair -
+  never a free-form tool or argument, so a request cannot ask for the whole market. The adapter
+  (`research.adapters.ToolData`) runs it like any chat tool call: whole-market argument check, the
+  tier entitlement (a locked result is simply left out), then `scan_structured_payload` on the output.
+  A result becomes a citeable **data source** (`kind: "data"`, no URL, shown as a source without a link).
 
 | Ceiling (`ResearchBudget`) | Default |
 |---|---|
-| rounds | 3 |
-| searches | 8 |
-| pages read | 12 (≤ 5 per round, 3 fetched concurrently) |
-| wall-clock | 120 s (the final write always gets ≥ 25 s) |
-| text per source shown to the model | 6,000 chars |
+| rounds | 3 (per sub-question) |
+| searches | 24 (whole run) |
+| pages read | 30 (whole run; ≤ 4 per sub-question per round, 6 fetched concurrently) |
+| market-data lookups | 12 (whole run) |
+| wall-clock | 180 s (the final write always gets ≥ 25 s) |
+| text per source shown to the model | 4,000 chars |
 
 Hitting any ceiling (or the model never saying "sufficient") ends the research and **still writes
 a report from what was read**; the report says why it stopped (`stopped_because`). Search / fetch /
-review failures are tolerated and logged; a plan or write failure raises `ResearchFailedError`.
+data / review failures are tolerated and logged; a plan or write failure raises `ResearchFailedError`.
 
 ## 2. Governance (what makes it safe to ship)
 
@@ -32,7 +58,7 @@ review failures are tolerated and logged; a plan or write failure raises `Resear
   keeps only ids that exist in the source ledger **and were actually read**; a claim left with none
   is dropped (and counted in `dropped_claims`). Nothing uncited reaches the reader
   ([ADR-0014](../adr/0014-web-search.md): every web-derived claim is cited).
-- **Fetched text is data, never instructions.** Pages are wrapped in `<source id url title>` blocks,
+- **Fetched text is data, never instructions.** Pages (and market-data results, `kind="data"`) are wrapped in `<source id url title>` blocks,
   control characters are stripped, `<source` / `</source` inside a page are defused, pages that
   contain instruction-like phrases (EN + 中文) are excluded entirely, and both system prompts carry
   the untrusted-content notice.
@@ -68,15 +94,18 @@ another run.
 
 ## 4. Streaming and persistence
 
-Progress reuses existing frames: each stage (planning, `searching: <query>`, `reading N pages`,
-reviewing, writing) is an `agent.spawned` lane closed by `agent.done`; the consulted pages are one
+Progress reuses existing frames: each stage (understanding, planning, `searching: <query>`,
+`reading N pages`, `looking up market data`, reviewing, writing) is an `agent.spawned` lane closed by
+`agent.done`. Sub-questions run side by side, so each has its own open lane, labelled `[n] ...`; the
+whole-run stages (understanding, planning, writing) share one. The consulted web pages are one
 `web_search.result` frame. The answer is an ordinary `OrchestratorResult` (markdown with `[n]`
 citations, a sources list, an "as of" date and an early-stop note), so persistence, usage
 recording (`UsageAccumulator` fed by every model call) and the final `message` frame are unchanged.
 
 ## 5. Not built yet
 
-Per-user concurrency cap (one report at a time), report export, and reading PDFs.
+Per-user concurrency cap (one report at a time), report export, reading PDFs, and giving the planner
+more data tools (the list is deliberately short and read-only).
 
 ## 6. Cost shown for a run
 

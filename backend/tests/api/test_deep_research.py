@@ -42,14 +42,27 @@ class _ResearchClient:
 
     def __init__(self, claim: str = "September revenue rose 12% year on year.") -> None:
         self._claim = claim
+        self.seen: list[tuple[str, str]] = []  # (system, user) of every call
+
+    def asked(self, system_part: str) -> list[str]:
+        return [user for system, user in self.seen if system_part in system]
 
     async def chat(
         self, messages: list[Message], tools: object = None, *, native_web_search: bool = False
     ) -> LLMResponse:
         del tools, native_web_search
         system = messages[0].content or ""
-        if "plan web research" in system:
-            body = {"sub_questions": ["revenue"], "queries": ["tsmc revenue"]}
+        self.seen.append((system, messages[-1].content or ""))
+        if "Describe what the attached image" in system:
+            return LLMResponse(
+                text="A candlestick chart of 2330 for September.",
+                stop_reason=StopReason.END_TURN,
+                usage=TokenUsage(input_tokens=5, output_tokens=5, total_tokens=10),
+            )
+        if "Rewrite the user's latest message" in system:
+            body: dict[str, object] = {"question": "台積電第四季資本支出是多少？"}
+        elif "plan research" in system:
+            body = {"sub_questions": [{"question": "revenue", "queries": ["tsmc revenue"]}]}
         elif "review research progress" in system:
             body = {"sufficient": True}
         elif "research report" not in system:
@@ -114,9 +127,16 @@ class _FakeGateway(WebSearchGateway):
 
 
 @pytest.fixture
-def research_client(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+def stub() -> _ResearchClient:
+    return _ResearchClient()
+
+
+@pytest.fixture
+def research_client(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch, stub: _ResearchClient
+) -> Iterator[TestClient]:
     monkeypatch.setattr(deep_research_turn, "build_gateway", _FakeGateway)
-    with build_test_client(settings, agent_answer="x", agent_client=_ResearchClient()) as client:
+    with build_test_client(settings, agent_answer="x", agent_client=stub) as client:
         yield client
 
 
@@ -146,7 +166,7 @@ def test_a_pro_report_is_cited_and_streams_progress(
 
     activities = [f["data"]["activity"] for f in frames if f["event"] == "agent.spawned"]
     assert activities[0] == "規劃研究方向"
-    assert "搜尋：tsmc revenue" in activities
+    assert "[1] 搜尋：tsmc revenue" in activities  # lane 1 of the sub-questions
     assert activities[-1] == "撰寫研究報告"
     assert sum(f["event"] == "agent.done" for f in frames) == len(activities)
 
@@ -324,3 +344,54 @@ def test_other_users_cannot_see_your_usage(research_client: TestClient, settings
     other, _ = sign_in(research_client, settings, tier=Tier.PRO)
     llm = research_client.get("/api/v1/usage/llm", headers=other).json()
     assert llm["totals"]["calls"] == 0
+
+
+def test_a_follow_up_is_researched_as_a_standalone_question(
+    research_client: TestClient, settings: Settings, stub: _ResearchClient
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    _ask(research_client, headers)
+    assert stub.asked("Rewrite the user's latest message") == []  # a first question stands alone
+
+    thread = _thread(research_client, headers)
+    resp = research_client.post(
+        "/api/v1/agent/query",
+        json={"message": "那資本支出呢？", "deep_research": True, "thread_id": thread["id"]},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    restated = stub.asked("Rewrite the user's latest message")
+    assert len(restated) == 1
+    assert "台積電最近營收如何？" in restated[0]  # the earlier turn is what resolves "資本支出呢"
+    assert "那資本支出呢？" in restated[0]
+    assert "台積電第四季資本支出是多少？" in stub.asked("plan research")[-1]
+
+
+_PNG = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5E"
+    "rkJggg=="
+)
+
+
+def test_an_attached_image_is_described_and_used_as_context_only(
+    research_client: TestClient, settings: Settings, stub: _ResearchClient
+) -> None:
+    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
+    resp = research_client.post(
+        "/api/v1/agent/query",
+        json={
+            "message": "這張圖是什麼？",
+            "deep_research": True,
+            "attachments": [
+                {"filename": "chart.png", "media_type": "image/png", "data_base64": _PNG}
+            ],
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert len(stub.asked("Describe what the attached image")) == 1
+    assert "candlestick chart of 2330" in stub.asked("plan research")[0]
+    # the description guides the research; it is not a source the report can cite
+    frames = _parse_sse(resp.text)
+    sources = next(f for f in frames if f["event"] == "web_search.result")["data"]["sources"]
+    assert [s["url"] for s in sources] == [_PAGE]
