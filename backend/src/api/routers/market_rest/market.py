@@ -14,6 +14,7 @@ from api.dependencies import (
 )
 from api.routers.market_rest._common import context as _context
 from api.routers.market_rest._common import market_args as _market_args
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 from tools.international_tools import FinMindInternationalMarket
@@ -22,7 +23,9 @@ router = APIRouter()
 _dispatch = dispatch_validated_tool
 
 
-@router.get("/market/index-strip")
+@router.get(
+    "/market/index-strip", response_model=None, responses=tool_responses("get_market_index_strip")
+)
 async def index_strip(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -32,7 +35,11 @@ async def index_strip(
     return await _dispatch(state, "get_market_index_strip", {}, ctx)
 
 
-@router.get("/market/us-index-strip")
+@router.get(
+    "/market/us-index-strip",
+    response_model=None,
+    responses=tool_responses("get_us_market_index_strip"),
+)
 async def us_index_strip(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -42,7 +49,9 @@ async def us_index_strip(
     return await _dispatch(state, "get_us_market_index_strip", {}, ctx)
 
 
-@router.get("/market/tick-snapshot")
+@router.get(
+    "/market/tick-snapshot", response_model=None, responses=tool_responses("get_tick_snapshot")
+)
 async def tick_snapshot(
     symbol: str = Query(..., min_length=1, description="4-digit stock id or 3-digit index code."),
     market: Market = Query(Market.TW),
@@ -55,7 +64,11 @@ async def tick_snapshot(
     return await _dispatch(state, "get_tick_snapshot", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/market/futures-snapshot")
+@router.get(
+    "/market/futures-snapshot",
+    response_model=None,
+    responses=tool_responses("get_futures_snapshot"),
+)
 async def futures_snapshot(
     symbol: str = Query(..., min_length=1, description="Futures contract code, e.g. TXF."),
     market: Market = Query(Market.TW),
@@ -69,7 +82,11 @@ async def futures_snapshot(
     )
 
 
-@router.get("/market/institutional-ranking")
+@router.get(
+    "/market/institutional-ranking",
+    response_model=None,
+    responses=tool_responses("get_institutional_flow_total_market"),
+)
 async def institutional_ranking(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -86,7 +103,11 @@ async def institutional_ranking(
     )
 
 
-@router.get("/market/margin-maintenance")
+@router.get(
+    "/market/margin-maintenance",
+    response_model=None,
+    responses=tool_responses("get_margin_maintenance"),
+)
 async def margin_maintenance(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -100,7 +121,7 @@ async def margin_maintenance(
     )
 
 
-@router.get("/market/day-trading")
+@router.get("/market/day-trading", response_model=None, responses=tool_responses("get_day_trading"))
 async def day_trading(
     symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
     market: Market = Query(Market.TW),
@@ -120,7 +141,11 @@ async def day_trading(
     return await _dispatch(state, "get_day_trading", args, ctx)
 
 
-@router.get("/market/dividend-schedule")
+@router.get(
+    "/market/dividend-schedule",
+    response_model=None,
+    responses=tool_responses("get_dividend_schedule"),
+)
 async def dividend_schedule(
     symbol: str = Query(
         ..., min_length=1, description="Stock/ETF id — backing tool is per-symbol."
@@ -146,7 +171,9 @@ async def dividend_schedule(
     return await _dispatch(state, "get_dividend_schedule", args, ctx)
 
 
-@router.get("/market/etf-money-flow")
+@router.get(
+    "/market/etf-money-flow", response_model=None, responses=tool_responses("get_etf_money_flow")
+)
 async def etf_money_flow(
     start_date: date_ = Query(...),
     end_date: date_ = Query(...),
@@ -169,7 +196,9 @@ async def etf_money_flow(
     )
 
 
-@router.get("/market/daily-signal")
+@router.get(
+    "/market/daily-signal", response_model=None, responses=tool_responses("get_daily_signal")
+)
 async def daily_signal(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -184,7 +213,11 @@ async def daily_signal(
     return await _dispatch(state, "get_daily_signal", args, ctx)
 
 
-@router.get("/market/industry-flow")
+@router.get(
+    "/market/industry-flow",
+    response_model=None,
+    responses=tool_responses("get_industry_money_flow"),
+)
 async def industry_flow(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -198,7 +231,11 @@ async def industry_flow(
     )
 
 
-@router.get("/market/margin-short-balance")
+@router.get(
+    "/market/margin-short-balance",
+    response_model=None,
+    responses=tool_responses("get_margin_short_total_market"),
+)
 async def margin_short_balance(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -215,7 +252,9 @@ async def margin_short_balance(
     )
 
 
-@router.get("/market/advance-decline")
+@router.get(
+    "/market/advance-decline", response_model=None, responses=tool_responses("get_advance_decline")
+)
 async def advance_decline(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -231,7 +270,11 @@ async def advance_decline(
     return await _dispatch(state, "get_advance_decline", args, ctx)
 
 
-@router.get("/market/order-book-stats")
+@router.get(
+    "/market/order-book-stats",
+    response_model=None,
+    responses=tool_responses("get_order_book_stats"),
+)
 async def order_book_stats(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -247,7 +290,9 @@ async def order_book_stats(
     )
 
 
-@router.get("/market/price-momentum")
+@router.get(
+    "/market/price-momentum", response_model=None, responses=tool_responses("get_price_momentum")
+)
 async def price_momentum(
     market: Market = Query(Market.TW),
     period: Literal["day", "week", "month"] = Query("week"),
@@ -266,7 +311,9 @@ async def price_momentum(
     return await _dispatch(state, "get_price_momentum", args, ctx)
 
 
-@router.get("/market/us-rankings")
+@router.get(
+    "/market/us-rankings", response_model=None, responses=tool_responses("get_us_market_rankings")
+)
 async def us_rankings(
     kind: Literal["trending", "market_cap", "revenue", "roe", "volume"] = Query("trending"),
     top_n: int = Query(10, ge=1, le=50),
@@ -281,7 +328,9 @@ async def us_rankings(
     return await _dispatch(state, "get_us_market_rankings", {"kind": kind, "top_n": top_n}, ctx)
 
 
-@router.get("/market/tw-rankings")
+@router.get(
+    "/market/tw-rankings", response_model=None, responses=tool_responses("get_tw_market_rankings")
+)
 async def tw_rankings(
     kind: Literal[
         "dealer_streak",
@@ -311,7 +360,11 @@ async def tw_rankings(
     return await _dispatch(state, "get_tw_market_rankings", args, ctx)
 
 
-@router.get("/market/holder-accumulation")
+@router.get(
+    "/market/holder-accumulation",
+    response_model=None,
+    responses=tool_responses("get_holder_accumulation"),
+)
 async def holder_accumulation(
     market: Market = Query(Market.TW),
     threshold: int = Query(
@@ -346,7 +399,11 @@ async def holder_accumulation(
     return await _dispatch(state, "get_holder_accumulation", args, ctx)
 
 
-@router.get("/market/index-contribution")
+@router.get(
+    "/market/index-contribution",
+    response_model=None,
+    responses=tool_responses("get_index_contribution"),
+)
 async def index_contribution(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -363,7 +420,9 @@ async def index_contribution(
     return await _dispatch(state, "get_index_contribution", args, ctx)
 
 
-@router.get("/market/sector-heatmap")
+@router.get(
+    "/market/sector-heatmap", response_model=None, responses=tool_responses("get_sector_heatmap")
+)
 async def sector_heatmap(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -386,7 +445,9 @@ async def sector_heatmap(
     return await _dispatch(state, "get_sector_heatmap", args, ctx)
 
 
-@router.get("/market/stock-heatmap")
+@router.get(
+    "/market/stock-heatmap", response_model=None, responses=tool_responses("get_stock_heatmap")
+)
 async def stock_heatmap(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -408,7 +469,11 @@ async def stock_heatmap(
     return await _dispatch(state, "get_stock_heatmap", args, ctx)
 
 
-@router.get("/market/sector-constituents")
+@router.get(
+    "/market/sector-constituents",
+    response_model=None,
+    responses=tool_responses("get_sector_constituents"),
+)
 async def sector_constituents(
     market: Market = Query(Market.TW),
     industry: str | None = Query(
@@ -429,7 +494,9 @@ async def sector_constituents(
     return await _dispatch(state, "get_sector_constituents", args, ctx)
 
 
-@router.get("/market/sector-rotation")
+@router.get(
+    "/market/sector-rotation", response_model=None, responses=tool_responses("get_sector_rotation")
+)
 async def sector_rotation(
     market: Market = Query(Market.TW),
     end_date: date_ | None = Query(None),
@@ -445,7 +512,11 @@ async def sector_rotation(
     return await _dispatch(state, "get_sector_rotation", args, ctx)
 
 
-@router.get("/market/sector-rotation-rrg")
+@router.get(
+    "/market/sector-rotation-rrg",
+    response_model=None,
+    responses=tool_responses("get_sector_rotation_rrg"),
+)
 async def sector_rotation_rrg(
     market: Market = Query(Market.TW),
     end_date: date_ | None = Query(None),
@@ -461,7 +532,7 @@ async def sector_rotation_rrg(
     return await _dispatch(state, "get_sector_rotation_rrg", args, ctx)
 
 
-@router.get("/market/etf-list")
+@router.get("/market/etf-list", response_model=None, responses=tool_responses("get_etf_list"))
 async def etf_list(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -478,7 +549,11 @@ async def etf_list(
     return await _dispatch(state, "get_etf_list", args, ctx)
 
 
-@router.get("/market/dividend-calendar")
+@router.get(
+    "/market/dividend-calendar",
+    response_model=None,
+    responses=tool_responses("get_dividend_calendar"),
+)
 async def dividend_calendar(
     market: Market = Query(Market.TW),
     year: int | None = Query(None),
@@ -497,7 +572,11 @@ async def dividend_calendar(
     return await _dispatch(state, "get_dividend_calendar", args, ctx)
 
 
-@router.get("/market/big-holder-accumulation")
+@router.get(
+    "/market/big-holder-accumulation",
+    response_model=None,
+    responses=tool_responses("get_shareholder_dispersion"),
+)
 async def big_holder_accumulation(
     symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
     market: Market = Query(Market.TW),
@@ -517,7 +596,11 @@ async def big_holder_accumulation(
     return await _dispatch(state, "get_shareholder_dispersion", args, ctx)
 
 
-@router.get("/market/active-etf-report")
+@router.get(
+    "/market/active-etf-report",
+    response_model=None,
+    responses=tool_responses("get_active_etf_report"),
+)
 async def active_etf_report(
     symbol: str = Query(
         ..., min_length=1, description="Active ETF id — backing tool is per-symbol."
@@ -536,7 +619,11 @@ async def active_etf_report(
     return await _dispatch(state, "get_active_etf_report", args, ctx)
 
 
-@router.get("/market/international-index")
+@router.get(
+    "/market/international-index",
+    response_model=None,
+    responses=tool_responses("get_international_stock"),
+)
 async def international_index(
     symbol: str = Query(
         ..., min_length=1, description="The market's own quote symbol, e.g. '^DJI'."
@@ -560,7 +647,11 @@ async def international_index(
     return await _dispatch(state, "get_international_stock", args, ctx)
 
 
-@router.get("/market/material-announcements")
+@router.get(
+    "/market/material-announcements",
+    response_model=None,
+    responses=tool_responses("get_material_announcements"),
+)
 async def material_announcements(
     symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
     market: Market = Query(Market.TW),
@@ -577,7 +668,11 @@ async def material_announcements(
     )
 
 
-@router.get("/market/material-announcement-feed")
+@router.get(
+    "/market/material-announcement-feed",
+    response_model=None,
+    responses=tool_responses("get_material_announcement_feed"),
+)
 async def material_announcement_feed(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -598,7 +693,11 @@ async def material_announcement_feed(
     return await _dispatch(state, "get_material_announcement_feed", args, ctx)
 
 
-@router.get("/market/insider-transfer-declarations")
+@router.get(
+    "/market/insider-transfer-declarations",
+    response_model=None,
+    responses=tool_responses("get_insider_transfer_declarations"),
+)
 async def insider_transfer_declarations(
     market: Market = Query(Market.TW),
     trade_date: date_ | None = Query(None),
@@ -614,7 +713,11 @@ async def insider_transfer_declarations(
     return await _dispatch(state, "get_insider_transfer_declarations", args, ctx)
 
 
-@router.get("/market/disposition-board")
+@router.get(
+    "/market/disposition-board",
+    response_model=None,
+    responses=tool_responses("get_disposition_board"),
+)
 async def disposition_board(
     market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),

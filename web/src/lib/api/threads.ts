@@ -122,7 +122,7 @@ export async function cancelTurn(threadId: string, turnId: string): Promise<void
  * field — the ONLY two values the backend accepts (`extra="forbid"`, no explicit un-vote value). */
 export type FeedbackRating = "up" | "down";
 
-const feedbackRecordSchema = z.object({
+export const feedbackRecordSchema = z.object({
   turn_id: z.string(),
   user_id: z.string(),
   rating: z.enum(["up", "down"]),

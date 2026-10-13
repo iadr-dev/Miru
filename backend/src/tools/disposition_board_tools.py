@@ -17,7 +17,7 @@ from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date as date_
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
 import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
@@ -64,9 +64,9 @@ _PROJECTION_CAVEAT = (
     "feature's ingest jobs first ran."
 )
 
-_BUCKET_IN_DISPOSITION = "in_disposition"
-_BUCKET_EXITING_SOON = "exiting_soon"
-_BUCKET_AT_RISK = "at_risk"
+_BUCKET_IN_DISPOSITION: Final = "in_disposition"
+_BUCKET_EXITING_SOON: Final = "exiting_soon"
+_BUCKET_AT_RISK: Final = "at_risk"
 
 _DISPOSITION_BOARD_FREE_ROW_COUNT = 2  # governance.md §4 top-N-preview exception — per bucket
 
@@ -702,7 +702,7 @@ def _build_card(  # noqa: PLR0913 — every kwarg is one already-resolved lookup
         institutional_net=institutional_net,
         margin_ratio=margin_ratio,
         margin_caveat=margin_caveat,
-        margin_health_status=margin_health.value,
+        margin_health_status=margin_health,
         day_trading_ratio=day_trading_ratio,
         bucket=bucket,
         disposition_measure=event.measure if event else None,

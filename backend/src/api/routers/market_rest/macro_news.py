@@ -14,6 +14,7 @@ from api.dependencies import (
 )
 from api.routers.market_rest._common import context as _context
 from api.routers.market_rest._common import market_args as _market_args
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
@@ -21,7 +22,9 @@ router = APIRouter()
 _dispatch = dispatch_validated_tool
 
 
-@router.get("/derivatives/taiex-vix")
+@router.get(
+    "/derivatives/taiex-vix", response_model=None, responses=tool_responses("get_taiex_vix")
+)
 async def taiex_vix(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -37,7 +40,13 @@ async def taiex_vix(
     return await _dispatch(state, "get_taiex_vix", _market_args(market, start_date, end_date), ctx)
 
 
-@router.get("/derivatives/{contract}")
+@router.get(
+    "/derivatives/{contract}",
+    response_model=None,
+    responses=tool_responses(
+        "get_futures_options_daily", "get_put_call_ratio", "get_derivatives_institutional"
+    ),
+)
 async def derivatives(
     contract: str,
     market: Market = Query(Market.TW),
@@ -62,7 +71,7 @@ async def derivatives(
     }
 
 
-@router.get("/macro")
+@router.get("/macro", response_model=None, responses=tool_responses("get_macro_indicators"))
 async def macro(
     start_date: date_ | None = Query(None),
     end_date: date_ | None = Query(None),
@@ -78,7 +87,11 @@ async def macro(
     return await _dispatch(state, "get_macro_indicators", args, ctx)
 
 
-@router.get("/macro/business-indicator")
+@router.get(
+    "/macro/business-indicator",
+    response_model=None,
+    responses=tool_responses("get_business_indicator"),
+)
 async def business_indicator(
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
@@ -92,7 +105,9 @@ async def business_indicator(
     )
 
 
-@router.get("/market/macro-calendar")
+@router.get(
+    "/market/macro-calendar", response_model=None, responses=tool_responses("get_macro_calendar")
+)
 async def macro_calendar(
     impact: Literal["high", "medium", "low"] | None = Query(None),
     days_ahead: int = Query(14, ge=1, le=90),
@@ -116,7 +131,7 @@ async def macro_calendar(
     return await _dispatch(state, "get_macro_calendar", args, ctx)
 
 
-@router.get("/market/news-feed")
+@router.get("/market/news-feed", response_model=None, responses=tool_responses("get_news_feed"))
 async def news_feed(
     query: str = Query("台股"),
     market: Market = Query(Market.TW),
@@ -131,7 +146,7 @@ async def news_feed(
     return await _dispatch(state, "get_news_feed", {"query": query, "market": market.value}, ctx)
 
 
-@router.get("/market/ptt-board")
+@router.get("/market/ptt-board", response_model=None, responses=tool_responses("get_ptt_board"))
 async def ptt_board(
     board: str = Query("Stock"),
     lookback_days: int = Query(1, ge=1, le=14),

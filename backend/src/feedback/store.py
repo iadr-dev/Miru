@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 import structlog
 from sqlalchemy import Insert
@@ -24,7 +24,7 @@ from db.models import TurnFeedbackRow
 
 logger = structlog.get_logger(__name__)
 
-_RATINGS = ("up", "down")
+Rating = Literal["up", "down"]
 
 
 @dataclass(frozen=True)
@@ -33,14 +33,14 @@ class FeedbackRecord:
 
     turn_id: str
     user_id: str
-    rating: str
+    rating: Rating
     comment: str | None
 
 
 @runtime_checkable
 class FeedbackStore(Protocol):
     async def submit(
-        self, *, turn_id: str, user_id: str, rating: str, comment: str | None
+        self, *, turn_id: str, user_id: str, rating: Rating, comment: str | None
     ) -> FeedbackRecord: ...
 
 
@@ -52,13 +52,11 @@ class SqlAlchemyFeedbackStore:
         self._session = session
 
     async def submit(
-        self, *, turn_id: str, user_id: str, rating: str, comment: str | None
+        self, *, turn_id: str, user_id: str, rating: Rating, comment: str | None
     ) -> FeedbackRecord:
         """Upsert on `(turn_id, user_id)` — a re-submit (e.g. thumbs-down then thumbs-up) updates
         the one row in place rather than accumulating duplicates, in the same atomic-upsert style
         as `usage.store.write_turn_usage`."""
-        if rating not in _RATINGS:
-            raise ValueError(f"rating must be one of {_RATINGS}, got {rating!r}")
         now = datetime.now(UTC)
         values = {
             "id": str(uuid.uuid4()),
@@ -83,4 +81,4 @@ class SqlAlchemyFeedbackStore:
         return FeedbackRecord(turn_id=turn_id, user_id=user_id, rating=rating, comment=comment)
 
 
-__all__ = ["FeedbackRecord", "FeedbackStore", "SqlAlchemyFeedbackStore"]
+__all__ = ["FeedbackRecord", "FeedbackStore", "Rating", "SqlAlchemyFeedbackStore"]

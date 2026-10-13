@@ -27,6 +27,7 @@ from api.errors import ApiError
 from api.quote_stream import entitlement_transform, quote_tool_name_for
 from api.rate_guard import guard_reads
 from api.sse import format_sse_event
+from api.tool_responses import tool_responses
 from schemas.enums import Market, Tier
 from tools.base import ToolContext
 
@@ -51,7 +52,11 @@ def _context(
     return tool_context_for(user, state)
 
 
-@router.get("/context/{package}")
+@router.get(
+    "/context/{package}",
+    response_model=None,
+    responses=tool_responses("get_canonical_context", "build_conversation_package"),
+)
 async def context_package(
     package: str,
     symbol: str = Query(..., min_length=1, description="Symbol id the package is built for."),
@@ -76,7 +81,11 @@ async def context_package(
     return await _dispatch(state, tool_name, {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/search")
+@router.get(
+    "/search",
+    response_model=None,
+    responses=tool_responses("get_symbol_directory_search", "get_symbol_search"),
+)
 async def symbol_search(
     q: str = Query(..., min_length=1, description="Free-text company name or ticker."),
     market: Market = Query(Market.US),

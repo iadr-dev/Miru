@@ -51,12 +51,16 @@ class MarkReadRequest(BaseModel):
     all: bool = False
 
 
+class MarkedReadResponse(BaseModel):
+    marked: int
+
+
 @router.post("/notifications/read")
 async def mark_notifications_read(
     body: MarkReadRequest,
     user: User = Depends(require_user),
     store: SchedulerStore = Depends(_store),
-) -> dict[str, int]:
+) -> MarkedReadResponse:
     """Mark notifications read — `{ids: [...]}` for specific ones, `{all: true}` for everything.
     Exactly one of the two must be given; idempotent, returns how many rows changed."""
     if body.all == (body.ids is not None):
@@ -69,7 +73,7 @@ async def mark_notifications_read(
     marked = await store.mark_notifications_read(
         user_id=user.id, ids=None if body.all else body.ids
     )
-    return {"marked": marked}
+    return MarkedReadResponse(marked=marked)
 
 
 @router.get("/notifications/badge")

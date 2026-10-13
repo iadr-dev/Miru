@@ -13,6 +13,7 @@ from api.dependencies import (
     get_state,
 )
 from api.routers.market_rest._common import context as _context
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
@@ -37,7 +38,9 @@ def _symbol_date_args(
     return args
 
 
-@router.get("/stock/company-profile")
+@router.get(
+    "/stock/company-profile", response_model=None, responses=tool_responses("get_company_profile")
+)
 async def company_profile(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -51,7 +54,11 @@ async def company_profile(
     )
 
 
-@router.get("/stock/insider-shareholding")
+@router.get(
+    "/stock/insider-shareholding",
+    response_model=None,
+    responses=tool_responses("get_insider_shareholding"),
+)
 async def insider_shareholding(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -65,7 +72,11 @@ async def insider_shareholding(
     )
 
 
-@router.get("/stock/insider-transfer-declarations")
+@router.get(
+    "/stock/insider-transfer-declarations",
+    response_model=None,
+    responses=tool_responses("get_insider_transfer_declarations"),
+)
 async def stock_insider_transfer_declarations(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -93,7 +104,7 @@ async def stock_insider_transfer_declarations(
     return {**result, "rows": filtered_rows}
 
 
-@router.get("/stock/esg-score")
+@router.get("/stock/esg-score", response_model=None, responses=tool_responses("get_esg_score"))
 async def esg_score(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -106,7 +117,11 @@ async def esg_score(
     return await _dispatch(state, "get_esg_score", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/stock/disposition-securities")
+@router.get(
+    "/stock/disposition-securities",
+    response_model=None,
+    responses=tool_responses("get_disposition_securities"),
+)
 async def disposition_securities(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -126,7 +141,9 @@ async def disposition_securities(
     )
 
 
-@router.get("/stock/dividend-result")
+@router.get(
+    "/stock/dividend-result", response_model=None, responses=tool_responses("get_dividend_result")
+)
 async def dividend_result(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -142,7 +159,11 @@ async def dividend_result(
     )
 
 
-@router.get("/stock/dividend-policy-summary")
+@router.get(
+    "/stock/dividend-policy-summary",
+    response_model=None,
+    responses=tool_responses("get_dividend_policy_summary"),
+)
 async def dividend_policy_summary(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -163,7 +184,9 @@ async def dividend_policy_summary(
     )
 
 
-@router.get("/stock/month-revenue")
+@router.get(
+    "/stock/month-revenue", response_model=None, responses=tool_responses("get_month_revenue")
+)
 async def month_revenue(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -179,7 +202,11 @@ async def month_revenue(
     )
 
 
-@router.get("/stock/financial-statement")
+@router.get(
+    "/stock/financial-statement",
+    response_model=None,
+    responses=tool_responses("get_financial_statement"),
+)
 async def financial_statement(
     symbol: str = Query(..., min_length=1),
     statement_type: Literal["income_statement", "balance_sheet", "cash_flow"] = Query(
@@ -198,7 +225,11 @@ async def financial_statement(
     return await _dispatch(state, "get_financial_statement", args, ctx)
 
 
-@router.get("/stock/institutional-flow")
+@router.get(
+    "/stock/institutional-flow",
+    response_model=None,
+    responses=tool_responses("get_institutional_flow"),
+)
 async def institutional_flow(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -218,7 +249,9 @@ async def institutional_flow(
     )
 
 
-@router.get("/stock/margin-short")
+@router.get(
+    "/stock/margin-short", response_model=None, responses=tool_responses("get_margin_short")
+)
 async def margin_short(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -235,7 +268,11 @@ async def margin_short(
     )
 
 
-@router.get("/stock/securities-lending")
+@router.get(
+    "/stock/securities-lending",
+    response_model=None,
+    responses=tool_responses("get_securities_lending"),
+)
 async def securities_lending(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -254,7 +291,7 @@ async def securities_lending(
     )
 
 
-@router.get("/stock/chip-flows")
+@router.get("/stock/chip-flows", response_model=None, responses=tool_responses("get_chip_flows"))
 async def chip_flows(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -270,7 +307,11 @@ async def chip_flows(
     )
 
 
-@router.get("/stock/government-bank-flows")
+@router.get(
+    "/stock/government-bank-flows",
+    response_model=None,
+    responses=tool_responses("get_government_bank_flows"),
+)
 async def government_bank_flows(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -290,7 +331,9 @@ async def government_bank_flows(
     )
 
 
-@router.get("/stock/valuation-ratios")
+@router.get(
+    "/stock/valuation-ratios", response_model=None, responses=tool_responses("get_valuation_ratios")
+)
 async def valuation_ratios(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -306,7 +349,11 @@ async def valuation_ratios(
     )
 
 
-@router.get("/stock/analyst-consensus")
+@router.get(
+    "/stock/analyst-consensus",
+    response_model=None,
+    responses=tool_responses("get_analyst_consensus"),
+)
 async def analyst_consensus(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -320,7 +367,7 @@ async def analyst_consensus(
     )
 
 
-@router.get("/stock/sec-filings")
+@router.get("/stock/sec-filings", response_model=None, responses=tool_responses("get_sec_filings"))
 async def sec_filings(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.US),
@@ -332,7 +379,9 @@ async def sec_filings(
     return await _dispatch(state, "get_sec_filings", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/stock/live-price-quote")
+@router.get(
+    "/stock/live-price-quote", response_model=None, responses=tool_responses("get_live_price_quote")
+)
 async def live_price_quote(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.US),
@@ -349,7 +398,11 @@ async def live_price_quote(
     )
 
 
-@router.get("/stock/calendar-events-feed")
+@router.get(
+    "/stock/calendar-events-feed",
+    response_model=None,
+    responses=tool_responses("get_calendar_events_feed"),
+)
 async def calendar_events_feed(
     market: Market = Query(Market.US),
     state: AppState = Depends(get_state),
@@ -361,7 +414,7 @@ async def calendar_events_feed(
     return await _dispatch(state, "get_calendar_events_feed", {"market": market.value}, ctx)
 
 
-@router.get("/stock/peers")
+@router.get("/stock/peers", response_model=None, responses=tool_responses("get_stock_peers"))
 async def stock_peers(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -373,7 +426,9 @@ async def stock_peers(
     return await _dispatch(state, "get_stock_peers", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/stock/calendar-events")
+@router.get(
+    "/stock/calendar-events", response_model=None, responses=tool_responses("get_calendar_events")
+)
 async def stock_calendar_events(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -390,7 +445,9 @@ async def stock_calendar_events(
     )
 
 
-@router.get("/stock/finmind-news")
+@router.get(
+    "/stock/finmind-news", response_model=None, responses=tool_responses("get_finmind_stock_news")
+)
 async def finmind_stock_news(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -410,7 +467,11 @@ async def finmind_stock_news(
     )
 
 
-@router.get("/stock/foreign-shareholding")
+@router.get(
+    "/stock/foreign-shareholding",
+    response_model=None,
+    responses=tool_responses("get_foreign_shareholding"),
+)
 async def stock_foreign_shareholding(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -431,7 +492,7 @@ async def stock_foreign_shareholding(
     )
 
 
-@router.get("/stock/day-trading")
+@router.get("/stock/day-trading", response_model=None, responses=tool_responses("get_day_trading"))
 async def stock_day_trading(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -452,7 +513,11 @@ async def stock_day_trading(
     )
 
 
-@router.get("/stock/technical-indicators")
+@router.get(
+    "/stock/technical-indicators",
+    response_model=None,
+    responses=tool_responses("get_technical_indicators"),
+)
 async def technical_indicators(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -472,7 +537,11 @@ async def technical_indicators(
     )
 
 
-@router.get("/stock/shareholder-dispersion")
+@router.get(
+    "/stock/shareholder-dispersion",
+    response_model=None,
+    responses=tool_responses("get_shareholder_dispersion"),
+)
 async def shareholder_dispersion(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -492,7 +561,11 @@ async def shareholder_dispersion(
     )
 
 
-@router.get("/stock/etfs-holding-stock")
+@router.get(
+    "/stock/etfs-holding-stock",
+    response_model=None,
+    responses=tool_responses("get_etfs_holding_stock"),
+)
 async def etfs_holding_stock(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -509,7 +582,9 @@ async def etfs_holding_stock(
     return await _dispatch(state, "get_etfs_holding_stock", args, ctx)
 
 
-@router.get("/stock/live-quote")
+@router.get(
+    "/stock/live-quote", response_model=None, responses=tool_responses("get_live_quote_snapshot")
+)
 async def live_quote(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -525,7 +600,7 @@ async def live_quote(
     )
 
 
-@router.get("/stock/price-limit")
+@router.get("/stock/price-limit", response_model=None, responses=tool_responses("get_price_limit"))
 async def price_limit(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -541,7 +616,9 @@ async def price_limit(
     )
 
 
-@router.get("/stock/intraday-kbar")
+@router.get(
+    "/stock/intraday-kbar", response_model=None, responses=tool_responses("get_intraday_kbar")
+)
 async def intraday_kbar(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -561,7 +638,7 @@ async def intraday_kbar(
     )
 
 
-@router.get("/stock/price-tick")
+@router.get("/stock/price-tick", response_model=None, responses=tool_responses("get_price_tick"))
 async def price_tick(
     symbol: str = Query(..., min_length=1),
     market: Market = Query(Market.TW),
@@ -582,7 +659,9 @@ async def price_tick(
     )
 
 
-@router.get("/stock/ptt-search")
+@router.get(
+    "/stock/ptt-search", response_model=None, responses=tool_responses("get_ptt_stock_search")
+)
 async def ptt_stock_search(
     symbol: str = Query(..., min_length=1),
     company_name: str = Query(..., min_length=1),

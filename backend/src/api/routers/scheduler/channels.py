@@ -30,6 +30,7 @@ from scheduler.delivery.transport import HttpxTransport, OutboundTransport
 from scheduler.models import (
     DevicePlatform,
     DevicePushToken,
+    EmailBlockReason,
 )
 from scheduler.store import (
     SchedulerStore,
@@ -62,7 +63,7 @@ class ChannelStatus(BaseModel):
     line_linked: bool = False
     line_available: bool = False
     # Why this account's address is not emailed: 'bounced' | 'complained' | 'unsubscribed'.
-    email_blocked: str | None = None
+    email_blocked: EmailBlockReason | None = None
     # Browser notifications: the VAPID public key the browser subscribes with (null = not set up),
     # and the LINE official account's add-friend link (null = not set up).
     web_push_public_key: str | None = None

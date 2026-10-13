@@ -45,7 +45,12 @@ Guards beyond the per-PR suite:
   codes listed as BREAKING. Accept an intended change with `UPDATE_OPENAPI_CONTRACT=1`, then run
   `pnpm gen:api` in `web/` and commit both: the web app generates its response types from that spec
   and checks every API client against them at compile time. A route's response is only checked once
-  the spec describes it, so return a Pydantic model, not `dict[str, Any]`.
+  the spec describes it: return a Pydantic model, never `dict[str, Any]`. A tool-backed REST route
+  (`_dispatch(state, "get_x", ...)`) instead declares the tool in its decorator,
+  `@router.get(path, response_model=None, responses=tool_responses("get_x"))` (`api/tool_responses.py`):
+  documentation only, so the wire format is untouched, and `tests/api/test_tool_route_declarations.py`
+  fails if the declared and dispatched tools differ. Fields with a fixed set of values are
+  `Literal`s (or enums), not `str`; the web schemas are checked against them.
 
 ### pyproject.toml — tool stanzas
 ```toml

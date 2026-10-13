@@ -39,6 +39,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from api.rate_guard import guard_reads
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
@@ -75,7 +76,11 @@ _dispatch = dispatch_validated_tool
 # ---- per-symbol analyst-data reads (non-TW) ------------------------------------------------
 
 
-@router.get("/funds/{symbol}/options-chain")
+@router.get(
+    "/funds/{symbol}/options-chain",
+    response_model=None,
+    responses=tool_responses("get_options_chain"),
+)
 async def options_chain(
     symbol: str,
     market: Market = Query(Market.US),
@@ -92,7 +97,11 @@ async def options_chain(
     return await _dispatch(state, "get_options_chain", args, ctx)
 
 
-@router.get("/funds/{symbol}/institutional-holders")
+@router.get(
+    "/funds/{symbol}/institutional-holders",
+    response_model=None,
+    responses=tool_responses("get_institutional_holders"),
+)
 async def institutional_holders(
     symbol: str,
     market: Market = Query(Market.US),
@@ -105,7 +114,11 @@ async def institutional_holders(
     )
 
 
-@router.get("/funds/{symbol}/insider-activity")
+@router.get(
+    "/funds/{symbol}/insider-activity",
+    response_model=None,
+    responses=tool_responses("get_insider_activity"),
+)
 async def insider_activity(
     symbol: str,
     market: Market = Query(Market.US),
@@ -118,7 +131,9 @@ async def insider_activity(
     )
 
 
-@router.get("/funds/{symbol}/holdings")
+@router.get(
+    "/funds/{symbol}/holdings", response_model=None, responses=tool_responses("get_fund_holdings")
+)
 async def fund_holdings(
     symbol: str,
     market: Market = Query(Market.US),
@@ -129,7 +144,9 @@ async def fund_holdings(
     return await _dispatch(state, "get_fund_holdings", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/funds/{symbol}/profile")
+@router.get(
+    "/funds/{symbol}/profile", response_model=None, responses=tool_responses("get_fund_profile")
+)
 async def fund_profile(
     symbol: str,
     market: Market = Query(Market.US),
@@ -141,7 +158,9 @@ async def fund_profile(
     return await _dispatch(state, "get_fund_profile", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/funds/{symbol}/fund-info")
+@router.get(
+    "/funds/{symbol}/fund-info", response_model=None, responses=tool_responses("get_etf_fund_info")
+)
 async def etf_fund_info(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -154,7 +173,11 @@ async def etf_fund_info(
     return await _dispatch(state, "get_etf_fund_info", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/funds/{symbol}/expense-ratio")
+@router.get(
+    "/funds/{symbol}/expense-ratio",
+    response_model=None,
+    responses=tool_responses("get_etf_expense_ratio"),
+)
 async def etf_expense_ratio(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -170,7 +193,11 @@ async def etf_expense_ratio(
     )
 
 
-@router.get("/funds/{symbol}/theme-tags")
+@router.get(
+    "/funds/{symbol}/theme-tags",
+    response_model=None,
+    responses=tool_responses("get_etf_theme_tags"),
+)
 async def etf_theme_tags(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -183,7 +210,11 @@ async def etf_theme_tags(
     return await _dispatch(state, "get_etf_theme_tags", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/funds/{symbol}/trailing-returns")
+@router.get(
+    "/funds/{symbol}/trailing-returns",
+    response_model=None,
+    responses=tool_responses("get_etf_trailing_returns"),
+)
 async def etf_trailing_returns(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -198,7 +229,11 @@ async def etf_trailing_returns(
     )
 
 
-@router.get("/funds/{symbol}/premium-discount")
+@router.get(
+    "/funds/{symbol}/premium-discount",
+    response_model=None,
+    responses=tool_responses("get_etf_premium_discount"),
+)
 async def etf_premium_discount(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -220,7 +255,7 @@ async def etf_premium_discount(
 # ---- multi-symbol overlap / comparison -----------------------------------------------------
 
 
-@router.get("/funds/overlap")
+@router.get("/funds/overlap", response_model=None, responses=tool_responses("get_etf_overlap"))
 async def etf_overlap(
     symbols: str = Query(
         ...,
@@ -239,7 +274,9 @@ async def etf_overlap(
     return await _dispatch(state, "get_etf_overlap", {"symbols": ids, "market": market.value}, ctx)
 
 
-@router.get("/funds/comparison")
+@router.get(
+    "/funds/comparison", response_model=None, responses=tool_responses("get_fund_comparison")
+)
 async def fund_comparison(
     symbols: str = Query(
         ...,

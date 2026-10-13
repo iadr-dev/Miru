@@ -14,6 +14,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from api.routers.market_rest._common import context as _context
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
@@ -21,7 +22,7 @@ router = APIRouter()
 _dispatch = dispatch_validated_tool
 
 
-@router.get("/market/tag-catalog")
+@router.get("/market/tag-catalog", response_model=None, responses=tool_responses("get_tag_catalog"))
 async def tag_catalog(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -31,7 +32,9 @@ async def tag_catalog(
     return await _dispatch(state, "get_tag_catalog", {}, ctx)
 
 
-@router.get("/market/tag-screener")
+@router.get(
+    "/market/tag-screener", response_model=None, responses=tool_responses("run_tag_screener")
+)
 async def tag_screener(
     tags: list[str] = Query(
         default=[],
@@ -92,7 +95,7 @@ def _split_symbols(symbols: str) -> list[str]:
     return [s for s in symbols.split(",") if s]
 
 
-@router.get("/market/symbol-info")
+@router.get("/market/symbol-info", response_model=None, responses=tool_responses("get_symbol_info"))
 async def symbol_info(
     symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),
@@ -106,7 +109,9 @@ async def symbol_info(
     return await _dispatch(state, "get_symbol_info", args, ctx)
 
 
-@router.get("/market/price-history")
+@router.get(
+    "/market/price-history", response_model=None, responses=tool_responses("get_price_history")
+)
 async def price_history(
     symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),
@@ -126,7 +131,7 @@ async def price_history(
     )
 
 
-@router.get("/market/quotes")
+@router.get("/market/quotes", response_model=None, responses=tool_responses("get_symbol_quotes"))
 async def symbol_quotes(
     symbols: str = Query(..., description="Up to 20 comma-separated symbol ids, e.g. '2330,2454'."),
     market: Market = Query(Market.TW),

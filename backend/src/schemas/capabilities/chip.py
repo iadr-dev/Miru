@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import date as date_
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.enums import Market
+from schemas.source import HealthStatus
 
 
 class MarginShortRow(BaseModel):
@@ -465,8 +467,8 @@ class DispositionBoardCardRow(BaseModel):
     # must travel with it here, not be discarded at fetch time — this is the only field on this
     # row not read straight back from an ingest-owned Parquet partition.
     margin_caveat: str | None = None
-    margin_health_status: str | None = None
-    bucket: str  # "at_risk" / "in_disposition" / "exiting_soon"
+    margin_health_status: HealthStatus | None = None
+    bucket: Literal["at_risk", "in_disposition", "exiting_soon"]
     disposition_measure: str | None = None
     disposition_period_start: date_ | None = None
     disposition_period_end: date_ | None = None

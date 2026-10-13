@@ -21,6 +21,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from api.rate_guard import guard_reads
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
@@ -37,7 +38,7 @@ def _context(
     return tool_context_for(user, state)
 
 
-@router.get("/health")
+@router.get("/health", response_model=None, responses=tool_responses("get_source_health"))
 async def source_health(
     symbols: str = Query(..., description="Comma-separated symbol ids, e.g. '2330'."),
     market: Market = Query(Market.TW),
@@ -52,7 +53,7 @@ async def source_health(
     return {"symbols": per_symbol}
 
 
-@router.get("/sources")
+@router.get("/sources", response_model=None, responses=tool_responses("get_source_matrix"))
 async def source_matrix(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
@@ -61,7 +62,7 @@ async def source_matrix(
     return await _dispatch(state, "get_source_matrix", {}, ctx)
 
 
-@router.get("/quote")
+@router.get("/quote", response_model=None, responses=tool_responses("get_price_quote"))
 async def quote(
     symbols: str = Query(..., description="Comma-separated symbol ids, e.g. '2330,2317'."),
     market: Market = Query(Market.TW),

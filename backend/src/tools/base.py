@@ -45,7 +45,7 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field
 
 from llm.base import ToolSpec
-from schemas.enums import DataClass, Tier, TLSPolicy
+from schemas.enums import DataClass, PaidTier, Tier, TLSPolicy
 
 logger = structlog.get_logger(__name__)
 
@@ -244,7 +244,7 @@ class MaskedTeaser(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     locked: Literal[True] = True
-    required_tier: Tier
+    required_tier: PaidTier
     preview: str = Field(min_length=1)
     tool_name: str
 

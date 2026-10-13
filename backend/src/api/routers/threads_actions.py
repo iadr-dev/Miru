@@ -49,7 +49,7 @@ from events.bus import Event
 from events.factory import StreamReader
 from events.kinds import EventKind
 from events.turn_control import ControlMessage, ControlOp
-from feedback.store import FeedbackRecord, FeedbackStore, SqlAlchemyFeedbackStore
+from feedback.store import FeedbackRecord, FeedbackStore, Rating, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
 router = APIRouter(tags=["threads"])
@@ -426,7 +426,7 @@ def _feedback_store(session: AsyncSession = Depends(get_session)) -> FeedbackSto
 class TurnFeedbackRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    rating: str = Field(pattern="^(up|down)$")
+    rating: Rating
     comment: str | None = Field(default=None, max_length=500)
 
 
