@@ -1,6 +1,7 @@
 /** Formatting for Paddle amounts and transactions on the billing page. Paddle states money as a
  * string in the currency's minor units ("29900" TWD = NT$299.00); these turn that into display
  * text without inventing or rounding anything. */
+import type { BillingTransaction } from "@/types/settings";
 
 /** `amount` (minor units, as Paddle sends it) + ISO currency -> "$10.99" / "$299.00" / "¥1,500".
  * Falls back to the raw values if either is not something Intl understands. */
@@ -32,41 +33,24 @@ export function formatDate(iso: string | null | undefined, locale: string): stri
 
 /** Paddle creates a draft/ready transaction the moment checkout opens, and a canceled one is a
  * checkout that never charged anything. None of these is a bill, so none shows in the history. */
-export function isBillableTransaction(tx: Record<string, unknown>): boolean {
+export function isBillableTransaction(tx: Pick<BillingTransaction, "status">): boolean {
   return tx.status !== "draft" && tx.status !== "ready" && tx.status !== "canceled";
 }
 
 export type TransactionSummary = {
-  key: string;
-  id: string | null;
+  id: string;
   date: string | null;
   amount: string | null;
-  status: string | null;
+  status: string;
 };
 
-function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function text(value: unknown): string | null {
-  return typeof value === "string" && value !== "" ? value : null;
-}
-
-/** The few facts a billing-history row shows, pulled defensively from a Paddle transaction
- * (anything missing becomes null rather than throwing). */
-export function summarizeTransaction(
-  tx: Record<string, unknown>,
-  index: number,
-  locale: string,
-): TransactionSummary {
-  const totals = record(record(tx.details)?.totals);
-  const total = text(totals?.grand_total) ?? text(totals?.total);
-  const currency = text(tx.currency_code) ?? text(totals?.currency_code);
+/** The text of one billing-history row, from the transaction the backend sends. */
+export function summarizeTransaction(tx: BillingTransaction, locale: string): TransactionSummary {
   return {
-    key: text(tx.id) ?? `tx-${index}`,
-    id: text(tx.id),
-    date: formatDate(text(tx.billed_at) ?? text(tx.created_at), locale),
-    amount: total && currency ? formatMinorAmount(total, currency, locale) : null,
-    status: text(tx.status),
+    id: tx.id,
+    date: formatDate(tx.billed_at ?? tx.created_at, locale),
+    amount:
+      tx.total && tx.currency_code ? formatMinorAmount(tx.total, tx.currency_code, locale) : null,
+    status: tx.status,
   };
 }

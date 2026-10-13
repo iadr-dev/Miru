@@ -101,8 +101,9 @@ pnpm build                      # next build (must pass typecheck + lint clean)
   `types/generated/contract-checks.ts` has one line per API client asserting that the response the
   backend documents is accepted by the schema that parses it. A renamed, removed, retyped or newly
   nullable field is a `tsc` error naming the field; an added field is fine. **Adding an API client
-  means adding its line there**; endpoints whose route still returns `dict[str, Any]` are listed
-  at the bottom of that file until the backend documents a response model. Each file cites the
+  means adding its line there** (`types/generated/contract-coverage.test.ts` fails until you do); a
+  route that returns `dict[str, Any]` has nothing to compare and is listed at the bottom of that file
+  until the backend documents a response model — every JSON endpoint is currently checked. Each file cites the
   backend module it mirrors so reconciliation is mechanical. **One file per domain, a folder per surface** —
   `types/market/{flows,quotes,rankings,sectors,…}.ts` and `types/stock/{chip,fundamentals,…}.ts`,
   each listing the routes it mirrors in its header; envelope pieces every contract shares

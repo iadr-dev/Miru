@@ -200,12 +200,21 @@ export type PortalResponse = z.infer<typeof portalResponseSchema>;
 
 export const invoiceResponseSchema = z.object({ url: z.string().nullable() });
 
-export const billingHistoryResponseSchema = z.object({
-  transactions: z.array(z.record(z.string(), z.unknown())).default([]),
+/** One row of the billing history: only what the page shows of a Paddle transaction
+ * (`payments/transactions.py`). `total` is the grand total in the currency's minor units. */
+export const billingTransactionSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  created_at: z.string().nullable(),
+  billed_at: z.string().nullable(),
+  currency_code: z.string().nullable(),
+  total: z.string().nullable(),
 });
-export type BillingTransaction = z.infer<
-  typeof billingHistoryResponseSchema
->["transactions"][number];
+export type BillingTransaction = z.infer<typeof billingTransactionSchema>;
+
+export const billingHistoryResponseSchema = z.object({
+  transactions: z.array(billingTransactionSchema),
+});
 
 // ---------------------------------------------------------------------------
 // BYOK keys

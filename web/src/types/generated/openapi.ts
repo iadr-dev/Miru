@@ -491,8 +491,8 @@ export interface paths {
     };
     /**
      * Billing History
-     * @description Proxy Paddle's transactions API for the caller's subscription — Paddle owns the tax-
-     *     compliant invoices/PDFs, so nothing is mirrored locally.
+     * @description The caller's Paddle transactions, reduced to what the billing page shows. Paddle owns the
+     *     tax-compliant invoices/PDFs, so nothing is mirrored locally.
      */
     get: operations["billing_history_api_v1_billing_history_get"];
     put?: never;
@@ -4654,11 +4654,31 @@ export interface components {
       /** Retry Authorization Url */
       retry_authorization_url?: string | null;
     };
+    /** BillingHistoryResponse */
+    BillingHistoryResponse: {
+      /** Transactions */
+      transactions: components["schemas"]["BillingTransaction"][];
+    };
     /**
      * BillingInterval
      * @enum {string}
      */
     BillingInterval: "monthly" | "annual";
+    /** BillingTransaction */
+    BillingTransaction: {
+      /** Billed At */
+      billed_at: string | null;
+      /** Created At */
+      created_at: string | null;
+      /** Currency Code */
+      currency_code: string | null;
+      /** Id */
+      id: string;
+      /** Status */
+      status: string;
+      /** Total */
+      total: string | null;
+    };
     /** BollingerResult */
     BollingerResult: {
       /** Lower */
@@ -5461,6 +5481,11 @@ export interface components {
     DeleteAccountRequest: {
       /** Confirm */
       confirm: string;
+    };
+    /** DeleteAccountResponse */
+    DeleteAccountResponse: {
+      /** Deleted */
+      deleted: boolean;
     };
     /**
      * DeliveryChannelKind
@@ -13599,11 +13624,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: {
-              [key: string]: unknown;
-            }[];
-          };
+          "application/json": components["schemas"]["BillingHistoryResponse"];
         };
       };
     };
@@ -15923,9 +15944,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: boolean;
-          };
+          "application/json": components["schemas"]["DeleteAccountResponse"];
         };
       };
       /** @description Validation Error */

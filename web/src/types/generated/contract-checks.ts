@@ -94,6 +94,7 @@ import type {
   alertPreferenceSchema,
   alertRuleSchema,
   alertsResponseSchema,
+  billingHistoryResponseSchema,
   checkoutResponseSchema,
   connectionsResponseSchema,
   devicePushTokenSchema,
@@ -218,6 +219,8 @@ export type ContractChecks = [
   Accepts<typeof subscriptionResponseSchema, R<"/api/v1/billing/change-plan", "post">>,
   // POST /billing/checkout — settings.checkout
   Accepts<typeof checkoutResponseSchema, R<"/api/v1/billing/checkout", "post">>,
+  // GET /billing/history — settings.getBillingHistory
+  Accepts<typeof billingHistoryResponseSchema, R<"/api/v1/billing/history", "get">>,
   // GET /billing/invoice/{transaction_id} — settings.getInvoiceUrl
   Accepts<typeof invoiceResponseSchema, R<"/api/v1/billing/invoice/{transaction_id}", "get">>,
   // GET /billing/plans — settings.listPlans
@@ -521,12 +524,6 @@ export type ContractChecks = [
   // PUT /watchlists/{watchlist_id}/items/{symbol} — watchlist.addWatchlistItem
   Accepts<typeof watchlistItemSchema, R<"/api/v1/watchlists/{watchlist_id}/items/{symbol}", "put">>,
 ];
-
-// Not checkable yet: the backend documents these responses only as a plain object
-// (`dict[str, Any]`, or `dict[str, list[X]]` for a keyed wrapper), so there are no fields to
-// compare. Each one becomes a check above once its route documents a response model.
-//   DELETE /me
-//   GET /billing/history
 
 // Not JSON responses (event streams, redirects), so there is no body to check.
 //   GET /auth/oauth/{provider}/callback

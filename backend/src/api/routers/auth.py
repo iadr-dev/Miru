@@ -555,6 +555,10 @@ async def _cancel_billing_or_refuse(
             ) from exc
 
 
+class DeleteAccountResponse(BaseModel):
+    deleted: bool
+
+
 @router.delete("/me", dependencies=[Depends(guard_auth)])
 async def delete_account(
     body: DeleteAccountRequest,
@@ -562,7 +566,7 @@ async def delete_account(
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
     client: PaddleClient | None = Depends(get_optional_billing_client),
-) -> dict[str, bool]:
+) -> DeleteAccountResponse:
     """Permanently delete the caller's account and every row stored for it (GDPR/PDPA erasure).
 
     Requires `{"confirm": "DELETE"}`. Any live Paddle subscription is cancelled first; if that
@@ -577,7 +581,7 @@ async def delete_account(
     await _cancel_billing_or_refuse(session, client, user_id=user.id)
     await erase_user(session, user.id)
     _clear_session_cookies(response)
-    return {"deleted": True}
+    return DeleteAccountResponse(deleted=True)
 
 
 class ConnectionsResponse(BaseModel):

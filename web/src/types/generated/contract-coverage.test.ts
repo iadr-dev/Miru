@@ -62,7 +62,8 @@ function parsedClients(): Client[] {
           ts.isPropertyAccessExpression(n.expression) &&
           /^(parse|safeParse)$/.test(n.expression.name.text) &&
           ts.isIdentifier(n.expression.expression) &&
-          n.expression.expression.text.endsWith("Schema")
+          n.expression.expression.text.endsWith("Schema") &&
+          n.expression.expression.text !== "apiErrorSchema" // the error body, never a success body
         ) {
           parsesWithSchema = true;
         }
