@@ -71,16 +71,24 @@ function InvestorTick(props: {
 }): ReactNode {
   const { x = 0, y = 0, payload, tFields, colors } = props;
   const investor = payload?.value ?? "";
+  // 「自營商（自行買賣）」 is too wide for a phone's bar slot: put the qualifier on a second line.
+  const [name = "", qualifier] = investorLabel(tFields, investor).split(/(?=[（(])/);
   return (
     <text
       x={x}
       y={y}
-      dy={12}
       textAnchor="middle"
       fontSize={10}
       fill={colors[investor] ?? "var(--text-muted)"}
     >
-      {investorLabel(tFields, investor)}
+      <tspan x={x} dy={12}>
+        {name}
+      </tspan>
+      {qualifier ? (
+        <tspan x={x} dy={12}>
+          {qualifier}
+        </tspan>
+      ) : null}
     </text>
   );
 }
@@ -214,6 +222,10 @@ export function InstitutionalSummaryBody({
                 dataKey="investor"
                 tickFormatter={(investor: string) => investorLabel(tFields, investor)}
                 tick={<InvestorTick tFields={tFields} colors={INVESTOR_CATEGORY_COLORS} />}
+                // Every category is named: the default drops labels that might overlap, which
+                // left one bar of four unlabeled on a phone.
+                interval={0}
+                height={38}
                 stroke="var(--border)"
               />
               <YAxis

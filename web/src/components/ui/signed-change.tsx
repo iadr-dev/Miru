@@ -47,7 +47,7 @@ export function SignedChange({
   const text = formatSignedChange(value, loc, { decimals, unit, spaced });
   return (
     <span
-      className={cn("font-num tabular-nums", className)}
+      className={cn("whitespace-nowrap font-num tabular-nums", className)}
       style={{ color: DIRECTION_COLOR[direction], ...style }}
       {...(labelled
         ? { role: "img", "aria-label": `${t(direction)} ${text.replace(/^[▲▼–]\s?/, "")}` }
