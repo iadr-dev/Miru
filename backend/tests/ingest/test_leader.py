@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -89,7 +90,13 @@ async def test_postgres_lease_is_exclusive_and_freed_when_the_holder_dies(tmp_pa
                     "WHERE locktype = 'advisory' AND granted AND pid <> pg_backend_pid()"
                 )
             )
-        assert await second.refresh()  # the standby takes over
+        # pg_terminate_backend is asynchronous, and a real standby retries every poll interval, so
+        # the standby gets a few attempts too.
+        for _ in range(50):
+            if await second.refresh():
+                break
+            await asyncio.sleep(0.1)
+        assert second.is_leader()  # the standby takes over
         assert not await first.refresh()  # the old leader notices it lost the lease...
         assert not first.is_leader()  # ...and stops reporting leadership
     finally:
