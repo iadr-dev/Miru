@@ -182,6 +182,7 @@ class _FakePaddle:
         self.portal_sessions_fail = False
         self.cancel_fails = False
         self.status = "active"
+        self.transactions: list[dict[str, object]] = [{"id": "txn_mine"}]
 
     def entity(self) -> dict[str, object]:
         return {
@@ -241,7 +242,7 @@ class _FakePaddle:
                 },
             )
         if path == "/transactions":
-            return httpx.Response(200, json={"data": [{"id": "txn_mine"}]})
+            return httpx.Response(200, json={"data": self.transactions})
         if path == "/transactions/txn_mine/invoice":
             return httpx.Response(200, json={"data": {"url": "https://paddle.example/invoice.pdf"}})
         return httpx.Response(404, json={"error": {}})
@@ -361,6 +362,47 @@ def test_an_invoice_link_is_only_for_the_callers_own_transaction(
     theirs = client.get("/api/v1/billing/invoice/txn_someone_else", headers=headers)
     assert theirs.status_code == 404
     assert theirs.json()["code"] == "transaction_not_found"
+
+
+def test_the_billing_history_sends_only_the_displayed_facts(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers = _subscribe(client, billing_settings)
+    paddle.transactions = [
+        {
+            "id": "txn_mine",
+            "status": "completed",
+            "currency_code": "USD",
+            "billed_at": "2026-10-05T12:00:00Z",
+            "created_at": "2026-10-05T11:59:00Z",
+            "customer_id": "ctm_1",
+            "address_id": "add_private",
+            "details": {"totals": {"grand_total": "1099"}},
+        },
+        {"status": "completed"},  # no id: cannot be shown or looked up, so it is dropped
+    ]
+    response = client.get("/api/v1/billing/history", headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {
+        "transactions": [
+            {
+                "id": "txn_mine",
+                "status": "completed",
+                "created_at": "2026-10-05T11:59:00Z",
+                "billed_at": "2026-10-05T12:00:00Z",
+                "currency_code": "USD",
+                "total": "1099",
+            }
+        ]
+    }
+
+
+def test_the_billing_history_is_empty_without_a_subscription(
+    client: TestClient, billing_settings: Settings, paddle: _FakePaddle
+) -> None:
+    headers, _ = sign_in(client, billing_settings, tier=Tier.FREE)
+    response = client.get("/api/v1/billing/history", headers=headers)
+    assert response.json() == {"transactions": []}
 
 
 def test_the_portal_opens_the_overview_or_the_card_form(

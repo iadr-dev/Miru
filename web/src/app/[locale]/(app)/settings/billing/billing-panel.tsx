@@ -414,20 +414,20 @@ function HistoryList({
   const t = useTranslations("settings.billing");
   return (
     <ul className="divide-y divide-[var(--border)]">
-      {transactions.map((tx, i) => {
-        const row = summarizeTransaction(tx, i, locale);
+      {transactions.map((tx) => {
+        const row = summarizeTransaction(tx, locale);
         return (
-          <li key={row.key} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
+          <li key={row.id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]">
             <span className="text-[var(--text-muted)] tabular-nums">{row.date ?? "—"}</span>
             <span className="font-medium text-[var(--text)] tabular-nums">{row.amount ?? "—"}</span>
             <span className="text-[var(--text-muted)]">
-              {row.status ? transactionStatusLabel(t, row.status) : "—"}
+              {transactionStatusLabel(t, row.status)}
             </span>
-            {row.id && hasReceipt(row.status) ? (
+            {hasReceipt(row.status) ? (
               <button
                 type="button"
                 className="text-[var(--accent)] underline"
-                onClick={() => onReceipt(row.id as string)}
+                onClick={() => onReceipt(row.id)}
               >
                 {t("receipt")}
               </button>

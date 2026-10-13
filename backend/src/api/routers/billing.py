@@ -39,22 +39,27 @@ from payments.plans import (
 from payments.pricing import PricedPlan, PriceLookup, priced_plans
 from payments.service import BillingService, effective_byok_active
 from payments.store import SqlAlchemySubscriptionStore
+from payments.transactions import BillingTransaction, project_transaction
 from payments.webhooks import SignatureVerificationError, parse_event, verify_signature
 from schemas.enums import Tier
 
 router = APIRouter(tags=["billing"])
 
 
+def _unconfigured() -> ApiError:
+    return ApiError(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        code="billing_unconfigured",
+        message="Billing is not configured.",
+        retryable=False,
+    )
+
+
 def _client_or_503(settings: Settings) -> PaddleClient:
     try:
         return PaddleClient(settings)
     except PaddleConfigError as exc:
-        raise ApiError(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            code="billing_unconfigured",
-            message="Billing is not configured.",
-            retryable=False,
-        ) from exc
+        raise _unconfigured() from exc
 
 
 def get_billing_client(settings: Settings = Depends(get_settings_dep)) -> PaddleClient:
@@ -463,18 +468,23 @@ async def paddle_webhook(
     return {"processed": True}
 
 
+class BillingHistoryResponse(BaseModel):
+    transactions: list[BillingTransaction]
+
+
 @router.get("/billing/history")
 async def billing_history(
     user: User = Depends(require_user),
     session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings_dep),
-) -> dict[str, list[dict[str, object]]]:
-    """Proxy Paddle's transactions API for the caller's subscription — Paddle owns the tax-
-    compliant invoices/PDFs, so nothing is mirrored locally."""
+    client: PaddleClient | None = Depends(get_optional_billing_client),
+) -> BillingHistoryResponse:
+    """The caller's Paddle transactions, reduced to what the billing page shows. Paddle owns the
+    tax-compliant invoices/PDFs, so nothing is mirrored locally."""
     record = await SqlAlchemySubscriptionStore(session).get_for_user(user_id=user.id)
     if record is None:
-        return {"transactions": []}
-    client = _client_or_503(settings)
+        return BillingHistoryResponse(transactions=[])
+    if client is None:
+        raise _unconfigured()
     try:
         transactions = await client.list_transactions(
             customer_id=record.paddle_customer_id,
@@ -487,7 +497,8 @@ async def billing_history(
             message="Could not load billing history.",
             retryable=True,
         ) from exc
-    return {"transactions": transactions}
+    rows = (project_transaction(raw) for raw in transactions)
+    return BillingHistoryResponse(transactions=[row for row in rows if row is not None])
 
 
 __all__ = ["router"]

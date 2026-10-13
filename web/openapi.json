@@ -1157,6 +1157,22 @@
     "title": "BeginAuthResponse",
     "type": "object"
    },
+   "BillingHistoryResponse": {
+    "properties": {
+     "transactions": {
+      "items": {
+       "$ref": "#/components/schemas/BillingTransaction"
+      },
+      "title": "Transactions",
+      "type": "array"
+     }
+    },
+    "required": [
+     "transactions"
+    ],
+    "title": "BillingHistoryResponse",
+    "type": "object"
+   },
    "BillingInterval": {
     "enum": [
      "monthly",
@@ -1164,6 +1180,73 @@
     ],
     "title": "BillingInterval",
     "type": "string"
+   },
+   "BillingTransaction": {
+    "additionalProperties": false,
+    "properties": {
+     "billed_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Billed At"
+     },
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "currency_code": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Currency Code"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "total": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Total"
+     }
+    },
+    "required": [
+     "id",
+     "status",
+     "created_at",
+     "billed_at",
+     "currency_code",
+     "total"
+    ],
+    "title": "BillingTransaction",
+    "type": "object"
    },
    "BollingerResult": {
     "additionalProperties": false,
@@ -2912,6 +2995,19 @@
      "confirm"
     ],
     "title": "DeleteAccountRequest",
+    "type": "object"
+   },
+   "DeleteAccountResponse": {
+    "properties": {
+     "deleted": {
+      "title": "Deleted",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "deleted"
+    ],
+    "title": "DeleteAccountResponse",
     "type": "object"
    },
    "DeliveryChannelKind": {
@@ -22390,22 +22486,14 @@
   },
   "/api/v1/billing/history": {
    "get": {
-    "description": "Proxy Paddle's transactions API for the caller's subscription — Paddle owns the tax-\ncompliant invoices/PDFs, so nothing is mirrored locally.",
+    "description": "The caller's Paddle transactions, reduced to what the billing page shows. Paddle owns the\ntax-compliant invoices/PDFs, so nothing is mirrored locally.",
     "operationId": "billing_history_api_v1_billing_history_get",
     "responses": {
      "200": {
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": {
-          "items": {
-           "additionalProperties": true,
-           "type": "object"
-          },
-          "type": "array"
-         },
-         "title": "Response Billing History Api V1 Billing History Get",
-         "type": "object"
+         "$ref": "#/components/schemas/BillingHistoryResponse"
         }
        }
       },
@@ -26913,11 +27001,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "additionalProperties": {
-          "type": "boolean"
-         },
-         "title": "Response Delete Account Api V1 Me Delete",
-         "type": "object"
+         "$ref": "#/components/schemas/DeleteAccountResponse"
         }
        }
       },

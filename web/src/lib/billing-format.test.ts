@@ -42,34 +42,32 @@ describe("isBillableTransaction", () => {
 });
 
 describe("summarizeTransaction", () => {
-  it("reads the date, grand total and status from a Paddle transaction", () => {
-    const summary = summarizeTransaction(
-      {
-        id: "txn_1",
-        status: "completed",
-        currency_code: "USD",
-        billed_at: "2026-10-05T12:00:00Z",
-        details: { totals: { grand_total: "1099" } },
-      },
-      0,
-      "en-US",
-    );
-    expect(summary).toMatchObject({
-      key: "txn_1",
-      id: "txn_1",
-      status: "completed",
-      amount: "$10.99",
-    });
+  const base = {
+    id: "txn_1",
+    status: "completed",
+    created_at: "2026-10-04T10:00:00Z",
+    billed_at: "2026-10-05T12:00:00Z",
+    currency_code: "USD",
+    total: "1099",
+  };
+
+  it("reads the date, grand total and status from the transaction", () => {
+    const summary = summarizeTransaction(base, "en-US");
+    expect(summary).toMatchObject({ id: "txn_1", status: "completed", amount: "$10.99" });
     expect(summary.date).toContain("2026");
   });
 
-  it("never throws on a sparse transaction", () => {
-    expect(summarizeTransaction({}, 3, "en-US")).toEqual({
-      key: "tx-3",
-      id: null,
-      date: null,
-      amount: null,
-      status: null,
-    });
+  it("falls back to the creation date when the transaction was never billed", () => {
+    const summary = summarizeTransaction({ ...base, billed_at: null }, "en-US");
+    expect(summary.date).toContain("2026");
+  });
+
+  it("shows no amount or date when Paddle sent none", () => {
+    expect(
+      summarizeTransaction(
+        { ...base, billed_at: null, created_at: null, total: null, currency_code: null },
+        "en-US",
+      ),
+    ).toEqual({ id: "txn_1", date: null, amount: null, status: "completed" });
   });
 });
