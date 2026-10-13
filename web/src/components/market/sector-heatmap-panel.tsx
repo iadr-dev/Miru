@@ -278,7 +278,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
         <QueryState query={rotationRrgQuery} skeleton={<CardSkeletonBody height={640} />}>
           {(data) =>
             data.data_available ? (
-              <SectorRotationScene sectors={data.sectors} weekCount={data.week_endings.length} />
+              <SectorRotationScene sectors={data.sectors} weekEndings={data.week_endings} />
             ) : (
               <p className="text-[13px] text-[var(--text-muted)]">
                 {data.unavailable_reason ?? t("rotationUnavailable")}

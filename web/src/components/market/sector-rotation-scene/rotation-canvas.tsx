@@ -1,200 +1,251 @@
 "use client";
 
 import { OrbitControls } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { type ReactNode, useMemo, useRef, useState } from "react";
-import { sectorIconKeyForIndustry } from "@/lib/sector-rotation-icons";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import type { SectorRrgSeries } from "@/types/market/sectors";
-import { CometTail } from "./comet-tail";
-import { CompassRing } from "./compass-ring";
-import { QuadrantFloor } from "./quadrant-floor";
-import { colorForQuadrant, lerpPoint, quadrantFor, rrgToWorld } from "./rrg-layout";
-import { SectorBadge } from "./sector-badge";
+import { RotationBox } from "./rotation-box";
+import type { RotationView } from "./rotation-controls";
+import { layoutLabels, type RotationQuadrant, shortSectorName } from "./rrg-layout";
 import { SectorLabel } from "./sector-label";
-import { Starfield } from "./starfield";
+import { headPosition, SectorTrail, TRAIL_WEEKS, type TrailEmphasis } from "./sector-trail";
 
-const INTRO_DURATION_S = 1.15;
-const BADGE_HEIGHT = 0.35;
-const LABEL_HEIGHT = 0.95;
-// Far enough back that the whole compass ring (radius 8.8) stays in frame as the camera orbits:
-// its near edge sits ~19 deg below the view centre, inside the 45 deg fov's 22.5 deg half-angle with
-// room for the badges. The old [0, 11, 12] put that edge ~31 deg down, cut off at the bottom.
-const CAMERA_START: readonly [number, number, number] = [0, 16, 17.4];
-const AUTO_ROTATE_RADIANS_PER_SECOND = 0.05;
+const FOV = 42;
+// The tilted view looks at the middle of the time axis from a fixed orbit.
+const TILTED_TARGET = new THREE.Vector3(0, 0, -10);
+const TILTED_AZIMUTH = 0.6;
+const TILTED_POLAR = 1.3;
+const TILTED_DISTANCE = 44;
+const TILTED_DISTANCE_NARROW = 62;
+// Straight on to the plane: close enough that its 20 units fill the view's height.
+const FLAT_DISTANCE = 28;
+const FLAT_DISTANCE_NARROW = 34;
+const NARROW_ASPECT = 0.8;
+const GLIDE_PER_FRAME = 0.12;
+const ARRIVED = 0.02;
+const AUTO_ROTATE_SPEED = 1.1;
+// Labels are placed on a grid where a character is a fixed width; this converts the scene's
+// world units to that grid (one world unit is about 25px at the default zoom).
+const LABEL_GRID = 1.5;
+const LABEL_LIFT = 0.9;
+const COMPACT_WIDTH = 480;
 
-/** Eases 0→1 over `INTRO_DURATION_S` seconds via `useFrame` — the single shared "boot the
- * console" progress every floor/ring/badge in the scene multiplies its own opacity/scale by
- * (spec's own "one intro moment, everything else stays calm" instruction). Skips straight to 1
- * when `reducedMotion` is set, per web/OVERVIEW.md §7's reduced-motion tiers. */
-function useIntroProgress(reducedMotion: boolean): number {
-  const [progress, setProgress] = useState(reducedMotion ? 1 : 0);
-  const elapsedRef = useRef(0);
-
-  useFrame((_state, delta) => {
-    if (reducedMotion || progress >= 1) return;
-    elapsedRef.current += delta;
-    const t = Math.min(elapsedRef.current / INTRO_DURATION_S, 1);
-    // ease-out-cubic
-    setProgress(1 - (1 - t) ** 3);
-  });
-
-  return progress;
+interface ViewPose {
+  readonly position: THREE.Vector3;
+  readonly target: THREE.Vector3;
 }
 
-function AutoRotateController({
-  userInteracting,
+function poseFor(view: RotationView, aspect: number): ViewPose {
+  const narrow = aspect < NARROW_ASPECT;
+  if (view === "flat") {
+    return {
+      position: new THREE.Vector3(0, 0, narrow ? FLAT_DISTANCE_NARROW : FLAT_DISTANCE),
+      target: new THREE.Vector3(0, 0, 0),
+    };
+  }
+  const distance = narrow ? TILTED_DISTANCE_NARROW : TILTED_DISTANCE;
+  const offset = new THREE.Vector3(
+    Math.sin(TILTED_POLAR) * Math.sin(TILTED_AZIMUTH),
+    Math.cos(TILTED_POLAR),
+    Math.sin(TILTED_POLAR) * Math.cos(TILTED_AZIMUTH),
+  ).multiplyScalar(distance);
+  return { position: TILTED_TARGET.clone().add(offset), target: TILTED_TARGET.clone() };
+}
+
+/** Moves the camera to the flat or tilted pose when the view changes (snaps with reduced
+ * motion), then lets go, so the user's own orbit/zoom is never fought. */
+function CameraRig({
+  view,
   reducedMotion,
 }: {
-  readonly userInteracting: boolean;
+  readonly view: RotationView;
   readonly reducedMotion: boolean;
 }): ReactNode {
-  useFrame(({ camera }, delta) => {
-    if (userInteracting || reducedMotion) return;
-    const angle = AUTO_ROTATE_RADIANS_PER_SECOND * delta;
-    const x = camera.position.x * Math.cos(angle) - camera.position.z * Math.sin(angle);
-    const z = camera.position.x * Math.sin(angle) + camera.position.z * Math.cos(angle);
-    camera.position.x = x;
-    camera.position.z = z;
-    camera.lookAt(0, 0, 0);
+  const { camera, size } = useThree();
+  const controls = useThree((state) => state.controls) as {
+    target: THREE.Vector3;
+    update: () => void;
+  } | null;
+  const goal = useRef<ViewPose | null>(null);
+  const shown = useRef<RotationView | null>(null);
+
+  useFrame(() => {
+    if (!controls) return;
+    if (shown.current !== view) {
+      const first = shown.current === null;
+      shown.current = view;
+      goal.current = poseFor(view, size.width / size.height);
+      if (first || reducedMotion) {
+        camera.position.copy(goal.current.position);
+        controls.target.copy(goal.current.target);
+        controls.update();
+        goal.current = null;
+        return;
+      }
+    }
+    const pose = goal.current;
+    if (!pose) return;
+    camera.position.lerp(pose.position, GLIDE_PER_FRAME);
+    controls.target.lerp(pose.target, GLIDE_PER_FRAME);
+    controls.update();
+    const arrived =
+      camera.position.distanceTo(pose.position) < ARRIVED &&
+      controls.target.distanceTo(pose.target) < ARRIVED;
+    if (arrived) {
+      camera.position.copy(pose.position);
+      controls.target.copy(pose.target);
+      controls.update();
+      goal.current = null;
+    }
   });
   return null;
 }
 
+function emphasisFor(
+  id: string,
+  hoveredSectorId: string | null,
+  selectedSectorId: string | null,
+): TrailEmphasis {
+  if (selectedSectorId === id) return "selected";
+  if (selectedSectorId !== null) return "dimmed";
+  if (hoveredSectorId === id) return "hovered";
+  return "normal";
+}
+
+interface SceneProps {
+  readonly sectors: readonly SectorRrgSeries[];
+  readonly colors: readonly string[];
+  readonly currentWeek: number;
+  readonly range: number;
+  readonly hoveredSectorId: string | null;
+  readonly selectedSectorId: string | null;
+  readonly view: RotationView;
+  readonly quadrantLabels: Record<RotationQuadrant, string>;
+  readonly onHoverChange: (id: string | null) => void;
+  readonly onSelect: (id: string | null) => void;
+}
+
 function SceneContents({
   sectors,
+  colors,
   currentWeek,
+  range,
   hoveredSectorId,
-  reducedMotion,
-  userInteracting,
-}: {
-  readonly sectors: readonly SectorRrgSeries[];
-  readonly currentWeek: number;
-  readonly hoveredSectorId: string | null;
-  readonly reducedMotion: boolean;
-  readonly userInteracting: boolean;
-}): ReactNode {
-  const introProgress = useIntroProgress(reducedMotion);
-  const weekCount = sectors[0]?.points.length ?? 0;
-  const playbackFraction = weekCount > 1 ? currentWeek / (weekCount - 1) : 0;
-
-  const badgeData = useMemo(() => {
-    const floorWeek = Math.floor(currentWeek);
-    const frac = currentWeek - floorWeek;
-    return sectors.map((sector) => {
-      const a = sector.points[floorWeek];
-      const b = sector.points[Math.min(floorWeek + 1, sector.points.length - 1)];
-      if (!a || !b) return null;
-      const interpolated = lerpPoint(a, b, frac);
-      const { x, z } = rrgToWorld(interpolated.rs_ratio, interpolated.rs_momentum);
-      const quadrant = quadrantFor(interpolated.rs_ratio, interpolated.rs_momentum);
-      return {
-        industryId: sector.industry_id,
-        industryName: sector.industry_name,
-        weight: sector.weight,
-        position: [x, BADGE_HEIGHT, z] as const,
-        labelPosition: [x, LABEL_HEIGHT, z] as const,
-        color: colorForQuadrant(quadrant),
-      };
+  selectedSectorId,
+  view,
+  quadrantLabels,
+  onHoverChange,
+  onSelect,
+}: SceneProps): ReactNode {
+  // Where each name goes. The flat view spreads names that would land on each other; the tilted
+  // view keeps them straight above their heads, because perspective moves them anyway.
+  // On a narrow canvas the names would pile up; only the sector in focus is named there (the
+  // chips carry the rest).
+  const compact = useThree((state) => state.size.width) < COMPACT_WIDTH;
+  const labelAt = useMemo(() => {
+    const heads = sectors.flatMap((sector) => {
+      const head = headPosition(sector.points, currentWeek, range);
+      return head
+        ? [
+            {
+              id: sector.industry_id,
+              name: shortSectorName(sector.industry_name),
+              x: head.x / LABEL_GRID,
+              z: -head.y / LABEL_GRID,
+              headX: head.x,
+              headY: head.y,
+            },
+          ]
+        : [];
     });
-  }, [sectors, currentWeek]);
+    const offsets = view === "flat" ? layoutLabels(heads) : new Map();
+    return new Map(
+      heads.map((head) => {
+        const offset = offsets.get(head.id) ?? { dx: 0, dz: -LABEL_LIFT / LABEL_GRID };
+        return [
+          head.id,
+          [head.headX + offset.dx * LABEL_GRID, head.headY - offset.dz * LABEL_GRID, 0] as const,
+        ];
+      }),
+    );
+  }, [sectors, currentWeek, range, view]);
 
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <Starfield reducedMotion={reducedMotion} />
-      <QuadrantFloor introProgress={introProgress} />
-      <CompassRing
-        introProgress={introProgress}
-        playbackFraction={playbackFraction}
-        reducedMotion={reducedMotion}
-      />
-      {sectors.map((sector) => (
-        <CometTail
-          key={sector.industry_id}
-          points={sector.points}
-          throughWeekIndex={Math.floor(currentWeek)}
-          color={colorForQuadrant(
-            quadrantFor(
-              sector.points[Math.floor(currentWeek)]?.rs_ratio ?? 100,
-              sector.points[Math.floor(currentWeek)]?.rs_momentum ?? 100,
-            ),
-          )}
-          introProgress={introProgress}
-        />
-      ))}
-      {badgeData.map((badge) => {
-        if (!badge) return null;
-        const isHovered = hoveredSectorId === badge.industryId;
+      <RotationBox weekCount={TRAIL_WEEKS} quadrantLabels={quadrantLabels} />
+      {sectors.map((sector, index) => {
+        const id = sector.industry_id;
+        const color = colors[index] ?? "#60a5fa";
+        const emphasis = emphasisFor(id, hoveredSectorId, selectedSectorId);
+        const labelPosition = labelAt.get(id);
         return (
-          <group key={badge.industryId}>
-            <SectorBadge
-              position={badge.position}
-              icon={sectorIconKeyForIndustry(badge.industryId)}
-              color={badge.color}
-              weight={badge.weight}
-              hovered={isHovered}
-              introProgress={introProgress}
+          <group key={id}>
+            <SectorTrail
+              points={sector.points}
+              color={color}
+              currentWeek={currentWeek}
+              range={range}
+              emphasis={emphasis}
+              onHoverChange={(over) => onHoverChange(over ? id : null)}
+              onSelect={() => onSelect(selectedSectorId === id ? null : id)}
             />
-            {/* Sector name labels are hover-only, not always-on — with 10 badges frequently
-             * clustering close together spatially, every name floating at once produced an
-             * unreadable text smear (confirmed via a live screenshot). `RankPanel` already lists
-             * every sector's name unambiguously in 2D; the 3D label's only job is confirming
-             * WHICH badge you're pointing at, so it only needs to exist while hovered. */}
-            {isHovered && (
+            {labelPosition && (!compact || emphasis === "selected" || emphasis === "hovered") ? (
               <SectorLabel
-                position={badge.labelPosition}
-                name={badge.industryName}
-                color={badge.color}
-                hovered
+                position={labelPosition}
+                name={shortSectorName(sector.industry_name)}
+                color={color}
+                emphasized={emphasis === "selected" || emphasis === "hovered"}
+                dimmed={emphasis === "dimmed"}
+                onHoverChange={(over) => onHoverChange(over ? id : null)}
+                onSelect={() => onSelect(selectedSectorId === id ? null : id)}
               />
-            )}
+            ) : null}
           </group>
         );
       })}
-      <AutoRotateController userInteracting={userInteracting} reducedMotion={reducedMotion} />
     </>
   );
 }
 
 /**
- * The R3F `<Canvas>` root for 板塊輪動 — composes the floor/ring/starfield/badges/tails/labels
- * declared above, plus drei's `OrbitControls` (never a hand-rolled camera rig, per the reference
- * spec's explicit instruction). Camera auto-orbits slowly when idle and pauses the instant the
- * user starts dragging (tracked via `OrbitControls`'s own `onStart`/`onEnd`), resuming once they
- * release — `AutoRotateController` and `OrbitControls`' own user-drag both write the same
- * `camera.position`, so they must never run in the same frame (`userInteracting` gates it).
+ * The R3F `<Canvas>` for 板塊輪動. The flat view looks straight at the quadrant plane (rotation
+ * locked, zoom kept); the tilted view orbits the time-box and turns slowly until the user takes
+ * hold of it (as in the reference design), after which it stays where they put it.
+ * `quadrantLabels` come in as props because React context (next-intl) does not cross the
+ * `<Canvas>` boundary.
  */
-export function RotationCanvas({
-  sectors,
-  currentWeek,
-  hoveredSectorId,
-  reducedMotion,
-}: {
-  readonly sectors: readonly SectorRrgSeries[];
-  readonly currentWeek: number;
-  readonly hoveredSectorId: string | null;
-  readonly reducedMotion: boolean;
-}): ReactNode {
-  const [userInteracting, setUserInteracting] = useState(false);
+export function RotationCanvas(props: SceneProps & { readonly reducedMotion: boolean }): ReactNode {
+  const { view, reducedMotion, onSelect, ...scene } = props;
+  const flat = view === "flat";
+  const [autoRotate, setAutoRotate] = useState(true);
+
+  // Every return to the tilted view starts turning again; a touch stops it.
+  useEffect(() => {
+    if (view === "3d") setAutoRotate(true);
+  }, [view]);
 
   return (
-    <Canvas camera={{ position: [...CAMERA_START], fov: 45 }} dpr={[1, 2]}>
-      <SceneContents
-        sectors={sectors}
-        currentWeek={currentWeek}
-        hoveredSectorId={hoveredSectorId}
-        reducedMotion={reducedMotion}
-        userInteracting={userInteracting}
-      />
+    <Canvas
+      camera={{ fov: FOV, near: 0.1, far: 300, position: [0, 0, FLAT_DISTANCE] }}
+      dpr={[1, 2]}
+      onPointerMissed={() => onSelect(null)}
+    >
+      <SceneContents view={view} onSelect={onSelect} {...scene} />
       <OrbitControls
+        makeDefault
         enablePan={false}
-        minPolarAngle={0.15}
-        maxPolarAngle={Math.PI / 2.05}
-        minDistance={6}
-        maxDistance={26}
-        onStart={() => setUserInteracting(true)}
-        onEnd={() => setUserInteracting(false)}
+        enableRotate={!flat}
+        enableDamping
+        minPolarAngle={0.25}
+        maxPolarAngle={2.9}
+        minDistance={20}
+        maxDistance={80}
+        autoRotate={autoRotate && !flat && !reducedMotion}
+        autoRotateSpeed={AUTO_ROTATE_SPEED}
+        onStart={() => setAutoRotate(false)}
       />
+      <CameraRig view={view} reducedMotion={reducedMotion} />
     </Canvas>
   );
 }
