@@ -14,7 +14,7 @@ from collections.abc import AsyncIterator
 import fakeredis.aioredis
 import pytest
 
-from agent.guardrails import REDACTION_NOTICE
+from agent.guardrails import REDACTION_NOTICE_EN
 from config.settings import Settings
 from events.bus import InMemoryEventBus
 from llm.base import (
@@ -734,7 +734,7 @@ async def test_per_lane_guardrail_redacts_trading_language_before_synthesis(
     result = await orch.run("analyze 2330", tool_context=ToolContext())
 
     chip_lane = next(lane for lane in result.lanes if lane.skill == "chip-flow-review")
-    assert REDACTION_NOTICE in chip_lane.text
+    assert REDACTION_NOTICE_EN in chip_lane.text
     assert "should buy" not in chip_lane.text.lower()
     # what synthesis received also carried the redaction, never the raw trading phrase.
     synth_input = " ".join(m.content or "" for m in synth_client.calls[0][0])
@@ -766,7 +766,7 @@ async def test_final_synthesis_answer_passes_output_guardrail(
 
     result = await orch.run("analyze 2330", tool_context=ToolContext())
 
-    assert REDACTION_NOTICE in result.final_text
+    assert REDACTION_NOTICE_EN in result.final_text
     assert "strong buy" not in result.final_text.lower()
 
 

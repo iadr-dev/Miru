@@ -4,10 +4,13 @@ loop that wires them in."""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from agent.guardrails import (
-    REDACTION_NOTICE,
+    REDACTION_NOTICE_EN,
+    REDACTION_NOTICE_ZH,
     check_output,
     check_tool_call,
     scan_sentence,
@@ -75,7 +78,8 @@ def test_check_output_redacts_trading_language(text: str) -> None:
     verdict = check_output(text)
     assert verdict.allowed is True  # output checks never hard-block
     assert verdict.redacted_text is not None
-    assert REDACTION_NOTICE in verdict.redacted_text
+    expected = REDACTION_NOTICE_ZH if re.search(r"[一-鿿]", text) else REDACTION_NOTICE_EN
+    assert expected in verdict.redacted_text
     assert verdict.reason == "trading_language_redacted"
 
 
@@ -92,7 +96,7 @@ def test_check_output_redacts_only_the_offending_sentence_in_chinese_prose() -> 
     assert "上游供應商包含多家半導體廠商" in verdict.redacted_text
     assert "近期營收成長主要來自組裝業務擴張" in verdict.redacted_text
     assert "目標價" not in verdict.redacted_text
-    assert REDACTION_NOTICE in verdict.redacted_text
+    assert REDACTION_NOTICE_ZH in verdict.redacted_text
 
 
 def test_check_output_collapses_consecutive_redactions_into_one_notice() -> None:
@@ -103,7 +107,7 @@ def test_check_output_collapses_consecutive_redactions_into_one_notice() -> None
     verdict = check_output(text)
     assert verdict.allowed is True
     assert verdict.redacted_text is not None
-    assert verdict.redacted_text.count(REDACTION_NOTICE) == 1
+    assert verdict.redacted_text.count(REDACTION_NOTICE_ZH) == 1
     assert "近期營收成長主要來自組裝業務擴張" in verdict.redacted_text
 
 
@@ -114,7 +118,7 @@ def test_check_output_leaves_institutional_flow_prose_alone() -> None:
     verdict = check_output(text)
     assert verdict.allowed is True
     if verdict.redacted_text is not None:
-        assert REDACTION_NOTICE not in verdict.redacted_text
+        assert REDACTION_NOTICE_EN not in verdict.redacted_text
         assert "bought 12,000 lots" in verdict.redacted_text
 
 
@@ -128,7 +132,7 @@ def test_check_output_leaves_descriptive_buy_sell_signal_prose_alone() -> None:
     verdict = check_output(text)
     assert verdict.allowed is True
     if verdict.redacted_text is not None:
-        assert REDACTION_NOTICE not in verdict.redacted_text
+        assert REDACTION_NOTICE_EN not in verdict.redacted_text
         assert "buy signal" in verdict.redacted_text
 
 
@@ -140,7 +144,7 @@ def test_check_output_leaves_decisive_descriptive_comparison_alone() -> None:
     verdict = check_output(text)
     assert verdict.allowed is True
     if verdict.redacted_text is not None:
-        assert REDACTION_NOTICE not in verdict.redacted_text
+        assert REDACTION_NOTICE_EN not in verdict.redacted_text
         assert "波動性較高" in verdict.redacted_text
 
 
@@ -269,10 +273,10 @@ def test_scan_structured_payload_redacts_trading_language_in_nested_strings() ->
     assert redacted is True
     assert isinstance(cleaned, dict)
     assert "buy" not in str(cleaned["note"]).lower()
-    assert cleaned["note"] == REDACTION_NOTICE
+    assert cleaned["note"] == REDACTION_NOTICE_EN
     nested = cleaned["nested"]
     assert isinstance(nested, list)
-    assert nested[0] == REDACTION_NOTICE
+    assert nested[0] == REDACTION_NOTICE_EN
     assert nested[1] == "neutral fact"
 
 
@@ -330,7 +334,7 @@ def test_scan_structured_payload_redacts_trading_language_in_a_chart_hint_title(
     assert isinstance(cleaned, dict)
     chart_hint = cleaned["chart_hint"]
     assert isinstance(chart_hint, dict)
-    assert chart_hint["title"] == REDACTION_NOTICE
+    assert chart_hint["title"] == REDACTION_NOTICE_ZH  # a Chinese title, so a Chinese notice
     # Sibling fields (mark/x/y/rows) are untouched — only the string leaf matching trading
     # language is redacted, never the whole payload.
     assert chart_hint["mark"] == "bar"
@@ -402,7 +406,7 @@ def test_scan_sentence_preserves_a_leading_separator_around_a_redaction() -> Non
     silently drop it and glue onto the preceding text with no gap."""
     result = scan_sentence(" You should buy this stock now.")
     assert result.startswith(" ")
-    assert REDACTION_NOTICE in result
+    assert REDACTION_NOTICE_EN in result
     assert "buy" not in result.lower()
 
 
@@ -424,3 +428,44 @@ def test_vendor_name_scrub_leaves_cited_urls_intact() -> None:
     result = check_output(text).redacted_text or ""
     assert "https://tw.stock.yahoo.com/quote/2330.TW/news" in result
     assert "finmind" not in result.lower()
+
+
+# ---- the redaction notice follows the language of the text it redacts ------------------------
+
+
+def test_a_chinese_answer_gets_the_chinese_redaction_notice() -> None:
+    verdict = check_output("台積電法說很重要。分析師給出目標價 1200 元。後續要看資本支出。")
+    assert verdict.redacted_text is not None
+    assert REDACTION_NOTICE_ZH in verdict.redacted_text
+    assert REDACTION_NOTICE_EN not in verdict.redacted_text
+    assert "目標價" not in verdict.redacted_text
+
+
+def test_an_english_answer_keeps_the_english_redaction_notice() -> None:
+    verdict = check_output(
+        "TSMC raised capex. Analysts set a price target of 1200. Demand is strong."
+    )
+    assert verdict.redacted_text is not None
+    assert REDACTION_NOTICE_EN in verdict.redacted_text
+    assert REDACTION_NOTICE_ZH not in verdict.redacted_text
+
+
+def test_a_chinese_title_with_an_english_trading_phrase_is_redacted_in_chinese() -> None:
+    # The real case: a Chinese page title carrying an English "price target" phrase.
+    verdict = check_output("台積電下午法說攤牌！ price target 1200", has_market_data=False)
+    assert verdict.redacted_text is not None
+    assert REDACTION_NOTICE_ZH in verdict.redacted_text
+    assert "price target" not in verdict.redacted_text
+
+
+def test_the_streaming_sentence_scan_and_structured_payloads_follow_the_same_rule() -> None:
+    assert scan_sentence("分析師目標價上看 1200 元。") == REDACTION_NOTICE_ZH
+    assert scan_sentence("The price target is 1200.") == REDACTION_NOTICE_EN
+    cleaned, redacted = scan_structured_payload({"note": "目標價 1200"})
+    assert redacted and cleaned == {"note": REDACTION_NOTICE_ZH}
+
+
+def test_the_chinese_notice_is_not_itself_trading_language() -> None:
+    again = check_output(REDACTION_NOTICE_ZH, has_market_data=False)
+    assert again.reason != "trading_language_redacted"
+    assert again.redacted_text in (None, REDACTION_NOTICE_ZH)

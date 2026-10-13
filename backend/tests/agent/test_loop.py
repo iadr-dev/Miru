@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from agent.guardrails import REDACTION_NOTICE
+from agent.guardrails import REDACTION_NOTICE_EN
 from agent.loop import AgentLoop, StepBudgetExceededError
 from config.settings import Settings
 from llm.base import Message, MessageRole, StopReason, TokenUsage, WebSearchSource
@@ -468,7 +468,7 @@ async def test_run_turn_redacts_trading_language_before_it_reaches_the_caller() 
     result = await loop.run_turn("should I buy 2330?", tool_context=ToolContext())
 
     assert "should buy" not in result.final_text.lower()
-    assert REDACTION_NOTICE in result.final_text
+    assert REDACTION_NOTICE_EN in result.final_text
     guardrail_entries = [e for e in result.journal.entries if e.kind == "guardrail_output"]
     assert len(guardrail_entries) == 1
     assert guardrail_entries[0].guardrail_reason == "trading_language_redacted"
@@ -575,7 +575,7 @@ async def test_run_turn_scans_thinking_deltas_for_trading_language_before_forwar
 
     assert len(received) == 1
     assert "buy" not in received[0].lower()
-    assert received[0] == REDACTION_NOTICE
+    assert received[0] == REDACTION_NOTICE_EN
 
 
 async def test_run_turn_streams_the_final_answer_sentence_by_sentence() -> None:
@@ -625,7 +625,7 @@ async def test_run_turn_scans_streamed_sentences_for_trading_language_before_for
 
     joined = "".join(received)
     assert "buy" not in joined.lower()
-    assert REDACTION_NOTICE in joined
+    assert REDACTION_NOTICE_EN in joined
     assert "Context is fine." in joined
     assert "More context." in joined
 
