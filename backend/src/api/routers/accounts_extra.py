@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
-from accounts.entitlements import deep_research_limit_per_day, entitlement_view
+from accounts.entitlements import entitlement_view
 from accounts.models import EntitlementView, SecretKind, User
 from accounts.secrets import SqlAlchemySecretStore
 from accounts.store import UserStore
@@ -142,8 +142,6 @@ async def usage_quota(
 
 class TodayUsage(BaseModel):
     chats_used: int
-    deep_research_used: int
-    deep_research_limit: int
 
 
 @router.get("/usage/today")
@@ -153,11 +151,7 @@ async def usage_today(
     """What the caller has claimed of today's (UTC) allowances - the consumption half of the
     limits `/usage/quota` reports."""
     counts = await state.usage_store.today_counts(user_id=user.id)
-    return TodayUsage(
-        chats_used=counts["chats"],
-        deep_research_used=counts["deep_research"],
-        deep_research_limit=deep_research_limit_per_day(user),
-    )
+    return TodayUsage(chats_used=counts["chats"])
 
 
 @router.get("/usage/llm")

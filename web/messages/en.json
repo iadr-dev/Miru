@@ -804,7 +804,6 @@
       "webSearch": {
         "sourcesCount": "{count} sources"
       },
-      "deepResearchLimit": "You've used today's 5 deep research reports. Try again tomorrow.",
       "deepResearchNotEntitled": "Deep research is available on the Pro plan.",
       "byokKeyRequired": "You've added your own API key, so chat runs on your providers only. Pick a model from one of them, or remove your keys to use the shared models.",
       "chatLimitReached": "You've used today's free chats. Upgrade your plan, or add your own API key to keep going.",
@@ -1719,10 +1718,9 @@
         "current": "Your plan",
         "chatsPerDay": "{count} chats a day",
         "chatsUnlimited": "Unlimited chats",
-        "requestsPerMinute": "{count} requests a minute",
         "sponsorData": "Branch, ownership and holder data",
         "noSponsorData": "Public data only",
-        "deepResearch": "Deep research, {count} reports a day"
+        "deepResearch": "Deep research"
       }
     },
     "byok": {
@@ -1759,7 +1757,6 @@
       "chatLimit": "Daily chat limit",
       "unlimited": "Unlimited",
       "chatsPerDay": "{count} / day",
-      "requestsPerMinute": "Requests per minute",
       "byokActive": "Bring-your-own-key active",
       "features": "Enabled features",
       "tierOption": {
@@ -1775,7 +1772,6 @@
         "deep_research": "Deep research",
         "tick_minute_k": "Tick / minute candles"
       },
-      "deepResearchLimit": "Daily deep research reports",
       "usedOfLimit": "{used} / {limit} used today",
       "upgrade": "See plans and upgrade",
       "llm": {

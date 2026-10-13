@@ -456,7 +456,9 @@ def test_plans_response_carries_the_tier_comparison(client) -> None:
     assert [t["tier"] for t in tiers] == ["free", "premium", "pro"]
     assert tiers[0]["chat_limit_per_day"] == 3
     assert tiers[2]["chat_limit_per_day"] is None
-    assert tiers[2]["deep_research_limit_per_day"] == 5
+    assert "deep_research" in tiers[2]["features"]
+    assert "requests_per_minute" not in tiers[2]  # the rate limit is not part of the plan page
+    assert "deep_research_limit_per_day" not in tiers[2]
     assert "deep_research" not in tiers[1]["features"]
 
 

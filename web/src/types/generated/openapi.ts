@@ -5945,8 +5945,6 @@ export interface components {
       finmind_class: components["schemas"]["Tier"];
       /** Platform Models */
       platform_models?: string[] | null;
-      /** Requests Per Minute */
-      requests_per_minute: number;
       tier: components["schemas"]["Tier"];
     };
     /**
@@ -11993,12 +11991,8 @@ export interface components {
     TierSummary: {
       /** Chat Limit Per Day */
       chat_limit_per_day: number | null;
-      /** Deep Research Limit Per Day */
-      deep_research_limit_per_day: number | null;
       /** Features */
       features: string[];
-      /** Requests Per Minute */
-      requests_per_minute: number;
       /** Sponsor Data */
       sponsor_data: boolean;
       tier: components["schemas"]["Tier"];
@@ -12013,10 +12007,6 @@ export interface components {
     TodayUsage: {
       /** Chats Used */
       chats_used: number;
-      /** Deep Research Limit */
-      deep_research_limit: number;
-      /** Deep Research Used */
-      deep_research_used: number;
     };
     /**
      * TokenBreakdown

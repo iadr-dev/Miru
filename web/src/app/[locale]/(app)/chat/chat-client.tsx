@@ -34,9 +34,6 @@ import { FOLLOW_ACCOUNT_TONE } from "@/lib/personality";
 /** The message shown for a failed turn: a known refusal code gets its localized explanation. */
 function turnErrorMessage(err: unknown, t: (key: string) => string): string {
   if (err instanceof AgentStreamError) {
-    if (err.code === "deep_research_limit_reached") {
-      return t("deepResearchLimit");
-    }
     if (err.code === "chat_limit_reached") {
       return t("chatLimitReached");
     }

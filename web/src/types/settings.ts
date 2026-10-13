@@ -149,10 +149,8 @@ export type PlanInfo = z.infer<typeof planInfoSchema>;
 export const tierSummarySchema = z.object({
   tier: z.enum(["free", ...PAYABLE_TIERS]),
   chat_limit_per_day: z.number().int().nullable(),
-  requests_per_minute: z.number().int(),
   sponsor_data: z.boolean(),
   features: z.array(z.string()).default([]),
-  deep_research_limit_per_day: z.number().int().nullable().default(null),
 });
 export type TierSummary = z.infer<typeof tierSummarySchema>;
 

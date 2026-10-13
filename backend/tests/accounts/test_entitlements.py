@@ -114,12 +114,10 @@ def test_tier_catalog_is_a_projection_of_the_enforced_tables() -> None:
     for summary in (free, premium, pro):
         limits = TIER_LIMITS[summary.tier]
         assert summary.chat_limit_per_day == limits.chat_limit_per_day
-        assert summary.requests_per_minute == limits.requests_per_minute
     # a higher tier never loses a feature, and every listed feature is a real gated one
     assert set(free.features) <= set(premium.features) <= set(pro.features)
     assert set(pro.features) == set(FEATURE_MIN_TIER)
     assert (free.sponsor_data, premium.sponsor_data, pro.sponsor_data) == (False, True, True)
-    # deep research is Pro-only, and the limit shown is the one that is enforced
+    # deep research is Pro-only
     assert "deep_research" not in premium.features
-    assert pro.deep_research_limit_per_day == 5
-    assert free.deep_research_limit_per_day is None
+    assert "deep_research" in pro.features

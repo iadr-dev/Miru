@@ -49,13 +49,10 @@ export function TierComparison({
                   ? t("chatsUnlimited")
                   : t("chatsPerDay", { count: tier.chat_limit_per_day })}
               </li>
-              <li>{t("requestsPerMinute", { count: tier.requests_per_minute })}</li>
               <li className={tier.sponsor_data ? undefined : "text-[var(--text-muted)]"}>
                 {tier.sponsor_data ? t("sponsorData") : t("noSponsorData")}
               </li>
-              {tier.deep_research_limit_per_day !== null ? (
-                <li>{t("deepResearch", { count: tier.deep_research_limit_per_day })}</li>
-              ) : null}
+              {tier.features.includes("deep_research") ? <li>{t("deepResearch")}</li> : null}
             </ul>
             {tier.features.filter((f) => f !== "deep_research").length > 0 ? (
               <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">

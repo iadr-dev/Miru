@@ -9,7 +9,6 @@ It wires the real collaborators into `research.DeepResearch`, turns its progress
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 
 import structlog
 
@@ -53,12 +52,6 @@ _ROOT_AGENT_ID = "root"
 def build_gateway() -> WebSearchGateway:
     """The web gateway; a seam so tests can substitute a fake without touching the network."""
     return WebSearchGateway()
-
-
-@dataclass(frozen=True)
-class DeepResearchOutcome:
-    result: OrchestratorResult
-    counts_toward_limit: bool  # False -> the caller refunds the claimed report
 
 
 class _Lanes:
@@ -109,7 +102,7 @@ async def run_deep_research_turn(
     question: str,
     locale: str,
     model_override: str | None,
-) -> DeepResearchOutcome:
+) -> OrchestratorResult:
     ui_locale: Locale = "en" if locale.lower().startswith("en") else "zh-TW"
     usage = UsageAccumulator(turn_id)
     client = state.orchestrator.agent_client(model_override)
@@ -137,11 +130,8 @@ async def run_deep_research_turn(
         report = await research.run(question, progress=lanes)
     except ResearchFailedError as exc:
         logger.warning("deep_research_failed", turn_id=turn_id, error=str(exc))
-        return DeepResearchOutcome(
-            OrchestratorResult(
-                final_text=failure_text(ui_locale), routing=routing, usage=usage.snapshot()
-            ),
-            counts_toward_limit=False,
+        return OrchestratorResult(
+            final_text=failure_text(ui_locale), routing=routing, usage=usage.snapshot()
         )
     finally:
         lanes.close()
@@ -158,15 +148,12 @@ async def run_deep_research_turn(
                 "sources": [{"url": s.url, "title": s.title} for s in sources],
             },
         )
-    return DeepResearchOutcome(
-        OrchestratorResult(
-            final_text=render_markdown(report, ui_locale),
-            routing=routing,
-            usage=usage.snapshot(),
-            web_search_sources=sources,
-        ),
-        counts_toward_limit=True,  # searching/reading already cost; only our own failures refund
+    return OrchestratorResult(
+        final_text=render_markdown(report, ui_locale),
+        routing=routing,
+        usage=usage.snapshot(),
+        web_search_sources=sources,
     )
 
 
-__all__ = ["BUDGET", "DeepResearchOutcome", "build_gateway", "run_deep_research_turn"]
+__all__ = ["BUDGET", "build_gateway", "run_deep_research_turn"]

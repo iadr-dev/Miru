@@ -9,26 +9,20 @@ const tiers: TierSummary[] = [
   {
     tier: "free",
     chat_limit_per_day: 3,
-    requests_per_minute: 60,
     sponsor_data: false,
     features: [],
-    deep_research_limit_per_day: null,
   },
   {
     tier: "premium",
     chat_limit_per_day: 100,
-    requests_per_minute: 300,
     sponsor_data: true,
     features: ["ai_summary", "live_quote_stream"],
-    deep_research_limit_per_day: null,
   },
   {
     tier: "pro",
     chat_limit_per_day: null,
-    requests_per_minute: 600,
     sponsor_data: true,
     features: ["ai_summary", "deep_research", "live_quote_stream", "tick_minute_k"],
-    deep_research_limit_per_day: 5,
   },
 ];
 
@@ -47,7 +41,8 @@ describe("TierComparison", () => {
     expect(html).toContain("100 chats a day");
     expect(html).toContain("Unlimited chats");
     expect(html).toContain("Public data only");
-    expect(html).toContain("Deep research, 5 reports a day");
+    expect(html).toContain("Deep research");
+    expect(html).not.toMatch(/reports a day|requests a minute/); // no engineering numbers on the plan page
   });
 
   it("marks only the caller's own plan", () => {

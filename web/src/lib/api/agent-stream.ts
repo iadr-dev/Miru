@@ -22,7 +22,7 @@ import { apiUrl } from "@/lib/api/config";
 import { type SseEnvelope, sseEnvelopeSchema } from "@/types/sse";
 
 /** A non-2xx reply from a turn endpoint. `code` is the backend's stable `ApiError.code`
- * (e.g. `feature_not_entitled`, `deep_research_limit_reached`, `chat_limit_reached`) so the UI can
+ * (e.g. `feature_not_entitled`, `chat_limit_reached`) so the UI can
  * explain the refusal in the user's language instead of echoing an English message. */
 export class AgentStreamError extends Error {
   constructor(

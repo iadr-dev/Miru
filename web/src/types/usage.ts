@@ -9,8 +9,6 @@ import { z } from "zod";
 
 export const todayUsageSchema = z.object({
   chats_used: z.number().int(),
-  deep_research_used: z.number().int(),
-  deep_research_limit: z.number().int(),
 });
 export type TodayUsage = z.infer<typeof todayUsageSchema>;
 

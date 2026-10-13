@@ -119,7 +119,7 @@ from then on.
 |------|--------------|---------|---------------|-------------------|
 | **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors — real, cache-only reads, [module 20](../modules/20-analytics-scoring.md) §2c); tag screener (`run_tag_screener`/`get_tag_catalog`, public criteria — real, [module 20](../modules/20-analytics-scoring.md) §5T); theme lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`, public); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
 | **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), tick / minute-K (sponsor-class data), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, web_search |
-| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + **deep_research** (multi-step web, 5 reports/day) |
+| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + **deep_research** (multi-step cited research; no daily report cap, each run is bounded by its own budget) |
 
 **Alerts & schedules are not a tier feature** (the alerts v2 design): every signed-in user gets them under uniform fair-use caps (proposed: 50 alert rules, 10 schedules, 20 notifications/day; exceeding → 409 `cap_reached`). Effective when modules/14 P0 ships (v1 still has the Pro gate). Tiers only gate the *data* a notification carries — sponsor values are masked for non-entitled users.
 
@@ -208,8 +208,9 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
   (`409 byok_key_required`) - never served on ours, since a BYOK turn is uncapped.
 - The chat picker shows only the providers the caller has keys for (`GET /me/keys` returns names,
   never keys). Removing the keys restores the plan's normal limits and models.
-- Deep research stays Pro-only with its own 5/day cap (its search/fetch cost is ours), but its
-  model calls run on the user's key. `llm_usage.byok` marks these calls.
+- Deep research stays Pro-only with no daily report cap (each run is bounded by its own budget, and
+  the per-minute rate and daily-chat allowance still apply); its model calls run on the user's key.
+  `llm_usage.byok` marks these calls.
 - Not covered yet: scheduled runs (`scheduler/`) still use platform keys and the tier cap.
 
 ## 6. Endpoints

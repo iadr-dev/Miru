@@ -673,11 +673,7 @@ export function ProcessSubEntryRow({
 }
 
 /** Refusals that are solved by a plan or a key, so the error offers the way out. */
-const UPGRADE_CODES = new Set([
-  "chat_limit_reached",
-  "deep_research_limit_reached",
-  "feature_not_entitled",
-]);
+const UPGRADE_CODES = new Set(["chat_limit_reached", "feature_not_entitled"]);
 
 function InlineError({
   message,
