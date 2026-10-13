@@ -9,5 +9,6 @@ Frontend (Next.js) coding standards + toolchain: **[web/OVERVIEW.md](web/OVERVIE
 source; `web/CLAUDE.md` only imports it, and `web/AGENTS.md` holds the Next.js-managed block).
 
 **Two things to internalize before any work:**
-1. The spec is authoritative — read `docs/backend/` (esp. `governance.md`) before coding.
+1. The spec is authoritative — read `docs/backend/` (esp. the governance rules in `AGENTS.md` and
+   `docs/backend/modules/25-governance-enforcement.md`) before coding.
 2. `backend/.env` holds **live secrets** — never read its values aloud, echo, or commit them.

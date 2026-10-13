@@ -1,9 +1,9 @@
 # backend/ — Coding Standards
 
 Design-blueprint → real Python **FastAPI** backend. The **spec lives in `../docs/backend/`** —
-read `architecture.md`, `governance.md`, and `modules/16-infrastructure.md` §10 before touching
-shared state. **Governance rules are non-negotiable and load-bearing — never relax them to make
-code pass.** See the project-root [`../AGENTS.md`](../AGENTS.md) for shared guidance.
+read `architecture.md`, `modules/25-governance-enforcement.md` (where each rule is enforced and
+tested) and `modules/16-infrastructure.md` §10 before touching shared state. **Governance rules are
+non-negotiable and load-bearing — never relax them to make code pass.** See the project-root [`../AGENTS.md`](../AGENTS.md) for shared guidance.
 
 > Resolved defaults for the architect's flagged ambiguities (override if the team disagrees):
 > pyright primary + mypy CI · structlog · line-length 100 · SQLAlchemy 2.0 **async** · DuckDB
@@ -161,7 +161,7 @@ markers = [
   never summarizes away canonical facts/caveats. Uncited web claims + unattributed analyst targets
   are **blocked**.
 - **No full-market scan** — reject tool args requesting the whole market; ingest is the *only*
-  whole-market path (§9c, market-wide **by-date**, never per-symbol).
+  whole-market path (the platform-ingest carve-out: market-wide **by-date**, never per-symbol).
 - **Secrets never logged/committed.** `.env` gitignored; provider/BYOK keys KMS-encrypted,
   decrypt in-process at call time only, never cross the sub-agent/scheduler boundary in plaintext,
   never in prompts/journal/memory/logs (governance §6/§9, infra §8).
@@ -229,7 +229,8 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
 - **Stub `LLMClient`** (deterministic scripted responses) for all runtime/orchestrator tests.
 - **Governance suite is highest priority** (`@pytest.mark.governance`): non-trading block,
   full-market-scan reject, caveat presence, sponsor masking, canonical immutability, TLS
-  no-silent-downgrade, prompt-injection resistance. Tested directly against `governance.md`.
+  no-silent-downgrade, prompt-injection resistance. Tested directly against the rules in §4 above
+  (map: `docs/backend/modules/25-governance-enforcement.md`).
 - **Profiles:** default · `governance` · `concurrency` (Postgres+Redis race/lost-update/TOCTOU) ·
   `dual_dialect` (migrations) · `operator_preflight`/`browser_e2e` (live, manual) · plus the
   phase-13 evals (per-user isolation, context-efficiency, summary-quality, classifier-routing).
