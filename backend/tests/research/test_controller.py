@@ -7,7 +7,7 @@ from datetime import date
 import pytest
 
 from research import DeepResearch, ResearchBudget, ResearchFailedError
-from research.models import Claim, DraftReport, DraftSection, GapReview, Plan
+from research.models import Claim, DraftReport, DraftSection, GapReview, Plan, SubQuestion
 from tests.research.fakes import FakeWeb, Recorder, ScriptedModel, hit, pages_for
 
 pytestmark = pytest.mark.governance
@@ -17,7 +17,9 @@ QUESTION = "台積電最近的營收與資本支出如何？"
 
 
 def _plan(*queries: str) -> Plan:
-    return Plan(sub_questions=["q1"], queries=list(queries) or ["tsmc revenue"])
+    return Plan(
+        sub_questions=[SubQuestion(question="q1", queries=list(queries) or ["tsmc revenue"])]
+    )
 
 
 def _draft(*claims: Claim) -> DraftReport:

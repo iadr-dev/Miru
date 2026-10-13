@@ -74,7 +74,7 @@ def test_only_a_page_whose_text_was_read_is_citeable() -> None:
     ledger.mark_unreadable(unread.id)
     assert [s.id for s in ledger.citeable()] == [read.id]
     assert len(ledger.get(read.id).text) == 100  # type: ignore[union-attr]
-    assert ledger.unread() == []
+    assert ledger.claim_unread(10) == []  # both have been read (or given up on)
 
 
 def test_excluding_a_source_frees_its_url_and_id_lookup() -> None:
@@ -142,3 +142,50 @@ def test_legacy_ipv4_spellings_are_rejected(url: str) -> None:
 
 def test_a_name_with_digits_in_it_is_still_a_name() -> None:
     assert canonical_url("https://163.com/x") == "https://163.com/x"
+
+
+def test_claiming_hands_each_page_to_exactly_one_worker() -> None:
+    ledger = SourceLedger(max_sources=10)
+    for n in range(5):
+        ledger.offer(SearchHit(title=f"p{n}", url=f"https://a.example/{n}"))
+    first = ledger.claim_unread(3)
+    second = ledger.claim_unread(3)
+    assert [s.id for s in first] == [1, 2, 3]
+    assert [s.id for s in second] == [4, 5]  # nothing handed out twice
+    assert ledger.claim_unread(3) == []
+
+
+def test_a_data_source_is_citeable_at_once_has_no_url_and_is_never_claimed_for_reading() -> None:
+    ledger = SourceLedger(max_sources=2)
+    data = ledger.add_data(title="2330 月營收", text='{"rows":[{"revenue":1}]}')
+    assert data is not None
+    assert (data.kind, data.url, data.citeable) == ("data", None, True)
+    assert ledger.claim_unread(5) == []
+    assert ledger.add_data(title="empty", text="   ") is None  # nothing to cite
+
+
+def test_data_sources_do_not_use_up_the_web_source_cap() -> None:
+    ledger = SourceLedger(max_sources=1)
+    assert ledger.add_data(title="a", text="x") is not None
+    assert ledger.add_data(title="b", text="y") is not None
+    assert ledger.offer(SearchHit(title="web", url="https://a.example/1")) is not None
+    assert ledger.offer(SearchHit(title="web2", url="https://a.example/2")) is None  # web cap hit
+
+
+def test_excluding_a_data_source_does_not_disturb_the_url_index() -> None:
+    ledger = SourceLedger(max_sources=5)
+    web = ledger.offer(SearchHit(title="w", url="https://a.example/1"))
+    data = ledger.add_data(title="d", text="x")
+    assert web is not None and data is not None
+    ledger.exclude(data.id)
+    assert ledger.get(data.id) is None
+    assert ledger.offer(SearchHit(title="w", url="https://a.example/1")) is None  # still known
+
+
+def test_a_data_source_is_shown_to_the_model_without_a_url_attribute() -> None:
+    ledger = SourceLedger(max_sources=5)
+    data = ledger.add_data(title="2330 <月營收>", text="rows")
+    assert data is not None
+    rendered = render_sources([data], chars=100)
+    assert rendered.startswith(f'<source id="{data.id}" kind="data" title="2330 &lt;月營收&gt;">')
+    assert "url=" not in rendered

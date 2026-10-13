@@ -434,6 +434,8 @@ async def _drive_turn(
                 question=message,
                 locale=locale,
                 model_override=model_override,
+                history=history,
+                images=images,
             )
         else:
             result = await state.orchestrator.run(

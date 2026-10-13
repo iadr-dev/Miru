@@ -1,4 +1,4 @@
-"""Deep research: a budgeted, cited, multi-step web investigation (Pro).
+"""Deep research: a budgeted, cited, multi-step investigation of the web and Miru data (Pro).
 
 See `research.controller` for the loop and the rules it enforces.
 """
@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from research.controller import DeepResearch, Progress, ProgressFn
 from research.models import FinalReport, ResearchBudget, ResearchFailedError
-from research.ports import FetchedPage, ResearchModel, SearchHit, WebPort
+from research.ports import DataPort, FetchedPage, ResearchModel, SearchHit, WebPort
 
 __all__ = [
+    "DataPort",
     "DeepResearch",
     "FetchedPage",
     "FinalReport",
