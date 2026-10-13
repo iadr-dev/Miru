@@ -180,18 +180,12 @@ def test_a_pro_report_is_cited_and_streams_progress(
     assert frames[-1]["data"]["status"] == "done"
 
 
-def test_a_burst_of_reports_is_refused_but_there_is_no_daily_cap(
+def test_there_is_no_cap_on_how_many_reports_a_pro_user_may_start(
     research_client: TestClient, settings: Settings
 ) -> None:
     headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
-    for _ in range(4):  # the safety rate allows a few starts in a short window
+    for _ in range(6):  # no daily cap, and no hidden limit on starts either
         assert _ask(research_client, headers).status_code == 200
-    burst = _ask(research_client, headers)
-    assert burst.status_code == 429
-    assert burst.json()["code"] == "rate_limited"
-    assert burst.json()["retryable"] is True
-    # ordinary chat is untouched by the research safety rate
-    assert _ask(research_client, headers, deep=False).status_code == 200
 
 
 def test_a_run_that_finds_nothing_says_so(

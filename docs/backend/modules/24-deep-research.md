@@ -79,13 +79,9 @@ data / review failures are tolerated and logged; a plan or write failure raises 
 `POST /agent/query` (and `regenerate` / `edit`) accept `deep_research: true`. The pre-turn gate
 (`enforce_pre_turn_gate(..., deep_research=True)`) runs: rate limit → `feature_allowed(user,
 "deep_research")` (else `403 feature_not_entitled`) → the normal chat reservation. There is **no
-daily report cap**: a run is bounded by its own budget (`ResearchBudget`: searches, pages, data
+daily report cap and no limit on how often a report may be started**: a run is bounded by its own budget (`ResearchBudget`: searches, pages, data
 calls, wall-clock), and the per-minute rate limit and the daily-chat allowance still apply. A run
 that fails ends with a plain "no report produced" answer; nothing is claimed or refunded.
-
-**Safety rate.** Because there is no daily cap, report *starts* are also limited to 4 per 10 minutes per
-user (a separate counter on the same rate limiter, `429 rate_limited`, retryable). It is an abuse guard,
-not a quota: normal use never meets it, and nothing in the UI mentions it.
 
 **Regenerate / edit.** The request's mode is stored on the user turn (`turns.mode = 'deep_research'`,
 nullable). `regenerate` and `edit` re-run the way the original ran unless the body says
