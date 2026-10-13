@@ -27,7 +27,7 @@ export function QuadrantLegend({
 }): ReactNode {
   const label = useQuadrantLabel();
   return (
-    <ul className="pointer-events-none flex flex-col gap-1">
+    <ul className="pointer-events-none flex flex-row flex-wrap gap-x-3 gap-y-0.5 sm:flex-col sm:gap-1">
       {QUADRANT_ORDER.map((quadrant) => (
         <li
           key={quadrant}

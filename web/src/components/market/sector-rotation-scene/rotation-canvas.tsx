@@ -20,7 +20,7 @@ const TILTED_DISTANCE = 44;
 const TILTED_DISTANCE_NARROW = 62;
 // Straight on to the plane: close enough that its 20 units fill the view's height.
 const FLAT_DISTANCE = 28;
-const FLAT_DISTANCE_NARROW = 46;
+const FLAT_DISTANCE_NARROW = 34;
 const NARROW_ASPECT = 0.8;
 const GLIDE_PER_FRAME = 0.12;
 const ARRIVED = 0.02;
@@ -29,6 +29,7 @@ const AUTO_ROTATE_SPEED = 1.1;
 // world units to that grid (one world unit is about 25px at the default zoom).
 const LABEL_GRID = 1.5;
 const LABEL_LIFT = 0.9;
+const COMPACT_WIDTH = 480;
 
 interface ViewPose {
   readonly position: THREE.Vector3;
@@ -139,6 +140,9 @@ function SceneContents({
 }: SceneProps): ReactNode {
   // Where each name goes. The flat view spreads names that would land on each other; the tilted
   // view keeps them straight above their heads, because perspective moves them anyway.
+  // On a narrow canvas the names would pile up; only the sector in focus is named there (the
+  // chips carry the rest).
+  const compact = useThree((state) => state.size.width) < COMPACT_WIDTH;
   const labelAt = useMemo(() => {
     const heads = sectors.flatMap((sector) => {
       const head = headPosition(sector.points, currentWeek, range);
@@ -186,7 +190,7 @@ function SceneContents({
               onHoverChange={(over) => onHoverChange(over ? id : null)}
               onSelect={() => onSelect(selectedSectorId === id ? null : id)}
             />
-            {labelPosition ? (
+            {labelPosition && (!compact || emphasis === "selected" || emphasis === "hovered") ? (
               <SectorLabel
                 position={labelPosition}
                 name={shortSectorName(sector.industry_name)}

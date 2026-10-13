@@ -32,7 +32,7 @@ export function SectorChips({
     <div
       role="group"
       aria-label={t("chipsLabel")}
-      className="pointer-events-auto flex flex-wrap gap-1.5"
+      className="pointer-events-auto flex gap-1.5 overflow-x-auto [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"
     >
       {chips.map((chip) => {
         const selected = selectedSectorId === chip.industryId;
@@ -50,7 +50,7 @@ export function SectorChips({
             onFocus={() => onHoverChange(chip.industryId)}
             onBlur={() => onHoverChange(null)}
             className={cn(
-              "flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-[12px] transition-colors active:scale-95",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] transition-colors active:scale-95",
               active
                 ? "border-transparent bg-[var(--surface-2)] text-[var(--text)]"
                 : "border-[var(--border)] bg-[var(--surface)]/60 text-[var(--text-muted)]",

@@ -21,9 +21,6 @@ import { type SectorChip, SectorChips } from "./sector-chips";
 import { SectorDetailCard } from "./sector-detail-card";
 import { TransitionStrip } from "./transition-strip";
 
-// Tall enough for the scene plus the chip row and transport bar stacked over its bottom edge.
-const SCENE_HEIGHT = "clamp(540px, 80vh, 840px)";
-
 /** A sector's point at a whole week, clamped to its own series (a shorter series keeps its last
  * point rather than vanishing from the list). */
 function pointAt(sector: SectorRrgSeries, week: number): SectorRrgSeries["points"][number] | null {
@@ -92,62 +89,68 @@ export function SectorRotationScene({
   const detail =
     selectedRow && selectedSector ? { ...selectedRow, weight: selectedSector.weight } : null;
 
+  // In a narrow card everything stacks (scene, detail, controls + chips, then the ranking list)
+  // so nothing sits on top of the scene; once the card is wide enough the panels overlay it as in
+  // the design. It is the card's width that decides, not the screen's: the sidebar and the
+  // watchlist take a lot of a laptop screen.
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-[var(--radius-card)] bg-[radial-gradient(120%_90%_at_50%_35%,#15183a_0%,#080a18_70%)]"
-      style={{ height: SCENE_HEIGHT }}
-    >
-      <div className="absolute inset-x-0 top-0 bottom-36 sm:right-[19.5rem] sm:left-56">
-        <RotationCanvas
-          sectors={sectors}
-          colors={colors}
-          range={range}
-          quadrantLabels={quadrantLabels}
-          currentWeek={playback.currentWeek}
-          hoveredSectorId={playback.hoveredSectorId}
-          selectedSectorId={selectedSectorId}
-          view={view}
-          reducedMotion={reducedMotion}
-          onHoverChange={playback.setHoveredSectorId}
-          onSelect={setSelectedSectorId}
-        />
-      </div>
+    <div className="@container w-full">
+      <div className="relative @min-[60rem]:block flex @min-[60rem]:h-[clamp(540px,80vh,840px)] w-full flex-col gap-3 overflow-hidden rounded-[var(--radius-card)] bg-[radial-gradient(120%_90%_at_50%_35%,#15183a_0%,#080a18_70%)] @min-[60rem]:pb-0 pb-3">
+        <div className="@min-[60rem]:absolute relative @min-[60rem]:inset-x-0 @min-[60rem]:top-0 @min-[60rem]:right-[19.5rem] @min-[60rem]:bottom-36 @min-[60rem]:left-56 order-1 @min-[60rem]:h-auto h-[21rem]">
+          <RotationCanvas
+            sectors={sectors}
+            colors={colors}
+            range={range}
+            quadrantLabels={quadrantLabels}
+            currentWeek={playback.currentWeek}
+            hoveredSectorId={playback.hoveredSectorId}
+            selectedSectorId={selectedSectorId}
+            view={view}
+            reducedMotion={reducedMotion}
+            onHoverChange={playback.setHoveredSectorId}
+            onSelect={setSelectedSectorId}
+          />
+          <div className="pointer-events-none absolute top-2 left-3 @min-[60rem]:hidden">
+            <QuadrantLegend counts={counts} />
+          </div>
+        </div>
 
-      <div className="pointer-events-none absolute top-3 left-3 flex w-56 flex-col gap-3">
-        <QuadrantLegend counts={counts} />
-        <div className="pointer-events-auto hidden flex-col gap-3 sm:flex">
+        <div className="pointer-events-none absolute top-3 left-3 @min-[60rem]:block hidden">
+          <QuadrantLegend counts={counts} />
+        </div>
+        <div className="pointer-events-auto @min-[60rem]:absolute @min-[60rem]:top-[7.25rem] @min-[60rem]:left-3 order-2 flex @min-[60rem]:w-56 flex-col gap-3 @min-[60rem]:px-0 px-3">
           <SectorDetailCard detail={detail} onClear={() => setSelectedSectorId(null)} />
           <TransitionStrip transitions={transitions} />
         </div>
-      </div>
 
-      <div className="pointer-events-auto absolute top-5 right-5 w-64 sm:w-72">
-        <RankPanel
-          rows={rankRows}
-          hoveredSectorId={playback.hoveredSectorId}
-          onHoverChange={playback.setHoveredSectorId}
-        />
-      </div>
+        <div className="pointer-events-auto @min-[60rem]:absolute @min-[60rem]:top-5 @min-[60rem]:right-5 order-4 @min-[60rem]:w-72 @min-[60rem]:px-0 px-3">
+          <RankPanel
+            rows={rankRows}
+            hoveredSectorId={playback.hoveredSectorId}
+            onHoverChange={playback.setHoveredSectorId}
+          />
+        </div>
 
-      <div className="pointer-events-none absolute inset-x-3 bottom-2 flex flex-col gap-2">
-        <SectorChips
-          chips={chips}
-          selectedSectorId={selectedSectorId}
-          hoveredSectorId={playback.hoveredSectorId}
-          onSelect={setSelectedSectorId}
-          onHoverChange={playback.setHoveredSectorId}
-        />
-        <RotationControls
-          weekEndings={weekEndings}
-          currentWeek={playback.currentWeek}
-          isPlaying={playback.isPlaying}
-          canPlay={!reducedMotion}
-          view={view}
-          onTogglePlaying={playback.togglePlaying}
-          onSeek={playback.seek}
-          onViewChange={setView}
-        />
-        <p className="text-[11px] text-[var(--text-muted)]">{t("disclaimer")}</p>
+        <div className="pointer-events-none @min-[60rem]:absolute @min-[60rem]:inset-x-3 @min-[60rem]:bottom-2 order-3 flex flex-col gap-2 @min-[60rem]:px-0 px-3">
+          <SectorChips
+            chips={chips}
+            selectedSectorId={selectedSectorId}
+            hoveredSectorId={playback.hoveredSectorId}
+            onSelect={setSelectedSectorId}
+            onHoverChange={playback.setHoveredSectorId}
+          />
+          <RotationControls
+            weekEndings={weekEndings}
+            currentWeek={playback.currentWeek}
+            isPlaying={playback.isPlaying}
+            canPlay={!reducedMotion}
+            view={view}
+            onTogglePlaying={playback.togglePlaying}
+            onSeek={playback.seek}
+            onViewChange={setView}
+          />
+          <p className="text-[11px] text-[var(--text-muted)]">{t("disclaimer")}</p>
+        </div>
       </div>
     </div>
   );

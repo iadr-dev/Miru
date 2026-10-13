@@ -52,13 +52,13 @@ export function RotationControls({
   ];
 
   return (
-    <div className="pointer-events-auto flex items-center gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)]/70 px-3 py-1.5 backdrop-blur-md">
+    <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-0 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)]/70 px-3 py-1.5 backdrop-blur-md">
       {canPlay ? (
         <button
           type="button"
           onClick={onTogglePlaying}
           aria-label={isPlaying ? t("pause") : t("play")}
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[var(--text)] transition-transform active:scale-95"
+          className="order-1 grid size-11 shrink-0 place-items-center rounded-full bg-[var(--surface-2)] text-[var(--text)] transition-transform active:scale-95"
         >
           {isPlaying ? <PauseIcon size={18} weight="fill" /> : <PlayIcon size={18} weight="fill" />}
         </button>
@@ -72,30 +72,37 @@ export function RotationControls({
         onChange={(event) => onSeek(Number(event.target.value))}
         aria-label={t("scrub")}
         aria-valuetext={`${weekOf} · ${t("weekEnding", { date })}`}
-        className="h-11 min-w-0 flex-1 accent-[var(--accent)]"
+        className="order-4 h-11 min-w-0 basis-full accent-[var(--accent)] sm:order-2 sm:flex-1 sm:basis-0"
       />
-      <div className="hidden w-36 shrink-0 text-right sm:block">
-        <div className="font-num font-semibold text-[13px] text-[var(--text)] tabular-nums">
+      <div className="order-2 min-w-0 flex-1 sm:order-3 sm:w-36 sm:flex-none sm:text-right">
+        <div className="whitespace-nowrap font-num font-semibold text-[13px] text-[var(--text)] tabular-nums">
           {date}
         </div>
-        <div className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">{weekOf}</div>
+        <div className="whitespace-nowrap font-num text-[11px] text-[var(--text-muted)] tabular-nums">
+          {weekOf}
+        </div>
       </div>
-      <div role="group" aria-label={t("viewLabel")} className="flex shrink-0 gap-1">
+      <div
+        role="group"
+        aria-label={t("viewLabel")}
+        className="order-3 flex shrink-0 gap-1 sm:order-4"
+      >
         {views.map((item) => (
           <button
             key={item.id}
             type="button"
             aria-pressed={view === item.id}
+            aria-label={item.label}
             onClick={() => onViewChange(item.id)}
             className={cn(
-              "flex h-11 items-center gap-1 rounded-[var(--radius-input)] px-2.5 text-[12px] transition-colors active:scale-95",
+              "flex h-11 min-w-11 items-center justify-center gap-1 rounded-[var(--radius-input)] px-2.5 text-[12px] transition-colors active:scale-95",
               view === item.id
                 ? "bg-[var(--surface-2)] text-[var(--text)]"
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >
             {item.icon}
-            {item.label}
+            <span className="hidden sm:inline">{item.label}</span>
           </button>
         ))}
       </div>
