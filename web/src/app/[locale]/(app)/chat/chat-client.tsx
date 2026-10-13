@@ -54,7 +54,8 @@ function turnErrorMessage(err: unknown, t: (key: string) => string): string {
  * The Chat page client. Orchestrates: thread selection (URL `?thread=`), the persisted-thread cold
  * read (TanStack `['thread', id]`), and one live turn at a time via the Zustand overlay.
  *
- * Send flow (no token streaming — DEVELOPMENT.md §4b): optimistically show the user bubble + enter
+ * Send flow (answers arrive as whole governance-scanned sentences, never token by token —
+ * docs/backend/modules/07-conversation-streaming.md): optimistically show the user bubble + enter
  * the thinking phase (`begin`), open the `POST /agent/query` SSE stream, fold each frame into the
  * store (`applyFrame`). On the terminal `turn.end`, invalidate the thread + thread-list queries;
  * once the persisted refetch settles the overlay is cleared so the answer renders from history (no

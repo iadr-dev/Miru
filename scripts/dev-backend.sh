@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Launch the full backend stack via Docker Compose: api + scheduler + ingest + mcp, backed by
-# real Postgres + Redis (the dev-parity stack, docs/backend/DEVELOPMENT.md §1) — so the
+# real Postgres + Redis (the dev-parity stack; topology in docs/backend/modules/16-infrastructure.md §1) — so the
 # Redis-transport, one-writer-DuckDB, and cross-service paths are exercised locally, not first
 # discovered in prod. For a lighter API-only loop (SQLite, in-process event bus, no
 # scheduler/ingest/mcp), run `uv run uvicorn api.app:app --reload` from backend/ directly instead.

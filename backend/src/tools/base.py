@@ -271,12 +271,11 @@ async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseMo
     function can make instead of running the tool is a `MaskedTeaser`, and only when
     `tool.data_class == DataClass.SPONSOR` and `ctx.tier` isn't entitled.
 
-    **Phase-9 seam:** `accounts/entitlements.py` (not yet built) will eventually resolve
-    `ctx.user_id` to a live per-user tier and either construct `ctx` with that real tier before
-    calling this function, or replace `is_entitled(...)` with its own lookup — this function's
-    signature and masked-teaser shape are the stable contract that lookup plugs into. Nothing
-    here queries a database; `ctx.tier` is trusted as given (entitlement is meant to be resolved
-    per tool call, not cached for the turn — the *caller* re-resolves it each call).
+    **Where the tier comes from:** `accounts/hooks.py::EntitlementResolver.tool_context_for`
+    resolves the user to a tier when the request starts and builds `ctx` with it; this function
+    applies the gate on every call using that `ctx.tier`. Nothing here queries a database —
+    `ctx.tier` is trusted as given. The tier is resolved fresh per request and never cached across
+    requests, so a tier change applies from the next request, not mid-turn.
     """
     if tool.data_class is DataClass.SPONSOR and not is_entitled(tool.data_class, ctx.tier):
         if tool.supports_row_preview:
