@@ -32,10 +32,9 @@ ai-tw-stock/
 ├─ AGENTS.md · CLAUDE.md          # this file (+ its pointer)
 ├─ docs/
 │  ├─ backend/                    # ← the authoritative backend blueprint (READ THIS FIRST)
-│  │  ├─ README.md                #   index + confirmed decisions + module map
 │  │  ├─ architecture.md          #   layered architecture + DEPENDENCY RULE + repo layout
 │  │  ├─ api-reference.md         #   every endpoint
-│  │  └─ modules/ (01–26)         #   one spec per module (25 = where each governance rule is enforced)
+│  │  └─ modules/ (01–26)         #   one spec per module + README index (25 = where each governance rule is enforced)
 │  └─ mobile/                     # deferred deliverable — don't build unless asked
 ├─ backend/                       # Python FastAPI backend — see backend/CLAUDE.md
 │  ├─ .env                        # ⚠ LIVE SECRETS — gitignored, never read aloud / commit / log
@@ -123,7 +122,7 @@ make code, a test, or a feature pass:
 
 | Need | Read |
 |------|------|
-| Backend big picture + module map | `docs/backend/README.md`, `architecture.md` |
+| Backend big picture + module map | `docs/backend/architecture.md`, `docs/backend/modules/README.md` |
 | What's allowed / forbidden | the rules below; `backend/CLAUDE.md` §4/§8; `docs/backend/modules/25-governance-enforcement.md` |
 | Python coding rules + toolchain | `backend/CLAUDE.md` |
 | Backend endpoints | `docs/backend/api-reference.md` |

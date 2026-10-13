@@ -1,5 +1,10 @@
 # Module specifications
 
+**Start here.** [`../architecture.md`](../architecture.md) is the system blueprint (layering, the
+dependency rule, repo layout, the anatomy of a turn); [`../api-reference.md`](../api-reference.md) lists
+every endpoint; coding rules and the toolchain are in
+[`backend/CLAUDE.md`](../../../backend/CLAUDE.md). Then read the module for the layer you are touching.
+
 Each document specifies one layer of the framework: its responsibilities, public
 interface, dependencies, and governance obligations. Every module inherits the
 governance rules (governance-as-code in [`backend/CLAUDE.md`](../../../backend/CLAUDE.md) §4, security in §8, and

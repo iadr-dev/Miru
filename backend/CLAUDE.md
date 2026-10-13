@@ -190,7 +190,9 @@ Never rely on "one process at a time" (true only for dev SQLite; load-bearing on
 - **Optimistic `version` CAS** for multi-device edits (`threads`, `schedule_jobs`) → 409 on stale.
 - **One active turn per thread:** partial `UNIQUE(thread_id) WHERE status='running'`.
 - **Single-flight** on cache miss (per-key Redis lock) — protects the FinMind Sponsor pool.
-- **Entitlement resolved per tool call** (in `pre_tool`), not cached for the turn.
+- **Entitlement is resolved fresh on every request and never cached across requests.** The gate
+  (`dispatch_tool`, the `pre_tool` seam) then runs on **every tool call** with the tier resolved when
+  the request began, so a tier change applies from the next request.
 
 ## 6. DB portability (SQLite dev ↔ Postgres prod)
 

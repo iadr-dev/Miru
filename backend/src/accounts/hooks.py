@@ -10,8 +10,8 @@ resolves a `User` to the `Tier` the data-licensing axis uses (`entitlements.finm
 and returns a `ToolContext` carrying it. There is no second, redundant masking gate here — that
 would duplicate `dispatch_tool` — and this module never imports the agent loop; the wiring layer
 (above `accounts/`) builds the `ToolContext` once per turn and hands it to `AgentLoop.run_turn`,
-which re-applies `dispatch_tool`'s gate per tool call (entitlement is resolved fresh on every
-call rather than cached for the turn, so a mid-turn tier change takes effect immediately).
+which re-applies `dispatch_tool`'s gate on every tool call (the tier is resolved fresh for each
+request and never cached across requests, so a tier change applies from the next request).
 
 Naming mirrors Phase-7's `events/hooks.py` (`EventBusPostToolHook`, `MemoryRecallPreLLMHook`):
 concrete handler built in a higher layer, plugged into a lower-layer seam by dependency

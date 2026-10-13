@@ -349,9 +349,8 @@ AI discussion handoff": a thread's journaled turns + Conversation package are th
 
 ## 11. Build phases
 
-This list is the **design-time phase sequence**, not a live status board — for current
-per-phase status (what's actually built, tested, and verified vs. still pending), see
-[DEVELOPMENT.md §3](DEVELOPMENT.md#3-build-order-turn-the-blueprint-into-code).
+This list is the **design-time phase sequence**, not a live status board — for what is actually
+built, read the [module specs](modules/README.md) and the code and tests they point at.
 
 1. Foundations (scaffold `backend/`, config, schemas, db, TLS + tier enums, docs)
 2. Data layer (13 adapters incl. the FinMind [104 datasets], yfinance, and TDCC packages + **data-access router** (capabilities, Market/Symbol, per-market priority-fallback config) + contracts + fixtures)

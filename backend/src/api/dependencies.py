@@ -194,8 +194,8 @@ def tool_context_for(
     state: AppState = Depends(get_state),
 ) -> ToolContext:
     """Build the per-request `ToolContext` (entitlement + TLS policy) the tool-dispatch gate
-    consumes. Entitlement is resolved fresh per request, never cached — a mid-session tier change
-    takes effect on the next call."""
+    consumes. Entitlement is resolved fresh per request, never cached across requests — a tier
+    change takes effect on the next request."""
     return state.entitlement_resolver.tool_context_for(user)
 
 
