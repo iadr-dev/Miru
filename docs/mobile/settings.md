@@ -104,4 +104,4 @@ validation, alert-rule empty/create/validate/delete-confirm, keyboard/focus) =
 Per-user isolation; secrets (BYOK keys) never echoed. Personality/pets are **style/cosmetic only** —
 never affect analysis or gate data, never introduce trading language. Alert copy is non-trading (a
 threshold notice, not a cue). No 明牌/飆股/目標價/買賣 copy
-([../backend/governance.md](../backend/governance.md) §1, [../brand.md](../brand.md) §5).
+([backend/CLAUDE.md](../../backend/CLAUDE.md) §4, [../brand.md](../brand.md) §5).

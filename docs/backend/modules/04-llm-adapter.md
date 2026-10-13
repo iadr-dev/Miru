@@ -2,12 +2,12 @@
 
 Provider-agnostic `LLMClient` seam so callers (orchestrator, agent runtime, branch
 summarization, analytics) depend on one Protocol and one normalized wire format, never a
-concrete provider SDK. See [../adr/0001-provider-agnostic-llm.md](../adr/0001-provider-agnostic-llm.md).
+concrete provider SDK. Why: models and vendors change faster than the product, so swapping or adding a provider must be a config change, not a caller change.
 
 Files: `base.py` (Protocol + wire types), `anthropic_client.py`, `openai_client.py`,
 `gemini_client.py`, `openai_compat.py` (shared base for Groq/Cerebras/OpenRouter),
 `local_client.py` (Ollama, delegates to `openai_compat.py`), `registry.py` (config-driven
-construction + role routing). Tests: `backend/tests/llm/` (protocol conformance, one test
+construction + role routing), `pricing.py` (list prices for estimated cost), `shared.py` (helpers common to the clients). Tests: `backend/tests/llm/` (protocol conformance, one test
 module per client, `registry.py`, plus `stubs.py`'s `StubLLMClient` used by every
 runtime/orchestrator test that needs a deterministic, non-network `LLMClient`).
 
@@ -57,7 +57,7 @@ re-raise; retry/fallback policy lives one layer up, in the callers below.
 | `anthropic_client.py` | Anthropic Claude (**default**) | `anthropic` | real SDK endpoint (`messages.count_tokens`) | `native_web_search=True`; uses `AsyncAnthropic` |
 | `openai_client.py` | OpenAI | `openai` | exact local `tiktoken` count (`o200k_base` fallback for unregistered model ids) | `native_web_search=False` — Chat Completions has no general grounding tool for the catalog models; uses `AsyncOpenAI`, native SDK types (not the compat JSON path) |
 | `gemini_client.py` | Google Gemini | `gemini` | real SDK endpoint (`aio.models.count_tokens`) | `native_web_search=True`; uses `google-genai`'s `Client(...).aio` async surface |
-| `openai_compat.py` | Groq / Cerebras / OpenRouter | `groq` / `cerebras` / `openrouter` | heuristic, ~4 chars/token | one `OpenAICompatClient(provider_id, base_url, ...)` parameterized over `httpx`, shared because the three speak identical OpenAI chat-completions wire format |
+| `openai_compat.py` | Groq / Cerebras / OpenRouter | `groq` / `cerebras` / `openrouter` | heuristic, ~4 chars/token | one `OpenAICompatClient(provider_id, base_url, ...)` parameterized over `httpx`, shared because the three speak identical OpenAI chat-completions wire format; `native_web_search=True` for OpenRouter only (its own web-search plugin), `False` for Groq/Cerebras |
 | `local_client.py` | Ollama (local) | `ollama` | delegates to the compat heuristic | thin wrapper that constructs an `OpenAICompatClient` pointed at `{base_url}/v1`; no API key ever read from `Settings` |
 
 Provider/model **ids** are config data, not a hardcoded enum in core — `registry.py` is the
@@ -90,7 +90,7 @@ Provider-specific normalization worth knowing when debugging a client:
   usage is real, not estimated, even on the streaming path.
 
 **Native web search** is exposed as the `ModelCapabilities.native_web_search` flag per client
-(`True` for Anthropic/Gemini, `False` for OpenAI/Groq/Cerebras/OpenRouter/Ollama on today's
+(`True` for Anthropic/Gemini/OpenRouter, `False` for OpenAI/Groq/Cerebras/Ollama on today's
 catalog). Nothing inside `llm/` itself branches on this flag — the selection logic is one layer
 up: `orchestrator/orchestrator.py::_maybe_add_web_search` reads a resolved client's
 `capabilities.native_web_search` to decide, per turn, whether to grant `native_web_search=True`
@@ -197,10 +197,13 @@ requirement. `Orchestrator._resolve_agent_client` uses it for `ModelRole.AGENT`,
 override is meaningful for; `CLASSIFIER`/`SUBAGENT` are cost/latency-tiered plumbing callers
 never route a thread override through.
 
-BYOK keys ([12-multi-user-tiers.md](12-multi-user-tiers.md)) exist as a concept in
-`accounts/secrets.py` (`SecretStore.has_llm_key`, `SecretKind.LLM_KEY`) but nothing in
-`llm/registry.py` reads a BYOK key — `build_client`/`resolve_role` only ever read the platform
-keys off `Settings`. Wiring a user's BYOK key into `build_client` is **not built**.
+**BYOK** ([12-multi-user-tiers.md](12-multi-user-tiers.md)): `build_client(..., api_key=...)` takes a
+user's own key, and `byok_scope(ByokOverride(provider_id, model_id, api_key))` is a context
+variable that makes `resolve_role`/`resolve_role_with_override` return that one client for every
+role (classifier, sub-agents and synthesis included) and never fall back to a platform key. The
+override is built by `accounts/byok.py::resolve_byok_override` (decrypting the saved key) and
+entered by `api/turn_driver.py`; `BYOK_PROVIDERS` lists the hosted providers a user may bring a
+key for.
 
 ## Callers (real usages outside `llm/`)
 
@@ -233,6 +236,7 @@ constructs a provider client directly or names a provider/model literal itself.
   `test_gemini_client.py`, `test_openai_compat.py`, `test_local_client.py`) — SDK/HTTP calls
   are mocked (`AsyncMock`, `httpx.MockTransport`), never real network, and every module
   asserts construction performs no network call and that a failed call never logs the API key.
+- `test_byok_scope.py` — BYOK override resolution; `test_pricing.py` / `test_usage_parsing.py` — cost estimates and usage parsing.
 - `test_registry.py` — `build_client` per provider (including the missing-key and
   unimplemented-provider error paths), `default_client` fallback/override, `resolve_role`
   including the offline-profile-to-Ollama case, and that construction alone never touches the
@@ -241,10 +245,11 @@ constructs a provider client directly or names a provider/model literal itself.
 
 ## Governance obligations
 
-- No API keys persisted; platform keys are read from `Settings`/env at call time only. BYOK
-  key decryption/injection into this layer is **not built** yet (see Fallback section above).
+- No API keys persisted here; platform keys are read from `Settings`/env at call time only, and a
+  BYOK key lives only in the turn's `byok_scope` context (`ByokOverride.api_key` is excluded from
+  `repr`).
 - The adapter transmits only what its caller passes in — normally the governed conversation
-  package ([../governance.md](../governance.md)) — never raw source payloads; `llm/` has no
+  package (rules: [../../../backend/CLAUDE.md](../../../backend/CLAUDE.md) §4 and §8) — never raw source payloads; `llm/` has no
   visibility into `sources/`/`dataaccess/` by the one-way dependency rule.
 - Every client's failure path logs `type(exc).__name__` only, never the exception's raw text
   or the API key — enforced by a dedicated `test_chat_never_logs_api_key_on_failure` in each

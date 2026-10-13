@@ -50,7 +50,7 @@ output_structure:                        # the sections the answer must cover
 freshness_rule: 籌碼數據須為最近一個交易日；引用任何數字時標明資料日期。
 boundaries:                              # per-skill guardrails (in addition to global guardrails)
   - 僅分析籌碼面，不提供價格目標或買賣價位。
-  - 所有判斷僅為資訊參考，不構成投資建議 (non-trading, §governance).
+  - 所有判斷僅為資訊參考，不構成投資建議 (non-trading).
 resources: [output_template.md, chip_checklist.md]           # level-3, loaded on demand only
 outputs: markdown | rich_card                                # caveated, non-trading
 ```
@@ -91,10 +91,9 @@ original design sketched:
    (transport error, unparseable JSON, an invalid verdict) — the module's own docstring is
    explicit that an unambiguous keyword hit does **not** pre-pin a skill or bypass the classifier
    while it's available. There is no keyword fast-path that races or short-circuits the LLM call.
-3. **UI action chips and the `/skill` shortcut are not built.** `POST /agent/query`'s
-   `AgentQueryRequest` (`api/routers/agent.py`) carries only `message`/`thread_id` — there is no
-   field for a pinned-skill hint from a quick-action button, and no `/skill-name` parsing exists
-   anywhere in the request path. Both are design intent only.
+3. **No pinned-skill hint or `/skill` shortcut.** `POST /agent/query`'s `AgentQueryRequest`
+   (`api/routers/agent.py`) has no field for a skill chosen from a quick-action button, and no
+   `/skill-name` parsing exists in the request path.
 
 However triggered, the skill's `tools` allowlist is resolved to concrete tools and handed to the
 lane's `AgentLoop` (`orchestrator/orchestrator.py::_tools_for`) — a tool outside the allowlist is
@@ -149,26 +148,30 @@ skill still runs and reports around the masked section).
 | `company-profile` | 個股資訊卡 (narrow): sector/industry classification + latest announced dividend, missing MOPS-sourced fields disclosed | no (public) |
 | `live-snapshot-check` | Bounded, delayed TWSE MIS live-ish quote snapshot, one explicit check at a time | no (public) |
 
-**Not built this pass (see the audit below for why):** `news-sentiment`, `analyst-consensus`,
-`market-calendar`, `market-pulse`, `technical-read`, `ai-summary-swot`, `theme-discovery`.
-`multi-factor-score` and `stock-screener` were originally listed here too but are now built —
-see `stock-score` and `stock-screener` in the catch-all table below.
+Also built-in: the report/brief skills `stock-report-tw`, `stock-report-us`, `etf-report`,
+`compare-report` (side-by-side two-symbol report), `morning-brief` and `stock-financial-comparison`
+(revenue/seasonality/dividend comparison for two stocks); the confirm-card proposal skills
+`alert-proposal`, `schedule-proposal`, `watchlist-proposal` and `memory-proposal` (each only
+proposes - the user confirms on the card, and the agent never writes); and
+`self-assessed-earnings-check` (MOPS 自結損益 filing, one monthly period at a time),
+`tdcc-registry-lookup` (TDCC 集保 reference datasets) and
+`warrant-and-derivatives-microstructure` (per-trade futures/option/spread ticks, intraday options
+snapshot, warrant branch flow, night-session institutional flow; all Sponsor). The authoritative
+list is the `backend/src/skills/built_ins/*/SKILL.md` directories.
+
+**No skill exists** for `news-sentiment`, `analyst-consensus`, `market-calendar`, `market-pulse`,
+`technical-read`, `ai-summary-swot` or `theme-discovery` (flow-ranked themes). For some of these the
+tool exists (`get_technical_indicators`, `get_stock_summary`, `get_calendar_events`,
+`get_advance_decline`, `get_index_contribution`, `get_themes`) but is used only by the web, not the
+chat agent.
 
 ## Catch-all skills (cover previously-orphaned tools, not in the original 20-skill starter set)
 
-The tool-registry pass ([03-tools.md](03-tools.md)) landed far more real tools than the
-original 20-skill starter set's stated scope covers — see that doc's "Registered tools" section
-for the current authoritative count, which grows as new tool groups land. Rather than leave the long tail
-unreachable (a skill's `tools` allowlist is the *only* way the runtime will dispatch a tool —
-see the enforcement rule above), the following skills were added to give every remaining real
-tool a coherent, natural-language-triggerable home. **One real, registered tool is still an
-exception to that "every remaining tool covered" claim: `ask_user`** (`backend/src/tools/
-ask_user_tools.py`) appears in **no** skill's `tools:` allowlist across every `SKILL.md` under
-`skills/built_ins/*/` and is not in `orchestrator/orchestrator.py`'s `_WARM_TOOLS` either — so
-today it is unreachable in any live framework path (`single`/`subagent`/`team` all resolve a
-lane's tool set from a skill's allowlist or the warm-tool default, per the enforcement rule
-above). The tool itself is real and dispatchable in principle; it is simply orphaned by every
-current call site, the same "real but unreachable" gap `read_skill_resource` has above.
+A skill's `tools` allowlist is the *only* way the runtime dispatches a tool in a lane (see the
+enforcement rule above), so the following skills give the long tail of registered tools (see
+[03-tools.md](03-tools.md)) a coherent, natural-language-triggerable home. `ask_user` appears in the
+allowlists of the report/proposal skills and the memory/schedule/alert/watchlist `propose_*` tools
+are in the orchestrator's warm-tool default (`_WARM_TOOLS`).
 
 | Skill | Purpose | Uses sponsor data? |
 |-------|---------|--------------------|
@@ -189,53 +192,15 @@ current call site, the same "real but unreachable" gap `read_skill_resource` has
 | `stock-screener` | 標籤篩選器: discover the real tag catalog (技術面/籌碼面/熱門/智能) via `get_tag_catalog`, then AND/OR-match TW symbols against named end-of-day tags via `run_tag_screener` — a daily-batch-computed descriptive filter, never a ranked recommendation | no (public) |
 | `etf-overlap-and-comparison` | 3檔以上非台股ETF持股重疊比較 (`get_etf_overlap`) + 跨市場（含台股）股利再投入總報酬比較 (`get_fund_comparison`), with honest disclosure of the TW-holdings/NAV adapter gap | no (public) |
 
-**Deliberately still uncovered by any skill:** `web_search`/`fetch_url` (enablement-gated
-generic tools, not skill-shaped — the agent decides when to use them directly, subject to the
-per-turn web-search toggle, not via a skill allowlist).
+**Deliberately uncovered by any skill:** `web_search`/`fetch_url` (enablement-gated generic
+tools, not skill-shaped - the agent decides when to use them, subject to the per-turn web-search
+toggle).
 
-**Not deliberately uncovered — an actual gap:** `ask_user` (see the note above the catch-all
-table) has no skill allowlist entry and no warm-tool default; unlike `web_search`/`fetch_url`,
-there is no enablement-gated direct-call path around the allowlist for it either, so it is
-currently unreachable in any live framework path, full stop.
-
-**Real-backing check (as of this pass).** Every skill in both tables above is backed by real,
-named tools verified directly against `backend/src/tools/*.py` (not just this doc's prior
-description) — no skill invents a field or capability its tools don't actually return. Several
-skills are honestly narrower than the original design intended, and say so explicitly in their
+**Real-backing.** Skills are backed by named tools in `backend/src/tools/*.py` and don't invent
+fields their tools don't return. Several skills are honestly narrower than the original design intended, and say so explicitly in their
 own `SKILL.md` `boundaries`/output-structure, mirroring `company-profile`'s established
 `missing_fields` pattern: `catalyst-scan` (no 董事會決議/庫藏股/法說會/自結 adapter),
 `governance-risk` (no 背書保證/訴訟裁罰 adapter), `disposition-watch` (no TPEX 注意股 adapter,
 no escalation forecast), `etf-compare` (no NAV/折溢價/受益人數/fees/yield adapter),
 `market-breadth-and-flow` (its skill does not use `get_advance_decline`/`get_index_contribution`,
-which now exist as web-only tools).
-
-**Audit — which of the 9 originally-not-built rows above remain not built, and why:**
-- **Still blocked, no real tool covers any of the stated scope:** `news-sentiment` (news/PTT
-  tools were explicitly excluded from wrapping this pass — see [03-tools.md](03-tools.md)),
-  `analyst-consensus` (the `analyst_consensus` capability exists in `sources/yfinance/` and
-  feeds context-building, but no tool wraps it),
-  `market-calendar` (the TW-first `get_calendar_events` now exists - `calendar_tools.py`, Sponsor,
-  web-only - but no skill uses it; the skill that exists, `international-equity-snapshot`, uses the
-  non-TW `get_calendar_events_feed`),
-  `market-pulse` (`get_advance_decline` and `get_index_contribution` now exist as web-only tools,
-  and `get_taiex_index_snapshot` is used by `market-breadth-and-flow`; no `market-pulse` skill
-  wraps the breadth tools).
-- **Tool exists, no skill wraps it:** `technical-read` (`get_technical_indicators`) and
-  `ai-summary-swot` (`get_stock_summary`; Sponsor) - the engines landed in module 20 and the tools
-  are registered, but they are used only by the web, so the chat agent cannot call them yet.
-- **No longer blocked — now built:** `multi-factor-score` and `stock-screener` were tracked here
-  as blocked on module 20's `analytics/scoring/` and `analytics/screener/` subpackages; both
-  subpackages have since landed (`get_stock_score`/`get_score_leaderboard` in `score_tools.py`,
-  `run_tag_screener`/`get_tag_catalog` in `screener_tools.py`), and are now wrapped by the
-  `stock-score` and `stock-screener` skills above rather than the originally-named
-  `get_score`/`get_score_breakdown`/`run_screener`/`get_factor_catalog`/`get_top_stocks` tool
-  names (the real registry's naming, per [03-tools.md](03-tools.md), diverged from the original
-  design the same way several other tool groups did).
-- **Theme lookup now real (was `theme-discovery`, split):** the `analytics/themes/` data layer
-  (industry-chain + concept themes, memberships, tiers) is built and now reachable — the
-  `theme-lookup` skill above wraps the three real `theme_tools.py` tools
-  (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`). What remains not built is the
-  richer `theme-discovery` framing (`get_theme_flow` - LLM-surfaced themes ranked by
-  資金流向; `get_themes` itself is real but web-only), which is a scoring/flow concern still
-  tracked against module 20, distinct from the
-  now-live relational theme *lookup*.
+which are web-only tools).

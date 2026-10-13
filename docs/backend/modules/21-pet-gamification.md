@@ -9,15 +9,15 @@ catalog, tuning, and mechanics below are **our own** (values are our config, not
 1. **Free guaranteed pull on register** — a welcome modal with an animated gacha bar; every new
    user gets exactly **one free pull** and the first pet auto-equips.
 2. **Cosmetic + companion only** — pets grant **no data access, no quota, no analysis power**.
-   They are **fully decoupled from billing, tiers, entitlements, and governance**. Rarity and
+   They are **fully decoupled from billing, tiers, entitlements, and the analysis guardrails**. Rarity and
    level change only *tone/flavor*, never *what data or advice* the user gets.
 3. **Reactive companion in chat** — the equipped pet's avatar reacts to chat events (thinking,
    level-up, a big move in a watched symbol) and lightly flavors the assistant's tone. It
    **never gives investment advice** and is **clearly separated** from the non-trading analysis.
 
 > **Why decoupled from entitlements matters.** Coupling a pet to paid data or a "better answer"
-> would turn a cosmetic into a pay-to-win investment tool — a governance and fairness problem.
-> Keeping pets purely cosmetic means the whole system sits *outside* the §4 entitlement gate and
+> would turn a cosmetic into a pay-to-win investment tool — a fairness problem.
+> Keeping pets purely cosmetic means the whole system sits *outside* the entitlement gate and
 > the guardrails' analysis path; it can never affect a trading-relevant output. This is the
 > single most important invariant in this module.
 
@@ -38,13 +38,14 @@ rarity is purely a drop-weight + a companion-persona tier.
 ## 2. Data model (relational — Postgres/SQLite, **not** the market-data store)
 
 Pet/user state is app state → the app DB (module `db/`), scoped by `user_id` like everything
-else. Two tables (full column list in [database-schema.md](../database-schema.md) §8):
+else. Two tables (the SQLAlchemy models `UserPetRow` / `UserPetStatsRow` in `backend/src/db/models/accounts.py`):
 
 - **`user_pets`** — one row per owned pet: `id, user_id, pet_id, is_active (equipped flag),
-  level (default 1), xp, obtained_via (pull|admin), timestamps`. Index `(user_id)`,
-  `(user_id, is_active)`.
+  level (default 1), xp, obtained_via (pull|admin), timestamps`. Unique `(user_id, pet_id)` and at
+  most one equipped pet per user (partial unique index).
 - **`user_pet_stats`** — one row per user: `total_pulls, streak_days, last_login_date,
-  chat_count, available_pulls (default 1), pity_counter`.
+  chat_count, available_pulls (default 1), pity_counter, xp_day, xp_today, hint_enabled,
+  companion_visible`.
 
 ## 3. Gacha pull
 
@@ -56,9 +57,7 @@ code). Consumes **1 `available_pulls`** (atomic reserve-before-act, so a double-
 - **Pity system** — `pity_counter++` each pull; guarantees a rare/legendary at our configured
   thresholds (`pets.config.PITY_RARE_AT` / `PITY_LEGENDARY_AT` = **30 / 50**, chosen for a
   reasonable pulls-to-legendary at our cadence). Counter resets on a rare/legendary hit
-  (`SqlAlchemyPetStore._roll_rarity`). **Not yet built:** any loyalty perk that lowers the
-  thresholds for equipping a higher-rarity pet — the current implementation applies the same
-  fixed thresholds to every pull regardless of what is equipped.
+  (`SqlAlchemyPetStore._roll_rarity`).
 - **Duplicate** → the pull instead grants **+XP** to the already-owned pet (`pets.xp_per_duplicate`),
   so a dup is never wasted.
 - **First-ever pet auto-equips.**
@@ -77,12 +76,11 @@ code). Consumes **1 `available_pulls`** (atomic reserve-before-act, so a double-
 - **Milestone bonus pulls** — crossing configured levels (`pets.config.LEVEL_MILESTONE_PULLS =
   {5: 1, 10: 2, 20: 3}`) and every `CHATS_PER_BONUS_PULL` (25) chats / every
   `STREAK_DAYS_PER_BONUS_PULL` (7) day streak grant `available_pulls`. One-time per milestone
-  (`_apply_xp`'s crossing check makes this idempotent on retry — see its docstring). Reachable
-  only once chat/login wiring above exists.
+  (`_apply_xp`'s crossing check makes this idempotent on retry — see its docstring).
 - All XP/pull mutations are **atomic upserts** on `user_pet_stats` / `user_pets` (concurrency
   §10) — parallel turns on multiple devices can't lose an update or double-grant.
 
-## 5. Reactive companion in chat (design intent — tone modulation is real, SSE reactions are not)
+## 5. Reactive companion in chat
 
 - **Tone modulation (wired, opt-in).** `pets/persona.py`'s `pet_hint_for(pet)` renders a small
   rarity/level-scaled hint. `api/pet_turn.pet_hint_for_user` returns it only when the user turned
@@ -93,7 +91,7 @@ code). Consumes **1 `available_pulls`** (atomic reserve-before-act, so a double-
 - **Reaction events (SSE).** At turn end the driver emits `pet.leveled {pet_id, level}` and
   `pet.pull_earned {count}` when they happen (an unknown event is ignored by clients). A
   `pet.reaction` event is not needed: the companion's idle/thinking/done states derive from the
-  existing turn events. The avatar and toasts are frontend slice 2.
+  existing turn events. The web renders the avatar and notices (`chat/pet-companion.tsx`).
 - **Hard separation from advice (upheld by construction):** the pet mechanism has no path to emit
   analysis, a score, or a recommendation — `pets/` never imports `tools`/`orchestrator`'s
   analysis path, and the one real integration point (`pet_hint_for`) only ever returns a tone
@@ -106,8 +104,8 @@ code). Consumes **1 `available_pulls`** (atomic reserve-before-act, so a double-
    with `available_pulls = 1` (lazy `ensure_stats`/`_ensure_stats` on first pet-endpoint access,
    or on the first `pull` call if no stats row exists yet).
 2. Client shows the **welcome gacha modal** with an animated pull bar → `POST /pets/pull`.
-3. Pet revealed (rarity animation), **auto-equipped**, companion appears in chat (contingent on
-   the pet-hint wiring gap in §5 above — the persona hint is not yet reaching the live prompt).
+3. Pet revealed (rarity animation), **auto-equipped**, companion appears in chat (the tone hint is
+   opt-in, see §5).
 
 **Existing user (return):** the first `GET /me` of a Taipei day runs `register_login` (yesterday ->
 `streak_days++`; every 7-day streak -> +1 pull; idempotent same-day). If `available_pulls > 0` the
@@ -132,17 +130,16 @@ PATCH /pets/settings        partial of the same: hint_enabled = pet-flavoured re
                             companion_visible = avatar + notices in chat (default on)
 ```
 All scoped by `user_id`; standard session auth. No tier check anywhere in this module
-(cosmetic-only invariant, §governance).
+(cosmetic-only invariant).
 
-## Governance obligations
+## Obligations
 - **Fully outside the analysis + entitlement path.** Pets grant no data access, no quota, no
   analytical capability; rarity/level affect only cosmetic tone. Not gated by tier; not part of
   `data_class`; not billed. A pet can never change a trading-relevant output.
-- **Guardrails supersede persona (by design, pending §5's wiring gap).** `pet_hint_for`'s output
-  is designed to be appended after the governance prompt and subject to `guardrails.check_output`
-  — it can never introduce buy/sell language, a target, or drop a caveat, and this is proven by
-  `tests/pets/test_persona.py` today even though the hint isn't yet reaching a live prompt.
+- **Guardrails supersede persona.** `pet_hint_for`'s output is appended after the governance
+  prompt layer and subject to `guardrails.check_output` — it can never introduce buy/sell language,
+  a target, or drop a caveat (pinned by `tests/pets/test_persona.py`).
 - **Non-advice separation.** The companion never speaks as an analyst — `pets/` has no path to
-  emit analysis. The dedicated SSE reaction channel/UI region described in §5 is not yet built.
+  emit analysis.
 - **Per-user isolation + concurrency.** Pet state is `user_id`-scoped; all XP/pull/equip
   mutations use atomic upserts / reserve-before-act ([16](16-infrastructure.md) §10).

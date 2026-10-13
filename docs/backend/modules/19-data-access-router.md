@@ -8,8 +8,8 @@ a **capability** for a **(market, symbol)** and a **router resolves which adapte
 priority order, with fallback**. Adding a market or a source becomes a **config change**, not a
 code change touching every caller.
 
-Sits **between** the context/calendar/tools layers and `sources/` (preserves ADR-0002's one-way
-rule + "only `sources/` does I/O"). See [../adr/0020](../adr/0020-multi-market-data-access.md).
+Sits **between** the context/calendar/tools layers and `sources/` (preserves the one-way layering
+rule: only `sources/` does I/O, and only `dataaccess/` and `ingest/` import it).
 
 ```
 tools / context / calendar        "give me <capability> for <symbol@market>"
@@ -31,9 +31,8 @@ rules, currency, timezone, trading hours, and the source-priority table.
 class Market(str, Enum):
     TW = "TW"        # 上市/上櫃 (TWSE/TPEx)
     US = "US"; GB = "GB"; JP = "JP"
-    HK = "HK"        # real enum value, but — like the calendar_events gap noted in §4 below —
-                      # has no rows configured in source_priority.yaml today; a live router call
-                      # for any (HK, capability) pair degrades to unavailable
+    HK = "HK"        # real enum value, but has no block in source_priority.yaml today; a live
+                      # router call for any (HK, capability) pair degrades to unavailable
     EU = "EU"        # continental-Europe equities (e.g. Euronext) — no single-country home
     GLOBAL = "GLOBAL"  # datasets with no single-country home at all (multi-country central-bank
                         # rate panels, world commodity benchmarks) — distinct from a market gap
@@ -46,9 +45,8 @@ class Symbol(BaseModel):
     finmind: str | None
 ```
 
-A `MarketProfile` (config) carries per-market currency, tz, trading calendar source, business-day
-rules, and the calendar rule-set ([18](18-calendar-events.md)) — so TW's 除權息/結算 rules and
-US's ex-div/OPEX rules live side by side, selected by `market`.
+Per-market currency/timezone/trading-calendar handling is not a router concern; see
+[18](18-calendar-events.md) (`calendar/` is TW-shaped today).
 
 ## 2. Capabilities — *what*, not *which source*
 
@@ -62,9 +60,9 @@ institutional_flow · margin_short · shareholding · chip_broker · analyst_con
 esg · profile · news · calendar_events · etf_holdings · derivatives_oi · macro · sector_class ·
 options_chain · institutional_holders · insider_activity · symbol_search · symbol_lookup ·
 earnings_calendar · ipo_calendar · economic_calendar · sector_overview · industry_overview ·
-market_status · fund_holdings · … (134 capabilities total across TW/US/GB/EU/JP/HK/GLOBAL — this
-list is illustrative, not exhaustive; the full enum lives in `schemas/enums.Capability` and the
-full per-dataset inventory in [../data-catalog.md](../data-catalog.md))
+market_status · fund_holdings · … (146 capabilities total across TW/US/GB/EU/JP/GLOBAL — this
+list is illustrative, not exhaustive; the full enum lives in `schemas/enums.Capability`, and
+each adapter's coverage is declared in its `supports()` under `backend/src/sources/`)
 ```
 
 Each capability defines a **normalized output model** (e.g. `EODBar`, `DividendEvent`,
@@ -102,13 +100,10 @@ TW:
   chip_broker:        [finmind]                              # sponsor; TW-only
   analyst_consensus:  [yfinance]                              # the licensed gap
   corporate_actions:  [mops]                                  # 重大訊息 material-announcement stream
-  # calendar_events: not configured for TW today — the real `config/source_priority.yaml` has
-  # no `calendar_events` row at all; `sources/ncdr_closure.py` declares (CALENDAR_EVENTS, TW)
-  # but is not wired into `dataaccess/composition.py`'s adapter dict, so a live router call for
-  # this capability degrades to `unavailable` (see 18-calendar-events.md). There is no
-  # `calendar_ext` source_id and the rule engine is not a router-resolvable adapter — it is a
-  # separate, feedless Layer 1 (`calendar/rules.py`) composed above the router, not through it.
-  # ... every TW capability listed above; see the live file for the full 134-capability block
+  calendar_events:    [ncdr_closure, twse_openapi]            # merged via fetch_all, not first-healthy-wins (see 18-calendar-events.md)
+  # The rule engine (`calendar/rules.py`) is not a router-resolvable adapter — it is a separate,
+  # feedless Layer 1 composed above the router.
+  # ... every TW capability listed above; see the live file for the full block
 
 GLOBAL:               # datasets with no single-country home — Market.GLOBAL, not forced into TW/US
   central_bank_rate:  [finmind]
@@ -134,12 +129,12 @@ JP: { price_eod: [yfinance], financials: [yfinance], ... }
 - **Fallback + coverage-gating are built in** — matches the reliability requirements (circuit
   breakers [16](16-infrastructure.md) §6; don't render empty scaffolding). A source that is
   down/rate-limited/empty is skipped to the next automatically.
-- **Merge policy — not a router feature.** `DataAccessRouter.fetch()` is strictly first-healthy-
-  wins; it has no merge/union mode. The one place multiple feeds are combined is
-  `calendar/events.py::get_calendar_events`, and that composition happens **above** the router
-  — it calls `router.fetch()` once per capability (`CALENDAR_EVENTS`, `DIVIDENDS`,
-  `CB_PUT_PROVISION`) and merges the three result sets itself, plus any caller-supplied rule-
-  engine events ([18](18-calendar-events.md)). The router itself stays single-result-per-call.
+- **Merge policy.** `DataAccessRouter.fetch()` is strictly first-healthy-wins. For the rare
+  capability whose adapters each contribute a disjoint slice (`calendar_events`: NCDR closures +
+  TWSE schedules), `DataAccessRouter.fetch_all()` calls every configured adapter and returns every
+  result; the caller merges. `calendar/events.py::get_calendar_events` also calls `fetch()` for
+  `DIVIDENDS` and `CB_PUT_PROVISION` and merges those above the router, plus any caller-supplied
+  rule-engine events ([18](18-calendar-events.md)).
 - **Provenance:** the normalized result records which source actually served it + its
   `data_class`/`timing_class`/caveat, so the entitlement gate, teaser, and citations still work
   unchanged downstream.
@@ -148,7 +143,7 @@ JP: { price_eod: [yfinance], financials: [yfinance], ... }
 
 | Change | Cost |
 |--------|------|
-| Add a market (US/GB/JP) | a `MarketProfile` + rows in `source_priority.yaml` + calendar rule-set; **no caller code** |
+| Add a market (US/GB/JP) | a `Market` value + a block in `source_priority.yaml` (+ calendar rules if needed); **no caller code** |
 | Add a source (e.g. Finnhub, Alpha Vantage) | one adapter declaring its `(capability, market)` set + add its id to priority lists |
 | Change priority ("prefer X over Y for US") | edit one YAML line |
 | A source dies / rate-limits | router falls through to the next; M5Q degrades — no outage |
@@ -159,29 +154,16 @@ and a symbol; everything else is resolved by config. The `data_class` gate, cach
 ([16](16-infrastructure.md) §3, keyed by `(capability, market, symbol)`), and governance are
 unchanged — they simply operate on the router's normalized results.
 
-## Symbol search (`GET /search`) — not-yet-built for TW, real for US/GB/JP/EU
+## Symbol search (`GET /search`)
 
-**Corrected vs. an earlier draft of this doc:** the router does **not** own a cached, ingested
-"symbol universe" table today — there is no `TaiwanStockInfo`/ETF-roster ingest-backed lookup
-service. `GET /search` (`api/routers/context.py::symbol_search`) is a thin dispatch straight to
-the `get_symbol_search` tool, which is backed by the `symbol_search` capability — currently only
-`yfinance` declares that pair, and only for `US`/`GB`/`JP`/`EU` (`_SEARCH_SERVED_MARKETS` in that
-router module). Calling it with `market=TW` returns a `501 not_supported` error, explicitly and
-honestly, rather than a naive whole-roster scan pretending to be ranked type-ahead. There is no
-grouped TW → ETF → US result shape, no 主題/產業 match section, and no long-TTL cached universe —
-building a TW/ETF symbol-universe search service (from ingested `TaiwanStockInfo` + ETF list) is
-still open work, not yet started.
-
-## Real frontend consumer of the market REST routes
-
-The 7 real `market_rest/` routes (`/market/institutional-ranking`, `/market/margin-maintenance`,
-`/market/day-trading`, `/market/etf-money-flow`, `/market/industry-flow`, `/macro`,
-`/macro/business-indicator`) now have a real consumer: `web/src/app/[locale]/(app)/market/
-market-panel.tsx` + `web/src/lib/api/market.ts` ship the first real `/market` dashboard (git
-`2dc5f81`), calling exactly those 7 routes and no others — this is data-access output reaching a
-UI, not just agent tools/REST plumbing with no caller yet.
+`GET /search` (`api/routers/context.py::symbol_search`) dispatches two distinct backing tools,
+never merged into one call: `market=TW` uses `get_symbol_directory_search` (a scan over the
+ingested `TaiwanStockInfo` roster — stocks and ETFs together, warrants excluded); US/GB/JP/EU use
+`get_symbol_search` (the `symbol_search` capability, served by `yfinance`, which refuses TW). Any
+other market returns `501 not_supported`. There is no grouped TW → ETF → US result shape and no
+主題/產業 match section.
 
 ## Governance
-- Router lives above `sources/`; it performs **no I/O itself** (ADR-0002 holds).
+- Router lives above `sources/`; it performs **no I/O itself** (the one-way layering rule holds).
 - Per-market currentness caveats and `data_class` propagate from the serving adapter; a
   cross-market answer is caveated per source. Non-trading rules are market-independent.

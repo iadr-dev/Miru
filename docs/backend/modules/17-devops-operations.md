@@ -2,22 +2,23 @@
 
 Module 16 defines the **architecture** (what runs, how pieces talk). This module defines the
 **delivery and run lifecycle** — CI/CD, packaging, environments, probes, shutdown, DR,
-residency, cost ops, and runbooks. From the DevOps review (see [../adr/0016](../adr/0016-devops-operations.md)).
+residency, cost ops, and runbooks.
 
 ## 1. CI/CD pipeline
 
-Python/FastAPI monorepo. There are exactly **3 workflow files** in `.github/workflows/`:
-`backend-ci.yml`, `frontend-ci.yml`, `secret-scan.yml` — none carries a `schedule:` trigger, so
-there is **no nightly/merge gate and no scheduled/pre-release cron gate today** (no
-`operator-preflight`/`browser-e2e` cron, no scraper-contract canary).
+Python/FastAPI monorepo. There are **5 workflow files** in `.github/workflows/`:
+`backend-ci.yml`, `frontend-ci.yml`, `secret-scan.yml`, `dependency-audit.yml` and
+`coverage.yml`. Only the last two carry a `schedule:` trigger (weekly pip-audit and weekly
+coverage floor); there is **no nightly/merge gate and no `operator-preflight`/`browser-e2e` cron
+or scraper-contract canary** — those markers are manual.
 
 - **PR gate, job 1 (`lint-type-test`):** ruff check → ruff format check (ruff is the sole
   lint+format tool — there is no black in this repo) → `mypy --strict` (second opinion) →
   `pyright --strict` (the primary type checker per [backend/CLAUDE.md](../../../backend/CLAUDE.md)
-  §1) → the default suite (`uv run pytest`, non-network — `backend/pyproject.toml`'s `addopts`
-  already scopes to `-m 'not network'`; there is **no `fast`/`default-ci` marker split**, only
-  one non-network tier) → **governance suite** (`pytest -m governance` — non-trading, caveat,
-  per-user isolation, `sponsor` gate).
+  §1) → **governance suite** (`pytest -m governance` — non-trading, caveat,
+  per-user isolation, `sponsor` gate) → the default suite (`pytest -m "not network and not
+  governance"`; `backend/pyproject.toml`'s `addopts` already scopes to `-m 'not network'`, and
+  there is **no `fast`/`default-ci` marker split**).
 - **PR gate, job 2 (`dual-dialect-migrations`):** runs against a real Postgres service
   container. This project has **no Alembic migration chain** (no `alembic.ini`, no
   `alembic/versions/`) — schema provisioning is `Base.metadata.create_all()` via
@@ -30,8 +31,9 @@ there is **no nightly/merge gate and no scheduled/pre-release cron gate today** 
   shared-state race/lost-update/TOCTOU tests) against the same container.
 - **Secret scan:** `secret-scan.yml` runs **gitleaks** on every PR and push to `main`,
   deliberately not path-filtered (a leaked credential can land anywhere in the repo, not just
-  `backend/`). There is **no `pip-audit`, no Trivy image scan, and no SBOM step** anywhere in CI
-  today.
+  `backend/`). `dependency-audit.yml` runs **pip-audit** on the locked
+  dependencies (on lockfile changes and weekly). There is **no Trivy image scan and no SBOM
+  step** in CI.
 - **Deploy:** blue-green or canary. With no migration chain, a schema change ships via
   `create_all()`'s additive, idempotent behavior (new tables/columns appear; it never drops or
   alters existing ones) rather than an expand/contract migration sequence. Rollback = redeploy
@@ -39,11 +41,11 @@ there is **no nightly/merge gate and no scheduled/pre-release cron gate today** 
 
 ## 2. Containerization & runtime
 
-- **One image, role-selected entrypoint** (`api` | `scheduler` | `worker` via env) — parity
-  across the three process types ([16](16-infrastructure.md) §1). Non-root, pinned base,
-  `.dockerignore` excludes fixtures/secrets.
-- **`docker-compose` (dev parity)** brings up the **full** stack: api + scheduler(leader) +
-  worker + Redis + Postgres + Parquet/DuckDB volume + broker — so the Redis-transport path is
+- **One image, role-selected entrypoint** (`SERVICE_ROLE` = `api` | `scheduler` | `ingest` |
+  `mcp`, see `backend/docker-entrypoint.sh`) — parity across the process types
+  ([16](16-infrastructure.md) §1). Non-root (`USER app`), pinned `python:3.13-slim` base.
+- **`docker-compose` (dev parity)** (`backend/docker-compose.yml`) brings up the **full** stack: api + scheduler +
+  ingest + mcp + Redis + Postgres + a market-data volume — so the Redis-transport path is
   exercised locally, not first discovered in prod.
 - **Ollama** = optional compose profile (large/GPU); the offline/self-host path, **not** in the
   hosted prod image.
@@ -58,8 +60,8 @@ there is **no nightly/merge gate and no scheduled/pre-release cron gate today** 
 
 ## 4. Probes & lifecycle
 
-- **`/livez`** (process up), **`/readyz`** (Redis + Postgres + broker reachable — refuses LB
-  traffic if not), **`/startupz`**. These are **distinct from `/health`** (which is business
+- **`/livez`** (process up), **`/readyz`** (Postgres, plus Redis when the event-bus or rate-limiter
+  backend is `redis` — 503 if not), **`/startupz`** (same checks), in `api/routers/probes.py`. These are **distinct from `/health`** (which is business
   data-currency + FinMind quota, not an infra probe). Scheduler/worker have their own liveness
   (leader-lock held? queue consumable?).
 - **Graceful shutdown / SSE draining:** on SIGTERM → stop accepting new turns → checkpoint or
@@ -70,8 +72,8 @@ there is **no nightly/merge gate and no scheduled/pre-release cron gate today** 
 
 ## 5. Reliability / DR
 
-- **Postgres:** managed PITR + **tested restore drill**; defined RPO/RTO. Holds the auditable
-  record (governance §7/§9) — non-negotiable backup.
+- **Postgres:** managed PITR + **tested restore drill**; defined RPO/RTO. Holds the durable
+  record (users, threads, usage, billing, entitlements) — non-negotiable backup.
 - **Redis HA + degradation tiers** (Redis is now critical-path — transport + counters + locks +
   cache): Sentinel/managed-cluster failover. On Redis loss: SSE falls back to `stream_events`
   DB polling; quota checks **fail-closed** to conservative per-tier limits; locks fall back to
@@ -96,13 +98,15 @@ there is **no nightly/merge gate and no scheduled/pre-release cron gate today** 
 
 - **Ingress TLS** (M6D §5 is *outbound*): managed certs, TLS 1.2+ min, HSTS at the edge.
 - **Data residency / PII (PDPA):** `users` holds birthday/phone/nationality → choose a TW/APAC
-  region; **assert PII never enters LLM prompts/journal/logs** (extends governance §9); publish
+  region; **assert PII never enters LLM prompts/journal/logs** (see `backend/CLAUDE.md` §8, security); publish
   a **sub-processor inventory** (7 LLM vendors + Brave + FinMind + Paddle + OAuth + LINE/Telegram/
   email) + backup residency. Paddle (merchant of record) handles payment PII; profile PII is ours.
 - **Log redaction:** no raw payloads / secrets / PII in log sinks or shipping — a startup
   self-check refuses to boot if the mandatory guardrail hooks aren't registered.
-- **Audit-log shipping:** `journal_entries` is the audit record — define retention (see
-  [../database-schema.md](../database-schema.md)), immutability/tamper-evidence, and off-box shipping.
+- **Audit-log shipping:** the per-Step journal (`agent/journal.py`) is currently one structured
+  log line per event (structlog), not a DB table — define retention, immutability/tamper-evidence,
+  and off-box shipping for that log sink. Persistent tables are the SQLAlchemy models in
+  `backend/src/db/models/`.
 - **GDPR/PDPA account deletion** flow: purge/anonymize across all `user_id`-scoped tables.
 
 ## 8. Runbooks, on-call, feature flags
@@ -119,5 +123,5 @@ there is **no nightly/merge gate and no scheduled/pre-release cron gate today** 
   externally-exposed surface, spec its exposure explicitly.
 
 ## Governance obligations
-- Nothing here relaxes governance; it operationalizes it (log redaction, PII residency,
+- Nothing here relaxes the governance rules ([backend/CLAUDE.md](../../../backend/CLAUDE.md) §4, §8; [AGENTS.md](../../../AGENTS.md)); it operationalizes them (log redaction, PII residency,
   non-trading self-check, audit shipping).

@@ -1,45 +1,31 @@
 # Module: Context pipeline (`backend/src/context/`)
 
-Assembles source results into the governed context packages. Preserves the reference
-project's **mode/level semantics** (kept as governance concepts) while using clean domain
-filenames. Concept ↔ code mapping is in [../architecture.md](../architecture.md) §1.
+Assembles source results into the governed context packages. Keeps the project's
+**mode/level semantics** (Mode A/B/C, Level 1/2) while using clean domain filenames. Concept ↔ code mapping is in [../architecture.md](../architecture.md) §1.
 
-## `MarketDataStore` protocol — design intent, not yet built
+## Market-data caching and the `MarketDataStore` seam
 
-[ADR-0018](../adr/0018-enforcement-seam-and-store-protocols.md) §3 decided that market/derived
-data should sit behind a **protocol**, not an ad-hoc store — `MarketDataStore` (read/write
-canonical packages, observation runs, the normalized `etf_holdings` table, cached source
-results), peer to `ConversationStore`/`MemoryStore`, with a read-through cache as a caching
-`SourceAdapter` wrapper in `sources/` so `context/` itself never opens a socket/DuckDB/Redis
-handle.
+Why: market/derived data should sit behind a seam, not an ad-hoc store, so `context/` itself never
+opens a socket/DuckDB/Redis handle. There is **no `MarketDataStore` protocol class** in `context/`
+today; the seam is realised in two concrete pieces:
 
-> **Partially built:** the `MarketDataStore` protocol itself is still a confirmed **future
-> design intent**, not current code — there is no `MarketDataStore` protocol anywhere in
-> `context/` today. But the read-through caching wrapper ADR-0018 anticipated **is** built and
-> wired: `sources/caching_adapter.py`'s `CachingSourceAdapter` implements the `SourceAdapter`
-> protocol as a genuine Redis read-through cache — per-capability TTL keyed off each result's own
-> `TimingClass`, a single-flight-on-miss lock (`SET NX EX`) with poll-and-wait to guard against
-> stampedes on a hot key. `dataaccess/composition.py::build_default_adapters` wraps every
-> adapter with it when `settings.market_data_cache_backend == "redis"`, it has a dedicated test
-> module (`backend/tests/sources/test_caching_adapter.py`), and it is enabled by default in
-> `docker-compose.yml`. What's still missing is the rest of the `MarketDataStore` surface —
-> canonical-package/observation-run persistence and the normalized `etf_holdings` table — plus
-> the leader-writes-Parquet / workers-read-only split (`ingest/store.py`'s `ParquetStore` +
-> per-worker read-only DuckDB, [16-infrastructure.md](16-infrastructure.md) §3), which remains
-> the durable-storage half of that seam. Building the full protocol is a follow-up, not a
-> current gap in the request path: `context/` still performs no I/O of its own today (the router
-> does the fetching, now through a cache-wrapped adapter), so ADR-0002's "only `sources/` does
-> I/O" invariant holds regardless of whether the full protocol lands.
+- **Read-through cache** — `sources/caching_adapter.py`'s `CachingSourceAdapter` implements the
+  `SourceAdapter` protocol as a Redis read-through cache: per-capability TTL keyed off each
+  result's own `TimingClass`, plus a single-flight-on-miss lock (`SET NX EX`) with poll-and-wait
+  against stampedes on a hot key. `dataaccess/composition.py::build_default_adapters` wraps every
+  adapter with it (except the live-quote adapter) when `settings.market_data_cache_backend ==
+  "redis"` (default `none`; `redis` in `docker-compose.yml`). Tests:
+  `backend/tests/sources/test_caching_adapter.py`.
+- **Durable derived store** — leader-writes-Parquet / workers-read-only (`ingest/store.py`'s
+  `ParquetStore` + per-worker read-only DuckDB, [16-infrastructure.md](16-infrastructure.md) §3).
 
-**Layering (preserves ADR-0002 "only `sources/` does I/O"):** `context/` requests a
-**capability for a (symbol, market)** from the **data-access router**
+Not built: persistence of canonical packages / observation runs (they exist only in memory).
+
+**Layering (only `sources/` does I/O):** `context/` requests a **capability for a
+(symbol, market)** from the **data-access router**
 ([19-data-access-router.md](19-data-access-router.md)) — it never names a source or opens a
 socket/DuckDB handle. The router resolves per-market priority + fallback and returns a
-normalized result from the configured adapter(s), each of which is Redis-cache-wrapped by
-`CachingSourceAdapter` when `market_data_cache_backend == "redis"` (the pending piece is only
-the rest of the `MarketDataStore` seam above — canonical/observation persistence — not the cache
-tier itself). This is what makes `context/` market-agnostic (works for TW today, US/JP later)
-regardless of that remaining seam.
+normalized result from the configured adapter(s). This is what makes `context/` market-agnostic.
 
 ## Canonical (Mode A / Level 1) — `canonical.py`
 
@@ -47,16 +33,16 @@ regardless of that remaining seam.
 - **Immutable in memory today:** `CanonicalPackage` is a frozen Pydantic model;
   `new_version()` returns a new object with `version + 1` rather than mutating in place
   (enforced by the framework, not just convention). This module performs **no I/O** — there is
-  no durable canonical-package store yet (that would be the pending `MarketDataStore` seam
-  above); a caller that wants a canonical package persisted across requests has nowhere to
+  no durable canonical-package store; a caller that wants a canonical package persisted across requests has nowhere to
   write it to today.
 
 ## Bounded Observation (Mode B / Level 2) — `observation.py`
 
-- One **explicit, operator-triggered** live-ish observation. No polling/scheduling.
+- One **explicit, operator-triggered** live-ish observation. No polling/scheduling: this module
+  has no loop, timer or retry.
 - Backed by the `run_bounded_observation` tool; free-source snapshots are `public`, paid
   (FinMind Sponsor) real-time is `sponsor` (entitlement-masked).
-- Writes an observation-run record (auditable).
+- Returns an immutable `ObservationRun` record (auditable); it is not itself persisted.
 
 ## Conversation (Mode C) — `conversation.py`
 
@@ -78,9 +64,9 @@ regardless of that remaining seam.
 
 | Sub | Scope | Status |
 |-----|-------|--------|
-| M8A | Official EOD merge (TWSE/TPEX/TAIFEX OpenAPI + FinMind history) | primary — in the default capability set |
+| M8A | Official EOD merge (TWSE OpenAPI + FinMind history; the TPEX adapter is not router-wired) | primary — in the default capability set |
 | M8B | TAIFEX derivatives context (`derivatives_oi`, via the real `taifex_openapi` adapter) | built and configured, but **opt-in**: excluded from the default capability set, requested only via `BuildOptions.include_derivatives=True` |
-| M8C | `TAIFEX_MIS` live-ish + real-time snapshots | **staged behind a validation flag; `sponsor` where it uses paid FinMind data** |
+| M8C | `TAIFEX_MIS` live-ish + real-time snapshots (`PRICE_INTRADAY`) | **staged behind `BuildOptions.enable_taifex_mis_validation`; no `TAIFEX_MIS` adapter exists** — `PRICE_INTRADAY` is currently served by `twse_mis`; `sponsor` where it uses paid FinMind data |
 
 ## Governance obligations
 

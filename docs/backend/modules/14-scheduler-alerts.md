@@ -1,11 +1,13 @@
 # Module: Scheduler & alerts (`backend/src/scheduler/`)
 
 User-authorized alerts and scheduled AI briefings — e.g. "外資連 3 天買超就通知我" or "每天收盤後給我
-自選股的籌碼摘要". Governed by [governance §9a](../governance.md) as amended by
-the alerts v2 design (open to all signed-in users; event-driven; masked
-sponsor values) on top of [ADR-0009](../adr/0009-scheduler-governance-amendment.md).
+自選股的籌碼摘要". The scheduler is the user-authorized carve-out from the "no unattended agent"
+rule (`backend/CLAUDE.md` §4, governance-as-code; bounds in §2): open to all signed-in users under
+fair-use caps, event-driven, sponsor values masked. Why: users explicitly create every rule and
+schedule, and the work is coarse, non-trading and quota-bounded.
 
-**Status:** v2 design, P0 in progress. §1 lists the v1 gaps; §9 is the phased roadmap.
+**Status:** alerts v2 and scheduled briefings are implemented (below); §1 lists what is still open,
+§9 what is built and not built.
 
 **Implemented (backend, `scheduler/`):**
 - **BYOK.** A scheduled run resolves the owner's own key exactly like an interactive turn
@@ -53,8 +55,7 @@ would needlessly re-arm the rule). Engine writes (`save_alert_state`) do not bum
 `expected_version` → **409 `stale_version`** and unknown fields → 422. A new `trigger` (or
 re-enabling a paused job) recomputes `next_run`; an unknown skill or unresolvable trigger is 422.
 
-**Briefings (done):** the catalogue in `schemas/schedule_templates.py` (six templates: 盤前簡報,
-收盤籌碼, 注意/處置股, 每週催化事件, 每週主動式 ETF, 美股收盤) is the single source of
+**Briefings (done):** the catalogue in `schemas/schedule_templates.py` (eight templates, §4) is the single source of
 template → skill + trigger + which skill input carries the target. The Settings form and the chat
 `propose_schedule` tool both draw from it, so nobody types a cron or a skill name. Every run is
 appended to **one persistent thread per schedule** (`schedule_jobs.thread_id`, created on the first
@@ -69,15 +70,13 @@ brief on nothing.
 **Chat entry point for schedules (done):** `propose_schedule` + the `schedule_proposal` card —
 propose-only exactly like `propose_alert`; the model picks a catalogue template and ticker codes,
 never a raw cron or skill, and the card posts the resolved `trigger`/`action` to `POST /schedules`.
-Still open: holiday/typhoon-aware `next_run` (the resolver's `is_trading_day` seam defaults to
-Mon–Fri), watchlist-scoped briefings, and the US-close → TW-morning delivery timing.
+Typhoon closures are not predictable and are not covered by `next_run` (see §5).
 
 **Chat entry point (done):** the `propose_alert` tool + `alert_proposal` card (see
 [03-tools](03-tools.md)). The agent only proposes; the user's tap on the card is the single
-creation path, so §9a bound 1 holds by construction. The rule vocabulary (`RuleCondition`,
+creation path, so bound 1 of §2 holds by construction. The rule vocabulary (`RuleCondition`,
 `TriggerMode`, `describe`) moved to `schemas/alerts.py` so the tool and the scheduler share one
-definition without an upward import (`scheduler` re-exports it). Chat cannot yet propose
-*watchlist-scoped* rules or schedules (`propose_schedule`).
+definition without an upward import (`scheduler` re-exports it).
 
 **Dataset availability (verified against `ingest/jobs/` + `ingest/us_jobs.py`):** every ingest job
 calls `publish_data_updated` after a successful write — the shared whole-market runner and each
@@ -89,18 +88,8 @@ lives in `events/`, a layer `ingest` may not import, so the context builder reso
 `INGEST_DATA_UPDATE_PUBLISHER_FACTORY` setting (`"module:callable"`, default
 `events.ingest_wiring:build_data_update_publisher`) by name. It binds only on the Redis event bus —
 an in-memory bus can't cross the process boundary, so the no-op is kept there — and any wiring
-problem degrades to the no-op rather than stopping a pull. (Before this, the daemon always ran the
-no-op and `data.updated` was never delivered in a deployed stack.) The signal still only lowers
+problem degrades to the no-op rather than stopping a pull. The signal still only lowers
 latency: the per-pass reconciliation sweep remains the correctness floor for alert evaluation.
-
-**Verified end to end against the real compose stack (Redis + Postgres + the three containers,
-2026-10-03):** the ingest process's own context builder bound `RedisDataUpdatePublisher`
-(`ingest_publisher_bound` in its log); `PUBSUB NUMSUB data.updated` showed the scheduler's subscriber
-(1) plus the API's `/updates/stream` once a client connected (2); a `data.updated` published through
-that bound publisher produced an alert notification row in Postgres in **0.26 s** (the sweep interval
-is 60 s, so only the live signal can explain it) and a frame on the API's SSE stream, and the
-scheduler logged `alert_signal_fired`. The check used a throwaway user and a fake 2099 date and
-removed everything it created.
 
 Price-derived templates read a **different dataset per market** (`TaiwanStockPrice` vs
 `us_price_eod`); 法人, 注意股, 處置股 and 月營收 are Taiwan-only and `POST /alerts` refuses them for a US
@@ -121,40 +110,32 @@ per symbol through the router; its feed adapter does not exist yet) — 除權�
 that data layer first. **Ingested and ready for templates:** 融資融券 (`margin_short`), ETF NAV /
 折溢價, 主動式 ETF holding changes (sponsor).
 
-**Still open in P0:** remaining templates in §3 (暫停交易 and 公司事件 need a data layer first; 新聞 later); journaling (`event_bus` wiring);
-user-timezone quiet hours; the watchlist-group entry point and `propose_schedule`; the
-通知紀錄 tab; schedule-list parity (status/next-run display).
+## 1. Open items
 
-## 1. Known gaps in v1 (why v2)
+- Templates in the §3 catalogue that are not built: 暫停交易 and 公司事件 (除權息 / 法說會 / 股東會) need
+  an ingested data layer first; 媒體新聞 later.
+- Journaling: the worker emits run/fire events (`_emit`) but `scheduler/composition.py` does not yet
+  pass an `event_bus`, so nothing is journaled in the daemon.
+- Chat cannot yet propose watchlist-scoped alert rules.
 
-1. API-created jobs never fire: the router passes no `next_run` and `due_jobs` requires one.
-2. Triggers are never resolved to times (no cron parsing, no `after_close`/`pre_open` resolution;
-   `_next_run` is "+1 day").
-3. Alerts poll every 60s and read only `PRICE_EOD`; institutional/indicator conditions have no data.
-4. `AlertPreference` is write-only; no `GET`; `read_at` never set; `unread_threads` hard-coded 0.
-5. LINE/Telegram/email/push build requests but never send; recipients are never resolved.
-6. Quiet hours compare in UTC; alert `daily_limit` is unenforced; no `event_bus` so nothing journals.
-7. ~~PATCH edits only `enabled` / three fields; no CAS exposed; no chat tool~~ — done for both
-   alerts and schedules (see §3 and the Schedules note above).
+## 2. Governance bounds (the scheduler carve-out)
 
-## 2. Governance bounds (§9a, as amended by modules/14)
-
-| # | Bound | Status |
-|---|---|---|
-| 1 | User-authorized only — nothing is created without an explicit user confirm | unchanged |
-| 2 | Reads the ingested canonical store only; no live streams; sponsor values masked (not withheld) for non-entitled users | **amended** |
-| 3 | Non-trading — observations, never signals | unchanged |
-| 4 | Quota-bounded — over quota → skip + report, no retry loop | unchanged |
-| 5 | Coarse, market-aware cadence — no tick polling | unchanged |
-| 6 | Open to all signed-in users under uniform fair-use caps; every run/fire journaled with its owner (required by P0 — v1 journals nothing) | **amended** |
-| 7 | Outbound delivery is user-authorized egress confined to `scheduler/delivery/*`: TLS per §5, env-only credentials, `check_output` + fail-closed before send | **new** |
+| # | Bound |
+|---|---|
+| 1 | User-authorized only — nothing is created without an explicit user confirm |
+| 2 | Reads the ingested canonical store only; no live streams; sponsor values masked (not withheld) for non-entitled users |
+| 3 | Non-trading — observations, never signals |
+| 4 | Quota-bounded — over quota → skip + report, no retry loop |
+| 5 | Coarse, market-aware cadence — no tick polling |
+| 6 | Open to all signed-in users under uniform fair-use caps; every run/fire is meant to be journaled with its owner (see §1 — not yet wired) |
+| 7 | Outbound delivery is user-authorized egress confined to `scheduler/delivery/*`: TLS only, env-only credentials, `check_output` + fail-closed before send (`backend/CLAUDE.md` §8) |
 
 ## 3. Alert rules
 
 ```
 AlertRule
  ├─ id, user_id, version
- ├─ scope: symbol (+market) | watchlist_id        # watchlist = fan-out over ADR-0027 items
+ ├─ scope: symbol (+market) | watchlist_id        # watchlist = fan-out over the group's items
  ├─ condition: {kind, params}                      # discriminated union, see catalogue
  ├─ trigger: once | once_per_day | every_occurrence, cooldown
  ├─ channels?, quiet_hours?, daily_limit?          # null = inherit AlertPreference
@@ -188,6 +169,8 @@ those group templates are offered but will not fire until the data is ingested.
 
 ### Catalogue (each template cites its dataset)
 
+Only the kinds in `schemas/alerts.py` (listed under *Implemented* above) are built; other rows are the planned vocabulary.
+
 | Category | Templates | Capability (`schemas/enums.py`) |
 |---|---|---|
 | 價量 | close ≷ X; daily % change ≷ X; volume ≥ N× 20-day avg; new 52-week high/low | `PRICE_EOD` |
@@ -196,11 +179,10 @@ those group templates are offered but will not fire until the data is ingested.
 | 公司事件 | 月營收 published (optional YoY ≷ X%); 除權息 T-n days; 法說會 / 股東會 T-n; 財報 published | `MONTH_REVENUE`, `CALENDAR_EVENTS` (types in `calendar/models.py`) |
 | ETF | 折溢價 ≷ X%; 主動式 ETF holding change; ETF 配息 announced | `ETF_NAV` / `PREMIUM`, `ACTIVE_ETF_HOLDING_CHANGE`, `DIVIDENDS` |
 | 公司公告 | **Built:** `material_announcement` - a MOPS 重大訊息 was filed today (event, no parameters) | `CORPORATE_ACTIONS` (`material_announcements`, ingested daily) |
-| 媒體新聞 (P3) | news mention for the symbol | `STOCK_NEWS` - **not built** (see below) |
+| 媒體新聞 | news mention for the symbol | `STOCK_NEWS` - **not built** (see below) |
 
 **Sponsor-class templates (pinned):** 分點/券商 (`CHIP_BROKER*`), 官股 (`GOVERNMENT_BANK_BUYSELL`),
-主動式 ETF 持股變化 (`ACTIVE_ETF_HOLDING_CHANGE`) and any other capability `data-catalog.md` marks
-`sponsor`; all other rows above are public (confirm against the catalog in P0). For a sponsor-class
+主動式 ETF 持股變化 (`ACTIVE_ETF_HOLDING_CHANGE`) and any other sponsor-class capability; all other rows above are public. For a sponsor-class
 template a non-entitled user's rule still fires, but the notification carries only
 「有一則需升級才能查看的資料更新」 — no condition facts or value-derived `preview` (modules/14).
 **TW-only templates** (注意股/處置股, 三大法人, 融資融券, 月營收, 除權息) are hidden for US symbols;
@@ -356,7 +338,7 @@ without ranking or picking.
   (`chart_hints`): US index moves, institution net flows, best/worst sectors, and the watchlist's
   five-day indexed lines. **Top 3 Drivers** are the three largest moves on a fixed scale (index 1%,
   SOX 2%, ADR 2%, VIX 10%, 10Y yield 2%, net flow 50 億), each a fixed sentence template.
-- **Journaling:** wire `event_bus` in composition; every run and fire is journaled with its owner.
+- **Journaling:** the worker publishes an event carrying its owner for every run and fire; the `event_bus` is not yet wired in composition (§1).
 - Fair-use caps (per user, see [12](12-multi-user-tiers.md)): max alerts, max schedules, max
   notifications/day; exceeding returns 409 `cap_reached`. Counters use an atomic upsert /
   reserve-before-act (infrastructure §10). Over the daily notification cap, extra fires are **held
@@ -372,7 +354,7 @@ rendered per channel behind the existing `DeliveryChannel` protocol (`scheduler/
 | In-app | `notifications` row | bell inbox + unread badge + mark-read; same-batch fires bundled |
 | Browser (`push`) | Web Push (RFC 8030) + VAPID (`vapid_public_key`/`vapid_private_key`/`vapid_subject`), via `pywebpush` in a worker thread | `/me/devices` with `platform=web`; the token is the JSON-encoded `PushSubscription` (endpoint + keys). The payload `{title, body, url, id}` is encrypted to the browser and shown by `web/public/sw.js`; a tap opens `url`. A 404/410 from the push service (or a token that is not a subscription) is reported in `DeliveryReceipt.stale_tokens` and the worker unregisters it. The permission prompt only appears when the user presses 「開啟」 on 設定 → 通知 |
 | Email | Resend HTTP API (`resend_api_key`, `email_from_address` on a Resend-verified domain) | transactional (the user set the alert/schedule): plain text + a small accessible HTML copy (declared `lang`, `<title>`, escaped body), the non-advice footer, and the notification id as the `Idempotency-Key` so a retry after a timeout cannot double-send. Reachable when the account has an email. Bounces and complaints are handled (below), and every email carries a one-click unsubscribe |
-| LINE | Messaging API push (`line_messaging_channel_access_token`; the older `LINE_MESSAGING_ACCESS_TOKEN` name also works) | recipient = the LINE user id from an explicit link (below), else the LINE sign-in id ([0022](../adr/0022-oauth-google-line.md)); a push to someone who has not added the official account is a permanent 4xx receipt. **The free LINE plan caps messages per month (200 on the configured account) — a push over the cap fails with 429** |
+| LINE | Messaging API push (`line_messaging_channel_access_token`; the older `LINE_MESSAGING_ACCESS_TOKEN` name also works) | recipient = the LINE user id from an explicit link (below), else the LINE sign-in id ([12](12-multi-user-tiers.md)); a push to someone who has not added the official account is a permanent 4xx receipt. **The free LINE plan caps messages per month (200 on the configured account) — a push over the cap fails with 429** |
 | Telegram | bot API (`telegram_bot_token`, `telegram_bot_username`) | bound by the one-time-token flow below |
 
 **Push endpoints are allow-listed (SSRF).** A browser subscription carries a push-service URL the
@@ -419,11 +401,11 @@ single-use and expires. The operator points the bot's webhook at that URL with
 `backend/.env` (Telegram only calls public HTTPS, so locally use a tunnel). `GET /me/channels` reports which channels can reach the user now.
 
 - **Precedence:** `AlertPreference` holds default channels, quiet hours, daily cap, morning digest;
-  a rule/job may override and the UI shows inherited values. Preferences gain `GET`.
+  a rule/job may override and the UI shows inherited values.
 - **Egress safety:** channel credentials are env-only; LINE/Telegram binding tokens are one-time;
   stored `line_user_id`/`telegram_chat_id` are encrypted at rest. Each outbound body is built with
   locked fields already nulled, then passes `guardrails.check_output`; a block falls back to a fixed
-  template. **Legal review gates every external channel (P1 blocker).**
+  template. **Legal review gates every external channel.**
 - **Body text** is a fixed copy template. Footer: 「本通知為你設定條件的資料提醒，非投資建議。」
   AI-generated parts (briefings, explain-on-trigger) pass the chat output guardrail.
 - **Tier lock on payloads:** delivery always happens. For non-entitled users a sponsor value renders
@@ -439,16 +421,20 @@ single-use and expires. The operator points the bot's webhook at that URL with
 - Phrase every alert as a user-defined condition that was met: 「外資連續 5 日淨買超，累計 X 張」,
   「股價收在 612，高於你設定的 600」.
 - 紅漲綠跌 tokens pair with ▲/▼ on rich surfaces; `--accent` is chrome-only.
-- Legal review of 投信投顧法 §4 before launch (modules/14 Consequences).
+- Legal review of 投信投顧法 §4 before launch.
 
 ## 8. Endpoints
 
 ```
 POST   /schedules, /alerts            create (cap-checked; condition/trigger validated)
 GET    /schedules, /alerts            list mine (includes status, last_fired, next_run, reason)
-PATCH  /schedules/{id}, /alerts/{id}  full edit with `version` CAS → 409
+PATCH  /schedules/{id}, /alerts/{id}  partial edit with `expected_version` CAS → 409 `stale_version`
 DELETE /schedules/{id}, /alerts/{id}
-POST   /alerts/proposals              parse-only: returns a rule draft for the chat confirm card
+POST   /alerts/batch                  one per-symbol rule per item (all-or-nothing, cap-checked)
+POST   /me/channels/line/link         one-time LINE link code; DELETE /me/channels/line unlinks
+POST   /channels/line/webhook         LINE webhook (X-Line-Signature)
+POST   /webhooks/resend               Resend bounce/complaint webhook (Svix-signed)
+GET|POST /email/unsubscribe           one-click email unsubscribe
 GET    /notifications                 inbox (unread_only, limit, cursor)
 POST   /notifications/read            {ids[]} | {all:true}
 GET    /notifications/badge           {unread_notifications, unread_threads, pending_alerts}
@@ -487,15 +473,9 @@ into the rule's title, so it is whitespace-normalised and refused if it holds ma
 characters or trading language (the shared `schemas.memory_rules` scan). Media-news (`STOCK_NEWS`,
 per-symbol, not ingested) is not built.
 
-## 9. Phased roadmap
+## 9. Status
 
-- **P0 — make it real:** `next_run` + trigger resolution; event-driven evaluation; inbox + read
-  state; edit (PATCH + CAS); surface errors; remove the Pro gate; caps; journaling (bound 6); the reconciliation sweep.
-- **P1 (blocker: legal review before any external channel):** 價量/籌碼/風險名單/公司事件 templates; watchlist scope; AssetHeader bell; Web Push + email.
-- **P2:** chat proposals; briefing templates + persistent threads; ETF templates; explain-on-trigger; LINE.
-- **P3:** Telegram; news/重大訊息; quiet-hours digest. Future ADRs: intraday alerts, webhooks.
-
-**Status.** Built (channels are web/browser, email, LINE, Telegram — no native APNs/FCM): holiday-aware `next_run`, watchlist scope (alerts and the multi-stock briefing),
+Built (channels are web/browser, email, LINE, Telegram — no native APNs/FCM): holiday-aware `next_run`, watchlist scope (alerts and the multi-stock briefing),
 quiet hours in the user's timezone with a held-notification digest, the 通知紀錄 history view, the
 nonexistent-ticker warning, and real senders for LINE / Telegram / email (Resend) / browser Web Push (with Telegram
 linking and a LINE add-friend link). **Also built:** the 晨間摘要 (see §5). **Also built:** `material_announcement` (MOPS 重大訊息, see below). **Not built:** media-news alerts, night-session futures / DXY / pre-market movers in the morning report, and a TW-ETF management-fee source (the exchange's ETF pages and SITCA do not publish

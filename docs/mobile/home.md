@@ -110,4 +110,4 @@ card 16px, pill 999px, 4px base, section gap 24px, card pad 20px). **Dark-first,
 Home is a **personal glance**, not a signal board. AI 精選 carries 「清單非推薦」 + the non-trading
 footer; quote blocks carry the currentness caveat (Free = EOD, Premium = ~5s delayed). No
 明牌/飆股/目標價/買賣 copy ([../brand.md](../brand.md) §5). Pet/streak is cosmetic, never crowds or
-colors analysis ([../backend/governance.md](../backend/governance.md) §1).
+colors analysis ([backend/CLAUDE.md](../../backend/CLAUDE.md) §4).

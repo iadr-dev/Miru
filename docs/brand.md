@@ -74,7 +74,7 @@ tones. Never framed as choosing a different analyst or advisor (protects the non
 
 - **Descriptive, never prescriptive.** The brand promise is "understand the market," never "beat
   the market." Marketing copy inherits the same non-trading guardrail as the product
-  ([governance.md](backend/governance.md) §1): no 明牌/飆股/目標價/保證/穩賺/獲利, no buy-sell framing.
+  ([backend/CLAUDE.md](../backend/CLAUDE.md) §4): no 明牌/飆股/目標價/保證/穩賺/獲利, no buy-sell framing.
 - **Bilingual, zh-TW-first.** One name, "Miru", in every locale; copy around it is zh-TW first.
 - **Colour cue:** a single signature orange on warm ebony/cream neutrals (see `web/src/app/tokens.css`)
   — a maison feel: quiet, premium, one accent. The 藍鵲 keeps its own blue as the mascot's colour.

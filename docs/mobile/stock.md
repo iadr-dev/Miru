@@ -81,4 +81,4 @@ Tokens from the web app (`VISUAL_DENSITY:6`, card 16px, pill
 A **navigator**, non-trading: quote previews carry the currentness caveat (EOD Free / live-ish
 Premium); trending is descriptive activity, never a recommendation; no scores/signals rendered on this
 surface (they live in the pushed [Stock Detail](stock-detail.md), each caveated). No
-明牌/飆股/目標價/買賣 copy ([../backend/governance.md](../backend/governance.md) §1, [../brand.md](../brand.md) §5).
+明牌/飆股/目標價/買賣 copy ([backend/CLAUDE.md](../../backend/CLAUDE.md) §4, [../brand.md](../brand.md) §5).

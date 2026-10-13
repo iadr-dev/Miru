@@ -140,9 +140,9 @@ Raw audio is discarded after transcription (PII/PDPA); low-confidence/ambiguous 
 | GET | `/quote/stream?symbols=&market=` | **Live-ish quote feed (SSE)** — `quote` events (each with `as_of` + `market_open`) pushed ~5s while market-open via the shared demand-driven poller (governance §9b, [modules/16](modules/16-infrastructure.md) §2a); delayed snapshot, not true streaming | **Premium+ (masked teaser / EOD otherwise)** |
 | GET | `/updates/stream` | **Cache-invalidation feed (SSE)** — `data.updated` events `{capability, market, as_of, scope}` when a derived-compute batch lands ([modules/16](modules/16-infrastructure.md) §3a, [modules/22](modules/22-data-ingest.md) §2); lets clients revalidate precisely | public |
 | GET | `/sources` | Source adapter matrix / capabilities | public |
-| GET | `/health` | Source-health view (per-capability currentness/status; no live FinMind quota reporting — the pool is a static config ceiling, not a polled quota, see [governance.md](governance.md) §9) | public |
+| GET | `/health` | Source-health view (per-capability currentness/status; no live FinMind quota reporting — the pool is a static config ceiling, not a polled quota) | public |
 
-Data inventory: [data-catalog.md](data-catalog.md). Responses containing `sponsor` (paid
+Data inventory: the adapters in `backend/src/sources/`. Responses containing `sponsor` (paid
 FinMind) fields are masked (`{locked, required_tier, preview}`) for unentitled users — the
 frontend blurs them with an upgrade CTA. No approval endpoint exists.
 
@@ -309,7 +309,7 @@ Companion reactions stream over the chat SSE as additive `pet.reaction` / `pet.l
 
 ---
 
-## 5a. Watchlists ([modules/09](modules/09-memory.md), [adr/0027](adr/0027-first-class-watchlist.md)) — public user data
+## 5a. Watchlists ([modules/09](modules/09-memory.md)) — public user data
 
 Rich rail: named groups, TW/US/ETF tabs, drag-reorder, star toggle. All public (non-trading user
 data); only the live-quote column inherits the Premium+ gate via `/quote/stream`.
@@ -787,6 +787,6 @@ table cannot carry.
 ---
 
 ## Cross-references
-- Schema behind these endpoints: [database-schema.md](database-schema.md)
-- Rules enforced on every endpoint: [governance.md](governance.md)
+- Schema behind these endpoints: the models in `backend/src/db/models/`
+- Rules enforced on every endpoint: [modules/25](modules/25-governance-enforcement.md)
 - System overview: [architecture.md](architecture.md)

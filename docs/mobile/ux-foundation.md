@@ -18,7 +18,7 @@ to. This is the *why* behind the mobile spec — it **deepens and justifies**
 and the per-screen docs [home.md](home.md), [watchlist.md](watchlist.md), [chat.md](chat.md),
 [calendar.md](calendar.md), [settings.md](settings.md), [stock-detail.md](stock-detail.md),
 [screener.md](screener.md). Shared foundations: the web app's tokens, visuals and motion non-negotiables,
-[../brand.md](../brand.md), [../backend/governance.md](../backend/governance.md).
+[../brand.md](../brand.md), [backend/CLAUDE.md](../../backend/CLAUDE.md) §4.
 
 ---
 
@@ -202,7 +202,7 @@ Premium depth arrives as a **馬賽克 teaser** (frame sharp, detail blurred), o
 ### 6.7 Currentness & non-trading, carried everywhere
 Every analytical surface (gauge, SWOT, Top-N, chat answer, **alert copy**, TTS) carries the
 **non-trading + currentness caveat** — a required, non-removable component
-([../backend/governance.md](../backend/governance.md) §1). Copy never uses 明牌/飆股/目標價/買賣/進場/停損.
+([backend/CLAUDE.md](../../backend/CLAUDE.md) §4). Copy never uses 明牌/飆股/目標價/買賣/進場/停損.
 Personality/pet layers style **tone only**, never add trading language or drop a caveat.
 
 ### 6.8 Design to the 2026 mobile bar (anti-slop, motivated)

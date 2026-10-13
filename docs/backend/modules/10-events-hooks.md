@@ -29,25 +29,21 @@ Two backends behind one `EventBusFactory` seam, config-selected
   `stream:{turn_id}` Redis Pub/Sub channel, so a *different* worker can serve a reconnect via
   `RedisStreamReader` (durable replay-since, then live-follow).
 
-Event kinds actually emitted in the codebase today (grep-verified against every
-`.publish(...)`/`bus.publish("...")` call site): `turn.start/end`, `route.decided`,
-`agent.spawned/progress/done`, `synthesis.start`, `steering.accepted`, `rich_card`, `usage`,
-`tool.start` (via `events.hooks.EventBusPreToolHook`, published the instant a tool call is about
-to dispatch — before governance's veto even runs, so it fires for a call that ends up blocked
-too), `tool.result` (via `events.hooks.EventBusPostToolHook`, one kind — not the finer
-`proposed/started/locked/blocked` split the original design named), `thinking.delta` (via
-`events.hooks.EventBusThinkingHook`, one raw extended-thinking chunk per event, republished
-verbatim), `message` (the final-answer frame) and `message.delta` (via
-`events.hooks.EventBusAnswerDeltaHook`, one already-governance-scanned sentence of the streaming
-final answer per event), `web_search.result` (via `events.hooks.EventBusWebSearchHook`, one
-completed native-web-search call's `{agent_id, sources}` per event), `data.updated`
-(ingest-invalidation, `events/data_updates.py`), and the skill-load-time `skill_loaded` structlog
-line (not a bus event). **Not found anywhere in the codebase:** `activity` (as a bus-published
-event kind — `"activity"` appears only as a data-field key inside an `agent.spawned` event's
-payload), `caveat` (as an event kind — `CAVEAT` is a `conversation.models.MessageBlockType`, not
-a bus event), `ask_user`, `follow_up`, the `pet.*` kinds ([21](21-pet-gamification.md) publishes
-no bus events), and `memory.recalled/written`/`source.fetch`. Treat this list as aspirational
-unless grep-confirmed against a real `.publish(` call.
+Every event kind is defined once in `events/kinds.py` (`EventKind`, a `StrEnum`); `publish` takes an
+`EventKind`, never a bare string. The kinds a chat turn streams to the web client are
+`TURN_STREAM_KINDS` (`turn.start/end`, `route.decided`, `agent.spawned/progress/done`,
+`synthesis.start`, `steering.accepted`, `rich_card`, `usage`, `tool.start`, `tool.result`,
+`thinking.delta`, `web_search.result`, `memory.used`, `personality.used`, `pet.leveled`,
+`pet.pull_earned`, `message`, `message.delta`); a test fails if that set and the web client's
+`SSE_EVENT_KINDS` ever disagree. Other kinds are internal: `data.updated` (ingest invalidation,
+`events/data_updates.py`) and the scheduler's `alert.fired` / `schedule.*`. Several are published via
+the `events.hooks.EventBus*Hook` handlers below: `tool.start` fires the instant a tool call is about to
+dispatch (before the governance veto, so it fires for a call that ends up blocked too), `tool.result`
+(one kind, not a finer `proposed/started/locked/blocked` split), `thinking.delta` (a raw
+extended-thinking chunk), `message.delta` (one already-governance-scanned sentence of the streaming
+final answer) and `web_search.result` (one completed native-web-search call's `{agent_id, sources}`).
+`activity`, `caveat`, `ask_user` and `follow_up` are not event kinds (`CAVEAT` is a
+`conversation.models.MessageBlockType`).
 
 ```python
 class Event(BaseModel):
@@ -70,7 +66,7 @@ class EventBus(Protocol):
 `publish` takes the event's fields directly (not a pre-built `Event`) and returns the `Event`
 it assigned a monotonic `seq` to — the bus, not the caller, stamps `seq`/`ts`. The envelope
 (`seq/agent_id/parent_agent_id/node_id`) is what lets the SSE bridge and the `stream_events`
-table ([../database-schema.md](../database-schema.md)) rebuild the parallel-lane timeline
+table (`SqlAlchemyStreamEventStore`) rebuild the parallel-lane timeline
 deterministically on reconnect — though `node_id` is a declared field with no real publisher
 setting it yet.
 
@@ -100,7 +96,7 @@ resolves a `User` to a real-tier `ToolContext` **once per turn** (not a register
 per call), and `tools.base.dispatch_tool` re-applies its masking check on every dispatch using
 whatever tier that `ToolContext` carries.
 
-Two distinct enforcement concerns, cleanly separated (do not conflate — see governance §7):
+Two distinct enforcement concerns, cleanly separated (do not conflate):
 
 | Hook point | Can veto? | **Governance** (`agent/guardrails.py`, hardcoded in `agent/loop.py`) | **Entitlement** (`tools.base.dispatch_tool`, tier resolved by `accounts/hooks.py`) | Other registered handlers |
 |------------|-----------|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------|---------------------------|
@@ -121,8 +117,8 @@ Two distinct enforcement concerns, cleanly separated (do not conflate — see go
   that `dispatch_tool` re-checks `ctx.tier` on every dispatch — but that `tier` itself is
   resolved once per turn by `EntitlementResolver.tool_context_for`, not re-queried from the DB
   on each call.
-- Both are **mandatory and cannot be disabled**; guardrail checks are the runtime form of
-  [governance.md](../governance.md).
+- Both are **mandatory and cannot be disabled**; guardrail checks are the runtime form of the
+  governance-as-code rules in [backend/CLAUDE.md](../../../backend/CLAUDE.md) §4.
 - The `pre_llm` token-budget check (`context_window.compact`) is **not itself a vetoing hook** in
   `guardrails.py`'s sense — it runs unconditionally inside `AgentLoop._transform_context` before
   any registered `PreLLMHook` fires, and it rewrites the message list rather than refusing the
@@ -135,19 +131,14 @@ Two distinct enforcement concerns, cleanly separated (do not conflate — see go
   count, and cost-micros, and `.publish(bus)` emits the running snapshot as a live `usage`
   event. `write_turn_usage`/`SqlAlchemyUsageStore.record_turn` (`usage/store.py`) durably
   persist the finished snapshot to `usage_events`, idempotent on `(user_id, turn_id)`.
-- **`TokenBreakdown` (`system_prompt`/`recent_messages`/`compaction_summary`/
-  `branch_summaries`/`memory_block`/`tool_schemas_immediate`/`tool_schemas_deferred`/
-  `tool_results`) is a real typed model, but `UsageAccumulator.set_breakdown` is never called
-  anywhere in the codebase** — no caller populates it from the real context-composition sizes,
-  so every `TurnUsage.breakdown` field is `0` in practice today. The shape exists (per
-  `events/usage.py`'s own docstring, "a future sink writes `.snapshot()` with no call-site
-  change"), the wiring to actually measure and set it does not.
-- **No `GET /usage` or `GET /usage/summary` endpoint exists.** The only real usage-facing route
-  is `GET /usage/quota` (`api/routers/accounts_extra.py`), which returns the caller's *resolved
-  limits* (`EntitlementView` — chats/day, req/min, FinMind class) from `accounts/entitlements.py`
-  — it does not read `usage_events`/`usage_counters` or expose the breakdown; that route's own
-  docstring says live consumption counters aren't surfaced there because no durable-rollup
-  *read* path is wired yet (the write path above is real; nothing reads it back over HTTP).
+- **`TokenBreakdown`** (`system_prompt`/`recent_messages`/`compaction_summary`/
+  `branch_summaries`/`memory_block`/`tool_schemas_*`/`tool_results`) is a typed model carried on
+  `TurnUsage.breakdown`, but nothing populates it from the real context-composition sizes (there is no
+  setter), so every field is `0` in practice. Per-model usage (`TurnUsage.models`) is populated.
+- **Usage routes** (`api/routers/accounts_extra.py`): `GET /usage/quota` returns the caller's
+  *resolved limits* (`EntitlementView`, from `accounts/entitlements.py`), `GET /usage/today` the
+  chats claimed in today's UTC window, and `GET /usage/llm` a per-day / per-model summary of LLM usage
+  metadata (`usage/llm_usage.py`). The per-turn `breakdown` is not exposed.
 
 ## 4. Rate limiting & quotas
 
@@ -155,7 +146,7 @@ Two distinct enforcement concerns, cleanly separated (do not conflate — see go
   provider spend and the FinMind Sponsor pool.
 - **FinMind quota is not read from any live upstream endpoint** — the platform reserves its own
   budget locally: a Redis-backed atomic counter (`RedisFinMindPoolReserver`, `usage/finmind_pool.py`)
-  against a single static **6000 req/hr** ceiling shared across all Premium/Pro users, gated
+  against a single static ceiling (default **6000 req/hr**, `finmind_pool_limit_per_window`) shared across all Premium/Pro users, gated
   pre-flight before a fan-out spends Sponsor-tier tool calls and refunded on failure/under-use.
   Free tier never touches this pool (Free-tier skills use the free FinMind token). Approaching
   the ceiling degrades gracefully (`unavailable-tier` / cached), never crashes, and is surfaced

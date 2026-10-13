@@ -6,8 +6,8 @@ the orchestrator ([11-orchestration.md](11-orchestration.md)) for `single`, `sub
 
 ## `loop.py` — the agentic loop
 
-**Domain vocabulary (single source: [07-conversation-streaming.md](07-conversation-streaming.md)
-+ [../database-schema.md](../database-schema.md)):** a **Turn** = one user request → one agent
+**Domain vocabulary (single source: [07-conversation-streaming.md](07-conversation-streaming.md);
+tables are the SQLAlchemy models in `backend/src/db/models/`):** a **Turn** = one user request → one agent
 response cycle (the `turns` rows, `role=user|assistant`). The loop's inner unit — one LLM
 response + the tool calls/results it triggers — is a **Step** (a.k.a. LLM round), **not** a
 turn. There is no separate "Trace" entity; the hierarchy is `thread → turns → messages`.
@@ -76,8 +76,8 @@ never mid-Step); `AgentLoop` holds an optional `steering_source` (constructor ar
 post-construction via a property setter for wiring that builds the loop before the live turn
 handle exists) and calls `_inject_steering` at the top of every `step_start`, before
 `_transform_context` — draining whatever `POST .../steer` queued since the last Step and folding
-it in as new user-role message(s), never merged into the system prompt (governance's untrusted-
-content-is-data rule applies to a steering message exactly as it does to any other user turn).
+it in as new user-role message(s), never merged into the system prompt (the governance rule that untrusted
+content is data applies to a steering message exactly as it does to any other user turn).
 The concrete `SteeringSource` is `api/turn_registry.py`'s `RunningTurn` — the same live handle the
 steer endpoint appends to and `/cancel` flips — and `api/turn_driver.py` threads it from
 `start_turn_stream`/`run_and_stream` into `Orchestrator.run()`.
@@ -166,7 +166,8 @@ against those rules, and only for the trading-language subset it pattern-matches
 verify citations are present, does not distinguish PTT from any other source, and does not
 detect an injection attempt as such.
 
-Tested directly against [../governance.md](../governance.md) in `tests/agent/test_guardrails.py`.
+Tested in `tests/agent/test_guardrails.py`; the governance-as-code rules live in
+[`backend/CLAUDE.md`](../../../backend/CLAUDE.md) §4.
 
 ## Journal (`agent/journal.py`)
 
@@ -176,12 +177,11 @@ Each `JournalEntry` carries `agent_id`/`parent_agent_id` (same envelope as SSE, 
 in-memory only: `AgentLoop.run_turn` constructs one fresh `Journal` per turn and threads it
 through `ToolContext.journal` and `_finalize_output`; nothing in `tools/` reads it back.
 
-**Sink is structured logs today, not a DB table.** `Journal.record_tool_call`/
+**Sink is structured logs, not a DB table.** `Journal.record_tool_call`/
 `record_output_guardrail` append to an in-memory list *and* emit one `structlog` line
 (`agent_step_tool_call_journaled`/`agent_step_output_guardrail_journaled`) per event — there is
-**no `journal_entries` table**. `../database-schema.md` itself documents `journal_entries` as
-"design only, not built" for exactly this reason; a future DB-backed sink is expected to plug
-into `Journal.record_*` with no call-site change, but that sink does not exist yet. Result
+**no `journal_entries` table** in `db/models/`; a DB-backed sink could plug into
+`Journal.record_*` with no call-site change. Result
 summaries never carry a tool's raw payload — `agent/loop.py::_summarize_result` reduces every
 result to its type name plus its top-level field *names* (never values) before it reaches the
 journal.
@@ -192,13 +192,13 @@ Only two files exist: `agent/prompts/__init__.py` (the `PromptLayers` dataclass 
 `assemble_system_prompt`/`default_prompt_layers`) and `agent/prompts/governance.py` (the
 governance system-prompt text, `governance_prompt()`). The fixed-precedence assembly —
 governance always first, then `personality`/`skill_body`/`pet_hint` layers appended only if
-populated — is real and built; `default_prompt_layers()` today populates only the governance
-layer, since personality/skill/pet content doesn't feed in from this phase's callers yet.
+populated — is built; `default_prompt_layers()` populates only the governance layer, and the orchestrator
+(`orchestrator.py::_skill_prompt_layers`) fills `personality`/`pet_hint`/`skill_body` per turn.
 
 **Classifier and synthesis prompts are not here** — despite the design's original intent to
-collect all role prompts under `agent/prompts/`, the real classifier prompt
-(`_ROUTER_SYSTEM_PROMPT`) and synthesis prompt (`_SYNTHESIS_SYSTEM_PROMPT`) live as module-level
-constants in `orchestrator/classifier.py` and `orchestrator/synthesis.py` respectively — they
+collect all role prompts under `agent/prompts/`, the classifier prompt
+(`_ROUTER_SYSTEM_PROMPT`) and synthesis prompt (`_synthesis_system_prompt`) live in
+`orchestrator/classifier.py` and `orchestrator/synthesis.py` respectively — they
 are owned by the orchestrator layer, not `agent/`. There is no separate "compaction prompt"
 either: `agent/context_window.py::compact` builds its `CompactionEntry` from a cheap, hardcoded
 line-count summary (`_cheap_summary`), not a model-generated prompt/completion.

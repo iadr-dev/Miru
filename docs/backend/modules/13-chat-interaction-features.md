@@ -60,89 +60,61 @@ The product-surface features that make the agent chat feel complete: message act
 
 ### Voice
 Two **separate** protocols (best-in-class differs per direction; both config-selected, same
-idiom as `SourceAdapter`/`LLMClient`/`DeliveryChannel`), each with a **self-host option**
-(whisper for STT — privacy/in-region/no per-minute cost) alongside cloud, mirroring the
-`ollama` LLM pattern:
+idiom as `SourceAdapter`/`LLMClient`/`DeliveryChannel`), in `voice/providers.py`:
 
 ```
 Transcriber.transcribe(audio: bytes, *, language="zh-TW", hints: tuple[str, ...]=()) -> Transcript
-    # Transcript = text + per-segment confidence (voice/providers.py; no `stream` param)
+    # Transcript = text + per-segment confidence + low_confidence flag; no `stream` param
 Speaker.speak(ssml_or_text: str, *, language="zh-TW") -> SpeechAudio
 ```
-Real today: `voice/providers.py`'s `Transcriber`/`Speaker` Protocols plus deterministic
-`StubTranscriber`/`StubSpeaker` implementations (no network I/O — the only providers that ship
-in the default profile); `voice_stt_provider`/`voice_tts_provider` config keys select `"stub"`
-by default, and any other value 503s (`voice_provider_unconfigured`) since no real cloud/
-self-host adapter is wired yet. `voice/service.py`'s `transcribe`/`speak` + the ticker-
-normalization pass are real and unit-tested, not just a protocol sketch.
+Providers are selected by `voice_stt_provider` / `voice_tts_provider` (`api/routers/voice.py`): `stub`
+(default; deterministic, no network I/O), STT `faster_whisper` (self-host, optional `voice` extra),
+TTS `edge_tts` (free cloud voices) or `openai` (billed per call). Any other value 503s
+(`voice_provider_unconfigured`). `voice/service.py`'s `transcribe`/`speak` + the ticker-normalization
+pass are unit-tested.
 
 **Voice inquiry (STT) — a correctness path, not polish.** The audience speaks **Traditional
 Chinese with code-switching** ("台積電 TSMC 2330") and a one-digit ticker error (2330→2380)
 would silently send the wrong company into analysis. So:
-- **zh-TW + code-switch aware:** default `language=zh-TW` (with auto-detect) preserving English
-  tickers; provider chosen for Taiwan-Mandarin quality (whisper large-v3 self-host, or Google/
-  Azure zh-TW with phrase hints) — recorded as a tradeoff, not "Whisper-class" only.
-- **Vocabulary biasing (highest-leverage lever), real:** `api/routers/voice.py`'s `transcribe`
-  route reads the caller's watchlist symbols via `memory.watchlists.WatchlistStore.snapshot`
-  (the relational store, **not** `memories(type='watchlist')` — that type is retired as a write
-  target per [09-memory.md](09-memory.md)) and feeds them plus a core 財經術語 lexicon
-  (`voice.service.build_hints`) as `hints`. There is no real whisper/Deepgram/Google/Azure
-  adapter to actually consume those hints yet — only the stub provider (which uses `hints` as a
-  marker, not real biasing) ships today.
-- **Number/ticker normalization, real:** `voice.service._normalize_spoken_ticker` maps a run of
-  spoken zh digits ("二三三零") to arabic and substitutes only when the result is in the
-  caller-supplied symbol universe — never invents a symbol.
-- **Confirm-before-send, real:** `POST /voice/transcribe` **returns the transcript only — it
-  does NOT create a turn** (`voice/service.py`'s own docstring: "This module has no reference to
-  the agent loop, conversation store, or orchestrator"). The client shows it for edit; the user
-  submits via the normal `POST /agent/query`. **Not built:** routing a low-confidence/ambiguous
-  transcript to `ask_user` — `ask_user` itself doesn't exist yet (see
-  [07](07-conversation-streaming.md) §2); today `Transcript.low_confidence` is just a flag on the
-  response for the client to act on however it chooses.
-- **Ingestion contract:** the route accepts base64-encoded audio up to `_MAX_AUDIO_BYTES`
-  (~12MB, "~a minute of compressed audio") — a hard payload-size ceiling, not a format/duration
-  validator; there is no server-side check of the actual audio format (m4a/webm/ogg-opus) or
-  duration, and no streaming/live mode (batch whole-file only, matching the doc's intent).
-- **Audio disposition (PII/PDPA):** **raw audio is discarded immediately after transcription**
-  by default — only the resulting `text` message is persisted (no audio in `messages.content`;
-  no blob store). If playback is ever added, audio goes to an object store with TTL + `user_id`
-  namespacing + account-purge shred — not the app DB.
+- **zh-TW + code-switch aware:** default `language=zh-TW`, preserving English tickers.
+- **Vocabulary biasing:** the `transcribe` route reads the caller's watchlist symbols via
+  `memory.watchlists.WatchlistStore.snapshot` (the relational store, not a `memories` row) and feeds
+  them plus a core 財經術語 lexicon (`voice.service.build_hints`) as `hints`. Only a provider that
+  honors hints (the stub just marks them) actually biases recognition.
+- **Number/ticker normalization:** `voice.service._normalize_spoken_ticker` maps a run of spoken zh
+  digits ("二三三零") to arabic and substitutes only when the result is in the caller-supplied
+  symbol universe — never invents a symbol.
+- **Confirm-before-send:** `POST /voice/transcribe` **returns the transcript only — it does NOT create
+  a turn**. The client shows it for edit; the user submits via the normal `POST /agent/query`.
+  `Transcript.low_confidence` is a flag on the response for the client to act on; the server does not
+  route a low-confidence transcript into the `ask_user` tool.
+- **Ingestion contract:** base64-encoded audio up to `_MAX_AUDIO_BYTES` (~12MB; `413 audio_too_large`)
+  — a payload-size ceiling, not a format/duration validator. Batch whole-file only, no streaming mode.
+- **Audio disposition (PII/PDPA):** raw audio is discarded right after transcription — only the
+  resulting text is persisted, and only if the user sends it as a message.
 
-**TTS (agent response / read-aloud):** `POST /voice/speak {text, language}` — takes a plain
-`text` field only (**not** `{turn_id|text}`; there is no `turn_id`-driven "speak this prior
-turn" shape) and returns a JSON body (`{audio_base64, content_type, spoken_text}`), not a raw
-audio stream/binary response.
-- **Not built:** the SSML `say-as` digit/percentage reading pass ("2330" as 股號 digits,
-  "-0.83%" as "負百分之零點八三"). `voice.service.speak` passes the (caveat-guaranteed) text
-  straight to the `Speaker` provider with no SSML transformation step — only the caveat-
-  enforcement rule below is real.
-- **Governance, real:** the spoken text **must include the caveat** (non-trading/currentness).
+**TTS (read-aloud):** `POST /voice/speak {text, language}` — plain `text` (max 8000 chars; no
+`turn_id`-driven shape) and returns JSON `{audio_base64, content_type, spoken_text}`, not a raw audio
+stream.
+- **Not built:** an SSML `say-as` digit/percentage reading pass; `voice.service.speak` passes the
+  caveated text straight to the `Speaker`.
+- **Governance:** the spoken text **must include the caveat** (non-trading/currentness).
   `voice.service.ensure_caveated_for_speech` runs the same `agent.guardrails.check_output` pass
-  written answers get and speaks the redacted/caveated version if it appended one — enforced in
-  code, unit-tested, not just documented policy.
+  written answers get and speaks the redacted/caveated version — enforced in code and unit-tested.
 
-**Entitlement (voice split):** **STT / voice-input is Free** — `POST /voice/transcribe` requires
-only `require_user` (any authenticated tier), matching the "beginner's on-the-go ask affordance"
-intent. **Not built:** the quota-bounding described here — there is no audio-minute tracking
-anywhere in the codebase (`usage_events` has no such column; `UsageEvent`/`UsageAccumulator`
-track tokens/tool-calls/cost, not audio minutes) and `/voice/transcribe` calls no rate limiter
-and no `enforce_pre_turn_gate`-equivalent daily-cap check — it is currently ungated beyond plain
-authentication. **TTS / read-aloud staying Premium+ is real:** `POST /voice/speak` calls
-`accounts.entitlements.feature_allowed(user, "tts_read_aloud")`, and `tts_read_aloud` maps to
-`Tier.PREMIUM` in `accounts/entitlements.py` — an unentitled caller gets a 403, not a masked
-teaser (a deliberate difference from the `sponsor` data-masking shape, since this gates a whole
-binary-audio endpoint, not one data field). Cloud ASR/TTS keys as platform secrets is aspirational
-too: `user_secrets.kind`'s CHECK constraint already includes `asr_key`/`tts_key` values
-(`db/models/`), but no cloud/self-host provider exists to consume them yet — only the stub
-providers ship. Confirm-before-send and the spoken-caveat rule are real and apply on **both**
-tiers.
+**Entitlement:** **both STT and TTS are Free** (no tier gate; neither is in `FEATURE_MIN_TIER`).
+Both require only `require_user` and share one fair-use bound (`_claim_voice`): a per-minute rate
+(`VOICE_REQUESTS_PER_MINUTE` = 20, `429 rate_limited`) for every provider, plus a per-UTC-day cap
+(`VOICE_DAILY_LIMIT` = 100 per kind, `429 voice_limit_reached`) that applies **only** when the
+configured provider bills per call (TTS `openai`); a failed request refunds its claim. Local
+whisper and Edge voices have no daily quota. Confirm-before-send and the spoken-caveat rule apply to
+every user.
 
 ### Other per-message
 - Copy, share single message (governed export), citations/source attribution surfaced from
-  the journal. "Caveat badges rendered from `caveat` events" describes an unbuilt event kind
-  (see [07](07-conversation-streaming.md) §2's implementation-status note) — today the caveat is
-  inline prose inside the persisted `TextBlock`, not a separate rendered badge fed by its own
-  SSE event.
+  the journal. There is no `caveat` event kind (see the event table in
+  [07](07-conversation-streaming.md) §2): the caveat is inline prose inside the persisted
+  `TextBlock`, not a separate badge fed by its own SSE event.
 
 ## 2. Conversation history management
 
@@ -152,7 +124,7 @@ All per-`user_id`, on the `threads` model from [07](07-conversation-streaming.md
 |--------|----------|--------|
 | List | `GET /threads?include_archived=` | **real, but narrower than once documented** — no `sort`/`filter`/`q`/pagination query params exist; the store always orders by `last_message_at` desc and the only filter is `include_archived` |
 | Rename title | `PATCH /threads/{id} {title}` | real, `If-Match` version CAS |
-| Auto-title | generated from first turn (cheap model) if user hasn't named it | **not built** — no code generates a title from a turn; a thread's `title` is whatever the client passed to `POST /threads` (default `""`) until a client `PATCH`es it |
+| Auto-title | generated from the first user message if the thread has no title | real — `api.turn_driver._maybe_title_thread` (`conversation/title_generator.py`) titles an empty-title thread once, best-effort, after the first answer; a client-set title is never overwritten |
 | Delete | `DELETE /threads/{id}` (soft-delete) | real |
 | Sort | by `updated_at` / `created_at` / starred-first (query param) | **not built** — see List row above |
 | Star / pin | `PATCH /threads/{id} {starred: true}` | real |
@@ -163,9 +135,8 @@ All per-`user_id`, on the `threads` model from [07](07-conversation-streaming.md
 | Branch (try alternative, in-tree — default) | `POST /threads/{id}/switch-branch` | real pointer-flip; does **not** yet auto-generate a `BranchSummaryBlock` for the branch being left (see [07](07-conversation-streaming.md) §1) |
 | Fork / duplicate (separate thread — rare) | `POST /threads/{id}/fork` | real empty-shell creation (copies no message rows); does **not** yet seed the new thread with a summary of the source path (same gap as switch-branch) |
 
-`Thread` gains: `title, starred, archived, tags[], last_message_at`. There is no auto-titling
-today, so "Titles auto-generate but are user-overridable" describes an unbuilt feature — titles
-are user-set only, defaulting to empty. Deleting is honored immediately (no shadow copies),
+`Thread` gains: `title, starred, archived, tags[], last_message_at`. Titles auto-generate on the
+first turn and stay user-overridable via `PATCH`. Deleting is honored immediately (no shadow copies),
 consistent with the memory-deletion rule in [09-memory.md](09-memory.md).
 
 ## 3. Draft & resilience
@@ -192,13 +163,11 @@ consistent with the memory-deletion rule in [09-memory.md](09-memory.md).
   see [07](07-conversation-streaming.md) §2's Resumability section); "a queued message is sent
   once" describes client-side behavior this backend doesn't itself implement (no server-side
   outbox).
-- **Per-chat model/persona selector: partially built.** `Thread.personality_override` is a real
-  column, read and threaded into `PersonalityContext.thread_override` on every turn (`agent.py`/
-  `threads_actions.py`), so a thread-pinned personality does take effect — but there is no
-  endpoint that writes `personality_override` (`PatchThreadRequest` doesn't expose it either), so
-  nothing sets it today except a manual DB write. `Thread.model_override` is a column that is
-  read into the `Thread` model but is never consulted by any turn-start code path (`agent.py`,
-  `turn_driver.py`) — a per-chat *model* pin does not exist yet, unlike personality.
+- **Per-chat model / 語氣 selector: built.** `Thread.model_override` is set by `PATCH /threads/{id}`
+  or the `model` field of `POST /agent/query` and read on every turn; `Thread.personality_override`
+  is set via `PATCH` (`"default"` clears it) and threaded into `PersonalityContext.thread_override`.
+  A Free account on the platform key may only pick the light models (see
+  [12](12-multi-user-tiers.md) §3).
 
 ## Governance obligations
 - Every action is per-`user_id`; no cross-user access.
