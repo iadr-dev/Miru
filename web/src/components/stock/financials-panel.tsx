@@ -357,7 +357,7 @@ function MonthRevenueTable({
               <td className="px-2 py-1.5 text-[var(--text)]">
                 {point.revenue_year}/{String(point.revenue_month).padStart(2, "0")}
               </td>
-              <td className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums">
+              <td className="whitespace-nowrap px-1.5 py-1.5 text-right font-num text-[var(--text)] tabular-nums sm:px-2">
                 {formatCompactNumber(point.revenue, locale)}
               </td>
               <PctCell value={point.mom_pct} />
@@ -376,12 +376,14 @@ function MonthRevenueTable({
 function PctCell({ value }: { readonly value: number | null | undefined }): ReactNode {
   if (value == null) {
     return (
-      <td className="px-2 py-1.5 text-right font-num text-[var(--text-muted)] tabular-nums">—</td>
+      <td className="whitespace-nowrap px-1.5 py-1.5 text-right font-num text-[var(--text-muted)] tabular-nums sm:px-2">
+        —
+      </td>
     );
   }
   return (
     <td
-      className="px-2 py-1.5 text-right font-num tabular-nums"
+      className="whitespace-nowrap px-1.5 py-1.5 text-right font-num tabular-nums sm:px-2"
       style={{ color: directionColor(value) }}
     >
       {directionGlyph(value)} {Math.abs(value * 100).toFixed(1)}%
@@ -693,7 +695,7 @@ function FinancialStatementTable({
                 return (
                   <td
                     key={period}
-                    className="px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums"
+                    className="whitespace-nowrap px-2 py-1.5 text-right font-num text-[var(--text)] tabular-nums"
                   >
                     {value != null ? formatCompactNumber(value, locale) : "—"}
                   </td>
