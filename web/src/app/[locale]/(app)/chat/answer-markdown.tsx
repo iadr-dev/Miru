@@ -59,7 +59,10 @@ const MARKDOWN_COMPONENTS: Components = {
       return (
         <Link
           href={href as "/settings"}
-          className={cn("text-[var(--accent-text)] underline underline-offset-2", className)}
+          className={cn(
+            "text-[var(--accent-text)] underline underline-offset-2 [overflow-wrap:anywhere]",
+            className,
+          )}
         />
       );
     }
@@ -68,7 +71,10 @@ const MARKDOWN_COMPONENTS: Components = {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className={cn("text-[var(--accent-text)] underline underline-offset-2", className)}
+        className={cn(
+          "text-[var(--accent-text)] underline underline-offset-2 [overflow-wrap:anywhere]",
+          className,
+        )}
         {...rest}
       />
     );

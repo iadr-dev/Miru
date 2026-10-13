@@ -192,3 +192,48 @@ def test_source_titles_are_scanned_for_trading_language() -> None:
     md = render_markdown(_report(sources=(source,), summary=(claim,), sections=()), "en")
     assert "目標價" not in md
     assert "](https://a.example/x)" in md
+
+
+def _source_lines(md: str) -> list[str]:
+    block = md.split("### Sources\n", 1)[1].split("\n\n", 1)[0]
+    return block.split("\n")
+
+
+def test_a_multiline_source_title_stays_one_list_item_with_a_working_link() -> None:
+    # A real page title (a social post) with newlines: it used to end the list item mid-link,
+    # leaving the raw URL in the text and folding the next sources into one paragraph.
+    post = (
+        "Yes, the 7/16 call raised capex.\n\nCEO said demand is very strong.\nSo 600-640B is right."
+    )
+    sources = (
+        ReportSource(id=1, title=post, url="https://a.example/post"),
+        ReportSource(id=2, title="Second\ttitle", url="https://b.example/2"),
+    )
+    claims = (ReportClaim(text="ok", source_ids=(1, 2)),)
+    md = render_markdown(_report(sources=sources, summary=claims, sections=()), "en")
+    lines = _source_lines(md)
+    assert len(lines) == 2
+    assert lines[0].startswith("1. [Yes, the 7/16 call raised capex. CEO said demand")
+    assert lines[0].endswith("](https://a.example/post)")
+    assert lines[1] == "2. [Second title](https://b.example/2)"
+
+
+def test_a_very_long_source_title_is_shortened() -> None:
+    source = ReportSource(id=1, title="word " * 200, url="https://a.example/long")
+    claims = (ReportClaim(text="ok", source_ids=(1,)),)
+    md = render_markdown(_report(sources=(source,), summary=claims, sections=()), "en")
+    (line,) = _source_lines(md)
+    assert line.endswith("…](https://a.example/long)")
+    assert len(line) < 220
+
+
+def test_a_claim_with_line_breaks_stays_one_bullet() -> None:
+    claim = ReportClaim(
+        text="Capex rose.\nIt was raised again.\n\n- injected bullet", source_ids=(1,)
+    )
+    md = render_markdown(_report(summary=(claim,), sections=()), "en")
+    bullets = [
+        line for line in md.split("### Still unresolved")[0].split("\n") if line.startswith("-")
+    ]
+    assert len(bullets) == 1
+    assert "injected bullet" in bullets[0]
