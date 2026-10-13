@@ -5,11 +5,18 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { useRotationPlayback } from "@/hooks/use-rotation-playback";
 import type { SectorRrgSeries } from "@/types/market/sectors";
-import { QuadrantLegend } from "./quadrant-legend";
+import { QuadrantLegend, useQuadrantLabel } from "./quadrant-legend";
 import { RankPanel, type RankPanelRow } from "./rank-panel";
 import { RotationCanvas } from "./rotation-canvas";
 import { RotationControls, type RotationView } from "./rotation-controls";
-import { quadrantCounts, quadrantFor, quadrantTransitions } from "./rrg-layout";
+import {
+  QUADRANT_ORDER,
+  quadrantCounts,
+  quadrantTransitions,
+  type RotationQuadrant,
+  rrgRange,
+  sectorColor,
+} from "./rrg-layout";
 import { type SectorChip, SectorChips } from "./sector-chips";
 import { SectorDetailCard } from "./sector-detail-card";
 import { TransitionStrip } from "./transition-strip";
@@ -48,6 +55,13 @@ export function SectorRotationScene({
   const [view, setView] = useState<RotationView>("flat");
   const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
 
+  const quadrantName = useQuadrantLabel();
+  const quadrantLabels = Object.fromEntries(
+    QUADRANT_ORDER.map((quadrant) => [quadrant, quadrantName(quadrant)]),
+  ) as Record<RotationQuadrant, string>;
+  const colors = useMemo(() => sectors.map((_, index) => sectorColor(index)), [sectors]);
+  const range = useMemo(() => rrgRange(sectors), [sectors]);
+
   const week = Math.round(playback.currentWeek);
   const counts = useMemo(() => quadrantCounts(sectors, week), [sectors, week]);
   const transitions = useMemo(
@@ -57,7 +71,7 @@ export function SectorRotationScene({
 
   const rankRows: RankPanelRow[] = [];
   const chips: SectorChip[] = [];
-  for (const sector of sectors) {
+  for (const [index, sector] of sectors.entries()) {
     const point = pointAt(sector, week);
     if (!point) continue;
     rankRows.push({
@@ -70,7 +84,7 @@ export function SectorRotationScene({
     chips.push({
       industryId: sector.industry_id,
       industryName: sector.industry_name,
-      quadrant: quadrantFor(point.rs_ratio, point.rs_momentum),
+      color: colors[index] ?? sectorColor(index),
     });
   }
   const selectedRow = rankRows.find((row) => row.industryId === selectedSectorId);
@@ -80,12 +94,15 @@ export function SectorRotationScene({
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-[var(--radius-card)] bg-[#05070b]"
+      className="relative w-full overflow-hidden rounded-[var(--radius-card)] bg-[radial-gradient(120%_90%_at_50%_35%,#15183a_0%,#080a18_70%)]"
       style={{ height: SCENE_HEIGHT }}
     >
       <div className="absolute inset-x-0 top-0 bottom-36 sm:right-[19.5rem] sm:left-56">
         <RotationCanvas
           sectors={sectors}
+          colors={colors}
+          range={range}
+          quadrantLabels={quadrantLabels}
           currentWeek={playback.currentWeek}
           hoveredSectorId={playback.hoveredSectorId}
           selectedSectorId={selectedSectorId}

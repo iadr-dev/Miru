@@ -3,15 +3,15 @@
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { colorForQuadrant, type RotationQuadrant, shortSectorName } from "./rrg-layout";
+import { shortSectorName } from "./rrg-layout";
 
 export interface SectorChip {
   readonly industryId: string;
   readonly industryName: string;
-  readonly quadrant: RotationQuadrant;
+  readonly color: string;
 }
 
-/** One chip per sector, tinted by its current quadrant. Hovering previews it in the scene and
+/** One chip per sector, tinted with the sector colour its head and trail use. Hovering previews it in the scene and
  * the rank list; clicking selects it (click again to clear). A real button, so the whole
  * selection is reachable by keyboard, not just by pointing at a badge. */
 export function SectorChips({
@@ -37,7 +37,7 @@ export function SectorChips({
       {chips.map((chip) => {
         const selected = selectedSectorId === chip.industryId;
         const active = selected || hoveredSectorId === chip.industryId;
-        const color = colorForQuadrant(chip.quadrant);
+        const color = chip.color;
         return (
           <button
             key={chip.industryId}

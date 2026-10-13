@@ -75,8 +75,8 @@ describe("RotationControls", () => {
 
 describe("SectorChips", () => {
   const chips = [
-    { industryId: "1", industryName: "電子類指數", quadrant: "leading" as const },
-    { industryId: "2", industryName: "鋼鐵類指數", quadrant: "lagging" as const },
+    { industryId: "1", industryName: "電子類指數", color: "#60a5fa" },
+    { industryId: "2", industryName: "鋼鐵類指數", color: "#f472b6" },
   ];
 
   it("shows short names and selects on click", () => {

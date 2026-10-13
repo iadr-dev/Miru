@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   layoutLabels,
+  PLANE_HALF_EXTENT,
+  planeAt,
   quadrantCounts,
   quadrantFor,
   quadrantTransitions,
+  rrgRange,
+  rrgToPlane,
+  sectorColor,
   shortSectorName,
 } from "./rrg-layout";
 
@@ -135,5 +140,74 @@ describe("quadrant transitions and counts", () => {
       quadrantCounts([{ industry_id: "x", industry_name: "x", points: [point(100, 99.9)] }], 0)
         .weakening,
     ).toBe(1);
+  });
+});
+
+describe("plane scale", () => {
+  const series = (ratios: number[]) => [
+    {
+      industry_id: "1",
+      industry_name: "電子類指數",
+      points: ratios.map((r) => point(r, 100)),
+    },
+  ];
+
+  it("has a floor and rounds up to a step", () => {
+    expect(rrgRange([])).toBe(20);
+    expect(rrgRange(series([101, 99, 103]))).toBe(20);
+    expect(rrgRange(series([160, 160, 160, 160]))).toBe(60);
+  });
+
+  it("is set by the bulk of the data, not one outlier", () => {
+    const ratios = [...Array.from({ length: 40 }, (_, i) => 100 + (i % 8) * 10), 100000];
+    expect(rrgRange(series(ratios))).toBeLessThan(200);
+  });
+
+  it("puts 100 on the axes, keeps order, and stays inside the frame", () => {
+    expect(rrgToPlane(100, 100, 80)).toEqual({ x: 0, y: 0 });
+    const a = rrgToPlane(120, 100, 80).x;
+    const b = rrgToPlane(150, 100, 80).x;
+    expect(b).toBeGreaterThan(a);
+    expect(rrgToPlane(100000, -100000, 80).x).toBeLessThanOrEqual(PLANE_HALF_EXTENT);
+    expect(rrgToPlane(100000, -100000, 80).y).toBeGreaterThanOrEqual(-PLANE_HALF_EXTENT);
+    expect(rrgToPlane(60, 100, 80).x).toBeCloseTo(-rrgToPlane(140, 100, 80).x);
+  });
+
+  it("gives neighbouring sectors different colours", () => {
+    expect(new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(sectorColor)).size).toBe(10);
+  });
+});
+
+describe("planeAt", () => {
+  const plane = [
+    { x: 0, y: 0 },
+    { x: 4, y: 2 },
+    { x: 2, y: 6 },
+    { x: 8, y: 6 },
+  ];
+
+  it("passes exactly through every week", () => {
+    plane.forEach((p, week) => {
+      expect(planeAt(plane, week)).toEqual(p);
+    });
+  });
+
+  it("clamps outside the series and is empty for no data", () => {
+    expect(planeAt(plane, -3)).toEqual(plane[0]);
+    expect(planeAt(plane, 99)).toEqual(plane[3]);
+    expect(planeAt([], 1)).toBeNull();
+  });
+
+  it("stays inside the frame even where the curve would overshoot", () => {
+    const edge = [
+      { x: -9.5, y: 0 },
+      { x: 9.5, y: 0 },
+      { x: 9.5, y: 0 },
+      { x: -9.5, y: 0 },
+    ];
+    for (let week = 0; week <= 3; week += 0.25) {
+      const at = planeAt(edge, week);
+      expect(Math.abs(at?.x ?? 99)).toBeLessThanOrEqual(9.5);
+    }
   });
 });

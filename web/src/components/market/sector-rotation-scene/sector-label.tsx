@@ -5,36 +5,45 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
 /**
- * A sector's name pinned in 3D space just above its badge, via drei's `Html` (billboarded HTML
- * overlay rather than a texture-baked label — text stays crisp at any zoom, unlike a canvas
- * texture). `hovered` brightens/bolds the label to mirror `RankPanel`'s row-hover delegation —
- * the same sector highlighted in the list should visibly "wake up" in the 3D scene too, not just
- * scale its badge.
+ * A sector's name as a small pill pinned to its head, via drei's `Html` (a screen-space HTML
+ * element rather than a texture, so the text stays crisp at any zoom and the pill is clickable).
+ * The pill is tinted with the sector's own colour; `dimmed` fades it when another sector is
+ * selected, `emphasized` (hovered or selected) brings it to full strength.
  */
 export function SectorLabel({
   position,
   name,
   color,
-  hovered,
-  distanceFactor = 10,
+  emphasized,
+  dimmed,
+  onHoverChange,
+  onSelect,
 }: {
   readonly position: readonly [number, number, number];
   readonly name: string;
   readonly color: string;
-  readonly hovered: boolean;
-  readonly distanceFactor?: number | undefined;
+  readonly emphasized: boolean;
+  readonly dimmed: boolean;
+  readonly onHoverChange: (hovered: boolean) => void;
+  readonly onSelect: () => void;
 }): ReactNode {
   return (
-    <Html position={position} center distanceFactor={distanceFactor} zIndexRange={[10, 0]}>
-      <span
+    <Html position={[...position]} center zIndexRange={[10, 0]}>
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={onSelect}
+        onMouseEnter={() => onHoverChange(true)}
+        onMouseLeave={() => onHoverChange(false)}
         className={cn(
-          "whitespace-nowrap font-medium text-[11px] transition-all duration-150",
-          hovered ? "font-semibold text-[13px]" : "opacity-80",
+          "-translate-y-[0.1rem] cursor-pointer whitespace-nowrap rounded-full border bg-[var(--bg)]/65 px-1.5 py-0.5 font-extrabold text-[12px] leading-none transition-opacity duration-200",
+          dimmed ? "opacity-35" : "opacity-100",
+          emphasized ? "bg-[var(--surface-2)]" : null,
         )}
-        style={{ color: hovered ? color : "#e6eaf0" }}
+        style={{ color, borderColor: "currentcolor" }}
       >
         {name}
-      </span>
+      </button>
     </Html>
   );
 }

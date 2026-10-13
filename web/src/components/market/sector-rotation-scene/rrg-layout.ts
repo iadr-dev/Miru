@@ -5,20 +5,15 @@
  * the 3D nodes).
  *
  * Axis convention: RS-Ratio (x) and RS-Momentum (y) both center on 100 (`get_sector_rotation_rrg`
- * — "100 = performing exactly in line with the benchmark"). World-space maps
- * `[100 - RANGE, 100 + RANGE]` on each axis to `[-PLANE_HALF_EXTENT, PLANE_HALF_EXTENT]` — a
- * fixed, data-independent scale (never auto-fit to the current week's min/max), so a sector's
- * absolute quadrant position is stable frame-to-frame; only ITS OWN point moves as the data
+ * — "100 = performing exactly in line with the benchmark"). `rrgToPlane` maps the deviation from
+ * 100 onto the quadrant plane with a scale fixed per dataset (`rrgRange`, never the current week's
+ * min/max), so a sector's absolute quadrant position is stable frame-to-frame; only ITS OWN point moves as the data
  * moves, the axes never rescale under it (rescaling axes under playback would make "is this
  * sector accelerating" unreadable — the whole point of RRG is a fixed frame you watch things
  * move through).
  */
 
 export const RRG_AXIS_CENTER = 100;
-/** Half-width of the plotted domain on each axis, in RS-Ratio/RS-Momentum units — sized to the
- * z-score construction's own typical spread (few real weeks land outside ±60 of center). */
-export const RRG_AXIS_RANGE = 60;
-export const RRG_PLANE_HALF_EXTENT = 6.5;
 
 export type RotationQuadrant = "leading" | "weakening" | "lagging" | "improving";
 
@@ -53,33 +48,6 @@ export const QUADRANT_COLORS: Record<RotationQuadrant, string> = {
 
 export function colorForQuadrant(quadrant: RotationQuadrant): string {
   return QUADRANT_COLORS[quadrant];
-}
-
-/** RS-Ratio/RS-Momentum -> world-space (x, z) on the quadrant floor plane (y is height, set
- * separately by the caller for badge float/hover lift). Clamped to the plotted domain so an
- * outlier week never pushes a badge off the visible floor. */
-export function rrgToWorld(rsRatio: number, rsMomentum: number): { x: number; z: number } {
-  const nx = clamp((rsRatio - RRG_AXIS_CENTER) / RRG_AXIS_RANGE, -1, 1);
-  const nz = clamp((rsMomentum - RRG_AXIS_CENTER) / RRG_AXIS_RANGE, -1, 1);
-  return { x: nx * RRG_PLANE_HALF_EXTENT, z: -nz * RRG_PLANE_HALF_EXTENT };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-/** Linear interpolation between two RRG points — the exact per-frame smoothing
- * `useRotationPlayback`'s fractional `currentWeek` needs to place a badge BETWEEN two integer
- * weeks rather than snapping. */
-export function lerpPoint(
-  a: { rs_ratio: number; rs_momentum: number },
-  b: { rs_ratio: number; rs_momentum: number },
-  t: number,
-): { rs_ratio: number; rs_momentum: number } {
-  return {
-    rs_ratio: a.rs_ratio + (b.rs_ratio - a.rs_ratio) * t,
-    rs_momentum: a.rs_momentum + (b.rs_momentum - a.rs_momentum) * t,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -234,4 +202,110 @@ export function quadrantCounts(
     if (point) counts[quadrantFor(point.rs_ratio, point.rs_momentum)] += 1;
   }
   return counts;
+}
+
+// ---------------------------------------------------------------------------
+// Plane scale and per-sector colour
+// ---------------------------------------------------------------------------
+
+/** Half-width of the quadrant plane in world units; the plane spans [-10, 10] on both axes. */
+export const PLANE_HALF_EXTENT = 10;
+// Heads and trails stop just inside the frame, so an outlier never sits on (or past) the edge.
+const PLANE_USABLE = 9.5;
+const MIN_RANGE = 20;
+const RANGE_STEP = 10;
+const RANGE_PERCENTILE = 0.9;
+// How hard the plane saturates: a deviation of exactly `range` lands at tanh(SATURATION) ~ 0.9 of
+// the way to the edge, and anything larger bends in towards it rather than piling up on it.
+const SATURATION = 1.5;
+
+/** How far from 100 the plane reaches on each axis, in RS units. The backend's figures are
+ * z-score style and swing far wider than a fixed +/-60 (live data runs from about -150 to +350 on
+ * RS-Ratio), which pinned most sectors to the edge. This takes the 90th percentile of every
+ * deviation across the WHOLE series, rounded up to a step - computed once per dataset, never per
+ * frame, so the axes hold still while the sectors move through them. */
+export function rrgRange(sectors: readonly WeeklySeries[]): number {
+  const deviations: number[] = [];
+  for (const sector of sectors) {
+    for (const point of sector.points) {
+      deviations.push(Math.abs(point.rs_ratio - RRG_AXIS_CENTER));
+      deviations.push(Math.abs(point.rs_momentum - RRG_AXIS_CENTER));
+    }
+  }
+  if (deviations.length === 0) return MIN_RANGE;
+  deviations.sort((a, b) => a - b);
+  const index = Math.min(deviations.length - 1, Math.floor(deviations.length * RANGE_PERCENTILE));
+  const value = deviations[index] ?? MIN_RANGE;
+  return Math.max(MIN_RANGE, Math.ceil(value / RANGE_STEP) * RANGE_STEP);
+}
+
+/** RS-Ratio / RS-Momentum -> a position on the quadrant plane (x right, y up), centred on 100.
+ * The curve is smooth and monotonic, so ordering and the 100 axes are exact; only the far tails
+ * are compressed (the live figures are heavy-tailed, and a hard clamp pinned outliers to the edge). */
+export function rrgToPlane(
+  rsRatio: number,
+  rsMomentum: number,
+  range: number,
+): { x: number; y: number } {
+  return {
+    x: Math.tanh(((rsRatio - RRG_AXIS_CENTER) / range) * SATURATION) * PLANE_USABLE,
+    y: Math.tanh(((rsMomentum - RRG_AXIS_CENTER) / range) * SATURATION) * PLANE_USABLE,
+  };
+}
+
+/** One hue per sector (heads, trails, labels, chips), so a sector is followed by colour while the
+ * quadrant it sits in is read off the tinted plane and its caption. The 4 quadrant colours are
+ * kept apart from these in spirit, not in a rule: a sector may share a hue with a quadrant. */
+const SECTOR_PALETTE: readonly string[] = [
+  "#60a5fa",
+  "#a78bfa",
+  "#fb923c",
+  "#2dd4bf",
+  "#f472b6",
+  "#a3e635",
+  "#facc15",
+  "#22d3ee",
+  "#f87171",
+  "#c084fc",
+  "#e879f9",
+  "#4ade80",
+];
+
+export function sectorColor(index: number): string {
+  return SECTOR_PALETTE[index % SECTOR_PALETTE.length] ?? "#60a5fa";
+}
+
+export interface PlanePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** A sector's position on the plane at a fractional week, along a smooth curve through its
+ * weekly points (Catmull-Rom: it passes exactly through every week and bends gently between them,
+ * so a jumpy series reads as a path rather than a zig-zag). The result is held inside the frame,
+ * since the curve can swing slightly past a point. Returns null for an empty series. */
+export function planeAt(plane: readonly PlanePoint[], week: number): PlanePoint | null {
+  const last = plane.length - 1;
+  if (last < 0) return null;
+  const clamped = Math.min(Math.max(week, 0), last);
+  const index = Math.floor(clamped);
+  const t = clamped - index;
+  const p1 = plane[index];
+  const p2 = plane[Math.min(index + 1, last)];
+  const p0 = plane[Math.max(index - 1, 0)];
+  const p3 = plane[Math.min(index + 2, last)];
+  if (!p0 || !p1 || !p2 || !p3) return null;
+  const along = (a: number, b: number, c: number, d: number): number => {
+    const value =
+      0.5 *
+      (2 * b +
+        (-a + c) * t +
+        (2 * a - 5 * b + 4 * c - d) * t * t +
+        (-a + 3 * b - 3 * c + d) * t * t * t);
+    return Math.min(Math.max(value, -PLANE_USABLE), PLANE_USABLE);
+  };
+  return {
+    x: along(p0.x, p1.x, p2.x, p3.x),
+    y: along(p0.y, p1.y, p2.y, p3.y),
+  };
 }
