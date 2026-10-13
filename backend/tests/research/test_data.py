@@ -177,8 +177,13 @@ async def test_a_claim_citing_a_data_source_that_was_never_added_is_dropped() ->
     assert not report.has_content
 
 
-async def test_progress_reports_the_data_lookup_with_its_symbols() -> None:
-    plan = _plan(SubQuestion(question="revenue", data=[_request(), _request(symbol="2454")]))
+async def test_progress_names_each_looked_up_symbol_once() -> None:
+    plan = _plan(
+        SubQuestion(
+            question="revenue",
+            data=[_request(), _request(symbol="2454"), _request("get_stock_score")],
+        )
+    )
     recorder = Recorder()
     data = FakeData({("get_month_revenue", "2330"): REVENUE})
     await _research(_model(plan, _draft(1)), FakeWeb({}, {}), data).run(

@@ -370,7 +370,13 @@ class DeepResearch:
         if not batch:
             return
         await run.emit(
-            Progress("data", ", ".join(r.symbol for r in batch), round_no, lane, sub.question)
+            Progress(
+                "data",
+                ", ".join(dict.fromkeys(r.symbol for r in batch)),
+                round_no,
+                lane,
+                sub.question,
+            )
         )
         results = await asyncio.gather(*(self._fetch_data(run, data, r) for r in batch))
         for request, result in zip(batch, results, strict=True):
