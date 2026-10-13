@@ -17,7 +17,7 @@ _LABELS: dict[Locale, dict[str, str]] = {
         "sources": "來源",
         "scope": "本次研究讀取了 {pages} 個網頁、進行 {searches} 次搜尋。",
         "empty": "這次沒有找到足夠可引用的公開資料，無法產出研究報告。請換個問法或縮小範圍再試。",
-        "failed": "研究過程發生錯誤，未產出報告，這次不會計入每日次數。請稍後再試。",
+        "failed": "研究過程發生錯誤，未產出報告。請稍後再試。",
     },
     "en": {
         "as_of": "As of",
@@ -27,8 +27,7 @@ _LABELS: dict[Locale, dict[str, str]] = {
         "scope": "Read {pages} web pages across {searches} searches.",
         "empty": "No sufficiently citable public sources were found, so no report was produced. "
         "Try rephrasing or narrowing the question.",
-        "failed": "The research hit an error and produced no report. It will not count against "
-        "your daily limit. Please try again later.",
+        "failed": "The research hit an error and produced no report. Please try again later.",
     },
 }
 

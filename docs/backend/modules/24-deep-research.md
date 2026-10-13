@@ -48,19 +48,19 @@ review failures are tolerated and logged; a plan or write failure raises `Resear
   1 MB (plain `Accept-Encoding: identity`; any compressed response is refused, so no decompression
   bomb) and reads only `text/html`, `application/xhtml+xml`, `text/plain`.
 
-## 3. Quota and tier
+## 3. Tier and limits
 
 `POST /agent/query` (and `regenerate` / `edit`) accept `deep_research: true`. The pre-turn gate
 (`enforce_pre_turn_gate(..., deep_research=True)`) runs: rate limit → `feature_allowed(user,
-"deep_research")` (else `403 feature_not_entitled`) → reserve one of **5 reports per UTC day**
-(`usage_counters`, counter `deep_research`; else `429 deep_research_limit_reached`) → the normal
-chat reservation. BYOK does **not** lift the report limit. The claim is **refunded only when our own run fails** (model output unusable, unexpected error);
-an empty result or a user cancel still counts, because the searches and fetches already cost work.
+"deep_research")` (else `403 feature_not_entitled`) → the normal chat reservation. There is **no
+daily report cap**: a run is bounded by its own budget (`ResearchBudget`: searches, pages, data
+calls, wall-clock), and the per-minute rate limit and the daily-chat allowance still apply. A run
+that fails ends with a plain "no report produced" answer; nothing is claimed or refunded.
 
 **Regenerate / edit.** The request's mode is stored on the user turn (`turns.mode = 'deep_research'`,
 nullable). `regenerate` and `edit` re-run the way the original ran unless the body says
 `deep_research: true|false` explicitly; a retried report goes through the same gate and spends
-another of the day's 5.
+another run.
 
 ## 4. Streaming and persistence
 

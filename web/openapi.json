@@ -4219,10 +4219,6 @@
       ],
       "title": "Platform Models"
      },
-     "requests_per_minute": {
-      "title": "Requests Per Minute",
-      "type": "integer"
-     },
      "tier": {
       "$ref": "#/components/schemas/Tier"
      }
@@ -4230,7 +4226,6 @@
     "required": [
      "tier",
      "chat_limit_per_day",
-     "requests_per_minute",
      "finmind_class",
      "byok_active",
      "features"
@@ -19430,27 +19425,12 @@
       ],
       "title": "Chat Limit Per Day"
      },
-     "deep_research_limit_per_day": {
-      "anyOf": [
-       {
-        "type": "integer"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Deep Research Limit Per Day"
-     },
      "features": {
       "items": {
        "type": "string"
       },
       "title": "Features",
       "type": "array"
-     },
-     "requests_per_minute": {
-      "title": "Requests Per Minute",
-      "type": "integer"
      },
      "sponsor_data": {
       "title": "Sponsor Data",
@@ -19463,10 +19443,8 @@
     "required": [
      "tier",
      "chat_limit_per_day",
-     "requests_per_minute",
      "sponsor_data",
-     "features",
-     "deep_research_limit_per_day"
+     "features"
     ],
     "title": "TierSummary",
     "type": "object"
@@ -19487,20 +19465,10 @@
      "chats_used": {
       "title": "Chats Used",
       "type": "integer"
-     },
-     "deep_research_limit": {
-      "title": "Deep Research Limit",
-      "type": "integer"
-     },
-     "deep_research_used": {
-      "title": "Deep Research Used",
-      "type": "integer"
      }
     },
     "required": [
-     "chats_used",
-     "deep_research_used",
-     "deep_research_limit"
+     "chats_used"
     ],
     "title": "TodayUsage",
     "type": "object"

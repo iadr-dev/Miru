@@ -32,7 +32,6 @@ export type Account = z.infer<typeof userSchema>;
 export const entitlementViewSchema = z.object({
   tier: z.enum(TIERS),
   chat_limit_per_day: z.number().int().nullable(),
-  requests_per_minute: z.number().int(),
   finmind_class: z.enum(TIERS),
   byok_active: z.boolean(),
   features: z.array(z.string()).default([]),

@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.entitlements import (
     chat_limit_for,
-    deep_research_limit_per_day,
     feature_allowed,
     rate_limit_per_minute,
 )
@@ -93,9 +92,9 @@ async def enforce_pre_turn_gate(
     (no TOCTOU) — over-cap callers are refunded and rejected without spending the day's allowance.
     An unlimited tier (Pro) or an active BYOK key means no daily cap and no counter write.
 
-    `deep_research=True` adds the Pro-only feature check (`403 feature_not_entitled`) and claims
-    one of the caller's daily reports (`429 deep_research_limit_reached`, BYOK does not lift it);
-    that claim is refunded by the turn driver if the run fails or yields no report."""
+    `deep_research=True` adds the Pro-only feature check (`403 feature_not_entitled`). A report has
+    no daily cap of its own: each run is bounded by its own budget, and the per-minute rate above
+    and the daily-chat allowance still apply."""
     verdict = await state.rate_limiter.check(
         user.id,
         max_requests=rate_limit_per_minute(user),
@@ -110,7 +109,7 @@ async def enforce_pre_turn_gate(
         )
 
     if deep_research:
-        await _claim_deep_research(state, user)
+        _require_deep_research_feature(user)
 
     # `byok` is the SAME decision the turn will run on (`api.byok.resolve_byok`), passed in rather
     # than looked up again here: the cap is lifted only for a turn that really runs on a user key,
@@ -118,8 +117,6 @@ async def enforce_pre_turn_gate(
     limit = chat_limit_for(user, byok_active=byok)
     quota = await state.usage_store.reserve_daily_chat(user_id=user.id, limit=limit)
     if not quota.allowed:
-        if deep_research:
-            await state.usage_store.refund_daily_deep_research(user_id=user.id)
         raise ApiError(
             status_code=429,
             code="chat_limit_reached",
@@ -131,21 +128,12 @@ async def enforce_pre_turn_gate(
         )
 
 
-async def _claim_deep_research(state: AppState, user: User) -> None:
+def _require_deep_research_feature(user: User) -> None:
     if not feature_allowed(user, "deep_research"):
         raise ApiError(
             status_code=403,
             code="feature_not_entitled",
             message="Deep research is available on the Pro plan.",
-            retryable=False,
-        )
-    limit = deep_research_limit_per_day(user)
-    claim = await state.usage_store.reserve_daily_deep_research(user_id=user.id, limit=limit)
-    if not claim.allowed:
-        raise ApiError(
-            status_code=429,
-            code="deep_research_limit_reached",
-            message=f"Daily deep research limit reached ({limit} reports/day). Try again tomorrow.",
             retryable=False,
         )
 
@@ -418,7 +406,7 @@ async def _drive_turn(
 
     try:
         if deep_research:
-            outcome = await run_deep_research_turn(
+            result = await run_deep_research_turn(
                 state=state,
                 ctx=ctx,
                 event_bus=event_bus,
@@ -427,9 +415,6 @@ async def _drive_turn(
                 locale=locale,
                 model_override=model_override,
             )
-            result = outcome.result
-            if not outcome.counts_toward_limit:
-                await _refund_deep_research(state, session, user_id)
         else:
             result = await state.orchestrator.run(
                 message,
@@ -452,8 +437,6 @@ async def _drive_turn(
         raise
     except Exception as exc:  # a failed turn ends the stream with an error frame, never a hang
         logger.error("turn_drive_failed", turn_id=turn_id, error=str(exc))
-        if deep_research:
-            await _refund_deep_research(state, session, user_id)
         event_bus.publish(
             EventKind.TURN_END, turn_id=turn_id, data={"status": "error", "message": str(exc)}
         )
@@ -480,17 +463,6 @@ async def _drive_turn(
     )
     await reward_completed_chat(session, event_bus=event_bus, turn_id=turn_id, user_id=user_id)
     event_bus.publish(EventKind.TURN_END, turn_id=turn_id, data={"status": "done"})
-
-
-async def _refund_deep_research(state: AppState, session: AsyncSession, user_id: str) -> None:
-    """Give back the claimed report after a failed/empty run - best-effort, never fails the turn.
-    The request session is committed first: the refund opens its own session, and SQLite allows
-    one writer at a time (the same reason the pre-turn gate runs before any write)."""
-    try:
-        await session.commit()
-        await state.usage_store.refund_daily_deep_research(user_id=user_id)
-    except Exception as exc:
-        logger.warning("deep_research_refund_failed", user_id=user_id, error=repr(exc))
 
 
 async def _maybe_title_thread(

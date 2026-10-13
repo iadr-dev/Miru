@@ -74,10 +74,8 @@ class TierSummary(BaseModel):
 
     tier: Tier
     chat_limit_per_day: int | None  # None = unlimited
-    requests_per_minute: int
     sponsor_data: bool  # branch/ownership/holder data unmasked
     features: tuple[str, ...]
-    deep_research_limit_per_day: int | None  # None when the tier has no deep research
 
 
 def tier_catalog() -> list[TierSummary]:
@@ -92,12 +90,8 @@ def tier_catalog() -> list[TierSummary]:
             TierSummary(
                 tier=tier,
                 chat_limit_per_day=limits.chat_limit_per_day,
-                requests_per_minute=limits.requests_per_minute,
                 sponsor_data=limits.finmind_class is not Tier.FREE,
                 features=features,
-                deep_research_limit_per_day=(
-                    DEEP_RESEARCH_LIMIT_PER_DAY if "deep_research" in features else None
-                ),
             )
         )
     return summaries
@@ -120,11 +114,6 @@ def chat_limit_for(user: User, *, byok_active: bool) -> int | None:
 # (OpenAI TTS) - local speech-to-text and Edge voices cost nothing, so they have no daily quota.
 VOICE_REQUESTS_PER_MINUTE: Final[int] = 20
 VOICE_DAILY_LIMIT: Final[int] = 100
-
-# Deep research is Pro-only and capped per UTC day no matter what (each report is many model calls
-# and web fetches). BYOK does not lift it: it is a fair-use bound, not the chat allowance.
-DEEP_RESEARCH_LIMIT_PER_DAY: Final[int] = 5
-
 
 # Models a Free account may pick when the turn runs on OUR key (BYOK turns run on the caller's own
 # key and are unrestricted). These are the low-cost ones; the heavier models need a paid plan, so a
@@ -157,11 +146,6 @@ def platform_model_allowed(user: User, model_override: str | None, *, byok_activ
     return allowed is None or model_override is None or model_override in allowed
 
 
-def deep_research_limit_per_day(user: User) -> int:
-    del user  # one limit today; the signature leaves room for per-tier limits
-    return DEEP_RESEARCH_LIMIT_PER_DAY
-
-
 def rate_limit_per_minute(user: User) -> int:
     return TIER_LIMITS[user.tier].requests_per_minute
 
@@ -191,7 +175,6 @@ def entitlement_view(user: User, *, byok_active: bool) -> EntitlementView:
     return EntitlementView(
         tier=user.tier,
         chat_limit_per_day=chat_limit_for(user, byok_active=byok_active),
-        requests_per_minute=rate_limit_per_minute(user),
         finmind_class=finmind_class_for(user),
         byok_active=byok_active,
         features=allowed_features(user),
@@ -200,7 +183,6 @@ def entitlement_view(user: User, *, byok_active: bool) -> EntitlementView:
 
 
 __all__ = [
-    "DEEP_RESEARCH_LIMIT_PER_DAY",
     "FEATURE_MIN_TIER",
     "FREE_PLATFORM_MODELS",
     "TIER_LIMITS",
@@ -210,7 +192,6 @@ __all__ = [
     "TierSummary",
     "allowed_features",
     "chat_limit_for",
-    "deep_research_limit_per_day",
     "entitlement_view",
     "feature_allowed",
     "finmind_class_for",

@@ -69,7 +69,6 @@ class EntitlementView(BaseModel):
 
     tier: Tier
     chat_limit_per_day: int | None  # None = unlimited (Pro, or BYOK)
-    requests_per_minute: int
     finmind_class: Tier  # free | sponsor-equivalent — drives data_class unmask
     byok_active: bool
     features: tuple[str, ...]  # feature ids allowed at this tier

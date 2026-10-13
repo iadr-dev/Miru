@@ -36,7 +36,6 @@ export function UsagePanel(): ReactNode {
   }
 
   const quota = query.data;
-  const canDeepResearch = quota.features.includes("deep_research");
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,20 +52,6 @@ export function UsagePanel(): ReactNode {
           unlimitedLabel={t("unlimited")}
           summary={(used, limit) => t("usedOfLimit", { used, limit })}
         />
-        {canDeepResearch ? (
-          <AllowanceRow
-            label={t("deepResearchLimit")}
-            used={today.data?.deep_research_used ?? null}
-            limit={today.data?.deep_research_limit ?? null}
-            unlimitedLabel={t("unlimited")}
-            summary={(used, limit) => t("usedOfLimit", { used, limit })}
-          />
-        ) : null}
-        <SettingsRow label={t("requestsPerMinute")}>
-          <span className="font-num text-[14px] text-[var(--text)] tabular-nums">
-            {quota.requests_per_minute}
-          </span>
-        </SettingsRow>
         <SettingsRow label={t("byokActive")}>
           <span className="text-[14px] text-[var(--text)]">
             {quota.byok_active ? tc("yes") : tc("no")}

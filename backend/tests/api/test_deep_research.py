@@ -1,6 +1,6 @@
-"""Deep research end to end over HTTP: the Pro gate, the daily limit and its refund, the streamed
-progress lanes, and a cited, governance-scanned report - with a scripted model and a fake web, so
-no provider or network is touched."""
+"""Deep research end to end over HTTP: the Pro gate, the streamed progress lanes, and a cited,
+governance-scanned report - with a scripted model and a fake web, so no provider or network is
+touched."""
 
 from __future__ import annotations
 
@@ -160,31 +160,26 @@ def test_a_pro_report_is_cited_and_streams_progress(
     assert frames[-1]["data"]["status"] == "done"
 
 
-def test_the_daily_limit_is_five_reports(research_client: TestClient, settings: Settings) -> None:
+def test_reports_have_no_daily_cap(research_client: TestClient, settings: Settings) -> None:
     headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
-    for _ in range(5):
+    for _ in range(7):  # the old cap was five a day
         assert _ask(research_client, headers).status_code == 200
-    blocked = _ask(research_client, headers)
-    assert blocked.status_code == 429
-    assert blocked.json()["code"] == "deep_research_limit_reached"
-    # ordinary chat is unaffected by the report limit
     assert _ask(research_client, headers, deep=False).status_code == 200
 
 
-def test_a_run_that_finds_nothing_still_counts(
+def test_a_run_that_finds_nothing_says_so(
     settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Searching already cost real work, so an empty result is not refunded (no free probing)."""
     monkeypatch.setattr(
         deep_research_turn, "build_gateway", lambda: _FakeGateway(has_results=False)
     )
     with build_test_client(settings, agent_answer="x", agent_client=_ResearchClient()) as client:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
-        for _ in range(5):
+        for _ in range(7):
             resp = _ask(client, headers)
+            assert resp.status_code == 200
             text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
             assert "無法產出" in text
-        assert _ask(client, headers).status_code == 429
 
 
 class _BrokenClient(_ResearchClient):
@@ -196,15 +191,17 @@ class _BrokenClient(_ResearchClient):
         )
 
 
-def test_our_own_failure_is_refunded(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_our_own_failure_says_no_report_was_produced(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(deep_research_turn, "build_gateway", _FakeGateway)
     with build_test_client(settings, agent_answer="x", agent_client=_BrokenClient()) as client:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
-        for _ in range(7):  # beyond the daily limit, yet never blocked: no report was produced
-            resp = _ask(client, headers)
-            assert resp.status_code == 200
-            text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
-            assert "不會計入" in text
+        resp = _ask(client, headers)
+        assert resp.status_code == 200
+        text = next(f for f in _parse_sse(resp.text) if f["event"] == "message")["data"]["text"]
+        assert "未產出報告" in text
+        assert "每日" not in text  # there is no daily count to refer to
 
 
 def test_trading_language_in_a_model_claim_never_reaches_the_report(
@@ -247,20 +244,6 @@ def test_regenerate_reruns_a_deep_research_turn_as_deep_research(
     )
     assert resp.status_code == 200
     assert "### 來源" in _message_text(resp.text)  # a report again, not a plain chat answer
-
-
-def test_regenerate_counts_against_the_daily_report_limit(
-    research_client: TestClient, settings: Settings
-) -> None:
-    headers, _ = sign_in(research_client, settings, tier=Tier.PRO)
-    _ask(research_client, headers)
-    thread = _thread(research_client, headers)
-    url = f"/api/v1/threads/{thread['id']}/turns/{_last(thread, 'assistant')['id']}/regenerate"
-    for _ in range(4):
-        assert research_client.post(url, headers=headers).status_code == 200
-    blocked = research_client.post(url, headers=headers)
-    assert blocked.status_code == 429
-    assert blocked.json()["code"] == "deep_research_limit_reached"
 
 
 def test_regenerate_can_explicitly_drop_back_to_plain_chat(
@@ -323,8 +306,8 @@ def test_token_usage_is_persisted_on_the_turn_and_shows_in_the_usage_endpoints(
     assert len(llm["daily"]) == 7
 
     today = research_client.get("/api/v1/usage/today", headers=headers).json()
-    assert today["deep_research_used"] == 1
-    assert today["deep_research_limit"] == 5
+    assert "deep_research_used" not in today
+    assert "deep_research_limit" not in today
     assert today["chats_used"] == 0  # Pro chat is unlimited, so no chat counter is touched
 
 

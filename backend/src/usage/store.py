@@ -35,7 +35,6 @@ from db.models import UsageCounterRow, UsageEventRow
 logger = structlog.get_logger(__name__)
 
 _CHAT_COUNTER = "chat"
-_DEEP_RESEARCH_COUNTER = "deep_research"
 _VOICE_COUNTERS = {"stt": "voice_stt", "tts": "voice_tts"}
 VoiceKind = Literal["stt", "tts"]
 
@@ -96,14 +95,6 @@ class UsageStore(Protocol):
     async def reserve_daily_chat(
         self, *, user_id: str, limit: int | None, today: date | None = None
     ) -> ChatQuotaVerdict: ...
-
-    async def reserve_daily_deep_research(
-        self, *, user_id: str, limit: int, today: date | None = None
-    ) -> ChatQuotaVerdict: ...
-
-    async def refund_daily_deep_research(
-        self, *, user_id: str, today: date | None = None
-    ) -> None: ...
 
     async def today_counts(self, *, user_id: str, today: date | None = None) -> dict[str, int]: ...
 
@@ -178,15 +169,6 @@ class SqlAlchemyUsageStore:
             return ChatQuotaVerdict(allowed=True, used=0, limit=None)
         return await self._reserve(_CHAT_COUNTER, user_id=user_id, limit=limit, today=today)
 
-    async def reserve_daily_deep_research(
-        self, *, user_id: str, limit: int, today: date | None = None
-    ) -> ChatQuotaVerdict:
-        """The same reserve-before-act claim for deep-research reports (always finite - a report
-        costs many model calls and web fetches, so BYOK does not lift it)."""
-        return await self._reserve(
-            _DEEP_RESEARCH_COUNTER, user_id=user_id, limit=limit, today=today
-        )
-
     async def reserve_daily_voice(
         self, *, user_id: str, kind: VoiceKind, limit: int, today: date | None = None
     ) -> ChatQuotaVerdict:
@@ -197,10 +179,6 @@ class SqlAlchemyUsageStore:
         self, *, user_id: str, kind: VoiceKind, today: date | None = None
     ) -> None:
         await self._refund(_VOICE_COUNTERS[kind], user_id=user_id, today=today)
-
-    async def refund_daily_deep_research(self, *, user_id: str, today: date | None = None) -> None:
-        """Give back a claimed report (the run failed or produced nothing). Never below zero."""
-        await self._refund(_DEEP_RESEARCH_COUNTER, user_id=user_id, today=today)
 
     async def _refund(self, counter: str, *, user_id: str, today: date | None) -> None:
         async with self._session_factory() as session:
@@ -250,10 +228,7 @@ class SqlAlchemyUsageStore:
                 )
             )
             counts = {counter: int(n) for counter, n in rows.all()}
-        return {
-            "chats": counts.get(_CHAT_COUNTER, 0),
-            "deep_research": counts.get(_DEEP_RESEARCH_COUNTER, 0),
-        }
+        return {"chats": counts.get(_CHAT_COUNTER, 0)}
 
     async def record_turn(  # noqa: PLR0913 — one field per usage dimension the snapshot carries
         self,
