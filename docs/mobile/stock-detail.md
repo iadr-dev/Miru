@@ -106,5 +106,5 @@ Tokens from the web app; gauge = §7.1, `ChartWithDataSheet` =
 Descriptive, not prescriptive: 偏多/中性/偏空 describes what factors show, never 買/賣/target/sizing;
 score always ships its factor breakdown. A KD cross / pattern is a **描述 of the chart**, never a cue.
 Analyst/external data attributed. 分點/官股 → 馬賽克 for Free. Non-trading `<Caveat>` on every
-analytical section; no 明牌/飆股/目標價/買賣 copy ([../backend/governance.md](../backend/governance.md) §1,
+analytical section; no 明牌/飆股/目標價/買賣 copy ([backend/CLAUDE.md](../../backend/CLAUDE.md) §4,
 [../brand.md](../brand.md) §5).

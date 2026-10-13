@@ -15,15 +15,15 @@ Thread            # a conversation (a message tree)
  ├─ id, title, created_at, updated_at, metadata (watchlist, provider/model)
  └─ Turn[]        # one user request → one agent response cycle (a Turn on the active path)
       ├─ id, role (user|assistant), status (running|done|cancelled|error), parent_turn_id
-      ├─ Message[]   # ordered blocks: text, thinking, tool_use, tool_result, caveat, rich_card,
-      │              # steering, branch_summary, compaction (conversation/models.py MessageBlockType)
+      ├─ Message[]   # ordered blocks: text, thinking, tool_use, tool_result, caveat, rich_card, steering,
+      │              # branch_summary, compaction, attachment, web_search_sources (MessageBlockType)
       └─ usage        # tokens, tool calls, cost
 ```
 
 ### Persistence
 - Store: `ConversationStore` protocol (`conversation/store.py`); SQLAlchemy async, SQLite dev
-  default, Postgres in production. Full schema: [../database-schema.md](../database-schema.md).
-- Consistent with governance: **no credentials persisted** — only conversation content, tool
+  default, Postgres in production. Tables are the SQLAlchemy models in `backend/src/db/models/conversation.py`.
+- **No credentials persisted** (see [`backend/CLAUDE.md`](../../../backend/CLAUDE.md) §8) — only conversation content, tool
   journal, and derived context. The canonical package remains immutable and separate.
 - Operations: `create_thread`, `list_threads`, `get_thread`, `append_turn`, `active_path`,
   `switch_branch(to_message)`, `fork_thread(from_turn)`, `delete_thread`, `update_thread`
@@ -87,97 +87,49 @@ carries a common envelope so the frontend can attribute each token/tool to the r
   block, a sub-agent). Deltas for the same node share `node_id` so the UI appends in place.
 
 ### Event types
-| Event | Payload (+ envelope) | Meaning |
+The kinds are defined once in `events/kinds.py` (`EventKind`; `TURN_STREAM_KINDS` must equal the
+web client's `SSE_EVENT_KINDS`, enforced by `tests/events/test_event_kinds.py`). Payloads below are
+in addition to the envelope.
+
+| Event | Payload | Meaning |
 |-------|---------|---------|
-| `turn.start` | `{turn_id, thread_id}` | turn accepted |
+| `turn.start` | `{thread_id}` | turn accepted |
 | `route.decided` | `{framework, skills, reason}` | orchestrator routing (see [11](11-orchestration.md)) |
-| `agent.spawned` | `{agent_id, parent_agent_id, role, skill, activity}` | a sub-agent lane opened; `activity` = NL label |
-| `agent.progress` | `{agent_id, status, phase, activity}` | lifecycle `queued→running→done\|error` + NL line |
-| `agent.done` | `{agent_id, status, summary}` | sub-agent lane closed |
-| `activity` | `{node_id, text}` | **natural-language narration** of what's happening now (the primary timeline line) |
-| `steering.accepted` | `{text}` | mid-run user message queued, injected next turn (no cancel) |
-| `message.delta` | `{agent_id, text}` | **real** — streamed assistant answer token(s); one already-governance-scanned sentence per event (see below) |
-| `thinking.delta` | `{agent_id, text}` | **real** — raw reasoning stream, one delta chunk per event, already governance-scanned — **collapsed by default** (see below) |
-| `tool.start` | `{step_index, tool_name, summary}` | **real** — a tool call is about to dispatch, published *before* the governance veto runs (fires even for a call that ends up blocked) — a live preview `tool.result` completes later (see below) |
-| `tool.proposed` | `{call_id, name, args, data_class, activity}` | tool call + its NL label (`activity` shown, `name/args` are detail) |
-| `tool.started` | `{call_id}` | dispatch began (post-guardrail) |
-| `tool.result` | `{step_index, tool_name, argument_keys, summary, guardrail_allowed, guardrail_reason}` | tool returned (raw payload withheld) |
-| `tool.locked` | `{call_id, name, required_tier, preview}` | **`sponsor` data, unentitled** — masked teaser (馬賽克 + upgrade CTA) |
-| `tool.blocked` | `{call_id, reason}` | guardrail refused (trading intent / full-market scan) |
-| `caveat` | `{kind, text}` | currentness / non-trading caveat surfaced |
-| `message` | `{text, framework}` | **real** — the one final-answer frame the driver publishes just before `turn.end`; not chunked/streamed token-by-token (see `message.delta` below) |
+| `agent.spawned` | `{agent_id, parent_agent_id, role, skill, activity}` | a sub-agent lane opened; `activity` is a templated one-liner (`Running {skill}`) |
+| `agent.progress` | `{agent_id, status, phase}` | only `{status: "degraded", phase: "quota"}` is published today |
+| `agent.done` | `{agent_id, status}` | sub-agent lane closed |
+| `steering.accepted` | `{message}` | mid-run user message queued; `AgentLoop._inject_steering` folds it in at the next Step boundary (single-framework root lane only; proven by `tests/api/test_steering_wiring.py`) |
+| `message.delta` | `{agent_id, text}` | streamed answer, one already-governance-scanned sentence per event; root/synthesis lane only |
+| `thinking.delta` | `{agent_id, text}` | raw reasoning chunk, already governance-scanned; clients keep it collapsed by default |
+| `tool.start` | `{step_index, tool_name, summary}` | a tool call is about to dispatch, published *before* the governance veto (fires for a call that ends up blocked too); a live preview of the later `tool.result` |
+| `tool.result` | `{step_index, tool_name, argument_keys, summary, guardrail_allowed, guardrail_reason}` | tool returned (raw payload withheld); a masked `sponsor` call carries `guardrail_reason: "masked_teaser"` |
+| `web_search.result` | `{agent_id, sources}` | sources of a native web-search call (`[{url, title}]`) |
+| `rich_card` | `{card_type, data}` | structured UI card (stock card, comparison table, chart, gauge); emitted on the `single`, `subagent` and `team` frameworks, governed by a structured non-trading scan, never built from a masked tool result ([03-tools.md](03-tools.md): tools opt in via `card_type`). Interactive kinds: `ask_user` (option tap) and `alert_proposal` (`propose_alert` tool; the confirm button makes the *frontend* call `POST /alerts` - the agent never creates the rule) |
 | `synthesis.start` | `{from_agents:[...]}` | main agent begins merging sub-agent results |
-| `rich_card` | `{card_type, data}` | structured UI card (stock card, comparison table, chart, gauge) — **real**, see status note below. Interactive kinds: `ask_user` (option tap) and `alert_proposal` (`propose_alert` tool → a confirm card whose 建立 button makes the *frontend* call `POST /alerts`; the agent never creates the rule) |
-| `ask_user` | `{prompt, options?, kind}` | agent needs clarification (ambiguous symbol, missing param) |
-| `follow_up` | `{suggestions:[...]}` | suggested next questions/actions (chips) |
-| `pet.reaction` | `{pet_id, cue}` | **cosmetic** companion avatar cue ([21](21-pet-gamification.md)) — separate UI region, ignorable |
-| `pet.leveled` | `{pet_id, level}` | equipped pet leveled up mid-stream (cosmetic) |
-| `pet.pull_earned` | `{available_pulls}` | a milestone granted a gacha pull (cosmetic) |
-| `usage` | `{agent_id, input_tokens, output_tokens, tool_calls, cost}` | running accounting (per agent) |
-| `turn.end` | `{turn_id, status}` | completed |
-| `error` | `{agent_id?, code, message, retryable}` | terminal or recoverable error (per lane if scoped) |
+| `memory.used` | `{memories:[...]}` | long-term memories recalled for this turn ([09-memory.md](09-memory.md)) |
+| `personality.used` | `{personality}` | tone preset applied to this turn |
+| `pet.leveled` | `{pet_id, level}` | equipped pet leveled up (cosmetic, [21](21-pet-gamification.md)) |
+| `pet.pull_earned` | `{count}` | a milestone granted gacha pull(s) (cosmetic) |
+| `usage` | `TurnUsage` snapshot (tokens, `tool_calls`, `finmind_calls`, `cost_micros`, per-model breakdown) | published once per turn by `Orchestrator._finalize` |
+| `message` | `{text, framework}` | the one final-answer frame, published just before `turn.end`; not chunked |
+| `turn.end` | `{status}` (+ `message` on `error`) | `done`, `cancelled` or `error` |
 
-**Implementation status.** Real today: `turn.start`, `route.decided` (published by
-`orchestrator.classifier.IntentClassifier.classify`), `agent.spawned`, `agent.progress`
-(only ever `{status: "degraded", phase: "quota"}` today — no other progress phase is published),
-`agent.done`, `steering.accepted` (recorded on `RunningTurn.steering` and drained by
-`AgentLoop._inject_steering` at the next Step boundary for the `single`-framework interactive
-root lane — genuinely redirects a running turn, proven end-to-end by
-`tests/api/test_steering_wiring.py`; the earlier claim that this event was accepted-but-inert is
-now stale), `synthesis.start`, `usage` (published once per turn by
-`orchestrator.orchestrator.Orchestrator._finalize`, not truly "running" per-step accounting),
-`turn.end`, `message` (the one final-answer frame, not chunked), and `tool.result` (published by
-`events/hooks.py`'s `EventBusPostToolHook` on every tool dispatch — wired into every `AgentLoop`
-build across the `single`/`subagent`/`team` frameworks via `orchestrator/orchestrator.py`'s
-`_build_loop`, and streamed live over SSE via the bus subscription in `api/turn_driver.py`), and
-`rich_card` (built end-to-end: emitted on the `single`, `subagent`, and `team` frameworks alike,
-governed via a structured non-trading scan on the payload, and never built from a masked/
-unentitled tool result — see [03-tools.md](03-tools.md) for which tools opt into a card via a
-`card_type` class attribute).
+**Not events.** There is no `caveat`, `activity`, `tool.proposed`, `tool.started`, `tool.locked`,
+`tool.blocked`, `ask_user`, `follow_up`, `pet.reaction` or standalone `error` kind (verified against
+`EventKind`): the non-trading caveat is inside the final `message` text (appended by
+`agent.guardrails.check_output`), a masked or blocked call surfaces as a `tool.result`, and a
+failed/cancelled turn publishes `turn.end` with `status` `"error"`/`"cancelled"`. The `ask_user`
+*tool* is real (`tools/ask_user_tools.py`, `card_type="ask_user"`) and renders through `rich_card`.
 
-**Also real, genuinely live-streamed (landed alongside memory recall wiring):** `message.delta`
-and `thinking.delta` are not aspirational — `agent/loop.py::AgentLoop._stream_step` drives every
-Step via `llm.stream()` (never `llm.chat()`), consuming `TextDeltaEvent`/`ThinkingDeltaEvent`s as
-the model emits them. `events/hooks.py`'s `EventBusThinkingHook` publishes `thinking.delta`
-(`{agent_id, text}`, the raw delta chunk, already passed through `guardrails.check_output`) once
-per thinking chunk; `EventBusAnswerDeltaHook` publishes `message.delta` (`{agent_id, text}`) once
-per completed, already-`guardrails.scan_sentence`-scanned sentence of the final answer — sentence
-boundaries are buffered incrementally (`guardrails.split_sentences_streaming`) so nothing
-unscanned is ever forwarded. Both hooks are wired into every `AgentLoop` build via
-`orchestrator/orchestrator.py::_build_loop`, proven by `tests/agent/test_loop.py` and
-`tests/events/test_hooks_registration.py`. `EventBusAnswerDeltaHook` is only ever attached to the
-root/synthesis lane, not a fanned-out sub-agent lane (mirrors the `thinking`/`web_search` hook
-carve-out on `orchestrator.py`'s fan-out paths). The whole-answer `check_output` pass (caveat
-append + final redaction) still runs unconditionally in `_finalize_output` once the Step
-completes — the live deltas are an additional preview, not a replacement for that authoritative
-final scan.
-
-Also real: `tool.start` (published by `events/hooks.py`'s `EventBusPreToolHook`, wired the same
-way as the other hooks above) — it fires the instant a tool call is about to dispatch, before the
-governance veto (`agent.guardrails.check_tool_call`) even runs, so it fires for a call that ends
-up blocked too. Its payload carries only `{step_index, tool_name, summary}` — a human label via
-the same natural-language-summary helper `EventBusPostToolHook` uses, never arguments or a
-result; those still arrive later on the matching `tool.result` frame this event is a live preview
-of. This exists because most configured models never emit a `thinking_delta` at all, so before
-`tool.start` shipped, a slow multi-tool Step showed nothing live until every call in it had
-already finished and posted its `tool.result`.
-
-**Still not real — no event of this kind is ever published anywhere in the codebase** (verified
-by grepping every `event_bus.publish(...)` call site): `caveat` (the non-trading caveat text is
-present *inside* the final `message`/persisted `TextBlock`'s prose, appended by
-`agent.guardrails.check_output`, but there is no dedicated `caveat` SSE event carrying it
-separately — the table row above documents the intended future shape, not current behavior),
-`activity`, `tool.proposed`, `tool.started`, `tool.locked`
-(the masking outcome itself is real — `tools.base.dispatch_tool` returns a `MaskedTeaser` and
-the resulting `tool.result` frame carries `guardrail_reason: "masked_teaser"` — but there is no
-separate `tool.locked` event kind), `tool.blocked`, `ask_user` (as an EVENT KIND — the `ask_user`
-*tool* itself is real and registered, see the dedicated note below), `follow_up`,
-`pet.reaction`/`pet.leveled`/`pet.pull_earned`, `error` (a failed/cancelled turn instead
-publishes `turn.end` with `data.status` of `"error"`/`"cancelled"` and an inline `message`
-field — there is no standalone `error`-kind event). Building the remaining missing kinds is
-separate work from the `message.delta`/`thinking.delta`/`tool.start` streaming that has already
-landed — most notably a dedicated pause/resume mechanism for `ask_user` (see below), which is a
-turn-lifecycle change, not just a new event type.
+**Live streaming.** `AgentLoop._stream_step` drives every Step via `llm.stream()` (never
+`llm.chat()`). `EventBusThinkingHook` / `EventBusAnswerDeltaHook` / `EventBusPreToolHook` /
+`EventBusPostToolHook` / `EventBusWebSearchHook` (`events/hooks.py`, wired into every `AgentLoop`
+by `orchestrator/orchestrator.py::_build_loop`) publish the corresponding events. Answer sentences
+are buffered incrementally (`guardrails.split_sentences_streaming`) so nothing unscanned is
+forwarded; the whole-answer `check_output` pass (caveat append + final redaction) still runs in
+`_finalize_output`, so the deltas are a preview, not a replacement for the authoritative scan.
+`tool.start` exists because most configured models emit no thinking deltas, so a slow multi-tool
+Step would otherwise show nothing live.
 
 ### Timeline / run-tree the frontend materializes
 The client folds the stream into a tree the timeline renders as lanes:
@@ -186,7 +138,7 @@ turn
  └─ root (main agent)                     ← message/thinking/tool events on agent_id="root"
      ├─ route.decided → framework=subagent
      ├─ agent.spawned chip-flow   (lane A) ┐ parallel lanes, each with its own
-     ├─ agent.spawned earnings    (lane B) �│ thinking.delta / tool.* / progress,
+     ├─ agent.spawned earnings    (lane B) │ thinking.delta / tool.* / progress,
      ├─ agent.spawned valuation   (lane C) ┘ interleaved but attributable via agent_id
      ├─ agent.done A/B/C
      └─ synthesis.start → message.delta (root) → turn.end
@@ -199,66 +151,27 @@ turn
 - **Thinking visualization:** each lane shows its own live progress — but as **natural
   language**, not engineering internals (see below).
 
-### Natural-language narration (what the timeline actually shows)
-The timeline's primary line for every node is the **`activity`** field — a short, human,
-present-tense sentence describing *what the agent is doing*, e.g.:
-- ✅ "Checking 台積電 institutional flows over the last 20 days"
-- ✅ "Comparing 0050 vs 006208 holdings and fees"
-- ✅ "Reading the latest 重大訊息 for 欣興"
-- ❌ NOT `tool.proposed{name:"get_chip_flows", args:{stock_id:"2330", window:20}}`
-- ❌ NOT raw chain-of-thought / provider tokens
+### What the timeline shows
+The timeline is built from `agent.spawned.activity` (a templated one-liner), `tool.start.summary`
+and `tool.result.summary` (natural-language labels, never arguments or raw results) and the
+collapsed-by-default `thinking.delta` stream. Tool names/arguments are detail, not the primary
+line. All narration text is governed like any other output (non-trading, no raw payloads).
 
-Two tracks, deliberately separated (intended design — see status note):
-1. **Narration track (default view):** a standalone `activity` event + `agent.spawned.activity`/
-   `agent.progress.activity` — the readable story of the run. This is what the timeline would
-   render as lane lines. **Implementation status:** `agent.spawned.activity` is real today (a
-   templated one-liner, `f"Running {skill_name}"`, set in `orchestrator.orchestrator
-   ._run_one_lane`); `agent.progress` is real but never carries an `activity` field (its only
-   real payload is `{status: "degraded", phase: "quota"}`); the standalone `activity` event kind
-   does not exist.
-2. **Detail track (opt-in "show details"):** `tool.proposed.name/args` is not implemented;
-   `tool.result.summary` is real and already streamed. **`thinking.delta` is real** (see the
-   implementation-status note above) but is never meant to be the primary display — some
-   providers don't expose it, and it's raw reasoning text, not user-facing prose — so the
-   frontend is expected to keep it collapsed/opt-in even though the backend genuinely streams it.
-
-So the frontend would show a clean "thinking process" as a sequence of NL activity lines per
-lane; tapping a node would reveal the underlying tool/args/result. All `activity` text is meant
-to be governed (caveated, non-trading, no raw payloads) like any other output, once built.
-
-**Web/mobile note.** `rich_card` is real; `follow_up` is not built. The `ask_user` **tool** is
-real and registered (`backend/src/tools/ask_user_tools.py`, `card_type="ask_user"`, tested in
-`tests/tools/test_ask_user_tools.py`) — it runs today as a normal, always-runnable tool call and
-renders through the already-built `rich_card` SSE event, exactly like any other card-opted-in
-tool. What is **not** built is a dedicated `ask_user` **event kind** or any turn pause/resume
-semantics — see the dedicated note below. Once `follow_up` and a real pause/resume mechanism for
-`ask_user` both exist they would make the chat feel more native on a GUI (inline clarification
-that can actually halt a turn mid-flight, tappable next-step chips). `rich_card` payloads
-(including the `ask_user` card) are governed today — caveated, non-trading, no raw source
-payloads.
-
-### Inline user input & locked data
-- **`ask_user`** — the **tool** is real and registered (see the web/mobile note above): it runs
-  immediately within the Step that calls it, just validating/echoing back the question+options as
-  a governed `rich_card`, and the model is expected to make it its last action for the turn. What
-  is genuinely **not built** is a dedicated `ask_user` SSE **event kind** and any turn-level
-  pause/resume semantics — `agent/loop.py::AgentLoop.run_turn`'s Step loop has no suspension point
-  mid-dispatch (every tool's `run()` must return within the same Step), so the turn cannot halt
-  and wait for a live answer; the *informational* clarification (which 台積電? what window?) is
-  instead answered by a normal follow-up message or an option tap starting a new turn, never a
-  live in-turn pause. Not an access gate either way.
-- **`tool.locked`** — *entitlement* signal: the agent tried a `sponsor` (paid) tool for an
-  unentitled user. The stream would carry `{required_tier, preview}` so the frontend renders the
-  section blurred (馬賽克) with an "upgrade to Premium/Pro" CTA. What's real today: the masking
-  decision itself (`tools.base.dispatch_tool` returns a `MaskedTeaser` for an unentitled
-  `sponsor` call, and the resulting `tool.result` frame carries
-  `guardrail_reason: "masked_teaser"`) — just not as its own `tool.locked` event. No user action
-  is required for the turn to complete — the answer proceeds around the masked section.
+### `ask_user` and locked data
+- **`ask_user`** is a normal, always-runnable tool: it validates/echoes the question + options as
+  a governed `rich_card` within the Step that calls it, and the model is expected to make it its
+  last action for the turn. There is no turn pause/resume (`AgentLoop.run_turn`'s Step loop has no
+  suspension point mid-dispatch); the answer (an option tap or follow-up message) starts a new
+  turn. It is not an access gate.
+- **Locked data** is the masking outcome of `tools.base.dispatch_tool` for an unentitled `sponsor`
+  call (`MaskedTeaser`): the `tool.result` frame carries `guardrail_reason: "masked_teaser"`, the
+  turn completes around the masked section, and the frontend renders it blurred (馬賽克) with an
+  upgrade CTA.
 
 ### Resumability
 - Clients send `Last-Event-ID` on reconnect; the server replays events after that id from
   the turn's event log. Enables mobile/flaky-network resume without re-running the turn.
-- Non-SSE clients can poll `GET /threads/{id}/turns/{turn_id}` for the materialized state.
+- Non-SSE clients can read the persisted turns via `GET /threads/{id}`.
 
 ## 3. Turn lifecycle
 
@@ -269,10 +182,8 @@ accepted → running ──► (tool call → pre_tool guardrail + sponsor-entit
    ├─ cancel (client) ──► cancelled
    └─ done | error
 ```
-The per-call decision above (`tool.proposed`/`tool.locked` as separate SSE events in the table
-in §2) is not streamed as its own event yet — the client sees the outcome as a `tool.result`
-frame with `guardrail_reason: "masked_teaser"` when masked, and the final `message` text/rich
-cards reflect the masked section once the turn completes; see the §2 implementation-status note.
+The client sees a masked call as a `tool.result` frame with `guardrail_reason: "masked_teaser"`,
+and the final `message` text/rich cards reflect the masked section once the turn completes.
 
 - **Cancellation:** `POST /threads/{id}/turns/{turn_id}/cancel` finds the live turn in
   `api.turn_registry.TurnRegistry`, and `RunningTurn.request_cancel()` both flips the
@@ -309,9 +220,9 @@ unentitled user, the flow is fully automatic:
 3. Unentitled → `dispatch_tool` returns a **masked teaser** (`MaskedTeaser{locked, required_tier,
    preview, tool_name}`) instead of running the tool. The turn keeps running; the outcome is
    reflected in that Step's `tool.result` SSE frame as `guardrail_reason: "masked_teaser"` (there
-   is no separate `tool.locked` event — see §2's implementation-status note).
-4. The final answer is composed around the masked section; the frontend is meant to render it
-   blurred (馬賽克) with an "upgrade to Premium/Pro" CTA badge once the frontend/event work lands.
+   is no separate `tool.locked` event).
+4. The final answer is composed around the masked section; the frontend renders it blurred
+   (馬賽克) with an "upgrade to Premium/Pro" CTA badge.
 
 Both the attempt and its `data_class`/locked outcome are journaled (`agent/journal.py`). Identical
 behavior over MCP (no special-casing) — `mcp.resources` dispatches through the same

@@ -13,16 +13,13 @@ data source as a governed tool, and serves results over a **read-only FastAPI AP
 
 1. [architecture.md](architecture.md) — the full system blueprint: modules, data flow,
    repo layout, and the anatomy of a single agent turn.
-2. [governance.md](governance.md) — the non-negotiable rules the whole system enforces:
-   Mode A/B/C, Level 1/2, data-class entitlement gate (paid FinMind), TLS policy, non-trading guarantee.
-3. [data-catalog.md](data-catalog.md) — verified inventory of every data source
-   (TWSE/TPEX/TAIFEX OpenAPI + FinMind's 104 datasets), a CMoney-class gap analysis, and
-   the direct/derive/paid build strategy.
-4. [api-reference.md](api-reference.md) — consolidated REST + SSE + MCP endpoint reference.
-5. [database-schema.md](database-schema.md) — all tables (accounts, threads, memory,
-   feedback, usage, scheduler…).
-6. [modules/](modules/) — one detailed spec per module.
-7. [adr/](adr/) — architecture decision records explaining *why* key choices were made.
+2. [`../../backend/CLAUDE.md`](../../backend/CLAUDE.md) §4/§8 and [`../../AGENTS.md`](../../AGENTS.md) — the
+   non-negotiable rules the whole system enforces (non-trading output, data-class entitlement gate,
+   TLS policy, untrusted external content); [modules/25](modules/25-governance-enforcement.md) maps
+   each rule to the code that enforces it.
+3. [api-reference.md](api-reference.md) — consolidated REST + SSE + MCP endpoint reference.
+4. [modules/](modules/) — one detailed spec per module. The data sources are the adapters in
+   `backend/src/sources/`, and the tables are the models in `backend/src/db/models/`.
 
 **Building the backend from these specs?** Start with **[DEVELOPMENT.md](DEVELOPMENT.md)** — the
 developer runbook (quickstart, local infra, build order, test profiles, "how to add X" recipes, the
@@ -56,25 +53,25 @@ governance gate). It's the *how*; the docs above are the *what & why*. Coding st
 - **Access control:** all tools are read-only and freely runnable — **no safety tiers, no
   approval gate**. The only gate is **paid FinMind Sponsor data** (`data_class: sponsor`),
   gated by user tier (Premium/Pro) and shown to Free users as a masked/blurred teaser (馬賽克)
-  with an upgrade CTA. See `governance.md` §4 and `adr/0010`.
+  with an upgrade CTA. See [modules/25](modules/25-governance-enforcement.md).
 - **Backend layout:** `backend/src/<domain>/` (agent, orchestrator, llm, tools, sources,
   dataaccess, calendar, ingest, analytics, context, conversation, memory, skills, events,
   accounts, payments, feedback, usage, scheduler, voice, personality, pets, schemas, db, api, mcp, config).
   Governance mode codes (M5F/K/N/Q…) are concepts; code uses domain filenames.
 - **Analytics & ingest:** an `ingest/` ETL layer populates a derived DuckDB/Parquet store on a
-  trading-calendar cron (governance §9c carve-out); an `analytics/` layer derives indicators, a
+  trading-calendar cron (the platform-ingest carve-out); an `analytics/` layer derives indicators, a
   multi-factor **多空** score, AI summary/SWOT, and an AI top-N screener over it — all
-  non-trading, factor-transparent. See `modules/20`, `modules/22`, `adr/0023`, `adr/0025`.
+  non-trading, factor-transparent. See `modules/20` and `modules/22`.
 - **Pets/gamification:** a **cosmetic-only** companion (gacha on register, XP/leveling, reactive
   in chat) **fully decoupled** from tiers/entitlements/analysis — never affects a
-  trading-relevant output. See `modules/21` and `adr/0024`.
+  trading-relevant output. See `modules/21`.
 - **Deployment:** **multi-user hosted** — OAuth, tiers (free/premium/pro), entitlements, BYOK
-  (amends the original local-first assumption; see `governance.md` §9 and `adr/0008`).
+  (see `modules/12`).
 - **Scheduler:** user-authorized jobs/alerts permitted under a **governance carve-out**
-  (`governance.md` §9a, `adr/0009`) — read-only, non-streaming, non-trading, quota-bounded.
-- **Governance:** inherited from the reference project, with explicit amendments §9 and its
-  **§9a–§9c** carve-outs (§9a user-authorized scheduler · §9b demand-driven live quotes · §9c
-  platform data-ingest) — see `governance.md`.
+  (see `modules/14`) — read-only, non-streaming, non-trading, quota-bounded.
+- **Governance:** inherited from the reference project, with three explicit carve-outs: the
+  user-authorized scheduler, demand-driven live quotes, and platform data-ingest — see
+  [modules/25](modules/25-governance-enforcement.md).
 
 ## Status
 

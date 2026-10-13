@@ -32,7 +32,7 @@ deliberate, per-tool opt-in into the `rich_card` SSE event ([07-conversation-str
 a chart/table/gauge-shaped tool result the frontend renders as a structured card rather than
 plain prose. Chosen over inferring card-worthiness from a tool's `output_model` shape, since
 shape alone (e.g. field count) can't reliably distinguish a genuine table from an incidentally
-wide scalar result. **74 tools are opted in today** (the exact set is locked by
+wide scalar result. **Over 120 tools are opted in today** (the exact set is locked by
 `tests/agent/test_loop.py::CARD_OPTED_TOOLS`) — the price/chip/flow/valuation/derivatives/
 fundamental/ETF/macro/theme/score/screener/TDCC/analyst reads whose typed output is genuinely tabular,
 time-series, or gauge-shaped (the exact name→label mapping is locked by a parametrized test in
@@ -75,19 +75,13 @@ two or more modules lives in `_common.py` and has a public name; modules import 
 `_common`, never from each other. `tools/market/__init__.py` re-exports the public names and
 builds the registration table. New category-sized tool groups should follow the same shape.
 
-**Real count: `tools/__init__.py` imports 24 domain tool-group modules** (`context_tools.py`,
-`health_tools.py`, `tools/market/`, `mops_tools.py`, `calendar_tools.py`, `live_tools.py`,
-`gov_api_tools.py`, `etf_pcf_tools.py`, `etf_overlap_tools.py`, `web_search_tools.py`,
-`analyst_tools.py`, `chip_tools.py`, `technical_tools.py`, `fundamental_tools.py`,
-`derivatives_tools.py`, `convertible_bond_tools.py`, `macro_tools.py`, `international_tools.py`,
-`others_tools.py`, `tdcc_tools.py`, `ask_user_tools.py`, `theme_tools.py`, `score_tools.py`,
-`screener_tools.py`). `build_default_tool_registry(router)` called with no
-`session_factory`/`market_data_reader` (the theme/score/screener groups need one or both to
-register) yields **100 tools**; called with both optional dependencies supplied — the full
-production wiring — it yields **107 tools**. Assembled by
-`tools/__init__.py::build_default_tool_registry` into one `ToolRegistry`
-(`tools/registry.py`). The list below is a domain-grouped index of the real tool names;
-per-tool detail (input/output shape, capability wrapped) lives in each file's own docstrings.
+**Real count.** `tools/__init__.py::build_default_tool_registry(router)` assembles every domain
+tool-group module (one `*_tools.py` per domain plus the `tools/market/` package) into one
+`ToolRegistry` (`tools/registry.py`). Called with no `session_factory`/`market_data_reader`
+(the theme/score/screener/trend-score/summary groups need them to register) it yields **158 tools**;
+with the full production wiring it yields about **170**. The list below is a domain-grouped index
+of the real tool names; per-tool detail (input/output shape, capability wrapped) lives in each
+file's own docstrings.
 
 Naming vs. the original design: several tools this design named turned out, once built against
 real adapters, to need a different name (usually because the real capability is narrower or
@@ -110,8 +104,10 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   current/at-election shares + 質押比 (risk flag). Design named a broader `get_insider_activity`/
   `get_board_resolutions`/`get_buyback_status`/`get_investor_conferences`/
   `get_self_settled_earnings` set — the real tool is narrower, scoped to exactly what
-  `sources/mops.py` serves; those other five have **no adapter and no tool** (no matching
-  `Capability` exists in `schemas/enums.py` — a data-catalog gap, not a tool-registry one).
+  `sources/mops.py` serves. `get_board_resolutions`/`get_buyback_status`/`get_investor_conferences`
+  have **no tool** (no matching `Capability` in `schemas/enums.py`). The other MOPS tools in
+  `mops_tools.py` are `get_self_assessed_earnings`, `get_material_announcement_feed` and
+  `get_insider_transfer_declarations`.
 - `get_insider_activity` — US-style Form-4-derived insider transactions (non-TW only,
   `NonTwSymbolInput`), sparse/empty outside the US — a distinct, real tool from the MOPS one above.
 - `get_institutional_holders` — non-TW institutional-holder rows.
@@ -151,9 +147,9 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_trading_calendar` — whole-market trading-day calendar.
 - `get_valuation_ratios` — daily PER/PBR/dividend-yield.
 - `get_order_book_stats` — whole-exchange 5-second order-book stats.
-- `get_taiex_index_snapshot` — whole-market TAIEX 5-second index reading. *Design's
-  `get_advance_decline`/`get_index_contribution` (漲跌分佈/家數, 指數貢獻排行) have no real tool —
-  this snapshot is the index level only, not a breadth/contribution breakdown.*
+- `get_taiex_index_snapshot` — whole-market TAIEX 5-second index reading (the index level only).
+  Breadth and contribution are separate tools in `tools/market/`: `get_advance_decline` (public)
+  and `get_index_contribution` (sponsor).
 - `get_day_trading` — 當沖標的/量值/當沖比重.
 - `get_total_return_index` — 報酬指數.
 - `get_price_limit` — 漲跌停價.
@@ -166,10 +162,10 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   Finnhub), `get_ptt_board` and `get_ptt_stock_search` (`ptt_tools.py`; unverified chatter,
   attention signal only).
 - `get_etf_fund_info` — TW ETF fund-level metadata (issuer, tracked index, units outstanding) —
-  not per-constituent holdings or NAV/IOPV (documented gap in the adapter itself). *Design's
-  `get_etf_nav_premium`/`get_etf_aum` became `get_etf_premium_discount` (`etf_pcf_tools.py`: a bounded
-  premium/discount-to-NAV history plus the latest AUM) and the AUM column of `get_etf_list`;
-  `get_etf_beneficiaries` has no real tool.*
+  not per-constituent holdings (documented gap in the adapter itself). Sibling tools in
+  `etf_pcf_tools.py`: `get_etf_expense_ratio` (SITCA 內扣費用), `get_etf_theme_tags` (主題/因子 +
+  受益人次), `get_etf_trailing_returns`, and `get_etf_premium_discount` (a bounded
+  premium/discount-to-NAV history plus the latest AUM; the AUM column is also in `get_etf_list`).
 - `get_etf_overlap` (`etf_overlap_tools.py`) — the Reddit-r/ETFs-sourced 3+-fund overlap-checker:
   fans `Capability.FUND_HOLDINGS` out over 3–10 caller-named **non-TW** ETFs/funds (same
   `US`/`GB`/`JP`/`EU` restriction as `get_fund_holdings`) and computes which requested ETFs hold
@@ -187,10 +183,10 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   metadata). Never computes overlap%/premium-discount/NAV for a TW symbol — that row's
   `unavailable_note` names the same TW-holdings-gap reason as `get_etf_overlap`, rather than
   omitting the field silently or fabricating a number.
-- `get_company_profile` — see immediate-core note below; a **partial** profile (sector/industry +
-  latest dividend only — no MOPS adapter exists, so 董事長/總部/資本額/市值/PE/PB/EPS/… are named
-  in its own `missing_fields`, never fabricated). *Design's `get_company_relationships` (集團
-  企業/轉投資/大股東) has no real tool.*
+- `get_company_profile` — see immediate-core note below; composes sector/industry, latest dividend,
+  market value/PER/yield/EPS, revenue YoY/margins and the MOPS identity fields (董事長/總部/資本額/
+  …); anything a call could not populate is `None` and named in its own `missing_fields`, never
+  fabricated. *Design's `get_company_relationships` (集團企業/轉投資/大股東) has no real tool.*
 - `get_price_quote` — see immediate-core note below.
 - `get_dividend_schedule` — per-stock/ETF 除權息 + 配息 timeline.
 - `get_institutional_flow` — 三大法人 per-stock (public slice; `get_chip_flows`/
@@ -301,8 +297,8 @@ Sponsor, web-only: 注意/處置 buckets with price, institutional flow, margin 
 in the list above.)
 
 - `get_loan_collateral_balance` — 資金貸與/質押 collateral balance (**note:** this is a balance
-  figure, not the 質押比/背書保證/訴訟裁罰 governance-risk composite the design's
-  `governance-risk` skill wants — see [08-skills.md](08-skills.md)).
+  figure, not a full 質押比/背書保證/訴訟裁罰 composite; the `governance-risk` skill is narrowed to
+  質押比 + this balance — see [08-skills.md](08-skills.md)).
 - `get_disposition_securities` — 公布處置有價證券 event stream (narrower than the design's
   `get_disposition_stocks` composite — no TPEX 注意股/停資停券 adapter exists to fold in).
 - `get_derivatives_institutional` — 期/選 三大法人 day-session flow + 大額交易人 OI.
@@ -359,7 +355,7 @@ The agent only ever sees tools from three places: the **matched skill's allowlis
 and `web_search` + `fetch_url`, added only when the chat's *Web search* toggle is on (see the
 web-search section below). Every other registered tool is reachable by the **web through REST**
 (`api/routers/market_rest/`, `analytics.py`, `themes.py` dispatch them by name) and by MCP's
-`search_tools`, but **not by the chat agent**. About 40 tools are in that web-only group (market
+`search_tools`, but **not by the chat agent**. Dozens of tools are in that web-only group (market
 heatmaps/rankings/strips, `get_news_feed`, `get_price_history`, `get_symbol_quotes` (the list-row view: name, close, daily
 change %, volume, sparkline), `get_technical_indicators`,
 `get_stock_summary`, `get_trend_score`, `run_screener`, ...). That is by design for dashboards,
@@ -388,7 +384,7 @@ Design names that have no tool of that name: `get_indicators` (= `get_technical_
 
 ## Deferred / lazy tool loading
 
-With **172 tools** in the full production wiring (fewer when the registry is built without the
+With about **170 tools** in the full production wiring (fewer when the registry is built without the
 `session_factory`, `market_data_reader` or summary LLM), sending every schema every turn wastes
 context. Following Pi's
 `splitDeferredTools()`, the registry splits tools into:
@@ -455,16 +451,15 @@ non-trading `guardrails.check_output` scan as any other output.
 
 ## Tool output size control
 
-**Design intent, not built.** No tool in `tools/` truncates a large result, persists it to a
-file/artifact for later re-reading, or attaches row/line anchors — this is aspirational, not a
-real mechanism. Every row-returning tool (via the shared `tools/_rows.py::fetch_rows`/
+**Not built.** No tool in `tools/` truncates a large result, persists it to a
+file/artifact for later re-reading, or attaches row/line anchors. Every row-returning tool (via the shared `tools/_rows.py::fetch_rows`/
 `validate_rows` helper) returns its full validated row tuple as-is; the only real size control
 in the registry today is `fetch_url`'s flat 20,000-character text cap
 (`tools/web_search_tools.py::_FETCH_URL_TEXT_CAP`, with a `truncated` flag on overflow) — there
 is no equivalent for any market-data tool's row payload. What genuinely is enforced: every
 `SourceResult`-backed tool still carries its `currentness_caveat`, and raw upstream payloads
 are never surfaced verbatim (each tool validates rows into its own typed `schemas.capabilities`
-model — see governance §6) — but there is no head/summary compaction, no artifact-path
+model — raw-payload rules in [../../../backend/CLAUDE.md](../../../backend/CLAUDE.md) §4 and §8) — but there is no head/summary compaction, no artifact-path
 handoff, and no re-read-a-slice mechanism for any tool today.
 
 ## Enforcement
@@ -474,7 +469,7 @@ handoff, and no re-read-a-slice mechanism for any tool today.
   preview}`) instead of full data — the frontend renders it blurred/馬賽克 with an upgrade
   CTA. This check runs in the `pre_tool` hook ([10-events-hooks.md](10-events-hooks.md)).
 - No tool requires approval or a confirmation token to execute.
-- Tools are the only callers of `context/`, which are the only callers of `sources/`.
+- Tools reach data only through `dataaccess/` (the router and gateways); only `sources/` performs network I/O.
 - Every dispatch (args + result summary + data_class) is written to the journal.
 
 ## MCP exposure

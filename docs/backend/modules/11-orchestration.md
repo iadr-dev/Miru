@@ -13,7 +13,7 @@ of skill descriptions and returns a routing decision:
 ```python
 class Routing(BaseModel):
     framework: Literal["none", "single", "subagent", "team"]
-    skills: list[str]          # 0–4 skills, chosen from the registry
+    skills: list[str]          # 0–8 skills (parse ceiling), chosen from the registry
     reason: str                # short rationale (journaled)
 ```
 
@@ -33,8 +33,8 @@ class Routing(BaseModel):
 |-----------|------|-----------|--------|
 | `none` | greeting / off-topic / capability question | reply from system prompt, **no tools** | [] |
 | `single` | one-dimension lookup or action | 1 agent, ReAct loop | 1 |
-| `subagent` | multi-angle analysis (independent dimensions) | **N skills → N parallel agents** → synthesis | 2–4 |
-| `team` | sequential deep research (findings build on each other) | N agents with **shared context**, run in order → synthesis | 2–4 |
+| `subagent` | multi-angle analysis (independent dimensions) | **N skills → N parallel agents** → synthesis | 2–6 |
+| `team` | sequential deep research (findings build on each other) | N agents with **shared context**, run in order → synthesis | 2–6 |
 
 ### `single` — ReAct loop
 The standard agent loop from [05-agent-runtime.md](05-agent-runtime.md): think → tool →
@@ -94,13 +94,13 @@ Explicit, to avoid both context-budget blowup and silent starvation:
   when it is given a `recall_provider`, and only the `none`/`single` root-agent paths
   (`_run_none`/`_run_single`) pass one — `_run_subagent`/`_run_team`'s fan-out lanes never do, so
   a sub-agent's loop never sees the memory block ([09](09-memory.md), [10](10-events-hooks.md)).
-  They run on the **post-compaction** context; they never re-inflate history. (4 lanes × full
-  history would multiply tokens 4× and can exceed the window.)
+  They run on the **post-compaction** context; they never re-inflate history. (N lanes × full
+  history would multiply tokens N× and can exceed the window.)
 - **Teammates (`team`)** hand off **structured `finding` records** (per [09-memory.md](09-memory.md)
   summary-quality: decision + cause + key_figures), **not raw prose** — bounding growth across
   the sequence. A lightweight schema/sanity check runs on each shared-context write to stop a
   wrong early finding from cascading (`team` is reserved for genuine dependency and fans out to
-  at most 4 lanes — the classifier's own routing-parse ceiling is 8, a rare-hallucination
+  at most 6 lanes — the classifier's own routing-parse ceiling is 8, a rare-hallucination
   backstop distinct from this real per-turn cap, see below).
 - **Agent output contract:** every sub-agent returns a **structured result with a
   completeness/confidence signal** (not just prose), so synthesis knows an empty/low-confidence
@@ -114,13 +114,13 @@ Explicit, to avoid both context-budget blowup and silent starvation:
 - **Agent-level fallback:** a lane that returns schema-invalid/empty → one corrective retry →
   else drop-with-flag. Sub-agents are read-only + independent, so retry is idempotent.
 - **Per-turn ceilings (hard, enforced in `pre_turn`/`pre_llm` hooks):** max sub-agents actually
-  spawned = **4** (`TurnBudget.max_subagents`/`orch_max_subagents`) — the real, cost/latency-
-  bearing fan-out ceiling; max ReAct iterations per agent ≈ **8–10**; max total tool calls per
-  turn; **per-turn cost/token ceiling** → abort to a structured degraded answer, not a crash.
+  spawned = **6** by default (`TurnBudget.max_subagents`/`orch_max_subagents`) — the real, cost/latency-
+  bearing fan-out ceiling; max ReAct steps per agent = **8** (`orch_max_steps_per_agent`); max total tool calls per
+  turn = **60**; **per-turn cost/token ceiling** → abort to a structured degraded answer, not a crash.
   Bounds runaway loops. Separately, the classifier's own routing-parse ceiling (`_MAX_SKILLS` in
   `orchestrator/models.py`/`classifier.py`) is **8** — a rare-hallucination backstop on the
   routing decision itself, not the routine breadth control; `clamp_subagents` still trims down to
-  4 lanes actually spawned. When either ceiling clamps a turn's skill list, the dropped count is
+  the lanes actually spawned. When either ceiling clamps a turn's skill list, the dropped count is
   surfaced in the synthesized answer rather than silently absorbed
   (`SynthesisProvenance.dropped_skill_count`).
 - **FinMind pre-flight reservation:** before spawning a fan-out, the quota manager reserves the
@@ -164,7 +164,7 @@ adapter maps role → provider/model from config.
   ([07](07-conversation-streaming.md)); there is no approval step to coordinate.
 - The routing decision, each agent's tools (with `agent_id`), and synthesis provenance are
   journaled — a fan-out is reconstructable per lane.
-- Bounded by config: max **4** sub-agents actually spawned (the classifier's own routing-parse
+- Bounded by config: max **6** sub-agents actually spawned by default (the classifier's own routing-parse
   ceiling is 8, a backstop — see §3b), per-agent ReAct-iteration cap, per-turn tool-call
   and **cost/token ceiling** (hard abort → degraded answer), plus the FinMind Sponsor pool's
   static **6000 req/hr** ceiling (shared across all Premium/Pro users; Free never draws on it)

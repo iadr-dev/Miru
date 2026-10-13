@@ -26,7 +26,7 @@ interaction/product layers, and interfaces are new**.
 ### Governance concept ↔ code mapping
 
 The reference project's module codes are kept as **governance/mode concepts** (see
-[governance.md](governance.md)); the code uses clean domain names — no `m5k_*` filenames.
+[modules/25](modules/25-governance-enforcement.md)); the code uses clean domain names — no `m5k_*` filenames.
 
 | Concept (Mode / Level) | Code module | Meaning |
 |------------------------|-------------|---------|
@@ -117,8 +117,8 @@ router resolves *which* adapters, in per-market priority order with fallback ([m
 **Critical caveat, carried on every result:** no source is real-time. `*_MIS` are
 bounded snapshots, not streams. OpenAPIs are latest-only with no backfill (FinMind adds
 history). Every payload is tagged with source id, timing class, fetch timestamp, and a
-currentness caveat that propagates to the agent's output. Full inventory:
-[data-catalog.md](data-catalog.md). Note: `TAIFEX_MIS` and a standalone `CALENDAR_EXT` adapter
+currentness caveat that propagates to the agent's output. The adapters in
+`backend/src/sources/` are the inventory. Note: `TAIFEX_MIS` and a standalone `CALENDAR_EXT` adapter
 named in earlier drafts of this doc were never built as separate source files — TAIFEX
 derivatives snapshots are staged behind `context/builder.py`'s validation flag (§4), and
 calendar-gap feeds are composed directly in `calendar/` rather than via a dedicated adapter.
@@ -207,8 +207,7 @@ Conversation state and the auditable journal live in `backend/src/conversation/`
 counting, tool-call formats normalized across providers. Clients: Anthropic (default),
 OpenAI, Gemini, Groq, Cerebras, OpenRouter, Ollama (local). Provider/model chosen from
 config/env; role-based cost-tiered routing.
-See [modules/04-llm-adapter.md](modules/04-llm-adapter.md) and
-[adr/0001-provider-agnostic-llm.md](adr/0001-provider-agnostic-llm.md).
+See [modules/04-llm-adapter.md](modules/04-llm-adapter.md).
 
 ## 8. Anatomy of one agent turn (sequence)
 
@@ -328,7 +327,7 @@ AI discussion handoff": a thread's journaled turns + Conversation package are th
   module, per-tier rate limits + LLM cost budgets, **a single static Redis-backed FinMind
   Sponsor pool (6000 req/hr) shared across all Premium/Pro users** — reserve-before-act with
   refund-on-failure/under-use, not a per-tier quota (Free never touches this pool at all; see
-  [governance.md](governance.md) §9) — BYOK. Everything stateful is scoped by `user_id`.
+  [modules/12](modules/12-multi-user-tiers.md)) — BYOK. Everything stateful is scoped by `user_id`.
 - **Payments** ([modules/15](modules/15-payments-paddle.md)): **Paddle** subscriptions
   (Premium/Pro × monthly/annual × **BYOK/standard**, 8 price IDs); webhook is the source of
   truth for `tier`/`byok`; BYOK variant is cheaper.
@@ -342,11 +341,11 @@ AI discussion handoff": a thread's journaled turns + Conversation package are th
 ## 10. Cross-cutting references
 
 - **API reference** (all REST + SSE + MCP endpoints): [api-reference.md](api-reference.md)
-- **Database schema** (all tables): [database-schema.md](database-schema.md)
-- **Data catalog** (every source/dataset): [data-catalog.md](data-catalog.md)
-- **Governance** (rules + amendments): [governance.md](governance.md)
+- **Database schema** (all tables): the SQLAlchemy models in `backend/src/db/models/`
+- **Data sources** (every adapter): `backend/src/sources/`
+- **Governance** (rules): [backend/CLAUDE.md](../../backend/CLAUDE.md) §4/§8; enforcement map in [modules/25](modules/25-governance-enforcement.md)
 - **Infrastructure & ops** (deployment, cache tier, Redis, observability): [modules/16-infrastructure.md](modules/16-infrastructure.md)
-- **Module specs**: [modules/](modules/) · **Decisions**: [adr/](adr/)
+- **Module specs**: [modules/](modules/) 
 
 ## 11. Build phases
 

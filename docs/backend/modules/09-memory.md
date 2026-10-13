@@ -1,7 +1,8 @@
 # Module: Memory (`backend/src/memory/`)
 
 Three layers of memory so the agent is coherent within a turn, across a conversation, and
-across sessions — without violating governance (no credentials, non-trading, local-first).
+across sessions — within the governance rules (no credentials, non-trading, local-first; see
+[backend/CLAUDE.md](../../../backend/CLAUDE.md) §4 and §8).
 
 ## Guiding principle — carry the conclusion, drop the transcript
 
@@ -56,8 +57,8 @@ Memory
 
 Types:
 - **watchlist** — named symbol lists the user follows. **Now a first-class relational store**
-  (`watchlists`/`watchlist_items`, [database-schema §3a](../database-schema.md),
-  [adr/0027](../adr/0027-first-class-watchlist.md)) — **not** a `memories` row. `recall()` reads a
+  (`watchlists`/`watchlist_items`, SQLAlchemy models in `backend/src/db/models/`) — **not** a
+  `memories` row. `recall()` reads a
   **read-through projection** `WatchlistStore.snapshot(user_id)` that renders the same compact
   block (`watchlist "半導體" (TW) = [2330,2454,…]`) — real, unit-tested
   (`tests/memory/test_watchlists.py`, `tests/memory/test_recall.py`) — and, per the recall-wiring
@@ -66,10 +67,9 @@ Types:
   `daily-context-brief` built-in skill still takes an explicit `stock_ids` input rather than
   reading the watchlist store itself.
   `/memory` no longer upserts `type=watchlist`; only the `/watchlists/*` REST
-  (`api/routers/memory.py`) writes it. ADR-0027's design for an agent-side `add_to_watchlist`
-  write tool (explicit-utterance gated) and a read-only MCP `get_watchlist` tool is **not
-  built** — neither exists in `tools/` or `mcp/` today; the agent has no tool-level watchlist
-  access at all.
+  (`api/routers/memory.py`) writes it. There is no agent-side `add_to_watchlist` write tool and no
+  read-only MCP `get_watchlist` tool (neither exists in `tools/` or `mcp/`); watchlist changes from
+  chat go through the propose-only `propose_watchlist_change` card below.
 - **preference** — how the user wants analysis (horizon focus, verbosity, language).
 - **finding** — a durable, caveated observation the user asked to remember (e.g. "note that
   2330 foreign net-buy streak was 8 days as of 2026-07-30").
@@ -103,7 +103,7 @@ Types:
 
 - **Explicit, real today:** the client calls `POST /memory {scope, type, key, content}` directly
   (`api/routers/memory.py`'s `upsert_memory`) — this is the only writer of
-  `preference`/`finding`/`entity_note` memories; `type=watchlist` is refused here (§ above).
+  `preference`/`finding`/`entity_note` memories; `type=watchlist` is refused here (see Types above).
   There is no in-chat "remember my watchlist X" natural-language write path — the client/UI
   would have to call this endpoint itself; the agent has no tool that calls
   `MemoryStore.upsert`.
@@ -134,14 +134,6 @@ Types:
   is handled in `agent.loop`: a reply that is exactly one `{name, arguments}` object naming a tool
   the turn has is run as that call (`agent.answer_format.recover_textual_tool_call`); anything
   else stays an ordinary reply.
-- Earlier note on the watchlist side: ADR-0027 describes an `add_to_watchlist` agent tool (write,
-  explicit-utterance gated) and a read-only `get_watchlist` MCP tool. Neither exists in
-  `tools/` or `mcp/` today — watchlist reads/writes are exposed only as the `/watchlists/*` REST
-  surface (`api/routers/memory.py`) and the read-through `WatchlistStore.snapshot()` projection
-  `memory.recall.recall` renders (wired into the `none`/`single` root-agent path's prompt, not
-  into any fan-out lane, per the status note above). The agent has no tool-level access to
-  watchlists at all right now — the wiring above only injects a rendered snapshot as background
-  context, it grants no callable tool.
 - **Never stored:** credentials, provider keys, raw source payloads, or anything that would
   constitute a trading recommendation.
 - Local-first; user can `list` / `delete` memories via API. Deleting a memory is honored

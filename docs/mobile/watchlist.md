@@ -19,7 +19,7 @@ the web app
 
 | Element | Component | Endpoint |
 |---------|-----------|----------|
-| Market group tabs (TW/US/ETF) | segmented pill row (`market`×`asset_class`) | — ([ADR-0027](../backend/adr/0027-first-class-watchlist.md)) |
+| Market group tabs (TW/US/ETF) | segmented pill row (`market`×`asset_class`) | — |
 | Groups (我的持股/觀察中…) | collapsible section header + count | `/watchlists`, `/watchlists/{id}/items` |
 | Quote row | `StockRow` (§7.8) | `/quote(/stream)` · `/analytics/{s}/indicators` spark · `get_company_profile` |
 | Swipe actions | ☆ star · alert · remove | `PUT/DELETE /watchlists/{id}/items/{symbol}` · `/alerts` ([14](../backend/modules/14-scheduler-alerts.md)) |
@@ -93,4 +93,4 @@ column, 2026 mobile bar** (gesture-first, glanceable type, thumb-zone spacing).
 ## Governance
 Public user data, non-trading, ungated CRUD (soft caps only). The quote column inherits tier (EOD
 Free / live-ish Premium) and carries the currentness caveat; 紅漲綠跌 + ▲▼ + tabular-nums throughout;
-`--accent` never a price. No 明牌/飆股/目標價/買賣 copy ([../backend/governance.md](../backend/governance.md) §1).
+`--accent` never a price. No 明牌/飆股/目標價/買賣 copy ([backend/CLAUDE.md](../../backend/CLAUDE.md) §4).

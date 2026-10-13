@@ -13,9 +13,8 @@ The complete endpoint list is in [../api-reference.md](../api-reference.md).
   reads, `/search`, `/quote/stream`, `/updates/stream`), `market.py` (`/health`, `/sources`,
   `/quote`), `market_rest/` (`/market/*`, `/derivatives/*`, `/macro*`), `fund_data.py`
   (`/funds/*`), `themes.py` (`/themes/*`, `/symbols/{symbol}/themes`), `analytics.py`
-  (`/analytics/{symbol}/score`, `/analytics/rankings` — the only two `/analytics/*` routes backed
-  by real code today; screener/summary/themes-scoring routes named in
-  [api-reference.md](../api-reference.md) §4a are not yet built), `auth.py` + `accounts_extra.py`
+  (`/analytics/{symbol}/score|summary|trend-score`, `/analytics/rankings`, the
+  `/analytics/screener/*` routes incl. saved screens), `auth.py` + `accounts_extra.py`
   (OAuth, `/me`, personality presets, usage quota, BYOK keys), `billing.py` (Paddle), `memory.py`
   (long-term memory + the relational watchlist rail), `scheduler/` (`/schedules`, `/alerts`,
   `/notifications`, `/me/alert-preferences`, `/me/devices`), `voice.py` (transcribe/speak),
@@ -95,7 +94,7 @@ principal is entitled — same rule as the API.
 | `get_source_health()` | public | `context/source_health.py` |
 | `get_company_profile(id, market)` | public | `tools/market/` |
 | `get_price_quote(id, market)` | public | `tools/market/` |
-| `search_tools(intent)` / `execute_tool(id, args)` | public | deferred long-tail access (92 tools) |
+| `search_tools(intent)` / `execute_tool(id, args)` | public | deferred long-tail access (every non-immediate tool) |
 | (via `execute_tool`) `get_chip_flows`, `get_government_bank_flows`, `get_realtime_snapshot`, … | sponsor | FinMind Sponsor (teaser if unentitled) |
 
 Note the real core (above) is narrower than an earlier design draft that named a
@@ -126,7 +125,7 @@ for tool in registry.immediate_tools():             # small core only (5 real to
     )
     mcp.add_tool(fm_tool)  # .run() always calls tools.base.dispatch_tool — sponsor → masked teaser
 
-# deferred long tail (92 tools) reachable via search_tools(intent) → execute_tool(id, args)
+# deferred long tail reachable via search_tools(intent) → execute_tool(id, args)
 ```
 
 ## MCP principal & entitlement
@@ -146,7 +145,7 @@ the request's HTTP headers, and the mechanism is explicit (not assumed):
   `accounts/` today (no `user_secrets`/API-key table, no `/me/api-keys` endpoint) — so an
   authenticated, tier-unmasking MCP call is not currently possible; every caller is anonymous.
 - No other principal path exists; MCP never elevates beyond the resolved caller's tier, and
-  Tier-2/approval concepts do not exist (removed, [adr/0010](../adr/0010-remove-safety-tiers.md)).
+  there is no Tier-2/approval concept (safety tiers were removed).
 
 ## Governance obligations
 

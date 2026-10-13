@@ -1,7 +1,10 @@
 # Module specifications
 
 Each document specifies one layer of the framework: its responsibilities, public
-interface, dependencies, and governance obligations.
+interface, dependencies, and governance obligations. Every module inherits the
+governance rules (governance-as-code in [`backend/CLAUDE.md`](../../../backend/CLAUDE.md) §4, security in §8, and
+[`AGENTS.md`](../../../AGENTS.md)). Endpoints are in [../api-reference.md](../api-reference.md); the
+database tables are the SQLAlchemy models in `backend/src/db/models/`.
 
 | Doc | Layer |
 |-----|-------|
@@ -24,12 +27,10 @@ interface, dependencies, and governance obligations.
 | [17-devops-operations.md](17-devops-operations.md) | CI/CD, containerization, environments, probes, graceful shutdown, DR, cost ops, PII residency, runbooks, feature flags |
 | [18-calendar-events.md](18-calendar-events.md) | Forward events calendar: rule engine + feeds + gap scrapers, event state model (除權息/配息/股東會/法說會/財報/結算/rebalance/macro) |
 | [19-data-access-router.md](19-data-access-router.md) | Multi-market data layer: capabilities, Market/Symbol, per-(market,capability) priority-fallback source router (config-driven) |
-| [20-analytics-scoring.md](20-analytics-scoring.md) | Derived analytics: indicators (量能/支撐壓力/N波), lean 5-factor 多空 score, AI summary/SWOT, funnel screener + AI top-N, theme discovery |
+| [20-analytics-scoring.md](20-analytics-scoring.md) | Derived analytics: indicators, 5-factor 多空 score, tag screener, theme layers |
 | [21-pet-gamification.md](21-pet-gamification.md) | Cosmetic pet/gamification: gacha/pity, XP/leveling, reactive chat companion (decoupled from tiers/analysis) |
-| [22-data-ingest.md](22-data-ingest.md) | Data ingest/ETL: cadence table, whole-market-by-date writers, idempotent atomic-swap Parquet, backfill/gap-fill (governance §9c) |
+| [22-data-ingest.md](22-data-ingest.md) | Data ingest/ETL: cadence table, whole-market-by-date writers, idempotent atomic-swap Parquet, backfill/gap-fill (platform-ingest carve-out) |
 | [23-agent-personality.md](23-agent-personality.md) | Agent voice: user-selectable curated personality presets (穩健/白話/簡潔/數據派), style-only, subordinate to guardrails |
-| [24-deep-research.md](24-deep-research.md) | Pro-only budgeted, cited multi-step web research inside a chat turn (structural citations, untrusted pages, SSRF-safe fetch, 5/day) |
-
-Read [../governance.md](../governance.md) first — every module inherits those rules.
-See also [../api-reference.md](../api-reference.md) (all endpoints) and
-[../database-schema.md](../database-schema.md) (all tables).
+| [24-deep-research.md](24-deep-research.md) | Pro-only budgeted, cited multi-step web research inside a chat turn (structural citations, untrusted pages, SSRF-safe fetch, parallel sub-questions) |
+| [25-governance-enforcement.md](25-governance-enforcement.md) | Where each governance rule is enforced in code and which tests pin it: non-trading output scan, whole-market-scan rejection, sponsor masking, caveats, untrusted content, secrets |
+| [26-attachments.md](26-attachments.md) | Chat attachments: request limits, image vs document handling, untrusted extracted text, persisted `attachment` blocks, use in deep research |

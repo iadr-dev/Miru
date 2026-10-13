@@ -1,8 +1,8 @@
 # Module: Multi-user, tiers & entitlements (`backend/src/accounts/`)
 
 Turns the framework from local-first single-operator into a **multi-user hosted product**:
-authentication, user tiers (free/premium/pro), entitlements, per-tier rate limits & quotas,
-and BYOK. This is a deliberate scope expansion — see [../adr/0008](../adr/0008-multi-user-hosted.md).
+authentication, user tiers (free/premium/pro), entitlements, per-tier chat limits & quotas,
+and BYOK. Why: the product is a hosted multi-user service, not a single-operator local tool.
 
 ## 1. Authentication & identity
 
@@ -115,17 +115,17 @@ from then on.
 
 ## 2. Tiers
 
-| Tier | AI chats/day | Req/min | FinMind class | Gated AI features |
-|------|--------------|---------|---------------|-------------------|
-| **Free** | 3 | 60 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors — real, cache-only reads, [module 20](../modules/20-analytics-scoring.md) §2c); tag screener (`run_tag_screener`/`get_tag_catalog`, public criteria — real, [module 20](../modules/20-analytics-scoring.md) §5T); theme lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`, public); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
-| **Premium** | 100 | 300 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), tick / minute-K (sponsor-class data), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, web_search |
-| **Pro** | unlimited | 600 | Sponsor (shared 6000/hr pool) | + **deep_research** (multi-step cited research; no daily report cap, each run is bounded by its own budget) |
+| Tier | AI chats/day | FinMind class | Gated AI features |
+|------|--------------|---------------|-------------------|
+| **Free** | 3 | Free (no Sponsor pool) | **EOD prices** (`price_eod`); indicators + 多空 score (`get_stock_score`/`get_score_leaderboard`, public factors — real, cache-only reads, [module 20](../modules/20-analytics-scoring.md) §2c); tag screener (`run_tag_screener`/`get_tag_catalog`, public criteria — real, [module 20](../modules/20-analytics-scoring.md) §5a); theme lookup (`get_theme_members`/`get_symbol_themes`/`get_theme_tiers`, public); basic `web_search` (toggle); **cosmetic pets** (free register pull — no tier gate); **agent-voice personality presets** ([modules/23](../modules/23-agent-personality.md) — no tier gate) |
+| **Premium** | 100 | Sponsor (shared 6000/hr pool) | + **live-ish quote feed** (`price_intraday`, SSE, **5s** while market-open), tick / minute-K (sponsor-class data), `sponsor` data (分點/官股/股權分級/產業鏈/主動ETF持股), **AI summary/SWOT** (`get_ai_summary`/`get_swot` — design intent, not yet a real tool, [module 20](../modules/20-analytics-scoring.md)), full 多空 score (incl. 分點 chip sub-signal), AI top-N ranking, web_search |
+| **Pro** | unlimited | Sponsor (shared 6000/hr pool) | + **deep_research** (multi-step cited research; no daily report cap, each run is bounded by its own budget) |
 
-**Alerts & schedules are not a tier feature** (the alerts v2 design): every signed-in user gets them under uniform fair-use caps (proposed: 50 alert rules, 10 schedules, 20 notifications/day; exceeding → 409 `cap_reached`). Effective when modules/14 P0 ships (v1 still has the Pro gate). Tiers only gate the *data* a notification carries — sponsor values are masked for non-entitled users.
+**Alerts & schedules are not a tier feature:** every signed-in user gets them under uniform fair-use caps (`scheduler/caps.py`: 50 alert rules, 10 schedules; exceeding → 409 `cap_reached`; see [14](14-scheduler-alerts.md)). Tiers only gate the *data* a notification carries — sponsor values are masked for non-entitled users.
 
 **Price tiering:** Free = EOD only; Premium/Pro = `price_intraday` — a delayed snapshot pushed
 over SSE by the shared **demand-driven server poller** (5s, market-open only, [modules/16](../modules/16-infrastructure.md)
-§2a; governance §9b), caveated as delayed not true streaming. Outside trading hours it serves the
+§2a; the live-quote poller's bounded observation is a governed carve-out, see [backend/CLAUDE.md](../../../backend/CLAUDE.md) §4), caveated as delayed not true streaming. Outside trading hours it serves the
 last snapshot / EOD.
 
 Single source of truth: `accounts/entitlements.py` — one module both API and agent consult.
@@ -139,15 +139,15 @@ together they are "capability resolution"):
    (which source actually returned the datum, [19](19-data-access-router.md) §4 provenance), *not*
    the abstract capability. The router stamps each normalized result with the `data_class` of the
    adapter that served it; entitlement resolves it per-user → masked teaser. (So the *same* live-ish
-   MIS snapshot is `public` when served by `twse_mis` and `sponsor` when served by `finmind` — see §4
-   + governance §9b.) ← this module + §4.
+   MIS snapshot is `public` when served by `twse_mis` and `sponsor` when served by `finmind` — see §4.)
+   ← this module + §4.
 2. **Tier-feature** — `feature_allowed(user, feature)` (e.g. `deep_research`=Pro,
    `live_quote_stream`=Premium (server-pushed 5s streaming — a *feature* gate, not a data-class gate),
    `tick_minute_k`=Premium (sponsor-class data); note **voice is Free** - speech-to-text and
    read-aloud are not tier-gated and have no daily quota while they run on free providers (local
    Whisper, Edge TTS); every user gets a 20 requests/min abuse bound, and a daily cap of 100 per
    kind (`429 voice_limit_reached`) applies only if a provider that bills per call (TTS `openai`)
-   is configured — [13](13-chat-interaction-features.md) §voice): a feature-min-tier lookup.
+   is configured — [13](13-chat-interaction-features.md) Voice): a feature-min-tier lookup.
    **Model picker (platform key):** a Free account may pick only the light models
    (`FREE_PLATFORM_MODELS`; others -> `403 model_requires_upgrade`, shown locked in the picker via
    `entitlements.platform_models`); paid tiers and BYOK callers (their own key) are unrestricted.
@@ -175,9 +175,9 @@ def entitlement_view(user: User, *, byok_active: bool) -> EntitlementView  # fol
 
 Enforced by `api.turn_driver.enforce_pre_turn_gate` — the `pre_turn` gate every turn-starting
 route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10-events-hooks.md](10-events-hooks.md)
-§ hook taxonomy):
+(hook taxonomy):
 
-- **Request rate** (per-minute) and **daily chat count** per tier.
+- **Request rate** (per-minute abuse bound, `rate_limit_per_minute`; an internal protection, no longer shown to users) and **daily chat count** per tier. Deep research has no daily cap (Pro-only).
 - **FinMind quota is not a live upstream poll.** Premium/Pro (`finmind_class=sponsor`) draw on
   a single shared **Sponsor pool** — a Redis-backed atomic counter reserved pre-flight against a
   static **6000 req/hr** ceiling and refunded on failure/under-use ([16](../modules/16-infrastructure.md)
@@ -185,7 +185,7 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
   Free-tier FinMind quota concept). When the pool nears its ceiling, requests degrade gracefully
   (serve cached / `unavailable-tier`) rather than failing — surfaced via M5Q.
 - **LLM cost accounting** — `usage.store.record_turn`/`write_turn_usage` persist `cost_micros`
-  per turn/user (§ usage rollup, [10](10-events-hooks.md)). **Not yet built:** an actual per-
+  per turn/user ([10](10-events-hooks.md) §3). **Not yet built:** an actual per-
   tier/user cost *budget* that rejects a turn on overspend — today cost is recorded, not
   enforced. Only the two limits above (`enforce_pre_turn_gate`'s rate + daily-chat reservation)
   are real gates.
@@ -227,9 +227,9 @@ GET  /me/connections                  linked providers (google/line) for Setting
 POST /auth/oauth/{provider}/link      link a provider to the CURRENT user (Settings; logged-in)
 DELETE /me/connections/{provider}     unlink a provider (refused if it's the last login method)
 GET  /usage/quota                     the caller's resolved `EntitlementView` (chat/day limit,
-                                      req/min, FinMind class, BYOK, features) — limits only; live
-                                      consumption counters and cost are not surfaced yet (no
-                                      durable usage-rollup store wired to this endpoint)
+                                      FinMind class, BYOK, features, platform models) — limits only
+GET  /usage/today                     chats claimed in today's UTC window
+GET  /usage/llm                       per-day / per-model LLM usage summary
 POST /me/keys                         store BYOK key (encrypted)
 DELETE /me/keys/{provider}
 ```

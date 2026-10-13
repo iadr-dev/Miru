@@ -1,8 +1,8 @@
 # 24 — Deep research (Pro)
 
 A budgeted, cited, multi-step web investigation that runs **inside a chat turn** and streams its
-progress. Implements the `deep_research` feature promised in [ADR-0014](../adr/0014-web-search.md)
-and gated in [12](12-multi-user-tiers.md). Code: `backend/src/research/`, wired by
+progress. Implements the Pro-only `deep_research` feature, gated as in
+[12](12-multi-user-tiers.md). Code: `backend/src/research/`, wired by
 `api/deep_research_turn.py`.
 
 ## 1. Shape of a run
@@ -57,7 +57,7 @@ data / review failures are tolerated and logged; a plan or write failure raises 
 - **Citations are structural.** The model returns *claims* (`text` + `source_ids`). `build_report`
   keeps only ids that exist in the source ledger **and were actually read**; a claim left with none
   is dropped (and counted in `dropped_claims`). Nothing uncited reaches the reader
-  ([ADR-0014](../adr/0014-web-search.md): every web-derived claim is cited).
+  (every web-derived claim is cited).
 - **Fetched text is data, never instructions.** Pages (and market-data results, `kind="data"`) are wrapped in `<source id url title>` blocks,
   control characters are stripped, `<source` / `</source` inside a page are defused, pages that
   contain instruction-like phrases (EN + 中文) are excluded entirely, and both system prompts carry

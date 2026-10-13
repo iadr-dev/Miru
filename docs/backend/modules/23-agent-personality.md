@@ -3,14 +3,14 @@
 The agent's **base analyst voice** — the tone, verbosity, and framing of the AI itself. This is
 **not** the pet (a cosmetic mascot nudge, [21](21-pet-gamification.md)) and **not** a skill (a
 task procedure, [08](08-skills.md)). It is the persona the assistant *speaks in* on every turn,
-user-selectable from a small curated set of presets. See [adr/0026](../adr/0026-agent-personality.md).
+user-selectable from a small curated set of presets.
 
 > **Governance invariant (the whole point of this module's design).** A personality changes
 > **how** the agent says things — never **what** it may say. Every preset is subordinate to the
 > governance system prompt and to `guardrails.check_output` ([05](05-agent-runtime.md) §guardrails):
 > no persona can introduce a buy/sell/target, drop a caveat, restate an analyst target as its
 > own, or alter a score. Presets are **curated, file-defined fragments — never free user text**
-> (a free-text persona box is a prompt-injection + governance hole; explicitly excluded).
+> (a free-text persona box is a prompt-injection hole and could bypass the governance prompt; explicitly excluded).
 
 ---
 
@@ -58,12 +58,12 @@ invariant at the top of this doc, and [05](05-agent-runtime.md) §guardrails).
 ## 1a. Audit notes (live-tested)
 
 - **Contract.** `GET /personality/presets` returns only what the picker needs (`id`, `name_zh`,
-  `name_en`, `description`, `default`, `version`) - the governance-reviewed prompt `fragment` stays
+  `name_en`, `description`, `default`, `version`) - the curated prompt `fragment` stays
   on the server. `PATCH /me {personality_id}` refuses an unknown id with 422; a stale stored id
   falls through to the default at resolve time.
 - **Fragments are written in English and carry the language clause themselves** ("answer in the
   language of the user's most recent message"). Chinese fragments pulled an English question into a
-  Chinese answer (seen live with the coach preset, overriding governance rule 8). A test pins the
+  Chinese answer (seen live with the coach preset, overriding the governance prompt's same-language rule, `agent/prompts/governance.py` rule 8). A test pins the
   clause on every preset. Remaining limitation: `gpt-4o-mini` still drifts to Chinese for English
   questions on this Taiwan-themed prompt regardless of preset (Gemini does not), so it is a model
   trait, not a tone-setting bug.
@@ -72,8 +72,8 @@ invariant at the top of this doc, and [05](05-agent-runtime.md) §guardrails).
   adds a takeaway + example. A preset never overrides what the user asks for ("in one sentence").
 - **Visible and recorded.** Each turn publishes `personality.used` `{personality}` (the resolved
   preset id) right after `turn.start`, and the id is stored in `turns.usage.personality`, so the web
-  shows 「語氣：…」 under the answer live and after reload. The version is still not journaled.
-- **Taiwan wording.** Governance rule 14 pins market terms (本益比, 殖利率, 融資/融券, 外資/投信/自營商,
+  shows 「語氣：…」 under the answer live and after reload. The preset version is not journaled.
+- **Taiwan wording.** `agent/prompts/governance.py` rule 14 pins market terms (本益比, 殖利率, 融資/融券, 外資/投信/自營商,
   漲跌幅, 成交量, 市值), independent of the preset.
 
 ## 2. Preset registry (`personality/presets/` — file-defined, like skills)
@@ -87,15 +87,15 @@ id: steady
 name_zh: 穩健分析師
 name_en: Steady Analyst
 default: true                     # new users get this
+version: "1.0.0"
 description: Balanced, cautious, explains the trade-offs both ways.
 tone:                             # bounded params (not free text)
   verbosity: medium               # terse | medium | detailed
   jargon: balanced                # plain | balanced | technical
   structure: prose                # prose | bullets | tables
   warmth: neutral                 # neutral | encouraging
-fragment: |                       # curated system-prompt text (governance-reviewed)
-  你是一位穩健、客觀的台股分析助理。用平衡的角度說明多空兩面，
-  點出風險與不確定性，避免誇大。所有結論皆為資訊參考、非投資建議。
+fragment: |                       # curated system-prompt text (written in English, carries its own
+  Voice: a steady, objective ...  # language clause; see backend/src/personality/presets/steady.yaml)
 ```
 
 ### Starter presets (built-in)
@@ -108,14 +108,13 @@ fragment: |                       # curated system-prompt text (governance-revie
 | `data` | 數據派 | Numbers-first, tables, minimal prose | medium / technical / tables / neutral |
 
 All four carry the **same** governance floor — they differ only in styling. Each preset carries
-a `version` field (all four are `"1.0.0"` today) for future reproducibility tracking. **Not yet
-built:** nothing writes the resolved personality id/version into the turn journal or any other
-durable record — there is no code path that persists "this turn was shaped by preset X vN" today.
+a `version` field (all four are `"1.0.0"` today). The resolved preset **id** is recorded in
+`turns.usage.personality`; the **version** is not persisted anywhere.
 
 ## 3. Selection & precedence rules
 
 - **Where set:** Settings → *Agent style*; stored on the user (`users.personality_id`,
-  [database-schema](../database-schema.md) §1). New users default to `steady`.
+  the `personality_id` column on the user model in `backend/src/db/models/accounts.py`). New users default to `steady`.
 - **Per-chat override (settable):** `PATCH /threads/{id} {personality_override}` pins a preset for
   that chat; the id `"default"` clears the pin so the chat follows the account again; an unknown id
   is `422 unknown_personality`. `POST /agent/query` accepts the same `personality` field (applied
@@ -130,13 +129,13 @@ durable record — there is no code path that persists "this turn was shaped by 
   [4]**, so if they ever conflict on tone, personality wins and the pet is a lighter nudge on
   top. Neither touches content. A user with the pet disabled still has a personality.
 
-## 4. Governance obligations
+## 4. Obligations
 
 - **Style-only, content-immutable.** A preset fragment may shape tone/verbosity/structure; it is
   appended **after** the governance prompt and **cannot** weaken non-trading, caveat, provenance,
   or entitlement rules. `guardrails.check_output` runs on the final text regardless of persona.
-- **Curated, not free-text.** Presets are file-defined and governance-reviewed on load
-  (schema-validated); there is **no** user free-text persona input (prompt-injection defense,
+- **Curated, not free-text.** Presets are file-defined and reviewed in code
+  (schema-validated on load); there is **no** user free-text persona input (prompt-injection defense,
   aligns with [05](05-agent-runtime.md) untrusted-content rule). Tone params are **enumerated**,
   not arbitrary strings.
 - **No tier gate by default** — voice is a UX preference, free for all tiers (a paid tier buys
@@ -144,7 +143,7 @@ durable record — there is no code path that persists "this turn was shaped by 
   entitlement-gated like any feature, tier axis 2 — [12](12-multi-user-tiers.md) §3 — but the
   four starters are free.)
 - **Changeable, per-user isolated.** Changing the voice is a normal profile edit (`PATCH /me
-  {personality_id}`). **Not yet built:** journaling which personality (id+version) shaped a given
-  turn — see §2 above.
+  {personality_id}`). The preset id that shaped a turn is recorded in `turns.usage.personality`
+  (§1a); the version is not.
 - **Non-English safety.** Presets are authored zh-TW-first; the tone `jargon`/`structure` params
-  never translate away a required caveat — the caveat text is governance-owned, not persona-owned.
+  never translate away a required caveat — the caveat text is owned by the governance prompt, not the persona.

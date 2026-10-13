@@ -186,7 +186,7 @@ Full behavioural/state/motion contracts: [interaction-spec.md](interaction-spec.
 Identical to web §8: every analytical surface carries the **non-trading + currentness caveat**; the
 caveat badge + "not advice" footer are **required, non-removable** components; copy avoids
 明牌/飆股/目標價/買賣/進場/停損; personality/pet layers style **tone only**. Sponsor data → 馬賽克.
-See [../backend/governance.md](../backend/governance.md) §1, [../brand.md](../brand.md) §5.
+See [backend/CLAUDE.md](../../backend/CLAUDE.md) §4, [../brand.md](../brand.md) §5.
 
 > Build-time review gate: when the UI is implemented from these blueprints, the **`impeccable`** agents
 > review the *shipped* pixels against this design set (per the web app) — not

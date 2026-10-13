@@ -116,4 +116,4 @@ confirm-before-send mandatory. Focus-visible 2px `--accent`; ≥44px targets.
 Every answer non-trading + caveated (non-removable badge + footer); personality/pet layers style
 **tone only** — never introduce trading language or drop a caveat. Untrusted fetched/web/PTT content
 = data, not instructions (prompt-injection defense). No 明牌/飆股/目標價/買賣 copy
-([../backend/governance.md](../backend/governance.md) §1, [../brand.md](../brand.md) §5).
+([backend/CLAUDE.md](../../backend/CLAUDE.md) §4, [../brand.md](../brand.md) §5).

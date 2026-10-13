@@ -3,7 +3,7 @@
 Subscription billing via **Paddle** ([API reference](https://developer.paddle.com/api-reference/)).
 Paddle is the merchant of record (handles tax/VAT/invoicing). This module turns a Paddle
 subscription into a user **tier + BYOK entitlement** consumed by `accounts/entitlements`
-([12-multi-user-tiers.md](12-multi-user-tiers.md)). See [../adr/0011](../adr/0011-paddle-payments.md).
+([12-multi-user-tiers.md](12-multi-user-tiers.md)).
 
 ## 1. Plans & price IDs
 
@@ -63,7 +63,7 @@ not parsed JSON) and processes:
 - **`users.tier` is a derived cache** written only by the webhook from the active
   subscription's price_id; `subscriptions` is the record; entitlement reads the cache (free =
   no active row). One source of truth, no drift.
-- On downgrade to `free`, sponsor data reverts to masked teaser automatically (governance §4).
+- On downgrade to `free`, sponsor data reverts to masked teaser automatically (sponsor-data entitlement in `accounts/entitlements.py`).
 - Card-update, invoices/PDFs, dunning, proration, tax, and **refunds/disputes are handled by
   Paddle** (MoR); the app reacts to refunds only via `subscription.canceled`. We build none of it.
 
@@ -86,7 +86,8 @@ tier. Same upsert as the webhook, so the late webhook is then a no-op.
 ```
 GET   /billing/plans?country=XX      tier×interval×byok → price_id + price{amount,currency_code} (Paddle,
                                      minor units, pre-tax, country override applied; null if unavailable)
-POST  /billing/checkout {price_id}   create Paddle checkout (custom_data.user_id)
+POST  /billing/checkout {tier, interval, byok}   create Paddle transaction (custom_data.user_id)
+POST  /billing/sync {transaction_id} adopt the subscription of the caller's own checkout (lost-webhook recovery)
 GET   /billing/subscription          current subscription — **reconcile-on-read**: read through to
                                      the Paddle API and upsert the local row (self-heals a missed webhook)
 POST  /billing/portal?purpose=       Paddle customer-portal link (portal session): overview | payment
@@ -157,13 +158,13 @@ Everything above was exercised against Paddle **sandbox**. Before taking real mo
 6. **Customer portal** enabled in the live account (card update, cancel, invoices).
 7. **Legal & copy**: terms, privacy and refund policy pages linked where you sell; Paddle is the
    merchant of record and shows its own terms in checkout. Check all plan copy stays free of
-   trading language (governance).
+   trading language (`backend/CLAUDE.md` §8).
 8. **Smoke test with a real card** on the cheapest plan: subscribe, see the tier change, download the
    receipt, change plan, cancel, confirm the tier returns to free at period end, then refund it.
 9. **Monitoring**: alert on webhook non-2xx responses and on `billing_provider_error`.
 
 ## Governance obligations
-- Payment credentials/keys are encrypted, never logged/journaled/prompted ([governance.md](../governance.md) §6/§9).
-- Tier/BYOK changes are webhook-driven and journaled; entitlement is never client-asserted.
-- Billing changes access/throughput only — never trading behavior; all governance rules
-  apply equally across paid tiers.
+- Payment credentials/keys are encrypted, never logged/journaled/prompted (`backend/CLAUDE.md` §8, security).
+- Tier/BYOK changes are webhook-driven and recorded in the `billing_events` ledger; entitlement is never client-asserted.
+- Billing changes access/throughput only — never trading behavior; the governance rules in
+  [`backend/CLAUDE.md`](../../../backend/CLAUDE.md) §4 and [`AGENTS.md`](../../../AGENTS.md) apply equally across paid tiers.

@@ -85,5 +85,5 @@ to a **full-tab, date-grouped, one-column timeline**. **Dark-first, 2026 mobile 
 ## Governance
 Non-trading: an events list, not a signal. Rule-derived markers labeled as **deadlines**, not
 confirmed dates; scraped dates (index/macro) carry source + as-of. Non-trading `<Caveat>` on the
-surface; no 明牌/飆股/目標價/買賣 copy ([../backend/governance.md](../backend/governance.md) §1,
+surface; no 明牌/飆股/目標價/買賣 copy ([backend/CLAUDE.md](../../backend/CLAUDE.md) §4,
 [18](../backend/modules/18-calendar-events.md) governance).
