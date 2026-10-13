@@ -7,7 +7,7 @@ import { WelcomePullDialog } from "@/components/pets/welcome-pull-dialog";
 import { AuthGuard } from "@/components/shell/auth-guard";
 import { MobileDrawer, MobileTabBar } from "@/components/shell/mobile-nav";
 import { Sidebar } from "@/components/shell/sidebar";
-import { TabStripScroll } from "@/components/shell/tab-strip-scroll";
+import { TabStripBehavior } from "@/components/shell/tab-strip-behavior";
 import { TopBar } from "@/components/shell/top-bar";
 import {
   useIsDesktopRail,
@@ -96,7 +96,7 @@ export function AppShell({
           <Toaster />
           <RateLimitNotice />
           <QueryFailureNotice />
-          <TabStripScroll />
+          <TabStripBehavior />
         </div>
       )}
     </AuthGuard>

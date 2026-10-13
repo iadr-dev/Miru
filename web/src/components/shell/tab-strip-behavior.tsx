@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { enableTabKeyboard, syncRovingTabindex } from "@/lib/tab-strip";
 
 const FADE_ATTR_START = "data-fade-start";
 const FADE_ATTR_END = "data-fade-end";
@@ -59,10 +60,12 @@ function enableDrag(strip: HTMLElement): void {
   );
 }
 
-/** Makes every `role="tablist"` in the app a proper scrollable strip: edge fades while tabs are
- * hidden, the selected tab scrolled into view, and mouse drag. Mounted once in the shell; a
- * MutationObserver picks up strips as pages render. No per-strip wiring needed. */
-export function TabStripScroll(): null {
+/** Makes every `role="tablist"` in the app behave like one component: a scrollable strip (edge
+ * fades while tabs are hidden, the selected tab scrolled into view, mouse drag) and a keyboard
+ * strip (one tab stop on the selected tab, arrow/Home/End to move between tabs - `lib/tab-strip`).
+ * Mounted once in the shell; a MutationObserver picks up strips as pages render and keeps the tab
+ * stop on the selected tab. No per-strip wiring needed. */
+export function TabStripBehavior(): null {
   useEffect(() => {
     const wired = new WeakSet<HTMLElement>();
     const resize = new ResizeObserver((entries) => {
@@ -74,6 +77,7 @@ export function TabStripScroll(): null {
       wired.add(strip);
       strip.addEventListener("scroll", () => syncFades(strip), { passive: true });
       enableDrag(strip);
+      enableTabKeyboard(strip); // listener lives on the strip, so it goes with it
       resize.observe(strip);
       syncFades(strip);
       revealSelected(strip);
@@ -83,6 +87,7 @@ export function TabStripScroll(): null {
       for (const strip of document.querySelectorAll<HTMLElement>('[role="tablist"]')) {
         wire(strip);
         syncFades(strip);
+        syncRovingTabindex(strip);
       }
     };
 
@@ -94,7 +99,12 @@ export function TabStripScroll(): null {
 
     scan();
     const mutations = new MutationObserver(scan);
-    mutations.observe(document.body, { childList: true, subtree: true });
+    mutations.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["aria-selected", "disabled", "aria-disabled", "aria-hidden"],
+    });
     document.addEventListener("click", onClick);
     return () => {
       mutations.disconnect();

@@ -317,6 +317,13 @@ Never ship happy-path only. Three shared components on every data surface
   (sort on `Enter`, arrow row-nav), chart controls (`←/→` chart, `↑/↓` sheet), thread list, treemap
   tiles (spatial arrow-nav), SupplyChain nodes (edge traversal); **focus-trap** modals (`Esc` closes,
   focus returns to opener).
+- **Tab strips are one behaviour, not 26 copies.** Render `role="tablist"` > `role="tab"` with
+  `aria-selected`; the shell's `TabStripBehavior` (`components/shell/tab-strip-behavior.tsx`, logic in
+  `lib/tab-strip.ts`) gives every strip a roving tab stop (only the selected tab is a Tab stop),
+  Left/Right (flipped in RTL) / Home / End focus movement that wraps and skips disabled tabs, and
+  edge-fade scrolling. Activation stays manual (Enter/Space) so arrowing never fires a fetch per tab.
+  Never hand-roll arrow keys or `tabIndex` on a tab, and mark an inactive placeholder strip
+  `aria-hidden` (the behaviour leaves hidden strips alone).
 - **Focus-visible 2px `--accent` ring** on every interactive element, both themes, never removed
   (scope to `:focus-visible`). **44px minimum touch targets** (grip, ✕, ☆, tab pills, CTAs — incl.
   hover-revealed controls once revealed).

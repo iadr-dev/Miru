@@ -263,7 +263,7 @@ mark {
   white-space: nowrap;
 }
 
-/* A strip with hidden tabs fades the edge(s) that still have more (set by TabStripScroll). */
+/* A strip with hidden tabs fades the edge(s) that still have more (set by TabStripBehavior). */
 [role="tablist"][data-fade-end] {
   mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
