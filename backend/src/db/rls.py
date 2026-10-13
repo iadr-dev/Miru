@@ -20,7 +20,10 @@ makes the table owner (the role the app connects as) subject to the policies too
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import hashlib
+import random
 from collections.abc import Generator
 from contextvars import ContextVar
 
@@ -129,17 +132,51 @@ async def bind_session(session: AsyncSession) -> None:
     await session.execute(_IDENTITY_SQL, _identity_params())
 
 
-def _policy_sql(table: str) -> list[str]:
+def _policy_sql(table: str, *, fingerprint: str | None = None) -> list[str]:
     predicate = (
         f"(user_id = current_setting('{_USER_SETTING}', true) "
         f"OR current_setting('{_SYSTEM_SETTING}', true) = 'on')"
     )
-    return [
+    statements = [
         f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY',
         f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY',
         f'DROP POLICY IF EXISTS {POLICY_NAME} ON "{table}"',
         f'CREATE POLICY {POLICY_NAME} ON "{table}" USING {predicate} WITH CHECK {predicate}',
     ]
+    if fingerprint is not None:
+        statements.append(f"COMMENT ON POLICY {POLICY_NAME} ON \"{table}\" IS '{fingerprint}'")
+    return statements
+
+
+def policy_fingerprint() -> str:
+    """A short hash of the policy definition, stored as a comment on every policy. Postgres rewrites
+    a policy's expression when it stores it, so comparing text would never match; comparing this
+    marker does, and it changes whenever the definition above does, which re-applies the policy."""
+    template = "\n".join(_policy_sql("<table>"))
+    return "miru-rls:" + hashlib.sha256(template.encode()).hexdigest()[:16]
+
+
+# A table that still needs DDL gets its own short transaction. DDL needs an exclusive lock, and
+# while it waits for one every later query on that table queues behind it, so it never waits long:
+# it gives up after this timeout and tries again, a few times, before failing loudly.
+_DDL_LOCK_TIMEOUT_MS = 3000
+_DDL_ATTEMPTS = 5
+_LOCK_NOT_AVAILABLE = "55P03"
+
+_STATE_SQL = text(
+    """
+    SELECT c.relname,
+           (c.relrowsecurity AND c.relforcerowsecurity) AS enforced,
+           (SELECT d.description
+              FROM pg_policy p
+              LEFT JOIN pg_description d
+                     ON d.objoid = p.oid AND d.classoid = 'pg_policy'::regclass
+             WHERE p.polrelid = c.oid AND p.polname = :policy) AS marker
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relname = ANY(:tables)
+    """
+)
 
 
 class RlsNotEnforcedError(RuntimeError):
@@ -169,28 +206,72 @@ async def assert_enforced(engine: AsyncEngine) -> None:
         )
 
 
+class RlsPolicyBlockedError(RuntimeError):
+    """Applying the isolation policy kept timing out on a lock held by another session."""
+
+
+def _is_lock_timeout(exc: DBAPIError) -> bool:
+    orig = exc.orig
+    return getattr(orig, "sqlstate", None) == _LOCK_NOT_AVAILABLE or (
+        "lock timeout" in str(orig).lower()
+    )
+
+
+async def _tables_needing_policies(engine: AsyncEngine, tables: list[str]) -> list[str]:
+    """The tables whose row-level security or policy differs from the definition. Read-only: it
+    takes no lock, so on every restart after the first it is the only thing this module does."""
+    marker = policy_fingerprint()
+    async with engine.connect() as conn:
+        rows = (await conn.execute(_STATE_SQL, {"policy": POLICY_NAME, "tables": tables})).all()
+    current = {name for name, enforced, found in rows if enforced and found == marker}
+    return [table for table in tables if table not in current]
+
+
+async def _apply_to_table(engine: AsyncEngine, table: str) -> None:
+    for attempt in range(1, _DDL_ATTEMPTS + 1):
+        try:
+            async with engine.begin() as conn:
+                await conn.exec_driver_sql(f"SET LOCAL lock_timeout = '{_DDL_LOCK_TIMEOUT_MS}ms'")
+                for statement in _policy_sql(table, fingerprint=policy_fingerprint()):
+                    await conn.exec_driver_sql(statement)
+            return
+        except DBAPIError as exc:
+            if not _is_lock_timeout(exc):
+                raise
+            if attempt == _DDL_ATTEMPTS:
+                raise RlsPolicyBlockedError(
+                    f"could not lock {table!r} to apply its isolation policy after "
+                    f"{_DDL_ATTEMPTS} attempts: another session holds a conflicting lock (a "
+                    "long-running or idle-in-transaction session). Find it in pg_stat_activity, "
+                    "or retry once it is gone."
+                ) from exc
+            logger.warning("rls_policy_lock_busy", table=table, attempt=attempt)
+            await asyncio.sleep(0.5 * attempt + random.uniform(0, 0.5))  # noqa: S311 - jitter, not security
+
+
 async def apply_policies(engine: AsyncEngine) -> list[str]:
-    """Create (or refresh) the isolation policy on every user-owned table. Idempotent. Returns the
-    tables it covered; Postgres only."""
+    """Make every user-owned table's isolation policy match the definition. Idempotent, and a no-op
+    (no DDL, no lock) for a table that is already current; Postgres only. Returns the tables it
+    covers."""
     if engine.dialect.name != "postgresql":
         return []
     tables = rls_tables()
     try:
-        async with engine.begin() as conn:
-            for table in tables:
-                for statement in _policy_sql(table):
-                    await conn.exec_driver_sql(statement)
+        stale = await _tables_needing_policies(engine, tables)
+        for table in stale:
+            await _apply_to_table(engine, table)
     except DBAPIError:
         logger.error("rls_policies_failed", exc_info=True)
         raise
     await assert_enforced(engine)
-    logger.info("rls_policies_applied", tables=len(tables))
+    logger.info("rls_policies_applied", tables=len(tables), changed=len(stale))
     return tables
 
 
 __all__ = [
     "POLICY_NAME",
     "RlsNotEnforcedError",
+    "RlsPolicyBlockedError",
     "apply_policies",
     "assert_enforced",
     "bind_session",
@@ -199,6 +280,7 @@ __all__ = [
     "enter_system_mode",
     "install",
     "is_enabled",
+    "policy_fingerprint",
     "rls_tables",
     "system_access",
 ]

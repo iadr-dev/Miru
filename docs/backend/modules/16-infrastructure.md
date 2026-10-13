@@ -321,6 +321,17 @@ advisory lock with `SET LOCAL statement_timeout = 0`, so processes waiting behin
 `create_all` wait instead of failing startup with `QueryCanceled`, and nothing leaks back into the
 pool.
 
+**Row-level security is applied only where it differs.** With `ROW_LEVEL_SECURITY=true`, every
+process start used to run four `ALTER TABLE` / `POLICY` statements on every user-owned table, and
+they need exclusive locks: one session left idle in a transaction made the start-up wait (and every
+later query on that table queue behind it) until the statement timeout. `db/rls.py::apply_policies`
+now reads each table's state in one lock-free query and compares it with a fingerprint of the policy
+definition stored as a comment on the policy. A current table gets **no DDL at all**, so a normal
+restart or rolling deploy never touches a lock. A table that does differ is fixed in its own short
+transaction with a 3 s `lock_timeout` and a few jittered retries; if a session still blocks it,
+startup fails with `RlsPolicyBlockedError` naming the table instead of piling up queries. Tests:
+`tests/db/test_rls_apply.py`.
+
 ## Outbound HTTP clients
 
 `backend/src/netclient/` holds the shared connection pool. `sources.tls.build_async_client` (every
