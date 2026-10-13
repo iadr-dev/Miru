@@ -52,14 +52,41 @@ import duckdb
 import pandas as pd
 import structlog
 
+from ingest.filelock import FileLock
+
 logger = structlog.get_logger(__name__)
 
 _MANIFEST_NAME = "_manifest.json"
 _TMP_DIRNAME = ".tmp"
+_WRITE_LOCK_NAME = ".write.lock"
+
+# A reader that resolved the manifest just before a flip may still be reading the previous version
+# for a while (a large range scan, a slow client). The previous version is therefore kept for this
+# long after it was replaced, and only then removed. Never shorter than the longest read.
+VERSION_GRACE_SECONDS = 600.0
+# A temp directory younger than this may belong to a write that is still running in another
+# process, so the recovery sweep leaves it alone. A crashed write's leftovers are older.
+TMP_ORPHAN_MIN_AGE_SECONDS = 3600.0
 
 
 _RENAME_ATTEMPTS = 5
 _RENAME_PAUSE_SECONDS = 0.1
+
+
+def _replace_with_retry(src: Path, dst: Path) -> None:
+    """`src.replace(dst)` (the atomic manifest pointer flip), retried briefly on `PermissionError`.
+
+    On Windows replacing a file that something has open at that instant (an antivirus scan, a
+    reader in the middle of `read_text`) is refused although nothing is wrong; the window is a few
+    milliseconds, so a short bounded retry rides it out. On Linux it never triggers."""
+    for attempt in range(1, _RENAME_ATTEMPTS + 1):
+        try:
+            src.replace(dst)
+            return
+        except PermissionError:
+            if attempt == _RENAME_ATTEMPTS:
+                raise
+            time.sleep(_RENAME_PAUSE_SECONDS * attempt)
 
 
 def _rename_with_retry(src: Path, dst: Path) -> None:
@@ -165,9 +192,13 @@ class ParquetStore:
             con.close()
 
         version_dir = partition_dir / f"v={version_id}"
-        _rename_with_retry(tmp_dir, version_dir)  # atomic within one filesystem
-        self._flip_manifest(partition_dir, version_id)
-        self._sweep_old_versions(partition_dir, keep_version=version_id)
+        # The expensive part (the Parquet COPY) ran above, into a private temp directory. Only the
+        # cheap swap runs under the partition lock, so two writers on the same partition take
+        # turns instead of interleaving "rename, flip, delete the other one's version".
+        with FileLock(partition_dir / _WRITE_LOCK_NAME):
+            _rename_with_retry(tmp_dir, version_dir)  # atomic within one filesystem
+            self._flip_manifest(partition_dir, version_id)
+            self._sweep_old_versions(partition_dir, keep_version=version_id)
 
         logger.info(
             "ingest_partition_written",
@@ -183,21 +214,77 @@ class ParquetStore:
         manifest_path = partition_dir / _MANIFEST_NAME
         tmp_manifest = partition_dir / f".manifest.tmp.{uuid.uuid4().hex}"
         tmp_manifest.write_text(json.dumps({"version": version_id}), encoding="utf-8")
-        tmp_manifest.replace(manifest_path)  # atomic pointer flip
+        _replace_with_retry(tmp_manifest, manifest_path)  # atomic pointer flip
 
-    def _sweep_old_versions(self, partition_dir: Path, *, keep_version: str) -> None:
+    def _sweep_old_versions(
+        self,
+        partition_dir: Path,
+        *,
+        keep_version: str,
+        min_age_seconds: float = VERSION_GRACE_SECONDS,
+    ) -> int:
+        """Remove superseded versions once they are older than the grace period. The version the
+        manifest points at is never removed, whatever its age."""
+        now = time.time()
+        removed = 0
         for child in partition_dir.iterdir():
-            if child.is_dir() and child.name.startswith("v=") and child.name != f"v={keep_version}":
+            if not (child.is_dir() and child.name.startswith("v=")):
+                continue
+            if child.name == f"v={keep_version}":
+                continue
+            try:
+                age = now - child.stat().st_mtime
+            except FileNotFoundError:
+                continue  # another process removed it between iterdir and stat
+            if age >= min_age_seconds:
                 shutil.rmtree(child, ignore_errors=True)
+                removed += 1
+        return removed
 
-    def sweep_orphaned_temp_dirs(self) -> int:
-        """Clear `.tmp/*` — the recovery path for a crash mid-write, run once on leader
-        startup. Returns the number of orphaned dirs removed."""
+    def sweep_stale_versions(self, *, min_age_seconds: float = VERSION_GRACE_SECONDS) -> int:
+        """Housekeeping over the whole tree: drop superseded versions older than the grace period
+        that no later write came back to clean up. Run by the leader at startup."""
+        removed = 0
+        for partition_dir in self.root.glob("dataset=*/market=*/date=*"):
+            current = self._manifest_version(partition_dir)
+            if current is None:
+                continue
+            with FileLock(partition_dir / _WRITE_LOCK_NAME):
+                removed += self._sweep_old_versions(
+                    partition_dir, keep_version=current, min_age_seconds=min_age_seconds
+                )
+        if removed:
+            logger.info("ingest_stale_versions_swept", removed=removed)
+        return removed
+
+    @staticmethod
+    def _manifest_version(partition_dir: Path) -> str | None:
+        """The version id the manifest points at, or None if there is no readable manifest."""
+        try:
+            manifest = json.loads((partition_dir / _MANIFEST_NAME).read_text(encoding="utf-8"))
+            version = manifest["version"]
+        except (OSError, ValueError, KeyError):
+            return None
+        return version if isinstance(version, str) else None
+
+    def sweep_orphaned_temp_dirs(
+        self, *, min_age_seconds: float = TMP_ORPHAN_MIN_AGE_SECONDS
+    ) -> int:
+        """Clear leftovers in `.tmp/` - the recovery path for a crash mid-write, run on leader
+        startup. Only entries older than `min_age_seconds` are removed: a younger one may be a
+        write that is still running in another process. Returns the number removed."""
         tmp_root = self.root / _TMP_DIRNAME
         if not tmp_root.exists():
             return 0
+        now = time.time()
         removed = 0
         for child in tmp_root.iterdir():
+            try:
+                age = now - child.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if age < min_age_seconds:
+                continue
             shutil.rmtree(child, ignore_errors=True)
             removed += 1
         logger.info("ingest_tmp_swept", removed=removed)
@@ -241,8 +328,13 @@ class ParquetStore:
         return tuple(token)
 
     def has_partition(self, dataset: str, market: str, run_date: date_) -> bool:
-        key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-        return (key.path(self.root) / _MANIFEST_NAME).exists()
+        """True only if the manifest exists AND the version it points at is on disk, so a torn
+        partition (manifest naming a missing directory) counts as a gap that backfill repairs."""
+        partition_dir = PartitionKey(dataset=dataset, market=market, run_date=run_date).path(
+            self.root
+        )
+        version = self._manifest_version(partition_dir)
+        return version is not None and (partition_dir / f"v={version}").is_dir()
 
     def list_partition_dates(self, dataset: str, market: str) -> tuple[date_, ...]:
         """Every date this `(dataset, market)` has a real, non-empty, fully-written partition

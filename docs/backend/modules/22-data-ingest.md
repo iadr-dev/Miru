@@ -214,8 +214,9 @@ one if they are built.
   non-atomic, so a reader globbing mid-write sees empty/partial data. Ingest therefore writes each
   date partition to a **temp dir → `os.rename` into place** (atomic on one filesystem), with
   `FILENAME_PATTERN '{uuid}'`, and publishes a **manifest/version pointer** readers resolve first
-  so a swap is a single pointer flip. On leader startup, **sweep orphaned temp dirs** from a
-  crashed mid-`COPY` write. (Reader/writer isolation: [§7](#7-store--concurrency--duckdbparquet-and-when-to-reconsider), [16](16-infrastructure.md) §3/§10.)
+  so a swap is a single pointer flip. Writers take a per-partition lock for the swap, old versions
+  are deleted only after a grace period, and the leader sweeps **old orphaned temp dirs** left by a
+  crashed mid-`COPY` write ([§6c](#6c-single-writer-lease-leader-election)). (Reader/writer isolation: [§7](#7-store--concurrency--duckdbparquet-and-when-to-reconsider), [16](16-infrastructure.md) §3/§10.)
 - **Detect missed days** — diff expected trading days (`TaiwanStockTradingDate`) vs distinct
   dates present per dataset; any gap (crash/outage/FinMind lag) → enqueue a **targeted date-range
   backfill** (same code path as first-run, scoped to the gap). The journal makes gaps visible.
@@ -318,21 +319,41 @@ process shapes.
   `--yes`**, so a mis-set override can never become an accidental prod backfill.
 - **Exit code** is `1` if any `JobRun` has `status=RunStatus.FAILED`, else `0`.
 
-## 6c. Leader election — still a single-process stub, not real cross-process election
+## 6c. Single-writer lease (leader election)
 
-> **Implementation status, stated honestly.** `ingest/leader.py`'s own docstring says it plainly:
-> "This is the ingest-local version; a future infrastructure phase will generalize this into a
-> real cross-process election (Postgres advisory lock or a broker-based lease)." Today
-> `get_default_leader_election()` returns `AlwaysLeader` — every process that asks `is_leader()`
-> gets `True`, unconditionally. This is correct for local dev and a single-scheduler-worker
-> deployment (the only topology that exists today), and every write-path job function already
-> checks `is_leader()` before writing rather than assuming single-process forever — so swapping in
-> a real election later is a one-line change at the construction site, not a redesign. It is
-> **not** correct once ≥2 scheduler workers run concurrently; that topology has not shipped.
-> `NeverLeader` also exists, purely as a test double for asserting a write path correctly no-ops
-> under standby. Everywhere else in this doc that says "leader-elected" or "leader-gated" is
-> accurate about the *behavior* (every write path really does check leadership first) but should
-> be read with this caveat about what "leader" currently resolves to.
+Exactly one process may write the derived store, however many ingest replicas, deploy overlaps or
+hand-run CLIs are alive. `ingest/leader.py` provides the lease; every job already asks
+`ctx.leader.is_leader()` before it writes.
+
+| Implementation | Used when | Mechanism |
+|---|---|---|
+| `PostgresAdvisoryLeader` | the app database is Postgres (dev stack, production) | a session-level `pg_try_advisory_lock` on a **dedicated** autocommit connection outside the pool; Postgres drops it the instant that connection dies, so a crashed leader frees the role with no timeout |
+| `FileLockLeader` | SQLite / no Postgres on the machine | an OS file lock (`<parquet_root>/.ingest-writer.lease`), released by the OS when the process exits |
+| `AlwaysLeader` / `NeverLeader` | tests only | doubles; production wiring never returns them |
+
+`build_leader_election(role, database_url, scope_root)` chooses one; the lock key is derived from
+the role and the data root, so two data roots never share a lease.
+
+- **Daemon** (`python -m ingest`): takes the lease at startup, then calls `refresh_leadership` at the
+  start of every pass. A process that did not get it runs as a **standby**: every pass is a logged
+  no-op, and it takes over within one poll interval after the leader goes away.
+- **Manual backfill** (`python -m ingest.backfill_cli`): takes the same lease. If the daemon (or a
+  second backfill) holds it, the CLI **exits with status 3** and says so; it never writes
+  alongside the daemon. Run it when the daemon is stopped, or stop the daemon for the run.
+- **Partition writes are serialised on top of that.** `ParquetStore.write_partition` does its
+  expensive `COPY` into a private temp dir, then takes a per-partition file lock (`.write.lock`) for
+  only the rename, the manifest flip and the cleanup, so even two writers that both believe they
+  lead (a bug, a split brain) cannot interleave.
+- **Cleanup never races a reader.** A superseded version is kept for `VERSION_GRACE_SECONDS`
+  (600 s) before it is deleted, and the version the manifest points at is never deleted. The leader
+  runs `sweep_stale_versions()` once at startup for versions no later write came back to clean.
+  `.tmp` leftovers of a crashed write are removed only when older than an hour, so the recovery
+  sweep cannot kill a write that is still running in another process.
+- **A torn partition heals itself.** `has_partition` is true only if the manifest's version
+  directory exists, so gap-fill and backfill rewrite a partition whose manifest points at nothing.
+
+The scheduler still uses `AlwaysLeader` today; it moves to the same lease next
+([14](14-scheduler-alerts.md), [16](16-infrastructure.md) §5).
 
 ## 7. Store & concurrency — DuckDB/Parquet, and when to reconsider
 

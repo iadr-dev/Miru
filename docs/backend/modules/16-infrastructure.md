@@ -176,9 +176,9 @@ ceiling. Mitigation (also [12-multi-user-tiers.md](12-multi-user-tiers.md) §4):
 ## 5. Scheduler HA & delivery semantics (fixes SPOF)
 
 [14-scheduler-alerts.md](14-scheduler-alerts.md) runs ≥1 scheduler worker:
-- **Leader election / locking job store** (target: Postgres advisory locks or a broker lease) so
-  multiple workers run safely without double-firing. **Not built yet:** `ingest/leader.py`
-  resolves to `AlwaysLeader`, so only a single scheduler worker is safe today ([22](22-data-ingest.md) §6c).
+- **Leader election / locking job store** so multiple workers run safely without double-firing.
+  The Postgres-advisory-lock lease is **built for the ingest writer** ([22](22-data-ingest.md) §6c);
+  the scheduler still resolves to `AlwaysLeader`, so only a single scheduler worker is safe today.
   The notification dedupe key below is the guard against duplicate delivery.
 - **At-least-once execution + idempotent delivery:** dedupe key `rule_id:occurrence_id:channel`
   in `notifications` ([14](14-scheduler-alerts.md) §5); a redelivered LINE/Telegram/web native is a no-op.

@@ -73,7 +73,7 @@ from ingest.jobs import (
     job_valuation_ratios,
 )
 from ingest.journal import JobRun
-from ingest.leader import get_default_leader_election
+from ingest.leader import build_leader_election, refresh_leadership, release_leadership
 from ingest.preflight import last_completed_us_session
 from ingest.publisher_binding import resolve_data_update_publisher
 from ingest.store import ParquetStore
@@ -355,6 +355,7 @@ class IngestDaemon:
         """Fire every job that has become due since the last pass. Returns the names of jobs that
         actually ran (a non-trading-day skip does not count as run). A non-leader pass returns an
         empty list without touching any job — the standby contract."""
+        await refresh_leadership(self._ctx.leader)  # keep the lease alive / take over
         if not self._ctx.leader.is_leader():
             logger.info("ingest_skip_not_leader")
             return []
@@ -461,7 +462,11 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     return IngestContext(
         finmind=FinMindAdapter(resolved),
         store=store,
-        leader=get_default_leader_election(),
+        leader=build_leader_election(
+            role="ingest-writer",
+            database_url=resolved.database_url,
+            scope_root=resolved.parquet_root,
+        ),
         calendar=_build_calendar(store, PRICE_EOD_JOB.dataset, Market.TW.value),
         us_calendar=_build_calendar(store, US_PRICE_EOD_DATASET, Market.US.value),
         tls_policy=resolved.tls_policy,
@@ -474,6 +479,16 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     )
 
 
+async def close_ingest_context(ctx: IngestContext) -> None:
+    """Release what `build_ingest_context_from_settings` opened: the writer lease, then the
+    database pool. Safe to call on every exit path, including an early abort."""
+    await release_leadership(ctx.leader)
+    factory = ctx.session_factory
+    engine = factory.kw.get("bind") if factory is not None else None
+    if engine is not None:
+        await engine.dispose()
+
+
 __all__ = [
     "SCHEDULED_JOBS",
     "Cadence",
@@ -481,4 +496,5 @@ __all__ = [
     "IngestJobFn",
     "ScheduledIngestJob",
     "build_ingest_context_from_settings",
+    "close_ingest_context",
 ]

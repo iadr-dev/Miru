@@ -93,7 +93,7 @@ def test_crash_before_rename_leaves_prior_partition_intact(tmp_path: object) -> 
     # The crashed date never got a manifest, so it's correctly reported as missing (a gap).
     assert not store.has_partition("TaiwanStockPrice", "TW", date(2024, 1, 3))
 
-    removed = store.sweep_orphaned_temp_dirs()
+    removed = store.sweep_orphaned_temp_dirs(min_age_seconds=0)
 
     assert removed == 1
     assert not (store.root / ".tmp").exists() or not list((store.root / ".tmp").iterdir())
