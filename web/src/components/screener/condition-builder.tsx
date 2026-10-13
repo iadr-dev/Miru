@@ -113,7 +113,6 @@ export function ConditionBuilder({
             key={key}
             type="button"
             role="tab"
-            tabIndex={totalCount < 2 ? -1 : undefined}
             aria-selected={match === key}
             onClick={() => onMatchChange(key)}
             className={cn(
