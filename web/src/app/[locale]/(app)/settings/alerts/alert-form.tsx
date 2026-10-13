@@ -31,13 +31,13 @@ import { getWatchlists } from "@/lib/api/watchlist";
 import { FRESHNESS } from "@/lib/freshness";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import {
-  ALERT_MARKETS,
   ALERT_TRIGGER_MODES,
-  type AlertMarket,
   type AlertRule,
   type AlertTemplateKind,
   type AlertTriggerMode,
   INSTITUTIONAL_INVESTORS,
+  MARKETS,
+  type Market,
 } from "@/types/settings";
 import { PerStockForm } from "./per-stock-form";
 
@@ -88,7 +88,7 @@ const NUMERIC_FIELD_STEP: Record<ConditionFieldKey, string> = {
 export type AlertFormPreset = {
   scope?: "symbol" | "watchlist" | "perStock";
   symbol?: string;
-  market?: AlertMarket;
+  market?: Market;
   groupId?: string | undefined;
 };
 
@@ -111,7 +111,7 @@ export function AlertForm({
   const [base, setBase] = useState<AlertRule | undefined>(rule);
   const [notice, setNotice] = useState<"merged" | "conflict" | null>(null);
   const [symbol, setSymbol] = useState(rule?.symbol ?? preset?.symbol ?? "");
-  const [market, setMarket] = useState<AlertMarket>(
+  const [market, setMarket] = useState<Market>(
     rule?.market === "US" || rule?.market === "TW" ? rule.market : (preset?.market ?? "TW"),
   );
   const [draft, setDraft] = useState<ConditionDraft>(
@@ -198,7 +198,7 @@ export function AlertForm({
 
   // A US symbol has no Taiwan-only data, so switching market also drops a template that market
   // can't serve (the API would refuse it) rather than leaving an unsubmittable selection.
-  const changeMarket = (next: AlertMarket): void => {
+  const changeMarket = (next: Market): void => {
     setMarket(next);
     if (!templatesFor(next).includes(draft.kind)) {
       setDraft((prev) => ({ ...prev, kind: DEFAULT_DRAFT.kind }));
@@ -215,7 +215,7 @@ export function AlertForm({
   // A group lives in one market, which decides the templates it can use (a Taiwan group can use the
   // Taiwan-only ones); until a group is chosen only the templates both markets have are offered.
   const groupMarket = (groups.data ?? []).find((g) => g.group.id === watchlistId)?.group.market;
-  const templateMarket: AlertMarket =
+  const templateMarket: Market =
     scope === "watchlist" ? (groupMarket === "TW" ? "TW" : "US") : market;
   const offeredTemplates =
     scope === "watchlist" ? groupTemplatesFor(templateMarket) : templatesFor(templateMarket);
@@ -322,7 +322,7 @@ export function AlertForm({
               onChange={(e) => {
                 setWatchlistId(e.target.value);
                 const picked = (groups.data ?? []).find((g) => g.group.id === e.target.value);
-                const nextMarket: AlertMarket = picked?.group.market === "TW" ? "TW" : "US";
+                const nextMarket: Market = picked?.group.market ?? "US";
                 if (!groupTemplatesFor(nextMarket).includes(draft.kind)) {
                   setDraft((prev) => ({ ...prev, kind: GROUP_DEFAULT_KIND }));
                 }
@@ -378,10 +378,10 @@ export function AlertForm({
               <Select
                 id="alert-market"
                 value={market}
-                onChange={(e) => changeMarket(e.target.value as AlertMarket)}
+                onChange={(e) => changeMarket(e.target.value as Market)}
                 disabled={editing}
               >
-                {ALERT_MARKETS.map((m) => (
+                {MARKETS.map((m) => (
                   <option key={m} value={m}>
                     {tc(`marketOption.${m}`)}
                   </option>

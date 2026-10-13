@@ -34,12 +34,9 @@ from scheduler.store import (
     StaleVersionError,
 )
 from schemas.alerts import PER_STOCK_KINDS, RuleCondition, supports_market
-from schemas.enums import Market
+from schemas.enums import Market, UserMarket
 
 router = APIRouter()
-
-
-_ALERT_MARKETS = frozenset({Market.TW, Market.US})
 
 
 _DEFAULT_ALERT_LIFETIME_DAYS = 90
@@ -48,7 +45,7 @@ _DEFAULT_ALERT_LIFETIME_DAYS = 90
 class CreateAlertRequest(BaseModel):
     # Scope: one symbol (+market) XOR one watchlist group.
     symbol: str | None = Field(default=None, min_length=1, max_length=32)
-    market: Market | None = None
+    market: UserMarket | None = None
     watchlist_id: str | None = None
     condition: RuleCondition
     trigger_mode: TriggerMode = TriggerMode.ONCE_PER_DAY
@@ -135,13 +132,6 @@ async def create_alert(
             message="Price-level alerts are set per stock, not for a whole watchlist group.",
             retryable=False,
         )
-    if body.market is not None and body.market not in _ALERT_MARKETS:
-        raise ApiError(
-            status_code=_HTTP_422_UNPROCESSABLE,
-            code="invalid_market",
-            message="Alerts support the TW and US markets.",
-            retryable=False,
-        )
     if body.watchlist_id is not None and not await store.watchlist_owned_by(
         user_id=user.id, watchlist_id=body.watchlist_id
     ):
@@ -176,7 +166,7 @@ class BatchAlertItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     symbol: str = Field(min_length=1, max_length=32)
-    market: Market
+    market: UserMarket
     condition: RuleCondition
 
     @field_validator("symbol")
@@ -206,24 +196,21 @@ class BatchCreateAlertsRequest(BaseModel):
         return self
 
 
+class AlertsResponse(BaseModel):
+    alerts: list[AlertRule]
+
+
 @router.post("/alerts/batch", status_code=status.HTTP_201_CREATED)
 async def create_alerts_batch(
     body: BatchCreateAlertsRequest,
     user: User = Depends(require_user),
     store: SchedulerStore = Depends(_store),
-) -> dict[str, list[AlertRule]]:
+) -> AlertsResponse:
     """All-or-nothing: every item is validated and the fair-use cap is checked for the whole batch
     before anything is written, and the request runs in one transaction."""
     if await store.count_alerts(user_id=user.id) + len(body.items) > MAX_ALERT_RULES:
         raise _cap_reached("alert rules", MAX_ALERT_RULES)
     for item in body.items:
-        if item.market not in _ALERT_MARKETS:
-            raise ApiError(
-                status_code=_HTTP_422_UNPROCESSABLE,
-                code="invalid_market",
-                message="Alerts support the TW and US markets.",
-                retryable=False,
-            )
         if not supports_market(item.condition, item.market):
             raise ApiError(
                 status_code=_HTTP_422_UNPROCESSABLE,
@@ -254,7 +241,7 @@ async def create_alerts_batch(
         )
         for item in body.items
     ]
-    return {"alerts": created}
+    return AlertsResponse(alerts=created)
 
 
 @router.get("/alerts/symbol-check")
@@ -284,8 +271,8 @@ async def check_alert_symbol(
 async def list_alerts(
     user: User = Depends(require_user),
     store: SchedulerStore = Depends(_store),
-) -> dict[str, list[AlertRule]]:
-    return {"alerts": await store.list_alerts(user_id=user.id)}
+) -> AlertsResponse:
+    return AlertsResponse(alerts=await store.list_alerts(user_id=user.id))
 
 
 @router.patch("/alerts/{alert_id}")

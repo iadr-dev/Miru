@@ -275,6 +275,14 @@ class TestMemory:
 
 
 class TestWatchlists:
+    def test_unsupported_market_is_422_not_500(self, client: TestClient, signed_in_user) -> None:
+        # The watchlists table is TW/US only; this used to fail its CHECK at insert as a 500.
+        headers, _ = signed_in_user
+        resp = client.post(
+            "/api/v1/watchlists", json={"name": "HK", "market": "HK"}, headers=headers
+        )
+        assert resp.status_code == 422
+
     def test_create_add_list_remove(self, client: TestClient, signed_in_user) -> None:
         headers, _ = signed_in_user
         group = client.post(

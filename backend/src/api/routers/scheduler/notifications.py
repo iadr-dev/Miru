@@ -29,17 +29,21 @@ from scheduler.store import (
 router = APIRouter()
 
 
+class NotificationsResponse(BaseModel):
+    notifications: list[Notification]
+
+
 @router.get("/notifications")
 async def list_notifications(
     unread_only: bool = Query(False),
     limit: int = Query(50, ge=1, le=200),
     user: User = Depends(require_user),
     store: SchedulerStore = Depends(_store),
-) -> dict[str, list[Notification]]:
+) -> NotificationsResponse:
     notifications = await store.list_notifications(
         user_id=user.id, limit=limit, unread_only=unread_only
     )
-    return {"notifications": notifications}
+    return NotificationsResponse(notifications=notifications)
 
 
 class MarkReadRequest(BaseModel):

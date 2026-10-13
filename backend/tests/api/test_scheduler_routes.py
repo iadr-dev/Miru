@@ -163,6 +163,20 @@ class TestScheduleEdit:
         assert resumed["next_run"] is not None
 
 
+class TestUnsupportedMarket:
+    """Schedules are TW/US only (the table's CHECK). Another market is a 422 at the API — it used to
+    pass validation and fail the CHECK at insert as an unhandled 500."""
+
+    def test_schedule_in_an_unsupported_market_is_422(
+        self, client: TestClient, settings: Settings
+    ) -> None:
+        headers, _ = sign_in(client, settings, tier=Tier.PRO)
+        body = _schedule_body()
+        body["trigger"] = {"type": "market_event", "spec": "after_close", "market": "JP"}
+        resp = client.post("/api/v1/schedules", json=body, headers=headers)
+        assert resp.status_code == 422
+
+
 class TestAlerts:
     def test_create_list_delete(self, client: TestClient, settings: Settings) -> None:
         headers, _ = sign_in(client, settings, tier=Tier.PRO)
@@ -351,7 +365,7 @@ class TestAlertScopeAndTemplates:
         body = {**_alert_body(), "market": "JP"}
         resp = client.post("/api/v1/alerts", json=body, headers=headers)
         assert resp.status_code == 422
-        assert resp.json()["code"] == "invalid_market"
+        assert "market" in resp.text
 
     def test_legacy_free_text_condition_rejected(
         self, client: TestClient, settings: Settings

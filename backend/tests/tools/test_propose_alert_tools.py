@@ -90,7 +90,7 @@ def test_us_symbols_still_get_price_templates() -> None:
 
 
 def test_unsupported_markets_are_rejected() -> None:
-    with pytest.raises(ValidationError, match="TW and US"):
+    with pytest.raises(ValidationError, match="market"):
         price_proposal(market=Market.JP)
 
 

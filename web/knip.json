@@ -3,7 +3,8 @@
   "next": true,
   "vitest": true,
   "entry": [
-    "src/app/**/{page,layout,error,not-found,loading,default,route,template,global-error}.tsx"
+    "src/app/**/{page,layout,error,not-found,loading,default,route,template,global-error}.tsx",
+    "src/types/generated/contract-checks.ts"
   ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignoreDependencies": ["tailwindcss"],

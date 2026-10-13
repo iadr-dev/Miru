@@ -43,14 +43,18 @@ async def create_thread(
     return await store.create_thread(user_id=user.id, title=body.title)
 
 
+class ThreadsResponse(BaseModel):
+    threads: list[Thread]
+
+
 @router.get("/threads")
 async def list_threads(
     include_archived: bool = Query(False),
     user: User = Depends(require_user),
     store: ConversationStore = Depends(_store),
-) -> dict[str, list[Thread]]:
+) -> ThreadsResponse:
     threads = await store.list_threads(user_id=user.id, include_archived=include_archived)
-    return {"threads": threads}
+    return ThreadsResponse(threads=threads)
 
 
 @router.get("/threads/{thread_id}")

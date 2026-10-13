@@ -27,7 +27,7 @@ from api.dependencies import (
     system_scope,
 )
 from api.errors import ApiError
-from config.settings import Settings
+from config.settings import PaddleEnvironment, Settings
 from payments.client import PaddleApiError, PaddleClient, PaddleConfigError
 from payments.models import SubscriptionRecord
 from payments.plans import (
@@ -88,7 +88,7 @@ def _service(
 class PlansResponse(BaseModel):
     client_token: str | None
     # `sandbox` | `production` - which Paddle the browser's Paddle.js must talk to.
-    environment: str
+    environment: PaddleEnvironment
     plans: list[PricedPlan]
     # What each tier includes (limits + features), for the side-by-side comparison.
     tiers: list[TierSummary]

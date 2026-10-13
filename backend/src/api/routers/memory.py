@@ -27,6 +27,7 @@ from memory.settings import memory_enabled, set_memory_enabled
 from memory.store import SqlAlchemyMemoryStore
 from memory.watchlists import (
     StaleWatchlistVersionError,
+    WatchlistAssetClass,
     WatchlistColor,
     WatchlistGroup,
     WatchlistItem,
@@ -34,7 +35,7 @@ from memory.watchlists import (
     WatchlistNotFoundError,
     WatchlistStore,
 )
-from schemas.enums import Market
+from schemas.enums import Market, UserMarket
 
 router = APIRouter(tags=["memory"])
 
@@ -62,13 +63,21 @@ def _searchable_text(memory: Memory) -> str:
     return " ".join(values).lower()
 
 
+class MemoriesResponse(BaseModel):
+    memories: list[Memory]
+
+
+class WatchlistsResponse(BaseModel):
+    watchlists: list[WatchlistGroupView]
+
+
 @router.get("/memory")
 async def list_memory(
     scope: MemoryScope | None = Query(None),
     q: str | None = Query(None, max_length=100),
     user: User = Depends(require_user),
     store: SqlAlchemyMemoryStore = Depends(_memory_store),
-) -> dict[str, list[Memory]]:
+) -> MemoriesResponse:
     """The caller's memories, most recently changed first; `q` keeps the ones whose key or text
     contains it."""
     memories = await store.list(user_id=user.id, scope=scope)
@@ -76,7 +85,7 @@ async def list_memory(
     if needle:
         memories = [m for m in memories if needle in _searchable_text(m)]
     memories.sort(key=lambda m: m.updated_at, reverse=True)
-    return {"memories": memories}
+    return MemoriesResponse(memories=memories)
 
 
 class MemorySettings(BaseModel):
@@ -205,7 +214,7 @@ async def delete_memory(
 
 # ---- watchlists ----------------------------------------------------------------------------
 
-_DEFAULT_ASSET_CLASS = "stock"
+_DEFAULT_ASSET_CLASS: WatchlistAssetClass = "stock"
 
 
 def _wl_not_found(watchlist_id: str) -> ApiError:
@@ -240,10 +249,10 @@ _PRESET_MARKET_ASSET_CLASS_COMBOS: tuple[tuple[Market, str], ...] = (
 
 @router.get("/watchlists")
 async def list_watchlists(
-    market: Market | None = Query(None),
+    market: UserMarket | None = Query(None),
     user: User = Depends(require_user),
     store: WatchlistStore = Depends(_watchlist_store),
-) -> dict[str, list[WatchlistGroupView]]:
+) -> WatchlistsResponse:
     # Seed starter presets for any (market, asset_class) combo this user has zero groups in yet
     # — a no-op per combo once real groups exist there (own edits/deletions never get
     # overwritten). Runs before the read below so a brand-new user's very first `GET` already
@@ -261,13 +270,13 @@ async def list_watchlists(
         for group in groups
         if market is None or group.market is market
     ]
-    return {"watchlists": views}
+    return WatchlistsResponse(watchlists=views)
 
 
 class CreateWatchlistRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    market: Market
-    asset_class: str = _DEFAULT_ASSET_CLASS
+    market: UserMarket
+    asset_class: WatchlistAssetClass = _DEFAULT_ASSET_CLASS
 
 
 @router.post("/watchlists", status_code=status.HTTP_201_CREATED)

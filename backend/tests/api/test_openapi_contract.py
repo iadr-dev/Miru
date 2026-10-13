@@ -1,13 +1,14 @@
-"""The public API contract is snapshotted, so changing it is a visible, reviewed edit.
+"""The public API contract is committed as the full OpenAPI spec (`web/openapi.json`), so changing
+it is a visible, reviewed edit — and it is the spec the web app generates its response types from
+(`pnpm gen:api`), so the frontend's compile-time checks are only as current as this file.
 
-For every operation the snapshot records the required parameters, whether a request body is
-required, and the response status codes. A route removed, a parameter newly required, a status code
-dropped or any addition makes this fail with the diff; run
+Any difference between the running app's spec and the committed one fails this test. The message
+separates BREAKING changes (a removed route, a newly required input, a dropped status code) from
+additions and other edits. To accept an intended change:
 
     UPDATE_OPENAPI_CONTRACT=1 uv run pytest tests/api/test_openapi_contract.py
 
-to accept it, and the changed snapshot lands in the PR for review. Breaking changes (removals,
-newly required inputs) are called out separately in the failure message so they are not missed."""
+then run `pnpm gen:api` in `web/` and commit both files."""
 
 from __future__ import annotations
 
@@ -17,11 +18,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-SNAPSHOT = Path(__file__).with_name("openapi_contract.json")
+WEB_SPEC = Path(__file__).resolve().parents[3] / "web" / "openapi.json"
 _METHODS = {"get", "post", "put", "patch", "delete"}
 
 
-def _contract(spec: dict[str, object]) -> dict[str, dict[str, object]]:
+def _operations(spec: dict[str, object]) -> dict[str, dict[str, object]]:
+    """Each operation reduced to what a caller can break on: required inputs and status codes."""
     contract: dict[str, dict[str, object]] = {}
     paths = spec["paths"]
     assert isinstance(paths, dict)
@@ -61,19 +63,23 @@ def _breaking(old: dict[str, dict[str, object]], new: dict[str, dict[str, object
     return problems
 
 
-def test_the_api_contract_matches_the_committed_snapshot(client: TestClient) -> None:
-    current = _contract(client.app.openapi())  # type: ignore[attr-defined]
+def test_the_committed_spec_matches_the_app(client: TestClient) -> None:
+    spec = client.app.openapi()  # type: ignore[attr-defined]
+    current = json.dumps(spec, indent=1, sort_keys=True, ensure_ascii=False) + "\n"
     if os.environ.get("UPDATE_OPENAPI_CONTRACT"):
-        SNAPSHOT.write_text(json.dumps(current, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        WEB_SPEC.write_text(current, encoding="utf-8", newline="\n")
         return
-    committed = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-    if current == committed:
+    committed_text = WEB_SPEC.read_text(encoding="utf-8")
+    if committed_text == current:
         return
-    added = sorted(set(current) - set(committed))
-    changed = sorted(k for k in current if k in committed and current[k] != committed[k])
-    breaking = _breaking(committed, current)
+    old = _operations(json.loads(committed_text))
+    new = _operations(spec)
     raise AssertionError(
-        "The API contract changed. If intended, re-run with UPDATE_OPENAPI_CONTRACT=1 and commit "
-        f"tests/api/openapi_contract.json.\nBREAKING: {breaking or 'none'}\nadded: {added}\n"
-        f"changed: {changed}"
+        "web/openapi.json no longer matches the API. If intended, re-run with "
+        "UPDATE_OPENAPI_CONTRACT=1, then `pnpm gen:api` in web/, and commit both.\n"
+        f"BREAKING: {_breaking(old, new) or 'none'}\n"
+        f"added routes: {sorted(set(new) - set(old))}\n"
+        f"changed operations: {sorted(k for k in new if k in old and new[k] != old[k])}\n"
+        "(other differences are in schemas/descriptions — `git diff web/openapi.json` after the "
+        "update shows them)"
     )

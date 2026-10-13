@@ -24,7 +24,7 @@ from typing import Any
 import httpx
 import structlog
 
-from config.settings import Settings
+from config.settings import PaddleEnvironment, Settings
 from netclient import lease_client
 
 logger = structlog.get_logger(__name__)
@@ -47,7 +47,7 @@ class PaddleApiError(RuntimeError):
     """The Paddle API returned a non-success status."""
 
 
-def _base_url_for(environment: str) -> str:
+def _base_url_for(environment: PaddleEnvironment) -> str:
     """Select the sandbox vs production host from config — never hardcoded to one."""
     return _PRODUCTION_BASE_URL if environment == "production" else _SANDBOX_BASE_URL
 

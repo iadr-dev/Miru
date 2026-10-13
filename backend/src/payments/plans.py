@@ -15,7 +15,7 @@ from typing import Final
 from pydantic import BaseModel, ConfigDict
 
 from config.settings import Settings
-from schemas.enums import Tier
+from schemas.enums import PaidTier, Tier
 
 
 class BillingInterval(StrEnum):
@@ -30,7 +30,7 @@ class PlanInfo(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     price_id: str
-    tier: Tier
+    tier: PaidTier
     interval: BillingInterval
     byok: bool
 
@@ -48,7 +48,7 @@ class PlanNotConfiguredError(RuntimeError):
 # The 8 paid plans keyed by (tier, interval, byok), each naming the Settings field its price ID
 # comes from. Free is not a purchasable plan (it is the absence of an active subscription), so it
 # never appears here.
-_SETTINGS_FIELD: Final[dict[tuple[Tier, BillingInterval, bool], str]] = {
+_SETTINGS_FIELD: Final[dict[tuple[PaidTier, BillingInterval, bool], str]] = {
     (Tier.PREMIUM, BillingInterval.MONTHLY, False): "paddle_price_premium_monthly",
     (Tier.PREMIUM, BillingInterval.ANNUAL, False): "paddle_price_premium_annual",
     (Tier.PREMIUM, BillingInterval.MONTHLY, True): "paddle_price_premium_byok_monthly",
@@ -84,8 +84,10 @@ def resolve_plan(price_id: str, settings: Settings) -> PlanInfo:
 
 def price_id_for(tier: Tier, interval: BillingInterval, *, byok: bool, settings: Settings) -> str:
     """Map a pricing-page selection to the configured `price_id` a checkout is created against."""
+    if tier is Tier.FREE:  # free has no purchasable price
+        raise PlanNotConfiguredError(f"no plan for {tier.value}/{interval.value}/byok={byok}")
     field = _SETTINGS_FIELD.get((tier, interval, byok))
-    if field is None:  # Free (or any non-paid combination) has no purchasable price.
+    if field is None:
         raise PlanNotConfiguredError(f"no plan for {tier.value}/{interval.value}/byok={byok}")
     price_id = getattr(settings, field)
     if not price_id:

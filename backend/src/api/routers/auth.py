@@ -580,12 +580,16 @@ async def delete_account(
     return {"deleted": True}
 
 
+class ConnectionsResponse(BaseModel):
+    connections: list[OAuthAccount]
+
+
 @router.get("/me/connections")
 async def connections(
     user: User = Depends(require_user),
     store: UserStore = Depends(get_user_store),
-) -> dict[str, list[OAuthAccount]]:
-    return {"connections": await store.list_providers(user_id=user.id)}
+) -> ConnectionsResponse:
+    return ConnectionsResponse(connections=await store.list_providers(user_id=user.id))
 
 
 @router.delete("/me/connections/{provider}")

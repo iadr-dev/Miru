@@ -94,10 +94,16 @@ pnpm build                      # next build (must pass typecheck + lint clean)
   hand-written alongside** (one source, so validator and type can't drift). Each shared contract
   **mirrors the backend** ([../docs/backend/api-reference.md](../docs/backend/api-reference.md) + the
   cited module): the SSE module-07 envelope, `quote`/`score`/screener shapes, the `(capability,
-  market, symbol)` key, `FRESHNESS` classes, tier/entitlement. **Hand-written now, migrated to
-  generated-from-OpenAPI** once the backend serves `/openapi.json` — a backend contract change must
-  then become a **frontend compile error**, not a silent mismatch. Each file cites the backend module
-  it mirrors so reconciliation is mechanical. **One file per domain, a folder per surface** —
+  market, symbol)` key, `FRESHNESS` classes, tier/entitlement. **The schemas stay hand-written**
+  (they carry the `.default()`s, Sponsor-lock unions and row-preview handling a generator can't
+  know), **and are checked against the backend at compile time**: `web/openapi.json` (kept current
+  by the backend's `test_openapi_contract.py`) → `pnpm gen:api` → `types/generated/openapi.ts`, and
+  `types/generated/contract-checks.ts` has one line per API client asserting that the response the
+  backend documents is accepted by the schema that parses it. A renamed, removed, retyped or newly
+  nullable field is a `tsc` error naming the field; an added field is fine. **Adding an API client
+  means adding its line there**; endpoints whose route still returns `dict[str, Any]` are listed
+  at the bottom of that file until the backend documents a response model. Each file cites the
+  backend module it mirrors so reconciliation is mechanical. **One file per domain, a folder per surface** —
   `types/market/{flows,quotes,rankings,sectors,…}.ts` and `types/stock/{chip,fundamentals,…}.ts`,
   each listing the routes it mirrors in its header; envelope pieces every contract shares
   (`MaskedTeaser`/`isMaskedTeaser`, `healthStatusSchema`, `rowsOutputSchema`) live once in

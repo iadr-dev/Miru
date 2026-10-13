@@ -17,7 +17,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final
 
-from schemas.enums import Market
+from schemas.enums import Market, UserMarket
 
 
 class ScheduleTemplateId(StrEnum):
@@ -37,7 +37,7 @@ class ScheduleTemplate:
     skill_ref: str
     trigger_type: str  # "market_event" | "cron"
     trigger_spec: str
-    market: Market
+    market: UserMarket
     # The skill input that carries the user's target(s), and whether it takes a list.
     target_input: str
     multiple: bool

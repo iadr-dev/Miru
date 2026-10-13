@@ -30,27 +30,39 @@ def _store(session: AsyncSession = Depends(get_session)) -> SqlAlchemyPetStore:
     return SqlAlchemyPetStore(session)
 
 
+class PetCatalogResponse(BaseModel):
+    catalog: tuple[PetCatalogEntry, ...]
+
+
+class OwnedPetsResponse(BaseModel):
+    pets: list[OwnedPet]
+
+
+class ActivePetResponse(BaseModel):
+    active: OwnedPet | None
+
+
 @router.get("/pets/catalog")
-async def catalog() -> dict[str, tuple[PetCatalogEntry, ...]]:
+async def catalog() -> PetCatalogResponse:
     """The full code-defined catalog (rarity, bilingual names, descriptions) — no auth needed
     to browse, but kept behind the same router group for locality."""
-    return {"catalog": config.CATALOG}
+    return PetCatalogResponse(catalog=config.CATALOG)
 
 
 @router.get("/pets")
 async def my_pets(
     user: User = Depends(require_user),
     store: SqlAlchemyPetStore = Depends(_store),
-) -> dict[str, list[OwnedPet]]:
-    return {"pets": await store.list_pets(user_id=user.id)}
+) -> OwnedPetsResponse:
+    return OwnedPetsResponse(pets=await store.list_pets(user_id=user.id))
 
 
 @router.get("/pets/active")
 async def active_pet(
     user: User = Depends(require_user),
     store: SqlAlchemyPetStore = Depends(_store),
-) -> dict[str, OwnedPet | None]:
-    return {"active": await store.active_pet(user_id=user.id)}
+) -> ActivePetResponse:
+    return ActivePetResponse(active=await store.active_pet(user_id=user.id))
 
 
 @router.put("/pets/{record_id}/equip")

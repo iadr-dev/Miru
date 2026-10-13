@@ -19,7 +19,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.alerts import RuleCondition, TriggerMode
-from schemas.enums import Market
+from schemas.enums import Market, UserMarket
 
 
 class TriggerType(StrEnum):
@@ -85,7 +85,7 @@ class ScheduleTrigger(BaseModel):
     type: TriggerType
     # For CRON: a weekday-cron expression string. For MARKET_EVENT: a `MarketEvent` value.
     spec: str = Field(min_length=1)
-    market: Market = Market.TW
+    market: UserMarket = Market.TW
 
 
 class ScheduleAction(BaseModel):
@@ -141,7 +141,7 @@ class AlertRule(BaseModel):
     user_id: str
     # Scope is a symbol (+market) XOR a watchlist group; the DB enforces the same XOR.
     symbol: str | None = None
-    market: Market | None = None
+    market: UserMarket | None = None
     watchlist_id: str | None = None
     origin_watchlist_id: str | None = None
     condition: RuleCondition

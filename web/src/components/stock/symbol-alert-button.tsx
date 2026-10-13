@@ -17,20 +17,15 @@ import { activeRuleCount, presetsFor, rulesForSymbol } from "@/lib/alerts/preset
 import { createAlert, listAlerts, SettingsApiError } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { FRESHNESS } from "@/lib/freshness";
-import type { AlertCondition, AlertMarket, Market } from "@/types/settings";
+import type { AlertCondition, Market } from "@/types/settings";
 
 const ALERTS_KEY = ["settings", "alerts"] as const;
 const DEFAULT_LIFETIME_DAYS = 90;
 
-function isAlertMarket(market: Market): market is AlertMarket {
-  return market === "TW" || market === "US";
-}
-
 /** 🔔 quick-create on the stock/ETF header: a lit bell with a count
  * when this symbol already has active rules, one-click fact presets that exist for this asset, and
  * a price-level form. Everything created here is the same rule the Settings panel manages —
- * nothing is created without a click. Markets other than TW/US have no alert support and render
- * nothing (no dead control). */
+ * nothing is created without a click. */
 export function SymbolAlertButton({
   symbol,
   market,
@@ -40,9 +35,6 @@ export function SymbolAlertButton({
   readonly market: Market;
   readonly isEtf: boolean;
 }): ReactNode {
-  if (!isAlertMarket(market)) {
-    return null;
-  }
   return <SymbolAlertPopover symbol={symbol} market={market} isEtf={isEtf} />;
 }
 
@@ -52,7 +44,7 @@ function SymbolAlertPopover({
   isEtf,
 }: {
   readonly symbol: string;
-  readonly market: AlertMarket;
+  readonly market: Market;
   readonly isEtf: boolean;
 }): ReactNode {
   const t = useTranslations("stock.alertButton");
