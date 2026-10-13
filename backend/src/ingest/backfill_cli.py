@@ -70,6 +70,7 @@ from ingest.jobs import (
     job_shareholding_distribution,
 )
 from ingest.journal import JobRun, RunStatus
+from ingest.leader import acquire_leadership, release_leadership
 from ingest.preflight import (
     last_available_trading_day,
     last_completed_us_session,
@@ -79,6 +80,9 @@ from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
 
 logger = structlog.get_logger(__name__)
+
+# Exit status when another ingest process holds the single-writer lease (distinct from 1 = failed).
+LEASE_HELD_EXIT_CODE = 3
 
 _PRODUCTION_ENV = "production"
 _MAX_BACKFILL_YEARS = 10  # generous upper bound — never an unbounded operator-supplied window
@@ -427,6 +431,26 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
         return 1
 
     ctx = await build_ingest_context_from_settings(settings)
+    # A hand-run backfill is a second writer like any other: it takes the same lease as the daemon,
+    # so it can never interleave with the scheduled jobs on the same partitions.
+    if not await acquire_leadership(ctx.leader):
+        logger.error(
+            "ingest_backfill_cli_aborted",
+            detail=(
+                "another ingest process (the daemon or a second backfill) holds the writer lease; "
+                "stop it or wait for it to finish, then run this again"
+            ),
+        )
+        return LEASE_HELD_EXIT_CODE
+    try:
+        return await _run_backfill(args, settings, ctx, years)
+    finally:
+        await release_leadership(ctx.leader)
+
+
+async def _run_backfill(
+    args: argparse.Namespace, settings: Settings, ctx: IngestContext, years: int
+) -> int:
     if args.market == "us":
         runs = await run_us_backfill_cli(settings, ctx, override=args.yes, years=years)
     else:

@@ -61,6 +61,7 @@ from ingest.jobs import (
     job_insider_transfer_declaration,
     job_material_announcements,
 )
+from ingest.leader import acquire_leadership, release_leadership
 from ingest.us_jobs import job_us_fundamentals
 
 logger = structlog.get_logger(__name__)
@@ -244,6 +245,16 @@ async def main() -> None:
     # This process works across all users (ingest and the derived scoring): system work.
     rls.enter_system_mode()
     ctx = await build_ingest_context_from_settings(settings)
+    # Take the single-writer lease before anything can write. Without it this process runs as a
+    # standby: it keeps polling and takes over when the current leader goes away, and every job
+    # pass is a logged no-op in the meantime.
+    if await acquire_leadership(ctx.leader):
+        await asyncio.to_thread(ctx.store.sweep_stale_versions)
+    else:
+        logger.warning(
+            "ingest_standby",
+            detail="another ingest process holds the writer lease; polling to take over",
+        )
     daemon = IngestDaemon(ctx)
     daemon.seed_startup()
     shutdown = _ShutdownState()
@@ -267,14 +278,17 @@ async def main() -> None:
     # path and are individually idempotent, so a gap-fill run and a live cron pass touching
     # overlapping dates is a same-answer overwrite, not a correctness risk — the same reasoning
     # `_startup_gap_fill`'s own TW/US concurrency already relies on.
-    await asyncio.gather(
-        _startup_gap_fill(settings, ctx),
-        run_ingest_loop(
-            daemon,
-            interval_seconds=settings.ingest_poll_interval_seconds,
-            shutdown=shutdown,
-        ),
-    )
+    try:
+        await asyncio.gather(
+            _startup_gap_fill(settings, ctx),
+            run_ingest_loop(
+                daemon,
+                interval_seconds=settings.ingest_poll_interval_seconds,
+                shutdown=shutdown,
+            ),
+        )
+    finally:
+        await release_leadership(ctx.leader)
 
 
 if __name__ == "__main__":
