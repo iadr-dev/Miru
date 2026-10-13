@@ -54,7 +54,7 @@ from analytics.scoring_batch import job_scoring_batch
 from analytics.screener.batch import SCREENER_FLAGS_DATASET, job_screener_flags
 from config.settings import Settings, get_settings
 from ingest.context import IngestContext
-from ingest.daemon import build_ingest_context_from_settings
+from ingest.daemon import build_ingest_context_from_settings, close_ingest_context
 from ingest.jobs import (
     DAILY_WHOLE_MARKET_JOBS,
     ETF_EXPENSE_RATIO_DATASET,
@@ -70,7 +70,7 @@ from ingest.jobs import (
     job_shareholding_distribution,
 )
 from ingest.journal import JobRun, RunStatus
-from ingest.leader import acquire_leadership, release_leadership
+from ingest.leader import acquire_leadership
 from ingest.preflight import (
     last_available_trading_day,
     last_completed_us_session,
@@ -433,6 +433,15 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
     ctx = await build_ingest_context_from_settings(settings)
     # A hand-run backfill is a second writer like any other: it takes the same lease as the daemon,
     # so it can never interleave with the scheduled jobs on the same partitions.
+    try:
+        return await _run_with_lease(args, settings, ctx, years)
+    finally:
+        await close_ingest_context(ctx)
+
+
+async def _run_with_lease(
+    args: argparse.Namespace, settings: Settings, ctx: IngestContext, years: int
+) -> int:
     if not await acquire_leadership(ctx.leader):
         logger.error(
             "ingest_backfill_cli_aborted",
@@ -442,10 +451,7 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
             ),
         )
         return LEASE_HELD_EXIT_CODE
-    try:
-        return await _run_backfill(args, settings, ctx, years)
-    finally:
-        await release_leadership(ctx.leader)
+    return await _run_backfill(args, settings, ctx, years)
 
 
 async def _run_backfill(

@@ -73,7 +73,7 @@ from ingest.jobs import (
     job_valuation_ratios,
 )
 from ingest.journal import JobRun
-from ingest.leader import build_leader_election, refresh_leadership
+from ingest.leader import build_leader_election, refresh_leadership, release_leadership
 from ingest.preflight import last_completed_us_session
 from ingest.publisher_binding import resolve_data_update_publisher
 from ingest.store import ParquetStore
@@ -479,6 +479,16 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     )
 
 
+async def close_ingest_context(ctx: IngestContext) -> None:
+    """Release what `build_ingest_context_from_settings` opened: the writer lease, then the
+    database pool. Safe to call on every exit path, including an early abort."""
+    await release_leadership(ctx.leader)
+    factory = ctx.session_factory
+    engine = factory.kw.get("bind") if factory is not None else None
+    if engine is not None:
+        await engine.dispose()
+
+
 __all__ = [
     "SCHEDULED_JOBS",
     "Cadence",
@@ -486,4 +496,5 @@ __all__ = [
     "IngestJobFn",
     "ScheduledIngestJob",
     "build_ingest_context_from_settings",
+    "close_ingest_context",
 ]

@@ -54,14 +54,18 @@ from ingest.backfill_cli import (
     run_us_backfill_cli,
 )
 from ingest.context import IngestContext
-from ingest.daemon import IngestDaemon, build_ingest_context_from_settings
+from ingest.daemon import (
+    IngestDaemon,
+    build_ingest_context_from_settings,
+    close_ingest_context,
+)
 from ingest.jobs import (
     job_attention_stocks,
     job_disposition_events,
     job_insider_transfer_declaration,
     job_material_announcements,
 )
-from ingest.leader import acquire_leadership, release_leadership
+from ingest.leader import acquire_leadership
 from ingest.us_jobs import job_us_fundamentals
 
 logger = structlog.get_logger(__name__)
@@ -288,7 +292,7 @@ async def main() -> None:
             ),
         )
     finally:
-        await release_leadership(ctx.leader)
+        await close_ingest_context(ctx)
 
 
 if __name__ == "__main__":
