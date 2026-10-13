@@ -52,6 +52,7 @@ def build_report(  # noqa: PLR0913 - one argument per fact the report records ab
     rounds: int,
     searches: int,
     pages_read: int,
+    data_calls: int = 0,
 ) -> FinalReport:
     dropped = 0
 
@@ -77,7 +78,7 @@ def build_report(  # noqa: PLR0913 - one argument per fact the report records ab
         for source_id in claim.source_ids
     }
     sources = tuple(
-        ReportSource(id=s.id, title=s.title, url=s.url, published=s.published)
+        ReportSource(id=s.id, title=s.title, url=s.url, kind=s.kind, published=s.published)
         for s in ledger.citeable()
         if s.id in cited_ids
     )
@@ -95,6 +96,7 @@ def build_report(  # noqa: PLR0913 - one argument per fact the report records ab
         rounds=rounds,
         searches=searches,
         pages_read=pages_read,
+        data_calls=data_calls,
     )
 
 

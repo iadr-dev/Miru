@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 from governance.textscan import check_output
-from research.models import FinalReport, ReportClaim, StopReason
+from research.models import FinalReport, ReportClaim, ReportSource, StopReason
 
 Locale = Literal["zh-TW", "en"]
 
@@ -15,7 +15,9 @@ _LABELS: dict[Locale, dict[str, str]] = {
         "summary": "重點摘要",
         "open": "尚未釐清",
         "sources": "來源",
-        "scope": "本次研究讀取了 {pages} 個網頁、進行 {searches} 次搜尋。",
+        "scope": "本次研究讀取了 {pages} 個網頁、進行 {searches} 次搜尋{data}。",
+        "scope_data": "、查詢 {data} 項 Miru 市場資料",
+        "data_source": "Miru 市場資料",
         "empty": "這次沒有找到足夠可引用的公開資料，無法產出研究報告。請換個問法或縮小範圍再試。",
         "failed": "研究過程發生錯誤，未產出報告。請稍後再試。",
     },
@@ -24,7 +26,9 @@ _LABELS: dict[Locale, dict[str, str]] = {
         "summary": "Key points",
         "open": "Still unresolved",
         "sources": "Sources",
-        "scope": "Read {pages} web pages across {searches} searches.",
+        "scope": "Read {pages} web pages across {searches} searches{data}.",
+        "scope_data": " and {data} Miru market-data lookups",
+        "data_source": "Miru market data",
         "empty": "No sufficiently citable public sources were found, so no report was produced. "
         "Try rephrasing or narrowing the question.",
         "failed": "The research hit an error and produced no report. Please try again later.",
@@ -82,6 +86,13 @@ def _scan_title(title: str) -> str:
     return verdict.redacted_text if verdict.redacted_text is not None else title
 
 
+def _source_line(source: ReportSource, data_label: str) -> str:
+    title = _plain(_short(_scan_title(source.title)))
+    if source.url is None:  # Miru's own market data: nothing to link to
+        return f"{source.id}. {title}（{data_label}）"
+    return f"{source.id}. [{title}]({source.url})"
+
+
 def failure_text(locale: Locale) -> str:
     return _LABELS[locale]["failed"]
 
@@ -112,9 +123,12 @@ def render_markdown(report: FinalReport, locale: Locale) -> str:
     # URLs are validated data, not prose: the scanner's vendor-name stripping would rewrite a
     # "yahoo" inside one and break the link. Titles, which are prose, are scanned one by one.
     sources = f"### {labels['sources']}\n" + "\n".join(
-        f"{s.id}. [{_plain(_short(_scan_title(s.title)))}]({s.url})" for s in report.sources
+        _source_line(s, labels["data_source"]) for s in report.sources
     )
-    scope = f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches)}*"
+    extra = labels["scope_data"].format(data=report.data_calls) if report.data_calls else ""
+    scope = (
+        f"*{labels['scope'].format(pages=report.pages_read, searches=report.searches, data=extra)}*"
+    )
     return "\n\n".join([body, sources, scope])
 
 

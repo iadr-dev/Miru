@@ -70,13 +70,6 @@ from usage.store import write_turn_usage
 
 _RATE_WINDOW_SECONDS = 60
 
-# A research run fans out into many searches, page fetches and model calls, and there is no daily
-# report cap, so one account must not be able to start them in bulk. This is a safety rate, not a
-# quota: ordinary use (a report every few minutes) never meets it, nothing in the UI mentions it,
-# and a refused start simply asks the user to try again shortly.
-_DEEP_RESEARCH_STARTS = 4
-_DEEP_RESEARCH_WINDOW_SECONDS = 600
-
 logger = structlog.get_logger(__name__)
 
 
@@ -99,10 +92,9 @@ async def enforce_pre_turn_gate(
     (no TOCTOU) — over-cap callers are refunded and rejected without spending the day's allowance.
     An unlimited tier (Pro) or an active BYOK key means no daily cap and no counter write.
 
-    `deep_research=True` adds the Pro-only feature check (`403 feature_not_entitled`) and a short-
-    window safety rate on report starts (`429 rate_limited`). A report has no daily cap: each run is
-    bounded by its own budget, and the per-minute rate above and the daily-chat allowance still
-    apply."""
+    `deep_research=True` adds the Pro-only feature check (`403 feature_not_entitled`). A report has
+    no daily cap: each run is bounded by its own budget, and the per-minute rate above and the
+    daily-chat allowance still apply."""
     verdict = await state.rate_limiter.check(
         user.id,
         max_requests=rate_limit_per_minute(user),
@@ -118,18 +110,6 @@ async def enforce_pre_turn_gate(
 
     if deep_research:
         _require_deep_research_feature(user)
-        research_verdict = await state.rate_limiter.check(
-            f"{user.id}:deep_research",
-            max_requests=_DEEP_RESEARCH_STARTS,
-            window_seconds=_DEEP_RESEARCH_WINDOW_SECONDS,
-        )
-        if not research_verdict.allowed:
-            raise ApiError(
-                status_code=429,
-                code="rate_limited",
-                message="Too many research requests. Please wait a few minutes and retry.",
-                retryable=True,
-            )
 
     # `byok` is the SAME decision the turn will run on (`api.byok.resolve_byok`), passed in rather
     # than looked up again here: the cap is lifted only for a turn that really runs on a user key,
@@ -434,6 +414,8 @@ async def _drive_turn(
                 question=message,
                 locale=locale,
                 model_override=model_override,
+                history=history,
+                images=images,
             )
         else:
             result = await state.orchestrator.run(
