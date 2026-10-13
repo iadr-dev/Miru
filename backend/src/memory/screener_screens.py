@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
@@ -35,6 +36,18 @@ class ScreenerScreenNameConflictError(RuntimeError):
     silently overwriting a different saved screen."""
 
 
+ScreenMatch = Literal["AND", "OR"]  # all conditions, or any one
+
+
+def _screen_match(value: str) -> ScreenMatch:
+    """A stored match mode as the literal; the column only ever holds one of the two."""
+    if value == "OR":
+        return "OR"
+    if value == "AND":
+        return "AND"
+    raise ValueError(f"{value!r} is not a screen match mode (AND or OR)")
+
+
 class ScreenerScreen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -43,7 +56,7 @@ class ScreenerScreen(BaseModel):
     name: str
     market: str
     conditions: tuple[dict[str, object], ...] = Field(default_factory=tuple)
-    match: str = "AND"
+    match: ScreenMatch = "AND"
     gate_overrides: dict[str, object] | None = None
     created_at: datetime
     updated_at: datetime
@@ -56,7 +69,7 @@ def _row_to_model(row: ScreenerScreenRow) -> ScreenerScreen:
         name=row.name,
         market=row.market,
         conditions=tuple(json.loads(row.conditions_json)),
-        match=row.match,
+        match=_screen_match(row.match),
         gate_overrides=(
             json.loads(row.gate_overrides_json) if row.gate_overrides_json is not None else None
         ),
@@ -79,7 +92,7 @@ class ScreenerScreenStore:
         name: str,
         market: str,
         conditions: tuple[dict[str, object], ...],
-        match: str = "AND",
+        match: ScreenMatch = "AND",
         gate_overrides: dict[str, object] | None = None,
     ) -> ScreenerScreen:
         """Create a new saved screen. Raises `ScreenerScreenNameConflictError` if `name` is
@@ -141,7 +154,7 @@ class ScreenerScreenStore:
         screen_id: str,
         name: str | None = None,
         conditions: tuple[dict[str, object], ...] | None = None,
-        match: str | None = None,
+        match: ScreenMatch | None = None,
         gate_overrides: dict[str, object] | None = None,
     ) -> ScreenerScreen:
         """Rename and/or replace a saved screen's condition set in place — the "dirty ->

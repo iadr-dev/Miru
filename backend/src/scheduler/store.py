@@ -46,6 +46,7 @@ from scheduler.models import (
     DeliveryChannelKind,
     DevicePlatform,
     DevicePushToken,
+    EmailBlockReason,
     JobStatus,
     Notification,
     NotificationBadge,
@@ -119,6 +120,17 @@ def _job_to_model(row: ScheduleJobRow) -> ScheduleJob:
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
+
+
+def _email_block_reason(value: str) -> EmailBlockReason:
+    """A stored suppression reason as the literal; the column only ever holds one of the three."""
+    if value == "bounced":
+        return "bounced"
+    if value == "complained":
+        return "complained"
+    if value == "unsubscribed":
+        return "unsubscribed"
+    raise ValueError(f"{value!r} is not an email suppression reason")
 
 
 def _alert_to_model(row: AlertRuleRow) -> AlertRule:
@@ -363,7 +375,7 @@ class SchedulerStore(Protocol):
 
     async def clear_unsubscribe(self, *, address: str) -> None: ...
 
-    async def email_suppression_reason(self, *, address: str) -> str | None: ...
+    async def email_suppression_reason(self, *, address: str) -> EmailBlockReason | None: ...
 
     async def linked_line_user_id(self, *, user_id: str) -> str | None: ...
 
@@ -1077,10 +1089,10 @@ class SqlAlchemySchedulerStore:
             )
             await self._session.flush()
 
-    async def email_suppression_reason(self, *, address: str) -> str | None:
+    async def email_suppression_reason(self, *, address: str) -> EmailBlockReason | None:
         """Why this address is not emailed ('bounced' | 'complained' | 'unsubscribed'), or None."""
         row = await self._session.get(EmailSuppressionRow, address.strip().lower())
-        return row.reason if row is not None else None
+        return _email_block_reason(row.reason) if row is not None else None
 
     async def clear_unsubscribe(self, *, address: str) -> None:
         """Forget an *unsubscribe* (the user chose to get email again). A bounce or a spam complaint

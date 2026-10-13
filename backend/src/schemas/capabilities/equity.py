@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date as date_
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -60,7 +61,7 @@ class FinancialStatementLine(BaseModel):
     market: Market
     period_end: date_
     statement_type: str  # e.g. "income", "balance_sheet", "cash_flow"
-    period_type: str = "quarterly"  # "annual" | "quarterly" | "ttm"
+    period_type: Literal["annual", "quarterly", "ttm"] = "quarterly"
     item: str  # normalized line-item type (upstream "type" column)
     origin_name: str  # upstream label, kept for citation/traceability
     value: float

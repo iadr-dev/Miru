@@ -22,6 +22,7 @@ from api.dependencies import (
     tool_context_for,
 )
 from api.rate_guard import guard_reads
+from api.tool_responses import tool_responses
 from schemas.enums import Market
 from tools.base import ToolContext
 
@@ -38,7 +39,7 @@ def _context(
     return tool_context_for(user, state)
 
 
-@router.get("/themes")
+@router.get("/themes", response_model=None, responses=tool_responses("get_themes"))
 async def list_themes(
     kind: Literal["industry", "concept"] | None = Query(None),
     state: AppState = Depends(get_state),
@@ -52,7 +53,7 @@ async def list_themes(
     return await _dispatch(state, "get_themes", args, ctx)
 
 
-@router.get("/themes/{key}")
+@router.get("/themes/{key}", response_model=None, responses=tool_responses("get_theme_members"))
 async def theme_detail(
     key: str,
     limit: int = Query(200, ge=1, le=1000),
@@ -63,7 +64,7 @@ async def theme_detail(
     return await _dispatch(state, "get_theme_members", {"theme_key": key, "limit": limit}, ctx)
 
 
-@router.get("/themes/{key}/tiers")
+@router.get("/themes/{key}/tiers", response_model=None, responses=tool_responses("get_theme_tiers"))
 async def theme_tiers(
     key: str,
     state: AppState = Depends(get_state),
@@ -74,7 +75,9 @@ async def theme_tiers(
     return await _dispatch(state, "get_theme_tiers", {"theme_key": key}, ctx)
 
 
-@router.get("/symbols/{symbol}/themes")
+@router.get(
+    "/symbols/{symbol}/themes", response_model=None, responses=tool_responses("get_symbol_themes")
+)
 async def symbol_themes(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -85,7 +88,11 @@ async def symbol_themes(
     return await _dispatch(state, "get_symbol_themes", {"id": symbol, "market": market.value}, ctx)
 
 
-@router.get("/themes/{key}/tier-heatmap")
+@router.get(
+    "/themes/{key}/tier-heatmap",
+    response_model=None,
+    responses=tool_responses("get_theme_tier_heatmap"),
+)
 async def theme_tier_heatmap(
     key: str,
     state: AppState = Depends(get_state),
@@ -97,7 +104,11 @@ async def theme_tier_heatmap(
     return await _dispatch(state, "get_theme_tier_heatmap", {"theme_key": key}, ctx)
 
 
-@router.get("/symbols/{symbol}/supply-chain")
+@router.get(
+    "/symbols/{symbol}/supply-chain",
+    response_model=None,
+    responses=tool_responses("get_supply_chain_edges"),
+)
 async def symbol_supply_chain(
     symbol: str,
     market: Market = Query(Market.TW),

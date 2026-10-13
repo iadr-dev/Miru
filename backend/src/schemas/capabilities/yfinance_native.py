@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date as date_
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -107,7 +108,7 @@ class SymbolDirectorySearchRow(BaseModel):
 
     symbol: str
     name: str
-    instrument_kind: str  # "stock" | "etf"
+    instrument_kind: Literal["stock", "etf"]
     industry_category: str | None = None
 
 

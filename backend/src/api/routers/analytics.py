@@ -30,6 +30,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from api.rate_guard import guard_reads
+from api.tool_responses import tool_responses
 from memory.screener_screens import (
     ScreenerScreen,
     ScreenerScreenNameConflictError,
@@ -53,7 +54,9 @@ def _context(
     return tool_context_for(user, state)
 
 
-@router.get("/analytics/{symbol}/score")
+@router.get(
+    "/analytics/{symbol}/score", response_model=None, responses=tool_responses("get_stock_score")
+)
 async def stock_score(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -71,7 +74,11 @@ async def stock_score(
     )
 
 
-@router.get("/analytics/{symbol}/summary")
+@router.get(
+    "/analytics/{symbol}/summary",
+    response_model=None,
+    responses=tool_responses("get_stock_summary"),
+)
 async def stock_summary(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -89,7 +96,9 @@ async def stock_summary(
     )
 
 
-@router.get("/analytics/rankings")
+@router.get(
+    "/analytics/rankings", response_model=None, responses=tool_responses("get_score_leaderboard")
+)
 async def score_rankings(
     market: Market = Query(Market.TW),
     profile: ScoreProfile = Query(ScoreProfile.SWING),
@@ -120,7 +129,11 @@ async def score_rankings(
     )
 
 
-@router.get("/analytics/{symbol}/trend-score")
+@router.get(
+    "/analytics/{symbol}/trend-score",
+    response_model=None,
+    responses=tool_responses("get_trend_score"),
+)
 async def trend_score(
     symbol: str,
     market: Market = Query(Market.TW),
@@ -139,7 +152,11 @@ async def trend_score(
     )
 
 
-@router.get("/analytics/screener/factors")
+@router.get(
+    "/analytics/screener/factors",
+    response_model=None,
+    responses=tool_responses("get_factor_catalog"),
+)
 async def screener_factors(
     market: Literal["TW", "US", "ETF"] = Query(...),
     state: AppState = Depends(get_state),
@@ -150,7 +167,11 @@ async def screener_factors(
     return await _dispatch(state, "get_factor_catalog", {"market": market}, ctx)
 
 
-@router.get("/analytics/screener/presets")
+@router.get(
+    "/analytics/screener/presets",
+    response_model=None,
+    responses=tool_responses("get_screener_presets"),
+)
 async def screener_presets(
     market: Literal["TW", "US", "ETF"] = Query(...),
     state: AppState = Depends(get_state),
@@ -201,7 +222,9 @@ class ScreenerRunRequest(BaseModel):
     size: int = Field(default=50, ge=1, le=250)
 
 
-@router.post("/analytics/screener/run")
+@router.post(
+    "/analytics/screener/run", response_model=None, responses=tool_responses("run_screener")
+)
 async def screener_run(
     body: ScreenerRunRequest,
     state: AppState = Depends(get_state),
@@ -235,8 +258,8 @@ def _screen_name_conflict(name: str) -> ApiError:
     )
 
 
-def _screen_view(screen: ScreenerScreen) -> dict[str, object]:
-    return screen.model_dump(mode="json")
+class ScreensResponse(BaseModel):
+    screens: list[ScreenerScreen]
 
 
 @router.get("/analytics/screener/screens")
@@ -244,11 +267,11 @@ async def list_screener_screens(
     market: Literal["TW", "US", "ETF"] = Query(...),
     user: User = Depends(require_user),
     store: ScreenerScreenStore = Depends(_screen_store),
-) -> dict[str, object]:
+) -> ScreensResponse:
     """`SavedScreens`'s list read (README.md §6) — every screen the caller has saved for this
     market, most-recently-updated first."""
     screens = await store.list_screens(user_id=user.id, market=market)
-    return {"screens": [_screen_view(screen) for screen in screens]}
+    return ScreensResponse(screens=screens)
 
 
 class SaveScreenerScreenRequest(BaseModel):
@@ -266,7 +289,7 @@ async def save_screener_screen(
     body: SaveScreenerScreenRequest,
     user: User = Depends(require_user),
     store: ScreenerScreenStore = Depends(_screen_store),
-) -> dict[str, object]:
+) -> ScreenerScreen:
     """Save the builder's current state as a new named screen (README.md §6). 409s on a name
     already used for this market — the client offers "另存新篩選" rather than clobbering."""
     try:
@@ -284,7 +307,7 @@ async def save_screener_screen(
         )
     except ScreenerScreenNameConflictError as exc:
         raise _screen_name_conflict(body.name) from exc
-    return _screen_view(screen)
+    return screen
 
 
 class UpdateScreenerScreenRequest(BaseModel):
@@ -302,7 +325,7 @@ async def update_screener_screen(
     body: UpdateScreenerScreenRequest,
     user: User = Depends(require_user),
     store: ScreenerScreenStore = Depends(_screen_store),
-) -> dict[str, object]:
+) -> ScreenerScreen:
     """Rename and/or replace a saved screen's conditions in place — the "dirty -> update" path
     (README.md §6), distinct from creating a new screen via `POST .../screens`."""
     try:
@@ -324,7 +347,7 @@ async def update_screener_screen(
         )
     except ScreenerScreenNotFoundError as exc:
         raise _screen_not_found(screen_id) from exc
-    return _screen_view(screen)
+    return screen
 
 
 @router.delete("/analytics/screener/screens/{screen_id}", status_code=status.HTTP_204_NO_CONTENT)

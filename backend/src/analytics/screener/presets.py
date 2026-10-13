@@ -15,6 +15,8 @@ outright rather than shipped broken.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.enums import Market
@@ -45,9 +47,9 @@ class ScreenerPreset(BaseModel):
     label_zh: str = Field(min_length=1)
     label_en: str = Field(min_length=1)
     description: str = Field(min_length=1)
-    direction: str = "neutral"  # "bull" | "bear" | "neutral"
+    direction: Literal["bull", "bear", "neutral"] = "neutral"
     conditions: tuple[PresetCondition, ...] = Field(min_length=1)
-    match: str = "AND"
+    match: Literal["AND", "OR"] = "AND"
 
 
 # -- TW --------------------------------------------------------------------------------------

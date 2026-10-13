@@ -4220,9 +4220,111 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
+    /**
+     * ActiveEtfHoldingWeightRow
+     * @description One constituent's FULL current-day weight — every holding on `report_date`, not just the
+     *     ones that changed (`ActiveEtfReportRow`'s own scope). This is the 成分股/產業分佈 tab's real
+     *     backing: a 成分股 donut/table needs the whole holdings list with weight, and a 產業分佈 view
+     *     needs each holding's industry — neither is expressible from the diffed change rows alone.
+     *     `industry_category` is joined from the same whole-market `STOCK_INFO_JOB` roster
+     *     `GetSectorHeatmapTool` already reads (ingest-owned store, never a live per-symbol fetch);
+     *     `None` when the constituent isn't found in that day's roster (never fabricated).
+     */
+    ActiveEtfHoldingWeightRow: {
+      /** Component Stock Id */
+      component_stock_id: string;
+      /** Component Stock Name */
+      component_stock_name: string;
+      /** Industry Category */
+      industry_category?: string | null;
+      /** Weight */
+      weight: number;
+    };
+    /**
+     * ActiveEtfReportRow
+     * @description One constituent's row in the 操作日報 — only constituents with a nonzero buy/sell that
+     *     day appear (FinMind's `HoldingChange` is already filtered to changed rows).
+     */
+    ActiveEtfReportRow: {
+      /** Component Stock Id */
+      component_stock_id: string;
+      /** Component Stock Name */
+      component_stock_name: string;
+      /** Current Weight */
+      current_weight?: number | null;
+      /** Pct Change */
+      pct_change?: number | null;
+      /** Shares Delta */
+      shares_delta: number;
+      status: components["schemas"]["HoldingStatus"];
+      /** Weight Delta Pct */
+      weight_delta_pct?: number | null;
+    };
     /** ActivePetResponse */
     ActivePetResponse: {
       active: components["schemas"]["OwnedPet"] | null;
+    };
+    /**
+     * AdvanceDeclineBuckets
+     * @description Symbol counts bucketed by close-to-close percentage change. `unchanged` is exactly
+     *     `pct_change == 0`; every other symbol falls into exactly one up- or down-side bucket.
+     */
+    AdvanceDeclineBuckets: {
+      /**
+       * Down 0 To 1Pct
+       * @default 0
+       */
+      down_0_to_1pct: number;
+      /**
+       * Down 1 To 2Pct
+       * @default 0
+       */
+      down_1_to_2pct: number;
+      /**
+       * Down 2 To 3Pct
+       * @default 0
+       */
+      down_2_to_3pct: number;
+      /**
+       * Down 3 To 5Pct
+       * @default 0
+       */
+      down_3_to_5pct: number;
+      /**
+       * Down Over 5Pct
+       * @default 0
+       */
+      down_over_5pct: number;
+      /**
+       * Unchanged
+       * @default 0
+       */
+      unchanged: number;
+      /**
+       * Up 0 To 1Pct
+       * @default 0
+       */
+      up_0_to_1pct: number;
+      /**
+       * Up 1 To 2Pct
+       * @default 0
+       */
+      up_1_to_2pct: number;
+      /**
+       * Up 2 To 3Pct
+       * @default 0
+       */
+      up_2_to_3pct: number;
+      /**
+       * Up 3 To 5Pct
+       * @default 0
+       */
+      up_3_to_5pct: number;
+      /**
+       * Up Over 5Pct
+       * @default 0
+       */
+      up_over_5pct: number;
     };
     /** AgentQueryRequest */
     AgentQueryRequest: {
@@ -4378,6 +4480,77 @@ export interface components {
       alerts: components["schemas"]["AlertRule"][];
     };
     /**
+     * AnalystConsensus
+     * @description `analyst_consensus` — the licensed analyst-ratings/target-price gap (yfinance).
+     *
+     *     The `_extended` fields are populated only for non-TW markets, where yfinance's analyst
+     *     coverage is primary rather than a sparse gap-filler — TW payloads never set them, so the
+     *     existing narrow TW shape is unaffected.
+     */
+    AnalystConsensus: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Buy */
+      buy?: number | null;
+      /** Current Year Growth Estimate */
+      current_year_growth_estimate?: number | null;
+      /** Eps Revisions Down Last 30 Days */
+      eps_revisions_down_last_30_days?: number | null;
+      /** Eps Revisions Up Last 30 Days */
+      eps_revisions_up_last_30_days?: number | null;
+      /** Eps Trend 30 Days Ago */
+      eps_trend_30_days_ago?: number | null;
+      /** Eps Trend 60 Days Ago */
+      eps_trend_60_days_ago?: number | null;
+      /** Eps Trend 7 Days Ago */
+      eps_trend_7_days_ago?: number | null;
+      /** Eps Trend 90 Days Ago */
+      eps_trend_90_days_ago?: number | null;
+      /** Eps Trend Current */
+      eps_trend_current?: number | null;
+      /** Forward Eps Estimate */
+      forward_eps_estimate?: number | null;
+      /** Forward Revenue Estimate */
+      forward_revenue_estimate?: number | null;
+      /** High Target */
+      high_target?: number | null;
+      /** Hold */
+      hold?: number | null;
+      /** Latest Upgrade Downgrade Action */
+      latest_upgrade_downgrade_action?: string | null;
+      /** Latest Upgrade Downgrade Firm */
+      latest_upgrade_downgrade_firm?: string | null;
+      /** Long Term Growth Estimate */
+      long_term_growth_estimate?: number | null;
+      /** Low Target */
+      low_target?: number | null;
+      market: components["schemas"]["Market"];
+      /** Mean Target */
+      mean_target?: number | null;
+      /** Median Target */
+      median_target?: number | null;
+      /** Next Year Growth Estimate */
+      next_year_growth_estimate?: number | null;
+      /**
+       * Number Of Analysts
+       * @default 0
+       */
+      number_of_analysts: number;
+      /** Recommendation Key */
+      recommendation_key?: string | null;
+      /** Sell */
+      sell?: number | null;
+      /** Strong Buy */
+      strong_buy?: number | null;
+      /** Strong Sell */
+      strong_sell?: number | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
      * AttachmentBlock
      * @description Metadata + (for documents) extracted text for one user-uploaded chat attachment.
      *
@@ -4486,6 +4659,17 @@ export interface components {
      * @enum {string}
      */
     BillingInterval: "monthly" | "annual";
+    /** BollingerResult */
+    BollingerResult: {
+      /** Lower */
+      lower: (number | null)[];
+      /** Mid */
+      mid: (number | null)[];
+      /** Upper */
+      upper: (number | null)[];
+      /** Window */
+      window: number;
+    };
     /**
      * BranchSummaryBlock
      * @description A structured decision+cause summary of an abandoned branch — never free prose, per the
@@ -4503,12 +4687,304 @@ export interface components {
       /** Source Ref */
       source_ref?: string | null;
     };
+    /**
+     * BuildConversationPackageOutput
+     * @description M5N Conversation Package — the AI-safe caveated artifact for one symbol.
+     */
+    BuildConversationPackageOutput: {
+      /**
+       * Built At
+       * Format: date-time
+       */
+      built_at: string;
+      /** Facts */
+      facts: components["schemas"]["ConversationFactOut"][];
+      /** Market */
+      market: string;
+      /** Non Trading Notice */
+      non_trading_notice: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * BusinessIndicatorRow
+     * @description `business_indicator` — one month's 景氣對策信號 (business/economic-climate indicator)
+     *     reading. Backer/Sponsor-only; market-level, no symbol scope; released on the statutory
+     *     monthly cadence, not a daily-clock-time snapshot.
+     */
+    BusinessIndicatorRow: {
+      /** Coincident */
+      coincident: number;
+      /** Coincident Notrend */
+      coincident_notrend: number;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Lagging */
+      lagging: number;
+      /** Lagging Notrend */
+      lagging_notrend: number;
+      /** Leading */
+      leading: number;
+      /** Leading Notrend */
+      leading_notrend: number;
+      market: components["schemas"]["Market"];
+      /** Monitoring */
+      monitoring: number;
+      /** Monitoring Color */
+      monitoring_color: string;
+    };
+    /**
+     * CalendarEventOut
+     * @description Tool-output mirror of `calendar.models.CalendarEvent` — a distinct type from that
+     *     module's own model so `tools/` never re-exports a `calendar/`-owned Pydantic model
+     *     directly as a tool's `output_model` (keeps the tool-output schema decoupled from that
+     *     module's internal shape).
+     */
+    CalendarEventOut: {
+      /** Event Date */
+      event_date?: string | null;
+      /** Id */
+      id: string;
+      /** Source */
+      source: string;
+      /** State */
+      state: string;
+      /** Stock Id */
+      stock_id?: string | null;
+      /** Title En */
+      title_en: string;
+      /** Title Zh */
+      title_zh: string;
+      /** Type */
+      type: string;
+      /** Window End */
+      window_end?: string | null;
+      /** Window Start */
+      window_start?: string | null;
+    };
+    /**
+     * CandlestickPatternHit
+     * @description One completed candlestick-pattern match (`analytics/patterns.py`) at a given bar.
+     *     `direction` is a plain descriptive label — `+1` (看多/bullish-leaning), `-1`
+     *     (看空/bearish-leaning), or `0` (doji — no directional read) — never a buy/sell instruction
+     *     (governance §7 non-trading).
+     */
+    CandlestickPatternHit: {
+      /** Bar Index */
+      bar_index: number;
+      /** Direction */
+      direction: number;
+      /** Pattern */
+      pattern: string;
+    };
+    /**
+     * Capability
+     * @description What callers request — never a source id.
+     * @enum {string}
+     */
+    Capability:
+      | "price_eod"
+      | "price_eod_adjusted"
+      | "price_intraday"
+      | "live_price_quote"
+      | "price_tick"
+      | "price_weekly"
+      | "price_monthly"
+      | "price_limit"
+      | "intraday_kbar"
+      | "tick_snapshot"
+      | "order_book_stats"
+      | "ten_year_price"
+      | "total_return_index"
+      | "financials"
+      | "balance_sheet"
+      | "cash_flow_statement"
+      | "month_revenue"
+      | "valuation_ratios"
+      | "business_indicator"
+      | "dividends"
+      | "dividend_result"
+      | "corporate_actions"
+      | "capital_reduction_reference_price"
+      | "par_value_change"
+      | "split_price"
+      | "stock_delisting"
+      | "trading_suspension"
+      | "day_trading_suspension"
+      | "insider_activity"
+      | "insider_transfer_declaration"
+      | "institutional_flow"
+      | "institutional_flow_wide"
+      | "institutional_flow_total_market"
+      | "institutional_holders"
+      | "chip_broker"
+      | "chip_broker_agg"
+      | "warrant_chip_broker"
+      | "block_trade"
+      | "block_trade_broker_report"
+      | "day_trading"
+      | "government_bank_buysell"
+      | "margin_short"
+      | "margin_short_total_market"
+      | "margin_short_sale_suspension"
+      | "margin_maintenance_ratio"
+      | "daily_short_sale_balances"
+      | "securities_lending"
+      | "loan_collateral_balance"
+      | "disposition_securities"
+      | "attention_stocks"
+      | "disposition_events"
+      | "self_assessed_earnings"
+      | "shareholding"
+      | "shareholding_distribution"
+      | "foreign_shareholding"
+      | "market_value"
+      | "market_value_weight"
+      | "tdcc_shareholding_distribution"
+      | "tdcc_monthly_custody_accounts"
+      | "tdcc_pledged_custody_shares"
+      | "tdcc_evoting_schedule"
+      | "tdcc_offshore_fund_nav"
+      | "tdcc_securities_info"
+      | "analyst_consensus"
+      | "esg"
+      | "profile"
+      | "news"
+      | "stock_news"
+      | "sec_filings"
+      | "stock_info"
+      | "stock_info_with_warrant"
+      | "symbol_lookup"
+      | "symbol_search"
+      | "securities_trader_info"
+      | "market_status"
+      | "trading_calendar"
+      | "calendar_events"
+      | "earnings_calendar"
+      | "economic_calendar"
+      | "ipo_calendar"
+      | "etf_holdings"
+      | "etf_expense_ratio"
+      | "etf_nav"
+      | "etf_aum"
+      | "etf_theme_tags"
+      | "etf_trailing_returns"
+      | "active_etf_holding"
+      | "active_etf_holding_change"
+      | "active_etf_info"
+      | "fund_holdings"
+      | "fund_profile"
+      | "cb_daily"
+      | "cb_daily_overview"
+      | "cb_info"
+      | "cb_institutional_flow"
+      | "cb_monthly_analysis"
+      | "cb_put_provision"
+      | "asset_swap_fixed_income_daily"
+      | "asset_swap_option_daily"
+      | "derivatives_oi"
+      | "futopt_info"
+      | "futopt_tick_info"
+      | "futures_daily"
+      | "futures_dealer_volume"
+      | "futures_final_settlement_price"
+      | "futures_institutional_flow"
+      | "futures_institutional_flow_after_hours"
+      | "futures_oi_large_traders"
+      | "futures_snapshot"
+      | "futures_spread_tick"
+      | "futures_spread_trading"
+      | "futures_tick"
+      | "option_daily"
+      | "option_dealer_volume"
+      | "option_final_settlement_price"
+      | "option_institutional_flow"
+      | "option_institutional_flow_after_hours"
+      | "option_oi_large_traders"
+      | "option_tick"
+      | "option_vix"
+      | "options_chain"
+      | "options_snapshot"
+      | "index_5s_snapshot"
+      | "taiex_5s_index"
+      | "us_stock_info"
+      | "us_stock_price"
+      | "us_stock_price_minute"
+      | "uk_stock_info"
+      | "uk_stock_price"
+      | "europe_stock_info"
+      | "europe_stock_price"
+      | "japan_stock_info"
+      | "japan_stock_price"
+      | "macro"
+      | "sector_class"
+      | "sector_overview"
+      | "industry_overview"
+      | "industry_chain_classification"
+      | "industry_chain_money_flow"
+      | "central_bank_rate"
+      | "exchange_rate"
+      | "government_bond_yield"
+      | "gold_price"
+      | "crude_oil_prices"
+      | "fear_greed_index"
+      | "warrant_underlying";
+    /**
+     * CapabilitySummary
+     * @description One capability's redacted provenance summary — never the raw `payload` dict.
+     */
+    CapabilitySummary: {
+      capability: components["schemas"]["Capability"];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      data_class: components["schemas"]["DataClass"];
+      /**
+       * Fetched At
+       * Format: date-time
+       */
+      fetched_at: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Is Available */
+      is_available: boolean;
+      /** Payload Keys */
+      payload_keys?: string[];
+      /** Source Id */
+      source_id: string;
+      timing_class: components["schemas"]["TimingClass"];
+    };
     /** CaveatBlock */
     CaveatBlock: {
       /** Kind */
       kind: string;
       /** Text */
       text: string;
+    };
+    /**
+     * CentralBankRateRow
+     * @description `central_bank_rate` — one central bank's policy-rate reading (`symbol` is the bank code,
+     *     e.g. FED/BOE/ECB/BOJ). Free tier; event-driven (announced at policy-meeting dates, not a
+     *     daily-clock-time series). Modeled `Market.GLOBAL` — this is inherently a multi-country panel
+     *     with no single-country home; forcing any one country's `Market` value onto a dozen distinct
+     *     central banks would misrepresent the data's actual scope.
+     */
+    CentralBankRateRow: {
+      /** Country */
+      country: string;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Full Country Name */
+      full_country_name: string;
+      /** Interest Rate */
+      interest_rate: number;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
     };
     /**
      * ChannelStatus
@@ -4518,7 +4994,7 @@ export interface components {
       /** Email */
       email: boolean;
       /** Email Blocked */
-      email_blocked?: string | null;
+      email_blocked?: ("bounced" | "complained" | "unsubscribed") | null;
       /** Line */
       line: boolean;
       /** Line Add Friend Url */
@@ -4542,6 +5018,31 @@ export interface components {
       /** Web Push Public Key */
       web_push_public_key?: string | null;
     };
+    /**
+     * ChartHint
+     * @description A declarative visualization hint: `mark` + channel encodings, resolved by the frontend
+     *     renderer against the tool's own row data. Optional on every output model that carries one —
+     *     absence means "no generic-chart opinion," not an error; the existing hardcoded `card_type`
+     *     path still renders that tool's card exactly as it does today.
+     */
+    ChartHint: {
+      color?: components["schemas"]["FieldDef"] | null;
+      /** Data Key */
+      data_key?: string | null;
+      /**
+       * Diverging
+       * @default false
+       */
+      diverging: boolean;
+      mark: components["schemas"]["Mark"];
+      size?: components["schemas"]["FieldDef"] | null;
+      theta?: components["schemas"]["FieldDef"] | null;
+      /** Title */
+      title?: string | null;
+      x?: components["schemas"]["FieldDef"] | null;
+      y?: components["schemas"]["FieldDef"] | null;
+      y2?: components["schemas"]["FieldDef"] | null;
+    };
     /** CheckoutRequest */
     CheckoutRequest: {
       /**
@@ -4558,6 +5059,75 @@ export interface components {
       checkout_url: string | null;
       /** Transaction Id */
       transaction_id: string;
+    };
+    /**
+     * ChipBrokerNetSummary
+     * @description One broker/branch's total net buy/sell (`sum(buy - sell)`) over the whole fetched range —
+     *     see `_top_broker_net_summary`'s docstring for why this exists: the same architecture gap as
+     *     `InstitutionalFlowRollingNet` (Finding #69), one tool over. `get_chip_flows` can return
+     *     thousands of per-day per-branch rows (a live repro against 鴻海/2317 returned 6,500+), and
+     *     without a pre-aggregated summary the model was observed spending its entire response budget
+     *     manually eyeballing/summing individual 分點 rows, leaving zero room for prose — this field
+     *     is what it should cite instead.
+     */
+    ChipBrokerNetSummary: {
+      /** Broker Id */
+      broker_id: string;
+      /** Broker Name */
+      broker_name: string;
+      /** Net */
+      net: number;
+    };
+    /**
+     * ChipBrokerRow
+     * @description `chip_broker` — one branch(分點)/broker trading row for one trading day. Sponsor-only.
+     */
+    ChipBrokerRow: {
+      /** Broker Id */
+      broker_id: string;
+      /** Broker Name */
+      broker_name: string;
+      /** Buy */
+      buy: number;
+      market: components["schemas"]["Market"];
+      /** Price */
+      price: number;
+      /** Sell */
+      sell: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * ChipBrokerTopRow
+     * @description One broker's row in the 買超Top15/賣超Top15 table (`chip-analysis-panel.tsx`'s own
+     *     `BrokerTopRow`, now computed here instead of client-side so an unentitled caller's
+     *     row-preview mask (governance.md §4 top-N-preview exception) can apply to the SAME ranked
+     *     rows the frontend renders, not to the raw per-day feed underneath them). `rank` (1-based,
+     *     within this row's own buy-top or sell-top list) is the only field that survives masking.
+     */
+    ChipBrokerTopRow: {
+      /** Broker Id */
+      broker_id: string | null;
+      /** Broker Name */
+      broker_name: string | null;
+      /** Buy */
+      buy: number | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Net */
+      net: number | null;
+      /** Rank */
+      rank: number;
+      /** Sell */
+      sell: number | null;
     };
     /** ClearMemoryResponse */
     ClearMemoryResponse: {
@@ -4595,6 +5165,29 @@ export interface components {
     ConnectionsResponse: {
       /** Connections */
       connections: components["schemas"]["OAuthAccount"][];
+    };
+    /**
+     * ConversationFactOut
+     * @description One Mode-C fact, passed through from `context/conversation.py` unchanged (already
+     *     payload-free).
+     */
+    ConversationFactOut: {
+      capability: components["schemas"]["Capability"];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      data_class: components["schemas"]["DataClass"];
+      /**
+       * Fetched At
+       * Format: date-time
+       */
+      fetched_at: string;
+      /** Headline */
+      headline: string;
+      /** Is Available */
+      is_available: boolean;
+      /** Source Id */
+      source_id: string;
+      timing_class: components["schemas"]["TimingClass"];
     };
     /** CreateAlertRequest */
     CreateAlertRequest: {
@@ -4671,6 +5264,26 @@ export interface components {
       name: string;
     };
     /**
+     * CrudeOilPricesRow
+     * @description `crude_oil_prices` — one day's WTI/Brent crude spot-price reading. Free tier; `symbol` is
+     *     the benchmark name (WTI/Brent). Modeled `Market.GLOBAL` — a world commodity benchmark, no
+     *     single-country home. This is a **spot price, not a real-time quote** — the latest available
+     *     date is typically several trading days (~1 week) behind, unlike futures real-time quotes;
+     *     always read the actually-returned latest `date`, don't assume same-day freshness.
+     */
+    CrudeOilPricesRow: {
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      market: components["schemas"]["Market"];
+      /** Price */
+      price: number;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
      * DailyChange
      * @description Single-day move versus the prior trading day's close reaches a percentage.
      */
@@ -4687,6 +5300,72 @@ export interface components {
       kind: "daily_change";
       /** Percent */
       percent: number;
+    };
+    /**
+     * DailySignalHighlight
+     * @description One 焦點股 highlight card — the single stock with the largest aggregate inflow/outflow
+     *     for the day, plus the 多空共識 (buying-vs-selling ETF count) for that same stock. Unlike
+     *     `DailySignalRow`, this is never part of the "top N free rows" budget — governance.md §4's
+     *     row-preview exception locks it entirely (`locked=True`, every field but that flag nulled)
+     *     for an unentitled caller, since a single 焦點股 highlight concentrates the whole card's most
+     *     valuable signal into one card and giving it away for free would defeat the point of gating
+     *     the rest of the list.
+     */
+    DailySignalHighlight: {
+      /** Buying Etf Count */
+      buying_etf_count?: number | null;
+      /** Component Stock Id */
+      component_stock_id: string | null;
+      /** Component Stock Name */
+      component_stock_name: string | null;
+      /** Held Market Value Delta */
+      held_market_value_delta?: number | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Selling Etf Count */
+      selling_etf_count?: number | null;
+    };
+    /**
+     * DailySignalRow
+     * @description One constituent stock's day-over-day status across EVERY active ETF combined — the same
+     *     新增/刪除/加碼/減碼 classification `ActiveEtfReportRow` uses for one ETF, applied to the
+     *     aggregate (sum of shares held across all active ETFs) instead. Only stocks with a nonzero
+     *     aggregate change appear (mirrors `ActiveEtfReportRow`'s own "only changed rows" contract).
+     *     `locked=True` rows (governance.md §4 top-N-preview exception) have every field but `status`/
+     *     `rank` nulled server-side, including `component_stock_id`/`component_stock_name` — an
+     *     unentitled caller must not learn which stock a locked row even names.
+     */
+    DailySignalRow: {
+      /** Buying Etf Count */
+      buying_etf_count: number | null;
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Close */
+      close?: number | null;
+      /** Component Stock Id */
+      component_stock_id: string | null;
+      /** Component Stock Name */
+      component_stock_name: string | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Pct Change */
+      pct_change?: number | null;
+      /**
+       * Rank
+       * @default 0
+       */
+      rank: number;
+      /** Selling Etf Count */
+      selling_etf_count: number | null;
+      /** Shares Delta */
+      shares_delta: number | null;
+      status: components["schemas"]["HoldingStatus"];
     };
     /** DailyUsage */
     DailyUsage: {
@@ -4750,6 +5429,34 @@ export interface components {
        */
       reasoning_tokens: number;
     };
+    /**
+     * DataClass
+     * @description The single access gate — vendor-neutral licensed/paid vs free.
+     * @enum {string}
+     */
+    DataClass: "public" | "sponsor";
+    /**
+     * DayTradingRow
+     * @description `day_trading` — one day-trading (當沖) eligibility/volume row for one stock.
+     */
+    DayTradingRow: {
+      /** Buy After Sale */
+      buy_after_sale: string;
+      /** Buy Amount */
+      buy_amount: number;
+      market: components["schemas"]["Market"];
+      /** Sell Amount */
+      sell_amount: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Volume */
+      volume: number;
+    };
     /** DeleteAccountRequest */
     DeleteAccountRequest: {
       /** Confirm */
@@ -4786,6 +5493,111 @@ export interface components {
       user_id: string;
     };
     /**
+     * DirectorShareholding
+     * @description `shareholding` — one 董監事持股餘額 (director/supervisor shareholding) row for one
+     *     reporting month.
+     */
+    DirectorShareholding: {
+      /** As Of */
+      as_of: string;
+      /** Current Shares */
+      current_shares?: number | null;
+      market: components["schemas"]["Market"];
+      /** Person Name */
+      person_name: string;
+      /** Pledged Ratio */
+      pledged_ratio?: string | null;
+      /** Pledged Shares */
+      pledged_shares?: number | null;
+      /** Shares At Election */
+      shares_at_election?: number | null;
+      /** Symbol */
+      symbol: string;
+      /** Title */
+      title: string;
+    };
+    /**
+     * DispositionBoardCardRow
+     * @description `disposition_board` — one 處置王-style card, `GetDispositionBoardTool`'s output row.
+     *     Joins `AttentionStockRow`/`DispositionEventRow` (bucket classification + projection) against
+     *     `PRICE_EOD_JOB` closes and `INSTITUTIONAL_FLOW_JOB` flow (both already-ingested, whole-
+     *     market) plus a bounded per-symbol `get_margin_short` fan-out (never a live whole-market
+     *     scan). `projection_caveat` is always populated — states plainly that
+     *     `days_until_next_disposition` is this codebase's own rule-based encoding of TWSE's publicly
+     *     stated escalation pattern, not a verbatim TWSE-published number, and is bounded by however
+     *     much attention-flag history has accumulated since this feature's ingest jobs first ran.
+     *     Three buckets (風險股/處置中/即將出關); 自結發布 is not a 4th bucket — it's a per-card
+     *     enrichment (`self_assessed_*` fields below), since a company's preliminary-earnings filing
+     *     is orthogonal to its attention/disposition status, not a bucket of its own.
+     */
+    DispositionBoardCardRow: {
+      /** Attention Flags Remaining */
+      attention_flags_remaining?: number | null;
+      /**
+       * Bucket
+       * @enum {string}
+       */
+      bucket: "at_risk" | "in_disposition" | "exiting_soon";
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Close */
+      close?: number | null;
+      /** Company Name */
+      company_name: string | null;
+      /** Day Trading Ratio */
+      day_trading_ratio?: number | null;
+      /** Days Until Exiting */
+      days_until_exiting?: number | null;
+      /** Disposition Measure */
+      disposition_measure?: string | null;
+      /** Disposition Period End */
+      disposition_period_end?: string | null;
+      /** Disposition Period Start */
+      disposition_period_start?: string | null;
+      /** Estimated Days Until Disposition */
+      estimated_days_until_disposition?: number | null;
+      /** Flags */
+      flags?: string[];
+      /** Institutional Net */
+      institutional_net?: number | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Margin Caveat */
+      margin_caveat?: string | null;
+      margin_health_status?: components["schemas"]["HealthStatus"] | null;
+      /** Margin Ratio */
+      margin_ratio?: number | null;
+      market: components["schemas"]["Market"];
+      /** Matching Interval Minutes */
+      matching_interval_minutes?: number | null;
+      /** Projection Caveat */
+      projection_caveat: string;
+      /**
+       * Rank
+       * @default 0
+       */
+      rank: number;
+      /** Security Type */
+      security_type: string | null;
+      /** Self Assessed Consolidated */
+      self_assessed_consolidated?: boolean | null;
+      /** Self Assessed Monthly Pretax Profit */
+      self_assessed_monthly_pretax_profit?: number | null;
+      /** Self Assessed Period */
+      self_assessed_period?: string | null;
+      /** Self Assessed Ytd Pretax Profit */
+      self_assessed_ytd_pretax_profit?: number | null;
+      /** Symbol */
+      symbol: string | null;
+      /** Turnover */
+      turnover?: number | null;
+      /** Volume */
+      volume?: number | null;
+    };
+    /**
      * DispositionListEntry
      * @description The symbol appears on the exchange 處置股 (disposition) list.
      */
@@ -4796,6 +5608,283 @@ export interface components {
        */
       kind: "disposition_entry";
     };
+    /**
+     * DispositionSecuritiesRow
+     * @description `disposition_securities` — one 公布處置有價證券 (disposition-securities announcement) row
+     *     for one stock. Backer/Sponsor-only.
+     */
+    DispositionSecuritiesRow: {
+      /** Condition */
+      condition: string;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Disposition Cnt */
+      disposition_cnt: number;
+      market: components["schemas"]["Market"];
+      /** Measure */
+      measure: string;
+      /**
+       * Period End
+       * Format: date
+       */
+      period_end: string;
+      /**
+       * Period Start
+       * Format: date
+       */
+      period_start: string;
+      /** Stock Name */
+      stock_name: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * DividendCalendarEventRow
+     * @description One ETF's dividend event landing within the requested month, on any of its three
+     *     dates (`ex_dividend_date`/`last_buy_date`/`payment_date`) — the same row appears under
+     *     each date it actually has, so the calendar view can group by day without re-deriving
+     *     which dates belong to which event.
+     */
+    DividendCalendarEventRow: {
+      /** Cash Dividend */
+      cash_dividend: number;
+      /**
+       * Ex Dividend Date
+       * Format: date
+       */
+      ex_dividend_date: string;
+      /**
+       * Last Buy Date
+       * Format: date
+       */
+      last_buy_date: string;
+      /** Name */
+      name: string;
+      /** Payment Date */
+      payment_date?: string | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * DividendEvent
+     * @description `dividends` — one dividend policy/ex-dividend record.
+     */
+    DividendEvent: {
+      /**
+       * Announced Date
+       * Format: date
+       */
+      announced_date: string;
+      /** Cash Dividend */
+      cash_dividend?: number | null;
+      /** Cash Dividend Payment Date */
+      cash_dividend_payment_date?: string | null;
+      /** Cash Ex Dividend Date */
+      cash_ex_dividend_date?: string | null;
+      /** Fiscal Year */
+      fiscal_year: string;
+      market: components["schemas"]["Market"];
+      /** Stock Dividend */
+      stock_dividend?: number | null;
+      /** Stock Ex Dividend Date */
+      stock_ex_dividend_date?: string | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * DividendFillResult
+     * @description Whether one settled ex-dividend event's price recovered to `before_price` — 填息
+     *     (cash/combined ex-dividend) or 填權 (stock-only) — before the stock's *next* ex-dividend
+     *     event, or (for the most recent event) as of the latest available close. `filled` is `None`,
+     *     never `False`, when there is not yet enough later price history to answer either way (the
+     *     next event hasn't happened yet AND no later close has reached `before_price`) — an unresolved
+     *     event is not the same fact as a failed one.
+     */
+    DividendFillResult: {
+      /** Before Price */
+      before_price: number;
+      /** Days To Fill */
+      days_to_fill?: number | null;
+      /** Filled */
+      filled: boolean | null;
+      /** Filled Date */
+      filled_date?: string | null;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * DividendPolicyStats
+     * @description The stats-strip figures above the 股利政策 chart — 綜合股利/現金殖利率/配息率/填息成功率,
+     *     all pre-computed server-side from `events`/`fill_results`/`latest_eps`/`latest_close` so the
+     *     frontend never re-derives a payout ratio or fill-rate from raw rows itself (same "cite the
+     *     pre-computed figure directly" convention `MonthRevenueTrendPoint` documents). Any figure is
+     *     `None`, never a fabricated 0, when its own inputs are missing.
+     */
+    DividendPolicyStats: {
+      /** Cash Dividend Yield Pct */
+      cash_dividend_yield_pct?: number | null;
+      /** Fill Rate Pct */
+      fill_rate_pct?: number | null;
+      /**
+       * Fill Rate Sample Size
+       * @default 0
+       */
+      fill_rate_sample_size: number;
+      /** Latest Year */
+      latest_year?: number | null;
+      /** Latest Year Total Dividend */
+      latest_year_total_dividend?: number | null;
+      /** Payout Ratio Pct */
+      payout_ratio_pct?: number | null;
+    };
+    /**
+     * DividendResultRow
+     * @description `dividend_result` — one 除權除息結果 (ex-dividend/ex-rights result) row for one stock.
+     */
+    DividendResultRow: {
+      /** After Price */
+      after_price: number;
+      /** Before Price */
+      before_price: number;
+      market: components["schemas"]["Market"];
+      /** Max Price */
+      max_price: number;
+      /** Min Price */
+      min_price: number;
+      /** Open Price */
+      open_price: number;
+      /** Reference Price */
+      reference_price: number;
+      /** Stock And Cache Dividend */
+      stock_and_cache_dividend: number;
+      /** Stock Or Cache Dividend */
+      stock_or_cache_dividend: string;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * DividendYearSummary
+     * @description One calendar year's dividend total — the 股利政策 chart's per-year bar (cash+stock
+     *     stacked) and the stats-strip's "latest year" figures, both derived from the same bucketing
+     *     so the chart and the headline numbers can never disagree.
+     */
+    DividendYearSummary: {
+      /** Cash Dividend */
+      cash_dividend: number;
+      /** Stock Dividend */
+      stock_dividend: number;
+      /** Total Dividend */
+      total_dividend: number;
+      /** Year */
+      year: number;
+    };
+    /**
+     * EODBar
+     * @description `price_eod` — one end-of-day bar.
+     */
+    EODBar: {
+      /** Close */
+      close: number;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Open */
+      open: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Turnover */
+      turnover?: number | null;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * EarningsCalendarRow
+     * @description `earnings_calendar` — one upcoming/recent earnings-report event row (`yfinance.Calendars`
+     *     market-wide feed, not scoped to one symbol's own `.calendar`).
+     */
+    EarningsCalendarRow: {
+      /** Company */
+      company: string;
+      /** Eps Estimate */
+      eps_estimate?: number | null;
+      /**
+       * Event Start
+       * Format: date-time
+       */
+      event_start: string;
+      market: components["schemas"]["Market"];
+      /** Reported Eps */
+      reported_eps?: number | null;
+      /** Surprise Pct */
+      surprise_pct?: number | null;
+      /** Symbol */
+      symbol: string;
+      /** Timing */
+      timing?: string | null;
+    };
+    /**
+     * EconomicCalendarRow
+     * @description `economic_calendar` — one macro-release event row (`yfinance.Calendars`); modeled
+     *     `Market.GLOBAL` since the underlying feed spans multiple countries/regions, distinguished
+     *     only by the free-text `region` field.
+     */
+    EconomicCalendarRow: {
+      /** Actual */
+      actual?: number | null;
+      /** Event */
+      event: string;
+      /**
+       * Event Time
+       * Format: date-time
+       */
+      event_time: string;
+      /** Expected */
+      expected?: number | null;
+      /** For Period */
+      for_period?: string | null;
+      /** Last */
+      last?: number | null;
+      market: components["schemas"]["Market"];
+      /** Region */
+      region?: string | null;
+      /** Revised */
+      revised?: number | null;
+    };
+    /**
+     * EdgeConfidence
+     * @description A textual trust band, not a number — it records how trustworthy an extraction's provenance
+     *     is (a hand-seeded fact vs. a model's proposal), which a numeric score would obscure.
+     * @enum {string}
+     */
+    EdgeConfidence: "high" | "medium" | "low";
+    /**
+     * EdgeSource
+     * @enum {string}
+     */
+    EdgeSource: "seed" | "llm_extraction";
+    /**
+     * EdgeType
+     * @enum {string}
+     */
+    EdgeType: "supplies" | "customer" | "competes";
     /** EditTurnRequest */
     EditTurnRequest: {
       /** Attachments */
@@ -4836,6 +5925,279 @@ export interface components {
       tier: components["schemas"]["Tier"];
     };
     /**
+     * EsgScore
+     * @description `esg` — Sustainalytics-derived ESG risk score (large-cap only, sparse coverage).
+     */
+    EsgScore: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Esg Risk Percentile */
+      esg_risk_percentile?: number | null;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Total Esg Score */
+      total_esg_score?: number | null;
+    };
+    /**
+     * EtfExpenseInfo
+     * @description `etf_expense_ratio` — internal-fee (內扣費用) disclosure for one fund/ETF, sourced from
+     *     SITCA's (投信投顧公會) monthly fee-rate report. `management_fee_pct`/`custody_fee_pct` are the
+     *     two disclosed line items; a true total-expense-ratio (內扣總費用率, TER) is approximated as
+     *     their sum via `total_expense_ratio_pct_approx` and DOES NOT include other operating costs, so
+     *     it is a floor, not the audited TER — the caveat says so. Any field is `None` when SITCA does
+     *     not disclose it for this fund (never fabricated).
+     */
+    EtfExpenseInfo: {
+      /** As Of */
+      as_of?: string | null;
+      /** Custodian Bank */
+      custodian_bank?: string | null;
+      /** Custody Fee Pct */
+      custody_fee_pct?: number | null;
+      /** Management Fee Pct */
+      management_fee_pct?: number | null;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Total Expense Ratio Pct Approx */
+      total_expense_ratio_pct_approx?: number | null;
+    };
+    /**
+     * EtfFundInfo
+     * @description `etf_holdings` (fund-level slice) — issuer/units-outstanding/tracked-index reference
+     *     data for a listed ETF. Does **not** carry per-constituent weights (issuer PCF holdings
+     *     remain an unfilled gap) — this is fund-level metadata only, refreshed on the issuer's
+     *     reporting cadence, not a live figure.
+     */
+    EtfFundInfo: {
+      /** Custodian Bank */
+      custodian_bank?: string | null;
+      /** Fund Name */
+      fund_name: string;
+      /** Fund Type */
+      fund_type: string;
+      /** Inception Date */
+      inception_date?: string | null;
+      /** Listed Date */
+      listed_date?: string | null;
+      /** Manager Company */
+      manager_company?: string | null;
+      /** Manager Name */
+      manager_name?: string | null;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Tracked Index */
+      tracked_index?: string | null;
+      /** Units Outstanding */
+      units_outstanding?: number | null;
+    };
+    /**
+     * EtfHoldingRankRow
+     * @description One ETF's current holding of the target stock — the 持有張數排行 sub-view's row shape.
+     *     `locked=True` rows (governance.md §4 top-N-preview exception) have EVERY field nulled
+     *     server-side, including `etf_symbol`/`etf_name` — an unentitled caller must not learn which
+     *     ETF a locked row even belongs to, only that it exists (via `rank`, its 1-based position in
+     *     the full ranked list, which is not sensitive on its own).
+     */
+    EtfHoldingRankRow: {
+      /** Etf Name */
+      etf_name: string | null;
+      /** Etf Symbol */
+      etf_symbol: string | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Rank */
+      rank: number;
+      /** Shares */
+      shares: number | null;
+      /** Shares Delta */
+      shares_delta?: number | null;
+      /** Stock Capital Pct */
+      stock_capital_pct?: number | null;
+      /** Stock Capital Pct Delta */
+      stock_capital_pct_delta?: number | null;
+    };
+    /**
+     * EtfListRow
+     * @description One row of the whole-market ETF list — see `GetEtfListTool`'s own docstring for exactly
+     *     which already-ingested dataset backs each field. A field is `None` when its backing dataset
+     *     has no row for this symbol on this date — never fabricated to fill the column.
+     */
+    EtfListRow: {
+      /** Aum */
+      aum?: number | null;
+      /** Change Abs */
+      change_abs?: number | null;
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Close */
+      close?: number | null;
+      /** Distribution Frequency */
+      distribution_frequency?: ("月配" | "季配" | "半年配" | "年配" | "不配息") | null;
+      /** Distribution Yield Ttm Pct */
+      distribution_yield_ttm_pct?: number | null;
+      /** Expense Ratio Pct Approx */
+      expense_ratio_pct_approx?: number | null;
+      /**
+       * Is Active Etf
+       * @default false
+       */
+      is_active_etf: boolean;
+      /** Market */
+      market: string;
+      /** Name */
+      name: string;
+      /** Return 1W Pct */
+      return_1w_pct?: number | null;
+      /** Symbol */
+      symbol: string;
+      symbol_type: components["schemas"]["SymbolType"];
+      /** Turnover */
+      turnover?: number | null;
+      /** Volume */
+      volume?: number | null;
+    };
+    /**
+     * EtfMoneyFlowRow
+     * @description One constituent stock's cross-ETF aggregation row. `locked=True` rows (governance.md §4
+     *     top-N-preview exception) have every field but `rank` nulled server-side — an unentitled
+     *     caller must not learn which stock a locked row even names.
+     */
+    EtfMoneyFlowRow: {
+      /** Active Etf Holder Count */
+      active_etf_holder_count?: number | null;
+      /** Buying Etf Count */
+      buying_etf_count: number | null;
+      /** Component Stock Id */
+      component_stock_id: string | null;
+      /** Component Stock Name */
+      component_stock_name: string | null;
+      /** Held Market Value */
+      held_market_value?: number | null;
+      /** Held Shares */
+      held_shares?: number | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Net Shares Flow */
+      net_shares_flow: number | null;
+      /**
+       * Rank
+       * @default 0
+       */
+      rank: number;
+      /** Selling Etf Count */
+      selling_etf_count: number | null;
+      /** Stock Shares Held Pct */
+      stock_shares_held_pct?: number | null;
+    };
+    /**
+     * EtfNavRow
+     * @description `etf_nav` — one ETF's premium/discount-to-NAV snapshot, sourced from TWSE MIS's free,
+     *     keyless, whole-market `all_etf.txt` feed (issuer-published estimated NAV, relayed by TWSE —
+     *     not TWSE's own calculation; see the upstream page's own disclaimer). `premium_discount_pct`
+     *     is TWSE's own published 預估折溢價幅度 figure (`(close_price - estimated_nav) /
+     *     estimated_nav * 100`, confirmed live against several symbols), passed through as-is rather
+     *     than recomputed here, so this row never silently diverges from what investors see on the
+     *     source page. `prior_day_nav` is the fund's last confirmed (non-estimated) NAV — the
+     *     estimated NAV is provisional/intraday and can be revised by the issuer.
+     *
+     *     Note: units_outstanding is a leading indicator of unusual creation/redemption activity, not
+     *     itself a premium/discount signal — surfaced for completeness since the upstream feed already
+     *     carries it in the same row.
+     */
+    EtfNavRow: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Close Price */
+      close_price?: number | null;
+      /** Estimated Nav */
+      estimated_nav?: number | null;
+      /** Fund Name */
+      fund_name: string;
+      market: components["schemas"]["Market"];
+      /** Premium Discount Pct */
+      premium_discount_pct?: number | null;
+      /** Prior Day Nav */
+      prior_day_nav?: number | null;
+      /** Symbol */
+      symbol: string;
+      /** Units Outstanding */
+      units_outstanding?: number | null;
+      /** Units Outstanding Change */
+      units_outstanding_change?: number | null;
+    };
+    /**
+     * EtfPositionEvent
+     * @description One ETF's day-over-day change in its holding of the target stock — 建倉/清倉 (opening/
+     *     fully closing the position) or 加碼/減碼 (a same-day increase/decrease while still held) —
+     *     the 建清倉 sub-view's row shape. `event` is any `HoldingStatus` value except
+     *     `NO_PRIOR_DATA` (a day with no prior snapshot to diff against emits no event at all).
+     *     `locked` — see `EtfHoldingRankRow`; a locked event keeps its real `event_date`/`event`
+     *     classification (the timeline's own axis, not identifying) but nulls `etf_symbol`/`etf_name`/
+     *     `shares_delta` — an unentitled caller must not learn which ETF made the move.
+     */
+    EtfPositionEvent: {
+      /** Etf Name */
+      etf_name: string | null;
+      /** Etf Symbol */
+      etf_symbol: string | null;
+      event: components["schemas"]["HoldingStatus"];
+      /**
+       * Event Date
+       * Format: date
+       */
+      event_date: string;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Shares Delta */
+      shares_delta: number | null;
+    };
+    /**
+     * EtfPositionEventCounts
+     * @description 新增/刪除/加碼/減碼 counts across `position_events` — the summary-strip shape, mirroring
+     *     `GetDailySignalOutput`'s own `new_count`/`removed_count`/`increased_count`/`decreased_count`
+     *     fields (same four-way classification, scoped to one stock instead of the whole market).
+     */
+    EtfPositionEventCounts: {
+      /**
+       * Decreased Count
+       * @default 0
+       */
+      decreased_count: number;
+      /**
+       * Increased Count
+       * @default 0
+       */
+      increased_count: number;
+      /**
+       * New Count
+       * @default 0
+       */
+      new_count: number;
+      /**
+       * Removed Count
+       * @default 0
+       */
+      removed_count: number;
+    };
+    /**
      * EtfPremiumDiscount
      * @description An ETF's 預估折溢價 (estimated premium/discount to NAV, TWSE's own published figure) is at
      *     least `percent` on the chosen side. Applies to ETF codes only — a stock has no NAV row.
@@ -4855,19 +6217,262 @@ export interface components {
       percent: number;
     };
     /**
+     * EtfScoreBreakdown
+     * @description The 4-factor breakdown for an ETF — deliberately NOT `StockScoreBreakdown`'s value/
+     *     quality/trend-template factors, which are either meaningless (an ETF has no ROE/EV-EBITDA of
+     *     its own) or actively misleading (the Minervini trend template misreads a stretched
+     *     leveraged/inverse ETF as bullish exactly when its daily-rebalancing decay risk peaks) for a
+     *     fund rather than an operating company.
+     *
+     *     - `momentum`: same 12-1 calculation as the stock breakdown — meaningful as fund performance.
+     *     - `premium_discount`: TWSE's own published 預估折溢價幅度 (estimated premium/discount to
+     *       NAV) — the textbook ETF-quality metric with no stock equivalent.
+     *     - `cost`: SITCA-disclosed expense ratio percentile (lower cost ranks higher) — every ETF has
+     *       one; no stock does.
+     *     - `management_activity`: holdings-turnover-derived, ACTIVE ETFs only — genuinely unavailable
+     *       (not fabricated) for passive/leveraged/inverse ETFs, which have no holdings data ingested.
+     *     - `liquidity_flow`: 三大法人 institutional net-buy trend — the same chip sub-signal the stock
+     *       breakdown's `revenue_flow` uses, without the (ETF-inapplicable) 月營收 half.
+     */
+    EtfScoreBreakdown: {
+      cost: components["schemas"]["FactorScore"];
+      liquidity_flow: components["schemas"]["FactorScore"];
+      management_activity: components["schemas"]["FactorScore"];
+      momentum: components["schemas"]["FactorScore"];
+      premium_discount: components["schemas"]["FactorScore"];
+    };
+    /**
+     * EtfTrailingReturns
+     * @description `etf_trailing_returns` — one listed ETF's price-return over 6 fixed trailing horizons
+     *     (1個月/1季/半年/1年/3年/5年), computed from ONE split/dividend-adjusted price history fetch
+     *     (`yfinance.Ticker.history(period="5y", auto_adjust=True)`) — never yfinance's own `.info`
+     *     fields (`ytdReturn`/`threeYearAverageReturn`/`fiveYearAverageReturn`), which mix inconsistent
+     *     units (percent vs. fraction, confirmed live) and don't cover 1M/1Q/6M/1Y at all. Computing
+     *     every horizon the same way over the same already-adjusted series means the six numbers are
+     *     genuinely comparable to each other, not stitched from two different methodologies.
+     *
+     *     `auto_adjust=True` retroactively folds every split/dividend into the historical close
+     *     series — this is deliberately NOT the raw `Capability.PRICE_EOD` bars this codebase ingests
+     *     elsewhere (those are unadjusted; see `get_fund_comparison`'s own dividend-reinvestment
+     *     simulation, built for exactly that gap, but which itself broke on 0050's real 2025-06-18
+     *     4-for-1 split precisely because the ingested bars are unadjusted — this capability sidesteps
+     *     that whole class of bug by reading Yahoo's pre-adjusted series instead).
+     *
+     *     A horizon is `None` (never fabricated) when the 5-year history window doesn't reach back
+     *     far enough for that horizon (e.g. a fund listed 2 years ago has no real 5-year return).
+     */
+    EtfTrailingReturns: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      market: components["schemas"]["Market"];
+      /** Return 1M Pct */
+      return_1m_pct?: number | null;
+      /** Return 1Q Pct */
+      return_1q_pct?: number | null;
+      /** Return 1Y Pct */
+      return_1y_pct?: number | null;
+      /** Return 3Y Pct */
+      return_3y_pct?: number | null;
+      /** Return 5Y Pct */
+      return_5y_pct?: number | null;
+      /** Return 6M Pct */
+      return_6m_pct?: number | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * EtfWeightRankRow
+     * @description One ETF's current weighting of the target stock in ITS OWN portfolio — the 權重排行
+     *     sub-view's row shape. `locked` — see `EtfHoldingRankRow`.
+     */
+    EtfWeightRankRow: {
+      /** Etf Name */
+      etf_name: string | null;
+      /** Etf Symbol */
+      etf_symbol: string | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Quarter Max Weight Pct */
+      quarter_max_weight_pct?: number | null;
+      /** Quarter Min Weight Pct */
+      quarter_min_weight_pct?: number | null;
+      /** Rank */
+      rank: number;
+      /** Weight Pct */
+      weight_pct: number | null;
+      /** Weight Pct Delta */
+      weight_pct_delta?: number | null;
+    };
+    /**
+     * ExchangeRateRow
+     * @description `exchange_rate` — one day's TWD-vs-foreign-currency reference rate row. Free tier;
+     *     `symbol` is the foreign-currency code (e.g. USD/EUR/JPY), TWD is implicit as the other leg.
+     *     Modeled `Market.TW`-scoped: this is a TWD-context dataset (the counter-currency is always
+     *     TWD), not a generic world-FX table.
+     */
+    ExchangeRateRow: {
+      /** Cash Buy */
+      cash_buy: number;
+      /** Cash Sell */
+      cash_sell: number;
+      market: components["schemas"]["Market"];
+      /** Spot Buy */
+      spot_buy: number;
+      /** Spot Sell */
+      spot_sell: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * FactorCatalog
+     * @description The full per-market catalog `get_factor_catalog` returns: boolean signal tags (TW only —
+     *     US/ETF have no batch-computed tag partition) plus numeric factor fields grouped by family.
+     */
+    FactorCatalog: {
+      /** Families */
+      families?: string[];
+      /** Fields */
+      fields?: components["schemas"]["FactorField"][];
+      /** Market */
+      market: string;
+      /** Signals */
+      signals?: components["schemas"]["SignalTag"][];
+    };
+    /**
+     * FactorField
+     * @description One filterable factor. `key` is the token `run_screener`'s `conditions[].factor` expects.
+     *     `min`/`max`/`step` bound the slider; `None` for an enum-like field (`op_set` = `{eq, in}`
+     *     only), which instead lists its choices in `enum_values`. `source_field` is the underlying
+     *     upstream field name the engine maps this key to (a yfinance screener field for US/ETF, or a
+     *     `stock_scores` column name for TW) — kept alongside the bilingual label so the engine and the
+     *     catalog never drift apart.
+     */
+    FactorField: {
+      /** @default public */
+      data_class: components["schemas"]["DataClass"];
+      /** Enum Values */
+      enum_values?: string[] | null;
+      /** Family */
+      family: string;
+      /** Key */
+      key: string;
+      /** Label En */
+      label_en: string;
+      /** Label Zh */
+      label_zh: string;
+      /** Max */
+      max?: number | null;
+      /** Min */
+      min?: number | null;
+      /**
+       * Op Set
+       * @default [
+       *       "gt",
+       *       "gte",
+       *       "lt",
+       *       "lte",
+       *       "between"
+       *     ]
+       */
+      op_set: components["schemas"]["FactorOperator"][];
+      /** Preset Chips */
+      preset_chips?: number[];
+      /** Source Field */
+      source_field: string;
+      /** Step */
+      step?: number | null;
+      /** Unit */
+      unit?: string | null;
+    };
+    /**
+     * FactorOperator
+     * @description The operator vocabulary a `FactorField` accepts — mirrors `schemas.screener.
+     *     ScreenerOperator` but scoped to what the condition builder's `FilterValueInput` renders.
+     * @enum {string}
+     */
+    FactorOperator: "gt" | "gte" | "lt" | "lte" | "between" | "eq" | "in";
+    /**
+     * FactorScore
+     * @description One factor's contribution to the composite. `percentile is None` means the factor is
+     *     genuinely unavailable for this symbol/date (its source dataset isn't ingested yet, or
+     *     there isn't enough history) — it is never defaulted to a fake neutral value that would
+     *     silently bias the blend.
+     */
+    FactorScore: {
+      /** Description */
+      description: string;
+      /** Name */
+      name: string;
+      /** Percentile */
+      percentile?: number | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /**
+     * FearGreedIndexRow
+     * @description `fear_greed_index` — one day's CNN Fear & Greed Index reading (US equity-market
+     *     sentiment gauge). Backer/Sponsor-only; market-level, no symbol scope. Modeled `Market.US` —
+     *     the index is specifically a US-market sentiment gauge, a genuine single-country home.
+     */
+    FearGreedIndexRow: {
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Fear Greed */
+      fear_greed: number;
+      /** Fear Greed Emotion */
+      fear_greed_emotion: string;
+      market: components["schemas"]["Market"];
+    };
+    /**
      * FeedbackRecord
      * @description The persisted outcome of a feedback submission — enough for the route to echo back.
      */
     FeedbackRecord: {
       /** Comment */
       comment: string | null;
-      /** Rating */
-      rating: string;
+      /**
+       * Rating
+       * @enum {string}
+       */
+      rating: "up" | "down";
       /** Turn Id */
       turn_id: string;
       /** User Id */
       user_id: string;
     };
+    /**
+     * FieldDef
+     * @description One channel's mapping to a data field — never a value, always a field NAME the renderer
+     *     looks up per-row.
+     */
+    FieldDef: {
+      /** Aggregate */
+      aggregate?: ("sum" | "mean" | "count") | null;
+      /** Field */
+      field: string;
+      type: components["schemas"]["FieldType"];
+    };
+    /**
+     * FieldType
+     * @description The four Vega-Lite field types this grammar needs — drives axis/scale choice and the
+     *     mark-compatibility rules below.
+     * @enum {string}
+     */
+    FieldType: "quantitative" | "nominal" | "ordinal" | "temporal";
     /**
      * FinMindInternationalMarket
      * @description The four non-TW markets FinMind carries its own roster+price datasets for — distinct
@@ -4875,6 +6480,74 @@ export interface components {
      * @enum {string}
      */
     FinMindInternationalMarket: "US" | "GB" | "EU" | "JP";
+    /**
+     * FinancialStatementLine
+     * @description `financials` — one line item from an income/balance/cash-flow statement. `period_type`
+     *     defaults to `"quarterly"` — FinMind (TW's source for this capability) reports one frequency
+     *     only, so every existing TW row is implicitly quarterly; yfinance (the US/non-TW source)
+     *     reports annual/quarterly/TTM as genuinely distinct frames, so US rows set this field for
+     *     real rather than leaving every US row ambiguously defaulted.
+     */
+    FinancialStatementLine: {
+      /** Item */
+      item: string;
+      market: components["schemas"]["Market"];
+      /** Origin Name */
+      origin_name: string;
+      /**
+       * Period End
+       * Format: date
+       */
+      period_end: string;
+      /**
+       * Period Type
+       * @default quarterly
+       * @enum {string}
+       */
+      period_type: "annual" | "quarterly" | "ttm";
+      /** Statement Type */
+      statement_type: string;
+      /** Symbol */
+      symbol: string;
+      /** Value */
+      value: number;
+    };
+    /**
+     * ForeignShareholdingRow
+     * @description `foreign_shareholding` — one day's 外資持股 (foreign shareholding) row for one stock.
+     */
+    ForeignShareholdingRow: {
+      /** Chinese Investment Upper Limit Ratio */
+      chinese_investment_upper_limit_ratio: number;
+      /** Foreign Investment Remain Ratio */
+      foreign_investment_remain_ratio: number;
+      /** Foreign Investment Remaining Shares */
+      foreign_investment_remaining_shares: number;
+      /** Foreign Investment Shares */
+      foreign_investment_shares: number;
+      /** Foreign Investment Shares Ratio */
+      foreign_investment_shares_ratio: number;
+      /** Foreign Investment Upper Limit Ratio */
+      foreign_investment_upper_limit_ratio: number;
+      /** International Code */
+      international_code: string;
+      market: components["schemas"]["Market"];
+      /** Note */
+      note?: string | null;
+      /** Number Of Shares Issued */
+      number_of_shares_issued: number;
+      /** Recently Declare Date */
+      recently_declare_date?: string | null;
+      /** Stock Name */
+      stock_name: string;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
     /** ForkThreadRequest */
     ForkThreadRequest: {
       /** From Turn Id */
@@ -4890,10 +6563,2370 @@ export interface components {
      * @enum {string}
      */
     Framework: "none" | "single" | "subagent" | "team";
+    /**
+     * FundComparisonRow
+     * @description One requested symbol's total-return + basic-profile slice.
+     *
+     *     `total_return_pct` is computed with dividends reinvested at the ex-dividend date's close
+     *     (see module docstring for the exact convention/approximation) — `None` only when price
+     *     history itself is unusable (never fabricated).
+     */
+    FundComparisonRow: {
+      /** @description TW only: issuer/tracked-index fund-level metadata. */
+      fund_info?: components["schemas"]["EtfFundInfo"] | null;
+      /** Market */
+      market: string;
+      /** Price Unavailable Reason */
+      price_unavailable_reason?: string | null;
+      /**
+       * Sector Weightings
+       * @description Non-TW only: 'sector (weight%)' strings from FUND_HOLDINGS.
+       */
+      sector_weightings?: string[];
+      /** Symbol */
+      symbol: string;
+      /** Total Return Pct */
+      total_return_pct?: number | null;
+      /**
+       * Unavailable Note
+       * @description Honest reason a field (overlap%/premium-discount/NAV) is absent for this row, e.g. the TW-holdings-gap note — never a silently-missing field.
+       */
+      unavailable_note?: string | null;
+      /** Window End */
+      window_end?: string | null;
+      /** Window Start */
+      window_start?: string | null;
+    };
+    /**
+     * FundHoldingRow
+     * @description `fund_holdings` — one top-holding constituent row of one ETF/mutual fund
+     *     (`yfinance.scrapers.funds.FundsData.top_holdings`). Distinct from `etf_holdings`
+     *     (issuer-PCF-sourced, TW-scoped, fund-level metadata only) — this is yfinance's own
+     *     holdings-weight slice, relevant for non-TW ETFs.
+     */
+    FundHoldingRow: {
+      /** Holding Name */
+      holding_name: string;
+      /** Holding Symbol */
+      holding_symbol: string;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Weight */
+      weight: number;
+    };
+    /**
+     * FundProfileRow
+     * @description `fund_profile` — one non-TW ETF/mutual fund's identity + summary-return fields from
+     *     yfinance's own `.info` payload (`sources/yfinance/analyst.py::_fund_profile`). The 總覽
+     *     tab's fund-equivalent of `GetCompanyProfileOutput` for a plain equity — a fund has no
+     *     chairman/EPS/capital, but has real AUM/category/issuer/return figures `ProfileCard` never
+     *     surfaced. Every field degrades to `None` independently (never fabricated) when yfinance's
+     *     own `.info` payload doesn't carry it for this symbol.
+     */
+    FundProfileRow: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Category */
+      category?: string | null;
+      /** Distribution Yield Pct */
+      distribution_yield_pct?: number | null;
+      /** Fund Family */
+      fund_family?: string | null;
+      /** Inception Date */
+      inception_date?: string | null;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Total Assets */
+      total_assets?: number | null;
+      /** Ytd Return Pct */
+      ytd_return_pct?: number | null;
+    };
+    /**
+     * FundSectorWeightingRow
+     * @description `fund_holdings` (sector-weighting slice) — one sector-weight row for one ETF/mutual
+     *     fund (`FundsData.sector_weightings`).
+     */
+    FundSectorWeightingRow: {
+      market: components["schemas"]["Market"];
+      /** Sector */
+      sector: string;
+      /** Symbol */
+      symbol: string;
+      /** Weight */
+      weight: number;
+    };
+    /** FunnelCounts */
+    FunnelCounts: {
+      /** Gated */
+      gated: number;
+      /** Setup */
+      setup: number;
+      /** Universe */
+      universe: number;
+    };
+    /**
+     * FuturesDailyRow
+     * @description `futures_daily` — one day's futures contract EOD price/volume row.
+     */
+    FuturesDailyRow: {
+      /** Close */
+      close: number;
+      /** Contract Date */
+      contract_date: string;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Open */
+      open: number;
+      /** Open Interest */
+      open_interest: number;
+      /** Settlement Price */
+      settlement_price: number;
+      /** Spread */
+      spread: number;
+      /** Spread Per */
+      spread_per: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Trading Session */
+      trading_session: string;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * FuturesInstitutionalFlowRow
+     * @description `futures_institutional_flow` — one day's three-major-institutional-investor futures
+     *     buy/sell + open-interest-balance row. The upstream columns for this dataset do not include a
+     *     per-contract identifier, so on a whole-market (omit-`data_id`) call `symbol` reads empty —
+     *     a documented upstream gap, not a mapper defect.
+     */
+    FuturesInstitutionalFlowRow: {
+      /** Investor */
+      investor: string;
+      /** Long Deal Amount */
+      long_deal_amount: number;
+      /** Long Deal Volume */
+      long_deal_volume: number;
+      /** Long Open Interest Balance Amount */
+      long_open_interest_balance_amount: number;
+      /** Long Open Interest Balance Volume */
+      long_open_interest_balance_volume: number;
+      market: components["schemas"]["Market"];
+      /** Short Deal Amount */
+      short_deal_amount: number;
+      /** Short Deal Volume */
+      short_deal_volume: number;
+      /** Short Open Interest Balance Amount */
+      short_open_interest_balance_amount: number;
+      /** Short Open Interest Balance Volume */
+      short_open_interest_balance_volume: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * FuturesOiLargeTradersRow
+     * @description `futures_oi_large_traders` — one day's 大額交易人未沖銷部位 (large-trader open-interest
+     *     concentration) row for one futures contract type. Backer/Sponsor-only.
+     */
+    FuturesOiLargeTradersRow: {
+      /** Buy Top10 Specific Open Interest */
+      buy_top10_specific_open_interest: number;
+      /** Buy Top10 Specific Open Interest Per */
+      buy_top10_specific_open_interest_per: number;
+      /** Buy Top10 Trader Open Interest */
+      buy_top10_trader_open_interest: number;
+      /** Buy Top10 Trader Open Interest Per */
+      buy_top10_trader_open_interest_per: number;
+      /** Buy Top5 Specific Open Interest */
+      buy_top5_specific_open_interest: number;
+      /** Buy Top5 Specific Open Interest Per */
+      buy_top5_specific_open_interest_per: number;
+      /** Buy Top5 Trader Open Interest */
+      buy_top5_trader_open_interest: number;
+      /** Buy Top5 Trader Open Interest Per */
+      buy_top5_trader_open_interest_per: number;
+      /** Contract Type */
+      contract_type: string;
+      market: components["schemas"]["Market"];
+      /** Market Open Interest */
+      market_open_interest: number;
+      /** Name */
+      name: string;
+      /** Sell Top10 Specific Open Interest */
+      sell_top10_specific_open_interest: number;
+      /** Sell Top10 Specific Open Interest Per */
+      sell_top10_specific_open_interest_per: number;
+      /** Sell Top10 Trader Open Interest */
+      sell_top10_trader_open_interest: number;
+      /** Sell Top10 Trader Open Interest Per */
+      sell_top10_trader_open_interest_per: number;
+      /** Sell Top5 Specific Open Interest */
+      sell_top5_specific_open_interest: number;
+      /** Sell Top5 Specific Open Interest Per */
+      sell_top5_specific_open_interest_per: number;
+      /** Sell Top5 Trader Open Interest */
+      sell_top5_trader_open_interest: number;
+      /** Sell Top5 Trader Open Interest Per */
+      sell_top5_trader_open_interest_per: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * FuturesSnapshotRow
+     * @description `futures_snapshot` — one bounded intraday futures-contract snapshot. Sponsor-only.
+     */
+    FuturesSnapshotRow: {
+      /** Amount */
+      amount: number;
+      /** Average Price */
+      average_price: number;
+      /** Buy Price */
+      buy_price: number;
+      /** Buy Volume */
+      buy_volume: number;
+      /** Change Price */
+      change_price: number;
+      /** Change Rate */
+      change_rate: number;
+      /** Close */
+      close: number;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Open */
+      open: number;
+      /** Sell Price */
+      sell_price: number;
+      /** Sell Volume */
+      sell_volume: number;
+      /** Symbol */
+      symbol: string;
+      /** Tick Type */
+      tick_type: string;
+      /** Total Amount */
+      total_amount: number;
+      /** Total Volume */
+      total_volume: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Volume */
+      volume: number;
+      /** Volume Ratio */
+      volume_ratio: number;
+      /** Yesterday Volume */
+      yesterday_volume: number;
+    };
+    /** GetActiveEtfReportOutput */
+    GetActiveEtfReportOutput: {
+      /** Current Holdings */
+      current_holdings?: components["schemas"]["ActiveEtfHoldingWeightRow"][];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Estimated Nav Per Unit */
+      estimated_nav_per_unit?: number | null;
+      /** Estimated Premium Discount Pct */
+      estimated_premium_discount_pct?: number | null;
+      /** Estimation Caveat */
+      estimation_caveat?: string | null;
+      /** Fund Size */
+      fund_size?: number | null;
+      /** Fund Size Caveat */
+      fund_size_caveat?: string | null;
+      /** Fund Size Change Pct */
+      fund_size_change_pct?: number | null;
+      /** Fund Size Prior */
+      fund_size_prior?: number | null;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Market */
+      market: string;
+      /** Premium Discount Pct */
+      premium_discount_pct?: number | null;
+      /**
+       * Premium Discount Unavailable Reason
+       * @default No NAV/IOPV adapter is wired for premium/discount (折溢價) — the Active-ETF Holding and HoldingChange datasets carry constituent-level shares/weight/market-value only, never the fund's own NAV vs market-price comparison; this field is never fabricated in its place.
+       */
+      premium_discount_unavailable_reason: string | null;
+      /** Prior Date */
+      prior_date?: string | null;
+      /** Report Date */
+      report_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["ActiveEtfReportRow"][];
+      /** Source Id */
+      source_id: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /** GetAdvanceDeclineOutput */
+    GetAdvanceDeclineOutput: {
+      /**
+       * Advancing Count
+       * @default 0
+       */
+      advancing_count: number;
+      buckets?: components["schemas"]["AdvanceDeclineBuckets"];
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Declining Count
+       * @default 0
+       */
+      declining_count: number;
+      /** Market */
+      market: string;
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /**
+       * Unchanged Count
+       * @default 0
+       */
+      unchanged_count: number;
+    };
+    /** GetAnalystConsensusOutput */
+    GetAnalystConsensusOutput: {
+      consensus?: components["schemas"]["AnalystConsensus"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetBusinessIndicatorOutput */
+    GetBusinessIndicatorOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Rows */
+      rows?: components["schemas"]["BusinessIndicatorRow"][];
+    };
+    /**
+     * GetCalendarEventsFeedOutput
+     * @description Bundles earnings/IPO/economic calendars into one report — a distinct, narrower
+     *     yfinance-native feed bundle than a possible future `get_calendar_events` analytics-layer
+     *     composite over `calendar/`; that higher-level tool (if/when built) could draw on this one
+     *     as one of its own inputs rather than duplicating this fetch.
+     */
+    GetCalendarEventsFeedOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Earnings */
+      earnings?: components["schemas"]["EarningsCalendarRow"][];
+      /** Economic */
+      economic?: components["schemas"]["EconomicCalendarRow"][];
+      /** Ipo */
+      ipo?: components["schemas"]["IpoCalendarRow"][];
+    };
+    /** GetCalendarEventsOutput */
+    GetCalendarEventsOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Events */
+      events?: components["schemas"]["CalendarEventOut"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /**
+     * GetCanonicalContextOutput
+     * @description Redacted M5F canonical summary for one `(symbol, market)`.
+     */
+    GetCanonicalContextOutput: {
+      /**
+       * Built At
+       * Format: date-time
+       */
+      built_at: string;
+      /** Market */
+      market: string;
+      /** Records */
+      records: components["schemas"]["CapabilitySummary"][];
+      /** Symbol */
+      symbol: string;
+      /** Version */
+      version: number;
+    };
+    /**
+     * GetChipFlowsOutput
+     * @description Sponsor-tier 分點 branch trading rows. `dispatch_tool` runs this tool even for an
+     *     unentitled caller (`supports_row_preview=True` — governance.md §4 top-N-preview exception);
+     *     `run()` itself is what nulls `buy_top`/`sell_top` rows beyond `free_row_count` and empties
+     *     `rows`/`top_brokers` for that caller — `dispatch_tool` never inspects this output's fields.
+     */
+    GetChipFlowsOutput: {
+      /** Buy Top */
+      buy_top?: components["schemas"]["ChipBrokerTopRow"][];
+      /** Concentration Days Pct */
+      concentration_days_pct?: number | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Latest Trade Date */
+      latest_trade_date?: string | null;
+      /**
+       * Main Force Net
+       * @default 0
+       */
+      main_force_net: number;
+      /** Rows */
+      rows?: components["schemas"]["ChipBrokerRow"][];
+      /** Sell Top */
+      sell_top?: components["schemas"]["ChipBrokerTopRow"][];
+      /** Source Id */
+      source_id: string;
+      /** Top Brokers */
+      top_brokers?: components["schemas"]["ChipBrokerNetSummary"][];
+      /**
+       * Total Volume
+       * @default 0
+       */
+      total_volume: number;
+    };
+    /**
+     * GetCompanyProfileOutput
+     * @description A company-profile card composed from every capability wired below: `sector_class`
+     *     (industry/sector), `dividends` (latest announced dividend), `market_value`/
+     *     `valuation_ratios` (市值/PER/殖利率), `financials` (EPS, from the income-statement lines),
+     *     `profile` (MOPS-sourced identity fields — 董事長/簽證會計師/住址/官網/資本額/發言人/成立日期/
+     *     產業別), and two derived-store reads: `revenue_yoy` (this month's filed revenue vs the same
+     *     calendar month a year prior, from the ingested `TaiwanStockMonthRevenue` dataset) and
+     *     `margins` (TTM gross profit ÷ TTM revenue, from the same ingested statement lines `eps`
+     *     reads — see `analytics/fundamentals.py`). Each field is only ever populated from a genuinely
+     *     healthy fetch/read for this call; `missing_fields` is computed per-call from which fetches
+     *     actually succeeded, never a static reduced list, so the agent never claims completeness it
+     *     doesn't have.
+     */
+    GetCompanyProfileOutput: {
+      /** Auditor */
+      auditor?: string | null;
+      /** Capital */
+      capital?: number | null;
+      /** Chairman */
+      chairman?: string | null;
+      /** Dividend Caveat */
+      dividend_caveat: string;
+      /** Dividend Yield */
+      dividend_yield?: number | null;
+      /** Eps */
+      eps?: number | null;
+      /** Founding Date */
+      founding_date?: string | null;
+      /** Headquarters */
+      headquarters?: string | null;
+      /** Industry */
+      industry?: string | null;
+      /** Industry Classification Code */
+      industry_classification_code?: string | null;
+      latest_dividend?: components["schemas"]["DividendEvent"] | null;
+      /** Margins */
+      margins?: number | null;
+      /** Market */
+      market: string;
+      /** Market Value */
+      market_value?: number | null;
+      /**
+       * Missing Fields
+       * @description Fields this profile call could not populate — either no adapter exists for that capability, or this call's fetch of it was unhealthy/empty. Never silently omitted from the caller.
+       * @default []
+       */
+      missing_fields: string[];
+      /** Per */
+      per?: number | null;
+      /** Revenue Yoy */
+      revenue_yoy?: number | null;
+      /** Sector */
+      sector?: string | null;
+      /** Sector Caveat */
+      sector_caveat: string;
+      /** Spokesperson */
+      spokesperson?: string | null;
+      /** Symbol */
+      symbol: string;
+      /** Website */
+      website?: string | null;
+    };
+    /** GetDailySignalOutput */
+    GetDailySignalOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Decreased Count
+       * @default 0
+       */
+      decreased_count: number;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      /**
+       * Increased Count
+       * @default 0
+       */
+      increased_count: number;
+      /** Market */
+      market: string;
+      /**
+       * New Count
+       * @default 0
+       */
+      new_count: number;
+      /** Prior Date */
+      prior_date?: string | null;
+      /**
+       * Removed Count
+       * @default 0
+       */
+      removed_count: number;
+      /** Report Date */
+      report_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["DailySignalRow"][];
+      top_inflow?: components["schemas"]["DailySignalHighlight"] | null;
+      top_outflow?: components["schemas"]["DailySignalHighlight"] | null;
+      /**
+       * Total Stock Count
+       * @default 0
+       */
+      total_stock_count: number;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetDayTradingOutput */
+    GetDayTradingOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["DayTradingRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetDerivativesInstitutionalOutput */
+    GetDerivativesInstitutionalOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Futures */
+      futures?: components["schemas"]["FuturesInstitutionalFlowRow"][];
+      /** Futures Oi Large Traders */
+      futures_oi_large_traders?: components["schemas"]["FuturesOiLargeTradersRow"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Option Oi Large Traders */
+      option_oi_large_traders?: components["schemas"]["OptionOiLargeTradersRow"][];
+      /** Options */
+      options?: components["schemas"]["OptionInstitutionalFlowRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetDispositionBoardOutput */
+    GetDispositionBoardOutput: {
+      /** Bucket Counts */
+      bucket_counts?: {
+        [key: string]: number;
+      };
+      /** Cards */
+      cards?: components["schemas"]["DispositionBoardCardRow"][];
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      /** Market */
+      market: string;
+      /** Report Date */
+      report_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetDispositionSecuritiesOutput */
+    GetDispositionSecuritiesOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["DispositionSecuritiesRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetDividendCalendarOutput */
+    GetDividendCalendarOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /** Events */
+      events?: components["schemas"]["DividendCalendarEventRow"][];
+      /** Market */
+      market: string;
+      /** Month */
+      month: number;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Year */
+      year: number;
+    };
+    /**
+     * GetDividendPolicySummaryOutput
+     * @description A composite report bundling everything the 股利政策 card needs — the announced-schedule
+     *     events (table rows), the per-year chart bars, the stats-strip figures, and the per-event
+     *     fill results — in one call, rather than the frontend fanning out to `get_dividend_schedule`
+     *     + `get_financial_statement` + a long-range price fetch and re-deriving payout/fill-rate
+     *     itself. Mirrors `GetCorporateActionEventsOutput`'s bundling precedent (multiple capability
+     *     fetches, one composite tool) and `MonthRevenueTrendPoint`'s "pre-compute, cite directly"
+     *     convention.
+     */
+    GetDividendPolicySummaryOutput: {
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Events */
+      events?: components["schemas"]["DividendEvent"][];
+      /** Fill Results */
+      fill_results?: components["schemas"]["DividendFillResult"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+      stats?: components["schemas"]["DividendPolicyStats"];
+      /** Year Summaries */
+      year_summaries?: components["schemas"]["DividendYearSummary"][];
+    };
+    /** GetDividendResultOutput */
+    GetDividendResultOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["DividendResultRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetDividendScheduleOutput */
+    GetDividendScheduleOutput: {
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Events */
+      events?: components["schemas"]["DividendEvent"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetEsgScoreOutput */
+    GetEsgScoreOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      esg?: components["schemas"]["EsgScore"] | null;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetEtfExpenseRatioOutput */
+    GetEtfExpenseRatioOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      info?: components["schemas"]["EtfExpenseInfo"] | null;
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetEtfFundInfoOutput */
+    GetEtfFundInfoOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      info?: components["schemas"]["EtfFundInfo"] | null;
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetEtfListOutput */
+    GetEtfListOutput: {
+      /**
+       * Aum Caveat
+       * @default 資產規模 (AUM) is Yahoo's own totalAssets figure for this fund — refreshed weekly, not a live figure; may be missing for a recently-listed or thinly-covered fund.
+       */
+      aum_caveat: string;
+      /**
+       * Currentness Caveat
+       * @default Price/change/volume are end-of-day, not live intraday.
+       */
+      currentness_caveat: string;
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Distribution Caveat
+       * @default 配息率/頻率 are inferred from the trailing-12-month cadence of real cash-distribution events — an observed-cadence classification, not the issuer's declared distribution policy, and approximate for a fund listed under 12 months.
+       */
+      distribution_caveat: string;
+      /**
+       * Expense Ratio Caveat
+       * @default 費用率 is a management+custody fee floor from SITCA's monthly disclosure (EtfExpenseInfo.total_expense_ratio_pct_approx) — NOT the audited total expense ratio; other operating costs are not included.
+       */
+      expense_ratio_caveat: string;
+      /** Market */
+      market: string;
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["EtfListRow"][];
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetEtfMoneyFlowOutput */
+    GetEtfMoneyFlowOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * End Date
+       * Format: date
+       */
+      end_date: string;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      /** Holding As Of */
+      holding_as_of?: string | null;
+      /** Inflow Ranking */
+      inflow_ranking?: components["schemas"]["EtfMoneyFlowRow"][];
+      /** Market */
+      market: string;
+      /** Outflow Ranking */
+      outflow_ranking?: components["schemas"]["EtfMoneyFlowRow"][];
+      /**
+       * Start Date
+       * Format: date
+       */
+      start_date: string;
+      /**
+       * Stock Shares Held Pct Caveat
+       * @default 佔個股比重為估算值：以市值(TaiwanStockMarketValue) ÷ 當日收盤價 反推流通股數，非發行公司公告的實際流通股數。
+       */
+      stock_shares_held_pct_caveat: string;
+      /**
+       * Total Stock Count
+       * @default 0
+       */
+      total_stock_count: number;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetEtfOverlapOutput */
+    GetEtfOverlapOutput: {
+      /** Market */
+      market: string;
+      /** Overlapping Holdings */
+      overlapping_holdings?: components["schemas"]["OverlapHoldingRow"][];
+      /** Pairwise Overlap */
+      pairwise_overlap?: components["schemas"]["PairOverlapRow"][];
+      /** Requested Symbols */
+      requested_symbols: string[];
+      /**
+       * Unavailable Symbols
+       * @description Requested symbols whose FUND_HOLDINGS fetch degraded (no usable holdings data) — named honestly here, never silently dropped from the request.
+       */
+      unavailable_symbols?: string[];
+    };
+    /**
+     * GetEtfPremiumDiscountOutput
+     * @description `etf_nav` (+ `etf_aum`) read for one ETF: TWSE's own published 預估折溢價幅度 history —
+     *     never a per-symbol live fetch, this dataset is already ingested daily (`ingest/jobs.py`'s
+     *     `job_etf_nav`). `current_aum` is folded in from the separate `etf_aum` dataset rather than
+     *     a second tool, since it is a daily-latest figure (not a series) a caller wants alongside the
+     *     premium/discount chart, not on its own.
+     */
+    GetEtfPremiumDiscountOutput: {
+      /** Aum Caveat */
+      aum_caveat?: string | null;
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Current Aum */
+      current_aum?: number | null;
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      market: components["schemas"]["Market"];
+      /** Rows */
+      rows?: components["schemas"]["EtfNavRow"][];
+      /** Symbol */
+      symbol: string;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetEtfThemeTagsOutput */
+    GetEtfThemeTagsOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Holder Count Wan */
+      holder_count_wan?: number | null;
+      /** Source Id */
+      source_id: string;
+      /** Tags */
+      tags?: string[];
+    };
+    /** GetEtfTrailingReturnsOutput */
+    GetEtfTrailingReturnsOutput: {
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      returns?: components["schemas"]["EtfTrailingReturns"] | null;
+      /** Series */
+      series?: components["schemas"]["TrailingReturnPoint"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetEtfsHoldingStockOutput */
+    GetEtfsHoldingStockOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /**
+       * Etf Count
+       * @default 0
+       */
+      etf_count: number;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      /** Holding Rank */
+      holding_rank?: components["schemas"]["EtfHoldingRankRow"][];
+      /** Market */
+      market: string;
+      position_event_counts?: components["schemas"]["EtfPositionEventCounts"];
+      /** Position Events */
+      position_events?: components["schemas"]["EtfPositionEvent"][];
+      /** Prior Date */
+      prior_date?: string | null;
+      /** Symbol */
+      symbol: string;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Weight Rank */
+      weight_rank?: components["schemas"]["EtfWeightRankRow"][];
+    };
+    /** GetFactorCatalogOutput */
+    GetFactorCatalogOutput: {
+      catalog: components["schemas"]["FactorCatalog"];
+    };
+    /** GetFinancialStatementOutput */
+    GetFinancialStatementOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Lines */
+      lines?: components["schemas"]["FinancialStatementLine"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetFinmindStockNewsOutput */
+    GetFinmindStockNewsOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["StockNewsRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetForeignShareholdingOutput */
+    GetForeignShareholdingOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["ForeignShareholdingRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetFundComparisonOutput */
+    GetFundComparisonOutput: {
+      /**
+       * Methodology Note
+       * @default Total return assumes each cash dividend is reinvested at that ex-dividend date's closing price — a standard approximation, not an account-level simulation of actual reinvestment timing or fees.
+       */
+      methodology_note: string;
+      /** Rows */
+      rows?: components["schemas"]["FundComparisonRow"][];
+    };
+    /** GetFundHoldingsOutput */
+    GetFundHoldingsOutput: {
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Holdings */
+      holdings?: components["schemas"]["FundHoldingRow"][];
+      /** Sector Weightings */
+      sector_weightings?: components["schemas"]["FundSectorWeightingRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetFundProfileOutput */
+    GetFundProfileOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      profile?: components["schemas"]["FundProfileRow"] | null;
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetFuturesOptionsDailyOutput */
+    GetFuturesOptionsDailyOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Futures */
+      futures?: components["schemas"]["FuturesDailyRow"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Options */
+      options?: components["schemas"]["OptionDailyRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetFuturesSnapshotOutput */
+    GetFuturesSnapshotOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["FuturesSnapshotRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetGovernmentBankFlowsOutput */
+    GetGovernmentBankFlowsOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["GovernmentBankBuySellRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetHolderAccumulationOutput */
+    GetHolderAccumulationOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      /** Market */
+      market: string;
+      /** Period Ago */
+      period_ago?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["HolderAccumulationRow"][];
+      /** @default 400 */
+      threshold: components["schemas"]["HolderThreshold"];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** @default 2 */
+      window: components["schemas"]["HolderWindow"];
+    };
+    /** GetIndexContributionOutput */
+    GetIndexContributionOutput: {
+      /**
+       * Contribution Caveat
+       * @default Estimated from market-cap weight x price change; not TWSE's official float-adjusted index-contribution figure — this codebase has no float-adjusted-divisor data.
+       */
+      contribution_caveat: string;
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      /** Market */
+      market: string;
+      /** Negative Contributors */
+      negative_contributors?: components["schemas"]["IndexContributionRow"][];
+      /** Positive Contributors */
+      positive_contributors?: components["schemas"]["IndexContributionRow"][];
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetIndustryMoneyFlowOutput */
+    GetIndustryMoneyFlowOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /**
+       * Free Row Count
+       * @default 0
+       */
+      free_row_count: number;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["IndustryChainMoneyFlowRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetInsiderActivityOutput */
+    GetInsiderActivityOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+      /** Transactions */
+      transactions?: components["schemas"]["InsiderActivityRow"][];
+    };
+    /** GetInsiderShareholdingOutput */
+    GetInsiderShareholdingOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Holdings */
+      holdings?: components["schemas"]["DirectorShareholding"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetInsiderTransferDeclarationOutput */
+    GetInsiderTransferDeclarationOutput: {
+      /** Available Dates */
+      available_dates?: string[];
+      /** Data Available */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** Report Date */
+      report_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["InsiderTransferDeclarationRow"][];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetInstitutionalFlowOutput */
+    GetInstitutionalFlowOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rolling Net */
+      rolling_net?: components["schemas"]["InstitutionalFlowRollingNet"][];
+      /** Rows */
+      rows?: components["schemas"]["InstitutionalFlowRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetInstitutionalFlowTotalMarketOutput */
+    GetInstitutionalFlowTotalMarketOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["InstitutionalFlowTotalMarketRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetInstitutionalHoldersOutput */
+    GetInstitutionalHoldersOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Holders */
+      holders?: components["schemas"]["InstitutionalHolderRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetInternationalStockOutput */
+    GetInternationalStockOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Info */
+      info?: components["schemas"]["InternationalStockInfoRow"][];
+      /** Price */
+      price?: components["schemas"]["InternationalStockPriceRow"][];
+    };
+    /** GetIntradayKbarOutput */
+    GetIntradayKbarOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["KBarRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /**
+     * GetLivePriceQuoteOutput
+     * @description The real-time (WebSocket-streamed) price-quote read — US-only.
+     */
+    GetLivePriceQuoteOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+      tick?: components["schemas"]["LivePriceTick"] | null;
+    };
+    /** GetLiveQuoteSnapshotOutput */
+    GetLiveQuoteSnapshotOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      snapshot?: components["schemas"]["LiveQuoteSnapshot"] | null;
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetMacroCalendarOutput */
+    GetMacroCalendarOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Events */
+      events?: components["schemas"]["MacroReleaseEventRow"][];
+    };
+    /** GetMacroIndicatorsOutput */
+    GetMacroIndicatorsOutput: {
+      /** Central Bank Rate */
+      central_bank_rate?: components["schemas"]["CentralBankRateRow"][];
+      /** Crude Oil Prices */
+      crude_oil_prices?: components["schemas"]["CrudeOilPricesRow"][];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Exchange Rate */
+      exchange_rate?: components["schemas"]["ExchangeRateRow"][];
+      /** Fear Greed Index */
+      fear_greed_index?: components["schemas"]["FearGreedIndexRow"][];
+      /** Gold Price */
+      gold_price?: components["schemas"]["GoldPriceRow"][];
+      /** Government Bond Yield */
+      government_bond_yield?: components["schemas"]["GovernmentBondYieldRow"][];
+    };
+    /** GetMarginMaintenanceOutput */
+    GetMarginMaintenanceOutput: {
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["MarginMaintenanceRatioRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetMarginShortOutput */
+    GetMarginShortOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["MarginShortRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetMarginShortTotalMarketOutput */
+    GetMarginShortTotalMarketOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["MarginShortTotalMarketRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetMarketIndexStripOutput */
+    GetMarketIndexStripOutput: {
+      /** Rows */
+      rows?: components["schemas"]["MarketIndexStripItemRow"][];
+    };
+    /** GetMaterialAnnouncementFeedOutput */
+    GetMaterialAnnouncementFeedOutput: {
+      /** Available Dates */
+      available_dates?: string[];
+      /** Category Counts */
+      category_counts?: {
+        [key: string]: number;
+      };
+      /** Data Available */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** Report Date */
+      report_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["MaterialAnnouncementRow"][];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetMaterialAnnouncementsOutput */
+    GetMaterialAnnouncementsOutput: {
+      /** Announcements */
+      announcements?: components["schemas"]["MaterialAnnouncement"][];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetMonthRevenueOutput */
+    GetMonthRevenueOutput: {
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["MonthRevenueRow"][];
+      /** Source Id */
+      source_id: string;
+      /** Trend */
+      trend?: components["schemas"]["MonthRevenueTrendPoint"][];
+    };
+    /** GetNewsFeedOutput */
+    GetNewsFeedOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Items */
+      items?: components["schemas"]["NewsFeedItemOut"][];
+    };
+    /** GetOptionsChainOutput */
+    GetOptionsChainOutput: {
+      /** Contracts */
+      contracts?: components["schemas"]["OptionContractRow"][];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetOrderBookStatsOutput */
+    GetOrderBookStatsOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["OrderBookStatsRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetPriceHistoryOutput */
+    GetPriceHistoryOutput: {
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** End Date */
+      end_date?: string | null;
+      /** Market */
+      market: string;
+      /** Rows */
+      rows?: components["schemas"]["EODBar"][];
+      /** Start Date */
+      start_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetPriceLimitOutput */
+    GetPriceLimitOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["PriceLimitRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetPriceMomentumOutput */
+    GetPriceMomentumOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** @default week */
+      period: components["schemas"]["MomentumPeriod"];
+      /** Period Ago Trade Date */
+      period_ago_trade_date?: string | null;
+      /** Top Gainers */
+      top_gainers?: components["schemas"]["PriceMomentumRow"][];
+      /** Top Losers */
+      top_losers?: components["schemas"]["PriceMomentumRow"][];
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /**
+     * GetPriceQuoteOutput
+     * @description The basic price-quote read (part of the immediate-core set).
+     */
+    GetPriceQuoteOutput: {
+      bar?: components["schemas"]["EODBar"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetPriceTickOutput */
+    GetPriceTickOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["PriceTickRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetPttBoardOutput */
+    GetPttBoardOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Posts */
+      posts?: components["schemas"]["PttPostOut"][];
+    };
+    /** GetPttStockSearchOutput */
+    GetPttStockSearchOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Posts */
+      posts?: components["schemas"]["PttPostOut"][];
+    };
+    /** GetPutCallRatioOutput */
+    GetPutCallRatioOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Options */
+      options?: components["schemas"]["OptionDailyRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetScoreLeaderboardOutput */
+    GetScoreLeaderboardOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /**
+       * Direction
+       * @enum {string}
+       */
+      direction: "bullish" | "bearish";
+      market: components["schemas"]["Market"];
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      profile: components["schemas"]["ScoreProfile"];
+      /** Results */
+      results?: components["schemas"]["ScoreResult"][];
+      /**
+       * Universe
+       * @enum {string}
+       */
+      universe: "stock" | "etf";
+    };
+    /** GetScreenerPresetsOutput */
+    GetScreenerPresetsOutput: {
+      /** Presets */
+      presets?: components["schemas"]["ScreenerPreset"][];
+    };
+    /** GetSecFilingsOutput */
+    GetSecFilingsOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Filings */
+      filings?: components["schemas"]["SecFiling"][];
+      health_status: components["schemas"]["HealthStatus"];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetSectorConstituentsOutput */
+    GetSectorConstituentsOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /** Industry */
+      industry?: string | null;
+      /** Market */
+      market: string;
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["SectorConstituentRow"][];
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetSectorHeatmapOutput */
+    GetSectorHeatmapOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /** Industries */
+      industries?: components["schemas"]["SectorHeatmapRow"][];
+      /** Market */
+      market: string;
+      /** @default immediate */
+      period: components["schemas"]["SectorHeatmapPeriod"];
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** @default turnover */
+      size_by: components["schemas"]["SectorHeatmapSizeBy"];
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetSectorRotationOutput */
+    GetSectorRotationOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** Rows */
+      rows?: components["schemas"]["SectorRotationDayRow"][];
+      /** Trade Dates */
+      trade_dates?: string[];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetSectorRotationRrgOutput */
+    GetSectorRotationRrgOutput: {
+      /**
+       * Benchmark Id
+       * @default TAIEX
+       */
+      benchmark_id: string;
+      /**
+       * Benchmark Name
+       * @default 加權指數
+       */
+      benchmark_name: string;
+      /** Data Available */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** Sectors */
+      sectors?: components["schemas"]["SectorRrgSeries"][];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Week Endings */
+      week_endings?: string[];
+    };
+    /** GetSecuritiesLendingOutput */
+    GetSecuritiesLendingOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["SecuritiesLendingRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetShareholderDispersionOutput */
+    GetShareholderDispersionOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["ShareholdingDistributionRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetSourceHealthOutput */
+    GetSourceHealthOutput: {
+      /** All Ok */
+      all_ok: boolean;
+      /** Entries */
+      entries: components["schemas"]["SourceHealthEntryOut"][];
+      /** Market */
+      market: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /** GetSourceMatrixOutput */
+    GetSourceMatrixOutput: {
+      /** Entries */
+      entries: components["schemas"]["SourceMatrixEntry"][];
+    };
+    /** GetStockHeatmapOutput */
+    GetStockHeatmapOutput: {
+      /** Data Available */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** @default immediate */
+      period: components["schemas"]["SectorHeatmapPeriod"];
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** @default turnover */
+      size_by: components["schemas"]["SectorHeatmapSizeBy"];
+      /** Stocks */
+      stocks?: components["schemas"]["StockHeatmapRow"][];
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /**
+     * GetStockPeersOutput
+     * @description Composite output over two capability fetches (`SECTOR_CLASS` resolve, then
+     *     `SECTOR_OVERVIEW`/`INDUSTRY_OVERVIEW`) — `source_id`/`currentness_caveat`/`health_status`
+     *     describe the peer-list fetch specifically (the caveat that actually matters to a reader of
+     *     the peer rows); `sector`/`industry` display names are carried through for the panel's own
+     *     header, without requiring a second round trip to `get_sector_class`.
+     */
+    GetStockPeersOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Industries */
+      industries?: components["schemas"]["SectorIndustryWeightRow"][];
+      /** Industry */
+      industry?: string | null;
+      /** Industry Peers */
+      industry_peers?: components["schemas"]["IndustryOverviewCompanyRow"][];
+      /** Sector */
+      sector?: string | null;
+      /** Sector Peers */
+      sector_peers?: components["schemas"]["SectorOverviewCompanyRow"][];
+      /** Source Id */
+      source_id: string;
+      stats?: components["schemas"]["SectorOverviewStats"] | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /**
+     * GetStockScoreOutput
+     * @description The detail-page read: the cached `ScoreResult` if today's batch has computed it, or an
+     *     honest `found=False` with a plain-language reason when it has not (never a fabricated or
+     *     stale-silently-served number).
+     */
+    GetStockScoreOutput: {
+      /** Found */
+      found: boolean;
+      market: components["schemas"]["Market"];
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      profile: components["schemas"]["ScoreProfile"];
+      result?: components["schemas"]["ScoreResult"] | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * GetStockSummaryOutput
+     * @description The detail-page read: the AI-generated headline/narrative/SWOT grounded in today's cached
+     *     composite score, or an honest `found=False` when no score exists yet to ground it in (never
+     *     a fabricated summary).
+     */
+    GetStockSummaryOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /** Found */
+      found: boolean;
+      /**
+       * Headline
+       * @default
+       */
+      headline: string;
+      market: components["schemas"]["Market"];
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      /**
+       * Narrative
+       * @default
+       */
+      narrative: string;
+      /**
+       * Non Trading Caveat
+       * @default
+       */
+      non_trading_caveat: string;
+      swot?: components["schemas"]["StockSwot"];
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * GetSupplyChainEdgesOutput
+     * @description Every supply-chain edge where the symbol is either endpoint — the 供應鏈關係圖 card's one
+     *     data source. `edges` carries both directions (the symbol as `from_symbol` AND as
+     *     `to_symbol`) so a caller can render a focus-node graph without a second round-trip; each
+     *     edge's own `from_symbol`/`to_symbol` disambiguates direction. Empty, not an error, for a
+     *     symbol with no seeded/extracted relationships yet.
+     */
+    GetSupplyChainEdgesOutput: {
+      /**
+       * Edge Count
+       * @default 0
+       */
+      edge_count: number;
+      /** Edges */
+      edges?: components["schemas"]["SupplyChainEdge"][];
+      /** Market */
+      market: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * GetSymbolDirectorySearchOutput
+     * @description Same "absent, never fabricated" contract as `GetSymbolInfoOutput` — an empty `rows` means
+     *     no roster match, not a placeholder result.
+     */
+    GetSymbolDirectorySearchOutput: {
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** Roster Date */
+      roster_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["SymbolDirectorySearchRow"][];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /**
+     * GetSymbolInfoOutput
+     * @description One row per symbol that exists in the latest ingested roster — a symbol not found there
+     *     (delisted, mistyped, or not yet in an ETF/warrant roster this dataset covers) is simply
+     *     absent from `rows`, never a fabricated placeholder name.
+     */
+    GetSymbolInfoOutput: {
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** Market */
+      market: string;
+      /** Roster Date */
+      roster_date?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["StockInfoRow"][];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetSymbolQuotesOutput */
+    GetSymbolQuotesOutput: {
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** End Date */
+      end_date?: string | null;
+      /** Market */
+      market: string;
+      /** Rows */
+      rows?: components["schemas"]["SymbolQuoteRow"][];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetSymbolSearchOutput */
+    GetSymbolSearchOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Results */
+      results?: components["schemas"]["SymbolSearchResultRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /**
+     * GetSymbolThemesOutput
+     * @description The reverse lookup — every theme a symbol belongs to, with that membership's own
+     *     sub-industry and confidence.
+     */
+    GetSymbolThemesOutput: {
+      /** Market */
+      market: string;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Theme Count
+       * @default 0
+       */
+      theme_count: number;
+      /** Themes */
+      themes?: components["schemas"]["SymbolTheme"][];
+    };
+    /** GetTagCatalogOutput */
+    GetTagCatalogOutput: {
+      /** Categories */
+      categories: components["schemas"]["TagCatalogCategory"][];
+    };
+    /** GetTaiexVixOutput */
+    GetTaiexVixOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["OptionVixRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /** GetTechnicalIndicatorsOutput */
+    GetTechnicalIndicatorsOutput: {
+      /** Bars */
+      bars?: components["schemas"]["EODBar"][];
+      bollinger?: components["schemas"]["BollingerResult"] | null;
+      /** Candlestick Patterns */
+      candlestick_patterns?: components["schemas"]["CandlestickPatternHit"][];
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      kd?: components["schemas"]["KdResult"] | null;
+      macd?: components["schemas"]["MacdResult"] | null;
+      /** Market */
+      market: string;
+      moving_averages?: components["schemas"]["MovingAverageBundle"] | null;
+      /**
+       * Non Trading Caveat
+       * @default 技術指標與型態為圖表描述，非買賣建議 — indicators/patterns describe the chart, they are not a trading instruction.
+       */
+      non_trading_caveat: string;
+      support_resistance?: components["schemas"]["SupportResistanceResult"] | null;
+      /** Symbol */
+      symbol: string;
+      /** Trade Dates */
+      trade_dates?: string[];
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /**
+     * GetThemeMembersOutput
+     * @description A theme's identity plus its member symbols, each carrying the per-membership
+     *     `sub_industry`/`confidence`/`source` so an AI-researched concept member is never presented as
+     *     an editorially-guaranteed industry-chain one.
+     */
+    GetThemeMembersOutput: {
+      /** Found */
+      found: boolean;
+      kind?: components["schemas"]["ThemeKind"] | null;
+      /**
+       * Member Count
+       * @default 0
+       */
+      member_count: number;
+      /** Members */
+      members?: components["schemas"]["ThemeMember"][];
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      /**
+       * Name En
+       * @default
+       */
+      name_en: string;
+      /**
+       * Name Zh
+       * @default
+       */
+      name_zh: string;
+      /** Theme Key */
+      theme_key: string;
+    };
+    /**
+     * GetThemeTierHeatmapOutput
+     * @description A theme's upstream/midstream/downstream sub-industry tiles, each colored by its own
+     *     members' real average price change — the 產業鏈 tier-tile view's one data source. `found` is
+     *     `False` only when the theme key itself doesn't exist; a found theme with no priced members
+     *     yet still returns its tiles, each with `pct_change=null`, never a fabricated 0%.
+     */
+    GetThemeTierHeatmapOutput: {
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** Downstream */
+      downstream?: components["schemas"]["SubIndustryHeat"][];
+      /** Found */
+      found: boolean;
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      /** Midstream */
+      midstream?: components["schemas"]["SubIndustryHeat"][];
+      /** Prior Trade Date */
+      prior_trade_date?: string | null;
+      /** Theme Key */
+      theme_key: string;
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Upstream */
+      upstream?: components["schemas"]["SubIndustryHeat"][];
+    };
+    /**
+     * GetThemeTiersOutput
+     * @description A theme's sub-industry tier breakdown, grouped into upstream/midstream/downstream. Each
+     *     tier assignment carries its `source` (curated editorial map vs keyword heuristic) so a caller
+     *     can tell an editorially-verified position from an automatically-classified one and never
+     *     present a heuristic guess as equally authoritative.
+     */
+    GetThemeTiersOutput: {
+      /** Downstream */
+      downstream?: components["schemas"]["ThemeTier"][];
+      /** Found */
+      found: boolean;
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      /** Midstream */
+      midstream?: components["schemas"]["ThemeTier"][];
+      /** Theme Key */
+      theme_key: string;
+      /** Upstream */
+      upstream?: components["schemas"]["ThemeTier"][];
+    };
+    /** GetThemesOutput */
+    GetThemesOutput: {
+      /**
+       * Theme Count
+       * @default 0
+       */
+      theme_count: number;
+      /** Themes */
+      themes?: components["schemas"]["ThemeSummary"][];
+    };
+    /** GetTickSnapshotOutput */
+    GetTickSnapshotOutput: {
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["TickSnapshotRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /**
+     * GetTrendScoreOutput
+     * @description `found=False` (with `message` explaining why) when the batch has not yet computed today's
+     *     five cache-backed dimensions for this symbol — never a fabricated composite. `history` is
+     *     always populated from whatever cached rows exist in the requested window, independent of
+     *     whether *today's* row exists yet.
+     */
+    GetTrendScoreOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /** Composite */
+      composite?: number | null;
+      /** Dimensions */
+      dimensions?: components["schemas"]["TrendScoreDimensionOutput"][];
+      /** Found */
+      found: boolean;
+      /** History */
+      history?: components["schemas"]["TrendScoreHistoryPoint"][];
+      market: components["schemas"]["Market"];
+      /**
+       * Message
+       * @default
+       */
+      message: string;
+      /**
+       * Non Trading Caveat
+       * @default
+       */
+      non_trading_caveat: string;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Unavailable Dimensions
+       * @default []
+       */
+      unavailable_dimensions: string[];
+    };
+    /** GetTwMarketRankingsOutput */
+    GetTwMarketRankingsOutput: {
+      /** Data Available */
+      data_available: boolean;
+      kind: components["schemas"]["TwRankingKind"];
+      /** Rows */
+      rows?: components["schemas"]["TwRankingRow"][];
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetUsMarketIndexStripOutput */
+    GetUsMarketIndexStripOutput: {
+      /** Rows */
+      rows?: components["schemas"]["MarketIndexStripItemRow"][];
+    };
+    /** GetUsMarketRankingsOutput */
+    GetUsMarketRankingsOutput: {
+      /** Detail */
+      detail: string;
+      kind: components["schemas"]["RankingKind"];
+      /** Rows */
+      rows?: components["schemas"]["MarketRankingRow"][];
+    };
+    /** GetValuationRatiosOutput */
+    GetValuationRatiosOutput: {
+      band?: components["schemas"]["ValuationBandSummary"] | null;
+      chart_hint?: components["schemas"]["ChartHint"] | null;
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      health_status: components["schemas"]["HealthStatus"];
+      /** Rows */
+      rows?: components["schemas"]["ValuationRatiosRow"][];
+      /** Source Id */
+      source_id: string;
+    };
+    /**
+     * GoldPriceRow
+     * @description `gold_price` — one day's gold spot-price reading. Free tier; market-level, no symbol
+     *     scope. Modeled `Market.GLOBAL` — a world commodity benchmark, no single-country home.
+     */
+    GoldPriceRow: {
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      market: components["schemas"]["Market"];
+      /** Price */
+      price: number;
+    };
+    /**
+     * GovernmentBankBuySellRow
+     * @description `government_bank_buysell` — one day's 八大行庫 (eight state-owned/government banks)
+     *     buy/sell row for one stock. Sponsor-only.
+     */
+    GovernmentBankBuySellRow: {
+      /** Bank Name */
+      bank_name: string;
+      /** Buy */
+      buy: number;
+      /** Buy Amount */
+      buy_amount: number;
+      market: components["schemas"]["Market"];
+      /** Sell */
+      sell: number;
+      /** Sell Amount */
+      sell_amount: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * GovernmentBondYieldRow
+     * @description `government_bond_yield` — one day's US Treasury yield reading for one maturity tenor
+     *     (`symbol` e.g. "United States 10-Year"). Free tier. Modeled `Market.US` — unlike
+     *     `central_bank_rate`, this dataset's underlying is specifically the US Treasury curve, a
+     *     genuine single-country home.
+     */
+    GovernmentBondYieldRow: {
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Value */
+      value: number;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
       detail?: components["schemas"]["ValidationError"][];
+    };
+    /**
+     * HealthStatus
+     * @description Provider currentness/closure diagnostics (M5Q).
+     * @enum {string}
+     */
+    HealthStatus: "ok" | "stale" | "unreachable" | "unavailable-tier";
+    /**
+     * HolderAccumulationRow
+     * @description `locked=True` rows (governance.md §4 top-N-preview exception) have every field but
+     *     `rank` nulled server-side — an unentitled caller must not learn which stock a locked row
+     *     even names.
+     */
+    HolderAccumulationRow: {
+      /** Latest Close */
+      latest_close?: number | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Percent Of Custody After */
+      percent_of_custody_after: number | null;
+      /** Percent Of Custody Before */
+      percent_of_custody_before: number | null;
+      /** Percent Of Custody Change */
+      percent_of_custody_change: number | null;
+      /**
+       * Rank
+       * @default 0
+       */
+      rank: number;
+      /** Shares Change */
+      shares_change: number | null;
+      /** Stock Name */
+      stock_name: string | null;
+      /** Symbol */
+      symbol: string | null;
+    };
+    /**
+     * HolderThreshold
+     * @enum {integer}
+     */
+    HolderThreshold: 200 | 400 | 800 | 1000;
+    /**
+     * HolderWindow
+     * @enum {integer}
+     */
+    HolderWindow: 1 | 2 | 3 | 4;
+    /**
+     * HoldingStatus
+     * @description The derived per-holding classification layered on top of FinMind's raw buy/sell change
+     *     row — never stored by FinMind itself, computed here from (buy, sell, prior-day weight).
+     * @enum {string}
+     */
+    HoldingStatus: "新增" | "刪除" | "加碼" | "減碼" | "no_prior_data";
+    /**
+     * IndexContributionRow
+     * @description `locked=True` rows (governance.md §4 top-N-preview exception) have every field but `rank`
+     *     nulled server-side.
+     */
+    IndexContributionRow: {
+      /** Contribution Estimate */
+      contribution_estimate: number | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Pct Change */
+      pct_change: number | null;
+      /**
+       * Rank
+       * @default 0
+       */
+      rank: number;
+      /** Stock Name */
+      stock_name: string | null;
+      /** Symbol */
+      symbol: string | null;
+      /** Weight Per */
+      weight_per: number | null;
+    };
+    /**
+     * IndustryChainMoneyFlowRow
+     * @description `industry_chain_money_flow` — one day's 產業鏈資金流向 (industry-chain money-flow)
+     *     aggregate row for one industry (or sub-industry). Sponsor-only; market-level, no symbol
+     *     scope. `sub_industry` empty means an industry-chain total row — these do NOT equal the sum
+     *     of that chain's sub-industry rows (a stock can belong to multiple sub-industries), and a
+     *     stock can belong to multiple chains, so `trading_money_pct` across chains sums to more than
+     *     100%.
+     *
+     *     `locked=True` rows (governance.md §4 top-N-preview exception) have every field but `rank`/
+     *     `market`/`trade_date`/`is_total` nulled server-side — `sub_industry` itself is nulled, so
+     *     `is_total` (not `sub_industry == ""`) is how a caller/renderer tells a locked chain-total
+     *     row from a locked sub-industry breakdown row.
+     */
+    IndustryChainMoneyFlowRow: {
+      /** Industry */
+      industry: string | null;
+      /**
+       * Is Total
+       * @default false
+       */
+      is_total: boolean;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      market: components["schemas"]["Market"];
+      /**
+       * Rank
+       * @default 0
+       */
+      rank: number;
+      /** Stock Count */
+      stock_count: number | null;
+      /** Sub Industry */
+      sub_industry: string | null;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Trading Money */
+      trading_money: number | null;
+      /** Trading Money Pct */
+      trading_money_pct: number | null;
+      /** Trading Volume */
+      trading_volume: number | null;
+    };
+    /**
+     * IndustryOverviewCompanyRow
+     * @description `industry_overview` — one top-company row within one `yfinance.Industry` aggregate
+     *     view (analogous to `sector_overview`, one level narrower).
+     *
+     *     `ytd_return`/`last_price`/`target_price` come from `yfinance.Industry.top_performing_
+     *     companies` (only populated on a `row_kind="performing_company"` row); `ytd_return`/
+     *     `growth_estimate` come from `top_growth_companies` (`row_kind="growth_company"` only). A
+     *     plain `row_kind="company"` row (from `top_companies`, the same frame `sector_overview` reads)
+     *     never carries any of these four — left `None`, never fabricated from the other frames.
+     */
+    IndustryOverviewCompanyRow: {
+      /** Growth Estimate */
+      growth_estimate?: number | null;
+      /** Industry Key */
+      industry_key: string;
+      /** Last Price */
+      last_price?: number | null;
+      market: components["schemas"]["Market"];
+      /** Market Weight */
+      market_weight?: number | null;
+      /** Name */
+      name: string;
+      /** Rating */
+      rating?: string | null;
+      /** Row Kind */
+      row_kind: string;
+      /** Sector Key */
+      sector_key: string;
+      /** Symbol */
+      symbol: string;
+      /** Target Price */
+      target_price?: number | null;
+      /** Ytd Return */
+      ytd_return?: number | null;
+    };
+    /**
+     * InsiderActivityRow
+     * @description `insider_activity` — one insider (Form-4-derived) transaction row. US-style disclosure;
+     *     sparse/empty for non-US markets — never fabricated when absent.
+     */
+    InsiderActivityRow: {
+      /** Insider Name */
+      insider_name: string;
+      market: components["schemas"]["Market"];
+      /** Ownership */
+      ownership?: string | null;
+      /** Position */
+      position?: string | null;
+      /** Shares */
+      shares?: number | null;
+      /** Start Date */
+      start_date?: string | null;
+      /** Symbol */
+      symbol: string;
+      /** Transaction */
+      transaction?: string | null;
+      /** Value */
+      value?: number | null;
+    };
+    /**
+     * InsiderTransferDeclarationRow
+     * @description `insider_transfer_declaration` — one 內部人股權轉讓事前申報 (insider advance-transfer-plan
+     *     declaration) row from TWSE MOPS's `t187ap12_L` whole-market dump. Advance notice of an
+     *     intended insider share transfer/sale, filed before it happens — distinct from
+     *     `DirectorShareholding` (a monthly holdings snapshot, not an event) and from
+     *     `Capability.INSIDER_ACTIVITY` (yfinance/US Form-4-derived, never TW).
+     *
+     *     Scoped to `t187ap12_L` only. `t187ap13_L` (a related but distinct "reason not transferred"
+     *     filing) is intentionally not covered by this model — a real, separate MOPS dataset, deferred
+     *     rather than silently dropped.
+     */
+    InsiderTransferDeclarationRow: {
+      /** Company Name */
+      company_name: string;
+      /** Current Shares Own */
+      current_shares_own: number;
+      /** Current Shares Trust */
+      current_shares_trust: number;
+      /** Filer Role */
+      filer_role: string;
+      market: components["schemas"]["Market"];
+      /** Max Daily Exchange Shares */
+      max_daily_exchange_shares?: number | null;
+      /** Person Name */
+      person_name: string;
+      /** Planned Shares Own */
+      planned_shares_own: number;
+      /** Planned Shares Trust */
+      planned_shares_trust: number;
+      /** Projected Shares Own After */
+      projected_shares_own_after: number;
+      /** Projected Shares Trust After */
+      projected_shares_trust_after: number;
+      /** Symbol */
+      symbol: string;
+      /** Transfer Method */
+      transfer_method: string;
+      /** Transfer Shares */
+      transfer_shares: number;
+      /**
+       * Transfer Window End
+       * Format: date
+       */
+      transfer_window_end: string;
+      /**
+       * Transfer Window Start
+       * Format: date
+       */
+      transfer_window_start: string;
+      /** Transferee */
+      transferee?: string | null;
+    };
+    /**
+     * InstitutionalFlowRollingNet
+     * @description One investor category's pre-summed net buy/sell (`sum(buy - sell)`) over the trailing
+     *     5/10/20-trading-day windows within whatever range `get_institutional_flow` fetched — see
+     *     that tool's own docstring for why this exists: without it, a skill asking for a "5/10/20
+     *     日買賣超趨勢" forces the model to sum 20+ raw daily rows by hand across every investor
+     *     category, which measurably happened live (a `chip-flow-review` turn's reasoning trace
+     *     showed it manually adding up 20 days x 3 categories and running out of response budget
+     *     before writing any prose at all — the final answer had zero analysis, just a raw table).
+     *     A window field is `None` when fewer trading days than that window exist in the fetched
+     *     range (e.g. a 5-day request can't back a 20-day figure) — never a partial-window number
+     *     silently mislabeled as the full window.
+     */
+    InstitutionalFlowRollingNet: {
+      /** Investor */
+      investor: string;
+      /** Net 10D */
+      net_10d?: number | null;
+      /** Net 20D */
+      net_20d?: number | null;
+      /** Net 5D */
+      net_5d?: number | null;
+    };
+    /**
+     * InstitutionalFlowRow
+     * @description `institutional_flow` — one institutional-investor buy/sell row for one trading day.
+     */
+    InstitutionalFlowRow: {
+      /** Buy */
+      buy: number;
+      /** Investor */
+      investor: string;
+      market: components["schemas"]["Market"];
+      /** Sell */
+      sell: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * InstitutionalFlowTotalMarketRow
+     * @description `institutional_flow_total_market` — one day's whole-market three-major-institutional-
+     *     investor buy/sell total row for one category (`name`). Market-level, no symbol scope.
+     */
+    InstitutionalFlowTotalMarketRow: {
+      /** Buy */
+      buy: number;
+      market: components["schemas"]["Market"];
+      /** Name */
+      name: string;
+      /** Sell */
+      sell: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * InstitutionalHolderRow
+     * @description `institutional_holders` — one institutional or mutual-fund holder row (US-style 13F-
+     *     derived disclosure; `holder_type` distinguishes the two source tables).
+     */
+    InstitutionalHolderRow: {
+      /**
+       * Date Reported
+       * Format: date
+       */
+      date_reported: string;
+      /** Holder Name */
+      holder_name: string;
+      /** Holder Type */
+      holder_type: string;
+      market: components["schemas"]["Market"];
+      /** Pct Change */
+      pct_change?: number | null;
+      /** Pct Held */
+      pct_held?: number | null;
+      /** Shares */
+      shares?: number | null;
+      /** Symbol */
+      symbol: string;
+      /** Value */
+      value?: number | null;
     };
     /**
      * InstitutionalStreak
@@ -4918,16 +8951,139 @@ export interface components {
        */
       kind: "institutional_streak";
     };
+    /**
+     * InternationalStockInfoRow
+     * @description `us_stock_info` / `uk_stock_info` / `europe_stock_info` / `japan_stock_info` — one roster
+     *     row of a non-Taiwan market's stock universe reference table. Free tier. `region_detail`
+     *     carries whatever region/exchange/sector column that market's dataset documents (US: Country;
+     *     UK: Country; Europe: Market; Japan: Exchange) — kept as one free-text field rather than four
+     *     diverging optional columns, since none of the four datasets share a common taxonomy for it.
+     */
+    InternationalStockInfoRow: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      market: components["schemas"]["Market"];
+      /** Name */
+      name: string;
+      /** Region Detail */
+      region_detail?: string | null;
+      /** Sector */
+      sector?: string | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * InternationalStockPriceRow
+     * @description `us_stock_price` / `uk_stock_price` / `europe_stock_price` / `japan_stock_price` — one
+     *     day's EOD bar for a non-Taiwan market stock. Free tier. `data_id` for these datasets is the
+     *     market's own quote symbol (e.g. `^DJI`, `BP.L`, `AALB.AS`, `7203.T`), never a Taiwan-style
+     *     numeric `stock_id` — passed straight through as `symbol`, not reparsed.
+     */
+    InternationalStockPriceRow: {
+      /** Adj Close */
+      adj_close: number;
+      /** Close */
+      close: number;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Open */
+      open: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Volume */
+      volume: number;
+    };
     /** InvoiceResponse */
     InvoiceResponse: {
       /** Url */
       url: string | null;
     };
     /**
+     * IpoCalendarRow
+     * @description `ipo_calendar` — one upcoming/recent IPO/offering row (`yfinance.Calendars`).
+     */
+    IpoCalendarRow: {
+      /** Action */
+      action?: string | null;
+      /** Company */
+      company: string;
+      /** Currency */
+      currency?: string | null;
+      /** Exchange */
+      exchange?: string | null;
+      /** Filing Date */
+      filing_date?: string | null;
+      market: components["schemas"]["Market"];
+      /** Offer Date */
+      offer_date?: string | null;
+      /** Price */
+      price?: number | null;
+      /** Price From */
+      price_from?: number | null;
+      /** Price To */
+      price_to?: number | null;
+      /** Shares */
+      shares?: number | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
      * JobStatus
      * @enum {string}
      */
     JobStatus: "ok" | "running" | "skipped_quota" | "error";
+    /**
+     * KBarRow
+     * @description `intraday_kbar` — one minute-bar for one stock. Sponsor-only; single trading day per
+     *     request upstream.
+     */
+    KBarRow: {
+      /** Close */
+      close: number;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Minute */
+      minute: string;
+      /** Open */
+      open: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * KdResult
+     * @description Stochastic oscillator %K / %D. Both series are `None` for `i` inside the warm-up window
+     *     (fewer than `period` bars seen yet) — never a fabricated number standing in for "not enough
+     *     history". `k`/`d` share the same length and warm-up prefix.
+     */
+    KdResult: {
+      /** D */
+      d: (number | null)[];
+      /** K */
+      k: (number | null)[];
+      /** Period */
+      period: number;
+    };
     /** KeyProviders */
     KeyProviders: {
       /** Keys */
@@ -4943,6 +9099,75 @@ export interface components {
       code: string;
       /** Expires In Seconds */
       expires_in_seconds: number;
+    };
+    /**
+     * LivePriceTick
+     * @description One decoded `PricingData` WebSocket message — mapped straight off yfinance's own
+     *     snake_case field names (`MessageToDict(..., preserving_proto_field_name=True)`).
+     */
+    LivePriceTick: {
+      /** Ask */
+      ask?: number | null;
+      /** Ask Size */
+      ask_size?: number | null;
+      /** Bid */
+      bid?: number | null;
+      /** Bid Size */
+      bid_size?: number | null;
+      /** Change */
+      change?: number | null;
+      /** Change Percent */
+      change_percent?: number | null;
+      /** Currency */
+      currency?: string | null;
+      /** Day High */
+      day_high?: number | null;
+      /** Day Low */
+      day_low?: number | null;
+      /** Day Volume */
+      day_volume?: number | null;
+      /** Market Hours */
+      market_hours?: number | null;
+      /** Observed At */
+      observed_at?: string | null;
+      /** Open Price */
+      open_price?: number | null;
+      /** Previous Close */
+      previous_close?: number | null;
+      /** Price */
+      price?: number | null;
+    };
+    /**
+     * LiveQuoteSnapshot
+     * @description One TWSE MIS best-5 bid/ask + last-trade snapshot row.
+     */
+    LiveQuoteSnapshot: {
+      /** Best Ask */
+      best_ask?: string | null;
+      /** Best Ask Volume */
+      best_ask_volume?: string | null;
+      /** Best Bid */
+      best_bid?: string | null;
+      /** Best Bid Volume */
+      best_bid_volume?: string | null;
+      /** High */
+      high: number;
+      /** Last Price */
+      last_price: number;
+      /** Low */
+      low: number;
+      /** Market */
+      market: string;
+      /** Name */
+      name?: string | null;
+      /** Observed At */
+      observed_at?: string | null;
+      /** Open */
+      open: number;
+      /** Symbol */
+      symbol: string;
+      /** Volume */
+      volume: number;
     };
     /**
      * LlmUsageSummary
@@ -4961,6 +9186,56 @@ export interface components {
       /** Providers */
       providers: string[];
       totals: components["schemas"]["UsageTotals"];
+    };
+    /** MacdResult */
+    MacdResult: {
+      /** Dem */
+      dem: (number | null)[];
+      /** Dif */
+      dif: (number | null)[];
+      /** Histogram */
+      histogram: (number | null)[];
+    };
+    /**
+     * MacroReleaseEventRow
+     * @description `macro_calendar` — one upcoming/recent macro-release event row
+     *     (`financecalendar.com`'s `wp-json/fc/v1/calendar` feed, a distinct third-party source from
+     *     `EconomicCalendarRow`'s yfinance `Calendars` feed — see `sources/financecalendar.py`'s own
+     *     module docstring for why this is additive, not a replacement). Modeled `Market.GLOBAL`: the
+     *     feed spans multiple countries (US GDP/CPI/NFP, RBA/ECB/BOJ rate decisions, Australia/Canada/
+     *     Eurozone releases, ...), distinguished only by the free-text `category`/`name` fields, the
+     *     same "no single-country home" reasoning `EconomicCalendarRow` already uses.
+     *
+     *     `consensus`/`prior`/`actual` are deliberately `str | None`, never `float` — the live upstream
+     *     returns human-readable strings ("Hold at 3.50-3.75%", "3.8% annual", "55.6") that mix ranges,
+     *     units, and plain numbers; coercing them to a float would either fail or silently misrepresent
+     *     a range/unit. Render as opaque cited text, never parsed or computed on.
+     */
+    MacroReleaseEventRow: {
+      /** Actual */
+      actual?: string | null;
+      /** Category */
+      category: string;
+      /** Consensus */
+      consensus?: string | null;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Impact */
+      impact: string;
+      market: components["schemas"]["Market"];
+      /** Name */
+      name: string;
+      /** Prior */
+      prior?: string | null;
+      /** Time Utc */
+      time_utc?: string | null;
+      /** Title */
+      title: string;
+      /** Url */
+      url?: string | null;
     };
     /**
      * MarginBalanceChange
@@ -4986,6 +9261,96 @@ export interface components {
        */
       side: "margin" | "short";
     };
+    /**
+     * MarginMaintenanceRatioRow
+     * @description `margin_maintenance_ratio` — one day's whole-market 融資維持率 (margin maintenance ratio)
+     *     reading. Backer/Sponsor-only; market-level, no symbol scope.
+     */
+    MarginMaintenanceRatioRow: {
+      market: components["schemas"]["Market"];
+      /** Total Exchange Margin Maintenance */
+      total_exchange_margin_maintenance: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * MarginShortRow
+     * @description `margin_short` — one day's 融資融劵 (margin purchase / short sale) balance row for one
+     *     stock.
+     */
+    MarginShortRow: {
+      /** Margin Purchase Buy */
+      margin_purchase_buy: number;
+      /** Margin Purchase Cash Repayment */
+      margin_purchase_cash_repayment: number;
+      /** Margin Purchase Limit */
+      margin_purchase_limit: number;
+      /** Margin Purchase Sell */
+      margin_purchase_sell: number;
+      /** Margin Purchase Today Balance */
+      margin_purchase_today_balance: number;
+      /** Margin Purchase Yesterday Balance */
+      margin_purchase_yesterday_balance: number;
+      market: components["schemas"]["Market"];
+      /** Note */
+      note?: string | null;
+      /** Offset Loan And Short */
+      offset_loan_and_short: number;
+      /** Short Sale Buy */
+      short_sale_buy: number;
+      /** Short Sale Cash Repayment */
+      short_sale_cash_repayment: number;
+      /** Short Sale Limit */
+      short_sale_limit: number;
+      /** Short Sale Sell */
+      short_sale_sell: number;
+      /** Short Sale Today Balance */
+      short_sale_today_balance: number;
+      /** Short Sale Yesterday Balance */
+      short_sale_yesterday_balance: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * MarginShortTotalMarketRow
+     * @description `margin_short_total_market` — one day's whole-market margin/short-sale total row for one
+     *     category (`name`, e.g. TWSE/TPEx). Market-level, no symbol scope.
+     */
+    MarginShortTotalMarketRow: {
+      /** Buy */
+      buy: number;
+      market: components["schemas"]["Market"];
+      /** Name */
+      name: string;
+      /** Return */
+      return_: number;
+      /** Sell */
+      sell: number;
+      /** Today Balance */
+      today_balance: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Yesterday Balance */
+      yesterday_balance: number;
+    };
+    /**
+     * Mark
+     * @description The 5 chart shapes this grammar covers. Waterfall/range-bar is `BAR` + `y2`, not a
+     *     separate mark (see `ChartHint.y2`'s own docstring) — kept at 5 rather than 6 marks.
+     * @enum {string}
+     */
+    Mark: "line" | "bar" | "area" | "point" | "arc";
     /** MarkReadRequest */
     MarkReadRequest: {
       /**
@@ -4996,12 +9361,115 @@ export interface components {
       /** Ids */
       ids?: string[] | null;
     };
+    /** MarkedReadResponse */
+    MarkedReadResponse: {
+      /** Marked */
+      marked: number;
+    };
     /**
      * Market
      * @description Drives routing, calendar rules, currency, timezone. Add by config.
      * @enum {string}
      */
     Market: "TW" | "US" | "GB" | "JP" | "HK" | "EU" | "GLOBAL";
+    /**
+     * MarketIndexStripItemRow
+     * @description `market_index_strip` — one item in the TW-tab ticker strip
+     *     (加權指數/櫃買指數/美元/黃金/原油). Free tier only — every underlying dataset this row draws
+     *     from (`TAIEX_5S_INDEX`/`TOTAL_RETURN_INDEX`/`EXCHANGE_RATE`/`GOLD_PRICE`/`CRUDE_OIL_PRICES`)
+     *     is already `DataClass.PUBLIC` at its own dataset declaration; this row never represents a
+     *     Sponsor-tier reading (those render through their own existing tools — `get_tick_snapshot`/
+     *     `get_futures_snapshot`/`get_taiex_vix` — masked like any other Sponsor card, not folded into
+     *     this bundle). `change`/`change_pct` are `None` when only one day's reading is available (no
+     *     prior day to diff against), never a fabricated zero.
+     */
+    MarketIndexStripItemRow: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Change */
+      change?: number | null;
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Key */
+      key: string;
+      /** Label */
+      label: string;
+      /** Value */
+      value: number;
+    };
+    /**
+     * MarketRankingRow
+     * @description One ranked row — the exact column set the 排行榜 reference design shows (名稱/代號, 最新價,
+     *     漲跌, 漲跌幅, 成交量). Every field is read straight from `ScreenerHit.matched_fields`
+     *     (Yahoo's own raw quote fields, already a passthrough dict — see `sources/yfinance/
+     *     screener.py::_quote_to_hit`), never a separate fetch.
+     */
+    MarketRankingRow: {
+      /** Change */
+      change?: number | null;
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Name */
+      name?: string | null;
+      /** Price */
+      price?: number | null;
+      /** Symbol */
+      symbol: string;
+      /** Volume */
+      volume?: number | null;
+    };
+    /**
+     * MaskedTeaser
+     * @description The masked-teaser envelope for an unentitled `sponsor` call — rendered blurred/馬賽克
+     *     with an upgrade CTA by the frontend. Never a hard error/exception; this is a normal,
+     *     successful tool result shape.
+     */
+    MaskedTeaser: {
+      /**
+       * Locked
+       * @default true
+       * @constant
+       */
+      locked: true;
+      /** Preview */
+      preview: string;
+      /**
+       * Required Tier
+       * @enum {string}
+       */
+      required_tier: "premium" | "pro";
+      /** Tool Name */
+      tool_name: string;
+    };
+    /**
+     * MaterialAnnouncement
+     * @description `corporate_actions` — one 重大訊息 (material announcement) disclosure row. Third-party
+     *     regulatory-filing content: `subject`/`detail` remain free Chinese text (that is the actual
+     *     content of the filing), never summarized or translated into a trading signal.
+     */
+    MaterialAnnouncement: {
+      /**
+       * Announced Date
+       * Format: date
+       */
+      announced_date: string;
+      /** Announced Time */
+      announced_time: string;
+      /** Company Name */
+      company_name: string;
+      /** Detail */
+      detail: string;
+      market: components["schemas"]["Market"];
+      /** Qualifying Clause */
+      qualifying_clause?: string | null;
+      /** Subject */
+      subject: string;
+      /** Symbol */
+      symbol: string;
+    };
     /**
      * MaterialAnnouncementPublished
      * @description The company filed a 重大訊息 (material announcement) with the exchange. An event, not a
@@ -5016,6 +9484,38 @@ export interface components {
        * @enum {string}
        */
       kind: "material_announcement";
+    };
+    /**
+     * MaterialAnnouncementRow
+     * @description `corporate_actions` — one 重大訊息 row from the WHOLE-MARKET dump (ingest-owned, one
+     *     partition per day), distinct from `MaterialAnnouncement` (the per-symbol live-fetch shape
+     *     `get_material_announcements` still serves). `category` is a derived bucket computed at
+     *     ingest time (`sources/mops.py::_announcement_category`) from `qualifying_clause` — TWSE's own
+     *     disclosure-rule clause citation (e.g. "第51款"), meaningless to a reader as a raw number, so
+     *     never exposed un-bucketed to a whole-market list view. `qualifying_clause` itself is kept
+     *     alongside `category` rather than dropped, for anyone who wants the raw citation.
+     */
+    MaterialAnnouncementRow: {
+      /**
+       * Announced Date
+       * Format: date
+       */
+      announced_date: string;
+      /** Announced Time */
+      announced_time: string;
+      /** Category */
+      category: string;
+      /** Company Name */
+      company_name: string;
+      /** Detail */
+      detail: string;
+      market: components["schemas"]["Market"];
+      /** Qualifying Clause */
+      qualifying_clause?: string | null;
+      /** Subject */
+      subject: string;
+      /** Symbol */
+      symbol: string;
     };
     /** MeResponse */
     MeResponse: {
@@ -5260,6 +9760,11 @@ export interface components {
       reasoning_tokens: number;
     };
     /**
+     * MomentumPeriod
+     * @enum {string}
+     */
+    MomentumPeriod: "day" | "week" | "month";
+    /**
      * MonthRevenuePublished
      * @description The symbol's monthly-revenue (月營收) figure has been published.
      */
@@ -5270,12 +9775,99 @@ export interface components {
        */
       kind: "month_revenue_published";
     };
+    /**
+     * MonthRevenueRow
+     * @description `month_revenue` — one 月營收 (monthly revenue) filing row for one stock.
+     */
+    MonthRevenueRow: {
+      /** Country */
+      country: string;
+      /** Create Time */
+      create_time?: string | null;
+      market: components["schemas"]["Market"];
+      /** Revenue */
+      revenue: number;
+      /** Revenue Month */
+      revenue_month: number;
+      /** Revenue Year */
+      revenue_year: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * MonthRevenueTrendPoint
+     * @description One filed month's revenue plus its pre-computed MoM/YoY change, cumulative-YoY, a
+     *     same-calendar-month record flag, and (when available) that month's period-end closing price
+     *     — so a skill asking for a "近期月營收趨勢" never forces the model to manually diff adjacent
+     *     rows itself (the same failure class as `InstitutionalFlowRollingNet`: a live
+     *     `earnings-quality` turn's reasoning trace showed the model hand-transcribing raw
+     *     month-revenue rows into a markdown table and running out of response budget before writing
+     *     any prose — the final answer had zero analysis). `mom_pct`/`yoy_pct`/`cumulative_yoy_pct` are
+     *     `None` when the comparison month(s) are absent from `rows`, never a fabricated figure from a
+     *     mismatched month. `period_end_close` is `None` when no `PRICE_EOD` bar exists on or before
+     *     this month's last filed trading day (e.g. a symbol whose price history doesn't reach this far
+     *     back) — never fabricated as an interpolated/estimated price.
+     */
+    MonthRevenueTrendPoint: {
+      /** Cumulative Yoy Pct */
+      cumulative_yoy_pct?: number | null;
+      /**
+       * Is Period High
+       * @default false
+       */
+      is_period_high: boolean;
+      /** Mom Pct */
+      mom_pct?: number | null;
+      /** Period End Close */
+      period_end_close?: number | null;
+      /** Revenue */
+      revenue: number;
+      /** Revenue Month */
+      revenue_month: number;
+      /** Revenue Year */
+      revenue_year: number;
+      /** Yoy Pct */
+      yoy_pct?: number | null;
+    };
     /** MoveItemRequest */
     MoveItemRequest: {
       /** After Id */
       after_id?: string | null;
       /** Target Watchlist Id */
       target_watchlist_id: string;
+    };
+    /**
+     * MovingAverageBundle
+     * @description MA5/10/20/60/120/240 together — 均線排列 (the moving-average stack) is read as a set, not
+     *     one line at a time. MA120/240 were added for the K線 chart's overlay chips; the score/screener
+     *     callers that predate them only ever read `ma5..ma60`, so their existing behavior is
+     *     unaffected.
+     */
+    MovingAverageBundle: {
+      ma10: components["schemas"]["SmaResult"];
+      ma120: components["schemas"]["SmaResult"];
+      ma20: components["schemas"]["SmaResult"];
+      ma240: components["schemas"]["SmaResult"];
+      ma5: components["schemas"]["SmaResult"];
+      ma60: components["schemas"]["SmaResult"];
+    };
+    /** NewsFeedItemOut */
+    NewsFeedItemOut: {
+      /** Link */
+      link: string;
+      /** Published At */
+      published_at: string;
+      /** Source */
+      source: string;
+      /** Summary */
+      summary?: string | null;
+      /** Title */
+      title: string;
     };
     /**
      * Notification
@@ -5365,6 +9957,232 @@ export interface components {
      */
     ObtainedVia: "pull" | "admin";
     /**
+     * OptionContractRow
+     * @description `options_chain` — one option contract row (one strike, one side) for one expiry.
+     */
+    OptionContractRow: {
+      /** Ask */
+      ask?: number | null;
+      /** Bid */
+      bid?: number | null;
+      /** Contract Symbol */
+      contract_symbol: string;
+      /**
+       * Expiry
+       * Format: date
+       */
+      expiry: string;
+      /** Implied Volatility */
+      implied_volatility?: number | null;
+      /**
+       * In The Money
+       * @default false
+       */
+      in_the_money: boolean;
+      /** Last Price */
+      last_price?: number | null;
+      market: components["schemas"]["Market"];
+      /** Open Interest */
+      open_interest?: number | null;
+      /** Side */
+      side: string;
+      /** Strike */
+      strike: number;
+      /** Symbol */
+      symbol: string;
+      /** Volume */
+      volume?: number | null;
+    };
+    /**
+     * OptionDailyRow
+     * @description `option_daily` — one day's option contract EOD price/volume row.
+     */
+    OptionDailyRow: {
+      /** Call Put */
+      call_put: string;
+      /** Close */
+      close: number;
+      /** Contract Date */
+      contract_date: string;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Open */
+      open: number;
+      /** Open Interest */
+      open_interest: number;
+      /** Settlement Price */
+      settlement_price: number;
+      /** Strike Price */
+      strike_price: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Trading Session */
+      trading_session: string;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * OptionInstitutionalFlowRow
+     * @description `option_institutional_flow` — one day's three-major-institutional-investor option
+     *     buy/sell + open-interest-balance row, split by `call_put`. The upstream columns for this
+     *     dataset do not include a per-contract identifier, so on a whole-market (omit-`data_id`) call
+     *     `symbol` reads empty — a documented upstream gap, not a mapper defect.
+     */
+    OptionInstitutionalFlowRow: {
+      /** Call Put */
+      call_put: string;
+      /** Investor */
+      investor: string;
+      /** Long Deal Amount */
+      long_deal_amount: number;
+      /** Long Deal Volume */
+      long_deal_volume: number;
+      /** Long Open Interest Balance Amount */
+      long_open_interest_balance_amount: number;
+      /** Long Open Interest Balance Volume */
+      long_open_interest_balance_volume: number;
+      market: components["schemas"]["Market"];
+      /** Short Deal Amount */
+      short_deal_amount: number;
+      /** Short Deal Volume */
+      short_deal_volume: number;
+      /** Short Open Interest Balance Amount */
+      short_open_interest_balance_amount: number;
+      /** Short Open Interest Balance Volume */
+      short_open_interest_balance_volume: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * OptionOiLargeTradersRow
+     * @description `option_oi_large_traders` — one day's 大額交易人未沖銷部位 (large-trader open-interest
+     *     concentration) row for one option contract type, split by `put_call`. Backer/Sponsor-only.
+     */
+    OptionOiLargeTradersRow: {
+      /** Buy Top10 Specific Open Interest */
+      buy_top10_specific_open_interest: number;
+      /** Buy Top10 Specific Open Interest Per */
+      buy_top10_specific_open_interest_per: number;
+      /** Buy Top10 Trader Open Interest */
+      buy_top10_trader_open_interest: number;
+      /** Buy Top10 Trader Open Interest Per */
+      buy_top10_trader_open_interest_per: number;
+      /** Buy Top5 Specific Open Interest */
+      buy_top5_specific_open_interest: number;
+      /** Buy Top5 Specific Open Interest Per */
+      buy_top5_specific_open_interest_per: number;
+      /** Buy Top5 Trader Open Interest */
+      buy_top5_trader_open_interest: number;
+      /** Buy Top5 Trader Open Interest Per */
+      buy_top5_trader_open_interest_per: number;
+      /** Contract Type */
+      contract_type: string;
+      market: components["schemas"]["Market"];
+      /** Market Open Interest */
+      market_open_interest: number;
+      /** Name */
+      name: string;
+      /** Put Call */
+      put_call: string;
+      /** Sell Top10 Specific Open Interest */
+      sell_top10_specific_open_interest: number;
+      /** Sell Top10 Specific Open Interest Per */
+      sell_top10_specific_open_interest_per: number;
+      /** Sell Top10 Trader Open Interest */
+      sell_top10_trader_open_interest: number;
+      /** Sell Top10 Trader Open Interest Per */
+      sell_top10_trader_open_interest_per: number;
+      /** Sell Top5 Specific Open Interest */
+      sell_top5_specific_open_interest: number;
+      /** Sell Top5 Specific Open Interest Per */
+      sell_top5_specific_open_interest_per: number;
+      /** Sell Top5 Trader Open Interest */
+      sell_top5_trader_open_interest: number;
+      /** Sell Top5 Trader Open Interest Per */
+      sell_top5_trader_open_interest_per: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * OptionVixRow
+     * @description `option_vix` — one 臺指選擇權波動率指數 (TAIEX option volatility index) reading.
+     *     Backer/Sponsor-only; market-level, no symbol scope.
+     */
+    OptionVixRow: {
+      market: components["schemas"]["Market"];
+      /** Time */
+      time: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Vix */
+      vix: number;
+    };
+    /**
+     * OrderBookStatsRow
+     * @description `order_book_stats` — one 5-second whole-exchange order-book/trade aggregate. Market-level,
+     *     no symbol scope; single trading day per request upstream.
+     */
+    OrderBookStatsRow: {
+      market: components["schemas"]["Market"];
+      /** Time */
+      time: string;
+      /** Total Buy Order */
+      total_buy_order: number;
+      /** Total Buy Volume */
+      total_buy_volume: number;
+      /** Total Deal Money */
+      total_deal_money: number;
+      /** Total Deal Order */
+      total_deal_order: number;
+      /** Total Deal Volume */
+      total_deal_volume: number;
+      /** Total Sell Order */
+      total_sell_order: number;
+      /** Total Sell Volume */
+      total_sell_volume: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * OverlapHoldingRow
+     * @description One holding present in 2+ of the requested ETFs — the row shape the "which ETFs hold
+     *     this, at what weight" view needs.
+     */
+    OverlapHoldingRow: {
+      /** Held By */
+      held_by: string[];
+      /** Holding Name */
+      holding_name: string;
+      /** Holding Symbol */
+      holding_symbol: string;
+      /** Weight By Etf */
+      weight_by_etf: number[];
+    };
+    /**
      * OwnedPet
      * @description One `user_pets` row — an owned, possibly-equipped pet.
      */
@@ -5397,6 +10215,21 @@ export interface components {
     OwnedPetsResponse: {
       /** Pets */
       pets: components["schemas"]["OwnedPet"][];
+    };
+    /**
+     * PairOverlapRow
+     * @description One (etf_a, etf_b) pair's overlap percentage — sum of `min(weight_in_a, weight_in_b)`
+     *     over every holding both hold (see module docstring for why this convention was chosen).
+     */
+    PairOverlapRow: {
+      /** Etf A */
+      etf_a: string;
+      /** Etf B */
+      etf_b: string;
+      /** Overlap Pct */
+      overlap_pct: number;
+      /** Shared Holding Count */
+      shared_holding_count: number;
     };
     /** PatchItemRequest */
     PatchItemRequest: {
@@ -5592,6 +10425,74 @@ export interface components {
       /** Portal Url */
       portal_url: string | null;
     };
+    /**
+     * PresetCondition
+     * @description One condition inside a preset — the same shape `run_screener` accepts, minus the `market`
+     *     wrapper (a preset is scoped to one market by construction).
+     */
+    PresetCondition: {
+      /** Factor */
+      factor: string;
+      op: components["schemas"]["ScreenerOperator"];
+      /** Value */
+      value?: number | string | null;
+      /** Value2 */
+      value2?: number | string | null;
+    };
+    /**
+     * PriceLimitRow
+     * @description `price_limit` — one day's reference/limit-up/limit-down price row for one stock.
+     *     `limit_up`/`limit_down` of 0 means no price-change limit applies (leveraged/inverse ETFs,
+     *     emerging-board stocks).
+     */
+    PriceLimitRow: {
+      /** Limit Down */
+      limit_down: number;
+      /** Limit Up */
+      limit_up: number;
+      market: components["schemas"]["Market"];
+      /** Reference Price */
+      reference_price: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /** PriceMomentumRow */
+    PriceMomentumRow: {
+      /** Pct Change */
+      pct_change: number;
+      /** Stock Name */
+      stock_name: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * PriceTickRow
+     * @description `price_tick` — one tick-level trade record. Backer/Sponsor-only; single trading day per
+     *     request upstream.
+     */
+    PriceTickRow: {
+      /** Deal Price */
+      deal_price: number;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Tick Type */
+      tick_type: string;
+      /** Time */
+      time: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Volume */
+      volume: number;
+    };
     /** PricedPlan */
     PricedPlan: {
       /** Byok */
@@ -5610,6 +10511,25 @@ export interface components {
     ProfileResponse: {
       entitlements: components["schemas"]["EntitlementView"];
       user: components["schemas"]["User"];
+    };
+    /** PttPostOut */
+    PttPostOut: {
+      /** Author */
+      author: string;
+      /** Board */
+      board: string;
+      /** Board Tag */
+      board_tag: string;
+      /** Link */
+      link: string;
+      /** Post Tag */
+      post_tag?: string | null;
+      /** Posted Date */
+      posted_date?: string | null;
+      /** Push Count */
+      push_count: string;
+      /** Title */
+      title: string;
     };
     /**
      * PullOutcome
@@ -5658,6 +10578,14 @@ export interface components {
       start: string;
     };
     /**
+     * RankingKind
+     * @description One tab of the 排行榜 card. `TRENDING` is Yahoo's own named screen (no sort field of our
+     *     own choosing); every other kind is a custom query sorted by the matching Yahoo screener
+     *     field — see each's own `_SORT_FIELD_BY_KIND`/`_CURRENCY_FILTERED_KINDS` entry below.
+     * @enum {string}
+     */
+    RankingKind: "trending" | "market_cap" | "revenue" | "roe" | "volume";
+    /**
      * Rarity
      * @enum {string}
      */
@@ -5696,6 +10624,29 @@ export interface components {
       data?: {
         [key: string]: unknown;
       };
+    };
+    /** RunScreenerOutput */
+    RunScreenerOutput: {
+      /**
+       * Degraded
+       * @description Human-readable notes on any condition this pass could not evaluate (e.g. an unknown factor key) — never silently dropped.
+       */
+      degraded?: string[];
+      /** Detail */
+      detail: string;
+      funnel: components["schemas"]["FunnelCounts"];
+      /** Market */
+      market: string;
+      /** Survivors */
+      survivors?: components["schemas"]["ScreenerSurvivor"][];
+    };
+    /** RunScreenerOutputWrapper */
+    RunScreenerOutputWrapper: {
+      result: components["schemas"]["RunScreenerOutput"];
+    };
+    /** RunTagScreenerOutput */
+    RunTagScreenerOutput: {
+      result: components["schemas"]["TagScreenerResult"];
     };
     /** SaveScreenerScreenRequest */
     SaveScreenerScreenRequest: {
@@ -5799,11 +10750,67 @@ export interface components {
       schedules: components["schemas"]["ScheduleJob"][];
     };
     /**
+     * ScoreBand
+     * @description A descriptive label of what the current factor mix shows — never an instruction. No
+     *     band value may ever be a buy/sell/hold word; this enum is the single place that mapping is
+     *     defined, so it can't drift per call site.
+     * @enum {string}
+     */
+    ScoreBand: "偏多" | "中性" | "偏空";
+    /**
      * ScoreProfile
      * @description Which of the two horizon-aware weight profiles produced this score.
      * @enum {string}
      */
     ScoreProfile: "swing" | "position";
+    /**
+     * ScoreResult
+     * @description The composite's full, transparent output: the number, the band, and the factor
+     *     breakdown behind it — the number is never surfaced without its basis (governance's "show
+     *     the work" rule). Nothing here is, or may become, buy/sell/hold/price-target/position-sizing
+     *     language.
+     *
+     *     `breakdown` is `StockScoreBreakdown` for a plain equity, `EtfScoreBreakdown` for any ETF
+     *     (plain/active/leveraged/inverse) — the two shapes have different factor names by design
+     *     (see each breakdown's own docstring for why the factor sets genuinely differ, not just a
+     *     naming variation). Callers branch on `isinstance(result.breakdown, EtfScoreBreakdown)` (or
+     *     check `symbol_type`) rather than assuming one fixed shape.
+     */
+    ScoreResult: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      band: components["schemas"]["ScoreBand"];
+      /** Breakdown */
+      breakdown:
+        | components["schemas"]["StockScoreBreakdown"]
+        | components["schemas"]["UsStockScoreBreakdown"]
+        | components["schemas"]["EtfScoreBreakdown"];
+      /** Composite */
+      composite?: number | null;
+      market: components["schemas"]["Market"];
+      /** Non Trading Caveat */
+      non_trading_caveat: string;
+      /**
+       * Normalization Caveat
+       * @description How the cross-sectional factors were standardized — in particular whether value/quality were compared against sector peers or, absent an ingested sector classification, the whole universe (disclosed, never silently presented as sector-relative).
+       */
+      normalization_caveat: string;
+      /**
+       * Partial Factors
+       * @description Names of factors that were unavailable and excluded from the composite — disclosed explicitly, never a silent degradation.
+       * @default []
+       */
+      partial_factors: string[];
+      profile: components["schemas"]["ScoreProfile"];
+      /** Regime Caveat */
+      regime_caveat: string;
+      /** Symbol */
+      symbol: string;
+      symbol_type: components["schemas"]["SymbolType"];
+    };
     /**
      * ScreenerOperator
      * @description `gt/gte/lt/lte/eq` are single-value comparisons; `between` takes `value`+`value2`
@@ -5812,6 +10819,38 @@ export interface components {
      * @enum {string}
      */
     ScreenerOperator: "gt" | "gte" | "lt" | "lte" | "eq" | "between" | "in";
+    /**
+     * ScreenerPreset
+     * @description One named preset: a category, bilingual labels, a one-line description, a directional cue
+     *     (`bull`/`bear`/`neutral`, drives the card's left-edge bar per README.md §3), and the condition
+     *     set + match mode it loads into the builder.
+     */
+    ScreenerPreset: {
+      /** Category */
+      category: string;
+      /** Conditions */
+      conditions: components["schemas"]["PresetCondition"][];
+      /** Description */
+      description: string;
+      /**
+       * Direction
+       * @default neutral
+       * @enum {string}
+       */
+      direction: "bull" | "bear" | "neutral";
+      /** Key */
+      key: string;
+      /** Label En */
+      label_en: string;
+      /** Label Zh */
+      label_zh: string;
+      /**
+       * Match
+       * @default AND
+       * @enum {string}
+       */
+      match: "AND" | "OR";
+    };
     /** ScreenerRunConditionBody */
     ScreenerRunConditionBody: {
       /** Factor */
@@ -5877,12 +10916,372 @@ export interface components {
        */
       size: number;
     };
+    /** ScreenerScreen */
+    ScreenerScreen: {
+      /** Conditions */
+      conditions?: {
+        [key: string]: unknown;
+      }[];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Gate Overrides */
+      gate_overrides?: {
+        [key: string]: unknown;
+      } | null;
+      /** Id */
+      id: string;
+      /** Market */
+      market: string;
+      /**
+       * Match
+       * @default AND
+       * @enum {string}
+       */
+      match: "AND" | "OR";
+      /** Name */
+      name: string;
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+      /** User Id */
+      user_id: string;
+    };
+    /**
+     * ScreenerSurvivor
+     * @description One row surviving gates+setup. `matched_conditions` names which requested conditions this
+     *     symbol satisfied (AND: all of them; OR: the satisfied subset) — same "show the work"
+     *     transparency rule `TagScreenerHit.matched_tags` already uses.
+     *
+     *     `display` carries a small set of already-fetched quote fields for the results table to
+     *     render without a second per-symbol lookup — populated only for US (Yahoo's screener response
+     *     already includes `regularMarketPrice`/`marketCap`/etc. for every hit; TW/ETF survivors get
+     *     their price/volume/sector from the existing `useSymbolQuotes` batched read instead, so this
+     *     stays empty for those markets rather than duplicating that path).
+     */
+    ScreenerSurvivor: {
+      /** Display */
+      display?: {
+        [key: string]: number | string | boolean | null;
+      };
+      /** Matched Conditions */
+      matched_conditions?: string[];
+      /** Symbol */
+      symbol: string;
+    };
+    /** ScreensResponse */
+    ScreensResponse: {
+      /** Screens */
+      screens: components["schemas"]["ScreenerScreen"][];
+    };
+    /**
+     * SecFiling
+     * @description `sec_filings` — one SEC EDGAR filing row for a listed US company (yfinance's
+     *     `Ticker.get_sec_filings()`). Third-party regulatory-filing content: `title`/`type` are the
+     *     filing's own metadata, never summarized into a trading signal. US-only — no equivalent feed
+     *     exists for any other market this codebase serves.
+     */
+    SecFiling: {
+      /** Edgar Url */
+      edgar_url?: string | null;
+      /**
+       * Filing Date
+       * Format: date
+       */
+      filing_date: string;
+      /** Filing Type */
+      filing_type: string;
+      market: components["schemas"]["Market"];
+      /** Symbol */
+      symbol: string;
+      /** Title */
+      title: string;
+    };
     /**
      * SecretKind
      * @description `user_secrets.kind` vocabulary. `LLM_KEY` is the BYOK case that lifts the chat limit.
      * @enum {string}
      */
     SecretKind: "llm_key" | "finmind_token" | "channel_token" | "asr_key" | "tts_key";
+    /**
+     * SectorConstituentRow
+     * @description One stock within a `get_sector_heatmap` industry tile — the per-symbol breakdown a
+     *     treemap drill-down needs, which `SectorHeatmapRow` itself deliberately only aggregates.
+     */
+    SectorConstituentRow: {
+      /** Close */
+      close: number;
+      /** Industry */
+      industry: string;
+      /** Pct Change */
+      pct_change: number;
+      /** Stock Name */
+      stock_name: string;
+      /** Symbol */
+      symbol: string;
+      /** Turnover */
+      turnover?: number | null;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * SectorHeatmapPeriod
+     * @enum {string}
+     */
+    SectorHeatmapPeriod:
+      | "immediate"
+      | "week"
+      | "two_weeks"
+      | "month"
+      | "quarter"
+      | "half_year"
+      | "year";
+    /**
+     * SectorHeatmapRow
+     * @description One industry's aggregate tile — colored by `avg_pct_change`, sized by `stock_count` (or
+     *     `total_turnover`, when trading-value weighting was available for this industry).
+     */
+    SectorHeatmapRow: {
+      /** Advancing Count */
+      advancing_count: number;
+      /** Avg Pct Change */
+      avg_pct_change: number;
+      /** Declining Count */
+      declining_count: number;
+      /** Industry */
+      industry: string;
+      /** Stock Count */
+      stock_count: number;
+      /** Total Market Value */
+      total_market_value?: number | null;
+      /** Total Turnover */
+      total_turnover?: number | null;
+      /** Total Volume */
+      total_volume: number;
+      /** Weighted By Turnover */
+      weighted_by_turnover: boolean;
+    };
+    /**
+     * SectorHeatmapSizeBy
+     * @enum {string}
+     */
+    SectorHeatmapSizeBy: "turnover" | "market_value" | "volume";
+    /**
+     * SectorIndustryWeightRow
+     * @description One row of `yfinance.Sector.industries` — this sector's own industry breakdown by market
+     *     weight (e.g. Technology -> Semiconductors 38%, Software-Infrastructure 21%, ...). The data
+     *     source for a sector-industries composition treemap; distinct from `IndustryOverviewCompanyRow`
+     *     (a company within ONE industry) — this is industries within ONE sector.
+     */
+    SectorIndustryWeightRow: {
+      /** Industry Key */
+      industry_key: string;
+      market: components["schemas"]["Market"];
+      /** Market Weight */
+      market_weight: number;
+      /** Name */
+      name: string;
+      /** Sector Key */
+      sector_key: string;
+    };
+    /**
+     * SectorOverviewCompanyRow
+     * @description `sector_overview` — one top-company/top-ETF/top-mutual-fund row within one
+     *     `yfinance.Sector` aggregate view. `row_kind` distinguishes the three sub-lists this
+     *     capability folds together rather than splitting into three near-duplicate capabilities.
+     */
+    SectorOverviewCompanyRow: {
+      market: components["schemas"]["Market"];
+      /** Market Weight */
+      market_weight?: number | null;
+      /** Name */
+      name: string;
+      /** Rating */
+      rating?: string | null;
+      /** Row Kind */
+      row_kind: string;
+      /** Sector Key */
+      sector_key: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * SectorOverviewStats
+     * @description `sector_overview`'s aggregate-level stats — `yfinance.Sector.overview`'s own dict, mapped
+     *     1:1. Distinct from `SectorOverviewCompanyRow` (a per-company row): this is the ONE summary
+     *     for the whole sector aggregate itself, not a company within it.
+     */
+    SectorOverviewStats: {
+      /** Companies Count */
+      companies_count?: number | null;
+      /** Description */
+      description?: string | null;
+      /** Employee Count */
+      employee_count?: number | null;
+      market: components["schemas"]["Market"];
+      /** Market Cap */
+      market_cap?: number | null;
+      /** Market Weight */
+      market_weight?: number | null;
+      /** Sector Key */
+      sector_key: string;
+    };
+    /**
+     * SectorRotationDayRow
+     * @description One industry's rank + net institutional flow for one trading day within the rotation
+     *     window.
+     */
+    SectorRotationDayRow: {
+      /** Industry */
+      industry: string;
+      /** Net Flow */
+      net_flow: number;
+      /** Rank */
+      rank: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * SectorRrgSeries
+     * @description One industry sub-index's full RRG history — a trail `CometTail`/`RankPanel` renders.
+     */
+    SectorRrgSeries: {
+      /** Industry Id */
+      industry_id: string;
+      /** Industry Name */
+      industry_name: string;
+      /** Points */
+      points?: components["schemas"]["SectorRrgWeekPoint"][];
+      /** Weight */
+      weight: number;
+    };
+    /**
+     * SectorRrgWeekPoint
+     * @description One industry's RS-Ratio/RS-Momentum reading for one ISO week — the JdK relative-rotation
+     *     coordinate pair `RotationCanvas` plots per sector per week.
+     */
+    SectorRrgWeekPoint: {
+      /** Rs Momentum */
+      rs_momentum: number;
+      /** Rs Ratio */
+      rs_ratio: number;
+      /**
+       * Week Ending
+       * Format: date
+       */
+      week_ending: string;
+      /** Weekly Change Pct */
+      weekly_change_pct: number;
+    };
+    /**
+     * SecuritiesLendingRow
+     * @description `securities_lending` — one 借券成交 (securities-lending transaction) row for one stock.
+     */
+    SecuritiesLendingRow: {
+      /** Close */
+      close: number;
+      /** Fee Rate */
+      fee_rate: number;
+      market: components["schemas"]["Market"];
+      /** Original Lending Period */
+      original_lending_period?: string | null;
+      /** Original Return Date */
+      original_return_date?: string | null;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Transaction Type */
+      transaction_type: string;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * ShareholdingDistributionRow
+     * @description `shareholding_distribution` — one 股權持股分級表 (shareholding-level distribution) row for
+     *     one stock. Backer/Sponsor-only.
+     */
+    ShareholdingDistributionRow: {
+      /** Holding Shares Level */
+      holding_shares_level: string;
+      market: components["schemas"]["Market"];
+      /** People */
+      people: number;
+      /** Percent */
+      percent: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Unit */
+      unit: number;
+    };
+    /**
+     * SignalTag
+     * @description One boolean 訊號 tag, the catalog's copy of a `TagDefinition` (see `catalog.py`) reshaped
+     *     for the condition builder's Signals sub-mode — a checklist item, not a slider row.
+     */
+    SignalTag: {
+      /** @default public */
+      data_class: components["schemas"]["DataClass"];
+      /** Description */
+      description: string;
+      /** Family */
+      family: string;
+      /** Key */
+      key: string;
+      /** Label En */
+      label_en: string;
+      /** Label Zh */
+      label_zh: string;
+    };
+    /**
+     * SmaResult
+     * @description Simple moving average. `values[i] is None` for `i` inside the warm-up window (fewer
+     *     than `window` bars seen yet) — never a fabricated number standing in for "not enough
+     *     history".
+     */
+    SmaResult: {
+      /** Values */
+      values: (number | null)[];
+      /** Window */
+      window: number;
+    };
+    /**
+     * SourceHealthEntryOut
+     * @description One capability's currentness/closure diagnostic — mirrors `SourceHealthEntry` without
+     *     re-exporting `context/`'s own model as a tool output type.
+     */
+    SourceHealthEntryOut: {
+      capability: components["schemas"]["Capability"];
+      /** Currentness Caveat */
+      currentness_caveat: string;
+      /** Detail */
+      detail: string;
+      /** Source Id */
+      source_id: string;
+      status: components["schemas"]["HealthStatus"];
+    };
+    /** SourceMatrixEntry */
+    SourceMatrixEntry: {
+      capability: components["schemas"]["Capability"];
+      market: components["schemas"]["Market"];
+      /** Source Id */
+      source_id: string;
+    };
     /** SpeakRequest */
     SpeakRequest: {
       /**
@@ -5915,6 +11314,146 @@ export interface components {
     SteeringBlock: {
       /** Text */
       text: string;
+    };
+    /**
+     * StockHeatmapRow
+     * @description One stock's own tile — colored by its close-to-close `pct_change` over `period`, sized by
+     *     whichever `size_by` metric `get_stock_heatmap` was asked for. The per-symbol counterpart to
+     *     `SectorHeatmapRow`'s per-industry aggregate; `industry` rides along so the frontend can group/
+     *     label tiles by sector even though this tool's own ranking is flat across the whole market.
+     */
+    StockHeatmapRow: {
+      /** Close */
+      close: number;
+      /** Industry */
+      industry: string;
+      /** Market Value */
+      market_value?: number | null;
+      /** Pct Change */
+      pct_change: number;
+      /** Stock Name */
+      stock_name: string;
+      /** Symbol */
+      symbol: string;
+      /** Turnover */
+      turnover?: number | null;
+      /** Volume */
+      volume: number;
+    };
+    /**
+     * StockInfoRow
+     * @description `stock_info` / `stock_info_with_warrant` — one roster row of the Taiwan stock/warrant
+     *     universe reference table.
+     */
+    StockInfoRow: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Industry Category */
+      industry_category: string;
+      market: components["schemas"]["Market"];
+      /** Name */
+      name: string;
+      /** Security Type */
+      security_type: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * StockNewsRow
+     * @description `stock_news` — one FinMind-sourced news item for one stock. Third-party content: cite,
+     *     never restate as our own analysis. Distinct from the `news` capability's RSS/Finnhub
+     *     aggregator (`sources/news.py`) — this is FinMind's own dataset, wired the same as every
+     *     other FinMind capability. Free tier; single trading day per request upstream.
+     */
+    StockNewsRow: {
+      /** Description */
+      description: string;
+      /** Link */
+      link: string;
+      market: components["schemas"]["Market"];
+      /** Source */
+      source: string;
+      /** Symbol */
+      symbol: string;
+      /** Title */
+      title: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+    };
+    /**
+     * StockScoreBreakdown
+     * @description The 5-factor breakdown for a plain equity. Company-fundamentals-based (value/quality) and
+     *     price-technical (momentum/trend) factors — meaningless for an ETF, which has no earnings/
+     *     balance sheet of its own (see `EtfScoreBreakdown` for the ETF-specific factor set).
+     */
+    StockScoreBreakdown: {
+      momentum: components["schemas"]["FactorScore"];
+      quality: components["schemas"]["FactorScore"];
+      revenue_flow: components["schemas"]["FactorScore"];
+      trend_quality: components["schemas"]["FactorScore"];
+      value_guard: components["schemas"]["FactorScore"];
+    };
+    /**
+     * StockSwot
+     * @description The four SWOT quadrants for the AI-generated stock summary — every bullet is grounded in
+     *     one of `ScoreResult.breakdown`'s factors (see `analytics/summary_generation.py`'s prompt),
+     *     never fabricated beyond what the score already discloses. Any quadrant may be empty (e.g. no
+     *     factor supported a "threats" bullet that day) — an empty tuple, never a filler sentence.
+     */
+    StockSwot: {
+      /**
+       * Opportunities
+       * @default []
+       */
+      opportunities: string[];
+      /**
+       * Strengths
+       * @default []
+       */
+      strengths: string[];
+      /**
+       * Threats
+       * @default []
+       */
+      threats: string[];
+      /**
+       * Weaknesses
+       * @default []
+       */
+      weaknesses: string[];
+    };
+    /**
+     * SubIndustryHeat
+     * @description One sub-industry tile — `pct_change` is the simple average close-to-close percentage
+     *     change across every one of that sub-industry's member symbols that had a real close on both
+     *     days (never a partial figure silently presented as the whole group's), `null` when none did.
+     *     `member_count`/`priced_member_count` let a caller show "產業鏈一製藥" or the reference app's
+     *     own member-count style label; a large gap between the two means most members had no price
+     *     data for this window, which the frontend should treat as a thinner signal.
+     */
+    SubIndustryHeat: {
+      /**
+       * Member Count
+       * @default 0
+       */
+      member_count: number;
+      /** Pct Change */
+      pct_change?: number | null;
+      /**
+       * Priced Member Count
+       * @default 0
+       */
+      priced_member_count: number;
+      /** Sub Industry */
+      sub_industry: string;
+      tier: components["schemas"]["ThemeTierName"];
+      tier_source: components["schemas"]["ThemeTierSource"];
     };
     /**
      * SubscriptionRecord
@@ -5965,15 +11504,231 @@ export interface components {
       byok_active: boolean;
       subscription: components["schemas"]["SubscriptionRecord"] | null;
     };
+    /**
+     * SupplyChainEdge
+     * @description One directed supply-chain relationship between two symbols, as written by the seed or the
+     *     in-theme edge generator and read back for provenance display.
+     */
+    SupplyChainEdge: {
+      confidence: components["schemas"]["EdgeConfidence"];
+      edge_type: components["schemas"]["EdgeType"];
+      /**
+       * From Name
+       * @default
+       */
+      from_name: string;
+      /** From Symbol */
+      from_symbol: string;
+      /** Market */
+      market: string;
+      /** Revenue Pct */
+      revenue_pct?: number | null;
+      source: components["schemas"]["EdgeSource"];
+      /**
+       * To Name
+       * @default
+       */
+      to_name: string;
+      /** To Symbol */
+      to_symbol: string;
+    };
+    /**
+     * SupportResistanceLevel
+     * @description One 支撐/壓力 price level — a swing pivot's price plus which bar index it pivoted at, so
+     *     a caller can place the level's h-line/label from `bar_index` alone rather than re-deriving
+     *     an offset from `len(bars)`. `kind` is a plain descriptive label ("support"/"resistance"),
+     *     never a trading instruction.
+     */
+    SupportResistanceLevel: {
+      /** Bar Index */
+      bar_index: number;
+      /** Kind */
+      kind: string;
+      /** Price */
+      price: number;
+    };
+    /**
+     * SupportResistanceResult
+     * @description 支撐/壓力 levels detected over the supplied bar window — see
+     *     `analytics/structure.py::support_resistance_levels` for the swing-pivot detection rule.
+     *     Levels are ordered by `bar_index` ascending (oldest pivot first).
+     */
+    SupportResistanceResult: {
+      /** Levels */
+      levels?: components["schemas"]["SupportResistanceLevel"][];
+    };
     /** SwitchBranchRequest */
     SwitchBranchRequest: {
       /** Target Message Id */
       target_message_id: string;
     };
+    /** SymbolCheckResponse */
+    SymbolCheckResponse: {
+      /** Checked */
+      checked: boolean;
+      /** Exists */
+      exists: boolean;
+    };
+    /**
+     * SymbolDirectorySearchRow
+     * @description `symbol_directory_search` — one ranked match from the ingested `TaiwanStockInfo` roster
+     *     (`StockInfoRow`) for a free-text symbol/name query. `instrument_kind` is derived from the
+     *     symbol's code shape (`analytics.symbol_universe.classify_symbol_type`), collapsing
+     *     leveraged/inverse ETFs into `"etf"` — this is a UI-facing search-result row, not the roster
+     *     row itself, so it carries only what a type-ahead result needs.
+     */
+    SymbolDirectorySearchRow: {
+      /** Industry Category */
+      industry_category?: string | null;
+      /**
+       * Instrument Kind
+       * @enum {string}
+       */
+      instrument_kind: "stock" | "etf";
+      /** Name */
+      name: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * SymbolQuoteRow
+     * @description One list row. `change`/`change_pct` are always the DAILY move (latest close vs. the
+     *     previous trading day's close), whatever `days` the sparkline spans; `None` when fewer than
+     *     two bars exist. `name` is `None` for a symbol absent from the roster, never a placeholder.
+     */
+    SymbolQuoteRow: {
+      /** Change */
+      change?: number | null;
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Close */
+      close?: number | null;
+      /** Industry Category */
+      industry_category?: string | null;
+      /** Name */
+      name?: string | null;
+      /** Prev Close */
+      prev_close?: number | null;
+      /** Sparkline */
+      sparkline?: number[];
+      /** Symbol */
+      symbol: string;
+      /** Trade Date */
+      trade_date?: string | null;
+      /** Volume */
+      volume?: number | null;
+    };
+    /**
+     * SymbolSearchResultRow
+     * @description `symbol_search` — one `yfinance.Search` quote match for a free-text query (e.g.
+     *     "台積電"/"TSMC"→2330.TW; general multi-market name/ticker resolution).
+     */
+    SymbolSearchResultRow: {
+      /** Exchange */
+      exchange: string;
+      /** Industry */
+      industry?: string | null;
+      /** Long Name */
+      long_name?: string | null;
+      /** Query */
+      query: string;
+      /** Quote Type */
+      quote_type?: string | null;
+      /** Score */
+      score?: number | null;
+      /** Sector */
+      sector?: string | null;
+      /** Short Name */
+      short_name?: string | null;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * SymbolTheme
+     * @description One row of the reverse lookup — a theme a symbol belongs to, plus that membership's
+     *     own sub-industry/confidence for the symbol.
+     */
+    SymbolTheme: {
+      /**
+       * Confidence
+       * @default 1
+       */
+      confidence: number;
+      kind: components["schemas"]["ThemeKind"];
+      /** Name Zh */
+      name_zh: string;
+      /**
+       * Sub Industry
+       * @default
+       */
+      sub_industry: string;
+      /** Theme Key */
+      theme_key: string;
+    };
+    /**
+     * SymbolType
+     * @description Which scoring branch a symbol belongs to — the discriminator `scoring_batch.py` uses to
+     *     pick `StockScoreBreakdown` vs `EtfScoreBreakdown` (see `analytics/models.py`). Plain equities
+     *     and ETFs need entirely different factors (an ETF has no ROE/EV-EBITDA of its own; a leveraged/
+     *     inverse ETF's daily-rebalancing decay makes the stock-style trend-template actively
+     *     misleading, not just unavailable — see the design discussion this module implements).
+     * @enum {string}
+     */
+    SymbolType: "stock" | "etf" | "etf_leveraged" | "etf_inverse";
     /** SyncRequest */
     SyncRequest: {
       /** Transaction Id */
       transaction_id: string;
+    };
+    /** TagCatalogCategory */
+    TagCatalogCategory: {
+      /** Category */
+      category: string;
+      /** Tags */
+      tags: components["schemas"]["TagCatalogEntry"][];
+    };
+    /** TagCatalogEntry */
+    TagCatalogEntry: {
+      data_class: components["schemas"]["DataClass"];
+      /** Description */
+      description: string;
+      /** Key */
+      key: string;
+      /** Label En */
+      label_en: string;
+      /** Label Zh */
+      label_zh: string;
+    };
+    /**
+     * TagScreenerHit
+     * @description One matched symbol plus the requested tags it actually satisfied — the "show the work"
+     *     transparency rule: an `AND` hit lists every requested tag (all satisfied), an `OR` hit lists
+     *     the subset it matched. A negated condition that held is reported here in its `not <tag>` form,
+     *     so the row is self-explaining without re-deriving the query.
+     */
+    TagScreenerHit: {
+      /** Matched Tags */
+      matched_tags: string[];
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * TagScreenerResult
+     * @description The normalized tag-screener response. `detail` is never empty — an empty result still
+     *     carries a real, honest reason (no ingested flag partition yet, no symbol matched, an unknown
+     *     tag key), never fabricated matches. `total_matches` is the full match count before the `size`
+     *     page cap; `hits` is the capped page.
+     */
+    TagScreenerResult: {
+      /** As Of */
+      as_of?: string | null;
+      /** Detail */
+      detail: string;
+      /** Hits */
+      hits: components["schemas"]["TagScreenerHit"][];
+      market: components["schemas"]["Market"];
+      /** Total Matches */
+      total_matches: number;
     };
     /** TelegramLink */
     TelegramLink: {
@@ -5987,6 +11742,93 @@ export interface components {
       /** Text */
       text: string;
     };
+    /**
+     * ThemeKind
+     * @enum {string}
+     */
+    ThemeKind: "industry" | "concept";
+    /**
+     * ThemeMember
+     * @description One `theme_memberships` row, as returned by the reverse (symbol -> themes) lookup and
+     *     accepted by the snapshot-replace write.
+     */
+    ThemeMember: {
+      /**
+       * Confidence
+       * @default 1
+       */
+      confidence: number;
+      /** Market */
+      market: string;
+      source: components["schemas"]["ThemeSource"];
+      /**
+       * Sub Industry
+       * @default
+       */
+      sub_industry: string;
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * ThemeSource
+     * @enum {string}
+     */
+    ThemeSource: "industry_chain" | "concept_research" | "llm_discovery";
+    /**
+     * ThemeStatus
+     * @enum {string}
+     */
+    ThemeStatus: "active" | "proposed" | "retired";
+    /**
+     * ThemeSummary
+     * @description One theme's discovery-card shape — identity plus its member count, so a caller (the
+     *     screener's `PresetLibrary`-style theme picker) can show "半導體 (128)" without a second
+     *     round-trip per theme.
+     */
+    ThemeSummary: {
+      /** Key */
+      key: string;
+      kind: components["schemas"]["ThemeKind"];
+      /**
+       * Member Count
+       * @default 0
+       */
+      member_count: number;
+      /**
+       * Name En
+       * @default
+       */
+      name_en: string;
+      /** Name Zh */
+      name_zh: string;
+      status: components["schemas"]["ThemeStatus"];
+    };
+    /**
+     * ThemeTier
+     * @description One `theme_tiers` row — a sub-industry's upstream/midstream/downstream position within a
+     *     theme, plus which producer (curated editorial map or keyword heuristic) assigned it.
+     */
+    ThemeTier: {
+      source: components["schemas"]["ThemeTierSource"];
+      /** Sub Industry */
+      sub_industry: string;
+      tier: components["schemas"]["ThemeTierName"];
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+    };
+    /**
+     * ThemeTierName
+     * @enum {string}
+     */
+    ThemeTierName: "upstream" | "midstream" | "downstream";
+    /**
+     * ThemeTierSource
+     * @enum {string}
+     */
+    ThemeTierSource: "curated" | "heuristic";
     /**
      * ThinkingBlock
      * @description `agent_id` attributes this reasoning chunk to the lane that produced it (`root` for a
@@ -6059,6 +11901,59 @@ export interface components {
       threads: components["schemas"]["Thread"][];
     };
     /**
+     * TickSnapshotRow
+     * @description `tick_snapshot` — one bounded intraday tick-level snapshot. Sponsor-only. `symbol` holds
+     *     either a 4-digit stock id or a 3-digit index code (91 documented index codes — broad-market/
+     *     sector/themed/leverage — besides ordinary stocks); this is a data_id-taxonomy quirk, not a
+     *     stock-only restriction.
+     */
+    TickSnapshotRow: {
+      /** Amount */
+      amount: number;
+      /** Average Price */
+      average_price: number;
+      /** Buy Price */
+      buy_price: number;
+      /** Buy Volume */
+      buy_volume: number;
+      /** Change Price */
+      change_price: number;
+      /** Change Rate */
+      change_rate: number;
+      /** Close */
+      close: number;
+      /** High */
+      high: number;
+      /** Low */
+      low: number;
+      market: components["schemas"]["Market"];
+      /** Open */
+      open: number;
+      /** Sell Price */
+      sell_price: number;
+      /** Sell Volume */
+      sell_volume: number;
+      /** Symbol */
+      symbol: string;
+      /** Tick Type */
+      tick_type: string;
+      /** Total Amount */
+      total_amount: number;
+      /** Total Volume */
+      total_volume: number;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
+      /** Volume */
+      volume: number;
+      /** Volume Ratio */
+      volume_ratio: number;
+      /** Yesterday Volume */
+      yesterday_volume: number;
+    };
+    /**
      * Tier
      * @description User subscription tier — gates paid data + throughput only, never a recommendation
      *     (governance.md §9).
@@ -6083,6 +11978,12 @@ export interface components {
       sponsor_data: boolean;
       tier: components["schemas"]["Tier"];
     };
+    /**
+     * TimingClass
+     * @description How current a SourceResult's data can be. Every result is tagged.
+     * @enum {string}
+     */
+    TimingClass: "live-ish" | "official-eod" | "event-driven" | "reference";
     /** TodayUsage */
     TodayUsage: {
       /** Chats Used */
@@ -6213,6 +12114,16 @@ export interface components {
        */
       data_class: string;
     };
+    /**
+     * TrailingReturnPoint
+     * @description One horizon of `EtfTrailingReturns`, flattened so a chart can plot the six of them.
+     */
+    TrailingReturnPoint: {
+      /** Horizon */
+      horizon: string;
+      /** Return Pct */
+      return_pct: number;
+    };
     /** TranscribeRequest */
     TranscribeRequest: {
       /**
@@ -6250,6 +12161,34 @@ export interface components {
       confidence: number;
       /** Text */
       text: string;
+    };
+    /** TrendScoreDimensionOutput */
+    TrendScoreDimensionOutput: {
+      /** Description */
+      description: string;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      /** Name */
+      name: string;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Value */
+      value?: number | null;
+    };
+    /** TrendScoreHistoryPoint */
+    TrendScoreHistoryPoint: {
+      /** Close */
+      close?: number | null;
+      /** Composite */
+      composite?: number | null;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
     };
     /**
      * TriggerMode
@@ -6300,8 +12239,11 @@ export interface components {
     TurnFeedbackRequest: {
       /** Comment */
       comment?: string | null;
-      /** Rating */
-      rating: string;
+      /**
+       * Rating
+       * @enum {string}
+       */
+      rating: "up" | "down";
     };
     /**
      * TurnRole
@@ -6352,6 +12294,47 @@ export interface components {
       tool_calls: number;
       /** Turn Id */
       turn_id: string;
+    };
+    /**
+     * TwRankingKind
+     * @description One tab of the TW-market 排行榜 card (excluding 大戶買賣, wired separately — see module
+     *     docstring).
+     * @enum {string}
+     */
+    TwRankingKind:
+      | "dealer_streak"
+      | "trust_streak"
+      | "foreign_streak"
+      | "margin_change"
+      | "dividend_yield"
+      | "revenue_growth";
+    /**
+     * TwRankingRow
+     * @description One ranked row — the `SymbolQuoteRows`-compatible base (symbol/name/price/change/
+     *     change_pct/volume, left `None` here since this tool doesn't itself fetch a live quote; the
+     *     frontend enriches via `useSymbolQuotes` the same way `UsMarketRankingRows` does) plus one
+     *     shared `extra_value`/`extra_label` pair carrying this kind's own distinct metric — a signed
+     *     streak-day count (`dealer_streak`/`trust_streak`/`foreign_streak`), a signed margin-balance
+     *     change (`margin_change`), or a plain percentage (`dividend_yield`/`revenue_growth`). One
+     *     shared numeric field for all 6 kinds keeps the frontend's row-rendering path uniform.
+     */
+    TwRankingRow: {
+      /** Change */
+      change?: number | null;
+      /** Change Pct */
+      change_pct?: number | null;
+      /** Extra Label */
+      extra_label: string;
+      /** Extra Value */
+      extra_value: number;
+      /** Name */
+      name?: string | null;
+      /** Price */
+      price?: number | null;
+      /** Symbol */
+      symbol: string;
+      /** Volume */
+      volume?: number | null;
     };
     /**
      * UpdateAlertRequest
@@ -6461,6 +12444,41 @@ export interface components {
       /** @default preference */
       type: components["schemas"]["MemoryType"];
     };
+    /**
+     * UsStockScoreBreakdown
+     * @description The US-market counterpart to `StockScoreBreakdown` — same `momentum`/`trend_quality`/
+     *     `value_guard`/`quality` factors (already market-agnostic, computed straight from price/
+     *     financials), but `analyst_revision` in place of `revenue_flow`: US has no 三大法人
+     *     institutional-flow/月營收 equivalent ingested anywhere, so rather than let that TW-shaped slot
+     *     degrade to permanently unavailable, the fifth factor is a genuinely US-native signal — the
+     *     analyst estimate-revision factor (IBES/Zacks-style: EPS-trend delta + revision breadth from
+     *     `AnalystConsensus`), a well-documented growth/sentiment factor with no TW equivalent either
+     *     (TW's `AnalystConsensus` payload never populates the `_extended` EPS-trend fields this factor
+     *     reads). A separate model (not a repurposed `revenue_flow` field) so the two breakdowns can
+     *     never be confused for one another at the type level.
+     *
+     *     A sixth factor, `growth`, rounds out the standard "Value + Momentum + Quality + Growth"
+     *     long-short combo (the longest-track-record practitioner factor set): forward EPS/revenue
+     *     growth estimates (`AnalystConsensus.current_year_growth_estimate`/`next_year_growth_estimate`)
+     *     blended with analyst price-target upside (`mean_target` vs. the symbol's own current price) —
+     *     both already-ingested `AnalystConsensus` fields with no TW equivalent, so `growth` has no
+     *     TW-side counterpart either, same as `analyst_revision`.
+     *
+     *     A seventh factor, `liquidity`, is the standard Size/Liquidity risk-overlay factor (average
+     *     daily dollar volume — price x average share volume, computed straight from already-ingested
+     *     `us_price_eod`, ranked cross-sectionally): a real, professionally-recognized US equity factor
+     *     with no TW equivalent slot to displace (TW's `StockScoreBreakdown` has never modeled
+     *     liquidity as its own factor), so it is purely additive rather than replacing anything.
+     */
+    UsStockScoreBreakdown: {
+      analyst_revision: components["schemas"]["FactorScore"];
+      growth: components["schemas"]["FactorScore"];
+      liquidity: components["schemas"]["FactorScore"];
+      momentum: components["schemas"]["FactorScore"];
+      quality: components["schemas"]["FactorScore"];
+      trend_quality: components["schemas"]["FactorScore"];
+      value_guard: components["schemas"]["FactorScore"];
+    };
     /** UsageTotals */
     UsageTotals: {
       /**
@@ -6559,6 +12577,64 @@ export interface components {
       msg: string;
       /** Error Type */
       type: string;
+    };
+    /**
+     * ValuationBandSummary
+     * @description Pre-computed min/max/current PER/PBR/dividend-yield over the whole window a
+     *     `get_valuation_ratios` call returned — a "近一年本益比在哪個位置" question needs a band
+     *     comparison, never a hand-summed scan of hundreds of daily rows. `current` is the most recent
+     *     trading day's own value (not an average), so a caller comparing "current vs range" is
+     *     comparing like with like.
+     */
+    ValuationBandSummary: {
+      /** Dividend Yield Current */
+      dividend_yield_current: number;
+      /** Dividend Yield Max */
+      dividend_yield_max: number;
+      /** Dividend Yield Min */
+      dividend_yield_min: number;
+      /** Pbr Current */
+      pbr_current: number;
+      /** Pbr Max */
+      pbr_max: number;
+      /** Pbr Min */
+      pbr_min: number;
+      /** Per Current */
+      per_current: number;
+      /** Per Max */
+      per_max: number;
+      /** Per Min */
+      per_min: number;
+      /**
+       * Window End
+       * Format: date
+       */
+      window_end: string;
+      /**
+       * Window Start
+       * Format: date
+       */
+      window_start: string;
+    };
+    /**
+     * ValuationRatiosRow
+     * @description `valuation_ratios` — one day's PER/PBR/dividend-yield row for one stock.
+     */
+    ValuationRatiosRow: {
+      /** Dividend Yield */
+      dividend_yield: number;
+      market: components["schemas"]["Market"];
+      /** Pbr */
+      pbr: number;
+      /** Per */
+      per: number;
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trade Date
+       * Format: date
+       */
+      trade_date: string;
     };
     /**
      * VolumeSurge
@@ -6829,9 +12905,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: boolean;
-          };
+          "application/json": components["schemas"]["SymbolCheckResponse"];
         };
       };
       /** @description Validation Error */
@@ -6931,9 +13005,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetScoreLeaderboardOutput"];
         };
       };
       /** @description Validation Error */
@@ -6964,9 +13036,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetFactorCatalogOutput"];
         };
       };
       /** @description Validation Error */
@@ -6997,9 +13067,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetScreenerPresetsOutput"];
         };
       };
       /** @description Validation Error */
@@ -7032,9 +13100,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["RunScreenerOutputWrapper"];
         };
       };
       /** @description Validation Error */
@@ -7065,9 +13131,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["ScreensResponse"];
         };
       };
       /** @description Validation Error */
@@ -7100,9 +13164,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["ScreenerScreen"];
         };
       };
       /** @description Validation Error */
@@ -7166,9 +13228,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["ScreenerScreen"];
         };
       };
       /** @description Validation Error */
@@ -7202,9 +13262,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetStockScoreOutput"];
         };
       };
       /** @description Validation Error */
@@ -7237,9 +13295,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetStockSummaryOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -7273,9 +13331,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetTrendScoreOutput"];
         };
       };
       /** @description Validation Error */
@@ -7794,9 +13850,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetCanonicalContextOutput"]
+            | components["schemas"]["BuildConversationPackageOutput"];
         };
       };
       /** @description Validation Error */
@@ -7829,9 +13885,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetTaiexVixOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -7866,9 +13922,11 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetFuturesOptionsDailyOutput"]
+            | components["schemas"]["GetPutCallRatioOutput"]
+            | components["schemas"]["GetDerivativesInstitutionalOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -7995,9 +14053,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetFundComparisonOutput"];
         };
       };
       /** @description Validation Error */
@@ -8030,9 +14086,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfOverlapOutput"];
         };
       };
       /** @description Validation Error */
@@ -8065,9 +14119,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfExpenseRatioOutput"];
         };
       };
       /** @description Validation Error */
@@ -8100,9 +14152,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfFundInfoOutput"];
         };
       };
       /** @description Validation Error */
@@ -8135,9 +14185,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetFundHoldingsOutput"];
         };
       };
       /** @description Validation Error */
@@ -8170,9 +14218,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInsiderActivityOutput"];
         };
       };
       /** @description Validation Error */
@@ -8205,9 +14251,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInstitutionalHoldersOutput"];
         };
       };
       /** @description Validation Error */
@@ -8242,9 +14286,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetOptionsChainOutput"];
         };
       };
       /** @description Validation Error */
@@ -8278,9 +14320,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfPremiumDiscountOutput"];
         };
       };
       /** @description Validation Error */
@@ -8313,9 +14353,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetFundProfileOutput"];
         };
       };
       /** @description Validation Error */
@@ -8348,9 +14386,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfThemeTagsOutput"];
         };
       };
       /** @description Validation Error */
@@ -8383,9 +14419,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfTrailingReturnsOutput"];
         };
       };
       /** @description Validation Error */
@@ -8418,9 +14452,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSourceHealthOutput"];
         };
       };
       /** @description Validation Error */
@@ -8452,9 +14484,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetMacroIndicatorsOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -8487,9 +14519,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetBusinessIndicatorOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -8523,9 +14555,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetActiveEtfReportOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -8557,9 +14589,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetAdvanceDeclineOutput"];
         };
       };
       /** @description Validation Error */
@@ -8594,9 +14624,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetShareholderDispersionOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -8628,9 +14658,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDailySignalOutput"];
         };
       };
       /** @description Validation Error */
@@ -8665,9 +14693,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDayTradingOutput"];
         };
       };
       /** @description Validation Error */
@@ -8698,9 +14724,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDispositionBoardOutput"];
         };
       };
       /** @description Validation Error */
@@ -8733,9 +14757,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDividendCalendarOutput"];
         };
       };
       /** @description Validation Error */
@@ -8770,9 +14792,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDividendScheduleOutput"];
         };
       };
       /** @description Validation Error */
@@ -8804,9 +14824,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfListOutput"];
         };
       };
       /** @description Validation Error */
@@ -8840,9 +14858,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfMoneyFlowOutput"];
         };
       };
       /** @description Validation Error */
@@ -8875,9 +14891,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetFuturesSnapshotOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -8914,9 +14930,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetHolderAccumulationOutput"];
         };
       };
       /** @description Validation Error */
@@ -8948,9 +14962,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetIndexContributionOutput"];
         };
       };
       /** @description Validation Error */
@@ -8979,9 +14991,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMarketIndexStripOutput"];
         };
       };
     };
@@ -9005,9 +15015,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetIndustryMoneyFlowOutput"];
         };
       };
       /** @description Validation Error */
@@ -9039,9 +15047,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInsiderTransferDeclarationOutput"];
         };
       };
       /** @description Validation Error */
@@ -9074,9 +15080,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInstitutionalFlowTotalMarketOutput"];
         };
       };
       /** @description Validation Error */
@@ -9111,9 +15115,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInternationalStockOutput"];
         };
       };
       /** @description Validation Error */
@@ -9147,9 +15149,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMacroCalendarOutput"];
         };
       };
       /** @description Validation Error */
@@ -9182,9 +15182,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetMarginMaintenanceOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -9217,9 +15217,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMarginShortTotalMarketOutput"];
         };
       };
       /** @description Validation Error */
@@ -9252,9 +15250,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMaterialAnnouncementFeedOutput"];
         };
       };
       /** @description Validation Error */
@@ -9287,9 +15283,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMaterialAnnouncementsOutput"];
         };
       };
       /** @description Validation Error */
@@ -9321,9 +15315,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetNewsFeedOutput"];
         };
       };
       /** @description Validation Error */
@@ -9356,9 +15348,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetOrderBookStatsOutput"];
         };
       };
       /** @description Validation Error */
@@ -9393,9 +15383,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetPriceHistoryOutput"];
         };
       };
       /** @description Validation Error */
@@ -9429,9 +15417,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetPriceMomentumOutput"];
         };
       };
       /** @description Validation Error */
@@ -9463,9 +15449,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetPttBoardOutput"];
         };
       };
       /** @description Validation Error */
@@ -9500,9 +15484,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSymbolQuotesOutput"];
         };
       };
       /** @description Validation Error */
@@ -9536,9 +15518,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSectorConstituentsOutput"];
         };
       };
       /** @description Validation Error */
@@ -9572,9 +15552,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSectorHeatmapOutput"];
         };
       };
       /** @description Validation Error */
@@ -9606,9 +15584,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSectorRotationOutput"];
         };
       };
       /** @description Validation Error */
@@ -9640,9 +15616,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSectorRotationRrgOutput"];
         };
       };
       /** @description Validation Error */
@@ -9676,9 +15650,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetStockHeatmapOutput"];
         };
       };
       /** @description Validation Error */
@@ -9711,9 +15683,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSymbolInfoOutput"];
         };
       };
       /** @description Validation Error */
@@ -9742,9 +15712,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetTagCatalogOutput"];
         };
       };
     };
@@ -9775,9 +15743,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["RunTagScreenerOutput"];
         };
       };
       /** @description Validation Error */
@@ -9810,9 +15776,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetTickSnapshotOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -9852,9 +15818,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetTwMarketRankingsOutput"];
         };
       };
       /** @description Validation Error */
@@ -9883,9 +15847,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetUsMarketIndexStripOutput"];
         };
       };
     };
@@ -9908,9 +15870,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetUsMarketRankingsOutput"];
         };
       };
       /** @description Validation Error */
@@ -10642,9 +16602,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: number;
-          };
+          "application/json": components["schemas"]["MarkedReadResponse"];
         };
       };
       /** @description Validation Error */
@@ -10881,9 +16839,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetPriceQuoteOutput"];
         };
       };
       /** @description Validation Error */
@@ -11068,9 +17024,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetSymbolDirectorySearchOutput"]
+            | components["schemas"]["GetSymbolSearchOutput"];
         };
       };
       /** @description Validation Error */
@@ -11099,9 +17055,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSourceMatrixOutput"];
         };
       };
     };
@@ -11124,9 +17078,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetAnalystConsensusOutput"];
         };
       };
       /** @description Validation Error */
@@ -11160,9 +17112,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetCalendarEventsOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -11193,9 +17145,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetCalendarEventsFeedOutput"];
         };
       };
       /** @description Validation Error */
@@ -11229,9 +17179,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetChipFlowsOutput"];
         };
       };
       /** @description Validation Error */
@@ -11263,9 +17211,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetCompanyProfileOutput"];
         };
       };
       /** @description Validation Error */
@@ -11299,9 +17245,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDayTradingOutput"];
         };
       };
       /** @description Validation Error */
@@ -11335,9 +17279,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetDispositionSecuritiesOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -11371,9 +17315,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDividendPolicySummaryOutput"];
         };
       };
       /** @description Validation Error */
@@ -11407,9 +17349,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetDividendResultOutput"];
         };
       };
       /** @description Validation Error */
@@ -11441,9 +17381,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEsgScoreOutput"];
         };
       };
       /** @description Validation Error */
@@ -11476,9 +17414,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetEtfsHoldingStockOutput"];
         };
       };
       /** @description Validation Error */
@@ -11513,9 +17449,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetFinancialStatementOutput"];
         };
       };
       /** @description Validation Error */
@@ -11549,9 +17483,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetFinmindStockNewsOutput"];
         };
       };
       /** @description Validation Error */
@@ -11585,9 +17517,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetForeignShareholdingOutput"];
         };
       };
       /** @description Validation Error */
@@ -11621,9 +17551,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetGovernmentBankFlowsOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -11655,9 +17585,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInsiderShareholdingOutput"];
         };
       };
       /** @description Validation Error */
@@ -11690,9 +17618,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInsiderTransferDeclarationOutput"];
         };
       };
       /** @description Validation Error */
@@ -11726,9 +17652,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetInstitutionalFlowOutput"];
         };
       };
       /** @description Validation Error */
@@ -11762,9 +17686,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetIntradayKbarOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -11796,9 +17720,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetLivePriceQuoteOutput"];
         };
       };
       /** @description Validation Error */
@@ -11830,9 +17752,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetLiveQuoteSnapshotOutput"];
         };
       };
       /** @description Validation Error */
@@ -11866,9 +17786,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMarginShortOutput"];
         };
       };
       /** @description Validation Error */
@@ -11902,9 +17820,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetMonthRevenueOutput"];
         };
       };
       /** @description Validation Error */
@@ -11936,9 +17852,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetStockPeersOutput"];
         };
       };
       /** @description Validation Error */
@@ -11972,9 +17886,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetPriceLimitOutput"];
         };
       };
       /** @description Validation Error */
@@ -12008,9 +17920,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetPriceTickOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -12043,9 +17955,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetPttStockSearchOutput"];
         };
       };
       /** @description Validation Error */
@@ -12077,9 +17987,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSecFilingsOutput"];
         };
       };
       /** @description Validation Error */
@@ -12113,9 +18021,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSecuritiesLendingOutput"];
         };
       };
       /** @description Validation Error */
@@ -12149,9 +18055,9 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json":
+            | components["schemas"]["GetShareholderDispersionOutput"]
+            | components["schemas"]["MaskedTeaser"];
         };
       };
       /** @description Validation Error */
@@ -12185,9 +18091,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetTechnicalIndicatorsOutput"];
         };
       };
       /** @description Validation Error */
@@ -12221,9 +18125,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetValuationRatiosOutput"];
         };
       };
       /** @description Validation Error */
@@ -12256,9 +18158,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSupplyChainEdgesOutput"];
         };
       };
       /** @description Validation Error */
@@ -12291,9 +18191,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetSymbolThemesOutput"];
         };
       };
       /** @description Validation Error */
@@ -12324,9 +18222,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetThemesOutput"];
         };
       };
       /** @description Validation Error */
@@ -12359,9 +18255,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetThemeMembersOutput"];
         };
       };
       /** @description Validation Error */
@@ -12392,9 +18286,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetThemeTierHeatmapOutput"];
         };
       };
       /** @description Validation Error */
@@ -12425,9 +18317,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": {
-            [key: string]: unknown;
-          };
+          "application/json": components["schemas"]["GetThemeTiersOutput"];
         };
       };
       /** @description Validation Error */

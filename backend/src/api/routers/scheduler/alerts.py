@@ -244,13 +244,18 @@ async def create_alerts_batch(
     return AlertsResponse(alerts=created)
 
 
+class SymbolCheckResponse(BaseModel):
+    checked: bool  # False when the price source could not be asked
+    exists: bool
+
+
 @router.get("/alerts/symbol-check")
 async def check_alert_symbol(
     symbol: str = Query(min_length=1, max_length=20),
     market: Market = Query(),
     user: User = Depends(require_user),
     state: AppState = Depends(get_state),
-) -> dict[str, bool]:
+) -> SymbolCheckResponse:
     """Does this ticker have any price data? A pre-flight the alert form calls so a typo
     (`APPLE` for `AAPL`) is flagged *before* a rule is saved that could never fire. It only
     reports — creation itself is never blocked, since a brand-new listing may genuinely have no
@@ -263,8 +268,8 @@ async def check_alert_symbol(
             tool_context_for(user, state),
         )
     except Exception:
-        return {"checked": False, "exists": False}
-    return {"checked": True, "exists": result.get("bar") is not None}
+        return SymbolCheckResponse(checked=False, exists=False)
+    return SymbolCheckResponse(checked=True, exists=result.get("bar") is not None)
 
 
 @router.get("/alerts")

@@ -6,7 +6,7 @@ from calendar.trading_days import TradingDayCalendar
 from dataclasses import dataclass
 from datetime import date as date_
 from datetime import timedelta
-from typing import cast
+from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -33,7 +33,10 @@ from tools.market._common import (
     unavailable_reason_for_window,
 )
 
-_ETF_DISTRIBUTION_FREQUENCY_BY_EVENT_COUNT: dict[int, str] = {
+# TWSE's own naming for how often an ETF pays out.
+DistributionFrequency = Literal["月配", "季配", "半年配", "年配", "不配息"]
+
+_ETF_DISTRIBUTION_FREQUENCY_BY_EVENT_COUNT: dict[int, DistributionFrequency] = {
     12: "月配",
     4: "季配",
     2: "半年配",
@@ -45,7 +48,7 @@ _ETF_DISTRIBUTION_FREQUENCY_BY_EVENT_COUNT: dict[int, str] = {
 _TTM_DIVIDEND_LOOKBACK_DAYS = 396  # ~13 months — slack past the exact 12-month cutoff below
 
 
-def _etf_distribution_frequency(event_count: int) -> str | None:
+def _etf_distribution_frequency(event_count: int) -> DistributionFrequency | None:
     """Classify a trailing-12-month cash-distribution event count into TWSE's own naming
     convention (月配/季配/半年配/年配/不配息) — an OBSERVED-cadence classification, never the
     issuer's declared distribution policy (which this codebase has no source for). `None` for
@@ -134,10 +137,10 @@ class EtfListRow(BaseModel):
     turnover: float | None = None
     return_1w_pct: float | None = None
     distribution_yield_ttm_pct: float | None = None
-    distribution_frequency: str | None = None  # 月配/季配/半年配/年配/不配息, None if unclassified
+    distribution_frequency: DistributionFrequency | None = None  # None if unclassified
     aum: float | None = None
     expense_ratio_pct_approx: float | None = None
-    symbol_type: str  # SymbolType's value: "etf" | "etf_leveraged" | "etf_inverse"
+    symbol_type: SymbolType  # never STOCK: this list is ETFs only
     # True when this symbol had at least one constituent-holdings snapshot in
     # `ACTIVE_ETF_HOLDING_JOB`'s recent lookback window — the same "is this an active ETF"
     # ground truth `scoring_batch.py::_active_etf_symbols` already uses (an active-ETF-only
@@ -313,7 +316,7 @@ def _etf_list_row(
     # every symbol this loop simply never saw a distribution row for.
     distribution = inputs.distributions.get(symbol)
     distribution_yield_ttm_pct: float | None = None
-    distribution_frequency: str | None = None
+    distribution_frequency: DistributionFrequency | None = None
     if distribution is not None:
         dist_total, dist_count = distribution
         distribution_yield_ttm_pct = dist_total / close_f * 100 if dist_count and close_f else None
@@ -333,7 +336,7 @@ def _etf_list_row(
         distribution_frequency=distribution_frequency,
         aum=inputs.aum.get(symbol),
         expense_ratio_pct_approx=inputs.expense_ratios.get(symbol),
-        symbol_type=classify_symbol_type(symbol).value,
+        symbol_type=classify_symbol_type(symbol),
         is_active_etf=symbol in inputs.active_etf_symbols,
     )
 

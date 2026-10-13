@@ -4,6 +4,7 @@ and the composed list-row quotes."""
 from __future__ import annotations
 
 from datetime import date as date_
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -225,7 +226,7 @@ def _rank_symbol_directory_matches(
             continue
         seen_symbols.add(row.symbol)
         symbol_type = classify_symbol_type(row.symbol, market)
-        kind = "stock" if symbol_type is SymbolType.STOCK else "etf"
+        kind: Literal["stock", "etf"] = "stock" if symbol_type is SymbolType.STOCK else "etf"
         ranked.append(
             (
                 tier,

@@ -15,11 +15,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.alerts import RuleCondition, TriggerMode
 from schemas.enums import Market, UserMarket
+
+# Why an address is not emailed (a row in `email_suppressions`).
+EmailBlockReason = Literal["bounced", "complained", "unsubscribed"]
 
 
 class TriggerType(StrEnum):

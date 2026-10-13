@@ -489,7 +489,7 @@ export async function getNotificationBadge(): Promise<NotificationBadge> {
   return notificationBadgeSchema.parse(raw);
 }
 
-const markReadResponseSchema = z.object({ marked: z.number().int() });
+export const markReadResponseSchema = z.object({ marked: z.number().int() });
 
 /** Mark notifications read — exactly one of `ids` or `all`. Idempotent; returns how many rows
  * changed. */
@@ -628,7 +628,7 @@ export async function deleteMemory(memoryId: string): Promise<void> {
 // External channel status + Telegram link + alert symbol check
 // ---------------------------------------------------------------------------
 
-const channelStatusSchema = z.object({
+export const channelStatusSchema = z.object({
   email: z.boolean(),
   push: z.boolean(),
   line: z.boolean(),
@@ -648,7 +648,10 @@ export async function getChannelStatus(): Promise<ChannelStatus> {
   return channelStatusSchema.parse(await requestJson("/me/channels"));
 }
 
-const telegramLinkSchema = z.object({ url: z.string(), expires_in_seconds: z.number().int() });
+export const telegramLinkSchema = z.object({
+  url: z.string(),
+  expires_in_seconds: z.number().int(),
+});
 
 /** A one-time link to open in Telegram; tapping Start there binds that chat to the account. */
 export async function startTelegramLink(): Promise<z.infer<typeof telegramLinkSchema>> {
@@ -660,7 +663,7 @@ export async function startTelegramLink(): Promise<z.infer<typeof telegramLinkSc
   return telegramLinkSchema.parse(raw);
 }
 
-const lineLinkSchema = z.object({
+export const lineLinkSchema = z.object({
   code: z.string(),
   add_friend_url: z.string().nullable(),
   expires_in_seconds: z.number().int(),
@@ -684,7 +687,7 @@ export async function unlinkTelegram(): Promise<void> {
   await requestJson("/me/channels/telegram", { method: "DELETE", expectBody: false });
 }
 
-const symbolCheckSchema = z.object({ checked: z.boolean(), exists: z.boolean() });
+export const symbolCheckSchema = z.object({ checked: z.boolean(), exists: z.boolean() });
 
 /** Does this ticker have any price data? `checked: false` means the lookup itself failed, which
  * says nothing about the ticker — callers only warn on `checked && !exists`. */
