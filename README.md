@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="web/public/logo.png" alt="Miru" width="120" />
+
 # Miru
 
 **Your AI assistant for Taiwan & US stocks and ETFs: it explains the market and shows its sources.**
@@ -17,11 +21,6 @@
 
 <!-- Promo video -->
 https://github.com/user-attachments/assets/a04a3593-ed1a-4fb3-b1a0-c2163ea41b9d
-
-<div align="center">
-
-<img src="web/public/logo.png" alt="Miru" width="120" />
-
 
 > [!NOTE]
 > Miru provides **context for research, not investment advice**. It never says buy, sell or hold,
