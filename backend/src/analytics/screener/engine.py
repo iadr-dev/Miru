@@ -26,13 +26,15 @@ edit; keeping this path cheap is what makes that live count viable calling on ev
 
 from __future__ import annotations
 
+import asyncio
 from calendar.trading_days import TradingDayCalendar
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import date as date_
 from datetime import timedelta
-from typing import Literal
+from typing import Literal, cast
 
 import anyio.to_thread
+import pandas as pd
 import structlog
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -40,23 +42,29 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from analytics.fundamentals import (
     BALANCE_SHEET_DATASET,
     FINANCIALS_DATASET,
+    ROE_INPUT_ITEMS,
     compute_fundamental_metrics,
-    parse_statement_lines,
 )
 from analytics.indicators import PriceBar, kd, macd, rsi, sma
 from analytics.models import ScoreProfile, ScoreResult
 from analytics.scoring_batch import ETF_EXPENSE_RATIO_DATASET
+from analytics.scoring_batch.inputs import TW_STATEMENT_COLUMNS, lazy_statement_lines
 from analytics.scoring_store import get_all_scores_for_date
 from analytics.screener.batch import SCREENER_FLAGS_DATASET
 from analytics.screener.catalog import tag_keys
 from analytics.screener.factor_catalog import FactorField, get_factor_catalog
 from analytics.screener.gates import GateDefaults, GateOverrides, resolve_gates
-from analytics.symbol_universe import SymbolType, classify_symbol_type, is_scoreable_symbol
+from analytics.symbol_universe import (
+    SymbolType,
+    classify_symbol_type,
+    is_scoreable_symbol,
+    scoreable_symbol_sql,
+)
 from dataaccess.screener import run_equity_screener
 from ingest.jobs import DIVIDENDS_JOB
 from ingest.reader import ParquetMarketDataReader
 from ingest.rows import rows_from_store
-from ingest.store import ParquetStore
+from ingest.store import ParquetStore, sql_in
 from schemas.capabilities import DividendEvent, EtfExpenseInfo, FinancialStatementLine
 from schemas.enums import Market
 from schemas.screener import ScreenerAssetKind, ScreenerCondition, ScreenerOperator, ScreenerQuery
@@ -467,6 +475,14 @@ def _latest_period_eps(lines: Sequence[FinancialStatementLine]) -> float | None:
     return None
 
 
+def _fundamentals_as_of(store: ParquetStore, market: str) -> date_ | None:
+    dates = (
+        *store.list_partition_dates(FINANCIALS_DATASET, market),
+        *store.list_partition_dates(BALANCE_SHEET_DATASET, market),
+    )
+    return max(dates) if dates else None
+
+
 def _latest_fundamentals_by_symbol(store: ParquetStore, market: str) -> dict[str, dict[str, float]]:
     """Every symbol's `roe_ttm`/`eps_latest_quarter`, computed from the whole-market income +
     balance-sheet partitions — reusing `analytics/fundamentals.py::compute_fundamental_metrics`
@@ -485,18 +501,25 @@ def _latest_fundamentals_by_symbol(store: ParquetStore, market: str) -> dict[str
     income_dates = [d for d in income_all_dates if window_start <= d <= as_of]
     balance_dates = [d for d in balance_all_dates if window_start <= d <= as_of]
 
-    raw_lines: list[dict[str, object]] = []
-    for d in income_dates:
-        raw_lines.extend(store.read_partition(FINANCIALS_DATASET, market, d))
-    for d in balance_dates:
-        raw_lines.extend(store.read_partition(BALANCE_SHEET_DATASET, market, d))
-
-    lines_by_symbol: dict[str, list[FinancialStatementLine]] = {}
-    for line in parse_statement_lines(raw_lines):
-        lines_by_symbol.setdefault(line.symbol, []).append(line)
+    # Only the rows ROE and the latest EPS read (net income, equity, EPS), as columnar frames, and
+    # each symbol's lines built when that symbol is computed: the whole window as row dicts and
+    # parsed objects was about 1.2M rows (1-2 GB) for a request that needs a few per symbol.
+    wanted = sql_in("item", (*ROE_INPUT_ITEMS, *_EPS_ITEM_NAMES))
+    lines_by_symbol = lazy_statement_lines(
+        [
+            store.read_range_frame(
+                dataset, market, dates, columns=TW_STATEMENT_COLUMNS, where=wanted
+            )
+            for dataset, dates in (
+                (FINANCIALS_DATASET, income_dates),
+                (BALANCE_SHEET_DATASET, balance_dates),
+            )
+        ]
+    )
 
     by_symbol: dict[str, dict[str, float]] = {}
-    for symbol, lines in lines_by_symbol.items():
+    for symbol in lines_by_symbol:
+        lines = lines_by_symbol[symbol]
         values: dict[str, float] = {}
         roe = compute_fundamental_metrics(lines, market_value=None).roe
         if roe is not None:
@@ -518,32 +541,6 @@ _TECHNICAL_INDICATOR_LOOKBACK_DAYS = 260
 _TECHNICAL_INDICATOR_SOURCE_FIELDS = frozenset(
     {"rsi_14", "ma20_bias_pct", "volume_vs_20d_avg_ratio", "macd_histogram", "kd_k", "kd_d"}
 )
-
-
-def _bars_for_symbol_rows(rows: Sequence[dict[str, object]]) -> tuple[PriceBar, ...]:
-    """Same ascending-by-`trade_date` `PriceBar` build `analytics/screener/batch.py::
-    _bars_for_symbol` documents in full — duplicated here (not imported) since that function is
-    private to that module and this file has no other reason to import from it."""
-    ordered = sorted(rows, key=lambda row: str(row.get("trade_date")))
-    bars: list[PriceBar] = []
-    for row in ordered:
-        close = row.get("close")
-        high = row.get("high")
-        low = row.get("low")
-        volume = row.get("volume")
-        if not (isinstance(close, int | float) and close > 0):
-            continue
-        if not (isinstance(high, int | float) and isinstance(low, int | float)):
-            continue
-        bars.append(
-            PriceBar(
-                high=float(high),
-                low=float(low),
-                close=float(close),
-                volume=int(volume) if isinstance(volume, int | float) else 0,
-            )
-        )
-    return tuple(bars)
 
 
 def _technical_indicator_values(bars: Sequence[PriceBar]) -> dict[str, float]:
@@ -585,36 +582,92 @@ def _technical_indicator_values(bars: Sequence[PriceBar]) -> dict[str, float]:
     return values
 
 
+_TECHNICAL_PRICE_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "trade_date",
+    "high",
+    "low",
+    "close",
+    "volume",
+)
+
+
+def _bars_from_frame(group: pd.DataFrame) -> tuple[PriceBar, ...]:
+    """One symbol's bars, ascending by date, from its slice of the price frame: the same rule as
+    `_bars_for_symbol_rows` (a row needs a positive close and a numeric high and low; a missing
+    volume is 0)."""
+    ordered = group.sort_values("trade_date", kind="stable")
+    keep = cast(
+        "pd.Series",
+        ordered["close"].notna()
+        & (ordered["close"] > 0)
+        & ordered["high"].notna()
+        & ordered["low"].notna(),
+    )
+    valid = cast("pd.DataFrame", ordered.loc[keep])
+    highs = cast("list[float]", valid["high"].tolist())
+    lows = cast("list[float]", valid["low"].tolist())
+    closes = cast("list[float]", valid["close"].tolist())
+    volumes = cast("list[float]", cast("pd.Series", valid["volume"]).fillna(0).tolist())
+    return tuple(
+        PriceBar(high=float(h), low=float(low), close=float(c), volume=int(v))
+        for h, low, c, v in zip(highs, lows, closes, volumes, strict=True)
+    )
+
+
 def _latest_technical_indicators_by_symbol(
-    store: ParquetStore, market: str, gated_universe: set[str]
+    store: ParquetStore, market: str
 ) -> dict[str, dict[str, float]]:
-    """Every gated symbol's latest technical-indicator readings, from the same whole-market
-    `price_eod` window `_gated_tw_universe`/`batch.py` already read — `symbols=gated_universe`
-    keeps this to a `read_range` SQL-filtered read (never the whole ~2000-symbol market), the
-    exact lesson learned from the `_etf_return_1y_by_symbol` incident this module's own history
-    already documents."""
+    """Every scoreable symbol's latest technical-indicator readings, from the 260-day `price_eod`
+    window. Read as one columnar frame, with the warrants (about 90% of the rows) dropped inside
+    DuckDB: the same read as row dicts for the gated universe was 470-680K dicts, 0.5-0.8 GB, per
+    request. The caller caches the result per data day (`_bulk_by_day`), so concurrent requests
+    share one read; each filters the symbols it wants (the gated universe) from it."""
     as_of = _latest_price_partition_date(store, market)
-    if as_of is None or not gated_universe:
+    if as_of is None:
         return {}
     calendar = TradingDayCalendar()
     window_start = calendar.shift_business_days(as_of, -(_TECHNICAL_INDICATOR_LOOKBACK_DAYS - 1))
     window_dates = calendar.business_days_between(window_start, as_of)
-    raw_rows = store.read_range(
-        _PRICE_EOD_DATASET, market, window_dates, symbols=tuple(gated_universe)
+    frame = store.read_range_frame(
+        _PRICE_EOD_DATASET,
+        market,
+        window_dates,
+        columns=_TECHNICAL_PRICE_COLUMNS,
+        where=scoreable_symbol_sql(Market(market)),
     )
-    rows_by_symbol: dict[str, list[dict[str, object]]] = {}
-    for row in raw_rows:
-        symbol = row.get("symbol")
-        if isinstance(symbol, str) and symbol:
-            rows_by_symbol.setdefault(symbol, []).append(row)
-
     by_symbol: dict[str, dict[str, float]] = {}
-    for symbol, rows in rows_by_symbol.items():
-        bars = _bars_for_symbol_rows(rows)
-        values = _technical_indicator_values(bars)
+    for symbol, group in frame.groupby("symbol", sort=False):
+        values = _technical_indicator_values(_bars_from_frame(group))
         if values:
-            by_symbol[symbol] = values
+            by_symbol[str(symbol)] = values
     return by_symbol
+
+
+# One result per (kind, market), valid for the data day it was computed for. The inputs change once
+# a day (a new partition lands), so a request after the first reuses it; the first of a burst
+# computes it and the others wait for that one, instead of each reading the window itself.
+_BULK_CACHE: dict[tuple[str, str], tuple[date_, dict[str, dict[str, float]]]] = {}
+_BULK_LOCKS: dict[tuple[int, str, str], asyncio.Lock] = {}
+
+
+async def _bulk_by_day(
+    kind: str,
+    market: str,
+    as_of: date_ | None,
+    compute: Callable[[], dict[str, dict[str, float]]],
+) -> dict[str, dict[str, float]]:
+    if as_of is None:
+        return {}
+    key = (kind, market)
+    lock = _BULK_LOCKS.setdefault((id(asyncio.get_running_loop()), kind, market), asyncio.Lock())
+    async with lock:
+        cached = _BULK_CACHE.get(key)
+        if cached is not None and cached[0] == as_of:
+            return cached[1]
+        value = await anyio.to_thread.run_sync(compute)
+        _BULK_CACHE[key] = (as_of, value)
+        return value
 
 
 async def _matched_symbols_for_bulk_source(  # noqa: PLR0913, PLR0917 — one arg per real input
@@ -704,8 +757,11 @@ async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genu
                     gated_universe,
                     bulk_cache,
                     "fundamentals",
-                    lambda: anyio.to_thread.run_sync(
-                        _latest_fundamentals_by_symbol, parquet_store, Market.TW.value
+                    lambda: _bulk_by_day(
+                        "fundamentals",
+                        Market.TW.value,
+                        _fundamentals_as_of(parquet_store, Market.TW.value),
+                        lambda: _latest_fundamentals_by_symbol(parquet_store, Market.TW.value),
                     ),
                 )
             )
@@ -718,11 +774,13 @@ async def _setup_tw(  # noqa: PLR0913 — one arg per real input this stage genu
                     gated_universe,
                     bulk_cache,
                     "technical",
-                    lambda: anyio.to_thread.run_sync(
-                        _latest_technical_indicators_by_symbol,
-                        parquet_store,
+                    lambda: _bulk_by_day(
+                        "technical",
                         Market.TW.value,
-                        gated_universe,
+                        _latest_price_partition_date(parquet_store, Market.TW.value),
+                        lambda: _latest_technical_indicators_by_symbol(
+                            parquet_store, Market.TW.value
+                        ),
                     ),
                 )
             )

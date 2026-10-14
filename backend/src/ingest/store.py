@@ -121,6 +121,13 @@ class PartitionKey:
         )
 
 
+def sql_in(column: str, values: Sequence[str]) -> str:
+    """`column IN ('a', 'b')` for `read_range_frame(where=...)`, with each value quoted. For values
+    that are constants in code (item names), not request input."""
+    quoted = ", ".join("'" + value.replace("'", "''") + "'" for value in values)
+    return f"{column} IN ({quoted})"
+
+
 class ParquetStore:
     """The leader-only writer + a read-only helper over one `parquet_root` tree.
 
