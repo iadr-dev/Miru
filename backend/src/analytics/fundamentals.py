@@ -168,6 +168,12 @@ def parse_market_value_rows(rows: Sequence[dict[str, object]]) -> list[MarketVal
     return values
 
 
+# The only statement items ROE reads (net income, equity). A caller that needs just ROE can ask the
+# store for these rows alone; the period logic skips a period that lacks the item, so the result is
+# the same as with every line present.
+ROE_INPUT_ITEMS: tuple[str, ...] = (*_NET_INCOME_ITEMS, *_EQUITY_ITEMS)
+
+
 def _item_value(lines: Sequence[FinancialStatementLine], names: Sequence[str]) -> float | None:
     for line in lines:
         if line.item in names:

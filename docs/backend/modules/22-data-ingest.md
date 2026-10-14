@@ -403,10 +403,19 @@ What changed, and the rules that keep it that way:
 - **Screener flags are written for scoreable symbols only.** The warrants' 51K flags (60-day
   sample) were read by nothing: the screener engine gates its results to the scoreable universe, and
   only the legacy `run_tag_screener` tool listed them as hits.
+- **The API's screener reads the same way.** Its two whole-market numeric reads (technical
+  indicators over 260 days; ROE and latest EPS over about 450 days of statements) used to load row
+  dicts into the API process on every request: **953 MB and 2,118 MB**, so one request with both an
+  ROE and an RSI condition passed the API container's 2 GiB limit and got the API killed and
+  restarted (observed on the dev stack). Now each is a filtered columnar frame (scoreable symbols
+  only; only the net-income, equity and EPS statement items) of **347 MB and 214 MB**, computed
+  **once per data day and shared** (`_bulk_by_day`: the first request computes, concurrent ones wait
+  for it, a new partition invalidates it). Results are identical (15,864 technical and 5,125
+  fundamentals values compared on the dev data). Twelve simultaneous cold requests against the API
+  container: all 200, 467 MiB peak, no restart.
 - **Known, not changed:** `job_us_fundamentals` keeps every symbol's rows for its 9 capabilities in
-  memory until its 1.9-hour loop ends (about 1-1.5 GB); the API's screener reads 260 days of prices
-  for the gated universe per request (about 0.5-0.8 GB each, uncached); the US statement window is
-  still read as row dicts (the Taiwan fix does not cover it).
+  memory until its 1.9-hour loop ends (about 1-1.5 GB); the US statement window is still read as
+  row dicts (the Taiwan fix does not cover it).
 - **Container limits** (`docker-compose.yml`): ingest 5 GB (the startup catch-up runs the TW and US
   chains together, about 3.5-3.8 GB), api 2 GB, mcp and scheduler 1 GB, no swap
   (`INGEST_MEM_LIMIT`, `API_MEM_LIMIT`, ...). An out-of-memory kill now restarts one service
