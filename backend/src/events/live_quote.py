@@ -38,6 +38,8 @@ import asyncio
 import contextlib
 import itertools
 import json
+import time
+import uuid
 from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -93,6 +95,11 @@ class DemandRegistry(Protocol):
 
     async def unsubscribe(self, market: Market, symbol: str) -> None: ...
 
+    async def refresh(self) -> None:
+        """Renew what this worker holds, so it does not expire while the worker lives. Called by
+        the poll loop; a no-op where nothing expires."""
+        ...
+
 
 @runtime_checkable
 class QuoteTransport(Protocol):
@@ -121,42 +128,93 @@ def _decode(raw: bytes | str) -> Event:
 
 
 class RedisDemandRegistry:
-    """Redis-backed refcount per `(market, symbol)`. Increment/decrement are atomic `HINCRBY`s
-    (the same no-read-then-write discipline as the rate-limit/quota counters), so two workers
-    subscribing the same symbol concurrently can never lose an update. The global cap is checked
-    reserve-before-act: increment first, and if that increment *created* a new symbol field past
-    the cap, undo it and reject — never a check-then-increment race that admits over the ceiling.
+    """The cross-process demand set, held as **expiring per-worker leases**.
+
+    Each worker records `symbol|worker` in a Redis sorted set per market, scored with the time the
+    lease runs out, and renews its leases while it is alive (`refresh`, called by the poll loop). A
+    worker that is killed (OOM, SIGKILL, a lost host) stops renewing, so its leases expire by
+    themselves and the symbol cap counts only live ones. The earlier shared refcount hash was only
+    ever decremented by a clean disconnect, so every crash left its counts behind for good and they
+    slowly used up the cap for the whole fleet.
+
+    The cap is still reserve-before-act and atomic: one `MULTI`/`EXEC` prunes expired leases, adds
+    this worker's, and reads the live set; if that made a distinct symbol beyond the cap, the lease
+    is removed again and the symbol rejected. A worker's own repeat subscribers for a symbol it
+    already holds are counted locally and never touch Redis.
     """
 
-    def __init__(self, redis: Redis, *, key_prefix: str, max_symbols: int) -> None:
+    def __init__(  # noqa: PLR0913 - one keyword per registry dimension
+        self,
+        redis: Redis,
+        *,
+        key_prefix: str,
+        max_symbols: int,
+        lease_seconds: float = 90.0,
+        worker_id: str | None = None,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
         self._redis = redis
         self._prefix = key_prefix
         self._max_symbols = max_symbols
+        self._lease = lease_seconds
+        self._worker = worker_id or uuid.uuid4().hex
+        self._clock = clock
+        self._held: dict[tuple[Market, str], int] = {}
+        self._renewed_at = 0.0
 
     def _key(self, market: Market) -> str:
-        return f"{self._prefix}:{market.value}"
+        # `lease:` keeps this clear of the old refcount hash (`{prefix}:{market}`), which a sorted
+        # set cannot share a key with.
+        return f"{self._prefix}:lease:{market.value}"
+
+    def _member(self, symbol: str) -> str:
+        return f"{symbol}|{self._worker}"
 
     async def subscribe(self, market: Market, symbol: str) -> bool:
+        held = self._held.get((market, symbol), 0)
+        if held:  # this worker already holds the symbol: nothing new for the fleet-wide cap
+            self._held[(market, symbol)] = held + 1
+            return True
         key = self._key(market)
+        member = self._member(symbol)
+        now = self._clock()
         async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.hincrby(key, symbol, 1)
-            pipe.hlen(key)
+            pipe.zremrangebyscore(key, "-inf", now)
+            pipe.zadd(key, {member: now + self._lease})
+            pipe.zrange(key, 0, -1)
             results = await pipe.execute()
-        new_count = int(results[0])
-        distinct = int(results[1])
-        if new_count == 1 and distinct > self._max_symbols:
-            # This subscribe created a brand-new demanded symbol beyond the global cap — undo it
-            # so the ceiling holds, and reject just this symbol.
-            await self._redis.hdel(key, symbol)
+        live = {m.decode() if isinstance(m, bytes) else str(m) for m in results[2]}
+        distinct = {m.rsplit("|", 1)[0] for m in live}
+        if len(distinct) > self._max_symbols:
+            # This lease made a new demanded symbol beyond the global cap: take it back.
+            await self._redis.zrem(key, member)
             logger.info("quote_demand_cap_reached", market=market.value, cap=self._max_symbols)
             return False
+        self._held[(market, symbol)] = 1
         return True
 
     async def unsubscribe(self, market: Market, symbol: str) -> None:
-        key = self._key(market)
-        remaining = await self._redis.hincrby(key, symbol, -1)
-        if int(remaining) <= 0:
-            await self._redis.hdel(key, symbol)
+        held = self._held.get((market, symbol), 0) - 1
+        if held > 0:
+            self._held[(market, symbol)] = held
+            return
+        self._held.pop((market, symbol), None)
+        await self._redis.zrem(self._key(market), self._member(symbol))
+
+    async def refresh(self) -> None:
+        """Push this worker's leases out again; at most once every third of a lease, however
+        often it is called."""
+        now = self._clock()
+        if not self._held or now - self._renewed_at < self._lease / 3:
+            return
+        self._renewed_at = now
+        by_market: dict[Market, dict[str, float]] = {}
+        for market, symbol in self._held:
+            by_market.setdefault(market, {})[self._member(symbol)] = now + self._lease
+        async with self._redis.pipeline(transaction=False) as pipe:
+            for market, members in by_market.items():
+                pipe.zadd(self._key(market), members)
+            await pipe.execute()
 
 
 class InMemoryDemandRegistry:
@@ -182,6 +240,9 @@ class InMemoryDemandRegistry:
             self._counts.pop(key, None)
         else:
             self._counts[key] = remaining
+
+    async def refresh(self) -> None:
+        return None  # one process: nothing outlives it, so nothing expires
 
 
 # ---- transport backends --------------------------------------------------------------------
@@ -343,9 +404,20 @@ class QuotePoller:
         try:
             while self._local:
                 await asyncio.sleep(self._granularity())
+                await self._renew_demand()
                 await self.poll_tick()
         finally:
             self._loop_task = None
+
+    async def _renew_demand(self) -> None:
+        try:
+            await self._registry.refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A failed renewal must not stop the quotes; the next pass tries again, and the
+            # leases last several renewal intervals.
+            logger.warning("quote_demand_refresh_failed", exc_info=True)
 
     async def poll_tick(self, *, now: datetime | None = None, clock: float | None = None) -> int:
         """One poll pass: fetch + publish every due, market-open, locally-demanded symbol once.

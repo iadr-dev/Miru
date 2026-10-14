@@ -165,23 +165,140 @@ async def test_published_frame_carries_as_of_and_market_open() -> None:
     await poller.aclose()
 
 
-# ---- Redis-backed demand refcount (fakeredis) ----------------------------------------------
+# ---- Redis-backed demand leases (fakeredis) ------------------------------------------------
 
 
-async def test_redis_demand_refcount_atomic_and_reject_over_cap(fake_redis: Redis) -> None:
-    registry = RedisDemandRegistry(fake_redis, key_prefix="demand", max_symbols=1)
-    assert await registry.subscribe(Market.TW, "2330") is True
-    assert await registry.subscribe(Market.TW, "2330") is True  # same symbol, still under cap
-    assert await registry.subscribe(Market.TW, "2317") is False  # new symbol over the cap
+class _Clock:
+    """A settable clock, so lease expiry is tested without waiting."""
 
-    # The rejected symbol left no residue (the reserve-before-act undo ran).
-    assert await fake_redis.hexists("demand:TW", "2317") == 0
-    assert int(await fake_redis.hget("demand:TW", "2330")) == 2
+    def __init__(self) -> None:
+        self.now = 1_000_000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _registry(redis: Redis, worker: str, clock: _Clock, *, cap: int = 100) -> RedisDemandRegistry:
+    return RedisDemandRegistry(
+        redis,
+        key_prefix="demand",
+        max_symbols=cap,
+        lease_seconds=90.0,
+        worker_id=worker,
+        clock=clock,
+    )
+
+
+async def test_redis_demand_cap_is_fleet_wide_and_rejects_without_residue(
+    fake_redis: Redis,
+) -> None:
+    clock = _Clock()
+    a = _registry(fake_redis, "a", clock, cap=1)
+    b = _registry(fake_redis, "b", clock, cap=1)
+    assert await a.subscribe(Market.TW, "2330") is True
+    assert await b.subscribe(Market.TW, "2330") is True  # the same symbol, still one distinct
+    assert await b.subscribe(Market.TW, "2317") is False  # a second distinct symbol: over the cap
+
+    members = {m.decode() for m in await fake_redis.zrange("demand:lease:TW", 0, -1)}
+    assert members == {"2330|a", "2330|b"}  # the rejected symbol left nothing behind
+
+
+async def test_a_workers_repeat_subscribers_and_unsubscribes_are_counted_locally(
+    fake_redis: Redis,
+) -> None:
+    clock = _Clock()
+    registry = _registry(fake_redis, "a", clock)
+    await registry.subscribe(Market.TW, "2330")
+    await registry.subscribe(Market.TW, "2330")  # a second tab on the same worker
+    await registry.unsubscribe(Market.TW, "2330")
+    assert await fake_redis.zcard("demand:lease:TW") == 1  # one tab left: the lease stays
 
     await registry.unsubscribe(Market.TW, "2330")
-    assert int(await fake_redis.hget("demand:TW", "2330")) == 1
-    await registry.unsubscribe(Market.TW, "2330")
-    assert await fake_redis.hexists("demand:TW", "2330") == 0  # zero → symbol leaves the demand set
+    assert await fake_redis.zcard("demand:lease:TW") == 0  # none left: the symbol leaves the set
+
+
+async def test_a_killed_workers_claims_expire_and_stop_using_up_the_cap(fake_redis: Redis) -> None:
+    """The shared refcount hash was only decremented by a clean disconnect, so every crash left its
+    counts for good and they slowly used up the symbol cap for the whole fleet."""
+    clock = _Clock()
+    doomed = _registry(fake_redis, "doomed", clock, cap=3)
+    survivor = _registry(fake_redis, "survivor", clock, cap=3)
+    for symbol in ("2330", "2317", "2454"):
+        assert await doomed.subscribe(Market.TW, symbol) is True  # then it is killed: no cleanup
+    assert await survivor.subscribe(Market.TW, "2412") is False  # the cap is full of its claims
+
+    clock.now += 91  # past the lease; the killed worker never renewed
+    assert await survivor.subscribe(Market.TW, "2412") is True
+    assert await survivor.subscribe(Market.TW, "2882") is True
+
+    members = {m.decode() for m in await fake_redis.zrange("demand:lease:TW", 0, -1)}
+    assert members == {"2412|survivor", "2882|survivor"}  # the dead worker's claims are gone
+
+
+async def test_a_live_workers_claims_are_renewed_and_do_not_expire(fake_redis: Redis) -> None:
+    clock = _Clock()
+    live = _registry(fake_redis, "live", clock, cap=1)
+    other = _registry(fake_redis, "other", clock, cap=1)
+    await live.subscribe(Market.TW, "2330")
+
+    for _ in range(5):  # five minutes, renewed every 30 s
+        clock.now += 30
+        await live.refresh()
+    assert await other.subscribe(Market.TW, "2317") is False  # its claim is still there
+
+    clock.now += 91  # it stops renewing (killed)
+    assert await other.subscribe(Market.TW, "2317") is True
+
+
+async def test_renewal_is_limited_to_a_third_of_a_lease(fake_redis: Redis) -> None:
+    clock = _Clock()
+    registry = _registry(fake_redis, "a", clock)
+    await registry.subscribe(Market.TW, "2330")
+    await registry.refresh()  # the first renewal always goes through
+    renewed = await fake_redis.zscore("demand:lease:TW", "2330|a")
+
+    clock.now += 10  # under a third of 90 s: no round trip
+    await registry.refresh()
+    assert await fake_redis.zscore("demand:lease:TW", "2330|a") == renewed
+
+    clock.now += 25  # past it
+    await registry.refresh()
+    assert await fake_redis.zscore("demand:lease:TW", "2330|a") == renewed + 35
+
+
+class _SpyRegistry(InMemoryDemandRegistry):
+    def __init__(self, *, max_symbols: int, fail: bool = False) -> None:
+        super().__init__(max_symbols=max_symbols)
+        self.refreshes = 0
+        self._fail = fail
+
+    async def refresh(self) -> None:
+        self.refreshes += 1
+        if self._fail:
+            raise RuntimeError("redis timed out")
+
+
+async def test_the_poll_loop_renews_demand_and_survives_a_failed_renewal() -> None:
+    for fail in (False, True):
+        registry = _SpyRegistry(max_symbols=10, fail=fail)
+        poller = QuotePoller(
+            registry=registry,
+            transport=InMemoryQuoteTransport(),
+            fetcher=_CountingFetcher(),
+            market_gate=_OpenGate(),
+            channel_prefix="quote",
+            cadence_seconds={"normal": 0.01, "saver": 0.02},
+            auto_poll=True,
+        )
+        await poller.add_subscriber(Market.TW, "2330", "normal")
+        for _ in range(300):  # a failing renewal logs a traceback, which can be slow
+            if registry.refreshes >= 3:
+                break
+            await asyncio.sleep(0.01)
+
+        assert registry.refreshes >= 3  # renewed on the loop's own cadence, failing or not
+        assert poller._loop_task is not None and not poller._loop_task.done()
+        await poller.aclose()
 
 
 class _OneSymbolFails(_CountingFetcher):

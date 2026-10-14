@@ -251,6 +251,9 @@ class Settings(BaseSettings):
     quote_stream_max_demanded_symbols: int = 500
     quote_channel_key_prefix: str = "quote"
     quote_demand_key_prefix: str = "demand"
+    # How long a worker's claim on a quote symbol lasts without being renewed. A worker that is
+    # killed stops renewing, so its claims leave the fleet-wide symbol cap after this long.
+    quote_demand_lease_seconds: float = 90.0
 
     # Market-data read-through cache (sources/caching_adapter.py, dataaccess/composition.py)
     market_data_cache_backend: str = "none"  # none | redis

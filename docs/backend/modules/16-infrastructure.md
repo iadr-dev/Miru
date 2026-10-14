@@ -53,23 +53,30 @@ design (1 poll → N clients instead of N clients × N polls against the 6000/hr
 
 ```
 client opens  GET /quote/stream?symbols=2330,0050&market=TW   (SSE; reuses §2 transport)
-   │  subscription registered in Redis: demand{TW}: {2330, 0050, …} (refcounted per connection)
+   │  subscription registered in Redis: demand:lease:TW: {2330|worker, 0050|worker, …} (an expiring lease per worker)
    ▼
 shared quote poller (one worker):  every 5s, for each symbol with ≥1 subscriber & market-open:
    fetch snapshot via dataaccess router (price_intraday → finmind/twse_mis) → cache →
    publish to Redis  quote:{market}:{symbol}
    ▼
 each API worker's SSE handler subscribes to its connection's quote:* channels → pushes `quote` events
-   │  client disconnects → refcount--; at 0 the symbol leaves the demand set → poller stops it
+   │  client disconnects → this worker's count--; at 0 its lease is dropped → poller stops it
 ```
 
 - **Transport = SSE + Redis** (the same fan-out as agent chat, §2) — a quote feed is
   server→client only; subscribe/unsubscribe is just the stream's `symbols` param (or a small
   `POST /quote/subscribe`), so no WebSocket is needed. Detail page = 1 symbol; watchlist = N;
   an agent `rich_card` quote piggybacks the same mechanism.
-- **Demand set = union of all live subscriptions** (Redis refcount). The poller **only** touches
-  symbols someone is watching, **only** in market hours, **auto-stops** on last disconnect
-  — the live-quote poller's bounded observation, not an unattended scan (`backend/CLAUDE.md` §4).
+- **Demand set = union of all live subscriptions** (expiring per-worker leases in a Redis sorted
+  set, `RedisDemandRegistry`). The poller **only** touches symbols someone is watching, **only** in
+  market hours, **auto-stops** on last disconnect — the live-quote poller's bounded observation, not
+  an unattended scan (`backend/CLAUDE.md` §4). **A killed worker's claims expire by themselves:** each
+  worker renews its leases from the poll loop and a lease lasts `QUOTE_DEMAND_LEASE_SECONDS` (90 s)
+  without renewal, so the global cap counts only live workers. The earlier shared refcount was
+  decremented only by a clean disconnect, so every crash left its counts behind for good and they
+  slowly used up the cap for the whole fleet (shown with a real process kill: the old registry still
+  held all 5 symbols and refused a new one; the new one held 0 nine seconds later and admitted it).
+  The cap is still atomic across workers (one `MULTI`/`EXEC` prunes, adds and counts).
 - **Caps:** per-connection symbol cap + global demanded-symbol cap; feeds the FinMind Sponsor
   quota manager (§4) — over-budget → slower cadence / cached, never a tight loop.
 - **Cadence tiers (client hint).** The stream accepts a `cadence` hint on subscribe — `normal` (~5s,
