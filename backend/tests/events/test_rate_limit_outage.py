@@ -13,6 +13,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from api.lifecycle import ShutdownSignal
 from api.routers import probes
 from config.settings import Settings
 from events.rate_limit import (
@@ -86,6 +87,7 @@ class _State:
     def __init__(self, settings: Settings, session_factory: object) -> None:
         self.settings = settings
         self.session_factory = session_factory
+        self.shutdown = ShutdownSignal()
 
 
 class _Response:
@@ -134,3 +136,19 @@ async def test_a_burst_of_concurrent_checks_does_not_drop_to_the_local_limit() -
 
     assert all(v.allowed for v in verdicts)
     assert limiter._degraded is False  # type: ignore[attr-defined]
+
+
+async def test_a_draining_replica_reports_it_so_the_load_balancer_stops_routing() -> None:
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        state = _State(
+            Settings(database_url="sqlite+aiosqlite:///:memory:"), async_sessionmaker(engine)
+        )
+        state.shutdown.begin()
+        response = _Response()
+        body = await probes._readiness(state, response)  # type: ignore[arg-type]
+    finally:
+        await engine.dispose()
+
+    assert response.status_code == 503  # type: ignore[attr-defined]
+    assert body["status"] == "draining"

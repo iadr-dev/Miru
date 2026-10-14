@@ -346,6 +346,21 @@ Test: `tests/api/test_turn_sessions.py`.
 with a 3 s limit, so a replica whose application pool is exhausted still reports busy-but-alive
 instead of failing readiness and being ejected (which pushes its load onto the other replicas).
 
+**A stopping API ends its idle feeds at once and gives chat turns the grace window.** On SIGTERM
+uvicorn stops accepting connections and waits for the open ones up to
+`--timeout-graceful-shutdown` (`SHUTDOWN_GRACE_SECONDS`, 30; the entrypoint passes it, and the
+`api`/`mcp` containers' `stop_grace_period` is 45 s, longer, so Docker does not kill first). A chat
+turn is worth waiting for; `/updates/stream` and `/quote/stream` never finish on their own, so
+before this each stop spent the whole window waiting on them and was then killed (exit 137) with
+turns unfinished. `api/lifecycle.py` (`ShutdownSignal`, chained in front of uvicorn's handler at
+startup) ends those two feeds the moment the signal arrives, and `/readyz` answers 503
+`{"status": "draining"}` so a load balancer stops routing to the replica. Measured with a real
+uvicorn and SIGTERM in a Linux container: with an idle feed and a 1.5 s turn open, the stop took
+10.1 s (the feed held it and was cut) before, 1.5 s after, the turn finished in both. A turn longer
+than the window is cancelled at its end; the question is already saved (it is committed before the
+stream starts), the unfinished answer is not. The scheduler and ingest have their own 30 s grace
+(compose) and their own SIGTERM handling.
+
 **A Redis outage degrades the request path; it does not fail it.** Only Postgres gates readiness;
 Redis is reported in the `/readyz` body (`"redis": false`) but every replica shares it, so failing
 readiness on it ejected every replica at once. While Redis is down:
