@@ -19,7 +19,7 @@ from events.redis_bus import RedisEventBus
 def test_memory_backend_selected_by_default(session_factory: async_sessionmaker) -> None:
     factory = build_event_bus_factory(Settings(event_bus_backend="memory"), session_factory)
     assert isinstance(factory, InMemoryEventBusFactory)
-    bus = factory.new_bus(turn_id="t1", user_id="u1")
+    bus = factory.new_bus(turn_id="t1", user_id="u1", thread_id="th1")
     assert isinstance(bus, InMemoryEventBus)
     assert factory.reader() is None  # no durable/cross-worker path on the in-memory backend
 
@@ -29,7 +29,7 @@ async def test_redis_backend_produces_redis_bus_and_reader(
 ) -> None:
     redis = fakeredis.aioredis.FakeRedis()
     factory = RedisEventBusFactory(redis, session_factory)
-    bus = factory.new_bus(turn_id="t1", user_id="u1")
+    bus = factory.new_bus(turn_id="t1", user_id="u1", thread_id="th1")
     assert isinstance(bus, RedisEventBus)
     assert factory.reader() is not None  # redis backend supports durable cross-worker resume
     await redis.aclose()

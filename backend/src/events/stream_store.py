@@ -5,9 +5,10 @@ The live fan-out (`bus.py`) is deliberately separate from this — the bus is a 
 pub/sub; this store is where a subscriber writes each enveloped event so `Last-Event-ID` resume
 has something to read. Writes respect the `UNIQUE(turn_id, event_seq)` guard: a redelivered or
 double-published event collides and is treated as already-recorded, never a crash — the same
-at-least-once-write / exactly-once-effect discipline the rest of the codebase uses. A write for a
-`turn_id` that is not a persisted turn (or with no user scope) is skipped rather than raised, so a
-transport-level publish never fails on a not-yet-modeled correlation id.
+at-least-once-write / exactly-once-effect discipline the rest of the codebase uses. A write with
+no user or thread scope is skipped rather than raised, so a transport-level publish never fails
+on a correlation id it cannot attribute. The turn id need not be a persisted turn: a
+regenerated answer streams under an id that is saved only once the answer is complete.
 """
 
 from __future__ import annotations
@@ -36,7 +37,9 @@ class StreamEventStore(Protocol):
     `after_seq` is missing, with no overlap of what it already has.
     """
 
-    async def append(self, event: Event, *, user_id: str | None = None) -> bool: ...
+    async def append(
+        self, event: Event, *, user_id: str | None = None, thread_id: str | None = None
+    ) -> bool: ...
 
     async def replay_since(self, turn_id: str, after_seq: int) -> list[Event]: ...
 
@@ -50,16 +53,19 @@ class SqlAlchemyStreamEventStore:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
-    async def append(self, event: Event, *, user_id: str | None = None) -> bool:
+    async def append(
+        self, event: Event, *, user_id: str | None = None, thread_id: str | None = None
+    ) -> bool:
         """Persist one event. Returns `True` if a row was written, `False` if it was a no-op
-        (duplicate `(turn_id, event_seq)`, an unknown/ephemeral `turn_id` the FK rejects, or no
-        user scope to attribute the row to). Never raises on those expected cases — a durable-log
-        write is best-effort relative to the live path, never a reason to fail the turn."""
-        if event.turn_id is None or user_id is None:
+        (duplicate `(turn_id, event_seq)`, or no user or thread scope to attribute the row to).
+        Never raises on those expected cases — a durable-log write is best-effort relative to the
+        live path, never a reason to fail the turn."""
+        if event.turn_id is None or user_id is None or thread_id is None:
             return False
         row = StreamEventRow(
             id=str(uuid.uuid4()),
             turn_id=event.turn_id,
+            thread_id=thread_id,
             user_id=user_id,
             event_seq=event.seq,
             event_type=event.kind,
@@ -74,9 +80,8 @@ class SqlAlchemyStreamEventStore:
                 session.add(row)
                 await session.commit()
         except IntegrityError:
-            # Either the UNIQUE(turn_id, event_seq) guard (a redelivered/duplicate publish) or the
-            # turns FK (a correlation id that is not a persisted turn). Both are expected, benign,
-            # and mean "nothing new to record" — the replay log stays consistent either way.
+            # The UNIQUE(turn_id, event_seq) guard: a redelivered/duplicate publish. Expected,
+            # benign, and means "nothing new to record" — the replay log stays consistent.
             logger.debug("stream_event_append_noop", turn_id=event.turn_id, seq=event.seq)
             return False
         return True
