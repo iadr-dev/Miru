@@ -15,7 +15,7 @@
 ![Next.js](https://img.shields.io/badge/Next.js-App%20Router-000000?logo=next.js&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-read--only-6E56CF)
 
-[English](README_EN.md) | **繁體中文**
+[English](README.md) | **繁體中文**
 
 </div>
 
