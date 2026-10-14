@@ -26,6 +26,7 @@ import structlog
 from config.logging_config import configure_logging
 from config.settings import get_settings
 from db import rls
+from ingest.leader import acquire_leadership, refresh_leadership, release_leadership
 from scheduler.composition import build_alert_update_source, build_scheduler_from_settings
 from scheduler.subscriber import run_subscriber
 from scheduler.worker import SchedulerWorker
@@ -56,16 +57,22 @@ async def _run_once(worker: SchedulerWorker) -> None:
     the daemon — a pass-level error is logged and the loop continues to the next interval, because a
     scheduler that crashes on a transient store hiccup is worse than one that retries next tick."""
     try:
+        # Keep the lease alive (or let a standby try to take it over) before any work; a pass
+        # that is not the leader does nothing.
+        if not await refresh_leadership(worker.leader):
+            return
         ran = await worker.run_due_jobs()
         fired = await worker.reconcile_alerts()
         released = await worker.release_held()
         digests = await worker.send_morning_digests()
+        retried = await worker.retry_pending_deliveries()
         logger.info(
             "scheduler_pass_complete",
             jobs_run=len(ran),
             alerts_fired=len(fired),
             held_released=released,
             digests_sent=digests,
+            deliveries_retried=retried,
         )
     except Exception:
         logger.exception("scheduler_pass_failed")
@@ -111,6 +118,7 @@ async def main() -> None:
     rls.enter_system_mode()
     worker = await build_scheduler_from_settings(settings)
     shutdown = _ShutdownState()
+    await acquire_leadership(worker.leader)
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -142,6 +150,7 @@ async def main() -> None:
             subscriber.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await subscriber
+        await release_leadership(worker.leader)
 
 
 if __name__ == "__main__":

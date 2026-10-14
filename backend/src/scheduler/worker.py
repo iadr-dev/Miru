@@ -69,6 +69,7 @@ from scheduler.models import (
     JobStatus,
     Notification,
     NotificationSource,
+    PendingDelivery,
     QuietHours,
     ScheduleJob,
     TriggerMode,
@@ -96,6 +97,14 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_USER_TZ = "Asia/Taipei"
 _HELD_LOOKBACK = timedelta(days=2)
+# External delivery: a transient failure is retried with a growing delay, up to this many attempts
+# in all, then the notification is marked failed (the in-app entry is unaffected).
+_MAX_DELIVERY_ATTEMPTS = 6
+_RETRY_BASE_DELAY = timedelta(minutes=5)
+_RETRY_MAX_DELAY = timedelta(hours=6)
+_RETRY_BATCH = 100
+# While one retry sweep sends a claimed notification, nothing else may pick it up for this long.
+_RETRY_LEASE = timedelta(minutes=10)
 # The morning digest goes out at or after this local time, and no later than the cutoff (a pass that
 # was down at 08:00 still sends it late in the morning; after that the moment has passed).
 _DIGEST_FROM = time(8, 0)
@@ -156,6 +165,10 @@ class SchedulerWorker:
         # serialised through this lock.
         self._eval_lock = asyncio.Lock()
 
+    @property
+    def leader(self) -> LeaderElection:
+        return self._ctx.leader
+
     # ---- jobs ----
 
     async def run_due_jobs(self, *, now: datetime | None = None) -> list[str]:
@@ -175,7 +188,7 @@ class SchedulerWorker:
                 ran.append(job.id)
         return ran
 
-    async def run_job(  # noqa: PLR0911 — each early return is a distinct skip reason
+    async def run_job(  # noqa: PLR0911, PLR0915 — each early return is a distinct skip reason
         self, job: ScheduleJob, *, now: datetime | None = None
     ) -> bool:
         """Run one job end to end. Returns True if the skill actually executed (vs. skipped)."""
@@ -264,8 +277,14 @@ class SchedulerWorker:
                 self._emit(EventKind.SCHEDULE_SKIPPED, user_id=user.id, data={"job_id": job.id})
                 return False
 
-            # Mark running so a crash mid-run is detectable as an orphaned run.
-            await store.set_job_status(job_id=job.id, status=JobStatus.RUNNING)
+            # Take the job atomically. `due_jobs` is only a scan, so a second worker (a restart
+            # overlap, a lease handover) may be looking at the same job; whoever wins this claim
+            # runs it, the other stands down. It also marks the job running, so a crash mid-run is
+            # detectable as an orphaned run.
+            if not await store.claim_job(job_id=job.id, now=now):
+                await session.rollback()
+                logger.info("schedule_job_claim_lost", job_id=job.id)
+                return False
             await session.commit()
 
             tool_context = self._ctx.entitlement_resolver.tool_context_for(user)
@@ -423,14 +442,25 @@ class SchedulerWorker:
             )
             fired: list[str] = []
             for rule in rules:
-                if await self._apply_rule(
-                    store,
-                    rule,
-                    results=evaluations.get(rule.id, {}),
-                    market=market,
-                    as_of=as_of,
-                    now=now,
-                ):
+                # One rule at a time, each committed on its own: a rule that raises loses only its
+                # own uncommitted work, and the rest of the group (and every other user's rules in
+                # it) still evaluate. Before, one bad rule rolled the whole group back and it was
+                # retried, and failed, on every pass.
+                try:
+                    delivered = await self._apply_rule(
+                        store,
+                        rule,
+                        results=evaluations.get(rule.id, {}),
+                        market=market,
+                        as_of=as_of,
+                        now=now,
+                    )
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception("alert_rule_failed", rule_id=rule.id)
+                    continue
+                if delivered:
                     fired.append(rule.id)
             await store.set_eval_mark(
                 capability=capability.value, market=market.value, as_of=as_of.isoformat()
@@ -556,6 +586,7 @@ class SchedulerWorker:
         recipient = await self._recipient_for(store, user)
         for channel_kind in selected:
             held = hold_external and channel_kind is not DeliveryChannelKind.IN_APP
+            external = channel_kind is not DeliveryChannelKind.IN_APP and not held
             record = await store.record_notification(
                 user_id=user.id,
                 source=source,
@@ -568,13 +599,26 @@ class SchedulerWorker:
                     "deep_link": deep_link,
                     **({"held": True} if held else {}),
                 },
+                delivery_state="pending" if external else "sent",
             )
             if record is None:
                 continue  # dedupe no-op — already delivered on this channel today
+            # The row is both the dedupe guard and the retry queue, so it is durable BEFORE anything
+            # is sent. A failure after this point can no longer cause a second send, and a crash
+            # before the send leaves a pending row the retry sweep delivers.
+            await store.session.commit()
             if held:
                 continue
             channel = self._ctx.channels.get(channel_kind)
             if channel is None:
+                if external:  # not configured in this deployment: nothing will ever send it
+                    await store.mark_delivery(
+                        notification_id=record.id,
+                        state="failed",
+                        attempts=0,
+                        next_attempt_at=None,
+                    )
+                    await store.session.commit()
                 continue
             notification = DeliveryNotification(
                 notification_id=record.id,
@@ -582,9 +626,110 @@ class SchedulerWorker:
                 body=_external_body(body),
                 deep_link=deep_link,
             )
+            await self._send_and_record(
+                store,
+                user_id=user.id,
+                record_id=record.id,
+                channel=channel,
+                notification=notification,
+                recipient=recipient,
+                attempts=0,
+                track=external,
+            )
+
+    async def _send_and_record(  # noqa: PLR0913 — one argument per delivery dimension
+        self,
+        store: SqlAlchemySchedulerStore,
+        *,
+        user_id: str,
+        record_id: str,
+        channel: DeliveryChannel,
+        notification: DeliveryNotification,
+        recipient: DeliveryRecipient,
+        attempts: int,
+        track: bool,
+    ) -> str:
+        """Send one notification, then record what happened and commit. A channel that raises is
+        a transient failure like any other. Returns the notification's new delivery state."""
+        try:
             receipt = await channel.send(notification, recipient)
-            self._log_receipt(receipt)
-            await self._prune_stale(store, user.id, receipt)
+        except Exception:
+            logger.warning(
+                "delivery_send_raised",
+                channel=channel.kind.value,
+                notification_id=record_id,
+                exc_info=True,
+            )
+            receipt = DeliveryReceipt(
+                channel=channel.kind, delivered=False, retryable=True, detail="send_raised"
+            )
+        self._log_receipt(receipt)
+        await self._prune_stale(store, user_id, receipt)
+        state, next_attempt = _delivery_outcome(receipt, attempts, datetime.now(UTC))
+        if track:
+            await store.mark_delivery(
+                notification_id=record_id,
+                state=state,
+                attempts=attempts + 1,
+                next_attempt_at=next_attempt,
+            )
+        await store.session.commit()
+        return state
+
+    async def retry_pending_deliveries(self, *, now: datetime | None = None) -> int:
+        """Deliver what an earlier attempt left pending: a transient failure whose retry time has
+        come, and any row recorded but never sent because the process died first. Returns how many
+        were delivered. Rows are claimed (and the claim committed) before any send, so no database
+        lock is held across a network call."""
+        if not self._ctx.leader.is_leader():
+            return 0
+        now = now or datetime.now(UTC)
+        delivered = 0
+        async with self._ctx.session_factory() as session:
+            store = SqlAlchemySchedulerStore(session)
+            due = await store.claim_due_deliveries(now=now, limit=_RETRY_BATCH, lease=_RETRY_LEASE)
+            await session.commit()
+            for item in due:
+                try:
+                    if await self._retry_one(store, session, item) == "sent":
+                        delivered += 1
+                except Exception:
+                    await session.rollback()
+                    logger.exception("delivery_retry_failed", notification_id=item.id)
+        return delivered
+
+    async def _retry_one(
+        self, store: SqlAlchemySchedulerStore, session: AsyncSession, item: PendingDelivery
+    ) -> str:
+        user = await self._load_user(session, item.user_id)
+        channel = self._ctx.channels.get(item.channel)
+        if user is None or channel is None:
+            await store.mark_delivery(
+                notification_id=item.id,
+                state="failed",
+                attempts=item.attempts,
+                next_attempt_at=None,
+            )
+            await session.commit()
+            return "failed"
+        raw_link = item.payload.get("deep_link")
+        deep_link = cast("dict[str, object]", raw_link) if isinstance(raw_link, dict) else {}
+        notification = DeliveryNotification(
+            notification_id=item.id,
+            title=str(item.payload.get("title", "")),
+            body=_external_body(str(item.payload.get("body", ""))),
+            deep_link=deep_link,
+        )
+        return await self._send_and_record(
+            store,
+            user_id=user.id,
+            record_id=item.id,
+            channel=channel,
+            notification=notification,
+            recipient=await self._recipient_for(store, user),
+            attempts=item.attempts,
+            track=True,
+        )
 
     async def send_morning_digests(self, *, now: datetime | None = None) -> int:
         """Send the 晨間摘要 to every user who turned it on, once per local day: on a Taiwan
@@ -602,9 +747,15 @@ class SchedulerWorker:
         async with self._ctx.session_factory() as session:
             store = SqlAlchemySchedulerStore(session)
             for user_id in await store.morning_digest_user_ids():
-                if await self._send_digest_to(store, session, user_id, now):
+                try:
+                    delivered = await self._send_digest_to(store, session, user_id, now)
+                    await session.commit()  # this user's digest is recorded before the next one
+                except Exception:
+                    await session.rollback()
+                    logger.exception("morning_digest_failed", user_id=user_id)
+                    continue
+                if delivered:
                     sent += 1
-            await session.commit()
         return sent
 
     async def _send_digest_to(
@@ -743,12 +894,18 @@ class SchedulerWorker:
                     prefs.quiet_hours, now, prefs.timezone
                 ):
                     continue  # the user's window is still open
-                user = await self._load_user(session, user_id)
-                if user is None:
-                    continue
-                await self._send_digest(store, user, items)
-                released += await store.release_held_notifications(ids=tuple(i.id for i in items))
-            await session.commit()
+                try:
+                    user = await self._load_user(session, user_id)
+                    if user is None:
+                        continue
+                    await self._send_digest(store, user, items)
+                    released += await store.release_held_notifications(
+                        ids=tuple(i.id for i in items)
+                    )
+                    await session.commit()  # released at once: a later failure cannot re-send
+                except Exception:
+                    await session.rollback()
+                    logger.exception("held_release_failed", user_id=user_id)
         return released
 
     async def _send_digest(
@@ -963,6 +1120,20 @@ class SchedulerWorker:
         except UnresolvableTriggerError:
             logger.warning("schedule_job_unresolvable_trigger", job_id=job.id)
             return None
+
+
+def _delivery_outcome(
+    receipt: DeliveryReceipt, attempts: int, now: datetime
+) -> tuple[str, datetime | None]:
+    """(state, next attempt time) after one send. A delivered notification is done; a failure that
+    is not transient, or that has used up its attempts, is final; any other failure is retried
+    after a delay that doubles each time, from 5 minutes up to 6 hours."""
+    if receipt.delivered:
+        return "sent", None
+    if not receipt.retryable or attempts + 1 >= _MAX_DELIVERY_ATTEMPTS:
+        return "failed", None
+    delay = min(_RETRY_BASE_DELAY * (2**attempts), _RETRY_MAX_DELAY)
+    return "pending", now + delay
 
 
 _PREVIEW_CHARS = 160

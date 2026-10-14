@@ -20,6 +20,7 @@ from typing import Protocol, runtime_checkable
 import structlog
 from pydantic import TypeAdapter
 from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +52,7 @@ from scheduler.models import (
     Notification,
     NotificationBadge,
     NotificationSource,
+    PendingDelivery,
     QuietHours,
     ScheduleAction,
     ScheduleJob,
@@ -68,6 +70,10 @@ logger = structlog.get_logger(__name__)
 # How long a job may stay `running` before the mark is treated as an orphaned run (the worker
 # crashed mid-run) and the job becomes due again.
 RUN_TIMEOUT = timedelta(minutes=15)
+# A notification recorded as pending but never sent (the process died between the commit and the
+# send) is picked up by the retry sweep once it is older than this, so the original send is not
+# raced.
+FIRST_SEND_GRACE = timedelta(minutes=2)
 
 _CONDITION = TypeAdapter[ConditionModel](RuleCondition)
 
@@ -248,6 +254,8 @@ class SchedulerStore(Protocol):
 
     async def due_jobs(self, *, now: datetime) -> list[ScheduleJob]: ...
 
+    async def claim_job(self, *, job_id: str, now: datetime) -> bool: ...
+
     async def create_alert(  # noqa: PLR0913 — one keyword field per persisted alert dimension
         self,
         *,
@@ -337,7 +345,21 @@ class SchedulerStore(Protocol):
         channel: DeliveryChannelKind,
         trigger_date: date,
         payload: dict[str, object],
+        delivery_state: str = "sent",
     ) -> Notification | None: ...
+
+    async def mark_delivery(
+        self,
+        *,
+        notification_id: str,
+        state: str,
+        attempts: int,
+        next_attempt_at: datetime | None,
+    ) -> None: ...
+
+    async def claim_due_deliveries(
+        self, *, now: datetime, limit: int, lease: timedelta
+    ) -> list[PendingDelivery]: ...
 
     async def list_notifications(
         self, *, user_id: str, limit: int = 50, unread_only: bool = False
@@ -573,6 +595,31 @@ class SqlAlchemySchedulerStore:
             )
         )
         return [_job_to_model(row) for row in result.scalars().all()]
+
+    async def claim_job(self, *, job_id: str, now: datetime) -> bool:
+        """Take a due job for this worker in one atomic statement, marking it running.
+
+        `due_jobs` is only a scan: two workers can both see the same job. This is what decides who
+        runs it. The row is taken only while it is still due, enabled, and either not running or
+        running with a mark older than `RUN_TIMEOUT` (an orphan), so a worker that arrives after
+        another has taken the job, or has finished it and moved `next_run` forward, gets False and
+        must stand down. Returns True when this call took it."""
+        stale_before = now - RUN_TIMEOUT
+        result = await self._session.execute(
+            update(ScheduleJobRow)
+            .where(
+                ScheduleJobRow.id == job_id,
+                ScheduleJobRow.enabled.is_(True),
+                ScheduleJobRow.next_run.is_not(None),
+                ScheduleJobRow.next_run <= now,
+                or_(
+                    ScheduleJobRow.status != JobStatus.RUNNING.value,
+                    ScheduleJobRow.updated_at < stale_before,
+                ),
+            )
+            .values(status=JobStatus.RUNNING.value, updated_at=datetime.now(UTC))
+        )
+        return isinstance(result, CursorResult) and result.rowcount == 1
 
     # ---- alerts ----
 
@@ -907,6 +954,7 @@ class SqlAlchemySchedulerStore:
         channel: DeliveryChannelKind,
         trigger_date: date,
         payload: dict[str, object],
+        delivery_state: str = "sent",
     ) -> Notification | None:
         """Insert a delivered-notification row. Returns `None` if a row with the same
         `(user_id, dedupe_key)` already exists — that is the idempotent-delivery no-op, not an
@@ -931,6 +979,7 @@ class SqlAlchemySchedulerStore:
             dedupe_key=dedupe_key,
             payload=payload,
             delivered_at=datetime.now(UTC),
+            delivery_state=delivery_state,
         )
         self._session.add(row)
         try:
@@ -942,6 +991,63 @@ class SqlAlchemySchedulerStore:
             logger.info("notification_dedupe_race_noop", user_id=user_id, dedupe_key=dedupe_key)
             return None
         return _notification_to_model(row)
+
+    async def mark_delivery(
+        self,
+        *,
+        notification_id: str,
+        state: str,
+        attempts: int,
+        next_attempt_at: datetime | None,
+    ) -> None:
+        row = await self._session.get(NotificationRow, notification_id)
+        if row is None:
+            return
+        row.delivery_state = state
+        row.delivery_attempts = attempts
+        row.next_attempt_at = next_attempt_at
+        await self._session.flush()
+
+    async def claim_due_deliveries(
+        self, *, now: datetime, limit: int, lease: timedelta
+    ) -> list[PendingDelivery]:
+        """External notifications that are due another delivery attempt: a transient failure whose
+        retry time has come, or a row recorded but never sent (the process died between the commit
+        and the send), once it is older than `FIRST_SEND_GRACE` so the original send is not raced.
+
+        Each row is claimed by pushing its `next_attempt_at` out by `lease`, so a second sweep (or
+        a second worker, if the lease were ever lost) skips it while this one is sending; the
+        caller commits the claim BEFORE sending, so no row lock is held across a network call."""
+        stmt = (
+            select(NotificationRow)
+            .where(
+                NotificationRow.delivery_state == "pending",
+                or_(
+                    NotificationRow.next_attempt_at <= now,
+                    and_(
+                        NotificationRow.next_attempt_at.is_(None),
+                        NotificationRow.delivered_at <= now - FIRST_SEND_GRACE,
+                    ),
+                ),
+            )
+            .order_by(NotificationRow.delivered_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        rows = (await self._session.execute(stmt)).scalars().all()
+        for row in rows:
+            row.next_attempt_at = now + lease
+        await self._session.flush()
+        return [
+            PendingDelivery(
+                id=row.id,
+                user_id=row.user_id,
+                channel=DeliveryChannelKind(row.channel),
+                payload=dict(row.payload),
+                attempts=row.delivery_attempts,
+            )
+            for row in rows
+        ]
 
     async def list_notifications(
         self, *, user_id: str, limit: int = 50, unread_only: bool = False

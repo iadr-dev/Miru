@@ -236,6 +236,19 @@ class Notification(BaseModel):
     read_at: datetime | None = None
 
 
+class PendingDelivery(BaseModel):
+    """An external notification that is recorded but not yet delivered: what the retry sweep needs
+    to send it again (the recipient is resolved from `user_id`)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    user_id: str
+    channel: DeliveryChannelKind
+    payload: dict[str, object] = Field(default_factory=dict)
+    attempts: int = 0
+
+
 class DevicePushToken(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 

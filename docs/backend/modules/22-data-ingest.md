@@ -352,8 +352,8 @@ the role and the data root, so two data roots never share a lease.
 - **A torn partition heals itself.** `has_partition` is true only if the manifest's version
   directory exists, so gap-fill and backfill rewrite a partition whose manifest points at nothing.
 
-The scheduler still uses `AlwaysLeader` today; it moves to the same lease next
-([14](14-scheduler-alerts.md), [16](16-infrastructure.md) §5).
+The scheduler daemon takes the same kind of lease under its own role (`scheduler`), see
+[14](14-scheduler-alerts.md) §6.
 
 ## 7. Store & concurrency — DuckDB/Parquet, and when to reconsider
 

@@ -357,6 +357,27 @@ rendered per channel behind the existing `DeliveryChannel` protocol (`scheduler/
 | LINE | Messaging API push (`line_messaging_channel_access_token`; the older `LINE_MESSAGING_ACCESS_TOKEN` name also works) | recipient = the LINE user id from an explicit link (below), else the LINE sign-in id ([12](12-multi-user-tiers.md)); a push to someone who has not added the official account is a permanent 4xx receipt. **The free LINE plan caps messages per month (200 on the configured account) — a push over the cap fails with 429** |
 | Telegram | bot API (`telegram_bot_token`, `telegram_bot_username`) | bound by the one-time-token flow below |
 
+**Delivery is durable and retried.** The `notifications` row is both the dedupe guard and the
+outbox. An external notification is committed as `delivery_state = pending` **before** anything is
+sent, and its outcome is recorded after: `sent`, `failed` (not retryable, or out of attempts), or
+still `pending` with `next_attempt_at` for a transient failure (a channel that raises counts as
+transient). The delay doubles from 5 minutes up to 6 hours, with 6 attempts in all. Each scheduler
+pass runs `retry_pending_deliveries`, which claims due rows (`FOR UPDATE SKIP LOCKED`, the claim
+committed first so no lock is held across a network call) and also picks up a row recorded but never
+sent because the process died in between (once it is two minutes old, so a live send is not raced).
+A row therefore cannot be sent twice by a restart, and cannot be lost by a failure. The in-app entry
+is `sent` from the start and never retried. Email's `Idempotency-Key` (the notification id) covers
+the one gap left: a send that succeeded but whose answer was lost.
+
+**One scheduler runs, and one worker takes a job.** The daemon holds a real lease (role
+`scheduler`: a Postgres advisory lock, or a file lock on single-host SQLite; the same mechanism as
+the ingest writer, [22](22-data-ingest.md) §6c). A second process stands by and takes over when the
+first goes. Leadership alone is not trusted for correctness, though: a due job is **claimed** with
+one atomic `UPDATE ... WHERE next_run <= now AND (status != running OR the run is orphaned)`, so
+exactly one worker runs it even if two briefly both believe they lead. Failure is isolated to its
+unit: each alert rule, morning digest and held-notification release commits on its own, so one that
+raises loses only itself and the rest of the pass (and every other user's notifications) still run.
+
 **Push endpoints are allow-listed (SSRF).** A browser subscription carries a push-service URL the
 server later POSTs to, so `POST /me/devices` (web) accepts only `https` on the default port with a
 host of the real push services (`fcm.googleapis.com`, `*.push.services.mozilla.com`,
