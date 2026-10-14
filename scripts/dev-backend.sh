@@ -5,11 +5,15 @@
 # discovered in prod. For a lighter API-only loop (SQLite, in-process event bus, no
 # scheduler/ingest/mcp), run `uv run uvicorn api.app:app --reload` from backend/ directly instead.
 #
-# `./dev-backend.sh --backfill` seeds market data into the fresh DuckDB/Parquet volume first
-# (docker-compose.yml's INGEST_ON_STARTUP is "false" by design — nothing auto-populates on a
-# fresh volume) via the real operator CLI (`python -m ingest.backfill_cli --yes`), run once for
-# each market (TW, then US) inside the ingest container after it's up, before handing off to the
-# normal `up`.
+# `./dev-backend.sh --backfill` backfills market data first (docker-compose.yml's
+# INGEST_ON_STARTUP is "false" by design, so nothing populates a fresh volume on its own) with the
+# operator CLI (`python -m ingest.backfill_cli --yes`), once per market (TW, then US), then hands
+# off to the normal `up`. Safe to run every day on a live stack: the ingest daemon holds the
+# single-writer lease, so it is stopped for the run and the backfill runs in a one-off container
+# (with it running, the CLI would refuse with status 3). The final `up` starts the daemon again,
+# and its startup gap-fill continues from where the backfill ended. The api, scheduler and mcp
+# keep serving throughout; a reader only ever sees a whole partition (atomic swap). A market
+# whose backfill reports a failed job is listed at the end, and the stack still comes up.
 #
 # `./dev-backend.sh --webhook [https://<public-host>]` (no URL = WEBHOOK_BASE_URL from .env) points the Telegram bot's webhook at
 # <public-host>/api/v1/webhooks/telegram (Telegram setWebhook, authenticated with
@@ -77,12 +81,27 @@ if [ -n "$WEBHOOK_URL" ]; then
 fi
 
 if [ "$BACKFILL" = "1" ]; then
-  # No separate migrate step — every process calls `ensure_schema()` (idempotent
-  # `Base.metadata.create_all`) at its own startup (backend/CLAUDE.md §6), so `ingest`
-  # coming up already has its schema.
-  docker compose up --build -d postgres redis ingest
-  docker compose exec ingest python -m ingest.backfill_cli --yes --market tw
-  docker compose exec ingest python -m ingest.backfill_cli --yes --market us
+  # No separate migrate step: every process creates the schema at its own startup
+  # (backend/CLAUDE.md §6), the one-off backfill container included.
+  docker compose build ingest
+  docker compose up -d postgres redis
+  # The daemon holds the writer lease while it runs; stop it for the backfill (a no-op when it is
+  # not running). `unless-stopped` keeps it down until the `up` below.
+  docker compose stop ingest
+  FAILED_MARKETS=""
+  for market in tw us; do
+    # The image entrypoint ignores a plain command, hence --entrypoint.
+    if ! docker compose run --rm --no-deps --entrypoint python ingest \
+        -m ingest.backfill_cli --yes --market "$market"; then
+      FAILED_MARKETS="$FAILED_MARKETS $market"
+    fi
+  done
+  if [ -n "$FAILED_MARKETS" ]; then
+    # Usually one source refusing one symbol or one day; the rest of that market was still written,
+    # and the daemon's gap-fill retries what is missing. Exit status 3 means another backfill holds
+    # the lease.
+    echo "backfill reported failed jobs for:${FAILED_MARKETS} (see the log above); starting the stack anyway" >&2
+  fi
 fi
 
 exec docker compose up --build "$@"
