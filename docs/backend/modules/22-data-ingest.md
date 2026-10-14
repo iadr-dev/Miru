@@ -340,6 +340,11 @@ the role and the data root, so two data roots never share a lease.
 - **Manual backfill** (`python -m ingest.backfill_cli`): takes the same lease. If the daemon (or a
   second backfill) holds it, the CLI **exits with status 3** and says so; it never writes
   alongside the daemon. Run it when the daemon is stopped, or stop the daemon for the run.
+  `scripts/dev-backend.sh --backfill` (the daily dev backfill) does exactly that: it stops the
+  `ingest` service, runs the CLI once per market in a one-off container
+  (`docker compose run --rm --no-deps --entrypoint python ingest -m ingest.backfill_cli --yes
+  --market tw`), then starts the stack; the daemon's startup gap-fill continues from there. Users
+  keep being served meanwhile: the API reads each partition only after its atomic swap.
 - **Partition writes are serialised on top of that.** `ParquetStore.write_partition` does its
   expensive `COPY` into a private temp dir, then takes a per-partition file lock (`.write.lock`) for
   only the rename, the manifest flip and the cleanup, so even two writers that both believe they

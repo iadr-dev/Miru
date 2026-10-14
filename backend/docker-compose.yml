@@ -199,6 +199,11 @@ x-app-env: &app-env
 services:
   postgres:
     image: postgres:17-alpine
+    # Come back after Docker Desktop restarts, the machine sleeps or reboots, or the process dies.
+    # Without this a stopped stack stays down until someone notices (the schedule was once down
+    # for 22 hours). `unless-stopped`: a service stopped on purpose (`docker compose stop`) stays
+    # stopped.
+    restart: unless-stopped
     environment:
       POSTGRES_USER: miru
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-only-not-a-real-secret-change-me}
@@ -219,6 +224,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     # AOF on: quota counters + idempotency locks must survive a restart so a flush can't cause
     # double-billing / double-delivery (cache keys are ephemeral and don't rely on this).
     command: ["redis-server", "--appendonly", "yes"]
@@ -235,6 +241,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: miru-backend
+    restart: unless-stopped
     environment:
       <<: *app-env
       SERVICE_ROLE: api
@@ -268,9 +275,12 @@ services:
     environment:
       <<: *app-env
       SERVICE_ROLE: scheduler
-    # Single replica in compose — the dev-single-process leader assumption (AlwaysLeader). Proving
-    # multi-replica leader election is a separate, larger scope; a real cross-process election
-    # swaps in at the leader-composition site without touching the loop.
+    restart: unless-stopped
+    # One replica here. The process takes the `scheduler` lease (a Postgres advisory lock), so a
+    # second replica would stand by rather than run jobs twice.
+    # On a stop, a pass already running gets this long to finish. Anything longer is killed, which
+    # is safe: a job is claimed atomically and every notification is recorded before it is sent.
+    stop_grace_period: 30s
     volumes:
       - marketdata:/app/data
     depends_on:
@@ -287,9 +297,14 @@ services:
     environment:
       <<: *app-env
       SERVICE_ROLE: ingest
-    # Single replica in compose — the dev-single-process leader assumption (AlwaysLeader), the same
-    # leader-election domain the scheduler role uses. A real cross-process election swaps in at the
-    # leader-composition site without touching the loop, exactly as for the scheduler role.
+    restart: unless-stopped
+    # One replica here. The daemon holds the `ingest-writer` lease for as long as it runs, so a
+    # second replica, or a backfill started next to it, stands by or exits (status 3) rather than
+    # write alongside it. `scripts/dev-backend.sh --backfill` stops this service for the run.
+    # A whole-market job can take minutes, so a stop does not wait for it: after this grace period
+    # it is killed, which is safe because a partition only becomes visible by an atomic swap, and
+    # the startup gap-fill redoes whatever was cut short.
+    stop_grace_period: 30s
     volumes:
       - marketdata:/app/data
     depends_on:
@@ -303,6 +318,7 @@ services:
       context: .
       dockerfile: Dockerfile
     image: miru-backend
+    restart: unless-stopped
     environment:
       <<: *app-env
       SERVICE_ROLE: mcp
