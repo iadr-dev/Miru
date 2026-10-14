@@ -107,6 +107,7 @@ def build_quote_feed(
             client,
             key_prefix=settings.quote_demand_key_prefix,
             max_symbols=settings.quote_stream_max_demanded_symbols,
+            lease_seconds=settings.quote_demand_lease_seconds,
         )
         transport = RedisQuoteTransport(client)
     else:
