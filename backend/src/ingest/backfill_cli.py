@@ -80,6 +80,7 @@ from ingest.preflight import (
 )
 from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
+from sources.finmind import FinMindQuotaRefusedError
 
 logger = structlog.get_logger(__name__)
 
@@ -183,6 +184,8 @@ async def run_backfill_cli(
                 ingest_on_startup=True,
                 dev_backfill_years=years,
             )
+        except FinMindQuotaRefusedError:
+            raise  # every later spec would wait out the window and be refused the same way
         except Exception:
             logger.exception("ingest_backfill_cli_spec_errored", dataset=spec.dataset)
             continue
@@ -441,6 +444,9 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
     # so it can never interleave with the scheduled jobs on the same partitions.
     try:
         return await _run_with_lease(args, settings, ctx, years)
+    except FinMindQuotaRefusedError as exc:
+        logger.error("ingest_backfill_cli_aborted", detail=str(exc))
+        return 1
     finally:
         await signals.flush()
         await close_ingest_context(ctx)

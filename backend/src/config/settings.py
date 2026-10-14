@@ -213,6 +213,9 @@ class Settings(BaseSettings):
     # refusing) holds every request for the OS TCP timeout. Not applied to the long-lived pub/sub
     # subscriptions, which sit idle by design.
     redis_request_timeout_seconds: float = 2.0
+    # Connections per request-path Redis client per process. The pool blocks (for up to the timeout
+    # above) when they are all busy, so a burst waits instead of failing.
+    redis_request_max_connections: int = 50
     rate_limit_key_prefix: str = "ratelimit"
     # How many reverse proxies of our own sit in front of the API (each appends the address it saw
     # to `X-Forwarded-For`). 0 = exposed directly: the header is ignored, since any client could
@@ -223,6 +226,14 @@ class Settings(BaseSettings):
     # Named rather than imported because `ingest/` sits below `events/` and may not import it;
     # empty disables binding (ingest keeps the no-op). See `ingest.publisher_binding`.
     ingest_data_update_publisher_factory: str = "events.ingest_wiring:build_data_update_publisher"
+
+    # FinMind's own cap for the token: requests per window, counted per HTTP call across the API
+    # and ingest (sources/finmind/_quota.py). Ingest may use at most `finmind_ingest_share` of it;
+    # past that it waits for the next window, so the rest stays for users.
+    finmind_calls_per_window: int = 6000
+    finmind_call_window_seconds: int = 3600
+    finmind_ingest_share: float = Field(default=0.5, gt=0, le=1)
+    finmind_quota_key_prefix: str = "finmind:calls"
 
     # FinMind sponsor-pool quota (usage/finmind_pool.py)
     finmind_pool_key_prefix: str = "finmind:pool"

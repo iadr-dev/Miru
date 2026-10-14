@@ -178,12 +178,12 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
 (hook taxonomy):
 
 - **Request rate** (per-minute abuse bound, `rate_limit_per_minute`; an internal protection, no longer shown to users) and **daily chat count** per tier. Deep research has no daily cap (Pro-only).
-- **FinMind quota is not a live upstream poll.** Premium/Pro (`finmind_class=sponsor`) draw on
-  a single shared **Sponsor pool** — a Redis-backed atomic counter reserved pre-flight against a
-  static **6000 req/hr** ceiling and refunded on failure/under-use ([16](../modules/16-infrastructure.md)
-  §4). Free never touches this pool (Free-tier skills use the free FinMind token — there is no
-  Free-tier FinMind quota concept). When the pool nears its ceiling, requests degrade gracefully
-  (serve cached / `unavailable-tier`) rather than failing — surfaced via M5Q.
+- **FinMind quota is not a live upstream poll.** There is one FinMind token, and every call to
+  it, from any tier and from ingest, is counted against its **6000 per hour** cap; ingest may use
+  at most its share, so users keep the rest ([16](../modules/16-infrastructure.md) §4). Premium/Pro
+  (`finmind_class=sponsor`) fan-outs also reserve lanes pre-flight from the shared Sponsor lane
+  pool, granted only while calls are left. Free-tier turns skip the lane pool. When the cap is
+  near, requests degrade gracefully (cached / an unavailable source) rather than failing.
 - **LLM cost accounting** — `usage.store.record_turn`/`write_turn_usage` persist `cost_micros`
   per turn/user ([10](10-events-hooks.md) §3). **Not yet built:** an actual per-
   tier/user cost *budget* that rejects a turn on overspend — today cost is recorded, not

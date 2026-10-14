@@ -414,3 +414,25 @@ async def test_derived_compute_catchup_covers_every_missing_day_not_just_the_lat
     # The two missing days were both computed, in order; the already-present target day was not.
     assert screener_calls == [date(2024, 1, 1), date(2024, 1, 2)]
     assert scoring_calls == [date(2024, 1, 1), date(2024, 1, 2)]
+
+
+async def test_finmind_refusing_after_its_quota_reset_stops_the_whole_run(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unlike one spec failing, a FinMind that still answers 402 after its window reset (a lapsed
+    plan or token) would refuse every later spec too, each after waiting out the hour. The run
+    stops at the first one instead of spending about fourteen hours being refused."""
+    from sources.finmind import FinMindQuotaRefusedError  # noqa: PLC0415 - local to this case
+
+    attempted: list[str] = []
+
+    async def _refused(spec: WholeMarketJobSpec, _ctx: IngestContext, **_kwargs: object) -> None:
+        attempted.append(spec.dataset)
+        raise FinMindQuotaRefusedError("FinMind refused again (402)")
+
+    monkeypatch.setattr(backfill_cli_module, "run_preflight_if_enabled", _refused)
+    _stub_non_finmind_daily_jobs(monkeypatch)
+
+    with pytest.raises(FinMindQuotaRefusedError):
+        await run_backfill_cli(_settings(), _ctx(tmp_path), override=True, years=1)
+    assert attempted == [DAILY_WHOLE_MARKET_JOBS[0].dataset]

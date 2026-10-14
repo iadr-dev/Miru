@@ -28,6 +28,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from config.settings import Settings
+from netclient.redis_clients import request_path_redis
 
 logger = structlog.get_logger(__name__)
 
@@ -203,14 +204,7 @@ def build_rate_limiter(settings: Settings, redis: Redis | None = None) -> AsyncR
     request-path timeouts. The Redis backend degrades to a local limit while Redis is down
     (`ResilientRateLimiter`)."""
     if settings.rate_limiter_backend == "redis":
-        timeout = settings.redis_request_timeout_seconds
-        client: Redis = (
-            redis
-            if redis is not None
-            else Redis.from_url(
-                settings.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
-            )
-        )
+        client: Redis = redis if redis is not None else request_path_redis(settings)
         return ResilientRateLimiter(
             RedisRateLimiter(client, key_prefix=settings.rate_limit_key_prefix),
             InMemoryAsyncRateLimiter(),

@@ -30,6 +30,8 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from config.settings import Settings
+from dataaccess.finmind_quota import FinMindQuota, build_finmind_quota
+from netclient.redis_clients import request_path_redis
 from orchestrator.ceilings import QuotaReservation, QuotaReserver
 
 logger = structlog.get_logger(__name__)
@@ -42,7 +44,7 @@ class RedisFinMindPoolReserver:
     """`QuotaReserver` backed by the global Redis Sponsor-pool budget. Constructed once and shared
     across turns; the injected `Redis` client is the same one the rest of the infra layer uses."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - one keyword per pool dimension
         self,
         redis: Redis,
         *,
@@ -50,8 +52,13 @@ class RedisFinMindPoolReserver:
         limit_per_window: int,
         window_seconds: int,
         cost_per_lane: int,
+        calls: FinMindQuota | None = None,
     ) -> None:
         self._redis = redis
+        # The token's per-call count, shared with every caller (the API's tools and ingest). A lane
+        # is only granted while calls are left for it: the lane budget alone could not see ingest,
+        # so a backfill could spend the token while lanes kept being granted and then got 402.
+        self._calls = calls
         self._prefix = key_prefix
         self._limit = limit_per_window
         self._window_seconds = window_seconds
@@ -65,6 +72,26 @@ class RedisFinMindPoolReserver:
         if not skills or tier.lower() not in _SPONSOR_TIERS:
             return QuotaReservation(granted=skills, degraded=())
 
+        affordable = await self._affordable_lanes(len(skills))
+        short = skills[affordable:]
+        skills = skills[:affordable]
+        if not skills:
+            logger.info("finmind_calls_exhausted", requested=len(short), tier=tier)
+            return QuotaReservation(granted=(), degraded=short)
+        reservation = await self._reserve_lanes(skills, tier=tier)
+        return QuotaReservation(
+            granted=reservation.granted, degraded=(*reservation.degraded, *short)
+        )
+
+    async def _affordable_lanes(self, lanes: int) -> int:
+        if self._calls is None:
+            return lanes
+        left = await self._calls.remaining()
+        if left is None:  # not known (Redis down): the per-call check at the adapter still holds
+            return lanes
+        return min(lanes, left // max(1, self._cost_per_lane))
+
+    async def _reserve_lanes(self, skills: tuple[str, ...], *, tier: str) -> QuotaReservation:
         want = len(skills) * self._cost_per_lane
         now = time.time()
         key = self._key(now)
@@ -121,20 +148,14 @@ def build_quota_reserver(settings: Settings, redis: Redis | None = None) -> Quot
     event-bus factory uses, never a hardcoded choice at the construction site."""
     if settings.rate_limiter_backend != "redis":
         return None
-    timeout = settings.redis_request_timeout_seconds
-    client: Redis = (
-        redis
-        if redis is not None
-        else Redis.from_url(
-            settings.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
-        )
-    )
+    client: Redis = redis if redis is not None else request_path_redis(settings)
     return RedisFinMindPoolReserver(
         client,
         key_prefix=settings.finmind_pool_key_prefix,
         limit_per_window=settings.finmind_pool_limit_per_window,
         window_seconds=settings.finmind_pool_window_seconds,
         cost_per_lane=settings.finmind_reserve_per_lane,
+        calls=build_finmind_quota(settings, role="interactive", redis=client),
     )
 
 

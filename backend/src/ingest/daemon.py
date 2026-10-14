@@ -80,7 +80,7 @@ from ingest.store import ParquetStore
 from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_price_eod
 from ingest.us_universe import job_us_symbol_universe
 from schemas.enums import Market
-from sources.finmind import FinMindAdapter
+from sources.finmind import FinMindAdapter, FinMindQuotaRefusedError, build_finmind_quota
 from sources.yfinance import YFinanceAdapter
 
 logger = structlog.get_logger(__name__)
@@ -400,6 +400,11 @@ class IngestDaemon:
                 continue
             try:
                 result = await job.run(run_date, self._ctx)
+            except FinMindQuotaRefusedError:
+                # FinMind refused again after its quota window reset (a lapsed plan or token):
+                # every later job in this pass would wait out the window and be refused too.
+                logger.exception("ingest_pass_stopped_finmind_refused", job=job.name)
+                break
             except Exception:
                 # Isolate a job's failure so one bad pull never blocks the others in this pass;
                 # already marked handled, so it retries next day rather than looping now.
@@ -460,7 +465,8 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
     await ensure_schema_for(session_factory)
     store = ParquetStore(root=resolved.parquet_root)
     return IngestContext(
-        finmind=FinMindAdapter(resolved),
+        # Counted against the same per-call cap as the API, limited to ingest's share of it.
+        finmind=FinMindAdapter(resolved, quota=build_finmind_quota(resolved, role="ingest")),
         store=store,
         leader=build_leader_election(
             role="ingest-writer",

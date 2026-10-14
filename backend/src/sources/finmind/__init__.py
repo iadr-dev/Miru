@@ -10,6 +10,13 @@ from __future__ import annotations
 
 from sources.tls import build_async_client
 
-from ._adapter import FinMindAdapter
+from ._adapter import FinMindAdapter, FinMindQuotaRefusedError
+from ._quota import FinMindQuota, build_finmind_quota
 
-__all__ = ["FinMindAdapter", "build_async_client"]
+__all__ = [
+    "FinMindAdapter",
+    "FinMindQuota",
+    "FinMindQuotaRefusedError",
+    "build_async_client",
+    "build_finmind_quota",
+]
