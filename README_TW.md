@@ -1,3 +1,7 @@
+<div align="center">
+
+<img src="web/public/logo.png" alt="Miru" width="120" />
+
 # Miru
 
 **你的台股、美股與 ETF AI 助理：看懂市場，每個回答都附上資料來源。**
@@ -17,10 +21,6 @@
 
 <!-- 宣傳影片 -->
 https://github.com/user-attachments/assets/654c2090-b586-4b1f-b166-96f91d4184f0
-
-<div align="center">
-
-<img src="web/public/logo.png" alt="Miru" width="120" />
 
 > [!NOTE]
 > Miru 提供的是**研究參考脈絡，非投資建議**。它不提供交易指示、價格預測或部位建議；
