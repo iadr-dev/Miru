@@ -67,18 +67,20 @@ class RedisEventBus:
     persistence and the Redis publish are best-effort relative to the local fan-out: a transport
     hiccup is logged and never blocks the turn or the local subscriber."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — one keyword per piece of the turn's identity
         self,
         redis: Redis,
         *,
         turn_id: str | None = None,
         user_id: str | None = None,
+        thread_id: str | None = None,
         stream_store: StreamEventStore | None = None,
         channel_prefix: str = _CHANNEL_PREFIX,
     ) -> None:
         self._redis = redis
         self._turn_id = turn_id
         self._user_id = user_id
+        self._thread_id = thread_id
         self._store = stream_store
         self._channel_prefix = channel_prefix
         self._seq_counters: dict[str | None, int] = {}
@@ -143,7 +145,9 @@ class RedisEventBus:
                 # Durable-append before the wire publish, so a reconnecting worker can never see a
                 # live frame that is not yet findable in the replay log.
                 if self._store is not None:
-                    await self._store.append(event, user_id=self._user_id)
+                    await self._store.append(
+                        event, user_id=self._user_id, thread_id=self._thread_id
+                    )
                 await self._redis.publish(
                     channel_for(event.turn_id, prefix=self._channel_prefix), _encode(event)
                 )

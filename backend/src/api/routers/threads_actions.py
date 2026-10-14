@@ -49,7 +49,7 @@ from conversation.store import (
 from events.bus import Event
 from events.factory import StreamReader
 from events.kinds import EventKind
-from events.turn_control import ControlMessage, ControlOp
+from events.turn_control import ControlMessage, ControlOp, RemoteTurn
 from feedback.store import FeedbackRecord, FeedbackStore, Rating, SqlAlchemyFeedbackStore
 from orchestrator.orchestrator import PersonalityContext
 
@@ -241,7 +241,8 @@ async def stream_thread(
     # Cross-worker durable resume. Resolve the turn this thread's stream belongs to: the live
     # registry if this worker happens to hold it, else the thread's latest turn from the store
     # (a reconnect can land on a worker that never ran the turn).
-    turn_id = running.turn_id if running is not None else _latest_turn_id(thread)
+    remote = await state.turn_control.find(thread_id=thread_id) if running is None else None
+    turn_id = _resumable_turn_id(running=running, remote=remote, user_id=user.id, thread=thread)
     if turn_id is None:
         return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
 
@@ -253,6 +254,22 @@ async def stream_thread(
 
 def _latest_turn_id(thread: Thread) -> str | None:
     return thread.turns[-1].id if thread.turns else None
+
+
+def _resumable_turn_id(
+    *, running: RunningTurn | None, remote: RemoteTurn | None, user_id: str, thread: Thread
+) -> str | None:
+    """The turn a reconnecting stream belongs to: the one running here, else the one another
+    worker announced for this thread (its owner only), else the thread's latest saved turn.
+
+    The announced turn matters for a regenerated answer: it streams under an id with no saved turn
+    yet, so the latest saved turn is the question's, and replaying that would hand the client the
+    previous answer's events instead of the one still being written."""
+    if running is not None:
+        return running.turn_id
+    if remote is not None and remote.user_id == user_id and remote.thread_id == thread.id:
+        return remote.turn_id
+    return _latest_turn_id(thread)
 
 
 def _attach_local_or_empty(

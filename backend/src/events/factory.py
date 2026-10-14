@@ -41,7 +41,7 @@ class EventBusFactory(Protocol):
     """Produces a per-turn `EventBus` and (when the backend supports cross-worker reconnect) a
     `StreamReader`. A `None` reader means "no durable/cross-worker path — live-attach only"."""
 
-    def new_bus(self, *, turn_id: str, user_id: str | None) -> EventBus: ...
+    def new_bus(self, *, turn_id: str, user_id: str | None, thread_id: str | None) -> EventBus: ...
 
     def reader(self) -> StreamReader | None: ...
 
@@ -49,8 +49,8 @@ class EventBusFactory(Protocol):
 class InMemoryEventBusFactory:
     """The single-process default: a fresh in-process bus per turn, no cross-worker reader."""
 
-    def new_bus(self, *, turn_id: str, user_id: str | None) -> EventBus:
-        del turn_id, user_id
+    def new_bus(self, *, turn_id: str, user_id: str | None, thread_id: str | None) -> EventBus:
+        del turn_id, user_id, thread_id
         return InMemoryEventBus()
 
     def reader(self) -> StreamReader | None:
@@ -86,11 +86,12 @@ class RedisEventBusFactory:
         self._store: StreamEventStore = SqlAlchemyStreamEventStore(session_factory)
         self._live_reader = RedisStreamReader(redis)
 
-    def new_bus(self, *, turn_id: str, user_id: str | None) -> EventBus:
+    def new_bus(self, *, turn_id: str, user_id: str | None, thread_id: str | None) -> EventBus:
         return RedisEventBus(
             self._redis,
             turn_id=turn_id,
             user_id=user_id,
+            thread_id=thread_id,
             stream_store=self._store,
         )
 

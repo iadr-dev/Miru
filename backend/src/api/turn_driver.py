@@ -292,7 +292,9 @@ def start_turn_stream(
 
     The caller has already committed the user's message: the turn takes no session from the
     request, and every database step of it runs on its own short one (`_unit`)."""
-    event_bus = state.event_bus_factory.new_bus(turn_id=turn_id, user_id=user_id)
+    event_bus = state.event_bus_factory.new_bus(
+        turn_id=turn_id, user_id=user_id, thread_id=thread_id
+    )
     cancel_token = SimpleCancelToken()
     state.turn_registry.register(
         turn_id=turn_id,

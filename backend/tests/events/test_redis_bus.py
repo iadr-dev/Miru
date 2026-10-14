@@ -15,33 +15,22 @@ from datetime import UTC, datetime
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from db.models import ThreadRow, TurnRow
+from db.models import ThreadRow
 from events.redis_bus import RedisEventBus, RedisStreamReader, channel_for
 from events.stream_store import SqlAlchemyStreamEventStore
 
 
-async def _seed_turn(factory: async_sessionmaker, *, user_id: str = "u1") -> str:
+async def _seed_thread(factory: async_sessionmaker, *, user_id: str = "u1") -> str:
     now = datetime.now(UTC)
-    thread_id, turn_id = str(uuid.uuid4()), str(uuid.uuid4())
+    thread_id = str(uuid.uuid4())
     async with factory() as session:
         session.add(
             ThreadRow(
                 id=thread_id, user_id=user_id, last_message_at=now, created_at=now, updated_at=now
             )
         )
-        await session.flush()
-        session.add(
-            TurnRow(
-                id=turn_id,
-                thread_id=thread_id,
-                user_id=user_id,
-                role="assistant",
-                status="running",
-                created_at=now,
-            )
-        )
         await session.commit()
-    return turn_id
+    return thread_id
 
 
 async def test_local_subscribe_receives_published_events(fake_redis: Redis) -> None:
@@ -69,9 +58,12 @@ async def test_local_subscribe_receives_published_events(fake_redis: Redis) -> N
 async def test_publish_mirrors_to_durable_log(
     fake_redis: Redis, session_factory: async_sessionmaker
 ) -> None:
-    turn_id = await _seed_turn(session_factory)
+    thread_id = await _seed_thread(session_factory)
+    turn_id = str(uuid.uuid4())
     store = SqlAlchemyStreamEventStore(session_factory)
-    bus = RedisEventBus(fake_redis, turn_id=turn_id, user_id="u1", stream_store=store)
+    bus = RedisEventBus(
+        fake_redis, turn_id=turn_id, user_id="u1", thread_id=thread_id, stream_store=store
+    )
 
     bus.publish("turn.start", turn_id=turn_id)
     bus.publish("message", turn_id=turn_id)

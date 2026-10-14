@@ -128,7 +128,11 @@ class StreamEventRow(Base):
     __tablename__ = "stream_events"
 
     id: Mapped[str] = mapped_column(primary_key=True)
-    turn_id: Mapped[str] = mapped_column(ForeignKey(_TURNS_ID_FK, ondelete="CASCADE"))
+    # The streamed turn's id, not a foreign key: a regenerated answer streams under a fresh id
+    # whose turn row only exists once the answer is saved, so a FK would reject every event of it.
+    # The row belongs to its thread instead, which is what deletes it with the conversation.
+    turn_id: Mapped[str]
+    thread_id: Mapped[str] = mapped_column(ForeignKey("threads.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(index=True)
     event_seq: Mapped[int]
     event_type: Mapped[str]

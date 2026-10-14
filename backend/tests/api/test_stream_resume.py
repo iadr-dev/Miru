@@ -11,8 +11,10 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 
-from api.routers.threads_actions import _parse_last_event_id, _resume_stream
+from api.routers.threads_actions import _parse_last_event_id, _resumable_turn_id, _resume_stream
+from conversation.models import Thread, Turn, TurnRole, TurnStatus
 from events.bus import Event
+from events.turn_control import RemoteTurn
 
 
 def _event(seq: int, kind: str = "message") -> Event:
@@ -89,3 +91,53 @@ async def test_terminal_in_replay_stops_before_live() -> None:
         live=[_event(2)],  # must never be emitted — terminal already reached in replay
     )
     assert await _collect(reader, after_seq=-1) == [0, 1]
+
+
+def _thread(*turn_ids: str) -> Thread:
+    now = datetime.now(UTC)
+    turns = tuple(
+        Turn(
+            id=turn_id,
+            thread_id="th1",
+            user_id="u1",
+            role=TurnRole.USER,
+            status=TurnStatus.DONE,
+            created_at=now,
+        )
+        for turn_id in turn_ids
+    )
+    return Thread(
+        id="th1",
+        user_id="u1",
+        title="t",
+        last_message_at=now,
+        created_at=now,
+        updated_at=now,
+        turns=turns,
+    )
+
+
+def test_a_reconnect_follows_the_turn_another_worker_is_running() -> None:
+    """A regenerated answer streams under an id with no saved turn yet; the thread's latest saved
+    turn is the question, whose events are the previous answer's."""
+    remote = RemoteTurn(turn_id="regen-1", user_id="u1", thread_id="th1")
+
+    chosen = _resumable_turn_id(
+        running=None, remote=remote, user_id="u1", thread=_thread("q1", "a1", "q2")
+    )
+
+    assert chosen == "regen-1"
+
+
+def test_a_reconnect_with_nothing_running_uses_the_latest_saved_turn() -> None:
+    chosen = _resumable_turn_id(running=None, remote=None, user_id="u1", thread=_thread("q1", "a1"))
+    assert chosen == "a1"
+    assert _resumable_turn_id(running=None, remote=None, user_id="u1", thread=_thread()) is None
+
+
+def test_another_users_running_turn_is_never_followed() -> None:
+    remote = RemoteTurn(turn_id="regen-1", user_id="someone-else", thread_id="th1")
+
+    chosen = _resumable_turn_id(running=None, remote=remote, user_id="u1", thread=_thread("q1"))
+
+    assert chosen == "q1"
