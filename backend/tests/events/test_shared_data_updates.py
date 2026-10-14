@@ -190,6 +190,28 @@ async def test_the_stream_sets_a_reconnect_delay_and_keeps_an_idle_connection_al
     assert source.closed == 1
 
 
+async def test_the_stream_reads_nothing_ahead_of_a_client_that_stopped_reading() -> None:
+    """The backlog of a client that stops reading must stay in the feed's bounded queue. A relay
+    that read ahead into a queue of its own would grow without bound."""
+    pulled = 0
+
+    async def endless() -> AsyncIterator[Event]:
+        nonlocal pulled
+        while True:
+            pulled += 1
+            yield _event(f"d{pulled:06d}")
+            await asyncio.sleep(0)
+
+    relay = context_routes._with_keepalive(endless())
+    assert await anext(relay) == "retry: 10000\n\n"
+    await anext(relay)  # one frame, then the client stops reading
+
+    await asyncio.sleep(0.2)
+
+    assert pulled <= 2  # the one delivered, and at most the next one waiting
+    await relay.aclose()  # type: ignore[attr-defined]
+
+
 # ---- real Redis: many tabs, one connection ------------------------------------------------------
 
 _REDIS_URL = os.environ.get("TEST_REDIS_URL")
