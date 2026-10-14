@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from calendar.trading_days import TradingDayCalendar
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import date as date_
 from typing import cast
 
@@ -195,6 +195,54 @@ def flow_rows_by_symbol(
             )
         )
     return by_symbol
+
+
+# Taiwan's statement partitions have no `period_type` column (FinMind reports one frequency, so the
+# model defaults it to "quarterly"); asking the store for it would fail the read.
+TW_STATEMENT_COLUMNS: tuple[str, ...] = tuple(c for c in STATEMENT_COLUMNS if c != "period_type")
+
+
+class LazyStatementLines(Mapping[str, list[FinancialStatementLine]]):
+    """`symbol -> its statement lines`, with each symbol's lines built when asked for.
+
+    The batch used to hold every symbol's lines at once: for Taiwan, 1.48M `FinancialStatementLine`
+    objects built from 1.48M row dicts, which together took the process to 3.06 GB (measured on
+    the dev data) before the job had touched prices, flows or any scoring, and the job was
+    OOM-killed at a 4 GB cap. Scoring only ever asks for one symbol at a time (and for the set of
+    symbols), so the rows stay in a columnar frame, with repeated text as categories, and the
+    objects for a symbol exist only while that symbol is scored.
+
+    Each symbol's rows keep the order the store returned them (datasets, then dates, then rows) and
+    go through the same `parse_statement_lines` as before, so the lines are identical."""
+
+    def __init__(self, frame: pd.DataFrame) -> None:
+        for column in cast("list[str]", list(frame.columns)):
+            if column != "value":
+                frame[column] = frame[column].astype("category")
+        self._frame = frame
+        self._positions: dict[str, object] = {
+            str(symbol): positions
+            for symbol, positions in frame.groupby(
+                "symbol", sort=False, observed=True
+            ).indices.items()
+        }
+
+    def __getitem__(self, symbol: str) -> list[FinancialStatementLine]:
+        positions = self._positions[symbol]
+        rows = cast("pd.DataFrame", self._frame.iloc[positions]).astype(object)
+        # A missing value is None, as in a stored row; a NaN would validate as a number.
+        records = cast("list[dict[str, object]]", rows.where(rows.notna(), None).to_dict("records"))
+        return parse_statement_lines(records)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._positions)
+
+    def __len__(self) -> int:
+        return len(self._positions)
+
+
+def lazy_statement_lines(frames: Sequence[pd.DataFrame]) -> LazyStatementLines:
+    return LazyStatementLines(pd.concat(list(frames), ignore_index=True))
 
 
 def statement_lines_by_symbol(

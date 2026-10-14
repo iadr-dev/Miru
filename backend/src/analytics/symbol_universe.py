@@ -31,6 +31,7 @@ queries `ScreenerAssetKind.EQUITY` only) to need an ETF branch for yet.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from enum import StrEnum
 from typing import cast
 
@@ -109,4 +110,32 @@ def scoreable_symbol_mask(symbols: pd.Series, market: Market = Market.TW) -> pd.
     return cast("pd.Series", is_plain_equity | is_etf)
 
 
-__all__ = ["SymbolType", "classify_symbol_type", "is_scoreable_symbol", "scoreable_symbol_mask"]
+def scoreable_symbol_sql(market: Market = Market.TW, *, keep: Sequence[str] = ()) -> str | None:
+    """The same rule as `is_scoreable_symbol`, as a SQL predicate on a `symbol` column, for
+    `ParquetStore.read_range_frame(where=...)`: DuckDB drops the ~90% warrant rows while it reads,
+    so they never reach Python at all (filtering after the read still holds the whole window,
+    warrants included, in memory first). `keep` names symbols that must survive although they are
+    not scoreable (the `TAIEX` index row the trend batch reads from the same frame). `None` for
+    a market with nothing to exclude (US), meaning "no filter".
+
+    Built only from this module's constants and the `keep` symbols (quoted); never from request
+    input. `tests/analytics/test_symbol_universe.py` checks it against `is_scoreable_symbol`."""
+    if market is Market.US:
+        return None
+    rule = (
+        f"(length(symbol) <= {_MAX_PLAIN_EQUITY_LENGTH} OR "
+        f"(length(symbol) <= {_MAX_ETF_LENGTH} AND starts_with(symbol, '{_ETF_PREFIX}')))"
+    )
+    if not keep:
+        return rule
+    quoted = ", ".join("'" + symbol.replace("'", "''") + "'" for symbol in keep)
+    return f"({rule} OR symbol IN ({quoted}))"
+
+
+__all__ = [
+    "SymbolType",
+    "classify_symbol_type",
+    "is_scoreable_symbol",
+    "scoreable_symbol_mask",
+    "scoreable_symbol_sql",
+]

@@ -11,6 +11,7 @@ from analytics.symbol_universe import (
     is_scoreable_symbol,
     scoreable_symbol_mask,
 )
+from schemas.enums import Market
 
 
 def test_scoreable_symbol_mask_keeps_plain_equities_and_etfs_drops_warrants() -> None:
@@ -78,3 +79,37 @@ def test_classify_symbol_type_does_not_misread_a_plain_equity_ending_in_l_or_r()
     must never be misclassified — the ETF branch is gated on the `00`-prefix + length check
     first, exactly like `is_scoreable_symbol`'s own two-part rule."""
     assert classify_symbol_type("1234") is SymbolType.STOCK
+
+
+def test_the_sql_rule_matches_the_python_rule_for_every_kind_of_code() -> None:
+    """`scoreable_symbol_sql` is the same rule run inside DuckDB (so warrants never reach Python);
+    if the two ever disagree, a batch would silently read a different universe than the tools."""
+    import duckdb  # noqa: PLC0415 - only this check needs it
+
+    from analytics.symbol_universe import is_scoreable_symbol, scoreable_symbol_sql  # noqa: PLC0415
+
+    symbols = [
+        "2330", "9958", "1101", "2881B", "0050", "006201", "00631L", "00632R", "0056",
+        "030001", "712345", "08123P", "TAIEX", "ABCD", "", "00", "0000001", "12345", "123456",
+    ]  # fmt: skip
+    predicate = scoreable_symbol_sql(Market.TW)
+    assert predicate is not None
+    con = duckdb.connect()
+    try:
+        con.execute("CREATE TABLE t (symbol VARCHAR)")
+        con.executemany("INSERT INTO t VALUES (?)", [(s,) for s in symbols])
+        kept = {r[0] for r in con.execute(f"SELECT symbol FROM t WHERE {predicate}").fetchall()}  # noqa: S608
+    finally:
+        con.close()
+
+    assert kept == {s for s in symbols if is_scoreable_symbol(s, Market.TW)}
+
+
+def test_the_sql_rule_can_keep_named_symbols_and_does_not_filter_us() -> None:
+    from analytics.symbol_universe import scoreable_symbol_sql  # noqa: PLC0415
+
+    assert scoreable_symbol_sql(Market.US) is None
+    keep = scoreable_symbol_sql(Market.TW, keep=("TAIEX", "O'NEIL"))
+    assert keep is not None
+    assert "'TAIEX'" in keep
+    assert "'O''NEIL'" in keep  # a quote in a kept symbol cannot break out of the literal

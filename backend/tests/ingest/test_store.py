@@ -270,3 +270,29 @@ def test_a_transient_permission_error_on_the_swap_rename_is_ridden_out(
 
     assert refusals["left"] == 0
     assert store.read_partition("ds", "TW", date(2026, 1, 5))[0]["symbol"] == "2330"
+
+
+def test_read_range_frame_where_filters_inside_duckdb(tmp_path: object) -> None:
+    """The caller's predicate is applied while reading, so excluded rows (warrants are ~90% of a
+    real price partition) never become part of the DataFrame."""
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        date(2024, 1, 2),
+        [
+            {"symbol": "2330", "trade_date": "2024-01-02", "close": 593.0},
+            {"symbol": "030001", "trade_date": "2024-01-02", "close": 1.2},  # a warrant
+            {"symbol": "0050", "trade_date": "2024-01-02", "close": 130.8},
+        ],
+    )
+
+    frame = store.read_range_frame(
+        "TaiwanStockPrice",
+        "TW",
+        [date(2024, 1, 2)],
+        columns=("symbol", "close"),
+        where="length(symbol) <= 4",
+    )
+
+    assert sorted(frame["symbol"].tolist()) == ["0050", "2330"]

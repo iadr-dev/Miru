@@ -8,6 +8,11 @@
 3. The `run_tag_screener` tool, driven through the REAL `dispatch_tool()` (not `.run()`), returns
    the same correct result.
 
+Symbols are real-shaped Taiwan codes (four digits): the batch reads only scoreable symbols (equities
+and ETFs, not the warrants that are ~90% of the raw partition), so a made-up name such as
+"BREAKOUT" would be filtered out exactly as a warrant is. 2330 breaks out above its 20-day MA, 2454
+has a foreign-investor net-buy streak, 2317 matches nothing.
+
 No live network: price/flow history is written directly through the real `ParquetStore`, exactly
 the recorded-fixture-shaped technique the ingest daemon's own end-to-end test uses.
 """
@@ -117,8 +122,8 @@ def _seed_upstream(store: ParquetStore, calendar: TradingDayCalendar) -> None:
     neither_closes = [float(50 + i) for i in range(len(window))]
 
     for i, day in enumerate(window):
-        price_rows = _price_rows_for("BREAKOUT", [breakout_closes[i]], [day]) + _price_rows_for(
-            "NEITHER", [neither_closes[i]], [day]
+        price_rows = _price_rows_for("2330", [breakout_closes[i]], [day]) + _price_rows_for(
+            "2317", [neither_closes[i]], [day]
         )
         store.write_partition(PRICE_EOD_DATASET, "TW", day, price_rows)
 
@@ -128,8 +133,8 @@ def _seed_upstream(store: ParquetStore, calendar: TradingDayCalendar) -> None:
     chip_window = window[-5:]
     neither_nets = [200.0, -100.0, 400.0, -500.0, -300.0]
     for i, day in enumerate(chip_window):
-        flow_rows = _flow_rows_for("FOREIGN", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
-            "NEITHER", "Foreign_Investor", [neither_nets[i]], [day]
+        flow_rows = _flow_rows_for("2454", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
+            "2317", "Foreign_Investor", [neither_nets[i]], [day]
         )
         store.write_partition(INSTITUTIONAL_FLOW_DATASET, "TW", day, flow_rows)
 
@@ -194,8 +199,8 @@ def _pattern_ohlc_for_day(day: date_, offset_from_end: int) -> dict[str, object]
         0: (98.0, 99.5, 98.0, 99.0),  # green, low 98, closes higher — completes V + three-rising
     }
     if offset_from_end in tail:
-        return _ohlc_row("PATTERN", day, tail[offset_from_end])
-    return _ohlc_row("PATTERN", day, (100.0, 100.0, 100.0, 100.0))
+        return _ohlc_row("2412", day, tail[offset_from_end])
+    return _ohlc_row("2412", day, (100.0, 100.0, 100.0, 100.0))
 
 
 def _seed_with_pattern(store: ParquetStore, calendar: TradingDayCalendar) -> None:
@@ -208,8 +213,8 @@ def _seed_with_pattern(store: ParquetStore, calendar: TradingDayCalendar) -> Non
     last = len(window) - 1
     for i, day in enumerate(window):
         rows = (
-            _price_rows_for("BREAKOUT", [breakout_closes[i]], [day])
-            + _price_rows_for("NEITHER", [neither_closes[i]], [day])
+            _price_rows_for("2330", [breakout_closes[i]], [day])
+            + _price_rows_for("2317", [neither_closes[i]], [day])
             + [_pattern_ohlc_for_day(day, last - i)]
         )
         store.write_partition(PRICE_EOD_DATASET, "TW", day, rows)
@@ -217,8 +222,8 @@ def _seed_with_pattern(store: ParquetStore, calendar: TradingDayCalendar) -> Non
     chip_window = window[-5:]
     neither_nets = [200.0, -100.0, 400.0, -500.0, -300.0]
     for i, day in enumerate(chip_window):
-        flow_rows = _flow_rows_for("FOREIGN", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
-            "NEITHER", "Foreign_Investor", [neither_nets[i]], [day]
+        flow_rows = _flow_rows_for("2454", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
+            "2317", "Foreign_Investor", [neither_nets[i]], [day]
         )
         store.write_partition(INSTITUTIONAL_FLOW_DATASET, "TW", day, flow_rows)
 
@@ -257,19 +262,17 @@ def _seed_with_hot_and_smart(store: ParquetStore, calendar: TradingDayCalendar) 
 
     for i, day in enumerate(window):
         rows = (
-            _price_rows_for("BREAKOUT", [breakout_closes[i]], [day])
-            + _price_rows_for("NEITHER", [neither_closes[i]], [day])
-            + _price_rows_with_volume(
-                "SMART_COMBO", [breakout_closes[i]], [smart_volumes[i]], [day]
-            )
+            _price_rows_for("2330", [breakout_closes[i]], [day])
+            + _price_rows_for("2317", [neither_closes[i]], [day])
+            + _price_rows_with_volume("2603", [breakout_closes[i]], [smart_volumes[i]], [day])
         )
         store.write_partition(PRICE_EOD_DATASET, "TW", day, rows)
 
     chip_window = window[-5:]
     neither_nets = [200.0, -100.0, 400.0, -500.0, -300.0]
     for i, day in enumerate(chip_window):
-        flow_rows = _flow_rows_for("FOREIGN", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
-            "NEITHER", "Foreign_Investor", [neither_nets[i]], [day]
+        flow_rows = _flow_rows_for("2454", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
+            "2317", "Foreign_Investor", [neither_nets[i]], [day]
         )
         store.write_partition(INSTITUTIONAL_FLOW_DATASET, "TW", day, flow_rows)
 
@@ -293,17 +296,17 @@ async def test_daemon_pass_triggers_hot_and_smart_tags_end_to_end(tmp_path: Path
     for row in rows:
         tags_by_symbol.setdefault(str(row["symbol"]), set()).add(str(row["tag"]))
 
-    smart_combo_new_tags = tags_by_symbol.get("SMART_COMBO", set()) & _HOT_AND_SMART_TAGS
+    smart_combo_new_tags = tags_by_symbol.get("2603", set()) & _HOT_AND_SMART_TAGS
     assert smart_combo_new_tags == {"volume_surge", "smart_breakout_volume"}
-    assert "breakout_above_ma20" in tags_by_symbol.get("SMART_COMBO", set())
+    assert "breakout_above_ma20" in tags_by_symbol.get("2603", set())
 
     # BREAKOUT satisfies the breakout half only (flat volume, no surge) — the combo must not fire.
-    assert "breakout_above_ma20" in tags_by_symbol.get("BREAKOUT", set())
-    assert not (tags_by_symbol.get("BREAKOUT", set()) & _HOT_AND_SMART_TAGS)
+    assert "breakout_above_ma20" in tags_by_symbol.get("2330", set())
+    assert not (tags_by_symbol.get("2330", set()) & _HOT_AND_SMART_TAGS)
 
     # No regression: Dispatch 1/2's tags still fire in the same run.
-    assert "foreign_net_buy_streak_3" in tags_by_symbol.get("FOREIGN", set())
-    assert not any(r["symbol"] == "NEITHER" for r in rows)
+    assert "foreign_net_buy_streak_3" in tags_by_symbol.get("2454", set())
+    assert not any(r["symbol"] == "2317" for r in rows)
 
 
 async def test_daemon_pass_triggers_new_tags_end_to_end(tmp_path: Path) -> None:
@@ -324,18 +327,18 @@ async def test_daemon_pass_triggers_new_tags_end_to_end(tmp_path: Path) -> None:
         tags_by_symbol.setdefault(str(row["symbol"]), set()).add(str(row["tag"]))
 
     # The engineered symbol triggers exactly these NEW tags — reachable through the real batch job.
-    pattern_new_tags = tags_by_symbol.get("PATTERN", set()) & _NEW_TAGS
+    pattern_new_tags = tags_by_symbol.get("2412", set()) & _NEW_TAGS
     assert pattern_new_tags == {"v_reversal", "three_rising", "kd_golden_cross"}
 
     # No regression: Dispatch 1's technical/chip tags still fire in the same run.
-    assert "breakout_above_ma20" in tags_by_symbol.get("BREAKOUT", set())
-    assert "foreign_net_buy_streak_3" in tags_by_symbol.get("FOREIGN", set())
+    assert "breakout_above_ma20" in tags_by_symbol.get("2330", set())
+    assert "foreign_net_buy_streak_3" in tags_by_symbol.get("2454", set())
     # The flat/close-only Dispatch 1 symbols carry no candlestick-shape tag — those need a real
     # open != close body, which close-only bars never have (a KD cross on BREAKOUT's jump is a
     # legitimate momentum event, not a spurious candlestick match, so it's not excluded here).
     candlestick_tags = _NEW_TAGS - {"kd_golden_cross", "kd_death_cross"}
-    assert not (tags_by_symbol.get("BREAKOUT", set()) & candlestick_tags)
-    assert not any(r["symbol"] == "NEITHER" for r in rows)
+    assert not (tags_by_symbol.get("2330", set()) & candlestick_tags)
+    assert not any(r["symbol"] == "2317" for r in rows)
 
 
 async def test_daemon_pass_writes_flag_partition(tmp_path: Path) -> None:
@@ -353,10 +356,10 @@ async def test_daemon_pass_writes_flag_partition(tmp_path: Path) -> None:
     assert ctx.store.has_partition(SCREENER_FLAGS_DATASET, "TW", _RUN_DATE)
     rows = ctx.store.read_partition(SCREENER_FLAGS_DATASET, "TW", _RUN_DATE)
     flags = {(r["symbol"], r["tag"]) for r in rows}
-    assert ("BREAKOUT", "breakout_above_ma20") in flags
-    assert ("FOREIGN", "foreign_net_buy_streak_3") in flags
+    assert ("2330", "breakout_above_ma20") in flags
+    assert ("2454", "foreign_net_buy_streak_3") in flags
     # NEITHER carries no flag at all, so it never appears in the tidy/long partition.
-    assert not any(r["symbol"] == "NEITHER" for r in rows)
+    assert not any(r["symbol"] == "2317" for r in rows)
 
 
 async def test_seam_reads_back_and_and_or(tmp_path: Path) -> None:
@@ -379,8 +382,8 @@ async def test_seam_reads_back_and_and_or(tmp_path: Path) -> None:
     assert or_result.total_matches == 2
     by_symbol = {hit.symbol: set(hit.matched_tags) for hit in or_result.hits}
     assert by_symbol == {
-        "BREAKOUT": {"breakout_above_ma20"},
-        "FOREIGN": {"foreign_net_buy_streak_3"},
+        "2330": {"breakout_above_ma20"},
+        "2454": {"foreign_net_buy_streak_3"},
     }
     # `as_of` was resolved from the latest partition even though the query left it unset.
     assert or_result.as_of == _RUN_DATE
@@ -401,7 +404,7 @@ async def test_seam_reads_back_and_and_or(tmp_path: Path) -> None:
     )
     both_result = run_tag_screener_query(reader, both_query, root=reader.root)
     assert both_result.total_matches == 1
-    assert both_result.hits[0].symbol == "FOREIGN"
+    assert both_result.hits[0].symbol == "2454"
     assert set(both_result.hits[0].matched_tags) == {
         "foreign_net_buy_streak_3",
         "foreign_net_buy_5d_cumulative",
@@ -424,11 +427,11 @@ async def test_seam_symbols_filter_narrows_hits(tmp_path: Path) -> None:
             TagCondition(tag="foreign_net_buy_streak_3"),
         ),
         match="OR",
-        symbols=("FOREIGN",),
+        symbols=("2454",),
     )
     result = run_tag_screener_query(reader, or_query, root=reader.root)
     assert result.total_matches == 1
-    assert result.hits[0].symbol == "FOREIGN"
+    assert result.hits[0].symbol == "2454"
 
     # A requested symbol that isn't in the whole-market match set at all -> zero hits, never an
     # error.
@@ -465,7 +468,7 @@ async def test_tool_via_dispatch_tool(tmp_path: Path) -> None:
     data = result.model_dump()
     hits = data["result"]["hits"]
     assert data["result"]["total_matches"] == 1
-    assert hits[0]["symbol"] == "BREAKOUT"
+    assert hits[0]["symbol"] == "2330"
     assert hits[0]["matched_tags"] == ("breakout_above_ma20",)
 
     # The catalog tool is reachable through the same registry.
@@ -481,3 +484,35 @@ async def test_tool_via_dispatch_tool(tmp_path: Path) -> None:
     assert "籌碼面" in categories
     assert "熱門" in categories
     assert "智能" in categories
+
+
+async def test_warrants_are_left_out_and_every_other_flag_is_unchanged(tmp_path: Path) -> None:
+    """The price window used to be read whole, as ~5.7M dicts (about 6 GB on real data), 90% of
+    them warrants. Now DuckDB drops the warrants while reading. This proves the flags for real
+    symbols are exactly what they were, a warrant carries none, and a missing price value stays
+    `None` (a NaN would pass `close <= 0`)."""
+    ctx = _ctx(tmp_path)
+    _seed_upstream(ctx.store, ctx.calendar)
+    window = ctx.calendar.business_days_between(
+        ctx.calendar.shift_business_days(_RUN_DATE, -89), _RUN_DATE
+    )
+    for day in window:  # a warrant that would break out, and a real stock with a missing close
+        ctx.store.write_partition(
+            PRICE_EOD_DATASET,
+            "TW",
+            day,
+            [
+                *ctx.store.read_partition(PRICE_EOD_DATASET, "TW", day),
+                *_price_rows_for("030001", [1.0 if day != _RUN_DATE else 9.0], [day]),
+            ],
+        )
+
+    await job_screener_flags(_RUN_DATE, ctx)
+
+    flags = {
+        (r["symbol"], r["tag"])
+        for r in ctx.store.read_partition(SCREENER_FLAGS_DATASET, "TW", _RUN_DATE)
+    }
+    assert ("2330", "breakout_above_ma20") in flags
+    assert ("2454", "foreign_net_buy_streak_3") in flags
+    assert not any(symbol == "030001" for symbol, _ in flags)
