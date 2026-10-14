@@ -1,0 +1,24 @@
+{
+  "name": "miru-promo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Miru product promo, built with Remotion following the video-shotcraft skill",
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "render:zh": "remotion render src/index.ts MiruPromo out/miru-promo-zh-TW.mp4 --props=props-zh.json",
+    "render:en": "remotion render src/index.ts MiruPromo out/miru-promo-en.mp4 --props=props-en.json",
+    "still": "remotion still src/index.ts MiruPromo",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.484",
+    "@remotion/google-fonts": "4.0.484",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.484"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "typescript": "6.0.3"
+  }
+}
