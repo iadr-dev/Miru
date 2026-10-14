@@ -169,7 +169,19 @@ ceiling. Mitigation (also [12-multi-user-tiers.md](12-multi-user-tiers.md) §4):
 - **Cache-first:** Sponsor EOD data (分點/官股/產業鏈) is T+1 and changes once/day → cache per
   `(dataset, stock, date)` in DuckDB/Redis; repeat reads never re-hit FinMind. The vast
   majority of the 6000 budget should be cache misses only.
-- **Fair-share: not yet built.** The real reserver (`RedisFinMindPoolReserver`,
+- **Every FinMind call is counted, API and ingest together** (`sources/finmind/_quota.py`). The
+  token's own cap (`FINMIND_CALLS_PER_WINDOW`, default 6000 per `FINMIND_CALL_WINDOW_SECONDS`
+  3600) is counted per HTTP call, before the call, in one Redis counter per window that every
+  process shares (this process's own count without Redis). Ingest may use at most
+  `FINMIND_INGEST_SHARE` (0.5) of it and then waits for the next window, so a backfill (about
+  11,000 calls for three years) can no longer spend the whole token while users' requests fail; it
+  also yields to users, whose calls count against its share. An interactive call over the cap is
+  refused at once without a request. A 402 from FinMind closes the window for every caller; ingest
+  waits it out and retries once, and a second 402 after a reset (a lapsed plan or token) stops the
+  run (`FinMindQuotaRefusedError`) instead of waiting an hour per date. The orchestrator's lane
+  pool below only grants lanes while calls are left. If Redis does not answer, calls go uncounted
+  (FinMind's own cap still applies).
+- **Fair-share between users: not yet built.** The lane reserver (`RedisFinMindPoolReserver`,
   `usage/finmind_pool.py`) is a purely **global** rolling-window counter — its atomic
   `INCRBY`/`DECRBY` reservation is keyed on `(key_prefix, window bucket)` only, with no `user_id`
   dimension, no per-user sub-quota, no priority, and no queuing. One heavy user's fan-out can
@@ -347,6 +359,14 @@ readiness on it ejected every replica at once. While Redis is down:
 - After a Redis error, both skip Redis for 5 s before trying again, and every request-path Redis
   client has a connect/reply timeout (`REDIS_REQUEST_TIMEOUT_SECONDS`, 2 s). So an outage costs one
   timeout per pause, not one per request (measured: reads stay at about 5 ms instead of about 2 s).
+- Those clients (`netclient/redis_clients.py`) use a **blocking** pool of
+  `REDIS_REQUEST_MAX_CONNECTIONS` (50): a burst waits for a free connection. The default pool fails
+  at once past 100 (`MaxConnectionsError`), which read as "Redis is down" and dropped every process
+  to its local rate limit during an ordinary burst (measured: 300 concurrent checks did it).
+- Those clients (`netclient/redis_clients.py`) use a **blocking** pool of
+  `REDIS_REQUEST_MAX_CONNECTIONS` (50): a burst waits for a free connection. The default pool fails
+  at once past 100 (`MaxConnectionsError`), which read as "Redis is down" and dropped every process
+  to its local rate limit during an ordinary burst (measured: 300 concurrent checks did it).
 - **The FinMind pool** grants instead of counting (FinMind's own hourly cap still applies; a call
   over it returns as an unavailable source, not an error).
 - **Chat turns** run: their live stream is in-process; the Redis mirror and cross-worker cancel

@@ -102,3 +102,37 @@ async def test_while_redis_is_down_a_paid_turn_is_granted_not_failed() -> None:
 
     assert reservation.granted == ("a", "b")
     assert reservation.degraded == ()
+
+
+class _CallsLeft:
+    """The token's per-call count, as the lane pool sees it."""
+
+    role = "interactive"
+
+    def __init__(self, left: int | None) -> None:
+        self.left = left
+
+    async def remaining(self) -> int | None:
+        return self.left
+
+
+async def test_lanes_are_only_granted_while_finmind_calls_are_left(fake_redis) -> None:
+    """The lane budget could not see ingest: a backfill could spend the token while lanes kept
+    being granted, and those lanes then failed with 402."""
+    reserver = RedisFinMindPoolReserver(
+        fake_redis,
+        key_prefix="finmind:pool",
+        limit_per_window=100,
+        window_seconds=3600,
+        cost_per_lane=1,
+        calls=_CallsLeft(1),  # type: ignore[arg-type]
+    )
+
+    some = await reserver.reserve(skills=("a", "b", "c"), tier="pro")
+    reserver._calls = _CallsLeft(0)  # type: ignore[assignment]
+    none = await reserver.reserve(skills=("d",), tier="pro")
+
+    assert some.granted == ("a",)
+    assert some.degraded == ("b", "c")
+    assert none.granted == ()
+    assert none.degraded == ("d",)

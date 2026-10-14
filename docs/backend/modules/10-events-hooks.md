@@ -144,14 +144,14 @@ Two distinct enforcement concerns, cleanly separated (do not conflate):
 
 - `pre_turn` hook enforces per-caller request/token budgets (config-driven) — protects
   provider spend and the FinMind Sponsor pool.
-- **FinMind quota is not read from any live upstream endpoint** — the platform reserves its own
-  budget locally: a Redis-backed atomic counter (`RedisFinMindPoolReserver`, `usage/finmind_pool.py`)
-  against a single static ceiling (default **6000 req/hr**, `finmind_pool_limit_per_window`) shared across all Premium/Pro users, gated
-  pre-flight before a fan-out spends Sponsor-tier tool calls and refunded on failure/under-use.
-  Free tier never touches this pool (Free-tier skills use the free FinMind token). Approaching
-  the ceiling degrades gracefully (`unavailable-tier` / cached), never crashes, and is surfaced
-  via M5Q. A shared Sponsor token is pooled across users by the quota manager
-  ([12-multi-user-tiers.md](12-multi-user-tiers.md)).
+- **FinMind quota is not read from any live upstream endpoint** — the platform counts it
+  locally. Every FinMind HTTP call, from the API and from ingest, is counted against the token's
+  own cap (default **6000 per hour**, `finmind_calls_per_window`), with ingest limited to its share
+  ([16](16-infrastructure.md) §4). On top of that, the orchestrator's lane pool
+  (`RedisFinMindPoolReserver`, `usage/finmind_pool.py`) reserves lanes pre-flight before a
+  Premium/Pro fan-out and only while calls are left; Free-tier turns skip the lane pool (their
+  calls are still counted per call — there is one FinMind token, `finmind_api_key`). Approaching the
+  ceiling degrades gracefully (`unavailable-tier` / an unavailable source), never crashes.
 
 ## Governance obligations
 - Guardrail checks (`pre_tool`/`check_tool_call`, `pre_output`/`check_output`) are non-removable

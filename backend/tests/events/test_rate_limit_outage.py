@@ -114,3 +114,23 @@ async def test_readiness_does_not_fail_on_redis_but_reports_it(redis_up: bool) -
     assert response.status_code == 200
     assert body["status"] == "ready"
     assert body["checks"] == {"database": True, "redis": redis_up}
+
+
+@pytest.mark.concurrency
+async def test_a_burst_of_concurrent_checks_does_not_drop_to_the_local_limit() -> None:
+    """The default Redis pool fails at once past its size (`MaxConnectionsError`), which this
+    limiter read as "Redis is down": a burst of concurrent requests silently switched every
+    process to its own local limit. The request-path pool waits for a free connection instead."""
+    import os  # noqa: PLC0415 - only this real-Redis case needs it
+
+    url = os.environ.get("TEST_REDIS_URL")
+    if not url:
+        pytest.skip("TEST_REDIS_URL not set - real Redis check skipped")
+    limiter = build_rate_limiter(Settings(rate_limiter_backend="redis", redis_url=url))
+
+    verdicts = await asyncio.gather(
+        *(limiter.check(f"burst-{i % 7}", max_requests=1000, window_seconds=60) for i in range(300))
+    )
+
+    assert all(v.allowed for v in verdicts)
+    assert limiter._degraded is False  # type: ignore[attr-defined]

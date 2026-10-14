@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from api.dependencies import AppState, get_state
+from netclient.redis_clients import request_path_redis
 
 router = APIRouter(tags=["ops"])
 
@@ -73,10 +74,7 @@ async def _check_redis(state: AppState) -> bool | None:
     settings = state.settings
     if settings.event_bus_backend != "redis" and settings.rate_limiter_backend != "redis":
         return None
-    timeout = settings.redis_request_timeout_seconds
-    client: Redis = Redis.from_url(
-        settings.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
-    )
+    client: Redis = request_path_redis(settings)
     try:
         return bool(await client.ping())
     except Exception:

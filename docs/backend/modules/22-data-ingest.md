@@ -325,6 +325,14 @@ process shapes.
   `--yes`**, so a mis-set override can never become an accidental prod backfill.
 - **Exit code** is `1` if any `JobRun` has `status=RunStatus.FAILED`, else `0`.
 
+**FinMind quota.** Ingest shares the FinMind token with the API, and every call it makes is
+counted against the token's cap with the API's ([16](16-infrastructure.md) §4). It may use at most
+`FINMIND_INGEST_SHARE` (half) of a window; past that, the call waits for the next window
+(`finmind_ingest_waiting_for_quota` in the log, with the seconds), so a long backfill slows down
+rather than taking users' share. After a 402 it waits for the reset and retries once; refused again,
+the run stops with `FinMindQuotaRefusedError` (the CLI exits 1, the daemon ends that pass) rather
+than waiting an hour per date on a lapsed plan or token.
+
 ## 6c. Single-writer lease (leader election)
 
 Exactly one process may write the derived store, however many ingest replicas, deploy overlaps or

@@ -8,6 +8,7 @@ logged, never returned in any payload.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
@@ -19,6 +20,7 @@ from schemas.enums import Capability, DataClass, Market, TimingClass, TLSPolicy
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 
+from ._quota import FinMindQuota, UnmeteredFinMindQuota
 from ._registry import _DATASETS
 from ._shared import _DatasetConfig, _result
 
@@ -27,6 +29,13 @@ logger = structlog.get_logger(__name__)
 _DATA_ENDPOINT = "/data"
 _HTTP_OK = 200
 _HTTP_PAYMENT_REQUIRED = 402  # FinMind's rate-limit-exceeded status
+# After a 402, ingest waits for the window to reset and retries a call this many times.
+_INGEST_402_RETRIES = 1
+
+
+class FinMindQuotaRefusedError(RuntimeError):
+    """FinMind kept answering 402 after its quota window reset: stop the ingest run."""
+
 
 # FinMind's `/data` endpoint 400s outright when `start_date` (or `date`, for the day-scoped
 # endpoints) is omitted — it is not truly optional upstream even though callers may reasonably
@@ -81,8 +90,13 @@ class FinMindAdapter:
     source_id = "FINMIND"
     timing_class = TimingClass.OFFICIAL_EOD  # per-dataset override happens in fetch()
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self, settings: Settings | None = None, *, quota: FinMindQuota | None = None
+    ) -> None:
         self._settings = settings or get_settings()
+        # Every call is counted against the token's cap, shared with every other process that
+        # uses it (`_quota.py`). Without one the adapter counts nothing (tests, one-off tools).
+        self._quota: FinMindQuota = quota or UnmeteredFinMindQuota()
 
     def supports(self) -> set[tuple[Capability, Market]]:
         return {(cap, config.market) for cap, config in _DATASETS.items()}
@@ -170,12 +184,33 @@ class FinMindAdapter:
             health=SourceHealth(status=HealthStatus.UNREACHABLE, detail=detail),
         )
 
+    async def _reserve_call(self, config: _DatasetConfig) -> SourceResult | None:
+        """Count this call against the token's cap before sending it. An interactive caller over
+        the cap gets an error result at once (no request is sent); ingest waits for the window to
+        reset, logging each wait. Returns `None` once the call may go ahead."""
+        while (wait := await self._quota.acquire()) is not None:
+            if self._quota.role != "ingest":
+                return self._error_result(
+                    config,
+                    detail=f"FinMind hourly quota used; resets in {int(wait)} s",
+                )
+            logger.warning(
+                "finmind_ingest_waiting_for_quota",
+                dataset=config.dataset,
+                seconds=round(wait),
+            )
+            await asyncio.sleep(wait + 1)
+        return None
+
     async def _fetch_raw(
         self, config: _DatasetConfig, *, query: dict[str, str], tls_policy: TLSPolicy
     ) -> object | SourceResult:
         """The HTTP round trip + its two error mappings, pulled out of `_call` purely to keep
         that method's branching shallow. Returns the parsed JSON body on success, or an
         already-built error `SourceResult` the caller should return as-is."""
+        refused = await self._reserve_call(config)
+        if refused is not None:
+            return refused
         base_url = self._settings.finmind_base_url.rstrip("/")
         endpoint = config.special_endpoint or _DATA_ENDPOINT
         url = f"{base_url}{endpoint}"
@@ -191,23 +226,41 @@ class FinMindAdapter:
         # itself imported by `sources/finmind/__init__.py`).
         import sources.finmind as _finmind_pkg  # noqa: PLC0415
 
-        try:
-            async with _finmind_pkg.build_async_client(
-                tls_policy=tls_policy, headers=headers
-            ) as client:
-                response = await client.get(url, params=query)
-                response.raise_for_status()
-                return cast("object", response.json())
-        except httpx.HTTPStatusError as exc:
-            status_code = exc.response.status_code
-            detail = (
-                "FinMind rate limit exceeded (402)"
-                if status_code == _HTTP_PAYMENT_REQUIRED
-                else (f"FinMind HTTP {status_code}")
-            )
-            return self._error_result(config, detail=detail)
-        except httpx.HTTPError as exc:
-            return self._error_result(config, detail=f"transport error: {type(exc).__name__}")
+        for attempt in range(_INGEST_402_RETRIES + 1):
+            try:
+                async with _finmind_pkg.build_async_client(
+                    tls_policy=tls_policy, headers=headers
+                ) as client:
+                    response = await client.get(url, params=query)
+                    response.raise_for_status()
+                    return cast("object", response.json())
+            except httpx.HTTPStatusError as exc:
+                failed = await self._after_refusal(config, exc, attempt=attempt)
+                if failed is not None:
+                    return failed
+            except httpx.HTTPError as exc:
+                return self._error_result(config, detail=f"transport error: {type(exc).__name__}")
+        return self._error_result(config, detail="FinMind rate limit exceeded (402)")
+
+    async def _after_refusal(
+        self, config: _DatasetConfig, exc: httpx.HTTPStatusError, *, attempt: int
+    ) -> SourceResult | None:
+        """The result for a non-2xx answer, or `None` to send the call again. A 402 is FinMind's
+        own count saying the token is spent: the window is closed for every caller. Ingest waits
+        for it to reset and tries again; refused once more after a full reset, the plan or token
+        has lapsed, so it stops loudly instead of waiting an hour per date forever."""
+        status_code = exc.response.status_code
+        if status_code != _HTTP_PAYMENT_REQUIRED:
+            return self._error_result(config, detail=f"FinMind HTTP {status_code}")
+        await self._quota.mark_exhausted()
+        if self._quota.role != "ingest":
+            return self._error_result(config, detail="FinMind rate limit exceeded (402)")
+        if attempt == _INGEST_402_RETRIES:
+            raise FinMindQuotaRefusedError(
+                "FinMind refused again (402) after its quota window reset; the plan or the token"
+                " may have lapsed. Check the FinMind account, then rerun."
+            ) from exc
+        return await self._reserve_call(config)  # waits for the reset; None = send again
 
     async def _call(
         self,

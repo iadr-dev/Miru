@@ -17,11 +17,12 @@ from redis.asyncio import Redis
 
 from config.settings import Settings, get_settings
 from dataaccess.router import DataAccessRouter
+from netclient.redis_clients import request_path_redis
 from sources.base import SourceAdapter
 from sources.caching_adapter import build_caching_adapter
 from sources.etf_pcf import EtfPcfAdapter
 from sources.etf_theme_tags import EtfThemeTagsAdapter
-from sources.finmind import FinMindAdapter
+from sources.finmind import FinMindAdapter, build_finmind_quota
 from sources.mops import MopsAdapter
 from sources.ncdr_closure import NcdrClosureAdapter
 from sources.news import NewsAdapter
@@ -61,7 +62,9 @@ def build_default_adapters(
     """
     resolved = settings or get_settings()
     adapters: dict[str, SourceAdapter] = {
-        "finmind": FinMindAdapter(resolved),
+        "finmind": FinMindAdapter(
+            resolved, quota=build_finmind_quota(resolved, role="interactive")
+        ),
         "twse_openapi": TwseOpenApiAdapter(),
         "twse_mis": TwseMisAdapter(),
         "taifex_openapi": TaifexOpenApiAdapter(),
@@ -77,14 +80,7 @@ def build_default_adapters(
     }
     if resolved.market_data_cache_backend != "redis":
         return adapters
-    timeout = resolved.redis_request_timeout_seconds
-    client: Redis = (
-        redis
-        if redis is not None
-        else Redis.from_url(
-            resolved.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
-        )
-    )
+    client: Redis = redis if redis is not None else request_path_redis(resolved)
     cached: dict[str, SourceAdapter] = {}
     for source_id, adapter in adapters.items():
         cached[source_id] = (

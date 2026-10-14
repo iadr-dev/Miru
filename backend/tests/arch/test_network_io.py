@@ -49,6 +49,7 @@ ALLOWED: dict[str, str] = {
     # The shared pooled HTTP client every outbound caller leases from.
     "netclient/shared.py": "pooled httpx client",
     "netclient/retry.py": "bounded retry transport for safe reads",
+    "netclient/redis_clients.py": "request-path Redis client: blocking pool and timeouts",
     # LLM and voice vendors (the model providers are not market-data sources).
     "llm/anthropic_client.py": "Anthropic SDK",
     "llm/gemini_client.py": "Google Gemini SDK",
