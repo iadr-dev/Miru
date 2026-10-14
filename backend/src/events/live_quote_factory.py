@@ -27,6 +27,7 @@ from events.data_updates import (
     InMemoryDataUpdateBroker,
     RedisDataUpdatePublisher,
     RedisDataUpdateReader,
+    SharedDataUpdateFeed,
 )
 from events.live_quote import (
     InMemoryDemandRegistry,
@@ -52,13 +53,14 @@ class DataUpdateReaderFactory(Protocol):
 
 
 class _RedisDataUpdateReaderFactory:
-    """Opens a fresh Redis subscription per `/updates/stream` connection."""
+    """Every `/updates/stream` connection in this process reads from ONE Redis subscription
+    (`SharedDataUpdateFeed`), not one subscription, and one pooled connection, each."""
 
     def __init__(self, redis: Redis, *, channel: str) -> None:
-        self._reader = RedisDataUpdateReader(redis, channel=channel)
+        self._feed = SharedDataUpdateFeed(RedisDataUpdateReader(redis, channel=channel).updates)
 
     def updates(self) -> AsyncIterator[Event]:
-        return self._reader.updates()
+        return self._feed.updates()
 
 
 @dataclass(frozen=True)

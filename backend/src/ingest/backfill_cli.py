@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -55,6 +56,7 @@ from analytics.screener.batch import SCREENER_FLAGS_DATASET, job_screener_flags
 from config.settings import Settings, get_settings
 from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings, close_ingest_context
+from ingest.data_updates import CoalescingDataUpdatePublisher
 from ingest.jobs import (
     DAILY_WHOLE_MARKET_JOBS,
     ETF_EXPENSE_RATIO_DATASET,
@@ -430,12 +432,17 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
         logger.error("ingest_backfill_cli_aborted", detail=str(exc))
         return 1
 
-    ctx = await build_ingest_context_from_settings(settings)
+    built = await build_ingest_context_from_settings(settings)
+    # One `data.updated` per dataset at the end, at its newest date, instead of one per partition
+    # written (see `CoalescingDataUpdatePublisher`).
+    signals = CoalescingDataUpdatePublisher(built.data_update_publisher)
+    ctx = dataclasses.replace(built, data_update_publisher=signals)
     # A hand-run backfill is a second writer like any other: it takes the same lease as the daemon,
     # so it can never interleave with the scheduled jobs on the same partitions.
     try:
         return await _run_with_lease(args, settings, ctx, years)
     finally:
+        await signals.flush()
         await close_ingest_context(ctx)
 
 

@@ -8,10 +8,12 @@ reads tolerate an anonymous caller.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 from typing import Literal
 
+import structlog
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 
@@ -29,8 +31,11 @@ from api.quote_stream import entitlement_transform, quote_tool_name_for
 from api.rate_guard import guard_reads, guard_streams
 from api.sse import format_sse_event
 from api.tool_responses import tool_responses
+from events.bus import Event
 from schemas.enums import Market, Tier
 from tools.base import ToolContext
+
+logger = structlog.get_logger(__name__)
 
 _dispatch = dispatch_validated_tool
 
@@ -188,13 +193,51 @@ async def updates_stream(
     out a fixed time boundary.
     """
 
-    async def _updates() -> AsyncIterator[str]:
-        subscription = state.data_update_broker.reader_factory.updates()
-        with contextlib.suppress(BaseException):
-            async for event in subscription:
-                yield format_sse_event(event)
+    return StreamingResponse(
+        _with_keepalive(state.data_update_broker.reader_factory.updates()),
+        media_type="text/event-stream",
+    )
 
-    return StreamingResponse(_updates(), media_type="text/event-stream")
+
+# How long a browser waits before reconnecting a dropped stream (the default is about 3 s; many tabs
+# reconnecting that fast after a restart is a storm), and how often an idle stream sends a comment
+# so a proxy or load balancer does not cut it for inactivity (they commonly do after 30-60 s).
+_RECONNECT_MS = 10_000
+_KEEPALIVE_SECONDS = 20.0
+
+
+async def _with_keepalive(events: AsyncIterator[Event]) -> AsyncIterator[str]:
+    """Relay `events` as SSE frames, with a keep-alive comment whenever nothing was sent for
+    `_KEEPALIVE_SECONDS`. The events are read by a task into a local queue, so waiting with a
+    timeout never cancels the subscription itself."""
+    pending: asyncio.Queue[Event] = asyncio.Queue()
+
+    async def _read() -> None:
+        async for event in events:
+            pending.put_nowait(event)
+
+    reader = asyncio.create_task(_read())
+    try:
+        yield f"retry: {_RECONNECT_MS}\n\n"
+        while True:
+            if reader.done():
+                if (failure := reader.exception()) is not None:
+                    logger.warning("updates_stream_source_failed", error=repr(failure))
+                return
+            try:
+                event = await asyncio.wait_for(pending.get(), timeout=_KEEPALIVE_SECONDS)
+            except TimeoutError:
+                yield ": keep-alive\n\n"
+                continue
+            yield format_sse_event(event)
+    finally:
+        reader.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reader
+        aclose = getattr(events, "aclose", None)
+        if aclose is not None:
+            with contextlib.suppress(Exception):
+                await aclose()
 
 
 __all__ = ["router", "stream_router"]

@@ -182,3 +182,27 @@ async def test_redis_demand_refcount_atomic_and_reject_over_cap(fake_redis: Redi
     assert int(await fake_redis.hget("demand:TW", "2330")) == 1
     await registry.unsubscribe(Market.TW, "2330")
     assert await fake_redis.hexists("demand:TW", "2330") == 0  # zero → symbol leaves the demand set
+
+
+class _OneSymbolFails(_CountingFetcher):
+    async def fetch(self, *, symbol: str, market: Market) -> QuoteFetchResult:
+        if symbol == "2317":
+            self.calls.append((market.value, symbol))
+            raise RuntimeError("upstream timed out")
+        return await super().fetch(symbol=symbol, market=market)
+
+
+async def test_one_symbol_failing_does_not_stop_the_others_or_the_loop() -> None:
+    """A fetch that raised used to end the poll task: every viewer on that worker stopped getting
+    quotes until someone subscribed again."""
+    fetcher = _OneSymbolFails()
+    poller = _poller(fetcher, gate=_OpenGate(), registry=InMemoryDemandRegistry(max_symbols=100))
+    for symbol in ("2317", "2330", "2454"):
+        await poller.add_subscriber(Market.TW, symbol, "normal")
+
+    fetched = await poller.poll_tick(clock=0.0)
+
+    assert fetched == 2  # 2330 and 2454 were still fetched and published
+    assert sorted(fetcher.calls) == [("TW", "2317"), ("TW", "2330"), ("TW", "2454")]
+    assert await poller.poll_tick(clock=1.0) == 2  # the next tick runs normally
+    await poller.aclose()

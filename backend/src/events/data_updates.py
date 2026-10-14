@@ -17,8 +17,10 @@ Two backends behind one config selection, mirroring `event_bus_backend`:
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from typing import cast
 
@@ -93,6 +95,70 @@ class RedisDataUpdateReader:
             await close_pubsub(pubsub)
 
 
+class SharedDataUpdateFeed:
+    """One subscription per process, fanned out in memory to every open `/updates/stream`.
+
+    A Redis pub/sub subscription holds its own connection for as long as it lives. One per open tab
+    meant one pooled Redis connection per tab: the default pool of 100 per process ran out at the
+    101st tab, and that stream then failed silently, so its browser reconnected every few seconds.
+    Here the first stream starts one pump over `source`, every stream reads its own bounded queue,
+    and the pump stops when the last one leaves. If the source fails (Redis restarts), the pump
+    logs it and resubscribes with a growing delay; the open streams stay up meanwhile."""
+
+    _QUEUE_SIZE = 256
+    _RETRY_MAX_SECONDS = 30.0
+
+    def __init__(self, source: Callable[[], AsyncIterator[Event]]) -> None:
+        self._source = source
+        self._queues: set[asyncio.Queue[Event]] = set()
+        self._pump: asyncio.Task[None] | None = None
+
+    @property
+    def subscribers(self) -> int:
+        return len(self._queues)
+
+    async def updates(self) -> AsyncIterator[Event]:
+        queue: asyncio.Queue[Event] = asyncio.Queue(maxsize=self._QUEUE_SIZE)
+        self._queues.add(queue)
+        if self._pump is None or self._pump.done():
+            self._pump = asyncio.create_task(self._run())
+        try:
+            while True:
+                yield await queue.get()
+        finally:
+            self._queues.discard(queue)
+            if not self._queues:
+                await self._stop_pump()
+
+    async def _stop_pump(self) -> None:
+        pump, self._pump = self._pump, None
+        if pump is not None:
+            pump.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pump
+
+    def _deliver(self, event: Event) -> None:
+        for queue in list(self._queues):
+            if queue.full():  # a reader that stopped reading loses its oldest, never grows memory
+                with contextlib.suppress(asyncio.QueueEmpty):
+                    queue.get_nowait()
+            queue.put_nowait(event)
+
+    async def _run(self) -> None:
+        delay = 1.0
+        while self._queues:
+            try:
+                async for event in self._source():
+                    delay = 1.0
+                    self._deliver(event)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning("data_updated_subscription_failed", retry_in=delay, exc_info=True)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, self._RETRY_MAX_SECONDS)
+
+
 class InMemoryDataUpdateBroker:
     """Single-process publisher + reader over one shared in-process bus — the default backend,
     and the seam a same-process test drives end to end (leader publish → worker relay)."""
@@ -113,4 +179,5 @@ __all__ = [
     "InMemoryDataUpdateBroker",
     "RedisDataUpdatePublisher",
     "RedisDataUpdateReader",
+    "SharedDataUpdateFeed",
 ]
