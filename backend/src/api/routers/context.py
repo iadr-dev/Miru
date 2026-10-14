@@ -208,32 +208,33 @@ _KEEPALIVE_SECONDS = 20.0
 
 async def _with_keepalive(events: AsyncIterator[Event]) -> AsyncIterator[str]:
     """Relay `events` as SSE frames, with a keep-alive comment whenever nothing was sent for
-    `_KEEPALIVE_SECONDS`. The events are read by a task into a local queue, so waiting with a
-    timeout never cancels the subscription itself."""
-    pending: asyncio.Queue[Event] = asyncio.Queue()
-
-    async def _read() -> None:
-        async for event in events:
-            pending.put_nowait(event)
-
-    reader = asyncio.create_task(_read())
+    `_KEEPALIVE_SECONDS`. The next event is awaited by one task kept across those timeouts (a
+    timeout never cancels the subscription), and nothing is read ahead: a client that stops
+    reading leaves the backlog in the feed's bounded queue, where the oldest is dropped."""
+    yield f"retry: {_RECONNECT_MS}\n\n"
+    next_event: asyncio.Task[Event] | None = None
     try:
-        yield f"retry: {_RECONNECT_MS}\n\n"
         while True:
-            if reader.done():
-                if (failure := reader.exception()) is not None:
-                    logger.warning("updates_stream_source_failed", error=repr(failure))
-                return
-            try:
-                event = await asyncio.wait_for(pending.get(), timeout=_KEEPALIVE_SECONDS)
-            except TimeoutError:
+            if next_event is None:
+                next_event = asyncio.ensure_future(anext(events))
+            done, _ = await asyncio.wait({next_event}, timeout=_KEEPALIVE_SECONDS)
+            if not done:
                 yield ": keep-alive\n\n"
                 continue
+            finished, next_event = next_event, None
+            try:
+                event = finished.result()
+            except StopAsyncIteration:
+                return
+            except Exception as exc:
+                logger.warning("updates_stream_source_failed", error=repr(exc))
+                return
             yield format_sse_event(event)
     finally:
-        reader.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await reader
+        if next_event is not None:
+            next_event.cancel()
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await next_event
         aclose = getattr(events, "aclose", None)
         if aclose is not None:
             with contextlib.suppress(Exception):
