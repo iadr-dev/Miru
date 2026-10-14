@@ -218,6 +218,24 @@ async def require_user(
         ) from exc
 
 
+async def require_user_released(
+    request: Request,
+    state: AppState = Depends(get_state),
+) -> User:
+    """`require_user` for responses that stay open for a long time (SSE): the user is loaded on a
+    short session of its own, closed before this returns, for the reason `optional_user_released`
+    gives. Same 401s as `require_user`."""
+    user = await optional_user_released(request, state)
+    if user is None:
+        raise ApiError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="unauthenticated",
+            message="Sign-in required.",
+            retryable=False,
+        )
+    return user
+
+
 def tool_context_for(
     user: User | None,
     state: AppState = Depends(get_state),

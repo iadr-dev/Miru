@@ -171,6 +171,11 @@ line. All narration text is governed like any other output (non-trading, no raw 
 ### Resumability
 - Clients send `Last-Event-ID` on reconnect; the server replays events after that id from
   the turn's event log. Enables mobile/flaky-network resume without re-running the turn.
+- A turn streams under the id of its persisted user turn (`/agent/query`, and `edit`'s new user
+  turn), which is committed before the stream starts: `stream_events.turn_id` has a hard FK to
+  `turns.id`, so the durable log can only record events of a turn that is already saved, and a
+  reconnect on another worker finds the running turn as the thread's latest. `regenerate` creates
+  no user turn and streams under a fresh id, so its events are live-only (not in the replay log).
 - Non-SSE clients can read the persisted turns via `GET /threads/{id}`.
 
 ## 3. Turn lifecycle

@@ -64,7 +64,13 @@ def test_an_open_stream_holds_no_open_database_transaction(
         observed: dict[str, object] = {}
 
         async def inspect_while_streaming() -> None:
-            await asyncio.sleep(0.6)  # long enough for the route to resolve the caller and start
+            # Wait until the route has resolved the caller (a fixed sleep measured too early on a
+            # slow start), then a moment more so the stream itself is running.
+            for _ in range(250):
+                if tracking.sessions:
+                    break
+                await asyncio.sleep(0.02)
+            await asyncio.sleep(0.3)
             observed["sessions"] = len(tracking.sessions)
             observed["open"] = [s for s in tracking.sessions if s.in_transaction()]  # type: ignore[attr-defined]
 

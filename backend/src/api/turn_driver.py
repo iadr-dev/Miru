@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 
 import structlog
 from fastapi.responses import StreamingResponse
@@ -48,6 +48,7 @@ from conversation.models import (
 )
 from conversation.store import (
     ConversationStore,
+    SqlAlchemyConversationStore,
     ThreadNotFoundError,
 )
 from conversation.title_generator import generate_title
@@ -138,11 +139,28 @@ def _require_deep_research_feature(user: User) -> None:
         )
 
 
+@contextlib.asynccontextmanager
+async def _unit(state: AppState) -> AsyncGenerator[AsyncSession]:
+    """One step of a turn's database work, on its own short session that commits at once.
+
+    A turn holds no connection while it runs. An answer takes seconds to minutes of model and tool
+    calls; a transaction left open across them pins a pooled connection (there are about 20 per
+    process), keeps row locks on the thread, and is ended by the server's idle-in-transaction
+    timeout, which then fails the save of an answer that took longer than that. The caller's user
+    binding (`rls.bind_user`, a context variable the turn task inherits) applies to every
+    transaction these sessions open, so row-level security still filters them to that user."""
+    async with state.session_factory() as session:
+        try:
+            yield session
+            await session.commit()
+        except BaseException:
+            await session.rollback()
+            raise
+
+
 async def run_and_stream(
     *,
     state: AppState,
-    store: ConversationStore,
-    session: AsyncSession,
     event_bus: EventBus,
     user_id: str,
     thread_id: str,
@@ -189,8 +207,6 @@ async def run_and_stream(
     async def _drive_run() -> None:
         await _drive_turn(
             state=state,
-            store=store,
-            session=session,
             event_bus=event_bus,
             user_id=user_id,
             thread_id=thread_id,
@@ -256,8 +272,6 @@ async def _serve_control(state: AppState, running: RunningTurn) -> None:
 def start_turn_stream(
     *,
     state: AppState,
-    store: ConversationStore,
-    session: AsyncSession,
     user_id: str,
     thread_id: str,
     turn_id: str,
@@ -274,7 +288,10 @@ def start_turn_stream(
     byok: ByokOverride | None = None,
 ) -> StreamingResponse:
     """Register the turn + return the `StreamingResponse` — the one call every route that starts
-    a real turn makes, so registration/streaming plumbing exists in exactly one place."""
+    a real turn makes, so registration/streaming plumbing exists in exactly one place.
+
+    The caller has already committed the user's message: the turn takes no session from the
+    request, and every database step of it runs on its own short one (`_unit`)."""
     event_bus = state.event_bus_factory.new_bus(turn_id=turn_id, user_id=user_id)
     cancel_token = SimpleCancelToken()
     state.turn_registry.register(
@@ -286,8 +303,6 @@ def start_turn_stream(
     )
     stream = run_and_stream(
         state=state,
-        store=store,
-        session=session,
         event_bus=event_bus,
         user_id=user_id,
         thread_id=thread_id,
@@ -340,8 +355,6 @@ async def _load_history(
 async def _drive_turn(
     *,
     state: AppState,
-    store: ConversationStore,
-    session: AsyncSession,
     event_bus: EventBus,
     user_id: str,
     thread_id: str,
@@ -370,32 +383,29 @@ async def _drive_turn(
     # to and `.../cancel` flips — so the loop's `drain()` calls read exactly what a concurrent
     # steer request queued, with no second queue to keep in sync.
     running = state.turn_registry.get(turn_id)
-    personality = dataclasses.replace(
-        personality, pet_hint=await pet_hint_for_user(session, user_id=user_id)
-    )
-    history = await _load_history(store, user_id=user_id, thread_id=thread_id, turn_id=turn_id)
+
+    memories_used: list[MemoryRef] = []
 
     # Long-term-memory recall block for this turn's root reply agent (injected as a `pre_llm`
     # SYSTEM message inside the orchestrator). Bound as a zero-arg thunk over this turn's
     # user/thread/query so the orchestrator — which has no `memory`/`conversation` layer access
     # per the dependency rule — never constructs the stores or knows the query shape itself.
-    memory_store = SqlAlchemyMemoryStore(session)
-    watchlist_store = WatchlistStore(session)
-
-    memories_used: list[MemoryRef] = []
-
+    # Its reads and the `mark_used` write are one short unit, committed before the model call.
     async def recall_provider() -> str | None:
-        if not await memory_enabled(session, user_id=user_id):
-            return None  # the user paused memory: recall nothing
-        block, used = await recall_with_ids(
-            memory_store=memory_store,
-            watchlist_store=watchlist_store,
-            user_id=user_id,
-            thread_id=thread_id,
-            query=message,
-        )
+        async with _unit(state) as session:
+            if not await memory_enabled(session, user_id=user_id):
+                return None  # the user paused memory: recall nothing
+            memory_store = SqlAlchemyMemoryStore(session)
+            block, used = await recall_with_ids(
+                memory_store=memory_store,
+                watchlist_store=WatchlistStore(session),
+                user_id=user_id,
+                thread_id=thread_id,
+                query=message,
+            )
+            if used:
+                await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
         if used:
-            await memory_store.mark_used(user_id=user_id, memory_ids=[m.id for m in used])
             memories_used[:] = [_memory_ref(m) for m in used]
             event_bus.publish(
                 EventKind.MEMORY_USED,
@@ -405,6 +415,16 @@ async def _drive_turn(
         return block
 
     try:
+        async with _unit(state) as session:
+            pet_hint = await pet_hint_for_user(session, user_id=user_id)
+        personality = dataclasses.replace(personality, pet_hint=pet_hint)
+        async with _unit(state) as session:
+            history = await _load_history(
+                SqlAlchemyConversationStore(session),
+                user_id=user_id,
+                thread_id=thread_id,
+                turn_id=turn_id,
+            )
         if deep_research:
             result = await run_deep_research_turn(
                 state=state,
@@ -446,44 +466,63 @@ async def _drive_turn(
 
     result = _with_memories(result, turn_id=turn_id, memories=memories_used)
     result = _with_personality(result, turn_id=turn_id, preset_id=tone_id)
-    await _persist_answer(
-        store,
-        user_id=user_id,
-        thread_id=thread_id,
-        result=result,
-        parent_message_id=answer_parent_message_id,
-        regenerate_of=regenerate_of,
-    )
-    await _maybe_title_thread(store, user_id=user_id, thread_id=thread_id, message=message)
-    await _record_usage(
-        session, user_id=user_id, turn_id=turn_id, result=result, byok=byok is not None
-    )
+    try:
+        async with _unit(state) as session:
+            await _persist_answer(
+                SqlAlchemyConversationStore(session),
+                user_id=user_id,
+                thread_id=thread_id,
+                result=result,
+                parent_message_id=answer_parent_message_id,
+                regenerate_of=regenerate_of,
+            )
+    except Exception as exc:  # the answer could not be saved: say so, never leave the stream open
+        logger.error("turn_persist_failed", turn_id=turn_id, error=repr(exc))
+        event_bus.publish(
+            EventKind.TURN_END,
+            turn_id=turn_id,
+            data={"status": "error", "message": "The answer could not be saved."},
+        )
+        return
+    await _maybe_title_thread(state, user_id=user_id, thread_id=thread_id, message=message)
+    async with state.session_factory() as session:
+        await _record_usage(
+            session, user_id=user_id, turn_id=turn_id, result=result, byok=byok is not None
+        )
     event_bus.publish(
         EventKind.MESSAGE,
         turn_id=turn_id,
         data={"text": result.final_text, "framework": result.routing.framework},
     )
-    await reward_completed_chat(session, event_bus=event_bus, turn_id=turn_id, user_id=user_id)
+    async with state.session_factory() as session:
+        await reward_completed_chat(session, event_bus=event_bus, turn_id=turn_id, user_id=user_id)
     event_bus.publish(EventKind.TURN_END, turn_id=turn_id, data={"status": "done"})
 
 
 async def _maybe_title_thread(
-    store: ConversationStore, *, user_id: str, thread_id: str, message: str
+    state: AppState, *, user_id: str, thread_id: str, message: str
 ) -> None:
     """Title a brand-new thread from its first user message, once, right after the first answer
     lands — an empty `title` (the value `create_thread` defaults to) is the cheap, already-durable
     signal that this is the thread's first turn, so no turn-count query is needed. Best-effort
     exactly like `_record_usage` below: a failure here must never fail an already-answered turn,
-    so read-current-title, generate, and persist are each guarded and swallowed on error."""
+    so read-current-title, generate, and persist are each guarded and swallowed on error. The
+    model call runs between two short sessions, never inside one."""
     try:
-        thread = await store.get_thread(user_id=user_id, thread_id=thread_id)
+        async with _unit(state) as session:
+            thread = await SqlAlchemyConversationStore(session).get_thread(
+                user_id=user_id, thread_id=thread_id
+            )
     except ThreadNotFoundError:
         return
     if thread.title:
         return
     try:
         title = await generate_title(message)
-        await store.update_thread(user_id=user_id, thread_id=thread_id, title=title)
+        async with _unit(state) as session:
+            await SqlAlchemyConversationStore(session).update_thread(
+                user_id=user_id, thread_id=thread_id, title=title
+            )
     except Exception as exc:  # cosmetic — never fail an already-answered turn over a title
         logger.warning("thread_titling_failed", thread_id=thread_id, error=repr(exc))
 
@@ -523,8 +562,8 @@ def _with_personality(
 async def _record_usage(
     session: AsyncSession, *, user_id: str, turn_id: str, result: OrchestratorResult, byok: bool
 ) -> None:
-    """Write the finished turn's usage rollup through to the durable sink on the request's own
-    session (one connection, no second writer contending). Idempotent on `(user_id, turn_id)`, so
+    """Write the finished turn's usage rollup through to the durable sink on a short session of
+    its own. Idempotent on `(user_id, turn_id)`, so
     a retry cannot double-count. Best-effort relative to the turn: a write failure is rolled back
     and logged, never allowed to fail the already-answered turn."""
     usage = result.usage

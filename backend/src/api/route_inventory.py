@@ -83,7 +83,7 @@ def _dependency_names(dependant: Dependant) -> Iterator[str]:
 
 def _auth_of(dependant: Dependant) -> str:
     names = set(_dependency_names(dependant))
-    if "require_user" in names:
+    if names & {"require_user", "require_user_released"}:
         return "user"
     if names & {"optional_user", "optional_user_released"}:
         return "optional"

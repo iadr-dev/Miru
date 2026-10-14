@@ -110,7 +110,10 @@ class GetStockSummaryTool(BaseTool):
                     non_trading_caveat=cached.non_trading_caveat,
                 )
 
-            generated = await generate_stock_summary(score, self._llm)
+            await session.commit()  # the reads are done: hold nothing across the model call
+
+        generated = await generate_stock_summary(score, self._llm)
+        async with self._session_factory() as session:
             await upsert_summary(session, generated)
             await session.commit()
 

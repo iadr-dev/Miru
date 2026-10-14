@@ -62,8 +62,8 @@ class Settings(BaseSettings):
     db_pool_timeout_seconds: int = 10
     # Server-side cap on how long a session may sit idle INSIDE a transaction before Postgres ends
     # it. An open transaction holds locks that block DDL and pins a pooled connection, so a leaked
-    # one (a forgotten session, a stuck client) must not live for hours. Long enough for an LLM
-    # turn that holds a transaction across the model call; 0 disables it.
+    # one (a forgotten session, a stuck client) must not live for hours. Nothing is meant to sit
+    # idle in a transaction this long: a chat turn holds none across its model calls. 0 disables it.
     db_idle_in_transaction_timeout_ms: int = 300_000
     # Server-side cap on one statement; a runaway query is cancelled instead of holding a
     # connection. 0 disables it.

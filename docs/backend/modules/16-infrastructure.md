@@ -301,15 +301,28 @@ Two more limits keep one stuck client from taking the whole pool down:
   and then fails, instead of queueing for SQLAlchemy's default 30 s behind everyone else.
 - `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` (300000, 0 disables): Postgres ends a session that sits idle
   inside a transaction. An open transaction pins a connection and holds locks that block DDL, so a
-  leaked one must not live for hours. It is long enough for a chat turn, which holds a transaction
-  across the model call; it is a backstop, not a budget.
+  leaked one must not live for hours. Nothing legitimate sits idle in a transaction that long (a
+  chat turn holds none across its model calls, below); it is a backstop, not a budget.
 
 **Long-lived responses must not hold a session.** The request-scoped session (`get_session`)
 commits and closes only when the response ends, and an SSE stream ends when the tab closes. So
 `/updates/stream` and `/quote/stream` live on their own router (`context.stream_router`) whose
 caller is resolved by `optional_user_released` on a short session that is committed and closed
-before the stream starts: an open tab holds no connection and no transaction. Test:
+before the stream starts: an open tab holds no connection and no transaction. The reconnect
+stream `GET /threads/{id}/stream` does the same with `require_user_released`. Test:
 `tests/api/test_stream_sessions.py`.
+
+**A chat turn holds no transaction while the model works.** `/agent/query`, `regenerate` and `edit`
+end the sign-in read transaction before processing attachments, append the user's message and
+commit it before the stream starts (the question is durable at once, and the lock on the thread
+row is released). From there the turn runner (`api/turn_driver.py`) never touches the request's
+session: loading history, memory recall, saving the answer, the title (whose model call runs
+between two short sessions), usage and the pet reward each run on a short session of their own
+(`_unit`) that commits at once; tools already opened their own. So the number of concurrent chats
+is no longer capped by the pool size, and a long turn (deep research) is not ended by the
+idle-in-transaction timeout before its answer is saved. Row-level security still applies: the
+user is bound in a context variable the turn task inherits, and every new transaction applies it.
+Test: `tests/api/test_turn_sessions.py`.
 
 **Probes do not share the pool.** `/readyz` and `/startupz` open their own non-pooled connection
 with a 3 s limit, so a replica whose application pool is exhausted still reports busy-but-alive
