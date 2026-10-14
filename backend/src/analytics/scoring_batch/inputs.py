@@ -10,6 +10,9 @@ from typing import cast
 
 import pandas as pd
 import structlog
+from pandas.api.types import (
+    union_categoricals as _union_categoricals,  # pyright: ignore[reportUnknownVariableType]
+)
 
 from analytics.coerce import as_float, as_int
 from analytics.fundamentals import (
@@ -202,6 +205,22 @@ def flow_rows_by_symbol(
 TW_STATEMENT_COLUMNS: tuple[str, ...] = tuple(c for c in STATEMENT_COLUMNS if c != "period_type")
 
 
+# The columns a row must have a value in to pass `FinancialStatementLine`. `period_type` has a
+# model default (quarterly), but only for an absent key: a row that carries the column with a null
+# (the older US snapshots, about 800K rows) fails the model's literal check. The eager parse
+# dropped those rows, so they are dropped here too.
+_REQUIRED_STATEMENT_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "market",
+    "period_end",
+    "period_type",
+    "statement_type",
+    "item",
+    "origin_name",
+    "value",
+)
+
+
 class LazyStatementLines(Mapping[str, list[FinancialStatementLine]]):
     """`symbol -> its statement lines`, with each symbol's lines built when asked for.
 
@@ -216,6 +235,11 @@ class LazyStatementLines(Mapping[str, list[FinancialStatementLine]]):
     go through the same `parse_statement_lines` as before, so the lines are identical."""
 
     def __init__(self, frame: pd.DataFrame) -> None:
+        # A row the model would reject (a missing value or label) is dropped up front, so a symbol
+        # whose rows are all unusable is not listed at all: the symbols it lists are the ones the
+        # eager parse listed, and the scoring universe is built from them.
+        required = [c for c in _REQUIRED_STATEMENT_COLUMNS if c in frame.columns]
+        frame = cast("pd.DataFrame", frame.loc[frame[required].notna().all(axis=1)])
         for column in cast("list[str]", list(frame.columns)):
             if column != "value":
                 frame[column] = frame[column].astype("category")
@@ -241,8 +265,31 @@ class LazyStatementLines(Mapping[str, list[FinancialStatementLine]]):
         return len(self._positions)
 
 
+# Which `period_type` wins when a symbol has the same item for the same period as both a quarterly
+# and an annual (or ttm) line, as US filings do at a fiscal year end. The first matching line is the
+# one the fundamentals code uses, and the TTM sum is meant to add quarterly figures, so quarterly
+# comes first. Without an order the row order differs from run to run (measured), and so could the
+# line that wins.
+US_STATEMENT_ORDER = (
+    "symbol, period_end, statement_type, item, "
+    "CASE period_type WHEN 'quarterly' THEN 0 WHEN 'ttm' THEN 1 ELSE 2 END"
+)
+
+
 def lazy_statement_lines(frames: Sequence[pd.DataFrame]) -> LazyStatementLines:
-    return LazyStatementLines(pd.concat(list(frames), ignore_index=True))
+    """The frames of several statement datasets as one `LazyStatementLines`. Text columns become
+    categories frame by frame before they are joined, so the joined frame never holds millions of
+    separate strings at once (it is the difference between about 1 GB and a few hundred MB for the
+    4M-row US window)."""
+    parts = [frame.reset_index(drop=True) for frame in frames]
+    names = cast("list[str]", list(parts[0].columns))
+    joined: dict[str, object] = {}
+    for column in (name for name in names if name != "value"):
+        categorical = [cast("pd.Series", part[column]).astype("category") for part in parts]
+        joined[column] = _union_categoricals(categorical)
+    values = cast("pd.Series", pd.concat([part["value"] for part in parts], ignore_index=True))  # pyright: ignore[reportUnknownArgumentType]
+    joined["value"] = values.to_numpy()
+    return LazyStatementLines(pd.DataFrame(joined))
 
 
 def statement_lines_by_symbol(

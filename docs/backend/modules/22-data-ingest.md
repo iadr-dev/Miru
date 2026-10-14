@@ -386,6 +386,7 @@ batch, run alone against a copy of the volume:
 | `screener_flags` | about 6.3 GB (900K rows cost 1,005 MB as dicts; the 260-day read was all of them) | 1.76 GB |
 | `scoring_batch` (TW) | **more than 4 GB: OOM-killed (exit 137)** | 1.12 GB |
 | `trend_score_batch` (TW) | 1.47 GB for the price frame alone, plus the rest | 1.27 GB |
+| `scoring_batch` (US) | 3.49 GB | 1.76 GB (completes under a 2 GB cap) |
 
 What changed, and the rules that keep it that way:
 
@@ -413,9 +414,21 @@ What changed, and the rules that keep it that way:
   for it, a new partition invalidates it). Results are identical (15,864 technical and 5,125
   fundamentals values compared on the dev data). Twelve simultaneous cold requests against the API
   container: all 200, 467 MiB peak, no restart.
+- **US statements read the same way.** The US statement datasets are a full weekly re-pull (14.4M
+  raw rows in the window, 4M distinct). `read_range_latest_by_key_frame` de-duplicates inside DuckDB
+  and returns a frame, and `LazyStatementLines` builds a symbol's lines when it is scored. Two
+  things it exposed: (1) the old row-dict query returned its rows in a **different order on every
+  run** (two runs of the identical query over the same files hashed differently), and a symbol has
+  both a quarterly and an annual line for the same item and period at a fiscal year end (about
+  1.1M such combinations), while the fundamentals code takes the first match and the TTM sum is
+  meant to add quarterly figures; the frame read now orders them (`US_STATEMENT_ORDER`: quarterly,
+  then ttm, then annual), and on the dev data this changes no symbol's metrics (0 of 1,126).
+  (2) About 800K older US rows have a NULL `period_type`; the model rejects them (its default
+  applies only to an absent key), so the eager parse **silently dropped** them and so does the lazy
+  path (the symbol list is identical: 1,126 symbols). Whether those old rows should count is a data
+  question, not decided here.
 - **Known, not changed:** `job_us_fundamentals` keeps every symbol's rows for its 9 capabilities in
-  memory until its 1.9-hour loop ends (about 1-1.5 GB); the US statement window is still read as
-  row dicts (the Taiwan fix does not cover it).
+  memory until its 1.9-hour loop ends (about 1-1.5 GB).
 - **Container limits** (`docker-compose.yml`): ingest 5 GB (the startup catch-up runs the TW and US
   chains together, about 3.5-3.8 GB), api 2 GB, mcp and scheduler 1 GB, no swap
   (`INGEST_MEM_LIMIT`, `API_MEM_LIMIT`, ...). An out-of-memory kill now restarts one service

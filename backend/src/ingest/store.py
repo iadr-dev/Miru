@@ -557,6 +557,76 @@ class ParquetStore:
         finally:
             con.close()
 
+    def _latest_by_key_sql(  # noqa: PLR0913 - one keyword per read dimension
+        self,
+        dataset: str,
+        market: str,
+        run_dates: Sequence[date_],
+        *,
+        columns: Sequence[str],
+        key_columns: Sequence[str],
+        order_by: str | None,
+    ) -> tuple[str, list[str]] | None:
+        """The query behind both latest-by-key reads, and its glob parameter; `None` when no date
+        in the window was ever written."""
+        globs: list[str] = []
+        for run_date in run_dates:
+            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
+            partition_dir = key.path(self.root)
+            manifest_path = partition_dir / _MANIFEST_NAME
+            if not manifest_path.exists():
+                continue
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            globs.append(str(partition_dir / f"v={manifest['version']}" / "*.parquet"))
+        if not globs:
+            return None
+        column_list = ", ".join(columns)
+        key_list = ", ".join(key_columns)
+        sql = (
+            f"SELECT {column_list} FROM "  # noqa: S608 - code-side literal identifiers
+            "read_parquet(?, union_by_name=True, hive_partitioning=True) "
+            f"WHERE {key_columns[0]} IS NOT NULL "
+            f"QUALIFY row_number() OVER (PARTITION BY {key_list} ORDER BY date DESC) = 1"
+        )
+        if order_by:
+            sql += f" ORDER BY {order_by}"
+        return sql, globs
+
+    def read_range_latest_by_key_frame(  # noqa: PLR0913 - one keyword per read dimension
+        self,
+        dataset: str,
+        market: str,
+        run_dates: Sequence[date_],
+        *,
+        columns: Sequence[str],
+        key_columns: Sequence[str],
+        order_by: str,
+    ) -> pd.DataFrame:
+        """`read_range_latest_by_key` as a DataFrame, in a **defined order** (`order_by`, a
+        code-side SQL fragment).
+
+        The row-dict form returns its rows in whatever order DuckDB's parallel window happens to
+        produce: two runs of the same query over the same files gave different orders (measured).
+        A caller that takes "the first matching line" per symbol then gets a different answer from
+        one night to the next, so a caller that cares says how to order them. As a frame the
+        ~4M-row US statement window is also not boxed into 4M dicts first."""
+        query = self._latest_by_key_sql(
+            dataset,
+            market,
+            run_dates,
+            columns=columns,
+            key_columns=key_columns,
+            order_by=order_by,
+        )
+        if query is None:
+            return pd.DataFrame({column: pd.Series([], dtype="object") for column in columns})
+        sql, globs = query
+        con = duckdb.connect()
+        try:
+            return con.execute(sql, [globs]).df()
+        finally:
+            con.close()
+
     def read_range_latest_by_key(
         self,
         dataset: str,
@@ -578,29 +648,20 @@ class ParquetStore:
         `columns`/`key_columns` are code-side literal identifier tuples (never request input),
         same as `read_range_frame`; the glob list is still a bound parameter. A date never
         written is skipped; no written partitions at all returns `[]`."""
-        globs: list[str] = []
-        for run_date in run_dates:
-            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-            partition_dir = key.path(self.root)
-            manifest_path = partition_dir / _MANIFEST_NAME
-            if not manifest_path.exists():
-                continue
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            globs.append(str(partition_dir / f"v={manifest['version']}" / "*.parquet"))
-        if not globs:
+        query = self._latest_by_key_sql(
+            dataset,
+            market,
+            run_dates,
+            columns=columns,
+            key_columns=key_columns,
+            order_by=None,
+        )
+        if query is None:
             return []
-
-        column_list = ", ".join(columns)
-        key_list = ", ".join(key_columns)
+        sql, globs = query
         con = duckdb.connect()
         try:
-            relation = con.execute(
-                f"SELECT {column_list} FROM "  # noqa: S608
-                "read_parquet(?, union_by_name=True, hive_partitioning=True) "
-                f"WHERE {key_columns[0]} IS NOT NULL "
-                f"QUALIFY row_number() OVER (PARTITION BY {key_list} ORDER BY date DESC) = 1",
-                [globs],
-            )
+            relation = con.execute(sql, [globs])
             names = [d[0] for d in relation.description or []]
             return [dict(zip(names, row, strict=True)) for row in relation.fetchall()]
         finally:

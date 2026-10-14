@@ -76,6 +76,7 @@ from analytics.scoring_batch.inputs import PRICE_FRAME_COLUMNS as _PRICE_FRAME_C
 from analytics.scoring_batch.inputs import STATEMENT_COLUMNS as _STATEMENT_COLUMNS
 from analytics.scoring_batch.inputs import STATEMENT_KEY_COLUMNS as _STATEMENT_KEY_COLUMNS
 from analytics.scoring_batch.inputs import TW_STATEMENT_COLUMNS as _TW_STATEMENT_COLUMNS
+from analytics.scoring_batch.inputs import US_STATEMENT_ORDER
 from analytics.scoring_batch.inputs import active_etf_symbols as _active_etf_symbols
 from analytics.scoring_batch.inputs import active_roster_symbols as _active_roster_symbols
 from analytics.scoring_batch.inputs import bars_by_symbol as _bars_by_symbol
@@ -101,7 +102,6 @@ from analytics.scoring_batch.inputs import ma_series_for as _ma_series_for
 from analytics.scoring_batch.inputs import (
     split_universe_by_symbol_type as _split_universe_by_symbol_type,
 )
-from analytics.scoring_batch.inputs import statement_lines_by_symbol as _statement_lines_by_symbol
 from analytics.scoring_batch.inputs import trailing_trading_days as _trailing_trading_days
 from analytics.scoring_store import upsert_score
 from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_sql
@@ -400,26 +400,26 @@ def _load_statement_lines(
 ) -> Mapping[str, list[FinancialStatementLine]]:
     """Each symbol's financial-statement lines for the window.
 
-    Taiwan (1.48M rows in the window): kept as columnar frames and turned into
-    `FinancialStatementLine`s one symbol at a time (`LazyStatementLines`), not all at once; the
-    eager form took the process to 3.06 GB on its own. US: the newest copy of each line, as rows
-    (`read_range_latest_by_key`)."""
+    Both markets keep the rows as columnar frames and turn them into `FinancialStatementLine`s one
+    symbol at a time (`LazyStatementLines`), not all at once. Taiwan: 1.48M rows in the window; the
+    eager form took the process to 3.06 GB on its own. US: the newest copy of each line (the
+    statements are a full weekly re-pull: 14.4M raw rows, 4M distinct), about 4M rows, in a defined
+    order (quarterly before annual for the same period)."""
     market_str = market.value
     if market is Market.US:
-        statement_rows = [
-            row
-            for dataset in statement_datasets
-            for row in ctx.store.read_range_latest_by_key(
-                dataset,
-                market_str,
-                window,
-                columns=_STATEMENT_COLUMNS,
-                key_columns=_STATEMENT_KEY_COLUMNS,
-            )
-        ]
-        lines = _statement_lines_by_symbol(statement_rows)
-        del statement_rows  # the lines are built; the row dicts are not needed any more
-        return lines
+        return _lazy_statement_lines(
+            [
+                ctx.store.read_range_latest_by_key_frame(
+                    dataset,
+                    market_str,
+                    window,
+                    columns=_STATEMENT_COLUMNS,
+                    key_columns=_STATEMENT_KEY_COLUMNS,
+                    order_by=US_STATEMENT_ORDER,
+                )
+                for dataset in statement_datasets
+            ]
+        )
     return _lazy_statement_lines(
         [
             ctx.store.read_range_frame(dataset, market_str, window, columns=_TW_STATEMENT_COLUMNS)

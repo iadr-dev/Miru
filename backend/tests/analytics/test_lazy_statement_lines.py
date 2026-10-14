@@ -84,3 +84,116 @@ def test_a_symbol_is_only_parsed_when_asked_for(monkeypatch) -> None:  # type: i
     assert parsed == []  # building it parsed nothing
     lazy["2330"]
     assert parsed == [3]  # only that symbol's three rows
+
+
+# ---- US: the same lines, a symbol list that matches, and a defined order ------------------------
+
+
+def _us_row(symbol: str, period: str, period_type: str | None, item: str, value: float | None):
+    return {
+        "symbol": symbol,
+        "market": "US",
+        "period_end": period,
+        "statement_type": "income_statement",
+        "period_type": period_type,
+        "item": item,
+        "origin_name": item,
+        "value": value,
+    }
+
+
+def test_a_symbol_whose_rows_are_all_unusable_is_not_listed() -> None:
+    """The scoring universe is built from the symbols this lists. Rows the model rejects (a null
+    period_type from an older snapshot, a null value) used to leave their symbol out; listing it
+    anyway added symbols that had nothing to score (362 of 1,488 on the dev data)."""
+    from analytics.scoring_batch.inputs import STATEMENT_COLUMNS  # noqa: PLC0415
+
+    rows = [
+        _us_row("AAPL", "2024-03-31", "quarterly", "NetIncome", 10.0),
+        _us_row("OLD", "2022-10-31", None, "NetIncome", 5.0),  # an older snapshot: no period_type
+        _us_row("NOVALUE", "2024-03-31", "quarterly", "NetIncome", None),
+    ]
+    lazy = lazy_statement_lines([pd.DataFrame(rows, columns=list(STATEMENT_COLUMNS))])
+
+    assert sorted(lazy) == ["AAPL"]
+    assert sorted(statement_lines_by_symbol(rows)) == ["AAPL"]  # as the eager parse had it
+
+
+def test_quarterly_comes_before_annual_for_the_same_period_and_item(tmp_path: object) -> None:
+    """At a fiscal year end a symbol has the same item for the same period as both a quarterly and
+    an annual line. The fundamentals code takes the first match and the TTM sum adds quarterly
+    figures, so the read must say which comes first: the query's own row order differed between
+    two runs over the same files (measured)."""
+    from datetime import date  # noqa: PLC0415
+
+    from analytics.scoring_batch.inputs import (  # noqa: PLC0415
+        STATEMENT_COLUMNS,
+        STATEMENT_KEY_COLUMNS,
+        US_STATEMENT_ORDER,
+    )
+    from ingest.store import ParquetStore  # noqa: PLC0415
+
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    rows = [
+        _us_row("AAPL", "2023-12-31", "annual", "NetIncome", 400.0),
+        _us_row("AAPL", "2023-12-31", "ttm", "NetIncome", 390.0),
+        _us_row("AAPL", "2023-12-31", "quarterly", "NetIncome", 100.0),
+    ]
+    store.write_partition("us_financials", "US", date(2024, 1, 5), rows)
+
+    for _ in range(5):
+        frame = store.read_range_latest_by_key_frame(
+            "us_financials",
+            "US",
+            [date(2024, 1, 5)],
+            columns=STATEMENT_COLUMNS,
+            key_columns=STATEMENT_KEY_COLUMNS,
+            order_by=US_STATEMENT_ORDER,
+        )
+        assert frame["period_type"].tolist() == ["quarterly", "ttm", "annual"]
+        lazy = lazy_statement_lines([frame])
+        assert [line.value for line in lazy["AAPL"]] == [100.0, 390.0, 400.0]
+
+
+def test_the_newest_snapshot_of_a_line_wins_and_a_gap_is_empty(tmp_path: object) -> None:
+    from datetime import date  # noqa: PLC0415
+
+    from analytics.scoring_batch.inputs import (  # noqa: PLC0415
+        STATEMENT_COLUMNS,
+        STATEMENT_KEY_COLUMNS,
+    )
+    from ingest.store import ParquetStore  # noqa: PLC0415
+
+    store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
+    store.write_partition(
+        "us_financials",
+        "US",
+        date(2024, 1, 5),
+        [_us_row("AAPL", "2023-12-31", "quarterly", "NetIncome", 100.0)],
+    )
+    store.write_partition(
+        "us_financials",
+        "US",
+        date(2024, 1, 12),
+        [_us_row("AAPL", "2023-12-31", "quarterly", "NetIncome", 105.0)],
+    )  # restated
+
+    frame = store.read_range_latest_by_key_frame(
+        "us_financials",
+        "US",
+        [date(2024, 1, 5), date(2024, 1, 12), date(2024, 1, 19)],  # 01-19 never written
+        columns=STATEMENT_COLUMNS,
+        key_columns=STATEMENT_KEY_COLUMNS,
+        order_by="symbol",
+    )
+    nothing = store.read_range_latest_by_key_frame(
+        "us_financials",
+        "US",
+        [date(2030, 1, 1)],
+        columns=STATEMENT_COLUMNS,
+        key_columns=STATEMENT_KEY_COLUMNS,
+        order_by="symbol",
+    )
+
+    assert frame["value"].tolist() == [105.0]
+    assert len(nothing) == 0
