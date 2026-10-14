@@ -293,3 +293,49 @@ async def test_single_flight_guard_against_real_redis() -> None:
         key = "marketdata:cache:test:real:TW:price_eod:2330"
         await client.delete(key, f"{key}:lock")
         await client.aclose()
+
+
+async def test_a_failed_cache_write_after_the_fetch_does_not_fetch_again(
+    fake_redis: Redis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lock is taken and the source answers, then storing the result fails (Redis dropped
+    mid-request). That used to raise into `fetch`'s fall-through, which fetched the same data from
+    the source a second time: twice the FinMind quota for one answer."""
+    wrapped = _CountingStubAdapter()
+    adapter = _caching_adapter(wrapped, fake_redis)
+    real_set = fake_redis.set
+
+    async def _set(key: str, value: object, **kwargs: object) -> object:
+        if kwargs.get("nx"):
+            return await real_set(key, value, **kwargs)  # the single-flight lock
+        raise RedisError("Connection reset by peer")  # storing the result
+
+    monkeypatch.setattr(fake_redis, "set", _set)
+
+    result = await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
+
+    assert wrapped.calls == 1
+    assert result.payload["calls"] == 1
+
+
+async def test_during_an_outage_the_cache_is_not_tried_on_every_request(
+    fake_redis: Redis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each attempt against a Redis that does not answer waits the full connect timeout (2 s);
+    trying it on every request made every read 2 s slower for as long as the outage lasted."""
+    wrapped = _CountingStubAdapter()
+    adapter = _caching_adapter(wrapped, fake_redis)
+    attempts = 0
+
+    async def _down(*_args: object, **_kwargs: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise RedisError("Timeout connecting to server")
+
+    monkeypatch.setattr(fake_redis, "get", _down)
+
+    for _ in range(10):
+        await adapter.fetch(Capability.PRICE_EOD, _sym(), tls_policy=TLSPolicy.STRICT)
+
+    assert attempts == 1  # then skipped for the pause
+    assert wrapped.calls == 10  # every request still answered from the source

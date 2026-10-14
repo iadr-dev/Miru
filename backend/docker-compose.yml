@@ -26,6 +26,7 @@ x-app-env: &app-env
   REDIS_URL: redis://redis:6379/0
   EVENT_BUS_BACKEND: redis
   RATE_LIMITER_BACKEND: redis
+  REDIS_REQUEST_TIMEOUT_SECONDS: ${REDIS_REQUEST_TIMEOUT_SECONDS:-2}
   # How the ingest process binds its real `data.updated` publisher (ingest/ may not import events/,
   # so it resolves this "module:callable" by name — ingest/publisher_binding.py). The default IS the
   # real factory on purpose: the usual `${VAR:-}` would forward an EMPTY string when unset, and an
