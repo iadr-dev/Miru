@@ -425,8 +425,16 @@ What changed, and the rules that keep it that way:
   then ttm, then annual), and on the dev data this changes no symbol's metrics (0 of 1,126).
   (2) About 800K older US rows have a NULL `period_type`; the model rejects them (its default
   applies only to an absent key), so the eager parse **silently dropped** them and so does the lazy
-  path (the symbol list is identical: 1,126 symbols). Whether those old rows should count is a data
-  question, not decided here.
+  path (the symbol list is identical: 1,126 symbols). **Decision: they stay excluded**, as an
+  explicit rule, and are not relabelled "quarterly". Measured on the dev data: the NULL rows are
+  the six weekly snapshots taken before the column existed (2026-08-15 to 09-19); every later one
+  is typed. 79% of their distinct lines are exact duplicates (same symbol, period, item and value)
+  of typed rows. The other 21% (about 213K lines) are older periods that fell out of the source's
+  window, whose frequency (annual or quarterly) is unknowable from the row, and an annual figure
+  taken as quarterly inflates a trailing-twelve-month sum about fourfold, a worse error than
+  missing old history. Of the 331 symbols with statements but none typed, **none is priced in the
+  latest US session** (they have left the universe), so no live stock loses scoring. Revisit only
+  if the source starts returning untyped statements again.
 - **Known, not changed:** `job_us_fundamentals` keeps every symbol's rows for its 9 capabilities in
   memory until its 1.9-hour loop ends (about 1-1.5 GB).
 - **Container limits** (`docker-compose.yml`): ingest 5 GB (the startup catch-up runs the TW and US

@@ -360,8 +360,9 @@ uvicorn stops accepting connections and waits for the open ones up to
 turn is worth waiting for; `/updates/stream` and `/quote/stream` never finish on their own, so
 before this each stop spent the whole window waiting on them and was then killed (exit 137) with
 turns unfinished. `api/lifecycle.py` (`ShutdownSignal`, chained in front of uvicorn's handler at
-startup) ends those two feeds the moment the signal arrives, and `/readyz` answers 503
-`{"status": "draining"}` so a load balancer stops routing to the replica. Measured with a real
+startup) ends those two feeds the moment the signal arrives. uvicorn also closes its listening
+socket at once, so a new probe is refused (a load balancer takes that as "stop routing"); `/readyz`
+answers 503 `{"status": "draining"}` only on a connection that was already open. Measured with a real
 uvicorn and SIGTERM in a Linux container: with an idle feed and a 1.5 s turn open, the stop took
 10.1 s (the feed held it and was cut) before, 1.5 s after, the turn finished in both. A turn longer
 than the window is cancelled at its end; the question is already saved (it is committed before the
