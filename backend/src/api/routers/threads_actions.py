@@ -28,6 +28,7 @@ from api.dependencies import (
     get_settings_dep,
     get_state,
     require_user,
+    require_user_released,
     tool_context_for,
 )
 from api.errors import ApiError
@@ -199,9 +200,8 @@ def _thread_to_markdown(thread: Thread) -> str:
 @router.get("/threads/{thread_id}/stream")
 async def stream_thread(
     thread_id: str,
-    user: User = Depends(require_user),
+    user: User = Depends(require_user_released),
     state: AppState = Depends(get_state),
-    store: ConversationStore = Depends(_store),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> StreamingResponse:
     """Attach to a thread's running turn and stream its remaining frames, with durable
@@ -220,7 +220,14 @@ async def stream_thread(
     A reconnect with nothing to attach to and no durable reader returns an immediately-closing
     stream rather than an error.
     """
-    thread = await _require_owned_thread(store, user_id=user.id, thread_id=thread_id)
+    # The caller and the thread are read on short sessions closed before streaming starts: this
+    # stream lasts as long as the turn, or the open tab, and must not pin a pooled connection (with
+    # a transaction left open) for all that time.
+    async with state.session_factory() as session:
+        thread = await _require_owned_thread(
+            SqlAlchemyConversationStore(session), user_id=user.id, thread_id=thread_id
+        )
+        await session.commit()
     after_seq = _parse_last_event_id(last_event_id)
 
     running = state.turn_registry.active_for_thread(thread_id)
@@ -609,10 +616,10 @@ async def regenerate_turn(
     personality = PersonalityContext(
         thread_override=thread.personality_override, user_preference=user.personality_id
     )
+    # End this request's transaction before the answer starts: the turn holds no connection.
+    await session.commit()
     return start_turn_stream(
         state=state,
-        store=store,
-        session=session,
         user_id=user.id,
         thread_id=thread_id,
         turn_id=new_turn_id,
@@ -694,21 +701,23 @@ async def edit_turn(
         mode="deep_research" if deep_research else None,
     )
 
-    new_assistant_turn_id = str(uuid.uuid4())
+    answer_parent_message_id = new_user_turn.messages[-1].id
     personality = PersonalityContext(
         thread_override=thread.personality_override, user_preference=user.personality_id
     )
+    # The edited question is durable before the answer starts, and the connection goes back now.
+    await session.commit()
+    # Streamed under the new user turn's own id, as `/agent/query` does: `stream_events.turn_id`
+    # has a hard FK to `turns.id`, so the durable replay log can only record a persisted turn.
     return start_turn_stream(
         state=state,
-        store=store,
-        session=session,
         user_id=user.id,
         thread_id=thread_id,
-        turn_id=new_assistant_turn_id,
+        turn_id=new_user_turn.id,
         message=body.message,
         ctx=ctx,
         personality=personality,
-        answer_parent_message_id=new_user_turn.messages[-1].id,
+        answer_parent_message_id=answer_parent_message_id,
         model_override=thread.model_override,
         web_search_enabled=body.web_search,
         deep_research=deep_research,

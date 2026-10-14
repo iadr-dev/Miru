@@ -25,22 +25,28 @@ async def collect_sse(  # noqa: PLR0913 - a test driver with optional hooks, all
     timeout_s: float = 5.0,
     on_started: Callable[[], Awaitable[None]] | None = None,
     headers: Mapping[str, str] | None = None,
+    method: str = "GET",
+    json_body: object | None = None,
 ) -> list[str]:
-    """Drive `GET {path}` against the ASGI `app` and return SSE lines once `until(lines)` holds
-    (or the timeout elapses), then disconnect. `on_started` runs after the response has started
-    but before reading — a hook to publish something the stream should then relay."""
+    """Drive `{method} {path}` against the ASGI `app` and return SSE lines once `until(lines)`
+    holds (or the timeout elapses), then disconnect. `on_started` runs after the response has
+    started but before reading — a hook to publish something the stream should then relay.
+    `json_body` is sent as the request body (for a POST that answers with a stream)."""
     split = urlsplit(path)
+    request_body = b"" if json_body is None else json.dumps(json_body).encode()
+    extra_headers = [] if json_body is None else [(b"content-type", b"application/json")]
     scope: dict[str, object] = {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.3"},
         "http_version": "1.1",
-        "method": "GET",
+        "method": method,
         "scheme": "http",
         "path": split.path,
         "raw_path": split.path.encode(),
         "query_string": split.query.encode(),
         "headers": [
             (b"host", b"test"),
+            *extra_headers,
             *[(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()],
         ],
         "server": ("test", 80),
@@ -54,7 +60,7 @@ async def collect_sse(  # noqa: PLR0913 - a test driver with optional hooks, all
     async def receive() -> dict[str, object]:
         if not started.is_set():
             started.set()
-            return {"type": "http.request", "body": b"", "more_body": False}
+            return {"type": "http.request", "body": request_body, "more_body": False}
         await disconnect.wait()
         return {"type": "http.disconnect"}
 

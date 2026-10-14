@@ -88,6 +88,13 @@ async def agent_query(
     await enforce_pre_turn_gate(
         state, session, user, deep_research=body.deep_research, byok=byok is not None
     )
+    # End the read-only transaction the sign-in and the checks above opened (it holds share locks
+    # on users/subscriptions) before the one slow step here, so nothing is held while it runs.
+    await session.commit()
+    augmented_message, images, attachment_blocks = await process_attachments(
+        body.attachments, message=body.message, settings=settings
+    )
+
     thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
     if body.model is not None and body.model != thread.model_override:
         thread = await store.update_thread(
@@ -103,10 +110,6 @@ async def agent_query(
         )
     thread_id = thread.id
 
-    augmented_message, images, attachment_blocks = await process_attachments(
-        body.attachments, message=body.message, settings=settings
-    )
-
     blocks: list[tuple[MessageBlockType, MessageBlockContent]] = [
         (MessageBlockType.TEXT, TextBlock(text=body.message)),
         *attachment_blocks,
@@ -120,6 +123,10 @@ async def agent_query(
         idempotency_key=idempotency_key,
         mode="deep_research" if body.deep_research else None,
     )
+    answer_parent_message_id = user_turn.messages[-1].id
+    # The question is durable before the answer starts, and the connection, with the lock on the
+    # thread row the append took, goes back now: the turn holds no connection while it runs.
+    await session.commit()
 
     # The streaming correlation id must be the persisted turn's own id — `stream_events.turn_id`
     # has a hard FK to `turns.id`, so a durable-log write for any other id silently no-ops.
@@ -129,15 +136,13 @@ async def agent_query(
     )
     return start_turn_stream(
         state=state,
-        store=store,
-        session=session,
         user_id=user.id,
         thread_id=thread_id,
         turn_id=turn_id,
         message=augmented_message,
         ctx=ctx,
         personality=personality,
-        answer_parent_message_id=user_turn.messages[-1].id,
+        answer_parent_message_id=answer_parent_message_id,
         model_override=thread.model_override,
         web_search_enabled=body.web_search,
         locale=body.locale,
