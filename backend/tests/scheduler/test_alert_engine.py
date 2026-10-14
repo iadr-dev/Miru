@@ -1102,3 +1102,34 @@ def test_an_unsafe_or_overlong_keyword_is_refused(bad: str) -> None:
 
 def test_a_blank_keyword_means_no_filter() -> None:
     assert MaterialAnnouncementPublished(keyword="   ").keyword is None
+
+
+async def test_a_rule_that_fails_does_not_stop_the_rest_of_its_group(
+    session_factory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One bad rule used to roll back the whole group's pass (and every other user's alerts in it),
+    and it failed the same way on every later pass."""
+    broken_user = await insert_user(session_factory, tier=Tier.FREE)
+    other_user = await insert_user(session_factory, tier=Tier.FREE)
+    broken = await create_rule(
+        session_factory, broken_user, ClosePrice(comparator="above", value=600)
+    )
+    healthy = await create_rule(
+        session_factory, other_user, ClosePrice(comparator="above", value=600)
+    )
+    reader = FakeReader()
+    reader.put(PRICE, day(0), [bar("2330", 612.0)])
+    real_apply = SchedulerWorker._apply_rule
+
+    async def apply(self, store, rule, **kwargs):  # type: ignore[no-untyped-def]
+        if rule.id == broken.id:
+            raise RuntimeError("this rule's data is bad")
+        return await real_apply(self, store, rule, **kwargs)
+
+    monkeypatch.setattr(SchedulerWorker, "_apply_rule", apply)
+
+    fired = await signal(make_worker(session_factory, reader), Capability.PRICE_EOD, day(0))
+
+    assert fired == [healthy.id]
+    assert len(await notifications(session_factory, other_user)) == 1
+    assert await notifications(session_factory, broken_user) == []

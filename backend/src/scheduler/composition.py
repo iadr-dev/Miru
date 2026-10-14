@@ -3,10 +3,10 @@ from config/env, mirroring how the API app is composed.
 
 Reuses the shared interaction-layer builders (the real DB session factory, the built-in skill
 registry, the config-assembled data-access router, the role-resolved orchestrator) plus the
-scheduler-only collaborators: the config-selected delivery channels, the shared leader-election
-seam (the same `LeaderElection` the ingest write path uses, so a real cross-process election swaps
-in at this one site), and the durable usage-backed quota gate that `build_scheduler_worker`
-defaults to.
+scheduler-only collaborators: the config-selected delivery channels, the real single-run lease
+(the mechanism the ingest writer uses, with role "scheduler": a Postgres advisory lock, or a file
+lock on a single-host SQLite deployment, so a second scheduler process stands by), and the durable
+usage-backed quota gate that `build_scheduler_worker` defaults to.
 
 No network I/O at construction time.
 """
@@ -18,7 +18,7 @@ from config.settings import Settings, get_settings, reveal
 from dataaccess.composition import build_default_router
 from db.base import ensure_schema_for
 from events.live_quote_factory import build_data_update_broker
-from ingest.leader import LeaderElection, get_default_leader_election
+from ingest.leader import LeaderElection, build_leader_election
 from ingest.reader import ParquetMarketDataReader
 from orchestrator.composition import (
     build_orchestrator,
@@ -48,7 +48,11 @@ async def build_scheduler_from_settings(settings: Settings | None = None) -> Sch
         tool_registry=tool_registry,
         settings=resolved,
     )
-    leader: LeaderElection = get_default_leader_election()
+    leader: LeaderElection = build_leader_election(
+        role="scheduler",
+        database_url=resolved.database_url,
+        scope_root=resolved.parquet_root,
+    )
     return build_scheduler_worker(
         session_factory=session_factory,
         orchestrator=orchestrator,

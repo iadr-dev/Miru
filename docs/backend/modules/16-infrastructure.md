@@ -29,8 +29,8 @@ Backend Architect + Database Optimizer reviews.
 
 - **API workers** are stateless — any worker serves any request (including SSE reconnect),
   which is why live events must go through Redis, not an in-process bus (see §2).
-- **Scheduler workers** run the user-authorized jobs/alerts (the scheduler carve-out in `backend/CLAUDE.md` §4); the target is ≥1 with leader election (see §5).
-- **Process types** (`backend/docker-compose.yml`): api, scheduler, ingest (plus an MCP server). There is no separate task queue. Scale api horizontally; the scheduler and ingest are single-active (leader election is not yet real, §5).
+- **Scheduler workers** run the user-authorized jobs/alerts (the scheduler carve-out in `backend/CLAUDE.md` §4); one is active at a time, behind a lease (see §5).
+- **Process types** (`backend/docker-compose.yml`): api, scheduler, ingest (plus an MCP server). There is no separate task queue. Scale api horizontally; the scheduler and ingest are single-active, each behind a real lease (§5).
 
 ## 2. Cross-process event transport (fixes in-process bus at scale)
 
@@ -176,19 +176,18 @@ ceiling. Mitigation (also [12-multi-user-tiers.md](12-multi-user-tiers.md) §4):
 ## 5. Scheduler HA & delivery semantics (fixes SPOF)
 
 [14-scheduler-alerts.md](14-scheduler-alerts.md) runs ≥1 scheduler worker:
-- **Leader election / locking job store** so multiple workers run safely without double-firing.
-  The Postgres-advisory-lock lease is **built for the ingest writer** ([22](22-data-ingest.md) §6c);
-  the scheduler still resolves to `AlwaysLeader`, so only a single scheduler worker is safe today.
-  The notification dedupe key below is the guard against duplicate delivery.
+- **Single active scheduler.** The daemon holds a real lease (role `scheduler`; the Postgres
+  advisory lock, or a file lock on single-host SQLite, built by `ingest/leader.py`), refreshed once
+  per pass, so a second process stands by and takes over. Each due job is additionally **claimed**
+  with one atomic `UPDATE` (status `running`, orphan timeout `RUN_TIMEOUT`), so even a lease
+  handover cannot run a job twice.
 - **At-least-once execution + idempotent delivery:** dedupe key `rule_id:occurrence_id:channel`
   in `notifications` ([14](14-scheduler-alerts.md) §5); a redelivered LINE/Telegram/web native is a no-op.
-- **Retry + DLQ: designed but not yet implemented.** `scheduler/` has no retry-queue or
-  dead-letter logic today — grepped the whole package, none exists. `DeliveryReceipt.retryable`
-  (`scheduler/delivery/base.py`) is a boolean field nothing currently consumes; the field's own
-  docstring frames `retryable=True` as a documented future seam, not implemented behavior.
-  `scheduler/worker.py::_log_receipt` just logs the receipt (channel, `delivered`, `retryable`) —
-  a transient channel failure is observed, never retried or routed to a dead-letter path.
-  **`running` status** is added to `schedule_jobs` to detect stuck/orphaned runs after a crash.
+- **Retry:** the `notifications` row is an outbox. An external delivery is committed `pending`
+  before it is sent, then marked `sent`/`failed`, or kept `pending` with `next_attempt_at` and
+  retried with a doubling delay (5 min to 6 h, 6 attempts) by the retry sweep
+  ([14](14-scheduler-alerts.md) §6). A notification that runs out of attempts stays as `failed`
+  for inspection; there is no separate dead-letter queue.
 
 ## 6. Concurrency, cost & abuse ceilings
 

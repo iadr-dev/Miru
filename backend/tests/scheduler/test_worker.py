@@ -353,7 +353,9 @@ async def test_each_run_appends_to_the_schedules_one_persistent_thread(session_f
         after_first = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
     assert after_first.thread_id is not None
 
-    await worker.run_job(after_first)
+    assert after_first.next_run is not None
+    due_again = after_first.next_run.replace(tzinfo=UTC)  # SQLite returns it naive
+    await worker.run_job(after_first, now=due_again)  # the next occurrence comes due
     async with session_factory() as session:
         after_second = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
         path = await SqlAlchemyConversationStore(session).active_path(
@@ -650,3 +652,23 @@ async def test_a_scheduled_run_never_falls_back_to_the_platform_key(session_fact
     async with session_factory() as session:
         refreshed = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
         assert refreshed.status is JobStatus.SKIPPED_QUOTA
+
+
+async def test_a_job_that_is_no_longer_due_is_not_run(session_factory) -> None:
+    """A worker holding a stale scan result stands down once another has run the job."""
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    job = await _make_job(session_factory, user)
+    orch = _StubOrchestrator(_CLEAN_ANSWER)
+    worker = SchedulerWorker(
+        _ctx(
+            session_factory,
+            orchestrator=orch,
+            router=_StubRouter({}),
+            leader=AlwaysLeader(),
+            quota_gate=AllowAllQuotaGate(),
+        )
+    )
+
+    assert await worker.run_job(job) is True
+    assert await worker.run_job(job) is False  # the stale copy: next_run has moved on
+    assert len(orch.calls) == 1

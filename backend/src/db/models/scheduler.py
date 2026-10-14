@@ -237,9 +237,25 @@ class NotificationRow(Base):
     payload: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
     delivered_at: Mapped[datetime] = mapped_column(_UTC)
     read_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
+    # The outbox half of the row. An in-app entry is `sent` the moment it exists. An external one
+    # starts `pending`, and becomes `sent`, or `failed` once it will not be retried; a transient
+    # failure keeps it `pending` with the time of the next attempt, which the retry sweep reads.
+    delivery_state: Mapped[str] = mapped_column(default="sent", server_default="sent")
+    delivery_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(_UTC, default=None)
 
     __table_args__ = (
         CheckConstraint("source IN ('schedule','alert','digest')", name="ck_notifications_source"),
+        CheckConstraint(
+            "delivery_state IN ('pending','sent','failed')", name="ck_notifications_delivery_state"
+        ),
+        # The retry sweep scans only the rows still waiting to be delivered.
+        Index(
+            "ix_notifications_delivery_due",
+            "next_attempt_at",
+            sqlite_where=text("delivery_state = 'pending'"),
+            postgresql_where=text("delivery_state = 'pending'"),
+        ),
         UniqueConstraint("user_id", "dedupe_key", name="uq_notifications_user_dedupe"),
         Index("ix_notifications_user_delivered", "user_id", "delivered_at"),
         # The cross-user quiet-hours release scan filters on delivered_at alone.
