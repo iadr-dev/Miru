@@ -92,3 +92,26 @@ async def test_concurrent_reservations_never_exceed_cap(session_factory) -> None
         *(store.reserve_daily_chat(user_id="u", limit=5, today=day) for _ in range(25))
     )
     assert sum(1 for v in verdicts if v.allowed) == 5
+
+
+async def test_a_refunded_chat_gives_its_slot_back(session_factory) -> None:
+    """A duplicate of a message already accepted claims a chat before it is found out; refunding it
+    leaves the day's allowance exactly as it was."""
+    store = _store(session_factory)
+    day = date(2026, 8, 5)
+    await store.reserve_daily_chat(user_id="u", limit=2, today=day)  # the real message
+    await store.reserve_daily_chat(user_id="u", limit=2, today=day)  # its duplicate
+    await store.refund_daily_chat(user_id="u", limit=2, today=day)
+
+    again = await store.reserve_daily_chat(user_id="u", limit=2, today=day)
+
+    assert again.allowed is True
+    assert again.used == 2  # the message, and this one: the duplicate no longer counts
+
+
+async def test_refunding_an_unlimited_chat_touches_nothing(session_factory) -> None:
+    store = _store(session_factory)
+
+    await store.refund_daily_chat(user_id="pro", limit=None)
+
+    assert (await store.today_counts(user_id="pro")).get("chats", 0) == 0

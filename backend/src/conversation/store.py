@@ -91,6 +91,10 @@ class ConversationStore(Protocol):
         usage: TurnUsage | None = None,
     ) -> Turn: ...
 
+    async def turn_for_idempotency_key(
+        self, *, user_id: str, idempotency_key: str
+    ) -> tuple[str, str] | None: ...
+
     async def active_path(self, *, thread_id: str) -> list[Message]: ...
 
     async def switch_branch(self, *, thread_id: str, target_message_id: str) -> None: ...
@@ -331,6 +335,19 @@ class SqlAlchemyConversationStore:
         await self._session.flush()
         logger.info("turn_appended", user_id=user_id, thread_id=thread_id, turn_id=turn_row.id)
         return _turn_row_to_model(turn_row, messages)
+
+    async def turn_for_idempotency_key(
+        self, *, user_id: str, idempotency_key: str
+    ) -> tuple[str, str] | None:
+        """`(thread_id, turn_id)` of the turn this caller already created with this key, if any."""
+        row = (
+            await self._session.execute(
+                select(TurnRow.thread_id, TurnRow.id).where(
+                    TurnRow.user_id == user_id, TurnRow.idempotency_key == idempotency_key
+                )
+            )
+        ).first()
+        return None if row is None else (row[0], row[1])
 
     async def active_path(self, *, thread_id: str) -> list[Message]:
         """Walk `parent_id` from the thread's active leaf back to the root — never the whole

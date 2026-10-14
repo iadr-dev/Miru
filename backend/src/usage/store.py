@@ -96,6 +96,10 @@ class UsageStore(Protocol):
         self, *, user_id: str, limit: int | None, today: date | None = None
     ) -> ChatQuotaVerdict: ...
 
+    async def refund_daily_chat(
+        self, *, user_id: str, limit: int | None, today: date | None = None
+    ) -> None: ...
+
     async def today_counts(self, *, user_id: str, today: date | None = None) -> dict[str, int]: ...
 
     async def reserve_daily_voice(
@@ -168,6 +172,15 @@ class SqlAlchemyUsageStore:
         if limit is None:
             return ChatQuotaVerdict(allowed=True, used=0, limit=None)
         return await self._reserve(_CHAT_COUNTER, user_id=user_id, limit=limit, today=today)
+
+    async def refund_daily_chat(
+        self, *, user_id: str, limit: int | None, today: date | None = None
+    ) -> None:
+        """Give back a chat claimed by `reserve_daily_chat` for a turn that was not started (a
+        duplicate of one already running). An unlimited caller never claimed one."""
+        if limit is None:
+            return
+        await self._refund(_CHAT_COUNTER, user_id=user_id, today=today)
 
     async def reserve_daily_voice(
         self, *, user_id: str, kind: VoiceKind, limit: int, today: date | None = None

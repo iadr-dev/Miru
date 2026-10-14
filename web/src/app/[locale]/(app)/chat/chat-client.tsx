@@ -187,8 +187,12 @@ export function ChatClient(): ReactNode {
           }
         }
       } catch (err) {
-        // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
+        if (err instanceof AgentStreamError && err.code === "duplicate_request") {
+          // The server already has this message (the same request arrived twice). It is not an
+          // error: adopt the thread it went to, and the history refetch after this shows it.
+          resolvedThreadId = err.threadId ?? resolvedThreadId;
+        } else if (!(err instanceof DOMException && err.name === "AbortError")) {
+          // AbortError is an intentional stop (handled by the cancel path) — not a turn error.
           fail(turnErrorMessage(err, t), err instanceof AgentStreamError ? err.code : null);
           useNewThreadStore.getState().reset();
         }
