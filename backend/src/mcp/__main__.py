@@ -38,7 +38,12 @@ def main() -> None:
     # schema-provisioning mechanism (no Alembic migration chain).
     with rls.system_access():  # provisioning is not on behalf of a user; each call binds its own
         asyncio.run(ensure_schema_for(built.session_factory))
-    uvicorn.run(built.app, host=settings.mcp_host, port=settings.mcp_port)
+    uvicorn.run(
+        built.app,
+        host=settings.mcp_host,
+        port=settings.mcp_port,
+        timeout_graceful_shutdown=settings.shutdown_grace_seconds,
+    )
 
 
 if __name__ == "__main__":

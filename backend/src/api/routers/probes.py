@@ -88,6 +88,10 @@ async def _readiness(state: AppState, response: Response) -> dict[str, object]:
     # Redis, so failing readiness on it took every replica out of the load balancer at once and
     # made a Redis outage a full outage; the request path now degrades instead (local rate limit,
     # cache misses go to the source, live quotes pause).
+    if state.shutdown.draining:
+        # Told to stop: finish the turns in flight, take no new traffic.
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"status": "draining", "checks": {}}
     database = await _check_postgres(state)
     checks: dict[str, bool] = {"database": database}
     redis_ok = await _check_redis(state)

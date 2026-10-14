@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # Server-side cap on one statement; a runaway query is cancelled instead of holding a
     # connection. 0 disables it.
     db_statement_timeout_ms: int = 30_000
+    # How long a stopping API/MCP process waits for open connections (a chat turn mid-answer)
+    # before cancelling them. The container's stop grace period must be longer than this.
+    shutdown_grace_seconds: int = 30
     duckdb_path: str = "./data/duckdb"
     parquet_root: str = "./data/parquet"
 

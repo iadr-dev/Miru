@@ -176,7 +176,7 @@ async def quote_stream(
         state.tool_registry, tier, tool_name=quote_tool_name_for(market)
     )
     stream = state.quote_feed.stream(ids, market=market, cadence=cadence, transform=transform)
-    return StreamingResponse(stream, media_type="text/event-stream")
+    return StreamingResponse(state.shutdown.until_draining(stream), media_type="text/event-stream")
 
 
 @stream_router.get("/updates/stream")
@@ -194,7 +194,9 @@ async def updates_stream(
     """
 
     return StreamingResponse(
-        _with_keepalive(state.data_update_broker.reader_factory.updates()),
+        state.shutdown.until_draining(
+            _with_keepalive(state.data_update_broker.reader_factory.updates())
+        ),
         media_type="text/event-stream",
     )
 

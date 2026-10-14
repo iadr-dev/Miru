@@ -15,7 +15,7 @@ gets `public` data (and a masked teaser for anything `sponsor`).
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import structlog
 from fastapi import Depends, Request, status
@@ -28,6 +28,7 @@ from accounts.models import User
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError, UserStore
 from api.auth_expired import AUTH_EXPIRED_STATE_KEY
 from api.errors import ApiError
+from api.lifecycle import ShutdownSignal
 from api.turn_registry import TurnRegistry
 from config.settings import Settings
 from db import rls
@@ -67,6 +68,8 @@ class AppState:
     quote_feed: QuoteFeed
     data_update_broker: DataUpdateBroker
     turn_control: TurnControl
+    # Set when the process is told to stop; see `api/lifecycle.py`.
+    shutdown: ShutdownSignal = field(default_factory=ShutdownSignal)
 
 
 async def system_scope() -> AsyncGenerator[None]:

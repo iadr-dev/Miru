@@ -11,7 +11,10 @@ case "$ROLE" in
     # The ASGI app is imported by string so uvicorn owns the process lifecycle (graceful shutdown,
     # worker management). Host/port are container-fixed; replicas/concurrency are an orchestrator
     # concern, not baked into the image.
-    exec uvicorn api.app:app --host 0.0.0.0 --port "${PORT:-8000}"
+    # On SIGTERM uvicorn stops accepting and waits this long for the open connections (a chat
+    # turn mid-answer) before cancelling them; the container's stop grace period must be longer.
+    exec uvicorn api.app:app --host 0.0.0.0 --port "${PORT:-8000}" \
+      --timeout-graceful-shutdown "${SHUTDOWN_GRACE_SECONDS:-30}"
     ;;
   scheduler)
     # The long-running leader loop: fires due jobs + evaluates alerts on an interval, with its own

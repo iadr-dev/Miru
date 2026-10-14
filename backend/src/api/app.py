@@ -86,10 +86,11 @@ def create_app(
     rls.install(enabled=resolved_settings.row_level_security)
 
     @asynccontextmanager
-    async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
+    async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         # `create_all()` is idempotent — safe even if the caller (a test fixture) already
         # created the schema itself, and safe under multiple replicas racing to call it.
         await ensure_schema_for(session_factory)
+        app.state.app_state.shutdown.install()
         try:
             yield
         finally:
