@@ -82,3 +82,23 @@ def test_build_returns_none_for_memory_backend() -> None:
 def test_build_returns_reserver_for_redis_backend(fake_redis) -> None:
     reserver = build_quota_reserver(Settings(rate_limiter_backend="redis"), redis=fake_redis)
     assert isinstance(reserver, RedisFinMindPoolReserver)
+
+
+async def test_while_redis_is_down_a_paid_turn_is_granted_not_failed() -> None:
+    """`reserve` raised on a Redis error, which failed every paid multi-lane turn for as long as
+    Redis was down."""
+    from redis.asyncio import Redis as _Redis  # noqa: PLC0415 - a client nothing listens behind
+
+    reserver = RedisFinMindPoolReserver(
+        _Redis.from_url("redis://127.0.0.1:1/0", socket_connect_timeout=1, socket_timeout=1),
+        key_prefix="finmind:pool",
+        limit_per_window=10,
+        window_seconds=3600,
+        cost_per_lane=1,
+    )
+
+    reservation = await reserver.reserve(skills=("a", "b"), tier="pro")
+    await reserver.refund(lanes=1)  # does not raise either
+
+    assert reservation.granted == ("a", "b")
+    assert reservation.degraded == ()

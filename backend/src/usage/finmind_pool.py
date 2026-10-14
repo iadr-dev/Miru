@@ -27,6 +27,7 @@ import time
 
 import structlog
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from config.settings import Settings
 from orchestrator.ceilings import QuotaReservation, QuotaReserver
@@ -68,10 +69,17 @@ class RedisFinMindPoolReserver:
         now = time.time()
         key = self._key(now)
 
-        async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.incrby(key, want)
-            pipe.expire(key, self._window_seconds + 1)
-            results = await pipe.execute()
+        try:
+            async with self._redis.pipeline(transaction=True) as pipe:
+                pipe.incrby(key, want)
+                pipe.expire(key, self._window_seconds + 1)
+                results = await pipe.execute()
+        except (RedisError, OSError) as exc:
+            # The pool cannot count while Redis is down. Granting keeps paid turns working; the
+            # provider's own cap still applies, and a call over it comes back as an unavailable
+            # source (402), not an error. Refusing would degrade every paid turn for the outage.
+            logger.warning("finmind_pool_unavailable_granting", error=repr(exc))
+            return QuotaReservation(granted=skills, degraded=())
         used_after = int(results[0])
 
         overage = used_after - self._limit
@@ -100,7 +108,10 @@ class RedisFinMindPoolReserver:
         credit = lanes * self._cost_per_lane
         if credit <= 0:
             return
-        await self._redis.decrby(self._key(time.time()), credit)
+        try:
+            await self._redis.decrby(self._key(time.time()), credit)
+        except (RedisError, OSError):
+            logger.warning("finmind_pool_refund_failed", lanes=lanes)
 
 
 def build_quota_reserver(settings: Settings, redis: Redis | None = None) -> QuotaReserver | None:
@@ -110,7 +121,14 @@ def build_quota_reserver(settings: Settings, redis: Redis | None = None) -> Quot
     event-bus factory uses, never a hardcoded choice at the construction site."""
     if settings.rate_limiter_backend != "redis":
         return None
-    client: Redis = redis if redis is not None else Redis.from_url(settings.redis_url)
+    timeout = settings.redis_request_timeout_seconds
+    client: Redis = (
+        redis
+        if redis is not None
+        else Redis.from_url(
+            settings.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
+        )
+    )
     return RedisFinMindPoolReserver(
         client,
         key_prefix=settings.finmind_pool_key_prefix,

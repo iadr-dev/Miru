@@ -11,6 +11,7 @@ from config.settings import Settings
 from events.rate_limit import (
     InMemoryAsyncRateLimiter,
     RedisRateLimiter,
+    ResilientRateLimiter,
     build_rate_limiter,
 )
 
@@ -64,4 +65,6 @@ def test_build_selects_memory_by_default() -> None:
 
 def test_build_selects_redis_when_configured(fake_redis) -> None:
     limiter = build_rate_limiter(Settings(rate_limiter_backend="redis"), redis=fake_redis)
-    assert isinstance(limiter, RedisRateLimiter)
+    # The shared Redis limiter, behind the fallback that keeps requests limited while Redis is down.
+    assert isinstance(limiter, ResilientRateLimiter)
+    assert isinstance(limiter._primary, RedisRateLimiter)

@@ -47,6 +47,9 @@ from sources.base import SourceAdapter
 
 logger = structlog.get_logger(__name__)
 
+# How long the cache is bypassed after a Redis error before it is tried again.
+_CACHE_RETRY_AFTER_SECONDS = 5.0
+
 # Params that participate in the cache key beyond (capability, market, symbol) — per spec's
 # "(capability, market, symbol[, date])". Only `date`-shaped params are folded in: other
 # **params (e.g. free-text filters) are rare on the per-symbol path and would fragment the key
@@ -127,6 +130,9 @@ class CachingSourceAdapter:
         self._prefix = key_prefix
         self._ttl_by_class = ttl_by_class
         self._failure_ttl_seconds = failure_ttl_seconds
+        # After a Redis error the cache is skipped (every call goes straight to the source) until
+        # this moment, so an outage costs one connect timeout per pause, not one per request.
+        self._skip_cache_until = 0.0
         # Plain attributes (not properties) — `SourceAdapter`'s Protocol declares these mutable,
         # which makes pyright treat them invariantly; a `property` isn't assignable to that.
         # Mirroring the wrapped adapter's values once at construction is equivalent (adapters
@@ -150,10 +156,13 @@ class CachingSourceAdapter:
         tls_policy: TLSPolicy,
         **params: object,
     ) -> SourceResult:
+        if time.monotonic() < self._skip_cache_until:
+            return await self._wrapped.fetch(cap, sym, tls_policy=tls_policy, **params)
         key = _cache_key(self._prefix, self.source_id, cap, sym, params=params)
         try:
             cached = await self._redis.get(key)
         except RedisError:
+            self._pause_cache()
             # Redis being unreachable/slow is a cache-tier outage, not a request failure — the
             # whole point of this wrapper is to sit in front of a real source, so a broken cache
             # degrades to "always miss" (a direct live fetch, no single-flight lock since that
@@ -171,8 +180,12 @@ class CachingSourceAdapter:
                 key, cap, sym, tls_policy=tls_policy, **params
             )
         except RedisError:
+            self._pause_cache()
             logger.warning("cache_unavailable_falling_through_to_live_fetch", cap=cap.value)
             return await self._wrapped.fetch(cap, sym, tls_policy=tls_policy, **params)
+
+    def _pause_cache(self) -> None:
+        self._skip_cache_until = time.monotonic() + _CACHE_RETRY_AFTER_SECONDS
 
     # -- single-flight-on-miss -------------------------------------------------------------
 
@@ -219,10 +232,15 @@ class CachingSourceAdapter:
     async def _release_lock(self, lock_key: str, token: str) -> None:
         # Only release a lock this call actually holds (compare-then-delete via the token) —
         # never clear another waiter's freshly-acquired lock after our own `ex` expired us out.
-        current = await self._redis.get(lock_key)
-        current_str = current.decode() if isinstance(current, bytes) else current
-        if current_str == token:
-            await self._redis.delete(lock_key)
+        # Best-effort: the result is already in hand, and a lock left behind expires on its own.
+        # Raising here would send the caller round to a second live fetch of the same data.
+        try:
+            current = await self._redis.get(lock_key)
+            current_str = current.decode() if isinstance(current, bytes) else current
+            if current_str == token:
+                await self._redis.delete(lock_key)
+        except RedisError:
+            logger.warning("cache_lock_release_failed", lock_key=lock_key)
 
     async def _fetch_and_store(
         self,
@@ -243,7 +261,13 @@ class CachingSourceAdapter:
             # thundering-herd retry, short enough that the next real request re-tries the
             # source instead of replaying the same failure for a full timing_class TTL.
             ttl = self._failure_ttl_seconds
-        await self._redis.set(key, _serialize(result), ex=ttl)
+        try:
+            await self._redis.set(key, _serialize(result), ex=ttl)
+        except RedisError:
+            # The source has been paid for already: return what it gave. Letting this raise sent
+            # the caller to `fetch`'s fall-through, which fetched the same data from the source a
+            # second time (twice the FinMind quota for one answer).
+            logger.warning("cache_store_failed", key=key)
         return result
 
 

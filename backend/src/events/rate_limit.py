@@ -23,9 +23,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+import structlog
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from config.settings import Settings
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -81,13 +85,25 @@ class InMemoryAsyncRateLimiter:
     interface-shaping (no real await); it exists so the request-path gate can depend on one
     seam regardless of backend."""
 
+    # Expired windows are dropped once this many callers are held, so the map stays bounded.
+    _PRUNE_AT = 10_000
+
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
+
+    def _prune(self, now: float, window_seconds: int) -> None:
+        self._windows = {
+            caller: entry
+            for caller, entry in self._windows.items()
+            if now - entry[0] < window_seconds
+        }
 
     async def check(
         self, caller_id: str, *, max_requests: int, window_seconds: int
     ) -> RateLimitVerdict:
         now = time.monotonic()
+        if len(self._windows) >= self._PRUNE_AT:
+            self._prune(now, window_seconds)
         window_start, count = self._windows.get(caller_id, (now, 0))
         if now - window_start >= window_seconds:
             window_start, count = now, 0
@@ -132,13 +148,73 @@ class RedisRateLimiter:
         return RateLimitVerdict(allowed=True, remaining=max_requests - count)
 
 
+class ResilientRateLimiter:
+    """The shared Redis limiter while Redis answers; this process's own in-memory limiter while it
+    does not.
+
+    Every read route and every chat turn checks the rate limit first, so an unguarded Redis error
+    here turned a Redis outage into a 500 on almost every request. Failing open would leave the
+    service unprotected for the length of the outage; failing closed would refuse every request.
+    Falling back to a per-process limit keeps requests flowing and still limited: each API process
+    enforces the same per-caller cap on its own (so a caller spread over N processes gets at most N
+    times the cap until Redis is back). After a failure Redis is not tried again for
+    `retry_after_seconds`, so an outage costs one timeout, not one per request."""
+
+    def __init__(
+        self,
+        primary: AsyncRateLimiter,
+        fallback: AsyncRateLimiter,
+        *,
+        retry_after_seconds: float = 5.0,
+    ) -> None:
+        self._primary = primary
+        self._fallback = fallback
+        self._retry_after = retry_after_seconds
+        self._skip_until = 0.0
+        self._degraded = False
+
+    async def check(
+        self, caller_id: str, *, max_requests: int, window_seconds: int
+    ) -> RateLimitVerdict:
+        now = time.monotonic()
+        if now >= self._skip_until:
+            try:
+                verdict = await self._primary.check(
+                    caller_id, max_requests=max_requests, window_seconds=window_seconds
+                )
+            except (RedisError, OSError) as exc:
+                self._skip_until = now + self._retry_after
+                if not self._degraded:
+                    self._degraded = True
+                    logger.warning("rate_limiter_degraded_to_local", error=repr(exc))
+            else:
+                if self._degraded:
+                    self._degraded = False
+                    logger.info("rate_limiter_recovered")
+                return verdict
+        return await self._fallback.check(
+            caller_id, max_requests=max_requests, window_seconds=window_seconds
+        )
+
+
 def build_rate_limiter(settings: Settings, redis: Redis | None = None) -> AsyncRateLimiter:
     """Select the request-rate backend from config. `redis` is injected (tests pass fakeredis);
-    when omitted for the `redis` backend, a client is opened from `redis_url` — the same
-    connection-construction pattern the event-bus factory uses, never a second client factory."""
+    when omitted for the `redis` backend, a client is opened from `redis_url` with the
+    request-path timeouts. The Redis backend degrades to a local limit while Redis is down
+    (`ResilientRateLimiter`)."""
     if settings.rate_limiter_backend == "redis":
-        client: Redis = redis if redis is not None else Redis.from_url(settings.redis_url)
-        return RedisRateLimiter(client, key_prefix=settings.rate_limit_key_prefix)
+        timeout = settings.redis_request_timeout_seconds
+        client: Redis = (
+            redis
+            if redis is not None
+            else Redis.from_url(
+                settings.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
+            )
+        )
+        return ResilientRateLimiter(
+            RedisRateLimiter(client, key_prefix=settings.rate_limit_key_prefix),
+            InMemoryAsyncRateLimiter(),
+        )
     return InMemoryAsyncRateLimiter()
 
 
@@ -149,5 +225,6 @@ __all__ = [
     "RateLimitVerdict",
     "RateLimiter",
     "RedisRateLimiter",
+    "ResilientRateLimiter",
     "build_rate_limiter",
 ]

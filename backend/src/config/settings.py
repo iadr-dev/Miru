@@ -208,6 +208,11 @@ class Settings(BaseSettings):
     event_bus_backend: str = "memory"  # memory | redis
     rate_limiter_backend: str = "memory"  # memory | redis
     redis_url: str = "redis://localhost:6379/0"
+    # Connect and reply timeout for the Redis clients a request waits on (rate limiter, market-data
+    # cache, FinMind pool, readiness probe). Without one, a Redis that stops answering (rather than
+    # refusing) holds every request for the OS TCP timeout. Not applied to the long-lived pub/sub
+    # subscriptions, which sit idle by design.
+    redis_request_timeout_seconds: float = 2.0
     rate_limit_key_prefix: str = "ratelimit"
     # How many reverse proxies of our own sit in front of the API (each appends the address it saw
     # to `X-Forwarded-For`). 0 = exposed directly: the header is ignored, since any client could

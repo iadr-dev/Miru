@@ -77,7 +77,14 @@ def build_default_adapters(
     }
     if resolved.market_data_cache_backend != "redis":
         return adapters
-    client: Redis = redis if redis is not None else Redis.from_url(resolved.redis_url)
+    timeout = resolved.redis_request_timeout_seconds
+    client: Redis = (
+        redis
+        if redis is not None
+        else Redis.from_url(
+            resolved.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
+        )
+    )
     cached: dict[str, SourceAdapter] = {}
     for source_id, adapter in adapters.items():
         cached[source_id] = (

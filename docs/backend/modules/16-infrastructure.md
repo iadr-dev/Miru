@@ -334,6 +334,26 @@ Test: `tests/api/test_turn_sessions.py`.
 with a 3 s limit, so a replica whose application pool is exhausted still reports busy-but-alive
 instead of failing readiness and being ejected (which pushes its load onto the other replicas).
 
+**A Redis outage degrades the request path; it does not fail it.** Only Postgres gates readiness;
+Redis is reported in the `/readyz` body (`"redis": false`) but every replica shares it, so failing
+readiness on it ejected every replica at once. While Redis is down:
+
+- **Rate limits** fall back to a per-process in-memory limit (`events/rate_limit.py`,
+  `ResilientRateLimiter`): requests are still limited (a caller spread over N API processes gets up
+  to N times the cap), never refused with a 500 and never unlimited. Logged once as
+  `rate_limiter_degraded_to_local`, and `rate_limiter_recovered` when Redis answers again.
+- **The market-data cache** is skipped and every read goes to the source. A failed write after a
+  successful fetch no longer triggers a second fetch of the same data.
+- After a Redis error, both skip Redis for 5 s before trying again, and every request-path Redis
+  client has a connect/reply timeout (`REDIS_REQUEST_TIMEOUT_SECONDS`, 2 s). So an outage costs one
+  timeout per pause, not one per request (measured: reads stay at about 5 ms instead of about 2 s).
+- **The FinMind pool** grants instead of counting (FinMind's own hourly cap still applies; a call
+  over it returns as an unavailable source, not an error).
+- **Chat turns** run: their live stream is in-process; the Redis mirror and cross-worker cancel
+  are best-effort.
+- **Not degraded:** live quotes (`/quote/stream`) pause, because their fan-out is Redis pub/sub;
+  `data.updated` streams stay open and resubscribe when Redis is back.
+
 **The schema lock outlasts the statement timeout.** `db/schema_lock.py` takes a transaction-level
 advisory lock with `SET LOCAL statement_timeout = 0`, so processes waiting behind a slow first
 `create_all` wait instead of failing startup with `QueryCanceled`, and nothing leaks back into the

@@ -3,10 +3,10 @@ data-currency + FinMind quota, not infra state).
 
 - `/livez` — the process is up and serving. Never touches a datastore, so a liveness check can't
   be dragged down by a slow dependency; a load balancer uses this only to decide "restart the pod".
-- `/readyz` — refuses load-balancer traffic until the backing datastores this worker actually needs
-  are reachable: Postgres always, and Redis only when the deployment is configured to use it
-  (`event_bus_backend`/`rate_limiter_backend` = redis). A single failed dependency returns 503 with
-  a per-dependency breakdown so an operator sees which one is down.
+- `/readyz` — refuses load-balancer traffic until Postgres is reachable (503). Redis, when the
+  deployment uses it (`event_bus_backend`/`rate_limiter_backend` = redis), is reported in the
+  per-dependency breakdown but does not gate readiness: every replica shares it, and the request
+  path degrades without it.
 - `/startupz` — the slow-start gate: the same checks as readiness, reported under a separate path so
   an orchestrator can distinguish "still booting" from "was ready, now degraded".
 """
@@ -73,7 +73,10 @@ async def _check_redis(state: AppState) -> bool | None:
     settings = state.settings
     if settings.event_bus_backend != "redis" and settings.rate_limiter_backend != "redis":
         return None
-    client: Redis = Redis.from_url(settings.redis_url)
+    timeout = settings.redis_request_timeout_seconds
+    client: Redis = Redis.from_url(
+        settings.redis_url, socket_timeout=timeout, socket_connect_timeout=timeout
+    )
     try:
         return bool(await client.ping())
     except Exception:
@@ -83,11 +86,16 @@ async def _check_redis(state: AppState) -> bool | None:
 
 
 async def _readiness(state: AppState, response: Response) -> dict[str, object]:
-    checks: dict[str, bool] = {"database": await _check_postgres(state)}
+    # Only the database gates readiness. Redis is reported, but every replica shares the one
+    # Redis, so failing readiness on it took every replica out of the load balancer at once and
+    # made a Redis outage a full outage; the request path now degrades instead (local rate limit,
+    # cache misses go to the source, live quotes pause).
+    database = await _check_postgres(state)
+    checks: dict[str, bool] = {"database": database}
     redis_ok = await _check_redis(state)
     if redis_ok is not None:
         checks["redis"] = redis_ok
-    ready = all(checks.values())
+    ready = database
     if not ready:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {"status": "ready" if ready else "not_ready", "checks": checks}
