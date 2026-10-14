@@ -48,3 +48,6 @@ Thumbs.db
 
 # === yFinance ===
 .cache/
+
+# === Promo video ===
+promo/
