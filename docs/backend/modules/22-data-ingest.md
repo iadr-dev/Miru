@@ -143,6 +143,12 @@ clients revalidate exactly the affected keys the moment a partition lands. The d
 (`screener_flags`, `scoring_batch`, `trend_score_batch`) do **not** publish; they write their
 result and journal the run.
 
+**A backfill publishes once per dataset, at the end.** `backfill_cli` wraps the publisher in
+`CoalescingDataUpdatePublisher`: it keeps the newest `as_of` per `(capability, market, scope)` and
+publishes those when the run ends, instead of one signal per partition written (about 11,000 for a
+three-year backfill, each delivered to every open tab and to the alert engine). The daemon publishes
+as each partition lands (a few dozen a day).
+
 ### 2c. US-market ingest jobs (`ingest/us_jobs.py`, `ingest/us_universe.py`)
 
 The US-market counterparts to the TW whole-market jobs, scheduled in `SCHEDULED_JOBS` (§2)

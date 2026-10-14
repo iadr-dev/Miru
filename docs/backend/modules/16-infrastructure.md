@@ -140,13 +140,19 @@ So a client cache can never extend a value's freshness budget
   from the canonical version; a client revalidate sends `If-None-Match` → **`304 Not Modified`** (no
   body, no re-render) when nothing changed. This makes boundary revalidation *cheap* — the client
   polls the boundary but only pays for a payload when the value actually advanced.
-- **Batch-completion invalidation signal.** When a derived-compute batch lands
-  (`compute-scores` / `compute-topN` / `compute-ai-summary` / `discover-themes`, [22](22-data-ingest.md)
-  §2), the ingest leader publishes a lightweight **`data.updated`** event over the §2 transport
-  carrying `{capability, market, as_of, symbols?|scope}`. API workers relay it on the client's SSE
-  connection so the frontend **invalidates exactly the affected keys** (`revalidateTag`) the moment
-  fresh analytics exist — instead of waiting out a time boundary. Absent a subscription, the
-  boundary-anchored `revalidate` (fixed batch time) remains the correct floor.
+- **Data-landed invalidation signal.** When an ingest job writes a partition, the leader publishes
+  a lightweight **`data.updated`** event over the §2 transport carrying
+  `{capability, market, as_of, scope}` (the derived-compute batches do not publish; a backfill
+  publishes one per dataset at the end, [22](22-data-ingest.md) §2). API workers relay it on
+  `GET /updates/stream`. **One Redis subscription per API process** (`SharedDataUpdateFeed`) fans it
+  out in memory to every open stream through a bounded queue each (a stuck reader drops its oldest
+  signals); one subscription per tab used to take one pooled Redis connection per tab, and the
+  101st tab on a process failed silently and reconnected every few seconds. The stream starts with
+  `retry: 10000` (browsers wait 10 s, not about 3, before reconnecting) and sends a `: keep-alive`
+  comment after 20 s of silence so a proxy does not cut it. Absent a subscription, the
+  boundary-anchored `revalidate` (fixed batch time) remains the correct floor. Known gap: the web
+  hook's invalidation predicate (`use-data-updates.ts`) matches no current query key, so the signal
+  arrives but triggers no refetch yet.
 - **`Cache-Control`.** Cacheable reads send `private, max-age=0, stale-while-revalidate=<to class
   boundary>` — the browser serves the last good value instantly and background-revalidates; the
   intraday stream is `no-store` (it's live SSE, not a cacheable body). The **single per-class TTL**

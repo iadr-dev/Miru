@@ -365,24 +365,39 @@ class QuotePoller:
             entry.last_polled = tick_clock
             if not market_open:
                 continue  # off-hours: the poller idles this symbol until the session opens
-            result = await self._fetcher.fetch(symbol=symbol, market=market)
+            try:
+                await self._poll_one(market, symbol, moment, market_open)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # One symbol's fetch or publish failing must not end the loop: it would stop the
+                # stream for every viewer on this worker until someone else subscribed.
+                logger.warning(
+                    "quote_poll_failed", symbol=symbol, market=market.value, exc_info=True
+                )
+                continue
             fetched += 1
-            event = Event(
-                kind="quote",
-                seq=next(self._seq),
-                ts=moment,
-                data={
-                    "symbol": symbol,
-                    "market": market.value,
-                    "quote": result.quote,
-                    "as_of": result.as_of,
-                    "market_open": market_open,
-                },
-            )
-            await self._transport.publish(
-                channel_for(market, symbol, prefix=self._channel_prefix), event
-            )
         return fetched
+
+    async def _poll_one(
+        self, market: Market, symbol: str, moment: datetime, market_open: bool
+    ) -> None:
+        result = await self._fetcher.fetch(symbol=symbol, market=market)
+        event = Event(
+            kind="quote",
+            seq=next(self._seq),
+            ts=moment,
+            data={
+                "symbol": symbol,
+                "market": market.value,
+                "quote": result.quote,
+                "as_of": result.as_of,
+                "market_open": market_open,
+            },
+        )
+        await self._transport.publish(
+            channel_for(market, symbol, prefix=self._channel_prefix), event
+        )
 
     async def aclose(self) -> None:
         if self._loop_task is not None:

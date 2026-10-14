@@ -56,4 +56,40 @@ class NoOpDataUpdatePublisher:
         del capability, market, as_of, scope
 
 
-__all__ = ["DataUpdatePublisher", "NoOpDataUpdatePublisher"]
+class CoalescingDataUpdatePublisher:
+    """Holds the signals back and publishes each `(capability, market, scope)` once, at its newest
+    `as_of`, on `flush()`. For a backfill: it writes thousands of partitions oldest first (about
+    11,000 for three years), and every one used to publish its own signal, which every open browser
+    tab and the scheduler's alert engine then received. A consumer only needs to know that data up
+    to the newest date has landed."""
+
+    def __init__(self, inner: DataUpdatePublisher) -> None:
+        self._inner = inner
+        self._latest: dict[tuple[Capability, Market, str], str] = {}
+
+    async def publish_data_updated(
+        self,
+        *,
+        capability: Capability,
+        market: Market,
+        as_of: str,
+        scope: str,
+    ) -> None:
+        key = (capability, market, scope)
+        current = self._latest.get(key)
+        if current is None or as_of > current:  # ISO dates order as strings
+            self._latest[key] = as_of
+
+    async def flush(self) -> int:
+        """Publish what is held, newest date per key, and forget it. Returns how many were sent."""
+        held, self._latest = self._latest, {}
+        for (capability, market, scope), as_of in held.items():
+            await self._inner.publish_data_updated(
+                capability=capability, market=market, as_of=as_of, scope=scope
+            )
+        if held:
+            logger.info("data_updated_coalesced_flush", signals=len(held))
+        return len(held)
+
+
+__all__ = ["CoalescingDataUpdatePublisher", "DataUpdatePublisher", "NoOpDataUpdatePublisher"]
