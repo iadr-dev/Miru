@@ -29,6 +29,8 @@ export class AgentStreamError extends Error {
     message: string,
     readonly status: number,
     readonly code: string | null,
+    /** For `duplicate_request`: the thread the already-accepted message went to. */
+    readonly threadId: string | null = null,
   ) {
     super(message);
     this.name = "AgentStreamError";
@@ -80,7 +82,22 @@ export async function* streamAgentQuery(
   body: AgentQueryBody,
   signal: AbortSignal,
 ): AsyncGenerator<AgentStreamFrame> {
-  yield* streamSse("/agent/query", body, signal, "Agent query");
+  // One key per message the user sends: a repeat of it (a double-click, a request the network
+  // sent twice) is refused by the server with `duplicate_request` instead of starting a second turn
+  // and taking a second chat from the day's allowance. The key is made here, so a re-send of the
+  // same request (a token refresh inside `fetchWithRefresh`) carries the same one.
+  yield* streamSse("/agent/query", body, signal, "Agent query", {
+    "idempotency-key": newIdempotencyKey(),
+  });
+}
+
+/** A fresh key for one message. `crypto.randomUUID` needs a secure context; fall back to a random
+ * string where it is missing so sending never fails over it. */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
 }
 
 /** `POST /threads/{id}/turns/{tid}/regenerate` — re-run the source user turn that produced
@@ -131,11 +148,16 @@ async function* streamSse(
   body: unknown,
   signal: AbortSignal,
   errorContext: string,
+  extraHeaders: Record<string, string> = {},
 ): AsyncGenerator<AgentStreamFrame> {
   const response = await fetchWithRefresh(apiUrl(path), {
     method: "POST",
     credentials: "include",
-    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    headers: {
+      "content-type": "application/json",
+      accept: "text/event-stream",
+      ...extraHeaders,
+    },
     body: JSON.stringify(body),
     signal,
   });
@@ -145,6 +167,7 @@ async function* streamSse(
       `${errorContext} failed (${response.status})`,
       response.status,
       await errorCodeOf(response),
+      response.headers.get("x-thread-id"),
     );
   }
 

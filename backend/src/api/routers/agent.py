@@ -21,8 +21,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Header, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from accounts.entitlements import chat_limit_for
 from accounts.models import User
 from api.attachments import AttachmentInput, process_attachments
 from api.byok import enforce_platform_model, resolve_byok
@@ -65,6 +67,38 @@ class AgentQueryRequest(BaseModel):
     deep_research: bool = False
 
 
+_MAX_IDEMPOTENCY_KEY_LENGTH = 128
+
+
+def _check_idempotency_key(key: str) -> None:
+    if not key.strip() or len(key) > _MAX_IDEMPOTENCY_KEY_LENGTH or not key.isprintable():
+        raise ApiError(
+            status_code=422,
+            code="invalid_request",
+            message=(
+                f"Idempotency-Key must be 1-{_MAX_IDEMPOTENCY_KEY_LENGTH} printable characters."
+            ),
+            retryable=False,
+        )
+
+
+async def _reject_duplicate(store: ConversationStore, user_id: str, key: str) -> None:
+    """409 with the existing turn's ids in headers when this caller already used `key`, else
+    return. The client reads the thread (the answer, once saved) or attaches to
+    `GET /threads/{id}/stream` (while it runs)."""
+    existing = await store.turn_for_idempotency_key(user_id=user_id, idempotency_key=key)
+    if existing is None:
+        return
+    thread_id, turn_id = existing
+    raise ApiError(
+        status_code=status.HTTP_409_CONFLICT,
+        code="duplicate_request",
+        message="This message was already sent; it is not started again.",
+        retryable=False,
+        headers={"X-Thread-Id": thread_id, "X-Turn-Id": turn_id},
+    )
+
+
 def _store(session: AsyncSession = Depends(get_session)) -> ConversationStore:
     return SqlAlchemyConversationStore(session)
 
@@ -80,6 +114,12 @@ async def agent_query(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> StreamingResponse:
     ctx = tool_context_for(user, state)
+    # A retry of a message that was already accepted (a double-click, a request repeated after a
+    # dropped connection) must not start a second turn or take a second chat from the day's
+    # allowance: answer before the gate, with where the first one is.
+    if idempotency_key is not None:
+        _check_idempotency_key(idempotency_key)
+        await _reject_duplicate(store, user.id, idempotency_key)
     # Decide BYOK first (it needs the model the turn will use), then let the gate act on that one
     # decision - a refusal here happens before anything is claimed.
     model = await _model_for_turn(store, user.id, body)
@@ -114,15 +154,28 @@ async def agent_query(
         (MessageBlockType.TEXT, TextBlock(text=body.message)),
         *attachment_blocks,
     ]
-    user_turn = await store.append_turn(
-        user_id=user.id,
-        thread_id=thread_id,
-        role=TurnRole.USER,
-        blocks=blocks,
-        parent_message_id=await current_leaf(store, thread_id),
-        idempotency_key=idempotency_key,
-        mode="deep_research" if body.deep_research else None,
-    )
+    try:
+        user_turn = await store.append_turn(
+            user_id=user.id,
+            thread_id=thread_id,
+            role=TurnRole.USER,
+            blocks=blocks,
+            parent_message_id=await current_leaf(store, thread_id),
+            idempotency_key=idempotency_key,
+            mode="deep_research" if body.deep_research else None,
+        )
+    except IntegrityError:
+        # Two copies of the same message arrived together and both passed the check above; the
+        # unique constraint let one through. Undo this one (the thread it may have created too),
+        # give back the chat it claimed, and answer as for any duplicate.
+        await session.rollback()
+        if idempotency_key is None:
+            raise
+        await state.usage_store.refund_daily_chat(
+            user_id=user.id, limit=chat_limit_for(user, byok_active=byok is not None)
+        )
+        await _reject_duplicate(store, user.id, idempotency_key)
+        raise
     answer_parent_message_id = user_turn.messages[-1].id
     # The question is durable before the answer starts, and the connection, with the lock on the
     # thread row the append took, goes back now: the turn holds no connection while it runs.
