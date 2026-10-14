@@ -2,7 +2,7 @@
  * How long a read is considered fresh (TanStack Query `staleTime`), by how often the data behind
  * it actually changes. Pick the class that matches the source instead of hand-picking a number,
  * so two cards showing the same data never disagree about when to refetch. End-of-day market data
- * is additionally refreshed by the `data.updated` push (`hooks/use-data-updates.ts`) the moment
+ * is additionally refreshed by the `data.updated` push (`hooks/use-data-updates.ts`) soon after
  * ingest writes new rows, so its long freshness never shows stale numbers after a close.
  */
 export const FRESHNESS = {

@@ -13,14 +13,28 @@ export type DataUpdatesHandle = {
   close: () => void;
 };
 
+export type DataUpdatesOptions = {
+  /** Called when the connection comes back after a drop. Signals sent while it was down are not
+   * replayed, so a consumer that must not miss one refreshes everything here. */
+  onReconnect?: () => void;
+};
+
 /** Opens the feed and invokes `onUpdate` for each valid `data.updated` frame. Malformed frames
  * (schema mismatch, unparsable JSON) are dropped silently — same parse-don't-trust posture as
  * `agent-stream.ts`'s `parseFrame`, never a thrown error mid-stream. Returns a handle whose
  * `close()` tears down the connection; call it from the consumer's cleanup. */
 export function subscribeDataUpdates(
   onUpdate: (event: DataUpdatedEvent) => void,
+  options: DataUpdatesOptions = {},
 ): DataUpdatesHandle {
   const source = new EventSource(apiUrl("/updates/stream"), { withCredentials: true });
+  let opened = false;
+  source.addEventListener("open", () => {
+    if (opened) {
+      options.onReconnect?.();
+    }
+    opened = true;
+  });
   source.addEventListener("data.updated", (raw) => {
     const messageEvent = raw as MessageEvent<string>;
     try {
