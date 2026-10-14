@@ -374,6 +374,44 @@ the role and the data root, so two data roots never share a lease.
 The scheduler daemon takes the same kind of lease under its own role (`scheduler`), see
 [14](14-scheduler-alerts.md) §6.
 
+## 6d. Memory: what the nightly batches hold
+
+A raw `TaiwanStockPrice` partition is about 22,000 rows a day, **90% of them warrants** (the
+scoreable rule is in `analytics/symbol_universe.py`); a 260-trading-day window is about 5.7M rows.
+Measured on the dev data (770 trading days, 1.2 GB of Parquet), peak resident memory of one nightly
+batch, run alone against a copy of the volume:
+
+| Batch | Before | After |
+|---|---|---|
+| `screener_flags` | about 6.3 GB (900K rows cost 1,005 MB as dicts; the 260-day read was all of them) | 1.76 GB |
+| `scoring_batch` (TW) | **more than 4 GB: OOM-killed (exit 137)** | 1.12 GB |
+| `trend_score_batch` (TW) | 1.47 GB for the price frame alone, plus the rest | 1.27 GB |
+
+What changed, and the rules that keep it that way:
+
+- **Filter inside DuckDB, not after the read.** `ParquetStore.read_range_frame(..., where=...)`
+  takes a predicate, and `scoreable_symbol_sql()` builds the scoreable rule as SQL (checked against
+  `is_scoreable_symbol` by a test), so the warrants never become a DataFrame. The price window drops
+  from 5.67M to 676K rows (1,471 MB to 384 MB). The trend batch keeps the `TAIEX` index row it needs
+  from the same frame. The flow window is filtered the same way. Do not add a whole-market
+  `read_range(...)` of a multi-day window: it boxes every cell as a Python dict (about 1.1 KB a row).
+- **Statements are parsed one symbol at a time.** The 400-day Taiwan statement window is 1.48M
+  rows; building a `FinancialStatementLine` for each, up front, took the process to 3.06 GB (1.4 GB
+  of row dicts, then 1.6 GB of objects). `LazyStatementLines` keeps the rows as a columnar frame with
+  repeated text as categories and builds a symbol's lines when that symbol is scored: the same lines
+  in the same order (checked on the dev data for all 2,665 symbols), 946 MB for the frame.
+- **Screener flags are written for scoreable symbols only.** The warrants' 51K flags (60-day
+  sample) were read by nothing: the screener engine gates its results to the scoreable universe, and
+  only the legacy `run_tag_screener` tool listed them as hits.
+- **Known, not changed:** `job_us_fundamentals` keeps every symbol's rows for its 9 capabilities in
+  memory until its 1.9-hour loop ends (about 1-1.5 GB); the API's screener reads 260 days of prices
+  for the gated universe per request (about 0.5-0.8 GB each, uncached); the US statement window is
+  still read as row dicts (the Taiwan fix does not cover it).
+- **Container limits** (`docker-compose.yml`): ingest 5 GB (the startup catch-up runs the TW and US
+  chains together, about 3.5-3.8 GB), api 2 GB, mcp and scheduler 1 GB, no swap
+  (`INGEST_MEM_LIMIT`, `API_MEM_LIMIT`, ...). An out-of-memory kill now restarts one service
+  (`restart: unless-stopped`) instead of taking the host down.
+
 ## 7. Store & concurrency — DuckDB/Parquet, and when to reconsider
 
 The derived store is **DuckDB over Parquet + a Redis hot cache** (infra §3): right for this

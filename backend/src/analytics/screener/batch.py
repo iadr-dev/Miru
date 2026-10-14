@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from datetime import date as date_
 from typing import cast
 
+import pandas as pd
 import structlog
 
 from analytics import patterns
@@ -36,6 +37,7 @@ from analytics.screener.catalog import (
     SMART_COMBOS,
     STREAK_DAYS,
 )
+from analytics.symbol_universe import scoreable_symbol_sql
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 
@@ -81,6 +83,18 @@ _DEALER_SELF = "Dealer_self"
 # (252) trading days plus one extra margin day, which dominates this constant — 260 trading days
 # is a comfortable margin above that requirement that keeps the read bounded.
 _PRICE_LOOKBACK_DAYS = 260
+
+# The only price columns the flags read (`_bars_for_symbol`).
+_PRICE_COLUMNS: tuple[str, ...] = (
+    "symbol",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "turnover",
+)
 
 # Trailing trading days for the chip streaks — the longest chip window (the 5-day cumulative) plus
 # a small margin so a missing partition inside the window still leaves enough real days.
@@ -433,7 +447,7 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
     market = ctx.market.value
     price_window = _trailing_trading_days(ctx, run_date, _PRICE_LOOKBACK_DAYS)
     chip_window = _trailing_trading_days(ctx, run_date, _CHIP_LOOKBACK_DAYS)
-    price_rows = ctx.store.read_range(PRICE_EOD_DATASET, market, price_window)
+    price_rows = _scoreable_price_rows(ctx, market, price_window)
     flow_rows = ctx.store.read_range(INSTITUTIONAL_FLOW_DATASET, market, chip_window)
     margin_rows = ctx.store.read_range(MARGIN_SHORT_DATASET, market, chip_window)
 
@@ -480,6 +494,32 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
         status=RunStatus.SUCCESS,
         detail=f"evaluated the tag catalog over {market} price/flow history",
     )
+
+
+def _scoreable_price_rows(
+    ctx: IngestContext, market: str, window: Sequence[date_]
+) -> list[dict[str, object]]:
+    """The price window as the row dicts `compute_flag_rows` takes, for real equities and ETFs only.
+
+    This used to be `store.read_range(...)`: every row of 260 trading days as a Python dict, about
+    5.7M of them (1.1 KB each, **about 6.3 GB** measured on the dev data), 90% of them warrants
+    whose flags nothing reads (the screener's universe is the scoreable symbols). DuckDB now drops
+    the warrants while reading and returns only the columns the flags use as a frame (about 10% of
+    the rows), which is turned into dicts here."""
+    frame = ctx.store.read_range_frame(
+        PRICE_EOD_DATASET,
+        market,
+        window,
+        columns=_PRICE_COLUMNS,
+        where=scoreable_symbol_sql(ctx.market),
+    )
+    if frame.empty:
+        return []
+    if pd.api.types.is_datetime64_any_dtype(frame["trade_date"]):
+        frame["trade_date"] = frame["trade_date"].dt.date
+    # A missing value is None, as it always was in a stored row: a NaN would pass `close <= 0`.
+    cleaned = frame.astype(object).where(frame.notna(), None)
+    return cast("list[dict[str, object]]", cleaned.to_dict("records"))
 
 
 def _trailing_trading_days(ctx: IngestContext, run_date: date_, count: int) -> tuple[date_, ...]:

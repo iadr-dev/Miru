@@ -65,6 +65,7 @@ from analytics.scoring_batch.inputs import trailing_trading_days as _trailing_tr
 from analytics.scoring_batch.scoring import (
     margin_short_rows_by_symbol as _margin_short_rows_by_symbol,
 )
+from analytics.symbol_universe import scoreable_symbol_sql
 from analytics.trend_score import (
     US_DIMENSION_WEIGHTS,
     TrendDimension,
@@ -410,7 +411,13 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     price_window = _trailing_trading_days(ctx, run_date, _PRICE_LOOKBACK_DAYS)
 
     price_frame = ctx.store.read_range_frame(
-        _price_eod_dataset(market), market_str, price_window, columns=_PRICE_FRAME_COLUMNS
+        _price_eod_dataset(market),
+        market_str,
+        price_window,
+        columns=_PRICE_FRAME_COLUMNS,
+        # Warrants (~90% of rows) never leave DuckDB; the TAIEX row is kept: the reference-index
+        # dimension reads it from this same frame although it is not a scoreable symbol.
+        where=scoreable_symbol_sql(market, keep=(_TAIEX_SYMBOL,)),
     )
     bars_by_symbol = _bars_by_symbol(price_frame, market)
     reference_index_closes = _reference_index_closes(price_frame, market)

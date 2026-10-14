@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date as date_
 from typing import cast
@@ -75,6 +75,7 @@ from analytics.scoring_batch.inputs import FLOW_FRAME_COLUMNS as _FLOW_FRAME_COL
 from analytics.scoring_batch.inputs import PRICE_FRAME_COLUMNS as _PRICE_FRAME_COLUMNS
 from analytics.scoring_batch.inputs import STATEMENT_COLUMNS as _STATEMENT_COLUMNS
 from analytics.scoring_batch.inputs import STATEMENT_KEY_COLUMNS as _STATEMENT_KEY_COLUMNS
+from analytics.scoring_batch.inputs import TW_STATEMENT_COLUMNS as _TW_STATEMENT_COLUMNS
 from analytics.scoring_batch.inputs import active_etf_symbols as _active_etf_symbols
 from analytics.scoring_batch.inputs import active_roster_symbols as _active_roster_symbols
 from analytics.scoring_batch.inputs import bars_by_symbol as _bars_by_symbol
@@ -95,6 +96,7 @@ from analytics.scoring_batch.inputs import latest_etf_nav_by_symbol as _latest_e
 from analytics.scoring_batch.inputs import (
     latest_market_value_by_symbol as _latest_market_value_by_symbol,
 )
+from analytics.scoring_batch.inputs import lazy_statement_lines as _lazy_statement_lines
 from analytics.scoring_batch.inputs import ma_series_for as _ma_series_for
 from analytics.scoring_batch.inputs import (
     split_universe_by_symbol_type as _split_universe_by_symbol_type,
@@ -102,7 +104,7 @@ from analytics.scoring_batch.inputs import (
 from analytics.scoring_batch.inputs import statement_lines_by_symbol as _statement_lines_by_symbol
 from analytics.scoring_batch.inputs import trailing_trading_days as _trailing_trading_days
 from analytics.scoring_store import upsert_score
-from analytics.symbol_universe import SymbolType, classify_symbol_type
+from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_sql
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 from schemas.capabilities import (
@@ -158,7 +160,7 @@ def _assemble_signals_and_universes(  # noqa: PLR0913 — one keyword-only field
     *,
     bars_by_symbol: dict[str, tuple[PriceBar, ...]],
     flow_by_symbol: dict[str, list[InstitutionalFlowRow]],
-    lines_by_symbol: dict[str, list[FinancialStatementLine]],
+    lines_by_symbol: Mapping[str, list[FinancialStatementLine]],
     market_value_by_symbol: dict[str, float],
     analyst_consensus_by_symbol: dict[str, AnalystConsensus] | None = None,
 ) -> tuple[_PerSymbolSignals, _CrossSectionalUniverses]:
@@ -390,6 +392,42 @@ async def _score_and_persist_universe(  # noqa: PLR0913 — one keyword-only fie
     return rows_written
 
 
+def _load_statement_lines(
+    ctx: IngestContext,
+    market: Market,
+    statement_datasets: Sequence[str],
+    window: Sequence[date_],
+) -> Mapping[str, list[FinancialStatementLine]]:
+    """Each symbol's financial-statement lines for the window.
+
+    Taiwan (1.48M rows in the window): kept as columnar frames and turned into
+    `FinancialStatementLine`s one symbol at a time (`LazyStatementLines`), not all at once; the
+    eager form took the process to 3.06 GB on its own. US: the newest copy of each line, as rows
+    (`read_range_latest_by_key`)."""
+    market_str = market.value
+    if market is Market.US:
+        statement_rows = [
+            row
+            for dataset in statement_datasets
+            for row in ctx.store.read_range_latest_by_key(
+                dataset,
+                market_str,
+                window,
+                columns=_STATEMENT_COLUMNS,
+                key_columns=_STATEMENT_KEY_COLUMNS,
+            )
+        ]
+        lines = _statement_lines_by_symbol(statement_rows)
+        del statement_rows  # the lines are built; the row dicts are not needed any more
+        return lines
+    return _lazy_statement_lines(
+        [
+            ctx.store.read_range_frame(dataset, market_str, window, columns=_TW_STATEMENT_COLUMNS)
+            for dataset in statement_datasets
+        ]
+    )
+
+
 async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     """Compute and cache the composite score for every symbol the day's ingested price/flow/
     fundamental data covers, for both `ScoreProfile.SWING` and `ScoreProfile.POSITION`. Leader-
@@ -438,7 +476,11 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
 
     financials_dataset, balance_sheet_dataset, cash_flow_dataset = _financials_datasets(market)
     price_frame = ctx.store.read_range_frame(
-        _price_eod_dataset(market), market_str, price_window, columns=_PRICE_FRAME_COLUMNS
+        _price_eod_dataset(market),
+        market_str,
+        price_window,
+        columns=_PRICE_FRAME_COLUMNS,
+        where=scoreable_symbol_sql(market),  # warrants (~90% of rows) never leave DuckDB
     )
     # US has no institutional-flow dataset ingested at all (`ingest/us_jobs.py` covers only
     # price/fundamentals) — reading the TW-only dataset name for `market_str="US"` always finds
@@ -447,27 +489,14 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
     # `revenue_flow`/`liquidity_flow`/chip-flow-dependent factors then degrade to unavailable
     # exactly as `analytics/score.py`'s own graceful-degradation contract already guarantees.
     flow_frame = ctx.store.read_range_frame(
-        INSTITUTIONAL_FLOW_DATASET, market_str, flow_window, columns=_FLOW_FRAME_COLUMNS
+        INSTITUTIONAL_FLOW_DATASET,
+        market_str,
+        flow_window,
+        columns=_FLOW_FRAME_COLUMNS,
+        where=scoreable_symbol_sql(market),
     )
     statement_datasets = (financials_dataset, balance_sheet_dataset, cash_flow_dataset)
-    if market is Market.US:
-        statement_rows = [
-            row
-            for dataset in statement_datasets
-            for row in ctx.store.read_range_latest_by_key(
-                dataset,
-                market_str,
-                financials_window,
-                columns=_STATEMENT_COLUMNS,
-                key_columns=_STATEMENT_KEY_COLUMNS,
-            )
-        ]
-    else:
-        statement_rows = [
-            row
-            for dataset in statement_datasets
-            for row in ctx.store.read_range(dataset, market_str, financials_window)
-        ]
+    lines_by_symbol = _load_statement_lines(ctx, market, statement_datasets, financials_window)
     # market_value/etf_nav/etf_expense_ratio/active_etf_holding have no US-ingested counterpart
     # either — same empty-frame graceful degradation as institutional-flow above; value_guard's
     # market-cap-dependent sub-metrics (EV/EBITDA, FCF yield, P/E, P/B) degrade to unavailable for
@@ -494,7 +523,6 @@ async def job_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
 
     bars_by_symbol = _bars_by_symbol(price_frame, market)
     flow_by_symbol = _flow_rows_by_symbol(flow_frame, market)
-    lines_by_symbol = _statement_lines_by_symbol(statement_rows)
     market_value_by_symbol = _latest_market_value_by_symbol(market_value_rows)
     premium_discount_by_symbol = _latest_etf_nav_by_symbol(etf_nav_rows)
     expense_ratio_by_symbol = _latest_etf_expense_ratio_by_symbol(etf_expense_ratio_rows)

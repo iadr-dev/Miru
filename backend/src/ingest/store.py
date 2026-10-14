@@ -490,6 +490,7 @@ class ParquetStore:
         run_dates: Sequence[date_],
         *,
         columns: Sequence[str],
+        where: str | None = None,
     ) -> pd.DataFrame:
         """The columnar counterpart to `read_range`, for a caller that reads a wide multi-day
         window and would otherwise box every cell into a Python `dict` per row for no reason
@@ -513,6 +514,12 @@ class ParquetStore:
         than `SELECT *`: this method exists specifically to avoid materializing columns nothing
         downstream reads (the Hive-partitioning columns DuckDB injects — `market`/`dataset`/
         `date`/`v` — included), so a caller must say exactly what it needs.
+
+        `where` is an optional SQL predicate over the dataset's own columns, applied inside DuckDB
+        so the rows it excludes are never turned into a DataFrame at all (a measured 5.67M-row
+        price window is 1.47 GB as a frame; the same window cut to the ~10% that are real equities
+        and ETFs is a fraction of that). It is a trusted fragment the caller builds from constants
+        (`analytics.symbol_universe.scoreable_symbol_sql`), never from request input.
         """
         globs: list[str] = []
         for run_date in run_dates:
@@ -536,7 +543,7 @@ class ParquetStore:
                 # `columns` is a fixed, code-side list of known-safe identifiers (every call
                 # site passes a literal tuple, never user/LLM input) — never string-built from
                 # a request; the actual glob path list is still a bound parameter below.
-                f"WHERE {columns[0]} IS NOT NULL",
+                f"WHERE {columns[0]} IS NOT NULL" + (f" AND ({where})" if where else ""),
                 [globs],
             )
             return relation.df()
