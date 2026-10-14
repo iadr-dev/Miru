@@ -1,5 +1,6 @@
 import { setRequestLocale } from "next-intl/server";
 import type { ReactNode } from "react";
+import { DataUpdatesBridge } from "@/components/providers/data-updates-bridge";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AppShell } from "@/components/shell/app-shell";
 
@@ -22,6 +23,7 @@ export default async function AppGroupLayout({
   setRequestLocale(locale);
   return (
     <QueryProvider>
+      <DataUpdatesBridge />
       <AppShell modal={modal}>{children}</AppShell>
     </QueryProvider>
   );

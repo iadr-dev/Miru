@@ -157,9 +157,14 @@ So a client cache can never extend a value's freshness budget
   101st tab on a process failed silently and reconnected every few seconds. The stream starts with
   `retry: 10000` (browsers wait 10 s, not about 3, before reconnecting) and sends a `: keep-alive`
   comment after 20 s of silence so a proxy does not cut it. Absent a subscription, the
-  boundary-anchored `revalidate` (fixed batch time) remains the correct floor. Known gap: the web
-  hook's invalidation predicate (`use-data-updates.ts`) matches no current query key, so the signal
-  arrives but triggers no refetch yet.
+  boundary-anchored `revalidate` (fixed batch time) remains the correct floor. **The web app acts on
+  it** (`web/src/hooks/use-data-updates.ts`, mounted app-wide): the market reads on screen for the
+  signalled market are refetched after the signals are merged over 2 s plus a random 0-20 s per tab,
+  so every open tab does not hit the API at the instant of a signal (a refetch of unchanged data is
+  a cheap 304); a hidden tab waits until shown; a reconnect refreshes everything, since signals sent
+  while it was down are not replayed. Verified live in a browser with a published signal: one
+  coalesced refresh of exactly the Taiwan reads, none of the account state; a US signal left the
+  Taiwan-named reads alone; an API restart was caught up by itself.
 - **`Cache-Control`.** Cacheable reads send `private, max-age=0, stale-while-revalidate=<to class
   boundary>` — the browser serves the last good value instantly and background-revalidates; the
   intraday stream is `no-store` (it's live SSE, not a cacheable body). The **single per-class TTL**

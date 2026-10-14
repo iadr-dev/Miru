@@ -113,8 +113,13 @@ All are errors, not warnings.
     `slow`, `reference`, `static`) — pick the class that matches the data, don't invent a number.
   - A read that more than one component makes gets a key from `lib/api/query-keys.ts` and a shared
     hook (`hooks/use-stock-data.ts`), not a copy. Keys run resource → market → symbol → arguments.
-  - End-of-day data is refreshed the moment ingest writes it by the `data.updated` push
-    (`hooks/use-data-updates.ts`).
+  - End-of-day data is refreshed soon after ingest writes it by the `data.updated` push
+    (`hooks/use-data-updates.ts`, mounted once for the whole app by
+    `components/providers/data-updates-bridge.tsx`). `lib/data-update-refresh.ts` decides what
+    and when: the reads on screen whose key names the signalled market (or none), excluding
+    account state and live feeds; signals are merged over 2 s and the refresh is delayed a random
+    0-20 s so thousands of tabs do not refetch at once; it waits while the tab is hidden and
+    refreshes everything after a reconnect. Keys need no `[capability, market]` shape.
   - All requests go through the one seam `lib/api/http.ts` (credentials, refresh-on-401, the typed
     `{code, message, retryable}` error); each feature keeps its own named error class.
 - **Zustand is for small client-only state** — the active chat turn (`chat/turn-store.ts`), the
