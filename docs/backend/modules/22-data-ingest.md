@@ -435,8 +435,17 @@ What changed, and the rules that keep it that way:
   missing old history. Of the 331 symbols with statements but none typed, **none is priced in the
   latest US session** (they have left the universe), so no live stock loses scoring. Revisit only
   if the source starts returning untyped statements again.
-- **Known, not changed:** `job_us_fundamentals` keeps every symbol's rows for its 9 capabilities in
-  memory until its 1.9-hour loop ends (about 1-1.5 GB).
+- **`job_us_fundamentals` spools to disk and resumes** (`ingest/spool.py`). It used to hold every
+  symbol's rows for its 9 capabilities in memory until its 1.9-hour loop ended (about 1-1.5 GB) and
+  lose them all if the process was killed. Now every 25 symbols (about two minutes of paced calls)
+  the rows go to small Parquet files under `<store root>/.spool/us_fundamentals__<date>/`, and a
+  fsynced `progress.jsonl` line records which symbols are done. A run started again for the same
+  date skips those symbols and carries their failure count, so a kill costs at most one batch.
+  Chunk files are vouched for only by a progress line: a chunk written but not recorded is deleted
+  on resume and its symbols fetched again, never counted twice. The partitions are built by DuckDB
+  from the files (`ParquetStore.write_partition_from_files`, the same atomic swap), so the rows
+  never return to Python. The spool is deleted after a successful write; spools older than 3 days
+  are swept at the start of the next run.
 - **Container limits** (`docker-compose.yml`): ingest 5 GB (the startup catch-up runs the TW and US
   chains together, about 3.5-3.8 GB), api 2 GB, mcp and scheduler 1 GB, no swap
   (`INGEST_MEM_LIMIT`, `API_MEM_LIMIT`, ...). An out-of-memory kill now restarts one service

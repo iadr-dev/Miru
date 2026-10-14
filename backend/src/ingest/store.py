@@ -198,14 +198,7 @@ class ParquetStore:
         finally:
             con.close()
 
-        version_dir = partition_dir / f"v={version_id}"
-        # The expensive part (the Parquet COPY) ran above, into a private temp directory. Only the
-        # cheap swap runs under the partition lock, so two writers on the same partition take
-        # turns instead of interleaving "rename, flip, delete the other one's version".
-        with FileLock(partition_dir / _WRITE_LOCK_NAME):
-            _rename_with_retry(tmp_dir, version_dir)  # atomic within one filesystem
-            self._flip_manifest(partition_dir, version_id)
-            self._sweep_old_versions(partition_dir, keep_version=version_id)
+        self._commit_version(partition_dir, tmp_dir, version_id)
 
         logger.info(
             "ingest_partition_written",
@@ -216,6 +209,68 @@ class ParquetStore:
             version=version_id,
         )
         return len(rows)
+
+    def write_partition_from_files(
+        self, dataset: str, market: str, run_date: date_, files: Sequence[Path]
+    ) -> int:
+        """`write_partition` for rows that already sit in Parquet files (a spool): DuckDB reads
+        them and writes the partition itself, so the rows never pass through Python. A job that
+        collects over hours holds a few symbols at a time and hands over the files at the end.
+        The files may differ in columns (`union_by_name`). Same atomic swap as `write_partition`.
+        Returns the number of rows written."""
+        key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
+        partition_dir = key.path(self.root)
+        partition_dir.mkdir(parents=True, exist_ok=True)
+        version_id = uuid.uuid4().hex
+        tmp_dir = self.root / _TMP_DIRNAME / f"{dataset}__{market}__{run_date.isoformat()}"
+        tmp_dir = tmp_dir.with_name(f"{tmp_dir.name}__{version_id}")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_parquet = tmp_dir / "part.parquet"
+        sources = [str(f) for f in files]
+        con = duckdb.connect()
+        try:
+            if sources:
+                # DuckDB cannot bind the COPY target while another parameter (the file list) is
+                # bound in the same statement. The target is a path this method just made under
+                # the store's own temp directory (a uuid), quoted as a literal.
+                target = str(tmp_parquet).replace("'", "''")
+                con.execute(
+                    "COPY (SELECT * FROM read_parquet(?, union_by_name=True)) "  # noqa: S608
+                    f"TO '{target}' (FORMAT parquet)",
+                    [sources],
+                )
+                rows_written = int(
+                    con.execute(
+                        "SELECT count(*) FROM read_parquet(?, union_by_name=True)", [sources]
+                    ).fetchone()[0]  # type: ignore[index]
+                )
+            else:  # nothing collected: the same one-placeholder-column empty partition
+                con.register("frame", pd.DataFrame({"_empty": pd.Series([], dtype="object")}))
+                con.execute("COPY (SELECT * FROM frame) TO ? (FORMAT parquet)", [str(tmp_parquet)])
+                rows_written = 0
+        finally:
+            con.close()
+        self._commit_version(partition_dir, tmp_dir, version_id)
+        logger.info(
+            "ingest_partition_written",
+            dataset=dataset,
+            market=market,
+            run_date=run_date.isoformat(),
+            rows_written=rows_written,
+            version=version_id,
+        )
+        return rows_written
+
+    def _commit_version(self, partition_dir: Path, tmp_dir: Path, version_id: str) -> None:
+        """Publish a finished temp directory as the partition's current version. The expensive
+        part (the Parquet COPY) ran into a private temp directory; only this cheap swap runs under
+        the partition lock, so two writers on the same partition take turns instead of
+        interleaving "rename, flip, delete the other one's version"."""
+        version_dir = partition_dir / f"v={version_id}"
+        with FileLock(partition_dir / _WRITE_LOCK_NAME):
+            _rename_with_retry(tmp_dir, version_dir)  # atomic within one filesystem
+            self._flip_manifest(partition_dir, version_id)
+            self._sweep_old_versions(partition_dir, keep_version=version_id)
 
     def _flip_manifest(self, partition_dir: Path, version_id: str) -> None:
         manifest_path = partition_dir / _MANIFEST_NAME
