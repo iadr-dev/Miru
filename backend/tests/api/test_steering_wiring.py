@@ -133,7 +133,13 @@ class _SingleChipFlowClassifier(IntentClassifier):
     def __init__(self, registry: SkillRegistry) -> None:
         super().__init__(registry)
 
-    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+    async def _classify_inner(
+        self,
+        message: str,
+        *,
+        history: tuple[Message, ...] = (),
+        on_usage: Callable[[TokenUsage], None] | None = None,
+    ) -> Routing:
         del message, history
         return Routing(framework="single", skills=("chip-flow-review",), reason="test")
 

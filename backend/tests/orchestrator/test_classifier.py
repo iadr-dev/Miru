@@ -233,3 +233,18 @@ async def test_classifier_omits_history_block_when_none_given(registry: SkillReg
 
     sent_messages, _tools = client.calls[0]
     assert "Recent conversation" not in (sent_messages[1].content or "")
+
+
+async def test_classifier_reports_its_call_so_the_turn_counts_it(registry: SkillRegistry) -> None:
+    """The routing call is a real LLM call on the user's turn; it must reach the usage total with
+    the model that served it, not vanish from the count."""
+    client = StubLLMClient(
+        script=[_routing_response('{"framework": "none", "skills": [], "reason": "chat"}')]
+    )
+    seen: list[TokenUsage] = []
+
+    await IntentClassifier(registry, client=client).classify("hi", on_usage=seen.append)
+
+    assert len(seen) == 1
+    assert (seen[0].provider, seen[0].model) == (client.provider_id, client.model_id)
+    assert seen[0].total_tokens == 10

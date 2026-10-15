@@ -125,10 +125,10 @@ variable. The web app needs only `NEXT_PUBLIC_API_BASE` in `web/.env.local`.
 |---|---|---|
 | LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | Set the ones you use; `LLM_PROVIDER` / `MODEL_ROLE_*` route models by role |
 | Market data | `FINMIND_API_KEY` | Whole-market ingest needs FinMind **Backer** or above |
-| Optional data | `FINNHUB_KEY` · `ALPHA_VANTAGE_API_KEY` · `FRED_KEY` · `FMP_API_KEY` · `BRAVE_SEARCH_API_KEY` | US, macro, analyst estimates, web-search fallback |
+| Optional data | `FINNHUB_KEY` · `BRAVE_SEARCH_API_KEY` | US, macro, analyst estimates, web-search fallback |
 | Datastores | `DATABASE_URL` · `REDIS_URL` · `DUCKDB_PATH` · `PARQUET_ROOT` | SQLite + local paths work for dev |
 | Sign-in | `GOOGLE_*` · `LINE_*` · `TELEGRAM_LOGIN_*` · `JWT_*` | Google, LINE Login, Log in with Telegram |
-| Delivery | `LINE_MESSAGING_*` · `TELEGRAM_BOT_*` · `RESEND_*` · `APNS_*` · `FCM_*` | Alert and brief channels |
+| Delivery | `LINE_MESSAGING_*` · `TELEGRAM_BOT_*` · `RESEND_*` | Alert and brief channels |
 | Payments | `PADDLE_*` | Subscriptions; the webhook is the source of truth for entitlements |
 
 > [!WARNING]

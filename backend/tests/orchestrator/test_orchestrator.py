@@ -9,7 +9,7 @@ network."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 import fakeredis.aioredis
 import pytest
@@ -50,7 +50,13 @@ class _StaticClassifier(IntentClassifier):
         super().__init__(registry)
         self._routing = routing
 
-    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+    async def _classify_inner(
+        self,
+        message: str,
+        *,
+        history: tuple[Message, ...] = (),
+        on_usage: Callable[[TokenUsage], None] | None = None,
+    ) -> Routing:
         del message, history
         return self._routing
 
