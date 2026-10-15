@@ -86,22 +86,23 @@ def _flow_rows_for(
 def _seed_upstream(store: ParquetStore, calendar: TradingDayCalendar) -> None:
     """Same fixture shape as `tests/analytics/test_screener_e2e.py`'s `_seed_upstream`: BREAKOUT
     crosses above its 20-day MA on the run date, FOREIGN is foreign-net-buy 3 days running,
-    NEITHER matches nothing."""
+    NEITHER matches nothing. The symbols are real four-digit codes (2330, 2454, 1101): the batch
+    reads only scoreable symbols, so a made-up name would be dropped like a warrant."""
     window = calendar.business_days_between(calendar.shift_business_days(_RUN_DATE, -89), _RUN_DATE)
     breakout_closes = [100.0] * (len(window) - 1) + [130.0]
     neither_closes = [float(50 + i) for i in range(len(window))]
 
     for i, day in enumerate(window):
-        price_rows = _price_rows_for("BREAKOUT", [breakout_closes[i]], [day]) + _price_rows_for(
-            "NEITHER", [neither_closes[i]], [day]
+        price_rows = _price_rows_for("2330", [breakout_closes[i]], [day]) + _price_rows_for(
+            "1101", [neither_closes[i]], [day]
         )
         store.write_partition(PRICE_EOD_DATASET, "TW", day, price_rows)
 
     chip_window = window[-5:]
     neither_nets = [200.0, -100.0, 400.0, -500.0, -300.0]
     for i, day in enumerate(chip_window):
-        flow_rows = _flow_rows_for("FOREIGN", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
-            "NEITHER", "Foreign_Investor", [neither_nets[i]], [day]
+        flow_rows = _flow_rows_for("2454", "Foreign_Investor", [500.0], [day]) + _flow_rows_for(
+            "1101", "Foreign_Investor", [neither_nets[i]], [day]
         )
         store.write_partition(INSTITUTIONAL_FLOW_DATASET, "TW", day, flow_rows)
 
@@ -156,7 +157,7 @@ class TestTagScreenerRoute:
         assert resp.status_code == 200
         result = resp.json()["result"]
         assert result["total_matches"] == 1
-        assert result["hits"][0]["symbol"] == "BREAKOUT"
+        assert result["hits"][0]["symbol"] == "2330"
         assert result["hits"][0]["matched_tags"] == ["breakout_above_ma20"]
 
     def test_or_query(self, settings: Settings, agent_answer: str, tmp_path: Path) -> None:
@@ -173,8 +174,8 @@ class TestTagScreenerRoute:
         assert result["total_matches"] == 2
         by_symbol = {hit["symbol"]: set(hit["matched_tags"]) for hit in result["hits"]}
         assert by_symbol == {
-            "BREAKOUT": {"breakout_above_ma20"},
-            "FOREIGN": {"foreign_net_buy_streak_3"},
+            "2330": {"breakout_above_ma20"},
+            "2454": {"foreign_net_buy_streak_3"},
         }
 
     def test_unknown_tag_degrades_gracefully(
