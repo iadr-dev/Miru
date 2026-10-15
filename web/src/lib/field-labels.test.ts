@@ -55,3 +55,18 @@ describe("card field labels", () => {
     });
   }
 });
+
+describe("fieldLabel casing", () => {
+  it("labels FinMind's capitalised column names the same as the lower-case field", () => {
+    const t = ((key: string) => `T(${key})`) as unknown as Parameters<typeof fieldLabel>[0];
+    expect(fieldLabel(t, "Foreign_Investor")).toBe("T(fields.foreign_investor)");
+    expect(fieldLabel(t, "Dealer_self")).toBe("T(fields.dealer_self)");
+  });
+
+  it("labels the broker-flow summary fields instead of humanizing them to English", () => {
+    const t = ((key: string) => `T(${key})`) as unknown as Parameters<typeof fieldLabel>[0];
+    for (const key of ["total_volume", "main_force_net", "free_row_count"]) {
+      expect(fieldLabel(t, key)).toBe(`T(fields.${key})`);
+    }
+  });
+});

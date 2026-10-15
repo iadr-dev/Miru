@@ -186,7 +186,7 @@ export function ForeignShareholdingBody({
               tick={{ fill: "var(--text-muted)", fontSize: 11 }}
               // `holdings` series (`foreign_shares`/`trust_estimate`/`dealer_estimate`) are
               // already converted to 張 in `points` above — inline suffix only.
-              tickFormatter={(v: number) => `${formatCompactNumber(v, locale)}張`}
+              tickFormatter={(v: number) => t("lotUnit", { value: formatCompactNumber(v, locale) })}
               width={48}
               stroke="var(--border)"
             />

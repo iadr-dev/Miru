@@ -2,7 +2,7 @@
 
 import { CaretLeftIcon, CaretRightIcon, StarIcon } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
@@ -468,11 +468,12 @@ function MacroEventCalendarView({
  * values land in the same columns. `重要性` renders as impact-colored stars (count, not a
  * fabricated 利多/利空 direction — see `IMPACT_STAR_COUNT`'s own comment). */
 function MacroEventRow({ event }: { readonly event: MacroReleaseEventRow }): ReactNode {
+  const locale = useLocale();
   const color = IMPACT_COLOR[event.impact] ?? "var(--text-muted)";
   const href = event.url ? safeHttpUrl(event.url) : null;
   const starCount = IMPACT_STAR_COUNT[event.impact] ?? 0;
   const timeLabel = event.time_utc
-    ? new Date(event.time_utc).toLocaleTimeString(undefined, {
+    ? new Date(event.time_utc).toLocaleTimeString(locale, {
         hour: "2-digit",
         minute: "2-digit",
         timeZone: "UTC",

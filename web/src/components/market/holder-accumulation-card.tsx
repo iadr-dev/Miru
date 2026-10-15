@@ -230,6 +230,7 @@ function LockedHolderAccumulationRow({ rank }: { readonly rank: number }): React
  * `.map` stays a simple locked/unlocked branch. */
 function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRow }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("market.cards.holderAccumulation");
   const change = row.percent_of_custody_change ?? 0;
   const color = directionColor(change, 2);
   return (
@@ -263,7 +264,9 @@ function HolderAccumulationRowItem({ row }: { readonly row: HolderAccumulationRo
       </span>
       <span aria-hidden className="text-right font-num text-[12px] tabular-nums" style={{ color }}>
         {(row.shares_change ?? 0) > 0 ? "+" : ""}
-        {formatNumber((row.shares_change ?? 0) / 1000, locale, { decimals: 1 })}萬張
+        {t("tenThousandLots", {
+          value: formatNumber((row.shares_change ?? 0) / 1000, locale, { decimals: 1 }),
+        })}
       </span>
       <SignedChange
         value={change}

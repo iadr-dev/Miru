@@ -99,7 +99,7 @@ function PivotedSheet({
         {categories.map((category) => (
           <tr key={category}>
             <td className="border-[var(--border)] border-b px-3 py-2 text-[var(--text)]">
-              {categoryKey === "item" ? financialStatementItemLabel(category) : category}
+              {categoryKey === "item" ? financialStatementItemLabel(category, locale) : category}
             </td>
             {periods.map((period) => (
               <td

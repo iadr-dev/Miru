@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { formatNumber } from "@/lib/format-number";
 
@@ -81,6 +81,7 @@ export function GaugeCard({
   children?: ReactNode;
 }): ReactNode {
   const locale = useLocale();
+  const t = useTranslations("market.cards.gauge");
   const activeBand = value === null ? null : bands.find((b) => value >= b.min && value < b.max);
   const needleAngle =
     value === null ? GAUGE_MIN_ANGLE : valueToAngleDeg(value, domainMin, domainMax);
@@ -135,7 +136,7 @@ export function GaugeCard({
                 ? `${title} ${formatNumber(value, locale, { decimals })}${unit ?? ""}${
                     activeBand ? ` ${activeBand.label}` : ""
                   }`
-                : `${title}：資料暫無`
+                : t("noData", { title })
             }
           >
             <div className="font-num text-[30px] text-[var(--text)] tabular-nums leading-none">

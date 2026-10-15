@@ -236,7 +236,7 @@ export function InstitutionalTotalsBody({
                 {t("lotUnit", { value: formatCompactNumber(card.shares / 1000, locale) })}
               </p>
               <p className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">
-                {card.pct != null ? `佔${card.pct.toFixed(2)}%` : "—"}
+                {card.pct != null ? t("shareOf", { pct: card.pct.toFixed(2) }) : "—"}
               </p>
             </>
           );
@@ -303,7 +303,9 @@ export function InstitutionalTotalsBody({
               yAxisId="flow"
               tick={{ fill: "var(--text-muted)", fontSize: 10 }}
               // Same raw-shares bucket sums as the 進出 chart above — /1000 + inline 張 suffix.
-              tickFormatter={(v: number) => `${formatCompactNumber(v / 1000, locale)}張`}
+              tickFormatter={(v: number) =>
+                t("lotUnit", { value: formatCompactNumber(v / 1000, locale) })
+              }
               width={40}
               stroke="var(--border)"
             />

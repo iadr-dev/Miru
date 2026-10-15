@@ -272,7 +272,7 @@ export function MarginShortBody({
       // `balance`/`cashRepayment` are `margin_purchase_*`/`short_sale_*` — already 張-scaled
       // (see `SnapshotStat`'s own comment above for the TWSE MI_MARGN cross-check); inline
       // suffix only, no division.
-      barTickFormatter={(v) => `${formatCompactNumber(v, locale)}張`}
+      barTickFormatter={(v) => t("lotUnit", { value: formatCompactNumber(v, locale) })}
       priceByDate={priceByDate}
       tableHeaders={[
         t("flowTable.date"),
@@ -324,7 +324,7 @@ function DayTradingBody({
       barKey="volume"
       barColor="var(--chart-6)"
       barName={t("dayTradingVolume")}
-      barTickFormatter={(v) => `${formatCompactNumber(v, locale)}張`}
+      barTickFormatter={(v) => t("lotUnit", { value: formatCompactNumber(v, locale) })}
       priceByDate={priceByDate}
       tableHeaders={[
         t("flowTable.date"),
@@ -471,7 +471,7 @@ function SecuritiesLendingBody({
       barKey="balance"
       barColor="var(--chart-5)"
       barName={t("lendingSellVolume")}
-      barTickFormatter={(v) => `${formatCompactNumber(v, locale)}張`}
+      barTickFormatter={(v) => t("lotUnit", { value: formatCompactNumber(v, locale) })}
       priceByDate={priceByDate}
       tableHeaders={[
         t("flowTable.date"),
