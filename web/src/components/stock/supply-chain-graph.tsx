@@ -8,6 +8,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { SignedChange } from "@/components/ui/signed-change";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { Link } from "@/i18n/navigation";
 import { getSupplyChainEdges } from "@/lib/api/stock-detail";
@@ -409,16 +410,15 @@ function FocusNode({
 
 /** Price move with the required ▲/▼ and sign, in the market colours. */
 function ChangeBadge({ value }: { readonly value: number }): ReactNode {
-  const up = value > 0;
-  const flat = value === 0;
   return (
-    <span
-      className="shrink-0 font-num text-[11px] tabular-nums"
-      style={{ color: flat ? "var(--text-muted)" : up ? "var(--up)" : "var(--down)" }}
-    >
-      {flat ? "" : up ? "▲" : "▼"}
-      {formatChange(value)}
-    </span>
+    <SignedChange
+      value={value}
+      decimals={2}
+      unit="%"
+      spaced={false}
+      labelled={false}
+      className="shrink-0 text-[11px]"
+    />
   );
 }
 
