@@ -414,6 +414,12 @@ What changed, and the rules that keep it that way:
   for it, a new partition invalidates it). Results are identical (15,864 technical and 5,125
   fundamentals values compared on the dev data). Twelve simultaneous cold requests against the API
   container: all 200, 467 MiB peak, no restart.
+  **Kept warm after an ingest** (`api/screener_warm.py`, Redis backend only): an API worker that
+  has already served a screener read recomputes it in the background when a TW `data.updated`
+  signal arrives, after a 120 s settle (an ingest lands several partitions) plus a random 0-180 s
+  spread (every worker hears the same signal), so the first request of the new data day finds it
+  ready. A read nobody asked for is not warmed, so an idle worker holds nothing extra; a failed
+  warm-up only means that first request pays for the read, as before.
 - **US statements read the same way.** The US statement datasets are a full weekly re-pull (14.4M
   raw rows in the window, 4M distinct). `read_range_latest_by_key_frame` de-duplicates inside DuckDB
   and returns a frame, and `LazyStatementLines` builds a symbol's lines when it is scored. Two

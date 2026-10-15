@@ -14,6 +14,8 @@ below it (accounts, orchestrator, skills, tools), never the reverse.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -47,6 +49,7 @@ from api.routers import (
     threads_actions,
     voice,
 )
+from api.screener_warm import keep_screener_warm
 from api.turn_registry import TurnRegistry
 from config.settings import Settings, get_settings
 from db import rls
@@ -56,12 +59,23 @@ from events.live_quote import QuoteFeed
 from events.live_quote_factory import DataUpdateBroker, build_data_update_broker, build_quote_feed
 from events.rate_limit import AsyncRateLimiter, build_rate_limiter
 from events.turn_control import TurnControl, build_turn_control
+from ingest.store import ParquetStore
 from netclient import aclose_shared_clients
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry, default_registry
 from skills.registry import SkillRegistry
 from tools.registry import ToolRegistry
 from usage.store import SqlAlchemyUsageStore, UsageStore
+
+
+def _start_screener_warm(settings: Settings, broker: DataUpdateBroker) -> asyncio.Task[None] | None:
+    """Keep the screener's whole-market reads ready after each ingest. Only with the Redis
+    backend: that is the hosted topology where the ingest signal reaches the API from another
+    process (the in-memory broker only carries a signal published inside this process)."""
+    if settings.event_bus_backend != "redis":
+        return None
+    store = ParquetStore(root=settings.parquet_root)
+    return asyncio.create_task(keep_screener_warm(broker.reader_factory.updates, store))
 
 
 def create_app(
@@ -91,9 +105,14 @@ def create_app(
         # created the schema itself, and safe under multiple replicas racing to call it.
         await ensure_schema_for(session_factory)
         app.state.app_state.shutdown.install()
+        warm_task = _start_screener_warm(resolved_settings, resolved_data_update_broker)
         try:
             yield
         finally:
+            if warm_task is not None:
+                warm_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await warm_task
             # `live_quote_manager` is the SAME instance the composition root threaded into
             # `YFinanceLiveQuoteAdapter` (see `api/composition.py`) — closing it here on shutdown
             # cancels its background listen/sweep tasks and closes the WebSocket connection.

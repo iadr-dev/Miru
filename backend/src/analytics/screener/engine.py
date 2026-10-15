@@ -27,6 +27,7 @@ edit; keeping this path cheap is what makes that live count viable calling on ev
 from __future__ import annotations
 
 import asyncio
+import functools
 from calendar.trading_days import TradingDayCalendar
 from collections.abc import Awaitable, Callable, Sequence
 from datetime import date as date_
@@ -670,6 +671,39 @@ async def _bulk_by_day(
         return value
 
 
+# What `_bulk_by_day` needs for each kind: the data day to key on, and the read itself.
+_BULK_SOURCES: dict[
+    str,
+    tuple[
+        Callable[[ParquetStore, str], date_ | None],
+        Callable[[ParquetStore, str], dict[str, dict[str, float]]],
+    ],
+] = {
+    "fundamentals": (_fundamentals_as_of, _latest_fundamentals_by_symbol),
+    "technical": (_latest_price_partition_date, _latest_technical_indicators_by_symbol),
+}
+
+
+async def refresh_cached_bulk_reads(store: ParquetStore) -> int:
+    """Recompute, in the background, the bulk reads this process has already used whose data day
+    has moved on, so the first screener request after an ingest finds them ready instead of
+    reading the window itself. A kind nobody has asked for is left alone (warming it would hold
+    memory for a read no request wants). Returns how many were recomputed."""
+    refreshed = 0
+    for kind, market in list(_BULK_CACHE):
+        source = _BULK_SOURCES.get(kind)
+        if source is None:
+            continue
+        as_of_of, read = source
+        as_of = await anyio.to_thread.run_sync(as_of_of, store, market)
+        cached = _BULK_CACHE.get((kind, market))
+        if as_of is None or (cached is not None and cached[0] == as_of):
+            continue
+        await _bulk_by_day(kind, market, as_of, functools.partial(read, store, market))
+        refreshed += 1
+    return refreshed
+
+
 async def _matched_symbols_for_bulk_source(  # noqa: PLR0913, PLR0917 — one arg per real input
     condition: ScreenerConditionInput,
     field: FactorField,
@@ -1055,5 +1089,6 @@ __all__ = [
     "RunScreenerOutput",
     "ScreenerConditionInput",
     "ScreenerSurvivor",
+    "refresh_cached_bulk_reads",
     "run_screener",
 ]
