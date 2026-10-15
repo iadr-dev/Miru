@@ -11,7 +11,7 @@ Constructing this client never touches the network (SDK client construction is l
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any, Final, cast
 
 import structlog
@@ -427,19 +427,23 @@ class AnthropicClient:
             }
         return kwargs
 
-    def _note_cache_diagnostics(self, message_id: str, extra: dict[str, Any] | None) -> None:
+    def _note_cache_diagnostics(self, message_id: str, extra: Mapping[str, object] | None) -> None:
         """Remember `message_id` as the next request's comparison point and log why the cache
         missed when Anthropic says so (the first point where the prompt prefix changed)."""
         if not self._cache_diagnostics:
             return
         self._previous_message_id = message_id
-        reason = ((extra or {}).get("diagnostics") or {}).get("cache_miss_reason")
-        if reason:
+        diagnostics = (extra or {}).get("diagnostics")
+        if not isinstance(diagnostics, dict):
+            return
+        reason = cast("dict[str, object]", diagnostics).get("cache_miss_reason")
+        if isinstance(reason, dict):
+            detail = cast("dict[str, object]", reason)
             logger.warning(
                 "llm_cache_miss",
                 model=self.model_id,
-                reason=reason.get("type"),
-                missed_input_tokens=reason.get("cache_missed_input_tokens"),
+                reason=detail.get("type"),
+                missed_input_tokens=detail.get("cache_missed_input_tokens"),
             )
 
     async def chat(
