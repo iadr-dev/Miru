@@ -7,6 +7,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { SignedChange } from "@/components/ui/signed-change";
 import { Link } from "@/i18n/navigation";
 import { getEtfsHoldingStock } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
@@ -219,18 +220,7 @@ function DeltaCell({
   readonly value: number | null | undefined;
   readonly locale: string;
 }): ReactNode {
-  if (value === null || value === undefined) {
-    return <span className="text-[var(--text-muted)]">—</span>;
-  }
-  if (value === 0) {
-    return <span className="text-[var(--text-muted)]">{formatNumber(0, locale)}</span>;
-  }
-  const up = value > 0;
-  return (
-    <span className={up ? "text-[var(--up)]" : "text-[var(--down)]"}>
-      {up ? "▲" : "▼"} {formatNumber(Math.abs(value), locale)}
-    </span>
-  );
+  return <SignedChange value={value} locale={locale} />;
 }
 
 /** One upsell CTA above the row list when any row this card returned is locked — the row-level
