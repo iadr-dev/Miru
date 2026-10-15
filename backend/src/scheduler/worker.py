@@ -75,6 +75,7 @@ from scheduler.models import (
     TriggerMode,
 )
 from scheduler.quota import QuotaGate, UsageQuotaGate
+from scheduler.retention import prune_stream_events
 from scheduler.store import SqlAlchemySchedulerStore
 from scheduler.templates import (
     EVENT_KINDS,
@@ -158,16 +159,29 @@ class SchedulerContext:
     settings: Settings | None = None
 
 
+_PRUNE_EVERY = timedelta(hours=1)
+
+
 class SchedulerWorker:
     def __init__(self, ctx: SchedulerContext) -> None:
         self._ctx = ctx
         # One DuckDB reader connection must not serve concurrent queries, so alert evaluation is
         # serialised through this lock.
         self._eval_lock = asyncio.Lock()
+        self._last_pruned: datetime | None = None
 
     @property
     def leader(self) -> LeaderElection:
         return self._ctx.leader
+
+    async def prune_expired(self, *, now: datetime | None = None) -> int:
+        """Delete data past its retention (the SSE replay log). The pass runs every few seconds;
+        this does the work at most once per `_PRUNE_EVERY`, since nothing here is time-critical."""
+        now = now or datetime.now(UTC)
+        if self._last_pruned is not None and now - self._last_pruned < _PRUNE_EVERY:
+            return 0
+        self._last_pruned = now
+        return await prune_stream_events(self._ctx.session_factory, now=now)
 
     # ---- jobs ----
 

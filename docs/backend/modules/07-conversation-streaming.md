@@ -181,6 +181,9 @@ line. All narration text is governed like any other output (non-trading, no raw 
   worker announced for the thread (`turn_control.find`, owner only), else the thread's latest saved
   turn. The announced turn is what lets a reconnect during a regenerated answer follow that answer
   rather than replay the previous one's events.
+- The replay log is pruned by the scheduler (`scheduler/retention.py`, leader pass, at most hourly):
+  rows older than 7 days are deleted in slices of 5,000. A reconnect happens within minutes of a
+  drop, so older rows are never read, and without this the table grew with every chat.
 - Non-SSE clients can read the persisted turns via `GET /threads/{id}`.
 
 ## 3. Turn lifecycle
