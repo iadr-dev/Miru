@@ -39,7 +39,14 @@ from db.models import AlertRuleRow, WatchlistItemRow
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 from ingest.spool import RowSpool, sweep_stale_spools
-from ingest.us_universe import latest_us_symbols
+from ingest.us_fundamentals_plan import (
+    STATE_DATASET,
+    FetchState,
+    due_capabilities,
+    listed_first,
+    load_fetch_state,
+)
+from ingest.us_universe import latest_us_exchanges, latest_us_symbols
 from schemas.enums import Capability, Market
 from schemas.market import Symbol
 from schemas.source import HealthStatus
@@ -369,14 +376,23 @@ async def _fetch_one_fundamental(
 _CHECKPOINT_EVERY_SYMBOLS = 25
 
 
-async def _collect_fundamentals_rows(
-    ctx: IngestContext, symbols: list[str], spool: RowSpool
+async def _collect_fundamentals_rows(  # noqa: PLR0913 - the universe, what is stored, where rows go
+    ctx: IngestContext,
+    symbols: list[str],
+    spool: RowSpool,
+    *,
+    run_date: date_,
+    state: FetchState,
+    exchanges: dict[str, str],
 ) -> int:
     """The paced per-(symbol, capability) fetch loop, pulled out of `job_us_fundamentals`
-    purely to keep that function's own branching shallow. Rows go to the spool (a few symbols in
-    memory, a checkpoint to disk every `_CHECKPOINT_EVERY_SYMBOLS`), and symbols an earlier,
-    interrupted run already finished are skipped. Returns the total failure count (raised
-    exceptions + degraded results, see `_fetch_one_fundamental`), earlier run's included."""
+    purely to keep that function's own branching shallow. Only the capabilities whose stored copy
+    is stale are fetched (`us_fundamentals_plan`); each successful fetch is recorded in the state
+    dataset, so what came back empty is not retried until its window passes while what failed is.
+    Rows go to the spool (a few symbols in memory, a checkpoint to disk every
+    `_CHECKPOINT_EVERY_SYMBOLS`), and symbols an earlier, interrupted run already finished are
+    skipped. Returns the total failure count (raised exceptions + degraded results, see
+    `_fetch_one_fundamental`), earlier run's included."""
     batch: list[str] = []
     batch_failures = 0
     first_call = True
@@ -384,7 +400,11 @@ async def _collect_fundamentals_rows(
         if symbol_id in spool.done:
             continue
         sym = Symbol(id=symbol_id, market=Market.US)
-        for cap, dataset in _FUNDAMENTALS_DATASETS.items():
+        due = due_capabilities(
+            state, symbol_id, exchanges.get(symbol_id), run_date, list(_FUNDAMENTALS_DATASETS)
+        )
+        for cap in due:
+            dataset = _FUNDAMENTALS_DATASETS[cap]
             if first_call:
                 first_call = False
             else:
@@ -399,6 +419,16 @@ async def _collect_fundamentals_rows(
                 batch_failures += 1
                 continue
             spool.add(dataset, rows)
+            spool.add(
+                STATE_DATASET,
+                [
+                    {
+                        "symbol": symbol_id,
+                        "capability": cap.value,
+                        "fetched_on": run_date.isoformat(),
+                    }
+                ],
+            )
         batch.append(symbol_id)
         if len(batch) >= _CHECKPOINT_EVERY_SYMBOLS:
             spool.checkpoint(batch, batch_failures)
@@ -411,22 +441,40 @@ async def _collect_fundamentals_rows(
 async def _write_fundamentals_partitions(
     ctx: IngestContext, run_date: date_, spool: RowSpool
 ) -> int:
-    """Write whichever capabilities actually collected rows and publish the invalidation
-    signal for each — pulled out of `job_us_fundamentals` for the same shallow-branching
-    reason as `_collect_fundamentals_rows`. The partitions are built from the spool's files."""
+    """Write each capability's partition and publish the invalidation signal for the ones that
+    got new rows — pulled out of `job_us_fundamentals` for the same shallow-branching reason as
+    `_collect_fundamentals_rows`. A partition is built from the spool's files plus the previous
+    partition's rows for every symbol that was not refreshed this run (`carry_from`), so a symbol
+    skipped as still fresh keeps its data. Returns the rows of the partitions written."""
+    market = Market.US.value
     total_written = 0
     for cap, dataset in _FUNDAMENTALS_DATASETS.items():
         files = spool.files(dataset)
-        if not files:
+        previous = ctx.store.latest_partition_on_or_before(dataset, market, run_date)
+        carried = previous[1] if previous is not None else []
+        if not files and not carried:
             continue
         total_written += ctx.store.write_partition_from_files(
-            dataset, Market.US.value, run_date, files
+            dataset, market, run_date, files, carry_from=carried
         )
-        await ctx.data_update_publisher.publish_data_updated(
-            capability=cap,
-            market=Market.US,
-            as_of=run_date.isoformat(),
-            scope="whole-market",
+        if files:
+            await ctx.data_update_publisher.publish_data_updated(
+                capability=cap,
+                market=Market.US,
+                as_of=run_date.isoformat(),
+                scope="whole-market",
+            )
+    # The fetch dates are bookkeeping, not data: not counted, not announced.
+    state_files = spool.files(STATE_DATASET)
+    previous_state = ctx.store.latest_partition_on_or_before(STATE_DATASET, market, run_date)
+    if state_files or previous_state is not None:
+        ctx.store.write_partition_from_files(
+            STATE_DATASET,
+            market,
+            run_date,
+            state_files,
+            carry_from=previous_state[1] if previous_state is not None else [],
+            key=("symbol", "capability"),
         )
     return total_written
 
@@ -461,7 +509,8 @@ async def job_us_fundamentals(run_date: date_, ctx: IngestContext) -> JobRun:
             detail="no YFinanceAdapter wired on this IngestContext",
         )
 
-    symbols = latest_us_symbols(ctx.store)
+    exchanges = latest_us_exchanges(ctx.store)
+    symbols = listed_first(latest_us_symbols(ctx.store), exchanges)
     if not symbols:
         return journal_run(
             "us_fundamentals",
@@ -474,7 +523,10 @@ async def job_us_fundamentals(run_date: date_, ctx: IngestContext) -> JobRun:
     sweep_stale_spools(ctx.store.root)
     spool = RowSpool(ctx.store.root, "us_fundamentals", run_date)
     spool.resume()  # a run killed part-way for this date continues instead of starting over
-    failures = await _collect_fundamentals_rows(ctx, symbols, spool)
+    state = load_fetch_state(ctx.store, run_date, _FUNDAMENTALS_DATASETS)
+    failures = await _collect_fundamentals_rows(
+        ctx, symbols, spool, run_date=run_date, state=state, exchanges=exchanges
+    )
     total_written = await _write_fundamentals_partitions(ctx, run_date, spool)
     spool.discard()
     status = _fundamentals_status(failures=failures, total_written=total_written)

@@ -452,6 +452,20 @@ What changed, and the rules that keep it that way:
   from the files (`ParquetStore.write_partition_from_files`, the same atomic swap), so the rows
   never return to Python. The spool is deleted after a successful write; spools older than 3 days
   are swept at the start of the next run.
+- **`job_us_fundamentals` refetches only what is stale** (`ingest/us_fundamentals_plan.py`). The
+  universe is 2,123 symbols (about half OTC Pink) and a call takes about 2.2 s, so refetching all
+  nine capabilities for everyone was about twelve hours a week for data that mostly had not
+  changed. Each capability now has a freshness window (statements 25 days listed / 45 OTC; dividends,
+  splits, consensus, holders, insiders 7 / 30; sector 90 / 90) and a symbol's capability is fetched
+  only when the stored copy is older. The date of each successful fetch is kept in the
+  `us_fundamentals_state` dataset, so a fetch that legitimately returned nothing is not retried
+  every week while a failed one (no record) is retried at the next run. A partition is written from
+  the new rows plus the previous partition's rows for every symbol not refreshed
+  (`write_partition_from_files(carry_from=...)`), so a skipped symbol keeps its data, and a refetch
+  that returns nothing never wipes what was stored. Listed symbols are fetched before OTC ones. With
+  no state yet (the first run after this shipped) the latest partitions stand in: a symbol with rows
+  there counts as fetched on that partition's date. OTC gets the longer window and is not skipped:
+  in the latest US scores about 8% of OTC rows use a fundamentals-based factor (42% of listed rows).
 - **Container limits** (`docker-compose.yml`): ingest 5 GB (the startup catch-up runs the TW and US
   chains together, about 3.5-3.8 GB), api 2 GB, mcp and scheduler 1 GB, no swap
   (`INGEST_MEM_LIMIT`, `API_MEM_LIMIT`, ...). An out-of-memory kill now restarts one service
