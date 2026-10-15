@@ -142,6 +142,18 @@ def test_resolve_role_uses_suggested_default_for_classifier() -> None:
     assert client.model_id == "claude-haiku-5-5"
 
 
+def test_synthesis_uses_openai_first_and_falls_back_to_anthropic() -> None:
+    both = resolve_role(ModelRole.SYNTHESIS, _settings(openai_api_key="k", anthropic_api_key="k"))
+    assert (both.provider_id, both.model_id) == ("openai", "gpt-4o-mini")
+
+
+def test_synthesis_without_an_openai_key_runs_on_anthropic_instead_of_failing() -> None:
+    client = resolve_role(
+        ModelRole.SYNTHESIS, _settings(openai_api_key=None, anthropic_api_key="k")
+    )
+    assert (client.provider_id, client.model_id) == ("anthropic", "claude-sonnet-5-5")
+
+
 def test_resolve_role_honors_override() -> None:
     settings = _settings(model_role_classifier="ollama/qwen3.6", ollama_base_url="http://x:1")
     client = resolve_role(ModelRole.CLASSIFIER, settings)

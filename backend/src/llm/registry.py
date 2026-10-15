@@ -63,7 +63,7 @@ _DEFAULT_ROLE_MODELS: Final[dict[ModelRole, tuple[str, ...]]] = {
     ModelRole.CLASSIFIER: (_ANTHROPIC_HAIKU, _ANTHROPIC_SONNET_FALLBACK),
     ModelRole.AGENT: (_ANTHROPIC_SONNET_FALLBACK, _ANTHROPIC_HAIKU),
     ModelRole.SUBAGENT: (_ANTHROPIC_SONNET_FALLBACK,),
-    ModelRole.SYNTHESIS: ("openai/gpt-4o-mini",),
+    ModelRole.SYNTHESIS: ("openai/gpt-4o-mini", _ANTHROPIC_SONNET_FALLBACK),
 }
 
 _OPENAI_COMPAT_BASE_URLS: Final[dict[str, str]] = {
