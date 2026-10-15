@@ -6,10 +6,8 @@ export type ModelOption = {
   label: string;
 };
 
-/** A provider category group in the model-selector dropdown, keyed to five of the providers this
- * backend's `src/llm/registry.py` has real `LLMClient` implementations for today — `groq` and
- * `cerebras` are excluded because those two are internal-only cheap roles for
- * classification/subagent fan-out, never a user-facing chat model. */
+/** A provider category group in the model-selector dropdown, keyed to the providers this
+ * backend's `src/llm/registry.py` has real `LLMClient` implementations for. */
 type ModelCategory = {
   key: "anthropic" | "openai" | "gemini" | "openrouter" | "grok" | "deepseek" | "ollama";
   models: ModelOption[];

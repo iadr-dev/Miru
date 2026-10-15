@@ -142,8 +142,9 @@ def _build_registry():
 @pytest.fixture(autouse=True)
 def _no_live_title_model(monkeypatch: pytest.MonkeyPatch) -> None:
     """Thread titling resolves the configured classifier model from the environment, so without
-    this every first turn in these tests made real, paid model calls (Groq, then Cerebras, then
-    Anthropic) with whatever keys the developer's `.env` holds. Here a title is always the
+    this every first turn in these tests made real, paid model calls (the classifier
+    model, then Anthropic) with whatever keys the developer's `.env` holds. Here a title is
+    always the
     generator's own deterministic fallback (the first line of the message)."""
     monkeypatch.setattr("conversation.title_generator._resolve_client", lambda _client: None)
 

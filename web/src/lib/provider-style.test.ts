@@ -3,7 +3,7 @@ import { providerStyle } from "@/lib/provider-style";
 
 describe("providerStyle", () => {
   it("gives each known provider a distinct colour token and a display name", () => {
-    const ids = ["anthropic", "openai", "gemini", "openrouter", "groq", "cerebras"];
+    const ids = ["anthropic", "openai", "gemini", "openrouter", "ollama"];
     const colors = ids.map((id) => providerStyle(id).color);
     expect(new Set(colors).size).toBe(ids.length);
     expect(providerStyle("openai").label).toBe("OpenAI");

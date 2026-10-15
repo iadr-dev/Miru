@@ -22,9 +22,9 @@ _RealAsyncClient = httpx.AsyncClient  # captured before any monkeypatch replaces
 
 def _client(**kwargs: object) -> OpenAICompatClient:
     defaults: dict[str, object] = {
-        "provider_id": "groq",
-        "model_id": "llama-3.3-70b-versatile",
-        "base_url": "https://api.groq.com/openai/v1",
+        "provider_id": "openrouter",
+        "model_id": "meta-llama/llama-3.3-70b-instruct",
+        "base_url": "https://openrouter.ai/api/v1",
         "api_key": "test-key",
     }
     defaults.update(kwargs)
@@ -62,8 +62,8 @@ def _patch_sse_response(monkeypatch: pytest.MonkeyPatch, lines: list[str]) -> No
 def test_construction_performs_no_network_call() -> None:
     # No monkeypatch here — proves construction alone never opens a socket.
     client = _client()
-    assert client.provider_id == "groq"
-    assert client.model_id == "llama-3.3-70b-versatile"
+    assert client.provider_id == "openrouter"
+    assert client.model_id == "meta-llama/llama-3.3-70b-instruct"
 
 
 async def test_chat_normalizes_text_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,7 +240,9 @@ async def test_chat_never_appends_openrouter_tool_for_a_different_provider(
         openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
     )
 
-    client = _client()  # provider_id="groq" — no native web-search mechanism
+    client = _client(
+        provider_id="example", base_url="https://api.example.test/v1"
+    )  # no native web search
     await client.chat([Message(role=MessageRole.USER, content="hi")], native_web_search=True)
 
     body = captured["body"]
@@ -350,13 +352,14 @@ async def test_stream_emits_thinking_delta_for_openrouter_reasoning_content_alia
 async def test_stream_never_emits_thinking_delta_for_a_non_openrouter_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Groq/Cerebras have no `reasoning`/`reasoning_content` field — even if a raw chunk somehow
+    """OpenAI-compatible providers have no `reasoning`/`reasoning_content` field — even if a
+    raw chunk somehow
     carried one, a non-OpenRouter provider must never surface it as a `thinking_delta`."""
     chunks = [{"choices": [{"delta": {"reasoning": "should be ignored", "content": "hi"}}]}]
     lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
     _patch_sse_response(monkeypatch, lines)
 
-    client = _client()  # provider_id="groq"
+    client = _client(provider_id="example", base_url="https://api.example.test/v1")
     events = [
         event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
     ]
@@ -457,7 +460,7 @@ async def test_stream_never_emits_web_search_result_for_a_non_openrouter_provide
     lines = [f"data: {json.dumps(c)}" for c in chunks] + ["data: [DONE]"]
     _patch_sse_response(monkeypatch, lines)
 
-    client = _client()  # provider_id="groq"
+    client = _client(provider_id="example", base_url="https://api.example.test/v1")
     events = [
         event async for event in client.stream([Message(role=MessageRole.USER, content="hi")])
     ]

@@ -1,5 +1,5 @@
 """Shared base for the three OpenAI-chat-completions-compatible providers:
-Groq, Cerebras, OpenRouter. One parameterized client (`base_url` + `model` + API key) rather
+OpenRouter. One parameterized client (`base_url` + `model` + API key) rather
 than three thin subclasses — the matrix is cheap to extend because the wire
 format is identical; only `base_url`/env-key-name/default-model differ, which is data, not
 behavior. `llm/registry.py` constructs one `OpenAICompatClient` per provider id with the
@@ -49,7 +49,8 @@ logger = structlog.get_logger(__name__)
 _CHARS_PER_TOKEN_ESTIMATE: Final[float] = 4.0  # documented estimate — no real token-counting
 # endpoint exists for these providers
 # OpenRouter's own native web-search plugin — a raw tool-array entry, distinct from a
-# function-tool built from `_tool_spec_to_wire`. Groq/Cerebras have no equivalent, so this is
+# function-tool built from `_tool_spec_to_wire`. Other OpenAI-compatible providers have no
+# equivalent, so this is
 # only ever appended when `provider_id == "openrouter"`.
 _OPENROUTER_WEB_SEARCH_TOOL: Final[dict[str, str]] = {"type": "openrouter:web_search"}
 _FINISH_REASON_MAP: Final[dict[str, StopReason]] = {
@@ -187,7 +188,8 @@ def _events_from_delta(
 
     Reasoning-delta text is OpenRouter-only (`delta.reasoning` per OpenRouter's published
     reasoning-tokens docs, or its `delta.reasoning_content` alias some upstream providers use
-    instead) — Groq/Cerebras have no such field, and even if a raw chunk somehow carried one
+    instead) — OpenAI-compatible providers have no such field, and even if a raw chunk
+    somehow carried one
     (a provider quirk, not a documented field), it must never surface as a `thinking_delta` for
     a non-OpenRouter provider, mirroring the `native_web_search` provider carve-out already in
     this module."""
@@ -324,7 +326,7 @@ def _parse_sse_line(
 class OpenAICompatClient:
     """One `LLMClient` for any OpenAI-chat-completions-compatible provider.
 
-    `provider_id` is the config-facing id (`groq`/`cerebras`/`openrouter`); `base_url` and
+    `provider_id` is the config-facing id (`openrouter`); `base_url` and
     the API key are supplied by `llm/registry.py` from `Settings` — never hardcoded here.
     """
 
@@ -465,7 +467,7 @@ class OpenAICompatClient:
         yield StreamDoneEvent(stop_reason=stop_reason, usage=usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:
-        """Heuristic estimate (no counting endpoint on Groq/Cerebras/OpenRouter APIs):
+        """Heuristic estimate (no counting endpoint on OpenAI-compatible APIs):
         ~4 characters per token, summed over all message text content. Adequate for the
         context-window budgeting consumer (Phase 6) which needs an order-of-magnitude
         figure, not an exact count."""

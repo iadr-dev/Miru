@@ -5,7 +5,7 @@ summarization, analytics) depend on one Protocol and one normalized wire format,
 concrete provider SDK. Why: models and vendors change faster than the product, so swapping or adding a provider must be a config change, not a caller change.
 
 Files: `base.py` (Protocol + wire types), `anthropic_client.py`, `openai_client.py`,
-`gemini_client.py`, `openai_compat.py` (shared base for Groq/Cerebras/OpenRouter),
+`gemini_client.py`, `openai_compat.py` (shared base for OpenRouter),
 `local_client.py` (Ollama, delegates to `openai_compat.py`), `registry.py` (config-driven
 construction + role routing), `pricing.py` (list prices for estimated cost), `shared.py` (helpers common to the clients). Tests: `backend/tests/llm/` (protocol conformance, one test
 module per client, `registry.py`, plus `stubs.py`'s `StubLLMClient` used by every
@@ -57,7 +57,7 @@ re-raise; retry/fallback policy lives one layer up, in the callers below.
 | `anthropic_client.py` | Anthropic Claude (**default**) | `anthropic` | real SDK endpoint (`messages.count_tokens`) | `native_web_search=True`; uses `AsyncAnthropic` |
 | `openai_client.py` | OpenAI | `openai` | exact local `tiktoken` count (`o200k_base` fallback for unregistered model ids) | `native_web_search=False` — Chat Completions has no general grounding tool for the catalog models; uses `AsyncOpenAI`, native SDK types (not the compat JSON path) |
 | `gemini_client.py` | Google Gemini | `gemini` | real SDK endpoint (`aio.models.count_tokens`) | `native_web_search=True`; uses `google-genai`'s `Client(...).aio` async surface |
-| `openai_compat.py` | Groq / Cerebras / OpenRouter | `groq` / `cerebras` / `openrouter` | heuristic, ~4 chars/token | one `OpenAICompatClient(provider_id, base_url, ...)` parameterized over `httpx`, shared because the three speak identical OpenAI chat-completions wire format; `native_web_search=True` for OpenRouter only (its own web-search plugin), `False` for Groq/Cerebras |
+| `openai_compat.py` | OpenRouter | `openrouter` | heuristic, ~4 chars/token | one `OpenAICompatClient(provider_id, base_url, ...)` parameterized over `httpx`, shared because the three speak identical OpenAI chat-completions wire format; `native_web_search=True` for OpenRouter only (its own web-search plugin), `False` for Groq/Cerebras |
 | `local_client.py` | Ollama (local) | `ollama` | delegates to the compat heuristic | thin wrapper that constructs an `OpenAICompatClient` pointed at `{base_url}/v1`; no API key ever read from `Settings` |
 
 Provider/model **ids** are config data, not a hardcoded enum in core — `registry.py` is the
@@ -84,13 +84,13 @@ Provider-specific normalization worth knowing when debugging a client:
   Gemini's stream yields each function call whole (no incremental JSON assembly) — so a
   `ToolCallDeltaEvent` + `ToolCallEvent` are emitted back-to-back per call, not accumulated
   over multiple deltas like Anthropic/OpenAI.
-- **OpenAI-compat (Groq/Cerebras/OpenRouter/Ollama)**: hand-rolled HTTP via `httpx` against
+- **OpenAI-compat (OpenRouter/Ollama)**: hand-rolled HTTP via `httpx` against
   `{base_url}/chat/completions`; SSE `data:` line framing for streaming, terminated by a
   literal `[DONE]` sentinel; `stream_options: {"include_usage": true}` requested so the final
   usage is real, not estimated, even on the streaming path.
 
 **Native web search** is exposed as the `ModelCapabilities.native_web_search` flag per client
-(`True` for Anthropic/Gemini/OpenRouter, `False` for OpenAI/Groq/Cerebras/Ollama on today's
+(`True` for Anthropic/Gemini/OpenRouter, `False` for OpenAI/Ollama on today's
 catalog). Nothing inside `llm/` itself branches on this flag — the selection logic is one layer
 up: `orchestrator/orchestrator.py::_maybe_add_web_search` reads a resolved client's
 `capabilities.native_web_search` to decide, per turn, whether to grant `native_web_search=True`
@@ -105,7 +105,7 @@ real and consumed today, just not by any code inside this module — `llm/` only
 `Settings`:
 
 ```python
-ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / GROQ_API_KEY / CEREBRAS_API_KEY
+ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
     / OPENROUTER_API_KEY          # Settings fields anthropic_api_key, openai_api_key, ...
 OLLAMA_BASE_URL   = http://localhost:11434     # settings.ollama_base_url, keyless
 LLM_PROVIDER / LLM_MODEL                       # settings.llm_provider / settings.llm_model,
@@ -113,7 +113,7 @@ LLM_PROVIDER / LLM_MODEL                       # settings.llm_provider / setting
 ```
 
 `ollama` is the sole keyless provider. For every other `provider_id` in
-`{anthropic, openai, gemini, groq, cerebras, openrouter}`, a missing key raises
+`{anthropic, openai, gemini, openrouter}`, a missing key raises
 `ProviderNotConfiguredError` (a `RuntimeError` subclass) — never crashes at import time, only
 when that specific provider is actually requested. An unrecognized `provider_id` (anything
 not in that set plus `ollama`) also raises `ProviderNotConfiguredError`, with a message
@@ -135,8 +135,7 @@ client (see Fallback below):
 
 ```python
 MODEL_ROLE_CLASSIFIER   # settings.model_role_classifier, else the default chain:
-                         #   "groq/llama-3.3-70b-versatile" -> "cerebras/gpt-oss-120b"
-                         #   -> "anthropic/claude-sonnet-4-6"
+                         #   "anthropic/claude-haiku-4-5-20251001" -> "anthropic/claude-sonnet-4-6"
 MODEL_ROLE_AGENT        # settings.model_role_agent, else the default chain:
                          #   "anthropic/claude-sonnet-4-6" -> "anthropic/claude-haiku-4-5-20251001"
 MODEL_ROLE_SUBAGENT     # settings.model_role_subagent, else the default chain:
@@ -152,7 +151,7 @@ branches on role identity beyond this table lookup.
 
 ### Fallback — a real, ordered per-role provider chain
 
-The per-role ordered fallback chain (e.g. `groq/... -> cerebras/... -> anthropic/...` for
+The per-role ordered fallback chain (e.g. `haiku -> sonnet` for
 `CLASSIFIER`) is genuinely built, not just a future design intent. `_DEFAULT_ROLE_MODELS:
 dict[ModelRole, tuple[str, ...]]` in `llm/registry.py` holds the default chain for each role
 (quoted above); a `MODEL_ROLE_<ROLE>` setting overrides it with the caller's own

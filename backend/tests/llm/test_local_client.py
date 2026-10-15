@@ -1,5 +1,5 @@
 """`LocalOllamaClient` tests — keyless local daemon, delegating to `OpenAICompatClient`
-(same wire format as Groq/Cerebras/OpenRouter; the shared-base pattern proven to
+(same wire format as OpenRouter; the shared-base pattern proven to
 generalize even here)."""
 
 from __future__ import annotations

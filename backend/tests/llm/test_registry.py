@@ -73,9 +73,9 @@ def test_build_client_ollama_needs_no_key() -> None:
     assert isinstance(client, LocalOllamaClient)
 
 
-@pytest.mark.parametrize("provider_id", ["groq", "cerebras", "openrouter"])
+@pytest.mark.parametrize("provider_id", ["openrouter"])
 def test_build_client_openai_compat_providers(provider_id: str) -> None:
-    settings = _settings(groq_api_key="k", cerebras_api_key="k", openrouter_api_key="k")
+    settings = _settings(openrouter_api_key="k")
     client = build_client(provider_id, "some-model", settings)
     assert isinstance(client, OpenAICompatClient)
     assert client.provider_id == provider_id
@@ -136,10 +136,10 @@ def test_default_client_honors_explicit_override() -> None:
 
 
 def test_resolve_role_uses_suggested_default_for_classifier() -> None:
-    settings = _settings(groq_api_key="k")
+    settings = _settings(anthropic_api_key="k")
     client = resolve_role(ModelRole.CLASSIFIER, settings)
-    assert client.provider_id == "groq"
-    assert client.model_id == "llama-3.3-70b-versatile"
+    assert client.provider_id == "anthropic"
+    assert client.model_id == "claude-haiku-4-5-20251001"
 
 
 def test_resolve_role_honors_override() -> None:
@@ -292,11 +292,11 @@ def test_construction_never_touches_network(monkeypatch: pytest.MonkeyPatch) -> 
         anthropic_api_key="k",
         openai_api_key="k",
         gemini_api_key="k",
-        groq_api_key="k",
+        openrouter_api_key="k",
         ollama_base_url="http://localhost:11434",
     )
     build_client("anthropic", "claude-sonnet-5", settings)
     build_client("openai", "gpt-5.5", settings)
     build_client("gemini", "gemini-3.5-flash", settings)
-    build_client("groq", "llama-3.3-70b-versatile", settings)
+    build_client("openrouter", "meta-llama/llama-3.3-70b-instruct", settings)
     build_client("ollama", "qwen3.6", settings)

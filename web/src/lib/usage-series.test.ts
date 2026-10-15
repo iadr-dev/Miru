@@ -56,7 +56,7 @@ describe("buildSeries", () => {
   });
 
   it("folds the tail into one 'other' series past the cap", () => {
-    const many = Array.from({ length: MAX_SERIES + 3 }, (_, i) => model("groq", `m${i}`));
+    const many = Array.from({ length: MAX_SERIES + 3 }, (_, i) => model("openrouter", `m${i}`));
     const series = buildSeries(many);
     expect(series).toHaveLength(MAX_SERIES);
     expect(series.at(-1)?.key).toBe(OTHER_KEY);
@@ -65,15 +65,18 @@ describe("buildSeries", () => {
 
 describe("buildPoints", () => {
   it("fills zeros, totals the day, and folds unlisted models into other", () => {
-    const models = Array.from({ length: MAX_SERIES + 1 }, (_, i) => model("groq", `m${i}`));
+    const models = Array.from({ length: MAX_SERIES + 1 }, (_, i) => model("openrouter", `m${i}`));
     const series = buildSeries(models);
     const points = buildPoints(
-      [day("2026-10-06", {}), day("2026-10-07", { "groq/m0": 100, "groq/m8": 40, "groq/m7": 10 })],
+      [
+        day("2026-10-06", {}),
+        day("2026-10-07", { "openrouter/m0": 100, "openrouter/m8": 40, "openrouter/m7": 10 }),
+      ],
       series,
       (d) => d.slice(5),
     );
-    expect(points[0]).toMatchObject({ label: "10-06", total: 0, "groq/m0": 0 });
-    expect(points[1]).toMatchObject({ total: 150, "groq/m0": 100 });
+    expect(points[0]).toMatchObject({ label: "10-06", total: 0, "openrouter/m0": 0 });
+    expect(points[1]).toMatchObject({ total: 150, "openrouter/m0": 100 });
     expect(points[1]?.[OTHER_KEY]).toBe(50);
   });
 });

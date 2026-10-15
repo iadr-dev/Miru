@@ -198,7 +198,7 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
 - BYOK **lifts the daily chat limit** (`chat_limit_for → None`) since the user pays inference.
 - Governance unchanged: keys are never logged, journaled, or echoed; deletable on demand.
 - **Who is a BYOK caller:** anyone with at least one saved LLM key (providers: anthropic, openai,
-  gemini, groq, cerebras, openrouter - `POST /me/keys` rejects others with 422). No subscription
+  gemini, openrouter - `POST /me/keys` rejects others with 422). No subscription
   is required.
 - **Routing (`api/byok.py`, `llm/registry.py::byok_scope`):** before a turn starts, `resolve_byok`
   takes the thread's model (else the AGENT role default), decrypts the key for *that model's
