@@ -26,6 +26,7 @@ import {
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
@@ -121,6 +122,10 @@ export function InstitutionalFlowBody({
   const priceQuery = usePriceHistory(symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS);
 
   if (flowQuery.isLoading) return <CardSkeletonBody height={220} />;
+  const failed = [flowQuery].find((q) => q.isError);
+  if (failed) {
+    return <QueryFailure query={failed} />;
+  }
   const rows = flowQuery.data?.rows ?? [];
   if (rows.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;

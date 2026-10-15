@@ -8,6 +8,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { QueryFailure } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { Link } from "@/i18n/navigation";
@@ -69,6 +70,9 @@ export function SupplyChainGraph({
         <CardSkeletonBody height={320} />
       </Card>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const data = query.data;
   if (!data) {

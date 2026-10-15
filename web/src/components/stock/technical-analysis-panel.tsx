@@ -18,6 +18,7 @@ import {
   StructureToggleRow,
   TimeframeToggle,
 } from "@/components/stock/technical/toggles";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
 import type { Market } from "@/types/settings";
 import type { EodBar } from "@/types/stock/technical";
@@ -79,6 +80,9 @@ export function TechnicalAnalysisPanel({
         <CardSkeletonBody height={480} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const data = query.data;
   if (!data?.data_available || data.bars.length === 0) {

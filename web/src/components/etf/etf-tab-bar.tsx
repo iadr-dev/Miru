@@ -1,22 +1,50 @@
 "use client";
 
 import { motion } from "motion/react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
-import { ActiveReportPanel } from "@/components/etf/active-report-panel";
-import { HoldingsPanel } from "@/components/etf/holdings-panel";
 import { OverviewPanel } from "@/components/etf/overview-panel";
-import { PremiumDiscountPanel } from "@/components/etf/premium-discount-panel";
-import { AiPanel } from "@/components/stock/ai-panel";
-import { ChipAnalysisPanel } from "@/components/stock/chip-analysis-panel";
-import { RealtimeTab } from "@/components/stock/realtime-panel";
-import { StockNewsPanel } from "@/components/stock/stock-news-panel";
-import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
+import { CardSkeleton } from "@/components/market/card-skeleton";
 import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
 import type { SymbolType } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
+
+// Only the panel of the open tab is needed, and the heavy ones (charts, tables) are large:
+// they load when their tab is first opened instead of with every visit to the page.
+const HoldingsPanel = dynamic(
+  () => import("@/components/etf/holdings-panel").then((m) => m.HoldingsPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const PremiumDiscountPanel = dynamic(
+  () => import("@/components/etf/premium-discount-panel").then((m) => m.PremiumDiscountPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const ActiveReportPanel = dynamic(
+  () => import("@/components/etf/active-report-panel").then((m) => m.ActiveReportPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const AiPanel = dynamic(() => import("@/components/stock/ai-panel").then((m) => m.AiPanel), {
+  loading: () => <CardSkeleton height={420} />,
+});
+const ChipAnalysisPanel = dynamic(
+  () => import("@/components/stock/chip-analysis-panel").then((m) => m.ChipAnalysisPanel),
+  { loading: () => <CardSkeleton height={520} /> },
+);
+const RealtimeTab = dynamic(
+  () => import("@/components/stock/realtime-panel").then((m) => m.RealtimeTab),
+  { loading: () => <CardSkeleton height={520} /> },
+);
+const StockNewsPanel = dynamic(
+  () => import("@/components/stock/stock-news-panel").then((m) => m.StockNewsPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const TechnicalAnalysisPanel = dynamic(
+  () => import("@/components/stock/technical-analysis-panel").then((m) => m.TechnicalAnalysisPanel),
+  { loading: () => <CardSkeleton height={640} /> },
+);
 
 // 總覽/操作日報/成分股/折溢價 are new, ETF-only panels (`components/etf/*`); 看盤/籌碼/技術/AI/新聞
 // reuse the stock-detail page's own panels verbatim (`components/stock/*`) — each already takes

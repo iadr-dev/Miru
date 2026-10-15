@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { SectorIndustriesTreemap } from "@/components/us-stock/sector-industries-treemap";
 import { getStockPeers } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
@@ -51,6 +52,9 @@ export function SectorPeersPanel({
         <CardSkeletonBody height={420} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const data = query.data;
   if (!data) return null;

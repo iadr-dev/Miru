@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
@@ -44,6 +45,9 @@ export function ActiveReportPanel({
         <CardSkeletonBody height={420} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   if (!query.data) return null;
 

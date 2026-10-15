@@ -7,6 +7,7 @@ import { type ReactNode, useMemo, useRef } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { type RangedPaneProps, useLineChartPane } from "@/components/stock/technical/shared";
+import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow } from "@/hooks/use-stock-data";
 import { getForeignShareholding, getShareholderDispersion } from "@/lib/api/stock-detail";
 import { resolveToken } from "@/lib/resolve-css-token";
@@ -87,6 +88,9 @@ export function InstitutionalFlowPane({
   );
 
   if (query.isLoading) return <CardSkeletonBody height={128} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   if (byDate.length === 0) return null;
   return (
     <div className="flex flex-col gap-1">

@@ -58,6 +58,7 @@ export function compareRows(
   if (bv === null) return -1;
   const sign = direction === "asc" ? 1 : -1;
   if (typeof av === "string" || typeof bv === "string") {
+    // The names are Chinese whatever the UI language is, so they always collate as zh-TW.
     return sign * String(av).localeCompare(String(bv), "zh-TW");
   }
   return sign * (av - bv);

@@ -7,6 +7,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { Link } from "@/i18n/navigation";
 import { getEtfsHoldingStock } from "@/lib/api/stock-detail";
@@ -70,6 +71,9 @@ export function TrackerPanel({
         <CardSkeletonBody height={320} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const data = query.data;
   if (!data) return null;

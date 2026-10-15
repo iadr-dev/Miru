@@ -16,6 +16,7 @@ import {
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getDividendPolicySummary } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -103,6 +104,9 @@ export function DividendPolicyCard({
         <CardSkeletonBody height={420} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
 
   const data = query.data;

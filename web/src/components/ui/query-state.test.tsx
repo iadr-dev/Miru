@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { QueryState } from "@/components/ui/query-state";
+import { QueryFailure, QueryState } from "@/components/ui/query-state";
 import { ApiRequestError } from "@/lib/api/http";
 import { messages, renderWithIntl } from "@/test/render";
 
@@ -61,5 +61,29 @@ describe("QueryState", () => {
       <QueryState query={query({ data: "2330 台積電" })}>{(data) => <p>{data}</p>}</QueryState>,
     );
     expect(screen.getByText("2330 台積電")).toBeTruthy();
+  });
+});
+
+describe("QueryFailure", () => {
+  it("says it did not load, with a retry, instead of letting a panel say there is no data", () => {
+    const refetch = vi.fn();
+    renderWithIntl(<QueryFailure query={{ error: new Error("boom"), refetch }} />);
+
+    expect(screen.getByRole("alert").textContent).toContain(messages.market.cards.error);
+    fireEvent.click(screen.getByRole("button", { name: messages.market.cards.retry }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("shows the API's own message for an API error", () => {
+    const error = new ApiRequestError(
+      "ApiRequestError",
+      "upstream_unavailable",
+      "資料來源暫時無法連線",
+      503,
+      true,
+    );
+    renderWithIntl(<QueryFailure query={{ error, refetch: () => {} }} />);
+
+    expect(screen.getByRole("alert").textContent).toContain("資料來源暫時無法連線");
   });
 });

@@ -16,6 +16,7 @@ import {
   YAxis,
 } from "recharts";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getEtfPremiumDiscount } from "@/lib/api/etf-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { EtfNavRow } from "@/types/etf-detail";
@@ -53,6 +54,9 @@ export function PremiumDiscountPanel({
         <CardSkeletonBody height={420} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   if (!query.data) return null;
 

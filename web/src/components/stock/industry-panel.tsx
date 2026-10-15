@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { SupplyChainGraph } from "@/components/stock/supply-chain-graph";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getSymbolThemes, getThemeTierHeatmap } from "@/lib/api/stock-detail";
@@ -62,6 +63,9 @@ export function IndustryPanel({
         <CardSkeletonBody height={280} />
       </section>
     );
+  }
+  if (themesQuery.isError) {
+    return <QueryFailure query={themesQuery} />;
   }
   // Industry-chain membership only — a concept-theme (研究議題) membership carries no
   // upstream/midstream/downstream tier structure, so it can't back this tab's tier view.
@@ -131,6 +135,9 @@ function TierHeatmapView({
   const [selectedSubIndustry, setSelectedSubIndustry] = useState<string | null>(null);
 
   if (query.isLoading) return <CardSkeletonBody height={320} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   const data = query.data;
   if (!data?.found) return null;
 

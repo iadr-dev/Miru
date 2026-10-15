@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-legend";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
@@ -53,6 +54,9 @@ export function HoldingsPanel({
         <CardSkeletonBody height={360} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   if (!query.data) return null;
 
