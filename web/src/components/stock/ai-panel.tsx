@@ -24,6 +24,7 @@ import {
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { GaugeCard } from "@/components/market/gauge-card";
 import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getStockScore, getStockSummary, getTrendScore } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -132,6 +133,9 @@ function TrendScoreCard({
   const hasCloseSeries = chartData.some((point) => point.close !== null);
 
   if (query.isLoading) return <CardSkeletonBody height={420} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   if (!data) return null;
 
   return (

@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
+import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getCalendarEventsFeed } from "@/lib/api/stock-detail";
 import type { Market } from "@/types/settings";
@@ -45,6 +46,9 @@ export function UsMarketCalendarCard({
         <CardSkeletonBody height={220} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const data = query.data;
   if (!data) return null;

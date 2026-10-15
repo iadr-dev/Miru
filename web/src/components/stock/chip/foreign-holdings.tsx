@@ -25,6 +25,7 @@ import {
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
 import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
@@ -104,6 +105,10 @@ export function ForeignShareholdingBody({
   const priceQuery = usePriceHistory(symbol, market, INSTITUTIONAL_FLOW_PRICE_LOOKBACK_DAYS);
 
   if (shareholdingQuery.isLoading || flowQuery.isLoading) return <CardSkeletonBody height={280} />;
+  const failed = [shareholdingQuery, flowQuery].find((q) => q.isError);
+  if (failed) {
+    return <QueryFailure query={failed} />;
+  }
   const shareholdingRows = [...(shareholdingQuery.data?.rows ?? [])].sort((a, b) =>
     a.trade_date.localeCompare(b.trade_date),
   );

@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { NewsSourceLogo } from "@/components/ui/news-source-logo";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getNewsFeed, getSymbolInfo } from "@/lib/api/market";
 import { getSecFilings } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
@@ -148,6 +149,9 @@ function SecFilingsList({
   });
 
   if (query.isLoading) return <CardSkeletonBody height={480} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   const filings = query.data?.filings ?? [];
   if (filings.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("filingsEmpty")}</p>;

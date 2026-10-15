@@ -22,6 +22,7 @@ import {
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { usePriceHistory } from "@/hooks/use-stock-data";
 import {
   getSecuritiesLending,
@@ -219,6 +220,9 @@ export function MarginShortBody({
 
   if (view === "dayTrading") {
     if (dayTradingQuery.isLoading) return <CardSkeletonBody height={220} />;
+    if (dayTradingQuery.isError) {
+      return <QueryFailure query={dayTradingQuery} />;
+    }
     const dayTradingRows = [...(dayTradingQuery.data?.rows ?? [])].sort((a, b) =>
       a.trade_date.localeCompare(b.trade_date),
     );
@@ -229,6 +233,9 @@ export function MarginShortBody({
   }
 
   if (marginShortQuery.isLoading) return <CardSkeletonBody height={220} />;
+  if (marginShortQuery.isError) {
+    return <QueryFailure query={marginShortQuery} />;
+  }
   const rows = [...(marginShortQuery.data?.rows ?? [])].sort((a, b) =>
     a.trade_date.localeCompare(b.trade_date),
   );
@@ -414,6 +421,9 @@ function SecuritiesLendingBody({
   });
 
   if (query.isLoading) return <CardSkeletonBody height={220} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   const rows = [...(query.data?.rows ?? [])].sort((a, b) =>
     a.trade_date.localeCompare(b.trade_date),
   );

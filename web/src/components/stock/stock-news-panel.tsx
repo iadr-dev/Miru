@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { NewsSourceLogo } from "@/components/ui/news-source-logo";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getSymbolInfo } from "@/lib/api/market";
 import { getFinmindStockNews, getPttStockSearch } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
@@ -109,6 +110,9 @@ function StockNewsList({
   });
 
   if (query.isLoading) return <CardSkeletonBody height={480} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   const rows = query.data ?? [];
   if (rows.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("newsEmpty")}</p>;

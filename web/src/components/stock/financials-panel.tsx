@@ -19,6 +19,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DividendPolicyCard } from "@/components/stock/dividend-policy-card";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
@@ -194,6 +195,9 @@ function MonthRevenueCard({
         <CardSkeletonBody height={420} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const displayStartDate = monthsAgoIso(REVENUE_RANGE_MONTHS[range]);
   const trend = [...(query.data?.trend ?? [])]

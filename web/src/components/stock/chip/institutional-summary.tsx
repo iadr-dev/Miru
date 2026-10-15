@@ -18,6 +18,7 @@ import {
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { isoDaysAgo, SubTabRow, TOOLTIP_STYLE } from "@/components/stock/chip/shared";
 import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
+import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow } from "@/hooks/use-stock-data";
 import { Link } from "@/i18n/navigation";
 import { getGovernmentBankFlows } from "@/lib/api/stock-detail";
@@ -138,6 +139,10 @@ export function InstitutionalSummaryBody({
   });
 
   if (query.isLoading || bankQuery.isLoading) return <CardSkeletonBody height={200} />;
+  const failed = [query, bankQuery].find((q) => q.isError);
+  if (failed) {
+    return <QueryFailure query={failed} />;
+  }
   const rollingNet = query.data?.rolling_net ?? [];
   if (rollingNet.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;

@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-legend";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getFundHoldings } from "@/lib/api/etf-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -50,6 +51,9 @@ export function FundHoldingsPanel({
         <CardSkeletonBody height={360} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   const data = query.data;
   if (!data) return null;

@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { DividendCalendarCard } from "@/components/etf/dividend-calendar-card";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { QueryFailure } from "@/components/ui/query-state";
 import {
   getEtfExpenseRatio,
   getEtfFundInfo,
@@ -80,6 +81,9 @@ function TrailingReturnsCard({
         <CardSkeletonBody height={260} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
 
   const returns = query.data?.returns;

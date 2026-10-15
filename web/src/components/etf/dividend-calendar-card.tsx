@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
+import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getDividendCalendar } from "@/lib/api/market";
 import { formatNumber } from "@/lib/format-number";
@@ -72,6 +73,9 @@ export function DividendCalendarCard({
         <CardSkeletonBody height={200} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
 
   const data = query.data;

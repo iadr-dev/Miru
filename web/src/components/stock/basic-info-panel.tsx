@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
+import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import {
   getCompanyProfile,
@@ -109,6 +110,9 @@ export function ProfileCard({
         <CardSkeletonBody height={220} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
   if (!query.data) return null;
   const p = query.data;
@@ -250,6 +254,9 @@ function InsiderShareholdingCard({
         <CardSkeletonBody height={200} />
       </section>
     );
+  }
+  if (holdingsQuery.isError) {
+    return <QueryFailure query={holdingsQuery} />;
   }
   const holdings = holdingsQuery.data?.holdings ?? [];
   if (holdings.length === 0) return null;
@@ -432,6 +439,9 @@ function AnnouncementsCard({
         <CardSkeletonBody height={200} />
       </section>
     );
+  }
+  if (announcementsQuery.isError) {
+    return <QueryFailure query={announcementsQuery} />;
   }
   const announcements = announcementsQuery.data?.announcements ?? [];
   const calendarData = calendarQuery.data;

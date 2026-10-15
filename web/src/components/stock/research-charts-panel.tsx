@@ -18,6 +18,7 @@ import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
+import { QueryFailure } from "@/components/ui/query-state";
 import {
   getAnalystConsensus,
   getStockCalendarEvents,
@@ -118,6 +119,9 @@ function ValuationRiverCard({
         <CardSkeletonBody height={340} />
       </section>
     );
+  }
+  if (query.isError) {
+    return <QueryFailure query={query} />;
   }
 
   const rows = [...(query.data?.rows ?? [])].sort((a, b) =>

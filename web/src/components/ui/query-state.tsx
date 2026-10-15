@@ -63,3 +63,30 @@ export function QueryState<T>({
   }
   return <>{children(query.data)}</>;
 }
+
+/** The failure state of a query whose panel does its own loading and empty handling: a calm alert
+ * with a retry, inline. Without it a failed request fell through to the panel's "no data"
+ * message (or to nothing), which reads as "there is nothing" when the truth is "it did not load". */
+export function QueryFailure({
+  query,
+}: {
+  query: { error: unknown; refetch: () => void };
+}): ReactNode {
+  const t = useTranslations("market.cards");
+  const message = query.error instanceof ApiRequestError ? query.error.message : t("error");
+  return (
+    <div
+      role="alert"
+      className="rounded-[var(--radius-input)] border border-[var(--warn)]/40 bg-[var(--surface-2)] p-3"
+    >
+      <p className="text-[13px] text-[var(--text)]">{message}</p>
+      <button
+        type="button"
+        onClick={() => query.refetch()}
+        className="mt-2 font-medium text-[13px] text-[var(--accent-text)] hover:underline"
+      >
+        {t("retry")}
+      </button>
+    </div>
+  );
+}

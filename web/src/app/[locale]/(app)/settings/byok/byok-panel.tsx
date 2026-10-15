@@ -7,6 +7,7 @@ import { Select, TextInput } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SavedToast } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { QueryFailure } from "@/components/ui/query-state";
 import { ProviderBadge } from "@/components/usage/provider-badge";
 import { listSavedKeys, putKey, removeKey, SettingsApiError } from "@/lib/api/settings";
 import { LLM_PROVIDERS, type LlmProvider } from "@/types/settings";
@@ -105,6 +106,8 @@ export function ByokPanel(): ReactNode {
                 </li>
               ))}
             </ul>
+          ) : keysQuery.isError ? (
+            <QueryFailure query={keysQuery} />
           ) : (
             <p className="text-[13px] text-[var(--text-muted)]">{t("noneSaved")}</p>
           )}

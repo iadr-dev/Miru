@@ -27,6 +27,7 @@ import {
   SubTabRow,
   TOOLTIP_STYLE,
 } from "@/components/stock/chip/shared";
+import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
 import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { FLOW_CHART_TRADING_DAYS, groupFlowByPeriod } from "@/lib/flow-periods";
@@ -103,6 +104,10 @@ export function InstitutionalTotalsBody({
   const priceQuery = usePriceHistory(symbol, market, FLOW_CHART_PRICE_DAYS);
 
   if (flowQuery.isLoading || shareholdingQuery.isLoading) return <CardSkeletonBody height={320} />;
+  const failed = [flowQuery, shareholdingQuery].find((q) => q.isError);
+  if (failed) {
+    return <QueryFailure query={failed} />;
+  }
   const flowRows = flowQuery.data?.rows ?? [];
   if (flowRows.length === 0) {
     return <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;

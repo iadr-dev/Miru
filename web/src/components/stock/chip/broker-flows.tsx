@@ -13,6 +13,7 @@ import {
   SubTabRow,
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { QueryFailure } from "@/components/ui/query-state";
 import { getForeignShareholding, getStockChipFlows } from "@/lib/api/stock-detail";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
@@ -89,6 +90,9 @@ export function ChipFlowsBody({
   // content height alone or the two cards visibly mismatch height during load (flagged live via
   // screenshot: 分點's card fell short of 摘要's bottom edge).
   if (query.isLoading) return <CardSkeletonBody height={440} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   if (!query.data) return null;
   if (isMaskedTeaser(query.data)) {
     return (

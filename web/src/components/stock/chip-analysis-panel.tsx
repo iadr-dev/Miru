@@ -17,6 +17,7 @@ import {
   SnapshotStat,
   SubTabRow,
 } from "@/components/stock/chip/shared";
+import { QueryFailure } from "@/components/ui/query-state";
 import {
   getSecuritiesLending,
   getStockDayTrading,
@@ -196,6 +197,10 @@ function MarginShortSnapshot({
 
   if (marginShortQuery.isLoading || lendingQuery.isLoading || dayTradingQuery.isLoading) {
     return <CardSkeletonBody height={160} />;
+  }
+  const failed = [marginShortQuery, lendingQuery, dayTradingQuery].find((q) => q.isError);
+  if (failed) {
+    return <QueryFailure query={failed} />;
   }
 
   const marginRows = [...(marginShortQuery.data?.rows ?? [])].sort((a, b) =>

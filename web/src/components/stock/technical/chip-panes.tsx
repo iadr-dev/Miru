@@ -7,6 +7,7 @@ import { type ReactNode, useMemo, useRef } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { type RangedPaneProps, useLineChartPane } from "@/components/stock/technical/shared";
+import { QueryFailure } from "@/components/ui/query-state";
 import {
   getSecuritiesLending,
   getShareholderDispersion,
@@ -54,6 +55,9 @@ export function MarginShortPane({
   );
 
   if (query.isLoading) return <CardSkeletonBody height={128} />;
+  if (query.isError) {
+    return <QueryFailure query={query} />;
+  }
   if (rows.length === 0) return null;
   return <div ref={containerRef} className="h-32 w-full" />;
 }

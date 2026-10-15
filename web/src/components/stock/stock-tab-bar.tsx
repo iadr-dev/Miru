@@ -2,23 +2,54 @@
 
 import { ChartLineIcon } from "@phosphor-icons/react/dist/ssr";
 import { motion } from "motion/react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useState } from "react";
+import { CardSkeleton } from "@/components/market/card-skeleton";
 import { ComingSoon } from "@/components/shell/coming-soon";
-import { AiPanel } from "@/components/stock/ai-panel";
 import { BasicInfoPanel } from "@/components/stock/basic-info-panel";
-import { ChipAnalysisPanel } from "@/components/stock/chip-analysis-panel";
-import { FinancialsPanel } from "@/components/stock/financials-panel";
-import { IndustryPanel } from "@/components/stock/industry-panel";
-import { RealtimeTab } from "@/components/stock/realtime-panel";
-import { ResearchChartsPanel } from "@/components/stock/research-charts-panel";
-import { StockNewsPanel } from "@/components/stock/stock-news-panel";
-import { TechnicalAnalysisPanel } from "@/components/stock/technical-analysis-panel";
-import { TrackerPanel } from "@/components/stock/tracker-panel";
 import { SectionBoundary } from "@/components/ui/panel-error-boundary";
 import { useDetailTab } from "@/hooks/use-detail-tab";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
+
+// Only the panel of the open tab is needed, and the heavy ones (charts, tables) are large:
+// they load when their tab is first opened instead of with every visit to the page.
+const IndustryPanel = dynamic(
+  () => import("@/components/stock/industry-panel").then((m) => m.IndustryPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const FinancialsPanel = dynamic(
+  () => import("@/components/stock/financials-panel").then((m) => m.FinancialsPanel),
+  { loading: () => <CardSkeleton height={520} /> },
+);
+const ChipAnalysisPanel = dynamic(
+  () => import("@/components/stock/chip-analysis-panel").then((m) => m.ChipAnalysisPanel),
+  { loading: () => <CardSkeleton height={520} /> },
+);
+const TechnicalAnalysisPanel = dynamic(
+  () => import("@/components/stock/technical-analysis-panel").then((m) => m.TechnicalAnalysisPanel),
+  { loading: () => <CardSkeleton height={640} /> },
+);
+const TrackerPanel = dynamic(
+  () => import("@/components/stock/tracker-panel").then((m) => m.TrackerPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const AiPanel = dynamic(() => import("@/components/stock/ai-panel").then((m) => m.AiPanel), {
+  loading: () => <CardSkeleton height={420} />,
+});
+const StockNewsPanel = dynamic(
+  () => import("@/components/stock/stock-news-panel").then((m) => m.StockNewsPanel),
+  { loading: () => <CardSkeleton height={420} /> },
+);
+const ResearchChartsPanel = dynamic(
+  () => import("@/components/stock/research-charts-panel").then((m) => m.ResearchChartsPanel),
+  { loading: () => <CardSkeleton height={520} /> },
+);
+const RealtimeTab = dynamic(
+  () => import("@/components/stock/realtime-panel").then((m) => m.RealtimeTab),
+  { loading: () => <CardSkeleton height={520} /> },
+);
 
 // The 9 tabs for a TW STOCK, plus 追蹤 (added per a later reference-app-driven request; see
 // `tracker-panel.tsx`'s own docstring).
