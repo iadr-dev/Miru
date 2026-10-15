@@ -246,8 +246,11 @@ async def stream_thread(
     if turn_id is None:
         return StreamingResponse(iter([]), media_type=_SSE_MEDIA_TYPE)
 
+    # Only a turn that is running somewhere has live frames to wait for. Otherwise the replay is
+    # all there is, and a stream left open after it would hang the client for ever.
+    follow_live = running is not None or (remote is not None and remote.turn_id == turn_id)
     return StreamingResponse(
-        _resume_stream(reader, turn_id=turn_id, after_seq=after_seq),
+        _resume_stream(reader, turn_id=turn_id, after_seq=after_seq, follow_live=follow_live),
         media_type=_SSE_MEDIA_TYPE,
     )
 
@@ -304,7 +307,7 @@ def _parse_last_event_id(last_event_id: str | None) -> int:
 
 
 async def _resume_stream(
-    reader: StreamReader, *, turn_id: str, after_seq: int
+    reader: StreamReader, *, turn_id: str, after_seq: int, follow_live: bool = True
 ) -> AsyncIterator[str]:
     """Subscribe live FIRST, then replay the durable log, then follow live — the ordering that
     makes resume gapless and duplicate-free.
@@ -336,6 +339,8 @@ async def _resume_stream(
             last_emitted = max(last_emitted, event.seq)
             if event.kind == EventKind.TURN_END:
                 return
+        if not follow_live:
+            return  # nothing is running: the replay was everything there will be
         # Follow live from the queue, de-duplicating against what replay already covered.
         while True:
             event = await queue.get()

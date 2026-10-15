@@ -141,3 +141,16 @@ def test_another_users_running_turn_is_never_followed() -> None:
     chosen = _resumable_turn_id(running=None, remote=remote, user_id="u1", thread=_thread("q1"))
 
     assert chosen == "q1"
+
+
+async def test_with_nothing_running_the_replay_is_all_and_the_stream_ends() -> None:
+    """A reconnect after the turn finished (or to a turn that left no events) must not leave the
+    stream open waiting for frames that will never come."""
+    reader = _StubReader(persisted=[_event(0, "turn.start"), _event(1)], live=[])
+
+    async def collect() -> list[int]:
+        return _seqs(
+            [f async for f in _resume_stream(reader, turn_id="t1", after_seq=-1, follow_live=False)]
+        )
+
+    assert await asyncio.wait_for(collect(), timeout=2) == [0, 1]
