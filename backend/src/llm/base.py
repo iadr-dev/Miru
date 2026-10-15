@@ -48,6 +48,18 @@ class StopReason(StrEnum):
     ERROR = "error"
 
 
+class LLMRefusalError(RuntimeError):
+    """The provider declined to answer: a safety classifier stopped the request and returned no
+    content (Anthropic: HTTP 200 with `stop_reason: "refusal"`). Raised instead of returning an
+    empty answer, so a fallback chain moves on to its next model and a turn with no fallback says
+    it was declined, rather than showing nothing."""
+
+    def __init__(self, provider: str, model: str, category: str | None) -> None:
+        self.category = category
+        detail = f" ({category})" if category else ""
+        super().__init__(f"{provider}/{model} declined this request{detail}")
+
+
 class ToolCall(BaseModel):
     """One normalized tool-call proposal from the model."""
 
@@ -337,6 +349,7 @@ __all__ = [
     "ImagePart",
     "LLMClient",
     "LLMEvent",
+    "LLMRefusalError",
     "LLMResponse",
     "Message",
     "MessageRole",

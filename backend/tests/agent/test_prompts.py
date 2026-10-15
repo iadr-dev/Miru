@@ -134,3 +134,14 @@ def test_governance_prompt_pins_taiwan_market_terminology() -> None:
     assert "本益比" in prompt
     assert "殖利率" in prompt
     assert "市盈率" in prompt  # named only as the term NOT to use
+
+
+def test_the_governance_prompt_does_not_tell_the_model_its_reasoning_is_shown_to_the_user() -> None:
+    """Claude Opus 5.5's safety classifier read that sentence (rule 8 used to say the user's view
+    surfaces the model's reasoning verbatim) as an attempt to extract its reasoning and declined
+    every request that carried the prompt. Found by removing rules one at a time."""
+    prompt = assemble_system_prompt(default_prompt_layers())
+
+    assert "Respond in the same language as the user's most recent message" in prompt
+    assert "reasoning" not in prompt.lower()
+    assert "process-disclosure" not in prompt

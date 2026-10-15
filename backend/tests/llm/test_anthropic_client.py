@@ -31,7 +31,16 @@ from anthropic.types.message_tokens_count import MessageTokensCount
 from anthropic.types.raw_message_delta_event import Delta as StopDelta
 
 from llm.anthropic_client import AnthropicClient
-from llm.base import ImagePart, Message, MessageRole, StopReason, ToolCall, ToolResultPart, ToolSpec
+from llm.base import (
+    ImagePart,
+    LLMRefusalError,
+    Message,
+    MessageRole,
+    StopReason,
+    ToolCall,
+    ToolResultPart,
+    ToolSpec,
+)
 
 
 class _FakeMessageStream:
@@ -616,3 +625,36 @@ async def test_with_no_memory_block_the_conversation_is_cached_up_to_the_last_me
     assert [m["role"] for m in kwargs["messages"]] == ["user", "assistant", "user"]
     assert "cache_control" in kwargs["messages"][-1]["content"][-1]
     assert "cache_control" not in str(kwargs["messages"][0])
+
+
+async def test_chat_raises_when_the_provider_declines_instead_of_returning_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A safety classifier answers HTTP 200 with `stop_reason: "refusal"` and no content. That
+    used to come back as an empty answer; it is now an error a fallback chain can act on."""
+    client = AnthropicClient(model_id="claude-opus-5-5", api_key="test-key")
+    refused = _sdk_message(content=[], stop_reason="refusal", output_tokens=0)
+    monkeypatch.setattr(client._client.messages, "create", AsyncMock(return_value=refused))
+
+    with pytest.raises(LLMRefusalError, match="claude-opus-5-5 declined"):
+        await client.chat([Message(role=MessageRole.USER, content="hi")])
+
+
+async def test_stream_raises_when_the_provider_declines(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = AnthropicClient(model_id="claude-opus-5-5", api_key="test-key")
+    events: list[RawMessageStreamEvent] = [
+        RawMessageStartEvent(
+            message=_sdk_message(content=[], input_tokens=5, output_tokens=0), type="message_start"
+        ),
+        RawMessageDeltaEvent(
+            delta=StopDelta(stop_reason="refusal", stop_sequence=None),
+            usage=MessageDeltaUsage(output_tokens=0),
+            type="message_delta",
+        ),
+    ]
+    monkeypatch.setattr(
+        client._client.messages, "stream", lambda **_kwargs: _FakeMessageStream(events)
+    )
+
+    with pytest.raises(LLMRefusalError):
+        [e async for e in client.stream([Message(role=MessageRole.USER, content="hi")])]
