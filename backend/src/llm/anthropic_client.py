@@ -77,6 +77,7 @@ _CACHE_CONTROL_EPHEMERAL: Final[dict[str, str]] = {"type": "ephemeral"}
 # `thinking.delta` events even though the model supports genuinely streaming them).
 _EXTENDED_THINKING_MODEL_PREFIXES: Final[tuple[str, ...]] = (
     "claude-opus-4-8",
+    "claude-opus-5-5",
     "claude-sonnet-5",
     "claude-sonnet-4-6",
 )
