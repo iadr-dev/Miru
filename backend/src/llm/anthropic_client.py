@@ -68,8 +68,8 @@ _CACHE_CONTROL_EPHEMERAL: Final[dict[str, str]] = {"type": "ephemeral"}
 # Models with native extended-thinking support in this build — matched by prefix so a dated
 # snapshot id under either family still qualifies. Verified against the installed SDK's
 # `ThinkingConfigAdaptiveParam` (adaptive thinking, no `budget_tokens`) — see `_thinking_param`.
-# `claude-sonnet-4-6` (the previous default/agent-role model) is on this list too — confirmed against Anthropic's own supported-model
-# table (docs/build-with-claude/thinking-troubleshooting, "Configurations each model rejects"):
+# `claude-sonnet-4-6` (the previous default/agent-role model) is on this list too — confirmed
+# against Anthropic's own supported-model table (docs/build-with-claude/thinking-troubleshooting, "Configurations each model rejects"):
 # its row reads "Adaptive, extended (deprecated)" / default "Off" / rejects nothing — adaptive
 # thinking is accepted, just not sent unless a caller opts in, which is what omitting this
 # model from the list was silently doing (no `thinking` param ever sent -> always Off, zero
