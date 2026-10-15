@@ -124,7 +124,12 @@ async def test_chat_sends_image_block_alongside_text(monkeypatch: pytest.MonkeyP
         "type": "image",
         "source": {"type": "base64", "media_type": "image/png", "data": "Zm9v"},
     }
-    assert content[1] == {"type": "text", "text": "what's in this chart?"}
+    # The last block of the last message carries the conversation's cache breakpoint.
+    assert content[1] == {
+        "type": "text",
+        "text": "what's in this chart?",
+        "cache_control": {"type": "ephemeral"},
+    }
 
 
 async def test_chat_normalizes_tool_call_response(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -508,3 +513,106 @@ async def test_count_tokens_uses_sdk_endpoint(monkeypatch: pytest.MonkeyPatch) -
     count = await client.count_tokens([Message(role=MessageRole.USER, content="hi")])
 
     assert count == 42
+
+
+def _breakpoints(kwargs: dict[str, Any]) -> int:
+    """How many `cache_control` markers the request carries (the API allows four)."""
+    count = 0
+    for tool in kwargs.get("tools", []):
+        count += "cache_control" in tool
+    for block in kwargs.get("system", []):
+        count += "cache_control" in block
+    for message in kwargs["messages"]:
+        content = message["content"]
+        if isinstance(content, list):
+            count += sum("cache_control" in block for block in content)
+    return count
+
+
+_RECALL = Message(role=MessageRole.SYSTEM, content="remembered: likes TSMC", per_turn=True)
+
+
+def _history_with_recall() -> list[Message]:
+    return [
+        Message(role=MessageRole.SYSTEM, content="be caveated"),
+        _RECALL,
+        Message(role=MessageRole.USER, content="first question"),
+        Message(role=MessageRole.ASSISTANT, content="first answer"),
+        Message(role=MessageRole.USER, content="second question"),
+    ]
+
+
+async def _sent(model_id: str, messages: list[Message], monkeypatch: pytest.MonkeyPatch) -> Any:
+    client = AnthropicClient(model_id=model_id, api_key="test-key")
+    create_mock = AsyncMock(
+        return_value=_sdk_message(content=[TextBlock(type="text", text="ok", citations=None)])
+    )
+    monkeypatch.setattr(client._client.messages, "create", create_mock)
+    await client.chat(messages)
+    return create_mock.call_args.kwargs
+
+
+async def test_the_memory_block_goes_after_the_latest_question_on_a_model_that_allows_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kwargs = await _sent("claude-sonnet-5-5", _history_with_recall(), monkeypatch)
+
+    # The stable prompt alone is `system`, so the memory block cannot change the cached prefix.
+    assert kwargs["system"][0]["text"] == "be caveated"
+    roles = [m["role"] for m in kwargs["messages"]]
+    assert roles == ["user", "assistant", "user", "system"]
+    assert kwargs["messages"][-1]["content"] == "remembered: likes TSMC"
+    # One breakpoint ends the stable history (the latest question), none sits on the memory block.
+    assert "cache_control" in kwargs["messages"][2]["content"][-1]
+    assert _breakpoints(kwargs) <= 4
+
+
+async def test_the_memory_block_trails_the_latest_question_on_a_model_that_rejects_the_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    kwargs = await _sent("claude-sonnet-4-6", _history_with_recall(), monkeypatch)
+
+    # No `system` role in `messages` (that model returns a 400), and the system text stays stable.
+    assert kwargs["system"][0]["text"] == "be caveated"
+    assert [m["role"] for m in kwargs["messages"]] == ["user", "assistant", "user"]
+    question, memory = kwargs["messages"][-1]["content"]
+    assert question["text"] == "second question"
+    assert "cache_control" in question  # the stable history ends here
+    assert memory == {"type": "text", "text": "remembered: likes TSMC"}  # not cached
+    assert _breakpoints(kwargs) <= 4
+
+
+async def test_in_a_tool_loop_the_stable_history_and_the_newest_result_are_both_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = [
+        *_history_with_recall(),
+        Message(
+            role=MessageRole.ASSISTANT,
+            tool_calls=(ToolCall(id="call_1", name="lookup", arguments={}),),
+        ),
+        Message(
+            role=MessageRole.TOOL,
+            tool_results=(ToolResultPart(tool_call_id="call_1", content="42"),),
+        ),
+    ]
+
+    kwargs = await _sent("claude-opus-5-5", history, monkeypatch)
+
+    roles = [m["role"] for m in kwargs["messages"]]
+    assert roles == ["user", "assistant", "user", "system", "assistant", "user"]
+    assert "cache_control" in kwargs["messages"][2]["content"][-1]  # end of the stable history
+    assert "cache_control" in kwargs["messages"][-1]["content"][-1]  # the newest tool result
+    assert _breakpoints(kwargs) <= 4
+
+
+async def test_with_no_memory_block_the_conversation_is_cached_up_to_the_last_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    history = [m for m in _history_with_recall() if not m.per_turn]
+
+    kwargs = await _sent("claude-opus-5-5", history, monkeypatch)
+
+    assert [m["role"] for m in kwargs["messages"]] == ["user", "assistant", "user"]
+    assert "cache_control" in kwargs["messages"][-1]["content"][-1]
+    assert "cache_control" not in str(kwargs["messages"][0])

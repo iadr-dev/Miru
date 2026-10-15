@@ -118,6 +118,9 @@ class Message(BaseModel):
     tool_calls: tuple[ToolCall, ...] = Field(default_factory=tuple)
     tool_results: tuple[ToolResultPart, ...] = Field(default_factory=tuple)
     images: tuple[ImagePart, ...] = Field(default_factory=tuple)
+    # A `system` message that belongs to this one turn only (the recalled-memory block): it differs
+    # from turn to turn, so a provider that can prompt-cache keeps it out of the cached prefix.
+    per_turn: bool = False
 
 
 class ToolSpec(BaseModel):

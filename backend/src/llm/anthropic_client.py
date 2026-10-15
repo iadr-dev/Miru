@@ -95,6 +95,94 @@ def _system_and_turns(messages: list[Message]) -> tuple[str | None, list[Message
     return system, turns
 
 
+# Models that accept a `system` message in the middle of `messages` (no beta header). Claude
+# Sonnet 5, Sonnet 4.6 and Haiku 4.5 do not: they reject the role with a 400.
+_MID_CONVERSATION_SYSTEM_PREFIXES: Final[tuple[str, ...]] = (
+    "claude-opus-5",
+    "claude-opus-4-8",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-fable",
+    "claude-mythos",
+)
+
+
+def _supports_mid_conversation_system(model_id: str) -> bool:
+    return any(model_id.startswith(prefix) for prefix in _MID_CONVERSATION_SYSTEM_PREFIXES)
+
+
+def _with_cache_breakpoint(param: MessageParam) -> MessageParam:
+    """`param` with `cache_control` on its last content block (a plain string becomes one text
+    block, the only form that can carry it)."""
+    content = param["content"]
+    blocks: list[dict[str, Any]]
+    if isinstance(content, str):
+        blocks = [{"type": "text", "text": content}]
+    else:
+        blocks = [dict(block) for block in content]
+    if not blocks:
+        return param
+    blocks[-1] = {**blocks[-1], "cache_control": _CACHE_CONTROL_EPHEMERAL}
+    return cast("MessageParam", {"role": param["role"], "content": blocks})
+
+
+def _with_trailing_text(param: MessageParam, text: str) -> MessageParam:
+    """`param` with one more text block after its existing content."""
+    content = param["content"]
+    blocks: list[dict[str, Any]] = (
+        [{"type": "text", "text": content}]
+        if isinstance(content, str)
+        else [dict(b) for b in content]
+    )
+    blocks.append({"type": "text", "text": text})
+    return cast("MessageParam", {"role": param["role"], "content": blocks})
+
+
+def _conversation_params(
+    messages: list[Message], model_id: str
+) -> tuple[str | None, list[MessageParam]]:
+    """The top-level `system` text and the `messages` array for one request, with the prompt-cache
+    breakpoints that make a multi-turn chat cheap.
+
+    Prompt caching matches a prefix, so anything that differs between turns must come after the
+    part that does not. The recalled-memory block (`Message.per_turn`) differs every turn: left in
+    `system` it would change the first bytes of the request and miss the cache for the whole
+    conversation (measured: Sonnet 4.6 read nothing from cache on turn 2, Sonnet 5.5 read all of
+    it once the block moved). It is therefore sent after the latest user message, as a system
+    message where the model accepts one mid-conversation and otherwise as a trailing text block of
+    that user message. A cache breakpoint ends the stable history (the latest question, just before
+    the memory block) and another sits at the end of the request, so the history is read from cache
+    and only the new question and the memory block are charged in full."""
+    inline = _supports_mid_conversation_system(model_id)
+    turns = [m for m in messages if m.role is not MessageRole.SYSTEM]
+    anchor = max((i for i, m in enumerate(turns) if m.role is MessageRole.USER), default=None)
+    per_turn_parts: list[str] = []
+    system_parts: list[str] = []
+    for message in messages:
+        if message.role is not MessageRole.SYSTEM or not message.content:
+            continue
+        if anchor is not None and message.per_turn:
+            per_turn_parts.append(message.content)
+        else:
+            system_parts.append(message.content)
+    system = "\n\n".join(system_parts) if system_parts else None
+    params = [_message_to_param(m) for m in turns]
+    if not params:
+        return system, params
+    if per_turn_parts and anchor is not None:
+        note = "\n\n".join(per_turn_parts)
+        params[anchor] = _with_cache_breakpoint(params[anchor])
+        if anchor != len(params) - 1:
+            params[-1] = _with_cache_breakpoint(params[-1])
+        if inline:
+            params.insert(anchor + 1, cast("MessageParam", {"role": "system", "content": note}))
+        else:
+            params[anchor] = _with_trailing_text(params[anchor], note)
+    else:
+        params[-1] = _with_cache_breakpoint(params[-1])
+    return system, params
+
+
 def _tool_result_block(part: ToolResultPart) -> dict[str, Any]:
     return {
         "type": "tool_result",
@@ -329,8 +417,7 @@ class AnthropicClient:
         *,
         native_web_search: bool = False,
     ) -> LLMResponse:
-        system, turns = _system_and_turns(messages)
-        params = [_message_to_param(m) for m in turns]
+        system, params = _conversation_params(messages, self.model_id)
         kwargs: dict[str, Any] = {
             "model": self.model_id,
             "max_tokens": self._max_tokens,
@@ -382,8 +469,7 @@ class AnthropicClient:
         *,
         native_web_search: bool,
     ) -> dict[str, Any]:
-        system, turns = _system_and_turns(messages)
-        params = [_message_to_param(m) for m in turns]
+        system, params = _conversation_params(messages, self.model_id)
         kwargs: dict[str, Any] = {
             "model": self.model_id,
             "max_tokens": self._max_tokens,

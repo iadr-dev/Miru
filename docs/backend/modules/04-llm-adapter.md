@@ -149,6 +149,20 @@ Each override is one or more comma-separated `"provider/model"` specs, in try-or
 `/`). Pointing every `MODEL_ROLE_*` at `ollama/qwen3.6` is a pure config change — no code path
 branches on role identity beyond this table lookup.
 
+### Prompt caching (Anthropic)
+
+`AnthropicClient` marks four cache breakpoints at most: the last tool, the `system` text, the end of
+the stable conversation history (the latest user message) and the end of the request (the newest
+message, which in a tool loop is the newest tool result). Caching matches a prefix, so anything that
+changes every turn has to come after the stable part. The recalled-memory block is the one such
+block (`Message.per_turn`, set by `MemoryRecallPreLLMHook`): it is sent after the latest user
+message, as a `system` message on models that accept one mid-conversation (Opus 5.5 / 5 / 4.8,
+Sonnet 5.5, Haiku 5.5, Fable, Mythos) and as a trailing text block of that user message on the others
+(Sonnet 5 and 4.6, Haiku 4.5 reject the role with a 400). Measured with a ~2,500-token prompt and a
+different memory block each turn: Sonnet 4.6 read 0 tokens from cache on turn 2 before and 2,533
+after; Sonnet 5.5 read 4,078. The usage estimate prices cache reads and writes separately
+(`llm/pricing.py`).
+
 ### Fallback — a real, ordered per-role provider chain
 
 The per-role ordered fallback chain (e.g. `haiku -> sonnet` for
