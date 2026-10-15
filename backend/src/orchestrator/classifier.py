@@ -14,13 +14,14 @@ the classifier call itself fails.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import cast
 
 import structlog
 
 from events.bus import EventBus
 from events.kinds import EventKind
-from llm.base import LLMClient, Message, MessageRole
+from llm.base import LLMClient, Message, MessageRole, TokenUsage
 from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
 from orchestrator.models import Framework, Routing
 from skills.registry import SkillRegistry
@@ -182,8 +183,9 @@ class IntentClassifier:
         event_bus: EventBus | None = None,
         turn_id: str | None = None,
         history: tuple[Message, ...] = (),
+        on_usage: Callable[[TokenUsage], None] | None = None,
     ) -> Routing:
-        routing = await self._classify_inner(message, history=history)
+        routing = await self._classify_inner(message, history=history, on_usage=on_usage)
         if event_bus is not None:
             event_bus.publish(
                 EventKind.ROUTE_DECIDED,
@@ -203,7 +205,13 @@ class IntentClassifier:
         )
         return routing
 
-    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+    async def _classify_inner(
+        self,
+        message: str,
+        *,
+        history: tuple[Message, ...] = (),
+        on_usage: Callable[[TokenUsage], None] | None = None,
+    ) -> Routing:
         client = self._resolve_client()
         if client is None:
             return _keyword_fallback(message, self._registry)
@@ -218,6 +226,12 @@ class IntentClassifier:
         ]
         try:
             response = await client.chat(messages)
+            if on_usage is not None:
+                on_usage(
+                    response.usage.model_copy(
+                        update={"provider": client.provider_id, "model": client.model_id}
+                    )
+                )
             return _parse_routing(response.text or "", self._registry)
         except (ValueError, json.JSONDecodeError) as exc:
             logger.warning("classifier_parse_failed_falling_back", error=str(exc))

@@ -65,7 +65,13 @@ class _StaticNoneClassifier(IntentClassifier):
     """Routes every message to the `none` framework — a direct reply with no tools/skills, so
     `/agent/query` produces deterministic text from the stub client without any router fetch."""
 
-    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+    async def _classify_inner(
+        self,
+        message: str,
+        *,
+        history: tuple[Message, ...] = (),
+        on_usage: Callable[[TokenUsage], None] | None = None,
+    ) -> Routing:
         del message, history
         return Routing(framework="none", skills=(), reason="test static route")
 

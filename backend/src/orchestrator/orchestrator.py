@@ -371,11 +371,24 @@ class Orchestrator:
         paths — fan-out sub-agent lanes never receive it (the memory block is background for the
         user-facing reply agent, not something each independent lane re-injects and re-guardrails
         N times; the fan-out synthesis pass is a separate LLM seam out of `_build_loop`'s scope)."""
+        usage = UsageAccumulator(turn_id or "")
         routing = await self._classifier.classify(
-            user_message, event_bus=event_bus, turn_id=turn_id, history=history
+            user_message,
+            event_bus=event_bus,
+            turn_id=turn_id,
+            history=history,
+            on_usage=lambda call: usage.add_llm_call(
+                input_tokens=call.input_tokens,
+                output_tokens=call.output_tokens,
+                cost_micros=call.cost_micros,
+                provider=call.provider,
+                model=call.model,
+                cached_tokens=call.cached_tokens,
+                cache_write_tokens=call.cache_write_tokens,
+                reasoning_tokens=call.reasoning_tokens,
+            ),
         )
         budget = TurnBudget.from_settings(self._settings)
-        usage = UsageAccumulator(turn_id or "")
         fragment = _resolve_personality_fragment(self._personality_registry, personality)
         try:
             if routing.framework == "none":

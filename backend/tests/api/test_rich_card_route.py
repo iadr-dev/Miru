@@ -11,7 +11,7 @@ shape and the governed non-trading caveat.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from fastapi.testclient import TestClient
 
@@ -109,7 +109,13 @@ class _SingleSkillClassifier(IntentClassifier):
         super().__init__(None)  # registry unused by this override
         self._skill = skill
 
-    async def _classify_inner(self, message: str, *, history: tuple[Message, ...] = ()) -> Routing:
+    async def _classify_inner(
+        self,
+        message: str,
+        *,
+        history: tuple[Message, ...] = (),
+        on_usage: Callable[[TokenUsage], None] | None = None,
+    ) -> Routing:
         del message, history
         return Routing(
             framework="single", skills=(self._skill,), reason=f"test route to {self._skill}"
