@@ -171,6 +171,17 @@ async def job_us_symbol_universe(run_date: date_, ctx: IngestContext) -> JobRun:
     )
 
 
+def latest_us_exchanges(store: ParquetStore) -> dict[str, str]:
+    """Symbol -> exchange from the newest universe partition (empty if there is none)."""
+    found = store.latest_partition_on_or_before(
+        US_SYMBOL_UNIVERSE_DATASET, Market.US.value, date_.max
+    )
+    if found is None:
+        return {}
+    rows = store.read_partition(US_SYMBOL_UNIVERSE_DATASET, Market.US.value, found[0])
+    return {str(r["symbol"]): str(r.get("exchange") or "") for r in rows if r.get("symbol")}
+
+
 def latest_us_symbols(store: ParquetStore) -> list[str]:
     """Read back the most recently written US symbol-universe partition's symbol list.
 

@@ -210,16 +210,52 @@ class ParquetStore:
         )
         return len(rows)
 
-    def write_partition_from_files(
-        self, dataset: str, market: str, run_date: date_, files: Sequence[Path]
+    def partition_files(self, dataset: str, market: str, run_date: date_) -> list[Path]:
+        """The Parquet files of the partition's current version (empty if it has none)."""
+        partition_dir = PartitionKey(dataset=dataset, market=market, run_date=run_date).path(
+            self.root
+        )
+        version = self._manifest_version(partition_dir)
+        if version is None:
+            return []
+        return sorted((partition_dir / f"v={version}").glob("*.parquet"))
+
+    def latest_partition_on_or_before(
+        self, dataset: str, market: str, on_or_before: date_
+    ) -> tuple[date_, list[Path]] | None:
+        """The newest real partition dated `on_or_before` or earlier, with its files, or None."""
+        dates = [d for d in self.list_partition_dates(dataset, market) if d <= on_or_before]
+        if not dates:
+            return None
+        newest = max(dates)
+        return newest, self.partition_files(dataset, market, newest)
+
+    def write_partition_from_files(  # noqa: PLR0913 - the cell, the files, and the carry-forward
+        self,
+        dataset: str,
+        market: str,
+        run_date: date_,
+        files: Sequence[Path],
+        *,
+        carry_from: Sequence[Path] = (),
+        key: Sequence[str] = ("symbol",),
     ) -> int:
         """`write_partition` for rows that already sit in Parquet files (a spool): DuckDB reads
         them and writes the partition itself, so the rows never pass through Python. A job that
         collects over hours holds a few symbols at a time and hands over the files at the end.
         The files may differ in columns (`union_by_name`). Same atomic swap as `write_partition`.
-        Returns the number of rows written."""
-        key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-        partition_dir = key.path(self.root)
+
+        `carry_from` is the previous partition's files, for a job that refreshes only part of its
+        universe: every previous row whose `key` is not among the new rows is kept, so a symbol
+        that was not refreshed this time does not vanish from the new partition. A key that IS
+        among the new rows takes the new rows only. Returns the number of rows written."""
+        for column in key:
+            if not column.isidentifier():
+                raise ValueError(f"not a column name: {column!r}")
+        same_key = " AND ".join(f'new."{c}" IS NOT DISTINCT FROM prev."{c}"' for c in key)
+        partition_dir = PartitionKey(dataset=dataset, market=market, run_date=run_date).path(
+            self.root
+        )
         partition_dir.mkdir(parents=True, exist_ok=True)
         version_id = uuid.uuid4().hex
         tmp_dir = self.root / _TMP_DIRNAME / f"{dataset}__{market}__{run_date.isoformat()}"
@@ -227,27 +263,34 @@ class ParquetStore:
         tmp_dir.mkdir(parents=True, exist_ok=True)
         tmp_parquet = tmp_dir / "part.parquet"
         sources = [str(f) for f in files]
+        carried = [str(f) for f in carry_from]
+        # DuckDB cannot bind the COPY target while another parameter (the file list) is bound in
+        # the same statement. The target is a path this method just made under the store's own
+        # temp directory (a uuid), quoted as a literal.
+        target = str(tmp_parquet).replace("'", "''")
         con = duckdb.connect()
         try:
-            if sources:
-                # DuckDB cannot bind the COPY target while another parameter (the file list) is
-                # bound in the same statement. The target is a path this method just made under
-                # the store's own temp directory (a uuid), quoted as a literal.
-                target = str(tmp_parquet).replace("'", "''")
+            if sources and carried:
+                con.execute(
+                    "COPY ("  # noqa: S608 - the key columns are validated identifiers
+                    "WITH new AS (SELECT * FROM read_parquet(?, union_by_name=True)), "
+                    "prev AS (SELECT * FROM read_parquet(?, union_by_name=True)) "
+                    "SELECT * FROM new UNION ALL BY NAME "
+                    f"SELECT * FROM prev WHERE NOT EXISTS (SELECT 1 FROM new WHERE {same_key})"
+                    f") TO '{target}' (FORMAT parquet)",
+                    [sources, carried],
+                )
+            elif sources or carried:
                 con.execute(
                     "COPY (SELECT * FROM read_parquet(?, union_by_name=True)) "  # noqa: S608
                     f"TO '{target}' (FORMAT parquet)",
-                    [sources],
-                )
-                rows_written = int(
-                    con.execute(
-                        "SELECT count(*) FROM read_parquet(?, union_by_name=True)", [sources]
-                    ).fetchone()[0]  # type: ignore[index]
+                    [sources or carried],
                 )
             else:  # nothing collected: the same one-placeholder-column empty partition
                 con.register("frame", pd.DataFrame({"_empty": pd.Series([], dtype="object")}))
                 con.execute("COPY (SELECT * FROM frame) TO ? (FORMAT parquet)", [str(tmp_parquet)])
-                rows_written = 0
+            counted = con.execute("SELECT count(*) FROM read_parquet(?)", [str(tmp_parquet)])
+            rows_written = int(counted.fetchone()[0])  # type: ignore[index]
         finally:
             con.close()
         self._commit_version(partition_dir, tmp_dir, version_id)
@@ -257,6 +300,7 @@ class ParquetStore:
             market=market,
             run_date=run_date.isoformat(),
             rows_written=rows_written,
+            carried_from=len(carried),
             version=version_id,
         )
         return rows_written

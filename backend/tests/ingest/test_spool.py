@@ -8,6 +8,8 @@ import time
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from ingest.spool import PROGRESS_FILE, SPOOL_DIRNAME, RowSpool, sweep_stale_spools
 from ingest.store import ParquetStore
 
@@ -148,3 +150,65 @@ def test_sweep_removes_only_abandoned_spools(tmp_path: Path) -> None:
 
 def test_sweep_with_no_spool_directory_is_a_no_op(tmp_path: Path) -> None:
     assert sweep_stale_spools(tmp_path) == 0
+
+
+def test_a_refreshed_partition_keeps_the_symbols_it_did_not_refresh(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    store.write_partition(
+        "ds",
+        "US",
+        date(2024, 1, 1),
+        [{"symbol": "A", "value": 1}, {"symbol": "B", "value": 1}, {"symbol": "B", "value": 2}],
+    )
+    previous = store.partition_files("ds", "US", date(2024, 1, 1))
+    spool = RowSpool(tmp_path, "job", RUN_DATE)
+    spool.resume()
+    # B is refreshed (one row now, a different type and an extra column), C is new, A is untouched.
+    spool.add("ds", [{"symbol": "B", "value": 9.5, "note": "new"}, {"symbol": "C", "value": 3.0}])
+    spool.checkpoint(["B", "C"], failures=0)
+
+    written = store.write_partition_from_files(
+        "ds", "US", RUN_DATE, spool.files("ds"), carry_from=previous
+    )
+
+    rows = store.read_partition("ds", "US", RUN_DATE)
+    assert written == 3
+    assert sorted((r["symbol"], r["value"]) for r in rows) == [("A", 1.0), ("B", 9.5), ("C", 3.0)]
+
+
+def test_a_composite_key_replaces_only_the_matching_pairs(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    store.write_partition(
+        "state",
+        "US",
+        date(2024, 1, 1),
+        [
+            {"symbol": "A", "capability": "x", "fetched_on": "2024-01-01"},
+            {"symbol": "A", "capability": "y", "fetched_on": "2024-01-01"},
+        ],
+    )
+    spool = RowSpool(tmp_path, "job", RUN_DATE)
+    spool.resume()
+    spool.add("state", [{"symbol": "A", "capability": "x", "fetched_on": "2024-01-02"}])
+    spool.checkpoint(["A"], failures=0)
+
+    store.write_partition_from_files(
+        "state",
+        "US",
+        RUN_DATE,
+        spool.files("state"),
+        carry_from=store.partition_files("state", "US", date(2024, 1, 1)),
+        key=("symbol", "capability"),
+    )
+
+    rows = store.read_partition("state", "US", RUN_DATE)
+    assert sorted((r["capability"], r["fetched_on"]) for r in rows) == [
+        ("x", "2024-01-02"),
+        ("y", "2024-01-01"),
+    ]
+
+
+def test_a_key_that_is_not_a_column_name_is_refused(tmp_path: Path) -> None:
+    store = ParquetStore(root=tmp_path)
+    with pytest.raises(ValueError, match="not a column name"):
+        store.write_partition_from_files("ds", "US", RUN_DATE, [], key=("symbol; DROP TABLE x",))
