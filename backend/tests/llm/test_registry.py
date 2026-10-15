@@ -125,7 +125,7 @@ def test_default_client_falls_back_to_anthropic_when_unset() -> None:
     settings = _settings(anthropic_api_key="sk-ant-test")
     client = default_client(settings)
     assert client.provider_id == "anthropic"
-    assert client.model_id == "claude-sonnet-4-6"
+    assert client.model_id == "claude-sonnet-5-5"
 
 
 def test_default_client_honors_explicit_override() -> None:
@@ -139,7 +139,7 @@ def test_resolve_role_uses_suggested_default_for_classifier() -> None:
     settings = _settings(anthropic_api_key="k")
     client = resolve_role(ModelRole.CLASSIFIER, settings)
     assert client.provider_id == "anthropic"
-    assert client.model_id == "claude-haiku-4-5-20251001"
+    assert client.model_id == "claude-haiku-5-5"
 
 
 def test_resolve_role_honors_override() -> None:

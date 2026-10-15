@@ -52,9 +52,9 @@ class ModelRole(StrEnum):
 # documented default provider. Overridable via
 # `LLM_PROVIDER` / `LLM_MODEL`.
 _DEFAULT_PROVIDER: Final[str] = "anthropic"
-_DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
-_ANTHROPIC_SONNET_FALLBACK: Final[str] = "anthropic/claude-sonnet-4-6"
-_ANTHROPIC_HAIKU: Final[str] = "anthropic/claude-haiku-4-5-20251001"
+_DEFAULT_MODEL: Final[str] = "claude-sonnet-5-5"
+_ANTHROPIC_SONNET_FALLBACK: Final[str] = "anthropic/claude-sonnet-5-5"
+_ANTHROPIC_HAIKU: Final[str] = "anthropic/claude-haiku-5-5"
 
 # Suggested per-role defaults, each an ordered fallback chain of "provider/model" specs — the
 # first entry is tried first; on a `chat()`/`stream()` failure `FallbackLLMClient` tries the
@@ -174,7 +174,7 @@ def _split_provider_model(spec: str) -> tuple[str, str]:
 
 def default_client(settings: Settings | None = None) -> LLMClient:
     """The client for `LLM_PROVIDER`/`LLM_MODEL`, falling back to the documented
-    default (Anthropic/claude-sonnet-4-6) when unset."""
+    default (Anthropic/claude-sonnet-5-5) when unset."""
     settings = settings or get_settings()
     provider_id = settings.llm_provider or _DEFAULT_PROVIDER
     model_id = settings.llm_model or _DEFAULT_MODEL

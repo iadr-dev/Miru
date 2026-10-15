@@ -122,7 +122,7 @@ different vendor.
 
 `default_client(settings=None)` builds the client for `LLM_PROVIDER`/`LLM_MODEL`
 (`settings.llm_provider`/`settings.llm_model`), falling back to the hardcoded default
-constants `_DEFAULT_PROVIDER = "anthropic"` / `_DEFAULT_MODEL = "claude-sonnet-4-6"` when
+constants `_DEFAULT_PROVIDER = "anthropic"` / `_DEFAULT_MODEL = "claude-sonnet-5-5"` when
 either is unset.
 
 ### Role-based model routing
@@ -135,11 +135,11 @@ client (see Fallback below):
 
 ```python
 MODEL_ROLE_CLASSIFIER   # settings.model_role_classifier, else the default chain:
-                         #   "anthropic/claude-haiku-4-5-20251001" -> "anthropic/claude-sonnet-4-6"
+                         #   "anthropic/claude-haiku-5-5" -> "anthropic/claude-sonnet-5-5"
 MODEL_ROLE_AGENT        # settings.model_role_agent, else the default chain:
-                         #   "anthropic/claude-sonnet-4-6" -> "anthropic/claude-haiku-4-5-20251001"
+                         #   "anthropic/claude-sonnet-5-5" -> "anthropic/claude-haiku-5-5"
 MODEL_ROLE_SUBAGENT     # settings.model_role_subagent, else the default chain:
-                         #   "anthropic/claude-sonnet-4-6" (single entry, no fallback)
+                         #   "anthropic/claude-sonnet-5-5" (single entry, no fallback)
 MODEL_ROLE_SYNTHESIS    # settings.model_role_synthesis, else the default chain:
                          #   "openai/gpt-4o-mini" (single entry, no fallback)
 ```
