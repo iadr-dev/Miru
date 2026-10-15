@@ -101,6 +101,10 @@ class Settings(BaseSettings):
     # (Anthropic), 4096 was observed live truncating a long synthesis (multi-section prose + a
     # per-month table) mid-sentence before any of the caller's actual answer landed.
     llm_max_output_tokens: int = 16_000
+    # Ask Anthropic to compare each request with the previous one on the same client and say where
+    # the prompt prefix changed when the cache missed (`llm_cache_miss` in the log: system, tools or
+    # an earlier message). Off by default: it sends hashes of the request structure, never its text.
+    llm_cache_diagnostics: bool = False
 
     # ---- Orchestrator budgets (per-turn ceilings, orchestrator/ceilings.py) ----
     # `orch_max_subagents` bounds fan-out breadth (how many independent-dimension skill lanes

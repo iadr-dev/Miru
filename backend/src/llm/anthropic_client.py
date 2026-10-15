@@ -383,7 +383,7 @@ def _update_message_state(
 class AnthropicClient:
     """The Anthropic `LLMClient` — default provider."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - one keyword per client option
         self,
         *,
         model_id: str,
@@ -391,6 +391,7 @@ class AnthropicClient:
         capabilities: ModelCapabilities | None = None,
         max_tokens: int = 4096,
         extended_thinking: bool | None = None,
+        cache_diagnostics: bool = False,
     ) -> None:
         self.provider_id = "anthropic"
         self.model_id = model_id
@@ -412,6 +413,34 @@ class AnthropicClient:
         self._max_tokens = max_tokens
         # SDK client construction is local — no network call.
         self._client = AsyncAnthropic(api_key=api_key)
+        self._cache_diagnostics = cache_diagnostics
+        # The previous response on this client, for Anthropic to compare the next request with.
+        self._previous_message_id: str | None = None
+
+    def _with_cache_diagnostics(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """`kwargs` asking Anthropic to explain a cache miss against this client's previous
+        request. Sent as `extra_body`: the field is generally available but the SDK only types it
+        on the beta endpoint."""
+        if self._cache_diagnostics:
+            kwargs["extra_body"] = {
+                "diagnostics": {"previous_message_id": self._previous_message_id}
+            }
+        return kwargs
+
+    def _note_cache_diagnostics(self, message_id: str, extra: dict[str, Any] | None) -> None:
+        """Remember `message_id` as the next request's comparison point and log why the cache
+        missed when Anthropic says so (the first point where the prompt prefix changed)."""
+        if not self._cache_diagnostics:
+            return
+        self._previous_message_id = message_id
+        reason = ((extra or {}).get("diagnostics") or {}).get("cache_miss_reason")
+        if reason:
+            logger.warning(
+                "llm_cache_miss",
+                model=self.model_id,
+                reason=reason.get("type"),
+                missed_input_tokens=reason.get("cache_missed_input_tokens"),
+            )
 
     async def chat(
         self,
@@ -434,6 +463,7 @@ class AnthropicClient:
         if self.capabilities.extended_thinking:
             kwargs["thinking"] = _thinking_param()
 
+        self._with_cache_diagnostics(kwargs)
         try:
             response = cast("AnthropicMessage", await self._client.messages.create(**kwargs))
         except Exception as exc:
@@ -443,6 +473,7 @@ class AnthropicClient:
             )
             raise
 
+        self._note_cache_diagnostics(response.id, response.model_extra)
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         for block in response.content:
@@ -506,7 +537,9 @@ class AnthropicClient:
         | WebSearchResultEvent
         | StreamDoneEvent
     ]:
-        kwargs = self._stream_kwargs(messages, tools, native_web_search=native_web_search)
+        kwargs = self._with_cache_diagnostics(
+            self._stream_kwargs(messages, tools, native_web_search=native_web_search)
+        )
 
         # Assembled per content-block index as Anthropic streams tool-call JSON input
         # incrementally via `input_json_delta` events keyed to the block's index.
@@ -516,6 +549,8 @@ class AnthropicClient:
 
         async with self._client.messages.stream(**kwargs) as stream:
             async for event in stream:
+                if event.type == "message_start":
+                    self._note_cache_diagnostics(event.message.id, event.message.model_extra)
                 content_event = _content_block_event(event, pending)
                 if content_event is not None:
                     yield content_event

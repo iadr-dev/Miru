@@ -29,6 +29,7 @@ from anthropic.types import Message as AnthropicMessage
 from anthropic.types.message_delta_usage import MessageDeltaUsage
 from anthropic.types.message_tokens_count import MessageTokensCount
 from anthropic.types.raw_message_delta_event import Delta as StopDelta
+from structlog.testing import capture_logs
 
 from llm.anthropic_client import AnthropicClient
 from llm.base import (
@@ -658,3 +659,97 @@ async def test_stream_raises_when_the_provider_declines(monkeypatch: pytest.Monk
 
     with pytest.raises(LLMRefusalError):
         [e async for e in client.stream([Message(role=MessageRole.USER, content="hi")])]
+
+
+def _diagnosed(reason: dict[str, Any] | None, *, message_id: str) -> AnthropicMessage:
+    extra: dict[str, Any] = {"diagnostics": {"cache_miss_reason": reason} if reason else None}
+    return AnthropicMessage(
+        id=message_id,
+        content=[TextBlock(type="text", text="ok", citations=None)],
+        model="claude-sonnet-5-5",
+        role="assistant",
+        stop_reason="end_turn",
+        stop_sequence=None,
+        type="message",
+        usage=Usage(input_tokens=5, output_tokens=3),
+        **extra,
+    )
+
+
+async def test_cache_diagnostics_is_off_unless_asked_for(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = AnthropicClient(model_id="claude-sonnet-5-5", api_key="test-key")
+    create_mock = AsyncMock(return_value=_diagnosed(None, message_id="msg_1"))
+    monkeypatch.setattr(client._client.messages, "create", create_mock)
+
+    await client.chat([Message(role=MessageRole.USER, content="hi")])
+
+    assert "extra_body" not in create_mock.call_args.kwargs
+
+
+async def test_cache_diagnostics_compares_each_request_with_the_previous_one_and_logs_a_miss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = AnthropicClient(
+        model_id="claude-sonnet-5-5", api_key="test-key", cache_diagnostics=True
+    )
+    miss = {"type": "system_changed", "cache_missed_input_tokens": 2609}
+    create_mock = AsyncMock(
+        side_effect=[_diagnosed(None, message_id="msg_1"), _diagnosed(miss, message_id="msg_2")]
+    )
+    monkeypatch.setattr(client._client.messages, "create", create_mock)
+
+    await client.chat([Message(role=MessageRole.USER, content="first")])
+    with capture_logs() as logs:
+        await client.chat([Message(role=MessageRole.USER, content="second")])
+
+    first, second = (call.kwargs["extra_body"] for call in create_mock.call_args_list)
+    assert first == {"diagnostics": {"previous_message_id": None}}
+    assert second == {"diagnostics": {"previous_message_id": "msg_1"}}
+    assert [(e["event"], e["reason"], e["missed_input_tokens"]) for e in logs] == [
+        ("llm_cache_miss", "system_changed", 2609)
+    ]
+
+
+async def test_a_request_that_kept_its_prefix_logs_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = AnthropicClient(
+        model_id="claude-sonnet-5-5", api_key="test-key", cache_diagnostics=True
+    )
+    monkeypatch.setattr(
+        client._client.messages, "create", AsyncMock(return_value=_diagnosed(None, message_id="m"))
+    )
+
+    with capture_logs() as logs:
+        await client.chat([Message(role=MessageRole.USER, content="hi")])
+
+    assert logs == []
+
+
+async def test_streaming_reads_the_diagnostics_from_the_message_start_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = AnthropicClient(
+        model_id="claude-sonnet-5-5", api_key="test-key", cache_diagnostics=True
+    )
+    miss = {"type": "tools_changed", "cache_missed_input_tokens": 900}
+    events: list[RawMessageStreamEvent] = [
+        RawMessageStartEvent(message=_diagnosed(miss, message_id="msg_s1"), type="message_start"),
+        RawMessageDeltaEvent(
+            delta=StopDelta(stop_reason="end_turn", stop_sequence=None),
+            usage=MessageDeltaUsage(output_tokens=1),
+            type="message_delta",
+        ),
+    ]
+    seen: dict[str, Any] = {}
+
+    def fake_stream(**kwargs: Any) -> _FakeMessageStream:
+        seen.update(kwargs)
+        return _FakeMessageStream(events)
+
+    monkeypatch.setattr(client._client.messages, "stream", fake_stream)
+
+    with capture_logs() as logs:
+        [e async for e in client.stream([Message(role=MessageRole.USER, content="hi")])]
+
+    assert seen["extra_body"] == {"diagnostics": {"previous_message_id": None}}
+    assert [e["reason"] for e in logs] == ["tools_changed"]
+    assert client._previous_message_id == "msg_s1"

@@ -139,6 +139,7 @@ def build_client(
             model_id=model_id,
             api_key=_require_api_key(provider_id, settings, api_key),
             max_tokens=settings.llm_max_output_tokens,
+            cache_diagnostics=settings.llm_cache_diagnostics,
         )
 
     if provider_id == "openai":

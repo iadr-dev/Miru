@@ -167,6 +167,15 @@ inside it, Anthropic leaves cache reads and writes out (a request that read 55,0
 way; the turn total, the usage page and the token chart show `prompt_tokens(...)`, which adds
 Anthropic's cache tokens back so "input" means every token the model read.
 
+**Cache diagnostics** (`LLM_CACHE_DIAGNOSTICS=true`, off by default). Each Anthropic request can carry
+`diagnostics.previous_message_id`; the response then says where the prompt prefix first differed from
+that request when the cache missed (`system_changed`, `tools_changed`, `messages_changed`,
+`model_changed`) and how many input tokens that cost. `AnthropicClient` chains each client's
+requests (so a tool loop's steps are compared with each other) and logs a miss as `llm_cache_miss`
+with the reason and the missed tokens. It is sent as `extra_body` on the stable endpoint; Anthropic
+stores only hashes of the request structure. Verified live: changing the system prompt between two
+calls logged `reason=system_changed missed_input_tokens=2609`.
+
 Haiku 4.5 does not cache a 2,500-token prompt (measured; it did at 4,500), so its real minimum is
 about 4,096 tokens, not the documented 1,024. Haiku 5.5 cached at 4,000 tokens.
 
