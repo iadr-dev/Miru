@@ -196,3 +196,28 @@ async def test_synthesis_conflicting_lanes_are_both_passed_to_the_model() -> Non
     joined = " ".join(m.content or "" for m in sent)
     assert "accumulating" in joined
     assert "distributing" in joined
+
+
+async def test_the_merge_call_reports_its_usage_with_the_model_that_ran_it() -> None:
+    """The merge call writes the answer the user reads. Its tokens used to be dropped, so a
+    fan-out turn showed only the lanes' model and under-counted tokens and cost."""
+    client = StubLLMClient(script=[make_text_response("Merged analytical context. Not advice.")])
+    seen = []
+
+    await Synthesizer(client=client).synthesize(
+        (_lane("chip-flow-review", text="外資買超"),), on_usage=seen.append
+    )
+
+    assert len(seen) == 1
+    assert (seen[0].provider, seen[0].model) == (client.provider_id, client.model_id)
+    assert seen[0].input_tokens > 0 or seen[0].output_tokens > 0
+
+
+async def test_a_failed_merge_call_reports_no_usage() -> None:
+    seen = []
+
+    await Synthesizer(client=_RaisingLLMClient()).synthesize(  # type: ignore[arg-type]
+        (_lane("chip-flow-review", text="外資買超"),), on_usage=seen.append
+    )
+
+    assert seen == []

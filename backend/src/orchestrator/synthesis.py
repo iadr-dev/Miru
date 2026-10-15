@@ -19,10 +19,12 @@ Handling:
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import structlog
 
 from agent import guardrails
-from llm.base import LLMClient, Message, MessageRole
+from llm.base import LLMClient, Message, MessageRole, TokenUsage
 from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role_with_override
 from orchestrator.models import LaneResult, SynthesisProvenance
 from skills.activity_labels import skill_activity_label
@@ -149,9 +151,13 @@ class Synthesizer:
         *,
         model_override: str | None = None,
         locale: str = _DEFAULT_LOCALE,
+        on_usage: Callable[[TokenUsage], None] | None = None,
     ) -> tuple[str, SynthesisProvenance]:
         """Merge `lanes`. Returns the final guardrail-checked text plus its provenance. Raises
-        `NoSuccessfulLanesError` if no lane produced usable content."""
+        `NoSuccessfulLanesError` if no lane produced usable content. `on_usage` receives the
+        merge call's token usage, stamped with the client that ran it: this call writes the answer
+        the user reads, so without it a fan-out turn's tokens, cost and model were missing the
+        pass that used the model they picked."""
         successful = [lane for lane in lanes if lane.succeeded]
         missing = [lane for lane in lanes if not lane.succeeded]
         if not successful:
@@ -172,6 +178,12 @@ class Synthesizer:
         prompt = self._build_prompt(successful, missing, locale=locale)
         try:
             response = await client.chat(prompt)
+            if on_usage is not None:
+                on_usage(
+                    response.usage.model_copy(
+                        update={"provider": client.provider_id, "model": client.model_id}
+                    )
+                )
             merged = response.text or ""
             if not merged.strip():
                 raise ValueError("empty synthesis response")
