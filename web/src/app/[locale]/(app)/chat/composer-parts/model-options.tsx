@@ -1,5 +1,7 @@
 "use client";
 
+import { shortModelName } from "@/lib/usage-format";
+
 /** A model catalog entry offered by the model-selector dropdown. */
 export type ModelOption = {
   id: string;
@@ -27,9 +29,7 @@ export const MODEL_CATEGORIES: ModelCategory[] = [
   {
     key: "anthropic",
     models: [
-      { id: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
       { id: "anthropic/claude-haiku-5-5", label: "Claude Haiku 5.5" },
-      { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" },
       { id: "anthropic/claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
       { id: "anthropic/claude-opus-4-6", label: "Claude Opus 4.6" },
@@ -129,5 +129,8 @@ export function modelOptionFor(modelOverride: string | null | undefined): ModelO
       return match;
     }
   }
-  return { id: modelOverride, label: modelOverride };
+  // Not in the catalog (a model picked before it was retired from the list): name it as the usage
+  // views do, rather than showing the raw id.
+  const [provider = "", ...rest] = modelOverride.split("/");
+  return { id: modelOverride, label: shortModelName(provider, rest.join("/") || provider) };
 }
