@@ -161,7 +161,34 @@ async function* streamSse(
     body: JSON.stringify(body),
     signal,
   });
+  yield* readSseFrames(response, errorContext);
+}
 
+/** `GET /threads/{id}/stream` — re-attach to the turn that is running on this thread after the
+ * connection that was carrying it dropped. The server replays every frame after `lastEventId`
+ * (the last `seq` this client applied) and then follows the turn live until it ends; with nothing
+ * running it replays what was recorded and closes. Mirrors `threads_actions.py::stream_thread`. */
+export async function* streamThreadResume(
+  threadId: string,
+  lastEventId: number,
+  signal: AbortSignal,
+): AsyncGenerator<AgentStreamFrame> {
+  const response = await fetchWithRefresh(
+    apiUrl(`/threads/${encodeURIComponent(threadId)}/stream`),
+    {
+      method: "GET",
+      credentials: "include",
+      headers: { accept: "text/event-stream", "last-event-id": String(lastEventId) },
+      signal,
+    },
+  );
+  yield* readSseFrames(response, "Resume turn");
+}
+
+async function* readSseFrames(
+  response: Response,
+  errorContext: string,
+): AsyncGenerator<AgentStreamFrame> {
   if (!response.ok || response.body === null) {
     throw new AgentStreamError(
       `${errorContext} failed (${response.status})`,

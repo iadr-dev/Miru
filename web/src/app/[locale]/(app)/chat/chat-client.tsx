@@ -26,8 +26,10 @@ import {
   streamAgentQuery,
   streamEditTurn,
   streamRegenerateTurn,
+  streamThreadResume,
 } from "@/lib/api/agent-stream";
 import { listSavedKeys } from "@/lib/api/settings";
+import { streamWithResume } from "@/lib/api/stream-resume";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
 import { FOLLOW_ACCOUNT_TONE } from "@/lib/personality";
 
@@ -177,7 +179,11 @@ export function ChatClient(): ReactNode {
       abortRef.current = controller;
       let resolvedThreadId = threadIdAtStart;
       try {
-        for await (const frame of open(controller.signal)) {
+        // A dropped connection re-attaches to the running turn instead of freezing the answer.
+        const frames = streamWithResume(open, streamThreadResume, controller.signal, {
+          threadIdAtStart,
+        });
+        for await (const frame of frames) {
           applyFrame(frame);
           if (frame.kind === "turn.start" && typeof frame.envelope.data.thread_id === "string") {
             resolvedThreadId = frame.envelope.data.thread_id;
