@@ -151,6 +151,9 @@ DATASETS: dict[Capability, _DatasetConfig] = {
         # own dedicated path instead, same `special_endpoint` mechanism
         # `chip_institutional.py`'s `taiwan_stock_trading_daily_report` already uses.
         special_endpoint="/taiwan_stock_tick_snapshot",
+        # Omitting `data_id` returns every stock in one call; only the 策略盯盤 intraday ingest
+        # job uses that form (`ingest/jobs/strategy_intraday.py`).
+        whole_market_ok=True,
     ),
     Capability.FUTOPT_TICK_INFO: _DatasetConfig(
         dataset="TaiwanFutOptTickInfo",

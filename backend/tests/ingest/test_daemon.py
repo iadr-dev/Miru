@@ -18,7 +18,7 @@ from analytics.screener.batch import job_screener_flags
 from analytics.strategy_watch.batch import job_strategy_watchlist
 from config.settings import Settings
 from ingest.context import IngestContext
-from ingest.daemon import SCHEDULED_JOBS, IngestDaemon, ScheduledIngestJob
+from ingest.daemon import SCHEDULED_JOBS, Cadence, IngestDaemon, ScheduledIngestJob
 from ingest.jobs import (
     ACTIVE_ETF_HOLDING_CHANGE_JOB,
     ACTIVE_ETF_HOLDING_JOB,
@@ -343,3 +343,36 @@ async def test_non_us_daily_job_still_uses_the_taipei_date(tmp_path: object) -> 
     await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 18, 0))
 
     assert spy.calls == [date_(2024, 1, 9)]
+
+
+def _intraday_daemon(tmp_path: object, spy: _SpyJob) -> IngestDaemon:
+    job = ScheduledIngestJob(
+        "strategy_intraday",
+        time_(9, 0),
+        spy,
+        Cadence.INTRADAY,
+        until=time_(13, 30),
+        every_minutes=10,
+    )
+    return IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=(job,))
+
+
+async def test_intraday_job_fires_once_per_ten_minute_slot_inside_the_session(
+    tmp_path: object,
+) -> None:
+    spy = _SpyJob("strategy_hits")
+    daemon = _intraday_daemon(tmp_path, spy)
+    fired = []
+    for hh, mm in ((8, 59), (9, 0), (9, 5), (9, 10), (9, 19), (13, 30), (13, 31)):
+        fired.append(bool(await daemon.run_due_jobs(now=_taipei(2024, 1, 2, hh, mm))))
+    # 08:59 before the window; 09:00 fires; 09:05 same slot; 09:10 and 13:30 are new slots;
+    # 09:19 is still the 09:10 slot; 13:31 is past the close.
+    assert fired == [False, True, False, True, False, True, False]
+    assert spy.calls == [date_(2024, 1, 2)] * 3
+
+
+async def test_intraday_job_does_not_fire_on_a_weekend(tmp_path: object) -> None:
+    spy = _SpyJob("strategy_hits")
+    daemon = _intraday_daemon(tmp_path, spy)
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 6, 10, 0)) == []  # a Saturday
+    assert spy.calls == []

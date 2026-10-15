@@ -313,9 +313,8 @@ is in [api-reference.md](../api-reference.md).
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an
-alert when every condition of a strategy the user subscribed to holds. Stage 1 is built; the
-intraday check and the alert kind follow (plan: intraday ingest job writing `strategy_hits`, alert
-kind `strategy_watch` evaluated from stored data).
+alert when every condition of a strategy the user subscribed to holds. Stages 1 and 2 are built; the
+alert kind `strategy_watch` (evaluated by the scheduler from `strategy_hits`) follows.
 
 **Stage 1, `job_strategy_watchlist` (08:00, `batch.py`).** Reads the last completed session from the
 store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:
@@ -335,6 +334,23 @@ store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:
   and 投信 streaks, 5-session 融資餘額 change, the newest 重大訊息 subject.
 - Thresholds are fixed constants chosen from common practice, not tuned to a backtest; no return or
   win-rate figure is shown to users (§7).
+
+**Stage 2, `strategy_intraday` (09:00–13:30 every 10 min, `ingest/jobs/strategy_intraday.py` +
+`intraday.py`).** One whole-market Sponsor snapshot per slot; each watchlist row gets a hit with
+every condition's observed and required value, appended to the day's `strategy_hits` partition
+(re-running a slot replaces it). Triggers per strategy:
+
+| Strategy | Triggers (all must hold) |
+|---|---|
+| `volatility_squeeze` | price > `upper_band` · 量比 ≥ 1.5 · price > `close_5d_ago` |
+| `oversold_bounce` | price > open (紅K) · 量比 ≤ 0.8 (量縮) · last session K < 20 |
+| `ad_divergence` | price < `low_20d` · RSI14 above `rsi_at_low` · A/D above its 20-day low |
+
+`all_met` = every trigger holds. `alertable` additionally needs the same pair `all_met` on the
+previous slot (`confirmed`) and every guard: not before 09:30, market median change > −1%, price at
+or above the day's average price (not for divergence), not within 1% of 漲停 (squeeze). Rows that are
+not alertable are the near-miss log: stored and shown, never sent. The snapshot must be dated today,
+otherwise the slot is skipped.
 
 ## 6. Tools & endpoints
 

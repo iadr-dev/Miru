@@ -126,7 +126,7 @@ that data layer first. **Ingested and ready for templates:** 融資融券 (`marg
 | 2 | Reads the ingested canonical store only; no live streams; sponsor values masked (not withheld) for non-entitled users |
 | 3 | Non-trading — observations, never signals |
 | 4 | Quota-bounded — over quota → skip + report, no retry loop |
-| 5 | Coarse, market-aware cadence — no tick polling |
+| 5 | Coarse, market-aware cadence — no tick polling. One amendment (策略盯盤, module 20 §5c): ingest takes one whole-market snapshot per 10-minute slot during the TW session (09:00–13:30) and writes `strategy_hits`; the scheduler still only reads that stored partition on `data.updated`, it never polls a source itself |
 | 6 | Open to all signed-in users under uniform fair-use caps; every run/fire is meant to be journaled with its owner (see §1 — not yet wired) |
 | 7 | Outbound delivery is user-authorized egress confined to `scheduler/delivery/*`: TLS only, env-only credentials, `check_output` + fail-closed before send (`backend/CLAUDE.md` §8) |
 

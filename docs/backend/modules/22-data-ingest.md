@@ -74,6 +74,8 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
   calendar (TW or US); **`WEEKLY`/`MONTHLY`** jobs are reference-data cadences, not trading-day
   gated, and fire when never run or last run >= 7 / 28 days ago. US daily jobs fire for the last
   *completed US session*, not the Taipei date.
+- **`Cadence.INTRADAY`** fires once per `every_minutes` slot from `fire_time` through `until` on a
+  trading day; the only job using it is `strategy_intraday`.
 - Whole-market FinMind pulls omit `data_id` (so they need a **>=Backer** token, §5).
   "Land" = DuckDB/Parquet.
 
@@ -81,6 +83,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 |---|---|---|---|
 | `stock_info` | 06:00 | daily | FinMind `TaiwanStockInfo` roster (industry classification) |
 | `strategy_watchlist` | 08:00 | daily | derived: 策略盯盤 pre-market watchlist with trigger levels (module 20) |
+| `strategy_intraday` | 09:00–13:30, every 10 min | intraday | 策略盯盤 check: one whole-market `taiwan_stock_tick_snapshot` (FinMind Sponsor) per slot vs the watchlist → `strategy_hits` (module 20) |
 | `shareholding_distribution` | 06:05 | weekly | 集保股權分散/分級 `TaiwanStockHoldingSharesPer` |
 | `price_eod` | 17:40 | daily | EOD OHLCV `TaiwanStockPrice` |
 | `margin_short` | 17:40 | daily | 融資融券 `TaiwanStockMarginPurchaseShortSale` |
