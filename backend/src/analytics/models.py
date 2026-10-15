@@ -102,6 +102,14 @@ class ObvResult(BaseModel):
     values: tuple[float, ...]
 
 
+class AccumulationDistributionResult(BaseModel):
+    """Chaikin accumulation/distribution line — cumulative from bar 0, so no `None` entries."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    values: tuple[float, ...]
+
+
 class VwapResult(BaseModel):
     """A same-day `turnover / volume` proxy (falling back to the typical price when turnover
     is absent) — not the textbook intraday-cumulative VWAP, which this EOD-only store cannot

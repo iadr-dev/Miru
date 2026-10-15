@@ -310,6 +310,32 @@ is in [api-reference.md](../api-reference.md).
   `GET /symbols/{symbol}/supply-chain`. All `public` and reachable anonymously (`optional_user`) —
   platform reference data, not user-scoped state. Layer 3 is not tier-gated.
 
+## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
+
+A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an
+alert when every condition of a strategy the user subscribed to holds. Stage 1 is built; the
+intraday check and the alert kind follow (plan: intraday ingest job writing `strategy_hits`, alert
+kind `strategy_watch` evaluated from stored data).
+
+**Stage 1, `job_strategy_watchlist` (08:00, `batch.py`).** Reads the last completed session from the
+store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:
+
+| Strategy | Setup on the last session (`strategies.py`) | Levels recorded for the intraday check |
+|---|---|---|
+| `volatility_squeeze` 波動率擠壓 | BB(20,2) bandwidth in the narrowest 5% of its last 120 sessions, close above MA60 and still below the upper band; skipped when breadth is risk-off | `upper_band`, `close_5d_ago` |
+| `oversold_bounce` 超跌反彈 | 10-session drop of at least 15% or a close under the lower band, with RSI14 < 30 | `lower_band`, `k` (KD 超賣), `drop_10d_pct` |
+| `ad_divergence` 量價背離 | close within 3% of the 20-day low and below its level 20 sessions ago, while the Chaikin A/D line (`indicators.accumulation_distribution`) is above its level 20 sessions ago | `low_20d`, `ad_value`, `ad_low_20d`, `rsi_at_low` |
+
+- Universe: scoreable TW symbols that traded on the last session, 20-day average volume at least
+  1,000 張. At most 30 per strategy, most liquid first.
+- Regime: breadth = share of the universe closing above MA20 (risk-on at least 60%, risk-off under 30%).
+- Exclusions (`context.excluded_symbols`): 處置股 in their period, 注意股 flagged on the last session,
+  除權息 from today through 3 trading days ahead.
+- Context columns (never conditions): industry and its 20-session sector-strength percentile, 外資
+  and 投信 streaks, 5-session 融資餘額 change, the newest 重大訊息 subject.
+- Thresholds are fixed constants chosen from common practice, not tuned to a backtest; no return or
+  win-rate figure is shown to users (§7).
+
 ## 6. Tools & endpoints
 
 **Registered tools:** `get_stock_score`, `get_score_leaderboard` (§2c); `get_trend_score` (§3);

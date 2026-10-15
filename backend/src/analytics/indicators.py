@@ -31,6 +31,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from analytics.models import (
+    AccumulationDistributionResult,
     AtrResult,
     BollingerResult,
     EmaResult,
@@ -301,6 +302,21 @@ def obv(bars: Sequence[PriceBar]) -> ObvResult:
     return ObvResult(values=tuple(values))
 
 
+def accumulation_distribution(bars: Sequence[PriceBar]) -> AccumulationDistributionResult:
+    """Chaikin A/D line: each bar adds `volume * ((close - low) - (high - close)) / (high - low)`,
+    the share of the day's range the close sits in, weighted by volume. Unlike OBV it credits a
+    close near the high even on a down day, which is what lets it diverge from price. A bar with
+    no range (high == low) adds nothing rather than dividing by zero."""
+    values: list[float] = []
+    running = 0.0
+    for bar in bars:
+        span = bar.high - bar.low
+        if span > 0:
+            running += bar.volume * ((bar.close - bar.low) - (bar.high - bar.close)) / span
+        values.append(running)
+    return AccumulationDistributionResult(values=tuple(values))
+
+
 def vwap(bars: Sequence[PriceBar]) -> VwapResult:
     """A same-day, per-bar `turnover / volume` proxy — **not** the textbook intraday
     cumulative VWAP (this EOD-only store has no intraday trade prints to accumulate over).
@@ -321,6 +337,7 @@ def vwap(bars: Sequence[PriceBar]) -> VwapResult:
 
 __all__ = [
     "PriceBar",
+    "accumulation_distribution",
     "atr",
     "bars_from_close",
     "bollinger",

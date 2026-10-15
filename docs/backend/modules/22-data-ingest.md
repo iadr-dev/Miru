@@ -80,6 +80,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 | Job (`SCHEDULED_JOBS` name) | Fires (Taipei) | Cadence | What it lands |
 |---|---|---|---|
 | `stock_info` | 06:00 | daily | FinMind `TaiwanStockInfo` roster (industry classification) |
+| `strategy_watchlist` | 08:00 | daily | derived: 策略盯盤 pre-market watchlist with trigger levels (module 20) |
 | `shareholding_distribution` | 06:05 | weekly | 集保股權分散/分級 `TaiwanStockHoldingSharesPer` |
 | `price_eod` | 17:40 | daily | EOD OHLCV `TaiwanStockPrice` |
 | `margin_short` | 17:40 | daily | 融資融券 `TaiwanStockMarginPurchaseShortSale` |
@@ -115,7 +116,7 @@ macro calendar, IPO, yfinance consensus).
 
 ### Derived-compute jobs (analytics — module 20; consume the store, don't hit FinMind)
 
-`screener_flags`, `scoring_batch`, `trend_score_batch` and the two theme seeds are the jobs in
+`screener_flags`, `strategy_watchlist`, `scoring_batch`, `trend_score_batch` and the two theme seeds are the jobs in
 `SCHEDULED_JOBS` that compute rather than pull. They are calendar- and leader-gated exactly like
 the pulls: a non-trading day is a journaled skip, a non-leader pass writes nothing, and a run that
 finds no upstream history writes a journaled empty result rather than an error, so stale or partial
@@ -123,6 +124,10 @@ data is never scored. Dependencies:
 
 - `screener_flags` <- `price_eod` + `institutional_flow` (writes only true `(symbol, tag)` rows to the
   `screener_flags` Parquet dataset).
+- `strategy_watchlist` <- the last session's `price_eod`, `institutional_flow`, `margin_short`,
+  `stock_info`, plus `attention_stocks`/`disposition_events`/`dividends`/`material_announcements`
+  for exclusions and context; writes one row per `(symbol, strategy)` dated the run morning. Skips
+  (journaled) instead of publishing when the last price session is more than 3 trading days old.
 - `scoring_batch` <- `price_eod`, `institutional_flow`, `financials`/`balance_sheet`/`cash_flow`,
   `market_value` (and the ETF datasets for ETF symbols); upserts the relational `stock_scores`
   cache for both horizon profiles in one pass.
