@@ -227,3 +227,39 @@ def test_a_turn_finishes_and_is_saved_when_its_client_disconnects_mid_answer(
             return await _turn_count(real_factory, user_id)
 
         assert client.portal.call(finish_and_wait) == 2  # the question and the saved answer
+
+
+def test_a_turn_nobody_is_watching_is_stopped_after_the_limit(settings: Settings) -> None:
+    """The model never answers, the client is gone, and the limit is short: the turn is cancelled
+    and lets go of everything it held, and no answer is saved."""
+    limited = settings.model_copy(update={"unattended_turn_limit_seconds": 0.3})
+    with build_test_client(limited, agent_answer="x") as client:
+        headers, user_id, real_factory, _tracking, orchestrator = _setup(client, limited)
+        state = client.app.state.app_state
+
+        async def wait_for_the_model() -> None:
+            await asyncio.wait_for(orchestrator.thinking.wait(), timeout=5)
+
+        assert client.portal is not None
+        client.portal.call(
+            lambda: collect_sse(
+                client.app,
+                "/api/v1/agent/query",
+                method="POST",
+                json_body={"message": "hello"},
+                until=lambda ls: "event: turn.start" in ls,
+                timeout_s=10,
+                on_started=wait_for_the_model,
+                headers=headers,
+            )
+        )
+
+        async def wait_for_cleanup() -> int:
+            for _ in range(250):
+                if not state.turn_registry._by_turn:
+                    break
+                await asyncio.sleep(0.02)
+            return await _turn_count(real_factory, user_id)
+
+        assert client.portal.call(wait_for_cleanup) == 1  # only the question
+        assert not state.turn_registry._by_turn

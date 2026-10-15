@@ -179,7 +179,7 @@ line. All narration text is governed like any other output (non-trading, no raw 
   has its events in the replay log.
 - **A turn outlives its connection.** When the client goes away mid-answer (a dropped network, a
   closed tab) the turn keeps running and saves its answer; only a cancel request, a shutdown, or the
-  15-minute limit for an unwatched turn stops it (`turn_driver._finish_when_done`). Before this the
+  limit for an unwatched turn stops it (`UNATTENDED_TURN_LIMIT_SECONDS`, 10 minutes by default; `turn_driver._finish_when_done`). Before this the
   turn was cancelled the moment its response closed, so there was nothing to re-attach to.
 - A reconnect resolves the turn to follow as: the one running on this worker, else the one another
   worker announced for the thread (`turn_control.find`, owner only), else the thread's latest saved

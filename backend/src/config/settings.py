@@ -220,6 +220,11 @@ class Settings(BaseSettings):
     # above) when they are all busy, so a burst waits instead of failing.
     redis_request_max_connections: int = 50
     rate_limit_key_prefix: str = "ratelimit"
+    # How long a chat turn may keep running after its client has gone (a dropped connection, a
+    # closed tab) so the answer is saved and can be re-attached. Longer than a normal answer, short
+    # enough that an abandoned turn cannot run (and spend tokens) indefinitely. Deep research is the
+    # longest turn we run.
+    unattended_turn_limit_seconds: float = 600.0
     # How many reverse proxies of our own sit in front of the API (each appends the address it saw
     # to `X-Forwarded-For`). 0 = exposed directly: the header is ignored, since any client could
     # forge it. The caller is the entry that many hops from the right of the header.

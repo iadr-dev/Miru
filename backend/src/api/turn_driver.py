@@ -254,8 +254,6 @@ async def run_and_stream(
 
 # Turns whose client left before the end, kept referenced until they finish.
 _DETACHED: set[asyncio.Task[None]] = set()
-# A turn nobody is watching is not allowed to run for ever.
-_DETACHED_TURN_LIMIT_SECONDS = 900.0
 
 
 async def _finish_when_done(
@@ -267,7 +265,9 @@ async def _finish_when_done(
     thread_id: str,
 ) -> None:
     try:
-        await asyncio.wait_for(asyncio.shield(runner), timeout=_DETACHED_TURN_LIMIT_SECONDS)
+        await asyncio.wait_for(
+            asyncio.shield(runner), timeout=state.settings.unattended_turn_limit_seconds
+        )
     except (TimeoutError, asyncio.CancelledError, Exception):
         logger.warning("detached_turn_stopped", turn_id=turn_id)
     await _finish_turn(state, event_bus, running, runner, turn_id, thread_id, cancel=True)
