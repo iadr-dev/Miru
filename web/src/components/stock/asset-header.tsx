@@ -67,6 +67,7 @@ export function AssetHeader({
   readonly symbolType?: SymbolType;
 }): ReactNode {
   const t = useTranslations("stock.assetHeader");
+  const tCommon = useTranslations("common");
   const locale = useLocale();
   const reduceMotion = useReducedMotion();
   const isEtf = isEtfSymbolType(symbolType);
@@ -218,7 +219,7 @@ export function AssetHeader({
           role="group"
           aria-label={
             changePct !== null
-              ? `${formatNumber(price, locale)} ${isUp ? "上漲" : "下跌"} ${Math.abs(changePct).toFixed(2)}%`
+              ? `${formatNumber(price, locale)} ${isUp ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(changePct).toFixed(2)}%`
               : formatNumber(price, locale)
           }
           className="flex items-baseline gap-2"

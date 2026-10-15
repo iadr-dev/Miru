@@ -261,6 +261,7 @@ function StripItemValue({
   readonly value: string;
   readonly changePct: number | null;
 }): ReactNode {
+  const tCommon = useTranslations("common");
   const locale = useLocale();
   const up = changePct !== null && changePct >= 0;
   const color = changePct === null ? "var(--text-muted)" : directionColor(changePct ?? 0);
@@ -269,7 +270,7 @@ function StripItemValue({
       role="group"
       aria-label={
         changePct !== null
-          ? `${value} ${up ? "上漲" : "下跌"} ${Math.abs(changePct).toFixed(2)}%`
+          ? `${value} ${up ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(changePct).toFixed(2)}%`
           : value
       }
       className="flex items-baseline gap-1.5"

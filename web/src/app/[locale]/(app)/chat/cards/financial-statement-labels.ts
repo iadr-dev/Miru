@@ -134,15 +134,18 @@ function humanizeCode(code: string): string {
 
 const PERCENT_OF_REVENUE_SUFFIX = "_per";
 
-/** Resolves one `financial_statement` `item` code to a Chinese label — strips a trailing `_per`
- * (FinMind's own "as % of revenue" marker) and appends the equivalent Chinese suffix, so
- * `CashAndCashEquivalents_per` reads as "現金及約當現金（占營收比）" rather than needing its own
- * separate dictionary entry per base code. */
-export function financialStatementItemLabel(code: string): string {
+/** Resolves one `financial_statement` `item` code to a label for `locale`. Chinese locales use the
+ * dictionary above; every other locale reads the code itself as words (FinMind's codes are English
+ * CamelCase, so "OperatingIncome" → "Operating Income"). A trailing `_per` (FinMind's "as % of
+ * revenue" marker) is stripped, the base looked up, and the equivalent suffix appended, so
+ * `CashAndCashEquivalents_per` needs no dictionary entry of its own. */
+export function financialStatementItemLabel(code: string, locale: string): string {
+  const chinese = locale.startsWith("zh");
+  const label = (c: string): string =>
+    (chinese ? FINANCIAL_STATEMENT_LABELS[c] : undefined) ?? humanizeCode(c);
   if (code.endsWith(PERCENT_OF_REVENUE_SUFFIX)) {
-    const base = code.slice(0, -PERCENT_OF_REVENUE_SUFFIX.length);
-    const baseLabel = FINANCIAL_STATEMENT_LABELS[base] ?? humanizeCode(base);
-    return `${baseLabel}（占營收比）`;
+    const base = label(code.slice(0, -PERCENT_OF_REVENUE_SUFFIX.length));
+    return chinese ? `${base}（占營收比）` : `${base} (% of revenue)`;
   }
-  return FINANCIAL_STATEMENT_LABELS[code] ?? humanizeCode(code);
+  return label(code);
 }

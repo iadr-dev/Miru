@@ -506,6 +506,7 @@ function ChangeStat({
   readonly changePct: number | null;
   readonly locale: string;
 }): ReactNode {
+  const tCommon = useTranslations("common");
   if (change === null || changePct === null) {
     return <Stat label={label} value="—" />;
   }
@@ -516,7 +517,7 @@ function ChangeStat({
       <p className="text-[11px] text-[var(--text-muted)]">{label}</p>
       <p
         role="group"
-        aria-label={`${label} ${isUp ? "上漲" : "下跌"} ${formatNumber(Math.abs(change), locale, { decimals: 2 })} (${Math.abs(changePct).toFixed(2)}%)`}
+        aria-label={`${label} ${isUp ? tCommon("direction.up") : tCommon("direction.down")} ${formatNumber(Math.abs(change), locale, { decimals: 2 })} (${Math.abs(changePct).toFixed(2)}%)`}
         className="font-num text-[15px] tabular-nums"
         style={{ color }}
       >

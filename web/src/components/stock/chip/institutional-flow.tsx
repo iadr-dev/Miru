@@ -167,7 +167,9 @@ export function InstitutionalFlowBody({
               // `flow` bars are the raw-shares bucket sums (`points[bucket]`) — /1000 + 張 suffix
               // inline, matching every other axis-tick formatter in this file that doesn't use
               // i18n for chart-axis labels either.
-              tickFormatter={(v: number) => `${formatCompactNumber(v / 1000, locale)}張`}
+              tickFormatter={(v: number) =>
+                t("lotUnit", { value: formatCompactNumber(v / 1000, locale) })
+              }
               width={48}
               stroke="var(--border)"
             />

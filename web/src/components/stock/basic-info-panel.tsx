@@ -338,6 +338,7 @@ function InsiderTransferList({
   readonly rows: readonly InsiderTransferDeclarationRow[];
 }): ReactNode {
   const t = useTranslations("stock.basicInfo");
+  const locale = useLocale();
   return (
     <ul className="divide-y divide-[var(--border)]">
       {rows.map((r) => (
@@ -348,7 +349,7 @@ function InsiderTransferList({
               <span className="ml-1.5 text-[11px] text-[var(--text-muted)]">{r.filer_role}</span>
             </span>
             <span className="font-num text-[13px] text-[var(--text)] tabular-nums">
-              {r.transfer_shares.toLocaleString()}
+              {formatNumber(r.transfer_shares, locale)}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-muted)]">

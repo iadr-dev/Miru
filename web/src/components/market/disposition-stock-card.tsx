@@ -47,6 +47,7 @@ export function DispositionStockCard({
 }): ReactNode {
   const locale = useLocale();
   const t = useTranslations("market.cards.dispositionBoard");
+  const tCommon = useTranslations("common");
   const changeUp = card.change_pct !== null && card.change_pct >= 0;
   const changeColor = card.change_pct !== null ? directionColor(card.change_pct ?? 0) : null;
   const activeFlags = new Set(card.flags);
@@ -101,7 +102,7 @@ export function DispositionStockCard({
           </p>
           <div className="mt-0.5 flex flex-wrap items-center gap-1">
             <span className="inline-block rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-1.5 py-0.5 text-[10.5px] text-[var(--text-muted)]">
-              {card.security_type === "twse" ? "上市" : "上櫃"}
+              {card.security_type === "twse" ? t("listed") : t("otc")}
             </span>
             {card.matching_interval_minutes !== null ? (
               <span className="inline-block rounded-[var(--radius-pill)] bg-[var(--chart-1)]/15 px-1.5 py-0.5 text-[10.5px] text-[var(--chart-1)]">
@@ -129,7 +130,7 @@ export function DispositionStockCard({
         {card.change_pct !== null ? (
           <span
             role="group"
-            aria-label={`${changeUp ? "上漲" : "下跌"} ${Math.abs(card.change_pct).toFixed(2)}%`}
+            aria-label={`${changeUp ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(card.change_pct).toFixed(2)}%`}
             className="font-num text-[13px] tabular-nums"
             style={{ color: changeColor ?? undefined }}
           >
@@ -164,7 +165,11 @@ export function DispositionStockCard({
         />
         <StatRow
           label={t("turnover")}
-          value={card.turnover !== null ? `${formatCompactNumber(card.turnover, locale)}元` : "—"}
+          value={
+            card.turnover !== null
+              ? t("twdAmount", { value: formatCompactNumber(card.turnover, locale) })
+              : "—"
+          }
         />
         <StatRow
           label={t("institutionalNet")}

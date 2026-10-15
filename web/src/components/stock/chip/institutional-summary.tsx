@@ -237,7 +237,9 @@ export function InstitutionalSummaryBody({
               <YAxis
                 tick={{ fill: "var(--text-muted)", fontSize: 11 }}
                 // `points`/`net` is already converted to 張 above — just the inline suffix here.
-                tickFormatter={(v: number) => `${formatCompactNumber(v, locale)}張`}
+                tickFormatter={(v: number) =>
+                  t("lotUnit", { value: formatCompactNumber(v, locale) })
+                }
                 width={48}
                 stroke="var(--border)"
               />
