@@ -195,7 +195,7 @@ class MemoryRecallPreLLMHook:
         self._injected = True
         if not block:
             return messages
-        memory_message = Message(role=MessageRole.SYSTEM, content=block)
+        memory_message = Message(role=MessageRole.SYSTEM, content=block, per_turn=True)
         if messages and messages[0].role is MessageRole.SYSTEM:
             return [messages[0], memory_message, *messages[1:]]
         return [memory_message, *messages]
