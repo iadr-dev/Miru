@@ -12,6 +12,7 @@ import { RankingsCard } from "@/components/market/rankings-card";
 import { TwRankingsCard } from "@/components/market/tw-rankings-card";
 import { QueryState } from "@/components/ui/query-state";
 import { getAdvanceDecline, getIndexContribution, getScoreLeaderboard } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { LeaderboardDirection } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
@@ -35,17 +36,17 @@ export function DailyFocusPanel({ market }: { readonly market: Market }): ReactN
   const isUs = market === "US";
 
   const leaderboardQuery = useQuery({
-    queryKey: ["score_leaderboard", market, leaderboardDirection, "stock"],
+    queryKey: queryKeys.marketRead("score_leaderboard", market, leaderboardDirection, "stock"),
     queryFn: () => getScoreLeaderboard(market, leaderboardDirection, "swing", 50, "stock"),
   });
 
   const breadthQuery = useQuery({
-    queryKey: ["advance_decline", market],
+    queryKey: queryKeys.marketRead("advance_decline", market),
     queryFn: () => getAdvanceDecline(market),
   });
 
   const indexContributionQuery = useQuery({
-    queryKey: ["index_contribution", market],
+    queryKey: queryKeys.marketRead("index_contribution", market),
     queryFn: () => getIndexContribution(market),
     enabled: !isUs,
   });

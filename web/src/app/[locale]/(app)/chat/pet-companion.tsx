@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { PetAvatar } from "@/components/pets/pet-avatar";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getActivePet, getPetProgress, getPetSettings, listPetCatalog } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { FRESHNESS } from "@/lib/freshness";
@@ -26,11 +27,17 @@ export function PetCompanion({
 }): ReactNode {
   const t = useTranslations("chat.pet");
   const locale = useLocale();
-  const active = useQuery({ queryKey: ["settings", "pet-active"], queryFn: getActivePet });
-  const progress = useQuery({ queryKey: ["settings", "pet-progress"], queryFn: getPetProgress });
-  const settings = useQuery({ queryKey: ["settings", "pet-settings"], queryFn: getPetSettings });
+  const active = useQuery({ queryKey: queryKeys.settings("pet-active"), queryFn: getActivePet });
+  const progress = useQuery({
+    queryKey: queryKeys.settings("pet-progress"),
+    queryFn: getPetProgress,
+  });
+  const settings = useQuery({
+    queryKey: queryKeys.settings("pet-settings"),
+    queryFn: getPetSettings,
+  });
   const catalog = useQuery({
-    queryKey: ["settings", "pet-catalog"],
+    queryKey: queryKeys.settings("pet-catalog"),
     queryFn: listPetCatalog,
     staleTime: FRESHNESS.static,
   });

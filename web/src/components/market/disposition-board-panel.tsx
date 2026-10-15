@@ -8,6 +8,7 @@ import { DispositionStockCard } from "@/components/market/disposition-stock-card
 import { QueryState } from "@/components/ui/query-state";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { getDispositionBoard } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import {
   DISPOSITION_BUCKETS,
@@ -29,7 +30,7 @@ export function DispositionBoardPanel({ market }: { readonly market: Market }): 
   const [search, setSearch] = useState("");
 
   const query = useQuery({
-    queryKey: ["disposition_board", market],
+    queryKey: queryKeys.marketRead("disposition_board", market),
     queryFn: () => getDispositionBoard(market),
   });
 

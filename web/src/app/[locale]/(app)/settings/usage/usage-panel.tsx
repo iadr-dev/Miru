@@ -7,6 +7,7 @@ import { LlmUsageCard } from "@/app/[locale]/(app)/settings/usage/llm-usage-card
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getTodayUsage, getUsageQuota } from "@/lib/api/settings";
 import { featureLabel } from "@/lib/feature-labels";
 
@@ -16,8 +17,8 @@ export function UsagePanel(): ReactNode {
   const t = useTranslations("settings.usage");
   const tc = useTranslations("settings.common");
 
-  const query = useQuery({ queryKey: ["settings", "usage-quota"], queryFn: getUsageQuota });
-  const today = useQuery({ queryKey: ["settings", "usage-today"], queryFn: getTodayUsage });
+  const query = useQuery({ queryKey: queryKeys.settings("usage-quota"), queryFn: getUsageQuota });
+  const today = useQuery({ queryKey: queryKeys.settings("usage-today"), queryFn: getTodayUsage });
 
   if (query.isLoading) {
     return (

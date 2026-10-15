@@ -24,6 +24,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
 import { usePriceHistory } from "@/hooks/use-stock-data";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   getSecuritiesLending,
   getStockDayTrading,
@@ -199,12 +200,12 @@ export function MarginShortBody({
   const t = useTranslations("stock.chipAnalysis");
   const locale = useLocale();
   const marginShortQuery = useQuery({
-    queryKey: ["stock_margin_short", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_margin_short", symbol, market),
     queryFn: () => getStockMarginShort(symbol, market),
     enabled: view !== "dayTrading" && view !== "lending",
   });
   const dayTradingQuery = useQuery({
-    queryKey: ["stock_day_trading", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_day_trading", symbol, market),
     queryFn: () => getStockDayTrading(symbol, market),
     enabled: view === "dayTrading",
   });
@@ -416,7 +417,7 @@ function SecuritiesLendingBody({
   const t = useTranslations("stock.chipAnalysis");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["securities_lending", symbol, market],
+    queryKey: queryKeys.symbolRead("securities_lending", symbol, market),
     queryFn: () => getSecuritiesLending(symbol, market),
   });
 

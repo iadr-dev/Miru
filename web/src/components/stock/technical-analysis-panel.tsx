@@ -19,6 +19,7 @@ import {
   TimeframeToggle,
 } from "@/components/stock/technical/toggles";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
 import type { Market } from "@/types/settings";
 import type { EodBar } from "@/types/stock/technical";
@@ -70,7 +71,7 @@ export function TechnicalAnalysisPanel({
   const endDate = useMemo(() => today.toISOString().slice(0, 10), [today]);
 
   const query = useQuery({
-    queryKey: ["technical_indicators", symbol, market, startDate, endDate],
+    queryKey: queryKeys.symbolRead("technical_indicators", symbol, market, startDate, endDate),
     queryFn: () => getTechnicalIndicators(symbol, market, { startDate, endDate }),
   });
 

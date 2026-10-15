@@ -19,6 +19,7 @@ import {
   getMarginMaintenance,
   getMarginShortBalance,
 } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { HolderThreshold, HolderWindow } from "@/types/market/rankings";
 import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
@@ -60,28 +61,38 @@ export function ChipDataPanel({ market }: { readonly market: Market }): ReactNod
   const marginWindow = oneYearWindow();
 
   const institutionalQuery = useQuery({
-    queryKey: ["institutional_flow_total_market", market, flowWindow.startDate, flowWindow.endDate],
+    queryKey: queryKeys.marketRead(
+      "institutional_flow_total_market",
+      market,
+      flowWindow.startDate,
+      flowWindow.endDate,
+    ),
     queryFn: () => getInstitutionalRanking(market, flowWindow),
   });
 
   const marginQuery = useQuery({
-    queryKey: ["margin_maintenance_ratio", market, marginWindow.startDate, marginWindow.endDate],
+    queryKey: queryKeys.marketRead(
+      "margin_maintenance_ratio",
+      market,
+      marginWindow.startDate,
+      marginWindow.endDate,
+    ),
     queryFn: () => getMarginMaintenance(market, marginWindow),
   });
 
   const marginShortBalanceQuery = useQuery({
-    queryKey: ["margin_short_total_market", market],
+    queryKey: queryKeys.marketRead("margin_short_total_market", market),
     queryFn: () => getMarginShortBalance(market),
   });
 
   const holderAccumulationQuery = useQuery({
-    queryKey: ["holder_accumulation", market, holderThreshold, holderWindow],
+    queryKey: queryKeys.marketRead("holder_accumulation", market, holderThreshold, holderWindow),
     queryFn: () =>
       getHolderAccumulation(market, holderThreshold, holderWindow, undefined, MAX_TOP_N),
   });
 
   const industryFlowQuery = useQuery({
-    queryKey: ["industry_money_flow", market],
+    queryKey: queryKeys.marketRead("industry_money_flow", market),
     queryFn: () => getIndustryFlow(market),
   });
 

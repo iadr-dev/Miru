@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { SavedToast, SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { fetchMe } from "@/lib/api/account";
+import { queryKeys } from "@/lib/api/query-keys";
 import { listPersonalityPresets, updateProfile } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 
@@ -20,10 +21,10 @@ export function PersonalityPanel(): ReactNode {
   const [saved, setSaved] = useState(false);
 
   const presetsQuery = useQuery({
-    queryKey: ["settings", "personality-presets"],
+    queryKey: queryKeys.settings("personality-presets"),
     queryFn: listPersonalityPresets,
   });
-  const meQuery = useQuery({ queryKey: ["me"], queryFn: ({ signal }) => fetchMe(signal) });
+  const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: ({ signal }) => fetchMe(signal) });
 
   const mutation = useMutation({
     mutationFn: (personality_id: string) => updateProfile({ personality_id }),

@@ -10,6 +10,7 @@ import {
   getTaiexVix,
   getTickSnapshot,
 } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
 import type { MarketIndexStripItem } from "@/types/market/quotes";
@@ -45,19 +46,19 @@ export function MarketIndexStrip(): ReactNode {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const publicQuery = useQuery({
-    queryKey: ["market_index_strip"],
+    queryKey: queryKeys.read("market_index_strip"),
     queryFn: () => getMarketIndexStrip(),
   });
   const sectorQuery = useQuery({
-    queryKey: ["tick_snapshot", SEMICONDUCTOR_INDEX_CODE],
+    queryKey: queryKeys.read("tick_snapshot", SEMICONDUCTOR_INDEX_CODE),
     queryFn: () => getTickSnapshot(SEMICONDUCTOR_INDEX_CODE),
   });
   const futuresQuery = useQuery({
-    queryKey: ["futures_snapshot", TAIEX_FUTURES_CODE],
+    queryKey: queryKeys.read("futures_snapshot", TAIEX_FUTURES_CODE),
     queryFn: () => getFuturesSnapshot(TAIEX_FUTURES_CODE),
   });
   const vixQuery = useQuery({
-    queryKey: ["taiex_vix"],
+    queryKey: queryKeys.read("taiex_vix"),
     queryFn: () => getTaiexVix(),
   });
 

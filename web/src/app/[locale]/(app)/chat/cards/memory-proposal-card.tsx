@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   createMemory,
   getMemorySettings,
@@ -17,7 +18,7 @@ import { FRESHNESS } from "@/lib/freshness";
 import { contentFromText, keyFromText } from "@/lib/memory";
 import { findExistingMemory, parseMemoryProposal } from "@/lib/memory-proposal";
 
-const MEMORY_KEY = ["settings", "memory"] as const;
+const MEMORY_KEY = queryKeys.settings("memory");
 
 /**
  * The `memory_proposal` card: the agent's `propose_memory` tool (backend/src/tools/
@@ -36,14 +37,14 @@ export function MemoryProposalCard({ data }: { data: Record<string, unknown> }):
   const proposal = parseMemoryProposal(data);
 
   const settings = useQuery({
-    queryKey: ["settings", "memory-settings"],
+    queryKey: queryKeys.settings("memory-settings"),
     queryFn: getMemorySettings,
     enabled: proposal !== null,
     staleTime: FRESHNESS.standard,
     retry: false,
   });
   const memories = useQuery({
-    queryKey: [...MEMORY_KEY, "all", ""],
+    queryKey: queryKeys.settings("memory", "all", ""),
     queryFn: () => listMemories(),
     enabled: proposal !== null,
     staleTime: FRESHNESS.standard,

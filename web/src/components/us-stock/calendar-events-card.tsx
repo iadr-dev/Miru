@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getCalendarEventsFeed } from "@/lib/api/stock-detail";
 import type { Market } from "@/types/settings";
 import type { EarningsCalendarRow } from "@/types/stock/events";
@@ -36,7 +37,7 @@ export function UsMarketCalendarCard({
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() + 1 });
 
   const query = useQuery({
-    queryKey: ["calendar_events_feed", market],
+    queryKey: queryKeys.marketRead("calendar_events_feed", market),
     queryFn: () => getCalendarEventsFeed(market),
   });
 

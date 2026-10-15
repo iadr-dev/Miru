@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { Select } from "@/components/settings/form-controls";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   deleteWatchlist,
   moveWatchlistItem,
@@ -42,11 +43,11 @@ function useApply(onDone: () => void): {
     setFailed(false);
     try {
       await action();
-      await queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.watchlists });
       onDone();
     } catch {
       setFailed(true);
-      await queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.watchlists });
     } finally {
       setPending(false);
     }

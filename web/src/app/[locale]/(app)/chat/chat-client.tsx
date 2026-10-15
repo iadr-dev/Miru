@@ -28,6 +28,7 @@ import {
   streamRegenerateTurn,
   streamThreadResume,
 } from "@/lib/api/agent-stream";
+import { queryKeys } from "@/lib/api/query-keys";
 import { listSavedKeys } from "@/lib/api/settings";
 import { streamWithResume } from "@/lib/api/stream-resume";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
@@ -105,7 +106,7 @@ export function ChatClient(): ReactNode {
   // One-shot "Deep research" (Pro): a cited multi-step research run instead of a normal reply.
   // Each run spends one of the day's reports, so it resets after every send rather than sticking.
   const [deepResearchEnabled, setDeepResearchEnabled] = useState(false);
-  const meQuery = useQuery({ queryKey: ["me"], queryFn: ({ signal }) => fetchMe(signal) });
+  const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: ({ signal }) => fetchMe(signal) });
   const canDeepResearch = meQuery.data?.entitlements.features.includes("deep_research") ?? false;
   const { activeTurn, begin, applyFrame, fail, clear } = useTurnStore();
   const abortRef = useRef<AbortController | null>(null);
@@ -116,7 +117,7 @@ export function ChatClient(): ReactNode {
   }, [urlThreadId]);
 
   const threadQuery = useQuery({
-    queryKey: ["thread", threadId],
+    queryKey: queryKeys.thread(threadId),
     queryFn: ({ signal }) => getThread(threadId as string, signal),
     enabled: threadId !== null,
   });
@@ -131,7 +132,7 @@ export function ChatClient(): ReactNode {
       try {
         const current = await getThread(targetThreadId);
         await patchThread(targetThreadId, { model_override: modelId }, current.version);
-        await queryClient.invalidateQueries({ queryKey: ["thread", targetThreadId] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.thread(targetThreadId) });
       } catch {
         // Swallow — see function docstring above.
       }
@@ -143,8 +144,8 @@ export function ChatClient(): ReactNode {
   // Refresh the pet's level/pulls after a turn and say what it earned, then let the note fade.
   const announcePet = useCallback(
     (leveledTo: number | null, pullsEarned: number): void => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-active"] });
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-progress"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pet-active") });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pet-progress") });
       if (leveledTo === null && pullsEarned === 0) {
         return;
       }
@@ -159,7 +160,7 @@ export function ChatClient(): ReactNode {
       try {
         const current = await getThread(targetThreadId);
         await patchThread(targetThreadId, { personality_override: presetId }, current.version);
-        await queryClient.invalidateQueries({ queryKey: ["thread", targetThreadId] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.thread(targetThreadId) });
       } catch {
         // Swallow - the pick is a convenience; the next one retries the same PATCH.
       }
@@ -254,9 +255,9 @@ export function ChatClient(): ReactNode {
       announcePet(finishedTurn?.petLeveledTo ?? null, finishedTurn?.petPullsEarned ?? 0);
 
       // Reconcile with persisted history, then drop the live overlay once it lands.
-      await queryClient.invalidateQueries({ queryKey: ["threads"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.threads });
       if (resolvedThreadId !== null) {
-        await queryClient.invalidateQueries({ queryKey: ["thread", resolvedThreadId] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.thread(resolvedThreadId) });
       }
       clear();
       return answerText;
@@ -405,7 +406,7 @@ export function ChatClient(): ReactNode {
 
   // With their own keys saved, a caller can only run those providers' models (the turn runs on
   // their key). If the current/default model belongs to another provider, move to one they can use.
-  const keysQuery = useQuery({ queryKey: ["byok-keys"], queryFn: listSavedKeys });
+  const keysQuery = useQuery({ queryKey: queryKeys.byokKeys, queryFn: listSavedKeys });
   const byokProviders =
     keysQuery.data !== undefined && keysQuery.data.length > 0
       ? keysQuery.data.map((k) => k.provider)

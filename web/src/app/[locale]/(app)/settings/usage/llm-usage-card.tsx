@@ -15,6 +15,7 @@ import {
 import { SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { ProviderBadge } from "@/components/usage/provider-badge";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getLlmUsage } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { providerStyle } from "@/lib/provider-style";
@@ -47,7 +48,7 @@ export function LlmUsageCard(): ReactNode {
   const tc = useTranslations("settings.common");
   const [days, setDays] = useState<Range>(30);
   const query = useQuery({
-    queryKey: ["settings", "llm-usage", days],
+    queryKey: queryKeys.settings("llm-usage", days),
     queryFn: () => getLlmUsage(days),
   });
 

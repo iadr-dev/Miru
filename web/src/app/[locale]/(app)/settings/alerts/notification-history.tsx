@@ -9,6 +9,7 @@ import { toNotificationView } from "@/components/shell/notification-payload";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { listNotifications, markNotificationsRead } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { parseServerDate } from "@/lib/parse-server-date";
@@ -33,8 +34,8 @@ export function NotificationHistory(): ReactNode {
     mutationFn: markNotificationsRead,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: HISTORY_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["notifications", "badge"] });
-      void queryClient.invalidateQueries({ queryKey: ["notifications", "list"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.read("notifications", "badge") });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.read("notifications", "list") });
     },
   });
 

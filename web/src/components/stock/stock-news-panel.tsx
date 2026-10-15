@@ -8,6 +8,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { NewsSourceLogo } from "@/components/ui/news-source-logo";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getSymbolInfo } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getFinmindStockNews, getPttStockSearch } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -100,7 +101,7 @@ function StockNewsList({
   const [expanded, setExpanded] = useState(false);
   const days = useMemo(() => lastNDaysIso(NEWS_LOOKBACK_DAYS), []);
   const query = useQuery({
-    queryKey: ["stock_finmind_news", symbol, market, days],
+    queryKey: queryKeys.symbolRead("stock_finmind_news", symbol, market, days),
     queryFn: async () => {
       const perDay = await Promise.all(
         days.map((day) => getFinmindStockNews(symbol, market, { startDate: day })),
@@ -204,7 +205,7 @@ function StockPttList({
   const [sort, setSort] = useState<PttSort>("latest");
 
   const symbolInfoQuery = useQuery({
-    queryKey: ["symbol_info", symbol, market],
+    queryKey: queryKeys.symbolRead("symbol_info", symbol, market),
     queryFn: () => getSymbolInfo([symbol], market),
   });
   const companyName = symbolInfoQuery.data?.rows[0]?.name;
@@ -213,7 +214,7 @@ function StockPttList({
   // text, not just its title, across Stock/Tech_Job/Warrant. `enabled` gates on `companyName`
   // resolving first, since the backend route requires it (no server-side name lookup there).
   const searchQuery = useQuery({
-    queryKey: ["ptt_stock_search", symbol, companyName, PTT_LOOKBACK_DAYS],
+    queryKey: queryKeys.read("ptt_stock_search", symbol, companyName, PTT_LOOKBACK_DAYS),
     queryFn: () => getPttStockSearch(symbol, companyName ?? symbol, PTT_LOOKBACK_DAYS),
     enabled: Boolean(companyName),
   });

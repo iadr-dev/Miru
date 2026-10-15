@@ -16,6 +16,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useNewThreadStore } from "@/components/shell/new-thread-store";
 import { useTypewriterOnce } from "@/hooks/use-typewriter-once";
 import { useRouter } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { deleteThread, deleteThreads, listThreads, patchThread } from "@/lib/api/threads";
 import { cn } from "@/lib/cn";
 import type { Thread } from "@/types/conversation";
@@ -35,7 +36,10 @@ export function RecentsList(): ReactNode {
   const router = useRouter();
   const activeThreadId = useSearchParams().get("thread");
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["threads"], queryFn: ({ signal }) => listThreads(signal) });
+  const query = useQuery({
+    queryKey: queryKeys.threads,
+    queryFn: ({ signal }) => listThreads(signal),
+  });
   const newThread = useNewThreadStore();
   // Multi-select ("Select" mode) is a separate mode from normal browsing, not a per-row toggle
   // always available — entering it hides every row's own star/rename/delete menu (those verbs
@@ -54,7 +58,7 @@ export function RecentsList(): ReactNode {
   };
 
   const invalidate = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ["threads"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.threads });
   };
 
   const toggleSelected = (threadId: string): void => {

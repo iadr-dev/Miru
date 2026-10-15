@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { DividendCalendarTable } from "@/components/market/dividend-calendar-table";
 import { QueryState } from "@/components/ui/query-state";
 import { getDividendCalendar } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { Market } from "@/types/settings";
 
 const DECEMBER = 12;
@@ -25,7 +26,7 @@ export function DividendCalendarPanel({ market }: { readonly market: Market }): 
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() + 1 });
 
   const query = useQuery({
-    queryKey: ["dividend_calendar", market, cursor.year, cursor.month],
+    queryKey: queryKeys.marketRead("dividend_calendar", market, cursor.year, cursor.month),
     queryFn: () => getDividendCalendar(market, cursor.year, cursor.month),
   });
 

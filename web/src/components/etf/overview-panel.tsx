@@ -23,6 +23,7 @@ import {
   getEtfTrailingReturns,
   getFundTotalReturn,
 } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
@@ -71,7 +72,7 @@ function TrailingReturnsCard({
   const t = useTranslations("etf.trailingReturns");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["etf_trailing_returns", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_trailing_returns", symbol, market),
     queryFn: () => getEtfTrailingReturns(symbol, market),
   });
 
@@ -157,7 +158,7 @@ function useYtdReturn(
     (Date.now() - new Date(new Date().getFullYear(), 0, 1).getTime()) / (24 * 60 * 60 * 1000) + 1,
   );
   const query = useQuery({
-    queryKey: ["fund_total_return_ytd", symbol, market, lookbackDays],
+    queryKey: queryKeys.symbolRead("fund_total_return_ytd", symbol, market, lookbackDays),
     queryFn: () => getFundTotalReturn(symbol, market, lookbackDays),
   });
   const row = query.data?.rows[0];
@@ -180,15 +181,15 @@ export function OverviewPanel({
   const t = useTranslations("etf.overview");
   const locale = useLocale();
   const fundInfoQuery = useQuery({
-    queryKey: ["etf_fund_info", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_fund_info", symbol, market),
     queryFn: () => getEtfFundInfo(symbol, market),
   });
   const expenseQuery = useQuery({
-    queryKey: ["etf_expense_ratio", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_expense_ratio", symbol, market),
     queryFn: () => getEtfExpenseRatio(symbol, market),
   });
   const themeTagsQuery = useQuery({
-    queryKey: ["etf_theme_tags", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_theme_tags", symbol, market),
     queryFn: () => getEtfThemeTags(symbol, market),
   });
   const info = fundInfoQuery.data?.info;

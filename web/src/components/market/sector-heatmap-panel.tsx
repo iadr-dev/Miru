@@ -18,6 +18,7 @@ import {
   getSectorRotationRrg,
   getStockHeatmap,
 } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import {
   SECTOR_HEATMAP_PERIODS,
@@ -87,19 +88,19 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
   const [stockHeatmapExpanded, setStockHeatmapExpanded] = useState(false);
 
   const heatmapQuery = useQuery({
-    queryKey: ["sector_heatmap", market, period, sizeBy],
+    queryKey: queryKeys.marketRead("sector_heatmap", market, period, sizeBy),
     queryFn: () => getSectorHeatmap(market, undefined, period, sizeBy),
     enabled: view === "heatmap",
   });
 
   const stockHeatmapQuery = useQuery({
-    queryKey: ["stock_heatmap", market, period, sizeBy],
+    queryKey: queryKeys.marketRead("stock_heatmap", market, period, sizeBy),
     queryFn: () => getStockHeatmap(market, undefined, period, sizeBy),
     enabled: view === "stock",
   });
 
   const rotationRrgQuery = useQuery({
-    queryKey: ["sector_rotation_rrg", market],
+    queryKey: queryKeys.marketRead("sector_rotation_rrg", market),
     queryFn: () => getSectorRotationRrg(market),
     // No RRG for US at all (see `US_SECTOR_VIEWS`'s own comment) — never fires for market="US"
     // even if `view` somehow held "rotation" from a stale prior TW selection.
@@ -107,7 +108,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
   });
 
   const constituentsQuery = useQuery({
-    queryKey: ["sector_constituents", market, selected],
+    queryKey: queryKeys.marketRead("sector_constituents", market, selected),
     queryFn: () => getSectorConstituents(market, selected ?? undefined),
     enabled: selected !== null,
   });

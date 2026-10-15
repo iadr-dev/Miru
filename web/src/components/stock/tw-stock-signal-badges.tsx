@@ -9,6 +9,7 @@ import {
   getTagScreenerForSymbols,
   getTwMarketRankings,
 } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { DispositionBucket } from "@/types/market/disclosures";
 import type { Market } from "@/types/settings";
 
@@ -56,7 +57,7 @@ export function TwStockSignalBadges({
   const isTw = market === "TW";
 
   const streakQuery = useQuery({
-    queryKey: ["tw_market_rankings", "foreign_streak", symbol],
+    queryKey: queryKeys.read("tw_market_rankings", "foreign_streak", symbol),
     queryFn: () => getTwMarketRankings("foreign_streak", 50, symbol),
     enabled: isTw,
   });
@@ -66,14 +67,14 @@ export function TwStockSignalBadges({
   // board` is NOT reused here (that one is ETF-only via `getEtfList`) — this is the market page's
   // 處置 tab's own query key, so TanStack dedupes against whatever that tab has already fetched.
   const dispositionQuery = useQuery({
-    queryKey: ["disposition_board", market],
+    queryKey: queryKeys.marketRead("disposition_board", market),
     queryFn: () => getDispositionBoard(market),
     enabled: isTw,
   });
   const dispositionRow = dispositionQuery.data?.cards.find((card) => card.symbol === symbol);
 
   const tagQuery = useQuery({
-    queryKey: ["tag_screener", market, symbol, SIGNAL_TAGS],
+    queryKey: queryKeys.marketRead("tag_screener", market, symbol, SIGNAL_TAGS),
     queryFn: () => getTagScreenerForSymbols(SIGNAL_TAGS, [symbol], market),
     enabled: isTw,
   });

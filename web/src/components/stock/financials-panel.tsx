@@ -20,6 +20,7 @@ import { DividendPolicyCard } from "@/components/stock/dividend-policy-card";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getFinancialStatement, getMonthRevenue } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
@@ -185,7 +186,7 @@ function MonthRevenueCard({
   // year's row for the earliest displayed months would simply never have been fetched).
   const fetchStartDate = monthsAgoIso(REVENUE_RANGE_MONTHS[range] + 12);
   const query = useQuery({
-    queryKey: ["month_revenue", symbol, market, range],
+    queryKey: queryKeys.symbolRead("month_revenue", symbol, market, range),
     queryFn: () => getMonthRevenue(symbol, market, { startDate: fetchStartDate }),
   });
 
@@ -445,7 +446,7 @@ function FinancialStatementCard({
     defaultVisibleItems[statementType].has(item) !== toggledItems.has(item);
   const startDate = monthsAgoIso(STATEMENT_LOOKBACK_MONTHS);
   const query = useQuery({
-    queryKey: ["financial_statement", symbol, market, statementType, startDate],
+    queryKey: queryKeys.symbolRead("financial_statement", symbol, market, statementType, startDate),
     queryFn: () => getFinancialStatement(symbol, market, statementType, { startDate }),
   });
 

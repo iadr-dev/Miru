@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getFundProfile } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 
@@ -27,7 +28,7 @@ export function FundProfileCard({
   const t = useTranslations("usStock.fundProfile");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["fund_profile", symbol, market],
+    queryKey: queryKeys.symbolRead("fund_profile", symbol, market),
     queryFn: () => getFundProfile(symbol, market),
   });
 

@@ -17,6 +17,7 @@ import { SettingsError, SettingsLoading } from "@/components/settings/settings-s
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { conditionSummary, ruleStatus } from "@/lib/alerts/condition";
+import { queryKeys } from "@/lib/api/query-keys";
 import { deleteAlert, listAlerts, updateAlert } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
 import { cn } from "@/lib/cn";
@@ -34,11 +35,11 @@ export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }):
   const format = useFormatter();
   const queryClient = useQueryClient();
 
-  const query = useQuery({ queryKey: ["settings", "alerts"], queryFn: listAlerts });
+  const query = useQuery({ queryKey: queryKeys.settings("alerts"), queryFn: listAlerts });
   // The watchlist groups, to name a group rule ("半導體 · 7 檔") and show where a per-stock rule
   // came from. Not required to render the list — an unknown group just falls back to a generic label.
   const groups = useQuery({
-    queryKey: ["settings", "alert-watchlists"],
+    queryKey: queryKeys.settings("alert-watchlists"),
     queryFn: () => getWatchlists(),
   });
   const [creating, setCreating] = useState(preset !== undefined);
@@ -55,14 +56,14 @@ export function AlertList({ preset }: { preset?: AlertFormPreset | undefined }):
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) => updateAlert(id, { enabled }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["settings", "alerts"] }),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: queryKeys.settings("alerts") }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteAlert(id),
     onSuccess: () => {
       setPendingDelete(null);
-      void queryClient.invalidateQueries({ queryKey: ["settings", "alerts"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("alerts") });
     },
   });
 

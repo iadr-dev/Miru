@@ -6,6 +6,7 @@ import { CardSkeleton } from "@/components/market/card-skeleton";
 import { LeaderboardCard } from "@/components/market/leaderboard-card";
 import { QueryState } from "@/components/ui/query-state";
 import { getScoreLeaderboard } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { LeaderboardDirection } from "@/types/market/rankings";
 import type { Market } from "@/types/settings";
 
@@ -19,7 +20,7 @@ export function EtfLeaderboardPanel({ market }: { market: Market }): ReactNode {
   const [direction, setDirection] = useState<LeaderboardDirection>("bullish");
 
   const query = useQuery({
-    queryKey: ["score_leaderboard", market, direction, "etf"],
+    queryKey: queryKeys.marketRead("score_leaderboard", market, direction, "etf"),
     queryFn: () => getScoreLeaderboard(market, direction, "swing", 50, "etf"),
   });
 

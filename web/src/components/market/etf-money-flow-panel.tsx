@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { EtfMoneyFlowTable } from "@/components/market/etf-money-flow-table";
 import { QueryState } from "@/components/ui/query-state";
 import { getEtfMoneyFlow } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
@@ -36,7 +37,12 @@ export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): Reac
   const flowWindow = recentWindow();
 
   const query = useQuery({
-    queryKey: ["etf_money_flow", market, flowWindow.startDate, flowWindow.endDate],
+    queryKey: queryKeys.marketRead(
+      "etf_money_flow",
+      market,
+      flowWindow.startDate,
+      flowWindow.endDate,
+    ),
     queryFn: () => getEtfMoneyFlow(market, flowWindow.startDate, flowWindow.endDate),
   });
 

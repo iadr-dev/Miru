@@ -9,6 +9,7 @@ import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-leg
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -44,7 +45,7 @@ export function HoldingsPanel({
   const t = useTranslations("etf.holdings");
   const [subTab, setSubTab] = useState<SubTab>("holdings");
   const query = useQuery({
-    queryKey: ["active_etf_report", symbol, market],
+    queryKey: queryKeys.symbolRead("active_etf_report", symbol, market),
     queryFn: () => getActiveEtfReport(symbol, market),
   });
 

@@ -10,6 +10,7 @@ import { SettingsError, SettingsLoading } from "@/components/settings/settings-s
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   createSchedule,
   deleteSchedule,
@@ -47,7 +48,7 @@ export function ScheduleList(): ReactNode {
   const format = useFormatter();
   const queryClient = useQueryClient();
 
-  const query = useQuery({ queryKey: ["settings", "schedules"], queryFn: listSchedules });
+  const query = useQuery({ queryKey: queryKeys.settings("schedules"), queryFn: listSchedules });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ScheduleJob | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ScheduleJob | null>(null);
@@ -55,15 +56,17 @@ export function ScheduleList(): ReactNode {
   const toggleMutation = useMutation({
     mutationFn: ({ job, enabled }: { job: ScheduleJob; enabled: boolean }) =>
       updateSchedule(job.id, { enabled, expected_version: job.version }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["settings", "schedules"] }),
-    onError: () => void queryClient.invalidateQueries({ queryKey: ["settings", "schedules"] }),
+    onSuccess: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") }),
+    onError: () =>
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteSchedule(id),
     onSuccess: () => {
       setPendingDelete(null);
-      void queryClient.invalidateQueries({ queryKey: ["settings", "schedules"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") });
     },
   });
 
@@ -269,7 +272,7 @@ function ScheduleForm({ onDone, job }: { onDone: () => void; job?: ScheduleJob }
   const canFollow = supportsWatchlist(template);
   const following = canFollow && followList;
   const groups = useQuery({
-    queryKey: ["settings", "schedule-watchlists"],
+    queryKey: queryKeys.settings("schedule-watchlists"),
     queryFn: () => getWatchlists("TW"),
     enabled: canFollow,
   });
@@ -290,12 +293,12 @@ function ScheduleForm({ onDone, job }: { onDone: () => void; job?: ScheduleJob }
       });
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "schedules"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") });
       onDone();
     },
     onError: (error) => {
       if (error instanceof SettingsApiError && error.code === "stale_version") {
-        void queryClient.invalidateQueries({ queryKey: ["settings", "schedules"] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.settings("schedules") });
       }
     },
   });

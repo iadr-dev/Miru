@@ -18,6 +18,7 @@ import {
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getEtfPremiumDiscount } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { EtfNavRow } from "@/types/etf-detail";
 import type { Market } from "@/types/settings";
@@ -44,7 +45,7 @@ export function PremiumDiscountPanel({
 }): ReactNode {
   const t = useTranslations("etf.premiumDiscount");
   const query = useQuery({
-    queryKey: ["etf_premium_discount", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_premium_discount", symbol, market),
     queryFn: () => getEtfPremiumDiscount(symbol, market),
   });
 

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Link } from "@/i18n/navigation";
 import { fetchMe } from "@/lib/api/account";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   clearMemories,
   createMemory,
@@ -62,20 +63,20 @@ export function MemoryPanel(): ReactNode {
   }, [search]);
 
   const settingsQuery = useQuery({
-    queryKey: ["settings", "memory-settings"],
+    queryKey: queryKeys.settings("memory-settings"),
     queryFn: getMemorySettings,
   });
   const query = useQuery({
-    queryKey: ["settings", "memory", scope, debounced],
+    queryKey: queryKeys.settings("memory", scope, debounced),
     queryFn: () => listMemories(scope === "all" ? undefined : scope, debounced),
   });
   const refresh = (): void =>
-    void queryClient.invalidateQueries({ queryKey: ["settings", "memory"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.settings("memory") });
 
   const enabledMutation = useMutation({
     mutationFn: setMemoryEnabled,
     onSuccess: () =>
-      void queryClient.invalidateQueries({ queryKey: ["settings", "memory-settings"] }),
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("memory-settings") }),
   });
   const clearMutation = useMutation({
     mutationFn: () => clearMemories(scope === "all" ? undefined : scope),
@@ -194,9 +195,9 @@ export function MemoryPanel(): ReactNode {
 function RelatedSettings(): ReactNode {
   const t = useTranslations("settings.memory");
   const locale = useLocale();
-  const me = useQuery({ queryKey: ["me"], queryFn: ({ signal }) => fetchMe(signal) });
+  const me = useQuery({ queryKey: queryKeys.me, queryFn: ({ signal }) => fetchMe(signal) });
   const presets = useQuery({
-    queryKey: ["settings", "personality-presets"],
+    queryKey: queryKeys.settings("personality-presets"),
     queryFn: listPersonalityPresets,
   });
   const current = presets.data?.find((p) => p.id === me.data?.user.personality_id);

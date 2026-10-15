@@ -8,6 +8,7 @@ import { SymbolLink } from "@/components/market/symbol-link";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
 import { SectorIndustriesTreemap } from "@/components/us-stock/sector-industries-treemap";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getStockPeers } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
@@ -42,7 +43,7 @@ export function SectorPeersPanel({
 }): ReactNode {
   const t = useTranslations("usStock.sectorPeers");
   const query = useQuery({
-    queryKey: ["stock_peers", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_peers", symbol, market),
     queryFn: () => getStockPeers(symbol, market),
   });
 

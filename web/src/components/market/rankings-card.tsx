@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { UsMarketRankingRows } from "@/components/market/us-market-ranking-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getUsMarketRankings } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
 import type { RankingKind } from "@/types/market/rankings";
@@ -110,7 +111,7 @@ function RankingTabPanel({
   const t = useTranslations("market.cards.rankings");
   const [expanded, setExpanded] = useState(false);
   const query = useQuery({
-    queryKey: ["us_market_rankings", kind, FETCH_TOP_N],
+    queryKey: queryKeys.read("us_market_rankings", kind, FETCH_TOP_N),
     queryFn: () => getUsMarketRankings(kind, FETCH_TOP_N),
   });
 

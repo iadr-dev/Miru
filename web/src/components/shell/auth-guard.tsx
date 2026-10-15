@@ -6,6 +6,7 @@ import { type ReactNode, useEffect } from "react";
 import { useRouter } from "@/i18n/navigation";
 import { fetchMe, UnauthenticatedError } from "@/lib/api/account";
 import { startSessionKeepAlive } from "@/lib/api/auth";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { MeResponse } from "@/types/account";
 
 /**
@@ -27,7 +28,7 @@ export function AuthGuard({ children }: { children: (me: MeResponse) => ReactNod
   const router = useRouter();
 
   const query = useQuery({
-    queryKey: ["me"],
+    queryKey: queryKeys.me,
     queryFn: ({ signal }) => fetchMe(signal),
     retry: (failureCount, error) =>
       error instanceof UnauthenticatedError ? false : failureCount < 1,

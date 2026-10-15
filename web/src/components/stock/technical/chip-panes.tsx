@@ -8,6 +8,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { type RangedPaneProps, useLineChartPane } from "@/components/stock/technical/shared";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   getSecuritiesLending,
   getShareholderDispersion,
@@ -24,7 +25,7 @@ export function MarginShortPane({
 }: RangedPaneProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["margin_short", symbol, market, startDate, endDate],
+    queryKey: queryKeys.symbolRead("margin_short", symbol, market, startDate, endDate),
     queryFn: () => getStockMarginShort(symbol, market, { startDate, endDate }),
   });
   const rows = [...(query.data?.rows ?? [])].sort((a, b) =>
@@ -70,7 +71,7 @@ export function SecuritiesLendingPane({
 }: RangedPaneProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["securities_lending", symbol, market, startDate, endDate],
+    queryKey: queryKeys.symbolRead("securities_lending", symbol, market, startDate, endDate),
     queryFn: () => getSecuritiesLending(symbol, market, { startDate, endDate }),
   });
   // `get_securities_lending` can carry more than one row per `trade_date` (distinct
@@ -113,7 +114,7 @@ export function RetailDispersionPane({
 }: RangedPaneProps & { readonly t: ReturnType<typeof useTranslations> }): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["shareholder_dispersion", symbol, market, startDate, endDate],
+    queryKey: queryKeys.symbolRead("shareholder_dispersion", symbol, market, startDate, endDate),
     queryFn: () => getShareholderDispersion(symbol, market, { startDate, endDate }),
   });
   const data = query.data;

@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 import { PetAvatar } from "@/components/pets/pet-avatar";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getPetProgress, listPetCatalog, pullPet } from "@/lib/api/settings";
 import { cn } from "@/lib/cn";
 import { FRESHNESS } from "@/lib/freshness";
@@ -46,9 +47,12 @@ export function WelcomePullDialog(): ReactNode {
   const [outcome, setOutcome] = useState<PullOutcome | null>(null);
   const [failed, setFailed] = useState(false);
 
-  const progress = useQuery({ queryKey: ["settings", "pet-progress"], queryFn: getPetProgress });
+  const progress = useQuery({
+    queryKey: queryKeys.settings("pet-progress"),
+    queryFn: getPetProgress,
+  });
   const catalog = useQuery({
-    queryKey: ["settings", "pet-catalog"],
+    queryKey: queryKeys.settings("pet-catalog"),
     queryFn: listPetCatalog,
     staleTime: FRESHNESS.static,
   });
@@ -58,7 +62,7 @@ export function WelcomePullDialog(): ReactNode {
     onSuccess: (result) => {
       setOutcome(result);
       for (const key of ["pet-progress", "pet-active", "pets-owned"]) {
-        void queryClient.invalidateQueries({ queryKey: ["settings", key] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.settings(key) });
       }
     },
     onError: () => setFailed(true),

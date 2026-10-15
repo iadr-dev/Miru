@@ -14,6 +14,7 @@ import {
 } from "@/components/stock/chip/shared";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getForeignShareholding, getStockChipFlows } from "@/lib/api/stock-detail";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
@@ -73,14 +74,14 @@ export function ChipFlowsBody({
   const [window, setWindow] = useState<BrokerLookbackWindow>("recent");
   const [direction, setDirection] = useState<BrokerTopDirection>("buy");
   const query = useQuery({
-    queryKey: ["stock_chip_flows", symbol, market, window],
+    queryKey: queryKeys.symbolRead("stock_chip_flows", symbol, market, window),
     queryFn: () =>
       getStockChipFlows(symbol, market, {
         startDate: isoDaysAgo(BROKER_LOOKBACK_DAYS[window]),
       }),
   });
   const shareholdingQuery = useQuery({
-    queryKey: ["stock_foreign_shareholding", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_foreign_shareholding", symbol, market),
     queryFn: () => getForeignShareholding(symbol, market),
   });
 

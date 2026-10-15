@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { NewsSourceLogo } from "@/components/ui/news-source-logo";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getNewsFeed, getSymbolInfo } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getSecFilings } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -71,13 +72,13 @@ function NewsFeedList({
 }): ReactNode {
   const t = useTranslations("usStock.newsFilings");
   const symbolInfoQuery = useQuery({
-    queryKey: ["symbol_info", symbol, market],
+    queryKey: queryKeys.symbolRead("symbol_info", symbol, market),
     queryFn: () => getSymbolInfo([symbol], market),
   });
   const companyName = symbolInfoQuery.data?.rows[0]?.name ?? symbol;
 
   const newsQuery = useQuery({
-    queryKey: ["news_feed", companyName],
+    queryKey: queryKeys.read("news_feed", companyName),
     queryFn: () => getNewsFeed(companyName),
     enabled: Boolean(companyName),
   });
@@ -144,7 +145,7 @@ function SecFilingsList({
 }): ReactNode {
   const t = useTranslations("usStock.newsFilings");
   const query = useQuery({
-    queryKey: ["sec_filings", symbol, market],
+    queryKey: queryKeys.symbolRead("sec_filings", symbol, market),
     queryFn: () => getSecFilings(symbol, market),
   });
 

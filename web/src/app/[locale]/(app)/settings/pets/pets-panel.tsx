@@ -9,6 +9,7 @@ import { ToggleSwitch } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   equipPet,
   getActivePet,
@@ -33,30 +34,39 @@ export function PetsPanel(): ReactNode {
   const queryClient = useQueryClient();
   const [pullMessage, setPullMessage] = useState<string | null>(null);
 
-  const catalogQuery = useQuery({ queryKey: ["settings", "pet-catalog"], queryFn: listPetCatalog });
-  const ownedQuery = useQuery({ queryKey: ["settings", "pets-owned"], queryFn: listOwnedPets });
-  const activeQuery = useQuery({ queryKey: ["settings", "pet-active"], queryFn: getActivePet });
+  const catalogQuery = useQuery({
+    queryKey: queryKeys.settings("pet-catalog"),
+    queryFn: listPetCatalog,
+  });
+  const ownedQuery = useQuery({
+    queryKey: queryKeys.settings("pets-owned"),
+    queryFn: listOwnedPets,
+  });
+  const activeQuery = useQuery({
+    queryKey: queryKeys.settings("pet-active"),
+    queryFn: getActivePet,
+  });
   const progressQuery = useQuery({
-    queryKey: ["settings", "pet-progress"],
+    queryKey: queryKeys.settings("pet-progress"),
     queryFn: getPetProgress,
   });
 
   const settingsQuery = useQuery({
-    queryKey: ["settings", "pet-settings"],
+    queryKey: queryKeys.settings("pet-settings"),
     queryFn: getPetSettings,
   });
   const settingsMutation = useMutation({
     mutationFn: updatePetSettings,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-settings"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pet-settings") });
     },
   });
 
   const equipMutation = useMutation({
     mutationFn: equipPet,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-active"] });
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pets-owned"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pet-active") });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pets-owned") });
     },
   });
 
@@ -66,9 +76,9 @@ export function PetsPanel(): ReactNode {
       setPullMessage(
         t("pullResult", { pet: petName(catalogQuery.data ?? [], outcome.pet_id, locale) }),
       );
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pets-owned"] });
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-progress"] });
-      void queryClient.invalidateQueries({ queryKey: ["settings", "pet-active"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pets-owned") });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pet-progress") });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("pet-active") });
     },
     onError: (err) => {
       setPullMessage(

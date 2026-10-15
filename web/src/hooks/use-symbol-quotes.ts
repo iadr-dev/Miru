@@ -1,5 +1,8 @@
 "use client";
 
+import { useQueries } from "@tanstack/react-query";
+import { useMemo } from "react";
+import { getSymbolQuotes } from "@/lib/api/market";
 /**
  * The shared row model for "one row per stock/ETF symbol" surfaces (the AI leaderboard, a
  * watchlist, an ETF roster, rankings, the screener): `{code, name, price, changePct, sparkline,
@@ -15,9 +18,7 @@
  * Every field is honestly nullable: a symbol absent from the roster gets `name: null`; a symbol
  * with fewer than 2 bars gets `changePct: null` and a short `sparkline`, never a fabricated value.
  */
-import { useQueries } from "@tanstack/react-query";
-import { useMemo } from "react";
-import { getSymbolQuotes } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { SymbolQuoteRow } from "@/types/market/quotes";
 import type { Market } from "@/types/settings";
 
@@ -75,7 +76,7 @@ export function useSymbolQuotes(
 
   const results = useQueries({
     queries: batches.map((batch) => ({
-      queryKey: ["symbol_quotes", market, days, ...batch],
+      queryKey: queryKeys.marketRead("symbol_quotes", market, days, ...batch),
       queryFn: () => getSymbolQuotes(batch, market, days),
       enabled: batch.length > 0,
     })),

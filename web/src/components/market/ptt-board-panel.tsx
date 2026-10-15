@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getPttBoard } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { PTT_BOARDS, type PttBoardName, type PttPost } from "@/types/market/news";
@@ -29,7 +30,7 @@ export function PttBoardPanel(): ReactNode {
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["ptt_board", board],
+    queryKey: queryKeys.read("ptt_board", board),
     queryFn: () => getPttBoard(board),
   });
 

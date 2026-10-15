@@ -25,6 +25,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { GaugeCard } from "@/components/market/gauge-card";
 import { SponsorGatedBody } from "@/components/market/sponsor-teaser";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getStockScore, getStockSummary, getTrendScore } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -118,7 +119,7 @@ function TrendScoreCard({
   const t = useTranslations("stock.ai");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["trend_score", symbol, market],
+    queryKey: queryKeys.symbolRead("trend_score", symbol, market),
     queryFn: () => getTrendScore(symbol, market),
   });
   const data = query.data;
@@ -402,7 +403,7 @@ function ScoreGaugeCard({
   const locale = useLocale();
   const [profile, setProfile] = useState<ScoreProfile>("swing");
   const query = useQuery({
-    queryKey: ["stock_score", symbol, market, profile],
+    queryKey: queryKeys.symbolRead("stock_score", symbol, market, profile),
     queryFn: () => getStockScore(symbol, market, profile),
   });
   const data = query.data;
@@ -548,7 +549,7 @@ function SummaryCard({
 }): ReactNode {
   const t = useTranslations("stock.ai");
   const query = useQuery({
-    queryKey: ["stock_summary", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_summary", symbol, market),
     queryFn: () => getStockSummary(symbol, market),
   });
 

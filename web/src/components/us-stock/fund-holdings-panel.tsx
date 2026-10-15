@@ -9,6 +9,7 @@ import { type DonutSlice, DonutWithLegend } from "@/components/ui/donut-with-leg
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getFundHoldings } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { FundHoldingRow, FundSectorWeightingRow } from "@/types/etf-detail";
@@ -41,7 +42,7 @@ export function FundHoldingsPanel({
 }): ReactNode {
   const t = useTranslations("usStock.fundHoldings");
   const query = useQuery({
-    queryKey: ["fund_holdings", symbol, market],
+    queryKey: queryKeys.symbolRead("fund_holdings", symbol, market),
     queryFn: () => getFundHoldings(symbol, market),
   });
 

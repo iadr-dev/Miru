@@ -10,6 +10,7 @@ import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryState } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getMacroCalendar } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { toIsoDate } from "@/lib/month-grid";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -97,7 +98,7 @@ export function MacroCalendarPanel(): ReactNode {
   }, [view, cursor, dayStripAnchor]);
 
   const query = useQuery({
-    queryKey: ["macro_calendar", fromDate, toDate],
+    queryKey: queryKeys.read("macro_calendar", fromDate, toDate),
     queryFn: () => getMacroCalendar(undefined, undefined, fromDate, toDate),
   });
 
