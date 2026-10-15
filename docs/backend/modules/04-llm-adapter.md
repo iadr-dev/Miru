@@ -161,7 +161,14 @@ Sonnet 5.5, Haiku 5.5, Fable, Mythos) and as a trailing text block of that user 
 (Sonnet 5 and 4.6, Haiku 4.5 reject the role with a 400). Measured with a ~2,500-token prompt and a
 different memory block each turn: Sonnet 4.6 read 0 tokens from cache on turn 2 before and 2,533
 after; Sonnet 5.5 read 4,078. The usage estimate prices cache reads and writes separately
-(`llm/pricing.py`).
+(`llm/pricing.py`). Providers disagree on `input_tokens`: OpenAI and Gemini count the cached part
+inside it, Anthropic leaves cache reads and writes out (a request that read 55,000 cached tokens shows
+`input_tokens` of 20). Stored values stay as reported, since the price arithmetic needs them that
+way; the turn total, the usage page and the token chart show `prompt_tokens(...)`, which adds
+Anthropic's cache tokens back so "input" means every token the model read.
+
+Haiku 4.5 does not cache a 2,500-token prompt (measured; it did at 4,500), so its real minimum is
+about 4,096 tokens, not the documented 1,024. Haiku 5.5 cached at 4,000 tokens.
 
 ### Fallback — a real, ordered per-role provider chain
 

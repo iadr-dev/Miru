@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import LlmUsageRow
 from events.usage import ModelUsage
-from llm.pricing import estimate_cost_micros, price_for
+from llm.pricing import estimate_cost_micros, price_for, prompt_tokens
 
 MAX_DAYS = 90
 
@@ -115,10 +115,17 @@ class LlmUsageSummary(BaseModel):
     byok_calls: int
 
 
+def _shown_input(row: LlmUsageRow) -> int:
+    """The row's input as a person counts it: cache reads and writes included for Anthropic."""
+    return prompt_tokens(
+        row.provider, row.input_tokens, row.cached_tokens, row.cache_write_tokens or 0
+    )
+
+
 def _add(total: UsageTotals, row: LlmUsageRow, estimate: int) -> UsageTotals:
     return UsageTotals(
         calls=total.calls + row.calls,
-        input_tokens=total.input_tokens + row.input_tokens,
+        input_tokens=total.input_tokens + _shown_input(row),
         output_tokens=total.output_tokens + row.output_tokens,
         cached_tokens=total.cached_tokens + row.cached_tokens,
         cache_write_tokens=total.cache_write_tokens + (row.cache_write_tokens or 0),
@@ -181,7 +188,7 @@ async def summarize_llm_usage(
         )
         estimate = _estimate(row, day)
         per_day[day] = _add(per_day.get(day, UsageTotals()), row, estimate)
-        tokens = row.input_tokens + row.output_tokens
+        tokens = _shown_input(row) + row.output_tokens
         by_provider = day_provider.setdefault(day, {})
         by_provider[row.provider] = by_provider.get(row.provider, 0) + tokens
         provider_tokens[row.provider] = provider_tokens.get(row.provider, 0) + tokens

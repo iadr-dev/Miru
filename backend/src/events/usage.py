@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from events.bus import EventBus
 from events.kinds import EventKind
+from llm.pricing import prompt_tokens
 
 
 class TokenBreakdown(BaseModel):
@@ -118,7 +119,10 @@ class UsageAccumulator:
         cache_write_tokens: int = 0,
         reasoning_tokens: int = 0,
     ) -> None:
-        self._input_tokens += input_tokens
+        # The turn total is what is shown to the user: every token read, cache included.
+        self._input_tokens += prompt_tokens(
+            provider, input_tokens, cached_tokens, cache_write_tokens
+        )
         self._output_tokens += output_tokens
         self._cost_micros += cost_micros
         if provider or model:

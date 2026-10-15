@@ -134,6 +134,21 @@ def price_for(provider: str, model: str, on: date) -> ModelPrice | None:
     return max(applicable, key=lambda s: s.from_date or date.min).price
 
 
+def prompt_tokens(
+    provider: str, input_tokens: int, cached_tokens: int = 0, cache_write_tokens: int = 0
+) -> int:
+    """Every token the model read for a request, the number a person means by "input tokens".
+
+    Providers disagree on what their `input_tokens` field holds: OpenAI and Gemini count the cached
+    part inside it, Anthropic reports the cache reads and cache writes separately and leaves them
+    out (so a request that read 55,000 cached tokens shows `input_tokens` of 20). Stored values are
+    kept as reported, since the price arithmetic needs them that way; anything shown to a person
+    goes through here."""
+    if _CACHED_INCLUDED_IN_INPUT.get(provider.lower(), True):
+        return input_tokens
+    return input_tokens + cached_tokens + cache_write_tokens
+
+
 def estimate_cost_micros(  # noqa: PLR0913 - one argument per token class a provider reports
     *,
     provider: str,
@@ -171,4 +186,4 @@ def estimate_cost_micros(  # noqa: PLR0913 - one argument per token class a prov
     return int(total.quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
 
-__all__ = ["ModelPrice", "estimate_cost_micros", "price_for"]
+__all__ = ["ModelPrice", "estimate_cost_micros", "price_for", "prompt_tokens"]
