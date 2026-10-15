@@ -45,6 +45,11 @@ worker**. But `POST /agent/query` runs a turn on worker A while `GET /threads/{i
   events, and replays missed events from `stream_events` by `event_seq` on `Last-Event-ID`.
 - In-process bus remains a same-worker optimization; Redis is the cross-worker source of truth
   for the live path. `stream_events` is the durable replay log.
+- **Two Redis clients** (`netclient/redis_clients.py`): calls a request waits on (announcing a turn,
+  joining a quote stream, publishing) use `request_path_redis` — connect and reply timeouts and a
+  blocking pool, so a Redis that stops answering costs a bounded wait. Long-lived subscriptions use
+  `subscription_redis` — no reply timeout (an idle channel is not an error) and an unbounded pool (open
+  streams must not starve the request path), with a connect timeout and a 30 s health check.
 
 ## 2a. Live-quote feed — shared demand-driven poller + SSE fan-out
 

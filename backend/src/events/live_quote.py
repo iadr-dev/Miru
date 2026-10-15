@@ -252,11 +252,14 @@ class RedisQuoteTransport:
     """Fan-out over Redis Pub/Sub — the multi-worker path. One publish reaches every worker that
     has a subscriber on that symbol's channel; each worker relays to its own SSE connections."""
 
-    def __init__(self, redis: Redis) -> None:
+    def __init__(self, redis: Redis, *, commands: Redis | None = None) -> None:
+        # `redis` carries the subscriptions; `commands` (default: the same client) the publishes,
+        # which a request or the poll loop waits on and so want the bounded, timed-out client.
         self._redis = redis
+        self._commands = commands or redis
 
     async def publish(self, channel: str, event: Event) -> None:
-        await self._redis.publish(channel, _encode(event))
+        await self._commands.publish(channel, _encode(event))
 
     async def subscribe(self, channels: list[str]) -> AsyncIterator[Event]:
         pubsub = self._redis.pubsub()

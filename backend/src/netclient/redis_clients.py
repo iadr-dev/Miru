@@ -31,4 +31,17 @@ def request_path_redis(settings: Settings) -> Redis:
     return Redis(connection_pool=pool)
 
 
-__all__ = ["request_path_redis"]
+def subscription_redis(settings: Settings) -> Redis:
+    """The Redis client for long-lived pub/sub subscriptions: each holds a connection for as long
+    as it lives and sits idle on purpose, so no reply timeout (it would cut every quiet channel) and
+    an unbounded pool (a bounded one would let open streams starve the request path). A connect
+    timeout still bounds a Redis that is unreachable, and a periodic health check notices a
+    connection that died silently."""
+    return Redis.from_url(
+        settings.redis_url,
+        socket_connect_timeout=settings.redis_request_timeout_seconds,
+        health_check_interval=30,
+    )
+
+
+__all__ = ["request_path_redis", "subscription_redis"]
