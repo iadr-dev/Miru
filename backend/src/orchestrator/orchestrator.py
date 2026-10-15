@@ -699,6 +699,7 @@ class Orchestrator:
             event_bus,
             turn_id,
             model_override,
+            usage=usage,
             dropped_skill_count=dropped,
             locale=locale,
         )
@@ -756,6 +757,7 @@ class Orchestrator:
             event_bus,
             turn_id,
             model_override,
+            usage=usage,
             dropped_skill_count=dropped,
             locale=locale,
         )
@@ -945,6 +947,7 @@ class Orchestrator:
         turn_id: str | None,
         model_override: str | None = None,
         *,
+        usage: UsageAccumulator,
         dropped_skill_count: int = 0,
         locale: str = "zh-TW",
     ) -> OrchestratorResult:
@@ -957,7 +960,19 @@ class Orchestrator:
             )
         try:
             final_text, provenance = await self._synthesizer.synthesize(
-                lanes, model_override=model_override, locale=locale
+                lanes,
+                model_override=model_override,
+                locale=locale,
+                on_usage=lambda call: usage.add_llm_call(
+                    input_tokens=call.input_tokens,
+                    output_tokens=call.output_tokens,
+                    cost_micros=call.cost_micros,
+                    provider=call.provider,
+                    model=call.model,
+                    cached_tokens=call.cached_tokens,
+                    cache_write_tokens=call.cache_write_tokens,
+                    reasoning_tokens=call.reasoning_tokens,
+                ),
             )
         except NoSuccessfulLanesError:
             logger.warning("orch_all_lanes_failed", turn_id=turn_id)

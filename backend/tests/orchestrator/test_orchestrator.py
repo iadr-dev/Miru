@@ -390,6 +390,38 @@ async def test_subagent_framework_fans_out_and_synthesizes(
     assert len({lane.agent_id for lane in result.lanes}) == 2
 
 
+async def test_a_fan_out_turn_counts_the_merge_call_and_the_model_that_ran_it(
+    registry: SkillRegistry, tool_lookup: dict[str, Tool]
+) -> None:
+    """The merge pass writes the answer the user reads and runs on the model they picked. Its
+    tokens and model used to be missing from the turn's usage, so a fan-out turn showed only the
+    cheap lane model."""
+    routing = Routing(
+        framework="subagent", skills=("chip-flow-review", "company-profile"), reason="x"
+    )
+    lane_client = LaneAwareClient(
+        {
+            "Chip-flow review": "chip lane finding. informational.",
+            "Company profile": "profile lane finding. informational.",
+        }
+    )
+    merge_client = StubLLMClient(script=[make_text_response("merged both. info only.")])
+    merge_client.model_id = "the-model-the-user-picked"
+    orch = _orchestrator(
+        registry,
+        tool_lookup,
+        routing,
+        subagent_client=lane_client,
+        synthesizer=Synthesizer(client=merge_client),
+    )
+
+    result = await orch.run("analyze 2330", tool_context=ToolContext())
+
+    assert result.usage is not None
+    served = {(m.provider, m.model) for m in result.usage.models}
+    assert (merge_client.provider_id, merge_client.model_id) in served
+
+
 async def test_subagent_agent_spawned_activity_is_natural_language_not_the_raw_skill_id(
     registry: SkillRegistry, tool_lookup: dict[str, Tool]
 ) -> None:
