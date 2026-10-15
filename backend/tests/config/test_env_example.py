@@ -10,7 +10,7 @@ from config.settings import Settings
 
 _BACKEND = Path(__file__).resolve().parents[2]
 # Read by the Docker Compose stack, not by the app.
-_COMPOSE_ONLY = {"POSTGRES_PASSWORD"}
+_COMPOSE_ONLY = {"POSTGRES_PASSWORD", "DB_USER"}
 
 
 def _example_keys() -> dict[str, str]:
