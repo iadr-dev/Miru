@@ -54,24 +54,19 @@ class ModelRole(StrEnum):
 _DEFAULT_PROVIDER: Final[str] = "anthropic"
 _DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
 _ANTHROPIC_SONNET_FALLBACK: Final[str] = "anthropic/claude-sonnet-4-6"
+_ANTHROPIC_HAIKU: Final[str] = "anthropic/claude-haiku-4-5-20251001"
 
 # Suggested per-role defaults, each an ordered fallback chain of "provider/model" specs — the
 # first entry is tried first; on a `chat()`/`stream()` failure `FallbackLLMClient` tries the
 # next. All overridable via `MODEL_ROLE_<ROLE>` = "<provider>/<model>[,<provider>/<model>...]".
 _DEFAULT_ROLE_MODELS: Final[dict[ModelRole, tuple[str, ...]]] = {
-    ModelRole.CLASSIFIER: (
-        "groq/llama-3.3-70b-versatile",
-        "cerebras/gpt-oss-120b",
-        _ANTHROPIC_SONNET_FALLBACK,
-    ),
-    ModelRole.AGENT: (_ANTHROPIC_SONNET_FALLBACK, "anthropic/claude-haiku-4-5-20251001"),
+    ModelRole.CLASSIFIER: (_ANTHROPIC_HAIKU, _ANTHROPIC_SONNET_FALLBACK),
+    ModelRole.AGENT: (_ANTHROPIC_SONNET_FALLBACK, _ANTHROPIC_HAIKU),
     ModelRole.SUBAGENT: (_ANTHROPIC_SONNET_FALLBACK,),
     ModelRole.SYNTHESIS: ("openai/gpt-4o-mini",),
 }
 
 _OPENAI_COMPAT_BASE_URLS: Final[dict[str, str]] = {
-    "groq": "https://api.groq.com/openai/v1",
-    "cerebras": "https://api.cerebras.ai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
 }
 
@@ -87,8 +82,6 @@ def _api_key_for(provider_id: str, settings: Settings) -> str | None:
         "anthropic": reveal(settings.anthropic_api_key),
         "openai": reveal(settings.openai_api_key),
         "gemini": reveal(settings.gemini_api_key),
-        "groq": reveal(settings.groq_api_key),
-        "cerebras": reveal(settings.cerebras_api_key),
         "openrouter": reveal(settings.openrouter_api_key),
     }.get(provider_id)
 
@@ -105,8 +98,8 @@ def _build_openai_compat_client(
 ) -> LLMClient:
     key = _require_api_key(provider_id, settings, api_key)
     # OpenRouter has its own native web-search plugin (`openai_compat._body` appends
-    # `openrouter:web_search` when this capability is set) — Groq/Cerebras have no
-    # equivalent, so they keep the default `ModelCapabilities()` (native_web_search=False).
+    # `openrouter:web_search` when this capability is set); any other OpenAI-compatible provider
+    # would keep the default `ModelCapabilities()` (native_web_search=False).
     capabilities = (
         ModelCapabilities(native_tool_calling=True, streaming=True, native_web_search=True)
         if provider_id == "openrouter"
@@ -275,9 +268,7 @@ def _parse_role_chain(spec: str) -> tuple[str, ...]:
 
 
 # Providers a user can bring their own key for (every one with a hosted, key-authenticated API).
-BYOK_PROVIDERS: Final[frozenset[str]] = frozenset(
-    {"anthropic", "openai", "gemini", "groq", "cerebras", "openrouter"}
-)
+BYOK_PROVIDERS: Final[frozenset[str]] = frozenset({"anthropic", "openai", "gemini", "openrouter"})
 
 
 @dataclass(frozen=True)

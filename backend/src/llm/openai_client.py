@@ -17,7 +17,7 @@ rather than hand-rolled HTTP: the SDK's typed `Response`/`ResponseStreamEvent`/`
 objects are Pydantic models (not raw dicts we `cast()` through), OpenAI's SDK auth/retry/timeout
 handling differs from a generic `httpx` POST, and OpenAI is the one provider where a *native*
 SDK-typed integration is expected quality (this is the flagship provider, not a "cheap to
-extend" gateway entry). `openai_compat.py` remains correct for Groq/Cerebras/OpenRouter/Ollama,
+extend" gateway entry). `openai_compat.py` remains correct for OpenRouter/Ollama,
 which speak Chat-Completions-shaped wire format but are not the SDK's origin vendor and don't
 get first-class SDK-object handling here.
 

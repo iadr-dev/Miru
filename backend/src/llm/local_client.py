@@ -3,7 +3,7 @@
 No API key — `base_url` points at a local daemon (`OLLAMA_BASE_URL`, default
 `http://localhost:11434`). Uses Ollama's OpenAI-compatible `/v1/chat/completions` endpoint
 (documented, stable surface) rather than its native `/api/chat` — this lets us reuse the
-exact same wire-format conversion helpers as `openai_compat.py` (Groq/Cerebras/OpenRouter),
+exact same wire-format conversion helpers as `openai_compat.py` (OpenRouter),
 proving the shared-base pattern generalizes even to a keyless local daemon (a deliberate
 deviation from a literal one-file-per-provider split: implemented by thin composition over
 `OpenAICompatClient` rather than a parallel hand-rolled converter, to avoid duplicating ~150

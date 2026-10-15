@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/654c2090-b586-4b1f-b166-96f91d4184f0
 | 🔔 **提醒與定時簡報** | 由你自己授權的規則與簡報，可送到 LINE、Telegram、Email 或網頁推播 |
 | 🎭 **Miru 的語氣** | 四種語氣（穩健派・白話派・簡潔派・數據派）：同一個引擎、四種說話方式，不是四位不同的顧問 |
 | 🧠 **記憶** | 對話與長期記憶，可在設定中檢視與編輯 |
-| 🔌 **自選模型** | 不綁定供應商的 LLM 介面：Anthropic、OpenAI、Gemini、Groq、Cerebras、OpenRouter，或透過 Ollama 使用本地模型；支援 BYOK |
+| 🔌 **自選模型** | 不綁定供應商的 LLM 介面：Anthropic、OpenAI、Gemini、OpenRouter，或透過 Ollama 使用本地模型；支援 BYOK |
 | 🛰️ **MCP 伺服器** | 同一套工具以唯讀方式透過 MCP（streamable HTTP）提供，讓其他代理也能使用 |
 | 🌐 **雙語** | 繁體中文優先，全站提供英文（`web/messages/`） |
 
@@ -119,7 +119,7 @@ uv run uvicorn api.app:app --reload
 
 | 類別 | 變數 | 說明 |
 |---|---|---|
-| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `GROQ_API_KEY` · `CEREBRAS_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | 填你要用的即可；`LLM_PROVIDER`／`MODEL_ROLE_*` 依角色指定模型 |
+| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | 填你要用的即可；`LLM_PROVIDER`／`MODEL_ROLE_*` 依角色指定模型 |
 | 市場資料 | `FINMIND_API_KEY` | 全市場匯入需 FinMind **Backer** 以上方案 |
 | 選用資料 | `FINNHUB_KEY` · `ALPHA_VANTAGE_API_KEY` · `FRED_KEY` · `FMP_API_KEY` · `BRAVE_SEARCH_API_KEY` | 美股、總經、分析師預估、網路搜尋備援 |
 | 資料庫 | `DATABASE_URL` · `REDIS_URL` · `DUCKDB_PATH` · `PARQUET_ROOT` | 開發時用 SQLite 與本地路徑即可 |

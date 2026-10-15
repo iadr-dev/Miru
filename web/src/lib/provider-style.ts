@@ -8,8 +8,6 @@ const KNOWN: Record<string, ProviderStyle> = {
   openai: { label: "OpenAI", color: "var(--chart-2)" },
   gemini: { label: "Gemini", color: "var(--chart-3)" },
   openrouter: { label: "OpenRouter", color: "var(--chart-4)" },
-  groq: { label: "Groq", color: "var(--chart-5)" },
-  cerebras: { label: "Cerebras", color: "var(--chart-6)" },
   ollama: { label: "Ollama", color: "var(--text-muted)" },
 };
 

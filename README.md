@@ -49,7 +49,7 @@ about acting for you.
 | 🔔 **Alerts & scheduled briefs** | Rules and briefings you authorise yourself, delivered to LINE, Telegram, email or web push |
 | 🎭 **Miru's voice** | Four tone presets (Steady · Coach · Concise · Data). One engine with four ways of speaking, never four different advisors |
 | 🧠 **Memory** | Session and long-term memory that you can review and edit in Settings |
-| 🔌 **Bring your own model** | A provider-agnostic LLM adapter: Anthropic, OpenAI, Gemini, Groq, Cerebras, OpenRouter, or a local model through Ollama. BYOK is supported |
+| 🔌 **Bring your own model** | A provider-agnostic LLM adapter: Anthropic, OpenAI, Gemini, OpenRouter, or a local model through Ollama. BYOK is supported |
 | 🛰️ **MCP server** | The same tools, exposed read-only over MCP (streamable HTTP), so other agents can use them |
 | 🌐 **Bilingual** | zh-TW first, English throughout (`web/messages/`) |
 
@@ -123,7 +123,7 @@ variable. The web app needs only `NEXT_PUBLIC_API_BASE` in `web/.env.local`.
 
 | Group | Variables | Notes |
 |---|---|---|
-| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `GROQ_API_KEY` · `CEREBRAS_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | Set the ones you use; `LLM_PROVIDER` / `MODEL_ROLE_*` route models by role |
+| LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | Set the ones you use; `LLM_PROVIDER` / `MODEL_ROLE_*` route models by role |
 | Market data | `FINMIND_API_KEY` | Whole-market ingest needs FinMind **Backer** or above |
 | Optional data | `FINNHUB_KEY` · `ALPHA_VANTAGE_API_KEY` · `FRED_KEY` · `FMP_API_KEY` · `BRAVE_SEARCH_API_KEY` | US, macro, analyst estimates, web-search fallback |
 | Datastores | `DATABASE_URL` · `REDIS_URL` · `DUCKDB_PATH` · `PARQUET_ROOT` | SQLite + local paths work for dev |

@@ -231,14 +231,7 @@ export type SecretKind = (typeof SECRET_KINDS)[number];
  * (`backend/src/config/settings.py`) — the only providers a BYOK `llm_key` can mean anything
  * for. Free-text provider ids for other `SecretKind`s aren't offered here; this list is
  * specifically the LLM-key picker's option set. */
-export const LLM_PROVIDERS = [
-  "anthropic",
-  "openai",
-  "gemini",
-  "groq",
-  "cerebras",
-  "openrouter",
-] as const;
+export const LLM_PROVIDERS = ["anthropic", "openai", "gemini", "openrouter"] as const;
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
 // ---------------------------------------------------------------------------

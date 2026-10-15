@@ -1754,8 +1754,6 @@
         "anthropic": "Anthropic",
         "openai": "OpenAI",
         "gemini": "Gemini",
-        "groq": "Groq",
-        "cerebras": "Cerebras",
         "openrouter": "OpenRouter"
       },
       "saved": "已儲存的金鑰",

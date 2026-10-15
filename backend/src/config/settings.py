@@ -81,8 +81,6 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     openai_api_key: SecretStr | None = None
     gemini_api_key: SecretStr | None = None
-    groq_api_key: SecretStr | None = None
-    cerebras_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
     ollama_base_url: str = "http://localhost:11434"
 
