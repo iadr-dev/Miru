@@ -42,6 +42,7 @@ import structlog
 
 from analytics.scoring_batch import job_scoring_batch, job_trend_score_batch
 from analytics.screener.batch import job_screener_flags
+from analytics.strategy_watch.batch import job_strategy_watchlist
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
@@ -169,6 +170,10 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # today, only monthly ones, but this one is deliberately daily so same-day
     # listings/reclassifications aren't stale for up to a month).
     ScheduledIngestJob("stock_info", time_(6, 0), job_stock_info),
+    # 策略盯盤 pre-market screen — derived compute over the last session's landed price/flow/margin
+    # partitions and the event feeds; writes today's watchlist with each stock's trigger levels
+    # before the 09:00 open, so the intraday check and the morning-list alert have it to read.
+    ScheduledIngestJob("strategy_watchlist", time_(8, 0), job_strategy_watchlist),
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
     # Margin-purchase/short-sale balance snapshot — shares `price_eod`'s ~17:30 FinMind publish
     # clock (MARGIN_SHORT_JOB's own cron_hint); feeds the 融資增減 TW-rankings tab.

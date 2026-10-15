@@ -209,6 +209,7 @@ module = [
   "analytics.screener.presets",
   "analytics.screener.factor_catalog",
   "analytics.screener.engine",
+  "analytics.strategy_watch.strategies",
   "agent.*",
   "governance.*",
   "conversation.*",
