@@ -18,7 +18,7 @@ from tests.api.conftest import build_test_client, sign_in
 pytestmark = pytest.mark.governance
 
 HEAVY = "anthropic/claude-opus-4-8"
-LIGHT = "anthropic/claude-haiku-4-5-20251001"
+LIGHT = "anthropic/claude-haiku-5-5"
 
 
 @pytest.fixture
