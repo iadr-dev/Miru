@@ -9,6 +9,7 @@ import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { type RangedPaneProps, useLineChartPane } from "@/components/stock/technical/shared";
 import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow } from "@/hooks/use-stock-data";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getForeignShareholding, getShareholderDispersion } from "@/lib/api/stock-detail";
 import { resolveToken } from "@/lib/resolve-css-token";
 import { isMaskedTeaser } from "@/types/market/shared";
@@ -123,7 +124,13 @@ export function ForeignHoldingPane({
 }: RangedPaneProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["stock_foreign_shareholding", symbol, market, startDate, endDate],
+    queryKey: queryKeys.symbolRead(
+      "stock_foreign_shareholding",
+      symbol,
+      market,
+      startDate,
+      endDate,
+    ),
     queryFn: () => getForeignShareholding(symbol, market, { startDate, endDate }),
   });
   const rows = [...(query.data?.rows ?? [])].sort((a, b) =>
@@ -159,7 +166,13 @@ export function BigHoldersPane({
 }: RangedPaneProps & { readonly t: ReturnType<typeof useTranslations> }): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["shareholder_dispersion_big_holders", symbol, market, startDate, endDate],
+    queryKey: queryKeys.symbolRead(
+      "shareholder_dispersion_big_holders",
+      symbol,
+      market,
+      startDate,
+      endDate,
+    ),
     queryFn: () => getShareholderDispersion(symbol, market, { startDate, endDate }),
   });
   const data = query.data;

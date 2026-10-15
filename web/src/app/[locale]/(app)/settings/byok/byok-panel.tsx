@@ -9,6 +9,7 @@ import { SavedToast } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ProviderBadge } from "@/components/usage/provider-badge";
+import { queryKeys } from "@/lib/api/query-keys";
 import { listSavedKeys, putKey, removeKey, SettingsApiError } from "@/lib/api/settings";
 import { LLM_PROVIDERS, type LlmProvider } from "@/types/settings";
 
@@ -31,7 +32,7 @@ export function ByokPanel(): ReactNode {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const queryClient = useQueryClient();
-  const keysQuery = useQuery({ queryKey: ["byok-keys"], queryFn: listSavedKeys });
+  const keysQuery = useQuery({ queryKey: queryKeys.byokKeys, queryFn: listSavedKeys });
   const savedKeys = keysQuery.data ?? [];
   const current = savedKeys.find((k) => k.provider === provider) ?? null;
   const showMasked = current !== null && !replacing;
@@ -45,9 +46,9 @@ export function ByokPanel(): ReactNode {
 
   // Saving or removing a key changes the chat limit, the model picker and the usage page.
   const refreshKeyDependents = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ["byok-keys"] });
-    void queryClient.invalidateQueries({ queryKey: ["me"] });
-    void queryClient.invalidateQueries({ queryKey: ["settings", "usage-quota"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.byokKeys });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.settings("usage-quota") });
   };
   const flashSaved = (): void => {
     setSaved(true);

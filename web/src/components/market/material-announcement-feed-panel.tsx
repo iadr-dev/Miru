@@ -12,6 +12,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getMaterialAnnouncementFeed } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
@@ -35,7 +36,7 @@ export function MaterialAnnouncementFeedPanel({ market }: { readonly market: Mar
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["material_announcement_feed", market, tradeDate, category],
+    queryKey: queryKeys.marketRead("material_announcement_feed", market, tradeDate, category),
     queryFn: () => getMaterialAnnouncementFeed(market, tradeDate, category ?? undefined),
   });
 

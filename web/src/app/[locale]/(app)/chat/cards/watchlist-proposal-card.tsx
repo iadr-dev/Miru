@@ -14,6 +14,7 @@ import { Select, TextInput } from "@/components/settings/form-controls";
 import { Button } from "@/components/ui/button";
 import { useWatchlists } from "@/hooks/use-watchlists";
 import { getSymbolInfo } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { addWatchlistItem, createWatchlist, removeWatchlistItem } from "@/lib/api/watchlist";
 import { FRESHNESS } from "@/lib/freshness";
 import { groupNameStyle } from "@/lib/watchlist-color";
@@ -50,7 +51,7 @@ export function WatchlistProposalCard({ data }: { data: Record<string, unknown> 
   const market = proposal?.market ?? "TW";
   const watchlists = useWatchlists(market);
   const info = useQuery({
-    queryKey: ["symbol_info", market, ...(proposal?.symbols ?? [])],
+    queryKey: queryKeys.marketRead("symbol_info", market, ...(proposal?.symbols ?? [])),
     queryFn: () => getSymbolInfo(proposal?.symbols ?? [], market),
     enabled: proposal !== null && proposal.symbols.length > 0,
     staleTime: FRESHNESS.reference,
@@ -221,11 +222,11 @@ function AddBody({
           await addWatchlistItem(groupId, symbol);
         }
       }
-      await queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.watchlists });
       onDone();
     } catch {
       setFailed(true);
-      await queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.watchlists });
     } finally {
       setPending(false);
     }
@@ -345,11 +346,11 @@ function RemoveBody({
           await removeWatchlistItem(g.id, target.symbol);
         }
       }
-      await queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.watchlists });
       onDone();
     } catch {
       setFailed(true);
-      await queryClient.invalidateQueries({ queryKey: ["watchlists"] });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.watchlists });
     } finally {
       setPending(false);
     }

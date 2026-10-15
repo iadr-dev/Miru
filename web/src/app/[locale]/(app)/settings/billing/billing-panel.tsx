@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   changePlan,
   checkout,
@@ -50,11 +51,11 @@ export function BillingPanel(): ReactNode {
   // Paddle prices Taiwan separately (TWD), so a zh-TW UI asks for the Taiwan price.
   const country = locale === "zh-TW" ? "TW" : undefined;
   const plansQuery = useQuery({
-    queryKey: ["settings", "plans", country],
+    queryKey: queryKeys.settings("plans", country),
     queryFn: () => listPlans(country),
   });
   const subscriptionQuery = useQuery({
-    queryKey: ["settings", "subscription"],
+    queryKey: queryKeys.settings("subscription"),
     queryFn: getSubscription,
   });
 
@@ -113,14 +114,14 @@ export function BillingPanel(): ReactNode {
           // The webhook is late (or lost): confirm the payment with Paddle ourselves.
           await syncCheckout(transactionId.current).catch(() => undefined);
         }
-        await queryClient.invalidateQueries({ queryKey: ["settings", "subscription"] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.settings("subscription") });
         const current = queryClient.getQueryData<{ subscription: unknown }>([
           "settings",
           "subscription",
         ]);
         if (current?.subscription) {
-          await queryClient.invalidateQueries({ queryKey: ["settings", "billing-history"] });
-          await queryClient.invalidateQueries({ queryKey: ["me"] });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.settings("billing-history") });
+          await queryClient.invalidateQueries({ queryKey: queryKeys.me });
           setActivation("idle");
           return;
         }
@@ -180,8 +181,8 @@ export function BillingPanel(): ReactNode {
 
   const applySubscription = (data: SubscriptionResponse): void => {
     queryClient.setQueryData(["settings", "subscription"], data);
-    void queryClient.invalidateQueries({ queryKey: ["me"] });
-    void queryClient.invalidateQueries({ queryKey: ["settings", "billing-history"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.settings("billing-history") });
     setActionError(null);
   };
 
@@ -211,7 +212,7 @@ export function BillingPanel(): ReactNode {
   });
 
   const historyQuery = useQuery({
-    queryKey: ["settings", "billing-history"],
+    queryKey: queryKeys.settings("billing-history"),
     queryFn: getBillingHistory,
     retry: false,
   });

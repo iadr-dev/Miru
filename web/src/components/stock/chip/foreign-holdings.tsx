@@ -27,6 +27,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
@@ -98,7 +99,7 @@ export function ForeignShareholdingBody({
   };
   const seriesLabel = (name: string): string => holdingsSeriesLabel(name, t, tFields);
   const shareholdingQuery = useQuery({
-    queryKey: ["stock_foreign_shareholding", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_foreign_shareholding", symbol, market),
     queryFn: () => getForeignShareholding(symbol, market),
   });
   const flowQuery = useInstitutionalFlow(symbol, market);

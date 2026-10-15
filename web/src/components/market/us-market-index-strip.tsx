@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useRef } from "react";
 import { PublicStripItem } from "@/components/market/market-index-strip";
 import { getUsMarketIndexStrip } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 
 const SCROLL_STEP_PX = 240;
 
@@ -20,7 +21,7 @@ export function UsMarketIndexStrip(): ReactNode {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const query = useQuery({
-    queryKey: ["us_market_index_strip"],
+    queryKey: queryKeys.read("us_market_index_strip"),
     queryFn: () => getUsMarketIndexStrip(),
   });
 

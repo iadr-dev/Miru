@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { QueryFailure } from "@/components/ui/query-state";
 import { getActiveEtfReport } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
 import { directionColor, directionGlyph } from "@/lib/signed";
@@ -35,7 +36,7 @@ export function ActiveReportPanel({
 }): ReactNode {
   const t = useTranslations("etf.activeReport");
   const query = useQuery({
-    queryKey: ["active_etf_report", symbol, market],
+    queryKey: queryKeys.symbolRead("active_etf_report", symbol, market),
     queryFn: () => getActiveEtfReport(symbol, market),
   });
 

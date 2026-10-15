@@ -9,6 +9,7 @@ import { FieldError, TextInput } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SavedToast, SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { fetchMe } from "@/lib/api/account";
+import { queryKeys } from "@/lib/api/query-keys";
 import { SettingsApiError, updateProfile } from "@/lib/api/settings";
 import { countryByDialCode } from "@/lib/countries";
 import type { MeResponse } from "@/types/account";
@@ -36,7 +37,7 @@ export function ProfileForm(): ReactNode {
   const tc = useTranslations("settings.common");
   const queryClient = useQueryClient();
 
-  const meQuery = useQuery({ queryKey: ["me"], queryFn: ({ signal }) => fetchMe(signal) });
+  const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: ({ signal }) => fetchMe(signal) });
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);

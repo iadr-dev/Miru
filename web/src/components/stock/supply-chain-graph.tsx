@@ -12,6 +12,7 @@ import { QueryFailure } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getSupplyChainEdges } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { entrance, staggerChildren } from "@/lib/motion";
@@ -46,7 +47,7 @@ export function SupplyChainGraph({
 }): ReactNode {
   const t = useTranslations("stock.industry");
   const query = useQuery({
-    queryKey: ["supply_chain_edges", symbol, market],
+    queryKey: queryKeys.symbolRead("supply_chain_edges", symbol, market),
     queryFn: () => getSupplyChainEdges(symbol, market),
   });
   const [hovered, setHovered] = useState<string | null>(null);

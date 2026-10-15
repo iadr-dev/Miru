@@ -1,6 +1,7 @@
 "use client";
 
 import { type UseQueryResult, useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/api/query-keys";
 import { searchTwSymbols, searchUsSymbols } from "@/lib/api/search";
 import type { SearchHit } from "@/types/symbol-search";
 
@@ -15,7 +16,7 @@ export function useSymbolSearch(
   market: "TW" | "US",
 ): UseQueryResult<readonly SearchHit[]> {
   return useQuery({
-    queryKey: ["symbol_search", market, query],
+    queryKey: queryKeys.marketRead("symbol_search", market, query),
     queryFn: () => (market === "TW" ? searchTwSymbols(query) : searchUsSymbols(query)),
     enabled: query.length > 0,
   });

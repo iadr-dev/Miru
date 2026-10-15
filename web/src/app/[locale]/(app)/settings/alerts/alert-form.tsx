@@ -20,6 +20,7 @@ import {
   mergeStaleEdit,
   templatesFor,
 } from "@/lib/alerts/condition";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   checkAlertSymbol,
   createAlert,
@@ -133,7 +134,7 @@ export function AlertForm({
   );
   const [watchlistId, setWatchlistId] = useState(rule?.watchlist_id ?? preset?.groupId ?? "");
   const groups = useQuery({
-    queryKey: ["settings", "alert-watchlists"],
+    queryKey: queryKeys.settings("alert-watchlists"),
     queryFn: () => getWatchlists(),
     enabled: !editing,
   });
@@ -148,7 +149,7 @@ export function AlertForm({
     return () => window.clearTimeout(timer);
   }, [symbol]);
   const symbolCheck = useQuery({
-    queryKey: ["settings", "alert-symbol-check", market, settledSymbol],
+    queryKey: queryKeys.settings("alert-symbol-check", market, settledSymbol),
     queryFn: () => checkAlertSymbol(settledSymbol, market),
     enabled: !editing && scope === "symbol" && settledSymbol !== "",
     staleTime: FRESHNESS.reference,
@@ -162,14 +163,14 @@ export function AlertForm({
   const mutation = useMutation({
     mutationFn: save,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "alerts"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("alerts") });
       onDone();
     },
     onError: (error) => {
       // A stale edit means another device saved first: refresh the list, then fold their change
       // into the open form so the user re-saves in one click instead of losing their edit.
       if (error instanceof SettingsApiError && error.code === "stale_version") {
-        void queryClient.invalidateQueries({ queryKey: ["settings", "alerts"] });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.settings("alerts") });
         void mergeLatest();
       }
     },

@@ -9,6 +9,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   getCompanyProfile,
   getDispositionSecurities,
@@ -100,7 +101,7 @@ export function ProfileCard({
   const t = useTranslations("stock.basicInfo");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["company_profile", symbol, market],
+    queryKey: queryKeys.symbolRead("company_profile", symbol, market),
     queryFn: () => getCompanyProfile(symbol, market),
   });
 
@@ -185,7 +186,7 @@ function ThemeChipsCard({
 }): ReactNode {
   const t = useTranslations("stock.basicInfo");
   const query = useQuery({
-    queryKey: ["symbol_themes", symbol, market],
+    queryKey: queryKeys.symbolRead("symbol_themes", symbol, market),
     queryFn: () => getSymbolThemes(symbol, market),
   });
 
@@ -239,11 +240,11 @@ function InsiderShareholdingCard({
   const [subTab, setSubTab] = useState<InsiderSubTab>("detail");
 
   const holdingsQuery = useQuery({
-    queryKey: ["insider_shareholding", symbol, market],
+    queryKey: queryKeys.symbolRead("insider_shareholding", symbol, market),
     queryFn: () => getInsiderShareholding(symbol, market),
   });
   const transferQuery = useQuery({
-    queryKey: ["stock_insider_transfer_declarations", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_insider_transfer_declarations", symbol, market),
     queryFn: () => getStockInsiderTransferDeclarations(symbol, market),
     enabled: subTab === "transfer",
   });
@@ -419,13 +420,13 @@ function AnnouncementsCard({
   });
 
   const announcementsQuery = useQuery({
-    queryKey: ["stock_material_announcements", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_material_announcements", symbol, market),
     queryFn: () => getStockMaterialAnnouncements(symbol, market),
   });
   // A wide, fixed window (1y back / 2y forward) rather than "today only" — 除權息/現增/股東會
   // rows are sparse and mostly forward-looking, so a narrow window would show nothing.
   const calendarQuery = useQuery({
-    queryKey: ["stock_calendar_events", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_calendar_events", symbol, market),
     queryFn: () =>
       getStockCalendarEvents(symbol, market, {
         startDate: isoDaysFromToday(-365),
@@ -648,7 +649,7 @@ export function EsgCard({
 }): ReactNode {
   const t = useTranslations("stock.basicInfo");
   const query = useQuery({
-    queryKey: ["esg_score", symbol, market],
+    queryKey: queryKeys.symbolRead("esg_score", symbol, market),
     queryFn: () => getEsgScore(symbol, market),
   });
 
@@ -682,7 +683,7 @@ function DispositionBanner({
 }): ReactNode {
   const t = useTranslations("stock.basicInfo");
   const query = useQuery({
-    queryKey: ["disposition_securities", symbol, market],
+    queryKey: queryKeys.symbolRead("disposition_securities", symbol, market),
     queryFn: () => getDispositionSecurities(symbol, market),
   });
 

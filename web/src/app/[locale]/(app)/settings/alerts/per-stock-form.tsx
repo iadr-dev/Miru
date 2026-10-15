@@ -13,6 +13,7 @@ import {
   type RowComparator,
 } from "@/lib/alerts/batch";
 import { getPriceHistory } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { createAlertsBatch, SettingsApiError } from "@/lib/api/settings";
 import { getWatchlists } from "@/lib/api/watchlist";
 import { FRESHNESS } from "@/lib/freshness";
@@ -71,7 +72,7 @@ export function PerStockForm({
   const queryClient = useQueryClient();
 
   const groups = useQuery({
-    queryKey: ["settings", "alert-watchlists"],
+    queryKey: queryKeys.settings("alert-watchlists"),
     queryFn: () => getWatchlists(),
   });
   const [groupId, setGroupId] = useState(initialGroupId ?? "");
@@ -89,7 +90,7 @@ export function PerStockForm({
   const truncated = (view?.items.length ?? 0) > MAX_ROWS;
 
   const closes = useQuery({
-    queryKey: ["settings", "alert-closes", groupId, members.length],
+    queryKey: queryKeys.settings("alert-closes", groupId, members.length),
     queryFn: () => loadCloses(members),
     enabled: members.length > 0,
     staleTime: FRESHNESS.slow,
@@ -120,7 +121,7 @@ export function PerStockForm({
   const mutation = useMutation({
     mutationFn: createAlertsBatch,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "alerts"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("alerts") });
       onDone();
     },
   });

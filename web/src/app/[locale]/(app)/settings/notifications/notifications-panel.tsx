@@ -8,6 +8,7 @@ import { DirtyBar } from "@/components/settings/dirty-bar";
 import { Checkbox, TextInput, ToggleSwitch } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SavedToast, SettingsError, SettingsLoading } from "@/components/settings/settings-states";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   type AlertPreferenceRequest,
   type ChannelStatus,
@@ -101,11 +102,11 @@ export function NotificationsPanel(): ReactNode {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ["settings", "alert-preferences"],
+    queryKey: queryKeys.settings("alert-preferences"),
     queryFn: () => getAlertPreferences(),
   });
   const statusQuery = useQuery({
-    queryKey: ["settings", "channel-status"],
+    queryKey: queryKeys.settings("channel-status"),
     queryFn: () => getChannelStatus(),
   });
 
@@ -162,7 +163,7 @@ export function NotificationsPanel(): ReactNode {
     },
     onSuccess: (state) => {
       setBrowserState(state);
-      void queryClient.invalidateQueries({ queryKey: ["settings", "channel-status"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("channel-status") });
     },
   });
   const lineLinkMutation = useMutation({
@@ -173,7 +174,7 @@ export function NotificationsPanel(): ReactNode {
     mutationFn: () => unlinkLine(),
     onSuccess: () => {
       setLineLink(null);
-      void queryClient.invalidateQueries({ queryKey: ["settings", "channel-status"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("channel-status") });
     },
   });
   // While a code is waiting to be sent to the official account, check whether it was bound.
@@ -182,7 +183,7 @@ export function NotificationsPanel(): ReactNode {
       return;
     }
     const timer = window.setInterval(() => {
-      void queryClient.invalidateQueries({ queryKey: ["settings", "channel-status"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("channel-status") });
     }, 4000);
     return () => window.clearInterval(timer);
   }, [lineLink, queryClient]);
@@ -195,7 +196,7 @@ export function NotificationsPanel(): ReactNode {
     mutationFn: () => unlinkTelegram(),
     onSuccess: () => {
       setTelegramUrl(null);
-      void queryClient.invalidateQueries({ queryKey: ["settings", "channel-status"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("channel-status") });
     },
   });
 
@@ -382,7 +383,7 @@ export function NotificationsPanel(): ReactNode {
                   window.setTimeout(
                     () =>
                       void queryClient.invalidateQueries({
-                        queryKey: ["settings", "channel-status"],
+                        queryKey: queryKeys.settings("channel-status"),
                       }),
                     8000,
                   )

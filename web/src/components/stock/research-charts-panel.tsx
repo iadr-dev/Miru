@@ -19,6 +19,7 @@ import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   getAnalystConsensus,
   getStockCalendarEvents,
@@ -109,7 +110,7 @@ function ValuationRiverCard({
   const [expanded, setExpanded] = useState(false);
   const startDate = yearsAgoIso(VALUATION_RANGE_YEARS[range]);
   const query = useQuery({
-    queryKey: ["valuation_ratios", symbol, market, range],
+    queryKey: queryKeys.symbolRead("valuation_ratios", symbol, market, range),
     queryFn: () => getStockValuationRatios(symbol, market, { startDate }),
   });
 
@@ -384,7 +385,7 @@ export function AnalystConsensusCard({
   const t = useTranslations("stock.research");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["analyst_consensus", symbol, market],
+    queryKey: queryKeys.symbolRead("analyst_consensus", symbol, market),
     queryFn: () => getAnalystConsensus(symbol, market),
   });
 
@@ -659,7 +660,7 @@ function StockEventsCard({
     month: today.getMonth() + 1,
   });
   const query = useQuery({
-    queryKey: ["stock_calendar_events", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_calendar_events", symbol, market),
     queryFn: () =>
       getStockCalendarEvents(symbol, market, {
         startDate: daysFromTodayIso(-365),

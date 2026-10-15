@@ -9,6 +9,7 @@ import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { TwMarketRankingRows } from "@/components/market/tw-market-ranking-rows";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { getHolderAccumulation, getTwMarketRankings } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { PREVIEW_ROWS } from "@/lib/density";
 import type { TwRankingKind } from "@/types/market/rankings";
@@ -124,7 +125,7 @@ function TwRankingTabPanel({ kind }: { readonly kind: TwRankingKind }): ReactNod
   const t = useTranslations("market.cards.twRankings");
   const [expanded, setExpanded] = useState(false);
   const query = useQuery({
-    queryKey: ["tw_market_rankings", kind, FETCH_TOP_N],
+    queryKey: queryKeys.read("tw_market_rankings", kind, FETCH_TOP_N),
     queryFn: () => getTwMarketRankings(kind, FETCH_TOP_N),
   });
 
@@ -178,7 +179,11 @@ function HolderAccumulationTabPanel(): ReactNode {
   const tLeaderboard = useTranslations("market.cards.leaderboard");
   const [expanded, setExpanded] = useState(false);
   const query = useQuery({
-    queryKey: ["holder_accumulation_tw_rankings_tab", HOLDER_THRESHOLD, HOLDER_WINDOW],
+    queryKey: queryKeys.read(
+      "holder_accumulation_tw_rankings_tab",
+      HOLDER_THRESHOLD,
+      HOLDER_WINDOW,
+    ),
     queryFn: () =>
       getHolderAccumulation("TW", HOLDER_THRESHOLD, HOLDER_WINDOW, undefined, FETCH_TOP_N),
   });

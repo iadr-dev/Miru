@@ -9,6 +9,7 @@ import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
 import { getDividendCalendar } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { formatNumber } from "@/lib/format-number";
 import type { DividendCalendarEventRow } from "@/types/market/etf";
 import type { Market } from "@/types/settings";
@@ -48,7 +49,7 @@ export function DividendCalendarCard({
   });
 
   const query = useQuery({
-    queryKey: ["dividend_calendar", market, cursor.year, cursor.month],
+    queryKey: queryKeys.marketRead("dividend_calendar", market, cursor.year, cursor.month),
     queryFn: () => getDividendCalendar(market, cursor.year, cursor.month),
   });
 

@@ -10,6 +10,7 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getEtfsHoldingStock } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -61,7 +62,7 @@ export function TrackerPanel({
     "holdingRank",
   );
   const query = useQuery({
-    queryKey: ["etfs_holding_stock", symbol, market],
+    queryKey: queryKeys.symbolRead("etfs_holding_stock", symbol, market),
     queryFn: () => getEtfsHoldingStock(symbol, market),
   });
 

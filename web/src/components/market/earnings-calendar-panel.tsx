@@ -6,6 +6,7 @@ import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
 import { QueryState } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getCalendarEventsFeed } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
@@ -27,7 +28,7 @@ export function EarningsCalendarPanel(): ReactNode {
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["calendar_events_feed", US_MARKET],
+    queryKey: queryKeys.read("calendar_events_feed", US_MARKET),
     queryFn: () => getCalendarEventsFeed(US_MARKET),
   });
 

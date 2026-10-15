@@ -15,6 +15,7 @@ import { useLiveQuote } from "@/hooks/use-live-quote";
 import { usePriceHistory } from "@/hooks/use-stock-data";
 import { getEtfFundInfo, getEtfThemeTags } from "@/lib/api/etf-detail";
 import { getEtfList, getSymbolInfo } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getLivePriceQuote, getStockScore } from "@/lib/api/stock-detail";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
@@ -71,12 +72,12 @@ export function AssetHeader({
   const isEtf = isEtfSymbolType(symbolType);
 
   const symbolInfoQuery = useQuery({
-    queryKey: ["symbol_info", symbol, market],
+    queryKey: queryKeys.symbolRead("symbol_info", symbol, market),
     queryFn: () => getSymbolInfo([symbol], market),
   });
   const symbolInfo = symbolInfoQuery.data?.rows[0];
   const etfFundInfoQuery = useQuery({
-    queryKey: ["etf_fund_info", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_fund_info", symbol, market),
     queryFn: () => getEtfFundInfo(symbol, market),
     enabled: isEtf,
   });
@@ -88,7 +89,7 @@ export function AssetHeader({
   // query key, so an ETF's own detail page doesn't cost a second distinct network request beyond
   // whatever's already cached.
   const etfListQuery = useQuery({
-    queryKey: ["etf_list", market],
+    queryKey: queryKeys.marketRead("etf_list", market),
     queryFn: () => getEtfList(market),
     enabled: isEtf,
   });
@@ -97,13 +98,13 @@ export function AssetHeader({
     : undefined;
   const distributionFrequency = etfListRow?.distribution_frequency;
   const themeTagsQuery = useQuery({
-    queryKey: ["etf_theme_tags", symbol, market],
+    queryKey: queryKeys.symbolRead("etf_theme_tags", symbol, market),
     queryFn: () => getEtfThemeTags(symbol, market),
     enabled: isEtf,
   });
   const themeTags = themeTagsQuery.data?.tags ?? [];
   const scoreQuery = useQuery({
-    queryKey: ["stock_score", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_score", symbol, market),
     queryFn: () => getStockScore(symbol, market),
   });
   const historyQuery = usePriceHistory(symbol, market, HISTORY_DAYS_FOR_CHANGE);
@@ -125,7 +126,7 @@ export function AssetHeader({
   // the final fallback for TW/ETF, which have no live-quote path at all.
   const liveQuote = useLiveQuote(symbol, market);
   const liveQuoteSnapshotQuery = useQuery({
-    queryKey: ["live_price_quote", symbol, market],
+    queryKey: queryKeys.symbolRead("live_price_quote", symbol, market),
     queryFn: () => getLivePriceQuote(symbol, market),
     enabled: market === "US",
     staleTime: FRESHNESS.live,

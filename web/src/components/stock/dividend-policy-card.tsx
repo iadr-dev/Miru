@@ -17,6 +17,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getDividendPolicySummary } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
@@ -94,7 +95,7 @@ export function DividendPolicyCard({
   const [hiddenSeries, setHiddenSeries] = useState<ReadonlySet<DividendSeriesKey>>(new Set());
   const startDate = yearsAgoIso(DIVIDEND_POLICY_RANGE_YEARS[range]);
   const query = useQuery({
-    queryKey: ["dividend_policy_summary", symbol, market, range],
+    queryKey: queryKeys.symbolRead("dividend_policy_summary", symbol, market, range),
     queryFn: () => getDividendPolicySummary(symbol, market, { startDate }),
   });
 

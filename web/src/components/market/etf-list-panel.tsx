@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { EtfListTable } from "@/components/market/etf-list-table";
 import { QueryState } from "@/components/ui/query-state";
 import { getEtfList } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { Market } from "@/types/settings";
 
 /** Tab-panel wrapper for the ETF tab — owns the single `/market/etf-list` query, renders the
@@ -17,7 +18,7 @@ import type { Market } from "@/types/settings";
 export function EtfListPanel({ market }: { market: Market }): ReactNode {
   const t = useTranslations("market.cards.etfList");
   const query = useQuery({
-    queryKey: ["etf_list", market],
+    queryKey: queryKeys.marketRead("etf_list", market),
     queryFn: () => getEtfList(market),
   });
 

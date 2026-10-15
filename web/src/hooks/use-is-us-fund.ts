@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { getFundHoldings } from "@/lib/api/etf-detail";
+import { queryKeys } from "@/lib/api/query-keys";
 import type { Market } from "@/types/settings";
 
 /** Whether a US symbol is a fund (ETF/mutual fund) rather than a plain equity — the one real
@@ -17,7 +18,7 @@ export function useIsUsFund(
   market: Market,
 ): { isFund: boolean; isLoading: boolean } {
   const query = useQuery({
-    queryKey: ["fund_holdings", symbol, market],
+    queryKey: queryKeys.symbolRead("fund_holdings", symbol, market),
     queryFn: () => getFundHoldings(symbol, market),
     enabled: market === "US",
   });

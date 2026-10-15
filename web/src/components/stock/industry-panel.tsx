@@ -53,7 +53,7 @@ export function IndustryPanel({
   const t = useTranslations("stock.industry");
   const [view, setView] = useState<IndustryView>("tiers");
   const themesQuery = useQuery({
-    queryKey: ["symbol_themes", symbol, market],
+    queryKey: queryKeys.symbolRead("symbol_themes", symbol, market),
     queryFn: () => getSymbolThemes(symbol, market),
   });
 
@@ -129,7 +129,7 @@ function TierHeatmapView({
 }): ReactNode {
   const t = useTranslations("stock.industry");
   const query = useQuery({
-    queryKey: ["theme_tier_heatmap", themeKey],
+    queryKey: queryKeys.read("theme_tier_heatmap", themeKey),
     queryFn: () => getThemeTierHeatmap(themeKey),
   });
   const [selectedSubIndustry, setSelectedSubIndustry] = useState<string | null>(null);

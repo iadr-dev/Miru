@@ -8,6 +8,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getNewsFeed } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { safeHttpUrl } from "@/lib/safe-url";
 import { sourceLogoUrl } from "@/lib/source-logo";
@@ -45,7 +46,7 @@ export function NewsFeedPanel({ market }: { readonly market: Market }): ReactNod
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["news_feed", market],
+    queryKey: queryKeys.marketRead("news_feed", market),
     queryFn: () => getNewsFeed(NEWS_QUERY_BY_MARKET[market], market),
   });
 

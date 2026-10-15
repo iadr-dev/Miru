@@ -13,6 +13,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getDailySignal } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber } from "@/lib/format-number";
 import type { HoldingStatus } from "@/types/market/etf";
@@ -33,7 +34,7 @@ export function DailySignalPanel({ market }: { readonly market: Market }): React
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["daily_signal", market],
+    queryKey: queryKeys.marketRead("daily_signal", market),
     queryFn: () => getDailySignal(market),
   });
 

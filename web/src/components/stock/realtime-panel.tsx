@@ -15,6 +15,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
+import { queryKeys } from "@/lib/api/query-keys";
 import {
   getIntradayKbar,
   getLiveQuote,
@@ -54,7 +55,7 @@ export function RealtimeTab({
 }): ReactNode {
   const t = useTranslations("stock.realtime");
   const dayTradingQuery = useQuery({
-    queryKey: ["stock_day_trading", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_day_trading", symbol, market),
     queryFn: () => getStockDayTrading(symbol, market),
   });
   const dayTradingRows = dayTradingQuery.data?.rows ?? [];
@@ -128,7 +129,7 @@ function LiveQuoteLadder({
   const t = useTranslations("stock.realtime");
   const locale = useLocale();
   const query = useQuery({
-    queryKey: ["stock_live_quote", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_live_quote", symbol, market),
     queryFn: () => getLiveQuote(symbol, market),
     refetchInterval: LIVE_QUOTE_POLL_MS,
   });
@@ -240,7 +241,7 @@ function IntradayLineChart({
   const t = useTranslations("stock.realtime");
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["stock_intraday_kbar", symbol, market, tradeDate, "line"],
+    queryKey: queryKeys.symbolRead("stock_intraday_kbar", symbol, market, tradeDate, "line"),
     queryFn: () => getIntradayKbar(symbol, market, { startDate: tradeDate, endDate: tradeDate }),
     enabled: tradeDate !== undefined,
   });
@@ -338,7 +339,7 @@ function IntradayKbarChart({
   const t = useTranslations("stock.realtime");
   const containerRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["stock_intraday_kbar", symbol, market, tradeDate, "candle"],
+    queryKey: queryKeys.symbolRead("stock_intraday_kbar", symbol, market, tradeDate, "candle"),
     queryFn: () => getIntradayKbar(symbol, market, { startDate: tradeDate, endDate: tradeDate }),
     enabled: tradeDate !== undefined,
   });
@@ -557,17 +558,17 @@ function DetailStatsPanel({
   const t = useTranslations("stock.realtime");
   const locale = useLocale();
   const limitQuery = useQuery({
-    queryKey: ["stock_price_limit", symbol, market, tradeDate],
+    queryKey: queryKeys.symbolRead("stock_price_limit", symbol, market, tradeDate),
     queryFn: () => getPriceLimit(symbol, market, { startDate: tradeDate, endDate: tradeDate }),
     enabled: tradeDate !== undefined,
   });
   const quoteQuery = useQuery({
-    queryKey: ["stock_live_quote", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_live_quote", symbol, market),
     queryFn: () => getLiveQuote(symbol, market),
     refetchInterval: LIVE_QUOTE_POLL_MS,
   });
   const tickQuery = useQuery({
-    queryKey: ["stock_price_tick", symbol, market, tradeDate],
+    queryKey: queryKeys.symbolRead("stock_price_tick", symbol, market, tradeDate),
     queryFn: () => getPriceTick(symbol, market, { startDate: tradeDate, endDate: tradeDate }),
     enabled: tradeDate !== undefined,
   });
@@ -711,7 +712,7 @@ function PriceTickList({
   const locale = useLocale();
   const [expanded, setExpanded] = useState(false);
   const query = useQuery({
-    queryKey: ["stock_price_tick", symbol, market, tradeDate],
+    queryKey: queryKeys.symbolRead("stock_price_tick", symbol, market, tradeDate),
     queryFn: () => getPriceTick(symbol, market, { startDate: tradeDate, endDate: tradeDate }),
     enabled: tradeDate !== undefined,
   });

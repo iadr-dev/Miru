@@ -7,6 +7,7 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { QueryState } from "@/components/ui/query-state";
 import { getMacroIndicators } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import type { MacroIndicatorsData } from "@/types/market/macro";
 import { isMaskedTeaser } from "@/types/market/shared";
@@ -33,7 +34,7 @@ const TEN_YEAR_NAME_HINT = "10-Year";
 export function MacroIndicatorsPanel(): ReactNode {
   const t = useTranslations("market.cards.macro");
   const query = useQuery({
-    queryKey: ["macro_indicators"],
+    queryKey: queryKeys.read("macro_indicators"),
     queryFn: () => getMacroIndicators(),
   });
 

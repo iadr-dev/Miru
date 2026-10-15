@@ -29,6 +29,7 @@ import {
 } from "@/components/stock/chip/shared";
 import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow, usePriceHistory } from "@/hooks/use-stock-data";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { FLOW_CHART_TRADING_DAYS, groupFlowByPeriod } from "@/lib/flow-periods";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
@@ -93,7 +94,7 @@ export function InstitutionalTotalsBody({
   };
   const flowQuery = useInstitutionalFlow(symbol, market);
   const shareholdingQuery = useQuery({
-    queryKey: ["stock_foreign_shareholding", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_foreign_shareholding", symbol, market),
     queryFn: () => getForeignShareholding(symbol, market),
   });
   // The chart spans ~3 months whatever the period; 日/週/月 only sets the bar size. The default

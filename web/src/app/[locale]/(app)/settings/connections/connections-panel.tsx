@@ -8,6 +8,7 @@ import { SettingsRow, SettingsSection } from "@/components/settings/settings-sec
 import { SettingsError, SettingsLoading } from "@/components/settings/settings-states";
 import { Button } from "@/components/ui/button";
 import { beginOAuthLink, type OAuthProvider } from "@/lib/api/auth";
+import { queryKeys } from "@/lib/api/query-keys";
 import { listConnections, SettingsApiError, unlinkConnection } from "@/lib/api/settings";
 import { OAUTH_LINK_PROVIDERS, type OAuthAccountLike } from "@/types/settings";
 
@@ -23,13 +24,13 @@ export function ConnectionsPanel(): ReactNode {
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  const query = useQuery({ queryKey: ["settings", "connections"], queryFn: listConnections });
+  const query = useQuery({ queryKey: queryKeys.settings("connections"), queryFn: listConnections });
 
   const mutation = useMutation({
     mutationFn: (provider: OAuthProvider) => unlinkConnection(provider),
     onSuccess: () => {
       setError(null);
-      void queryClient.invalidateQueries({ queryKey: ["settings", "connections"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings("connections") });
     },
     onError: (err) => {
       if (err instanceof SettingsApiError && err.code === "last_login_method") {

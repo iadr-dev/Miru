@@ -21,6 +21,7 @@ import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
 import { QueryFailure } from "@/components/ui/query-state";
 import { useInstitutionalFlow } from "@/hooks/use-stock-data";
 import { Link } from "@/i18n/navigation";
+import { queryKeys } from "@/lib/api/query-keys";
 import { getGovernmentBankFlows } from "@/lib/api/stock-detail";
 import { fieldLabel } from "@/lib/field-labels";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
@@ -130,7 +131,7 @@ export function InstitutionalSummaryBody({
   const [window, setWindow] = useState<RollingNetWindow>("5d");
   const query = useInstitutionalFlow(symbol, market);
   const bankQuery = useQuery({
-    queryKey: ["stock_government_bank_flows", symbol, market],
+    queryKey: queryKeys.symbolRead("stock_government_bank_flows", symbol, market),
     // `get_government_bank_flows`'s own upstream is single-day-per-call, fanned out server-side
     // and capped at 10 trading days (same shape/cap as `get_chip_flows`'s own 分點 fan-out) — 14
     // calendar days back is enough buffer to land on 10 real trading days even across a

@@ -11,6 +11,7 @@ import {
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { getInsiderTransferDeclarations } from "@/lib/api/market";
+import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
@@ -35,7 +36,7 @@ export function InsiderTransferDeclarationPanel({
   const [expanded, setExpanded] = useState(false);
 
   const query = useQuery({
-    queryKey: ["insider_transfer_declarations", market, tradeDate],
+    queryKey: queryKeys.marketRead("insider_transfer_declarations", market, tradeDate),
     queryFn: () => getInsiderTransferDeclarations(market, tradeDate),
   });
 
