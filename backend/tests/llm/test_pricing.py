@@ -36,6 +36,35 @@ def test_anthropic_cache_reads_and_writes_are_on_top_of_input() -> None:
     assert cost == 1000 * 2 + 4000 * 0.2 + 2000 * 2.5 + 100 * 10
 
 
+def test_the_5_5_models_have_their_own_prices_and_cache_hit_rates() -> None:
+    # $/MTok in / cache read / out: Opus 5.5 4 / 0.20 / 20, Sonnet 5.5 2 / 0.10 / 10,
+    # Haiku 5.5 0.10 / 0.01 / 0.50. A 5-minute cache write is 1.25x input.
+    def total(model: str) -> float:
+        return _est(
+            "anthropic",
+            model,
+            input_tokens=1000,
+            output_tokens=100,
+            cached_tokens=4000,
+            cache_write_tokens=2000,
+        )
+
+    assert total("claude-opus-5-5") == 1000 * 4 + 4000 * 0.2 + 2000 * 5 + 100 * 20
+    assert total("claude-sonnet-5-5") == 1000 * 2 + 4000 * 0.1 + 2000 * 2.5 + 100 * 10
+    assert total("claude-haiku-5-5") == 1000 * 0.1 + 4000 * 0.01 + 2000 * 0.125 + 100 * 0.5
+
+
+def test_sonnet_5_5_is_not_priced_as_sonnet_5() -> None:
+    # "claude-sonnet-5" is a prefix of "claude-sonnet-5-5"; the longer id must win.
+    five = _est(
+        "anthropic", "claude-sonnet-5", input_tokens=0, output_tokens=0, cached_tokens=1_000_000
+    )
+    five_five = _est(
+        "anthropic", "claude-sonnet-5-5", input_tokens=0, output_tokens=0, cached_tokens=1_000_000
+    )
+    assert (five, five_five) == (200_000, 100_000)
+
+
 def test_openai_cached_tokens_are_part_of_input() -> None:
     # OpenAI's input_tokens already includes the cached part: only the rest is full price.
     cost = _est("openai", "gpt-5.4-mini", input_tokens=3100, output_tokens=46, cached_tokens=1000)
@@ -91,6 +120,9 @@ def test_local_models_are_free_and_unknown_models_have_no_estimate() -> None:
         ("anthropic", "claude-haiku-4-5-20251001"),
         ("anthropic", "claude-sonnet-4-6"),
         ("anthropic", "claude-sonnet-5"),
+        ("anthropic", "claude-sonnet-5-5"),
+        ("anthropic", "claude-opus-5-5"),
+        ("anthropic", "claude-haiku-5-5"),
         ("anthropic", "claude-opus-4-6"),
         ("anthropic", "claude-opus-4-8"),
         ("openai", "gpt-4o-mini"),

@@ -122,6 +122,7 @@ VOICE_DAILY_LIMIT: Final[int] = 100
 FREE_PLATFORM_MODELS: Final[frozenset[str]] = frozenset(
     {
         "anthropic/claude-haiku-4-5-20251001",
+        "anthropic/claude-haiku-5-5",
         "openai/gpt-4o-mini",
         "openai/gpt-5.4-mini",
         "gemini/gemini-3.5-flash-lite",

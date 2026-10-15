@@ -28,10 +28,13 @@ export const MODEL_CATEGORIES: ModelCategory[] = [
     key: "anthropic",
     models: [
       { id: "anthropic/claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
+      { id: "anthropic/claude-haiku-5-5", label: "Claude Haiku 5.5" },
       { id: "anthropic/claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
       { id: "anthropic/claude-sonnet-5", label: "Claude Sonnet 5" },
+      { id: "anthropic/claude-sonnet-5-5", label: "Claude Sonnet 5.5" },
       { id: "anthropic/claude-opus-4-6", label: "Claude Opus 4.6" },
       { id: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
+      { id: "anthropic/claude-opus-5-5", label: "Claude Opus 5.5" },
     ],
   },
   {

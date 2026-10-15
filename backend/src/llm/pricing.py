@@ -15,9 +15,9 @@ Sources (checked 2026-10-07; re-verify when a model or price changes):
 - OpenAI:    https://developers.openai.com/api/docs/pricing
 - Gemini:    https://ai.google.dev/gemini-api/docs/pricing
 
-Known simplifications (they make the estimate slightly low, never high): cache writes are not
-tracked, and the >200k / >272k long-context surcharges apply per request but usage is stored per
-turn, so the standard rate is used.
+Known simplifications (they make the estimate slightly low, never high): the >200k / >272k
+long-context surcharges (and Claude Haiku 5.5's over-100k-token rate) apply per request but usage
+is stored per turn, so the standard rate is used.
 """
 
 from __future__ import annotations
@@ -77,6 +77,19 @@ _PRICES: dict[tuple[str, str], tuple[_Schedule, ...]] = {
     ),
     ("anthropic", "claude-sonnet-5"): (
         _Schedule(None, _price("2", "0.20", "10", write_multiplier="1.25")),
+    ),
+    # Cache hits cost 0.05x input on Opus 5.5 and Sonnet 5.5 (0.1x on earlier models).
+    ("anthropic", "claude-sonnet-5-5"): (
+        _Schedule(None, _price("2", "0.10", "10", write_multiplier="1.25")),
+    ),
+    ("anthropic", "claude-opus-5-5"): (
+        _Schedule(None, _price("4", "0.20", "20", write_multiplier="1.25")),
+    ),
+    # Haiku 5.5 is priced by prompt length; this is the rate for prompts up to 100,000 tokens. A
+    # prompt over that pays $0.50 in / $0.05 cache hit / $2.50 out, which a per-turn total cannot
+    # tell apart from several smaller requests, so the estimate stays at the lower rate.
+    ("anthropic", "claude-haiku-5-5"): (
+        _Schedule(None, _price("0.10", "0.01", "0.50", write_multiplier="1.25")),
     ),
     ("anthropic", "claude-opus-4-6"): (
         _Schedule(None, _price("5", "0.50", "25", write_multiplier="1.25")),

@@ -36,7 +36,29 @@ export function formatEstimateMicros(micros: number): string {
   return `≈${formatCostMicros(micros)}`;
 }
 
-/** A model id without a redundant `provider/` prefix (OpenRouter ids already carry one). */
+// `claude-opus-5-5`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001` (family, major, minor, an
+// optional date) and `claude-sonnet-5` (no minor).
+const CLAUDE_MODEL_ID = /^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/;
+
+/** The name a person recognises for a Claude model id ("Claude Opus 5.5"), or null. */
+function claudeDisplayName(model: string): string | null {
+  const match = CLAUDE_MODEL_ID.exec(model);
+  if (match === null) {
+    return null;
+  }
+  const [, family, major, minor] = match;
+  const name = `${family?.charAt(0).toUpperCase()}${family?.slice(1)}`;
+  return `Claude ${name} ${minor === undefined ? major : `${major}.${minor}`}`;
+}
+
+/** How a model is named on screen: a Claude id as its product name, any other id without a
+ * redundant `provider/` prefix (OpenRouter ids already carry one). */
 export function shortModelName(provider: string, model: string): string {
+  if (provider === "anthropic") {
+    const friendly = claudeDisplayName(model);
+    if (friendly !== null) {
+      return friendly;
+    }
+  }
   return model.startsWith(`${provider}/`) ? model.slice(provider.length + 1) : model;
 }
