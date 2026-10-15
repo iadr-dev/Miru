@@ -119,3 +119,58 @@ async def test_estimates_are_kept_apart_from_reported_cost(session_factory) -> N
     assert by_model["mystery"].estimated_cost_micros == 0
     assert by_model["mystery"].priced is False
     assert summary.totals.estimated_cost_micros == by_model["gpt-5.4-mini"].estimated_cost_micros
+
+
+def test_an_anthropic_turn_total_counts_the_cache_reads_and_writes() -> None:
+    """Anthropic's `input_tokens` leaves the cached part out: 55,000 tokens read from cache show as
+    20 fresh. The total shown for the turn is every token the model read."""
+    acc = UsageAccumulator("t")
+    acc.add_llm_call(
+        input_tokens=20,
+        output_tokens=100,
+        provider="anthropic",
+        model="claude-sonnet-5-5",
+        cached_tokens=55_000,
+        cache_write_tokens=25_000,
+    )
+    snapshot = acc.snapshot()
+    assert snapshot.input_tokens == 80_020
+    # The per-model figures stay as reported: the price arithmetic needs them that way.
+    assert snapshot.models[0].input_tokens == 20
+
+
+def test_an_openai_turn_total_does_not_count_the_cached_part_twice() -> None:
+    acc = UsageAccumulator("t")
+    acc.add_llm_call(
+        input_tokens=1_000, output_tokens=10, provider="openai", model="gpt-5.4", cached_tokens=800
+    )
+    assert acc.snapshot().input_tokens == 1_000
+
+
+async def test_the_usage_page_counts_an_anthropic_rows_cache_tokens_as_input(
+    session_factory,
+) -> None:
+    models = (
+        ModelUsage(
+            provider="anthropic",
+            model="claude-sonnet-5-5",
+            calls=1,
+            input_tokens=20,
+            output_tokens=100,
+            cached_tokens=55_000,
+            cache_write_tokens=25_000,
+        ),
+    )
+    async with session_factory() as session:
+        await write_model_usage(session, user_id="u", turn_id="t1", models=models)
+        await session.commit()
+        summary = await summarize_llm_usage(
+            session, user_id="u", days=1, today=datetime.now(UTC).date()
+        )
+
+    assert summary.totals.input_tokens == 80_020
+    assert summary.models[0].input_tokens == 80_020
+    assert summary.daily[-1].by_model["anthropic/claude-sonnet-5-5"] == 80_120  # in + out
+    # The estimate still prices the three kinds at their own rates (fresh 20, read 55,000 at the
+    # hit rate, write 25,000 at the write rate): $0.00004 + $0.0055 + $0.0625 + $0.001.
+    assert summary.totals.estimated_cost_micros == 69_040
