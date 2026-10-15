@@ -210,6 +210,7 @@ module = [
   "analytics.screener.factor_catalog",
   "analytics.screener.engine",
   "analytics.strategy_watch.strategies",
+  "analytics.strategy_watch.intraday",
   "agent.*",
   "governance.*",
   "conversation.*",

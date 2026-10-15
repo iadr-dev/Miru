@@ -73,6 +73,7 @@ from ingest.jobs import (
     job_stock_info,
     job_valuation_ratios,
 )
+from ingest.jobs.strategy_intraday import job_strategy_intraday
 from ingest.journal import JobRun
 from ingest.leader import build_leader_election, refresh_leadership, release_leadership
 from ingest.preflight import last_completed_us_session
@@ -107,11 +108,14 @@ class Cadence(StrEnum):
     data cadences (a US financials/dividends filing is not tied to a trading session, same
     reasoning as the industry-chain theme seed); `MONTHLY` fires at most once per rolling ~4-week
     window (`_MONTHLY_MIN_GAP_DAYS`) — the right granularity for reference data that changes on
-    a monthly-or-slower cadence, so it is not re-pulled every day."""
+    a monthly-or-slower cadence, so it is not re-pulled every day. `INTRADAY` fires once per
+    `every_minutes` slot from `fire_time` through `until` on a trading day (the 策略盯盤 check
+    during the TW session); it is the only cadence that fires more than once a day."""
 
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
+    INTRADAY = "intraday"
 
 
 @dataclass(frozen=True)
@@ -138,6 +142,9 @@ class ScheduledIngestJob:
     # `self._ctx.calendar` unconditionally for every `Cadence.DAILY` job regardless of which
     # market it actually served).
     market: Market = Market.TW
+    # `Cadence.INTRADAY` only: the last slot start (inclusive) and the slot length.
+    until: time_ | None = None
+    every_minutes: int = 0
 
 
 async def _us_scoring_batch(run_date: date_, ctx: IngestContext) -> JobRun:
@@ -174,6 +181,16 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # partitions and the event feeds; writes today's watchlist with each stock's trigger levels
     # before the 09:00 open, so the intraday check and the morning-list alert have it to read.
     ScheduledIngestJob("strategy_watchlist", time_(8, 0), job_strategy_watchlist),
+    # 策略盯盤 intraday check — one whole-market Sponsor snapshot per 10-minute slot through the
+    # session (09:00 open to the 13:30 close), compared against the morning watchlist.
+    ScheduledIngestJob(
+        "strategy_intraday",
+        time_(9, 0),
+        job_strategy_intraday,
+        Cadence.INTRADAY,
+        until=time_(13, 30),
+        every_minutes=10,
+    ),
     ScheduledIngestJob("price_eod", time_(17, 40), job_price_eod),
     # Margin-purchase/short-sale balance snapshot — shares `price_eod`'s ~17:30 FinMind publish
     # clock (MARGIN_SHORT_JOB's own cron_hint); feeds the 融資增減 TW-rankings tab.
@@ -319,6 +336,8 @@ class IngestDaemon:
         # *completed US session*, not the Taipei date, so a Sunday/Monday-morning pass (no new
         # session since Friday) must not re-pull Friday.
         self._last_session: dict[str, date_] = {}
+        # The (day, slot index) each intraday job last fired for, so it fires once per slot.
+        self._last_slot: dict[str, tuple[date_, int]] = {}
         self._seeded = False
 
     def _local(self, now: datetime) -> datetime:
@@ -342,6 +361,19 @@ class IngestDaemon:
                         self._ctx.us_calendar, now=local
                     )
         self._seeded = True
+
+    def _intraday_slot_due(self, job: ScheduledIngestJob, local: datetime) -> bool:
+        """Whether `local` is inside the job's window in a slot it has not fired for yet; marks
+        the slot handled when it is (a failed slot is not retried, the next slot runs)."""
+        if job.until is None or job.every_minutes <= 0 or local.time() > job.until:
+            return False
+        start = job.fire_time.hour * 60 + job.fire_time.minute
+        slot = (local.hour * 60 + local.minute - start) // job.every_minutes
+        key = (local.date(), slot)
+        if self._last_slot.get(job.name) == key:
+            return False
+        self._last_slot[job.name] = key
+        return True
 
     def _is_due(self, job: ScheduledIngestJob, today: date_) -> bool:
         """Whether `job` should fire this pass, given the day it last fired. A daily job is due
@@ -370,12 +402,16 @@ class IngestDaemon:
         for job in self._jobs:
             if local.time() < job.fire_time:
                 continue
-            if not self._is_due(job, today):
+            if job.cadence is Cadence.INTRADAY:
+                if not self._intraday_slot_due(job, local):
+                    continue
+            elif not self._is_due(job, today):
                 continue
             # Mark handled before running: a failure must not tight-loop within the window. The
             # next window's fire (or an explicit gap-fill) retries, matching the job's no-retry
             # contract.
-            self._last_handled[job.name] = today
+            if job.cadence is not Cadence.INTRADAY:
+                self._last_handled[job.name] = today
             run_date = today
             if self._is_us_daily(job):
                 # US daily jobs run for the last completed US session, not the Taipei date: at
@@ -396,7 +432,8 @@ class IngestDaemon:
             # otherwise) — see `ScheduledIngestJob.market`'s own field comment for why this must
             # not default to the TW calendar for every job regardless of which market it serves.
             calendar = self._ctx.us_calendar if job.market is Market.US else self._ctx.calendar
-            if job.cadence is Cadence.DAILY and not calendar.is_trading_day_extrapolating(run_date):
+            trading_gated = job.cadence in (Cadence.DAILY, Cadence.INTRADAY)
+            if trading_gated and not calendar.is_trading_day_extrapolating(run_date):
                 logger.info(
                     "ingest_job_skipped_non_trading_day",
                     job=job.name,
