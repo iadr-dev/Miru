@@ -141,7 +141,7 @@ MODEL_ROLE_AGENT        # settings.model_role_agent, else the default chain:
 MODEL_ROLE_SUBAGENT     # settings.model_role_subagent, else the default chain:
                          #   "anthropic/claude-sonnet-5-5" (single entry, no fallback)
 MODEL_ROLE_SYNTHESIS    # settings.model_role_synthesis, else the default chain:
-                         #   "openai/gpt-4o-mini" (single entry, no fallback)
+                         #   "openai/gpt-4o-mini" -> "anthropic/claude-sonnet-5-5" (an unconfigured entry is skipped)
 ```
 
 Each override is one or more comma-separated `"provider/model"` specs, in try-order
