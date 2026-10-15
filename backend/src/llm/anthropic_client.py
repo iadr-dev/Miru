@@ -21,6 +21,7 @@ from anthropic.types import MessageParam, ThinkingConfigParam, WebSearchToolResu
 
 from llm.base import (
     ImagePart,
+    LLMRefusalError,
     LLMResponse,
     Message,
     MessageRole,
@@ -47,6 +48,8 @@ _STOP_REASON_MAP: Final[dict[str, StopReason]] = {
     "tool_use": StopReason.TOOL_USE,
     "max_tokens": StopReason.MAX_TOKENS,
     "stop_sequence": StopReason.END_TURN,
+    # A safety classifier declined the request and returned no content; see `LLMRefusalError`.
+    "refusal": StopReason.ERROR,
 }
 
 # Anthropic's native server-side web-search tool — a raw block appended to `tools` alongside
@@ -448,6 +451,11 @@ class AnthropicClient:
             elif block.type == "tool_use":
                 tool_calls.append(ToolCall(id=block.id, name=block.name, arguments=block.input))
         stop_reason = _STOP_REASON_MAP.get(response.stop_reason or "end_turn", StopReason.END_TURN)
+        if stop_reason is StopReason.ERROR:
+            details = getattr(response, "stop_details", None)
+            raise LLMRefusalError(
+                self.provider_id, self.model_id, getattr(details, "category", None)
+            )
         usage = TokenUsage(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
@@ -519,6 +527,8 @@ class AnthropicClient:
                     id=slot["id"], name=slot["name"], arguments=parse_json_object(slot["args"])
                 )
             )
+        if stop_reason is StopReason.ERROR:
+            raise LLMRefusalError(self.provider_id, self.model_id, None)
         yield StreamDoneEvent(stop_reason=stop_reason, usage=usage)
 
     async def count_tokens(self, messages: list[Message]) -> int:
