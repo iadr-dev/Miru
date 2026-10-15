@@ -24,6 +24,7 @@ from redis.asyncio import Redis
 
 from config.settings import Settings
 from events.pubsub import close_pubsub
+from netclient.redis_clients import request_path_redis, subscription_redis
 
 logger = structlog.get_logger(__name__)
 
@@ -100,8 +101,11 @@ class NoopTurnControl:
 class RedisTurnControl:
     enabled = True
 
-    def __init__(self, redis: Redis) -> None:
-        self._redis = redis
+    def __init__(self, redis: Redis, *, commands: Redis | None = None) -> None:
+        # `redis` carries the control-message subscription; every other call (announce, find,
+        # send, the keep-alive) is a command a request waits on: the bounded `commands` client.
+        self._subscriptions = redis
+        self._redis = commands or redis
 
     async def announce(self, *, turn_id: str, user_id: str, thread_id: str) -> None:
         payload = json.dumps({"user_id": user_id, "thread_id": thread_id})
@@ -134,7 +138,7 @@ class RedisTurnControl:
         await self._redis.publish(f"{_CHANNEL_PREFIX}{turn_id}", body)
 
     async def listen(self, turn_id: str, thread_id: str) -> AsyncIterator[ControlMessage]:
-        pubsub = self._redis.pubsub()
+        pubsub = self._subscriptions.pubsub()
         await pubsub.subscribe(f"{_CHANNEL_PREFIX}{turn_id}")
         try:
             while True:
@@ -166,7 +170,7 @@ def _text(value: bytes | str) -> str:
 def build_turn_control(settings: Settings) -> TurnControl:
     """Select the backend from config, mirroring `events.factory.build_event_bus_factory`."""
     if settings.event_bus_backend == "redis":
-        return RedisTurnControl(Redis.from_url(settings.redis_url))
+        return RedisTurnControl(subscription_redis(settings), commands=request_path_redis(settings))
     return NoopTurnControl()
 
 

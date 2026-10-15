@@ -24,6 +24,7 @@ from config.settings import Settings
 from events.bus import Event, EventBus, InMemoryEventBus
 from events.redis_bus import RedisEventBus, RedisStreamReader
 from events.stream_store import SqlAlchemyStreamEventStore, StreamEventStore
+from netclient.redis_clients import request_path_redis, subscription_redis
 
 
 @runtime_checkable
@@ -81,8 +82,11 @@ class RedisEventBusFactory:
         self,
         redis: Redis,
         session_factory: async_sessionmaker[AsyncSession],
+        *,
+        commands: Redis | None = None,
     ) -> None:
-        self._redis = redis
+        # `redis` carries the subscriptions; a turn's publishes go through `commands`.
+        self._redis = commands or redis
         self._store: StreamEventStore = SqlAlchemyStreamEventStore(session_factory)
         self._live_reader = RedisStreamReader(redis)
 
@@ -105,8 +109,9 @@ def build_event_bus_factory(
 ) -> EventBusFactory:
     """Select the transport backend from config — never hardcoded at the call site."""
     if settings.event_bus_backend == "redis":
-        redis: Redis = Redis.from_url(settings.redis_url)
-        return RedisEventBusFactory(redis, session_factory)
+        return RedisEventBusFactory(
+            subscription_redis(settings), session_factory, commands=request_path_redis(settings)
+        )
     return InMemoryEventBusFactory()
 
 

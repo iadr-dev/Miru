@@ -41,6 +41,7 @@ from events.live_quote import (
     RedisQuoteTransport,
 )
 from ingest.data_updates import DataUpdatePublisher
+from netclient.redis_clients import request_path_redis, subscription_redis
 
 
 @runtime_checkable
@@ -77,11 +78,12 @@ class DataUpdateBroker:
 def build_data_update_broker(settings: Settings, redis: Redis | None = None) -> DataUpdateBroker:
     """Assemble publisher + reader-factory for the configured backend."""
     if settings.event_bus_backend == "redis":
-        client: Redis = redis if redis is not None else Redis.from_url(settings.redis_url)
+        subscriptions: Redis = redis if redis is not None else subscription_redis(settings)
+        commands: Redis = redis if redis is not None else request_path_redis(settings)
         return DataUpdateBroker(
-            publisher=RedisDataUpdatePublisher(client, channel=settings.data_updated_key_prefix),
+            publisher=RedisDataUpdatePublisher(commands, channel=settings.data_updated_key_prefix),
             reader_factory=_RedisDataUpdateReaderFactory(
-                client, channel=settings.data_updated_key_prefix
+                subscriptions, channel=settings.data_updated_key_prefix
             ),
         )
     broker = InMemoryDataUpdateBroker()
@@ -102,14 +104,15 @@ def build_quote_feed(
     }
     transport: QuoteTransport
     if settings.event_bus_backend == "redis":
-        client: Redis = redis if redis is not None else Redis.from_url(settings.redis_url)
+        subscriptions: Redis = redis if redis is not None else subscription_redis(settings)
+        commands: Redis = redis if redis is not None else request_path_redis(settings)
         registry = RedisDemandRegistry(
-            client,
+            commands,
             key_prefix=settings.quote_demand_key_prefix,
             max_symbols=settings.quote_stream_max_demanded_symbols,
             lease_seconds=settings.quote_demand_lease_seconds,
         )
-        transport = RedisQuoteTransport(client)
+        transport = RedisQuoteTransport(subscriptions, commands=commands)
     else:
         registry = InMemoryDemandRegistry(  # type: ignore[assignment]  # both satisfy DemandRegistry
             max_symbols=settings.quote_stream_max_demanded_symbols
