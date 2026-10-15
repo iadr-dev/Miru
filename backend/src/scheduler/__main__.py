@@ -66,6 +66,7 @@ async def _run_once(worker: SchedulerWorker) -> None:
         released = await worker.release_held()
         digests = await worker.send_morning_digests()
         retried = await worker.retry_pending_deliveries()
+        pruned = await worker.prune_expired()
         logger.info(
             "scheduler_pass_complete",
             jobs_run=len(ran),
@@ -73,6 +74,7 @@ async def _run_once(worker: SchedulerWorker) -> None:
             held_released=released,
             digests_sent=digests,
             deliveries_retried=retried,
+            stream_events_pruned=pruned,
         )
     except Exception:
         logger.exception("scheduler_pass_failed")
