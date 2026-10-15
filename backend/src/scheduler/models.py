@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.alerts import RuleCondition, TriggerMode
 from schemas.enums import Market, UserMarket
+from schemas.strategy_watch import StrategyKey
 
 # Why an address is not emailed (a row in `email_suppressions`).
 EmailBlockReason = Literal["bounced", "complained", "unsubscribed"]
@@ -171,6 +172,26 @@ class AlertRule(BaseModel):
         if half_symbol or has_symbol == (self.watchlist_id is not None):
             raise ValueError("an alert rule needs a symbol+market or a watchlist_id, not both")
         return self
+
+
+class StrategySubscription(BaseModel):
+    """A user's 策略盯盤 subscription (one per user): which strategies, over every stock today's
+    screen picks or only one of the user's watchlist groups, and how to be told."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    user_id: str
+    strategies: tuple[StrategyKey, ...] = Field(min_length=1)
+    watchlist_id: str | None = None  # None: every stock on today's watchlist
+    morning_list: bool = True
+    channels: tuple[DeliveryChannelKind, ...] = Field(default_factory=tuple)
+    quiet_hours: QuietHours | None = None
+    daily_limit: int | None = Field(default=None, ge=1)
+    enabled: bool = True
+    version: int = 0
+    created_at: datetime
+    updated_at: datetime
 
 
 class AlertPatch(BaseModel):

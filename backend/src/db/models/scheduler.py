@@ -128,6 +128,32 @@ class AlertRuleRow(Base):
     )
 
 
+class StrategySubscriptionRow(Base):
+    """A user's 策略盯盤 subscription — one row per user. `watchlist_id` null means every stock on
+    today's screen; a deleted group takes the subscription with it rather than silently widening
+    it to the whole market."""
+
+    __tablename__ = "strategy_subscriptions"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), unique=True, index=True
+    )
+    strategies: Mapped[list[str]] = mapped_column(JSON, default=list)
+    watchlist_id: Mapped[str | None] = mapped_column(
+        ForeignKey("watchlists.id", ondelete="CASCADE"), default=None
+    )
+    morning_list: Mapped[bool] = mapped_column(default=True)
+    channels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    quiet_start: Mapped[str | None] = mapped_column(default=None)
+    quiet_end: Mapped[str | None] = mapped_column(default=None)
+    daily_limit: Mapped[int | None] = mapped_column(default=None)
+    enabled: Mapped[bool] = mapped_column(default=True)
+    version: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(_UTC)
+    updated_at: Mapped[datetime] = mapped_column(_UTC)
+
+
 class AlertPreferenceRow(Base):
     __tablename__ = "alert_preferences"
 

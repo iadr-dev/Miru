@@ -313,8 +313,8 @@ is in [api-reference.md](../api-reference.md).
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an
-alert when every condition of a strategy the user subscribed to holds. Stages 1 and 2 are built; the
-alert kind `strategy_watch` (evaluated by the scheduler from `strategy_hits`) follows.
+alert when every condition of a strategy the user subscribed to holds. All three stages are built;
+delivery (the subscription, morning list and condition alerts) is module 14 "策略盯盤 subscription".
 
 **Stage 1, `job_strategy_watchlist` (08:00, `batch.py`).** Reads the last completed session from the
 store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:

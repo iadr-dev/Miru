@@ -13,11 +13,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from api.routers.scheduler import alerts, channels, email, notifications, schedules
+from api.routers.scheduler import (
+    alerts,
+    channels,
+    email,
+    notifications,
+    schedules,
+    strategy_watch,
+)
 from api.routers.scheduler.channels import get_line_transport
 
 router = APIRouter(tags=["scheduler"])
-for _part in (schedules, alerts, notifications, channels, email):
+for _part in (schedules, alerts, notifications, channels, email, strategy_watch):
     router.include_router(_part.router)
 
 __all__ = ["get_line_transport", "router"]

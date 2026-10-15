@@ -3413,6 +3413,25 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/strategy-watch/subscription": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Strategy Subscription */
+    get: operations["get_strategy_subscription_api_v1_strategy_watch_subscription_get"];
+    /** Put Strategy Subscription */
+    put: operations["put_strategy_subscription_api_v1_strategy_watch_subscription_put"];
+    post?: never;
+    /** Delete Strategy Subscription */
+    delete: operations["delete_strategy_subscription_api_v1_strategy_watch_subscription_delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/symbols/{symbol}/supply-chain": {
     parameters: {
       query?: never;
@@ -10590,6 +10609,35 @@ export interface components {
       provider: string;
     };
     /**
+     * PutStrategySubscriptionRequest
+     * @description The whole subscription. Empty `channels` / null `quiet_hours` inherit the user's alert
+     *     preferences; null `watchlist_id` means every stock on today's screen. `expected_version` is the
+     *     version the client last saw (409 when it changed meanwhile); omit it to create.
+     */
+    PutStrategySubscriptionRequest: {
+      /** Channels */
+      channels?: components["schemas"]["DeliveryChannelKind"][];
+      /** Daily Limit */
+      daily_limit?: number | null;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+      /** Expected Version */
+      expected_version?: number | null;
+      /**
+       * Morning List
+       * @default true
+       */
+      morning_list: boolean;
+      quiet_hours?: components["schemas"]["QuietHours"] | null;
+      /** Strategies */
+      strategies: ("volatility_squeeze" | "oversold_bounce" | "ad_divergence")[];
+      /** Watchlist Id */
+      watchlist_id?: string | null;
+    };
+    /**
      * QuietHours
      * @description A per-user quiet window, stored as ISO `HH:MM` strings (portable — no DB `time` type
      *     reliance across dialects). A window that wraps past midnight (start > end) is honoured.
@@ -11450,6 +11498,51 @@ export interface components {
        * @default []
        */
       weaknesses: string[];
+    };
+    /**
+     * StrategySubscription
+     * @description A user's 策略盯盤 subscription (one per user): which strategies, over every stock today's
+     *     screen picks or only one of the user's watchlist groups, and how to be told.
+     */
+    StrategySubscription: {
+      /** Channels */
+      channels?: components["schemas"]["DeliveryChannelKind"][];
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Daily Limit */
+      daily_limit?: number | null;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+      /** Id */
+      id: string;
+      /**
+       * Morning List
+       * @default true
+       */
+      morning_list: boolean;
+      quiet_hours?: components["schemas"]["QuietHours"] | null;
+      /** Strategies */
+      strategies: ("volatility_squeeze" | "oversold_bounce" | "ad_divergence")[];
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string;
+      /** User Id */
+      user_id: string;
+      /**
+       * Version
+       * @default 0
+       */
+      version: number;
+      /** Watchlist Id */
+      watchlist_id?: string | null;
     };
     /**
      * SubIndustryHeat
@@ -18145,6 +18238,77 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
         };
+      };
+    };
+  };
+  get_strategy_subscription_api_v1_strategy_watch_subscription_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StrategySubscription"] | null;
+        };
+      };
+    };
+  };
+  put_strategy_subscription_api_v1_strategy_watch_subscription_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PutStrategySubscriptionRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["StrategySubscription"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_strategy_subscription_api_v1_strategy_watch_subscription_delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

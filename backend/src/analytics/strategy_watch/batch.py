@@ -68,6 +68,7 @@ def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
     as_of: date_,
     bars: Mapping[str, Sequence[PriceBar]],
     industry_by_symbol: Mapping[str, str],
+    name_by_symbol: Mapping[str, str],
     flow_rows: Sequence[Mapping[str, object]],
     margin_rows: Sequence[Mapping[str, object]],
     exclusions: Mapping[str, str],
@@ -114,6 +115,7 @@ def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
         row.update(
             {
                 "run_date": run_date.isoformat(),
+                "name": name_by_symbol.get(setup.symbol),
                 "industry": industry,
                 "sector_strength_pct": strength.get(industry) if industry else None,
                 "foreign_streak": foreign,
@@ -193,11 +195,20 @@ async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
 
     info = ctx.store.latest_partition_on_or_before(STOCK_INFO_DATASET, market, run_date)
     industry_by_symbol: dict[str, str] = {}
+    name_by_symbol: dict[str, str] = {}
     if info is not None:
         for row in ctx.store.read_partition(STOCK_INFO_DATASET, market, info[0]):
-            symbol, industry = row.get("symbol"), row.get("industry_category")
-            if isinstance(symbol, str) and isinstance(industry, str) and industry:
+            symbol, industry, name = (
+                row.get("symbol"),
+                row.get("industry_category"),
+                row.get("name"),
+            )
+            if not isinstance(symbol, str):
+                continue
+            if isinstance(industry, str) and industry:
                 industry_by_symbol[symbol] = industry
+            if isinstance(name, str) and name:
+                name_by_symbol[symbol] = name
 
     event_window = trailing_trading_days(ctx, run_date, EVENT_LOOKBACK_SESSIONS)
     exclusions = context.excluded_symbols(
@@ -230,6 +241,7 @@ async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
         as_of=as_of,
         bars=bars,
         industry_by_symbol=industry_by_symbol,
+        name_by_symbol=name_by_symbol,
         flow_rows=flow_rows,
         margin_rows=margin_rows,
         exclusions=exclusions,

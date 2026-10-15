@@ -16229,6 +16229,93 @@
     "title": "PutKeyRequest",
     "type": "object"
    },
+   "PutStrategySubscriptionRequest": {
+    "additionalProperties": false,
+    "description": "The whole subscription. Empty `channels` / null `quiet_hours` inherit the user's alert\npreferences; null `watchlist_id` means every stock on today's screen. `expected_version` is the\nversion the client last saw (409 when it changed meanwhile); omit it to create.",
+    "properties": {
+     "channels": {
+      "items": {
+       "$ref": "#/components/schemas/DeliveryChannelKind"
+      },
+      "title": "Channels",
+      "type": "array"
+     },
+     "daily_limit": {
+      "anyOf": [
+       {
+        "maximum": 50.0,
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Limit"
+     },
+     "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+     },
+     "expected_version": {
+      "anyOf": [
+       {
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Version"
+     },
+     "morning_list": {
+      "default": true,
+      "title": "Morning List",
+      "type": "boolean"
+     },
+     "quiet_hours": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/QuietHours"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "strategies": {
+      "items": {
+       "enum": [
+        "volatility_squeeze",
+        "oversold_bounce",
+        "ad_divergence"
+       ],
+       "type": "string"
+      },
+      "minItems": 1,
+      "title": "Strategies",
+      "type": "array"
+     },
+     "watchlist_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Watchlist Id"
+     }
+    },
+    "required": [
+     "strategies"
+    ],
+    "title": "PutStrategySubscriptionRequest",
+    "type": "object"
+   },
    "QuietHours": {
     "additionalProperties": false,
     "description": "A per-user quiet window, stored as ISO `HH:MM` strings (portable — no DB `time` type\nreliance across dialects). A window that wraps past midnight (start > end) is honoured.",
@@ -18211,6 +18298,107 @@
      }
     },
     "title": "StockSwot",
+    "type": "object"
+   },
+   "StrategySubscription": {
+    "additionalProperties": false,
+    "description": "A user's 策略盯盤 subscription (one per user): which strategies, over every stock today's\nscreen picks or only one of the user's watchlist groups, and how to be told.",
+    "properties": {
+     "channels": {
+      "items": {
+       "$ref": "#/components/schemas/DeliveryChannelKind"
+      },
+      "title": "Channels",
+      "type": "array"
+     },
+     "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+     },
+     "daily_limit": {
+      "anyOf": [
+       {
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Daily Limit"
+     },
+     "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "morning_list": {
+      "default": true,
+      "title": "Morning List",
+      "type": "boolean"
+     },
+     "quiet_hours": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/QuietHours"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "strategies": {
+      "items": {
+       "enum": [
+        "volatility_squeeze",
+        "oversold_bounce",
+        "ad_divergence"
+       ],
+       "type": "string"
+      },
+      "minItems": 1,
+      "title": "Strategies",
+      "type": "array"
+     },
+     "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+     },
+     "user_id": {
+      "title": "User Id",
+      "type": "string"
+     },
+     "version": {
+      "default": 0,
+      "title": "Version",
+      "type": "integer"
+     },
+     "watchlist_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Watchlist Id"
+     }
+    },
+    "required": [
+     "id",
+     "user_id",
+     "strategies",
+     "created_at",
+     "updated_at"
+    ],
+    "title": "StrategySubscription",
     "type": "object"
    },
    "SubIndustryHeat": {
@@ -30923,6 +31111,86 @@
     "summary": "Valuation Ratios",
     "tags": [
      "market-data"
+    ]
+   }
+  },
+  "/api/v1/strategy-watch/subscription": {
+   "delete": {
+    "operationId": "delete_strategy_subscription_api_v1_strategy_watch_subscription_delete",
+    "responses": {
+     "204": {
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Delete Strategy Subscription",
+    "tags": [
+     "scheduler"
+    ]
+   },
+   "get": {
+    "operationId": "get_strategy_subscription_api_v1_strategy_watch_subscription_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "anyOf": [
+          {
+           "$ref": "#/components/schemas/StrategySubscription"
+          },
+          {
+           "type": "null"
+          }
+         ],
+         "title": "Response Get Strategy Subscription Api V1 Strategy Watch Subscription Get"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Strategy Subscription",
+    "tags": [
+     "scheduler"
+    ]
+   },
+   "put": {
+    "operationId": "put_strategy_subscription_api_v1_strategy_watch_subscription_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PutStrategySubscriptionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/StrategySubscription"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Strategy Subscription",
+    "tags": [
+     "scheduler"
     ]
    }
   },

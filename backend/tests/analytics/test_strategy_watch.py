@@ -187,6 +187,7 @@ def test_watchlist_rows_drop_excluded_stocks_and_carry_context() -> None:
         as_of=_AS_OF,
         bars={"2330": _squeeze_series(), "2317": _oversold_series()},
         industry_by_symbol={"2330": "半導體業", "2317": "其他電子業"},
+        name_by_symbol={"2330": "台積電"},
         flow_rows=[],
         margin_rows=[],
         exclusions={"2317": "ex_dividend"},
@@ -196,6 +197,7 @@ def test_watchlist_rows_drop_excluded_stocks_and_carry_context() -> None:
     row = rows[0]
     assert row["strategy"] == Strategy.VOLATILITY_SQUEEZE.value
     assert row["industry"] == "半導體業"
+    assert row["name"] == "台積電"
     assert row["headline"] == "法說會"
     assert row["regime"] == regime.value
 

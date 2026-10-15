@@ -27,7 +27,12 @@ export function deepLinkHref(payload: Record<string, unknown>): string | null {
     return null;
   }
   const { route, symbol, thread_id: threadId } = link as Record<string, unknown>;
-  if (route === "stock" && typeof symbol === "string" && symbol.trim() !== "") {
+  // A 策略盯盤 condition alert names its stock; it opens that stock until the watch page exists.
+  if (
+    (route === "stock" || route === "watch") &&
+    typeof symbol === "string" &&
+    symbol.trim() !== ""
+  ) {
     return `/stock/${encodeURIComponent(symbol)}`;
   }
   // A schedule's notification points at the one thread every run of it is appended to.
