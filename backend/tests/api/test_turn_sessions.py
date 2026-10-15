@@ -191,3 +191,39 @@ def test_the_reconnect_stream_holds_no_open_transaction(settings: Settings) -> N
         assert observed["reconnect_sessions"] >= 1  # it did resolve the caller through a session
         assert observed["open"] == []
         assert "event: turn.end" in observed["resumed"]  # type: ignore[operator]
+
+
+def test_a_turn_finishes_and_is_saved_when_its_client_disconnects_mid_answer(
+    settings: Settings,
+) -> None:
+    """A dropped connection (a phone changing networks, a closed tab) must not throw the answer
+    away: the turn keeps running, saves its answer, and the client re-attaches to read it."""
+    with build_test_client(settings, agent_answer="x") as client:
+        headers, user_id, real_factory, _tracking, orchestrator = _setup(client, settings)
+
+        async def drop_then_let_the_model_answer() -> None:
+            await asyncio.wait_for(orchestrator.thinking.wait(), timeout=5)
+
+        assert client.portal is not None
+        client.portal.call(
+            lambda: collect_sse(
+                client.app,
+                "/api/v1/agent/query",
+                method="POST",
+                json_body={"message": "hello"},
+                until=lambda ls: "event: turn.start" in ls,  # then the client goes away
+                timeout_s=10,
+                on_started=drop_then_let_the_model_answer,
+                headers=headers,
+            )
+        )
+
+        async def finish_and_wait() -> int:
+            orchestrator.answer.set()
+            for _ in range(250):
+                if await _turn_count(real_factory, user_id) == 2:
+                    break
+                await asyncio.sleep(0.02)
+            return await _turn_count(real_factory, user_id)
+
+        assert client.portal.call(finish_and_wait) == 2  # the question and the saved answer

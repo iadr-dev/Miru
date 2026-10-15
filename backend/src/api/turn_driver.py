@@ -230,28 +230,77 @@ async def run_and_stream(
         running.task = runner
         if state.turn_control.enabled:
             running.control_task = asyncio.create_task(_serve_control(state, running))
+    finished = False
     try:
         async for event in subscription:
             yield format_sse_event(event)
             if event.kind == EventKind.TURN_END:
+                finished = True
                 break
     finally:
+        if finished or state.shutdown.draining:
+            await _finish_turn(state, event_bus, running, runner, turn_id, thread_id, cancel=True)
+        else:
+            # The client went away mid-answer (a dropped connection, a closed tab). The answer is
+            # still wanted: it is saved when it finishes, and the client re-attaches with
+            # `GET /threads/{id}/stream`. Keep driving; clean up once the run ends. Only a cancel
+            # request, a shutdown, or the time limit below stops it early.
+            task = asyncio.create_task(
+                _finish_when_done(state, event_bus, running, runner, turn_id, thread_id)
+            )
+            _DETACHED.add(task)
+            task.add_done_callback(_DETACHED.discard)
+
+
+# Turns whose client left before the end, kept referenced until they finish.
+_DETACHED: set[asyncio.Task[None]] = set()
+# A turn nobody is watching is not allowed to run for ever.
+_DETACHED_TURN_LIMIT_SECONDS = 900.0
+
+
+async def _finish_when_done(
+    state: AppState,
+    event_bus: EventBus,
+    running: RunningTurn | None,
+    runner: asyncio.Task[None],
+    turn_id: str,
+    thread_id: str,
+) -> None:
+    try:
+        await asyncio.wait_for(asyncio.shield(runner), timeout=_DETACHED_TURN_LIMIT_SECONDS)
+    except (TimeoutError, asyncio.CancelledError, Exception):
+        logger.warning("detached_turn_stopped", turn_id=turn_id)
+    await _finish_turn(state, event_bus, running, runner, turn_id, thread_id, cancel=True)
+
+
+async def _finish_turn(
+    state: AppState,
+    event_bus: EventBus,
+    running: RunningTurn | None,
+    runner: asyncio.Task[None],
+    turn_id: str,
+    thread_id: str,
+    *,
+    cancel: bool,
+) -> None:
+    """Stop the driver (a no-op when it already finished) and release everything the turn held."""
+    if cancel:
         runner.cancel()
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await runner
+    if running is not None and running.control_task is not None:
+        running.control_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await runner
-        if running is not None and running.control_task is not None:
-            running.control_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await running.control_task
-            with contextlib.suppress(Exception):
-                await state.turn_control.withdraw(turn_id=turn_id, thread_id=thread_id)
-        state.turn_registry.unregister(turn_id)
-        # A Redis-backed bus runs a background mirror-writer; drain + stop it so the per-turn bus
-        # leaves no dangling task. The in-process bus has no such handle (duck-typed, optional).
-        closer = getattr(event_bus, "aclose", None)
-        if closer is not None:
-            with contextlib.suppress(Exception):
-                await closer()
+            await running.control_task
+        with contextlib.suppress(Exception):
+            await state.turn_control.withdraw(turn_id=turn_id, thread_id=thread_id)
+    state.turn_registry.unregister(turn_id)
+    # A Redis-backed bus runs a background mirror-writer; drain + stop it so the per-turn bus
+    # leaves no dangling task. The in-process bus has no such handle (duck-typed, optional).
+    closer = getattr(event_bus, "aclose", None)
+    if closer is not None:
+        with contextlib.suppress(Exception):
+            await closer()
 
 
 async def _serve_control(state: AppState, running: RunningTurn) -> None:

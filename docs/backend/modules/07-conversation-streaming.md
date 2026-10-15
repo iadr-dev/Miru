@@ -177,6 +177,10 @@ line. All narration text is governed like any other output (non-trading, no raw 
   carries the `thread_id` it belongs to (a FK with `ON DELETE CASCADE`, so the log goes with the
   conversation) and the streamed turn id as plain text. Every streamed turn, regenerated or not,
   has its events in the replay log.
+- **A turn outlives its connection.** When the client goes away mid-answer (a dropped network, a
+  closed tab) the turn keeps running and saves its answer; only a cancel request, a shutdown, or the
+  15-minute limit for an unwatched turn stops it (`turn_driver._finish_when_done`). Before this the
+  turn was cancelled the moment its response closed, so there was nothing to re-attach to.
 - A reconnect resolves the turn to follow as: the one running on this worker, else the one another
   worker announced for the thread (`turn_control.find`, owner only), else the thread's latest saved
   turn. The announced turn is what lets a reconnect during a regenerated answer follow that answer
