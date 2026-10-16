@@ -31,6 +31,41 @@ logger = structlog.get_logger(__name__)
 ATTENTION_STOCKS_DATASET = "attention_stocks"
 
 
+def _failed_kinds(twse_failed: bool, tpex_failed: bool) -> set[str]:
+    return {kind for kind, down in (("twse", twse_failed), ("tpex", tpex_failed)) if down}
+
+
+def _settled_rows(
+    ctx: IngestContext,
+    dataset: str,
+    run_date: date_,
+    rows: list[dict[str, object]],
+    failed: set[str],
+) -> list[dict[str, object]] | None:
+    """The rows to write for the day, or `None` to leave the stored partition alone.
+
+    One exchange failing (`failed` holds "twse" / "tpex") must not wipe its earlier rows from the
+    day: they are carried forward (`security_type` says which exchange a row came from). A result
+    with no rows at all never replaces a partition that already has some: a glitchy empty answer
+    is not a day with nothing on the list."""
+    if failed:
+        stored = ctx.store.read_partition(dataset, ctx.market.value, run_date)
+        rows = [*rows, *(r for r in stored if r.get("security_type") in failed)]
+    if not rows and ctx.store.has_rows(dataset, ctx.market.value, run_date):
+        return None
+    return rows
+
+
+def _kept_run(dataset: str, run_date: date_) -> JobRun:
+    return journal_run(
+        dataset,
+        run_date,
+        rows_written=0,
+        status=RunStatus.SKIPPED,
+        detail="the feed returned no rows; kept the day's earlier non-empty snapshot",
+    )
+
+
 async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
     """`ingest-daily` — 注意股 (attention-stock) whole-market feed, TWSE `announcement/notice`
     plus TPEX `tpex_trading_warning_information` (`sources/twse_openapi.py`/
@@ -84,8 +119,13 @@ async def job_attention_stocks(run_date: date_, ctx: IngestContext) -> JobRun:
             raw_rows.extend(cast("list[dict[str, object]]", rows_obj))
 
     rows = _validate_rows_against(AttentionStockRow, ATTENTION_STOCKS_DATASET, raw_rows, run_date)
+    settled = _settled_rows(
+        ctx, ATTENTION_STOCKS_DATASET, run_date, rows, _failed_kinds(twse_failed, tpex_failed)
+    )
+    if settled is None:
+        return _kept_run(ATTENTION_STOCKS_DATASET, run_date)
     rows_written = ctx.store.write_partition(
-        ATTENTION_STOCKS_DATASET, ctx.market.value, run_date, rows
+        ATTENTION_STOCKS_DATASET, ctx.market.value, run_date, settled
     )
     await ctx.data_update_publisher.publish_data_updated(
         capability=Capability.ATTENTION_STOCKS,
@@ -152,8 +192,13 @@ async def job_disposition_events(run_date: date_, ctx: IngestContext) -> JobRun:
     rows = _validate_rows_against(
         DispositionEventRow, DISPOSITION_EVENTS_DATASET, raw_rows, run_date
     )
+    settled = _settled_rows(
+        ctx, DISPOSITION_EVENTS_DATASET, run_date, rows, _failed_kinds(twse_failed, tpex_failed)
+    )
+    if settled is None:
+        return _kept_run(DISPOSITION_EVENTS_DATASET, run_date)
     rows_written = ctx.store.write_partition(
-        DISPOSITION_EVENTS_DATASET, ctx.market.value, run_date, rows
+        DISPOSITION_EVENTS_DATASET, ctx.market.value, run_date, settled
     )
     await ctx.data_update_publisher.publish_data_updated(
         capability=Capability.DISPOSITION_EVENTS,

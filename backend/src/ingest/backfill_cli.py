@@ -76,6 +76,7 @@ from ingest.preflight import (
     last_available_trading_day,
     last_completed_us_session,
     run_preflight_if_enabled,
+    snapshot_day,
 )
 from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
@@ -232,7 +233,10 @@ async def _run_non_finmind_forward_only_jobs_for_today(ctx: IngestContext) -> tu
     this CLI for a routine gap-fill is asking for. `_tw_gap_fill`'s own "call unconditionally,
     idempotent" reasoning applies here too: `write_partition` always replaces the whole day's
     partition, so re-running for a day that already succeeded is a same-answer no-op."""
-    today = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
+    today = snapshot_day(ctx.calendar, now=datetime.now(UTC))
+    if today is None:
+        logger.info("ingest_backfill_cli_snapshot_skipped", reason="not a trading day")
+        return ()
     runs = (
         await job_etf_nav(today, ctx),
         await job_etf_aum(today, ctx),

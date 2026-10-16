@@ -250,3 +250,25 @@ async def test_insider_transfer_declaration_idempotent_rerun_does_not_duplicate(
 
     assert first.status is second.status is RunStatus.SUCCESS
     assert first.rows_written == second.rows_written == 1
+
+
+async def test_material_announcements_empty_answer_keeps_the_days_earlier_snapshot(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The feed has no history to recover from, so a glitchy empty answer must not replace the
+    day's earlier non-empty snapshot."""
+    state = {"empty": False}
+
+    async def _fake_fetch(*, tls_policy: object) -> SourceResult:
+        rows = [] if state["empty"] else [_ANNOUNCEMENT_ROW]
+        return _fake_result(rows=rows, status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_material_announcements", _fake_fetch)
+    ctx = _ctx(tmp_path)
+
+    await job_material_announcements(_RUN_DATE, ctx)
+    state["empty"] = True
+    run = await job_material_announcements(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    assert len(ctx.store.read_partition(MATERIAL_ANNOUNCEMENTS_DATASET, "TW", _RUN_DATE)) == 1

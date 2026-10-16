@@ -42,6 +42,7 @@ import asyncio
 import contextlib
 import signal
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -69,6 +70,8 @@ from ingest.leader import acquire_leadership
 from ingest.us_jobs import job_us_fundamentals
 
 logger = structlog.get_logger(__name__)
+
+_TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 async def _tw_gap_fill(
@@ -100,7 +103,9 @@ async def _tw_gap_fill(
     derived_runs = await run_derived_compute_catchup(
         settings, ctx, override=False, years=settings.dev_backfill_years
     )
-    today = datetime.now(UTC).date()
+    # The Taipei date, not the UTC one (still yesterday until 08:00 Taipei); each job skips a
+    # non-trading day itself.
+    today = datetime.now(_TAIPEI).date()
     announcements_run = await job_material_announcements(today, ctx)
     insider_transfer_run = await job_insider_transfer_declaration(today, ctx)
     attention_stocks_run = await job_attention_stocks(today, ctx)
