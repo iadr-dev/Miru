@@ -466,10 +466,33 @@ POST   /me/channels/telegram/link     one-time Telegram link; DELETE /me/channel
 POST   /webhooks/telegram             bot webhook (secret header); binds the chat on /start <token>
 GET    /alerts/symbol-check           ?symbol&market → {checked, exists}: does the ticker have any
                                       price data (a typo warning for the form; never blocks create)
+GET|PUT|DELETE /strategy-watch/subscription   the user's one 策略盯盤 subscription (PUT creates or
+                                      replaces; `expected_version` CAS → 409 `stale_version`)
 ```
 
 No `feature_not_entitled` 403 on any of these. Chat gains `propose_alert` / `propose_schedule`
 tools that return an `alert_proposal` rich card; creation happens only on the user's confirm.
+
+### 策略盯盤 subscription (`scheduler/strategy_store.py`, `strategy_messages.py`)
+
+One subscription per user (`strategy_subscriptions`): the strategies (`volatility_squeeze`,
+`oversold_bounce`, `ad_divergence`), every stock on today's screen or one watchlist group, whether to
+get the morning list, and channels / quiet hours / daily limit (empty or null inherit the alert
+preferences). `SchedulerWorker.run_strategy_watch` runs on every scheduler pass and reads only the
+stored `strategy_watchlist` and `strategy_hits` partitions (module 20 §5c):
+
+- **Morning list** once per trading day, before 13:30: each subscribed strategy's stocks with their
+  key level (上軌 / 下軌 / 20 日低點) and the market breadth.
+- **Condition alert** once per (stock, strategy, day) for the first slot the intraday check marked
+  alertable, listing each condition with its observed and required value plus context (類股強度,
+  法人 streaks, today's 重訊 subject). Slots from before a same-day subscription are not replayed;
+  near misses are never sent; `daily_limit` caps condition alerts (the morning list does not count).
+- Open to every tier (bound 2): a plan without intraday data (`tick_minute_k`) gets the alert with
+  the intraday values masked. Bodies pass `check_output`; a flagged third-party subject is dropped,
+  then a fixed line is sent instead.
+- Recorded as `source='alert'` notifications with `source_id` prefix `strategy:`, so the inbox,
+  quiet-hours hold, retry and dedupe (`strategy:{subscription}:{symbol}:{strategy}` per day per
+  channel) are the alert machinery unchanged and no existing table needed a migration.
 
 ### 重大訊息 alert (`material_announcement`)
 

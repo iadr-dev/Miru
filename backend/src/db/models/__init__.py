@@ -66,6 +66,7 @@ from db.models.scheduler import (
     EmailSuppressionRow,
     NotificationRow,
     ScheduleJobRow,
+    StrategySubscriptionRow,
 )
 from db.models.scores import (
     StockScoreRow,
@@ -98,6 +99,7 @@ __all__ = [
     "SessionRow",
     "StockScoreRow",
     "StockSummaryRow",
+    "StrategySubscriptionRow",
     "StreamEventRow",
     "SubscriptionRow",
     "SupplyChainEdgeRow",

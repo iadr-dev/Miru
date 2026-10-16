@@ -40,10 +40,12 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from accounts.byok import ByokKeyRequiredError, resolve_byok_override
+from accounts.entitlements import feature_allowed
 from accounts.hooks import EntitlementResolver
 from accounts.models import User
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError
 from agent.loop import RichCard
+from analytics.strategy_watch.batch import STRATEGY_WATCHLIST_DATASET
 from config.settings import Settings
 from conversation.models import CaveatBlock, MessageBlockType, RichCardBlock, TextBlock, TurnRole
 from conversation.store import SqlAlchemyConversationStore, ThreadNotFoundError
@@ -51,6 +53,7 @@ from dataaccess.router import DataAccessRouter
 from events.bus import EventBus
 from events.kinds import EventKind
 from governance.textscan import check_output
+from ingest.jobs.strategy_intraday import STRATEGY_HITS_DATASET
 from ingest.leader import LeaderElection, get_default_leader_election
 from llm.registry import ByokOverride, byok_scope
 from orchestrator.models import OrchestratorResult
@@ -72,11 +75,20 @@ from scheduler.models import (
     PendingDelivery,
     QuietHours,
     ScheduleJob,
+    StrategySubscription,
     TriggerMode,
 )
 from scheduler.quota import QuotaGate, UsageQuotaGate
 from scheduler.retention import prune_stream_events
 from scheduler.store import SqlAlchemySchedulerStore
+from scheduler.strategy_messages import (
+    first_alertable,
+    hit_alert,
+    in_scope,
+    morning_list,
+    safe_body,
+)
+from scheduler.strategy_store import STRATEGY_SOURCE_PREFIX, StrategySubscriptionStore
 from scheduler.templates import (
     EVENT_KINDS,
     NON_ADVICE_FOOTER,
@@ -97,6 +109,8 @@ from usage.store import SqlAlchemyUsageStore, write_turn_usage
 logger = structlog.get_logger(__name__)
 
 _DEFAULT_USER_TZ = "Asia/Taipei"
+# The TW session ends at 13:30; a morning list that would arrive after it is not sent.
+_SESSION_CLOSE = time(13, 30)
 _HELD_LOOKBACK = timedelta(days=2)
 # External delivery: a transient failure is retried with a growing delay, up to this many attempts
 # in all, then the notification is marked failed (the in-app entry is unaffected).
@@ -744,6 +758,121 @@ class SchedulerWorker:
             attempts=item.attempts,
             track=True,
         )
+
+    async def run_strategy_watch(self, *, now: datetime | None = None) -> int:
+        """策略盯盤 deliveries for today: each enabled subscription's morning list (once, before the
+        close) and one alert per (stock, strategy) the intraday check marked alertable. Reads the
+        two stored partitions only; the dedupe key makes every pass idempotent, so this runs on each
+        scheduler pass. Returns how many subscriptions were processed."""
+        reader = self._ctx.reader
+        if not self._ctx.leader.is_leader() or reader is None:
+            return 0
+        now = now or datetime.now(UTC)
+        local = now.astimezone(market_timezone(Market.TW))
+        today = local.date()
+        async with self._eval_lock:
+            if not await asyncio.to_thread(
+                reader.has_partition, STRATEGY_WATCHLIST_DATASET, Market.TW.value, today
+            ):
+                return 0
+            watch_rows = await asyncio.to_thread(
+                reader.read_partition, STRATEGY_WATCHLIST_DATASET, Market.TW.value, today
+            )
+            hit_rows = (
+                await asyncio.to_thread(
+                    reader.read_partition, STRATEGY_HITS_DATASET, Market.TW.value, today
+                )
+                if await asyncio.to_thread(
+                    reader.has_partition, STRATEGY_HITS_DATASET, Market.TW.value, today
+                )
+                else []
+            )
+        processed = 0
+        async with self._ctx.session_factory() as session:
+            subscriptions = await StrategySubscriptionStore(session).enabled()
+            for subscription in subscriptions:
+                try:
+                    await self._deliver_strategy_watch(
+                        session, subscription, watch_rows, hit_rows, local=local
+                    )
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    logger.exception("strategy_watch_failed", subscription_id=subscription.id)
+                    continue
+                processed += 1
+        return processed
+
+    async def _deliver_strategy_watch(
+        self,
+        session: AsyncSession,
+        subscription: StrategySubscription,
+        watch_rows: list[dict[str, object]],
+        hit_rows: list[dict[str, object]],
+        *,
+        local: datetime,
+    ) -> None:
+        store = SqlAlchemySchedulerStore(session)
+        strategies_store = StrategySubscriptionStore(session)
+        user = await self._load_user(session, subscription.user_id)
+        if user is None:
+            return
+        members: frozenset[str] | None = None
+        if subscription.watchlist_id is not None:
+            group = await store.watchlist_members(
+                watchlist_id=subscription.watchlist_id, user_id=user.id
+            )
+            members = frozenset(symbol for symbol, market in group if market is Market.TW)
+        prefs = await store.get_preferences(user_id=user.id)
+        channels = subscription.channels or (prefs.channels if prefs else ())
+        quiet = subscription.quiet_hours or (prefs.quiet_hours if prefs else None)
+        hold = _within_quiet_hours(quiet, local, prefs.timezone if prefs else None)
+        today = local.date()
+        watch = in_scope(watch_rows, subscription.strategies, members)
+        if subscription.morning_list and local.time() < _SESSION_CLOSE:
+            listing = morning_list(watch, today)
+            if listing is not None:
+                title, body = listing
+                await self._deliver(
+                    store,
+                    user=user,
+                    source=NotificationSource.ALERT,
+                    source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:morning",
+                    channels=channels,
+                    title=title,
+                    body=safe_body(body, body, "今日盯盤清單已更新，請開啟 Miru 查看。"),
+                    trigger_date=today,
+                    deep_link={"route": "watch"},
+                    hold_external=hold,
+                )
+        # A subscription made today only hears about slots after it existed.
+        created = as_utc(subscription.created_at).astimezone(local.tzinfo)
+        not_before = created.time() if created.date() == today else None
+        watch_by_key = {(str(r.get("symbol")), str(r.get("strategy"))): r for r in watch}
+        masked = not feature_allowed(user, "tick_minute_k")
+        for hit in first_alertable(
+            in_scope(hit_rows, subscription.strategies, members), not_before=not_before
+        ):
+            limit = subscription.daily_limit
+            if (
+                limit is not None
+                and await strategies_store.alerts_sent(user_id=user.id, day=today) >= limit
+            ):
+                break
+            symbol, strategy = str(hit.get("symbol")), str(hit.get("strategy"))
+            title, body, plain = hit_alert(hit, watch_by_key.get((symbol, strategy)), masked=masked)
+            await self._deliver(
+                store,
+                user=user,
+                source=NotificationSource.ALERT,
+                source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:{symbol}:{strategy}",
+                channels=channels,
+                title=title,
+                body=safe_body(body, plain, f"{symbol} 你訂閱的條件全數成立，請開啟 Miru 查看。"),
+                trigger_date=today,
+                deep_link={"route": "watch", "symbol": symbol, "strategy": strategy},
+                hold_external=hold,
+            )
 
     async def send_morning_digests(self, *, now: datetime | None = None) -> int:
         """Send the 晨間摘要 to every user who turned it on, once per local day: on a Taiwan

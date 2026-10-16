@@ -63,6 +63,7 @@ async def _run_once(worker: SchedulerWorker) -> None:
             return
         ran = await worker.run_due_jobs()
         fired = await worker.reconcile_alerts()
+        strategy = await worker.run_strategy_watch()
         released = await worker.release_held()
         digests = await worker.send_morning_digests()
         retried = await worker.retry_pending_deliveries()
@@ -71,6 +72,7 @@ async def _run_once(worker: SchedulerWorker) -> None:
             "scheduler_pass_complete",
             jobs_run=len(ran),
             alerts_fired=len(fired),
+            strategy_subscriptions=strategy,
             held_released=released,
             digests_sent=digests,
             deliveries_retried=retried,

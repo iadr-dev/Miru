@@ -19,6 +19,15 @@ describe("deepLinkHref", () => {
     expect(deepLinkHref({ deep_link: { route: "stock", symbol: "2330" } })).toBe("/stock/2330");
   });
 
+  it("opens the stock a strategy-watch alert names; the morning list has no link yet", () => {
+    expect(
+      deepLinkHref({
+        deep_link: { route: "watch", symbol: "2330", strategy: "volatility_squeeze" },
+      }),
+    ).toBe("/stock/2330");
+    expect(deepLinkHref({ deep_link: { route: "watch" } })).toBeNull();
+  });
+
   it("encodes the symbol", () => {
     expect(deepLinkHref({ deep_link: { route: "stock", symbol: "A/B" } })).toBe("/stock/A%2FB");
   });
