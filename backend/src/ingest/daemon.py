@@ -29,13 +29,15 @@ from its process loop:
 
 from __future__ import annotations
 
+import json
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from datetime import date as date_
 from datetime import time as time_
 from enum import StrEnum
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -341,6 +343,11 @@ class IngestDaemon:
         self._last_session: dict[str, date_] = {}
         # The (day, slot index) each intraday job last fired for, so it fires once per slot.
         self._last_slot: dict[str, tuple[date_, int]] = {}
+        # When the previous pass started (local time). A job whose scheduled instant fell between
+        # that pass and this one is due now, even if the clock has since rolled past midnight.
+        self._last_pass: datetime | None = None
+        # The local day the trading calendars were last rebuilt from the store.
+        self._calendar_day: date_ | None = None
         self._seeded = False
 
     def _local(self, now: datetime) -> datetime:
@@ -363,20 +370,79 @@ class IngestDaemon:
                     self._last_session[job.name] = last_completed_us_session(
                         self._ctx.us_calendar, now=local
                     )
+        # Weekly/monthly jobs keep their last-fired day across restarts, so a restart (the dev
+        # backfill restarts this daemon every night) does not run every one of them again.
+        for name, day in _load_fired_days(self._ctx.store.root).items():
+            self._last_handled.setdefault(name, day)
+        self._last_pass = local
+        self._calendar_day = local.date()
         self._seeded = True
 
     def _intraday_slot_due(self, job: ScheduledIngestJob, local: datetime) -> bool:
         """Whether `local` is inside the job's window in a slot it has not fired for yet; marks
         the slot handled when it is (a failed slot is not retried, the next slot runs)."""
-        if job.until is None or job.every_minutes <= 0 or local.time() > job.until:
+        if job.until is None or job.every_minutes <= 0:
+            return False
+        minute_of_day = local.hour * 60 + local.minute
+        # Whole minutes: a pass at 13:30:07 is still the 13:30 slot (a seconds-level comparison
+        # against `until` dropped the day's last check).
+        if minute_of_day > job.until.hour * 60 + job.until.minute:
             return False
         start = job.fire_time.hour * 60 + job.fire_time.minute
-        slot = (local.hour * 60 + local.minute - start) // job.every_minutes
+        slot = (minute_of_day - start) // job.every_minutes
         key = (local.date(), slot)
         if self._last_slot.get(job.name) == key:
             return False
         self._last_slot[job.name] = key
         return True
+
+    def _fire_day(
+        self, job: ScheduledIngestJob, local: datetime, previous_pass: datetime | None
+    ) -> date_ | None:
+        """The local day `job` should fire for in this pass, or `None`. Normally today once its fire
+        time has passed. A daily job whose time fell between the previous pass and this one on the
+        day before is also due for that day: a pass that starts at 23:41 and runs past midnight
+        must not make the next pass (00:05) lose the 23:55 jobs."""
+        if local.time() >= job.fire_time:
+            return local.date()
+        if job.cadence is not Cadence.DAILY or self._is_us_daily(job) or previous_pass is None:
+            return None
+        yesterday = local.date() - timedelta(days=1)
+        scheduled = datetime.combine(yesterday, job.fire_time, tzinfo=self._tz)
+        if previous_pass < scheduled <= local and self._last_handled.get(job.name) != yesterday:
+            return yesterday
+        return None
+
+    def _claim(
+        self, job: ScheduledIngestJob, local: datetime, previous_pass: datetime | None
+    ) -> date_ | None:
+        """The day `job` fires for in this pass, marked handled, or `None` when it is not due.
+        Marked before it runs: a failure must not tight-loop within the window. The next window's
+        fire (or an explicit gap-fill) retries, matching the job's no-retry contract."""
+        fire_day = self._fire_day(job, local, previous_pass)
+        if fire_day is None:
+            return None
+        if job.cadence is Cadence.INTRADAY:
+            return fire_day if self._intraday_slot_due(job, local) else None
+        if not self._is_due(job, fire_day):
+            return None
+        self._last_handled[job.name] = fire_day
+        if job.cadence is not Cadence.DAILY:
+            _save_fired_days(self._ctx.store.root, self._last_handled, self._jobs)
+        return fire_day
+
+    def _refresh_calendars(self, today: date_) -> None:
+        """Rebuild both trading calendars from the store once per local day, so a day that
+        landed since the process started counts in the calendar the jobs gate and window on."""
+        previous, self._calendar_day = self._calendar_day, today
+        if previous is None or previous == today:
+            return  # first pass of this process: the context's calendars were just built
+        store = self._ctx.store
+        self._ctx = replace(
+            self._ctx,
+            calendar=_build_calendar(store, PRICE_EOD_JOB.dataset, Market.TW),
+            us_calendar=_build_calendar(store, US_PRICE_EOD_DATASET, Market.US),
+        )
 
     def _is_due(self, job: ScheduledIngestJob, today: date_) -> bool:
         """Whether `job` should fire this pass, given the day it last fired. A daily job is due
@@ -400,22 +466,14 @@ class IngestDaemon:
             logger.info("ingest_skip_not_leader")
             return []
         local = self._local(now or datetime.now(UTC))
-        today = local.date()
+        previous_pass, self._last_pass = self._last_pass, local
+        self._refresh_calendars(local.date())
         ran: list[str] = []
         for job in self._jobs:
-            if local.time() < job.fire_time:
+            fire_day = self._claim(job, local, previous_pass)
+            if fire_day is None:
                 continue
-            if job.cadence is Cadence.INTRADAY:
-                if not self._intraday_slot_due(job, local):
-                    continue
-            elif not self._is_due(job, today):
-                continue
-            # Mark handled before running: a failure must not tight-loop within the window. The
-            # next window's fire (or an explicit gap-fill) retries, matching the job's no-retry
-            # contract.
-            if job.cadence is not Cadence.INTRADAY:
-                self._last_handled[job.name] = today
-            run_date = today
+            run_date = fire_day
             if self._is_us_daily(job):
                 # US daily jobs run for the last completed US session, not the Taipei date: at
                 # 06:00 Taipei the Taipei date's session has not opened yet (it asked Yahoo for
@@ -466,7 +524,36 @@ class IngestDaemon:
         return ran
 
 
-def _build_calendar(store: ParquetStore, dataset: str, market: str) -> TradingDayCalendar:
+_STATE_FILE = "_ingest_daemon_state.json"
+
+
+def _load_fired_days(root: Path) -> dict[str, date_]:
+    """The last-fired day of every weekly/monthly job, from the state file under the Parquet root
+    (empty when it is missing or unreadable — a clean boot just runs them when due)."""
+    try:
+        raw = json.loads((root / _STATE_FILE).read_text(encoding="utf-8"))
+        return {str(name): date_.fromisoformat(str(day)) for name, day in raw.items()}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def _save_fired_days(
+    root: Path, handled: dict[str, date_], jobs: Sequence[ScheduledIngestJob]
+) -> None:
+    """Write the last-fired day of every weekly/monthly job. Never fatal: a failed write only
+    means a restart may run them again, as before."""
+    periodic = {j.name for j in jobs if j.cadence in (Cadence.WEEKLY, Cadence.MONTHLY)}
+    payload = {name: day.isoformat() for name, day in handled.items() if name in periodic}
+    target = root / _STATE_FILE
+    tmp = target.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        tmp.replace(target)
+    except OSError:
+        logger.warning("ingest_state_write_failed", path=str(target))
+
+
+def _build_calendar(store: ParquetStore, dataset: str, market: Market) -> TradingDayCalendar:
     """The real trading-day calendar for `market`, built from `PRICE_EOD_JOB`'s (TW) or
     `job_us_price_eod`'s (US) own already-ingested partition dates — ground truth for "was this
     a real trading day" in that specific market, never a naive Mon-Fri weekday guess. A
@@ -484,10 +571,10 @@ def _build_calendar(store: ParquetStore, dataset: str, market: str) -> TradingDa
     degradation) only on a genuinely empty store for that market — a fresh volume with no
     partitions yet, where there is no ground truth to build from. Once even one whole-market
     ingest run has landed for that market, every subsequent process picks up the real calendar."""
-    known_dates = store.list_partition_dates(dataset, market)
+    known_dates = store.list_partition_dates(dataset, market.value)
     if not known_dates:
-        return TradingDayCalendar()
-    return calendar_from_known_dates(known_dates)
+        return TradingDayCalendar(market=market)
+    return calendar_from_known_dates(known_dates, market=market)
 
 
 async def build_ingest_context_from_settings(settings: Settings | None = None) -> IngestContext:
@@ -518,8 +605,8 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
             database_url=resolved.database_url,
             scope_root=resolved.parquet_root,
         ),
-        calendar=_build_calendar(store, PRICE_EOD_JOB.dataset, Market.TW.value),
-        us_calendar=_build_calendar(store, US_PRICE_EOD_DATASET, Market.US.value),
+        calendar=_build_calendar(store, PRICE_EOD_JOB.dataset, Market.TW),
+        us_calendar=_build_calendar(store, US_PRICE_EOD_DATASET, Market.US),
         tls_policy=resolved.tls_policy,
         # The relational session factory the theme-seed job writes through — the daily Parquet
         # jobs never touch it. Built here from the same database URL the rest of the app uses.

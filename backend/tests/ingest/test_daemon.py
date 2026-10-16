@@ -315,13 +315,14 @@ async def test_us_daily_job_does_not_repeat_a_session_over_the_weekend(tmp_path:
     spy = _SpyJob("us_price_eod")
     daemon = _us_daemon(tmp_path, spy)
 
-    await daemon.run_due_jobs(now=_taipei(2024, 1, 13, 6, 1))  # Sat: Friday's session
-    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 14, 6, 1)) == []  # Sun
-    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 15, 6, 1)) == []  # Mon a.m.
-    assert spy.calls == [date_(2024, 1, 12)]
+    # A weekend a week after MLK Day, so no US holiday sits in the window.
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 20, 6, 1))  # Sat: Friday's session
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 21, 6, 1)) == []  # Sun
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 22, 6, 1)) == []  # Mon a.m.
+    assert spy.calls == [date_(2024, 1, 19)]
 
-    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 16, 6, 1)) == ["us_price_eod"]
-    assert spy.calls == [date_(2024, 1, 12), date_(2024, 1, 15)]
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 23, 6, 1)) == ["us_price_eod"]
+    assert spy.calls == [date_(2024, 1, 19), date_(2024, 1, 22)]
 
 
 async def test_us_seed_startup_does_not_replay_the_session_that_already_settled(
@@ -372,6 +373,96 @@ async def test_intraday_job_fires_once_per_ten_minute_slot_inside_the_session(
     # 09:19 is still the 09:10 slot; 13:31 is past the close.
     assert fired == [False, True, False, True, False, True, False]
     assert spy.calls == [date_(2024, 1, 2)] * 3
+
+
+async def test_intraday_job_fires_the_closing_1330_slot_when_the_pass_lands_seconds_late(
+    tmp_path: object,
+) -> None:
+    """A pass never lands on exactly 13:30:00.000 (60 s interval plus the pass time); a pass at
+    13:30:07 is still the 13:30 slot, not past the close."""
+    spy = _SpyJob("strategy_hits")
+    daemon = _intraday_daemon(tmp_path, spy)
+
+    late = datetime(2024, 1, 2, 13, 30, 7, tzinfo=_TAIPEI)
+    assert await daemon.run_due_jobs(now=late) == ["strategy_intraday"]
+    assert spy.calls == [date_(2024, 1, 2)]
+
+
+async def test_a_late_evening_job_is_not_lost_when_the_pass_before_it_ran_past_midnight(
+    tmp_path: object,
+) -> None:
+    """A pass that starts at 23:41 and is still running at 23:55 ends after midnight. The next pass
+    (00:05) must still fire the 23:55 job for the day it belongs to, not drop it."""
+    spy = _SpyJob("scoring_batch")
+    jobs = (ScheduledIngestJob("scoring_batch", time_(23, 55), spy),)
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs)
+
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 23, 41)) == []
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 0, 5)) == ["scoring_batch"]
+    assert spy.calls == [date_(2024, 1, 9)]
+    # Once handled it is not replayed, and the new day's own run is still to come.
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 0, 6)) == []
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 23, 56)) == ["scoring_batch"]
+    assert spy.calls == [date_(2024, 1, 9), date_(2024, 1, 10)]
+
+
+async def test_a_job_that_already_ran_before_midnight_is_not_replayed_after_it(
+    tmp_path: object,
+) -> None:
+    spy = _SpyJob("scoring_batch")
+    jobs = (ScheduledIngestJob("scoring_batch", time_(23, 55), spy),)
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs)
+
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 23, 56)) == ["scoring_batch"]
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 0, 5)) == []
+    assert spy.calls == [date_(2024, 1, 9)]
+
+
+async def test_a_clean_restart_just_after_midnight_does_not_replay_yesterdays_jobs(
+    tmp_path: object,
+) -> None:
+    spy = _SpyJob("scoring_batch")
+    jobs = (ScheduledIngestJob("scoring_batch", time_(23, 55), spy),)
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs)
+
+    daemon.seed_startup(now=_taipei(2024, 1, 10, 0, 2))
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 0, 3)) == []
+    assert spy.calls == []
+
+
+async def test_weekly_job_does_not_run_again_after_a_restart(tmp_path: object) -> None:
+    """The dev backfill restarts the daemon every night; a weekly job that fired three days ago
+    must not fire again just because the process is new."""
+    jobs_for = lambda spy: (  # noqa: E731 — a one-line factory for two daemon instances
+        ScheduledIngestJob("shareholding", time_(6, 5), spy, Cadence.WEEKLY),
+    )
+    first = _SpyJob("shareholding")
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs_for(first))
+    assert await daemon.run_due_jobs(now=_taipei(2024, 1, 8, 7, 0)) == ["shareholding"]
+
+    second = _SpyJob("shareholding")
+    restarted = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs_for(second))
+    restarted.seed_startup(now=_taipei(2024, 1, 11, 9, 0))
+    assert await restarted.run_due_jobs(now=_taipei(2024, 1, 11, 9, 1)) == []
+    assert second.calls == []
+    # A week after the last fire it is due again.
+    assert await restarted.run_due_jobs(now=_taipei(2024, 1, 15, 9, 0)) == ["shareholding"]
+
+
+async def test_a_weekday_holiday_past_the_last_partition_is_not_a_trading_day() -> None:
+    """Days after the last stored partition are outside the known span, so the calendar used to
+    call a weekday exchange closure a trading day (the 2024 Lunar New Year closure ran 02-08 to
+    02-14 and the last stored day was 02-07)."""
+    taiwan = TradingDayCalendar(
+        known_trading_dates=frozenset({date_(2024, 2, 7)}), market=Market.TW
+    )
+    assert taiwan.is_trading_day_extrapolating(date_(2024, 2, 8)) is False  # first closed day
+    assert taiwan.is_trading_day_extrapolating(date_(2024, 2, 12)) is False  # Monday, closed
+    assert taiwan.is_trading_day_extrapolating(date_(2024, 2, 15)) is True  # back to work
+    assert taiwan.is_trading_day_extrapolating(date_(2024, 2, 10)) is False  # a Saturday
+    # Without a market the old weekday fallback is unchanged.
+    plain = TradingDayCalendar(known_trading_dates=frozenset({date_(2024, 2, 7)}))
+    assert plain.is_trading_day_extrapolating(date_(2024, 2, 8)) is True
 
 
 async def test_intraday_job_does_not_fire_on_a_weekend(tmp_path: object) -> None:
