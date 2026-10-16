@@ -87,6 +87,11 @@ class GetEtfMoneyFlowOutput(BaseModel):
     # bug `latest_ingested_date_on_or_before` itself was added to fix). `None` only alongside
     # `data_available=False`, since a successful read always resolves a holding date.
     holding_as_of: date_ | None = None
+    # Set only when nothing was ingested in the requested window and the same-length window
+    # ending on the latest ingested day is shown instead (the source stopped, e.g. a lapsed
+    # Sponsor plan): the end date that was asked for. `start_date`/`end_date` are then the window
+    # actually shown, so the page can say "資料至 <end_date>" rather than go blank.
+    requested_end_date: date_ | None = None
     data_available: bool
     unavailable_reason: str | None = None
     total_stock_count: int = 0  # 共N檔 — every distinct constituent aggregated, not just top_n
@@ -175,11 +180,26 @@ class GetEtfMoneyFlowTool(SyncStoreTool):
     def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetEtfMoneyFlowInput, args)
         calendar = real_calendar(self._store, typed.market.value)
-        window_dates = calendar.business_days_between(typed.start_date, typed.end_date)
-
+        start_date, end_date = typed.start_date, typed.end_date
+        requested_end_date: date_ | None = None
         raw_changes = self._store.read_range(
-            ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset, typed.market.value, window_dates
+            ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset,
+            typed.market.value,
+            calendar.business_days_between(start_date, end_date),
         )
+        latest = latest_ingested_date_on_or_before(
+            self._store, ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset, typed.market.value, end_date
+        )
+        if not raw_changes and latest is not None:
+            # Nothing landed in the window: show the same-length window ending on the last
+            # ingested day, flagged, instead of a blank card.
+            requested_end_date = end_date
+            start_date, end_date = latest - (end_date - start_date), latest
+            raw_changes = self._store.read_range(
+                ACTIVE_ETF_HOLDING_CHANGE_JOB.dataset,
+                typed.market.value,
+                calendar.business_days_between(start_date, end_date),
+            )
         if not raw_changes:
             return GetEtfMoneyFlowOutput(
                 market=typed.market.value,
@@ -206,7 +226,7 @@ class GetEtfMoneyFlowTool(SyncStoreTool):
             agg.net_shares_flow += net
 
         holding_end_date = latest_ingested_date_on_or_before(
-            self._store, ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, typed.end_date
+            self._store, ACTIVE_ETF_HOLDING_JOB.dataset, typed.market.value, end_date
         )
         raw_holdings = (
             self._store.read_partition(
@@ -277,9 +297,10 @@ class GetEtfMoneyFlowTool(SyncStoreTool):
 
         return GetEtfMoneyFlowOutput(
             market=typed.market.value,
-            start_date=typed.start_date,
-            end_date=typed.end_date,
+            start_date=start_date,
+            end_date=end_date,
             holding_as_of=holding_end_date,
+            requested_end_date=requested_end_date,
             data_available=True,
             total_stock_count=len(aggregates),
             free_row_count=_ETF_MONEY_FLOW_FREE_ROW_COUNT,

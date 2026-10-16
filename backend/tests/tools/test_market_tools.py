@@ -1137,6 +1137,51 @@ async def test_get_etf_money_flow_aggregates_across_etfs_and_ranks_flows(tmp_pat
     assert outflow_ids[0] == "2454"
 
 
+async def test_get_etf_money_flow_shows_the_last_ingested_window_when_the_source_stopped(
+    tmp_path: Path,
+) -> None:
+    """Nothing ingested in the requested window (the source stopped): the same-length window
+    ending on the last ingested day is shown, with the requested end date reported."""
+    store = ParquetStore(root=tmp_path)
+    last_day = date(2025, 5, 7)
+    store.write_partition(
+        "TaiwanStockActiveETFHoldingChange",
+        "TW",
+        last_day,
+        [
+            {
+                "symbol": "00980A",
+                "market": "TW",
+                "trade_date": "2025-05-07",
+                "component_stock_id": "2330",
+                "component_stock_name": "台積電",
+                "buy": 20000,
+                "sell": 0,
+            }
+        ],
+    )
+    store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        last_day,
+        [{"symbol": "2330", "trade_date": "2025-05-07", "close": 600.0}],
+    )
+    tool = GetEtfMoneyFlowTool(store)
+
+    output = await tool.run(
+        GetEtfMoneyFlowInput(
+            market=Market.TW, start_date=date(2025, 5, 26), end_date=date(2025, 5, 30)
+        ),
+        ToolContext(tier=Tier.PREMIUM),
+    )
+
+    assert output.data_available is True
+    assert output.requested_end_date == date(2025, 5, 30)
+    assert output.end_date == last_day
+    assert output.start_date == date(2025, 5, 3)
+    assert [row.component_stock_id for row in output.inflow_ranking] == ["2330"]
+
+
 async def test_get_etf_money_flow_falls_back_to_latest_ingested_holding_day(
     tmp_path: Path,
 ) -> None:

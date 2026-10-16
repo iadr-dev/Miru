@@ -7382,6 +7382,8 @@ export interface components {
       market: string;
       /** Outflow Ranking */
       outflow_ranking?: components["schemas"]["EtfMoneyFlowRow"][];
+      /** Requested End Date */
+      requested_end_date?: string | null;
       /**
        * Start Date
        * Format: date
