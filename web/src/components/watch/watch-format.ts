@@ -45,3 +45,20 @@ export function initialStrategy(
   if (asked) return asked;
   return order.find((key) => (counts[key] ?? 0) > 0) ?? order[0] ?? "volatility_squeeze";
 }
+
+/** Each strategy's colour, from the categorical chart palette (theme-aware tokens). The green,
+ * pink-red and orange tokens are left out on purpose: next to prices they would read as 漲跌
+ * (OVERVIEW.md §4 keeps red/green for price moves only). Price numbers themselves stay in the text
+ * colour; the strategy colour goes on chrome around them (labels, dots, the chart). */
+export const STRATEGY_COLOR: Record<StrategyKey, string> = {
+  volatility_squeeze: "var(--chart-1)",
+  oversold_bounce: "var(--chart-4)",
+  ad_divergence: "var(--chart-2)",
+  chip_accumulation: "var(--chart-3)",
+  momentum_flag: "var(--chart-7)",
+};
+
+/** A translucent wash of `color` for backgrounds and borders. */
+export function tint(color: string, percent: number): string {
+  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
+}

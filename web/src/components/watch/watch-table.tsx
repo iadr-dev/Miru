@@ -3,7 +3,7 @@
 import { BellRingingIcon, SealCheckIcon } from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { distanceToLevel, keyLevel, triggersMet } from "@/components/watch/watch-format";
+import { distanceToLevel, keyLevel, tint, triggersMet } from "@/components/watch/watch-format";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import type { StrategyWatchItem } from "@/types/strategy-watch";
@@ -15,11 +15,14 @@ export function WatchTable({
   caption,
   selected,
   onSelect,
+  color = "var(--accent)",
 }: {
   items: readonly StrategyWatchItem[];
   caption: string;
   selected: string | null;
   onSelect: (symbol: string) => void;
+  /** The strategy's colour: the selected row, the met-condition dots and the key level. */
+  color?: string;
 }): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
@@ -59,12 +62,13 @@ export function WatchTable({
           return (
             <tr
               key={`${item.symbol}-${item.strategy}`}
-              className={cn(
-                "border-[var(--border)] border-b last:border-b-0",
-                active && "bg-[var(--surface-2)]",
-              )}
+              className="border-[var(--border)] border-b last:border-b-0"
+              style={active ? { backgroundColor: tint(color, 10) } : undefined}
             >
-              <td className="py-2 pr-2">
+              <td
+                className="border-l-[3px] py-2 pr-2 pl-2"
+                style={{ borderColor: active ? color : "transparent" }}
+              >
                 <button
                   type="button"
                   onClick={() => onSelect(item.symbol)}
@@ -82,16 +86,26 @@ export function WatchTable({
                 {formatNumber(item.price ?? item.close, locale, { decimals: 2 })}
               </td>
               <td className="px-2 py-2 text-right">
-                <span className="block font-num tabular-nums">
+                <span className="block font-medium font-num tabular-nums">
                   {formatNumber(level.value, locale, { decimals: 2 })}
                 </span>
-                <span className="block text-[11px] text-[var(--text-muted)]">
+                <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)]">
+                  <span
+                    aria-hidden
+                    className="size-1.5 rounded-full"
+                    style={{ backgroundColor: color }}
+                  />
                   {t(`levels.${level.key}`)}
                   {distance !== null ? ` ${distance >= 0 ? "+" : ""}${distance.toFixed(1)}%` : ""}
                 </span>
               </td>
               <td className="px-2 py-2">
-                <ConditionDots met={met} total={total} checked={item.latest_slot !== null} />
+                <ConditionDots
+                  met={met}
+                  total={total}
+                  checked={item.latest_slot !== null}
+                  color={color}
+                />
                 <span className="mt-0.5 flex flex-wrap gap-1 text-[11px]">
                   {item.alerted_at ? (
                     <span className="inline-flex items-center gap-0.5 text-[var(--accent-text)]">
@@ -122,10 +136,12 @@ export function ConditionDots({
   met,
   total,
   checked,
+  color = "var(--accent)",
 }: {
   met: number;
   total: number;
   checked: boolean;
+  color?: string;
 }): ReactNode {
   const t = useTranslations("watch.status");
   if (!checked || total === 0) {
@@ -143,10 +159,9 @@ export function ConditionDots({
           key={i}
           className={cn(
             "size-2.5 rounded-full border",
-            i < met
-              ? "border-[var(--accent)] bg-[var(--accent)]"
-              : "border-[var(--border-strong)] bg-transparent",
+            i < met ? "" : "border-[var(--border-strong)] bg-transparent",
           )}
+          style={i < met ? { borderColor: color, backgroundColor: color } : undefined}
         />
       ))}
     </span>

@@ -2,6 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { tint } from "@/components/watch/watch-format";
 import { cn } from "@/lib/cn";
 import type { StrategyWatchToday } from "@/types/strategy-watch";
 
@@ -64,6 +65,15 @@ export function pipelineSteps(data: StrategyWatchToday): PipelineStep[] {
   ];
 }
 
+/** Each step of the cycle has its own colour (categorical palette, never the price red/green). */
+const STEP_COLOR: Record<PipelineStepKey, string> = {
+  screen: "var(--chart-1)",
+  watch: "var(--chart-7)",
+  prices: "var(--chart-3)",
+  close: "var(--chart-2)",
+  flows: "var(--chart-4)",
+};
+
 export function RunStatus({
   data,
   stale,
@@ -109,17 +119,20 @@ export function RunStatus({
               <span
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1",
-                  step.done
-                    ? "border-[var(--accent)] text-[var(--text)]"
-                    : "border-[var(--border)] text-[var(--text-muted)]",
+                  step.done ? "text-[var(--text)]" : "text-[var(--text-muted)]",
                 )}
+                style={{
+                  borderColor: step.done ? STEP_COLOR[step.key] : tint(STEP_COLOR[step.key], 35),
+                  backgroundColor: tint(STEP_COLOR[step.key], step.done ? 16 : 6),
+                }}
               >
                 <span
                   aria-hidden
-                  className={cn(
-                    "size-2 rounded-full",
-                    step.done ? "bg-[var(--accent)]" : "bg-[var(--border-strong)]",
-                  )}
+                  className="size-2 rounded-full"
+                  style={{
+                    backgroundColor: step.done ? STEP_COLOR[step.key] : "transparent",
+                    border: `1.5px solid ${STEP_COLOR[step.key]}`,
+                  }}
                 />
                 {t(`pipeline.${step.key}`)}
                 {note ? <span className="text-[var(--text-muted)]">· {note}</span> : null}
