@@ -133,7 +133,6 @@ import type {
 import type { dividendPolicySummaryResponseSchema } from "@/types/stock/dividends";
 import type {
   calendarEventsFeedResponseSchema,
-  dispositionSecuritiesResponseSchema,
   stockCalendarEventsResponseSchema,
 } from "@/types/stock/events";
 import type {
@@ -423,11 +422,6 @@ export type ContractChecks = [
   Accepts<typeof companyProfileSchema, R<"/api/v1/stock/company-profile", "get">>,
   // GET /stock/day-trading — stock-detail.getStockDayTrading
   Accepts<typeof dayTradingResponseSchema, R<"/api/v1/stock/day-trading", "get">>,
-  // GET /stock/disposition-securities — stock-detail.getDispositionSecurities
-  Accepts<
-    typeof dispositionSecuritiesResponseSchema,
-    R<"/api/v1/stock/disposition-securities", "get">
-  >,
   // GET /stock/dividend-policy-summary — stock-detail.getDividendPolicySummary
   Accepts<
     typeof dividendPolicySummaryResponseSchema,

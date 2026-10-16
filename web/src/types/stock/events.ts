@@ -1,45 +1,13 @@
 /**
- * Events — `/stock/disposition-securities`, `/stock/calendar-events`,
+ * Events — `/stock/calendar-events`,
  * `/stock/calendar-events-feed`.
  */
 
 import { z } from "zod";
-import { healthStatusSchema, maskedTeaserSchema } from "@/types/market/shared";
+import { healthStatusSchema } from "@/types/market/shared";
 
 // ---------------------------------------------------------------------------
-// 5. GET /stock/disposition-securities — get_disposition_securities (Sponsor-tier)
-// ---------------------------------------------------------------------------
-
-export const dispositionSecuritiesRowSchema = z.object({
-  symbol: z.string(),
-  market: z.string(),
-  date: z.string(),
-  stock_name: z.string(),
-  disposition_cnt: z.number(),
-  condition: z.string(),
-  measure: z.string(),
-});
-
-export type DispositionSecuritiesRow = z.infer<typeof dispositionSecuritiesRowSchema>;
-
-export const dispositionSecuritiesDataSchema = z.object({
-  source_id: z.string(),
-  currentness_caveat: z.string(),
-  health_status: healthStatusSchema,
-  rows: z.array(dispositionSecuritiesRowSchema).default([]),
-});
-
-export type DispositionSecuritiesData = z.infer<typeof dispositionSecuritiesDataSchema>;
-
-export const dispositionSecuritiesResponseSchema = z.union([
-  dispositionSecuritiesDataSchema,
-  maskedTeaserSchema,
-]);
-
-export type DispositionSecuritiesResponse = z.infer<typeof dispositionSecuritiesResponseSchema>;
-
-// ---------------------------------------------------------------------------
-// 15. GET /stock/calendar-events — get_calendar_events (Sponsor-tier)
+// 15. GET /stock/calendar-events — get_calendar_events (public; CB events Premium/Pro only)
 // ---------------------------------------------------------------------------
 
 export const calendarEventOutSchema = z.object({
