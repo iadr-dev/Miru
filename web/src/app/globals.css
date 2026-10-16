@@ -332,3 +332,18 @@ mark {
 .watch-breathe {
   animation: watch-breathe 1.8s ease-out infinite;
 }
+
+/* The radar-style sweep across the session band while checks are running (live only). The
+   container is clipped to 09:00..now, so the light never passes the present. */
+@keyframes watch-scan {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+.watch-scan {
+  animation: watch-scan 2.6s ease-in-out infinite;
+}

@@ -141,6 +141,27 @@ export function PipelineTimeline({
                 backgroundColor: tint(colors.watch, 8),
               }}
             />
+            {/* While the session is on, a soft light sweeps 09:00 → now: the market is being
+                watched right now. Clipped at now, so it never runs ahead of the present. */}
+            {inSession && nowPosition !== null ? (
+              <div
+                aria-hidden
+                className="absolute overflow-hidden rounded-[var(--radius-input)]"
+                style={{
+                  left: `${sessionLeft}%`,
+                  width: `${Math.max(nowPosition - sessionLeft, 0)}%`,
+                  top: TRACK_TOP - 18,
+                  height: 36,
+                }}
+              >
+                <span
+                  className="watch-scan absolute inset-y-0 left-0 w-2/5"
+                  style={{
+                    backgroundImage: `linear-gradient(90deg, transparent, ${tint(colors.watch, 30)}, transparent)`,
+                  }}
+                />
+              </div>
+            ) : null}
             {/* Base track and the progress fill, which runs through each step's colour. */}
             <div
               aria-hidden
@@ -160,14 +181,23 @@ export function PipelineTimeline({
               transition={{ duration: reduceMotion ? 0 : 0.8, ease: "easeOut" }}
             />
             {/* The 28 checks: filled once run, taller and coloured when something met its conditions. */}
-            {SESSION_SLOTS.map((slot) => {
+            {SESSION_SLOTS.map((slot, index) => {
               const run = checked.get(slot);
               const left = positionOf(minutesOf(slot));
               const hit = run !== undefined && run.all_met > 0;
               return (
-                <span
+                // The ticks grow in left to right once (the day's checks replaying), a hit glows,
+                // and a tick lifts under the pointer.
+                <motion.span
                   key={slot}
                   aria-hidden
+                  initial={reduceMotion ? false : { scaleY: 0, opacity: 0 }}
+                  animate={{ scaleY: 1, opacity: run ? 1 : 0.5 }}
+                  transition={{
+                    duration: reduceMotion ? 0 : 0.28,
+                    delay: reduceMotion ? 0 : 0.35 + index * 0.022,
+                    ease: "easeOut",
+                  }}
                   title={
                     run
                       ? t("pipeline.hitsAt", {
@@ -178,13 +208,13 @@ export function PipelineTimeline({
                         })
                       : slot
                   }
-                  className="absolute w-[3px] -translate-x-1/2 rounded-full"
+                  className="absolute w-[3px] -translate-x-1/2 cursor-default rounded-full transition-[scale,filter] duration-150 hover:scale-y-125 hover:brightness-125 motion-reduce:transition-none motion-reduce:hover:scale-y-100"
                   style={{
                     left: `${left}%`,
                     top: hit ? TRACK_TOP - 12 : TRACK_TOP - 7,
                     height: hit ? 28 : 18,
                     backgroundColor: tickColor(run !== undefined, hit, colors.watch),
-                    opacity: run ? 1 : 0.5,
+                    boxShadow: hit ? `0 0 8px ${tint(colors.watch, 70)}` : undefined,
                   }}
                 />
               );
