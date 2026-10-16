@@ -6,11 +6,10 @@ builders (`orchestrator.composition`).
 No network I/O at construction time: `build_tool_registry` resolves the real data-access router
 and session factory from config, but neither performs a live fetch until a tool actually runs.
 
-Principal resolution stays at the safe default (`mcp.principal.AnonymousOnlyResolver`, via
-`build_mcp_server`'s own `principal_resolver=None` default) — no accounts-backed, API-key-to-user
-lookup exists yet (that is `accounts/`'s job, once a phase wires an MCP-facing API-key store), so
-this composition root does not fabricate one. Wiring a real resolver here later is a one-line
-change at this one call site, exactly the seam `mcp.principal.PrincipalResolver` exists for.
+Principal resolution: `mcp.accounts_resolver.AccountsPrincipalResolver` maps the application's own
+signed access JWT (`Authorization: Bearer` or `x-api-key`) to the real user's tier; no credential
+stays anonymous/`Tier.FREE`. `mcp.gateway.McpGateway` is the HTTP edge (401 challenge, rate limit,
+body and concurrency caps, trailing-slash normalization).
 """
 
 from __future__ import annotations
@@ -19,11 +18,18 @@ from dataclasses import dataclass
 
 from fastmcp.server.http import StarletteWithLifespan
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.middleware import Middleware
 
 from config.settings import Settings, get_settings
 from dataaccess.composition import build_default_router
+from events.rate_limit import AsyncRateLimiter, build_rate_limiter
+from mcp.accounts_resolver import AccountsPrincipalResolver, verify_access_token
 from mcp.app import build_http_app, build_mcp_server
+from mcp.discovery import resource_metadata_from_settings
+from mcp.gateway import GatewayConfig, McpGateway
 from orchestrator.composition import build_session_factory, build_tool_registry
+
+MCP_PATH = "/mcp"
 
 
 @dataclass(frozen=True)
@@ -37,18 +43,49 @@ class McpApp:
     session_factory: async_sessionmaker[AsyncSession]
 
 
-def build_mcp_http_app(settings: Settings | None = None) -> McpApp:
-    """Assemble the real, fully-wired MCP ASGI app from config — the composition root the
+def build_mcp_http_app(
+    settings: Settings | None = None,
+    *,
+    rate_limiter: AsyncRateLimiter | None = None,
+) -> McpApp:
+    """Assemble the real, fully-wired MCP ASGI app from config - the composition root the
     standalone MCP process (`python -m mcp`) invokes."""
     resolved = settings or get_settings()
     session_factory = build_session_factory(resolved)
     router = build_default_router(resolved)
     tool_registry = build_tool_registry(router, session_factory=session_factory)
-    server = build_mcp_server(tool_registry)
+
+    accounts = AccountsPrincipalResolver(settings=resolved, session_factory=session_factory)
+    bearer_enabled = resolved.jwt_secret_key is not None
+    resource_metadata = resource_metadata_from_settings(resolved, MCP_PATH)
+    server = build_mcp_server(
+        tool_registry,
+        principal_resolver=accounts,
+        bearer_resolver=accounts,
+        resource_metadata=resource_metadata,
+        bearer_enabled=bearer_enabled,
+    )
+    gateway = Middleware(
+        McpGateway,
+        config=GatewayConfig(
+            mcp_path=MCP_PATH,
+            max_body_bytes=resolved.mcp_max_body_bytes,
+            max_concurrent_requests=resolved.mcp_max_concurrent_requests,
+            rate_anonymous_per_minute=resolved.mcp_rate_limit_anonymous_per_minute,
+            rate_signed_in_per_minute=resolved.mcp_rate_limit_signed_in_per_minute,
+            trusted_proxy_count=resolved.trusted_proxy_count,
+            resource_metadata_url=resource_metadata.metadata_url if resource_metadata else None,
+        ),
+        rate_limiter=rate_limiter or build_rate_limiter(resolved),
+        verify_token=lambda token: verify_access_token(token, resolved),
+    )
     app = build_http_app(
         server,
+        path=MCP_PATH,
         allowed_hosts=resolved.mcp_allowed_hosts_list(),
         allowed_origins=resolved.mcp_allowed_origins_list(),
+        stateless_http=resolved.mcp_stateless_http,
+        gateway=[gateway],
     )
     return McpApp(app=app, session_factory=session_factory)
 

@@ -18,7 +18,7 @@ database tables are the SQLAlchemy models in `backend/src/db/models/`.
 | [03-tools.md](03-tools.md) | Tool registry — the agent's action surface |
 | [04-llm-adapter.md](04-llm-adapter.md) | Provider-agnostic LLM adapter + role routing |
 | [05-agent-runtime.md](05-agent-runtime.md) | Loop, planner, context window, guardrails, journal |
-| [06-interfaces.md](06-interfaces.md) | FastAPI API + MCP server (FastMCP, own tools) |
+| [06-interfaces.md](06-interfaces.md) | FastAPI API + MCP server (FastMCP, own tools); connecting Claude: [../mcp-claude-connector.md](../mcp-claude-connector.md) |
 | [07-conversation-streaming.md](07-conversation-streaming.md) | Threads, typed SSE events, turn lifecycle, sponsor-data masking |
 | [08-skills.md](08-skills.md) | Skill system — packaged analysis playbooks |
 | [09-memory.md](09-memory.md) | Working / session / long-term memory |

@@ -47,6 +47,7 @@ longer needs to import them first as a workaround.
 # mypy: ignore-errors
 from __future__ import annotations
 
+import importlib
 import sys
 
 _BOOTSTRAPPED_ATTR = "_miru_mcp_vendor_bootstrapped"
@@ -86,6 +87,17 @@ def bootstrap_vendor_sdk() -> None:
         from fastmcp import FastMCP  # noqa: PLC0415 — must import inside the path-swapped block
 
         FastMCP(name="_miru_mcp_vendor_bootstrap_probe")
+        # The client halves are imported in the same window so they stay importable under the
+        # real SDK name afterwards: the test-suite (and any in-repo smoke script) drives this
+        # server with the official `mcp` client and `fastmcp.Client`, and a submodule that was
+        # not cached here would resolve against THIS package's `mcp` and fail.
+        for client_module in (
+            "fastmcp.client",
+            "mcp.client.session",
+            "mcp.client.streamable_http",
+            "mcp.shared.exceptions",
+        ):
+            importlib.import_module(client_module)
     finally:
         sys.path = saved_path
         for name, module in our_submodules.items():
