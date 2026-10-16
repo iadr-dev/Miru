@@ -515,12 +515,14 @@ async def test_us_scoring_catchup_scores_the_sessions_the_daemon_missed(
     assert scored == [(date(2026, 10, 13), "US"), (date(2026, 10, 14), "US")]
 
 
-async def test_finmind_refusing_after_its_quota_reset_stops_the_whole_run(
+async def test_finmind_refusing_after_its_quota_reset_stops_only_the_finmind_pulls(
     tmp_path: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Unlike one spec failing, a FinMind that still answers 402 after its window reset (a lapsed
-    plan or token) would refuse every later spec too, each after waiting out the hour. The run
-    stops at the first one instead of spending about fourteen hours being refused."""
+    plan or token) would refuse every later spec too, each after waiting out the hour. The
+    FinMind pulls stop at the first one instead of spending about fourteen hours being refused,
+    but the work on other sources still runs (the no-date-parameter feeds can only be fetched
+    today), and the run is reported failed."""
     from sources.finmind import FinMindQuotaRefusedError  # noqa: PLC0415 - local to this case
 
     attempted: list[str] = []
@@ -529,9 +531,30 @@ async def test_finmind_refusing_after_its_quota_reset_stops_the_whole_run(
         attempted.append(spec.dataset)
         raise FinMindQuotaRefusedError("FinMind refused again (402)")
 
-    monkeypatch.setattr(backfill_cli_module, "run_preflight_if_enabled", _refused)
-    _stub_non_finmind_daily_jobs(monkeypatch)
+    free_jobs: list[str] = []
 
-    with pytest.raises(FinMindQuotaRefusedError):
-        await run_backfill_cli(_settings(), _ctx(tmp_path), override=True, years=1)
+    async def _forward_only(_ctx: IngestContext) -> tuple[JobRun, ...]:
+        free_jobs.append("forward_only")
+        return ()
+
+    async def _expense_ratio(_ctx: IngestContext, *, years: int) -> tuple[JobRun, ...]:
+        free_jobs.append("expense_ratio")
+        return ()
+
+    async def _shareholding(_ctx: IngestContext, *, years: int) -> tuple[JobRun, ...]:
+        free_jobs.append("shareholding")
+        return ()
+
+    monkeypatch.setattr(backfill_cli_module, "run_preflight_if_enabled", _refused)
+    monkeypatch.setattr(
+        backfill_cli_module, "_run_non_finmind_forward_only_jobs_for_today", _forward_only
+    )
+    monkeypatch.setattr(backfill_cli_module, "_backfill_etf_expense_ratio", _expense_ratio)
+    monkeypatch.setattr(backfill_cli_module, "_backfill_shareholding_distribution", _shareholding)
+
+    runs = await run_backfill_cli(_settings(), _ctx(tmp_path), override=True, years=1)
+
     assert attempted == [DAILY_WHOLE_MARKET_JOBS[0].dataset]
+    assert [r.dataset for r in runs if r.status is RunStatus.FAILED] == ["finmind_quota"]
+    # The weekly shareholding walk (FinMind) was not attempted; the free jobs were.
+    assert free_jobs == ["expense_ratio", "forward_only"]
