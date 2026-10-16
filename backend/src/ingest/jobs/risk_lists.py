@@ -11,6 +11,7 @@ from ingest.context import IngestContext
 from ingest.jobs.whole_market import fetch_error_status as _fetch_error_status
 from ingest.jobs.whole_market import validate_rows_against as _validate_rows_against
 from ingest.journal import JobRun, RunStatus, journal_run
+from ingest.rows import without_path_columns
 from schemas.capabilities import (
     AttentionStockRow,
     DispositionEventRow,
@@ -49,7 +50,10 @@ def _settled_rows(
     with no rows at all never replaces a partition that already has some: a glitchy empty answer
     is not a day with nothing on the list."""
     if failed:
-        stored = ctx.store.read_partition(dataset, ctx.market.value, run_date)
+        stored = without_path_columns(
+            ctx.store.read_partition(dataset, ctx.market.value, run_date),
+            keep=frozenset({"market"}),
+        )
         rows = [*rows, *(r for r in stored if r.get("security_type") in failed)]
     if not rows and ctx.store.has_rows(dataset, ctx.market.value, run_date):
         return None

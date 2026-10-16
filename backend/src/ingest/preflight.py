@@ -53,7 +53,12 @@ def snapshot_day(calendar: TradingDayCalendar, *, now: datetime) -> date_ | None
     return today if calendar.is_trading_day_extrapolating(today) else None
 
 
-def last_available_trading_day(calendar: TradingDayCalendar, *, now: datetime) -> date_:
+def last_available_trading_day(
+    calendar: TradingDayCalendar,
+    *,
+    now: datetime,
+    publish_time: time_ = _FINMIND_EOD_PUBLISH_TIME,
+) -> date_:
     """The most recent trading day whose EOD data FinMind has actually published, respecting
     the FinMind publish lag. `now` may be ANY timezone-aware instant (every real caller passes
     `datetime.now(UTC)`) — this function converts to Asia/Taipei wall-clock time itself before
@@ -75,7 +80,7 @@ def last_available_trading_day(calendar: TradingDayCalendar, *, now: datetime) -
     `TradingDayCalendar.is_trading_day_extrapolating`'s own docstring."""
     local = now.astimezone(_TAIPEI) if now.tzinfo is not None else now
     today = local.date()
-    target = today if local.time() >= _FINMIND_EOD_PUBLISH_TIME else today - _ONE_DAY
+    target = today if local.time() >= publish_time else today - _ONE_DAY
     if calendar.is_trading_day_extrapolating(target):
         return target
     # "Most recent AVAILABLE trading day" must walk backward, never forward — `target` itself
@@ -133,7 +138,9 @@ async def run_preflight_if_enabled(
 
     ctx.store.sweep_orphaned_temp_dirs()
     moment = now or datetime.now(UTC)
-    target = last_available_trading_day(ctx.calendar, now=moment)
+    target = last_available_trading_day(
+        ctx.calendar, now=moment, publish_time=spec.publish_after or _FINMIND_EOD_PUBLISH_TIME
+    )
     start = ctx.calendar.shift_business_days(target, -(dev_backfill_years * 250))
 
     logger.info(

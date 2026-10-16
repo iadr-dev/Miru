@@ -487,3 +487,35 @@ async def test_free_caller_sees_every_card_ranked_per_bucket(tmp_path: object) -
     assert [c.rank for c in at_risk_cards] == [1, 2, 3]
     assert [c.symbol for c in at_risk_cards] == ["1101", "1102", "1103"]
     assert all(c.company_name is not None for c in at_risk_cards)
+
+
+def _attention_row(flagged_date: str) -> dict[str, object]:
+    return {
+        "symbol": "3081",
+        "market": "TW",
+        "company_name": "聯亞",
+        "flagged_date": flagged_date,
+        "reason": "當日本益比為272.81(第六款)",
+        "close": 3200.0,
+        "pe": 272.81,
+        "security_type": "twse",
+    }
+
+
+async def test_the_same_announcement_listed_on_two_days_counts_once(tmp_path: object) -> None:
+    """A morning fetch of the feed still lists yesterday's notices, so one announcement can sit in
+    two stored days; the escalation count follows distinct announcement dates."""
+    store = _seed_store(tmp_path)
+    # Yesterday's partition holds the 09-04 notice too (filed a day early), plus a real 09-03 one.
+    store.write_partition(
+        ATTENTION_STOCKS_DATASET,
+        "TW",
+        _PRIOR_DATE,
+        [_attention_row("2026-09-04"), _attention_row("2026-09-03")],
+    )
+
+    output = await _run(_tool(store))
+
+    card = next(c for c in output.cards if c.symbol == "3081")
+    # Two distinct announcement dates (09-03, 09-04), not three listings.
+    assert card.attention_flags_remaining == 1

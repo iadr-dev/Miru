@@ -258,6 +258,11 @@ class Capability(StrEnum):
     GOLD_PRICE = "gold_price"
     CRUDE_OIL_PRICES = "crude_oil_prices"
     FEAR_GREED_INDEX = "fear_greed_index"
+    # US macro statistics (ingest-written Parquet datasets, read back by the US macro tools).
+    US_MACRO_OBSERVATIONS = "us_macro_observations"
+    US_MACRO_SERIES_META = "us_macro_series_meta"
+    US_MACRO_RELEASE_DATES = "us_macro_release_dates"
+    US_MACRO_VINTAGES = "us_macro_vintages"
 
     # --- Warrant ---
     WARRANT_UNDERLYING = "warrant_underlying"

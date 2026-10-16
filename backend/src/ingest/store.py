@@ -373,6 +373,27 @@ class ParquetStore:
             logger.info("ingest_stale_versions_swept", removed=removed)
         return removed
 
+    def _existing_globs(self, dataset: str, market: str, run_dates: Sequence[date_]) -> list[str]:
+        """The parquet glob of every date in `run_dates` that has a readable partition, in order."""
+        globs: list[str] = []
+        for run_date in run_dates:
+            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
+            parquet_glob = self._parquet_glob(key.path(self.root))
+            if parquet_glob is not None:
+                globs.append(parquet_glob)
+        return globs
+
+    @classmethod
+    def _parquet_glob(cls, partition_dir: Path) -> str | None:
+        """The glob over the partition's current version, or `None` when there is no readable
+        manifest or the version directory it names is missing (a torn partition). Readers skip
+        such a partition (the gap-fill repairs it) instead of crashing the whole batch."""
+        version = cls._manifest_version(partition_dir)
+        if version is None:
+            return None
+        version_dir = partition_dir / f"v={version}"
+        return str(version_dir / "*.parquet") if version_dir.is_dir() else None
+
     @staticmethod
     def _manifest_version(partition_dir: Path) -> str | None:
         """The version id the manifest points at, or None if there is no readable manifest."""
@@ -415,16 +436,14 @@ class ParquetStore:
         gap-fill/backfill path detects and fills).
         """
         key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-        partition_dir = key.path(self.root)
-        manifest_path = partition_dir / _MANIFEST_NAME
-        if not manifest_path.exists():
+        parquet_glob = self._parquet_glob(key.path(self.root))
+        if parquet_glob is None:
             return []
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        version_id = manifest["version"]
-        version_dir = partition_dir / f"v={version_id}"
-        parquet_glob = str(version_dir / "*.parquet")
         con = duckdb.connect()
         try:
+            # The path's `dataset=`/`market=`/`date=`/`v=` parts come back as columns (readers rely
+            # on `market`, which stored price rows do not carry); `without_path_columns` strips
+            # them where rows are written back.
             relation = con.execute("SELECT * FROM read_parquet(?)", [parquet_glob])
             columns = [d[0] for d in relation.description or []]
             return [dict(zip(columns, row, strict=True)) for row in relation.fetchall()]
@@ -576,16 +595,7 @@ class ParquetStore:
         its docstring) with the symbol filter pushed into SQL via a bound parameter list —
         never string-interpolated, even though these are trusted internal capability names, to
         keep exactly one query-construction pattern across this module."""
-        globs: list[str] = []
-        for run_date in run_dates:
-            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-            partition_dir = key.path(self.root)
-            manifest_path = partition_dir / _MANIFEST_NAME
-            if not manifest_path.exists():
-                continue
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            version_dir = partition_dir / f"v={manifest['version']}"
-            globs.append(str(version_dir / "*.parquet"))
+        globs = self._existing_globs(dataset, market, run_dates)
         if not globs or not symbols:
             return []
 
@@ -596,7 +606,7 @@ class ParquetStore:
         con = duckdb.connect()
         try:
             relation = con.execute(
-                f"SELECT * FROM read_parquet(?, union_by_name => true) "  # noqa: S608
+                "SELECT * FROM read_parquet(?, union_by_name => true) "  # noqa: S608
                 f"WHERE symbol IN ({placeholders})",
                 [globs, *symbols],
             )
@@ -643,16 +653,7 @@ class ParquetStore:
         and ETFs is a fraction of that). It is a trusted fragment the caller builds from constants
         (`analytics.symbol_universe.scoreable_symbol_sql`), never from request input.
         """
-        globs: list[str] = []
-        for run_date in run_dates:
-            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-            partition_dir = key.path(self.root)
-            manifest_path = partition_dir / _MANIFEST_NAME
-            if not manifest_path.exists():
-                continue
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            version_dir = partition_dir / f"v={manifest['version']}"
-            globs.append(str(version_dir / "*.parquet"))
+        globs = self._existing_globs(dataset, market, run_dates)
 
         if not globs:
             return pd.DataFrame({column: pd.Series([], dtype="object") for column in columns})
@@ -684,15 +685,7 @@ class ParquetStore:
     ) -> tuple[str, list[str]] | None:
         """The query behind both latest-by-key reads, and its glob parameter; `None` when no date
         in the window was ever written."""
-        globs: list[str] = []
-        for run_date in run_dates:
-            key = PartitionKey(dataset=dataset, market=market, run_date=run_date)
-            partition_dir = key.path(self.root)
-            manifest_path = partition_dir / _MANIFEST_NAME
-            if not manifest_path.exists():
-                continue
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            globs.append(str(partition_dir / f"v={manifest['version']}" / "*.parquet"))
+        globs = self._existing_globs(dataset, market, run_dates)
         if not globs:
             return None
         column_list = ", ".join(columns)

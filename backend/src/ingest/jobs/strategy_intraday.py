@@ -28,6 +28,7 @@ from analytics.strategy_watch.intraday import (
 from ingest.context import IngestContext
 from ingest.jobs.whole_market import fetch_error_status
 from ingest.journal import JobRun, RunStatus, journal_run
+from ingest.rows import without_path_columns
 from schemas.enums import Capability
 
 logger = structlog.get_logger(__name__)
@@ -142,8 +143,12 @@ def _store_slot(ctx: IngestContext, run_date: date_, slot: str, hits: list[Hit])
         if ctx.store.has_partition(STRATEGY_HITS_DATASET, market, run_date)
         else []
     )
-    kept = [r for r in existing if r.get("slot") != slot]
-    rows = kept + [hit.to_row(run_date.isoformat()) for hit in hits]
+    new_rows = [hit.to_row(run_date.isoformat()) for hit in hits]
+    keep: frozenset[str] = (
+        frozenset({"market"}) if any("market" in r for r in new_rows) else frozenset()
+    )
+    kept = [r for r in without_path_columns(existing, keep=keep) if r.get("slot") != slot]
+    rows = kept + new_rows
     ctx.store.write_partition(STRATEGY_HITS_DATASET, market, run_date, rows)
 
 

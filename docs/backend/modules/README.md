@@ -38,4 +38,5 @@ database tables are the SQLAlchemy models in `backend/src/db/models/`.
 | [23-agent-personality.md](23-agent-personality.md) | Agent voice: user-selectable curated personality presets (穩健/白話/簡潔/數據派), style-only, subordinate to guardrails |
 | [24-deep-research.md](24-deep-research.md) | Pro-only budgeted, cited multi-step web research inside a chat turn (structural citations, untrusted pages, SSRF-safe fetch, parallel sub-questions) |
 | [25-governance-enforcement.md](25-governance-enforcement.md) | Where each governance rule is enforced in code and which tests pin it: non-trading output scan, whole-market-scan rejection, sponsor masking, caveats, untrusted content, secrets |
+| [27-us-macro.md](27-us-macro.md) | US macro statistics: 45-series catalog, rate-limited source adapter, daily `fred_macro` ingest into four Parquet datasets, dashboard / series / releases / revisions tools and `/macro/us/*` routes |
 | [26-attachments.md](26-attachments.md) | Chat attachments: request limits, image vs document handling, untrusted extracted text, persisted `attachment` blocks, use in deep research |

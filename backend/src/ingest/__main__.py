@@ -63,6 +63,7 @@ from ingest.daemon import (
 from ingest.jobs import (
     job_attention_stocks,
     job_disposition_events,
+    job_fred_macro,
     job_insider_transfer_declaration,
     job_material_announcements,
 )
@@ -135,6 +136,10 @@ async def _us_gap_fill(settings: Settings, ctx: IngestContext) -> tuple[int, str
         settings, ctx, override=False, years=settings.dev_backfill_years
     )
     fundamentals_run = await job_us_fundamentals(datetime.now(UTC).date(), ctx)
+    # US macro statistics have no date-range backfill either (the job always rereads the stored
+    # five-year window), so the same single catch-up call; it journals SKIPPED without an API key.
+    macro_run = await job_fred_macro(datetime.now(_TAIPEI).date(), ctx)
+    logger.info("ingest_startup_us_macro", status=macro_run.status.value, detail=macro_run.detail)
     return len(price_runs), fundamentals_run.status.value
 
 

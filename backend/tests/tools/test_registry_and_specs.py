@@ -53,7 +53,7 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
     # `_router()` passes no `session_factory`/`market_data_reader`, so `theme_tools`/
     # `score_tools`/`screener_tools` (which require one) are never registered here — this
     # count/sample covers only the router-backed groups this fixture actually builds.
-    assert len(deferred_names) == 154
+    assert len(deferred_names) == 158
     # The pre-existing core, still deferred:
     assert {
         "run_bounded_observation",
@@ -126,6 +126,10 @@ def test_deferred_index_lists_the_remaining_real_tools() -> None:
         "get_tw_market_rankings",  # tw_ranking_tools
         "get_macro_calendar",  # macro_calendar_tools
         "get_us_market_index_strip",  # us_market_index_strip_tools
+        "get_us_macro_series",  # us_macro_tools
+        "get_us_macro_dashboard",  # us_macro_tools
+        "get_us_economic_releases",  # us_macro_tools
+        "get_series_revisions",  # us_macro_tools
     } <= deferred_names
 
 
@@ -133,12 +137,12 @@ def test_total_tool_count_reflects_the_coverage_expansion() -> None:
     """5 immediate + 144 deferred = 149, across FinMind/MOPS/TWSE-MIS/TAIFEX-OpenAPI/ETF-PCF/
     web-search/yfinance/TDCC/ask_user/propose_alert/market_tools/realtime_tools/market_index_strip_tools/
     disposition_board_tools/news_tools/ptt_tools/market_ranking_tools/tw_ranking_tools/
-    macro_calendar_tools/us_market_index_strip_tools —
+    macro_calendar_tools/us_market_index_strip_tools/us_macro_tools —
     `_router()` builds no `session_factory`/`market_data_reader`, so theme/score/screener tools
     (which require one) are excluded from this count."""
     registry = build_default_tool_registry(_router())
 
-    assert len(registry.all_tools()) == 159
+    assert len(registry.all_tools()) == 163
 
 
 def test_get_tool_reaches_both_immediate_and_deferred_tools() -> None:
