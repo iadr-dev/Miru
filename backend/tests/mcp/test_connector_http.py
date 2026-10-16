@@ -148,7 +148,7 @@ async def test_protected_resource_metadata_matches_the_configured_public_url() -
     settings = Settings(
         jwt_secret_key="x" * 40,
         mcp_public_base_url="https://mcp.example.com",
-        mcp_authorization_server_url="https://auth.example.com/",
+        oauth_issuer="https://auth.example.com/",
     )
     metadata = resource_metadata_from_settings(settings, "/mcp")
     assert metadata is not None
@@ -166,6 +166,7 @@ async def test_protected_resource_metadata_matches_the_configured_public_url() -
             assert resp.json() == {
                 "resource": "https://mcp.example.com/mcp",
                 "authorization_servers": ["https://auth.example.com"],
+                "scopes_supported": ["mcp:read"],
                 "bearer_methods_supported": ["header"],
                 "resource_name": "Miru MCP",
                 "resource_documentation": "https://modelcontextprotocol.io/specification/",
@@ -266,7 +267,12 @@ async def test_healthz_reports_facts_without_leaking_configuration() -> None:
         assert body["tools"] == {"total": 4, "listed": 3}
         assert isinstance(body["uptime_seconds"], int)
         assert body["version"]
-        assert body["auth"] == {"anonymous": True, "bearer": False, "oauth_metadata": False}
+        assert body["auth"] == {
+            "required": False,
+            "anonymous": True,
+            "bearer": False,
+            "oauth_metadata": False,
+        }
         text = resp.text.lower()
         assert "secret" not in text
         assert "127.0.0.1" not in text

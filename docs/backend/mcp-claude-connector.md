@@ -1,45 +1,108 @@
-# Connecting Claude to the Miru MCP server
+# Connecting an MCP client to Miru ("sign in with your Miru account")
 
 Miru's MCP server (`python -m mcp`, compose service `mcp`, port 8100, endpoint `/mcp`) speaks
-**streamable HTTP** and works with all three ways Claude connects to a remote MCP server:
+**streamable HTTP** and is an **OAuth 2.1 resource server**. Every caller signs in with their Miru
+account; the account's plan decides what they get:
 
-| Path | Who connects | URL must be | Auth options |
-|------|--------------|-------------|--------------|
-| **A. claude.ai / Claude Desktop custom connector** | Anthropic's cloud | public HTTPS | none (authless) today; OAuth sign-in is a follow-up (see [Known limits](#known-limits)) |
-| **B. Messages API MCP connector** (`mcp_servers`) | Anthropic's API | public HTTPS | none, or `authorization_token` (sent as `Authorization: Bearer`) |
-| **C. Claude Code** (`claude mcp add --transport http`) | your machine | any reachable URL, `http://localhost:8100/mcp` is fine | none, or `--header "Authorization: Bearer ..."` |
+| Plan | What the same tool call returns |
+|------|---------------------------------|
+| Free | public data; sponsor-tier data comes back as a masked teaser the model explains |
+| Premium / Pro | the full data |
 
-A and B call from Anthropic's servers, so the endpoint must be reachable from the public
-internet (or allow-list Anthropic's published IP ranges in your firewall). C runs locally and does
-not need a tunnel for a local stack.
+The plan is read from your account on **every request** (it is never stored in the token), so an
+upgrade, a downgrade or a lapsed payment applies from the next call.
 
 What the server offers: five core tools listed directly (canonical context, quote, company profile,
 source health, conversation package), plus `search_tools` / `execute_tool` for the long tail of
 registry tools, two resources (`canonical://{symbol}`, `health://sources`), and server
 `instructions` that tell the model what Miru covers, how masked teasers work, and that it gives
 **data and analysis only, never buy/sell advice**. Tools are read-only (annotated), have titles,
-and are listed in a stable (alphabetical) order. A tool added to the registry later appears
-automatically; nothing in `backend/src/mcp` names individual tools.
+and are listed in a stable (alphabetical) order.
+
+## How sign-in works (what every client does)
+
+Every major client starts sign-in only after the MCP server answers **HTTP 401**, then follows the
+MCP authorization spec (revision 2026-07-28):
+
+1. `POST /mcp` with no token -> `401` + `WWW-Authenticate: Bearer realm="miru-mcp",
+   resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp",
+   scope="mcp:read"`.
+2. Client reads the protected-resource metadata (RFC 9728): `resource` = the MCP URL,
+   `authorization_servers` = `[OAUTH_ISSUER]`.
+3. Client reads the authorization-server metadata at `OAUTH_ISSUER/.well-known/oauth-authorization-server`
+   (RFC 8414): `S256` PKCE only, public clients (no secret), `client_id_metadata_document_supported`.
+4. Client identifies itself: a pre-registered id, a **Client ID Metadata Document** URL (Claude Code
+   uses `https://claude.ai/oauth/claude-code-client-metadata`), or **dynamic registration**
+   (`POST /oauth/register`, RFC 7591).
+5. Client opens the browser at `GET /oauth/authorize` (PKCE challenge, `resource` = the MCP URL).
+   The API validates the request and sends the browser to the web app's consent screen
+   `<FRONTEND_BASE_URL>/<locale>/oauth/consent?request=<id>`.
+6. **You see Miru's page.** If you are signed out you sign in with Google / LINE / Telegram as
+   usual and land back on the same screen. The screen names the app and where it will send you
+   back, and asks **Allow / Deny**.
+7. Allow -> the browser goes to the client's redirect URI with a one-time code (60 s) plus `state`
+   and `iss`. The client calls `POST /oauth/token` (code + PKCE verifier + `resource`) and gets a
+   10-minute access token and a 30-day refresh token. Refresh tokens **rotate** on every use; using
+   an old one again revokes the whole connection.
+8. The client retries `/mcp` with `Authorization: Bearer <access token>`. The server checks the
+   signature, expiry, issuer, **audience (= the MCP URL)** and that the connection is not revoked,
+   then reads your plan.
+
+The token is only good for this server: it is bound to the MCP URL, and Miru never forwards it to
+anything else.
+
+## What you see in each client
+
+> These steps come from each client's own documentation. They were **not** run against the live
+> clients (this environment cannot reach them). What was run, end to end, is the protocol itself
+> with the official `mcp` SDK client (see [What was verified](#what-was-verified)).
+
+- **Claude Code**: `claude mcp add --transport http miru https://mcp.example.com/mcp`, then in a
+  session run `/mcp`, pick **miru**, choose **Authenticate** (or run `claude mcp login miru`). The
+  browser opens on Miru's consent screen; after **Allow** Claude Code shows the server as connected.
+  Claude Code uses a loopback redirect (any port) and the metadata-document client id.
+- **claude.ai / Claude Desktop**: Customize, Connectors, **Add custom connector**. Name `Miru`,
+  URL `https://mcp.example.com/mcp`, leave the OAuth client fields empty (Miru registers the client
+  itself), **Add**, then **Connect**. A browser window opens on Miru's consent screen. The callback
+  is `https://claude.ai/api/mcp/auth_callback`. On Team/Enterprise an owner adds the connector
+  first, then members connect individually.
+- **Gemini CLI**: `gemini mcp add --transport http miru https://mcp.example.com/mcp`, then in a
+  session `/mcp auth miru`. Gemini opens the browser and listens on
+  `http://localhost:<random>/oauth/callback`.
+- **Codex CLI**: `codex mcp add miru --url https://mcp.example.com/mcp`, then `codex mcp login
+  miru` (configurable loopback callback).
+- **Cursor**: add the server (`~/.cursor/mcp.json` -> `{"mcpServers": {"miru": {"url":
+  "https://mcp.example.com/mcp"}}}`) and click **Connect**; callbacks are
+  `https://www.cursor.com/agents/mcp/oauth/callback` and `http://localhost:8787/callback`.
+- **VS Code / Windsurf**: add the HTTP server by URL; the client runs the same flow
+  (VS Code uses loopback and `vscode://` redirects, which `OAUTH_EXTRA_REDIRECT_SCHEMES` allows).
+- **Messages API MCP connector** (`mcp_servers`): the API does not run a browser flow. Complete the
+  sign-in once with any of the clients above (or the SDK) and pass the resulting access token as
+  `authorization_token`; it expires in 10 minutes, so refresh it with the refresh token. Header
+  `anthropic-beta: mcp-client-2025-11-20`, tools only, `https://` URL required.
+
+A client that skips the flow and sends a pasted token works too, as long as it is an MCP access
+token; the web app's own session token is rejected (see [the dev flag](#development-without-sign-in)).
 
 ## 1. Expose the service over HTTPS
 
 The MCP port speaks plain HTTP and must be published through something that terminates TLS.
+Claude's cloud (claude.ai, Messages API) calls from the public internet, so the URL must be public
+HTTPS (or allow-list Anthropic's published ranges, currently `160.79.104.0/21`). Claude Code and
+the other CLIs run locally and can use `http://localhost:8100/mcp`.
 
 ### Cloudflare Tunnel (no inbound ports)
 
 ```bash
-# quick, throwaway hostname (testing)
-cloudflared tunnel --url http://localhost:8100
-
-# named tunnel on your own domain (stable URL)
-cloudflared tunnel login
-cloudflared tunnel create miru-mcp
+cloudflared tunnel --url http://localhost:8100            # quick, throwaway hostname
+cloudflared tunnel login && cloudflared tunnel create miru-mcp
 cloudflared tunnel route dns miru-mcp mcp.example.com
-cloudflared tunnel run --url http://localhost:8100 miru-mcp
+cloudflared tunnel run --url http://localhost:8100 miru-mcp  # stable URL on your domain
 ```
 
-Do not put Cloudflare Access (or any login page) in front of the path for path A/B: Anthropic's
-connector cannot complete an interactive login that is not OAuth-spec compliant.
+Do not put Cloudflare Access (or any login page) in front of `/mcp` or the `/.well-known/*` paths:
+the clients cannot complete a login that is not the OAuth flow above. The API host (`OAUTH_ISSUER`)
+must be reachable by the client too, and by the user's browser.
 
 ### Reverse proxy (Caddy example)
 
@@ -54,216 +117,128 @@ mcp.example.com {
 nginx: `proxy_pass http://127.0.0.1:8100; proxy_buffering off; proxy_http_version 1.1;
 proxy_read_timeout 300s;` and forward `Host` / `X-Forwarded-For`.
 
-### Settings (backend `.env`, all non-secret)
+## 2. Settings (backend `.env`; none of these is a secret)
 
 ```
-MCP_PUBLIC_BASE_URL=https://mcp.example.com      # no path, no trailing slash
-TRUSTED_PROXY_COUNT=1                            # tunnel/proxy hops, so rate limits key on the real client
+# The MCP server's own public URL (no path, no trailing slash). It becomes the token audience.
+MCP_PUBLIC_BASE_URL=https://mcp.example.com
+# The API service's public URL (scheme + host only): the token issuer and the authorization server.
+OAUTH_ISSUER=https://app.example.com
+# Where /oauth/authorize sends the browser: the web app, which hosts the consent screen.
+FRONTEND_BASE_URL=https://app.example.com
+TRUSTED_PROXY_COUNT=1          # tunnel/proxy hops, so rate limits key on the real client
 ```
 
-`MCP_PUBLIC_BASE_URL` adds `mcp.example.com` to the Host allow-list and `https://mcp.example.com`
-to the Origin allow-list (the DNS-rebinding protection the MCP spec requires). Extra hostnames go
-in `MCP_ALLOWED_HOSTS` (comma separated; `localhost` / `127.0.0.1` always stay allowed, so the
-container health check keeps working). A request whose `Host` is not allowed gets HTTP 421 with a
-JSON body naming `MCP_PUBLIC_BASE_URL` / `MCP_ALLOWED_HOSTS`; a rejected `Origin` gets 403 naming
-`MCP_ALLOWED_ORIGINS`. Server-side callers (A, B) send no `Origin`.
+`MCP_PUBLIC_BASE_URL` and `OAUTH_ISSUER` are read by **both** the `api` and the `mcp` service (they
+share the compose environment): the API needs the MCP URL to bind tokens to it, the MCP server needs
+the issuer to verify them. Both must be set, or MCP sign-in is unavailable (the metadata paths
+answer 404 and `/oauth/*` answer 503 `server_error`). `JWT_SECRET_KEY` signs the tokens (a key
+derived from it, separate from the web session's).
 
-Check it from outside:
+`MCP_PUBLIC_BASE_URL` also adds `mcp.example.com` to the Host allow-list and `https://mcp.example.com`
+to the Origin allow-list (the DNS-rebinding protection the MCP spec requires). Extra hostnames go in
+`MCP_ALLOWED_HOSTS`. A request whose `Host` is not allowed gets HTTP 421 naming the setting to
+change; a rejected `Origin` gets 403 naming `MCP_ALLOWED_ORIGINS`.
+
+Optional tuning (defaults in `.env.example`): `OAUTH_ACCESS_TOKEN_MINUTES` (10),
+`OAUTH_REFRESH_TOKEN_DAYS` (30, sliding), `OAUTH_EXTRA_REDIRECT_SCHEMES` (desktop clients that use a
+custom scheme, default `vscode,vscode-insiders,cursor,windsurf`; https and `http://localhost` /
+`127.0.0.1` / `[::1]` are always allowed), the metadata-document limits `OAUTH_CIMD_*`, and the
+abuse bounds `OAUTH_REGISTER_PER_HOUR`, `OAUTH_TOKEN_PER_MINUTE`, `OAUTH_MAX_REGISTERED_CLIENTS`.
+
+Check from outside:
 
 ```bash
 curl -s https://mcp.example.com/healthz
 # {"status":"ok","service":"miru","version":"0.1.0","uptime_seconds":42,
-#  "tools":{"total":97,"listed":7},"auth":{"anonymous":true,"bearer":true,"oauth_metadata":false}}
+#  "tools":{"total":97,"listed":7},
+#  "auth":{"required":true,"anonymous":false,"bearer":true,"oauth_metadata":true}}
+curl -i -X POST https://mcp.example.com/mcp -H 'content-type: application/json' -d '{}'
+# HTTP/1.1 401 ... WWW-Authenticate: Bearer realm="miru-mcp", resource_metadata="...", scope="mcp:read"
+curl -s https://mcp.example.com/.well-known/oauth-protected-resource/mcp
+curl -s https://app.example.com/.well-known/oauth-authorization-server
 ```
 
-`/healthz` carries no secrets or hostnames. Both `https://mcp.example.com/mcp` and
-`https://mcp.example.com/mcp/` work (no redirect).
+`/healthz` carries no secrets or hostnames. Both `.../mcp` and `.../mcp/` work (no redirect).
 
-## 2. Connect Claude
+## 3. Revoking access
 
-### A. claude.ai / Claude Desktop custom connector
+- **From the client**: "disconnect" / "log out" in the client discards its tokens. A client that
+  calls `POST /oauth/revoke` (RFC 7009, form `token=<refresh or access token>&client_id=...`) ends
+  the connection on the server: its refresh token stops working at once and its access token is
+  refused by the MCP server on the next request (the grant is checked on each call).
+- **Replay**: using a rotated-out refresh token, or an authorization code twice, revokes the whole
+  connection.
+- **Expiry**: an unused connection ends after 30 days without a refresh; access tokens last 10
+  minutes.
+- **Deleting the account** removes all of its connections.
+- There is **no "connected apps" screen in the web app yet**; until one exists, a connection can
+  only be ended by the client or the endpoint above.
 
-1. Customize, Connectors, **Add custom connector** (on Team/Enterprise an owner adds it under
-   Organization settings, Connectors first, then members connect individually).
-2. Name: `Miru`. URL: `https://mcp.example.com/mcp`. Choose **No sign in** and leave the OAuth
-   client fields empty (sign-in with a Miru account is not available yet, see Known limits).
-3. Add, then enable the connector in a chat (the "+" / tools menu). Claude lists the tools and asks
-   permission per tool; they are all marked read-only.
+## 4. Development without sign-in
 
-Anonymous access is served as the **Free tier** (public data; sponsor-tier tools return a masked
-teaser that Claude explains). Per the MCP authorization spec a client probes the OAuth discovery paths; with no
-authorization server configured they answer 404 and an authless server is used as-is (not
-verified against the live claude.ai service, which this environment cannot reach).
-
-### B. Messages API MCP connector
-
-Beta header `anthropic-beta: mcp-client-2025-11-20`. The connector supports tool calls only
-(Miru's resources are not used by it) and requires an `https://` URL.
-
-```json
-{
-  "model": "claude-sonnet-4-5",
-  "max_tokens": 1024,
-  "messages": [{"role": "user", "content": "Summarize 2330's latest fundamentals and data freshness."}],
-  "mcp_servers": [
-    {
-      "type": "url",
-      "url": "https://mcp.example.com/mcp",
-      "name": "miru",
-      "authorization_token": "<optional: a Miru access token>"
-    }
-  ],
-  "tools": [{"type": "mcp_toolset", "mcp_server_name": "miru"}]
-}
-```
-
-```bash
-curl https://api.anthropic.com/v1/messages \
-  -H "content-type: application/json" -H "x-api-key: $ANTHROPIC_API_KEY" \
-  -H "anthropic-version: 2023-06-01" -H "anthropic-beta: mcp-client-2025-11-20" \
-  -d @request.json
-```
-
-Omit `authorization_token` for anonymous (Free). Use the model id current for your account. To
-restrict the tools Claude may call, use the toolset's `default_config` / `configs` allowlist
-(see Anthropic's MCP connector page).
-
-### C. Claude Code
-
-```bash
-# anonymous (Free tier)
-claude mcp add --transport http miru https://mcp.example.com/mcp
-
-# local stack, no tunnel
-claude mcp add --transport http miru http://localhost:8100/mcp
-
-# signed in: a Miru access token as a Bearer header (see Auth below)
-claude mcp add --transport http miru https://mcp.example.com/mcp \
-  --header "Authorization: Bearer $MIRU_ACCESS_TOKEN"
-
-# or, equivalently, the x-api-key header
-claude mcp add --transport http miru https://mcp.example.com/mcp \
-  --header "x-api-key: $MIRU_ACCESS_TOKEN"
-```
-
-Verify with `claude mcp list` and `/mcp` inside Claude Code. Claude Code caps a tool result at
-about 25,000 tokens by default (`MAX_MCP_OUTPUT_TOKENS`); Miru marks its tools with
-`anthropic/maxResultSizeChars` so larger structured results are allowed where the client honors it.
-
-### D. Other clients (Gemini CLI, Codex, Cursor, VS Code, Windsurf)
-
-Each takes the same URL. Add the bearer header only if you want your own tier (see Auth below).
-
-```bash
-# Gemini CLI
-gemini mcp add --transport http miru https://mcp.example.com/mcp
-gemini mcp add --transport http -H "Authorization: Bearer $MIRU_ACCESS_TOKEN" miru https://mcp.example.com/mcp
-# or in ~/.gemini/settings.json: {"mcpServers": {"miru": {"httpUrl": "https://mcp.example.com/mcp"}}}
-
-# Codex CLI
-codex mcp add miru --url https://mcp.example.com/mcp
-# ~/.codex/config.toml: [mcp_servers.miru]  url = "..."  bearer_token_env_var = "MIRU_ACCESS_TOKEN"
-```
-
-```jsonc
-// Cursor: ~/.cursor/mcp.json (or .cursor/mcp.json)
-{ "mcpServers": { "miru": { "url": "https://mcp.example.com/mcp",
-    "headers": { "Authorization": "Bearer ${env:MIRU_ACCESS_TOKEN}" } } } }
-
-// VS Code: .vscode/mcp.json
-{ "servers": { "miru": { "type": "http", "url": "https://mcp.example.com/mcp",
-    "headers": { "Authorization": "Bearer ${input:miru-token}" } } } }
-```
-
-Windsurf takes `serverUrl` (or `url`) plus `headers` in its MCP config. Config shapes were read from
-each client's own documentation, not run against the live clients. ChatGPT custom connectors were
-not verified at all. The clients' own "Sign in" buttons (OAuth) will not work until Miru has an
-authorization server (Known limits).
-
-## 3. Authentication
-
-| Credential | Result |
-|------------|--------|
-| none | anonymous, `Tier.FREE`, masked teasers for sponsor data (the default; the authless connector) |
-| `Authorization: Bearer <Miru access JWT>` | that user's tier (Free / Premium / Pro), sponsor data unmasked for paid tiers |
-| `x-api-key: <Miru access JWT>` | same as Bearer (for clients that can only set a custom header) |
-| `x-api-key: <anything else>` | unrecognized, treated as anonymous (never an error) |
-| `Authorization: Bearer <invalid / expired / forged>` | **HTTP 401** |
-
-The token is the application's own short-lived access JWT (`JWT_ACCESS_TOKEN_EXPIRE_MINUTES`,
-default 15 min), the same one the web app uses; the tier is read from the database on every call,
-so a plan change applies on the next request, and a payment lapse past grace drops the tier exactly
-as in the app. Because the lifetime is short, a pasted token is useful for testing and for scripted
-use that can refresh it; long-lived sign-in needs the OAuth follow-up below.
-
-A 401 carries the spec's challenge:
+For a local stack where you only want to try the tools:
 
 ```
-HTTP/1.1 401 Unauthorized
-WWW-Authenticate: Bearer realm="miru-mcp", error="invalid_token",
-  error_description="The access token is invalid or has expired; obtain a fresh one.",
-  resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"
+MCP_REQUIRE_AUTH=false              # no credential -> anonymous Free tier, as before
+MCP_ACCEPT_APP_ACCESS_TOKEN=true    # also accept the web app's own session JWT as a Bearer / x-api-key
 ```
 
-`resource_metadata` appears only when an authorization server is configured:
+Both are development flags. `MCP_ACCEPT_APP_ACCESS_TOKEN` exists because the web session token has
+no audience (it was not issued for this server), so by default it is **refused** with 401. With
+`MCP_REQUIRE_AUTH=false`, a presented-but-invalid Bearer token is still a 401.
 
-```
-MCP_PUBLIC_BASE_URL=https://mcp.example.com
-MCP_AUTHORIZATION_SERVER_URL=https://auth.example.com
-```
-
-With both set the server serves RFC 9728 metadata at
-`/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp`
-(`resource` = `https://mcp.example.com/mcp`, `authorization_servers` = your URL,
-`bearer_methods_supported` = `["header"]`); otherwise both paths return 404. Miru ships **no OAuth
-authorization server**: set this only when an RFC 8414 server (with dynamic client registration or
-client-id metadata) that issues Miru-valid tokens exists.
-
-## 4. Safety limits (all configurable, see `.env.example`)
+## 5. Safety limits (all configurable, see `.env.example`)
 
 - Rate limit on `/mcp`: `MCP_RATE_LIMIT_ANONYMOUS_PER_MINUTE` (per client address) and
-  `MCP_RATE_LIMIT_SIGNED_IN_PER_MINUTE` (per user id). Uses the same limiter backend as the API
-  (`RATE_LIMITER_BACKEND=redis` shares counts across replicas). Exceeded: HTTP 429 + `Retry-After`.
-- `MCP_MAX_BODY_BYTES` (default 1 MiB): HTTP 413.
-- `MCP_MAX_CONCURRENT_REQUESTS` (default 64): HTTP 503 + `Retry-After: 1`.
-- `MCP_STATELESS_HTTP=true` (default): no `Mcp-Session-Id`; every request stands alone, so a load
-  balancer, restart or one-request-per-connection client (the Messages API connector) just works.
-  Miru sends no server-initiated messages, so nothing is lost. Set `false` for session mode.
-- Tool and resource reads are bounded single reads; `isError` results carry a recovery hint.
+  `MCP_RATE_LIMIT_SIGNED_IN_PER_MINUTE` (per user id), same limiter backend as the API.
+  Exceeded: HTTP 429 + `Retry-After`.
+- `MCP_MAX_BODY_BYTES` (default 1 MiB): HTTP 413. `MCP_MAX_CONCURRENT_REQUESTS` (default 64):
+  HTTP 503 + `Retry-After: 1`.
+- `MCP_STATELESS_HTTP=true` (default): no `Mcp-Session-Id`; every request stands alone.
+- Authorization server: registration, token and revoke endpoints are rate limited per client
+  address; metadata-document fetches refuse private, loopback, link-local and cloud-metadata
+  addresses, never follow redirects, time out at 5 s and cap the body at 64 KB; authorization codes
+  and refresh tokens are stored only as SHA-256 hashes; nothing secret is logged.
 
-## 5. Client requirements checked
+## What was verified
 
-Verified with the official `mcp` SDK client and `fastmcp.Client` against the real server over real
-HTTP (`backend/tests/mcp/test_connector_*.py`): protocol versions 2024-11-05, 2025-03-26,
-2025-06-18 and 2025-11-25 initialize (an unknown version is answered with the server's latest); an
-unsupported `MCP-Protocol-Version` header is a 400; every listed tool name matches
-`^[a-zA-Z0-9_-]{1,64}$`; every schema is valid JSON Schema 2020-12 with no dangling `$ref`; the
-`tools/list` payload stays under 40 KB; `outputSchema` is present (sponsor tools admit the masked
-teaser); unknown tool or bad arguments produce `isError` with a hint; a Bearer token round-trips to
-the right tier; `/mcp` and `/mcp/` both answer directly.
+Run in this repository (`backend/tests`), over real HTTP, with no mocks of the server side:
+
+- `tests/mcp/test_oauth_end_to_end.py` - the **official `mcp` SDK's `OAuthClientProvider`** drives
+  the whole flow against the real API app and the real MCP app (two live servers sharing one
+  database): 401 + discovery, dynamic registration, `/oauth/authorize`, the consent calls the web
+  app makes (with the session cookie), the loopback redirect with the code, `/oauth/token`, then
+  `tools/list` and a sponsor-data call as a Free and as a Premium user (teaser vs data), a plan
+  change taking effect on the next request, the SDK refreshing an expired access token with
+  rotation, a denied consent, and RFC 7009 revocation stopping the token. The only stand-in is the
+  browser / web consent screen (it makes the same two HTTP calls the screen makes).
+- `tests/api/test_oauth_routes.py`, `tests/accounts/test_mcp_oauth_*.py`,
+  `tests/sources/test_oauth_client_metadata.py` - PKCE, redirect-URI matching (loopback port rule,
+  open-redirect rejection), single-use / 60 s / bound codes, refresh rotation and replay
+  revocation, registration validation and caps, metadata documents and the SSRF fence, consent CSRF
+  nonce, token audience / issuer / type checks, revocation.
+- `tests/mcp/test_connector_*.py` - protocol versions, tool-name and schema rules, the 401
+  challenge shape, host/origin protection, limits, `/healthz`.
+
+**Not** verified against the live services (documentation only): claude.ai, Claude Desktop, Claude
+Code, Gemini CLI, Codex, Cursor, VS Code, Windsurf and the Messages API connector; real TLS to a
+metadata-document host (the fetcher pins the connection to the checked address and sends the host
+name as TLS server name, which is httpcore's documented `sni_hostname` behaviour); the web consent
+screen itself (it is a web-app deliverable).
 
 ## Known limits
 
-- **Full OAuth 2.1 sign-in for claude.ai is not available yet.** claude.ai's built-in sign-in
-  needs an authorization server (authorization endpoint, token endpoint with PKCE, RFC 8414
-  metadata, dynamic client registration or client-id metadata documents). Miru has none; the
-  resource-server half (401 challenge, RFC 9728 metadata, token validation) is in place. Until
-  then claude.ai connects authless (Free tier) and paid-tier access over MCP is via Bearer /
-  `x-api-key` in Claude Code and the Messages API. Follow-up: build or front an authorization
-  server and issue tokens with an `aud` of the MCP URL (the spec requires audience validation; the
-  app's access JWT currently carries no audience claim).
-- No API-key store exists; `x-api-key` accepts the same short-lived access JWT (about 15
-  minutes). Today there is no screen that hands a user such a token, so Bearer access suits tests and
-  scripts, not daily use.
-- claude.ai only starts a sign-in after a **401** from the server, so an authless server and a
-  server that offers sign-in cannot be the same endpoint without a policy decision (require sign-in
-  for every caller, or answer 401 only on calls that need an account).
-- Anthropic's cloud calls connectors from `160.79.104.0/21` if you allow-list by address.
+- The consent screen is a web-app page (`/<locale>/oauth/consent`); the API side is complete but
+  until the page exists, `/oauth/authorize` lands on a missing route.
+- No "connected apps" list in the app yet (see Revoking access).
+- A client that retries a refresh after losing the response, with the old token, trips replay
+  detection and the user must sign in again (rotation without a grace window, by design).
+- Unknown scopes a client asks for (`offline_access`, `openid`) are ignored; the only scope is
+  `mcp:read`, and the token response says what was granted.
 - The Messages API connector uses tools only. Resources are visible to claude.ai and Claude Code
   but not to the API connector; every datum is therefore also reachable as a tool.
-- Legacy SSE-only transport is not served (`/sse`); current Claude clients use streamable HTTP and
-  fall back automatically.
-- Large-tail tools are reached in two steps (`search_tools`, then `execute_tool`) by design, to
-  keep the model's context small; `search_tools` returns each match's argument schema.
+- Legacy SSE-only transport is not served (`/sse`); current clients use streamable HTTP.
+- Large-tail tools are reached in two steps (`search_tools`, then `execute_tool`) by design.
 - Behind Cloudflare, free/proxied plans cap request duration (about 100 s); tool calls are well
-  below that. Anthropic's source IP ranges are published by Anthropic if you must allow-list them.
+  below that.

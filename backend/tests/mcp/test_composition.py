@@ -57,7 +57,7 @@ def test_composed_app_puts_the_gateway_in_front_of_fastmcps_own_host_guard() -> 
     settings = Settings(
         jwt_secret_key=_TEST_JWT_SECRET,
         mcp_public_base_url="https://mcp.example.com",
-        mcp_authorization_server_url="https://auth.example.com",
+        oauth_issuer="https://auth.example.com",
     )
     built = build_mcp_http_app(settings)
     assert built.app.user_middleware[0].cls is McpGateway

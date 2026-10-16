@@ -95,6 +95,8 @@ def bootstrap_vendor_sdk() -> None:
             "fastmcp.client",
             "mcp.client.session",
             "mcp.client.streamable_http",
+            "mcp.client.auth",
+            "mcp.shared.auth",
             "mcp.shared.exceptions",
         ):
             importlib.import_module(client_module)

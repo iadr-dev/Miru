@@ -11,6 +11,9 @@ from schemas.enums import TLSPolicy
 # Which Paddle host billing talks to; anything else is a startup error, never a silent fallback.
 PaddleEnvironment = Literal["sandbox", "production"]
 
+# Where the MCP server serves its streamable-HTTP endpoint (mcp/composition.py mounts it here).
+MCP_RESOURCE_PATH = "/mcp"
+
 
 class Settings(BaseSettings):
     """Runtime config from env (backend/.env — see .env.example for the authoritative list).
@@ -210,9 +213,6 @@ class Settings(BaseSettings):
     # (e.g. https://mcp.example.com). Its host is added to the Host allow-list automatically, and
     # it is the base of the RFC 9728 protected-resource metadata. Empty = local use only.
     mcp_public_base_url: str = ""
-    # OAuth authorization server the protected-resource metadata points MCP clients at. Miru
-    # ships no authorization server; leave empty to serve no metadata (authless / Bearer token).
-    mcp_authorization_server_url: str = ""
     # true = every request is self-contained (no Mcp-Session-Id): safe behind a load balancer or
     # across restarts, which is how Anthropic's cloud connectors behave. Miru pushes no
     # server-initiated messages, so nothing is lost.
@@ -223,6 +223,50 @@ class Settings(BaseSettings):
     # otherwise per client address (see TRUSTED_PROXY_COUNT).
     mcp_rate_limit_anonymous_per_minute: int = 120
     mcp_rate_limit_signed_in_per_minute: int = 600
+    # Sign-in (the MCP authorization spec). true = every /mcp request must carry a valid OAuth
+    # access token issued by this app's authorization server (below); a request without one gets
+    # HTTP 401 + a `WWW-Authenticate` challenge that starts the client's sign-in flow. false = the
+    # old anonymous (Free) behaviour, for local development only.
+    mcp_require_auth: bool = True
+    # The app's own session JWT (no audience) is NOT a valid MCP credential: it was not issued for
+    # this resource. Dev-only escape hatch so a hand-minted token works with curl or a script.
+    mcp_accept_app_access_token: bool = False
+
+    # ---- OAuth authorization server for MCP clients (api/routers/oauth.py) ----
+    # Public base URL of the API service (scheme + host, no path), e.g. https://app.example.com.
+    # It is the `iss` of every MCP access token and what the protected-resource metadata points
+    # clients at. Empty = no authorization server (MCP sign-in unavailable).
+    oauth_issuer: str = ""
+    oauth_access_token_minutes: int = 10
+    oauth_refresh_token_days: int = 30
+    # How long a user has to approve on the consent screen, and how long an issued code lives.
+    oauth_authorization_request_ttl_seconds: int = 600
+    oauth_code_ttl_seconds: int = 60
+    # Redirect URI schemes (besides https and loopback http) a desktop client may register.
+    oauth_extra_redirect_schemes: str = "vscode,vscode-insiders,cursor,windsurf"
+    # Client ID Metadata Documents (client_id is an https URL the server fetches).
+    oauth_cimd_timeout_seconds: float = 5.0
+    oauth_cimd_max_bytes: int = 65_536
+    oauth_cimd_cache_seconds: int = 300
+    # Abuse bounds on the unauthenticated endpoints.
+    oauth_register_per_hour: int = 20
+    oauth_token_per_minute: int = 120
+    oauth_max_registered_clients: int = 10_000
+
+    def oauth_issuer_url(self) -> str | None:
+        issuer = self.oauth_issuer.strip().rstrip("/")
+        return issuer or None
+
+    def oauth_redirect_schemes(self) -> frozenset[str]:
+        return frozenset(
+            s.strip().lower() for s in self.oauth_extra_redirect_schemes.split(",") if s.strip()
+        )
+
+    def mcp_resource_url(self) -> str | None:
+        """The canonical URL of the MCP endpoint: the `aud` of its access tokens and the
+        `resource` of its protected-resource metadata."""
+        base = self.mcp_public_base()
+        return f"{base}{MCP_RESOURCE_PATH}" if base else None
 
     def mcp_public_base(self) -> str | None:
         base = self.mcp_public_base_url.strip().rstrip("/")
