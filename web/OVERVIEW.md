@@ -148,7 +148,8 @@ All are errors, not warnings.
 - **`<Caveat>` is required and non-removable** (`app/[locale]/(app)/chat/caveat.tsx`) on every
   analytical or quote surface — score, SWOT, screener list, top-N, chat answer,
   `ChartWithDataSheet`, marquee, asset header: a non-trading caveat on analytical surfaces, a
-  currentness caveat on quote/market surfaces. No prop may hide it. Pair it with a data-freshness
+  currentness caveat on quote/market surfaces. No prop may hide it. One exception, by product decision: the
+  AI 盯盤 page (`components/watch/`) states it in its subtitle instead of a separate chip. Pair it with a data-freshness
   badge on cached, possibly-stale surfaces.
 - **馬賽克 teaser for sponsor data:** frame / headline / label columns stay sharp, the value layer
   sits under `backdrop-blur` + diagonal texture + a centred lock chip + **one calm CTA**. Never a

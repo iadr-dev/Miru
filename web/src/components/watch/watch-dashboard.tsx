@@ -25,10 +25,17 @@ function taipeiToday(): string {
 }
 
 /** AI 盯盤: today's run, the strategy tabs, the list with the selected stock beside it, and the
- * feed of what met its conditions today. The route page passes the non-trading caveat in. */
-export function WatchDashboard({ caveat }: { caveat: ReactNode }): ReactNode {
+ * feed of what met its conditions today. The non-trading statement is the page subtitle (the
+ * product owner chose that over a separate caveat chip here; OVERVIEW.md §4 records the exception). */
+/** `?date=YYYY-MM-DD` shows that day's list (a past session) instead of today's. */
+function requestedDate(value: string | null): string | undefined {
+  return value !== null && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : undefined;
+}
+
+export function WatchDashboard(): ReactNode {
   const t = useTranslations("watch");
-  const query = useStrategyWatch();
+  const params = useSearchParams();
+  const query = useStrategyWatch(requestedDate(params.get("date")));
   return (
     <div className="mx-auto w-full max-w-[1400px] space-y-4 p-4 sm:p-6">
       <header className="space-y-1">
@@ -49,7 +56,6 @@ export function WatchDashboard({ caveat }: { caveat: ReactNode }): ReactNode {
           )
         }
       </QueryState>
-      {caveat}
     </div>
   );
 }
@@ -155,7 +161,9 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
 function RunStatus({ data }: { data: StrategyWatchToday }): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
-  const isToday = data.run_date === taipeiToday();
+  const asked = requestedDate(useSearchParams().get("date"));
+  // A list for another day is only a warning when today's was wanted and is not ready.
+  const isToday = data.run_date === (asked ?? taipeiToday());
   const steps = [
     { key: "screen", done: true, note: data.as_of ? t("asOf", { date: data.as_of }) : null },
     {
