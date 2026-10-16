@@ -288,6 +288,14 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
     never a hardcoded list — an empty universe (that job hasn't run yet) is a graceful skip.
     One fallback symbol's failure never aborts the run: it's counted, journaled as `PARTIAL` if
     any symbol failed but some rows still landed, `FAILED` only if none did."""
+    if not ctx.calendar.is_trading_day_extrapolating(run_date):
+        return journal_run(
+            ETF_AUM_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="non-trading day (calendar-gated)",
+        )
     if not ctx.leader.is_leader():
         return journal_run(
             ETF_AUM_DATASET,

@@ -297,15 +297,17 @@ async def test_daemon_pass_writes_score_rows_for_whole_universe(
     assert ran == ["scoring_batch"]
 
     async with session_factory() as session:
-        rows = (await session.scalars(select(StockScoreRow))).all()
+        all_rows = (await session.scalars(select(StockScoreRow))).all()
 
+    # The daemon's own catch-up (a pass after 08:10) also scores the earlier seeded trading days
+    # that have no scores; this proof is about the day the scheduled job ran for.
+    rows = [row for row in all_rows if row.as_of == _RUN_DATE.isoformat()]
     symbols = {row.symbol for row in rows}
     profiles = {row.profile for row in rows}
     assert symbols == {"STRO", "MID", "WEAK"}
     assert profiles == {"swing", "position"}
     # 3 symbols x 2 profiles = 6 rows — the whole universe, not a subset.
     assert len(rows) == 6
-    assert all(row.as_of == _RUN_DATE.isoformat() for row in rows)
 
 
 async def test_stock_score_tool_reads_back_cached_row(
