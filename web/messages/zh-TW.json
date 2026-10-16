@@ -3677,7 +3677,9 @@
       "conditions": "條件",
       "days": "天數",
       "empty": "這個策略今天沒有符合的股票。",
-      "caption": "{strategy} 今日清單"
+      "caption": "{strategy} 今日清單",
+      "showAll": "查看全部 {count} 檔",
+      "allTitle": "{strategy} · 全部 {count} 檔"
     },
     "status": {
       "alerted": "已通知 {time}",

@@ -3677,7 +3677,9 @@
       "conditions": "Conditions",
       "days": "Days",
       "empty": "No stock matches this strategy today.",
-      "caption": "{strategy}: today's list"
+      "caption": "{strategy}: today's list",
+      "showAll": "Show all {count}",
+      "allTitle": "{strategy} · all {count}"
     },
     "status": {
       "alerted": "Alerted {time}",

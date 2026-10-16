@@ -62,3 +62,19 @@ export const STRATEGY_COLOR: Record<StrategyKey, string> = {
 export function tint(color: string, percent: number): string {
   return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 }
+
+/** How many stocks the list shows before 「查看全部」 opens the rest in a modal. */
+export const PREVIEW_ROWS = 8;
+
+/** The first `limit` stocks, keeping the selected one visible: a stock picked from the full list
+ * replaces the last preview row rather than disappearing from the page. */
+export function previewItems<T extends { symbol: string }>(
+  items: readonly T[],
+  selected: string | null,
+  limit: number = PREVIEW_ROWS,
+): T[] {
+  const head = items.slice(0, limit);
+  if (selected === null || head.some((item) => item.symbol === selected)) return head;
+  const chosen = items.find((item) => item.symbol === selected);
+  return chosen ? [...head.slice(0, limit - 1), chosen] : head;
+}
