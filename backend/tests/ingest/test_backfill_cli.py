@@ -473,6 +473,47 @@ async def test_derived_compute_catchup_scores_a_day_whose_screener_already_lande
     assert scoring_calls == [date(2024, 1, 3)]
 
 
+async def test_us_scoring_catchup_scores_the_sessions_the_daemon_missed(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """US scores stopped at 2026-10-12 because only the 07:30 daemon run scores US. The US
+    backfill now scores each missing session after the first scored one, against a US-scoped
+    context."""
+    scored: list[tuple[date, str]] = []
+
+    async def _fake_scoring_batch(run_date: date, run_ctx: IngestContext) -> JobRun:
+        scored.append((run_date, run_ctx.market.value))
+        return JobRun(
+            dataset="stock_scores", run_date=run_date, rows_written=1, status=RunStatus.SUCCESS
+        )
+
+    class _Session:
+        async def __aenter__(self) -> _Session:
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    async def _fake_scored_dates(_session: object, *, market: object) -> frozenset[date]:
+        assert str(market) == "US"
+        return frozenset({date(2026, 10, 9), date(2026, 10, 12)})
+
+    monkeypatch.setattr(backfill_cli_module, "job_scoring_batch", _fake_scoring_batch)
+    monkeypatch.setattr(backfill_cli_module, "scored_dates", _fake_scored_dates)
+    ctx = dataclasses.replace(_ctx(tmp_path), session_factory=_Session)  # type: ignore[arg-type]
+    sessions = (
+        date(2026, 10, 8),
+        date(2026, 10, 9),
+        date(2026, 10, 12),
+        date(2026, 10, 13),
+        date(2026, 10, 14),
+    )
+
+    await backfill_cli_module._us_scoring_catchup(ctx, sessions, target=sessions[-1])
+
+    assert scored == [(date(2026, 10, 13), "US"), (date(2026, 10, 14), "US")]
+
+
 async def test_finmind_refusing_after_its_quota_reset_stops_the_whole_run(
     tmp_path: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
