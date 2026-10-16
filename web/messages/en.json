@@ -195,7 +195,7 @@
         "noChangeData": "no change data",
         "empty": "No cross-ETF holdings data for this window.",
         "unavailable": "No ETF money-flow data for this window.",
-        "staleNotice": "Active-ETF holdings data currently stops at {date}; showing the data through that day (FinMind Sponsor source)."
+        "staleNotice": "Active-ETF holdings data currently stops at {date}."
       },
       "dailySignal": {
         "title": "Daily Signal",

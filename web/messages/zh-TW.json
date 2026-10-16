@@ -195,7 +195,7 @@
         "noChangeData": "無漲跌資料",
         "empty": "此區間查無跨 ETF 持股資料。",
         "unavailable": "此區間查無 ETF 資金流向資料。",
-        "staleNotice": "主動式 ETF 持股資料目前只到 {date}，以下為截至該日的資料（來源為 FinMind Sponsor 資料）。"
+        "staleNotice": "主動式 ETF 持股資料目前只到 {date}。"
       },
       "dailySignal": {
         "title": "今日訊號",
