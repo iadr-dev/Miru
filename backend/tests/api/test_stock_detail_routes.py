@@ -716,7 +716,7 @@ class TestSponsorMaskedRoutes:
         assert body["rows"] == []
         assert body["top_brokers"] == []
 
-    def test_calendar_events_masked_for_free(self, client: TestClient, signed_in_user) -> None:
+    def test_calendar_events_public_for_free(self, client: TestClient, signed_in_user) -> None:
         headers, _ = signed_in_user
         resp = client.get(
             "/api/v1/stock/calendar-events",
@@ -724,7 +724,7 @@ class TestSponsorMaskedRoutes:
             headers=headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["locked"] is True
+        assert "locked" not in resp.json()
 
 
 class TestCompanyProfileRoute:

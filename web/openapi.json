@@ -29255,7 +29255,7 @@
   },
   "/api/v1/stock/calendar-events": {
    "get": {
-    "description": "研究圖表's 個股事件calendar — feed-sourced 除權息/CB events, backed by\n`get_calendar_events`, `DataClass.SPONSOR` → masked-teaser envelope for an unentitled\ncaller. Distinct from `/analytics/...`-namespaced routes; this one is symbol-scoped.",
+    "description": "研究圖表's 個股事件calendar — feed-sourced 除權息/CB events, backed by\n`get_calendar_events`, `DataClass.PUBLIC` (the Sponsor CB events are added for Premium/Pro\nonly). Distinct from `/analytics/...`-namespaced routes; this one is symbol-scoped.",
     "operationId": "stock_calendar_events_api_v1_stock_calendar_events_get",
     "parameters": [
      {
@@ -29317,15 +29317,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "anyOf": [
-          {
-           "$ref": "#/components/schemas/GetCalendarEventsOutput"
-          },
-          {
-           "$ref": "#/components/schemas/MaskedTeaser"
-          }
-         ],
-         "title": "Response 200 Stock Calendar Events Api V1 Stock Calendar Events Get"
+         "$ref": "#/components/schemas/GetCalendarEventsOutput"
         }
        }
       },

@@ -16,7 +16,7 @@ from dataaccess.router import DataAccessRouter
 from schemas.enums import Market, Tier
 from sources.finmind import FinMindAdapter
 from tests.sources.conftest import load_fixture
-from tools.base import MaskedTeaser, ToolContext, dispatch_tool
+from tools.base import ToolContext, dispatch_tool
 from tools.calendar_tools import GetCalendarEventsOutput, GetCalendarEventsTool
 from tools.common import DateRangeInput
 
@@ -89,16 +89,43 @@ async def test_get_calendar_events_returns_real_dividend_and_cb_events(
     assert cb_events[0].event_date.isoformat() == "2011-06-22"
 
 
-async def test_get_calendar_events_masked_for_unentitled_tier() -> None:
-    """The tool bundles Sponsor-tier CB data, so it is classed `sponsor` as a whole — an
-    unentitled caller gets the masked teaser, never a hard error and never real data."""
-    router = DataAccessRouter({}, priority_config={"TW": {}})
+async def test_free_caller_gets_dividend_events_without_cb(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tool is public: a free caller gets the free 除權息 events, while the Sponsor-tier CB
+    feed is never requested for them (not fetched-then-hidden)."""
+    requested: list[str] = []
+    dividends_body = load_fixture("finmind", "dividends_2330.json")
+    cb_put_body = load_fixture("finmind", "cb_put_provision.json")
+    bodies = {
+        "TaiwanStockDividend": dividends_body,
+        "TaiwanStockConvertibleBondPutProvision": cb_put_body,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        dataset = request.url.params.get("dataset", "")
+        requested.append(dataset)
+        body = bodies.get(dataset, {"msg": "success", "status": 200, "data": []})
+        return httpx.Response(200, json=body)
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(finmind_module, "build_async_client", factory)
+    router = DataAccessRouter(
+        {"finmind": FinMindAdapter(settings=_settings())}, priority_config=_PRIORITY
+    )
     tool = GetCalendarEventsTool(router)
-    args = DateRangeInput(id="2330", market=Market.TW)
+    args = DateRangeInput(
+        id="2330", market=Market.TW, start_date="2011-01-01", end_date="2025-12-31"
+    )
 
     output = await dispatch_tool(tool, args, ToolContext(tier=Tier.FREE))
 
-    assert isinstance(output, MaskedTeaser)
+    assert isinstance(output, GetCalendarEventsOutput)
+    assert any(e.type == EventType.DIVIDEND_EX_RIGHTS.value for e in output.events)
+    assert all(e.type != EventType.CB_PUT_OR_MATURITY.value for e in output.events)
+    assert "TaiwanStockConvertibleBondPutProvision" not in requested
 
 
 async def test_get_calendar_events_degrades_gracefully_with_no_matching_rows(

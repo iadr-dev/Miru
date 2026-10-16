@@ -2742,8 +2742,8 @@ export interface paths {
     /**
      * Stock Calendar Events
      * @description 研究圖表's 個股事件calendar — feed-sourced 除權息/CB events, backed by
-     *     `get_calendar_events`, `DataClass.SPONSOR` → masked-teaser envelope for an unentitled
-     *     caller. Distinct from `/analytics/...`-namespaced routes; this one is symbol-scoped.
+     *     `get_calendar_events`, `DataClass.PUBLIC` (the Sponsor CB events are added for Premium/Pro
+     *     only). Distinct from `/analytics/...`-namespaced routes; this one is symbol-scoped.
      */
     get: operations["stock_calendar_events_api_v1_stock_calendar_events_get"];
     put?: never;
@@ -17432,9 +17432,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json":
-            | components["schemas"]["GetCalendarEventsOutput"]
-            | components["schemas"]["MaskedTeaser"];
+          "application/json": components["schemas"]["GetCalendarEventsOutput"];
         };
       };
       /** @description Validation Error */

@@ -66,10 +66,8 @@ export const stockCalendarEventsDataSchema = z.object({
 
 export type StockCalendarEventsData = z.infer<typeof stockCalendarEventsDataSchema>;
 
-export const stockCalendarEventsResponseSchema = z.union([
-  stockCalendarEventsDataSchema,
-  maskedTeaserSchema,
-]);
+// `get_calendar_events` is public (CB events are only added for Premium/Pro), never a teaser.
+export const stockCalendarEventsResponseSchema = stockCalendarEventsDataSchema;
 
 export type StockCalendarEventsResponse = z.infer<typeof stockCalendarEventsResponseSchema>;
 

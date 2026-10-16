@@ -438,8 +438,8 @@ async def stock_calendar_events(
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
     """研究圖表's 個股事件calendar — feed-sourced 除權息/CB events, backed by
-    `get_calendar_events`, `DataClass.SPONSOR` → masked-teaser envelope for an unentitled
-    caller. Distinct from `/analytics/...`-namespaced routes; this one is symbol-scoped."""
+    `get_calendar_events`, `DataClass.PUBLIC` (the Sponsor CB events are added for Premium/Pro
+    only). Distinct from `/analytics/...`-namespaced routes; this one is symbol-scoped."""
     return await _dispatch(
         state, "get_calendar_events", _symbol_date_args(symbol, market, start_date, end_date), ctx
     )
