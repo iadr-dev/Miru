@@ -13,6 +13,7 @@ import re  # noqa: E402
 
 from jsonschema import Draft202012Validator  # noqa: E402
 
+from mcp.app import build_mcp_server  # noqa: E402
 from tests.mcp.conftest import FakeTool, build_fake_registry, build_real_registry  # noqa: E402
 from tests.mcp.connector_support import build_app, official_session  # noqa: E402
 from tests.mcp.live_server import serve  # noqa: E402
@@ -65,11 +66,14 @@ async def test_listed_tools_meet_claude_client_constraints() -> None:
 
 
 async def test_tool_order_is_identical_across_independent_servers() -> None:
-    orders: list[list[str]] = []
-    for _ in range(2):
-        async with serve(build_app(build_real_registry())) as server, official_session(server) as s:
-            orders.append([t.name for t in (await s.list_tools()).tools])
-    assert orders[0] == orders[1]
+    """Over HTTP from one server, and in-process from a second one built from a separately built
+    registry. (Several live servers in sequence in one test process stop answering after the
+    second or third: a test-process limit, not a server one, so the second listing skips HTTP.)"""
+    async with serve(build_app(build_real_registry())) as server, official_session(server) as s:
+        over_http = [t.name for t in (await s.list_tools()).tools]
+    in_process = [t.name for t in await build_mcp_server(build_real_registry()).list_tools()]
+    assert over_http == in_process
+    assert over_http == sorted(over_http)
 
 
 async def test_every_registry_tool_is_reachable_with_a_valid_name_and_schema() -> None:

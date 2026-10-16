@@ -8,6 +8,7 @@ from mcp._vendor import bootstrap_vendor_sdk
 bootstrap_vendor_sdk()
 
 import asyncio  # noqa: E402
+import threading  # noqa: E402
 from collections.abc import AsyncIterator  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 from dataclasses import replace  # noqa: E402
@@ -54,7 +55,7 @@ MCP_HEADERS = {"accept": "application/json, text/event-stream", "content-type": 
 class SlowTool(FakeTool):
     """A tool that parks until released, to hold a request in flight."""
 
-    def __init__(self, name: str, started: asyncio.Event, release: asyncio.Event) -> None:
+    def __init__(self, name: str, started: threading.Event, release: threading.Event) -> None:
         super().__init__(name, "Parks until released.")
         self.started = started
         self.release = release
@@ -62,7 +63,7 @@ class SlowTool(FakeTool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del args, ctx
         self.started.set()
-        await self.release.wait()
+        await asyncio.to_thread(self.release.wait, 30)
         return FakeToolOutput(doubled=0)
 
 

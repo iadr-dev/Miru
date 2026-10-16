@@ -10,6 +10,7 @@ bootstrap_vendor_sdk()
 
 import asyncio  # noqa: E402
 import json  # noqa: E402
+import threading  # noqa: E402
 from urllib.parse import urlsplit  # noqa: E402
 
 import httpx  # noqa: E402
@@ -233,7 +234,7 @@ async def test_chunked_oversized_body_is_413() -> None:
 
 
 async def test_concurrency_cap_sheds_load_with_503_and_recovers() -> None:
-    started, release = asyncio.Event(), asyncio.Event()
+    started, release = threading.Event(), threading.Event()
     registry = build_fake_registry()
     registry.register(SlowTool("slow_tool", started, release), immediate=True)
     app = build_app(registry, max_concurrent_requests=1)
@@ -245,7 +246,7 @@ async def test_concurrency_cap_sheds_load_with_503_and_recovers() -> None:
     }
     async with serve(app) as server, httpx.AsyncClient(timeout=20) as http:
         first = asyncio.create_task(http.post(server.mcp_url, json=call, headers=MCP_HEADERS))
-        await asyncio.wait_for(started.wait(), 10)
+        assert await asyncio.to_thread(started.wait, 10)
         shed = await http.post(server.mcp_url, json=INITIALIZE, headers=MCP_HEADERS)
         assert shed.status_code == 503
         assert shed.headers["retry-after"] == "1"
