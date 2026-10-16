@@ -50,6 +50,7 @@ from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
 from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.context import IngestContext
+from ingest.derived_catchup import catch_up_tw, catch_up_us
 from ingest.jobs import (
     PRICE_EOD_JOB,
     job_active_etf_holding_changes,
@@ -348,6 +349,8 @@ class IngestDaemon:
         self._last_pass: datetime | None = None
         # The local day the trading calendars were last rebuilt from the store.
         self._calendar_day: date_ | None = None
+        # The local day the derived-compute catch-up last ran.
+        self._catchup_day: date_ | None = None
         self._seeded = False
 
     def _local(self, now: datetime) -> datetime:
@@ -430,6 +433,39 @@ class IngestDaemon:
         if job.cadence is not Cadence.DAILY:
             _save_fired_days(self._ctx.store.root, self._last_handled, self._jobs)
         return fire_day
+
+    async def _catch_up_derived(self, local: datetime) -> None:
+        """Once per local day, score and screen the recent trading days whose nightly run was
+        missed (the daemon was down at 23:55 / 07:30, or a run was lost). Never fatal."""
+        if self._catchup_day == local.date() or local.time() < _CATCHUP_AFTER:
+            return
+        self._catchup_day = local.date()
+        ctx = self._ctx
+        try:
+            last_tw = ctx.calendar.previous_trading_day(local.date())
+            tw_days = ctx.calendar.business_days_between(
+                ctx.calendar.shift_business_days(last_tw, -(_CATCHUP_TRADING_DAYS - 1)), last_tw
+            )
+            us_target = last_completed_us_session(ctx.us_calendar, now=local)
+            us_days = ctx.us_calendar.business_days_between(
+                ctx.us_calendar.shift_business_days(us_target, -(_CATCHUP_TRADING_DAYS - 1)),
+                us_target,
+            )
+            runs = (
+                *await catch_up_tw(ctx, tw_days),
+                *await catch_up_us(ctx, us_days, target=us_target),
+            )
+        except Exception:
+            logger.exception("ingest_derived_catchup_failed")
+            return
+        for run in runs:
+            logger.info(
+                "ingest_derived_catchup_run",
+                dataset=run.dataset,
+                run_date=run.run_date.isoformat(),
+                status=run.status.value,
+                rows_written=run.rows_written,
+            )
 
     def _refresh_calendars(self, today: date_) -> None:
         """Rebuild both trading calendars from the store once per local day, so a day that
@@ -521,10 +557,17 @@ class IngestDaemon:
                 rows_written=result.rows_written,
             )
             ran.append(job.name)
+        await self._catch_up_derived(local)
         return ran
 
 
 _STATE_FILE = "_ingest_daemon_state.json"
+
+# The daemon heals missed derived runs itself (production has no nightly backfill): once a local
+# day, after the US 07:30 scoring has had its turn, over the last few trading days. Today's TW day
+# is left to its own 23:55 run, so a half-built "today" is never locked in.
+_CATCHUP_AFTER = time_(8, 10)
+_CATCHUP_TRADING_DAYS = 10
 
 
 def _load_fired_days(root: Path) -> dict[str, date_]:

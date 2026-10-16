@@ -9,6 +9,7 @@ from datetime import date
 import pytest
 
 import ingest.backfill_cli as backfill_cli_module
+import ingest.derived_catchup as derived_catchup_module
 import sources.finmind as finmind_module
 from config.settings import Settings
 from ingest.backfill_cli import (
@@ -398,8 +399,8 @@ async def test_derived_compute_catchup_covers_every_missing_day_not_just_the_lat
         if d not in gap:
             ctx.store.write_partition("screener_flags", ctx.market.value, d, [])
 
-    monkeypatch.setattr(backfill_cli_module, "job_screener_flags", _fake_screener_flags)
-    monkeypatch.setattr(backfill_cli_module, "job_scoring_batch", _fake_scoring_batch)
+    monkeypatch.setattr(derived_catchup_module, "job_screener_flags", _fake_screener_flags)
+    monkeypatch.setattr(derived_catchup_module, "job_scoring_batch", _fake_scoring_batch)
     monkeypatch.setattr(
         backfill_cli_module, "last_available_trading_day", lambda _calendar, *, now: target
     )
@@ -453,9 +454,9 @@ async def test_derived_compute_catchup_scores_a_day_whose_screener_already_lande
     for d in window:
         ctx.store.write_partition("screener_flags", ctx.market.value, d, [])
 
-    monkeypatch.setattr(backfill_cli_module, "job_screener_flags", _fake_screener_flags)
-    monkeypatch.setattr(backfill_cli_module, "job_scoring_batch", _fake_scoring_batch)
-    monkeypatch.setattr(backfill_cli_module, "scored_dates", _fake_scored_dates)
+    monkeypatch.setattr(derived_catchup_module, "job_screener_flags", _fake_screener_flags)
+    monkeypatch.setattr(derived_catchup_module, "job_scoring_batch", _fake_scoring_batch)
+    monkeypatch.setattr(derived_catchup_module, "scored_dates", _fake_scored_dates)
     monkeypatch.setattr(
         backfill_cli_module, "last_available_trading_day", lambda _calendar, *, now: window[-1]
     )
@@ -498,8 +499,8 @@ async def test_us_scoring_catchup_scores_the_sessions_the_daemon_missed(
         assert str(market) == "US"
         return frozenset({date(2026, 10, 9), date(2026, 10, 12)})
 
-    monkeypatch.setattr(backfill_cli_module, "job_scoring_batch", _fake_scoring_batch)
-    monkeypatch.setattr(backfill_cli_module, "scored_dates", _fake_scored_dates)
+    monkeypatch.setattr(derived_catchup_module, "job_scoring_batch", _fake_scoring_batch)
+    monkeypatch.setattr(derived_catchup_module, "scored_dates", _fake_scored_dates)
     ctx = dataclasses.replace(_ctx(tmp_path), session_factory=_Session)  # type: ignore[arg-type]
     sessions = (
         date(2026, 10, 8),
@@ -509,7 +510,7 @@ async def test_us_scoring_catchup_scores_the_sessions_the_daemon_missed(
         date(2026, 10, 14),
     )
 
-    await backfill_cli_module._us_scoring_catchup(ctx, sessions, target=sessions[-1])
+    await derived_catchup_module.catch_up_us(ctx, sessions, target=sessions[-1])
 
     assert scored == [(date(2026, 10, 13), "US"), (date(2026, 10, 14), "US")]
 

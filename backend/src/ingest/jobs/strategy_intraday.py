@@ -155,7 +155,7 @@ async def job_strategy_close_check(run_date: date_, ctx: IngestContext) -> JobRu
     if reason is not None:
         return _skip(run_date, reason)
     market = ctx.market.value
-    if not ctx.store.has_partition(PRICE_EOD_DATASET, market, run_date):
+    if not ctx.store.has_rows(PRICE_EOD_DATASET, market, run_date):
         return _skip(run_date, "today's closing prices have not landed yet")
     watchlist = ctx.store.read_partition(STRATEGY_WATCHLIST_DATASET, market, run_date)
     eod = ctx.store.read_partition(PRICE_EOD_DATASET, market, run_date)

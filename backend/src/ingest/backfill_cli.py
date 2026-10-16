@@ -48,17 +48,14 @@ import dataclasses
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
-from datetime import date as date_
 
 import structlog
 
-from analytics.scoring_batch import job_scoring_batch
-from analytics.scoring_store import scored_dates
-from analytics.screener.batch import SCREENER_FLAGS_DATASET, job_screener_flags
 from config.settings import Settings, get_settings
 from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings, close_ingest_context
 from ingest.data_updates import CoalescingDataUpdatePublisher
+from ingest.derived_catchup import catch_up_tw, catch_up_us
 from ingest.jobs import (
     DAILY_WHOLE_MARKET_JOBS,
     ETF_EXPENSE_RATIO_DATASET,
@@ -82,7 +79,6 @@ from ingest.preflight import (
 )
 from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
-from schemas.enums import Market
 from sources.finmind import FinMindQuotaRefusedError
 
 logger = structlog.get_logger(__name__)
@@ -350,17 +346,7 @@ async def run_derived_compute_catchup(
 
     target = last_available_trading_day(ctx.calendar, now=datetime.now(UTC))
     start = ctx.calendar.shift_business_days(target, -(years * 250))
-    days = ctx.calendar.business_days_between(start, target)
-    missing_flags = {
-        d for d in days if not ctx.store.has_partition(SCREENER_FLAGS_DATASET, ctx.market.value, d)
-    }
-    missing_scores = await _days_without_scores(ctx, days, fallback=missing_flags)
-    runs: list[JobRun] = []
-    for run_date in sorted(missing_flags | missing_scores):
-        if run_date in missing_flags:
-            runs.append(await job_screener_flags(run_date, ctx))
-        if run_date in missing_scores:
-            runs.append(await job_scoring_batch(run_date, ctx))
+    runs = await catch_up_tw(ctx, ctx.calendar.business_days_between(start, target))
     for run in runs:
         logger.info(
             "ingest_backfill_cli_run",
@@ -370,24 +356,6 @@ async def run_derived_compute_catchup(
             status=run.status.value,
         )
     return tuple(runs)
-
-
-async def _days_without_scores(
-    ctx: IngestContext, days: Sequence[date_], *, fallback: set[date_]
-) -> set[date_]:
-    """Trading days in `days` the scoring batch has no stored scores for, checked against
-    `stock_scores` itself. Keying it on `screener_flags` (as this used to) missed a day whose 20:30
-    screener landed but whose 23:55 scoring never ran (2026-10-15). Only days from the first
-    scored day onwards count, so a history scored from a later start is not re-run every
-    backfill; with no database or no scores yet, `fallback` (the screener's gaps) is used."""
-    if ctx.session_factory is None:
-        return fallback
-    async with ctx.session_factory() as session:
-        scored = await scored_dates(session, market=ctx.market)
-    if not scored:
-        return fallback
-    first = min(scored)
-    return {d for d in days if d >= first and d not in scored}
 
 
 async def run_us_backfill_cli(
@@ -437,7 +405,7 @@ async def run_us_backfill_cli(
         dev_backfill_years=years,
     )
     price_runs = await backfill_us_price_range(ctx, start=start, end=target, only_missing=True)
-    score_runs = await _us_scoring_catchup(
+    score_runs = await catch_up_us(
         ctx, ctx.us_calendar.business_days_between(start, target), target=target
     )
     for run in (*price_runs, *score_runs):
@@ -449,18 +417,6 @@ async def run_us_backfill_cli(
             status=run.status.value,
         )
     return (universe_run, *price_runs, *score_runs)
-
-
-async def _us_scoring_catchup(
-    ctx: IngestContext, days: Sequence[date_], *, target: date_
-) -> tuple[JobRun, ...]:
-    """The US side of `run_derived_compute_catchup`: score every US session the 07:30 Taipei
-    `us_scoring_batch` missed (a box that was down at that hour otherwise never scores the day;
-    US scores stopped at 2026-10-12 this way). Gaps come from `stock_scores` itself, from the
-    first scored session on; a box with no US scores yet scores only the latest session."""
-    us_ctx = dataclasses.replace(ctx, market=Market.US)
-    missing = await _days_without_scores(us_ctx, days, fallback={target})
-    return tuple([await job_scoring_batch(run_date, us_ctx) for run_date in sorted(missing)])
 
 
 async def _amain(argv: Sequence[str] | None = None) -> int:

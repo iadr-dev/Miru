@@ -403,6 +403,17 @@ async def job_trend_score_batch(run_date: date_, ctx: IngestContext) -> JobRun:
             status=RunStatus.SKIPPED,
             detail="not the leader — write skipped",
         )
+    if not ctx.store.has_rows(_price_eod_dataset(ctx.market), ctx.market.value, run_date):
+        # Without that day's prices the trailing window ends on an older day, and the result would
+        # be stored under `run_date` as if it were fresh (and never recomputed once the prices
+        # arrive, since the day would then look done). Skip instead; a later run fills it in.
+        return journal_run(
+            TREND_SCORE_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail=f"no {ctx.market.value} price data for {run_date} yet; not using older prices",
+        )
     if ctx.session_factory is None:
         raise RuntimeError("trend score batch requires IngestContext.session_factory to be wired")
 
