@@ -10633,7 +10633,13 @@ export interface components {
       morning_list: boolean;
       quiet_hours?: components["schemas"]["QuietHours"] | null;
       /** Strategies */
-      strategies: ("volatility_squeeze" | "oversold_bounce" | "ad_divergence")[];
+      strategies: (
+        | "volatility_squeeze"
+        | "oversold_bounce"
+        | "ad_divergence"
+        | "chip_accumulation"
+        | "momentum_flag"
+      )[];
       /** Watchlist Id */
       watchlist_id?: string | null;
     };
@@ -11528,7 +11534,13 @@ export interface components {
       morning_list: boolean;
       quiet_hours?: components["schemas"]["QuietHours"] | null;
       /** Strategies */
-      strategies: ("volatility_squeeze" | "oversold_bounce" | "ad_divergence")[];
+      strategies: (
+        | "volatility_squeeze"
+        | "oversold_bounce"
+        | "ad_divergence"
+        | "chip_accumulation"
+        | "momentum_flag"
+      )[];
       /**
        * Updated At
        * Format: date-time

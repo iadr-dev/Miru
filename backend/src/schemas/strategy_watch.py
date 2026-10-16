@@ -10,17 +10,23 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-StrategyKey = Literal["volatility_squeeze", "oversold_bounce", "ad_divergence"]
+StrategyKey = Literal[
+    "volatility_squeeze", "oversold_bounce", "ad_divergence", "chip_accumulation", "momentum_flag"
+]
 STRATEGY_KEYS: Final[tuple[StrategyKey, ...]] = (
     "volatility_squeeze",
     "oversold_bounce",
     "ad_divergence",
+    "chip_accumulation",
+    "momentum_flag",
 )
 
 STRATEGY_LABEL: Final[dict[str, str]] = {
     "volatility_squeeze": "波動率擠壓",
     "oversold_bounce": "超跌反彈",
     "ad_divergence": "量價背離",
+    "chip_accumulation": "籌碼集中盤整",
+    "momentum_flag": "強勢整理",
 }
 
 # `{o}` is the observed value, `{r}` the level it was compared with.
@@ -34,6 +40,12 @@ CONDITION_PHRASE: Final[dict[str, str]] = {
     "new_20d_low": "價格 {o} 低於 20 日低點 {r}",
     "rsi_higher_low": "RSI {o} 高於前低時的 {r}",
     "ad_higher_low": "A/D 線高於其 20 日低點",
+    "price_above_range_high": "價格 {o} 高於盤整區間高點 {r}",
+    "close_above_upper_band": "收盤 {o} 高於布林上軌 {r}",
+    "close_above_range_high": "收盤 {o} 高於盤整區間高點 {r}",
+    "price_above_flag_high": "價格 {o} 高於整理區高點 {r}",
+    "close_above_flag_high": "收盤 {o} 高於整理區高點 {r}",
+    "close_volume_multiple": "成交量為 20 日均量的 {o} 倍（門檻 {r}）",
 }
 
 # The same facts without the intraday numbers, for a reader whose plan does not include the
@@ -48,6 +60,12 @@ CONDITION_NAME: Final[dict[str, str]] = {
     "new_20d_low": "價格低於 20 日低點",
     "rsi_higher_low": "RSI 未創新低",
     "ad_higher_low": "A/D 線未創新低",
+    "price_above_range_high": "價格高於盤整區間高點",
+    "close_above_upper_band": "收盤高於布林上軌",
+    "close_above_range_high": "收盤高於盤整區間高點",
+    "price_above_flag_high": "價格高於整理區高點",
+    "close_above_flag_high": "收盤高於整理區高點",
+    "close_volume_multiple": "量能放大",
 }
 
 

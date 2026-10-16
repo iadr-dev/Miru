@@ -850,14 +850,13 @@ class SchedulerWorker:
         not_before = created.time() if created.date() == today else None
         watch_by_key = {(str(r.get("symbol")), str(r.get("strategy"))): r for r in watch}
         masked = not feature_allowed(user, "tick_minute_k")
-        for hit in first_alertable(
-            in_scope(hit_rows, subscription.strategies, members), not_before=not_before
-        ):
+        scoped_hits = in_scope(hit_rows, subscription.strategies, members)
+        intraday = first_alertable(scoped_hits, not_before=not_before)
+        closes = first_alertable(scoped_hits, close=True)
+        for hit, suffix in [*((h, "") for h in intraday), *((h, ":close") for h in closes)]:
             limit = subscription.daily_limit
-            if (
-                limit is not None
-                and await strategies_store.alerts_sent(user_id=user.id, day=today) >= limit
-            ):
+            sent = await strategies_store.alerts_sent(user_id=user.id, day=today)
+            if limit is not None and sent >= limit:
                 break
             symbol, strategy = str(hit.get("symbol")), str(hit.get("strategy"))
             title, body, plain = hit_alert(hit, watch_by_key.get((symbol, strategy)), masked=masked)
@@ -865,7 +864,7 @@ class SchedulerWorker:
                 store,
                 user=user,
                 source=NotificationSource.ALERT,
-                source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:{symbol}:{strategy}",
+                source_id=f"{STRATEGY_SOURCE_PREFIX}{subscription.id}:{symbol}:{strategy}{suffix}",
                 channels=channels,
                 title=title,
                 body=safe_body(body, plain, f"{symbol} 你訂閱的條件全數成立，請開啟 Miru 查看。"),

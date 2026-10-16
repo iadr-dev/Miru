@@ -28,6 +28,7 @@ from analytics.scoring_batch.inputs import (
 )
 from analytics.strategy_watch import context
 from analytics.strategy_watch.strategies import (
+    HOLDER_WEEKS,
     MIN_HISTORY,
     Regime,
     Setup,
@@ -36,7 +37,7 @@ from analytics.strategy_watch.strategies import (
     evaluate_setups,
     regime_from_breadth,
 )
-from analytics.symbol_universe import scoreable_symbol_sql
+from analytics.symbol_universe import SymbolType, classify_symbol_type, scoreable_symbol_sql
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 
@@ -52,6 +53,7 @@ ATTENTION_STOCKS_DATASET = "attention_stocks"
 DISPOSITION_EVENTS_DATASET = "disposition_events"
 DIVIDEND_DATASET = "TaiwanStockDividend"
 MATERIAL_ANNOUNCEMENTS_DATASET = "material_announcements"
+SHAREHOLDING_DISTRIBUTION_DATASET = "TaiwanStockHoldingSharesPer"
 
 PRICE_LOOKBACK_SESSIONS = MIN_HISTORY + 20
 CHIP_LOOKBACK_SESSIONS = 30
@@ -60,6 +62,15 @@ DIVIDEND_LOOKBACK_SESSIONS = 120  # ex-dates are announced weeks ahead
 EX_DIVIDEND_HORIZON_SESSIONS = 3
 MAX_STALE_SESSIONS = 3
 MAX_PER_STRATEGY = 30
+
+
+def _by_symbol(rows: Sequence[Mapping[str, object]]) -> dict[str, list[Mapping[str, object]]]:
+    grouped: dict[str, list[Mapping[str, object]]] = defaultdict(list)
+    for row in rows:
+        symbol = row.get("symbol")
+        if isinstance(symbol, str):
+            grouped[symbol].append(row)
+    return grouped
 
 
 def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
@@ -73,18 +84,42 @@ def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
     margin_rows: Sequence[Mapping[str, object]],
     exclusions: Mapping[str, str],
     headlines: Mapping[str, str],
+    holder_snapshots: Sequence[Sequence[Mapping[str, object]]] = (),
+    previous: Mapping[tuple[str, str], tuple[date_, int]] | None = None,
 ) -> tuple[list[dict[str, object]], Regime, float]:
     """The watchlist rows plus the market regime and breadth they were computed under. Pure, so
-    the whole screen is testable without a store."""
+    the whole screen is testable without a store.
+
+    `holder_snapshots` are the weekly shareholding-distribution partitions, oldest first.
+    `previous` maps (symbol, strategy) on the last session's list to (first listed, days on list),
+    so a stock that stays listed keeps counting instead of starting over every morning."""
     above = [flag for b in bars.values() if (flag := closes_above_ma20(b)) is not None]
     breadth = sum(above) / len(above) * 100.0 if above else 0.0
     regime = regime_from_breadth(breadth)
+
+    flow_by_symbol = _by_symbol(flow_rows)
+    margin_by_symbol = _by_symbol(margin_rows)
+    holders_by_symbol: dict[str, list[list[Mapping[str, object]]]] = defaultdict(list)
+    for snapshot in holder_snapshots:
+        for symbol, snapshot_rows in _by_symbol(snapshot).items():
+            holders_by_symbol[symbol].append(snapshot_rows)
 
     setups: list[Setup] = []
     for symbol, series in bars.items():
         if symbol in exclusions:
             continue
-        setups.extend(evaluate_setups(symbol, as_of, series, regime=regime))
+        # 籌碼 accumulation is about a company's shares changing hands. An ETF's holder count and
+        # large-holder share move with market making and creations, so ETFs get no chip setup.
+        chips = (
+            context.chip_inputs(
+                flow_by_symbol.get(symbol, []),
+                margin_by_symbol.get(symbol, []),
+                holders_by_symbol.get(symbol, []),
+            )
+            if classify_symbol_type(symbol) is SymbolType.STOCK
+            else None
+        )
+        setups.extend(evaluate_setups(symbol, as_of, series, regime=regime, chips=chips))
 
     # Most liquid first, then a fixed cap per strategy: a short list a person can actually watch,
     # and the same order every run for the same data.
@@ -93,26 +128,17 @@ def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
         if len(by_strategy[setup.strategy]) < MAX_PER_STRATEGY:
             by_strategy[setup.strategy].append(setup)
     kept = [setup for group in by_strategy.values() for setup in group]
-
-    kept_symbols = {s.symbol for s in kept}
-    flow_by_symbol: dict[str, list[Mapping[str, object]]] = defaultdict(list)
-    for row in flow_rows:
-        flow_symbol = row.get("symbol")
-        if isinstance(flow_symbol, str) and flow_symbol in kept_symbols:
-            flow_by_symbol[flow_symbol].append(row)
-    margin_by_symbol: dict[str, list[Mapping[str, object]]] = defaultdict(list)
-    for row in margin_rows:
-        margin_symbol = row.get("symbol")
-        if isinstance(margin_symbol, str) and margin_symbol in kept_symbols:
-            margin_by_symbol[margin_symbol].append(row)
     strength = context.sector_strength(industry_by_symbol, bars)
 
     rows: list[dict[str, object]] = []
     for setup in kept:
         foreign, trust = context.chip_streaks(flow_by_symbol.get(setup.symbol, []))
         industry = industry_by_symbol.get(setup.symbol)
-        row = setup.model_dump(mode="json")
-        row.update(
+        carried = (previous or {}).get((setup.symbol, setup.strategy.value))
+        first_listed, days = (carried[0], carried[1] + 1) if carried else (run_date, 1)
+        row = setup.model_copy(update={"first_listed": first_listed, "days_on_list": days})
+        values = row.model_dump(mode="json")
+        values.update(
             {
                 "run_date": run_date.isoformat(),
                 "name": name_by_symbol.get(setup.symbol),
@@ -128,8 +154,37 @@ def build_watchlist_rows(  # noqa: PLR0913 - one argument per input feed
                 "breadth_pct": breadth,
             }
         )
-        rows.append(row)
+        rows.append(values)
     return rows, regime, breadth
+
+
+def _previous_listing(
+    ctx: IngestContext, market: str, last_run: date_
+) -> dict[tuple[str, str], tuple[date_, int]]:
+    """(symbol, strategy) -> (first listed, days on list) from the previous trading day's list.
+    Only the run on `last_run` carries forward: after a gap the count starts again."""
+    if not ctx.store.has_partition(STRATEGY_WATCHLIST_DATASET, market, last_run):
+        return {}
+    carried: dict[tuple[str, str], tuple[date_, int]] = {}
+    for row in ctx.store.read_partition(STRATEGY_WATCHLIST_DATASET, market, last_run):
+        first = context.as_date(row.get("first_listed")) or last_run
+        days = row.get("days_on_list")
+        count = days if isinstance(days, int) and not isinstance(days, bool) else 1
+        carried[(str(row.get("symbol")), str(row.get("strategy")))] = (first, count)
+    return carried
+
+
+def _holder_snapshots(
+    ctx: IngestContext, market: str, as_of: date_
+) -> list[list[dict[str, object]]]:
+    """The weekly shareholding-distribution partitions on or before `as_of`, oldest first: enough
+    for a `HOLDER_WEEKS` comparison."""
+    dates = [
+        d
+        for d in ctx.store.list_partition_dates(SHAREHOLDING_DISTRIBUTION_DATASET, market)
+        if d <= as_of
+    ][-(HOLDER_WEEKS + 1) :]
+    return [ctx.store.read_partition(SHAREHOLDING_DISTRIBUTION_DATASET, market, d) for d in dates]
 
 
 async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
@@ -228,6 +283,8 @@ async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
     )
 
     candidates = sorted(set(bars) - set(exclusions))
+    holder_snapshots = _holder_snapshots(ctx, market, as_of)
+    previous = _previous_listing(ctx, market, calendar.previous_trading_day(run_date))
     chip_window = trailing_trading_days(ctx, as_of, CHIP_LOOKBACK_SESSIONS)
     flow_rows = ctx.store.read_range(
         INSTITUTIONAL_FLOW_DATASET, market, chip_window, symbols=candidates
@@ -246,6 +303,8 @@ async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
         margin_rows=margin_rows,
         exclusions=exclusions,
         headlines=headlines,
+        holder_snapshots=holder_snapshots,
+        previous=previous,
     )
     rows_written = ctx.store.write_partition(STRATEGY_WATCHLIST_DATASET, market, run_date, rows)
     logger.info(

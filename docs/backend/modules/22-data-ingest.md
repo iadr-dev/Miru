@@ -87,6 +87,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 | `shareholding_distribution` | 06:05 | weekly | 集保股權分散/分級 `TaiwanStockHoldingSharesPer` |
 | `price_eod` | 17:40 | daily | EOD OHLCV `TaiwanStockPrice` |
 | `margin_short` | 17:40 | daily | 融資融券 `TaiwanStockMarginPurchaseShortSale` |
+| `strategy_close_check` | 18:00 | daily | derived: 策略盯盤 close confirmation of breakout setups → `strategy_hits` slot `close` (module 20) |
 | `valuation_ratios` | 18:10 | daily | PER/PBR/殖利率 `TaiwanStockPER` |
 | `institutional_flow` | 20:10 | daily | 個股三大法人 `...InstitutionalInvestorsBuySell` |
 | `screener_flags` | 20:30 | daily | derived: tag screener (module 20) |

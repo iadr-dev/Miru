@@ -70,7 +70,10 @@ _SMALL_HOLDER_TIER_LABELS: tuple[str, ...] = (
     "40,001-50,000",
     "50,001-100,000",
 )  # every tier whose upper bound is <= 100,000 shares (100張)
-_LARGE_HOLDER_TIER_LABELS: tuple[str, ...] = ("1,000,001以上",)  # >= 1,000張 (1,000,000 shares)
+# >= 1,000張 (1,000,000 shares). FinMind labels it "more than 1,000,001" in the rows it returns; the
+# TDCC spelling is kept as well. With only the TDCC spelling the large-holder tag never matched.
+LARGE_HOLDER_TIER_LABELS: tuple[str, ...] = ("1,000,001以上", "more than 1,000,001")
+_LARGE_HOLDER_TIER_LABELS = LARGE_HOLDER_TIER_LABELS
 
 # FinMind investor-category labels in the institutional-flow rows.
 _FOREIGN_INVESTOR = "Foreign_Investor"

@@ -73,7 +73,7 @@ from ingest.jobs import (
     job_stock_info,
     job_valuation_ratios,
 )
-from ingest.jobs.strategy_intraday import job_strategy_intraday
+from ingest.jobs.strategy_intraday import job_strategy_close_check, job_strategy_intraday
 from ingest.journal import JobRun
 from ingest.leader import build_leader_election, refresh_leadership, release_leadership
 from ingest.preflight import last_completed_us_session
@@ -197,6 +197,9 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob("margin_short", time_(17, 40), job_margin_short),
     # PER/PBR/dividend-yield snapshot — ~18:00 post-close publish clock (VALUATION_RATIOS_JOB's
     # own cron_hint); feeds the 股息殖利率 TW-rankings tab.
+    # 策略盯盤 close confirmation — reads the 17:40 `price_eod` partition (no FinMind call), so it
+    # fires after that pull; breakouts confirmed by the close are alerted from this.
+    ScheduledIngestJob("strategy_close_check", time_(18, 0), job_strategy_close_check),
     ScheduledIngestJob("valuation_ratios", time_(18, 10), job_valuation_ratios),
     ScheduledIngestJob("institutional_flow", time_(20, 10), job_institutional_flow),
     # Screener-flag batch — a derived-compute pass, not a FinMind pull: it reads the price and

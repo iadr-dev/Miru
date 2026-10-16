@@ -30,6 +30,22 @@ SQUEEZE_MIN_VOLUME_RATIO = 1.5
 OVERSOLD_MAX_VOLUME_RATIO = 0.8
 NEAR_LIMIT_UP_PCT = 9.0  # TW daily limit is 10%; above this the stock barely trades normally
 MARKET_FALLING_PCT = -1.0  # median change across the snapshot
+CLOSE_SLOT = "close"  # sorts after every "HH:MM" slot
+CLOSE_VOLUME_MULTIPLE = 1.5  # the day's volume against the 20-session average
+# Breakouts are what a close confirms; the bounce and divergence setups have no close check.
+CLOSE_CHECKED: frozenset[Strategy] = frozenset(
+    {Strategy.VOLATILITY_SQUEEZE, Strategy.CHIP_ACCUMULATION, Strategy.MOMENTUM_FLAG}
+)
+# Where each breakout strategy's level lives on the watchlist row, and the condition keys.
+_BREAKOUT_LEVEL: dict[Strategy, tuple[str, str, str]] = {
+    Strategy.VOLATILITY_SQUEEZE: ("upper_band", "price_above_upper_band", "close_above_upper_band"),
+    Strategy.CHIP_ACCUMULATION: (
+        "range_high_20d",
+        "price_above_range_high",
+        "close_above_range_high",
+    ),
+    Strategy.MOMENTUM_FLAG: ("flag_high", "price_above_flag_high", "close_above_flag_high"),
+}
 
 
 class Condition(BaseModel):
@@ -112,6 +128,18 @@ def _triggers(
             ),
             _trigger("momentum_5d_positive", base is not None and price > base, price, base),
         ]
+    if strategy in (Strategy.CHIP_ACCUMULATION, Strategy.MOMENTUM_FLAG):
+        level_key, condition_key, _ = _BREAKOUT_LEVEL[strategy]
+        high = as_float(watch.get(level_key))
+        return [
+            _trigger(condition_key, high is not None and price > high, price, high),
+            _trigger(
+                "volume_ratio_at_least",
+                volume_ratio is not None and volume_ratio >= SQUEEZE_MIN_VOLUME_RATIO,
+                volume_ratio,
+                SQUEEZE_MIN_VOLUME_RATIO,
+            ),
+        ]
     if strategy is Strategy.OVERSOLD_BOUNCE:
         open_ = as_float(quote.get("open"))
         k = as_float(watch.get("k"))
@@ -166,7 +194,7 @@ def _guards(
     guards.append(
         _guard("above_average_price", average is None or price >= average, price, average)
     )
-    if strategy is Strategy.VOLATILITY_SQUEEZE:
+    if strategy in _BREAKOUT_LEVEL:
         change = as_float(quote.get("change_rate"))
         guards.append(
             _guard(
@@ -224,11 +252,62 @@ def evaluate_slot(
     return hits
 
 
+def evaluate_close(
+    watchlist: Sequence[Mapping[str, object]], eod: Sequence[Mapping[str, object]]
+) -> list[Hit]:
+    """The close confirmation for the breakout strategies: today's close above the level and the
+    day's volume at least `CLOSE_VOLUME_MULTIPLE` times the 20-session average. A closing price is
+    the confirmation swing traders use, so a met close is alertable on its own."""
+    bars = {row["symbol"]: row for row in eod if isinstance(row.get("symbol"), str)}
+    hits: list[Hit] = []
+    for watch in watchlist:
+        symbol, strategy_value = watch.get("symbol"), watch.get("strategy")
+        if not isinstance(symbol, str) or strategy_value not in {s.value for s in CLOSE_CHECKED}:
+            continue
+        bar = bars.get(symbol)
+        close = as_float(bar.get("close")) if bar is not None else None
+        if bar is None or close is None or close <= 0:
+            continue
+        strategy = Strategy(str(strategy_value))
+        level_key, _, condition_key = _BREAKOUT_LEVEL[strategy]
+        level = as_float(watch.get(level_key))
+        volume = as_float(bar.get("volume"))
+        average = as_float(watch.get("avg_volume_20d"))
+        multiple = volume / average if volume is not None and average else None
+        triggers = (
+            _trigger(condition_key, level is not None and close > level, close, level),
+            _trigger(
+                "close_volume_multiple",
+                multiple is not None and multiple >= CLOSE_VOLUME_MULTIPLE,
+                multiple,
+                CLOSE_VOLUME_MULTIPLE,
+            ),
+        )
+        met = all(c.met for c in triggers)
+        hits.append(
+            Hit(
+                symbol=symbol,
+                strategy=strategy,
+                slot=CLOSE_SLOT,
+                price=close,
+                change_rate=None,
+                volume_ratio=multiple,
+                conditions=triggers,
+                all_met=met,
+                confirmed=met,
+                alertable=met,
+            )
+        )
+    return hits
+
+
 __all__ = [
     "ALERT_FROM",
+    "CLOSE_SLOT",
     "SLOT_MINUTES",
     "Condition",
     "Hit",
+    "evaluate_close",
     "evaluate_slot",
     "market_change",
     "slot_of",

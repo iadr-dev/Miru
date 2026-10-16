@@ -20,6 +20,7 @@ from analytics.strategy_watch.batch import (
 )
 from analytics.strategy_watch.strategies import (
     MIN_HISTORY,
+    ChipInputs,
     Regime,
     Strategy,
     evaluate_setups,
@@ -257,3 +258,152 @@ async def test_the_job_refuses_to_publish_on_stale_prices(tmp_path: Path) -> Non
     assert run.status is RunStatus.SKIPPED
     assert "stale" in run.detail
     assert not ctx.store.has_partition(STRATEGY_WATCHLIST_DATASET, "TW", _RUN_DATE)
+
+
+def _range_series() -> list[PriceBar]:
+    """Long history, then 20 quiet sessions inside 30.0-32.0 (about a 6.7% range), closing at 31."""
+    history = [_bar(30 + 0.3 * math.sin(i)) for i in range(MIN_HISTORY)]
+    tight = [_bar(31 + 0.5 * math.sin(i), up=0.4, down=0.4) for i in range(20)]
+    return history + tight
+
+
+def _chips(**overrides: object) -> ChipInputs:
+    values: dict[str, object] = {
+        "foreign_net_20d": 300_000.0,
+        "trust_net_20d": 10_790.0,
+        "foreign_streak": 4,
+        "trust_streak": 1,
+        "large_holder_pct": 51.7,
+        "large_holder_pct_before": 45.7,
+        "holders": 581_955,
+        "holders_before": 600_000,
+        "margin_change_20d_pct": -6.0,
+        **overrides,
+    }
+    return ChipInputs.model_validate(values)
+
+
+def _accumulation(bars: list[PriceBar], chips: ChipInputs) -> list[object]:
+    setups = evaluate_setups("2409", _AS_OF, bars, regime=Regime.NEUTRAL, chips=chips)
+    return [s for s in setups if s.strategy is Strategy.CHIP_ACCUMULATION]
+
+
+def test_chip_accumulation_lists_a_quiet_range_with_every_chip_sign_aligned() -> None:
+    (setup,) = _accumulation(_range_series(), _chips())
+    assert setup.range_high_20d is not None and setup.range_low_20d is not None
+    assert setup.range_high_20d > setup.close > setup.range_low_20d
+    assert setup.large_holder_change_4w == pytest.approx(6.0)
+    assert setup.holders_change_4w_pct is not None and setup.holders_change_4w_pct < 0
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"foreign_streak": 1, "trust_streak": 1},  # one-day buying is noise
+        {"foreign_net_20d": -50_000.0, "trust_net_20d": 10_000.0},  # net selling over the window
+        {"large_holder_pct": 44.0},  # 大戶 share fell
+        {"holders": 610_000},  # more holders: shares spreading out, not gathering
+        {"margin_change_20d_pct": 3.0},  # retail margin money coming in
+        {"holders_before": None},  # no weekly history to compare
+    ],
+)
+def test_chip_accumulation_needs_every_chip_sign(overrides: dict[str, object]) -> None:
+    assert _accumulation(_range_series(), _chips(**overrides)) == []
+
+
+def test_chip_accumulation_skips_a_wide_range_or_a_breakout() -> None:
+    wide = _range_series()[:-20] + [_bar(30 + i * 0.3) for i in range(20)]  # 30 -> 35.7, +19%
+    assert _accumulation(wide, _chips()) == []
+    broken = [*_range_series()[:-1], _bar(32.5, up=0.1, down=0.1)]  # closes above the range high
+    assert _accumulation(broken, _chips()) == []
+
+
+def test_chip_inputs_read_finmind_holder_rows() -> None:
+    def week(percent: float, people: int) -> list[dict[str, object]]:
+        return [
+            {"holding_shares_level": "more than 1,000,001", "percent": percent, "people": 367},
+            {"holding_shares_level": "total", "percent": 100.0, "people": people},
+        ]
+
+    flow = [
+        {"investor": "Foreign_Investor", "trade_date": f"2026-09-{d:02d}", "buy": 20, "sell": 5}
+        for d in range(1, 25)
+    ]
+    chips = context.chip_inputs(
+        flow, [], [week(45.7, 600_000), week(47.0, 595_000), week(51.7, 581_955)]
+    )
+    assert chips.large_holder_pct == 51.7 and chips.large_holder_pct_before == 45.7
+    assert chips.holders == 581_955 and chips.holders_before == 600_000
+    assert chips.foreign_net_20d == 20 * 15  # the last 20 sessions only
+    assert chips.foreign_streak == 24
+
+
+def test_a_stock_that_stays_listed_keeps_counting_days() -> None:
+    rows, _, _ = build_watchlist_rows(
+        run_date=_RUN_DATE,
+        as_of=_AS_OF,
+        bars={"2317": _oversold_series()},
+        industry_by_symbol={},
+        name_by_symbol={},
+        flow_rows=[],
+        margin_rows=[],
+        exclusions={},
+        headlines={},
+        previous={("2317", Strategy.OVERSOLD_BOUNCE.value): (date_(2024, 6, 26), 3)},
+    )
+    (row,) = rows
+    assert row["first_listed"] == "2024-06-26"
+    assert row["days_on_list"] == 4
+
+
+def test_an_etf_gets_no_chip_accumulation_setup() -> None:
+    holders = [[{"symbol": "00982A", "holding_shares_level": "total", "people": p}] for p in (9, 8)]
+    rows, _, _ = build_watchlist_rows(
+        run_date=_RUN_DATE,
+        as_of=_AS_OF,
+        bars={"00982A": _range_series()},
+        industry_by_symbol={},
+        name_by_symbol={},
+        flow_rows=[],
+        margin_rows=[],
+        exclusions={},
+        headlines={},
+        holder_snapshots=holders,
+    )
+    assert all(r["strategy"] != Strategy.CHIP_ACCUMULATION.value for r in rows)
+
+
+def _flag_series(
+    *, pause_width: float = 0.8, pause_volume: int = 1_200_000, run_to: float = 60.0
+) -> list[PriceBar]:
+    """A long rising base, a 20-session run from 48 to `run_to`, then a 5-session pause."""
+    base = [_bar(40 + i * 0.05) for i in range(MIN_HISTORY - 5)]
+    run = [_bar(48 + (run_to - 48) * (i + 1) / 20, volume=3_000_000) for i in range(20)]
+    pause = [
+        _bar(run_to - 0.5 + pause_width * math.sin(i) / 2, up=0.3, down=0.3, volume=pause_volume)
+        for i in range(5)
+    ]
+    return base + run + pause
+
+
+def _flag(bars: list[PriceBar], chips: ChipInputs | None = None) -> list[object]:
+    setups = evaluate_setups(
+        "3017", _AS_OF, bars, regime=Regime.NEUTRAL, chips=chips or _chips(margin_change_20d_pct=25)
+    )
+    return [s for s in setups if s.strategy is Strategy.MOMENTUM_FLAG]
+
+
+def test_momentum_flag_lists_a_tight_pause_after_a_run_on_drying_volume() -> None:
+    (setup,) = _flag(_flag_series())
+    assert setup.run_gain_pct is not None and setup.run_gain_pct >= 15
+    assert setup.flag_high is not None and setup.flag_low is not None
+    assert setup.pause_volume_ratio is not None and setup.pause_volume_ratio < 1
+    # A rising margin balance is reported, not a reason to drop the stock.
+    assert setup.margin_change_20d_pct == 25
+
+
+def test_momentum_flag_rejects_loose_pauses_heavy_volume_and_weak_runs() -> None:
+    assert _flag(_flag_series(pause_width=12.0)) == []  # a 14%-ish swing is a shakeout, not a flag
+    assert _flag(_flag_series(pause_volume=5_000_000)) == []  # volume did not dry up
+    assert _flag(_flag_series(run_to=52.0)) == []  # +8% is not a strong run
+    assert _flag(_flag_series(), _chips(large_holder_pct=40.0)) == []  # 大戶 share fell

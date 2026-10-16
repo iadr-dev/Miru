@@ -18,7 +18,13 @@ from zoneinfo import ZoneInfo
 import structlog
 
 from analytics.strategy_watch.batch import STRATEGY_WATCHLIST_DATASET
-from analytics.strategy_watch.intraday import evaluate_slot, slot_of
+from analytics.strategy_watch.intraday import (
+    CLOSE_SLOT,
+    Hit,
+    evaluate_close,
+    evaluate_slot,
+    slot_of,
+)
 from ingest.context import IngestContext
 from ingest.jobs.whole_market import fetch_error_status
 from ingest.journal import JobRun, RunStatus, journal_run
@@ -27,6 +33,7 @@ from schemas.enums import Capability
 logger = structlog.get_logger(__name__)
 
 STRATEGY_HITS_DATASET = "strategy_hits"
+PRICE_EOD_DATASET = "TaiwanStockPrice"
 _TAIPEI = ZoneInfo("Asia/Taipei")
 
 
@@ -91,7 +98,9 @@ async def run_strategy_slot(run_date: date_, ctx: IngestContext, *, at: time_) -
         if ctx.store.has_partition(STRATEGY_HITS_DATASET, market, run_date)
         else []
     )
-    earlier = [r for r in existing if str(r.get("slot", "")) < slot_label]
+    earlier = [
+        r for r in existing if r.get("slot") != CLOSE_SLOT and str(r.get("slot", "")) < slot_label
+    ]
     previous_slot = max((str(r["slot"]) for r in earlier), default=None)
     previously_met = frozenset(
         (str(r["symbol"]), str(r["strategy"]))
@@ -99,10 +108,7 @@ async def run_strategy_slot(run_date: date_, ctx: IngestContext, *, at: time_) -
         if r.get("slot") == previous_slot and r.get("all_met") is True
     )
     hits = evaluate_slot(watchlist, snapshot, slot=slot, previously_met=previously_met)
-    # Re-running a slot replaces it; every other slot of the day is kept.
-    kept = [r for r in existing if r.get("slot") != slot_label]
-    rows = kept + [hit.to_row(today) for hit in hits]
-    ctx.store.write_partition(STRATEGY_HITS_DATASET, market, run_date, rows)
+    _store_slot(ctx, run_date, slot_label, hits)
     await ctx.data_update_publisher.publish_data_updated(
         capability=Capability.TICK_SNAPSHOT,
         market=ctx.market,
@@ -128,8 +134,56 @@ async def run_strategy_slot(run_date: date_, ctx: IngestContext, *, at: time_) -
     )
 
 
+def _store_slot(ctx: IngestContext, run_date: date_, slot: str, hits: list[Hit]) -> None:
+    """Append one slot's hits to the day's partition; re-running a slot replaces it."""
+    market = ctx.market.value
+    existing = (
+        ctx.store.read_partition(STRATEGY_HITS_DATASET, market, run_date)
+        if ctx.store.has_partition(STRATEGY_HITS_DATASET, market, run_date)
+        else []
+    )
+    kept = [r for r in existing if r.get("slot") != slot]
+    rows = kept + [hit.to_row(run_date.isoformat()) for hit in hits]
+    ctx.store.write_partition(STRATEGY_HITS_DATASET, market, run_date, rows)
+
+
+async def job_strategy_close_check(run_date: date_, ctx: IngestContext) -> JobRun:
+    """The close confirmation: today's EOD bar against this morning's breakout levels. Needs
+    today's `TaiwanStockPrice` partition (the 17:40 pull); without it the run is a journaled skip.
+    No FinMind call of its own."""
+    reason = _gate(run_date, ctx)
+    if reason is not None:
+        return _skip(run_date, reason)
+    market = ctx.market.value
+    if not ctx.store.has_partition(PRICE_EOD_DATASET, market, run_date):
+        return _skip(run_date, "today's closing prices have not landed yet")
+    watchlist = ctx.store.read_partition(STRATEGY_WATCHLIST_DATASET, market, run_date)
+    eod = ctx.store.read_partition(PRICE_EOD_DATASET, market, run_date)
+    hits = evaluate_close(watchlist, eod)
+    _store_slot(ctx, run_date, CLOSE_SLOT, hits)
+    await ctx.data_update_publisher.publish_data_updated(
+        capability=Capability.PRICE_EOD,
+        market=ctx.market,
+        as_of=f"{run_date.isoformat()}T{CLOSE_SLOT}",
+        scope="strategy_watch",
+    )
+    met = sum(1 for h in hits if h.all_met)
+    return journal_run(
+        STRATEGY_HITS_DATASET,
+        run_date,
+        rows_written=len(hits),
+        status=RunStatus.SUCCESS,
+        detail=f"close: {len(hits)} breakout setups checked, {met} confirmed",
+    )
+
+
 async def job_strategy_intraday(run_date: date_, ctx: IngestContext) -> JobRun:
     return await run_strategy_slot(run_date, ctx, at=datetime.now(_TAIPEI).time())
 
 
-__all__ = ["STRATEGY_HITS_DATASET", "job_strategy_intraday", "run_strategy_slot"]
+__all__ = [
+    "STRATEGY_HITS_DATASET",
+    "job_strategy_close_check",
+    "job_strategy_intraday",
+    "run_strategy_slot",
+]

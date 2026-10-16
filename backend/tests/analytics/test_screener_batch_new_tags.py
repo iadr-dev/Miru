@@ -84,6 +84,16 @@ def test_small_and_large_holder_share_rising_3w() -> None:
     assert "large_holder_share_rising_3w" in tags
 
 
+def test_large_holder_tag_reads_finmind_label_for_the_top_tier() -> None:
+    """FinMind returns the top tier as "more than 1,000,001" (the ingested partitions use it); a
+    tag that only knew the TDCC spelling never fired on real data."""
+    snapshots = [
+        [_shareholding_row("2409", "more than 1,000,001", 48.0 + week)] for week in range(4)
+    ]
+    rows = compute_flag_rows([], [], [], snapshots)
+    assert "large_holder_share_rising_3w" in {r["tag"] for r in rows if r["symbol"] == "2409"}
+
+
 def test_holder_share_rising_needs_all_four_snapshots() -> None:
     # Only 3 snapshots (2 deltas) — not enough to prove a 3-week streak, must not fire.
     snapshots = [[_shareholding_row("2330", "1-999", 10.0 + week)] for week in range(3)]

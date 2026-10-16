@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import time as time_
 
-from analytics.strategy_watch.intraday import evaluate_slot, market_change, slot_of
+from analytics.strategy_watch.intraday import evaluate_close, evaluate_slot, market_change, slot_of
 from analytics.strategy_watch.strategies import Strategy
 
 _SQUEEZE = {
@@ -128,3 +128,53 @@ def test_hit_row_carries_conditions_as_json() -> None:
     assert row["run_date"] == "2026-10-16"
     decoded = json.loads(str(row["conditions"]))
     assert decoded[0]["key"] == "price_above_upper_band"
+
+
+_ACCUMULATION = {
+    "symbol": "2409",
+    "strategy": Strategy.CHIP_ACCUMULATION.value,
+    "range_high_20d": 33.5,
+    "avg_volume_20d": 40_000_000.0,
+}
+
+
+def test_chip_accumulation_breakout_needs_volume() -> None:
+    strong = _quote("2409", close=33.9, volume_ratio=2.1, average_price=33.6)
+    (hit,) = evaluate_slot([_ACCUMULATION], [strong], slot=time_(10, 0), previously_met=frozenset())
+    assert hit.all_met is True
+    assert "not_near_limit_up" in _keys(hit.conditions)
+    quiet = _quote("2409", close=33.9, volume_ratio=1.0, average_price=33.6)
+    (miss,) = evaluate_slot([_ACCUMULATION], [quiet], slot=time_(10, 0), previously_met=frozenset())
+    assert miss.all_met is False
+
+
+def test_close_confirms_a_breakout_on_volume() -> None:
+    eod = [{"symbol": "2409", "close": 34.2, "volume": 70_000_000}]
+    (hit,) = evaluate_close([_ACCUMULATION], eod)
+    assert hit.slot == "close"
+    assert hit.alertable is True
+    assert _keys(hit.conditions) == {"close_above_range_high": True, "close_volume_multiple": True}
+
+    thin = [{"symbol": "2409", "close": 34.2, "volume": 41_000_000}]  # about 1x average
+    (miss,) = evaluate_close([_ACCUMULATION], thin)
+    assert miss.alertable is False
+
+
+def test_close_check_covers_breakouts_only() -> None:
+    eod = [{"symbol": "2317", "close": 101, "volume": 9_000_000}]
+    assert evaluate_close([_OVERSOLD], eod) == []
+
+
+def test_momentum_flag_triggers_and_close_check_use_the_pause_high() -> None:
+    watch = {
+        "symbol": "3017",
+        "strategy": Strategy.MOMENTUM_FLAG.value,
+        "flag_high": 60.3,
+        "avg_volume_20d": 2_000_000.0,
+    }
+    quote = _quote("3017", close=60.8, volume_ratio=1.9, average_price=60.5)
+    (hit,) = evaluate_slot([watch], [quote], slot=time_(10, 0), previously_met=frozenset())
+    assert _keys(hit.conditions)["price_above_flag_high"] is True
+    assert hit.all_met is True
+    (close,) = evaluate_close([watch], [{"symbol": "3017", "close": 61.0, "volume": 3_500_000}])
+    assert _keys(close.conditions) == {"close_above_flag_high": True, "close_volume_multiple": True}

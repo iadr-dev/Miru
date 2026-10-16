@@ -52,6 +52,7 @@ from ingest.jobs import (
     job_stock_info,
     job_valuation_ratios,
 )
+from ingest.jobs.strategy_intraday import job_strategy_close_check, job_strategy_intraday
 from ingest.journal import JobRun, RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
 from ingest.store import ParquetStore
@@ -272,6 +273,8 @@ def test_derived_compute_batches_are_scheduled() -> None:
             job_scoring_batch,
             job_trend_score_batch,
             job_strategy_watchlist,
+            job_strategy_intraday,
+            job_strategy_close_check,
         )
         if fn not in scheduled_run_fns
     ]

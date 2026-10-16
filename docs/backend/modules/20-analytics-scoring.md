@@ -324,10 +324,16 @@ store and writes `strategy_watchlist`, one row per `(symbol, strategy)`:
 | `volatility_squeeze` 波動率擠壓 | BB(20,2) bandwidth in the narrowest 5% of its last 120 sessions, close above MA60 and still below the upper band; skipped when breadth is risk-off | `upper_band`, `close_5d_ago` |
 | `oversold_bounce` 超跌反彈 | 10-session drop of at least 15% or a close under the lower band, with RSI14 < 30 | `lower_band`, `k` (KD 超賣), `drop_10d_pct` |
 | `ad_divergence` 量價背離 | close within 3% of the 20-day low and below its level 20 sessions ago, while the Chaikin A/D line (`indicators.accumulation_distribution`) is above its level 20 sessions ago | `low_20d`, `ad_value`, `ad_low_20d`, `rsi_at_low` |
+| `chip_accumulation` 籌碼集中盤整 | stocks only (no ETFs): a 20-session range ≤ 12% wide that the last close has not broken (close ≤ the earlier sessions' high), up < 10% over 20 sessions; 外資+投信 net buying over 20 sessions with one of them on a ≥ 3-session streak; 千張大戶 share up and holder count down vs up to 4 weekly 集保 snapshots back; 融資 balance down over 20 sessions | `range_high_20d`, `range_low_20d`, holder and margin changes |
+| `momentum_flag` 強勢整理 | stocks only: close > MA20 > MA60; a run of at least 15% off the low of the 20 sessions before the pause; then the longest 3-7 session pause inside a band ≤ 7% wide, not broken, holding the upper half of the run, on lower average volume than the 10 sessions before it; 外資 net buying over 20 sessions, 千張大戶 share up and holders down over 4 weeks. 融資 is not a condition; a 20-session rise above 20% is stated in the alert | `flag_high`, `flag_low`, `flag_sessions`, `run_gain_pct`, `pause_volume_ratio` |
 
 - Universe: scoreable TW symbols that traded on the last session, 20-day average volume at least
   1,000 張. At most 30 per strategy, most liquid first.
 - Regime: breadth = share of the universe closing above MA20 (risk-on at least 60%, risk-off under 30%).
+- Listing history: a (symbol, strategy) also on the previous trading day's list keeps its
+  `first_listed` and counts `days_on_list`; after a gap it starts again.
+- The 千張大戶 tier is read under both its TDCC label (`1,000,001以上`) and FinMind's (`more than
+  1,000,001`, what the ingested partitions actually hold).
 - Exclusions (`context.excluded_symbols`): 處置股 in their period, 注意股 flagged on the last session,
   除權息 from today through 3 trading days ahead.
 - Context columns (never conditions): industry and its 20-session sector-strength percentile, 外資
@@ -351,6 +357,13 @@ previous slot (`confirmed`) and every guard: not before 09:30, market median cha
 or above the day's average price (not for divergence), not within 1% of 漲停 (squeeze). Rows that are
 not alertable are the near-miss log: stored and shown, never sent. The snapshot must be dated today,
 otherwise the slot is skipped.
+
+**Close confirmation, `strategy_close_check` (18:00, after `price_eod`).** For the breakout setups
+(`volatility_squeeze`, `chip_accumulation`, `momentum_flag`) it compares today's close with the
+morning level (`upper_band` / `range_high_20d` / `flag_high`) and the day's volume with 1.5 × the 20-session average, and writes
+the result as slot `close` in `strategy_hits`. A met close is alertable on its own (the close is the
+confirmation swing traders use); it is delivered as a separate 收盤確認 alert from any intraday one.
+Without today's price partition the run is a journaled skip.
 
 ## 6. Tools & endpoints
 
