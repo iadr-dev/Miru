@@ -30,6 +30,8 @@ build/
 *.duckdb
 *.duckdb.wal
 *.duckdb.tmp
+# The default dev SQLite database (DATABASE_URL falls back to it), wherever a script ran.
+*.db
 data/parquet/
 data/duckdb/
 *.parquet
