@@ -82,6 +82,16 @@ export const strategyWatchDataDatesSchema = z.object({
 
 export type StrategyWatchDataDates = z.infer<typeof strategyWatchDataDatesSchema>;
 
+/** One intraday check that ran (the 10-minute slots the timeline ticks). */
+export const strategyWatchSlotSchema = z.object({
+  slot: z.string(),
+  checked: z.number(),
+  all_met: z.number(),
+  alertable: z.number(),
+});
+
+export type StrategyWatchSlot = z.infer<typeof strategyWatchSlotSchema>;
+
 export const strategyWatchTodaySchema = z.object({
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable(),
@@ -95,6 +105,7 @@ export const strategyWatchTodaySchema = z.object({
   events: z.array(strategyWatchEventSchema).default([]),
   masked: z.boolean(),
   data_dates: strategyWatchDataDatesSchema,
+  slots: z.array(strategyWatchSlotSchema).default([]),
 });
 
 export type StrategyWatchToday = z.infer<typeof strategyWatchTodaySchema>;

@@ -3615,7 +3615,25 @@
       "prices": "17:40 補股價・融資",
       "flows": "20:10 補三大法人",
       "dataThrough": "資料至 {date}",
-      "noData": "尚無資料"
+      "noData": "尚無資料",
+      "now": "現在 {time}",
+      "nextCheck": "下次檢查 {time}（{minutes} 分）",
+      "checks": "{done}/{total} 次檢查",
+      "hitsAt": "{slot} · 檢查 {checked} 檔，{met} 檔條件全數成立，{alerted} 檔通知",
+      "setups": "選出 {count} 檔",
+      "closeCount": "{count} 檔收盤確認",
+      "stale": "資料未更新",
+      "running": "盯盤中",
+      "done": "已完成",
+      "pending": "等待中",
+      "status": "狀態",
+      "desc": {
+        "screen": "用前一個交易日的收盤、法人與籌碼資料選出今日清單，並算好每檔的觸發價位。",
+        "watch": "盤中每 10 分鐘用全市場即時快照檢查清單上的條件，連續兩次成立才通知。",
+        "prices": "收盤後補進當日股價與融資融券，供收盤確認與明早選股使用。",
+        "close": "用收盤價與成交量確認突破，條件成立時另外通知。",
+        "flows": "補進三大法人買賣超，供明早選股計算法人連買與籌碼。"
+      }
     },
     "regime": {
       "label": "市場寬度",

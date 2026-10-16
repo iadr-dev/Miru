@@ -2,8 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
-import { tint } from "@/components/watch/watch-format";
-import { cn } from "@/lib/cn";
+import { PipelineTimeline } from "@/components/watch/pipeline-timeline";
 import type { StrategyWatchToday } from "@/types/strategy-watch";
 
 export type PipelineStepKey = "screen" | "watch" | "prices" | "close" | "flows";
@@ -84,23 +83,6 @@ export function RunStatus({
 }): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
-  const noteText = (note: PipelineStep["note"]): string | null => {
-    if (note === null) return null;
-    switch (note.kind) {
-      case "asOf":
-        return t("asOf", { date: note.date });
-      case "lastCheck":
-        return t("pipeline.lastCheck", { time: note.time });
-      case "notStarted":
-        return t("pipeline.notStarted");
-      case "dataThrough":
-        return t("pipeline.dataThrough", { date: note.date });
-      case "noData":
-        return t("pipeline.noData");
-      default:
-        return null;
-    }
-  };
   return (
     <section className="surface-card space-y-3 p-4" aria-label={t("pipeline.label")}>
       {stale && data.run_date !== null ? (
@@ -108,39 +90,7 @@ export function RunStatus({
           {t("earlierList", { date: data.run_date })}
         </p>
       ) : null}
-      <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[12.5px]">
-        {pipelineSteps(data).map((step, index) => {
-          const note = noteText(step.note);
-          return (
-            <li key={step.key} className="flex items-center gap-2">
-              {index > 0 ? (
-                <span aria-hidden className="h-px w-6 bg-[var(--border-strong)]" />
-              ) : null}
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1",
-                  step.done ? "text-[var(--text)]" : "text-[var(--text-muted)]",
-                )}
-                style={{
-                  borderColor: step.done ? STEP_COLOR[step.key] : tint(STEP_COLOR[step.key], 35),
-                  backgroundColor: tint(STEP_COLOR[step.key], step.done ? 16 : 6),
-                }}
-              >
-                <span
-                  aria-hidden
-                  className="size-2 rounded-full"
-                  style={{
-                    backgroundColor: step.done ? STEP_COLOR[step.key] : "transparent",
-                    border: `1.5px solid ${STEP_COLOR[step.key]}`,
-                  }}
-                />
-                {t(`pipeline.${step.key}`)}
-                {note ? <span className="text-[var(--text-muted)]">· {note}</span> : null}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
+      <PipelineTimeline data={data} steps={pipelineSteps(data)} colors={STEP_COLOR} />
       {data.regime !== null ? (
         <p className="text-[12.5px] text-[var(--text-muted)]">
           {t("regime.label")}：{t(`regime.${data.regime}`)} ·{" "}

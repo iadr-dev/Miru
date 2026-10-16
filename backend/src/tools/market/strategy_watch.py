@@ -102,6 +102,18 @@ class StrategyWatchEvent(BaseModel):
     kind: Literal["intraday", "close"]
 
 
+class StrategyWatchSlot(BaseModel):
+    """One intraday check that ran: how many stocks it compared, how many met every trigger, and
+    how many of those became an alert (met on two checks in a row, guards passed)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    slot: str
+    checked: int
+    all_met: int
+    alertable: int
+
+
 class StrategyWatchDataDates(BaseModel):
     """The latest session each input the screen reads has real rows for: the post-close refresh
     steps of the daily cycle (股價 17:40, 融資 17:40, 三大法人 20:10). A date behind the list's
@@ -129,6 +141,7 @@ class GetStrategyWatchOutput(BaseModel):
     events: tuple[StrategyWatchEvent, ...] = ()
     masked: bool = False
     data_dates: StrategyWatchDataDates = StrategyWatchDataDates()
+    slots: tuple[StrategyWatchSlot, ...] = ()
 
 
 def _conditions(raw: object) -> list[StrategyCondition]:
@@ -146,6 +159,24 @@ def _masked(conditions: list[StrategyCondition]) -> list[StrategyCondition]:
     """Both values go: some thresholds are intraday values too (the day's open for 紅K, its
     average price, the market median), so only which condition held is left."""
     return [c.model_copy(update={"observed": None, "required": None}) for c in conditions]
+
+
+def _slots(hits: list[dict[str, object]]) -> tuple[StrategyWatchSlot, ...]:
+    """The intraday checks that ran today, in time order (the close confirmation is not one)."""
+    by_slot: dict[str, list[dict[str, object]]] = {}
+    for hit in hits:
+        slot = str(hit.get("slot", ""))
+        if slot and slot != _CLOSE_SLOT:
+            by_slot.setdefault(slot, []).append(hit)
+    return tuple(
+        StrategyWatchSlot(
+            slot=slot,
+            checked=len(rows),
+            all_met=sum(1 for r in rows if r.get("all_met") is True),
+            alertable=sum(1 for r in rows if r.get("alertable") is True),
+        )
+        for slot, rows in sorted(by_slot.items())
+    )
 
 
 class GetStrategyWatchTool(SyncStoreTool):
@@ -225,6 +256,7 @@ class GetStrategyWatchTool(SyncStoreTool):
             events=tuple(self._events(hits, watch)),
             masked=masked,
             data_dates=self._data_dates(),
+            slots=_slots(hits),
         )
 
     def _items(
@@ -307,4 +339,5 @@ __all__ = [
     "StrategyWatchDataDates",
     "StrategyWatchEvent",
     "StrategyWatchItem",
+    "StrategyWatchSlot",
 ]

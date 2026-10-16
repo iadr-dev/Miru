@@ -90,6 +90,12 @@ async def test_items_carry_the_latest_check_the_first_alert_and_the_close(tmp_pa
     auo = next(i for i in out.items if i.symbol == "2409")
     assert auo.latest_slot is None and auo.large_holder_pct == 51.7
     assert [(e.slot, e.kind) for e in out.events] == [("09:50", "intraday"), ("close", "close")]
+    # One entry per intraday check that ran; the close confirmation is not a slot.
+    assert [(x.slot, x.checked, x.all_met, x.alertable) for x in out.slots] == [
+        ("09:40", 1, 0, 0),
+        ("09:50", 1, 1, 1),
+        ("10:00", 1, 1, 1),
+    ]
 
 
 async def test_an_unentitled_caller_gets_sponsor_values_masked(tmp_path: Path) -> None:

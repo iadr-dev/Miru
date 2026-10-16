@@ -8290,6 +8290,11 @@ export interface components {
       regime?: ("risk_on" | "neutral" | "risk_off") | null;
       /** Run Date */
       run_date?: string | null;
+      /**
+       * Slots
+       * @default []
+       */
+      slots: components["schemas"]["StrategyWatchSlot"][];
       /** Unavailable Reason */
       unavailable_reason?: string | null;
     };
@@ -11753,6 +11758,21 @@ export interface components {
       trust_streak: number;
       /** Upper Band */
       upper_band?: number | null;
+    };
+    /**
+     * StrategyWatchSlot
+     * @description One intraday check that ran: how many stocks it compared, how many met every trigger, and
+     *     how many of those became an alert (met on two checks in a row, guards passed).
+     */
+    StrategyWatchSlot: {
+      /** Alertable */
+      alertable: number;
+      /** All Met */
+      all_met: number;
+      /** Checked */
+      checked: number;
+      /** Slot */
+      slot: string;
     };
     /**
      * SubIndustryHeat

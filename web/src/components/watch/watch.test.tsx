@@ -3,6 +3,13 @@ import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { pipelineSteps } from "@/components/watch/run-status";
 import {
+  minutesOf,
+  nextCheck,
+  positionOf,
+  SESSION_SLOTS,
+  taipeiClock,
+} from "@/components/watch/timeline-math";
+import {
   distanceToLevel,
   initialStrategy,
   keyLevel,
@@ -133,6 +140,7 @@ describe("pipelineSteps", () => {
     items: [],
     events: [],
     masked: false,
+    slots: [],
   } satisfies Omit<StrategyWatchToday, "data_dates">;
 
   it("marks each post-close refresh done only once its data reaches the list's session", () => {
@@ -170,5 +178,36 @@ describe("pipelineSteps", () => {
       date: "2026-09-24",
     });
     expect(steps.find((s) => s.key === "flows")?.note).toEqual({ kind: "noData" });
+  });
+});
+
+describe("timeline-math", () => {
+  it("places the steps on the track in time order, with the session widest", () => {
+    const at = (t: string): number => positionOf(minutesOf(t));
+    expect(at("08:00")).toBeLessThan(at("09:00"));
+    expect(at("13:30") - at("09:00")).toBeGreaterThan(at("20:10") - at("13:30"));
+    expect(at("17:40")).toBeLessThan(at("18:00"));
+    expect(at("06:00")).toBe(0);
+    expect(at("23:00")).toBe(100);
+  });
+
+  it("has 28 checks from 09:00 to 13:30", () => {
+    expect(SESSION_SLOTS).toHaveLength(28);
+    expect(SESSION_SLOTS[0]).toBe("09:00");
+    expect(SESSION_SLOTS.at(-1)).toBe("13:30");
+  });
+
+  it("counts down to the next check and stops after the session", () => {
+    expect(nextCheck(minutesOf("10:24"))).toEqual({ slot: "10:30", inMinutes: 6 });
+    expect(nextCheck(minutesOf("10:30"))).toEqual({ slot: "10:30", inMinutes: 0 });
+    expect(nextCheck(minutesOf("08:15"))).toEqual({ slot: "09:00", inMinutes: 45 });
+    expect(nextCheck(minutesOf("13:31"))).toBeNull();
+  });
+
+  it("reads the Taipei clock regardless of the machine's time zone", () => {
+    expect(taipeiClock(new Date("2026-10-16T02:24:00Z"))).toEqual({
+      date: "2026-10-16",
+      minutes: 10 * 60 + 24,
+    });
   });
 });
