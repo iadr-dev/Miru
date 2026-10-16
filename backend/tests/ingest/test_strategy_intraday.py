@@ -11,7 +11,11 @@ from pathlib import Path
 from analytics.strategy_watch.batch import STRATEGY_WATCHLIST_DATASET
 from analytics.strategy_watch.strategies import Strategy
 from ingest.context import IngestContext
-from ingest.jobs.strategy_intraday import STRATEGY_HITS_DATASET, run_strategy_slot
+from ingest.jobs.strategy_intraday import (
+    STRATEGY_HITS_DATASET,
+    job_strategy_close_check,
+    run_strategy_slot,
+)
 from ingest.journal import RunStatus
 from ingest.leader import AlwaysLeader
 from ingest.store import ParquetStore
@@ -117,3 +121,32 @@ async def test_a_refused_snapshot_is_a_failed_run(tmp_path: Path) -> None:
     ctx.store.write_partition(STRATEGY_WATCHLIST_DATASET, "TW", _RUN_DATE, [_WATCH])
     run = await run_strategy_slot(_RUN_DATE, ctx, at=time_(10, 0))
     assert run.status is RunStatus.FAILED
+
+
+async def test_close_check_writes_a_close_slot_next_to_the_intraday_slots(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, _Snapshot([_quote()]))
+    watch = {**_WATCH, "avg_volume_20d": 20_000_000.0}
+    ctx.store.write_partition(STRATEGY_WATCHLIST_DATASET, "TW", _RUN_DATE, [watch])
+    await run_strategy_slot(_RUN_DATE, ctx, at=time_(10, 0))
+    ctx.store.write_partition(
+        "TaiwanStockPrice",
+        "TW",
+        _RUN_DATE,
+        [{"symbol": "2330", "trade_date": _RUN_DATE.isoformat(), "close": 875.0, "volume": 4e7}],
+    )
+
+    run = await job_strategy_close_check(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    rows = ctx.store.read_partition(STRATEGY_HITS_DATASET, "TW", _RUN_DATE)
+    assert sorted(r["slot"] for r in rows) == ["10:00", "close"]
+    close = next(r for r in rows if r["slot"] == "close")
+    assert close["alertable"] is True
+
+
+async def test_close_check_waits_for_todays_prices(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, _Snapshot([]))
+    ctx.store.write_partition(STRATEGY_WATCHLIST_DATASET, "TW", _RUN_DATE, [_WATCH])
+    run = await job_strategy_close_check(_RUN_DATE, ctx)
+    assert run.status is RunStatus.SKIPPED
+    assert "not landed" in run.detail

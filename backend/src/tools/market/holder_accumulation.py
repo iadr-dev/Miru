@@ -42,6 +42,9 @@ _HOLDER_TIER_LABELS: tuple[str, ...] = (
     "600,001-800,000",
     "800,001-1,000,000",
     "1,000,001以上",
+    # FinMind's own label for the same top tier (seen in the ingested partitions); listed after the
+    # TDCC spelling so every tail slice below includes both.
+    "more than 1,000,001",
 )
 
 
@@ -54,7 +57,7 @@ _HOLDER_THRESHOLDS: dict[int, tuple[str, ...]] = {
     200: _HOLDER_TIER_LABELS[10:],  # 200,001-400,000 and every tier above
     400: _HOLDER_TIER_LABELS[11:],  # 400,001-600,000 and every tier above
     800: _HOLDER_TIER_LABELS[13:],  # 800,001-1,000,000 and every tier above
-    1000: _HOLDER_TIER_LABELS[14:],  # 1,000,001以上 only
+    1000: _HOLDER_TIER_LABELS[14:],  # the top tier only (either spelling)
 }
 
 

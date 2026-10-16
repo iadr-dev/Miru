@@ -2392,6 +2392,51 @@ async def test_get_holder_accumulation_masks_rows_beyond_free_preview_for_free_t
     assert locked_row.percent_of_custody_change is None
 
 
+async def test_get_holder_accumulation_counts_finmind_top_tier_label(tmp_path: Path) -> None:
+    """The 1,000張 threshold is the top tier only, which FinMind labels "more than 1,000,001". A
+    table that knew only the TDCC spelling read every 千張大戶 change as zero."""
+    store = ParquetStore(root=tmp_path)
+    week_ago, this_week = date(2026, 9, 17), date(2026, 9, 24)
+    for day, percent in ((week_ago, 45.7), (this_week, 51.7)):
+        store.write_partition(
+            "TaiwanStockHoldingSharesPer",
+            "TW",
+            day,
+            [
+                {
+                    "symbol": "2409",
+                    "market": "TW",
+                    "holding_shares_level": "more than 1,000,001",
+                    "people": 367,
+                    "percent": percent,
+                    "unit": 0,
+                }
+            ],
+        )
+    store.write_partition(
+        "TaiwanStockInfo",
+        "TW",
+        this_week,
+        [
+            {
+                "symbol": "2409",
+                "market": "TW",
+                "name": "友達",
+                "industry_category": "光電業",
+                "security_type": "twse",
+                "as_of": "2026-09-24",
+            }
+        ],
+    )
+    output = await GetHolderAccumulationTool(store).run(
+        GetHolderAccumulationInput(market=Market.TW, threshold=1000, window=1, as_of=this_week),
+        ToolContext(tier=Tier.PRO),
+    )
+    (row,) = output.rows
+    assert row.symbol == "2409"
+    assert row.percent_of_custody_change == pytest.approx(6.0)
+
+
 async def test_get_index_contribution_masks_rows_beyond_free_preview_for_free_tier(
     tmp_path: Path,
 ) -> None:

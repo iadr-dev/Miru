@@ -16290,7 +16290,9 @@
        "enum": [
         "volatility_squeeze",
         "oversold_bounce",
-        "ad_divergence"
+        "ad_divergence",
+        "chip_accumulation",
+        "momentum_flag"
        ],
        "type": "string"
       },
@@ -18357,7 +18359,9 @@
        "enum": [
         "volatility_squeeze",
         "oversold_bounce",
-        "ad_divergence"
+        "ad_divergence",
+        "chip_accumulation",
+        "momentum_flag"
        ],
        "type": "string"
       },

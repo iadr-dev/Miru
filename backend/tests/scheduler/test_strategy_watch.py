@@ -268,3 +268,127 @@ def test_a_flagged_headline_is_dropped_not_sent() -> None:
     assert "目標價" not in text
     assert "價格 872 高於布林上軌 868" in text
     assert title.startswith("2330")
+
+
+def _accumulation_watch() -> dict[str, object]:
+    return {
+        "symbol": "2409",
+        "name": "友達",
+        "strategy": "chip_accumulation",
+        "range_high_20d": 33.5,
+        "range_low_20d": 30.2,
+        "large_holder_pct": 51.7,
+        "large_holder_change_4w": 6.0,
+        "margin_change_20d_pct": -6.0,
+        "days_on_list": 4,
+        "regime": "neutral",
+        "breadth_pct": 46.1,
+    }
+
+
+async def test_a_close_confirmation_is_its_own_alert_after_the_intraday_one(
+    session_factory,
+) -> None:
+    user = await insert_user(session_factory, tier=Tier.PRO)
+    await _subscribe(session_factory, user, strategies=("chip_accumulation",), morning_list=False)
+    await _backdate(session_factory, user)
+    intraday = {
+        **_hit("2409", "10:20"),
+        "strategy": "chip_accumulation",
+        "conditions": json.dumps(
+            [
+                {
+                    "key": "price_above_range_high",
+                    "kind": "trigger",
+                    "observed": 33.9,
+                    "required": 33.5,
+                },
+            ]
+        ),
+    }
+    close = {
+        **intraday,
+        "slot": "close",
+        "conditions": json.dumps(
+            [
+                {
+                    "key": "close_above_range_high",
+                    "kind": "trigger",
+                    "observed": 34.2,
+                    "required": 33.5,
+                },
+                {
+                    "key": "close_volume_multiple",
+                    "kind": "trigger",
+                    "observed": 1.8,
+                    "required": 1.5,
+                },
+            ]
+        ),
+    }
+    reader = FakeReader()
+    reader.put(STRATEGY_WATCHLIST_DATASET, _DAY, [_accumulation_watch()])
+    reader.put(STRATEGY_HITS_DATASET, _DAY, [intraday])
+    worker = make_worker(session_factory, reader)
+    await worker.run_strategy_watch(now=_at(10, 25))
+    reader.put(STRATEGY_HITS_DATASET, _DAY, [intraday, close])
+    await worker.run_strategy_watch(now=_at(18, 5))
+
+    titles = sorted(str(n.payload["title"]) for n in await _sent(session_factory, user))
+    assert titles == ["2409 友達 · 籌碼集中盤整 條件全數達成", "收盤確認：2409 友達 · 籌碼集中盤整"]
+    close_body = next(
+        str(n.payload["body"])
+        for n in await _sent(session_factory, user)
+        if str(n.payload["title"]).startswith("收盤確認")
+    )
+    assert "收盤 34.2 高於盤整區間高點 33.5" in close_body
+    assert "千張大戶 51.7%（4 週 +6.00 個百分點）" in close_body
+    assert "盤整區間下緣 30.2" in close_body
+    assert "停損" not in close_body
+    assert check_output(close_body, has_market_data=False).reason is None
+
+
+def test_morning_list_shows_the_range_and_holder_share_for_accumulation() -> None:
+    listing = morning_list([_accumulation_watch()], _DAY)
+    assert listing is not None
+    assert "籌碼集中盤整 1 檔：2409 友達（區間 30.2 至 33.5、大戶 51.7%）" in listing[1]
+
+
+def test_flag_listing_states_the_pause_and_a_margin_surge() -> None:
+    watch = {
+        "symbol": "3017",
+        "name": "奇鋐",
+        "strategy": "momentum_flag",
+        "flag_low": 59.2,
+        "flag_high": 60.3,
+        "flag_sessions": 5.0,
+        "run_gain_pct": 25.0,
+        "large_holder_pct": 60.1,
+        "large_holder_change_4w": 1.2,
+        "margin_change_20d_pct": 33.0,
+        "regime": "neutral",
+        "breadth_pct": 50.0,
+    }
+    listing = morning_list([watch], _DAY)
+    assert listing is not None
+    assert "強勢整理 1 檔：3017 奇鋐（整理 59.2 至 60.3（5 日，前段 +25%））" in listing[1]
+    hit = {
+        **_hit("3017", "10:20"),
+        "strategy": "momentum_flag",
+        "conditions": json.dumps(
+            [
+                {
+                    "key": "price_above_flag_high",
+                    "kind": "trigger",
+                    "observed": 60.8,
+                    "required": 60.3,
+                }
+            ]
+        ),
+    }
+    _, body, plain = hit_alert(hit, watch, masked=False)
+    text = safe_body(body, plain, "fallback")
+    assert "價格 60.8 高於整理區高點 60.3" in text
+    assert "融資 20 日 +33.0%，增幅偏大（散戶融資追價）" in text
+    assert "整理區下緣 59.2" in text
+    assert check_output(text, has_market_data=False).reason is None
