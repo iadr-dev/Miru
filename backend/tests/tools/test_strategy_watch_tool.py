@@ -112,6 +112,18 @@ async def test_a_weekend_shows_the_last_trading_days_list(tmp_path: Path) -> Non
     assert out.run_date == _DAY
 
 
+async def test_the_post_close_refresh_dates_skip_empty_days(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    bar = {"symbol": "2330", "trade_date": "2026-10-15", "close": 860.0}
+    store.write_partition("TaiwanStockPrice", "TW", date(2026, 10, 15), [bar])
+    store.write_partition("TaiwanStockPrice", "TW", _DAY, [])  # a failed pull lands empty
+    out = await GetStrategyWatchTool(store).run(
+        GetStrategyWatchInput(as_of=_DAY), ToolContext(tier=Tier.PRO)
+    )
+    assert out.data_dates.price_eod == date(2026, 10, 15)
+    assert out.data_dates.institutional_flow is None
+
+
 async def test_no_list_is_reported_not_invented(tmp_path: Path) -> None:
     out = await GetStrategyWatchTool(ParquetStore(root=tmp_path)).run(
         GetStrategyWatchInput(as_of=_DAY), ToolContext(tier=Tier.PRO)

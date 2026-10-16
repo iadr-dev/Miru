@@ -2,9 +2,10 @@
 
 import { BellIcon, BellRingingIcon } from "@phosphor-icons/react";
 import { useSearchParams } from "next/navigation";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { QueryState } from "@/components/ui/query-state";
+import { RunStatus } from "@/components/watch/run-status";
 import { SubscriptionDialog } from "@/components/watch/subscription-dialog";
 import { WatchDetail } from "@/components/watch/watch-detail";
 import { WatchFeed } from "@/components/watch/watch-feed";
@@ -49,10 +50,13 @@ export function WatchDashboard(): ReactNode {
           data.data_available ? (
             <WatchBody data={data} />
           ) : (
-            <section className="surface-card p-6">
-              <p className="font-medium text-[14px] text-[var(--text)]">{t("unavailable")}</p>
-              <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("unavailableHint")}</p>
-            </section>
+            <>
+              <RunStatus data={data} stale={false} />
+              <section className="surface-card p-6">
+                <p className="font-medium text-[14px] text-[var(--text)]">{t("unavailable")}</p>
+                <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("unavailableHint")}</p>
+              </section>
+            </>
           )
         }
       </QueryState>
@@ -63,6 +67,9 @@ export function WatchDashboard(): ReactNode {
 function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
   const t = useTranslations("watch");
   const params = useSearchParams();
+  const asked = requestedDate(params.get("date"));
+  // A list for another day is only a warning when today's was wanted and is not ready.
+  const isToday = data.run_date === (asked ?? taipeiToday());
   const [strategy, setStrategy] = useState<StrategyKey>(() =>
     initialStrategy(data.counts, STRATEGY_KEYS, params.get("strategy")),
   );
@@ -82,7 +89,7 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
 
   return (
     <>
-      <RunStatus data={data} />
+      <RunStatus data={data} stale={!isToday} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
           role="tablist"
@@ -154,76 +161,5 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
         current={subscription.data ?? null}
       />
     </>
-  );
-}
-
-/** 08:00 選股 → 09:00–13:30 盯盤 → 18:00 收盤確認, with the market breadth the list was built under. */
-function RunStatus({ data }: { data: StrategyWatchToday }): ReactNode {
-  const t = useTranslations("watch");
-  const locale = useLocale();
-  const asked = requestedDate(useSearchParams().get("date"));
-  // A list for another day is only a warning when today's was wanted and is not ready.
-  const isToday = data.run_date === (asked ?? taipeiToday());
-  const steps = [
-    { key: "screen", done: true, note: data.as_of ? t("asOf", { date: data.as_of }) : null },
-    {
-      key: "watch",
-      done: data.last_slot !== null,
-      note: data.last_slot
-        ? t("pipeline.lastCheck", { time: data.last_slot })
-        : t("pipeline.notStarted"),
-    },
-    {
-      key: "close",
-      done: data.events.some((e) => e.kind === "close"),
-      note: null,
-    },
-  ] as const;
-  return (
-    <section className="surface-card space-y-3 p-4" aria-label={t("pipeline.label")}>
-      {isToday || data.run_date === null ? null : (
-        <p className="text-[12.5px] text-[var(--warn)]">
-          {t("earlierList", { date: data.run_date })}
-        </p>
-      )}
-      <ol className="flex flex-wrap items-center gap-x-2 gap-y-2 text-[12.5px]">
-        {steps.map((step, index) => (
-          <li key={step.key} className="flex items-center gap-2">
-            {index > 0 ? <span aria-hidden className="h-px w-6 bg-[var(--border-strong)]" /> : null}
-            <span
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2.5 py-1",
-                step.done
-                  ? "border-[var(--accent)] text-[var(--text)]"
-                  : "border-[var(--border)] text-[var(--text-muted)]",
-              )}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "size-2 rounded-full",
-                  step.done ? "bg-[var(--accent)]" : "bg-[var(--border-strong)]",
-                )}
-              />
-              {t(`pipeline.${step.key}`)}
-              {step.note ? <span className="text-[var(--text-muted)]">· {step.note}</span> : null}
-            </span>
-          </li>
-        ))}
-      </ol>
-      {data.regime !== null ? (
-        <p className="text-[12.5px] text-[var(--text-muted)]">
-          {t("regime.label")}：{t(`regime.${data.regime}`)} ·{" "}
-          {t("regime.breadth", {
-            pct:
-              data.breadth_pct === null
-                ? "—"
-                : new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(
-                    data.breadth_pct,
-                  ),
-          })}
-        </p>
-      ) : null}
-    </section>
   );
 }

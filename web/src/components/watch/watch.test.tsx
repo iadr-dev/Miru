@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { pipelineSteps } from "@/components/watch/run-status";
 import {
   distanceToLevel,
   initialStrategy,
@@ -9,7 +10,11 @@ import {
 } from "@/components/watch/watch-format";
 import { WatchTable } from "@/components/watch/watch-table";
 import { renderWithIntl } from "@/test/render";
-import { STRATEGY_KEYS, type StrategyWatchItem } from "@/types/strategy-watch";
+import {
+  STRATEGY_KEYS,
+  type StrategyWatchItem,
+  type StrategyWatchToday,
+} from "@/types/strategy-watch";
 
 function item(overrides: Partial<StrategyWatchItem> = {}): StrategyWatchItem {
   return {
@@ -112,5 +117,58 @@ describe("WatchTable", () => {
       />,
     );
     expect(screen.getByText("尚未檢查")).toBeTruthy();
+  });
+});
+
+describe("pipelineSteps", () => {
+  const base = {
+    data_available: true,
+    unavailable_reason: null,
+    run_date: "2026-10-16",
+    as_of: "2026-10-15",
+    regime: "neutral",
+    breadth_pct: 46,
+    last_slot: "10:20",
+    counts: {},
+    items: [],
+    events: [],
+    masked: false,
+  } satisfies Omit<StrategyWatchToday, "data_dates">;
+
+  it("marks each post-close refresh done only once its data reaches the list's session", () => {
+    const steps = pipelineSteps({
+      ...base,
+      data_dates: {
+        price_eod: "2026-10-16",
+        margin_short: "2026-10-15",
+        institutional_flow: "2026-10-16",
+      },
+    });
+    expect(steps.map((s) => s.key)).toEqual(["screen", "watch", "prices", "close", "flows"]);
+    const prices = steps.find((s) => s.key === "prices");
+    // Margin has not landed for today, so the 17:40 step is not done and says where it stops.
+    expect(prices).toEqual({
+      key: "prices",
+      done: false,
+      note: { kind: "dataThrough", date: "2026-10-15" },
+    });
+    expect(steps.find((s) => s.key === "flows")?.done).toBe(true);
+  });
+
+  it("shows where stale data stops when there is no list at all", () => {
+    const steps = pipelineSteps({
+      ...base,
+      data_available: false,
+      run_date: null,
+      as_of: null,
+      last_slot: null,
+      data_dates: { price_eod: "2026-09-24", margin_short: "2026-09-24", institutional_flow: null },
+    });
+    expect(steps.every((s) => !s.done)).toBe(true);
+    expect(steps.find((s) => s.key === "prices")?.note).toEqual({
+      kind: "dataThrough",
+      date: "2026-09-24",
+    });
+    expect(steps.find((s) => s.key === "flows")?.note).toEqual({ kind: "noData" });
   });
 });

@@ -19,7 +19,12 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field
 
 from analytics.coerce import as_float
-from analytics.strategy_watch.batch import STRATEGY_WATCHLIST_DATASET
+from analytics.strategy_watch.batch import (
+    INSTITUTIONAL_FLOW_DATASET,
+    MARGIN_SHORT_DATASET,
+    PRICE_EOD_DATASET,
+    STRATEGY_WATCHLIST_DATASET,
+)
 from ingest.jobs.strategy_intraday import STRATEGY_HITS_DATASET
 from ingest.store import ParquetStore
 from schemas.enums import DataClass
@@ -97,6 +102,18 @@ class StrategyWatchEvent(BaseModel):
     kind: Literal["intraday", "close"]
 
 
+class StrategyWatchDataDates(BaseModel):
+    """The latest session each input the screen reads has real rows for: the post-close refresh
+    steps of the daily cycle (股價 17:40, 融資 17:40, 三大法人 20:10). A date behind the list's
+    session means that refresh has not landed (or the source is failing)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    price_eod: date_ | None = None
+    margin_short: date_ | None = None
+    institutional_flow: date_ | None = None
+
+
 class GetStrategyWatchOutput(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -111,6 +128,7 @@ class GetStrategyWatchOutput(BaseModel):
     items: tuple[StrategyWatchItem, ...] = ()
     events: tuple[StrategyWatchEvent, ...] = ()
     masked: bool = False
+    data_dates: StrategyWatchDataDates = StrategyWatchDataDates()
 
 
 def _conditions(raw: object) -> list[StrategyCondition]:
@@ -156,6 +174,17 @@ class GetStrategyWatchTool(SyncStoreTool):
                 return day
         return None
 
+    def _data_dates(self) -> StrategyWatchDataDates:
+        def latest(dataset: str) -> date_ | None:
+            dates = self._store.list_partition_dates(dataset, "TW")
+            return dates[-1] if dates else None
+
+        return StrategyWatchDataDates(
+            price_eod=latest(PRICE_EOD_DATASET),
+            margin_short=latest(MARGIN_SHORT_DATASET),
+            institutional_flow=latest(INSTITUTIONAL_FLOW_DATASET),
+        )
+
     def run_sync(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         typed = parse_args(GetStrategyWatchInput, args)
         wanted = typed.as_of or datetime.now(_TAIPEI).date()
@@ -167,6 +196,7 @@ class GetStrategyWatchTool(SyncStoreTool):
                     "No strategy-watch list in the last 10 days: the 08:00 screen skips when "
                     "the stored prices are stale."
                 ),
+                data_dates=self._data_dates(),
             )
         watch = self._store.read_partition(STRATEGY_WATCHLIST_DATASET, "TW", day)
         hits = (
@@ -194,6 +224,7 @@ class GetStrategyWatchTool(SyncStoreTool):
             items=tuple(items),
             events=tuple(self._events(hits, watch)),
             masked=masked,
+            data_dates=self._data_dates(),
         )
 
     def _items(
@@ -273,6 +304,7 @@ __all__ = [
     "GetStrategyWatchOutput",
     "GetStrategyWatchTool",
     "StrategyCondition",
+    "StrategyWatchDataDates",
     "StrategyWatchEvent",
     "StrategyWatchItem",
 ]
