@@ -58,7 +58,7 @@ from schemas.fred_catalog import (
     SeriesFrequency,
 )
 from schemas.source import HealthStatus, SourceResult
-from sources.fred import EARLIEST_REALTIME, LATEST_REALTIME, NOT_CONFIGURED_DETAIL
+from sources.fred import LATEST_REALTIME, NOT_CONFIGURED_DETAIL
 
 logger = structlog.get_logger(__name__)
 
@@ -282,18 +282,23 @@ async def _refresh_vintages(
         )
         if newest is None:
             return
+        # An observation first appears on or after its own date, so the real-time range starts at
+        # the window start: nothing earlier can be a first release, and the request stays under
+        # the cap on vintage dates per call (a whole-history range would exceed it for the
+        # long, often-revised series).
         start = newest - timedelta(days=_VINTAGE_WINDOW_DAYS.get(spec.frequency, 760))
         async with gate:
             result = await gateway.fetch_all_observations(
                 spec.series_id,
                 units="lin",
                 observation_start=start,
-                realtime_start=EARLIEST_REALTIME,
+                realtime_start=start,
                 realtime_end=LATEST_REALTIME,
                 tls_policy=ctx.tls_policy,
             )
             if result.health.status not in (HealthStatus.OK, HealthStatus.STALE):
                 failures.append(f"{spec.series_id} vintages: {result.health.detail}")
+                outcome.failure = outcome.failure or f"vintages: {result.health.detail}"
                 return
             rows: list[Row] = []
             for raw in _payload_list(result, "observations"):
@@ -346,7 +351,19 @@ def _meta_row(
     if outcome.series is None:
         return previous.model_dump() if previous is not None else None
     series = outcome.series
+    # A failed `series/release` lookup must not blank the release link a series already had.
     release = outcome.release or {}
+    if outcome.release is None and previous is not None:
+        release = {
+            "id": previous.release_id,
+            "name": previous.release_name,
+            "link": previous.release_link,
+        }
+    # A failed observation or vintage read keeps the stamp from before: tomorrow's run sees it
+    # changed again and retries, instead of waiting up to a week for the full refresh.
+    stamp = str(series.get("last_updated") or "")
+    if outcome.failure is not None and previous is not None:
+        stamp = previous.last_updated
     default_rows = outcome.rows_by_units.get(spec.default_units.value, [])
     try:
         return MacroSeriesMetaRow(
@@ -358,7 +375,7 @@ def _meta_row(
             frequency_short=str(series.get("frequency_short") or ""),
             seasonal_adjustment=str(series.get("seasonal_adjustment") or ""),
             seasonal_adjustment_short=str(series.get("seasonal_adjustment_short") or ""),
-            last_updated=str(series.get("last_updated") or ""),
+            last_updated=stamp,
             observation_start=_date_of(series.get("observation_start")),
             observation_end=_date_of(series.get("observation_end")),
             popularity=cast("int | None", series.get("popularity")),

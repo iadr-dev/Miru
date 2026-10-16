@@ -98,6 +98,7 @@ class FakeFredServer:
         self.overrides: dict[tuple[str, str, date], float] = {}
         self.failing_observations: set[str] = set()
         self.failing_meta: set[str] = set()
+        self.failing_release: set[str] = set()
         self.revisions: dict[str, dict[date, list[tuple[date, float]]]] = {}
         self.empty_observations: set[str] = set()
         self.all_meta_fail = False
@@ -168,6 +169,8 @@ class FakeFredServer:
         )
 
     def _series_release(self, request: httpx.Request) -> httpx.Response:
+        if request.url.params["series_id"] in self.failing_release:
+            return httpx.Response(400, json={"error_code": 400, "error_message": "Bad Request."})
         release_id, name = release_for(request.url.params["series_id"])
         return httpx.Response(
             200,

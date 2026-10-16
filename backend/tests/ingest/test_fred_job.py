@@ -280,6 +280,67 @@ async def test_a_failing_series_keeps_its_stored_rows_and_makes_the_run_partial(
     assert len(after[("CCSA", "lin")]) == len(series_dates(CATALOG_BY_ID["CCSA"]))  # others proceed
 
 
+async def test_a_failed_observation_read_is_retried_the_next_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A series whose observation read fails must keep its old `last_updated` stamp, so the next
+    run sees the stamp changed again and re-reads it, instead of waiting for the weekly refresh."""
+    server = FakeFredServer()
+    await run_job(tmp_path, monkeypatch, server)
+    store = ParquetStore(tmp_path)
+    server.last_updated["UNRATE"] = "2026-10-15 08:00:00-05"
+    server.failing_observations.add("UNRATE")
+    day_two = RUN_DATE + timedelta(days=1)
+    assert (await job_fred_macro(day_two, make_ctx(tmp_path))).status is RunStatus.PARTIAL
+    _, meta = read_meta(store)
+    assert meta["UNRATE"].last_updated != "2026-10-15 08:00:00-05"  # not recorded as seen
+
+    server.failing_observations.clear()
+    server.requests.clear()
+    run = await job_fred_macro(day_two + timedelta(days=1), make_ctx(tmp_path))
+
+    assert run.status is RunStatus.SUCCESS
+    assert {r.url.params["series_id"] for r in server.observation_requests()} == {"UNRATE"}
+    _, meta = read_meta(store)
+    assert meta["UNRATE"].last_updated == "2026-10-15 08:00:00-05"
+
+
+async def test_a_failed_release_lookup_keeps_the_series_release_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    server = FakeFredServer()
+    await run_job(tmp_path, monkeypatch, server)
+    store = ParquetStore(tmp_path)
+    _, before = read_meta(store)
+    assert before["CPIAUCSL"].release_name
+    server.failing_release.add("CPIAUCSL")
+
+    await job_fred_macro(RUN_DATE + timedelta(days=1), make_ctx(tmp_path))
+
+    _, after = read_meta(store)
+    assert after["CPIAUCSL"].release_id == before["CPIAUCSL"].release_id
+    assert after["CPIAUCSL"].release_name == before["CPIAUCSL"].release_name
+
+
+async def test_vintage_history_is_requested_from_the_window_start_not_from_1776(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A whole-history real-time range exceeds FRED's cap on vintage dates for the long,
+    often-revised series; an observation is never first published before its own date."""
+    server = FakeFredServer()
+    await run_job(tmp_path, monkeypatch, server)
+
+    vintage_requests = [
+        r
+        for r in server.requests
+        if r.url.path.endswith("/series/observations")
+        and "realtime_end" in r.url.params
+        and r.url.params["series_id"] == "PAYEMS"
+    ]
+    assert vintage_requests
+    assert all(r.url.params["realtime_start"] > "1990-01-01" for r in vintage_requests)
+
+
 async def test_a_failing_metadata_lookup_carries_the_stored_series_forward(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
