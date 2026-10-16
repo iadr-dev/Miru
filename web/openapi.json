@@ -10637,6 +10637,14 @@
       ],
       "title": "Run Date"
      },
+     "slots": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/StrategyWatchSlot"
+      },
+      "title": "Slots",
+      "type": "array"
+     },
      "unavailable_reason": {
       "anyOf": [
        {
@@ -18941,6 +18949,36 @@
      "close"
     ],
     "title": "StrategyWatchItem",
+    "type": "object"
+   },
+   "StrategyWatchSlot": {
+    "additionalProperties": false,
+    "description": "One intraday check that ran: how many stocks it compared, how many met every trigger, and\nhow many of those became an alert (met on two checks in a row, guards passed).",
+    "properties": {
+     "alertable": {
+      "title": "Alertable",
+      "type": "integer"
+     },
+     "all_met": {
+      "title": "All Met",
+      "type": "integer"
+     },
+     "checked": {
+      "title": "Checked",
+      "type": "integer"
+     },
+     "slot": {
+      "title": "Slot",
+      "type": "string"
+     }
+    },
+    "required": [
+     "slot",
+     "checked",
+     "all_met",
+     "alertable"
+    ],
+    "title": "StrategyWatchSlot",
     "type": "object"
    },
    "SubIndustryHeat": {

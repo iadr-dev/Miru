@@ -3615,7 +3615,25 @@
       "prices": "17:40 prices & margin",
       "flows": "20:10 institutional flows",
       "dataThrough": "data through {date}",
-      "noData": "no data yet"
+      "noData": "no data yet",
+      "now": "Now {time}",
+      "nextCheck": "Next check {time} (in {minutes} min)",
+      "checks": "{done}/{total} checks",
+      "hitsAt": "{slot} · {checked} checked, {met} met all conditions, {alerted} alerted",
+      "setups": "{count} picked",
+      "closeCount": "{count} confirmed at the close",
+      "stale": "Data not updated",
+      "running": "Watching",
+      "done": "Done",
+      "pending": "Waiting",
+      "status": "Status",
+      "desc": {
+        "screen": "Builds today's list from the last session's prices, institutional flows and holdings, with each stock's trigger levels.",
+        "watch": "Every 10 minutes in the session, checks the list against a whole-market live snapshot; alerts after two checks in a row.",
+        "prices": "After the close, adds the day's prices and margin balances for the close check and tomorrow's screen.",
+        "close": "Confirms breakouts on the closing price and volume, with its own alert.",
+        "flows": "Adds institutional net buying for tomorrow's screen (streaks and chip signals)."
+      }
     },
     "regime": {
       "label": "Market breadth",
