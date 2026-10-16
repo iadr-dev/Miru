@@ -5625,11 +5625,6 @@ export interface components {
       flags?: string[];
       /** Institutional Net */
       institutional_net?: number | null;
-      /**
-       * Locked
-       * @default false
-       */
-      locked: boolean;
       /** Margin Caveat */
       margin_caveat?: string | null;
       margin_health_status?: components["schemas"]["HealthStatus"] | null;
@@ -7225,11 +7220,6 @@ export interface components {
       cards?: components["schemas"]["DispositionBoardCardRow"][];
       /** Data Available */
       data_available: boolean;
-      /**
-       * Free Row Count
-       * @default 0
-       */
-      free_row_count: number;
       /** Market */
       market: string;
       /** Report Date */

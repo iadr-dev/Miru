@@ -1,5 +1,5 @@
 """`GetDispositionBoardTool` — bucket classification (風險股/處置中/即將出關), rolling-window
-projection, and Sponsor-tier masking."""
+projection, and the whole board for every caller (it is built on free exchange data)."""
 
 from __future__ import annotations
 
@@ -430,16 +430,15 @@ async def test_no_ingested_data_returns_unavailable(tmp_path: object) -> None:
     assert output.cards == ()
 
 
-def test_data_class_is_sponsor(tmp_path: object) -> None:
+def test_data_class_is_public(tmp_path: object) -> None:
+    """Every input is free exchange / MOPS open data, so the board is not a Sponsor feature."""
     store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
 
-    assert _tool(store).data_class == DataClass.SPONSOR
+    assert _tool(store).data_class == DataClass.PUBLIC
 
 
-async def test_masks_cards_beyond_free_preview_per_bucket_for_free_tier(tmp_path: object) -> None:
-    """governance.md §4 top-N-preview exception: an unentitled (FREE) caller gets the top
-    `_DISPOSITION_BOARD_FREE_ROW_COUNT` cards of each BUCKET real, everything else with identity/
-    value fields nulled and `locked=True` — the budget is per bucket, not global."""
+async def test_free_caller_sees_every_card_ranked_per_bucket(tmp_path: object) -> None:
+    """A FREE caller gets every card real, each ranked 1.. within its own bucket."""
     store = ParquetStore(root=tmp_path)  # type: ignore[arg-type]
     # `list_partition_dates` ignores a genuinely-empty write (see its own docstring) — a real
     # row (for a symbol distinct from the at_risk roster below) is needed to make this date
@@ -481,25 +480,10 @@ async def test_masks_cards_beyond_free_preview_per_bucket_for_free_tier(tmp_path
             for symbol, name in [("1101", "台泥"), ("1102", "亞泥"), ("1103", "嘉泥")]
         ],
     )
-    tool = _tool(store)
-    assert tool.supports_row_preview is True
-
-    output = await tool.run(GetDispositionBoardInput(market=_MARKET), ToolContext())
+    output = await _tool(store).run(GetDispositionBoardInput(market=_MARKET), ToolContext())
 
     assert output.data_available is True
-    assert output.free_row_count == 2
     at_risk_cards = [c for c in output.cards if c.bucket == "at_risk"]
-    assert len(at_risk_cards) == 3
-    free_cards = [c for c in at_risk_cards if c.rank <= 2]
-    locked_cards = [c for c in at_risk_cards if c.rank > 2]
-    assert len(free_cards) == 2
-    assert len(locked_cards) == 1
-    for card in free_cards:
-        assert card.locked is False
-        assert card.symbol is not None
-    locked_card = locked_cards[0]
-    assert locked_card.locked is True
-    assert locked_card.symbol is None
-    assert locked_card.company_name is None
-    assert locked_card.bucket == "at_risk"
-    assert locked_card.projection_caveat
+    assert [c.rank for c in at_risk_cards] == [1, 2, 3]
+    assert [c.symbol for c in at_risk_cards] == ["1101", "1102", "1103"]
+    assert all(c.company_name is not None for c in at_risk_cards)

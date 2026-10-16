@@ -1,9 +1,7 @@
 """The `/market/disposition-board` REST route, driven through the REAL FastAPI route via
 `TestClient` — same stub-router-swap + `PARQUET_ROOT`-env pattern as
-`test_material_announcement_feed_route.py`. `get_disposition_board` is `DataClass.SPONSOR` but
-opted into the governance.md §4 row-level preview exception (`supports_row_preview=True`), so an
-unentitled caller gets this shape directly (row-masked `locked=True` cards beyond
-`free_row_count`, per bucket), never a whole-tool masked-teaser envelope.
+`test_material_announcement_feed_route.py`. `get_disposition_board` is `DataClass.PUBLIC` (it is
+built on free exchange data), so a free caller gets the whole board.
 """
 
 from __future__ import annotations
@@ -40,7 +38,7 @@ def _client_with_store(
 
 
 class TestDispositionBoardRoute:
-    def test_unentitled_caller_gets_row_masked_board(
+    def test_free_caller_gets_the_whole_board(
         self,
         settings: Settings,
         agent_answer: str,
@@ -75,9 +73,8 @@ class TestDispositionBoardRoute:
         body = resp.json()
         assert "locked" not in body
         assert body["data_available"] is True
-        # 1 card, within `free_row_count` — stays real, never `locked`.
         assert body["cards"][0]["symbol"] == "3008"
-        assert body["cards"][0]["locked"] is False
+        assert "locked" not in body["cards"][0]
 
     def test_reports_unavailable_when_no_partition_for_entitled_caller(
         self,

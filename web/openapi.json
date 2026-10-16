@@ -3291,11 +3291,6 @@
       ],
       "title": "Institutional Net"
      },
-     "locked": {
-      "default": false,
-      "title": "Locked",
-      "type": "boolean"
-     },
      "margin_caveat": {
       "anyOf": [
        {
@@ -7424,11 +7419,6 @@
      "data_available": {
       "title": "Data Available",
       "type": "boolean"
-     },
-     "free_row_count": {
-      "default": 0,
-      "title": "Free Row Count",
-      "type": "integer"
      },
      "market": {
       "title": "Market",

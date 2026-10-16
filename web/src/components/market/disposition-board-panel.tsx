@@ -87,7 +87,6 @@ function DispositionBoardBody({
   const filteredCards = useMemo(() => {
     return cards.filter((card) => {
       if (card.bucket !== bucket) return false;
-      if (card.locked) return true;
       if (!query) return true;
       return (
         (card.symbol?.toLowerCase().includes(query) ?? false) ||
@@ -143,7 +142,7 @@ function DispositionBoardBody({
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {filteredCards.map((card) => (
             <DispositionStockCard
-              key={card.symbol ?? `locked-${card.bucket}-${card.rank}`}
+              key={card.symbol ?? `${card.bucket}-${card.rank}`}
               card={card}
               sparkline={(card.symbol && quoteBySymbol.get(card.symbol)?.sparkline) || []}
             />

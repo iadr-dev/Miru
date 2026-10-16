@@ -535,7 +535,7 @@ table cannot carry.
 | GET | `/api/v1/market/material-announcements` | optional | `get_material_announcements` | public | Today's MOPS material-announcement (重大訊息) disclosures for one stock. |
 | GET | `/api/v1/market/material-announcement-feed` | optional | `get_material_announcement_feed` | public | 重大訊息 whole-market feed for one day (defaults to the latest day MOPS ingest has captured), optionally filtered to one derived category bucket, with a… |
 | GET | `/api/v1/market/insider-transfer-declarations` | optional | `get_insider_transfer_declarations` | public | 內部人股權轉讓事前申報 (insider advance-transfer-plan declaration) whole-market feed for one day (defaults to the latest day MOPS ingest has captured) — `t187ap… |
-| GET | `/api/v1/market/disposition-board` | optional | `get_disposition_board` | sponsor | 處置王-style disposition board: 風險股/處置中/即將出關 buckets, read from the ingest-owned `attention_stocks`/`disposition_events` partitions plus already-ingeste… |
+| GET | `/api/v1/market/disposition-board` | optional | `get_disposition_board` | public | 處置王-style disposition board: 風險股/處置中/即將出關 buckets, read from the ingest-owned `attention_stocks`/`disposition_events` partitions plus already-ingeste… |
 | GET | `/api/v1/market/tag-catalog` | optional | `get_tag_catalog` | public | The discoverable tap-tile screener tag list, grouped by category with bilingual labels — `get_tag_catalog` takes no input, so this route dispatches w… |
 | GET | `/api/v1/market/tag-screener` | optional | `run_tag_screener` | public | Tap-tile tag screener over the nightly-computed flag partition. |
 | GET | `/api/v1/market/symbol-info` | optional | `get_symbol_info` | public | Batched symbol->name (+ industry/security-type) lookup, e.g. |

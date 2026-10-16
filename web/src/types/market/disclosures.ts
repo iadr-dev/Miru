@@ -134,7 +134,6 @@ export const dispositionBoardCardRowSchema = z.object({
   estimated_days_until_disposition: z.number().nullable(),
   days_until_exiting: z.number().nullable(),
   projection_caveat: z.string(),
-  locked: z.boolean().default(false),
 });
 
 export type DispositionBoardCardRow = z.infer<typeof dispositionBoardCardRowSchema>;
@@ -145,15 +144,12 @@ export const dispositionBoardDataSchema = z.object({
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable().optional(),
   bucket_counts: z.record(z.string(), z.number()).default({}),
-  free_row_count: z.number().default(0),
   cards: z.array(dispositionBoardCardRowSchema).default([]),
 });
 
 export type DispositionBoardData = z.infer<typeof dispositionBoardDataSchema>;
 
-// No longer unioned with `maskedTeaserSchema` — `get_disposition_board` opted into
-// governance.md §4's row-preview exception (`supports_row_preview=True`), so an unentitled
-// caller gets this shape directly with `locked` cards, never a whole-tool `MaskedTeaser`.
+// `get_disposition_board` is public (free exchange data), so every caller gets the whole board.
 export const dispositionBoardResponseSchema = dispositionBoardDataSchema;
 
 export type DispositionBoardResponse = z.infer<typeof dispositionBoardResponseSchema>;
