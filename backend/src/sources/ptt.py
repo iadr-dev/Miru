@@ -57,6 +57,13 @@ MIN_SECONDS_BETWEEN_REQUESTS = 60.0
 # just returns whatever it found (never blocks indefinitely chasing a full week).
 MAX_INDEX_PAGES_PER_FETCH = 12
 
+# The newest index page is often only partly filled (a page holds ~20 rows), and a quiet board
+# (Warrant) may have only a handful there. A single-page (`lookback_days<=1`) fetch that comes
+# back short keeps reading older pages, undated, until it has this many posts or has read
+# `SINGLE_PAGE_TOP_UP_MAX_PAGES` pages, so the board shows its latest activity, not 4 rows.
+SINGLE_PAGE_MIN_POSTS = 40  # the PTT tab shows 40 posts before 展開
+SINGLE_PAGE_TOP_UP_MAX_PAGES = 3
+
 # `search_boards` (per-symbol PTT best-effort match) fetches each candidate post's own page to
 # search its BODY text, not just the title — most real posts about a stock never name it in the
 # title (confirmed empirically: a week of Stock/Tech_Job/Warrant index titles for 2330/台積電
@@ -109,11 +116,18 @@ def _resolve_posted_date(raw_date: str, *, now: datetime) -> str | None:
     if match is None:
         return None
     month, day = int(match.group(1)), int(match.group(2))
-    year = now.year - 1 if month > now.month else now.year
     try:
-        return date(year, month, day).isoformat()
+        resolved = date(now.year, month, day)
     except ValueError:
         return None
+    # Later than tomorrow means last year: 10/19 seen on 10/16 is last October, not this one. One
+    # day of slack because `now` is UTC and a Taipei post can already carry tomorrow's date.
+    if resolved > now.date() + timedelta(days=1):
+        try:
+            resolved = date(now.year - 1, month, day)
+        except ValueError:  # 2/29 in a non-leap year
+            return None
+    return resolved.isoformat()
 
 
 def _parse_entry(
@@ -154,10 +168,29 @@ def _parse_entry(
 
 
 def _find_prev_page_href(tree: HTMLParser) -> str | None:
+    # ptt.cc renders the link as "&lsaquo; 上頁", so match the label alone.
     for node in tree.css("a.btn.wide"):
-        if node.text(strip=True) == _PREV_PAGE_LABEL:
+        if _PREV_PAGE_LABEL in node.text(strip=True):
             return node.attributes.get("href")
     return None
+
+
+def _listing_entries(tree: HTMLParser) -> list[Node]:
+    """The `div.r-ent` rows above the newest page's `div.r-list-sep` line. Rows below it are the
+    board's pinned 置底 posts (板規, 公告), often months old: they are not today's chatter, and
+    counting their dates made a multi-day walk stop on page 1 every time. Walks the listing's
+    children in page order (a grouped CSS selector does not keep document order)."""
+    container = tree.css_first("div.r-list-container")
+    if container is None:
+        return list(tree.css("div.r-ent"))
+    entries: list[Node] = []
+    for node in container.iter():
+        classes = (node.attributes.get("class") or "").split()
+        if "r-list-sep" in classes:
+            break
+        if "r-ent" in classes:
+            entries.append(node)
+    return entries
 
 
 def _parse_index_html(board: str, html: str, *, now: datetime) -> _BoardParseResult:
@@ -165,7 +198,7 @@ def _parse_index_html(board: str, html: str, *, now: datetime) -> _BoardParseRes
     tree = HTMLParser(html)
     posts: list[PttPost] = []
     deleted = 0
-    for entry in tree.css("div.r-ent"):
+    for entry in _listing_entries(tree):
         post, is_deleted = _parse_entry(entry, board=board, tag=tag, now=now)
         if is_deleted:
             deleted += 1
@@ -227,10 +260,11 @@ class PttAdapter:
         self, *, board: str, tls_policy: TLSPolicy = TLSPolicy.STRICT, lookback_days: int = 1
     ) -> SourceResult:
         """Fetch one board's index listing, walking back through older pages (via each page's
-        own "上頁" nav link) until every remaining post on the current page is older than
-        `lookback_days` — `lookback_days=1` (the default) stops after page 1, matching the
-        original single-page behavior exactly. Bounded by `MAX_INDEX_PAGES_PER_FETCH` so a quiet
-        board can't turn a wide lookback into an unbounded fetch chain."""
+        own "上頁" nav link) until a post on the current page is older than `lookback_days`.
+        `lookback_days=1` (the default) reads the newest page, plus older pages only while it has
+        fewer than `SINGLE_PAGE_MIN_POSTS` posts (see that constant), with no date filter. Pinned
+        置底 posts are never included. Bounded by `MAX_INDEX_PAGES_PER_FETCH` so a quiet board
+        can't turn a wide lookback into an unbounded fetch chain."""
         tag = _BOARD_TAGS.get(board)
         if tag is None:
             return _result(
@@ -248,7 +282,7 @@ class PttAdapter:
         deleted_total = 0
         next_url: str | None = f"{_BASE_URL}/bbs/{board}/index.html"
 
-        for _ in range(MAX_INDEX_PAGES_PER_FETCH):
+        for page_number in range(1, MAX_INDEX_PAGES_PER_FETCH + 1):
             if next_url is None:
                 break
             try:
@@ -278,7 +312,14 @@ class PttAdapter:
                 p for p in parsed.posts if p.posted_date is None or p.posted_date >= cutoff
             ]
             reached_cutoff = len(in_window) < len(parsed.posts)
-            if reached_cutoff or lookback_days <= 1:
+            if lookback_days <= 1:
+                topped_up = (
+                    len(all_posts) >= SINGLE_PAGE_MIN_POSTS
+                    or page_number >= SINGLE_PAGE_TOP_UP_MAX_PAGES
+                )
+                if topped_up:
+                    break
+            elif reached_cutoff:
                 break
             next_url = (
                 f"{_BASE_URL}{parsed.prev_page_href}"
