@@ -17,18 +17,33 @@ from sources.ptt import PttAdapter, _resolve_posted_date
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "ptt"
 
 
-def _index_page_html(*, entries: list[tuple[str, str]], prev_href: str | None) -> str:
-    """Build a minimal PTT-index-shaped HTML page — `entries` is `[(date, title), ...]`,
-    `prev_href` is the "上頁" nav link's href (`None` omits the nav entirely, matching the
-    oldest page in a real board's history)."""
-    rows = "".join(
+def _rows_html(entries: list[tuple[str, str]], *, start: int = 0) -> str:
+    return "".join(
         f'<div class="r-ent"><div class="title"><a href="/bbs/Stock/{i}.html">{title}</a>'
         f'</div><div class="author">tester</div><div class="nrec"><span>5</span></div>'
         f'<div class="date"> {date}</div></div>'
-        for i, (date, title) in enumerate(entries)
+        for i, (date, title) in enumerate(entries, start=start)
     )
-    nav = f'<a class="btn wide" href="{prev_href}">上頁</a>' if prev_href else ""
-    return f"<html><body>{rows}{nav}</body></html>"
+
+
+def _index_page_html(
+    *,
+    entries: list[tuple[str, str]],
+    prev_href: str | None,
+    pinned: list[tuple[str, str]] | None = None,
+) -> str:
+    """Build a minimal PTT-index-shaped HTML page — `entries` is `[(date, title), ...]`,
+    `prev_href` is the "上頁" nav link's href (`None` omits the nav entirely, matching the
+    oldest page in a real board's history). `pinned` adds the newest page's 置底 rows below a
+    `div.r-list-sep` line, inside the listing container as on ptt.cc."""
+    nav = f'<a class="btn wide" href="{prev_href}">&lsaquo; 上頁</a>' if prev_href else ""
+    if pinned is None:
+        return f"<html><body>{_rows_html(entries)}{nav}</body></html>"
+    listing = (
+        f'<div class="r-list-container">{_rows_html(entries)}<div class="r-list-sep"></div>'
+        f"{_rows_html(pinned, start=len(entries))}</div>"
+    )
+    return f"<html><body>{nav}{listing}</body></html>"
 
 
 def _post_page_html(*, body: str, pushes: tuple[str, ...] = ()) -> str:
@@ -180,6 +195,13 @@ def test_resolve_posted_date_rolls_back_a_year_for_future_month() -> None:
     a future date, so it must be last year's occurrence of that month/day."""
     now = datetime(2026, 1, 15, tzinfo=UTC)
     assert _resolve_posted_date(" 12/20", now=now) == "2025-12-20"
+
+
+def test_resolve_posted_date_rolls_back_a_year_for_a_later_day_this_month() -> None:
+    now = datetime(2026, 10, 16, tzinfo=UTC)
+    assert _resolve_posted_date("10/19", now=now) == "2025-10-19"
+    # Tomorrow stays this year: `now` is UTC, a Taipei post may already carry tomorrow's date.
+    assert _resolve_posted_date("10/17", now=now) == "2026-10-17"
 
 
 def test_resolve_posted_date_malformed_returns_none() -> None:
@@ -357,3 +379,61 @@ async def test_search_boards_body_fetch_transport_error_skips_post_not_whole_sea
     assert isinstance(posts, list)
     assert len(posts) == 1
     assert posts[0]["title"] == "[心得] 第二篇"  # type: ignore[index]
+
+
+async def test_fetch_board_skips_pinned_posts_and_keeps_walking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The newest page's pinned 置底 posts (months old) sit below `div.r-list-sep`: they are
+    left out, and their old dates no longer stop a multi-day walk on page 1."""
+    now = datetime.now(UTC)
+    today = f"{now.month}/{now.day}"
+    yesterday_at = now - timedelta(days=1)
+    yesterday = f"{yesterday_at.month}/{yesterday_at.day}"
+    months_ago_at = now - timedelta(days=120)
+    months_ago = f"{months_ago_at.month}/{months_ago_at.day}"
+    old_at = now - timedelta(days=10)
+    old = f"{old_at.month}/{old_at.day}"
+    page1 = _index_page_html(
+        entries=[(today, "[新聞] today post")],
+        prev_href="/bbs/Stock/index2.html",
+        pinned=[(months_ago, "[公告] 板規")],
+    )
+    page2 = _index_page_html(
+        entries=[(yesterday, "[標的] yesterday post")], prev_href="/bbs/Stock/index3.html"
+    )
+    page3 = _index_page_html(entries=[(old, "[閒聊] old post")], prev_href=None)
+    pages = {
+        "/bbs/Stock/index.html": page1,
+        "/bbs/Stock/index2.html": page2,
+        "/bbs/Stock/index3.html": page3,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=pages.get(request.url.path, page3))
+
+    def factory(**_kwargs: object) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(ptt_module, "build_async_client", factory)
+
+    walked = await PttAdapter().fetch_board(
+        board="Stock", tls_policy=TLSPolicy.STRICT, lookback_days=3
+    )
+    single = await PttAdapter().fetch_board(
+        board="Stock", tls_policy=TLSPolicy.STRICT, lookback_days=1
+    )
+
+    walked_posts = walked.payload["posts"]
+    assert isinstance(walked_posts, list)
+    titles = [post["title"] for post in walked_posts]  # type: ignore[index]
+    assert titles == ["[新聞] today post", "[標的] yesterday post"]
+    # A one-day fetch whose newest page is short reads older pages too, undated, so a quiet
+    # board still shows its latest activity (here: all three pages, still under the minimum).
+    single_posts = single.payload["posts"]
+    assert isinstance(single_posts, list)
+    assert [post["title"] for post in single_posts] == [  # type: ignore[index]
+        "[新聞] today post",
+        "[標的] yesterday post",
+        "[閒聊] old post",
+    ]
