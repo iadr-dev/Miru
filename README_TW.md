@@ -108,13 +108,25 @@ uv run uvicorn api.app:app --reload
 </details>
 
 <details>
-<summary><b>連接 MCP 用戶端</b></summary>
+<summary><b>連接 MCP 用戶端</b>（Claude、Gemini CLI、Codex、Cursor、VS Code）</summary>
 
 唯讀 MCP 端點位於 `http://localhost:8100/mcp`（streamable HTTP），存活檢查在 `/healthz`。
-它是獨立的程序，與 API 分開執行。匿名呼叫者使用 Free 方案；帶上 `Authorization: Bearer <access token>` 即可看到你自己方案可用的資料。
+它是獨立的程序，與 API 分開執行。匿名呼叫者使用 Free 方案（公開資料）。
+目前**尚未提供**用 Miru 帳號登入（用戶端的「Sign in」或 `/mcp` 按鈕）：伺服器還沒有 OAuth 登入，所以要在 MCP 取得付費方案的資料，
+暫時需要貼上 `Authorization: Bearer <access token>`，這個 token 約 15 分鐘後就會過期。
 
-要從 Claude 使用它（claude.ai 自訂連接器、Messages API 的 MCP 連接器，或 `claude mcp add`），請參考
-[`docs/backend/mcp-claude-connector.md`](docs/backend/mcp-claude-connector.md)：前兩種需要一個公開的 HTTPS 位址。
+| 用戶端 | 加入伺服器（`http://localhost:8100/mcp`） |
+|---|---|
+| Claude Code | `claude mcp add --transport http miru http://localhost:8100/mcp` |
+| Gemini CLI | `gemini mcp add --transport http miru http://localhost:8100/mcp` |
+| Codex CLI | `codex mcp add miru --url http://localhost:8100/mcp` |
+| Cursor | `~/.cursor/mcp.json`：`{"mcpServers": {"miru": {"url": "http://localhost:8100/mcp"}}}` |
+| VS Code | `.vscode/mcp.json`：`{"servers": {"miru": {"type": "http", "url": "http://localhost:8100/mcp"}}}` |
+| claude.ai／Claude Desktop | 自訂（Customize）→ 連接器（Connectors）→ 新增自訂連接器，選 **No sign in**；需要**公開的 HTTPS** 網址，不能用 localhost |
+| Claude API | `mcp_servers` 填公開 HTTPS 網址（要帶方案時再加 `authorization_token`） |
+
+以上指令取自各用戶端的官方文件，尚未對真實用戶端逐一實測；ChatGPT 連接器則尚未驗證。詳細說明、HTTPS 通道與 Bearer token 的作法見
+[`docs/backend/mcp-claude-connector.md`](docs/backend/mcp-claude-connector.md)。
 </details>
 
 ## ⚙️ 設定

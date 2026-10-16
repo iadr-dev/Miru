@@ -112,15 +112,27 @@ This runs with an in-process event bus. There is no scheduler, ingest or MCP pro
 </details>
 
 <details>
-<summary><b>Connect an MCP client</b></summary>
+<summary><b>Connect an MCP client</b> (Claude, Gemini CLI, Codex, Cursor, VS Code)</summary>
 
 The stack serves a read-only MCP endpoint at `http://localhost:8100/mcp` (streamable HTTP), with a
 liveness probe at `/healthz`. It runs as its own process, separate from the API. Anonymous callers get
-the Free tier; send `Authorization: Bearer <access token>` to see the data your own tier allows.
+the Free tier (public data). Signing in with your Miru account from a client's "Sign in" / `/mcp` button
+is **not available yet** (the server has no OAuth sign-in), so paid-tier data over MCP currently
+needs a pasted `Authorization: Bearer <access token>`, which expires after about 15 minutes.
 
-To use it from Claude (a claude.ai custom connector, the Messages API MCP connector, or
-`claude mcp add`), follow [`docs/backend/mcp-claude-connector.md`](docs/backend/mcp-claude-connector.md):
-the server needs a public HTTPS address for the first two.
+| Client | Add the server (`http://localhost:8100/mcp`) |
+|---|---|
+| Claude Code | `claude mcp add --transport http miru http://localhost:8100/mcp` |
+| Gemini CLI | `gemini mcp add --transport http miru http://localhost:8100/mcp` |
+| Codex CLI | `codex mcp add miru --url http://localhost:8100/mcp` |
+| Cursor | `~/.cursor/mcp.json`: `{"mcpServers": {"miru": {"url": "http://localhost:8100/mcp"}}}` |
+| VS Code | `.vscode/mcp.json`: `{"servers": {"miru": {"type": "http", "url": "http://localhost:8100/mcp"}}}` |
+| claude.ai / Claude Desktop | Customize, Connectors, Add custom connector, choose **No sign in**. Needs a **public HTTPS** URL, not localhost |
+| Claude API | `mcp_servers` with the public HTTPS URL (and `authorization_token` for a tier) |
+
+The setup commands above come from each client's own documentation and are not yet run against the
+live clients; ChatGPT connectors are not verified. Details, the HTTPS tunnel steps and the
+Bearer-token option are in [`docs/backend/mcp-claude-connector.md`](docs/backend/mcp-claude-connector.md).
 </details>
 
 ## ⚙️ Configuration
