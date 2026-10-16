@@ -3726,7 +3726,6 @@
     },
     "unavailable": "No watch list right now",
     "unavailableHint": "The 08:00 screen needs the latest closing data and is skipped when that data is stale.",
-    "disclaimer": "A summary of conditions you subscribed to, not investment advice.",
     "form": {
       "title": "Strategy watch alerts",
       "strategies": "Strategies",

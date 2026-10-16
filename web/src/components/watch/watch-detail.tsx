@@ -183,6 +183,16 @@ function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
     date: r.trade_date.slice(5),
     close: r.close,
   }));
+  // The axis always takes in the trigger level and the floor: a breakout level sits above every
+  // close by definition, and an auto-scaled axis would leave exactly that line off the chart.
+  const span = [...rows.map((r) => r.close), level.value, floor].filter(
+    (v): v is number => v !== null,
+  );
+  const pad = (Math.max(...span) - Math.min(...span)) * 0.05 || 1;
+  const domain: [number, number] = [
+    Math.floor(Math.min(...span) - pad),
+    Math.ceil(Math.max(...span) + pad),
+  ];
   if (rows.length === 0) {
     return (
       <div
@@ -207,7 +217,7 @@ function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
               minTickGap={24}
             />
             <YAxis
-              domain={["auto", "auto"]}
+              domain={domain}
               tick={{ fill: "var(--text-muted)", fontSize: 10 }}
               stroke="var(--border)"
               width={44}

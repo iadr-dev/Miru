@@ -3726,7 +3726,6 @@
     },
     "unavailable": "目前沒有盯盤清單",
     "unavailableHint": "08:00 選股需要最新的收盤資料，資料過期時會自動略過。",
-    "disclaimer": "以上為你訂閱條件的資料整理，非投資建議。",
     "form": {
       "title": "策略盯盤提醒",
       "strategies": "策略",
