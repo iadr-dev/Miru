@@ -465,6 +465,47 @@ async def test_a_weekday_holiday_past_the_last_partition_is_not_a_trading_day() 
     assert plain.is_trading_day_extrapolating(date_(2024, 2, 8)) is True
 
 
+async def test_the_daemon_catches_up_missed_derived_days_once_a_day_after_0810(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production has no nightly backfill, so the daemon itself re-runs the screener/scoring for
+    recent trading days whose run was missed - once per local day, not before 08:10, and over the
+    days before today only (today's own 23:55 run is left to that job)."""
+    import ingest.daemon as daemon_module  # noqa: PLC0415 - patched below
+
+    tw_windows: list[tuple[date_, ...]] = []
+    us_windows: list[tuple[date_, ...]] = []
+
+    async def _fake_tw(_ctx: IngestContext, days: tuple[date_, ...]) -> tuple[JobRun, ...]:
+        tw_windows.append(tuple(days))
+        return ()
+
+    async def _fake_us(
+        _ctx: IngestContext, days: tuple[date_, ...], *, target: date_
+    ) -> tuple[JobRun, ...]:
+        us_windows.append(tuple(days))
+        return ()
+
+    monkeypatch.setattr(daemon_module, "catch_up_tw", _fake_tw)
+    monkeypatch.setattr(daemon_module, "catch_up_us", _fake_us)
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=())
+
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 8, 0))  # before 08:10: nothing yet
+    assert tw_windows == []
+
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 8, 11))
+    assert len(tw_windows) == 1
+    assert max(tw_windows[0]) == date_(2024, 1, 9)  # the day before today, not today
+    assert len(tw_windows[0]) == 10
+    assert len(us_windows) == 1
+
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 10, 9, 30))  # same day: not again
+    assert len(tw_windows) == 1
+
+    await daemon.run_due_jobs(now=_taipei(2024, 1, 11, 8, 30))  # next day: again
+    assert len(tw_windows) == 2
+
+
 async def test_intraday_job_does_not_fire_on_a_weekend(tmp_path: object) -> None:
     spy = _SpyJob("strategy_hits")
     daemon = _intraday_daemon(tmp_path, spy)

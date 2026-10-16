@@ -446,6 +446,17 @@ async def job_screener_flags(run_date: date_, ctx: IngestContext) -> JobRun:
             status=RunStatus.SKIPPED,
             detail="not the leader — write skipped",
         )
+    if not ctx.store.has_rows(PRICE_EOD_DATASET, ctx.market.value, run_date):
+        # Without that day's prices the trailing window ends on an older day, and the result would
+        # be stored under `run_date` as if it were fresh (and never recomputed once the prices
+        # arrive, since the day would then look done). Skip instead; a later run fills it in.
+        return journal_run(
+            SCREENER_FLAGS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail=f"no {ctx.market.value} price data for {run_date} yet; not using older prices",
+        )
 
     market = ctx.market.value
     price_window = _trailing_trading_days(ctx, run_date, _PRICE_LOOKBACK_DAYS)

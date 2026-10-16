@@ -555,9 +555,7 @@ async def backfill_us_price_range(
     dates = ctx.us_calendar.business_days_between(start, end)
     if only_missing:
         market = Market.US.value
-        dates = tuple(
-            d for d in dates if not ctx.store.has_partition(US_PRICE_EOD_DATASET, market, d)
-        )
+        dates = tuple(d for d in dates if not ctx.store.has_rows(US_PRICE_EOD_DATASET, market, d))
     runs: list[JobRun] = []
     for i, run_date in enumerate(dates):
         if i:

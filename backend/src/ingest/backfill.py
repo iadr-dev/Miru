@@ -32,9 +32,9 @@ def detect_missing_trading_days(
     `spec.dataset`: any gap between expected trading days and what's actually partitioned
     becomes a targeted date-range backfill."""
     expected = ctx.calendar.business_days_between(start, end)
-    return tuple(
-        d for d in expected if not ctx.store.has_partition(spec.dataset, ctx.market.value, d)
-    )
+    # `has_rows`, not `has_partition`: a day an earlier run recorded as an empty placeholder
+    # (fetched before the upstream had published it) is still a gap.
+    return tuple(d for d in expected if not ctx.store.has_rows(spec.dataset, ctx.market.value, d))
 
 
 async def backfill_range(

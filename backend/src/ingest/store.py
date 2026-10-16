@@ -315,6 +315,16 @@ class ParquetStore:
             _rename_with_retry(tmp_dir, version_dir)  # atomic within one filesystem
             self._flip_manifest(partition_dir, version_id)
             self._sweep_old_versions(partition_dir, keep_version=version_id)
+        # Rewriting an existing date (an `_empty` placeholder replaced by real rows) does not
+        # change the market directory's mtime that keys the date cache, so drop the entry here.
+        market_dir = partition_dir.parent
+        self._partition_dates_cache.pop(
+            (
+                market_dir.parent.name.removeprefix("dataset="),
+                market_dir.name.removeprefix("market="),
+            ),
+            None,
+        )
 
     def _flip_manifest(self, partition_dir: Path, version_id: str) -> None:
         manifest_path = partition_dir / _MANIFEST_NAME
@@ -441,6 +451,12 @@ class ParquetStore:
         )
         version = self._manifest_version(partition_dir)
         return version is not None and (partition_dir / f"v={version}").is_dir()
+
+    def has_rows(self, dataset: str, market: str, run_date: date_) -> bool:
+        """True when `run_date` has a real, non-empty partition. Unlike `has_partition`, a zero-row
+        `_empty` placeholder (an upstream that answered but had nothing yet) does not count, so a
+        gap check built on this retries that day instead of treating it as filled."""
+        return run_date in self.list_partition_dates(dataset, market)
 
     def list_partition_dates(self, dataset: str, market: str) -> tuple[date_, ...]:
         """Every date this `(dataset, market)` has a real, non-empty, fully-written partition
