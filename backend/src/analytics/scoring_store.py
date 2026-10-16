@@ -251,6 +251,15 @@ async def _latest_as_of(
     return result
 
 
+async def scored_dates(session: AsyncSession, *, market: Market) -> frozenset[date_]:
+    """Every `as_of` day that has at least one stored score for `market` (any profile). The
+    backfill's derived-compute catch-up reads this to find days the scoring batch never ran for,
+    rather than inferring it from another job's output."""
+    stmt = select(StockScoreRow.as_of).where(StockScoreRow.market == market.value).distinct()
+    rows = await session.scalars(stmt)
+    return frozenset(date_.fromisoformat(value) for value in rows)
+
+
 async def get_leaderboard(  # noqa: PLR0913 — one keyword-only field per read-scoping dimension
     session: AsyncSession,
     *,
