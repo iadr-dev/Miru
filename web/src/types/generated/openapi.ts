@@ -1114,6 +1114,91 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/macro/us/dashboard": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Us Macro Dashboard
+     * @description US macro dashboard (public): grouped panels with each series' latest/prior/change,
+     *     sparkline and next release date, the Treasury-spread inversion state and officially dated
+     *     recession periods. Read from the daily-refreshed store; `data_available=false` until the
+     *     first refresh has run.
+     */
+    get: operations["us_macro_dashboard_api_v1_macro_us_dashboard_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/macro/us/releases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Us Economic Releases
+     * @description 經濟數據發布 feed: upcoming and recent US data releases with the latest and previous value
+     *     of the series each covers. No consensus (that stays with `/market/macro-calendar`); merge the
+     *     two by `release_name`.
+     */
+    get: operations["us_economic_releases_api_v1_macro_us_releases_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/macro/us/revisions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Us Series Revisions
+     * @description First release vs latest value of recent observations of a revision-tracked US series.
+     */
+    get: operations["us_series_revisions_api_v1_macro_us_revisions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/macro/us/series": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Us Macro Series
+     * @description One US macro series: points (most recent `limit` in the range) plus its metadata.
+     */
+    get: operations["us_macro_series_api_v1_macro_us_series_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/market/active-etf-report": {
     parameters: {
       query?: never;
@@ -4991,6 +5076,10 @@ export interface components {
       | "gold_price"
       | "crude_oil_prices"
       | "fear_greed_index"
+      | "us_macro_observations"
+      | "us_macro_series_meta"
+      | "us_macro_release_dates"
+      | "us_macro_vintages"
       | "warrant_underlying";
     /**
      * CapabilitySummary
@@ -5488,6 +5577,48 @@ export interface components {
        * @default 0
        */
       reasoning_tokens: number;
+    };
+    /** DashboardPanel */
+    DashboardPanel: {
+      group: components["schemas"]["MacroGroup"];
+      /** Label */
+      label: string;
+      /** Series */
+      series: components["schemas"]["DashboardSeries"][];
+    };
+    /** DashboardSeries */
+    DashboardSeries: {
+      /** Change */
+      change?: number | null;
+      /**
+       * Copyrighted Third Party
+       * @default false
+       */
+      copyrighted_third_party: boolean;
+      /** Frequency */
+      frequency: string;
+      /** Higher Means */
+      higher_means: string;
+      /** Higher Means Text */
+      higher_means_text: string;
+      /** Label */
+      label: string;
+      /** Last Observation Date */
+      last_observation_date?: string | null;
+      latest?: components["schemas"]["MacroPoint"] | null;
+      /** Next Release Date */
+      next_release_date?: string | null;
+      prior?: components["schemas"]["MacroPoint"] | null;
+      /** Release Name */
+      release_name?: string | null;
+      /** Series Id */
+      series_id: string;
+      /** Sparkline */
+      sparkline?: components["schemas"]["MacroPoint"][];
+      /** Title */
+      title?: string | null;
+      unit_kind: components["schemas"]["UnitKind"];
+      units: components["schemas"]["MacroUnits"];
     };
     /**
      * DataClass
@@ -8118,6 +8249,36 @@ export interface components {
       /** Source Id */
       source_id: string;
     };
+    /** GetSeriesRevisionsOutput */
+    GetSeriesRevisionsOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /**
+       * Currentness Caveat
+       * @default Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.
+       */
+      currentness_caveat: string;
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /**
+       * First Release Note
+       * @default The first release is the earliest value in the stored revision history; an observation that was first published before that history begins shows its earliest archived value instead.
+       */
+      first_release_note: string;
+      /** Label */
+      label?: string | null;
+      /** Rows */
+      rows?: components["schemas"]["RevisionRow"][];
+      /** Series Id */
+      series_id: string;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Units Description */
+      units_description?: string | null;
+    };
     /** GetShareholderDispersionOutput */
     GetShareholderDispersionOutput: {
       /** Currentness Caveat */
@@ -8604,6 +8765,88 @@ export interface components {
       /** Unavailable Reason */
       unavailable_reason?: string | null;
     };
+    /** GetUsEconomicReleasesOutput */
+    GetUsEconomicReleasesOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /**
+       * Currentness Caveat
+       * @default Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.
+       */
+      currentness_caveat: string;
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** From Date */
+      from_date?: string | null;
+      /** Releases */
+      releases?: components["schemas"]["ReleaseEntry"][];
+      /** To Date */
+      to_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
+    /** GetUsMacroDashboardOutput */
+    GetUsMacroDashboardOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /**
+       * Currentness Caveat
+       * @default Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.
+       */
+      currentness_caveat: string;
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** Panels */
+      panels?: components["schemas"]["DashboardPanel"][];
+      /** Recession Bands */
+      recession_bands?: components["schemas"]["RecessionBand"][];
+      /**
+       * Recession Note
+       * @default Recession dates are set retroactively by an official dating committee, often many months after a turning point, so the most recent months are not yet classified.
+       */
+      recession_note: string;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      /** Yield Curve */
+      yield_curve?: components["schemas"]["YieldCurveSpread"][];
+    };
+    /** GetUsMacroSeriesOutput */
+    GetUsMacroSeriesOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /**
+       * Currentness Caveat
+       * @default Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.
+       */
+      currentness_caveat: string;
+      /**
+       * Data Available
+       * @default true
+       */
+      data_available: boolean;
+      /** Frequency */
+      frequency?: string | null;
+      metadata?: components["schemas"]["SeriesMetadata"] | null;
+      observation_range?: components["schemas"]["ObservationRange"] | null;
+      /** Points */
+      points?: components["schemas"]["MacroPoint"][];
+      /** Series Id */
+      series_id: string;
+      /**
+       * Total Observations
+       * @default 0
+       */
+      total_observations: number;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+      units?: components["schemas"]["MacroUnits"] | null;
+    };
     /** GetUsMarketIndexStripOutput */
     GetUsMarketIndexStripOutput: {
       /** Rows */
@@ -8698,7 +8941,7 @@ export interface components {
      * @description Provider currentness/closure diagnostics (M5Q).
      * @enum {string}
      */
-    HealthStatus: "ok" | "stale" | "unreachable" | "unavailable-tier";
+    HealthStatus: "ok" | "stale" | "unreachable" | "unavailable-tier" | "unavailable";
     /**
      * HolderAccumulationRow
      * @description `locked=True` rows (governance.md §4 top-N-preview exception) have every field but
@@ -9295,6 +9538,31 @@ export interface components {
       histogram: (number | null)[];
     };
     /**
+     * MacroGroup
+     * @description Dashboard panels, in display order.
+     * @enum {string}
+     */
+    MacroGroup:
+      | "yield_curve_recession"
+      | "inflation"
+      | "labor"
+      | "credit_financial_conditions"
+      | "policy_liquidity"
+      | "growth"
+      | "housing"
+      | "dollar"
+      | "money";
+    /** MacroPoint */
+    MacroPoint: {
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Value */
+      value: number;
+    };
+    /**
      * MacroReleaseEventRow
      * @description `macro_calendar` — one upcoming/recent macro-release event row
      *     (`financecalendar.com`'s `wp-json/fc/v1/calendar` feed, a distinct third-party source from
@@ -9335,6 +9603,12 @@ export interface components {
       /** Url */
       url?: string | null;
     };
+    /**
+     * MacroUnits
+     * @description The upstream `units` transformation codes the catalog uses (stored per series).
+     * @enum {string}
+     */
+    MacroUnits: "lin" | "chg" | "ch1" | "pch" | "pc1" | "pca";
     /**
      * MarginBalanceChange
      * @description 融資 (margin purchase) or 融券 (short sale) balance moved by a percentage in one day,
@@ -10049,6 +10323,19 @@ export interface components {
      * @enum {string}
      */
     OAuthProvider: "google" | "line" | "telegram";
+    /** ObservationRange */
+    ObservationRange: {
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+    };
     /**
      * ObtainedVia
      * @enum {string}
@@ -10723,6 +11010,24 @@ export interface components {
      * @enum {string}
      */
     Rarity: "common" | "uncommon" | "rare" | "legendary";
+    /** RecessionBand */
+    RecessionBand: {
+      /**
+       * End
+       * Format: date
+       */
+      end: string;
+      /**
+       * Ongoing
+       * @default false
+       */
+      ongoing: boolean;
+      /**
+       * Start
+       * Format: date
+       */
+      start: string;
+    };
     /** RegenerateRequest */
     RegenerateRequest: {
       /** Deep Research */
@@ -10744,10 +11049,82 @@ export interface components {
       /** Token */
       token: string;
     };
+    /** ReleaseEntry */
+    ReleaseEntry: {
+      /**
+       * Release Date
+       * Format: date
+       */
+      release_date: string;
+      /** Release Id */
+      release_id: number;
+      /** Release Name */
+      release_name: string;
+      /** Series */
+      series: components["schemas"]["ReleaseSeries"][];
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "upcoming" | "released";
+    };
+    /** ReleaseSeries */
+    ReleaseSeries: {
+      /** Change */
+      change?: number | null;
+      /** Label */
+      label: string;
+      /** Last Observation Date */
+      last_observation_date?: string | null;
+      latest?: components["schemas"]["MacroPoint"] | null;
+      previous?: components["schemas"]["MacroPoint"] | null;
+      /** Series Id */
+      series_id: string;
+      unit_kind: components["schemas"]["UnitKind"];
+      units: components["schemas"]["MacroUnits"];
+    };
     /** ReorderWatchlistsRequest */
     ReorderWatchlistsRequest: {
       /** Ordered Ids */
       ordered_ids: string[];
+    };
+    /** RevisionRow */
+    RevisionRow: {
+      /**
+       * First Release Date
+       * Format: date
+       */
+      first_release_date: string;
+      /** First Release Value */
+      first_release_value: number;
+      /** Latest Value */
+      latest_value: number;
+      /**
+       * Latest Vintage Date
+       * Format: date
+       */
+      latest_vintage_date: string;
+      /**
+       * Observation Date
+       * Format: date
+       */
+      observation_date: string;
+      /** Revision */
+      revision: number;
+      /** Revision Count */
+      revision_count: number;
+      /** Vintages */
+      vintages: components["schemas"]["RevisionVintage"][];
+    };
+    /** RevisionVintage */
+    RevisionVintage: {
+      /**
+       * As Of
+       * Format: date
+       */
+      as_of: string;
+      /** Value */
+      value: number;
     };
     /** RichCardBlock */
     RichCardBlock: {
@@ -11338,6 +11715,46 @@ export interface components {
       transaction_type: string;
       /** Volume */
       volume: number;
+    };
+    /** SeriesMetadata */
+    SeriesMetadata: {
+      /** Available Units */
+      available_units: components["schemas"]["MacroUnits"][];
+      /**
+       * Copyrighted Third Party
+       * @default false
+       */
+      copyrighted_third_party: boolean;
+      default_units: components["schemas"]["MacroUnits"];
+      /** Frequency */
+      frequency: string;
+      group: components["schemas"]["MacroGroup"];
+      /** Group Label */
+      group_label: string;
+      /** Higher Means */
+      higher_means: string;
+      /** Higher Means Text */
+      higher_means_text: string;
+      /** Label */
+      label: string;
+      /** Last Updated */
+      last_updated?: string | null;
+      /** Next Release Date */
+      next_release_date?: string | null;
+      /** Notes */
+      notes?: string | null;
+      /** Release Name */
+      release_name?: string | null;
+      /** Seasonal Adjustment */
+      seasonal_adjustment?: string | null;
+      /** Series Id */
+      series_id: string;
+      /** Title */
+      title?: string | null;
+      unit_kind: components["schemas"]["UnitKind"];
+      units: components["schemas"]["MacroUnits"];
+      /** Units Description */
+      units_description?: string | null;
     };
     /**
      * ShareholdingDistributionRow
@@ -12667,6 +13084,11 @@ export interface components {
       volume?: number | null;
     };
     /**
+     * UnitKind
+     * @enum {string}
+     */
+    UnitKind: "percent" | "level" | "index" | "count";
+    /**
      * UpdateAlertRequest
      * @description A partial edit. Send only what changed; `null` clears a nullable field (`expires_in_days`,
      *     `cooldown_seconds`, `quiet_hours`, `daily_limit`). `expected_version` is the rule's `version`
@@ -13086,6 +13508,36 @@ export interface components {
     WebSearchSourcesBlock: {
       /** Sources */
       sources?: components["schemas"]["WebSearchSource"][];
+    };
+    /**
+     * YieldCurveSpread
+     * @description Whether a Treasury spread (long yield minus short yield) is below zero ("inverted").
+     */
+    YieldCurveSpread: {
+      /**
+       * Days Inverted
+       * @default 0
+       */
+      days_inverted: number;
+      /** Inverted Since */
+      inverted_since?: string | null;
+      /** Label */
+      label: string;
+      /** Last Inverted Date */
+      last_inverted_date?: string | null;
+      latest: components["schemas"]["MacroPoint"];
+      /** Series Id */
+      series_id: string;
+      /**
+       * Since Window Start
+       * @default false
+       */
+      since_window_start: boolean;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: "inverted" | "flat" | "positive";
     };
   };
   responses: never;
@@ -14846,6 +15298,183 @@ export interface operations {
           "application/json":
             | components["schemas"]["GetBusinessIndicatorOutput"]
             | components["schemas"]["MaskedTeaser"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  us_macro_dashboard_api_v1_macro_us_dashboard_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetUsMacroDashboardOutput"];
+        };
+      };
+    };
+  };
+  us_economic_releases_api_v1_macro_us_releases_get: {
+    parameters: {
+      query?: {
+        from_date?: string | null;
+        to_date?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetUsEconomicReleasesOutput"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  us_series_revisions_api_v1_macro_us_revisions_get: {
+    parameters: {
+      query: {
+        series_id:
+          | "PAYEMS"
+          | "GDPC1"
+          | "A191RL1Q225SBEA"
+          | "CPIAUCSL"
+          | "CPILFESL"
+          | "PCEPI"
+          | "PCEPILFE"
+          | "INDPRO"
+          | "RSAFS"
+          | "DGORDER"
+          | "UNRATE"
+          | "JTSJOL"
+          | "HOUST";
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetSeriesRevisionsOutput"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  us_macro_series_api_v1_macro_us_series_get: {
+    parameters: {
+      query: {
+        series_id:
+          | "DGS2"
+          | "DGS5"
+          | "DGS10"
+          | "DGS30"
+          | "T10Y2Y"
+          | "T10Y3M"
+          | "USREC"
+          | "CPIAUCSL"
+          | "CPILFESL"
+          | "PCEPI"
+          | "PCEPILFE"
+          | "T5YIE"
+          | "T10YIE"
+          | "T5YIFR"
+          | "UNRATE"
+          | "PAYEMS"
+          | "ICSA"
+          | "CCSA"
+          | "JTSJOL"
+          | "NFCI"
+          | "STLFSI4"
+          | "BAMLH0A0HYM2"
+          | "BAMLC0A0CM"
+          | "DFF"
+          | "FEDFUNDS"
+          | "SOFR"
+          | "DFEDTARU"
+          | "DFEDTARL"
+          | "IORB"
+          | "WALCL"
+          | "RRPONTSYD"
+          | "GDPC1"
+          | "A191RL1Q225SBEA"
+          | "INDPRO"
+          | "RSAFS"
+          | "DGORDER"
+          | "UMCSENT"
+          | "MORTGAGE30US"
+          | "HOUST"
+          | "CSUSHPINSA"
+          | "DTWEXBGS"
+          | "DEXJPUS"
+          | "DEXUSEU"
+          | "M2SL"
+          | "M2REAL";
+        units?: components["schemas"]["MacroUnits"] | null;
+        frequency?: ("d" | "w" | "m" | "q" | "a") | null;
+        start_date?: string | null;
+        end_date?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetUsMacroSeriesOutput"];
         };
       };
       /** @description Validation Error */

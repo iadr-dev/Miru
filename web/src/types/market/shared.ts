@@ -27,7 +27,13 @@ export function isMaskedTeaser(value: { locked?: true } | object): value is Mask
   return "locked" in value && value.locked === true;
 }
 
-export const HEALTH_STATUSES = ["ok", "stale", "unreachable", "unavailable-tier"] as const;
+export const HEALTH_STATUSES = [
+  "ok",
+  "stale",
+  "unreachable",
+  "unavailable-tier",
+  "unavailable",
+] as const;
 
 export const healthStatusSchema = z.enum(HEALTH_STATUSES);
 

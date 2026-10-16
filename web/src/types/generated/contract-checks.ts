@@ -83,6 +83,12 @@ import type {
   stockHeatmapResponseSchema,
 } from "@/types/market/sectors";
 import type {
+  usEconomicReleasesResponseSchema,
+  usMacroDashboardResponseSchema,
+  usMacroSeriesResponseSchema,
+  usSeriesRevisionsResponseSchema,
+} from "@/types/market/us-macro";
+import type {
   factorCatalogResponseSchema,
   runScreenerResponseSchema,
   screenerPresetsResponseSchema,
@@ -263,6 +269,14 @@ export type ContractChecks = [
   Accepts<typeof fundComparisonResponseSchema, R<"/api/v1/funds/comparison", "get">>,
   // GET /macro — market.getMacroIndicators
   Accepts<typeof macroIndicatorsResponseSchema, R<"/api/v1/macro", "get">>,
+  // GET /macro/us/dashboard — us-macro.getUsMacroDashboard
+  Accepts<typeof usMacroDashboardResponseSchema, R<"/api/v1/macro/us/dashboard", "get">>,
+  // GET /macro/us/releases — us-macro.getUsEconomicReleases
+  Accepts<typeof usEconomicReleasesResponseSchema, R<"/api/v1/macro/us/releases", "get">>,
+  // GET /macro/us/revisions — us-macro.getUsSeriesRevisions
+  Accepts<typeof usSeriesRevisionsResponseSchema, R<"/api/v1/macro/us/revisions", "get">>,
+  // GET /macro/us/series — us-macro.getUsMacroSeries
+  Accepts<typeof usMacroSeriesResponseSchema, R<"/api/v1/macro/us/series", "get">>,
   // GET /market/active-etf-report — etf-detail.getActiveEtfReport
   Accepts<typeof activeEtfReportResponseSchema, R<"/api/v1/market/active-etf-report", "get">>,
   // GET /market/advance-decline — market.getAdvanceDecline
