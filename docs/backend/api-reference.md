@@ -543,7 +543,7 @@ table cannot carry.
 | GET | `/api/v1/market/quotes` | optional | `get_symbol_quotes` | public | The list-row view for up to 20 symbols: name, latest close, DAILY change/change %, volume and a sparkline, in one call. |
 | GET | `/api/v1/derivatives/taiex-vix` | optional | `get_taiex_vix` | sponsor | 臺指選擇權波動率指數 (TAIEX option VIX) reading series — whole-market, Sponsor-tier. |
 | GET | `/api/v1/derivatives/{contract}` | optional | `get_derivatives_institutional`, `get_futures_options_daily`, `get_put_call_ratio` | public/sponsor | 期/選 daily OI/price, put/call positioning, and institutional/large-trader positioning for one contract code — descriptive positioning context, not a d… |
-| GET | `/api/v1/macro` | optional | `get_macro_indicators` | sponsor | 匯率/利率/黃金/原油/美債殖利率/Fear-Greed macro-context report (Sponsor-tier). |
+| GET | `/api/v1/macro` | optional | `get_macro_indicators` | public (Fear-Greed: Premium/Pro only) | 匯率/利率/黃金/原油/美債殖利率/Fear-Greed macro-context report (Sponsor-tier). |
 | GET | `/api/v1/macro/business-indicator` | optional | `get_business_indicator` | sponsor | Monthly 景氣對策信號 business-climate indicator (Sponsor-tier). |
 | GET | `/api/v1/market/macro-calendar` | optional | `get_macro_calendar` | public | US/global macro-release events (GDP/CPI/PCE/PMI/NFP/FOMC) with consensus/prior/actual |
 | GET | `/api/v1/market/news-feed` | optional | `get_news_feed` | public | 即時新聞 — near-real-time news aggregated from financial RSS + optional Finnhub |

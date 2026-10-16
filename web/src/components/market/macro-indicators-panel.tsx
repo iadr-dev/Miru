@@ -4,13 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
-import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { QueryState } from "@/components/ui/query-state";
 import { getMacroIndicators } from "@/lib/api/market";
 import { queryKeys } from "@/lib/api/query-keys";
 import { cn } from "@/lib/cn";
 import type { MacroIndicatorsData } from "@/types/market/macro";
-import { isMaskedTeaser } from "@/types/market/shared";
 
 const FED_COUNTRY_CODE = "FED";
 // `symbol` on both rows is FinMind's own free-text `name` field (e.g. "WTI"/"Brent",
@@ -26,11 +24,8 @@ const TEN_YEAR_NAME_HINT = "10-Year";
  * `get_macro_indicators` (client fn + Zod schema already existed, unused until now). Shows the
  * fields genuinely relevant to a US macro tab (US Treasury yield curve, Fed funds rate via
  * `central_bank_rate` filtered to the US/`FED` row, gold, crude oil) — `exchange_rate` is
- * TW-scoped (TWD vs. foreign currencies) and skipped here as irrelevant. The whole tool is
- * Sponsor-gated at the tool level (only `fear_greed_index` is actually Sponsor data, but
- * `get_macro_indicators`'s own docstring bundles the entitlement check at the tool level rather
- * than masking one field) — an unentitled caller gets the `{locked, required_tier, preview}`
- * envelope at HTTP 200, rendered via the existing `SponsorTeaser`, never a new masking UI. */
+ * TW-scoped (TWD vs. foreign currencies) and skipped here as irrelevant. Every field shown is
+ * public data, so every tier sees the card (only the unshown Fear & Greed Index is Sponsor). */
 export function MacroIndicatorsPanel(): ReactNode {
   const t = useTranslations("market.cards.macro");
   const query = useQuery({
@@ -41,52 +36,16 @@ export function MacroIndicatorsPanel(): ReactNode {
   return (
     <section className="surface-card flex w-full flex-col p-4 sm:p-5">
       <QueryState query={query} skeleton={<CardSkeletonBody height={280} />}>
-        {(data) => {
-          if (isMaskedTeaser(data)) {
-            return (
-              <SponsorTeaser
-                headline={t("title")}
-                preview={data.preview}
-                requiredTier={data.required_tier}
-              >
-                <MacroIndicatorsGrid data={_PREVIEW_SHAPE} t={t} />
-              </SponsorTeaser>
-            );
-          }
-          return (
-            <>
-              <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
-              <MacroIndicatorsGrid data={data} t={t} />
-            </>
-          );
-        }}
+        {(data) => (
+          <>
+            <h2 className="mb-3 font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
+            <MacroIndicatorsGrid data={data} t={t} />
+          </>
+        )}
       </QueryState>
     </section>
   );
 }
-
-// A blurred placeholder shape for the masked-teaser preview — never real values, purely for the
-// `SponsorTeaser`'s own blur layer to have something chart-shaped to blur (web/OVERVIEW.md §4's
-// masked-teaser convention: frame/labels sharp, value layer blurred, never fabricated numbers
-// shown as if real — this shape is discarded, only its layout is ever visible).
-const _PREVIEW_SHAPE: MacroIndicatorsData = {
-  currentness_caveat: "",
-  exchange_rate: [],
-  central_bank_rate: [
-    {
-      symbol: "FED",
-      market: "GLOBAL",
-      date: "",
-      country: "US",
-      full_country_name: "United States",
-      interest_rate: 0,
-    },
-  ],
-  gold_price: [{ market: "GLOBAL", date: "", price: 0 }],
-  crude_oil_prices: [{ symbol: "WTI", market: "GLOBAL", date: "", price: 0 }],
-  government_bond_yield: [{ symbol: "10Y", market: "US", date: "", value: 0 }],
-  fear_greed_index: [],
-};
 
 function MacroIndicatorsGrid({
   data,
