@@ -83,9 +83,10 @@ curl -s https://mcp.example.com/healthz
 
 ### A. claude.ai / Claude Desktop custom connector
 
-1. Settings, Connectors, **Add custom connector** (on Team/Enterprise an owner adds it under
-   Organization settings, Connectors first).
-2. Name: `Miru`. URL: `https://mcp.example.com/mcp`. Leave the OAuth client fields empty.
+1. Customize, Connectors, **Add custom connector** (on Team/Enterprise an owner adds it under
+   Organization settings, Connectors first, then members connect individually).
+2. Name: `Miru`. URL: `https://mcp.example.com/mcp`. Choose **No sign in** and leave the OAuth
+   client fields empty (sign-in with a Miru account is not available yet, see Known limits).
 3. Add, then enable the connector in a chat (the "+" / tools menu). Claude lists the tools and asks
    permission per tool; they are all marked read-only.
 
@@ -148,6 +149,36 @@ claude mcp add --transport http miru https://mcp.example.com/mcp \
 Verify with `claude mcp list` and `/mcp` inside Claude Code. Claude Code caps a tool result at
 about 25,000 tokens by default (`MAX_MCP_OUTPUT_TOKENS`); Miru marks its tools with
 `anthropic/maxResultSizeChars` so larger structured results are allowed where the client honors it.
+
+### D. Other clients (Gemini CLI, Codex, Cursor, VS Code, Windsurf)
+
+Each takes the same URL. Add the bearer header only if you want your own tier (see Auth below).
+
+```bash
+# Gemini CLI
+gemini mcp add --transport http miru https://mcp.example.com/mcp
+gemini mcp add --transport http -H "Authorization: Bearer $MIRU_ACCESS_TOKEN" miru https://mcp.example.com/mcp
+# or in ~/.gemini/settings.json: {"mcpServers": {"miru": {"httpUrl": "https://mcp.example.com/mcp"}}}
+
+# Codex CLI
+codex mcp add miru --url https://mcp.example.com/mcp
+# ~/.codex/config.toml: [mcp_servers.miru]  url = "..."  bearer_token_env_var = "MIRU_ACCESS_TOKEN"
+```
+
+```jsonc
+// Cursor: ~/.cursor/mcp.json (or .cursor/mcp.json)
+{ "mcpServers": { "miru": { "url": "https://mcp.example.com/mcp",
+    "headers": { "Authorization": "Bearer ${env:MIRU_ACCESS_TOKEN}" } } } }
+
+// VS Code: .vscode/mcp.json
+{ "servers": { "miru": { "type": "http", "url": "https://mcp.example.com/mcp",
+    "headers": { "Authorization": "Bearer ${input:miru-token}" } } } }
+```
+
+Windsurf takes `serverUrl` (or `url`) plus `headers` in its MCP config. Config shapes were read from
+each client's own documentation, not run against the live clients. ChatGPT custom connectors were
+not verified at all. The clients' own "Sign in" buttons (OAuth) will not work until Miru has an
+authorization server (Known limits).
 
 ## 3. Authentication
 
@@ -221,7 +252,13 @@ the right tier; `/mcp` and `/mcp/` both answer directly.
   `x-api-key` in Claude Code and the Messages API. Follow-up: build or front an authorization
   server and issue tokens with an `aud` of the MCP URL (the spec requires audience validation; the
   app's access JWT currently carries no audience claim).
-- No API-key store exists; `x-api-key` accepts the same short-lived access JWT.
+- No API-key store exists; `x-api-key` accepts the same short-lived access JWT (about 15
+  minutes). Today there is no screen that hands a user such a token, so Bearer access suits tests and
+  scripts, not daily use.
+- claude.ai only starts a sign-in after a **401** from the server, so an authless server and a
+  server that offers sign-in cannot be the same endpoint without a policy decision (require sign-in
+  for every caller, or answer 401 only on calls that need an account).
+- Anthropic's cloud calls connectors from `160.79.104.0/21` if you allow-list by address.
 - The Messages API connector uses tools only. Resources are visible to claude.ai and Claude Code
   but not to the API connector; every datum is therefore also reachable as a tool.
 - Legacy SSE-only transport is not served (`/sse`); current Claude clients use streamable HTTP and
