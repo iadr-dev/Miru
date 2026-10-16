@@ -82,6 +82,7 @@ from ingest.preflight import (
 )
 from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
+from schemas.enums import Market
 from sources.finmind import FinMindQuotaRefusedError
 
 logger = structlog.get_logger(__name__)
@@ -436,7 +437,10 @@ async def run_us_backfill_cli(
         dev_backfill_years=years,
     )
     price_runs = await backfill_us_price_range(ctx, start=start, end=target, only_missing=True)
-    for run in price_runs:
+    score_runs = await _us_scoring_catchup(
+        ctx, ctx.us_calendar.business_days_between(start, target), target=target
+    )
+    for run in (*price_runs, *score_runs):
         logger.info(
             "ingest_backfill_cli_run",
             dataset=run.dataset,
@@ -444,7 +448,19 @@ async def run_us_backfill_cli(
             rows_written=run.rows_written,
             status=run.status.value,
         )
-    return (universe_run, *price_runs)
+    return (universe_run, *price_runs, *score_runs)
+
+
+async def _us_scoring_catchup(
+    ctx: IngestContext, days: Sequence[date_], *, target: date_
+) -> tuple[JobRun, ...]:
+    """The US side of `run_derived_compute_catchup`: score every US session the 07:30 Taipei
+    `us_scoring_batch` missed (a box that was down at that hour otherwise never scores the day;
+    US scores stopped at 2026-10-12 this way). Gaps come from `stock_scores` itself, from the
+    first scored session on; a box with no US scores yet scores only the latest session."""
+    us_ctx = dataclasses.replace(ctx, market=Market.US)
+    missing = await _days_without_scores(us_ctx, days, fallback={target})
+    return tuple([await job_scoring_batch(run_date, us_ctx) for run_date in sorted(missing)])
 
 
 async def _amain(argv: Sequence[str] | None = None) -> int:
