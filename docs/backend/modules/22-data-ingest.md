@@ -192,6 +192,12 @@ US, as_of, scope})` per dataset written, the same signal the TW whole-market job
 "On completion" above); `job_us_symbol_universe` does not, since nothing downstream revalidates
 against the roster itself the way it does against price/fundamentals partitions.
 
+### 2d. US macro statistics (`ingest/jobs/fred.py`)
+
+`fred_macro`, daily 07:40 Taipei, `market=US`, leader-gated; four datasets (`fred_observations`,
+`fred_series_meta`, `fred_release_dates`, `fred_vintages`). Skips with `FRED API key not configured`
+when no key is set. Full spec: [27-us-macro.md](27-us-macro.md).
+
 ### Backfill (on-demand ops job — resumable)
 Backfill is `ingest/backfill.py`'s `backfill_range(only_missing=True)`: diff the expected trading
 days against the dates already present for a dataset and run the **same per-date whole-market code

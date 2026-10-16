@@ -39,3 +39,13 @@ def test_a_secret_never_appears_in_the_settings_repr() -> None:
 def test_reveal_returns_the_plain_value_or_none() -> None:
     assert reveal(SecretStr("abc")) == "abc"
     assert reveal(None) is None
+
+
+def test_the_fred_key_is_a_masked_optional_secret_and_the_base_url_defaults() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.fred_api_key is None
+    assert settings.fred_base_url == "https://api.stlouisfed.org/fred"
+
+    keyed = Settings(_env_file=None, fred_api_key="k" * 32)
+    assert "k" * 32 not in repr(keyed) + str(keyed.model_dump())
+    assert reveal(keyed.fred_api_key) == "k" * 32

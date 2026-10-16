@@ -80,6 +80,8 @@ x-app-env: &app-env
   FINMIND_API_KEY: ${FINMIND_API_KEY:-}
   BRAVE_SEARCH_API_KEY: ${BRAVE_SEARCH_API_KEY:-}
   FINNHUB_KEY: ${FINNHUB_KEY:-}
+  FRED_API_KEY: ${FRED_API_KEY:-}
+  FRED_BASE_URL: ${FRED_BASE_URL:-https://api.stlouisfed.org/fred}
   FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
   # Point the offline path at the compose Ollama service when the `ollama` profile is up.
   OLLAMA_BASE_URL: http://ollama:11434

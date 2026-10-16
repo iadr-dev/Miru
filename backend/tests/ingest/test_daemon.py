@@ -52,6 +52,7 @@ from ingest.jobs import (
     job_stock_info,
     job_valuation_ratios,
 )
+from ingest.jobs.fred import job_fred_macro
 from ingest.jobs.strategy_intraday import job_strategy_close_check, job_strategy_intraday
 from ingest.journal import JobRun, RunStatus
 from ingest.leader import AlwaysLeader, NeverLeader
@@ -247,7 +248,7 @@ def test_us_jobs_are_scheduled() -> None:
     scheduled_run_fns = {job.run for job in SCHEDULED_JOBS}
     missing = [
         fn.__name__
-        for fn in (job_us_price_eod, job_us_fundamentals, job_us_symbol_universe)
+        for fn in (job_us_price_eod, job_us_fundamentals, job_us_symbol_universe, job_fred_macro)
         if fn not in scheduled_run_fns
     ]
     assert not missing, (
@@ -514,3 +515,26 @@ async def test_intraday_job_does_not_fire_on_a_weekend(tmp_path: object) -> None
     daemon = _intraday_daemon(tmp_path, spy)
     assert await daemon.run_due_jobs(now=_taipei(2024, 1, 6, 10, 0)) == []  # a Saturday
     assert spy.calls == []
+
+
+def test_the_us_macro_job_is_a_daily_us_job_after_the_other_us_jobs() -> None:
+    job = next(j for j in SCHEDULED_JOBS if j.run is job_fred_macro)
+    us_jobs = [j for j in SCHEDULED_JOBS if j.name.startswith("us_")]
+
+    assert job.name == "fred_macro"
+    assert job.market is Market.US
+    assert job.cadence is Cadence.DAILY
+    assert job.fire_time == time_(7, 40)
+    assert all(j.fire_time < job.fire_time for j in us_jobs)
+
+
+async def test_the_us_macro_job_without_a_key_is_skipped_by_the_daemon_run(
+    tmp_path: object,
+) -> None:
+    jobs = (ScheduledIngestJob("fred_macro", time_(7, 40), job_fred_macro, market=Market.US),)
+    daemon = IngestDaemon(_ctx(tmp_path, leader=AlwaysLeader()), jobs=jobs)
+
+    ran = await daemon.run_due_jobs(now=_taipei(2024, 1, 9, 7, 41))
+
+    # the job ran (and journalled SKIPPED: no gateway wired); it did not raise
+    assert ran == ["fred_macro"]
