@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from calendar.trading_days import TradingDayCalendar
 from datetime import date
 
@@ -414,6 +415,62 @@ async def test_derived_compute_catchup_covers_every_missing_day_not_just_the_lat
     # The two missing days were both computed, in order; the already-present target day was not.
     assert screener_calls == [date(2024, 1, 1), date(2024, 1, 2)]
     assert scoring_calls == [date(2024, 1, 1), date(2024, 1, 2)]
+
+
+async def test_derived_compute_catchup_scores_a_day_whose_screener_already_landed(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """2026-10-15: the 20:30 screener landed, the 23:55 scoring batch never ran. Scoring gaps are
+    read from `stock_scores` itself, so that day is scored without re-running its screener, and
+    days before the first scored day are left alone."""
+    screener_calls: list[date] = []
+    scoring_calls: list[date] = []
+
+    async def _fake_screener_flags(run_date: date, _ctx: IngestContext) -> JobRun:
+        screener_calls.append(run_date)
+        return JobRun(
+            dataset="screener_flags", run_date=run_date, rows_written=1, status=RunStatus.SUCCESS
+        )
+
+    async def _fake_scoring_batch(run_date: date, _ctx: IngestContext) -> JobRun:
+        scoring_calls.append(run_date)
+        return JobRun(
+            dataset="stock_scores", run_date=run_date, rows_written=1, status=RunStatus.SUCCESS
+        )
+
+    class _Session:
+        async def __aenter__(self) -> _Session:
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+    async def _fake_scored_dates(_session: object, *, market: object) -> frozenset[date]:
+        return frozenset({date(2024, 1, 2), date(2024, 1, 4)})
+
+    window = (date(2024, 1, 1), date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4))
+    ctx = dataclasses.replace(_ctx(tmp_path), session_factory=_Session)  # type: ignore[arg-type]
+    for d in window:
+        ctx.store.write_partition("screener_flags", ctx.market.value, d, [])
+
+    monkeypatch.setattr(backfill_cli_module, "job_screener_flags", _fake_screener_flags)
+    monkeypatch.setattr(backfill_cli_module, "job_scoring_batch", _fake_scoring_batch)
+    monkeypatch.setattr(backfill_cli_module, "scored_dates", _fake_scored_dates)
+    monkeypatch.setattr(
+        backfill_cli_module, "last_available_trading_day", lambda _calendar, *, now: window[-1]
+    )
+    monkeypatch.setattr(
+        TradingDayCalendar, "shift_business_days", lambda self, day, offset: window[0]
+    )
+    monkeypatch.setattr(
+        TradingDayCalendar, "business_days_between", lambda self, start, end: window
+    )
+
+    await run_derived_compute_catchup(_settings(), ctx, override=True, years=1)
+
+    assert screener_calls == []
+    # 01-03 is the gap; 01-01 predates the first scored day, so it is not back-filled.
+    assert scoring_calls == [date(2024, 1, 3)]
 
 
 async def test_finmind_refusing_after_its_quota_reset_stops_the_whole_run(
