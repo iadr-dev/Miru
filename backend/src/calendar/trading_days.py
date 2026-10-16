@@ -21,10 +21,13 @@ wiring is: fetch its `SourceResult` via the router, pass the resulting closure d
 
 from __future__ import annotations
 
+from calendar.holidays import is_market_holiday
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date as date_
 from datetime import timedelta
+
+from schemas.enums import Market
 
 _SATURDAY = 5  # date.weekday(): Mon=0 ... Sun=6
 _SUNDAY = 6
@@ -44,6 +47,11 @@ class TradingDayCalendar:
 
     known_trading_dates: frozenset[date_] | None = None
     closure_dates: frozenset[date_] = field(default_factory=frozenset[date_])
+    # The market this calendar serves. When set, a day OUTSIDE the known span is also checked
+    # against the scheduled-holiday table (`calendar/holidays.py`), so a weekday exchange closure
+    # after the last stored partition (the day after a holiday has not landed yet) is not taken for
+    # a trading day. `None` keeps the plain weekday fallback.
+    market: Market | None = None
 
     def is_trading_day(self, day: date_) -> bool:
         """True if `day` is a trading day under this calendar.
@@ -111,7 +119,9 @@ class TradingDayCalendar:
             low, high = bounds
             if low <= day <= high:
                 return day in self.known_trading_dates  # type: ignore[operator]
-        return day.weekday() not in (_SATURDAY, _SUNDAY)
+        if day.weekday() in (_SATURDAY, _SUNDAY):
+            return False
+        return self.market is None or not is_market_holiday(day, self.market)
 
     def next_trading_day(self, day: date_, *, inclusive: bool = False) -> date_:
         """The next trading day on/after `day` (or strictly after, if `inclusive=False`)."""
@@ -167,12 +177,14 @@ def calendar_from_known_dates(
     trading_dates: Iterable[date_],
     *,
     closure_dates: Iterable[date_] = (),
+    market: Market | None = None,
 ) -> TradingDayCalendar:
     """Build a calendar from an explicit trading-date list (e.g. a future ingest cache) plus
     an optional NCDR closure overlay."""
     return TradingDayCalendar(
         known_trading_dates=frozenset(trading_dates),
         closure_dates=frozenset(closure_dates),
+        market=market,
     )
 
 
