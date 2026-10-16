@@ -70,7 +70,7 @@ from ingest.jobs import (
     job_material_announcements,
     job_shareholding_distribution,
 )
-from ingest.journal import JobRun, RunStatus
+from ingest.journal import JobRun, RunStatus, journal_run
 from ingest.leader import acquire_leadership
 from ingest.preflight import (
     last_available_trading_day,
@@ -176,6 +176,7 @@ async def run_backfill_cli(
         return ()
 
     all_runs: list[JobRun] = []
+    refused: FinMindQuotaRefusedError | None = None
     for spec in specs:
         try:
             runs = await run_preflight_if_enabled(
@@ -184,8 +185,11 @@ async def run_backfill_cli(
                 ingest_on_startup=True,
                 dev_backfill_years=years,
             )
-        except FinMindQuotaRefusedError:
-            raise  # every later spec would wait out the window and be refused the same way
+        except FinMindQuotaRefusedError as exc:
+            # Every later FinMind spec would wait out the window and be refused the same way, so
+            # the FinMind pulls stop here; the work that does not use FinMind still runs below.
+            refused = exc
+            break
         except Exception:
             logger.exception("ingest_backfill_cli_spec_errored", dataset=spec.dataset)
             continue
@@ -199,9 +203,23 @@ async def run_backfill_cli(
             )
         all_runs.extend(runs)
 
-    all_runs.extend(await _backfill_shareholding_distribution(ctx, years=years))
+    if refused is None:
+        all_runs.extend(await _backfill_shareholding_distribution(ctx, years=years))
+    # The remaining jobs read other sources (SITCA, TWSE, MOPS, yfinance). The no-date-parameter
+    # feeds can only be fetched as they stand today, so skipping them for a FinMind outage loses
+    # that day for good.
     all_runs.extend(await _backfill_etf_expense_ratio(ctx, years=years))
     all_runs.extend(await _run_non_finmind_forward_only_jobs_for_today(ctx))
+    if refused is not None:
+        all_runs.append(
+            journal_run(
+                "finmind_quota",
+                last_available_trading_day(ctx.calendar, now=datetime.now(UTC)),
+                rows_written=0,
+                status=RunStatus.FAILED,
+                detail=str(refused),
+            )
+        )
     return tuple(all_runs)
 
 

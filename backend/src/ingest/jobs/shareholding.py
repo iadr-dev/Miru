@@ -17,12 +17,13 @@ from ingest.journal import JobRun, RunStatus, journal_run
 logger = structlog.get_logger(__name__)
 
 
-# How many trading days back `job_shareholding_distribution` searches for the week's real
+# How many calendar days back `job_shareholding_distribution` searches for the week's real
 # publish date before giving up — confirmed live that FinMind only returns rows for the exact
 # Friday `start_date` (any other weekday in that week returns zero rows), and a market holiday
-# can push the week's actual last trading day earlier than Friday. 5 covers a full trading week
-# plus one day of slack for an unusually early holiday-shortened week.
-_WEEKLY_PUBLISH_SEARCH_DAYS = 5
+# can push the week's actual last trading day earlier than Friday. 7 reaches the preceding
+# Friday from any weekday (5 stopped short of it from a Wednesday or Thursday, so a backfill or
+# the weekly job run midweek never found the week's data).
+_WEEKLY_PUBLISH_SEARCH_DAYS = 7
 
 
 _ONE_DAY = timedelta(days=1)

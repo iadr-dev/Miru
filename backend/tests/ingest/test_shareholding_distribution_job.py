@@ -133,3 +133,21 @@ async def test_idempotent_rerun_same_publish_date_does_not_duplicate(
     assert first.status is RunStatus.SUCCESS
     assert second.status is RunStatus.SUCCESS
     assert first.rows_written == second.rows_written == 1
+
+
+@pytest.mark.parametrize("weekday_offset", [3, 4, 5, 6])
+async def test_finds_the_fridays_publish_from_a_wednesday_to_a_thursday_run(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch, weekday_offset: int
+) -> None:
+    """The weekly job and the weekly-stepping backfill can run on any weekday. From Tuesday on,
+    Friday is 4-6 days back; a 5-day search stopped short of it on a Wednesday or Thursday, so the
+    week was skipped every time (SKIPPED, never a failure)."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    _patch_date_conditional_client(monkeypatch, publish_date=_PUBLISH_DATE)
+    ctx = _ctx(tmp_path)
+
+    run = await job_shareholding_distribution(_PUBLISH_DATE + timedelta(days=weekday_offset), ctx)
+
+    assert run.status is RunStatus.SUCCESS
+    assert run.run_date == _PUBLISH_DATE
