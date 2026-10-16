@@ -3611,7 +3611,11 @@
       "close": "18:00 收盤確認",
       "lastCheck": "最近檢查 {time}",
       "notStarted": "尚未開始",
-      "label": "今日流程"
+      "label": "今日流程",
+      "prices": "17:40 補股價・融資",
+      "flows": "20:10 補三大法人",
+      "dataThrough": "資料至 {date}",
+      "noData": "尚無資料"
     },
     "regime": {
       "label": "市場寬度",

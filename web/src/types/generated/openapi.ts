@@ -8267,6 +8267,8 @@ export interface components {
       };
       /** Data Available */
       data_available: boolean;
+      /** @default {} */
+      data_dates: components["schemas"]["StrategyWatchDataDates"];
       /**
        * Events
        * @default []
@@ -11628,6 +11630,20 @@ export interface components {
       version: number;
       /** Watchlist Id */
       watchlist_id?: string | null;
+    };
+    /**
+     * StrategyWatchDataDates
+     * @description The latest session each input the screen reads has real rows for: the post-close refresh
+     *     steps of the daily cycle (股價 17:40, 融資 17:40, 三大法人 20:10). A date behind the list's
+     *     session means that refresh has not landed (or the source is failing).
+     */
+    StrategyWatchDataDates: {
+      /** Institutional Flow */
+      institutional_flow?: string | null;
+      /** Margin Short */
+      margin_short?: string | null;
+      /** Price Eod */
+      price_eod?: string | null;
     };
     /** StrategyWatchEvent */
     StrategyWatchEvent: {

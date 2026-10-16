@@ -3611,7 +3611,11 @@
       "close": "18:00 close check",
       "lastCheck": "Last check {time}",
       "notStarted": "Not started",
-      "label": "Today's run"
+      "label": "Today's run",
+      "prices": "17:40 prices & margin",
+      "flows": "20:10 institutional flows",
+      "dataThrough": "data through {date}",
+      "noData": "no data yet"
     },
     "regime": {
       "label": "Market breadth",

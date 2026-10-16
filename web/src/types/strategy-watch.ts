@@ -73,6 +73,15 @@ export const strategyWatchEventSchema = z.object({
 
 export type StrategyWatchEvent = z.infer<typeof strategyWatchEventSchema>;
 
+/** The latest session each post-close refresh has real rows for (股價, 融資, 三大法人). */
+export const strategyWatchDataDatesSchema = z.object({
+  price_eod: z.string().nullable(),
+  margin_short: z.string().nullable(),
+  institutional_flow: z.string().nullable(),
+});
+
+export type StrategyWatchDataDates = z.infer<typeof strategyWatchDataDatesSchema>;
+
 export const strategyWatchTodaySchema = z.object({
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable(),
@@ -85,6 +94,7 @@ export const strategyWatchTodaySchema = z.object({
   items: z.array(strategyWatchItemSchema).default([]),
   events: z.array(strategyWatchEventSchema).default([]),
   masked: z.boolean(),
+  data_dates: strategyWatchDataDatesSchema,
 });
 
 export type StrategyWatchToday = z.infer<typeof strategyWatchTodaySchema>;

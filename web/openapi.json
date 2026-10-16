@@ -10573,6 +10573,10 @@
       "title": "Data Available",
       "type": "boolean"
      },
+     "data_dates": {
+      "$ref": "#/components/schemas/StrategyWatchDataDates",
+      "default": {}
+     },
      "events": {
       "default": [],
       "items": {
@@ -18568,6 +18572,50 @@
      "updated_at"
     ],
     "title": "StrategySubscription",
+    "type": "object"
+   },
+   "StrategyWatchDataDates": {
+    "additionalProperties": false,
+    "description": "The latest session each input the screen reads has real rows for: the post-close refresh\nsteps of the daily cycle (股價 17:40, 融資 17:40, 三大法人 20:10). A date behind the list's\nsession means that refresh has not landed (or the source is failing).",
+    "properties": {
+     "institutional_flow": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Institutional Flow"
+     },
+     "margin_short": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Margin Short"
+     },
+     "price_eod": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Price Eod"
+     }
+    },
+    "title": "StrategyWatchDataDates",
     "type": "object"
    },
    "StrategyWatchEvent": {
