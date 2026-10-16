@@ -4,19 +4,30 @@ the intraday values masked (modules/14 bound 2), not a refusal."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from datetime import date as date_
+
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
-from api.dependencies import get_session, require_user
+from api.dependencies import (
+    AppState,
+    dispatch_validated_tool,
+    get_session,
+    get_state,
+    require_user,
+    tool_context_for,
+)
 from api.errors import ApiError
 from api.routers.scheduler._common import not_found as _not_found
 from api.routers.scheduler._common import store as _store
+from api.tool_responses import tool_responses
 from scheduler.models import DeliveryChannelKind, QuietHours, StrategySubscription
 from scheduler.store import SchedulerStore
 from scheduler.strategy_store import StaleSubscriptionError, StrategySubscriptionStore
 from schemas.strategy_watch import StrategyKey
+from tools.base import ToolContext
 
 router = APIRouter()
 
@@ -93,6 +104,33 @@ async def delete_strategy_subscription(
 ) -> None:
     if not await subscriptions.delete(user_id=user.id):
         raise _not_found("subscription_not_found", "No strategy-watch subscription to delete.")
+
+
+def _tool_context(
+    user: User = Depends(require_user), state: AppState = Depends(get_state)
+) -> ToolContext:
+    return tool_context_for(user, state)
+
+
+@router.get(
+    "/strategy-watch/today",
+    response_model=None,
+    responses=tool_responses("get_strategy_watch"),
+)
+async def strategy_watch_today(
+    as_of: date_ | None = Query(None),
+    strategy: StrategyKey | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_tool_context),
+) -> dict[str, object]:
+    """Today's 策略盯盤 list (or the last trading day's) with each stock's levels and where its
+    conditions stand at the latest intraday check, backed by `get_strategy_watch`."""
+    args: dict[str, object] = {}
+    if as_of is not None:
+        args["as_of"] = as_of.isoformat()
+    if strategy is not None:
+        args["strategy"] = strategy
+    return await dispatch_validated_tool(state, "get_strategy_watch", args, ctx)
 
 
 __all__ = ["router"]

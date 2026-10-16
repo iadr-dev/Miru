@@ -10536,6 +10536,121 @@
     "title": "GetStockSummaryOutput",
     "type": "object"
    },
+   "GetStrategyWatchOutput": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "As Of"
+     },
+     "breadth_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Breadth Pct"
+     },
+     "counts": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Counts",
+      "type": "object"
+     },
+     "data_available": {
+      "title": "Data Available",
+      "type": "boolean"
+     },
+     "events": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/StrategyWatchEvent"
+      },
+      "title": "Events",
+      "type": "array"
+     },
+     "items": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/StrategyWatchItem"
+      },
+      "title": "Items",
+      "type": "array"
+     },
+     "last_slot": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Slot"
+     },
+     "masked": {
+      "default": false,
+      "title": "Masked",
+      "type": "boolean"
+     },
+     "regime": {
+      "anyOf": [
+       {
+        "enum": [
+         "risk_on",
+         "neutral",
+         "risk_off"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Regime"
+     },
+     "run_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Run Date"
+     },
+     "unavailable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Reason"
+     }
+    },
+    "required": [
+     "data_available"
+    ],
+    "title": "GetStrategyWatchOutput",
+    "type": "object"
+   },
    "GetSupplyChainEdgesOutput": {
     "additionalProperties": false,
     "description": "Every supply-chain edge where the symbol is either endpoint — the 供應鏈關係圖 card's one\ndata source. `edges` carries both directions (the symbol as `from_symbol` AND as\n`to_symbol`) so a caller can render a focus-node graph without a second round-trip; each\nedge's own `from_symbol`/`to_symbol` disambiguates direction. Empty, not an error, for a\nsymbol with no seeded/extracted relationships yet.",
@@ -18302,6 +18417,56 @@
     "title": "StockSwot",
     "type": "object"
    },
+   "StrategyCondition": {
+    "additionalProperties": false,
+    "properties": {
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "trigger",
+       "guard"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "met": {
+      "title": "Met",
+      "type": "boolean"
+     },
+     "observed": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Observed"
+     },
+     "required": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Required"
+     }
+    },
+    "required": [
+     "key",
+     "kind",
+     "met"
+    ],
+    "title": "StrategyCondition",
+    "type": "object"
+   },
    "StrategySubscription": {
     "additionalProperties": false,
     "description": "A user's 策略盯盤 subscription (one per user): which strategies, over every stock today's\nscreen picks or only one of the user's watchlist groups, and how to be told.",
@@ -18403,6 +18568,331 @@
      "updated_at"
     ],
     "title": "StrategySubscription",
+    "type": "object"
+   },
+   "StrategyWatchEvent": {
+    "additionalProperties": false,
+    "properties": {
+     "kind": {
+      "enum": [
+       "intraday",
+       "close"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "slot": {
+      "title": "Slot",
+      "type": "string"
+     },
+     "strategy": {
+      "enum": [
+       "volatility_squeeze",
+       "oversold_bounce",
+       "ad_divergence",
+       "chip_accumulation",
+       "momentum_flag"
+      ],
+      "title": "Strategy",
+      "type": "string"
+     },
+     "symbol": {
+      "title": "Symbol",
+      "type": "string"
+     }
+    },
+    "required": [
+     "slot",
+     "symbol",
+     "strategy",
+     "kind"
+    ],
+    "title": "StrategyWatchEvent",
+    "type": "object"
+   },
+   "StrategyWatchItem": {
+    "additionalProperties": false,
+    "properties": {
+     "alerted_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Alerted At"
+     },
+     "all_met": {
+      "default": false,
+      "title": "All Met",
+      "type": "boolean"
+     },
+     "close": {
+      "title": "Close",
+      "type": "number"
+     },
+     "close_confirmed": {
+      "default": false,
+      "title": "Close Confirmed",
+      "type": "boolean"
+     },
+     "conditions": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/StrategyCondition"
+      },
+      "title": "Conditions",
+      "type": "array"
+     },
+     "days_on_list": {
+      "default": 1,
+      "title": "Days On List",
+      "type": "integer"
+     },
+     "first_listed": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "First Listed"
+     },
+     "flag_high": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Flag High"
+     },
+     "flag_low": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Flag Low"
+     },
+     "foreign_streak": {
+      "default": 0,
+      "title": "Foreign Streak",
+      "type": "integer"
+     },
+     "headline": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Headline"
+     },
+     "holders_change_4w_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Holders Change 4W Pct"
+     },
+     "industry": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Industry"
+     },
+     "large_holder_change_4w": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Large Holder Change 4W"
+     },
+     "large_holder_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Large Holder Pct"
+     },
+     "latest_slot": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Latest Slot"
+     },
+     "low_20d": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Low 20D"
+     },
+     "lower_band": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lower Band"
+     },
+     "margin_change_20d_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Margin Change 20D Pct"
+     },
+     "name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Name"
+     },
+     "price": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Price"
+     },
+     "range_high_20d": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Range High 20D"
+     },
+     "range_low_20d": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Range Low 20D"
+     },
+     "sector_strength_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sector Strength Pct"
+     },
+     "strategy": {
+      "enum": [
+       "volatility_squeeze",
+       "oversold_bounce",
+       "ad_divergence",
+       "chip_accumulation",
+       "momentum_flag"
+      ],
+      "title": "Strategy",
+      "type": "string"
+     },
+     "symbol": {
+      "title": "Symbol",
+      "type": "string"
+     },
+     "trust_streak": {
+      "default": 0,
+      "title": "Trust Streak",
+      "type": "integer"
+     },
+     "upper_band": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Upper Band"
+     }
+    },
+    "required": [
+     "symbol",
+     "strategy",
+     "close"
+    ],
+    "title": "StrategyWatchItem",
     "type": "object"
    },
    "SubIndustryHeat": {
@@ -31193,6 +31683,80 @@
      }
     },
     "summary": "Put Strategy Subscription",
+    "tags": [
+     "scheduler"
+    ]
+   }
+  },
+  "/api/v1/strategy-watch/today": {
+   "get": {
+    "description": "Today's 策略盯盤 list (or the last trading day's) with each stock's levels and where its\nconditions stand at the latest intraday check, backed by `get_strategy_watch`.",
+    "operationId": "strategy_watch_today_api_v1_strategy_watch_today_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "as_of",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "As Of"
+      }
+     },
+     {
+      "in": "query",
+      "name": "strategy",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "volatility_squeeze",
+          "oversold_bounce",
+          "ad_divergence",
+          "chip_accumulation",
+          "momentum_flag"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Strategy"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetStrategyWatchOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Strategy Watch Today",
     "tags": [
      "scheduler"
     ]

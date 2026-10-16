@@ -19,20 +19,23 @@ function readText(payload: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-/** `deep_link` is `{route, symbol?, thread_id?}`. Only routes this app actually has are honoured;
+/** `deep_link` is `{route, symbol?, strategy?, thread_id?}`. Only routes this app actually has are honoured;
  * an unknown route yields no link so a tap never lands on a dead page. */
 export function deepLinkHref(payload: Record<string, unknown>): string | null {
   const link = payload.deep_link;
   if (typeof link !== "object" || link === null) {
     return null;
   }
-  const { route, symbol, thread_id: threadId } = link as Record<string, unknown>;
-  // A 策略盯盤 condition alert names its stock; it opens that stock until the watch page exists.
-  if (
-    (route === "stock" || route === "watch") &&
-    typeof symbol === "string" &&
-    symbol.trim() !== ""
-  ) {
+  const { route, symbol, strategy, thread_id: threadId } = link as Record<string, unknown>;
+  // A 策略盯盤 notification opens the watch page, on its stock and strategy when it names one.
+  if (route === "watch") {
+    const search = new URLSearchParams();
+    if (typeof symbol === "string" && symbol.trim() !== "") search.set("symbol", symbol);
+    if (typeof strategy === "string" && strategy.trim() !== "") search.set("strategy", strategy);
+    const query = search.toString();
+    return query ? `/watch?${query}` : "/watch";
+  }
+  if (route === "stock" && typeof symbol === "string" && symbol.trim() !== "") {
     return `/stock/${encodeURIComponent(symbol)}`;
   }
   // A schedule's notification points at the one thread every run of it is appended to.

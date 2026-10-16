@@ -649,7 +649,11 @@
     "comingSoon": "即將推出",
     "more": "更多",
     "close": "關閉選單",
-    "mobile": "主要導覽"
+    "mobile": "主要導覽",
+    "watch": {
+      "label": "AI 盯盤",
+      "sublabel": "Watch"
+    }
   },
   "shell": {
     "search": {
@@ -3596,6 +3600,152 @@
       "between": "介於",
       "eq": "等於",
       "in": "屬於"
+    }
+  },
+  "watch": {
+    "title": "AI 盯盤",
+    "subtitle": "每天 08:00 選股、盤中每 10 分鐘檢查條件、收盤確認突破。條件成立時通知你，不構成投資建議。",
+    "pipeline": {
+      "screen": "08:00 選股",
+      "watch": "09:00–13:30 盯盤",
+      "close": "18:00 收盤確認",
+      "lastCheck": "最近檢查 {time}",
+      "notStarted": "尚未開始",
+      "label": "今日流程"
+    },
+    "regime": {
+      "label": "市場寬度",
+      "risk_on": "偏強",
+      "neutral": "中性",
+      "risk_off": "偏弱",
+      "breadth": "站上月線 {pct}%"
+    },
+    "asOf": "依 {date} 收盤資料",
+    "earlierList": "今日清單尚未產生，顯示 {date} 的清單",
+    "subscribe": "訂閱提醒",
+    "subscribed": "已訂閱提醒",
+    "masked": "盤中數值與大戶持股為 Premium 方案資料，已隱藏。",
+    "strategies": {
+      "volatility_squeeze": {
+        "name": "波動率擠壓",
+        "desc": "布林通道收斂到近 120 日最窄，等待帶量突破上軌。"
+      },
+      "oversold_bounce": {
+        "name": "超跌反彈",
+        "desc": "短期跌深、RSI 低檔，觀察紅K量縮止穩。"
+      },
+      "ad_divergence": {
+        "name": "量價背離",
+        "desc": "價格逼近 20 日低點，但 A/D 線未跟著走弱。"
+      },
+      "chip_accumulation": {
+        "name": "籌碼集中盤整",
+        "desc": "股價仍在盤整區間，法人與千張大戶持續增加、融資減少。"
+      },
+      "momentum_flag": {
+        "name": "強勢整理",
+        "desc": "大漲後短線窄幅整理且量縮，籌碼仍在集中。"
+      }
+    },
+    "table": {
+      "symbol": "代號",
+      "name": "名稱",
+      "price": "價格",
+      "level": "關鍵價位",
+      "conditions": "條件",
+      "days": "天數",
+      "empty": "這個策略今天沒有符合的股票。",
+      "caption": "{strategy} 今日清單"
+    },
+    "status": {
+      "alerted": "已通知 {time}",
+      "closeConfirmed": "收盤確認",
+      "allMet": "條件全數成立",
+      "notChecked": "尚未檢查",
+      "conditionsMet": "{met}/{total} 個條件成立"
+    },
+    "levels": {
+      "upper_band": "布林上軌",
+      "lower_band": "布林下軌",
+      "low_20d": "20 日低點",
+      "range_high_20d": "盤整區間高點",
+      "range_low_20d": "盤整區間下緣",
+      "flag_high": "整理區高點",
+      "flag_low": "整理區下緣"
+    },
+    "conditions": {
+      "price_above_upper_band": "價格高於布林上軌",
+      "volume_ratio_at_least": "量比達門檻",
+      "momentum_5d_positive": "價格高於 5 日前收盤",
+      "red_candle": "紅K",
+      "volume_ratio_at_most": "量縮",
+      "kd_oversold": "KD 低檔",
+      "new_20d_low": "價格低於 20 日低點",
+      "rsi_higher_low": "RSI 未創新低",
+      "ad_higher_low": "A/D 線未創新低",
+      "price_above_range_high": "價格高於盤整區間高點",
+      "price_above_flag_high": "價格高於整理區高點",
+      "close_above_upper_band": "收盤高於布林上軌",
+      "close_above_range_high": "收盤高於盤整區間高點",
+      "close_above_flag_high": "收盤高於整理區高點",
+      "close_volume_multiple": "量能放大",
+      "after_opening_window": "09:30 之後",
+      "market_not_falling": "大盤未重挫",
+      "above_average_price": "站上當日均價",
+      "not_near_limit_up": "未接近漲停"
+    },
+    "detail": {
+      "select": "選一檔股票查看條件與價位",
+      "conditions": "觸發條件",
+      "guards": "盤中檢查",
+      "context": "背景",
+      "chart": "近 60 日收盤與觸發價",
+      "observed": "目前",
+      "required": "門檻",
+      "openStock": "開啟個股頁",
+      "daysOnList": "已在清單 {days} 個交易日",
+      "notChecked": "盤中尚未檢查這檔股票。",
+      "close": "關閉"
+    },
+    "context": {
+      "sector": "{industry} 類股強度 {pct}",
+      "foreign": "外資連 {days} 日{side}",
+      "trust": "投信連 {days} 日{side}",
+      "buy": "買超",
+      "sell": "賣超",
+      "largeHolder": "千張大戶 {pct}%（4 週 {change} 個百分點）",
+      "margin": "融資 20 日 {pct}%",
+      "marginSurge": "融資增幅偏大",
+      "headline": "今日重訊：{text}"
+    },
+    "feed": {
+      "title": "今日條件達成",
+      "empty": "今天還沒有條件全數成立的股票。",
+      "intraday": "盤中",
+      "close": "收盤確認"
+    },
+    "unavailable": "目前沒有盯盤清單",
+    "unavailableHint": "08:00 選股需要最新的收盤資料，資料過期時會自動略過。",
+    "disclaimer": "以上為你訂閱條件的資料整理，非投資建議。",
+    "form": {
+      "title": "策略盯盤提醒",
+      "strategies": "策略",
+      "scope": "範圍",
+      "scopeAll": "今日清單的所有股票",
+      "scopeGroup": "只看自選群組",
+      "group": "群組",
+      "noGroups": "你還沒有自選群組",
+      "morningList": "每天 08:00 傳送今日清單",
+      "dailyLimit": "每日條件提醒上限",
+      "noLimit": "不限",
+      "enabled": "啟用提醒",
+      "channels": "通知管道與勿擾時段沿用你的提醒設定。",
+      "save": "儲存",
+      "saving": "儲存中…",
+      "cancel": "取消",
+      "conflict": "設定已在其他裝置變更，請重新整理後再試。",
+      "needOne": "至少選一個策略",
+      "failed": "儲存失敗，請稍後再試。"
     }
   }
 }
