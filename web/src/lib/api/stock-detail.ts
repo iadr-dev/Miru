@@ -37,8 +37,6 @@ import {
 import {
   type CalendarEventsFeedResponse,
   calendarEventsFeedResponseSchema,
-  type DispositionSecuritiesResponse,
-  dispositionSecuritiesResponseSchema,
   type StockCalendarEventsResponse,
   stockCalendarEventsResponseSchema,
 } from "@/types/stock/events";
@@ -216,20 +214,6 @@ export async function getEsgScore(symbol: string, market: Market): Promise<EsgSc
   const search = new URLSearchParams({ symbol, market });
   const raw = await requestJson(`/stock/esg-score?${search.toString()}`);
   return esgScoreResponseSchema.parse(raw);
-}
-
-// ---------------------------------------------------------------------------
-// 5. GET /stock/disposition-securities (Sponsor-tier)
-// ---------------------------------------------------------------------------
-
-export async function getDispositionSecurities(
-  symbol: string,
-  market: Market,
-  params: DateRangeParams = {},
-): Promise<DispositionSecuritiesResponse> {
-  const search = symbolDateSearchParams(symbol, market, params);
-  const raw = await requestJson(`/stock/disposition-securities?${search.toString()}`);
-  return dispositionSecuritiesResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

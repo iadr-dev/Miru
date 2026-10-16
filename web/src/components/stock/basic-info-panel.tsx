@@ -9,10 +9,10 @@ import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
+import { getDispositionBoard } from "@/lib/api/market";
 import { queryKeys } from "@/lib/api/query-keys";
 import {
   getCompanyProfile,
-  getDispositionSecurities,
   getEsgScore,
   getInsiderShareholding,
   getStockCalendarEvents,
@@ -61,9 +61,8 @@ function isoDaysFromToday(days: number): string {
  * (`get_symbol_themes` — real, previously unused anywhere on the page), 內部人/董監持股·質押比
  * (`get_insider_shareholding`, capped + `ExpandModal`), 公告/事件 stream
  * (`get_material_announcements`, capped + `ExpandModal`), ESG風險卡 (`get_esg_score`, hidden
- * entirely when null — coverage-gated, never an empty scaffold), 處置/注意 banner
- * (`get_disposition_securities`, Sponsor-tier, no forecast field on this tool so no "最快N日"
- * copy). Dropped for this phase: 集團/轉投資/大股東, 被N支ETF持有, 相似股票/相關動能,
+ * entirely when null — coverage-gated, never an empty scaffold), 處置 banner (the free
+ * 處置王 board's card for this symbol, the same query the header badge makes). Dropped for this phase: 集團/轉投資/大股東, 被N支ETF持有, 相似股票/相關動能,
  * 觀察這支股票的人也看這些, 產銷組合 — none of `get_company_relationships`/
  * `get_etfs_holding_stock`/a correlation-coefficient tool/cross-user watchlist analytics/a
  * product-mix capability exist yet (confirmed via grep, not assumed).
@@ -683,35 +682,25 @@ function DispositionBanner({
   readonly market: Market;
 }): ReactNode {
   const t = useTranslations("stock.basicInfo");
+  // The free 處置王 board (exchange 注意・處置 announcements), same key as the header badge, so
+  // TanStack dedupes it. 注意股 (at_risk) is the badge's job; the banner is for 處置 itself.
   const query = useQuery({
-    queryKey: queryKeys.symbolRead("disposition_securities", symbol, market),
-    queryFn: () => getDispositionSecurities(symbol, market),
+    queryKey: queryKeys.marketRead("disposition_board", market),
+    queryFn: () => getDispositionBoard(market),
+    enabled: market === "TW",
   });
-
-  if (!query.data) return null;
-  if (isMaskedTeaser(query.data)) {
-    return (
-      <div className="xl:col-span-2">
-        <SponsorTeaser
-          headline={t("dispositionTitle")}
-          preview={query.data.preview}
-          requiredTier={query.data.required_tier}
-        >
-          <div className="h-12 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-        </SponsorTeaser>
-      </div>
-    );
-  }
-  const rows = query.data.rows;
-  if (rows.length === 0) return null;
-  const latest = rows[rows.length - 1];
-  if (!latest) return null;
+  const card = query.data?.cards.find((c) => c.symbol === symbol && c.bucket !== "at_risk");
+  if (!card) return null;
 
   return (
-    <div className="flex items-center gap-2 rounded-[var(--radius-card)] bg-[var(--warn)]/12 px-4 py-3 text-[13px] text-[var(--warn)] xl:col-span-2">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-[var(--radius-card)] bg-[var(--warn)]/12 px-4 py-3 text-[13px] text-[var(--warn)] xl:col-span-2">
       <span className="font-medium">{t("dispositionFlag")}</span>
-      <span>{latest.measure}</span>
-      <span className="font-num tabular-nums">{latest.date}</span>
+      {card.disposition_measure ? <span>{card.disposition_measure}</span> : null}
+      {card.disposition_period_start && card.disposition_period_end ? (
+        <span className="font-num tabular-nums">
+          {card.disposition_period_start} ~ {card.disposition_period_end}
+        </span>
+      ) : null}
     </div>
   );
 }
