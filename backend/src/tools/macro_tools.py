@@ -24,7 +24,7 @@ from schemas.capabilities import (
 from schemas.enums import Capability, DataClass, Market
 from schemas.market import Symbol
 from tools._rows import fetch_rows
-from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.base import BaseTool, Tool, ToolContext, is_entitled, parse_args
 from tools.common import MarketOnlyInput
 
 
@@ -66,10 +66,9 @@ class GetMacroIndicatorsOutput(_RowsOutput):
 
 class GetMacroIndicatorsTool(BaseTool):
     """`get_macro_indicators` — bundles 匯率/利率/黃金/原油/美債殖利率/Fear-Greed into one macro
-    context report. `fear_greed_index` is Sponsor-tier; every other field is public — the whole
-    tool is gated Sponsor so the entitlement check runs once at the tool level rather than
-    masking one field mid-payload (a possible future per-factor masking scheme for a composite
-    score tool is a different design this bundle does not attempt to replicate)."""
+    context report. Every field but `fear_greed_index` is public FinMind data, so the tool is
+    public; the Sponsor-tier Fear & Greed Index is fetched only for an entitled caller and is an
+    empty tuple for everyone else (never fetched, so never in a free caller's payload)."""
 
     name = "get_macro_indicators"
     description = (
@@ -78,7 +77,7 @@ class GetMacroIndicatorsTool(BaseTool):
     )
     input_model: type[BaseModel] = GetMacroIndicatorsInput
     output_model: type[BaseModel] = GetMacroIndicatorsOutput
-    data_class = DataClass.SPONSOR
+    data_class = DataClass.PUBLIC
     card_type: str | None = "macro_indicators"
 
     def __init__(self, router: DataAccessRouter) -> None:
@@ -144,15 +143,17 @@ class GetMacroIndicatorsTool(BaseTool):
             key="rows",
             params=params,
         )
-        _fear_result, fear_rows = await fetch_rows(
-            self._router,
-            Capability.FEAR_GREED_INDEX,
-            Symbol(id="", market=Market.US),
-            tls_policy=ctx.tls_policy,
-            model=FearGreedIndexRow,
-            key="rows",
-            params=params,
-        )
+        fear_rows: tuple[FearGreedIndexRow, ...] = ()
+        if is_entitled(DataClass.SPONSOR, ctx.tier):
+            _fear_result, fear_rows = await fetch_rows(
+                self._router,
+                Capability.FEAR_GREED_INDEX,
+                Symbol(id="", market=Market.US),
+                tls_policy=ctx.tls_policy,
+                model=FearGreedIndexRow,
+                key="rows",
+                params=params,
+            )
         return GetMacroIndicatorsOutput(
             currentness_caveat=fx_result.currentness_caveat,
             exchange_rate=fx_rows,

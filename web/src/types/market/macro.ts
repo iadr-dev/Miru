@@ -4,7 +4,6 @@
  */
 
 import { z } from "zod";
-import { maskedTeaserSchema } from "@/types/market/shared";
 
 // ---------------------------------------------------------------------------
 // 7. GET /macro — get_macro_indicators (whole tool Sponsor-tier)
@@ -80,10 +79,9 @@ export const macroIndicatorsDataSchema = z.object({
 
 export type MacroIndicatorsData = z.infer<typeof macroIndicatorsDataSchema>;
 
-export const macroIndicatorsResponseSchema = z.union([
-  macroIndicatorsDataSchema,
-  maskedTeaserSchema,
-]);
+// `get_macro_indicators` is public (the Sponsor-only Fear & Greed Index is left empty for a free
+// caller), so the response is never a masked teaser.
+export const macroIndicatorsResponseSchema = macroIndicatorsDataSchema;
 
 export type MacroIndicatorsResponse = z.infer<typeof macroIndicatorsResponseSchema>;
 

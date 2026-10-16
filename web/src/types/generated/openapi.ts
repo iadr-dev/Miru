@@ -14808,9 +14808,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json":
-            | components["schemas"]["GetMacroIndicatorsOutput"]
-            | components["schemas"]["MaskedTeaser"];
+          "application/json": components["schemas"]["GetMacroIndicatorsOutput"];
         };
       };
       /** @description Validation Error */

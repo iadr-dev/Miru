@@ -35,12 +35,15 @@ def byok_client(byok_settings: Settings, agent_answer: str):
 
 
 @pytest.mark.governance
-def test_macro_sponsor_masked_for_free(client: TestClient, signed_in_user) -> None:
-    # get_macro_indicators is a Sponsor-tier tool — a Free caller gets the masked teaser at 200.
+def test_macro_public_for_free_without_fear_greed(client: TestClient, signed_in_user) -> None:
+    # get_macro_indicators is public (free FinMind data); the Sponsor-tier Fear & Greed Index is
+    # left out for a Free caller instead of masking the whole report.
     headers, _ = signed_in_user
     resp = client.get("/api/v1/macro", headers=headers)
     assert resp.status_code == 200
-    assert resp.json()["locked"] is True
+    body = resp.json()
+    assert "locked" not in body
+    assert body["fear_greed_index"] == []
 
 
 @pytest.mark.governance

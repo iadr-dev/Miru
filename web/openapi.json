@@ -24692,15 +24692,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "anyOf": [
-          {
-           "$ref": "#/components/schemas/GetMacroIndicatorsOutput"
-          },
-          {
-           "$ref": "#/components/schemas/MaskedTeaser"
-          }
-         ],
-         "title": "Response 200 Macro Api V1 Macro Get"
+         "$ref": "#/components/schemas/GetMacroIndicatorsOutput"
         }
        }
       },

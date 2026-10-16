@@ -12,6 +12,7 @@ from tools.common import MarketOnlyInput
 from tools.macro_tools import (
     GetBusinessIndicatorTool,
     GetMacroIndicatorsInput,
+    GetMacroIndicatorsOutput,
     GetMacroIndicatorsTool,
 )
 
@@ -28,10 +29,11 @@ def _result(payload: dict[str, object]) -> SourceResult:
     )
 
 
-async def test_get_macro_indicators_bundles_six_datasets_and_is_sponsor_gated() -> None:
+async def test_get_macro_indicators_is_public_with_fear_greed_for_paid_only() -> None:
     """The macro tool fans out across TW/GLOBAL/US in one call — `make_router` only scopes
     its stub to one market at a time, so this test builds the router directly with one stub
-    adapter declaring all three markets."""
+    adapter declaring all three markets. The tool is public (every dataset but the Fear & Greed
+    Index is free); the Sponsor-tier index is fetched only for an entitled caller."""
     fx_row = {
         "symbol": "USD",
         "market": "TW",
@@ -70,15 +72,19 @@ async def test_get_macro_indicators_bundles_six_datasets_and_is_sponsor_gated() 
     router = DataAccessRouter({"STUB": adapter}, priority_config=priority)
 
     tool = GetMacroIndicatorsTool(router)
-    assert tool.data_class is DataClass.SPONSOR
+    assert tool.data_class is DataClass.PUBLIC
     args = GetMacroIndicatorsInput()
 
-    masked = await dispatch_tool(tool, args, ToolContext(tier=Tier.FREE))
-    assert isinstance(masked, MaskedTeaser)
+    free = await dispatch_tool(tool, args, ToolContext(tier=Tier.FREE))
+    assert isinstance(free, GetMacroIndicatorsOutput)
+    assert free.exchange_rate[0].symbol == "USD"
+    assert free.central_bank_rate == ()
+    fetched = [cap for cap, _sym, _params in adapter.calls]
+    assert Capability.FEAR_GREED_INDEX not in fetched
 
-    output = await tool.run(args, ToolContext())
-    assert output.exchange_rate[0].symbol == "USD"
-    assert output.central_bank_rate == ()
+    await dispatch_tool(tool, args, ToolContext(tier=Tier.PREMIUM))
+    fetched = [cap for cap, _sym, _params in adapter.calls]
+    assert Capability.FEAR_GREED_INDEX in fetched
 
 
 async def test_get_business_indicator_is_sponsor_gated() -> None:
