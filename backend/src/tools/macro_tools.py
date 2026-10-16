@@ -90,7 +90,10 @@ class GetMacroIndicatorsTool(BaseTool):
         fx_result, fx_rows = await fetch_rows(
             self._router,
             Capability.EXCHANGE_RATE,
-            Symbol(id="", market=Market.TW),
+            # Confirmed live against FinMind: on the free tier the whole-panel form (empty
+            # `data_id`) is refused ("Your level is register") — only a named currency is free.
+            # USD is the reading this report is used for.
+            Symbol(id="USD", market=Market.TW, finmind="USD"),
             tls_policy=ctx.tls_policy,
             model=ExchangeRateRow,
             key="rows",
@@ -122,7 +125,9 @@ class GetMacroIndicatorsTool(BaseTool):
         _oil_result, oil_rows = await fetch_rows(
             self._router,
             Capability.CRUDE_OIL_PRICES,
-            Symbol(id="", market=Market.GLOBAL),
+            # Same free-tier rule as `EXCHANGE_RATE` above: the whole-panel form is Sponsor-only,
+            # a named benchmark is free. WTI is the one `macro-indicators-panel.tsx` shows.
+            Symbol(id="WTI", market=Market.GLOBAL, finmind="WTI"),
             tls_policy=ctx.tls_policy,
             model=CrudeOilPricesRow,
             key="rows",
