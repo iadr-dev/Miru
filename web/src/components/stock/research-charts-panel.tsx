@@ -14,7 +14,6 @@ import {
   YAxis,
 } from "recharts";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
-import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { RangeSelect } from "@/components/stock/range-select";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
@@ -27,7 +26,6 @@ import {
 } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { formatCompactNumber, formatNumber } from "@/lib/format-number";
-import { isMaskedTeaser } from "@/types/market/shared";
 import type { Market } from "@/types/settings";
 import type { CalendarEventOut } from "@/types/stock/events";
 import type { AnalystConsensus, ValuationRatiosRow } from "@/types/stock/fundamentals";
@@ -677,20 +675,6 @@ function StockEventsCard({
   }
   const data = query.data;
   if (!data) return null;
-
-  if (isMaskedTeaser(data)) {
-    return (
-      <section className="surface-card p-4 sm:p-5 xl:col-span-2">
-        <SponsorTeaser
-          headline={t("eventsTitle")}
-          preview={data.preview}
-          requiredTier={data.required_tier}
-        >
-          <div className="h-64 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-        </SponsorTeaser>
-      </section>
-    );
-  }
 
   const events = [...data.events]
     .filter((e) =>

@@ -11,9 +11,9 @@ consuming caller's job, not this tool's. What this tool returns today is exactly
 sourced half of `calendar/events.py::get_calendar_events` — real 除權息/CB events, not rule
 markers.
 
-`Capability.CB_PUT_PROVISION` is Sponsor-tier at the source, so this tool is classed `sponsor`
-as a whole (the existing bundling convention for a mixed public+sponsor composite, e.g.
-`get_derivatives_institutional`) rather than attempting a field-level entitlement split.
+除權息/ETF配息 and the TWSE feeds are public, so this tool is public.
+`Capability.CB_PUT_PROVISION` is Sponsor-tier at the source, so CB 賣回權/到期 events are fetched
+only for an entitled caller; anyone else gets the free events, and the paid feed is never read.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataaccess.router import DataAccessRouter
 from schemas.enums import DataClass
 from schemas.source import HealthStatus
-from tools.base import BaseTool, Tool, ToolContext, parse_args
+from tools.base import BaseTool, Tool, ToolContext, is_entitled, parse_args
 from tools.common import DateRangeInput
 
 
@@ -71,7 +71,7 @@ class GetCalendarEventsTool(BaseTool):
     )
     input_model: type[BaseModel] = DateRangeInput
     output_model: type[BaseModel] = GetCalendarEventsOutput
-    data_class = DataClass.SPONSOR
+    data_class = DataClass.PUBLIC
     # Stays card_type=None (the default) — an event/notice stream, per this registry's own
     # convention that calendar/announcement feeds render better as prose/list than as a card.
 
@@ -89,6 +89,7 @@ class GetCalendarEventsTool(BaseTool):
             start_date=start_date,
             end_date=end_date,
             tls_policy=ctx.tls_policy,
+            include_cb=is_entitled(DataClass.SPONSOR, ctx.tier),
         )
         return GetCalendarEventsOutput(
             source_id=result.source_id,

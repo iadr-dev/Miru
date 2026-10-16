@@ -568,7 +568,7 @@ table cannot carry.
 | GET | `/api/v1/stock/live-price-quote` | optional | `get_live_price_quote` | public | `AssetHeader`'s one-shot price read for US symbols |
 | GET | `/api/v1/stock/calendar-events-feed` | optional | `get_calendar_events_feed` | public | The US 總覽 tab's upcoming-events calendar — earnings/IPO/economic calendars bundled from `yfinance.Calendars` |
 | GET | `/api/v1/stock/peers` | optional | `get_stock_peers` | public | The 產業同業 tab's sector/industry peer list — resolves the symbol's own classification then fetches its peers |
-| GET | `/api/v1/stock/calendar-events` | optional | `get_calendar_events` | sponsor | 研究圖表's 個股事件calendar — feed-sourced 除權息/CB events |
+| GET | `/api/v1/stock/calendar-events` | optional | `get_calendar_events` | public (CB events: Premium/Pro only) | 研究圖表's 個股事件calendar — feed-sourced 除權息/CB events |
 | GET | `/api/v1/stock/finmind-news` | optional | `get_finmind_stock_news` | public | 相關新聞's 財經新聞 sub-tab — FinMind's own per-symbol news dataset (single trading day per request upstream) |
 | GET | `/api/v1/stock/foreign-shareholding` | optional | `get_foreign_shareholding` | public | 籌碼分析's 三大法人 column, 持股 sub-tab — daily 外資持股比 (foreign-ownership ratio/ limit) |
 | GET | `/api/v1/stock/day-trading` | optional | `get_day_trading` | public | 籌碼分析's 融資券 column, 當沖 sub-tab — day-trading eligibility + volume/value |

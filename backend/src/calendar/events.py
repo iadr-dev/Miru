@@ -272,6 +272,7 @@ async def get_calendar_events(  # noqa: PLR0913 — the tool-facing composition 
     rule_engine_events: tuple[CalendarEvent, ...] = (),
     as_of: date_ | None = None,
     tls_policy: TLSPolicy = TLSPolicy.STRICT,
+    include_cb: bool = True,
 ) -> tuple[tuple[CalendarEvent, ...], SourceResult]:
     """The tool-facing `get_calendar_events` composition for one symbol over
     one bounded date range — never a whole-market/whole-watchlist scan in one call.
@@ -289,6 +290,9 @@ async def get_calendar_events(  # noqa: PLR0913 — the tool-facing composition 
     CB_PUT_PROVISION`). The returned `SourceResult` is the `calendar_events` feed fetch's own
     result (preserving this function's existing contract) — dividend/CB source health is
     carried on each mapped event's own `source` field instead of a second return value.
+
+    `include_cb=False` skips the CB fetch altogether — CB 賣回權/到期 is Sponsor-tier data, so an
+    unentitled caller gets the free events only, without the paid feed ever being read.
     """
     reference_date = as_of if as_of is not None else date_.today()
     feed_events, feed_result = await fetch_feed_events(
@@ -302,14 +306,16 @@ async def get_calendar_events(  # noqa: PLR0913 — the tool-facing composition 
         as_of=reference_date,
         tls_policy=tls_policy,
     )
-    cb_put_events, _cb_put_result = await fetch_cb_put_events(
-        router,
-        symbol,
-        start_date=start_date,
-        end_date=end_date,
-        as_of=reference_date,
-        tls_policy=tls_policy,
-    )
+    cb_put_events: tuple[CalendarEvent, ...] = ()
+    if include_cb:
+        cb_put_events, _cb_put_result = await fetch_cb_put_events(
+            router,
+            symbol,
+            start_date=start_date,
+            end_date=end_date,
+            as_of=reference_date,
+            tls_policy=tls_policy,
+        )
     merged = tuple(
         event
         for event in (*rule_engine_events, *feed_events, *dividend_events, *cb_put_events)
