@@ -412,7 +412,18 @@
         "title": "近期財報公布",
         "empty": "近期查無財報公布資料。",
         "expandTo": "展開完整 {count} 筆",
-        "monthHeading": "{year}年{month}月"
+        "monthHeading": "{year}年{month}月",
+        "columns": {
+          "name": "名稱",
+          "timing": "時段",
+          "epsEstimate": "預估 EPS",
+          "date": "日期"
+        },
+        "timing": {
+          "BMO": "盤前",
+          "AMC": "盤後",
+          "TNS": "時間未定"
+        }
       },
       "holderAccumulation": {
         "title": "大戶加碼股",
