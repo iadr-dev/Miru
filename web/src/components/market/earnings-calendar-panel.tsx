@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolLink } from "@/components/market/symbol-link";
@@ -9,12 +9,19 @@ import { QueryState } from "@/components/ui/query-state";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getCalendarEventsFeed } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
+import { formatNumber } from "@/lib/format-number";
 import type { Market } from "@/types/settings";
 import type { EarningsCalendarRow } from "@/types/stock/events";
 
 const EVENT_DOT_COLOR = "var(--chart-1)";
 const US_MARKET: Market = "US";
 const COLLAPSED_ROW_COUNT = 10;
+// Yahoo's report-time codes: before the open, after the close, time not supplied. Anything else
+// shows the raw code rather than a guess.
+const TIMING_CODES = ["BMO", "AMC", "TNS"] as const;
+const TIMING_CELL = "w-[72px] shrink-0 text-center";
+const EPS_CELL = "w-16 shrink-0 text-right";
+const DATE_CELL = "w-[78px] shrink-0 text-right";
 
 /** 每日焦點's US-only earnings-calendar card — fills the grid cell 重大訊息 (MOPS-only) occupies
  * for TW. Market-wide variant of `us-stock/calendar-events-card.tsx`'s `UsMarketCalendarCard`:
@@ -90,10 +97,18 @@ function groupEventsByMonth(
 
 function EarningsList({ events }: { readonly events: readonly EarningsCalendarRow[] }): ReactNode {
   const t = useTranslations("market.cards.earningsCalendar");
+  const locale = useLocale();
   const groups = groupEventsByMonth(events);
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3 border-[var(--border)] border-b pb-2 text-[11.5px] text-[var(--text-muted)]">
+        <span className="w-2 shrink-0" aria-hidden />
+        <span className="flex-1">{t("columns.name")}</span>
+        <span className={TIMING_CELL}>{t("columns.timing")}</span>
+        <span className={EPS_CELL}>{t("columns.epsEstimate")}</span>
+        <span className={DATE_CELL}>{t("columns.date")}</span>
+      </div>
       {[...groups.entries()].map(([monthKey, monthEvents]) => {
         const [yearStr, monthStr] = monthKey.split("-");
         return (
@@ -122,18 +137,23 @@ function EarningsList({ events }: { readonly events: readonly EarningsCalendarRo
                       {event.symbol}
                     </span>
                   </SymbolLink>
-                  {event.timing ? (
-                    <span
-                      className="rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px]"
-                      style={{
-                        backgroundColor: "color-mix(in srgb, var(--chart-1) 16%, transparent)",
-                        color: EVENT_DOT_COLOR,
-                      }}
-                    >
-                      {event.timing}
-                    </span>
-                  ) : null}
-                  <span className="font-num text-[11px] text-[var(--text-muted)] tabular-nums">
+                  <span className={TIMING_CELL}>
+                    {event.timing ? <TimingChip code={event.timing} /> : null}
+                  </span>
+                  <span
+                    className={cn(
+                      EPS_CELL,
+                      "font-num text-[12.5px] text-[var(--text)] tabular-nums",
+                    )}
+                  >
+                    {formatNumber(event.eps_estimate ?? null, locale, { decimals: 2 })}
+                  </span>
+                  <span
+                    className={cn(
+                      DATE_CELL,
+                      "font-num text-[11px] text-[var(--text-muted)] tabular-nums",
+                    )}
+                  >
                     {event.event_start.slice(0, 10)}
                   </span>
                 </li>
@@ -143,5 +163,23 @@ function EarningsList({ events }: { readonly events: readonly EarningsCalendarRo
         );
       })}
     </div>
+  );
+}
+
+/** The report-time chip in words (盤前 / 盤後 / 時間未定), with Yahoo's code as the tooltip. */
+function TimingChip({ code }: { readonly code: string }): ReactNode {
+  const t = useTranslations("market.cards.earningsCalendar");
+  const known = TIMING_CODES.find((c) => c === code);
+  return (
+    <span
+      title={code}
+      className="inline-block whitespace-nowrap rounded-[var(--radius-pill)] px-2 py-0.5 text-[11px]"
+      style={{
+        backgroundColor: "color-mix(in srgb, var(--chart-1) 16%, transparent)",
+        color: EVENT_DOT_COLOR,
+      }}
+    >
+      {known ? t(`timing.${known}`) : code}
+    </span>
   );
 }
