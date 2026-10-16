@@ -3432,6 +3432,27 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/strategy-watch/today": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Strategy Watch Today
+     * @description Today's 策略盯盤 list (or the last trading day's) with each stock's levels and where its
+     *     conditions stand at the latest intraday check, backed by `get_strategy_watch`.
+     */
+    get: operations["strategy_watch_today_api_v1_strategy_watch_today_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/symbols/{symbol}/supply-chain": {
     parameters: {
       query?: never;
@@ -8234,6 +8255,42 @@ export interface components {
       /** Symbol */
       symbol: string;
     };
+    /** GetStrategyWatchOutput */
+    GetStrategyWatchOutput: {
+      /** As Of */
+      as_of?: string | null;
+      /** Breadth Pct */
+      breadth_pct?: number | null;
+      /** Counts */
+      counts?: {
+        [key: string]: number;
+      };
+      /** Data Available */
+      data_available: boolean;
+      /**
+       * Events
+       * @default []
+       */
+      events: components["schemas"]["StrategyWatchEvent"][];
+      /**
+       * Items
+       * @default []
+       */
+      items: components["schemas"]["StrategyWatchItem"][];
+      /** Last Slot */
+      last_slot?: string | null;
+      /**
+       * Masked
+       * @default false
+       */
+      masked: boolean;
+      /** Regime */
+      regime?: ("risk_on" | "neutral" | "risk_off") | null;
+      /** Run Date */
+      run_date?: string | null;
+      /** Unavailable Reason */
+      unavailable_reason?: string | null;
+    };
     /**
      * GetSupplyChainEdgesOutput
      * @description Every supply-chain edge where the symbol is either endpoint — the 供應鏈關係圖 card's one
@@ -11505,6 +11562,22 @@ export interface components {
        */
       weaknesses: string[];
     };
+    /** StrategyCondition */
+    StrategyCondition: {
+      /** Key */
+      key: string;
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "trigger" | "guard";
+      /** Met */
+      met: boolean;
+      /** Observed */
+      observed?: number | null;
+      /** Required */
+      required?: number | null;
+    };
     /**
      * StrategySubscription
      * @description A user's 策略盯盤 subscription (one per user): which strategies, over every stock today's
@@ -11555,6 +11628,115 @@ export interface components {
       version: number;
       /** Watchlist Id */
       watchlist_id?: string | null;
+    };
+    /** StrategyWatchEvent */
+    StrategyWatchEvent: {
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: "intraday" | "close";
+      /** Name */
+      name?: string | null;
+      /** Slot */
+      slot: string;
+      /**
+       * Strategy
+       * @enum {string}
+       */
+      strategy:
+        | "volatility_squeeze"
+        | "oversold_bounce"
+        | "ad_divergence"
+        | "chip_accumulation"
+        | "momentum_flag";
+      /** Symbol */
+      symbol: string;
+    };
+    /** StrategyWatchItem */
+    StrategyWatchItem: {
+      /** Alerted At */
+      alerted_at?: string | null;
+      /**
+       * All Met
+       * @default false
+       */
+      all_met: boolean;
+      /** Close */
+      close: number;
+      /**
+       * Close Confirmed
+       * @default false
+       */
+      close_confirmed: boolean;
+      /**
+       * Conditions
+       * @default []
+       */
+      conditions: components["schemas"]["StrategyCondition"][];
+      /**
+       * Days On List
+       * @default 1
+       */
+      days_on_list: number;
+      /** First Listed */
+      first_listed?: string | null;
+      /** Flag High */
+      flag_high?: number | null;
+      /** Flag Low */
+      flag_low?: number | null;
+      /**
+       * Foreign Streak
+       * @default 0
+       */
+      foreign_streak: number;
+      /** Headline */
+      headline?: string | null;
+      /** Holders Change 4W Pct */
+      holders_change_4w_pct?: number | null;
+      /** Industry */
+      industry?: string | null;
+      /** Large Holder Change 4W */
+      large_holder_change_4w?: number | null;
+      /** Large Holder Pct */
+      large_holder_pct?: number | null;
+      /** Latest Slot */
+      latest_slot?: string | null;
+      /** Low 20D */
+      low_20d?: number | null;
+      /** Lower Band */
+      lower_band?: number | null;
+      /** Margin Change 20D Pct */
+      margin_change_20d_pct?: number | null;
+      /** Name */
+      name?: string | null;
+      /** Price */
+      price?: number | null;
+      /** Range High 20D */
+      range_high_20d?: number | null;
+      /** Range Low 20D */
+      range_low_20d?: number | null;
+      /** Sector Strength Pct */
+      sector_strength_pct?: number | null;
+      /**
+       * Strategy
+       * @enum {string}
+       */
+      strategy:
+        | "volatility_squeeze"
+        | "oversold_bounce"
+        | "ad_divergence"
+        | "chip_accumulation"
+        | "momentum_flag";
+      /** Symbol */
+      symbol: string;
+      /**
+       * Trust Streak
+       * @default 0
+       */
+      trust_streak: number;
+      /** Upper Band */
+      upper_band?: number | null;
     };
     /**
      * SubIndustryHeat
@@ -18321,6 +18503,46 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  strategy_watch_today_api_v1_strategy_watch_today_get: {
+    parameters: {
+      query?: {
+        as_of?: string | null;
+        strategy?:
+          | (
+              | "volatility_squeeze"
+              | "oversold_bounce"
+              | "ad_divergence"
+              | "chip_accumulation"
+              | "momentum_flag"
+            )
+          | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetStrategyWatchOutput"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
       };
     };
   };

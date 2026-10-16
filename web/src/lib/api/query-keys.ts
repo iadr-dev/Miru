@@ -15,6 +15,9 @@ export const queryKeys = {
     ["price_history", market, symbol, days] as const,
   themeMembers: (themeKey: string) => ["theme_members", themeKey] as const,
   themes: (kind: string) => ["themes", kind] as const,
+  /** 策略盯盤: today's list (or a given day's) and the user's one subscription. */
+  strategyWatch: (asOf?: string) => ["strategy_watch", asOf ?? "today"] as const,
+  strategySubscription: ["strategy_watch_subscription"] as const,
   me: ["me"] as const,
   watchlists: ["watchlists"] as const,
   threads: ["threads"] as const,

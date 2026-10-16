@@ -121,6 +121,11 @@ from tools.market.sector_rotation import (
     SectorRrgSeries,
     SectorRrgWeekPoint,
 )
+from tools.market.strategy_watch import (
+    GetStrategyWatchInput,
+    GetStrategyWatchOutput,
+    GetStrategyWatchTool,
+)
 from tools.market.symbols import (
     GetPriceHistoryInput,
     GetPriceHistoryOutput,
@@ -179,6 +184,7 @@ def build_registration_table(router: DataAccessRouter) -> list[tuple[Tool, bool]
         (GetSymbolQuotesTool(store), False),
         (GetEtfListTool(store), False),
         (GetDividendCalendarTool(store), False),
+        (GetStrategyWatchTool(store), False),
     ]
     return tools
 
@@ -255,6 +261,9 @@ __all__ = [
     "GetStockHeatmapInput",
     "GetStockHeatmapOutput",
     "GetStockHeatmapTool",
+    "GetStrategyWatchInput",
+    "GetStrategyWatchOutput",
+    "GetStrategyWatchTool",
     "GetSymbolDirectorySearchInput",
     "GetSymbolDirectorySearchOutput",
     "GetSymbolDirectorySearchTool",

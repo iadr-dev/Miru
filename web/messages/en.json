@@ -649,7 +649,11 @@
     "comingSoon": "Coming soon",
     "more": "More",
     "close": "Close menu",
-    "mobile": "Main navigation"
+    "mobile": "Main navigation",
+    "watch": {
+      "label": "Watch",
+      "sublabel": "AI 盯盤"
+    }
   },
   "shell": {
     "search": {
@@ -3596,6 +3600,152 @@
       "between": "Between",
       "eq": "Equals",
       "in": "In"
+    }
+  },
+  "watch": {
+    "title": "AI Watch",
+    "subtitle": "Screens at 08:00, checks conditions every 10 minutes in the session and confirms breakouts at the close. You are notified when conditions you chose are met; this is not investment advice.",
+    "pipeline": {
+      "screen": "08:00 screen",
+      "watch": "09:00–13:30 watch",
+      "close": "18:00 close check",
+      "lastCheck": "Last check {time}",
+      "notStarted": "Not started",
+      "label": "Today's run"
+    },
+    "regime": {
+      "label": "Market breadth",
+      "risk_on": "Strong",
+      "neutral": "Neutral",
+      "risk_off": "Weak",
+      "breadth": "{pct}% above MA20"
+    },
+    "asOf": "From the {date} close",
+    "earlierList": "Today's list is not ready yet; showing the list from {date}",
+    "subscribe": "Get alerts",
+    "subscribed": "Alerts on",
+    "masked": "Intraday values and large-holder figures are Premium data and are hidden.",
+    "strategies": {
+      "volatility_squeeze": {
+        "name": "Volatility squeeze",
+        "desc": "Bollinger bands at their narrowest in 120 sessions, waiting for a break above the upper band on volume."
+      },
+      "oversold_bounce": {
+        "name": "Oversold bounce",
+        "desc": "A steep short-term drop with RSI low, watching for a white candle on light volume."
+      },
+      "ad_divergence": {
+        "name": "A/D divergence",
+        "desc": "Price near its 20-day low while the A/D line holds up."
+      },
+      "chip_accumulation": {
+        "name": "Chip accumulation",
+        "desc": "Price still in its range while institutions and large holders add and margin falls."
+      },
+      "momentum_flag": {
+        "name": "Momentum flag",
+        "desc": "A tight pause on drying volume after a strong run, with shares still concentrating."
+      }
+    },
+    "table": {
+      "symbol": "Symbol",
+      "name": "Name",
+      "price": "Price",
+      "level": "Key level",
+      "conditions": "Conditions",
+      "days": "Days",
+      "empty": "No stock matches this strategy today.",
+      "caption": "{strategy}: today's list"
+    },
+    "status": {
+      "alerted": "Alerted {time}",
+      "closeConfirmed": "Close confirmed",
+      "allMet": "All conditions met",
+      "notChecked": "Not checked yet",
+      "conditionsMet": "{met}/{total} conditions met"
+    },
+    "levels": {
+      "upper_band": "Upper band",
+      "lower_band": "Lower band",
+      "low_20d": "20-day low",
+      "range_high_20d": "Range high",
+      "range_low_20d": "Range low",
+      "flag_high": "Pause high",
+      "flag_low": "Pause low"
+    },
+    "conditions": {
+      "price_above_upper_band": "Price above the upper band",
+      "volume_ratio_at_least": "Volume ratio at threshold",
+      "momentum_5d_positive": "Price above the close 5 sessions ago",
+      "red_candle": "White candle",
+      "volume_ratio_at_most": "Light volume",
+      "kd_oversold": "KD low",
+      "new_20d_low": "Price below the 20-day low",
+      "rsi_higher_low": "RSI holds above its low",
+      "ad_higher_low": "A/D line holds above its low",
+      "price_above_range_high": "Price above the range high",
+      "price_above_flag_high": "Price above the pause high",
+      "close_above_upper_band": "Close above the upper band",
+      "close_above_range_high": "Close above the range high",
+      "close_above_flag_high": "Close above the pause high",
+      "close_volume_multiple": "Volume expansion",
+      "after_opening_window": "After 09:30",
+      "market_not_falling": "Market not falling hard",
+      "above_average_price": "Above the day's average price",
+      "not_near_limit_up": "Not near the daily limit"
+    },
+    "detail": {
+      "select": "Pick a stock to see its conditions and levels",
+      "conditions": "Trigger conditions",
+      "guards": "Intraday checks",
+      "context": "Context",
+      "chart": "60-day close and trigger level",
+      "observed": "Now",
+      "required": "Threshold",
+      "openStock": "Open stock page",
+      "daysOnList": "On the list for {days} sessions",
+      "notChecked": "Not checked intraday yet.",
+      "close": "Close"
+    },
+    "context": {
+      "sector": "{industry} sector strength {pct}",
+      "foreign": "Foreign investors net {side} {days} days in a row",
+      "trust": "Investment trusts net {side} {days} days in a row",
+      "buy": "buying",
+      "sell": "selling",
+      "largeHolder": "Large holders {pct}% ({change} pts over 4 weeks)",
+      "margin": "Margin balance {pct}% over 20 sessions",
+      "marginSurge": "a sharp margin increase",
+      "headline": "Today's filing: {text}"
+    },
+    "feed": {
+      "title": "Met today",
+      "empty": "No stock has met all its conditions today.",
+      "intraday": "Intraday",
+      "close": "Close confirmed"
+    },
+    "unavailable": "No watch list right now",
+    "unavailableHint": "The 08:00 screen needs the latest closing data and is skipped when that data is stale.",
+    "disclaimer": "A summary of conditions you subscribed to, not investment advice.",
+    "form": {
+      "title": "Strategy watch alerts",
+      "strategies": "Strategies",
+      "scope": "Scope",
+      "scopeAll": "Every stock on today's list",
+      "scopeGroup": "Only one watchlist group",
+      "group": "Group",
+      "noGroups": "You have no watchlist groups yet",
+      "morningList": "Send today's list at 08:00",
+      "dailyLimit": "Daily condition-alert limit",
+      "noLimit": "No limit",
+      "enabled": "Alerts on",
+      "channels": "Channels and quiet hours follow your alert settings.",
+      "save": "Save",
+      "saving": "Saving…",
+      "cancel": "Cancel",
+      "conflict": "These settings changed on another device. Reload and try again.",
+      "needOne": "Pick at least one strategy",
+      "failed": "Could not save. Please try again."
     }
   }
 }

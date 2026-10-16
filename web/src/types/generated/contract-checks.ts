@@ -171,6 +171,11 @@ import type {
 } from "@/types/stock/realtime";
 import type { technicalIndicatorsResponseSchema } from "@/types/stock/technical";
 import type {
+  strategySubscriptionOrNullSchema,
+  strategySubscriptionSchema,
+  strategyWatchTodaySchema,
+} from "@/types/strategy-watch";
+import type {
   twSymbolSearchResponseSchema,
   usSymbolSearchResponseSchema,
 } from "@/types/symbol-search";
@@ -389,6 +394,12 @@ export type ContractChecks = [
   Accepts<typeof petSettingsSchema, R<"/api/v1/pets/settings", "get">>,
   // PATCH /pets/settings — settings.updatePetSettings
   Accepts<typeof petSettingsSchema, R<"/api/v1/pets/settings", "patch">>,
+  // GET /strategy-watch/subscription — strategy-watch.getStrategySubscription
+  Accepts<typeof strategySubscriptionOrNullSchema, R<"/api/v1/strategy-watch/subscription", "get">>,
+  // PUT /strategy-watch/subscription — strategy-watch.putStrategySubscription
+  Accepts<typeof strategySubscriptionSchema, R<"/api/v1/strategy-watch/subscription", "put">>,
+  // GET /strategy-watch/today — strategy-watch.getStrategyWatchToday
+  Accepts<typeof strategyWatchTodaySchema, R<"/api/v1/strategy-watch/today", "get">>,
   // GET /schedules — settings.listSchedules
   Accepts<typeof schedulesResponseSchema, R<"/api/v1/schedules", "get">>,
   // POST /schedules — settings.createSchedule
