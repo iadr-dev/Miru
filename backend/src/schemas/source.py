@@ -15,6 +15,9 @@ class HealthStatus(StrEnum):
     STALE = "stale"
     UNREACHABLE = "unreachable"
     UNAVAILABLE_TIER = "unavailable-tier"  # out-of-plan dataset (e.g. FinMind tier gating)
+    # Not served at all right now for a reason retrying will not fix (a credential that is not
+    # configured, or an upstream that rejected the request outright) - distinct from UNREACHABLE.
+    UNAVAILABLE = "unavailable"
 
 
 class SourceHealth(BaseModel):

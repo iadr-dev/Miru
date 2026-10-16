@@ -65,6 +65,7 @@ from tools import (
     theme_tools,
     trend_score_tools,
     tw_ranking_tools,
+    us_macro_tools,
     us_market_index_strip_tools,
     web_search_tools,
 )
@@ -148,6 +149,7 @@ def build_default_tool_registry(
         convertible_bond_tools.build_registration_table(router),
         macro_tools.build_registration_table(router),
         macro_calendar_tools.build_registration_table(),
+        us_macro_tools.build_registration_table(parquet_store),
         international_tools.build_registration_table(router),
         others_tools.build_registration_table(router),
         realtime_tools.build_registration_table(router),

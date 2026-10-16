@@ -36,6 +36,8 @@ from ingest.jobs.etf import (
     job_etf_expense_ratio,
     job_etf_nav,
 )
+from ingest.jobs.fred import JOB_NAME as FRED_MACRO_JOB_NAME
+from ingest.jobs.fred import job_fred_macro
 from ingest.jobs.risk_lists import (
     ATTENTION_STOCKS_DATASET,
     DISPOSITION_EVENTS_DATASET,
@@ -98,6 +100,7 @@ __all__ = [
     "ETF_EXPENSE_RATIO_DATASET",
     "ETF_NAV_DATASET",
     "FINANCIALS_JOB",
+    "FRED_MACRO_JOB_NAME",
     "INSIDER_TRANSFER_DECLARATION_DATASET",
     "INSTITUTIONAL_FLOW_JOB",
     "MARGIN_SHORT_JOB",
@@ -122,6 +125,7 @@ __all__ = [
     "job_etf_expense_ratio",
     "job_etf_nav",
     "job_financials",
+    "job_fred_macro",
     "job_insider_transfer_declaration",
     "job_institutional_flow",
     "job_margin_short",

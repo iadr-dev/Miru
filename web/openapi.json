@@ -1714,6 +1714,10 @@
      "gold_price",
      "crude_oil_prices",
      "fear_greed_index",
+     "us_macro_observations",
+     "us_macro_series_meta",
+     "us_macro_release_dates",
+     "us_macro_vintages",
      "warrant_underlying"
     ],
     "title": "Capability",
@@ -2928,6 +2932,163 @@
      "date"
     ],
     "title": "DailyUsage",
+    "type": "object"
+   },
+   "DashboardPanel": {
+    "additionalProperties": false,
+    "properties": {
+     "group": {
+      "$ref": "#/components/schemas/MacroGroup"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "series": {
+      "items": {
+       "$ref": "#/components/schemas/DashboardSeries"
+      },
+      "title": "Series",
+      "type": "array"
+     }
+    },
+    "required": [
+     "group",
+     "label",
+     "series"
+    ],
+    "title": "DashboardPanel",
+    "type": "object"
+   },
+   "DashboardSeries": {
+    "additionalProperties": false,
+    "properties": {
+     "change": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Change"
+     },
+     "copyrighted_third_party": {
+      "default": false,
+      "title": "Copyrighted Third Party",
+      "type": "boolean"
+     },
+     "frequency": {
+      "title": "Frequency",
+      "type": "string"
+     },
+     "higher_means": {
+      "title": "Higher Means",
+      "type": "string"
+     },
+     "higher_means_text": {
+      "title": "Higher Means Text",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_observation_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Observation Date"
+     },
+     "latest": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MacroPoint"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "next_release_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Release Date"
+     },
+     "prior": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MacroPoint"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "release_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Release Name"
+     },
+     "series_id": {
+      "title": "Series Id",
+      "type": "string"
+     },
+     "sparkline": {
+      "items": {
+       "$ref": "#/components/schemas/MacroPoint"
+      },
+      "title": "Sparkline",
+      "type": "array"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "unit_kind": {
+      "$ref": "#/components/schemas/UnitKind"
+     },
+     "units": {
+      "$ref": "#/components/schemas/MacroUnits"
+     }
+    },
+    "required": [
+     "series_id",
+     "label",
+     "units",
+     "unit_kind",
+     "frequency",
+     "higher_means",
+     "higher_means_text"
+    ],
+    "title": "DashboardSeries",
     "type": "object"
    },
    "DataClass": {
@@ -10198,6 +10359,88 @@
     "title": "GetSecuritiesLendingOutput",
     "type": "object"
    },
+   "GetSeriesRevisionsOutput": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "As Of"
+     },
+     "currentness_caveat": {
+      "default": "Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.",
+      "minLength": 1,
+      "title": "Currentness Caveat",
+      "type": "string"
+     },
+     "data_available": {
+      "default": true,
+      "title": "Data Available",
+      "type": "boolean"
+     },
+     "first_release_note": {
+      "default": "The first release is the earliest value in the stored revision history; an observation that was first published before that history begins shows its earliest archived value instead.",
+      "title": "First Release Note",
+      "type": "string"
+     },
+     "label": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Label"
+     },
+     "rows": {
+      "items": {
+       "$ref": "#/components/schemas/RevisionRow"
+      },
+      "title": "Rows",
+      "type": "array"
+     },
+     "series_id": {
+      "title": "Series Id",
+      "type": "string"
+     },
+     "unavailable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Reason"
+     },
+     "units_description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Units Description"
+     }
+    },
+    "required": [
+     "series_id"
+    ],
+    "title": "GetSeriesRevisionsOutput",
+    "type": "object"
+   },
    "GetShareholderDispersionOutput": {
     "additionalProperties": false,
     "properties": {
@@ -11438,6 +11681,246 @@
     "title": "GetTwMarketRankingsOutput",
     "type": "object"
    },
+   "GetUsEconomicReleasesOutput": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "As Of"
+     },
+     "currentness_caveat": {
+      "default": "Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.",
+      "minLength": 1,
+      "title": "Currentness Caveat",
+      "type": "string"
+     },
+     "data_available": {
+      "default": true,
+      "title": "Data Available",
+      "type": "boolean"
+     },
+     "from_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "From Date"
+     },
+     "releases": {
+      "items": {
+       "$ref": "#/components/schemas/ReleaseEntry"
+      },
+      "title": "Releases",
+      "type": "array"
+     },
+     "to_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "To Date"
+     },
+     "unavailable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Reason"
+     }
+    },
+    "title": "GetUsEconomicReleasesOutput",
+    "type": "object"
+   },
+   "GetUsMacroDashboardOutput": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "As Of"
+     },
+     "currentness_caveat": {
+      "default": "Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.",
+      "minLength": 1,
+      "title": "Currentness Caveat",
+      "type": "string"
+     },
+     "data_available": {
+      "default": true,
+      "title": "Data Available",
+      "type": "boolean"
+     },
+     "panels": {
+      "items": {
+       "$ref": "#/components/schemas/DashboardPanel"
+      },
+      "title": "Panels",
+      "type": "array"
+     },
+     "recession_bands": {
+      "items": {
+       "$ref": "#/components/schemas/RecessionBand"
+      },
+      "title": "Recession Bands",
+      "type": "array"
+     },
+     "recession_note": {
+      "default": "Recession dates are set retroactively by an official dating committee, often many months after a turning point, so the most recent months are not yet classified.",
+      "title": "Recession Note",
+      "type": "string"
+     },
+     "unavailable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Reason"
+     },
+     "yield_curve": {
+      "items": {
+       "$ref": "#/components/schemas/YieldCurveSpread"
+      },
+      "title": "Yield Curve",
+      "type": "array"
+     }
+    },
+    "title": "GetUsMacroDashboardOutput",
+    "type": "object"
+   },
+   "GetUsMacroSeriesOutput": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "As Of"
+     },
+     "currentness_caveat": {
+      "default": "Official US macroeconomic statistics, published on each series' own schedule and not a real-time quote: daily series usually trail by a business day, weekly series by about a week, monthly series by roughly two to six weeks after the month ends and quarterly series by one to three months. Recent values can be revised by the statistical agencies. Descriptive context only, never a trading signal.",
+      "minLength": 1,
+      "title": "Currentness Caveat",
+      "type": "string"
+     },
+     "data_available": {
+      "default": true,
+      "title": "Data Available",
+      "type": "boolean"
+     },
+     "frequency": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Frequency"
+     },
+     "metadata": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/SeriesMetadata"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "observation_range": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ObservationRange"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "points": {
+      "items": {
+       "$ref": "#/components/schemas/MacroPoint"
+      },
+      "title": "Points",
+      "type": "array"
+     },
+     "series_id": {
+      "title": "Series Id",
+      "type": "string"
+     },
+     "total_observations": {
+      "default": 0,
+      "title": "Total Observations",
+      "type": "integer"
+     },
+     "unavailable_reason": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Unavailable Reason"
+     },
+     "units": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MacroUnits"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "series_id"
+    ],
+    "title": "GetUsMacroSeriesOutput",
+    "type": "object"
+   },
    "GetUsMarketIndexStripOutput": {
     "additionalProperties": false,
     "properties": {
@@ -11653,7 +12136,8 @@
      "ok",
      "stale",
      "unreachable",
-     "unavailable-tier"
+     "unavailable-tier",
+     "unavailable"
     ],
     "title": "HealthStatus",
     "type": "string"
@@ -13332,6 +13816,42 @@
     "title": "MacdResult",
     "type": "object"
    },
+   "MacroGroup": {
+    "description": "Dashboard panels, in display order.",
+    "enum": [
+     "yield_curve_recession",
+     "inflation",
+     "labor",
+     "credit_financial_conditions",
+     "policy_liquidity",
+     "growth",
+     "housing",
+     "dollar",
+     "money"
+    ],
+    "title": "MacroGroup",
+    "type": "string"
+   },
+   "MacroPoint": {
+    "additionalProperties": false,
+    "properties": {
+     "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+     },
+     "value": {
+      "title": "Value",
+      "type": "number"
+     }
+    },
+    "required": [
+     "date",
+     "value"
+    ],
+    "title": "MacroPoint",
+    "type": "object"
+   },
    "MacroReleaseEventRow": {
     "additionalProperties": false,
     "description": "`macro_calendar` — one upcoming/recent macro-release event row\n(`financecalendar.com`'s `wp-json/fc/v1/calendar` feed, a distinct third-party source from\n`EconomicCalendarRow`'s yfinance `Calendars` feed — see `sources/financecalendar.py`'s own\nmodule docstring for why this is additive, not a replacement). Modeled `Market.GLOBAL`: the\nfeed spans multiple countries (US GDP/CPI/NFP, RBA/ECB/BOJ rate decisions, Australia/Canada/\nEurozone releases, ...), distinguished only by the free-text `category`/`name` fields, the\nsame \"no single-country home\" reasoning `EconomicCalendarRow` already uses.\n\n`consensus`/`prior`/`actual` are deliberately `str | None`, never `float` — the live upstream\nreturns human-readable strings (\"Hold at 3.50-3.75%\", \"3.8% annual\", \"55.6\") that mix ranges,\nunits, and plain numbers; coercing them to a float would either fail or silently misrepresent\na range/unit. Render as opaque cited text, never parsed or computed on.",
@@ -13427,6 +13947,19 @@
     ],
     "title": "MacroReleaseEventRow",
     "type": "object"
+   },
+   "MacroUnits": {
+    "description": "The upstream `units` transformation codes the catalog uses (stored per series).",
+    "enum": [
+     "lin",
+     "chg",
+     "ch1",
+     "pch",
+     "pc1",
+     "pca"
+    ],
+    "title": "MacroUnits",
+    "type": "string"
    },
    "MarginBalanceChange": {
     "additionalProperties": false,
@@ -14845,6 +15378,27 @@
     ],
     "title": "OAuthProvider",
     "type": "string"
+   },
+   "ObservationRange": {
+    "additionalProperties": false,
+    "properties": {
+     "end": {
+      "format": "date",
+      "title": "End",
+      "type": "string"
+     },
+     "start": {
+      "format": "date",
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ],
+    "title": "ObservationRange",
+    "type": "object"
    },
    "ObtainedVia": {
     "enum": [
@@ -16491,6 +17045,32 @@
     "title": "Rarity",
     "type": "string"
    },
+   "RecessionBand": {
+    "additionalProperties": false,
+    "properties": {
+     "end": {
+      "format": "date",
+      "title": "End",
+      "type": "string"
+     },
+     "ongoing": {
+      "default": false,
+      "title": "Ongoing",
+      "type": "boolean"
+     },
+     "start": {
+      "format": "date",
+      "title": "Start",
+      "type": "string"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ],
+    "title": "RecessionBand",
+    "type": "object"
+   },
    "RegenerateRequest": {
     "additionalProperties": false,
     "properties": {
@@ -16538,6 +17118,118 @@
     "title": "RegisterDeviceRequest",
     "type": "object"
    },
+   "ReleaseEntry": {
+    "additionalProperties": false,
+    "properties": {
+     "release_date": {
+      "format": "date",
+      "title": "Release Date",
+      "type": "string"
+     },
+     "release_id": {
+      "title": "Release Id",
+      "type": "integer"
+     },
+     "release_name": {
+      "title": "Release Name",
+      "type": "string"
+     },
+     "series": {
+      "items": {
+       "$ref": "#/components/schemas/ReleaseSeries"
+      },
+      "title": "Series",
+      "type": "array"
+     },
+     "status": {
+      "enum": [
+       "upcoming",
+       "released"
+      ],
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "release_id",
+     "release_name",
+     "release_date",
+     "status",
+     "series"
+    ],
+    "title": "ReleaseEntry",
+    "type": "object"
+   },
+   "ReleaseSeries": {
+    "additionalProperties": false,
+    "properties": {
+     "change": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Change"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_observation_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Observation Date"
+     },
+     "latest": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MacroPoint"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "previous": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MacroPoint"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "series_id": {
+      "title": "Series Id",
+      "type": "string"
+     },
+     "unit_kind": {
+      "$ref": "#/components/schemas/UnitKind"
+     },
+     "units": {
+      "$ref": "#/components/schemas/MacroUnits"
+     }
+    },
+    "required": [
+     "series_id",
+     "label",
+     "units",
+     "unit_kind"
+    ],
+    "title": "ReleaseSeries",
+    "type": "object"
+   },
    "ReorderWatchlistsRequest": {
     "properties": {
      "ordered_ids": {
@@ -16553,6 +17245,81 @@
      "ordered_ids"
     ],
     "title": "ReorderWatchlistsRequest",
+    "type": "object"
+   },
+   "RevisionRow": {
+    "additionalProperties": false,
+    "properties": {
+     "first_release_date": {
+      "format": "date",
+      "title": "First Release Date",
+      "type": "string"
+     },
+     "first_release_value": {
+      "title": "First Release Value",
+      "type": "number"
+     },
+     "latest_value": {
+      "title": "Latest Value",
+      "type": "number"
+     },
+     "latest_vintage_date": {
+      "format": "date",
+      "title": "Latest Vintage Date",
+      "type": "string"
+     },
+     "observation_date": {
+      "format": "date",
+      "title": "Observation Date",
+      "type": "string"
+     },
+     "revision": {
+      "title": "Revision",
+      "type": "number"
+     },
+     "revision_count": {
+      "title": "Revision Count",
+      "type": "integer"
+     },
+     "vintages": {
+      "items": {
+       "$ref": "#/components/schemas/RevisionVintage"
+      },
+      "title": "Vintages",
+      "type": "array"
+     }
+    },
+    "required": [
+     "observation_date",
+     "first_release_date",
+     "first_release_value",
+     "latest_value",
+     "latest_vintage_date",
+     "revision",
+     "revision_count",
+     "vintages"
+    ],
+    "title": "RevisionRow",
+    "type": "object"
+   },
+   "RevisionVintage": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "format": "date",
+      "title": "As Of",
+      "type": "string"
+     },
+     "value": {
+      "title": "Value",
+      "type": "number"
+     }
+    },
+    "required": [
+     "as_of",
+     "value"
+    ],
+    "title": "RevisionVintage",
     "type": "object"
    },
    "RichCardBlock": {
@@ -17962,6 +18729,152 @@
      "close"
     ],
     "title": "SecuritiesLendingRow",
+    "type": "object"
+   },
+   "SeriesMetadata": {
+    "additionalProperties": false,
+    "properties": {
+     "available_units": {
+      "items": {
+       "$ref": "#/components/schemas/MacroUnits"
+      },
+      "title": "Available Units",
+      "type": "array"
+     },
+     "copyrighted_third_party": {
+      "default": false,
+      "title": "Copyrighted Third Party",
+      "type": "boolean"
+     },
+     "default_units": {
+      "$ref": "#/components/schemas/MacroUnits"
+     },
+     "frequency": {
+      "title": "Frequency",
+      "type": "string"
+     },
+     "group": {
+      "$ref": "#/components/schemas/MacroGroup"
+     },
+     "group_label": {
+      "title": "Group Label",
+      "type": "string"
+     },
+     "higher_means": {
+      "title": "Higher Means",
+      "type": "string"
+     },
+     "higher_means_text": {
+      "title": "Higher Means Text",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_updated": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Updated"
+     },
+     "next_release_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Next Release Date"
+     },
+     "notes": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Notes"
+     },
+     "release_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Release Name"
+     },
+     "seasonal_adjustment": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seasonal Adjustment"
+     },
+     "series_id": {
+      "title": "Series Id",
+      "type": "string"
+     },
+     "title": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Title"
+     },
+     "unit_kind": {
+      "$ref": "#/components/schemas/UnitKind"
+     },
+     "units": {
+      "$ref": "#/components/schemas/MacroUnits"
+     },
+     "units_description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Units Description"
+     }
+    },
+    "required": [
+     "series_id",
+     "label",
+     "group",
+     "group_label",
+     "units",
+     "unit_kind",
+     "default_units",
+     "available_units",
+     "frequency",
+     "higher_means",
+     "higher_means_text"
+    ],
+    "title": "SeriesMetadata",
     "type": "object"
    },
    "ShareholdingDistributionRow": {
@@ -20928,6 +21841,16 @@
     "title": "TwRankingRow",
     "type": "object"
    },
+   "UnitKind": {
+    "enum": [
+     "percent",
+     "level",
+     "index",
+     "count"
+    ],
+    "title": "UnitKind",
+    "type": "string"
+   },
    "UpdateAlertRequest": {
     "additionalProperties": false,
     "description": "A partial edit. Send only what changed; `null` clears a nullable field (`expires_in_days`,\n`cooldown_seconds`, `quiet_hours`, `daily_limit`). `expected_version` is the rule's `version`\nas the client last saw it — a mismatch is a 409 so edits from two devices never silently\noverwrite each other. The rule's scope (symbol / market / watchlist) cannot be edited, and\nunknown fields are rejected (422) rather than silently ignored.",
@@ -21975,6 +22898,74 @@
      }
     },
     "title": "WebSearchSourcesBlock",
+    "type": "object"
+   },
+   "YieldCurveSpread": {
+    "additionalProperties": false,
+    "description": "Whether a Treasury spread (long yield minus short yield) is below zero (\"inverted\").",
+    "properties": {
+     "days_inverted": {
+      "default": 0,
+      "title": "Days Inverted",
+      "type": "integer"
+     },
+     "inverted_since": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inverted Since"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "last_inverted_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Inverted Date"
+     },
+     "latest": {
+      "$ref": "#/components/schemas/MacroPoint"
+     },
+     "series_id": {
+      "title": "Series Id",
+      "type": "string"
+     },
+     "since_window_start": {
+      "default": false,
+      "title": "Since Window Start",
+      "type": "boolean"
+     },
+     "state": {
+      "enum": [
+       "inverted",
+       "flat",
+       "positive"
+      ],
+      "title": "State",
+      "type": "string"
+     }
+    },
+    "required": [
+     "series_id",
+     "label",
+     "latest",
+     "state"
+    ],
+    "title": "YieldCurveSpread",
     "type": "object"
    }
   }
@@ -24807,6 +25798,329 @@
      }
     },
     "summary": "Business Indicator",
+    "tags": [
+     "market-data"
+    ]
+   }
+  },
+  "/api/v1/macro/us/dashboard": {
+   "get": {
+    "description": "US macro dashboard (public): grouped panels with each series' latest/prior/change,\nsparkline and next release date, the Treasury-spread inversion state and officially dated\nrecession periods. Read from the daily-refreshed store; `data_available=false` until the\nfirst refresh has run.",
+    "operationId": "us_macro_dashboard_api_v1_macro_us_dashboard_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetUsMacroDashboardOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Us Macro Dashboard",
+    "tags": [
+     "market-data"
+    ]
+   }
+  },
+  "/api/v1/macro/us/releases": {
+   "get": {
+    "description": "經濟數據發布 feed: upcoming and recent US data releases with the latest and previous value\nof the series each covers. No consensus (that stays with `/market/macro-calendar`); merge the\ntwo by `release_name`.",
+    "operationId": "us_economic_releases_api_v1_macro_us_releases_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "from_date",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "From Date"
+      }
+     },
+     {
+      "in": "query",
+      "name": "to_date",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "To Date"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetUsEconomicReleasesOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Us Economic Releases",
+    "tags": [
+     "market-data"
+    ]
+   }
+  },
+  "/api/v1/macro/us/revisions": {
+   "get": {
+    "description": "First release vs latest value of recent observations of a revision-tracked US series.",
+    "operationId": "us_series_revisions_api_v1_macro_us_revisions_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "series_id",
+      "required": true,
+      "schema": {
+       "enum": [
+        "PAYEMS",
+        "GDPC1",
+        "A191RL1Q225SBEA",
+        "CPIAUCSL",
+        "CPILFESL",
+        "PCEPI",
+        "PCEPILFE",
+        "INDPRO",
+        "RSAFS",
+        "DGORDER",
+        "UNRATE",
+        "JTSJOL",
+        "HOUST"
+       ],
+       "title": "Series Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetSeriesRevisionsOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Us Series Revisions",
+    "tags": [
+     "market-data"
+    ]
+   }
+  },
+  "/api/v1/macro/us/series": {
+   "get": {
+    "description": "One US macro series: points (most recent `limit` in the range) plus its metadata.",
+    "operationId": "us_macro_series_api_v1_macro_us_series_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "series_id",
+      "required": true,
+      "schema": {
+       "enum": [
+        "DGS2",
+        "DGS5",
+        "DGS10",
+        "DGS30",
+        "T10Y2Y",
+        "T10Y3M",
+        "USREC",
+        "CPIAUCSL",
+        "CPILFESL",
+        "PCEPI",
+        "PCEPILFE",
+        "T5YIE",
+        "T10YIE",
+        "T5YIFR",
+        "UNRATE",
+        "PAYEMS",
+        "ICSA",
+        "CCSA",
+        "JTSJOL",
+        "NFCI",
+        "STLFSI4",
+        "BAMLH0A0HYM2",
+        "BAMLC0A0CM",
+        "DFF",
+        "FEDFUNDS",
+        "SOFR",
+        "DFEDTARU",
+        "DFEDTARL",
+        "IORB",
+        "WALCL",
+        "RRPONTSYD",
+        "GDPC1",
+        "A191RL1Q225SBEA",
+        "INDPRO",
+        "RSAFS",
+        "DGORDER",
+        "UMCSENT",
+        "MORTGAGE30US",
+        "HOUST",
+        "CSUSHPINSA",
+        "DTWEXBGS",
+        "DEXJPUS",
+        "DEXUSEU",
+        "M2SL",
+        "M2REAL"
+       ],
+       "title": "Series Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "units",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "$ref": "#/components/schemas/MacroUnits"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Units"
+      }
+     },
+     {
+      "in": "query",
+      "name": "frequency",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "enum": [
+          "d",
+          "w",
+          "m",
+          "q",
+          "a"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Frequency"
+      }
+     },
+     {
+      "in": "query",
+      "name": "start_date",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Start Date"
+      }
+     },
+     {
+      "in": "query",
+      "name": "end_date",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "End Date"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 500,
+       "maximum": 5000,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetUsMacroSeriesOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Us Macro Series",
     "tags": [
      "market-data"
     ]

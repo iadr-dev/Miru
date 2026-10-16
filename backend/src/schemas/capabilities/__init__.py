@@ -103,6 +103,12 @@ from schemas.capabilities.etf import (
     EtfThemeTags,
     EtfTrailingReturns,
 )
+from schemas.capabilities.fred import (
+    MacroObservationRow,
+    MacroReleaseDateRow,
+    MacroSeriesMetaRow,
+    MacroVintageRow,
+)
 from schemas.capabilities.macro import (
     BusinessIndicatorRow,
     CentralBankRateRow,
@@ -240,7 +246,11 @@ __all__ = [
     "IpoCalendarRow",
     "KBarRow",
     "LoanCollateralBalanceRow",
+    "MacroObservationRow",
+    "MacroReleaseDateRow",
     "MacroReleaseEventRow",
+    "MacroSeriesMetaRow",
+    "MacroVintageRow",
     "MarginMaintenanceRatioRow",
     "MarginShortRow",
     "MarginShortSaleSuspensionRow",

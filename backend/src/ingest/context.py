@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dataaccess.fred import FredGateway
 from ingest.data_updates import DataUpdatePublisher, NoOpDataUpdatePublisher
 from ingest.leader import LeaderElection
 from ingest.store import ParquetStore
@@ -48,6 +49,9 @@ class IngestContext:
     # existing FinMind-only job/test is unaffected; those jobs assert it's set themselves rather
     # than this dataclass enforcing a cross-field invariant it has no business knowing about.
     yfinance: YFinanceAdapter | None = None
+    # Only `ingest/jobs/fred.py` uses this (US macro statistics). `None` or an unconfigured API
+    # key makes that job journal SKIPPED.
+    fred: FredGateway | None = None
 
 
 __all__ = ["IngestContext"]

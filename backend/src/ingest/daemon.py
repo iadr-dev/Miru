@@ -48,6 +48,7 @@ from analytics.strategy_watch.batch import job_strategy_watchlist
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
+from dataaccess.fred import FredGateway
 from db.base import ensure_schema_for, make_engine, make_session_factory
 from ingest.context import IngestContext
 from ingest.derived_catchup import catch_up_tw, catch_up_us
@@ -76,6 +77,7 @@ from ingest.jobs import (
     job_stock_info,
     job_valuation_ratios,
 )
+from ingest.jobs.fred import job_fred_macro
 from ingest.jobs.strategy_intraday import job_strategy_close_check, job_strategy_intraday
 from ingest.journal import JobRun
 from ingest.leader import build_leader_election, refresh_leadership, release_leadership
@@ -86,6 +88,7 @@ from ingest.us_jobs import US_PRICE_EOD_DATASET, job_us_fundamentals, job_us_pri
 from ingest.us_universe import job_us_symbol_universe
 from schemas.enums import Market
 from sources.finmind import FinMindAdapter, FinMindQuotaRefusedError, build_finmind_quota
+from sources.fred import FredAdapter
 from sources.yfinance import YFinanceAdapter
 
 logger = structlog.get_logger(__name__)
@@ -310,6 +313,12 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     ScheduledIngestJob(
         "us_trend_score_batch", time_(7, 32), _us_trend_score_batch, market=Market.US
     ),
+    # US macro statistics (yield curve, inflation, labor, credit, policy, growth, housing, dollar,
+    # money) - daily, after the US price/fundamentals/scoring batches above. The upstream publishes
+    # each series on its own schedule (most before the US open, i.e. well before this slot), and
+    # the job re-reads only the series whose stored copy is out of date, so one daily pass is
+    # enough. Skips cleanly (journalled SKIPPED) when no API key is configured.
+    ScheduledIngestJob("fred_macro", time_(7, 40), job_fred_macro, market=Market.US),
     # TDCC/FinMind 股權持股分級表 — weekly (published for each week's final trading day; the job
     # itself resolves the exact publish date, see `job_shareholding_distribution`'s own
     # docstring). Fires at the same 06:00 off-peak slot `stock_info` uses, well before the
@@ -656,6 +665,7 @@ async def build_ingest_context_from_settings(settings: Settings | None = None) -
         session_factory=session_factory,
         # Only the US whole-market jobs (`ingest/us_jobs.py`) use this.
         yfinance=YFinanceAdapter(),
+        fred=FredGateway(FredAdapter(resolved)),
         data_update_publisher=resolve_data_update_publisher(resolved),
     )
 

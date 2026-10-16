@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     finmind_base_url: str = "https://api.finmindtrade.com/api/v4"
     brave_search_api_key: SecretStr | None = None
     finnhub_key: SecretStr | None = None
+    # US macro statistics (ingest-only; the request path reads the Parquet store). A missing key
+    # makes the nightly job journal SKIPPED and the macro tools answer "not available yet".
+    fred_api_key: SecretStr | None = None
+    fred_base_url: str = "https://api.stlouisfed.org/fred"
     yf_tz_cache_dir: str = "./.cache/yf_tz"
 
     # ---- Voice (modules/, api/routers/voice.py) ----

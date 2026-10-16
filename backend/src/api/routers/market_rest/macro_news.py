@@ -16,6 +16,7 @@ from api.routers.market_rest._common import context as _context
 from api.routers.market_rest._common import market_args as _market_args
 from api.tool_responses import tool_responses
 from schemas.enums import Market
+from schemas.fred_catalog import MacroSeriesId, MacroUnits, RevisionSeriesId
 from tools.base import ToolContext
 
 router = APIRouter()
@@ -103,6 +104,78 @@ async def business_indicator(
     return await _dispatch(
         state, "get_business_indicator", _market_args(market, start_date, end_date), ctx
     )
+
+
+@router.get(
+    "/macro/us/dashboard", response_model=None, responses=tool_responses("get_us_macro_dashboard")
+)
+async def us_macro_dashboard(
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """US macro dashboard (public): grouped panels with each series' latest/prior/change,
+    sparkline and next release date, the Treasury-spread inversion state and officially dated
+    recession periods. Read from the daily-refreshed store; `data_available=false` until the
+    first refresh has run."""
+    return await _dispatch(state, "get_us_macro_dashboard", {}, ctx)
+
+
+@router.get(
+    "/macro/us/series", response_model=None, responses=tool_responses("get_us_macro_series")
+)
+async def us_macro_series(
+    series_id: MacroSeriesId = Query(...),
+    units: MacroUnits | None = Query(None),
+    frequency: Literal["d", "w", "m", "q", "a"] | None = Query(None),
+    start_date: date_ | None = Query(None),
+    end_date: date_ | None = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """One US macro series: points (most recent `limit` in the range) plus its metadata."""
+    args: dict[str, object] = {"series_id": series_id, "limit": limit}
+    if units is not None:
+        args["units"] = units.value
+    if frequency is not None:
+        args["frequency"] = frequency
+    if start_date is not None:
+        args["start_date"] = start_date.isoformat()
+    if end_date is not None:
+        args["end_date"] = end_date.isoformat()
+    return await _dispatch(state, "get_us_macro_series", args, ctx)
+
+
+@router.get(
+    "/macro/us/releases", response_model=None, responses=tool_responses("get_us_economic_releases")
+)
+async def us_economic_releases(
+    from_date: date_ | None = Query(None),
+    to_date: date_ | None = Query(None),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """經濟數據發布 feed: upcoming and recent US data releases with the latest and previous value
+    of the series each covers. No consensus (that stays with `/market/macro-calendar`); merge the
+    two by `release_name`."""
+    args: dict[str, object] = {}
+    if from_date is not None:
+        args["from_date"] = from_date.isoformat()
+    if to_date is not None:
+        args["to_date"] = to_date.isoformat()
+    return await _dispatch(state, "get_us_economic_releases", args, ctx)
+
+
+@router.get(
+    "/macro/us/revisions", response_model=None, responses=tool_responses("get_series_revisions")
+)
+async def us_series_revisions(
+    series_id: RevisionSeriesId = Query(...),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """First release vs latest value of recent observations of a revision-tracked US series."""
+    return await _dispatch(state, "get_series_revisions", {"series_id": series_id}, ctx)
 
 
 @router.get(
