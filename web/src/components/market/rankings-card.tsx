@@ -15,8 +15,9 @@ import type { Market } from "@/types/settings";
 
 // Same collapsed-row-count + "fetch the full backend cap, show 10, expand the rest in a modal"
 // convention `PriceMomentumBody`/`LeaderboardCard` use — one fetch serves both the inline preview
-// and the modal, so opening "展開完整" never re-fetches.
-const COLLAPSED_ROW_COUNT = PREVIEW_ROWS;
+// and the modal, so opening "展開完整" never re-fetches. One row more than the shared preview: the US
+// grid cell beside it (the breadth card) is taller, and six rows left an empty band under the button.
+const COLLAPSED_ROW_COUNT = PREVIEW_ROWS + 1;
 const FETCH_TOP_N = 50;
 const RANKING_TABS = [
   "trending",
