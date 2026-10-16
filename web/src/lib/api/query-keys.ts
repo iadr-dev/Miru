@@ -31,6 +31,15 @@ export const queryKeys = {
   /** A per-market read: `[capability, market, ...arguments]`. */
   marketRead: (capability: string, market: Market, ...args: unknown[]) =>
     [capability, market, ...args] as const,
+  /** US macro statistics (`/macro/us/*`); one prefix so a refresh can target the whole feature. */
+  usMacro: {
+    dashboard: () => ["us_macro", "dashboard"] as const,
+    series: (seriesId: string, units: string, startDate: string, limit: number) =>
+      ["us_macro", "series", seriesId, units, startDate, limit] as const,
+    releases: (fromDate?: string, toDate?: string) =>
+      ["us_macro", "releases", fromDate ?? "default", toDate ?? "default"] as const,
+    revisions: (seriesId: string) => ["us_macro", "revisions", seriesId] as const,
+  },
   /** Any other read: `[capability, ...arguments]`. */
   read: (capability: string, ...args: unknown[]) => [capability, ...args] as const,
 };
