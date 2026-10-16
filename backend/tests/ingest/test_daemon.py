@@ -476,8 +476,11 @@ async def test_the_daemon_catches_up_missed_derived_days_once_a_day_after_0810(
     tw_windows: list[tuple[date_, ...]] = []
     us_windows: list[tuple[date_, ...]] = []
 
-    async def _fake_tw(_ctx: IngestContext, days: tuple[date_, ...]) -> tuple[JobRun, ...]:
+    async def _fake_tw(
+        _ctx: IngestContext, days: tuple[date_, ...], *, refresh: tuple[date_, ...]
+    ) -> tuple[JobRun, ...]:
         tw_windows.append(tuple(days))
+        assert refresh == (max(days),)  # the previous trading day is re-scored once
         return ()
 
     async def _fake_us(

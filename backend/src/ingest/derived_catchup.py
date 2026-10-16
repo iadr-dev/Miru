@@ -47,12 +47,18 @@ async def days_without_scores(
     return {d for d in days if d >= first and d not in scored}
 
 
-async def catch_up_tw(ctx: IngestContext, days: Sequence[date_]) -> tuple[JobRun, ...]:
-    """Screen and score every TW day in `days` that is missing either result."""
+async def catch_up_tw(
+    ctx: IngestContext, days: Sequence[date_], *, refresh: Sequence[date_] = ()
+) -> tuple[JobRun, ...]:
+    """Screen and score every TW day in `days` that is missing either result.
+
+    `refresh` days are scored again even when they have scores: the evening run (or a backfill
+    before 23:30) scores a day before the market-value data lands, and nothing else redoes it."""
     missing_flags = {
         d for d in days if not ctx.store.has_partition(SCREENER_FLAGS_DATASET, ctx.market.value, d)
     }
     missing_scores = await days_without_scores(ctx, days, fallback=missing_flags)
+    missing_scores |= {d for d in refresh if d in days}
     runs: list[JobRun] = []
     for run_date in sorted(missing_flags | missing_scores):
         if run_date in missing_flags:
