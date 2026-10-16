@@ -38,16 +38,18 @@ https://github.com/user-attachments/assets/654c2090-b586-4b1f-b166-96f91d4184f0
 | | |
 |---|---|
 | 💬 **用一句話提問** | 會規劃、會呼叫資料工具的對話代理，以 SSE 串流回覆並附上來源；可停止、重新產生、編輯後重送，也能附加圖片或文件 |
-| 🌏 **台股＋美股** | 價量、法人籌碼、融資融券、基本面、ETF 成分股與淨值、衍生性商品、除權息與公司事件、新聞；資料路由涵蓋台、美與全球共 146 項資料能力 |
+| 🌏 **台股＋美股** | 價量、法人籌碼、融資融券、基本面、ETF 成分股與淨值、衍生性商品、除權息與公司事件、新聞；資料路由涵蓋台、美與全球共 150 項資料能力 |
 | 📊 **個股與 ETF 頁** | 圖表、技術指標、描述性的多因子「多空分數」、ETF 比較與重疊度、本益比河流圖 |
 | 🔎 **選股與題材** | 標籤選股、題材與產業鏈分層、市場廣度與排行 |
+| 👁️ **AI 盯盤** | 五種規則式盯盤策略（波動率擠壓、超跌反彈、量價背離、籌碼集中盤整、強勢整理）：每天 08:00 選股，盤中每 10 分鐘檢查條件；你訂閱的條件成立時，會透過你設定的管道通知。提供的是描述性脈絡，不是交易訊號 |
+| 🏛️ **美國總經** | 殖利率曲線（標示景氣衰退區間），以及通膨、就業、信用、流動性、成長、房市與貨幣供給等指標，並有「經濟數據發布」清單，列出最新值與前值（需免費的 `FRED_API_KEY`） |
 | 🧩 **41 個內建技能** | 封裝好的分析流程：台股／美股個股報告、ETF 報告、晨報、籌碼回顧、財報品質、總經儀表板等 |
 | 🔬 **深度研究**（Pro） | 在一次對話中進行有預算上限、多步驟、附結構化引用的網路研究 |
 | 🔔 **提醒與定時簡報** | 由你自己授權的規則與簡報，可送到 LINE、Telegram、Email 或網頁推播 |
 | 🎭 **Miru 的語氣** | 四種語氣（穩健派・白話派・簡潔派・數據派）：同一個引擎、四種說話方式，不是四位不同的顧問 |
 | 🧠 **記憶** | 對話與長期記憶，可在設定中檢視與編輯 |
 | 🔌 **自選模型** | 不綁定供應商的 LLM 介面：Anthropic、OpenAI、Gemini、OpenRouter，或透過 Ollama 使用本地模型；支援 BYOK |
-| 🛰️ **MCP 伺服器** | 同一套工具以唯讀方式透過 MCP（streamable HTTP）提供，讓其他代理也能使用 |
+| 🛰️ **MCP 伺服器** | 同一套工具以唯讀方式透過 MCP（streamable HTTP）提供，讓其他代理也能使用；可作為 Claude 連接器：claude.ai 自訂連接器、Messages API 的 MCP 連接器，或 Claude Code |
 | 🌐 **雙語** | 繁體中文優先，全站提供英文（`web/messages/`） |
 
 ## 🏗️ 運作方式
@@ -109,7 +111,10 @@ uv run uvicorn api.app:app --reload
 <summary><b>連接 MCP 用戶端</b></summary>
 
 唯讀 MCP 端點位於 `http://localhost:8100/mcp`（streamable HTTP），存活檢查在 `/healthz`。
-它是獨立的程序，與 API 分開執行。
+它是獨立的程序，與 API 分開執行。匿名呼叫者使用 Free 方案；帶上 `Authorization: Bearer <access token>` 即可看到你自己方案可用的資料。
+
+要從 Claude 使用它（claude.ai 自訂連接器、Messages API 的 MCP 連接器，或 `claude mcp add`），請參考
+[`docs/backend/mcp-claude-connector.md`](docs/backend/mcp-claude-connector.md)：前兩種需要一個公開的 HTTPS 位址。
 </details>
 
 ## ⚙️ 設定
@@ -120,11 +125,11 @@ uv run uvicorn api.app:app --reload
 | 類別 | 變數 | 說明 |
 |---|---|---|
 | LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | 填你要用的即可；`LLM_PROVIDER`／`MODEL_ROLE_*` 依角色指定模型 |
-| 市場資料 | `FINMIND_API_KEY` | 全市場匯入需 FinMind **Backer** 以上方案 |
-| 選用資料 | `FINNHUB_KEY` · `ALPHA_VANTAGE_API_KEY` · `FRED_KEY` · `FMP_API_KEY` · `BRAVE_SEARCH_API_KEY` | 美股、總經、分析師預估、網路搜尋備援 |
+| 市場資料 | `FINMIND_API_KEY` | 全市場匯入需 FinMind **Backer** 以上方案；Sponsor 限定的資料（例如法人明細、ETF 成分股）在較低方案下會停止更新，網頁會顯示最後一個有資料的日期 |
+| 選用資料 | `FINNHUB_KEY` · `BRAVE_SEARCH_API_KEY` · `FRED_API_KEY` | 美股分析師預估、網路搜尋備援，以及美國總經儀表板（免費金鑰；未設定時每晚的匯入會略過，面板維持空白） |
 | 資料庫 | `DATABASE_URL` · `REDIS_URL` · `DUCKDB_PATH` · `PARQUET_ROOT` | 開發時用 SQLite 與本地路徑即可 |
 | 登入 | `GOOGLE_*` · `LINE_*` · `TELEGRAM_LOGIN_*` · `JWT_*` | Google、LINE Login、Telegram 登入 |
-| 通知 | `LINE_MESSAGING_*` · `TELEGRAM_BOT_*` · `RESEND_*` · `APNS_*` · `FCM_*` | 提醒與簡報的發送管道 |
+| 通知 | `LINE_MESSAGING_*` · `TELEGRAM_BOT_*` · `RESEND_*` · `VAPID_*` | 提醒與簡報的發送管道（LINE、Telegram、Email、網頁推播） |
 | 付款 | `PADDLE_*` | 訂閱；權限以 webhook 為準 |
 
 > [!WARNING]
@@ -136,8 +141,7 @@ uv run uvicorn api.app:app --reload
 Miru/
 ├─ backend/   FastAPI + MCP 後端（Python 3.13、uv）：src/<domain>/、tests/、docker-compose.yml
 ├─ web/       Next.js App Router 前端（pnpm）：對話、市場、選股、個股頁、設定
-├─ docs/      權威規格：架構、API 參考、26 份模組規格、品牌
-├─ promo/     Remotion 宣傳影片（繁中＋英文）
+├─ docs/      權威規格：架構、API 參考、27 份模組規格、品牌
 └─ scripts/   dev-backend.sh · dev-frontend.sh
 ```
 
