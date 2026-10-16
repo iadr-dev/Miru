@@ -1,19 +1,29 @@
 "use client";
 
-import { ArrowSquareOutIcon, CheckCircleIcon, CircleIcon } from "@phosphor-icons/react";
+import {
+  ArrowSquareOutIcon,
+  BuildingsIcon,
+  CheckCircleIcon,
+  CircleIcon,
+  CoinsIcon,
+  CrownSimpleIcon,
+  type Icon,
+  MegaphoneIcon,
+  UsersThreeIcon,
+} from "@phosphor-icons/react";
 import { useLocale, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
+  Area,
   CartesianGrid,
-  Line,
-  LineChart,
+  ComposedChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { keyLevel } from "@/components/watch/watch-format";
+import { keyLevel, STRATEGY_COLOR, tint } from "@/components/watch/watch-format";
 import { usePriceHistory } from "@/hooks/use-stock-data";
 import { Link } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
@@ -48,7 +58,17 @@ export function WatchDetail({
             </span>
           </h3>
           <p className="text-[12px] text-[var(--text-muted)]">
-            {t(`strategies.${item.strategy}.name`)} ·{" "}
+            <span
+              className="mr-1.5 inline-flex items-center gap-1 rounded-[var(--radius-pill)] px-2 py-0.5 font-medium text-[var(--text)]"
+              style={{ backgroundColor: tint(STRATEGY_COLOR[item.strategy], 18) }}
+            >
+              <span
+                aria-hidden
+                className="size-2 rounded-full"
+                style={{ backgroundColor: STRATEGY_COLOR[item.strategy] }}
+              />
+              {t(`strategies.${item.strategy}.name`)}
+            </span>
             {t("detail.daysOnList", { days: item.days_on_list })}
           </p>
         </div>
@@ -73,7 +93,7 @@ export function WatchDetail({
         {triggers.length === 0 ? (
           <p className="text-[12.5px] text-[var(--text-muted)]">{t("detail.notChecked")}</p>
         ) : (
-          <ConditionList conditions={triggers} />
+          <ConditionList conditions={triggers} color={STRATEGY_COLOR[item.strategy]} />
         )}
       </section>
 
@@ -82,7 +102,7 @@ export function WatchDetail({
           <h4 id="watch-guards" className="mb-1.5 font-medium text-[12.5px] text-[var(--text)]">
             {t("detail.guards")}
           </h4>
-          <ConditionList conditions={guards} />
+          <ConditionList conditions={guards} color="var(--chart-6)" />
         </section>
       ) : null}
 
@@ -92,7 +112,13 @@ export function WatchDetail({
   );
 }
 
-function ConditionList({ conditions }: { conditions: readonly StrategyCondition[] }): ReactNode {
+function ConditionList({
+  conditions,
+  color,
+}: {
+  conditions: readonly StrategyCondition[];
+  color: string;
+}): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
   return (
@@ -101,12 +127,7 @@ function ConditionList({ conditions }: { conditions: readonly StrategyCondition[
         <li key={c.key} className="flex items-center justify-between gap-2 text-[12.5px]">
           <span className="flex items-center gap-1.5">
             {c.met ? (
-              <CheckCircleIcon
-                size={15}
-                weight="fill"
-                className="text-[var(--accent)]"
-                aria-hidden
-              />
+              <CheckCircleIcon size={15} weight="fill" style={{ color }} aria-hidden />
             ) : (
               <CircleIcon size={15} className="text-[var(--text-muted)]" aria-hidden />
             )}
@@ -128,45 +149,79 @@ function ConditionList({ conditions }: { conditions: readonly StrategyCondition[
   );
 }
 
+type Fact = { text: string; icon: Icon; color: string };
+
+/** A fact's icon and colour say what kind of signal it is at a glance: sector (sky), 法人 (blue),
+ * 大戶 (gold), 融資 (orange when it surges, else muted), 重訊 (purple). */
 function ContextFacts({ item }: { item: StrategyWatchItem }): ReactNode {
   const t = useTranslations("watch.context");
   const heading = useTranslations("watch.detail")("context");
-  const facts: string[] = [];
+  const facts: Fact[] = [];
   if (item.industry && item.sector_strength_pct !== null) {
-    facts.push(t("sector", { industry: item.industry, pct: Math.round(item.sector_strength_pct) }));
+    facts.push({
+      text: t("sector", { industry: item.industry, pct: Math.round(item.sector_strength_pct) }),
+      icon: BuildingsIcon,
+      color: "var(--chart-7)",
+    });
   }
   for (const [key, streak] of [
     ["foreign", item.foreign_streak],
     ["trust", item.trust_streak],
   ] as const) {
     if (Math.abs(streak) >= 2) {
-      facts.push(t(key, { days: Math.abs(streak), side: t(streak > 0 ? "buy" : "sell") }));
+      facts.push({
+        text: t(key, { days: Math.abs(streak), side: t(streak > 0 ? "buy" : "sell") }),
+        icon: UsersThreeIcon,
+        color: "var(--chart-1)",
+      });
     }
   }
   if (item.large_holder_pct !== null && item.large_holder_change_4w !== null) {
     const change = item.large_holder_change_4w;
-    facts.push(
-      t("largeHolder", {
+    facts.push({
+      text: t("largeHolder", {
         pct: item.large_holder_pct.toFixed(1),
         change: `${change >= 0 ? "+" : ""}${change.toFixed(2)}`,
       }),
-    );
+      icon: CrownSimpleIcon,
+      color: "var(--chart-3)",
+    });
   }
   if (item.margin_change_20d_pct !== null) {
     const margin = item.margin_change_20d_pct;
     const text = t("margin", { pct: `${margin >= 0 ? "+" : ""}${margin.toFixed(1)}` });
-    facts.push(margin > 20 ? `${text}（${t("marginSurge")}）` : text);
+    const surge = margin > 20;
+    facts.push({
+      text: surge ? `${text}（${t("marginSurge")}）` : text,
+      icon: CoinsIcon,
+      color: surge ? "var(--chart-8)" : "var(--chart-6)",
+    });
   }
-  if (item.headline) facts.push(t("headline", { text: item.headline }));
+  if (item.headline) {
+    facts.push({
+      text: t("headline", { text: item.headline }),
+      icon: MegaphoneIcon,
+      color: "var(--chart-2)",
+    });
+  }
   if (facts.length === 0) return null;
   return (
     <section aria-labelledby="watch-context">
       <h4 id="watch-context" className="mb-1.5 font-medium text-[12.5px] text-[var(--text)]">
         {heading}
       </h4>
-      <ul className="space-y-1 text-[12.5px] text-[var(--text-muted)]">
-        {facts.map((fact) => (
-          <li key={fact}>{fact}</li>
+      <ul className="space-y-1.5 text-[12.5px] text-[var(--text-muted)]">
+        {facts.map(({ text, icon: FactIcon, color }) => (
+          <li key={text} className="flex items-start gap-2">
+            <span
+              aria-hidden
+              className="mt-px inline-flex size-5 shrink-0 items-center justify-center rounded-full"
+              style={{ backgroundColor: tint(color, 18), color }}
+            >
+              <FactIcon size={12} weight="bold" />
+            </span>
+            <span>{text}</span>
+          </li>
         ))}
       </ul>
     </section>
@@ -178,6 +233,7 @@ function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
   const locale = useLocale();
   const history = usePriceHistory(item.symbol, "TW", CHART_DAYS);
   const level = keyLevel(item);
+  const color = STRATEGY_COLOR[item.strategy];
   const floor = item.range_low_20d ?? item.flag_low;
   const rows = (history.data?.rows ?? []).map((r) => ({
     date: r.trade_date.slice(5),
@@ -208,7 +264,13 @@ function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
       </figcaption>
       <div className="h-44">
         <ResponsiveContainer>
-          <LineChart data={rows} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+          <ComposedChart data={rows} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={`watch-fill-${item.strategy}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity={0.32} />
+                <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+              </linearGradient>
+            </defs>
             <CartesianGrid vertical={false} stroke="var(--grid)" />
             <XAxis
               dataKey="date"
@@ -228,22 +290,25 @@ function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
               labelStyle={{ color: "var(--text)" }}
               itemStyle={{ color: "var(--text)" }}
             />
-            <Line
+            <Area
               type="monotone"
               dataKey="close"
-              stroke="var(--chart-1)"
-              strokeWidth={1.6}
+              stroke={color}
+              strokeWidth={1.8}
+              fill={`url(#watch-fill-${item.strategy})`}
+              baseValue="dataMin"
               dot={false}
               isAnimationActive={false}
             />
             {level.value !== null ? (
               <ReferenceLine
                 y={level.value}
-                stroke="var(--accent)"
-                strokeDasharray="4 3"
+                stroke={color}
+                strokeWidth={1.6}
+                strokeDasharray="5 3"
                 label={{
                   value: t(`levels.${level.key}`),
-                  fill: "var(--accent-text)",
+                  fill: color,
                   fontSize: 10,
                   position: "insideTopRight",
                 }}
@@ -252,7 +317,7 @@ function LevelChart({ item }: { item: StrategyWatchItem }): ReactNode {
             {floor !== null && level.key !== "lower_band" && level.key !== "low_20d" ? (
               <ReferenceLine y={floor} stroke="var(--border-strong)" strokeDasharray="2 3" />
             ) : null}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </figure>

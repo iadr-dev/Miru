@@ -9,7 +9,7 @@ import { RunStatus } from "@/components/watch/run-status";
 import { SubscriptionDialog } from "@/components/watch/subscription-dialog";
 import { WatchDetail } from "@/components/watch/watch-detail";
 import { WatchFeed } from "@/components/watch/watch-feed";
-import { initialStrategy } from "@/components/watch/watch-format";
+import { initialStrategy, STRATEGY_COLOR, tint } from "@/components/watch/watch-format";
 import { WatchTable } from "@/components/watch/watch-table";
 import { useStrategySubscription, useStrategyWatch } from "@/hooks/use-strategy-watch";
 import { cn } from "@/lib/cn";
@@ -107,14 +107,33 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
                 setSymbol(null);
               }}
               className={cn(
-                "min-h-11 shrink-0 whitespace-nowrap rounded-[var(--radius-pill)] border px-3.5 text-[13px] transition-colors",
+                "inline-flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-pill)] border px-3.5 text-[13px] transition-colors",
                 strategy === key
-                  ? "border-[var(--accent)] bg-[var(--surface-2)] font-medium text-[var(--text)]"
+                  ? "font-medium text-[var(--text)]"
                   : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
+              style={
+                strategy === key
+                  ? {
+                      borderColor: STRATEGY_COLOR[key],
+                      backgroundColor: tint(STRATEGY_COLOR[key], 14),
+                    }
+                  : undefined
+              }
             >
+              <span
+                aria-hidden
+                className="size-2.5 rounded-full"
+                style={{ backgroundColor: STRATEGY_COLOR[key] }}
+              />
               {t(`strategies.${key}.name`)}
-              <span className="ml-1.5 font-num text-[var(--text-muted)] tabular-nums">
+              <span
+                className="rounded-[var(--radius-pill)] px-1.5 font-num text-[11.5px] tabular-nums"
+                style={{
+                  backgroundColor: tint(STRATEGY_COLOR[key], strategy === key ? 28 : 14),
+                  color: "var(--text)",
+                }}
+              >
                 {data.counts[key] ?? 0}
               </span>
             </button>
@@ -138,7 +157,12 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
           {subscribed ? t("subscribed") : t("subscribe")}
         </button>
       </div>
-      <p className="text-[12.5px] text-[var(--text-muted)]">{t(`strategies.${strategy}.desc`)}</p>
+      <p
+        className="border-l-[3px] pl-2.5 text-[12.5px] text-[var(--text-muted)]"
+        style={{ borderColor: STRATEGY_COLOR[strategy] }}
+      >
+        {t(`strategies.${strategy}.desc`)}
+      </p>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
         <section className="surface-card overflow-x-auto p-3">
@@ -147,6 +171,7 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
             caption={t("table.caption", { strategy: t(`strategies.${strategy}.name`) })}
             selected={selected?.symbol ?? null}
             onSelect={setSymbol}
+            color={STRATEGY_COLOR[strategy]}
           />
         </section>
         <aside className="surface-card lg:sticky lg:top-4 lg:self-start" aria-live="off">
