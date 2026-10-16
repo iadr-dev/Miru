@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PipelineTimeline } from "@/components/watch/pipeline-timeline";
 import { pipelineSteps } from "@/components/watch/run-status";
 import {
   minutesOf,
@@ -179,6 +180,52 @@ describe("pipelineSteps", () => {
       date: "2026-09-24",
     });
     expect(steps.find((s) => s.key === "flows")?.note).toEqual({ kind: "noData" });
+  });
+});
+
+describe("PipelineTimeline", () => {
+  const data: StrategyWatchToday = {
+    data_available: true,
+    unavailable_reason: null,
+    run_date: "2026-10-16",
+    as_of: "2026-10-15",
+    regime: "neutral",
+    breadth_pct: 46,
+    last_slot: "10:00",
+    counts: {},
+    items: [],
+    events: [],
+    masked: false,
+    slots: [{ slot: "10:00", checked: 12, all_met: 1, alertable: 0 }],
+    data_dates: { price_eod: null, margin_short: null, institutional_flow: null },
+  };
+  const colors = {
+    screen: "var(--chart-1)",
+    watch: "var(--chart-7)",
+    prices: "var(--chart-3)",
+    close: "var(--chart-2)",
+    flows: "var(--chart-4)",
+  };
+  const render = (list: StrategyWatchToday): HTMLElement =>
+    renderWithIntl(<PipelineTimeline data={list} steps={pipelineSteps(list)} colors={colors} />)
+      .container;
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("sweeps the session band only while today's session is on", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-16T02:05:00Z")); // 10:05 in Taipei
+    expect(render(data).querySelector(".watch-scan")).not.toBeNull();
+    // A past day's list is not in progress, so nothing sweeps.
+    expect(render({ ...data, run_date: "2026-10-15" }).querySelector(".watch-scan")).toBeNull();
+  });
+
+  it("stops sweeping after the close", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-16T07:00:00Z")); // 15:00 in Taipei
+    expect(render(data).querySelector(".watch-scan")).toBeNull();
   });
 });
 
