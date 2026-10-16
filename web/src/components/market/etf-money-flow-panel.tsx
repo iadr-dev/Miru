@@ -54,9 +54,8 @@ export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): Reac
             return (
               <>
                 <h2 className="font-semibold text-[15px] text-[var(--text)]">{t("title")}</h2>
-                <p className="mt-3 text-[13px] text-[var(--text-muted)]">
-                  {data.unavailable_reason ?? t("unavailable")}
-                </p>
+                {/* `unavailable_reason` is backend wording for logs/agents, not page copy. */}
+                <p className="mt-3 text-[13px] text-[var(--text-muted)]">{t("unavailable")}</p>
               </>
             );
           }
@@ -71,10 +70,18 @@ export function EtfMoneyFlowPanel({ market }: { readonly market: Market }): Reac
                     {data.holding_as_of ? (
                       <>
                         {" "}
-                        · {t("asOf", { date: data.holding_as_of })} · {t("nextUpdate")}
+                        · {t("asOf", { date: data.holding_as_of })}
+                        {data.requested_end_date ? null : <> · {t("nextUpdate")}</>}
                       </>
                     ) : null}
                   </p>
+                  {/* Nothing new was ingested in the asked-for window (the source stopped), so the
+                      last available window is shown: say so instead of going blank. */}
+                  {data.requested_end_date ? (
+                    <p className="mt-1 text-[12px] text-[var(--warn)]">
+                      ⚠ {t("staleNotice", { date: data.end_date })}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="inline-flex shrink-0 gap-0.5 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-[3px]">
                   {(["inflow", "outflow"] as const).map((d) => (

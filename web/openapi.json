@@ -7898,6 +7898,18 @@
       "title": "Outflow Ranking",
       "type": "array"
      },
+     "requested_end_date": {
+      "anyOf": [
+       {
+        "format": "date",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Requested End Date"
+     },
      "start_date": {
       "format": "date",
       "title": "Start Date",

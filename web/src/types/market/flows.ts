@@ -74,6 +74,7 @@ export const etfMoneyFlowDataSchema = z.object({
   start_date: z.string(),
   end_date: z.string(),
   holding_as_of: z.string().nullable().optional(),
+  requested_end_date: z.string().nullable().optional(),
   data_available: z.boolean(),
   unavailable_reason: z.string().nullable().optional(),
   total_stock_count: z.number().default(0),
