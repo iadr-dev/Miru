@@ -266,7 +266,11 @@ class GetDispositionBoardTool(BaseTool):
         calendar = _calendar(self._store, market)
         window_offset = -(_ROLLING_WINDOW_TRADING_DAYS - 1)
         window_start = calendar.shift_business_days(report_date, window_offset)
-        flag_counts: dict[str, int] = {}
+        # Distinct announcement dates per symbol, not one hit per stored day: a morning fetch of
+        # the feed still lists yesterday's notices (about half of the stored rows carry the
+        # previous day's `flagged_date`), so counting per partition counted one announcement
+        # twice, and a repeated list after a stale fetch inflated the escalation projection.
+        flagged_dates: dict[str, set[date_]] = {}
         flag_names: dict[str, set[str]] = {}
         attention_info: dict[str, AttentionStockRow] = {}
         observed_days = 0
@@ -277,13 +281,16 @@ class GetDispositionBoardTool(BaseTool):
             for attention_row in rows_from_store(
                 AttentionStockRow, self._store.read_partition(ATTENTION_STOCKS_DATASET, market, day)
             ):
-                flag_counts[attention_row.symbol] = flag_counts.get(attention_row.symbol, 0) + 1
+                flagged_dates.setdefault(attention_row.symbol, set()).add(
+                    attention_row.flagged_date
+                )
                 flag_names.setdefault(attention_row.symbol, set()).add("注意")
                 # Latest flag's own name/exchange wins — a symbol's company name/listing never
                 # actually changes within a 10-day window, but `day` walks oldest-to-newest here
                 # so this naturally keeps the most recent snapshot without extra bookkeeping.
                 attention_info[attention_row.symbol] = attention_row
 
+        flag_counts = {symbol: len(days) for symbol, days in flagged_dates.items()}
         at_risk_symbols = set(flag_counts) - set(by_symbol_disposition)
         roster = sorted(set(by_symbol_disposition) | at_risk_symbols)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import time as time_
 
 import structlog
 from pydantic import BaseModel
@@ -71,6 +72,13 @@ class WholeMarketJobSpec:
     finmind_update_time: str  # documented FinMind `Update:` time, TW time
     cron_hint: str  # update time + ~10min buffer, so the cron always fires after FinMind publishes
     row_model: type[BaseModel]
+    # When the dataset is published, Taipei time, if later than the usual 17:30 post-close
+    # publish. A gap-fill run before this time targets the previous trading day, so it does not
+    # fetch a day the upstream has not published yet (and record it as an empty placeholder).
+    publish_after: time_ | None = None
+    # A current-state snapshot with no per-day history upstream (the stock roster): a gap-fill
+    # fetches only the latest day. Walking back would file today's roster under every past date.
+    snapshot_only: bool = False
 
 
 # The two whole-market-by-date datasets this phase wires end-to-end (the
@@ -201,6 +209,7 @@ MARKET_VALUE_JOB = WholeMarketJobSpec(
     finmind_update_time="Mon-Fri ~23:30 (Sponsor)",
     cron_hint="23:40 Asia/Taipei",
     row_model=MarketValueRow,
+    publish_after=time_(23, 30),
 )
 
 
@@ -218,6 +227,7 @@ MARKET_VALUE_WEIGHT_JOB = WholeMarketJobSpec(
     finmind_update_time="Mon-Fri ~23:30 (Sponsor)",
     cron_hint="23:40 Asia/Taipei",
     row_model=MarketValueWeightRow,
+    publish_after=time_(23, 30),
 )
 
 
@@ -267,6 +277,7 @@ STOCK_INFO_JOB = WholeMarketJobSpec(
     finmind_update_time=_REFERENCE_ROSTER_UPDATE_TIME,
     cron_hint="06:00 Asia/Taipei (once daily, off-peak — see job docstring for cadence rationale)",
     row_model=StockInfoRow,
+    snapshot_only=True,
 )
 
 

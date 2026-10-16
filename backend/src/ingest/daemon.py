@@ -461,7 +461,9 @@ class IngestDaemon:
                 us_target,
             )
             runs = (
-                *await catch_up_tw(ctx, tw_days),
+                # The previous trading day is scored again once: its evening score ran before the
+                # 23:30 market-value data landed.
+                *await catch_up_tw(ctx, tw_days, refresh=(last_tw,)),
                 *await catch_up_us(ctx, us_days, target=us_target),
             )
         except Exception:
@@ -546,6 +548,11 @@ class IngestDaemon:
                     run_date=run_date.isoformat(),
                 )
                 continue
+            # The lease can drop mid-pass (the Postgres connection behind it breaks and the lock is
+            # freed); re-check it before every job so a standby that took over is the only writer.
+            if not await refresh_leadership(self._ctx.leader):
+                logger.warning("ingest_pass_stopped_lease_lost", job=job.name)
+                break
             try:
                 result = await job.run(run_date, self._ctx)
             except FinMindQuotaRefusedError:
