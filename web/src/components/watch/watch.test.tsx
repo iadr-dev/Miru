@@ -13,6 +13,7 @@ import {
   distanceToLevel,
   initialStrategy,
   keyLevel,
+  previewItems,
   triggersMet,
 } from "@/components/watch/watch-format";
 import { WatchTable } from "@/components/watch/watch-table";
@@ -209,5 +210,22 @@ describe("timeline-math", () => {
       date: "2026-10-16",
       minutes: 10 * 60 + 24,
     });
+  });
+});
+
+describe("previewItems", () => {
+  const rows = Array.from({ length: 12 }, (_, i) => ({ symbol: String(1000 + i) }));
+
+  it("shows the first rows", () => {
+    expect(previewItems(rows, null, 8).map((r) => r.symbol)).toEqual(
+      rows.slice(0, 8).map((r) => r.symbol),
+    );
+  });
+
+  it("keeps a stock picked from the full list visible in the last row", () => {
+    const shown = previewItems(rows, "1010", 8).map((r) => r.symbol);
+    expect(shown).toHaveLength(8);
+    expect(shown.at(-1)).toBe("1010");
+    expect(shown.slice(0, 7)).toEqual(rows.slice(0, 7).map((r) => r.symbol));
   });
 });

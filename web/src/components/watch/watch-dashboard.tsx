@@ -1,15 +1,22 @@
 "use client";
 
-import { BellIcon, BellRingingIcon } from "@phosphor-icons/react";
+import { ArrowsOutSimpleIcon, BellIcon, BellRingingIcon } from "@phosphor-icons/react";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryState } from "@/components/ui/query-state";
 import { RunStatus } from "@/components/watch/run-status";
 import { SubscriptionDialog } from "@/components/watch/subscription-dialog";
 import { WatchDetail } from "@/components/watch/watch-detail";
 import { WatchFeed } from "@/components/watch/watch-feed";
-import { initialStrategy, STRATEGY_COLOR, tint } from "@/components/watch/watch-format";
+import {
+  initialStrategy,
+  PREVIEW_ROWS,
+  previewItems,
+  STRATEGY_COLOR,
+  tint,
+} from "@/components/watch/watch-format";
 import { WatchTable } from "@/components/watch/watch-table";
 import { useStrategySubscription, useStrategyWatch } from "@/hooks/use-strategy-watch";
 import { cn } from "@/lib/cn";
@@ -75,6 +82,7 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
   );
   const [symbol, setSymbol] = useState<string | null>(() => params.get("symbol"));
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
   const subscription = useStrategySubscription();
 
   const items = data.items.filter((item) => item.strategy === strategy);
@@ -165,19 +173,57 @@ function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
       </p>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
-        <section className="surface-card overflow-x-auto p-3">
+        {/* Both cards stretch to the row's height, so their bottoms line up; the list shows a
+            preview and the rest opens in a modal instead of running far past the detail. */}
+        <section className="surface-card flex flex-col p-3">
+          <div className="overflow-x-auto">
+            <WatchTable
+              items={previewItems(items, selected?.symbol ?? null)}
+              caption={t("table.caption", { strategy: t(`strategies.${strategy}.name`) })}
+              selected={selected?.symbol ?? null}
+              onSelect={setSymbol}
+              color={STRATEGY_COLOR[strategy]}
+            />
+          </div>
+          {items.length > PREVIEW_ROWS ? (
+            <button
+              type="button"
+              onClick={() => setListOpen(true)}
+              className="mt-auto flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] text-[12.5px] text-[var(--text)] transition-colors hover:brightness-95"
+              style={{ backgroundColor: tint(STRATEGY_COLOR[strategy], 12) }}
+            >
+              {t("table.showAll", { count: items.length })}
+              <ArrowsOutSimpleIcon size={14} aria-hidden />
+            </button>
+          ) : null}
+        </section>
+        <aside className="surface-card" aria-live="off">
+          <WatchDetail item={selected} masked={data.masked} />
+        </aside>
+      </div>
+
+      <ExpandModal
+        open={listOpen}
+        title={t("table.allTitle", {
+          strategy: t(`strategies.${strategy}.name`),
+          count: items.length,
+        })}
+        closeLabel={t("detail.close")}
+        onClose={() => setListOpen(false)}
+      >
+        <div className="overflow-x-auto">
           <WatchTable
             items={items}
             caption={t("table.caption", { strategy: t(`strategies.${strategy}.name`) })}
             selected={selected?.symbol ?? null}
-            onSelect={setSymbol}
+            onSelect={(picked) => {
+              setSymbol(picked);
+              setListOpen(false);
+            }}
             color={STRATEGY_COLOR[strategy]}
           />
-        </section>
-        <aside className="surface-card lg:sticky lg:top-4 lg:self-start" aria-live="off">
-          <WatchDetail item={selected} masked={data.masked} />
-        </aside>
-      </div>
+        </div>
+      </ExpandModal>
 
       <WatchFeed events={data.events} onSelect={openEvent} />
       <SubscriptionDialog
