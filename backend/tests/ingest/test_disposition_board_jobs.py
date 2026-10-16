@@ -304,3 +304,57 @@ async def test_disposition_events_idempotent_rerun_does_not_duplicate(
 
     assert first.status is second.status is RunStatus.SUCCESS
     assert first.rows_written == second.rows_written == 2
+
+
+async def test_one_exchange_failing_keeps_its_earlier_rows_in_the_day(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A morning run stored both exchanges; an evening run where TPEx is down must not wipe the
+    TPEx rows from the day (the 處置王 board reads only the latest partition)."""
+    state = {"tpex_up": True}
+
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[_ATTENTION_ROW_TWSE], status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        if state["tpex_up"]:
+            return _fake_result(rows=[_ATTENTION_ROW_TPEX], status=HealthStatus.OK)
+        return _fake_result(rows=[], status=HealthStatus.UNREACHABLE)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    await job_attention_stocks(_RUN_DATE, ctx)
+    state["tpex_up"] = False
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.PARTIAL
+    stored = ctx.store.read_partition(ATTENTION_STOCKS_DATASET, Market.TW.value, _RUN_DATE)
+    assert sorted(r["security_type"] for r in stored) == ["tpex", "twse"]
+    assert run.rows_written == 2
+
+
+async def test_an_empty_answer_does_not_replace_a_non_empty_day(
+    tmp_path: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = {"empty": False}
+
+    async def _fake_twse(*, tls_policy: object) -> SourceResult:
+        rows = [] if state["empty"] else [_ATTENTION_ROW_TWSE]
+        return _fake_result(rows=rows, status=HealthStatus.OK)
+
+    async def _fake_tpex(*, tls_policy: object) -> SourceResult:
+        return _fake_result(rows=[], status=HealthStatus.OK)
+
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks", _fake_twse)
+    monkeypatch.setattr(jobs_module, "fetch_whole_market_attention_stocks_tpex", _fake_tpex)
+    ctx = _ctx(tmp_path)
+
+    await job_attention_stocks(_RUN_DATE, ctx)
+    state["empty"] = True
+    run = await job_attention_stocks(_RUN_DATE, ctx)
+
+    assert run.status is RunStatus.SKIPPED
+    stored = ctx.store.read_partition(ATTENTION_STOCKS_DATASET, Market.TW.value, _RUN_DATE)
+    assert [r["symbol"] for r in stored] == ["3081"]

@@ -78,6 +78,16 @@ async def job_material_announcements(run_date: date_, ctx: IngestContext) -> Job
     rows = _validate_rows_against(
         MaterialAnnouncementRow, MATERIAL_ANNOUNCEMENTS_DATASET, raw_rows, run_date
     )
+    if not rows and ctx.store.has_rows(MATERIAL_ANNOUNCEMENTS_DATASET, ctx.market.value, run_date):
+        # A glitchy empty answer must not wipe the day's earlier snapshot (this feed has no
+        # history to recover it from).
+        return journal_run(
+            MATERIAL_ANNOUNCEMENTS_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="the feed returned no rows; kept the day's earlier non-empty snapshot",
+        )
     rows_written = ctx.store.write_partition(
         MATERIAL_ANNOUNCEMENTS_DATASET, ctx.market.value, run_date, rows
     )
@@ -139,6 +149,18 @@ async def job_insider_transfer_declaration(run_date: date_, ctx: IngestContext) 
     rows = _validate_rows_against(
         InsiderTransferDeclarationRow, INSIDER_TRANSFER_DECLARATION_DATASET, raw_rows, run_date
     )
+    if not rows and ctx.store.has_rows(
+        INSIDER_TRANSFER_DECLARATION_DATASET, ctx.market.value, run_date
+    ):
+        # A glitchy empty answer must not wipe the day's earlier snapshot (this feed has no
+        # history to recover it from).
+        return journal_run(
+            INSIDER_TRANSFER_DECLARATION_DATASET,
+            run_date,
+            rows_written=0,
+            status=RunStatus.SKIPPED,
+            detail="the feed returned no rows; kept the day's earlier non-empty snapshot",
+        )
     rows_written = ctx.store.write_partition(
         INSIDER_TRANSFER_DECLARATION_DATASET, ctx.market.value, run_date, rows
     )

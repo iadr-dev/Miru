@@ -173,3 +173,26 @@ def test_last_completed_us_session_treats_a_naive_now_as_new_york_local() -> Non
     assert last_completed_us_session(calendar, now=datetime(2026, 10, 7, 17, 0)) == date_(
         2026, 10, 7
     )
+
+
+def test_snapshot_day_is_the_taipei_date_on_a_trading_day_and_none_otherwise() -> None:
+    """The no-date-parameter feeds are filed under the real Taipei date: not an earlier trading
+    day (a Saturday dump replaced Friday's partition), not the UTC date (still yesterday until
+    08:00 Taipei), and nothing at all on a weekend or holiday."""
+    from calendar.trading_days import TradingDayCalendar  # noqa: PLC0415
+    from datetime import UTC, date, datetime  # noqa: PLC0415
+
+    from ingest.preflight import snapshot_day  # noqa: PLC0415
+    from schemas.enums import Market  # noqa: PLC0415
+
+    calendar = TradingDayCalendar(market=Market.TW)
+    # 02:00 Taipei Tuesday is Monday 18:00 UTC: filed under Tuesday.
+    assert snapshot_day(calendar, now=datetime(2026, 10, 13, 18, 0, tzinfo=UTC)) == date(
+        2026, 10, 14
+    )
+    # Saturday 13:00 Taipei: a weekend, no snapshot (it used to land on Friday).
+    assert snapshot_day(calendar, now=datetime(2026, 10, 17, 5, 0, tzinfo=UTC)) is None
+    # An ordinary Thursday at 13:00 Taipei is filed under that day.
+    assert snapshot_day(calendar, now=datetime(2026, 10, 15, 5, 0, tzinfo=UTC)) == date(
+        2026, 10, 15
+    )

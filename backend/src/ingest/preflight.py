@@ -42,6 +42,17 @@ _FINMIND_EOD_PUBLISH_TIME = time_(17, 30)
 _ONE_DAY = timedelta(days=1)
 
 
+def snapshot_day(calendar: TradingDayCalendar, *, now: datetime) -> date_ | None:
+    """The Taipei date to file a "right now" snapshot under, or `None` on a non-trading day.
+
+    The no-date-parameter feeds (MOPS announcements, 注意/處置, ETF NAV) can only be fetched as they
+    stand at this moment, so the partition is the real Taipei date, never an earlier trading day:
+    filing a Saturday dump under Friday replaced Friday's real partition, and a 02:00 run filed
+    under the UTC date landed on the wrong day. On a weekend or holiday there is nothing new."""
+    today = now.astimezone(_TAIPEI).date() if now.tzinfo is not None else now.date()
+    return today if calendar.is_trading_day_extrapolating(today) else None
+
+
 def last_available_trading_day(calendar: TradingDayCalendar, *, now: datetime) -> date_:
     """The most recent trading day whose EOD data FinMind has actually published, respecting
     the FinMind publish lag. `now` may be ANY timezone-aware instant (every real caller passes
