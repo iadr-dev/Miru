@@ -49,3 +49,29 @@ def test_settings_parse_comma_separated_allowlists() -> None:
         "https://b.example.com",
     ]
     assert settings.mcp_allowed_hosts_list() == ["a.example.com", "b.example.com"]
+
+
+def test_composed_app_puts_the_gateway_in_front_of_fastmcps_own_host_guard() -> None:
+    from mcp.gateway import McpGateway  # noqa: PLC0415
+
+    settings = Settings(
+        jwt_secret_key=_TEST_JWT_SECRET,
+        mcp_public_base_url="https://mcp.example.com",
+        mcp_authorization_server_url="https://auth.example.com",
+    )
+    built = build_mcp_http_app(settings)
+    assert built.app.user_middleware[0].cls is McpGateway
+    assert built.app.user_middleware[0].kwargs["config"].resource_metadata_url == (
+        "https://mcp.example.com/.well-known/oauth-protected-resource/mcp"
+    )
+
+
+def test_mcp_connector_settings_defaults_are_safe_for_a_public_endpoint() -> None:
+    settings = Settings(jwt_secret_key=_TEST_JWT_SECRET)
+    assert settings.mcp_stateless_http is True
+    assert settings.mcp_public_base() is None
+    assert settings.mcp_max_body_bytes <= 4 * 1024 * 1024
+    assert 0 < settings.mcp_max_concurrent_requests <= 256
+    assert (
+        settings.mcp_rate_limit_anonymous_per_minute < settings.mcp_rate_limit_signed_in_per_minute
+    )

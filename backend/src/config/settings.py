@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -201,12 +202,42 @@ class Settings(BaseSettings):
     mcp_allowed_origins: str = ""
     mcp_allowed_hosts: str = ""
 
+    # The public HTTPS origin the MCP server is reached at through a tunnel / reverse proxy
+    # (e.g. https://mcp.example.com). Its host is added to the Host allow-list automatically, and
+    # it is the base of the RFC 9728 protected-resource metadata. Empty = local use only.
+    mcp_public_base_url: str = ""
+    # OAuth authorization server the protected-resource metadata points MCP clients at. Miru
+    # ships no authorization server; leave empty to serve no metadata (authless / Bearer token).
+    mcp_authorization_server_url: str = ""
+    # true = every request is self-contained (no Mcp-Session-Id): safe behind a load balancer or
+    # across restarts, which is how Anthropic's cloud connectors behave. Miru pushes no
+    # server-initiated messages, so nothing is lost.
+    mcp_stateless_http: bool = True
+    mcp_max_body_bytes: int = 1_048_576
+    mcp_max_concurrent_requests: int = 64
+    # Per-minute request caps on /mcp: counted per user id when a valid token was presented,
+    # otherwise per client address (see TRUSTED_PROXY_COUNT).
+    mcp_rate_limit_anonymous_per_minute: int = 120
+    mcp_rate_limit_signed_in_per_minute: int = 600
+
+    def mcp_public_base(self) -> str | None:
+        base = self.mcp_public_base_url.strip().rstrip("/")
+        return base or None
+
     def mcp_allowed_origins_list(self) -> list[str] | None:
         origins = [o.strip() for o in self.mcp_allowed_origins.split(",") if o.strip()]
+        base = self.mcp_public_base()
+        if base and base not in origins:
+            origins.append(base)
         return origins or None
 
     def mcp_allowed_hosts_list(self) -> list[str] | None:
         hosts = [h.strip() for h in self.mcp_allowed_hosts.split(",") if h.strip()]
+        base = self.mcp_public_base()
+        if base:
+            public_host = urlsplit(base).netloc
+            if public_host and public_host not in hosts:
+                hosts.append(public_host)
         return hosts or None
 
     # ---- Redis / rate-limiting / caching / event bus ----

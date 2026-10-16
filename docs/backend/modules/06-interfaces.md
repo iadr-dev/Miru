@@ -45,11 +45,15 @@ via the same `orchestrator.composition` composition-root functions the API app u
 (`mcp.app.build_mcp_server`), and hands `mcp.app.build_http_app`'s resulting ASGI app to
 `uvicorn.run` — `build_http_app` returns a runnable ASGI app for a caller to serve; it has no
 `.run()` of its own. Host/port/allowed-origins/allowed-hosts are config (`MCP_HOST`/`MCP_PORT`/
-`MCP_ALLOWED_ORIGINS`/`MCP_ALLOWED_HOSTS`, see `.env.example`). Principal resolution stays at the
-safe anonymous/`Tier.FREE` default (`mcp.principal.AnonymousOnlyResolver`) — no accounts-backed,
-API-key-to-user lookup exists anywhere in this codebase yet (no API-key issuance flow in
-`accounts/`); `principal_resolver=` is the one seam a future accounts-backed resolver plugs into
-at this same call site.
+`MCP_ALLOWED_ORIGINS`/`MCP_ALLOWED_HOSTS`, see `.env.example`). Principal resolution
+(`mcp.accounts_resolver.AccountsPrincipalResolver`) maps the application's own signed access JWT -
+sent as `Authorization: Bearer` or `x-api-key` - to the real user's tier (so sponsor data and masked
+teasers match the app); no credential stays anonymous/`Tier.FREE`. `mcp.gateway.McpGateway` is the
+HTTP edge (401 + `WWW-Authenticate` for a bad Bearer token, per-principal rate limit, body and
+concurrency caps, `/mcp/` normalization, explained Host/Origin rejections), `mcp.discovery` serves
+RFC 9728 protected-resource metadata when an authorization server is configured, and the server
+sends `instructions` (scope, tier semantics, the non-trading rule). How to connect Claude.ai,
+the Messages API and Claude Code: [mcp-claude-connector.md](../mcp-claude-connector.md).
 
 ### Exposure model — immediate tools + search/execute (100–107 tools ≫ context budget)
 With 100–107 registry tools (5 immediate, the rest deferred — see [03-tools.md](03-tools.md) for
