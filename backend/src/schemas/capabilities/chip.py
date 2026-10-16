@@ -451,7 +451,7 @@ class DispositionBoardCardRow(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    rank: int = 0  # 1-based position within this card's bucket — real even when locked
+    rank: int = 0  # 1-based position within this card's bucket
     symbol: str | None
     market: Market
     company_name: str | None
@@ -511,9 +511,3 @@ class DispositionBoardCardRow(BaseModel):
     self_assessed_monthly_pretax_profit: int | None = None
     self_assessed_ytd_pretax_profit: int | None = None
     projection_caveat: str = Field(min_length=1)
-    # governance.md §4 top-N-preview exception: `True` only for a card beyond
-    # `GetDispositionBoardOutput.free_row_count` within its own bucket, shown to an unentitled
-    # caller with every field but `rank`/`bucket`/`market`/`projection_caveat` nulled server-side
-    # (`flags` becomes empty) — `bucket` survives since it's the tab filter itself (categorical,
-    # not identifying), and `projection_caveat` is static copy, not this card's own data.
-    locked: bool = False

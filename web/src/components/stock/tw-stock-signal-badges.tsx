@@ -90,7 +90,7 @@ export function TwStockSignalBadges({
           color={streakRow.extra_value > 0 ? "var(--up)" : "var(--down)"}
         />
       ) : null}
-      {dispositionRow && !dispositionRow.locked ? (
+      {dispositionRow ? (
         <Badge
           label={tDisposition(dispositionRow.bucket)}
           color={DISPOSITION_BUCKET_COLOR[dispositionRow.bucket]}
