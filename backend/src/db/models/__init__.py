@@ -57,6 +57,13 @@ from db.models.memory import (
     WatchlistItemRow,
     WatchlistRow,
 )
+from db.models.oauth_server import (
+    OAuthAuthCodeRow,
+    OAuthAuthorizationRequestRow,
+    OAuthClientRow,
+    OAuthGrantRow,
+    OAuthRefreshTokenRow,
+)
 from db.models.scheduler import (
     AlertEvalMarkRow,
     AlertPreferenceRow,
@@ -94,6 +101,11 @@ __all__ = [
     "MessageRow",
     "NotificationRow",
     "OAuthAccountRow",
+    "OAuthAuthCodeRow",
+    "OAuthAuthorizationRequestRow",
+    "OAuthClientRow",
+    "OAuthGrantRow",
+    "OAuthRefreshTokenRow",
     "ScheduleJobRow",
     "ScreenerScreenRow",
     "SessionRow",

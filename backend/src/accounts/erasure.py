@@ -20,7 +20,7 @@ from sqlalchemy import ColumnElement, CursorResult, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.base import Base
-from db.models import BillingEventRow, SubscriptionRow, UserRow
+from db.models import BillingEventRow, OAuthAuthorizationRequestRow, SubscriptionRow, UserRow
 
 logger = structlog.get_logger(__name__)
 
@@ -100,6 +100,16 @@ async def erase_user(session: AsyncSession, user_id: str) -> dict[str, int]:
         count = int(cast("CursorResult[tuple[()]]", result).rowcount or 0)
         if count:
             removed[name] = count
+    # Pending MCP sign-in requests name the user who opened them in `bound_user_id` (not
+    # `user_id`: the row exists before any user does), so the loop above does not see them.
+    pending = await session.execute(
+        delete(OAuthAuthorizationRequestRow).where(
+            OAuthAuthorizationRequestRow.bound_user_id == user_id
+        )
+    )
+    pending_count = int(cast("CursorResult[tuple[()]]", pending).rowcount or 0)
+    if pending_count:
+        removed[OAuthAuthorizationRequestRow.__tablename__] = pending_count
     users = await session.execute(delete(UserRow).where(UserRow.id == user_id))
     deleted_users = int(cast("CursorResult[tuple[()]]", users).rowcount or 0)
     if deleted_users:

@@ -115,10 +115,11 @@ This runs with an in-process event bus. There is no scheduler, ingest or MCP pro
 <summary><b>Connect an MCP client</b> (Claude, Gemini CLI, Codex, Cursor, VS Code)</summary>
 
 The stack serves a read-only MCP endpoint at `http://localhost:8100/mcp` (streamable HTTP), with a
-liveness probe at `/healthz`. It runs as its own process, separate from the API. Anonymous callers get
-the Free tier (public data). Signing in with your Miru account from a client's "Sign in" / `/mcp` button
-is **not available yet** (the server has no OAuth sign-in), so paid-tier data over MCP currently
-needs a pasted `Authorization: Bearer <access token>`, which expires after about 15 minutes.
+liveness probe at `/healthz`. It runs as its own process, separate from the API. Clients sign in with
+your Miru account: the client's "Sign in" / `/mcp` button opens a Miru consent page in your browser
+(sign in if asked, then Allow or Deny), and your plan decides what the tools return. Set
+`MCP_REQUIRE_AUTH=false` only for local development without sign-in. See
+[docs/backend/mcp-claude-connector.md](docs/backend/mcp-claude-connector.md) for the details.
 
 | Client | Add the server (`http://localhost:8100/mcp`) |
 |---|---|

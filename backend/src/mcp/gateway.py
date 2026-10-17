@@ -8,24 +8,26 @@ give out of the box:
 - `/mcp/` and `/mcp` are the same endpoint. Starlette would answer `/mcp/` with a 307 whose
   `Location` is built from the *inner* scheme (`http://`), which a client behind a TLS-terminating
   proxy then follows to a URL that does not exist. The path is normalized in place instead.
-- An `Authorization: Bearer <token>` that is present but invalid or expired is answered HTTP 401
-  with `WWW-Authenticate: Bearer ... resource_metadata="..."` (MCP authorization spec, RFC 9728
-  section 5.1) so an OAuth-capable client can discover how to sign in. A request with no
-  credential at all stays anonymous: the authless connector keeps working.
+- Sign-in (MCP authorization spec). With `require_auth` a request without a valid credential is
+  answered HTTP 401 with `WWW-Authenticate: Bearer resource_metadata="...", scope="mcp:read"`
+  (RFC 9728 section 5.1) - the signal every MCP client waits for before it starts its OAuth flow;
+  an invalid or expired token adds `error="invalid_token"`. Without `require_auth` (local
+  development) a request with no credential stays anonymous, while a presented-but-bad bearer is
+  still a 401.
 - Abuse bounds: a per-principal request rate (user id once a token verifies, else client
   address), a request-body cap and a concurrent-request cap.
 - A rejected `Host` / `Origin` (FastMCP answers a bare "Misdirected Request") gets a body that
   says which setting to change.
 
-Only `scope["path"] == mcp_path` is policed; `/healthz` and the `/.well-known/*` documents pass
-straight through. No secret or token is ever logged.
+Only `scope["path"] == mcp_path` is policed; `/healthz`, the `/.well-known/*` documents and CORS
+preflight (`OPTIONS`) pass straight through. No secret or token is ever logged.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import json
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import structlog
@@ -33,6 +35,7 @@ from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from events.rate_limit import AsyncRateLimiter
+from mcp.auth import TokenVerdict
 
 logger = structlog.get_logger(__name__)
 
@@ -44,8 +47,8 @@ _HTTP_MISDIRECTED = 421
 _HTTP_TOO_MANY = 429
 _HTTP_UNAVAILABLE = 503
 
-# Returns the user id a bearer token authenticates, or None when it is invalid / expired.
-TokenVerifier = Callable[[str], str | None]
+# Which user a credential authenticates (or why it does not).
+TokenVerifier = Callable[[str], Awaitable[TokenVerdict]]
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,10 @@ class GatewayConfig:
     # Absolute URL of the RFC 9728 metadata document, advertised in `WWW-Authenticate`. None when
     # no authorization server is configured: the challenge then carries no pointer.
     resource_metadata_url: str | None = None
+    # true = no credential, no service. Fail closed: a config built without saying otherwise
+    # demands sign-in.
+    require_auth: bool = True
+    scope: str = "mcp:read"
 
 
 class _BodyTooLargeError(Exception):
@@ -128,6 +135,9 @@ class McpGateway:
             return
 
         headers = Headers(scope=scope)
+        if scope["method"] == "OPTIONS":  # CORS preflight carries no credentials by design
+            await self._serve(scope, headers, receive, send)
+            return
         if not await self._admit(scope, headers, send):
             return
         await self._serve(scope, headers, receive, send)
@@ -138,22 +148,32 @@ class McpGateway:
         principal: str
         limit: int
         authorization = headers.get("authorization")
+        api_key = headers.get("x-api-key")
         if authorization is not None:
             token = authorization[7:].strip() if authorization[:7].lower() == "bearer " else ""
-            user_id = self._verify(token) if token else None
-            if user_id is None:
-                await self._reject_token(send, bool(token))
+            verdict = await self._verify(token) if token else TokenVerdict(None, "invalid")
+            if verdict.user_id is None:
+                await self._challenge(send, failure=verdict.failure or "invalid")
                 return False
-            principal, limit = f"user:{user_id}", cfg.rate_signed_in_per_minute
+            principal, limit = f"user:{verdict.user_id}", cfg.rate_signed_in_per_minute
+        elif api_key is not None and cfg.require_auth:
+            verdict = await self._verify(api_key.strip())
+            if verdict.user_id is None:
+                await self._challenge(send, failure=verdict.failure or "invalid")
+                return False
+            principal, limit = f"user:{verdict.user_id}", cfg.rate_signed_in_per_minute
+        elif cfg.require_auth:
+            await self._challenge(send, failure=None)
+            return False
         else:
             address = _client_address(scope, headers, trusted_proxy_count=cfg.trusted_proxy_count)
             principal, limit = f"ip:{address}", cfg.rate_anonymous_per_minute
 
-        verdict = await self._limiter.check(
+        rate = await self._limiter.check(
             f"mcp:{principal}", max_requests=limit, window_seconds=_WINDOW_SECONDS
         )
-        if not verdict.allowed:
-            retry = max(1, int(verdict.retry_after_seconds or _WINDOW_SECONDS))
+        if not rate.allowed:
+            retry = max(1, int(rate.retry_after_seconds or _WINDOW_SECONDS))
             logger.warning(
                 "mcp_rate_limited",
                 caller_kind=principal.split(":", 1)[0],
@@ -171,22 +191,29 @@ class McpGateway:
             return False
         return True
 
-    async def _reject_token(self, send: Send, token_given: bool) -> None:
+    async def _challenge(self, send: Send, *, failure: str | None) -> None:
+        """401 with the RFC 6750 / RFC 9728 challenge. `failure=None` = no credential was sent."""
         cfg = self._config
-        parts = ['Bearer realm="miru-mcp"', 'error="invalid_token"']
-        description = (
-            "The access token is invalid or has expired; obtain a fresh one."
-            if token_given
-            else "Authorization must use the Bearer scheme."
-        )
-        parts.append(f'error_description="{description}"')
+        parts = ['Bearer realm="miru-mcp"']
         if cfg.resource_metadata_url:
             parts.append(f'resource_metadata="{cfg.resource_metadata_url}"')
-        logger.info("mcp_bearer_rejected", token_given=token_given)
+        parts.append(f'scope="{cfg.scope}"')
+        if failure is None:
+            error, description = "unauthorized", "Sign in to use this server."
+        else:
+            error = "invalid_token"
+            description = (
+                "The access token has expired; sign in again."
+                if failure == "expired"
+                else "The access token is invalid; sign in again."
+            )
+            parts.append('error="invalid_token"')
+            parts.append(f'error_description="{description}"')
+        logger.info("mcp_unauthorized", credential_given=failure is not None, failure=failure)
         await _send_json(
             send,
             _HTTP_UNAUTHORIZED,
-            {"error": "invalid_token", "message": description},
+            {"error": error, "message": description},
             [(b"www-authenticate", ", ".join(parts).encode())],
         )
 

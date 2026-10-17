@@ -24,6 +24,7 @@ from starlette.middleware import Middleware  # noqa: E402
 
 from events.rate_limit import AsyncRateLimiter, InMemoryAsyncRateLimiter  # noqa: E402
 from mcp.app import build_http_app, build_mcp_server  # noqa: E402
+from mcp.auth import TokenVerdict  # noqa: E402
 from mcp.gateway import GatewayConfig, McpGateway, TokenVerifier  # noqa: E402
 from mcp.principal import BearerResolver, PrincipalResolver  # noqa: E402
 from tests.mcp.conftest import FakeTool, FakeToolInput, FakeToolOutput  # noqa: E402
@@ -37,6 +38,7 @@ DEFAULT_GATEWAY = GatewayConfig(
     max_concurrent_requests=64,
     rate_anonymous_per_minute=10_000,
     rate_signed_in_per_minute=10_000,
+    require_auth=False,  # these tests are about the transport, not sign-in
 )
 
 INITIALIZE = {
@@ -67,6 +69,10 @@ class SlowTool(FakeTool):
         return FakeToolOutput(doubled=0)
 
 
+async def _reject_every_token(_token: str) -> TokenVerdict:
+    return TokenVerdict(user_id=None, failure="invalid")
+
+
 def build_app(  # noqa: PLR0913 - test builder: one knob per seam under test
     registry: ToolRegistry,
     *,
@@ -78,7 +84,7 @@ def build_app(  # noqa: PLR0913 - test builder: one knob per seam under test
     allowed_hosts: list[str] | None = None,
     allowed_origins: list[str] | None = None,
     stateless_http: bool = True,
-    **gateway_overrides: int | str | None,
+    **gateway_overrides: int | str | bool | None,
 ) -> StarletteWithLifespan:
     config = replace(gateway, **gateway_overrides) if gateway_overrides else gateway
     server = build_mcp_server(
@@ -86,12 +92,13 @@ def build_app(  # noqa: PLR0913 - test builder: one knob per seam under test
         principal_resolver=principal_resolver,
         bearer_resolver=bearer_resolver,
         bearer_enabled=verify_token is not None,
+        auth_required=config.require_auth,
     )
     middleware = Middleware(
         McpGateway,
         config=config,
         rate_limiter=rate_limiter or InMemoryAsyncRateLimiter(),
-        verify_token=verify_token or (lambda _token: None),
+        verify_token=verify_token or _reject_every_token,
     )
     return build_http_app(
         server,

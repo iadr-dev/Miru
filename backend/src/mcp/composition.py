@@ -6,10 +6,12 @@ builders (`orchestrator.composition`).
 No network I/O at construction time: `build_tool_registry` resolves the real data-access router
 and session factory from config, but neither performs a live fetch until a tool actually runs.
 
-Principal resolution: `mcp.accounts_resolver.AccountsPrincipalResolver` maps the application's own
-signed access JWT (`Authorization: Bearer` or `x-api-key`) to the real user's tier; no credential
-stays anonymous/`Tier.FREE`. `mcp.gateway.McpGateway` is the HTTP edge (401 challenge, rate limit,
-body and concurrency caps, trailing-slash normalization).
+Principal resolution: `mcp.auth.McpTokenVerifier` checks the OAuth access token the app's own
+authorization server issued for this resource, and `mcp.accounts_resolver.AccountsPrincipalResolver`
+maps the user it names to their CURRENT tier on every call. With `MCP_REQUIRE_AUTH` (the default)
+a request without a valid token is refused; switched off, no credential stays anonymous/`Tier.FREE`.
+`mcp.gateway.McpGateway` is the HTTP edge (401 challenge, rate limit, body and concurrency caps,
+trailing-slash normalization).
 """
 
 from __future__ import annotations
@@ -20,16 +22,18 @@ from fastmcp.server.http import StarletteWithLifespan
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.middleware import Middleware
 
-from config.settings import Settings, get_settings
+from config.settings import MCP_RESOURCE_PATH, Settings, get_settings
 from dataaccess.composition import build_default_router
 from events.rate_limit import AsyncRateLimiter, build_rate_limiter
-from mcp.accounts_resolver import AccountsPrincipalResolver, verify_access_token
+from mcp.accounts_resolver import AccountsPrincipalResolver
 from mcp.app import build_http_app, build_mcp_server
+from mcp.auth import McpTokenVerifier
 from mcp.discovery import resource_metadata_from_settings
 from mcp.gateway import GatewayConfig, McpGateway
 from orchestrator.composition import build_session_factory, build_tool_registry
+from tools.registry import ToolRegistry
 
-MCP_PATH = "/mcp"
+MCP_PATH = MCP_RESOURCE_PATH
 
 
 @dataclass(frozen=True)
@@ -47,15 +51,21 @@ def build_mcp_http_app(
     settings: Settings | None = None,
     *,
     rate_limiter: AsyncRateLimiter | None = None,
+    registry: ToolRegistry | None = None,
 ) -> McpApp:
     """Assemble the real, fully-wired MCP ASGI app from config - the composition root the
-    standalone MCP process (`python -m mcp`) invokes."""
+    standalone MCP process (`python -m mcp`) invokes. `registry` substitutes the tool set (tests
+    that exercise sign-in against a small known set of tools); production never passes it."""
     resolved = settings or get_settings()
     session_factory = build_session_factory(resolved)
-    router = build_default_router(resolved)
-    tool_registry = build_tool_registry(router, session_factory=session_factory)
+    tool_registry = registry or build_tool_registry(
+        build_default_router(resolved), session_factory=session_factory
+    )
 
-    accounts = AccountsPrincipalResolver(settings=resolved, session_factory=session_factory)
+    verifier = McpTokenVerifier(settings=resolved, session_factory=session_factory)
+    accounts = AccountsPrincipalResolver(
+        settings=resolved, session_factory=session_factory, verifier=verifier
+    )
     bearer_enabled = resolved.jwt_secret_key is not None
     resource_metadata = resource_metadata_from_settings(resolved, MCP_PATH)
     server = build_mcp_server(
@@ -64,6 +74,7 @@ def build_mcp_http_app(
         bearer_resolver=accounts,
         resource_metadata=resource_metadata,
         bearer_enabled=bearer_enabled,
+        auth_required=resolved.mcp_require_auth,
     )
     gateway = Middleware(
         McpGateway,
@@ -75,9 +86,10 @@ def build_mcp_http_app(
             rate_signed_in_per_minute=resolved.mcp_rate_limit_signed_in_per_minute,
             trusted_proxy_count=resolved.trusted_proxy_count,
             resource_metadata_url=resource_metadata.metadata_url if resource_metadata else None,
+            require_auth=resolved.mcp_require_auth,
         ),
         rate_limiter=rate_limiter or build_rate_limiter(resolved),
-        verify_token=lambda token: verify_access_token(token, resolved),
+        verify_token=verifier.verify,
     )
     app = build_http_app(
         server,

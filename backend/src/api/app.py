@@ -41,6 +41,7 @@ from api.routers import (
     market,
     market_rest,
     memory,
+    oauth,
     pets,
     probes,
     scheduler,
@@ -176,6 +177,7 @@ def create_app(
     app.include_router(context.router, prefix=api)
     app.include_router(context.stream_router, prefix=api)
     app.include_router(auth.router, prefix=api)
+    app.include_router(oauth.web_router, prefix=api)
     app.include_router(accounts_extra.router, prefix=api)
     app.include_router(billing.router, prefix=api)
     # threads_actions first: its static `/threads/search` must be matched before threads.py's
@@ -194,6 +196,9 @@ def create_app(
     # Infra probes (`/livez`, `/readyz`, `/startupz`) are mounted at the root, not under the API
     # version prefix — they're for the load balancer / orchestrator, not an API consumer.
     app.include_router(probes.router)
+    # The MCP sign-in protocol endpoints live at the host root: issuer metadata (RFC 8414) is
+    # discovered at a fixed well-known path, and it names the rest.
+    app.include_router(oauth.router)
 
     @app.get("/healthz", tags=["ops"])
     async def healthz() -> dict[str, str]:  # pyright: ignore[reportUnusedFunction] — registered via decorator

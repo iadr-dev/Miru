@@ -47,6 +47,19 @@ def client_address(request: Request, *, trusted_proxy_count: int) -> str:
     return request.client.host if request.client else "unknown"
 
 
+def rate_limit_address(address: str) -> str:
+    """The key to count an address under. An IPv6 user owns a whole /64 (a home gets at least
+    that), so counting single addresses would let one machine rotate through billions of keys and
+    never meet a limit; IPv4 and unparseable values are used as they are."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is None:
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return address
+
+
 async def _enforce(request: Request, state: AppState, caller: str, *, per_minute: int) -> None:
     verdict = await state.rate_limiter.check(
         caller, max_requests=per_minute, window_seconds=_WINDOW_SECONDS
@@ -102,7 +115,9 @@ async def guard_streams(
 
 async def guard_auth(request: Request, state: AppState = Depends(get_state)) -> None:
     address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
-    await _enforce(request, state, f"auth:ip:{address}", per_minute=AUTH_PER_MINUTE)
+    await _enforce(
+        request, state, f"auth:ip:{rate_limit_address(address)}", per_minute=AUTH_PER_MINUTE
+    )
 
 
-__all__ = ["guard_auth", "guard_reads", "guard_streams"]
+__all__ = ["guard_auth", "guard_reads", "guard_streams", "rate_limit_address"]

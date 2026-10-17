@@ -111,9 +111,10 @@ uv run uvicorn api.app:app --reload
 <summary><b>連接 MCP 用戶端</b>（Claude、Gemini CLI、Codex、Cursor、VS Code）</summary>
 
 唯讀 MCP 端點位於 `http://localhost:8100/mcp`（streamable HTTP），存活檢查在 `/healthz`。
-它是獨立的程序，與 API 分開執行。匿名呼叫者使用 Free 方案（公開資料）。
-目前**尚未提供**用 Miru 帳號登入（用戶端的「Sign in」或 `/mcp` 按鈕）：伺服器還沒有 OAuth 登入，所以要在 MCP 取得付費方案的資料，
-暫時需要貼上 `Authorization: Bearer <access token>`，這個 token 約 15 分鐘後就會過期。
+它是獨立的程序，與 API 分開執行。用戶端以你的 Miru 帳號登入：按下用戶端的「Sign in」或 `/mcp` 按鈕，
+瀏覽器會開啟 Miru 的授權頁面（需要時先登入，再按「允許」或「拒絕」），工具回傳的內容依你的方案而定。
+只有在本機開發、不需登入時才設定 `MCP_REQUIRE_AUTH=false`。細節見
+[docs/backend/mcp-claude-connector.md](docs/backend/mcp-claude-connector.md)。
 
 | 用戶端 | 加入伺服器（`http://localhost:8100/mcp`） |
 |---|---|

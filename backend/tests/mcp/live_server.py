@@ -37,8 +37,8 @@ class LiveServer:
 
 
 @contextlib.asynccontextmanager
-async def serve(app: ASGIApp) -> AsyncIterator[LiveServer]:
-    config = uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning", lifespan="on")
+async def serve(app: ASGIApp, *, port: int = 0) -> AsyncIterator[LiveServer]:
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", lifespan="on")
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, name="live-mcp-server", daemon=True)
     thread.start()

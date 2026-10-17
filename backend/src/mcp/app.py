@@ -325,6 +325,7 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
     bearer_resolver: BearerResolver | None = None,
     resource_metadata: ResourceMetadata | None = None,
     bearer_enabled: bool = False,
+    auth_required: bool = False,
 ) -> FastMCP:
     """Build (never runs) the FastMCP app for one already-assembled `ToolRegistry`.
 
@@ -392,7 +393,8 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
                     "listed": len(registry.immediate_tools()) + 2,
                 },
                 "auth": {
-                    "anonymous": True,
+                    "required": auth_required,
+                    "anonymous": not auth_required,
                     "bearer": bearer_enabled,
                     "oauth_metadata": resource_metadata is not None,
                 },
@@ -407,7 +409,7 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
             return JSONResponse(
                 {
                     "error": "not_configured",
-                    "message": "No OAuth authorization server is configured for this server.",
+                    "message": "Sign-in is not configured (OAUTH_ISSUER, MCP_PUBLIC_BASE_URL).",
                 },
                 status_code=404,
             )

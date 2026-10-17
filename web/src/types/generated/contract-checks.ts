@@ -88,6 +88,7 @@ import type {
   usMacroSeriesResponseSchema,
   usSeriesRevisionsResponseSchema,
 } from "@/types/market/us-macro";
+import type { consentDecisionResponseSchema, consentResponseSchema } from "@/types/oauth-consent";
 import type {
   factorCatalogResponseSchema,
   runScreenerResponseSchema,
@@ -519,6 +520,10 @@ export type ContractChecks = [
     typeof feedbackRecordSchema,
     R<"/api/v1/threads/{thread_id}/turns/{turn_id}/feedback", "post">
   >,
+  // GET /oauth/consent/{request_id} — oauth-consent.getConsent
+  Accepts<typeof consentResponseSchema, R<"/api/v1/oauth/consent/{request_id}", "get">>,
+  // POST /oauth/consent/{request_id} — oauth-consent.decideConsent
+  Accepts<typeof consentDecisionResponseSchema, R<"/api/v1/oauth/consent/{request_id}", "post">>,
   // GET /usage/llm — settings.getLlmUsage
   Accepts<typeof llmUsageSummarySchema, R<"/api/v1/usage/llm", "get">>,
   // GET /usage/quota — settings.getUsageQuota

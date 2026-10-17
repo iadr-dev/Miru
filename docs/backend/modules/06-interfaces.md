@@ -45,15 +45,47 @@ via the same `orchestrator.composition` composition-root functions the API app u
 (`mcp.app.build_mcp_server`), and hands `mcp.app.build_http_app`'s resulting ASGI app to
 `uvicorn.run` — `build_http_app` returns a runnable ASGI app for a caller to serve; it has no
 `.run()` of its own. Host/port/allowed-origins/allowed-hosts are config (`MCP_HOST`/`MCP_PORT`/
-`MCP_ALLOWED_ORIGINS`/`MCP_ALLOWED_HOSTS`, see `.env.example`). Principal resolution
-(`mcp.accounts_resolver.AccountsPrincipalResolver`) maps the application's own signed access JWT -
-sent as `Authorization: Bearer` or `x-api-key` - to the real user's tier (so sponsor data and masked
-teasers match the app); no credential stays anonymous/`Tier.FREE`. `mcp.gateway.McpGateway` is the
-HTTP edge (401 + `WWW-Authenticate` for a bad Bearer token, per-principal rate limit, body and
-concurrency caps, `/mcp/` normalization, explained Host/Origin rejections), `mcp.discovery` serves
-RFC 9728 protected-resource metadata when an authorization server is configured, and the server
-sends `instructions` (scope, tier semantics, the non-trading rule). How to connect Claude.ai,
-the Messages API and Claude Code: [mcp-claude-connector.md](../mcp-claude-connector.md).
+`MCP_ALLOWED_ORIGINS`/`MCP_ALLOWED_HOSTS`, see `.env.example`).
+
+**Sign-in (the MCP authorization spec).** The MCP server is a pure OAuth *resource server*; the
+authorization server lives on the API service (`api/routers/oauth.py`, `accounts/mcp_oauth/`).
+With `MCP_REQUIRE_AUTH` (default true) `mcp.gateway.McpGateway` answers every `/mcp` request that
+lacks a valid credential with HTTP 401 + `WWW-Authenticate: Bearer resource_metadata="...",
+scope="mcp:read"` (an invalid or expired token adds `error="invalid_token"`); that 401 is what
+starts a client's OAuth flow. `/healthz`, `/.well-known/oauth-protected-resource[/mcp]` and CORS
+preflight stay open. The credential is an access token (`typ=mcp_access`, `iss` = `OAUTH_ISSUER`,
+`aud` = the MCP URL, 10 min) checked by `mcp.auth.McpTokenVerifier` for signature, expiry, type,
+issuer, audience and that its grant is not revoked; the server never forwards it (no token
+passthrough). The application's own session JWT has no audience and is refused unless the
+development flag `MCP_ACCEPT_APP_ACCESS_TOKEN` is on. Principal resolution
+(`mcp.accounts_resolver.AccountsPrincipalResolver`) maps the token's user to the tier on the user
+row **on every call** - the token carries no tier - so sponsor data and masked teasers match the
+app, a plan change applies on the next request, and Free users sign in too (public data, teasers
+for sponsor data). With `MCP_REQUIRE_AUTH=false` (local development only) no credential stays
+anonymous/`Tier.FREE`. `mcp.gateway.McpGateway` also applies the per-principal rate limit, body and
+concurrency caps, `/mcp/` normalization and explained Host/Origin rejections; `mcp.discovery`
+serves RFC 9728 protected-resource metadata; the server sends `instructions` (scope, tier
+semantics, the non-trading rule). Setup and per-client sign-in steps:
+[mcp-claude-connector.md](../mcp-claude-connector.md).
+
+#### Authorization server (API service)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /.well-known/oauth-authorization-server` | RFC 8414 metadata (S256 only, public clients, `client_id_metadata_document_supported`, `authorization_response_iss_parameter_supported`) |
+| `GET /oauth/authorize` | validates client / redirect URI / PKCE / `resource`, stores the request, redirects the browser to the web consent screen `<FRONTEND_BASE_URL>/<locale>/oauth/consent?request=<id>` |
+| `GET` / `POST /api/v1/oauth/consent/{id}` | the web app's two calls: what is being approved (+ CSRF nonce), then approve/deny -> the redirect to send the browser to |
+| `POST /oauth/token` | `authorization_code` (PKCE + `resource`, single-use 60 s code) and `refresh_token` (rotating; replay revokes the grant), RFC 6749 JSON errors |
+| `POST /oauth/register` | RFC 7591 dynamic registration of public clients (https / loopback / allow-listed desktop schemes; per-IP rate limit; client cap) |
+| `POST /oauth/revoke` | RFC 7009 |
+
+Client identity is either a registered client (DCR) or a Client ID Metadata Document: when
+`client_id` is an https URL, `sources/oauth_client_metadata.py` (the only network I/O here)
+fetches it behind an SSRF fence (https only, every resolved address must be globally routable,
+connection pinned to the checked address, no redirects, 5 s, 64 KB). Codes and refresh tokens are
+stored only as SHA-256 hashes. Tables: `oauth_clients`, `oauth_authorization_requests`,
+`oauth_auth_codes`, `oauth_grants`, `oauth_refresh_tokens` (the last three carry `user_id`, so
+erasure and row-level security cover them).
 
 ### Exposure model — immediate tools + search/execute (100–107 tools ≫ context budget)
 With 100–107 registry tools (5 immediate, the rest deferred — see [03-tools.md](03-tools.md) for
@@ -134,22 +166,19 @@ for tool in registry.immediate_tools():             # small core only (5 real to
 
 ## MCP principal & entitlement
 
-`mcp.principal.resolve_principal(headers, resolver=...)` builds the per-call `ToolContext` from
-the request's HTTP headers, and the mechanism is explicit (not assumed):
-- **Default = anonymous → `Tier.FREE`.** With no `x-api-key` header (or an unrecognized key),
-  every call gets a plain `ToolContext()` (anonymous, `Tier.FREE`); every `sponsor` tool returns
-  the masked teaser. This is the safe default and needs no auth. Both `python -m mcp`'s
-  composition root and `mcp.app.build_mcp_server`'s own default wire
-  `principal_resolver=None`, which resolves to `mcp.principal.AnonymousOnlyResolver` — every
-  caller today gets this default; no deployment currently wires anything else.
-- **`PrincipalResolver` — a seam, not a built feature.** `mcp.principal.PrincipalResolver` is a
-  `Protocol` (`async def resolve(api_key) -> tuple[user_id, Tier] | None`) a future
-  accounts-backed lookup can implement and inject at the one `principal_resolver=` call site in
-  `mcp/composition.py`. **No such resolver exists yet** — there is no API-key issuance flow in
-  `accounts/` today (no `user_secrets`/API-key table, no `/me/api-keys` endpoint) — so an
-  authenticated, tier-unmasking MCP call is not currently possible; every caller is anonymous.
-- No other principal path exists; MCP never elevates beyond the resolved caller's tier, and
-  there is no Tier-2/approval concept (safety tiers were removed).
+`mcp.principal.resolve_principal(headers, resolver=..., bearer_resolver=...)` builds the per-call
+`ToolContext` from the request's HTTP headers:
+- **Signed in (the normal case).** `Authorization: Bearer <access token>` (or `x-api-key`, same
+  token) is verified by `mcp.auth.McpTokenVerifier` and resolved by
+  `mcp.accounts_resolver.AccountsPrincipalResolver` to `(user_id, tier)`, reading the tier from the
+  user row on this call (never from the token; `lapse_if_overdue` applies exactly as in the app).
+  A Free user gets masked teasers for `sponsor` tools, a Premium/Pro user gets the data.
+- **Anonymous -> `Tier.FREE`** only when `MCP_REQUIRE_AUTH=false` (local development). In
+  production the gateway has already answered 401, so no anonymous call reaches a tool.
+- The resolver seams (`PrincipalResolver`, `BearerResolver`) stay Protocols; the default
+  `AnonymousOnlyResolver` recognizes nothing.
+- MCP never elevates beyond the resolved caller's tier, and there is no Tier-2/approval concept
+  (safety tiers were removed).
 
 ## Governance obligations
 

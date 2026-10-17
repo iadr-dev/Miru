@@ -96,6 +96,12 @@ Two independent hooks; neither stands in for the other.
   to `ToolContext.tier` via `finmind_class_for` (anonymous -> Free). The API builds the context once
   per request (`api/dependencies.py::tool_context_for`) and `dispatch_tool` re-applies the gate on
   **every tool call**; `ToolContext` is frozen and `tools/` never queries accounts or a database.
+- **MCP sign-in does not change this.** An MCP caller signs in through the app's own OAuth
+  authorization server, but the access token (`accounts/mcp_tokens.py`) carries only the user, the
+  client and the grant - never a tier or entitlement. `mcp/accounts_resolver.py` reads the tier from
+  the user row on every MCP call, so a plan change or a lapsed payment applies from the next request
+  and a revoked grant stops the token at once (`tests/mcp/test_connector_auth.py`,
+  `tests/mcp/test_oauth_end_to_end.py`).
 - **Tiers** (`accounts/entitlements.py`, config tables, not scattered constants):
 
   | Tier | Chats / day | Requests / min | Sponsor data |

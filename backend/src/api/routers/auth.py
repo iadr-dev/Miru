@@ -81,6 +81,8 @@ _STATE_COOKIE = "oauth_state"
 _VERIFIER_COOKIE = "oauth_code_verifier"
 _NONCE_COOKIE = "oauth_nonce"
 _LINK_COOKIE = "oauth_link_user"
+_NEXT_COOKIE = "oauth_next"
+_MAX_NEXT_LENGTH = 512
 _FLOW_COOKIE_MAX_AGE = 600  # the begin→callback round-trip window (10 min)
 
 
@@ -101,6 +103,7 @@ def _set_flow_cookies(
     code_verifier: str | None,
     nonce: str | None,
     link_user_id: str | None,
+    next_path: str | None = None,
 ) -> None:
     secure = _secure_cookies(settings)
 
@@ -121,10 +124,31 @@ def _set_flow_cookies(
         _set(_NONCE_COOKIE, nonce)
     if link_user_id is not None:
         _set(_LINK_COOKIE, link_user_id)
+    if next_path is not None:
+        _set(_NEXT_COOKIE, next_path)
+
+
+def safe_next_path(value: str | None) -> str | None:
+    """A same-site path the web app may send the browser to after sign-in, or None.
+
+    Only an absolute path on the web app is accepted (`/zh-TW/oauth/consent?request=...`): no
+    scheme, no host, no `//` or backslash tricks, no control characters. Anything else is dropped,
+    so the sign-in redirect can never be turned into an open redirect."""
+    if (
+        not value
+        or len(value) > _MAX_NEXT_LENGTH
+        or not value.startswith("/")
+        or value.startswith(("//", "/\\"))
+        or "\\" in value
+        or any(not c.isprintable() for c in value)
+    ):
+        return None
+    parts = urlsplit(value)
+    return value if not parts.scheme and not parts.netloc else None
 
 
 def _clear_flow_cookies(response: Response) -> None:
-    for name in (_STATE_COOKIE, _VERIFIER_COOKIE, _NONCE_COOKIE, _LINK_COOKIE):
+    for name in (_STATE_COOKIE, _VERIFIER_COOKIE, _NONCE_COOKIE, _LINK_COOKIE, _NEXT_COOKIE):
         response.delete_cookie(name)
 
 
@@ -172,9 +196,13 @@ async def begin_oauth(
     provider: str,
     response: Response,
     state: AppState = Depends(get_state),
+    next_path: str | None = Query(default=None, alias="next", max_length=_MAX_NEXT_LENGTH),
 ) -> BeginAuthResponse:
     """Begin sign-in: generate CSRF `state` (+ PKCE/nonce for LINE), stash them in httpOnly
-    cookies, and return the provider authorize URL for the client to navigate to."""
+    cookies, and return the provider authorize URL for the client to navigate to.
+
+    `next` (optional) is a web-app path to land on after sign-in instead of the chat page - used
+    to come back to the MCP consent screen. Anything but a plain absolute path is ignored."""
     oauth_provider = _parse_provider(provider)
     try:
         auth_request = start_authorization(oauth_provider, state.settings)
@@ -192,6 +220,7 @@ async def begin_oauth(
         code_verifier=auth_request.code_verifier,
         nonce=auth_request.nonce,
         link_user_id=None,
+        next_path=safe_next_path(next_path),
     )
     retry_url = (
         line_retry_authorization_url(auth_request.authorization_url)
@@ -407,6 +436,7 @@ async def oauth_callback(
     stored_verifier = request.cookies.get(_VERIFIER_COOKIE)
     stored_nonce = request.cookies.get(_NONCE_COOKIE)
     link_user_id = request.cookies.get(_LINK_COOKIE)
+    next_path = safe_next_path(request.cookies.get(_NEXT_COOKIE))
 
     try:
         user = await complete_authorization(
@@ -433,7 +463,7 @@ async def oauth_callback(
         ip=request.client.host if request.client else None,
     )
     # Linking returns to where it was started; a sign-in lands in chat.
-    landing = "/settings/connections" if link_user_id else "/chat"
+    landing = "/settings/connections" if link_user_id else (next_path or "/chat")
     redirect = RedirectResponse(
         url=_frontend_url(state.settings, landing), status_code=status.HTTP_302_FOUND
     )

@@ -988,6 +988,112 @@
     "title": "AttentionListEntry",
     "type": "object"
    },
+   "AuthorizationServerMetadata": {
+    "additionalProperties": false,
+    "description": "RFC 8414 authorization server metadata.",
+    "properties": {
+     "authorization_endpoint": {
+      "title": "Authorization Endpoint",
+      "type": "string"
+     },
+     "authorization_response_iss_parameter_supported": {
+      "title": "Authorization Response Iss Parameter Supported",
+      "type": "boolean"
+     },
+     "client_id_metadata_document_supported": {
+      "title": "Client Id Metadata Document Supported",
+      "type": "boolean"
+     },
+     "code_challenge_methods_supported": {
+      "items": {
+       "const": "S256",
+       "type": "string"
+      },
+      "title": "Code Challenge Methods Supported",
+      "type": "array"
+     },
+     "grant_types_supported": {
+      "items": {
+       "enum": [
+        "authorization_code",
+        "refresh_token"
+       ],
+       "type": "string"
+      },
+      "title": "Grant Types Supported",
+      "type": "array"
+     },
+     "issuer": {
+      "title": "Issuer",
+      "type": "string"
+     },
+     "registration_endpoint": {
+      "title": "Registration Endpoint",
+      "type": "string"
+     },
+     "response_types_supported": {
+      "items": {
+       "const": "code",
+       "type": "string"
+      },
+      "title": "Response Types Supported",
+      "type": "array"
+     },
+     "revocation_endpoint": {
+      "title": "Revocation Endpoint",
+      "type": "string"
+     },
+     "revocation_endpoint_auth_methods_supported": {
+      "items": {
+       "const": "none",
+       "type": "string"
+      },
+      "title": "Revocation Endpoint Auth Methods Supported",
+      "type": "array"
+     },
+     "scopes_supported": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Scopes Supported",
+      "type": "array"
+     },
+     "service_documentation": {
+      "title": "Service Documentation",
+      "type": "string"
+     },
+     "token_endpoint": {
+      "title": "Token Endpoint",
+      "type": "string"
+     },
+     "token_endpoint_auth_methods_supported": {
+      "items": {
+       "const": "none",
+       "type": "string"
+      },
+      "title": "Token Endpoint Auth Methods Supported",
+      "type": "array"
+     }
+    },
+    "required": [
+     "issuer",
+     "authorization_endpoint",
+     "token_endpoint",
+     "registration_endpoint",
+     "revocation_endpoint",
+     "response_types_supported",
+     "grant_types_supported",
+     "code_challenge_methods_supported",
+     "token_endpoint_auth_methods_supported",
+     "revocation_endpoint_auth_methods_supported",
+     "scopes_supported",
+     "client_id_metadata_document_supported",
+     "authorization_response_iss_parameter_supported",
+     "service_documentation"
+    ],
+    "title": "AuthorizationServerMetadata",
+    "type": "object"
+   },
    "BatchAlertItem": {
     "additionalProperties": false,
     "description": "One stock's own rule in a per-stock batch.",
@@ -2308,6 +2414,162 @@
      "connections"
     ],
     "title": "ConnectionsResponse",
+    "type": "object"
+   },
+   "ConsentClient": {
+    "properties": {
+     "client_id": {
+      "title": "Client Id",
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "registered",
+       "metadata_url"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "redirect_host": {
+      "title": "Redirect Host",
+      "type": "string"
+     },
+     "verified": {
+      "title": "Verified",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "name",
+     "client_id",
+     "kind",
+     "redirect_host",
+     "verified"
+    ],
+    "title": "ConsentClient",
+    "type": "object"
+   },
+   "ConsentDecisionRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "decision": {
+      "enum": [
+       "approve",
+       "deny"
+      ],
+      "title": "Decision",
+      "type": "string"
+     },
+     "nonce": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Nonce",
+      "type": "string"
+     }
+    },
+    "required": [
+     "decision",
+     "nonce"
+    ],
+    "title": "ConsentDecisionRequest",
+    "type": "object"
+   },
+   "ConsentDecisionResponse": {
+    "properties": {
+     "redirect_to": {
+      "title": "Redirect To",
+      "type": "string"
+     }
+    },
+    "required": [
+     "redirect_to"
+    ],
+    "title": "ConsentDecisionResponse",
+    "type": "object"
+   },
+   "ConsentResource": {
+    "properties": {
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url",
+     "label"
+    ],
+    "title": "ConsentResource",
+    "type": "object"
+   },
+   "ConsentResponse": {
+    "properties": {
+     "client": {
+      "$ref": "#/components/schemas/ConsentClient"
+     },
+     "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+     },
+     "nonce": {
+      "title": "Nonce",
+      "type": "string"
+     },
+     "redirect_uri": {
+      "title": "Redirect Uri",
+      "type": "string"
+     },
+     "request_id": {
+      "title": "Request Id",
+      "type": "string"
+     },
+     "resource": {
+      "$ref": "#/components/schemas/ConsentResource"
+     },
+     "scopes": {
+      "items": {
+       "$ref": "#/components/schemas/ConsentScope"
+      },
+      "title": "Scopes",
+      "type": "array"
+     }
+    },
+    "required": [
+     "request_id",
+     "client",
+     "redirect_uri",
+     "scopes",
+     "resource",
+     "nonce",
+     "expires_at"
+    ],
+    "title": "ConsentResponse",
+    "type": "object"
+   },
+   "ConsentScope": {
+    "properties": {
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "description"
+    ],
+    "title": "ConsentScope",
     "type": "object"
    },
    "ConversationFactOut": {
@@ -15370,6 +15632,31 @@
     "title": "OAuthAccount",
     "type": "object"
    },
+   "OAuthErrorBody": {
+    "description": "RFC 6749 section 5.2 error response.",
+    "properties": {
+     "error": {
+      "title": "Error",
+      "type": "string"
+     },
+     "error_description": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error Description"
+     }
+    },
+    "required": [
+     "error"
+    ],
+    "title": "OAuthErrorBody",
+    "type": "object"
+   },
    "OAuthProvider": {
     "enum": [
      "google",
@@ -17118,6 +17405,65 @@
     "title": "RegisterDeviceRequest",
     "type": "object"
    },
+   "RegisterResponse": {
+    "properties": {
+     "client_id": {
+      "title": "Client Id",
+      "type": "string"
+     },
+     "client_id_issued_at": {
+      "title": "Client Id Issued At",
+      "type": "integer"
+     },
+     "client_name": {
+      "title": "Client Name",
+      "type": "string"
+     },
+     "grant_types": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Grant Types",
+      "type": "array"
+     },
+     "redirect_uris": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Redirect Uris",
+      "type": "array"
+     },
+     "response_types": {
+      "items": {
+       "const": "code",
+       "type": "string"
+      },
+      "title": "Response Types",
+      "type": "array"
+     },
+     "scope": {
+      "title": "Scope",
+      "type": "string"
+     },
+     "token_endpoint_auth_method": {
+      "const": "none",
+      "default": "none",
+      "title": "Token Endpoint Auth Method",
+      "type": "string"
+     }
+    },
+    "required": [
+     "client_id",
+     "client_id_issued_at",
+     "client_name",
+     "redirect_uris",
+     "grant_types",
+     "response_types",
+     "scope"
+    ],
+    "title": "RegisterResponse",
+    "type": "object"
+   },
    "ReleaseEntry": {
     "additionalProperties": false,
     "properties": {
@@ -17320,6 +17666,13 @@
      "value"
     ],
     "title": "RevisionVintage",
+    "type": "object"
+   },
+   "RevokeTokenResponse": {
+    "additionalProperties": false,
+    "description": "RFC 7009 answers with an empty JSON object.",
+    "properties": {},
+    "title": "RevokeTokenResponse",
     "type": "object"
    },
    "RichCardBlock": {
@@ -21212,6 +21565,40 @@
     "title": "TokenBreakdown",
     "type": "object"
    },
+   "TokenResponse": {
+    "properties": {
+     "access_token": {
+      "title": "Access Token",
+      "type": "string"
+     },
+     "expires_in": {
+      "title": "Expires In",
+      "type": "integer"
+     },
+     "refresh_token": {
+      "title": "Refresh Token",
+      "type": "string"
+     },
+     "scope": {
+      "title": "Scope",
+      "type": "string"
+     },
+     "token_type": {
+      "const": "Bearer",
+      "default": "Bearer",
+      "title": "Token Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "access_token",
+     "expires_in",
+     "refresh_token",
+     "scope"
+    ],
+    "title": "TokenResponse",
+    "type": "object"
+   },
    "ToolCall": {
     "additionalProperties": false,
     "description": "One normalized tool-call proposal from the model.",
@@ -22976,6 +23363,37 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/.well-known/oauth-authorization-server": {
+   "get": {
+    "operationId": "authorization_server_metadata__well_known_oauth_authorization_server_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/AuthorizationServerMetadata"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OAuthErrorBody"
+        }
+       }
+      },
+      "description": "Not Found"
+     }
+    },
+    "summary": "Authorization Server Metadata",
+    "tags": [
+     "oauth"
+    ]
+   }
+  },
   "/api/v1/agent/query": {
    "post": {
     "operationId": "agent_query_api_v1_agent_query_post",
@@ -23908,7 +24326,7 @@
   },
   "/api/v1/auth/oauth/{provider}": {
    "post": {
-    "description": "Begin sign-in: generate CSRF `state` (+ PKCE/nonce for LINE), stash them in httpOnly\ncookies, and return the provider authorize URL for the client to navigate to.",
+    "description": "Begin sign-in: generate CSRF `state` (+ PKCE/nonce for LINE), stash them in httpOnly\ncookies, and return the provider authorize URL for the client to navigate to.\n\n`next` (optional) is a web-app path to land on after sign-in instead of the chat page - used\nto come back to the MCP consent screen. Anything but a plain absolute path is ignored.",
     "operationId": "begin_oauth_api_v1_auth_oauth__provider__post",
     "parameters": [
      {
@@ -23918,6 +24336,23 @@
       "schema": {
        "title": "Provider",
        "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "next",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 512,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Next"
       }
      }
     ],
@@ -29943,6 +30378,100 @@
     ]
    }
   },
+  "/api/v1/oauth/consent/{request_id}": {
+   "get": {
+    "description": "What the signed-in user is being asked to approve. The `nonce` must be echoed in the\ndecision: only this response contains it.",
+    "operationId": "get_consent_api_v1_oauth_consent__request_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "request_id",
+      "required": true,
+      "schema": {
+       "title": "Request Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConsentResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Consent",
+    "tags": [
+     "oauth"
+    ]
+   },
+   "post": {
+    "description": "Approve or deny. CSRF: the call needs the session cookie, a JSON body (a cross-site form\ncannot send one) and the per-request nonce that only the consent GET reveals.",
+    "operationId": "decide_consent_api_v1_oauth_consent__request_id__post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "request_id",
+      "required": true,
+      "schema": {
+       "title": "Request Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ConsentDecisionRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ConsentDecisionResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Decide Consent",
+    "tags": [
+     "oauth"
+    ]
+   }
+  },
   "/api/v1/personality/presets": {
    "get": {
     "description": "The agent-voice presets for the Settings picker (id, names, description).",
@@ -35084,6 +35613,437 @@
     "summary": "Livez",
     "tags": [
      "ops"
+    ]
+   }
+  },
+  "/oauth/authorize": {
+   "get": {
+    "description": "Validate the request and hand the browser to the web app's consent screen.\n\nThe user's session is not looked at here: the consent screen asks the API for the request\n(`GET /api/v1/oauth/consent/{id}`), and a signed-out user is sent through sign-in and back to\nthat same screen. Anything wrong with the client or redirect URI is shown to the user, never\nredirected; anything else goes back to the (verified) redirect URI as an RFC 6749 error.",
+    "operationId": "authorize_oauth_authorize_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "client_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 2048,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Client Id"
+      }
+     },
+     {
+      "in": "query",
+      "name": "redirect_uri",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 2048,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Redirect Uri"
+      }
+     },
+     {
+      "in": "query",
+      "name": "response_type",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 32,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Response Type"
+      }
+     },
+     {
+      "in": "query",
+      "name": "code_challenge",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 256,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Code Challenge"
+      }
+     },
+     {
+      "in": "query",
+      "name": "code_challenge_method",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 32,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Code Challenge Method"
+      }
+     },
+     {
+      "in": "query",
+      "name": "resource",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 2048,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Resource"
+      }
+     },
+     {
+      "in": "query",
+      "name": "scope",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 500,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Scope"
+      }
+     },
+     {
+      "in": "query",
+      "name": "state",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "maxLength": 4096,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "State"
+      }
+     }
+    ],
+    "responses": {
+     "302": {
+      "description": "To the consent screen, or back to the client with an error."
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Authorize",
+    "tags": [
+     "oauth"
+    ]
+   }
+  },
+  "/oauth/register": {
+   "post": {
+    "description": "RFC 7591 dynamic client registration for public (no-secret) clients.",
+    "operationId": "register_oauth_register_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "description": "RFC 7591 client metadata. Unknown members are ignored, as the RFC allows.",
+        "properties": {
+         "client_name": {
+          "anyOf": [
+           {
+            "maxLength": 200,
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Client Name"
+         },
+         "grant_types": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Grant Types"
+         },
+         "redirect_uris": {
+          "items": {
+           "type": "string"
+          },
+          "title": "Redirect Uris",
+          "type": "array"
+         },
+         "response_types": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Response Types"
+         },
+         "scope": {
+          "anyOf": [
+           {
+            "maxLength": 500,
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Scope"
+         },
+         "token_endpoint_auth_method": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Token Endpoint Auth Method"
+         }
+        },
+        "title": "RegisterRequest",
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RegisterResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OAuthErrorBody"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "429": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OAuthErrorBody"
+        }
+       }
+      },
+      "description": "Too Many Requests"
+     }
+    },
+    "summary": "Register",
+    "tags": [
+     "oauth"
+    ]
+   }
+  },
+  "/oauth/revoke": {
+   "post": {
+    "description": "RFC 7009: ends the grant a refresh or access token belongs to. Answers 200 whether or not\nthe token was known, so it cannot be used to probe for valid tokens.",
+    "operationId": "revoke_oauth_revoke_post",
+    "requestBody": {
+     "content": {
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "properties": {
+         "client_id": {
+          "type": "string"
+         },
+         "token": {
+          "type": "string"
+         },
+         "token_type_hint": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "token"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RevokeTokenResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OAuthErrorBody"
+        }
+       }
+      },
+      "description": "Bad Request"
+     }
+    },
+    "summary": "Revoke",
+    "tags": [
+     "oauth"
+    ]
+   }
+  },
+  "/oauth/token": {
+   "post": {
+    "description": "Redeem an authorization code (PKCE) or rotate a refresh token. Public clients only.",
+    "operationId": "token_oauth_token_post",
+    "requestBody": {
+     "content": {
+      "application/x-www-form-urlencoded": {
+       "schema": {
+        "properties": {
+         "client_id": {
+          "type": "string"
+         },
+         "code": {
+          "type": "string"
+         },
+         "code_verifier": {
+          "type": "string"
+         },
+         "grant_type": {
+          "enum": [
+           "authorization_code",
+           "refresh_token"
+          ],
+          "type": "string"
+         },
+         "redirect_uri": {
+          "type": "string"
+         },
+         "refresh_token": {
+          "type": "string"
+         },
+         "resource": {
+          "type": "string"
+         },
+         "scope": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "grant_type",
+         "client_id"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/TokenResponse"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OAuthErrorBody"
+        }
+       }
+      },
+      "description": "Bad Request"
+     },
+     "429": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/OAuthErrorBody"
+        }
+       }
+      },
+      "description": "Too Many Requests"
+     }
+    },
+    "summary": "Token",
+    "tags": [
+     "oauth"
     ]
    }
   },
