@@ -124,8 +124,6 @@ describe("ChainPositionBar", () => {
     expect(screen.getByText(`信心程度：${t.confidence.medium}`)).toBeTruthy();
     expect(screen.queryByText("brand_new_code")).toBeNull();
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    await waitFor(() =>
-      expect(screen.queryByText(t.reason.conflict_graph_over_prior)).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText(t.reason.conflict_graph_over_prior)).toBeNull());
   });
 });

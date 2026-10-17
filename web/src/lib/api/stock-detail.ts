@@ -17,6 +17,10 @@ import {
   trendScoreResponseSchema,
 } from "@/types/stock/ai";
 import {
+  type ChainPositionsResponse,
+  chainPositionsResponseSchema,
+} from "@/types/stock/chain-position";
+import {
   type ChipFlowsResponse,
   chipFlowsResponseSchema,
   type DayTradingResponse,
@@ -71,10 +75,6 @@ import {
   shareholderDispersionResponseSchema,
   stockInsiderTransferDeclarationResponseSchema,
 } from "@/types/stock/ownership";
-import {
-  type ChainPositionsResponse,
-  chainPositionsResponseSchema,
-} from "@/types/stock/chain-position";
 import {
   type CompanyProfile,
   companyProfileSchema,

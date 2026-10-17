@@ -203,13 +203,11 @@ function WhyPopover({ position }: { readonly position: ChainPosition }): ReactNo
           aria-label={t("chainPosition.whyTitle")}
           className="z-50 w-[min(340px,calc(100vw-16px))] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-3 shadow-lg"
         >
-          <p className="mb-2 text-[11px] text-[var(--text-muted)]">
-            {t("chainPosition.whyTitle")}
-          </p>
+          <p className="mb-2 text-[11px] text-[var(--text-muted)]">{t("chainPosition.whyTitle")}</p>
           <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
-            {position.reasons.map((reason, index) => (
+            {position.reasons.map((reason) => (
               <li
-                key={`${reason.code}-${index}`}
+                key={`${reason.code}:${reason.detail ?? ""}`}
                 className="text-[13px] text-[var(--text)] leading-snug"
               >
                 {isKnownReason(reason.code)
