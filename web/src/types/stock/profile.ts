@@ -133,16 +133,38 @@ export const edgeConfidenceSchema = z.enum(EDGE_CONFIDENCES);
 
 export type EdgeConfidence = z.infer<typeof edgeConfidenceSchema>;
 
+export const edgeMarketSchema = z.enum(["TW", "US"]);
+
+/** One citation behind a relationship: who published it, where, and when. */
+export const supplyChainSourceSchema = z.object({
+  publisher: z.string(),
+  url: z.string(),
+  published_on: z.string().nullable().optional(),
+});
+
+export type SupplyChainSource = z.infer<typeof supplyChainSourceSchema>;
+
+// The fields after `to_name` arrive with the researched-relationships API; each is optional (or
+// defaulted) so the card still renders against an older payload: peers fall back to the confidence
+// grade and a symbol-shape market guess.
 export const supplyChainEdgeSchema = z.object({
   from_symbol: z.string(),
   to_symbol: z.string(),
   market: z.string(),
+  from_market: edgeMarketSchema.optional(),
+  to_market: edgeMarketSchema.optional(),
   edge_type: edgeTypeSchema,
   confidence: edgeConfidenceSchema,
+  grade: edgeConfidenceSchema.optional(),
+  status: z.string().optional(),
   revenue_pct: z.number().nullable().optional(),
-  source: z.enum(["seed", "llm_extraction"]),
+  source: z.enum(["research", "seeded", "manual", "seed", "llm_extraction"]),
   from_name: z.string(),
   to_name: z.string(),
+  product: z.string().nullable().optional(),
+  as_of: z.string().nullable().optional(),
+  last_verified_at: z.string().nullable().optional(),
+  sources: z.array(supplyChainSourceSchema).default([]),
 });
 
 export type SupplyChainEdge = z.infer<typeof supplyChainEdgeSchema>;

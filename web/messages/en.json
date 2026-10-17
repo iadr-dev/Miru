@@ -2989,6 +2989,16 @@
       "supplyChainNoCustomers": "No known customers on record.",
       "supplyChainShowAll": "Show all ({count} more)",
       "supplyChainShowLess": "Show fewer",
+      "supplyChainGrade": {
+        "high": "High confidence",
+        "medium": "Medium confidence",
+        "low": "Low confidence"
+      },
+      "supplyChainAsOf": "As of {date}",
+      "supplyChainSources": "Sources",
+      "supplyChainSourcesAria": "{count} sources for {name}",
+      "supplyChainSourcesTitle": "Sources for {name}",
+      "supplyChainSourceLinkAria": "{publisher} (opens in a new tab)",
       "supplyChainRole": {
         "supplier": "supplier",
         "customer": "customer",

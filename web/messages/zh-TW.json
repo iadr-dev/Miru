@@ -2989,6 +2989,16 @@
       "supplyChainNoCustomers": "尚無已知客戶資料。",
       "supplyChainShowAll": "顯示全部（再 {count} 家）",
       "supplyChainShowLess": "收合",
+      "supplyChainGrade": {
+        "high": "可信度高",
+        "medium": "可信度中",
+        "low": "可信度低"
+      },
+      "supplyChainAsOf": "截至 {date}",
+      "supplyChainSources": "資料來源",
+      "supplyChainSourcesAria": "{name} 的 {count} 個資料來源",
+      "supplyChainSourcesTitle": "{name} 的資料來源",
+      "supplyChainSourceLinkAria": "{publisher}（在新分頁開啟）",
       "supplyChainRole": {
         "supplier": "供應商",
         "customer": "客戶",

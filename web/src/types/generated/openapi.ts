@@ -3593,8 +3593,9 @@ export interface paths {
     };
     /**
      * Symbol Supply Chain
-     * @description 個股 > 產業分析's 供應鏈關係圖 card — every supply/customer/competitor edge involving one
-     *     symbol, from either side.
+     * @description 個股 > 產業分析's 供應鏈關係圖 card — every published supplies/competes edge involving one
+     *     company (`symbol` + `market`), from either side. Each edge carries its evidence `grade`,
+     *     `product`, `as_of` date and `sources`; candidate, rejected and stale relations are hidden.
      */
     get: operations["symbol_supply_chain_api_v1_symbols__symbol__supply_chain_get"];
     put?: never;
@@ -6288,23 +6289,15 @@ export interface components {
       /** Revised */
       revised?: number | null;
     };
-    /**
-     * EdgeConfidence
-     * @description A textual trust band, not a number — it records how trustworthy an extraction's provenance
-     *     is (a hand-seeded fact vs. a model's proposal), which a numeric score would obscure.
-     * @enum {string}
-     */
-    EdgeConfidence: "high" | "medium" | "low";
-    /**
-     * EdgeSource
-     * @enum {string}
-     */
-    EdgeSource: "seed" | "llm_extraction";
-    /**
-     * EdgeType
-     * @enum {string}
-     */
-    EdgeType: "supplies" | "customer" | "competes";
+    /** EdgeSourceLink */
+    EdgeSourceLink: {
+      /** Published On */
+      published_on?: string | null;
+      /** Publisher */
+      publisher: string;
+      /** Url */
+      url: string;
+    };
     /** EditTurnRequest */
     EditTurnRequest: {
       /** Attachments */
@@ -8682,11 +8675,12 @@ export interface components {
     };
     /**
      * GetSupplyChainEdgesOutput
-     * @description Every supply-chain edge where the symbol is either endpoint — the 供應鏈關係圖 card's one
-     *     data source. `edges` carries both directions (the symbol as `from_symbol` AND as
-     *     `to_symbol`) so a caller can render a focus-node graph without a second round-trip; each
-     *     edge's own `from_symbol`/`to_symbol` disambiguates direction. Empty, not an error, for a
-     *     symbol with no seeded/extracted relationships yet.
+     * @description Every published supply-chain edge where the company is either endpoint — the 供應鏈關係圖
+     *     card's one data source. `edges` carries both directions; each edge's `from_symbol`/`to_symbol`
+     *     (with `from_market`/`to_market`) disambiguates. Only verified, non-stale relations appear
+     *     (candidates, rejected and stale rows are hidden). Each edge states its `grade`
+     *     (`confidence` is the legacy name for the same value), product, as-of date and source links.
+     *     Empty, not an error, for a company with no published relations.
      */
     GetSupplyChainEdgesOutput: {
       /**
@@ -8695,7 +8689,7 @@ export interface components {
        */
       edge_count: number;
       /** Edges */
-      edges?: components["schemas"]["SupplyChainEdge"][];
+      edges?: components["schemas"]["ScEdge"][];
       /** Market */
       market: string;
       /** Symbol */
@@ -9160,6 +9154,11 @@ export interface components {
       /** Value */
       value: number;
     };
+    /**
+     * Grade
+     * @enum {string}
+     */
+    Grade: "high" | "medium" | "low";
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -9661,6 +9660,11 @@ export interface components {
       /** Providers */
       providers: string[];
     };
+    /**
+     * Kind
+     * @enum {string}
+     */
+    Kind: "supplies" | "competes";
     /** LineLink */
     LineLink: {
       /** Add Friend Url */
@@ -9973,6 +9977,8 @@ export interface components {
      * @enum {string}
      */
     Market: "TW" | "US" | "GB" | "JP" | "HK" | "EU" | "GLOBAL";
+    /** @enum {string} */
+    MarketCode: "TW" | "US";
     /**
      * MarketIndexStripItemRow
      * @description `market_index_strip` — one item in the TW-tab ticker strip
@@ -10792,6 +10798,11 @@ export interface components {
       trade_date: string;
     };
     /**
+     * Origin
+     * @enum {string}
+     */
+    Origin: "research" | "seeded" | "manual";
+    /**
      * OverlapHoldingRow
      * @description One holding present in 2+ of the requested ETFs — the row shape the "which ETFs hold
      *     this, at what weight" view needs.
@@ -11450,6 +11461,44 @@ export interface components {
       hint: string | null;
       /** Provider */
       provider: string;
+    };
+    /** ScEdge */
+    ScEdge: {
+      /** As Of */
+      as_of?: string | null;
+      confidence: components["schemas"]["Grade"];
+      edge_type: components["schemas"]["Kind"];
+      from_market: components["schemas"]["MarketCode"];
+      /**
+       * From Name
+       * @default
+       */
+      from_name: string;
+      /** From Symbol */
+      from_symbol: string;
+      grade: components["schemas"]["Grade"];
+      /** Last Verified At */
+      last_verified_at?: string | null;
+      market: components["schemas"]["MarketCode"];
+      /** Product */
+      product?: string | null;
+      /** Revenue Pct */
+      revenue_pct?: number | null;
+      source: components["schemas"]["Origin"];
+      /**
+       * Sources
+       * @default []
+       */
+      sources: components["schemas"]["EdgeSourceLink"][];
+      status: components["schemas"]["Status"];
+      to_market: components["schemas"]["MarketCode"];
+      /**
+       * To Name
+       * @default
+       */
+      to_name: string;
+      /** To Symbol */
+      to_symbol: string;
     };
     /**
      * ScheduleAction
@@ -12122,6 +12171,11 @@ export interface components {
       /** Spoken Text */
       spoken_text: string;
     };
+    /**
+     * Status
+     * @enum {string}
+     */
+    Status: "candidate" | "verified" | "stale" | "rejected";
     /** SteerRequest */
     SteerRequest: {
       /** Message */
@@ -12525,34 +12579,6 @@ export interface components {
       /** Byok Active */
       byok_active: boolean;
       subscription: components["schemas"]["SubscriptionRecord"] | null;
-    };
-    /**
-     * SupplyChainEdge
-     * @description One directed supply-chain relationship between two symbols, as written by the seed or the
-     *     in-theme edge generator and read back for provenance display.
-     */
-    SupplyChainEdge: {
-      confidence: components["schemas"]["EdgeConfidence"];
-      edge_type: components["schemas"]["EdgeType"];
-      /**
-       * From Name
-       * @default
-       */
-      from_name: string;
-      /** From Symbol */
-      from_symbol: string;
-      /** Market */
-      market: string;
-      /** Revenue Pct */
-      revenue_pct?: number | null;
-      source: components["schemas"]["EdgeSource"];
-      /**
-       * To Name
-       * @default
-       */
-      to_name: string;
-      /** To Symbol */
-      to_symbol: string;
     };
     /**
      * SupportResistanceLevel
