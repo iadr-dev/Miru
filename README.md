@@ -20,7 +20,7 @@
 </div>
 
 <!-- Promo video -->
-https://github.com/user-attachments/assets/a04a3593-ed1a-4fb3-b1a0-c2163ea41b9d
+https://github.com/user-attachments/assets/31bfb709-9e6b-4a2c-bf3b-1054e0a79f5a
 
 > [!NOTE]
 > Miru provides **context for research, not investment advice**. It never says buy, sell or hold,
