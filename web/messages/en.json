@@ -95,6 +95,44 @@
       "lineRetry": "Sign in with LINE's regular browser"
     }
   },
+  "oauthConsent": {
+    "title": "{client} wants to connect to Miru",
+    "loading": "Loading the request…",
+    "scopesTitle": "It will be able to",
+    "destinationTitle": "After you answer, you will be sent to",
+    "destinationHint": "Make sure this is the app you expect.",
+    "expiresIn": "This request expires in {time}.",
+    "expired": "This request has expired. Start again from the app.",
+    "allow": "Allow",
+    "deny": "Deny",
+    "working": "Working…",
+    "allowLabel": "Allow {client} to connect to Miru",
+    "denyLabel": "Deny {client}",
+    "footer": "You can only share what your Miru account can already see. Nothing is shared until you choose Allow.",
+    "home": "Back to Miru",
+    "errorTitle": "This request can't be completed",
+    "unverified": {
+      "title": "Unverified app",
+      "body": "Miru could not verify who runs {client}. Continue only if you started this connection from that app yourself."
+    },
+    "signIn": {
+      "title": "Sign in to continue",
+      "body": "Sign in to your Miru account to review this request. You will come back to this page afterwards.",
+      "action": "Sign in"
+    },
+    "linkError": {
+      "title": "This link can't be used",
+      "body": "The app or its return address was not accepted, so nothing was shared. Go back to the app and try connecting again."
+    },
+    "errors": {
+      "oauth_nonce_mismatch": "This page is out of date. Start again from the app.",
+      "oauth_browser_mismatch": "Start again from the app, in this browser.",
+      "oauth_user_mismatch": "This request belongs to another account. Sign in with that account, or start again from the app.",
+      "oauth_request_not_found": "This request has expired or was already answered. Start again from the app.",
+      "generic": "Something went wrong. Start again from the app.",
+      "retry": "That didn't go through. Please try again."
+    }
+  },
   "market": {
     "title": "Market",
     "teaser": {

@@ -60,8 +60,8 @@ MCP authorization spec (revision 2026-07-28):
    `oauth_browser_mismatch` / `oauth_user_mismatch`). The screen shows the exact redirect URL the
    decision will use and an "unverified app" flag unless the client id is in
    `OAUTH_VERIFIED_CLIENT_IDS`.
-   **You see Miru's page.** If you are signed out you sign in with Google / LINE / Telegram as
-   usual and land back on the same screen. The screen names the app and where it will send you
+   **You see Miru's page** (`/<locale>/oauth/consent` in the web app). If you are signed out it asks
+   you to sign in with Google / LINE / Telegram as usual and returns you to the same screen. The screen names the app and where it will send you
    back, and asks **Allow / Deny**.
 7. Allow -> the browser goes to the client's redirect URI with a one-time code (60 s) plus `state`
    and `iss`. The client calls `POST /oauth/token` (code + PKCE verifier + `resource`) and gets a

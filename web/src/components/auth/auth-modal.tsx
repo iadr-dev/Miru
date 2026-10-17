@@ -16,6 +16,8 @@ type AuthModalProps = {
   open: boolean;
   intent: AuthIntent;
   onClose: () => void;
+  /** Same-site path to land on after sign-in (e.g. the OAuth consent page). */
+  next?: string | undefined;
 };
 
 type Phase =
@@ -33,7 +35,7 @@ type Phase =
  * provider_unconfigured (e.g. LINE not set in dev), oauth_failed (retryable), network_error, etc.
  * LINE's retry_authorization_url is surfaced as a fallback link when present.
  */
-export function AuthModal({ open, intent, onClose }: AuthModalProps): ReactNode {
+export function AuthModal({ open, intent, onClose, next }: AuthModalProps): ReactNode {
   const t = useTranslations("auth");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -48,7 +50,7 @@ export function AuthModal({ open, intent, onClose }: AuthModalProps): ReactNode 
   const start = async (provider: OAuthProvider): Promise<void> => {
     setPhase({ kind: "redirecting", provider });
     try {
-      const { authorization_url, retry_authorization_url } = await beginOAuth(provider);
+      const { authorization_url, retry_authorization_url } = await beginOAuth(provider, next);
       // Full-page navigation (not fetch) so cookies are set and the provider can redirect back.
       if (provider === "line" && retry_authorization_url) {
         // Stash the retry URL so the callback error state can offer it if auto-login stalls.

@@ -12,6 +12,20 @@ const nextConfig: NextConfig = {
   // dev`/`next build`. Our hand-maintained coding-standards doc lives at web/OVERVIEW.md instead,
   // so CLAUDE.md is Next's file to own — leave this on (the default).
   agentRules: true,
+  async headers() {
+    return [
+      {
+        // The OAuth consent screen is a clickjacking target (one click grants access), so it may
+        // never be framed, and it is never indexed.
+        source: "/:locale/oauth/consent",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+    ];
+  },
 };
 
 export default withNextIntl(nextConfig);

@@ -69,11 +69,17 @@ async function readError(response: Response): Promise<AuthError> {
   return new AuthError("oauth_failed", "Sign-in could not be completed.", response.status >= 500);
 }
 
-/** Step 1: begin the flow. Returns the provider authorize URL(s) to navigate to. */
-export async function beginOAuth(provider: OAuthProvider): Promise<BeginAuthResponse> {
+/** Step 1: begin the flow. Returns the provider authorize URL(s) to navigate to. `next` is a
+ * same-site absolute path (e.g. `/en/oauth/consent?request=…`) to land on after sign-in; the
+ * backend ignores anything that is not a plain path on this site. */
+export async function beginOAuth(
+  provider: OAuthProvider,
+  next?: string,
+): Promise<BeginAuthResponse> {
   let response: Response;
   try {
-    response = await fetch(apiUrl(`/auth/oauth/${provider}`), {
+    const query = next ? `?${new URLSearchParams({ next }).toString()}` : "";
+    response = await fetch(apiUrl(`/auth/oauth/${provider}${query}`), {
       method: "POST",
       credentials: "include",
       headers: { accept: "application/json" },

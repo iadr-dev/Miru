@@ -95,6 +95,44 @@
       "lineRetry": "以 LINE 一般瀏覽器登入"
     }
   },
+  "oauthConsent": {
+    "title": "{client} 想連接到 Miru",
+    "loading": "正在載入要求…",
+    "scopesTitle": "它將可以",
+    "destinationTitle": "你回應後會前往",
+    "destinationHint": "請確認這是你預期的應用程式。",
+    "expiresIn": "此要求將於 {time} 後失效。",
+    "expired": "此要求已失效，請從應用程式重新開始。",
+    "allow": "允許",
+    "deny": "拒絕",
+    "working": "處理中…",
+    "allowLabel": "允許 {client} 連接到 Miru",
+    "denyLabel": "拒絕 {client}",
+    "footer": "它只能存取你的 Miru 帳號本來就看得到的內容。在你按下「允許」之前不會分享任何東西。",
+    "home": "返回 Miru",
+    "errorTitle": "無法完成此要求",
+    "unverified": {
+      "title": "未經驗證的應用程式",
+      "body": "Miru 無法確認 {client} 的營運者。只有在你自己從該應用程式發起這次連接時才繼續。"
+    },
+    "signIn": {
+      "title": "請先登入",
+      "body": "登入你的 Miru 帳號以檢視這項要求，完成後會回到此頁面。",
+      "action": "登入"
+    },
+    "linkError": {
+      "title": "此連結無法使用",
+      "body": "該應用程式或其返回位址未被接受，因此沒有分享任何內容。請回到應用程式重新連接。"
+    },
+    "errors": {
+      "oauth_nonce_mismatch": "此頁面已過期，請從應用程式重新開始。",
+      "oauth_browser_mismatch": "請從應用程式重新開始，並使用同一個瀏覽器。",
+      "oauth_user_mismatch": "此要求屬於另一個帳號。請改用該帳號登入，或從應用程式重新開始。",
+      "oauth_request_not_found": "此要求已過期或已回應過，請從應用程式重新開始。",
+      "generic": "發生問題，請從應用程式重新開始。",
+      "retry": "未能送出，請再試一次。"
+    }
+  },
   "market": {
     "title": "大盤",
     "teaser": {
