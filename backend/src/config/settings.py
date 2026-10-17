@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     shutdown_grace_seconds: int = 30
     duckdb_path: str = "./data/duckdb"
     parquet_root: str = "./data/parquet"
+    # Private reference data (supply-chain relations, concept themes, tier maps): never in git.
+    # A directory the operator keeps locally; empty or missing = those features show nothing.
+    reference_data_dir: str = "./private-data"
 
     # ---- TLS policy (M6D, governance.md §5) ----
     tls_policy: TLSPolicy = TLSPolicy.STRICT

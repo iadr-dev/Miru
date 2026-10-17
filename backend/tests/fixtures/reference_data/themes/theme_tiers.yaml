@@ -1,0 +1,4 @@
+# Synthetic fixture for the test suite - not the product's data.
+半導體:
+  upstream: [晶圓代工]
+  midstream: [IC設計]

@@ -1,7 +1,8 @@
 """Layer-2 tier seed — assigns every theme's sub-industries an upstream/midstream/downstream
 position, running after the Layer-1 membership seed in the same monthly refresh.
 
-Two producers, curated-wins: a small editorial map (`config/theme_tiers.yaml`) names the tiers a
+Two producers, curated-wins: a small editorial map (`themes/theme_tiers.yaml`, kept in the private
+reference directory) names the tiers a
 human curated for the major themes, written with `source='curated'`; then the keyword heuristic
 (`classify_tier`) backfills every OTHER `(theme, sub_industry)` pair actually present in the
 memberships, written with `source='heuristic'`. Curated rows are never overwritten by the heuristic
@@ -19,14 +20,14 @@ from __future__ import annotations
 
 from datetime import date as date_
 from pathlib import Path
-from typing import Final, cast
+from typing import cast
 
 import structlog
-import yaml
 
 from analytics.themes.models import ThemeTierName, ThemeTierSource
 from analytics.themes.store import SqlAlchemyThemeStore
 from analytics.themes.tiers import classify_tier
+from config.private_data import read_yaml_file, reference_path
 from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 
@@ -34,17 +35,12 @@ logger = structlog.get_logger(__name__)
 
 THEME_TIER_SEED_DATASET = "theme_tier_seed"
 
-_CURATED_CONFIG_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "config" / "theme_tiers.yaml"
-)
-
 
 def _load_curated(path: Path | None = None) -> dict[str, dict[str, list[str]]]:
     """Load the `theme_key -> {tier -> [sub_industry, ...]}` editorial map. Data, not code —
     matches the router's `source_priority.yaml` loading idiom."""
-    config_path = path or _CURATED_CONFIG_PATH
-    with config_path.open(encoding="utf-8") as fh:
-        raw: object = yaml.safe_load(fh) or {}
+    config_path = path or reference_path("themes", "theme_tiers.yaml")
+    raw: object = read_yaml_file(config_path) or {}
     if not isinstance(raw, dict):
         raise ValueError(f"theme_tiers.yaml at {config_path} did not parse to a mapping")
     return cast("dict[str, dict[str, list[str]]]", raw)

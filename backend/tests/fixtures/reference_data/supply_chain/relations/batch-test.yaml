@@ -1,0 +1,17 @@
+# Synthetic fixture for the test suite - not the product's data.
+- from_symbol: "1111"
+  to_symbol: "2222"
+  from_name: 測試甲
+  to_name: 測試乙
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: "synthetic row for loader tests - https://example.com/test"
+- from_symbol: "2330"
+  to_symbol: AAPL
+  from_name: 台積電
+  to_name: Apple
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: "duplicate of a seed row; the loader keeps the first - https://example.com/test"

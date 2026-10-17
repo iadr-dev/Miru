@@ -269,7 +269,7 @@ is in [api-reference.md](../api-reference.md).
 - **Layer 2 — curated tier map + keyword-heuristic backfill (`analytics/themes/tiers.py`,
   `tiers_seed.py`, `seed_theme_tiers`).** Monthly job **`theme_tier_seed`**, 18:35, after Layer 1.
   Every `(theme, sub_industry)` pair gets an upstream/midstream/downstream position, **curated
-  always wins**: the editorial map `config/theme_tiers.yaml` (`ThemeTierSource.CURATED`) is applied
+  always wins**: the editorial map `themes/theme_tiers.yaml` (in the private reference directory, `REFERENCE_DATA_DIR`, never in git) (`ThemeTierSource.CURATED`) is applied
   first; then `classify_tier` — a pure substring-keyword classifier over Taiwan business vocabulary
   (downstream checked before upstream, before midstream; unmatched defaults to midstream) —
   backfills every other pair Layer 1 produced membership for (`ThemeTierSource.HEURISTIC`).
@@ -280,7 +280,7 @@ is in [api-reference.md](../api-reference.md).
   wired into any scheduled ingest pass — it is the only layer that spends on LLM calls and does
   live web research, so it carries an unattended-drift/unattended-spend risk the two deterministic
   layers above do not; an operator runs it by hand when they want to refresh the concept themes.
-  One invocation researches every theme in `config/concept_themes.yaml` under one correlated
+  One invocation researches every theme in `themes/concept_themes.yaml` (private reference directory) under one correlated
   `run_id`: two researcher LLM roles independently propose constituent stock codes (grounded in a
   web search + a local keyword cross-reference against already-classified sub-industries), a
   verifier role reconciles picks only one researcher proposed, and — if the verifier call itself
@@ -301,7 +301,7 @@ is in [api-reference.md](../api-reference.md).
   member symbols** and asks the model to connect stocks strictly within that list; any proposed
   edge is additionally filtered to endpoints that are both members of that same theme and distinct
   — the model cannot introduce an edge to a symbol outside the listed set, whatever it proposes.
-  Hand-seeded bootstrap edges (`config/supply_chain_seed.yaml`, `ThemeSource`-independent
+  Hand-seeded bootstrap edges (`supply_chain/seed.yaml` plus `supply_chain/relations/*.yaml` (private reference directory), `ThemeSource`-independent
   `EdgeSource.SEED`) load separately as a known-good baseline.
 - **Exposure:** tools in `tools/theme_tools.py` — `get_themes`, `get_theme_members`,
   `get_symbol_themes`, `get_theme_tiers`, `get_supply_chain_edges`, `get_theme_tier_heatmap` — and

@@ -1,0 +1,2 @@
+# Synthetic fixture for the test suite - not the product's data.
+- {key: test-theme, name_zh: 測試題材, name_en: Test theme, hint: synthetic}
