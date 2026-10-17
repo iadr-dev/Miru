@@ -69,6 +69,11 @@ _CONCEPT_CONFIG_PATH: Final[Path] = (
 _SUPPLY_CHAIN_SEED_PATH: Final[Path] = (
     Path(__file__).resolve().parents[2] / "config" / "supply_chain_seed.yaml"
 )
+# Researched batches (one yaml per batch of listed companies), same row format as the seed plus an
+# `evidence` note per row. They load together with the seed under the same source.
+_SUPPLY_CHAIN_RESEARCH_DIR: Final[Path] = (
+    Path(__file__).resolve().parents[2] / "config" / "supply_chain_research"
+)
 
 _AGREED_CONFIDENCE: Final[float] = 0.9
 _DISPUTED_CONFIDENCE: Final[float] = 0.6
@@ -141,18 +146,27 @@ def load_concept_themes(path: Path | None = None) -> list[ConceptThemeSpec]:
     return specs
 
 
-def load_supply_chain_seed(path: Path | None = None) -> list[SupplyChainEdge]:
-    """Load the bootstrap supply-chain edges. `revenue_pct` may be null (an honest absence)."""
-    config_path = path or _SUPPLY_CHAIN_SEED_PATH
+def _read_edge_rows(config_path: Path) -> list[dict[str, object]]:
     with config_path.open(encoding="utf-8") as fh:
         raw: object = yaml.safe_load(fh) or []
     if not isinstance(raw, list):
-        raise ValueError(f"supply_chain_seed.yaml at {config_path} did not parse to a list")
-    edges: list[SupplyChainEdge] = []
-    for item in cast("list[dict[str, object]]", raw):
-        revenue = item.get("revenue_pct")
-        edges.append(
-            SupplyChainEdge(
+        raise ValueError(f"{config_path.name} at {config_path} did not parse to a list")
+    return cast("list[dict[str, object]]", raw)
+
+
+def load_supply_chain_seed(path: Path | None = None) -> list[SupplyChainEdge]:
+    """Load the bootstrap supply-chain edges, and (when no explicit `path` is given) every
+    researched batch beside them. `revenue_pct` may be null (an honest absence). A relationship
+    named twice keeps its first row."""
+    if path is not None:
+        paths = [path]
+    else:
+        paths = [_SUPPLY_CHAIN_SEED_PATH, *sorted(_SUPPLY_CHAIN_RESEARCH_DIR.glob("*.yaml"))]
+    edges: dict[tuple[str, str, str], SupplyChainEdge] = {}
+    for config_path in paths:
+        for item in _read_edge_rows(config_path):
+            revenue = item.get("revenue_pct")
+            edge = SupplyChainEdge(
                 from_symbol=str(item["from_symbol"]),
                 to_symbol=str(item["to_symbol"]),
                 market=_TW_MARKET,
@@ -163,8 +177,8 @@ def load_supply_chain_seed(path: Path | None = None) -> list[SupplyChainEdge]:
                 from_name=str(item.get("from_name", "")),
                 to_name=str(item.get("to_name", "")),
             )
-        )
-    return edges
+            edges.setdefault((edge.from_symbol, edge.to_symbol, edge.edge_type.value), edge)
+    return list(edges.values())
 
 
 def _cjk_keywords(*texts: str) -> list[str]:
