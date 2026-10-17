@@ -20,12 +20,21 @@ from __future__ import annotations
 import asyncio
 
 import uvicorn
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from config.logging_config import configure_logging
 from config.settings import get_settings
 from db import rls
 from db.base import ensure_schema_for
 from mcp.composition import build_mcp_http_app
+
+
+async def _provision(session_factory: async_sessionmaker[AsyncSession]) -> None:
+    """Create the schema, then drop the pooled connections: they belong to this short-lived event
+    loop, and uvicorn runs the server on another (reusing one fails with "attached to a different
+    loop" on the first token check)."""
+    await ensure_schema_for(session_factory)
+    await session_factory.kw["bind"].dispose()
 
 
 def main() -> None:
@@ -37,7 +46,7 @@ def main() -> None:
     # it. Run once, synchronously, before `uvicorn.run` starts its own loop — this project's sole
     # schema-provisioning mechanism (no Alembic migration chain).
     with rls.system_access():  # provisioning is not on behalf of a user; each call binds its own
-        asyncio.run(ensure_schema_for(built.session_factory))
+        asyncio.run(_provision(built.session_factory))
     uvicorn.run(
         built.app,
         host=settings.mcp_host,
