@@ -28,9 +28,10 @@ import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from analytics.supply_chain.edges import ScEdge, to_edges
+from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from analytics.symbol_universe import is_scoreable_symbol
 from analytics.themes.models import (
-    SupplyChainEdge,
     SymbolTheme,
     ThemeKind,
     ThemeMember,
@@ -305,29 +306,31 @@ class GetThemeTiersTool(BaseTool):
 
 
 class GetSupplyChainEdgesOutput(BaseModel):
-    """Every supply-chain edge where the symbol is either endpoint — the 供應鏈關係圖 card's one
-    data source. `edges` carries both directions (the symbol as `from_symbol` AND as
-    `to_symbol`) so a caller can render a focus-node graph without a second round-trip; each
-    edge's own `from_symbol`/`to_symbol` disambiguates direction. Empty, not an error, for a
-    symbol with no seeded/extracted relationships yet."""
+    """Every published supply-chain edge where the company is either endpoint — the 供應鏈關係圖
+    card's one data source. `edges` carries both directions; each edge's `from_symbol`/`to_symbol`
+    (with `from_market`/`to_market`) disambiguates. Only verified, non-stale relations appear
+    (candidates, rejected and stale rows are hidden). Each edge states its `grade`
+    (`confidence` is the legacy name for the same value), product, as-of date and source links.
+    Empty, not an error, for a company with no published relations."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     symbol: str
     market: str
     edge_count: int = 0
-    edges: tuple[SupplyChainEdge, ...] = Field(default_factory=tuple)
+    edges: tuple[ScEdge, ...] = Field(default_factory=tuple)
 
 
 class GetSupplyChainEdgesTool(BaseTool):
-    """`get_supply_chain_edges` — every directed supply/customer/competitor relationship
-    involving one symbol, from either side. Classification/relationship metadata, same `public`
-    tier as `get_symbol_themes`."""
+    """`get_supply_chain_edges` — every published supplier/customer/competitor relationship
+    involving one company (matched on symbol AND market), from either side. Relationship
+    metadata, same `public` tier as `get_symbol_themes`."""
 
     name = "get_supply_chain_edges"
     description = (
-        "Get every supply-chain edge (supplies/customer/competes) involving one stock symbol, "
-        "as either the from- or to-side, each with its confidence band and provenance."
+        "Get every published supply-chain edge (supplies/competes) involving one company, as "
+        "either the from- or to-side, each with its evidence grade, product, as-of date and "
+        "source links. Candidate and stale relations are not returned."
     )
     input_model: type[BaseModel] = SymbolInput
     output_model: type[BaseModel] = GetSupplyChainEdgesOutput
@@ -340,16 +343,15 @@ class GetSupplyChainEdgesTool(BaseTool):
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx
         typed = parse_args(SymbolInput, args)
+        if typed.market not in (Market.TW, Market.US):
+            return GetSupplyChainEdgesOutput(symbol=typed.id, market=typed.market.value)
         async with self._session_factory() as session:
-            store: ThemeStore = SqlAlchemyThemeStore(session)
-            outgoing = await store.get_edges_from(from_symbol=typed.id)
-            incoming = await store.get_edges_to(to_symbol=typed.id)
-        edges = tuple(outgoing) + tuple(incoming)
+            relations = await SqlAlchemySupplyChainStore(session).get_relations_for_symbol(
+                typed.id, "TW" if typed.market is Market.TW else "US"
+            )
+        edges = to_edges(relations)
         return GetSupplyChainEdgesOutput(
-            symbol=typed.id,
-            market=typed.market.value,
-            edge_count=len(edges),
-            edges=edges,
+            symbol=typed.id, market=typed.market.value, edge_count=len(edges), edges=edges
         )
 
 

@@ -32,7 +32,8 @@ def read_yaml_file(path: Path) -> object | None:
         logger.warning("reference_data_missing", path=str(path))
         return None
     with path.open(encoding="utf-8") as fh:
-        return yaml.safe_load(fh)
+        parsed: object = yaml.safe_load(fh)
+    return parsed
 
 
 __all__ = ["read_yaml_file", "reference_dir", "reference_path"]

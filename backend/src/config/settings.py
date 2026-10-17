@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     parquet_root: str = "./data/parquet"
     # Private reference data (supply-chain relations, concept themes, tier maps): never in git.
     # A directory the operator keeps locally; empty or missing = those features show nothing.
-    reference_data_dir: str = "./private-data"
+    reference_data_dir: str = "./reference-data"
 
     # ---- TLS policy (M6D, governance.md §5) ----
     tls_policy: TLSPolicy = TLSPolicy.STRICT

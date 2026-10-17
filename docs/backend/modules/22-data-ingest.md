@@ -102,6 +102,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 | `scoring_batch` | 23:55 | daily | derived: 多空 5-factor `stock_scores` (module 20) |
 | `trend_score_batch` | 23:57 | daily | derived: 趨勢評分 `trend_scores` (module 20) |
 | `theme_industry_seed`, `theme_tier_seed` | 18:30 / 18:35 | monthly | theme membership + tier seeds (module 20) |
+| `sc_refdata_load` | 06:20 | daily | rebuild the supply-chain index tables from the operator's private relation files; local file read only, leader-only, no upstream call (module 20 §5b) |
 | `us_symbol_universe` | 05:30 | monthly | US symbol roster (§2c) |
 | `us_price_eod` | 06:00 | daily (US session) | US EOD prices (§2c) |
 | `us_fundamentals` | 07:00 | weekly | US financials/dividends/splits (§2c) |
@@ -302,6 +303,7 @@ clean"). When `Settings.ingest_on_startup` is true, `python -m ingest` (`ingest/
 chain (the gap-fill of `ingest/preflight.py`'s `run_preflight_if_enabled` for each whole-market
 spec, then the derived `scoring_batch`/`screener_flags`, then the MOPS and 處置王-board jobs, whose
 upstreams take no date and so cannot be recovered later) and the US chain, concurrently.
+Before both chains it also runs `sc_refdata_load` once (a local-file index rebuild; failure is logged and ignored).
 
 `run_preflight_if_enabled` itself:
 1. Sweeps orphaned temp dirs from a crashed mid-write (cheap, local, no network).

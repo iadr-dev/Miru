@@ -4523,32 +4523,35 @@
     "title": "EconomicCalendarRow",
     "type": "object"
    },
-   "EdgeConfidence": {
-    "description": "A textual trust band, not a number — it records how trustworthy an extraction's provenance\nis (a hand-seeded fact vs. a model's proposal), which a numeric score would obscure.",
-    "enum": [
-     "high",
-     "medium",
-     "low"
+   "EdgeSourceLink": {
+    "additionalProperties": false,
+    "properties": {
+     "published_on": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Published On"
+     },
+     "publisher": {
+      "title": "Publisher",
+      "type": "string"
+     },
+     "url": {
+      "title": "Url",
+      "type": "string"
+     }
+    },
+    "required": [
+     "publisher",
+     "url"
     ],
-    "title": "EdgeConfidence",
-    "type": "string"
-   },
-   "EdgeSource": {
-    "enum": [
-     "seed",
-     "llm_extraction"
-    ],
-    "title": "EdgeSource",
-    "type": "string"
-   },
-   "EdgeType": {
-    "enum": [
-     "supplies",
-     "customer",
-     "competes"
-    ],
-    "title": "EdgeType",
-    "type": "string"
+    "title": "EdgeSourceLink",
+    "type": "object"
    },
    "EditTurnRequest": {
     "additionalProperties": false,
@@ -11172,7 +11175,7 @@
    },
    "GetSupplyChainEdgesOutput": {
     "additionalProperties": false,
-    "description": "Every supply-chain edge where the symbol is either endpoint — the 供應鏈關係圖 card's one\ndata source. `edges` carries both directions (the symbol as `from_symbol` AND as\n`to_symbol`) so a caller can render a focus-node graph without a second round-trip; each\nedge's own `from_symbol`/`to_symbol` disambiguates direction. Empty, not an error, for a\nsymbol with no seeded/extracted relationships yet.",
+    "description": "Every published supply-chain edge where the company is either endpoint — the 供應鏈關係圖\ncard's one data source. `edges` carries both directions; each edge's `from_symbol`/`to_symbol`\n(with `from_market`/`to_market`) disambiguates. Only verified, non-stale relations appear\n(candidates, rejected and stale rows are hidden). Each edge states its `grade`\n(`confidence` is the legacy name for the same value), product, as-of date and source links.\nEmpty, not an error, for a company with no published relations.",
     "properties": {
      "edge_count": {
       "default": 0,
@@ -11181,7 +11184,7 @@
      },
      "edges": {
       "items": {
-       "$ref": "#/components/schemas/SupplyChainEdge"
+       "$ref": "#/components/schemas/ScEdge"
       },
       "title": "Edges",
       "type": "array"
@@ -12378,6 +12381,15 @@
     ],
     "title": "GovernmentBondYieldRow",
     "type": "object"
+   },
+   "Grade": {
+    "enum": [
+     "high",
+     "medium",
+     "low"
+    ],
+    "title": "Grade",
+    "type": "string"
    },
    "HTTPValidationError": {
     "properties": {
@@ -13661,6 +13673,14 @@
     "title": "KeyProviders",
     "type": "object"
    },
+   "Kind": {
+    "enum": [
+     "supplies",
+     "competes"
+    ],
+    "title": "Kind",
+    "type": "string"
+   },
    "LineLink": {
     "additionalProperties": false,
     "properties": {
@@ -14503,6 +14523,13 @@
      "GLOBAL"
     ],
     "title": "Market",
+    "type": "string"
+   },
+   "MarketCode": {
+    "enum": [
+     "TW",
+     "US"
+    ],
     "type": "string"
    },
    "MarketIndexStripItemRow": {
@@ -16176,6 +16203,15 @@
     "title": "OrderBookStatsRow",
     "type": "object"
    },
+   "Origin": {
+    "enum": [
+     "research",
+     "seeded",
+     "manual"
+    ],
+    "title": "Origin",
+    "type": "string"
+   },
    "OverlapHoldingRow": {
     "additionalProperties": false,
     "description": "One holding present in 2+ of the requested ETFs — the row shape the \"which ETFs hold\nthis, at what weight\" view needs.",
@@ -17836,6 +17872,119 @@
     "title": "SavedKey",
     "type": "object"
    },
+   "ScEdge": {
+    "additionalProperties": false,
+    "properties": {
+     "as_of": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "As Of"
+     },
+     "confidence": {
+      "$ref": "#/components/schemas/Grade"
+     },
+     "edge_type": {
+      "$ref": "#/components/schemas/Kind"
+     },
+     "from_market": {
+      "$ref": "#/components/schemas/MarketCode"
+     },
+     "from_name": {
+      "default": "",
+      "title": "From Name",
+      "type": "string"
+     },
+     "from_symbol": {
+      "title": "From Symbol",
+      "type": "string"
+     },
+     "grade": {
+      "$ref": "#/components/schemas/Grade"
+     },
+     "last_verified_at": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Last Verified At"
+     },
+     "market": {
+      "$ref": "#/components/schemas/MarketCode"
+     },
+     "product": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Product"
+     },
+     "revenue_pct": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Revenue Pct"
+     },
+     "source": {
+      "$ref": "#/components/schemas/Origin"
+     },
+     "sources": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/EdgeSourceLink"
+      },
+      "title": "Sources",
+      "type": "array"
+     },
+     "status": {
+      "$ref": "#/components/schemas/Status"
+     },
+     "to_market": {
+      "$ref": "#/components/schemas/MarketCode"
+     },
+     "to_name": {
+      "default": "",
+      "title": "To Name",
+      "type": "string"
+     },
+     "to_symbol": {
+      "title": "To Symbol",
+      "type": "string"
+     }
+    },
+    "required": [
+     "from_symbol",
+     "to_symbol",
+     "market",
+     "from_market",
+     "to_market",
+     "edge_type",
+     "confidence",
+     "grade",
+     "status",
+     "source"
+    ],
+    "title": "ScEdge",
+    "type": "object"
+   },
    "ScheduleAction": {
     "additionalProperties": false,
     "description": "What a job runs: a governed skill by name plus its inputs. The skill is resolved against\nthe same `SkillRegistry` interactive turns use — a scheduled run reuses a governed skill,\nnever a bespoke code path.",
@@ -19451,6 +19600,16 @@
     "title": "SpeakResponse",
     "type": "object"
    },
+   "Status": {
+    "enum": [
+     "candidate",
+     "verified",
+     "stale",
+     "rejected"
+    ],
+    "title": "Status",
+    "type": "string"
+   },
    "SteerRequest": {
     "properties": {
      "message": {
@@ -20428,64 +20587,6 @@
      "byok_active"
     ],
     "title": "SubscriptionResponse",
-    "type": "object"
-   },
-   "SupplyChainEdge": {
-    "additionalProperties": false,
-    "description": "One directed supply-chain relationship between two symbols, as written by the seed or the\nin-theme edge generator and read back for provenance display.",
-    "properties": {
-     "confidence": {
-      "$ref": "#/components/schemas/EdgeConfidence"
-     },
-     "edge_type": {
-      "$ref": "#/components/schemas/EdgeType"
-     },
-     "from_name": {
-      "default": "",
-      "title": "From Name",
-      "type": "string"
-     },
-     "from_symbol": {
-      "title": "From Symbol",
-      "type": "string"
-     },
-     "market": {
-      "title": "Market",
-      "type": "string"
-     },
-     "revenue_pct": {
-      "anyOf": [
-       {
-        "type": "number"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Revenue Pct"
-     },
-     "source": {
-      "$ref": "#/components/schemas/EdgeSource"
-     },
-     "to_name": {
-      "default": "",
-      "title": "To Name",
-      "type": "string"
-     },
-     "to_symbol": {
-      "title": "To Symbol",
-      "type": "string"
-     }
-    },
-    "required": [
-     "from_symbol",
-     "to_symbol",
-     "market",
-     "edge_type",
-     "confidence",
-     "source"
-    ],
-    "title": "SupplyChainEdge",
     "type": "object"
    },
    "SupportResistanceLevel": {
@@ -33679,7 +33780,7 @@
   },
   "/api/v1/symbols/{symbol}/supply-chain": {
    "get": {
-    "description": "個股 > 產業分析's 供應鏈關係圖 card — every supply/customer/competitor edge involving one\nsymbol, from either side.",
+    "description": "個股 > 產業分析's 供應鏈關係圖 card — every published supplies/competes edge involving one\ncompany (`symbol` + `market`), from either side. Each edge carries its evidence `grade`,\n`product`, `as_of` date and `sources`; candidate, rejected and stale relations are hidden.",
     "operationId": "symbol_supply_chain_api_v1_symbols__symbol__supply_chain_get",
     "parameters": [
      {
