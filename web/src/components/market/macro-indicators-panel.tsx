@@ -47,6 +47,19 @@ export function MacroIndicatorsPanel(): ReactNode {
   );
 }
 
+/** The feed holds every announced reading, oldest first: the card shows the latest Fed one, as
+    the ticker strip does, not the first row it finds. */
+export function latestFedRate(
+  rows: MacroIndicatorsData["central_bank_rate"],
+): MacroIndicatorsData["central_bank_rate"][number] | undefined {
+  return rows
+    .filter((row) => row.country === FED_COUNTRY_CODE)
+    .reduce<MacroIndicatorsData["central_bank_rate"][number] | undefined>(
+      (latest, row) => (latest === undefined || row.date >= latest.date ? row : latest),
+      undefined,
+    );
+}
+
 function MacroIndicatorsGrid({
   data,
   t,
@@ -54,7 +67,7 @@ function MacroIndicatorsGrid({
   readonly data: MacroIndicatorsData;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
-  const fedRate = data.central_bank_rate.find((row) => row.country === FED_COUNTRY_CODE);
+  const fedRate = latestFedRate(data.central_bank_rate);
   const tenYearRows = data.government_bond_yield.filter((row) =>
     row.symbol.includes(TEN_YEAR_NAME_HINT),
   );
