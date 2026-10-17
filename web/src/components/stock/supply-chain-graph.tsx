@@ -1,6 +1,7 @@
 "use client";
 
-import { ArrowRightIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, ArrowSquareOutIcon, BooksIcon } from "@phosphor-icons/react";
+import * as Popover from "@radix-ui/react-popover";
 import { useQuery } from "@tanstack/react-query";
 import { type MotionStyle, motion, useReducedMotion } from "motion/react";
 import { useTranslations } from "next-intl";
@@ -16,9 +17,10 @@ import { queryKeys } from "@/lib/api/query-keys";
 import { getSupplyChainEdges } from "@/lib/api/stock-detail";
 import { cn } from "@/lib/cn";
 import { entrance, staggerChildren } from "@/lib/motion";
-import { groupPeers, type Peer, type PeerRole } from "@/lib/supply-chain";
+import { safeHttpUrl } from "@/lib/safe-url";
+import { groupPeers, type Peer, type PeerRole, peerKey } from "@/lib/supply-chain";
 import type { Market } from "@/types/settings";
-import type { SupplyChainEdge } from "@/types/stock/profile";
+import type { EdgeConfidence, SupplyChainEdge } from "@/types/stock/profile";
 
 /** Relationship colours are categorical (the non-signed chart tokens) - never --up/--down, which
  * mean a price move and nothing else (web/OVERVIEW.md §4). */
@@ -28,10 +30,25 @@ const ROLE_COLOR: Record<PeerRole, string> = {
   competitor: "var(--chart-6)",
 };
 
+/** Evidence-grade chip colours: categorical too (a grade is not a price move). The chip always
+ * carries its word, so colour is never the only cue. */
+const GRADE_COLOR: Record<EdgeConfidence, string> = {
+  high: "var(--chart-4)",
+  medium: "var(--chart-3)",
+  low: "var(--chart-6)",
+};
+
 /** Peers shown per side before "show all". Keeps the graph legible for a hub like TSMC. */
 const COLLAPSED_COUNT = 6;
 /** Height of one peer row in the diagram, px. The connector SVG shares this unit. */
-const ROW_PX = 60;
+const ROW_PX = 84;
+
+type HoverProps = {
+  readonly onMouseEnter: () => void;
+  readonly onMouseLeave: () => void;
+  readonly onFocus: () => void;
+  readonly onBlur: () => void;
+};
 
 type QuoteLite = { price: number | null; changePct: number | null };
 
@@ -54,16 +71,21 @@ export function SupplyChainGraph({
   const [expanded, setExpanded] = useState(false);
 
   const edges = query.data?.edges;
-  const groups = useMemo(() => groupPeers(edges ?? [], symbol), [edges, symbol]);
+  const groups = useMemo(() => groupPeers(edges ?? [], symbol, market), [edges, symbol, market]);
 
-  // Peers can sit in either market (TSMC supplies Apple), and the quote lookup is per market.
+  // Peers can sit in either market (TSMC supplies Apple), and the quote lookup is per market, so a
+  // peer is looked up by (market, code) - the same code can exist in both markets.
   const allPeers = [...groups.supplier, ...groups.customer, ...groups.competitor];
-  const twCodes = [symbol, ...allPeers.map((p) => p.symbol).filter(isTaiwanCode)];
-  const usCodes = allPeers.map((p) => p.symbol).filter((code) => !isTaiwanCode(code));
-  const twQuotes = useSymbolQuotes([...new Set(twCodes)], "TW");
-  const usQuotes = useSymbolQuotes([...new Set(usCodes)], "US");
-  const quoteOf = (code: string): QuoteLite | undefined =>
-    [...twQuotes.quotes, ...usQuotes.quotes].find((q) => q.code === code);
+  const codesIn = (m: Market): string[] => [
+    ...new Set([
+      ...(m === market ? [symbol] : []),
+      ...allPeers.filter((p) => p.market === m).map((p) => p.symbol),
+    ]),
+  ];
+  const twQuotes = useSymbolQuotes(codesIn("TW"), "TW");
+  const usQuotes = useSymbolQuotes(codesIn("US"), "US");
+  const quoteOf = (code: string, m: Market): QuoteLite | undefined =>
+    (m === "TW" ? twQuotes : usQuotes).quotes.find((q) => q.code === code);
 
   if (query.isLoading) {
     return (
@@ -98,7 +120,7 @@ export function SupplyChainGraph({
     groups.supplier.length > COLLAPSED_COUNT || groups.customer.length > COLLAPSED_COUNT;
   const rows = Math.max(suppliers.length, customers.length, 1);
   const height = rows * ROW_PX;
-  const focusQuote = quoteOf(symbol);
+  const focusQuote = quoteOf(symbol, market);
 
   return (
     <Card as="section" className="overflow-hidden">
@@ -111,14 +133,7 @@ export function SupplyChainGraph({
         <ColumnHeadings focusName={focusName} />
 
         <div className="relative">
-          <Connectors
-            height={height}
-            left={suppliers}
-            right={customers}
-            edges={data.edges}
-            symbol={symbol}
-            hovered={hovered}
-          />
+          <Connectors height={height} left={suppliers} right={customers} hovered={hovered} />
           <div className="relative grid gap-4 md:grid-cols-[36fr_28fr_36fr] md:gap-0">
             <PeerColumn
               side="left"
@@ -129,7 +144,6 @@ export function SupplyChainGraph({
               hovered={hovered}
               onHover={setHovered}
               quoteOf={quoteOf}
-              market={market}
             />
 
             <div className="relative hidden md:block" style={{ height }}>
@@ -148,7 +162,6 @@ export function SupplyChainGraph({
               hovered={hovered}
               onHover={setHovered}
               quoteOf={quoteOf}
-              market={market}
             />
           </div>
         </div>
@@ -163,7 +176,6 @@ export function SupplyChainGraph({
             hovered={hovered}
             onHover={setHovered}
             quoteOf={quoteOf}
-            market={market}
             wrap
           />
         </div>
@@ -232,7 +244,6 @@ function PeerColumn({
   hovered,
   onHover,
   quoteOf,
-  market,
 }: {
   readonly side: "left" | "right";
   readonly kind: PeerRole;
@@ -241,8 +252,7 @@ function PeerColumn({
   readonly emptyLabel: string;
   readonly hovered: string | null;
   readonly onHover: (symbol: string | null) => void;
-  readonly quoteOf: (code: string) => QuoteLite | undefined;
-  readonly market: Market;
+  readonly quoteOf: (code: string, market: Market) => QuoteLite | undefined;
 }): ReactNode {
   const t = useTranslations("stock.industry");
   const heading = role === "supplier" ? t("supplyChainSuppliers") : t("supplyChainCustomers");
@@ -260,7 +270,6 @@ function PeerColumn({
           hovered={hovered}
           onHover={onHover}
           quoteOf={quoteOf}
-          market={market}
           height={height}
           side={side}
         />
@@ -275,7 +284,6 @@ function PeerList({
   hovered,
   onHover,
   quoteOf,
-  market,
   height,
   side,
   wrap = false,
@@ -283,9 +291,8 @@ function PeerList({
   readonly peers: readonly Peer[];
   readonly kind: PeerRole;
   readonly hovered: string | null;
-  readonly onHover: (symbol: string | null) => void;
-  readonly quoteOf: (code: string) => QuoteLite | undefined;
-  readonly market: Market;
+  readonly onHover: (key: string | null) => void;
+  readonly quoteOf: (code: string, market: Market) => QuoteLite | undefined;
   readonly height?: number;
   readonly side?: "left" | "right";
   readonly wrap?: boolean;
@@ -315,20 +322,19 @@ function PeerList({
     >
       {peers.map((peer) => (
         <motion.li
-          key={`${role}:${peer.symbol}`}
+          key={`${role}:${peerKey(peer)}`}
           variants={entrance(reduceMotion)}
           className={cn(
             "flex items-center",
-            wrap ? "" : "min-h-12",
+            wrap ? "" : "min-h-12 py-1",
             side === "left" && "md:justify-end",
           )}
         >
           <PeerNode
             peer={peer}
-            dimmed={hovered !== null && hovered !== peer.symbol}
+            dimmed={hovered !== null && hovered !== peerKey(peer)}
             onHover={onHover}
-            quote={quoteOf(peer.symbol)}
-            market={market}
+            quote={quoteOf(peer.symbol, peer.market)}
             compact={wrap}
           />
         </motion.li>
@@ -342,47 +348,138 @@ function PeerNode({
   dimmed,
   onHover,
   quote,
-  market,
   compact,
 }: {
   readonly peer: Peer;
   readonly dimmed: boolean;
-  readonly onHover: (symbol: string | null) => void;
+  readonly onHover: (key: string | null) => void;
   readonly quote: QuoteLite | undefined;
-  readonly market: Market;
   readonly compact: boolean;
 }): ReactNode {
   const t = useTranslations("stock.industry");
-  const peerMarket: Market = isTaiwanCode(peer.symbol) ? "TW" : "US";
   const change = quote?.changePct ?? null;
   const roleLabel = t(`supplyChainRole.${peer.role}`);
+  const gradeLabel = t(`supplyChainGrade.${peer.grade}`);
+  const key = peerKey(peer);
+  const hoverProps = {
+    onMouseEnter: () => onHover(key),
+    onMouseLeave: () => onHover(null),
+    onFocus: () => onHover(key),
+    onBlur: () => onHover(null),
+  };
   return (
-    <Link
-      href={`/stock/${encodeURIComponent(peer.symbol)}?market=${peerMarket === market ? market : peerMarket}`}
-      onMouseEnter={() => onHover(peer.symbol)}
-      onMouseLeave={() => onHover(null)}
-      onFocus={() => onHover(peer.symbol)}
-      onBlur={() => onHover(null)}
-      aria-label={`${peer.name} ${peer.symbol} - ${roleLabel}${change === null ? "" : ` ${formatChange(change)}`}`}
+    <div
       className={cn(
-        "group flex w-full max-w-[300px] items-center gap-2.5 rounded-[var(--radius-input)] border border-[var(--border)]",
-        "bg-[var(--surface-2)] py-1.5 pr-2.5 pl-3 transition-[background-color,border-color,opacity]",
+        "group flex w-full max-w-[300px] items-stretch rounded-[var(--radius-input)] border border-[var(--border)]",
+        "bg-[var(--surface-2)] transition-[background-color,border-color,opacity]",
         "duration-[var(--dur-base)] ease-[var(--ease-out)] hover:border-[var(--border-strong)] hover:bg-[var(--surface-3)]",
         dimmed && "opacity-65",
         compact && "w-auto",
       )}
       style={{ boxShadow: `inset 3px 0 0 ${ROLE_COLOR[peer.role]}` }}
     >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate font-medium text-[13px] text-[var(--text)] leading-tight">
-          {peer.name}
+      <Link
+        {...hoverProps}
+        href={`/stock/${encodeURIComponent(peer.symbol)}?market=${peer.market}`}
+        aria-label={`${peer.name} ${peer.symbol} - ${roleLabel}${change === null ? "" : ` ${formatChange(change)}`}`}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[var(--radius-input)] py-1.5 pr-2 pl-3"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-[13px] text-[var(--text)] leading-tight">
+            {peer.name}
+          </span>
+          <span className="block truncate font-num text-[11px] text-[var(--text-muted)] leading-tight">
+            {peer.symbol}
+            {peer.market === "US" ? " · US" : ""}
+          </span>
+          {peer.product === null ? null : (
+            <span className="mt-0.5 block truncate text-[11px] text-[var(--text)] leading-tight">
+              {peer.product}
+            </span>
+          )}
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] px-1.5 text-[10px] text-[var(--text-muted)] leading-4">
+              <span
+                aria-hidden
+                className="size-1.5 rounded-full"
+                style={{ backgroundColor: GRADE_COLOR[peer.grade] }}
+              />
+              {gradeLabel}
+            </span>
+            {peer.asOf === null ? null : (
+              <span className="font-num text-[10px] text-[var(--text-muted)] leading-4">
+                {t("supplyChainAsOf", { date: peer.asOf })}
+              </span>
+            )}
+          </span>
         </span>
-        <span className="block font-num text-[11px] text-[var(--text-muted)] leading-tight">
-          {peer.symbol}
-        </span>
-      </span>
-      {change === null ? null : <ChangeBadge value={change} />}
-    </Link>
+        {change === null ? null : <ChangeBadge value={change} />}
+      </Link>
+      {peer.sources.length === 0 ? null : <SourcesPopover peer={peer} hoverProps={hoverProps} />}
+    </div>
+  );
+}
+
+/** The citations behind one relationship: a button that opens a small list of publisher links.
+ * Radix gives it focus management and Esc to close; each link opens in a new tab and says so to a
+ * screen reader. Only http(s) sources reach here (see groupPeers). */
+function SourcesPopover({
+  peer,
+  hoverProps,
+}: {
+  readonly peer: Peer;
+  readonly hoverProps: HoverProps;
+}): ReactNode {
+  const t = useTranslations("stock.industry");
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          {...hoverProps}
+          type="button"
+          aria-label={t("supplyChainSourcesAria", { name: peer.name, count: peer.sources.length })}
+          title={t("supplyChainSources")}
+          className="flex min-h-11 min-w-11 shrink-0 flex-col items-center justify-center gap-0.5 rounded-r-[var(--radius-input)] border-[var(--border)] border-l text-[var(--text-muted)] hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
+        >
+          <BooksIcon size={14} weight="regular" aria-hidden />
+          <span className="font-num text-[10px] leading-none">{peer.sources.length}</span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          sideOffset={6}
+          align="end"
+          collisionPadding={8}
+          aria-label={t("supplyChainSourcesTitle", { name: peer.name })}
+          className="z-50 w-[min(320px,calc(100vw-16px))] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface)] p-1.5 shadow-lg"
+        >
+          <p className="px-2.5 py-1.5 text-[11px] text-[var(--text-muted)]">
+            {t("supplyChainSourcesTitle", { name: peer.name })}
+          </p>
+          <ul className="m-0 list-none p-0">
+            {peer.sources.map((source) => (
+              <li key={source.url}>
+                <a
+                  href={safeHttpUrl(source.url) ?? undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t("supplyChainSourceLinkAria", { publisher: source.publisher })}
+                  className="flex min-h-11 items-center gap-2 rounded-[var(--radius-input)] px-2.5 text-[13px] text-[var(--accent-text)] hover:bg-[var(--surface-2)]"
+                >
+                  <span className="min-w-0 flex-1 truncate">{source.publisher}</span>
+                  {source.published_on ? (
+                    <span className="shrink-0 font-num text-[11px] text-[var(--text-muted)]">
+                      {source.published_on}
+                    </span>
+                  ) : null}
+                  <ArrowSquareOutIcon size={14} weight="regular" aria-hidden className="shrink-0" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -436,27 +533,16 @@ function Connectors({
   height,
   left,
   right,
-  edges,
-  symbol,
   hovered,
 }: {
   readonly height: number;
   readonly left: readonly Peer[];
   readonly right: readonly Peer[];
-  readonly edges: readonly SupplyChainEdge[];
-  readonly symbol: string;
   readonly hovered: string | null;
 }): ReactNode {
   const mid = height / 2;
-  const strengthOf = (peer: Peer): number => {
-    const edge = edges.find(
-      (e) =>
-        (e.from_symbol === symbol && e.to_symbol === peer.symbol) ||
-        (e.to_symbol === symbol && e.from_symbol === peer.symbol),
-    );
-    const pct = edge?.revenue_pct ?? null;
-    return pct === null ? 1.4 : Math.min(3.4, 1.4 + pct / 25);
-  };
+  const strengthOf = (peer: Peer): number =>
+    peer.revenuePct === null ? 1.4 : Math.min(3.4, 1.4 + peer.revenuePct / 25);
   return (
     // biome-ignore lint/a11y/noSvgWithoutTitle: purely decorative connector overlay (aria-hidden)
     <svg
@@ -469,7 +555,7 @@ function Connectors({
         const y = ((i + 0.5) * height) / left.length;
         return (
           <ConnectorPath
-            key={`l-${peer.symbol}`}
+            key={`l-${peerKey(peer)}`}
             d={`M34.5 ${y} C 36 ${y}, 36 ${mid}, 37.5 ${mid}`}
             peer={peer}
             hovered={hovered}
@@ -481,7 +567,7 @@ function Connectors({
         const y = ((i + 0.5) * height) / right.length;
         return (
           <ConnectorPath
-            key={`r-${peer.symbol}`}
+            key={`r-${peerKey(peer)}`}
             d={`M62.5 ${mid} C 64 ${mid}, 64 ${y}, 65.5 ${y}`}
             peer={peer}
             hovered={hovered}
@@ -504,7 +590,7 @@ function ConnectorPath({
   readonly hovered: string | null;
   readonly width: number;
 }): ReactNode {
-  const active = hovered === peer.symbol;
+  const active = hovered === peerKey(peer);
   return (
     <path
       d={d}
@@ -523,10 +609,6 @@ function focusNameOf(edges: readonly SupplyChainEdge[], symbol: string): string 
   const asFrom = edges.find((e) => e.from_symbol === symbol)?.from_name;
   const asTo = edges.find((e) => e.to_symbol === symbol)?.to_name;
   return asFrom ?? asTo ?? symbol;
-}
-
-function isTaiwanCode(code: string): boolean {
-  return /^\d/.test(code);
 }
 
 function formatChange(value: number): string {
