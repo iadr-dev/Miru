@@ -1,7 +1,7 @@
 """Default 自選股 (watchlist) starter presets — seeded once per user, per `(market, asset_class)`
 combo that has zero non-deleted groups (`memory.watchlists.WatchlistStore.seed_default_presets`).
 
-Plain Python literals, not YAML (unlike `config/concept_themes.yaml`): these 16 groups are fixed
+Plain Python literals, not YAML (unlike the private concept-theme YAML): these 16 groups are fixed
 UI content decided once with the product owner, not researched/edited at runtime by an operator
 pipeline — a data file would just add an extra parse step for content that never changes without
 a code review anyway. Every symbol below was verified real (a real, currently-listed company/ETF)

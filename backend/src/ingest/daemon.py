@@ -288,8 +288,8 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # present in them.
     ScheduledIngestJob("theme_industry_seed", time_(18, 30), seed_industry_themes, Cadence.MONTHLY),
     # Theme tier seed (Layer 2) — pure derived-compute over the memberships the job above just
-    # wrote plus the curated `config/theme_tiers.yaml` map; no FinMind call of its own, so it
-    # fires immediately after with no quota concern.
+    # wrote plus the curated tier map in the private reference directory; no FinMind call of its
+    # own, so it fires immediately after with no quota concern.
     ScheduledIngestJob("theme_tier_seed", time_(18, 35), seed_theme_tiers, Cadence.MONTHLY),
     # US price EOD — US markets close 16:00 ET (UTC-4/-5), i.e. ~04:00-05:00 Taipei the next
     # calendar day; 06:00 Taipei gives yfinance's own upstream data a comfortable landing buffer

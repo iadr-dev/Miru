@@ -53,3 +53,8 @@ Thumbs.db
 
 # === Promo video ===
 promo/
+
+# Private reference data (supply-chain research, concept themes, tier maps): the product's own
+# work. Lives on the operator's disk and the data volume, never in git.
+/private-data/
+data/reference/

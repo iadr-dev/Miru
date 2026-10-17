@@ -70,3 +70,15 @@ async def pg_session_factory() -> AsyncIterator[async_sessionmaker[object]]:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
         await engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_reference_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point every loader of the private reference data at the synthetic fixture directory, so no
+    test depends on (or can leak) the product's own research kept in `REFERENCE_DATA_DIR`."""
+    from pathlib import Path  # noqa: PLC0415 - keep the module import list light
+
+    from config import private_data  # noqa: PLC0415
+
+    fixture_dir = Path(__file__).resolve().parent / "fixtures" / "reference_data"
+    monkeypatch.setattr(private_data, "reference_dir", lambda: fixture_dir)

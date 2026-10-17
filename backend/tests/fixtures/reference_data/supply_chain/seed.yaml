@@ -1,0 +1,7 @@
+# Synthetic fixture for the test suite - not the product's data.
+- {from_symbol: "2330", to_symbol: AAPL, from_name: 台積電, to_name: Apple, edge_type: supplies, confidence: high, revenue_pct: null}
+- {from_symbol: "2330", to_symbol: NVDA, from_name: 台積電, to_name: NVIDIA, edge_type: supplies, confidence: high, revenue_pct: null}
+- {from_symbol: "2330", to_symbol: AMD, from_name: 台積電, to_name: AMD, edge_type: supplies, confidence: high, revenue_pct: null}
+- {from_symbol: "2330", to_symbol: QCOM, from_name: 台積電, to_name: Qualcomm, edge_type: supplies, confidence: medium, revenue_pct: null}
+- {from_symbol: "2330", to_symbol: AVGO, from_name: 台積電, to_name: Broadcom, edge_type: supplies, confidence: medium, revenue_pct: null}
+- {from_symbol: "2317", to_symbol: AAPL, from_name: 鴻海, to_name: Apple, edge_type: supplies, confidence: high, revenue_pct: null}

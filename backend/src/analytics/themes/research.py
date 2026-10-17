@@ -38,7 +38,6 @@ from pathlib import Path
 from typing import Final, cast
 
 import structlog
-import yaml
 
 from analytics.themes.models import (
     ChangeAction,
@@ -53,6 +52,7 @@ from analytics.themes.models import (
     ThemeSource,
 )
 from analytics.themes.store import ThemeStore
+from config.private_data import read_yaml_file, reference_path
 from dataaccess.web_search import WebSearchGateway
 from llm.base import LLMClient, Message, MessageRole
 
@@ -62,18 +62,6 @@ logger = structlog.get_logger(__name__)
 # PEP-695 local aliases instead of repeating the same cast-target strings at every call site.
 type _JsonList = list[object]
 type _JsonObject = dict[str, object]
-
-_CONCEPT_CONFIG_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "config" / "concept_themes.yaml"
-)
-_SUPPLY_CHAIN_SEED_PATH: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "config" / "supply_chain_seed.yaml"
-)
-# Researched batches (one yaml per batch of listed companies), same row format as the seed plus an
-# `evidence` note per row. They load together with the seed under the same source.
-_SUPPLY_CHAIN_RESEARCH_DIR: Final[Path] = (
-    Path(__file__).resolve().parents[2] / "config" / "supply_chain_research"
-)
 
 _AGREED_CONFIDENCE: Final[float] = 0.9
 _DISPUTED_CONFIDENCE: Final[float] = 0.6
@@ -128,9 +116,8 @@ class ResearchSummary:
 def load_concept_themes(path: Path | None = None) -> list[ConceptThemeSpec]:
     """Load the curated concept-theme seed list. Data, not code — matches the tier seed's YAML
     loading idiom."""
-    config_path = path or _CONCEPT_CONFIG_PATH
-    with config_path.open(encoding="utf-8") as fh:
-        raw: object = yaml.safe_load(fh) or []
+    config_path = path or reference_path("themes", "concept_themes.yaml")
+    raw: object = read_yaml_file(config_path) or []
     if not isinstance(raw, list):
         raise ValueError(f"concept_themes.yaml at {config_path} did not parse to a list")
     specs: list[ConceptThemeSpec] = []
@@ -147,21 +134,22 @@ def load_concept_themes(path: Path | None = None) -> list[ConceptThemeSpec]:
 
 
 def _read_edge_rows(config_path: Path) -> list[dict[str, object]]:
-    with config_path.open(encoding="utf-8") as fh:
-        raw: object = yaml.safe_load(fh) or []
+    raw: object = read_yaml_file(config_path) or []
     if not isinstance(raw, list):
         raise ValueError(f"{config_path.name} at {config_path} did not parse to a list")
     return cast("list[dict[str, object]]", raw)
 
 
 def load_supply_chain_seed(path: Path | None = None) -> list[SupplyChainEdge]:
-    """Load the bootstrap supply-chain edges, and (when no explicit `path` is given) every
-    researched batch beside them. `revenue_pct` may be null (an honest absence). A relationship
-    named twice keeps its first row."""
+    """Load the supply-chain edges from the private reference directory:
+    `supply_chain/seed.yaml` plus every `supply_chain/relations/*.yaml` (absent files add
+    nothing). `revenue_pct` may be null (an honest absence). A relationship named twice keeps its
+    first row."""
     if path is not None:
         paths = [path]
     else:
-        paths = [_SUPPLY_CHAIN_SEED_PATH, *sorted(_SUPPLY_CHAIN_RESEARCH_DIR.glob("*.yaml"))]
+        base = reference_path("supply_chain")
+        paths = [base / "seed.yaml", *sorted((base / "relations").glob("*.yaml"))]
     edges: dict[tuple[str, str, str], SupplyChainEdge] = {}
     for config_path in paths:
         for item in _read_edge_rows(config_path):

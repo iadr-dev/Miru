@@ -45,6 +45,9 @@ x-app-env: &app-env
   # Derived-store dirs on the shared named volume (leader writes Parquet, readers read it).
   DUCKDB_PATH: /app/data/duckdb
   PARQUET_ROOT: /app/data/parquet
+  # Private reference data (supply chain, concept themes) mounted read-only from ../private-data
+  # on the services that load it; kept out of git on purpose.
+  REFERENCE_DATA_DIR: /app/private-data
   ENV: development
   # Dev-only startup gap-fill (ingest/__main__.py's `_startup_gap_fill`, docs/backend/
   # modules/22-data-ingest.md §6a). Defaults to OFF: an unattended `docker compose up`/
@@ -285,6 +288,7 @@ services:
       - "8000:8000"
     volumes:
       - marketdata:/app/data
+      - ../private-data:/app/private-data:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -351,6 +355,7 @@ services:
     memswap_limit: ${INGEST_MEM_LIMIT:-5g}
     volumes:
       - marketdata:/app/data
+      - ../private-data:/app/private-data:ro
     depends_on:
       postgres:
         condition: service_healthy
