@@ -1,0 +1,1156 @@
+# Researched supply-chain relationships, batch 003 (companies ranked about 216-400 by market value,
+# plus the large companies whose supplier side was empty). Same rules and format as batch-001.yaml:
+# every row cites a page a researcher opened, rows were re-read by an independent checker, weak ones
+# removed.
+- from_symbol: '2330'
+  to_symbol: '2454'
+  from_name: 台積電
+  to_name: 聯發科
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: MediaTek's CEO described TSMC as its long-term, close foundry partner across processes from 12nm to 1.4nm, and MediaTek chips are made by TSMC — https://technews.tw/2026/05/29/mediatek-tsmc-is-our-most-important-and-longest-term-partner/ (TechNews, 2026)
+- from_symbol: '2308'
+  to_symbol: '2317'
+  from_name: 台達電
+  to_name: 鴻海
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: Delta's high-performance AI server power supplies are provided to Hon Hai group and other server makers working with NVIDIA — https://ec.ltn.com.tw/article/breakingnews/4709727 (自由時報, 2024)
+- from_symbol: '3711'
+  to_symbol: AMD
+  from_name: 日月光投控
+  to_name: AMD
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: A foreign-broker report says ASE has taken advanced packaging demand from Nvidia, AMD and Google TPU in addition to TSMC CoWoS overflow orders — https://finance.technews.tw/2026/07/31/ase-technology-holding-co-ltd-has-a-comprehensive-layout-in-the-field-of-advanced-packaging/ (TechNews, 2026)
+- from_symbol: '2382'
+  to_symbol: META
+  from_name: 廣達
+  to_name: Meta
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: A Quanta executive said its major customers include Google and Facebook, whose headquarters are in California, so it keeps its California plant to support their product development — https://tw.news.yahoo.com/%E5%B0%81%E9%9D%A2%E6%95%85%E4%BA%8B-%E4%BB%8A%E6%98%8E%E5%85%A9%E5%B9%B4%E7%88%86%E5%96%AE%E5%BB%A3%E9%81%94%E7%BF%BB%E5%80%8D%E6%88%90%E9%95%B7-%E6%9E%97%E7%99%BE%E9%87%8C%E7%A9%A9%E5%9D%90ai%E4%BC%BA%E6%9C%8D%E5%99%A8%E4%BB%A3%E5%B7%A5%E7%8E%8B-232859911.html (鏡週刊 via Yahoo, 2026)
+- from_symbol: '2382'
+  to_symbol: HPQ
+  from_name: 廣達
+  to_name: HP
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: A notebook ODM overview lists Quanta, Compal and Inventec as HP's contract manufacturers — https://www.digitimes.com.tw/tech/dt/n/shwnws.asp?id=0000685071_ETV192T76IREJJ2UYPNU5 (DIGITIMES, 2024)
+- from_symbol: '2382'
+  to_symbol: '2353'
+  from_name: 廣達
+  to_name: 宏碁
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: A notebook ODM overview lists Quanta and Compal as Acer's contract manufacturers — https://www.digitimes.com.tw/tech/dt/n/shwnws.asp?id=0000685071_ETV192T76IREJJ2UYPNU5 (DIGITIMES, 2024)
+- from_symbol: '3231'
+  to_symbol: DELL
+  from_name: 緯創
+  to_name: Dell
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: A notebook ODM overview lists Compal and Wistron as Dell's contract manufacturers — https://www.digitimes.com.tw/tech/dt/n/shwnws.asp?id=0000685071_ETV192T76IREJJ2UYPNU5 (DIGITIMES, 2024)
+- from_symbol: '3661'
+  to_symbol: AMZN
+  from_name: 世芯-KY
+  to_name: Amazon
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article states Amazon has been Alchip's largest customer over the past two years and took part in its May 2024 private placement — https://wealth.businessweekly.com.tw/GArticle.aspx?id=ARTL003017697 (商周財富網, 2026)
+- from_symbol: '2324'
+  to_symbol: DELL
+  from_name: 仁寶
+  to_name: Dell
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: Dell's notebook ODMs are listed as Compal and Wistron (2024), and Dell's 2026 AI server orders are reported to go mainly to Inventec and Compal (2025) — https://money.udn.com/money/story/5612/9088518 (經濟日報, 2025)
+- from_symbol: '2324'
+  to_symbol: HPQ
+  from_name: 仁寶
+  to_name: HP
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: A notebook ODM overview lists Quanta, Compal and Inventec as HP's contract manufacturers — https://www.digitimes.com.tw/tech/dt/n/shwnws.asp?id=0000685071_ETV192T76IREJJ2UYPNU5 (DIGITIMES, 2024)
+- from_symbol: '2324'
+  to_symbol: '2353'
+  from_name: 仁寶
+  to_name: 宏碁
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: A notebook ODM overview lists Quanta and Compal as Acer's contract manufacturers — https://www.digitimes.com.tw/tech/dt/n/shwnws.asp?id=0000685071_ETV192T76IREJJ2UYPNU5 (DIGITIMES, 2024)
+- from_symbol: '3583'
+  to_symbol: '2330'
+  from_name: 辛耘
+  to_name: 台積電
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: Two reports state Scientech (辛耘) supplies wet-process equipment for TSMC's CoWoS capacity — https://www.ctee.com.tw/news/20250520701274-430205 (工商時報, 2025) and https://news.cnyes.com/news/id/5254061 (鉅亨網, 2023)
+- from_symbol: '3680'
+  to_symbol: '2330'
+  from_name: 家登
+  to_name: 台積電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article states 台積電 accounts for more than 50% of 家登 revenue and lists it as a customer — https://www.pocket.tw/school/report/SCHOOL/6409/ (口袋學堂, 2026)
+- from_symbol: '3680'
+  to_symbol: ENTG
+  from_name: 家登
+  to_name: Entegris
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article names 家登 and Entegris as the main suppliers in reticle pods and Entegris as a main competitor in wafer carriers — https://www.pocket.tw/school/report/SCHOOL/6409/ (口袋學堂, 2026)
+- from_symbol: '3563'
+  to_symbol: '3037'
+  from_name: 牧德
+  to_name: 欣興
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists PCB makers 欣興, 臻鼎 and 健鼎 among 牧德 inspection equipment customers — https://uc913.com/stock-3563/ (913 理財估測站, 2026)
+- from_symbol: '3563'
+  to_symbol: '4958'
+  from_name: 牧德
+  to_name: 臻鼎-KY
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists PCB makers 欣興, 臻鼎 and 健鼎 among 牧德 inspection equipment customers — https://uc913.com/stock-3563/ (913 理財估測站, 2026)
+- from_symbol: '3563'
+  to_symbol: '3044'
+  from_name: 牧德
+  to_name: 健鼎
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists PCB makers 欣興, 臻鼎 and 健鼎 among 牧德 inspection equipment customers — https://uc913.com/stock-3563/ (913 理財估測站, 2026)
+- from_symbol: '3563'
+  to_symbol: '3711'
+  from_name: 牧德
+  to_name: 日月光投控
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article says 日月光投控 is a strategic investor in 牧德 holding about 23.1% and bought equipment from it in September 2026 — https://uc913.com/stock-3563/ (913 理財估測站, 2026)
+- from_symbol: '3563'
+  to_symbol: KLAC
+  from_name: 牧德
+  to_name: KLA
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists KLA, Onto Innovation and Camtek as international competitors of 牧德 — https://uc913.com/stock-3563/ (913 理財估測站, 2026)
+- from_symbol: '3563'
+  to_symbol: ONTO
+  from_name: 牧德
+  to_name: Onto Innovation
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists KLA, Onto Innovation and Camtek as international competitors of 牧德 — https://uc913.com/stock-3563/ (913 理財估測站, 2026)
+- from_symbol: '6271'
+  to_symbol: 'ON'
+  from_name: 同欣電
+  to_name: onsemi
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: Two articles state 同欣電 is a packaging partner serving onsemi (安森美) in automotive CMOS image sensors — https://cmnews.com.tw/article/money-8900b51e-f6bb-11f0-bd94-559d6aee65c4 (CMoney Money錢, 2026) and https://uanalyze.com.tw/articles/352734172 (優分析, 2023)
+- from_symbol: '6271'
+  to_symbol: SONY
+  from_name: 同欣電
+  to_name: Sony
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: Two articles state 同欣電 is a packaging partner serving SONY in automotive CMOS image sensors — https://cmnews.com.tw/article/money-8900b51e-f6bb-11f0-bd94-559d6aee65c4 (CMoney Money錢, 2026) and https://uanalyze.com.tw/articles/352734172 (優分析, 2023)
+- from_symbol: '2421'
+  to_symbol: '3017'
+  from_name: 建準
+  to_name: 奇鋐
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The report lists 奇鋐, 雙鴻, 台達電 and Nidec as competitors of 建準 in thermal products — https://vocus.cc/article/696b02ddfd8978000125adcc (vocus, 2026)
+- from_symbol: '2421'
+  to_symbol: '3324'
+  from_name: 建準
+  to_name: 雙鴻
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The report lists 奇鋐, 雙鴻, 台達電 and Nidec as competitors of 建準 in thermal products — https://vocus.cc/article/696b02ddfd8978000125adcc (vocus, 2026)
+- from_symbol: '2206'
+  to_symbol: '2227'
+  from_name: 三陽工業
+  to_name: 光陽
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: Two articles name 光陽 (KYMCO) as 三陽 main motorcycle competitor in fuel and electric models — https://uc913.com/stock-2206/ (913 理財估測站, 2026) and https://vocus.cc/article/67498ecdfd89780001f53baf (vocus)
+- from_symbol: '8028'
+  to_symbol: '2330'
+  from_name: 昇陽半導體
+  to_name: 台積電
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: The report says 昇陽半導體 products are in the 台積電 A16 backside power supply chain; a second article also names 台積電 as its key customer — https://news.cnyes.com/news/id/6237952 (鉅亨網, 2025) and https://7evenguy.com/what-is-8028-doing/ (七仔財經筆記)
+- from_symbol: '8028'
+  to_symbol: '1560'
+  from_name: 昇陽半導體
+  to_name: 中砂
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article names 中砂 and RS Technologies as main competitors of 昇陽半導體 in reclaimed wafers and wafer thinning — https://7evenguy.com/what-is-8028-doing/ (七仔財經筆記)
+- from_symbol: '3537'
+  to_symbol: '3090'
+  from_name: 堡達
+  to_name: 日電貿
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article names 堡達 as a competitor of 日電貿 among passive component distributors — https://vocus.cc/article/65fe7ba8fd8978000162a831 (三點水, 2024)
+- from_symbol: '2393'
+  to_symbol: '3090'
+  from_name: 億光
+  to_name: 日電貿
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The earnings-call note lists 億光 (Everlight) among the optoelectronics brands distributed by 日電貿 — https://vocus.cc/article/6a7be2e2fd897800012c5595 (vocus, 2026)
+- from_symbol: '3702'
+  to_symbol: '3090'
+  from_name: 大聯大
+  to_name: 日電貿
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The earnings-call note names 大聯大 and 文曄 as larger distributors competing with 日電貿 in passive components — https://vocus.cc/article/6a7be2e2fd897800012c5595 (vocus, 2026)
+- from_symbol: '7909'
+  to_symbol: '2330'
+  from_name: 鈺祥
+  to_name: 台積電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The report describes 鈺祥 as a supplier of AMC filters for 台積電 2nm processes — https://tw.stock.yahoo.com/news/%E9%88%BA%E7%A5%A525%E6%97%A5%E7%99%BB%E8%88%88%E6%AB%83-amc%E6%BF%BE%E7%B6%B2%E5%89%8D%E6%99%AF%E4%BD%B3-%E8%A8%82%E5%96%AE%E8%83%BD%E8%A6%8B%E5%BA%A6%E9%81%942030%E5%B9%B4-031649607.html (財訊快報, 2026)
+- from_symbol: '1477'
+  to_symbol: GAP
+  from_name: 聚陽
+  to_name: Gap Inc.
+  edge_type: supplies
+  confidence: low
+  revenue_pct: 36
+  evidence: The 2026-04 earnings-call memo lists Gap Inc. among 聚陽's main customers, at 36% of 2025 revenue — https://blog.fugle.tw/post/earnings-call-1477-2026-04-01 (富果直送 法說會備忘錄, 2026)
+- from_symbol: '1477'
+  to_symbol: TGT
+  from_name: 聚陽
+  to_name: Target
+  edge_type: supplies
+  confidence: low
+  revenue_pct: 18
+  evidence: The 2026-04 earnings-call memo lists Target among 聚陽's main customers, at 18% of 2025 revenue — https://blog.fugle.tw/post/earnings-call-1477-2026-04-01 (富果直送 法說會備忘錄, 2026)
+- from_symbol: '1477'
+  to_symbol: DKS
+  from_name: 聚陽
+  to_name: Dick's Sporting Goods
+  edge_type: supplies
+  confidence: low
+  revenue_pct: 9
+  evidence: The 2026-04 earnings-call memo lists Dick's Sporting Goods among 聚陽's main customers, at 9% of 2025 revenue — https://blog.fugle.tw/post/earnings-call-1477-2026-04-01 (富果直送 法說會備忘錄, 2026)
+- from_symbol: '1477'
+  to_symbol: KSS
+  from_name: 聚陽
+  to_name: Kohl's
+  edge_type: supplies
+  confidence: low
+  revenue_pct: 7
+  evidence: The 2026-04 earnings-call memo lists Kohl's among 聚陽's main customers, at 7% of 2025 revenue — https://blog.fugle.tw/post/earnings-call-1477-2026-04-01 (富果直送 法說會備忘錄, 2026)
+- from_symbol: '1319'
+  to_symbol: '2204'
+  from_name: 東陽
+  to_name: 中華車
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article states 東陽's Taiwan OEM customers cover almost all car makers, naming 中華車 among them — https://www.stockfeel.com.tw/%E6%9D%B1%E9%99%BD-1319-2026q3-%E6%B3%95%E8%AA%AA%E6%9C%83/ (StockFeel, 2026)
+- from_symbol: '1319'
+  to_symbol: '2201'
+  from_name: 東陽
+  to_name: 裕隆
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article states 東陽's Taiwan OEM customers cover almost all car makers, naming 裕隆 among them — https://www.stockfeel.com.tw/%E6%9D%B1%E9%99%BD-1319-2026q3-%E6%B3%95%E8%AA%AA%E6%9C%83/ (StockFeel, 2026)
+- from_symbol: '2312'
+  to_symbol: HPQ
+  from_name: 金寶
+  to_name: HP
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article states 金寶's printer customers include HP, with about 13 million printers shipped a year — https://uanalyze.com.tw/articles/721977320 (優分析, 2024)
+- from_symbol: '2312'
+  to_symbol: TXN
+  from_name: 金寶
+  to_name: Texas Instruments
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists TI among 金寶's electronic calculator customers — https://uanalyze.com.tw/articles/721977320 (優分析, 2024)
+- from_symbol: '4763'
+  to_symbol: PM
+  from_name: 材料-KY
+  to_name: Philip Morris International
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 材料-KY's tow customers include Philip Morris International per the 2025 earnings-call memo, and 2022 news reports its tow supply to the major tobacco groups — https://blog.fugle.tw/post/earnings-call-4763-2025-05-23 (富果直送 法說會備忘錄, 2025) ; https://tw.stock.yahoo.com/news/%E6%9D%90%E6%96%99-ky%E6%8B%BF%E4%B8%8B%E5%85%A8%E7%90%83%E5%9B%9B%E5%A4%A7%E8%8F%B8%E8%8D%89%E5%95%86%E8%A8%82%E5%96%AE-%E6%93%AC%E5%86%8D%E6%93%B4%E5%A2%9E4%E6%88%90%E7%B5%B2%E6%9D%9F%E7%94%A2%E8%83%BD-032755539.html (鉅亨網 via Yahoo, 2022)
+- from_symbol: '4763'
+  to_symbol: BTI
+  from_name: 材料-KY
+  to_name: British American Tobacco
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 材料-KY's tow customers include British American Tobacco per the 2025 earnings-call memo, and 2022 news reports its tow supply to the major tobacco groups — https://blog.fugle.tw/post/earnings-call-4763-2025-05-23 (富果直送 法說會備忘錄, 2025) ; https://tw.stock.yahoo.com/news/%E6%9D%90%E6%96%99-ky%E6%8B%BF%E4%B8%8B%E5%85%A8%E7%90%83%E5%9B%9B%E5%A4%A7%E8%8F%B8%E8%8D%89%E5%95%86%E8%A8%82%E5%96%AE-%E6%93%AC%E5%86%8D%E6%93%B4%E5%A2%9E4%E6%88%90%E7%B5%B2%E6%9D%9F%E7%94%A2%E8%83%BD-032755539.html (鉅亨網 via Yahoo, 2022)
+- from_symbol: '4763'
+  to_symbol: EMN
+  from_name: 材料-KY
+  to_name: Eastman Chemical
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article names Eastman Chemical among the established producers 材料-KY competes with in cellulose acetate tow — https://vocus.cc/article/6a3fe161fd8978000130092b (vocus, 2026)
+- from_symbol: '4763'
+  to_symbol: CE
+  from_name: 材料-KY
+  to_name: Celanese
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: The article names Celanese among the established producers 材料-KY competes with in cellulose acetate tow — https://vocus.cc/article/6a3fe161fd8978000130092b (vocus, 2026)
+- from_symbol: '6290'
+  to_symbol: AMZN
+  from_name: 良維
+  to_name: Amazon
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 良維 is the main supplier of high-current power cords for AWS data centers and Amazon is its largest customer — https://money.udn.com/money/story/11074/9437204 (經濟日報, 2026) ; https://uanalyze.com.tw/articles/3020717797 (優分析, 2025)
+- from_symbol: '6290'
+  to_symbol: AAPL
+  from_name: 良維
+  to_name: Apple
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 良維 is a main Apple power cord supplier at about 15% of revenue (2025), after Apple was 26% of 2022 revenue — https://uanalyze.com.tw/articles/3020717797 (優分析, 2025) ; https://blog.fugle.tw/longwell-report/ (富果直送, 2023)
+- from_symbol: '6290'
+  to_symbol: MSFT
+  from_name: 良維
+  to_name: Microsoft
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 良維 has begun small-volume shipments to Microsoft — https://money.udn.com/money/story/11074/9437204 (經濟日報, 2026) ; https://uanalyze.com.tw/articles/3020717797 (優分析, 2025)
+- from_symbol: '6290'
+  to_symbol: DELL
+  from_name: 良維
+  to_name: Dell
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists Dell among 良維's branded-server customers for AI server high-current cords — https://money.udn.com/money/story/11074/9437204 (經濟日報, 2026)
+- from_symbol: '6290'
+  to_symbol: HPE
+  from_name: 良維
+  to_name: Hewlett Packard Enterprise
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists Hewlett Packard Enterprise among 良維's branded-server customers for AI server high-current cords — https://money.udn.com/money/story/11074/9437204 (經濟日報, 2026)
+- from_symbol: '6290'
+  to_symbol: IBM
+  from_name: 良維
+  to_name: IBM
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: The article lists IBM among 良維's branded-server customers for AI server high-current cords — https://money.udn.com/money/story/11074/9437204 (經濟日報, 2026)
+- from_symbol: '2458'
+  to_symbol: SYNA
+  from_name: 義隆
+  to_name: Synaptics
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: 工商時報 reports the notebook touchpad market has long been shared by 義隆 and Synaptics, with onsemi's announced acquisition of Synaptics pending — https://www.ctee.com.tw/news/20260702700170-439901 (工商時報, 2026)
+- from_symbol: '1736'
+  to_symbol: PLNT
+  from_name: 喬山
+  to_name: Planet Fitness
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 鉅亨網 reports 喬山 is a supplier to Planet Fitness with a supply share above 80% (March 2025), and earlier reported it as a main supplier — https://news.cnyes.com/news/id/5915278 (鉅亨網, 2025)
+- from_symbol: '6683'
+  to_symbol: '2454'
+  from_name: 雍智科技
+  to_name: 聯發科
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 理財周刊 states 雍智科技 makes IC test boards and its largest customer is 聯發科 — https://www.moneyweekly.com.tw/ArticleData/Info/Article/227913 (理財周刊, 2026)
+- from_symbol: '7751'
+  to_symbol: '2330'
+  from_name: 竑騰
+  to_name: 台積電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 萬寶週刊 states the main customers of 竑騰 (semiconductor packaging equipment) include 台積電 — https://estock.com.tw/finance/article?type=mbo&id=2138 (萬傳媒 萬寶週刊, 2024)
+- from_symbol: '7795'
+  to_symbol: '3037'
+  from_name: 長廣
+  to_name: 欣興
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: Press release repost states major substrate makers including 欣興 are customers of 長廣's vacuum lamination equipment — https://www.abicoasia.com.tw/news_in.php?id=11 (能率亞洲資本, 2024)
+- from_symbol: '7795'
+  to_symbol: '8046'
+  from_name: 長廣
+  to_name: 南電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: Press release repost states major substrate makers including 南電 are customers of 長廣 — https://www.abicoasia.com.tw/news_in.php?id=11 (能率亞洲資本, 2024)
+- from_symbol: '7795'
+  to_symbol: '3189'
+  from_name: 長廣
+  to_name: 景碩
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: Press release repost states major substrate makers including 景碩 are customers of 長廣 — https://www.abicoasia.com.tw/news_in.php?id=11 (能率亞洲資本, 2024)
+- from_symbol: '9933'
+  to_symbol: '2330'
+  from_name: 中鼎
+  to_name: 台積電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 今周刊 reports 中鼎 is the turnkey engineering contractor for 台積電's Arizona fab, with 台積電 described as a major customer — https://esg.businesstoday.com.tw/article/category/180689/post/202208310030/ (今周刊 ESG永續台灣, 2022)
+- from_symbol: '5469'
+  to_symbol: '2324'
+  from_name: 瀚宇博
+  to_name: 仁寶
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '5469'
+  to_symbol: '2382'
+  from_name: 瀚宇博
+  to_name: 廣達
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '5469'
+  to_symbol: '4938'
+  from_name: 瀚宇博
+  to_name: 和碩
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '5469'
+  to_symbol: '3231'
+  from_name: 瀚宇博
+  to_name: 緯創
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '5469'
+  to_symbol: '2356'
+  from_name: 瀚宇博
+  to_name: 英業達
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '5469'
+  to_symbol: '2317'
+  from_name: 瀚宇博
+  to_name: 鴻海
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '5469'
+  to_symbol: '2357'
+  from_name: 瀚宇博
+  to_name: 華碩
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文章指瀚宇博下游客戶涵蓋各種產品代工廠，包括仁寶、廣達、和碩、緯創、英業達、鴻海、華碩、三星電子 — https://uanalyze.com.tw/articles/747604978 (優分析 UAnalyze, 2024)
+- from_symbol: '6175'
+  to_symbol: '2472'
+  from_name: 立敦
+  to_name: 立隆電
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: MoneyDJ 公司資料載明立隆電主要原料為鋁箔，供應商有轉投資的立敦科技 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=2a399869-d352-4792-ac49-9d5b6d58f08e (MoneyDJ理財網)
+- from_symbol: '2472'
+  to_symbol: '8042'
+  from_name: 立隆電
+  to_name: 金山電
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ 公司資料載明立隆電國內競爭對手包括金山電、凱美 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=2a399869-d352-4792-ac49-9d5b6d58f08e (MoneyDJ理財網)
+- from_symbol: '2472'
+  to_symbol: '2375'
+  from_name: 立隆電
+  to_name: 凱美
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ 公司資料載明立隆電國內競爭對手包括金山電、凱美 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=2a399869-d352-4792-ac49-9d5b6d58f08e (MoneyDJ理財網)
+- from_symbol: '2015'
+  to_symbol: '2006'
+  from_name: 豐興
+  to_name: 東和鋼鐵
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ 公司資料載明鋼筋國內生產廠商眾多，包括東鋼等主要大廠，競爭激烈 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=12ca25d8-982c-4a6e-ad44-5c990d643c41 (MoneyDJ理財網)
+- from_symbol: '2015'
+  to_symbol: '2002'
+  from_name: 豐興
+  to_name: 中鋼
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ 公司資料載明豐興棒鋼的主要競爭對手為中鋼 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=12ca25d8-982c-4a6e-ad44-5c990d643c41 (MoneyDJ理財網)
+- from_symbol: '9921'
+  to_symbol: '9914'
+  from_name: 巨大
+  to_name: 美利達
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: 商周報導提到巨大創辦人提出結盟，與對手美利達合作成立A-Team，兩者為國內自行車製造業者 — https://www.businessweekly.com.tw/focus/indep/6021158 (商業周刊)
+- from_symbol: '3413'
+  to_symbol: AMAT
+  from_name: 京鼎
+  to_name: Applied Materials
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 京鼎總經理表示應用材料是京鼎的大客戶之一，應材並於2022年投資京鼎 — https://finance.technews.tw/2022/04/12/applied-materials-fiti/ (TechNews, 2022)
+- from_symbol: '6176'
+  to_symbol: '2409'
+  from_name: 瑞儀
+  to_name: 友達
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中列出友達光電為瑞儀背光模組的面板廠客戶之一 — https://uc913.com/stock-6176/ (913 理財估測站, 2026)
+- from_symbol: '6176'
+  to_symbol: '3481'
+  from_name: 瑞儀
+  to_name: 群創
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中列出群創光電為瑞儀背光模組的面板廠客戶之一 — https://uc913.com/stock-6176/ (913 理財估測站, 2026)
+- from_symbol: '6176'
+  to_symbol: '6120'
+  from_name: 瑞儀
+  to_name: 達運
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: 兩篇報導皆將達運列為瑞儀在背光模組的同業競爭者 — https://uc913.com/stock-6176/ (913 理財估測站, 2026); https://www.stockfeel.com.tw/financial/?stock=6176 (StockFeel)
+- from_symbol: '3596'
+  to_symbol: VZ
+  from_name: 智易
+  to_name: Verizon
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱智易為T-Mobile與Verizon等北美電信商5G FWA CPE的重要供應商 — https://uanalyze.com.tw/articles/2422426511 (優分析, 2025)
+- from_symbol: '3596'
+  to_symbol: TMUS
+  from_name: 智易
+  to_name: T-Mobile
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱智易為T-Mobile與Verizon等北美電信商5G FWA CPE的重要供應商 — https://uanalyze.com.tw/articles/2422426511 (優分析, 2025)
+- from_symbol: '3596'
+  to_symbol: '5388'
+  from_name: 智易
+  to_name: 中磊
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: 文中列為競爭者，並稱中磊與智易的產品較為相似，鎖定的市場也有部分重疊（如美洲） — https://www.stockfeel.com.tw/%E5%85%A8%E7%90%83%E6%9C%80%E5%A4%A7iad%E4%BE%9B%E6%87%89%E5%95%86%EF%BC%9A%E6%99%BA%E6%98%93%EF%BC%883596%EF%BC%89/ (StockFeel)
+- from_symbol: '3376'
+  to_symbol: AAPL
+  from_name: 新日興
+  to_name: Apple
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 報導稱新日興是蘋果筆電、耳機軸承的主力供應商；另一份整理列Apple為其筆電樞紐客戶 — https://www.moneyweekly.com.tw/ArticleData/Info/Article/221985 (理財周刊); https://www.cmoney.tw/notes/note-detail.aspx?nid=768898 (CMoney, 2024)
+- from_symbol: '3376'
+  to_symbol: '2357'
+  from_name: 新日興
+  to_name: 華碩
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中列出華碩為新日興筆電樞紐及LCD顯示器客戶之一 — https://www.cmoney.tw/notes/note-detail.aspx?nid=768898 (CMoney, 2024)
+- from_symbol: '3376'
+  to_symbol: '2353'
+  from_name: 新日興
+  to_name: 宏碁
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中列出宏碁為新日興筆電樞紐客戶之一 — https://www.cmoney.tw/notes/note-detail.aspx?nid=768898 (CMoney, 2024)
+- from_symbol: '8016'
+  to_symbol: '3034'
+  from_name: 矽創
+  to_name: 聯詠
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: 研究報告將聯詠列為矽創在LCD驅動IC市場的競爭廠商 — https://www.cmoney.tw/notes/note-detail.aspx?nid=350415 (CMoney)
+- from_symbol: '8016'
+  to_symbol: '3545'
+  from_name: 矽創
+  to_name: 敦泰
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: 研究報告將敦泰列為矽創在LCD驅動IC及手機面板驅動IC的競爭對手 — https://www.cmoney.tw/notes/note-detail.aspx?nid=350415 (CMoney)
+- from_symbol: '3693'
+  to_symbol: AMD
+  from_name: 營邦
+  to_name: AMD
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱營邦受邀合作開發AMD Helios機櫃，並成為MI450伺服器準系統的首家供貨商 — https://money.udn.com/money/story/5612/9090607 (經濟日報, 2025)
+- from_symbol: '7918'
+  to_symbol: '2330'
+  from_name: 創鉅材料
+  to_name: 台積電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱創鉅聯手光洋科拿下台積電2、3、5奈米高階靶材大單 — https://money.udn.com/money/story/11074/9488929 (經濟日報, 2026)
+- from_symbol: '1314'
+  to_symbol: '1312'
+  from_name: 中石化
+  to_name: 國喬
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中稱奇美實業、國喬化工、台達化學將中石化供應的AN加工為ABS、SAN等塑料 — https://uc913.com/stock-1314/ (913 理財估測站)
+- from_symbol: '1314'
+  to_symbol: '1309'
+  from_name: 中石化
+  to_name: 台達化
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中稱奇美實業、國喬化工、台達化學將中石化供應的AN加工為ABS、SAN等塑料 — https://uc913.com/stock-1314/ (913 理財估測站)
+- from_symbol: '1314'
+  to_symbol: '1326'
+  from_name: 中石化
+  to_name: 台化
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 文中稱台化等尼龍業者為PA6主要客戶，仰賴中石化供應的CPL — https://uc913.com/stock-1314/ (913 理財估測站)
+- from_symbol: '1314'
+  to_symbol: '1301'
+  from_name: 中石化
+  to_name: 台塑
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: 文中稱中石化與台塑並列台灣兩大AN供應商 — https://uc913.com/stock-1314/ (913 理財估測站)
+- from_symbol: '6640'
+  to_symbol: '2449'
+  from_name: 均華
+  to_name: 京元電子
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 財報狗 reports that 均華's die-bonder customers include global top-ten packaging and test houses such as Amkor, 京元電 and 力成 — https://statementdog.com/news/14448 (財報狗, 2025)
+- from_symbol: '6640'
+  to_symbol: '6239'
+  from_name: 均華
+  to_name: 力成
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 財報狗 reports that 均華's die-bonder customers include global top-ten packaging and test houses such as Amkor, 京元電 and 力成 — https://statementdog.com/news/14448 (財報狗, 2025)
+- from_symbol: '6640'
+  to_symbol: AMKR
+  from_name: 均華
+  to_name: Amkor
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 財報狗 reports that 均華's die-bonder customers include global top-ten packaging and test houses such as Amkor, 京元電 and 力成 — https://statementdog.com/news/14448 (財報狗, 2025)
+- from_symbol: '4915'
+  to_symbol: TSLA
+  from_name: 致伸
+  to_name: Tesla
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 鉅亨網 reports that 致伸's automotive camera modules supply Tesla's Shanghai plant and have been certified for the Berlin plant; a 2026-era CMoney article also describes 致伸's front camera and driver-monitoring modules in Tesla's Shanghai and Berlin supply chain — https://news.cnyes.com/news/id/4846345 (鉅亨網, 2022)
+- from_symbol: '2329'
+  to_symbol: '8299'
+  from_name: 華泰
+  to_name: 群聯
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 聯合新聞網 reports that 華泰's NAND Flash packaging and test customers include Kingston, 群聯 and Longsys, accounting for over half of revenue — https://udn.com/news/story/6850/9257780 (聯合新聞網, 2026)
+- from_symbol: '1434'
+  to_symbol: NKE
+  from_name: 福懋
+  to_name: Nike
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: The company's own site states its biggest customers over many years have been Nike, adidas and other major brands — https://www.ftc.com.tw/newftc/index.php (福懋興業, 2026)
+- from_symbol: '8131'
+  to_symbol: '2408'
+  from_name: 福懋科
+  to_name: 南亞科
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 南亞科表示其封測約6成以上透過福懋科進行，福懋科6成以上營收來自南亞科；經濟日報亦稱南亞科為福懋科主要客戶、貢獻營收約五成 — https://news.cnyes.com/news/id/4423402 (鉅亨網, 2019) ; https://money.udn.com/money/story/5607/9137802 (經濟日報)
+- from_symbol: '8131'
+  to_symbol: '3260'
+  from_name: 福懋科
+  to_name: 威剛
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導指福懋科主要客戶包括南亞科、威剛與晶豪科 — https://money.udn.com/money/story/5607/9137802 (經濟日報)
+- from_symbol: '8131'
+  to_symbol: '3006'
+  from_name: 福懋科
+  to_name: 晶豪科
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導指福懋科主要客戶包括南亞科、威剛與晶豪科 — https://money.udn.com/money/story/5607/9137802 (經濟日報)
+- from_symbol: '6456'
+  to_symbol: AAPL
+  from_name: GIS-KY
+  to_name: Apple
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 業成供應MacBook面板模組並提供iPad Pro背光、面板到觸控模組貼合服務，被稱為蘋果主要觸控面板供應商之一；2025年報導稱其取得折疊iPhone與iPad超薄玻璃後段加工訂單 — https://www.ctee.com.tw/news/20210601700988-439901 (工商時報, 2021) ; https://tw.stock.yahoo.com/news/gis-ky%E5%82%B3%E7%8D%A8%E6%94%AC%E8%98%8B%E6%9E%9C%E6%8A%98%E7%96%8A%E6%A9%9F%E4%B8%89%E5%A4%A7%E8%A8%82%E5%96%AE-%E6%8C%87%E7%B4%8B%E8%BE%A8%E8%AD%98%E6%8A%80%E8%A1%93%E9%87%8D%E8%BF%94iphone-062356891.html (鉅亨網, 2025)
+- from_symbol: '4576'
+  to_symbol: AMAT
+  from_name: 大銀微系統
+  to_name: Applied Materials
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導指大銀微主要客戶涵蓋豐田汽車、東京威力科創、美商應材、荷蘭ASML及科磊 — https://uanalyze.com.tw/articles/3807610926 (優分析UAnalyze, 2025)
+- from_symbol: '4576'
+  to_symbol: ASML
+  from_name: 大銀微系統
+  to_name: ASML
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導指大銀微主要客戶涵蓋豐田汽車、東京威力科創、美商應材、荷蘭ASML及科磊 — https://uanalyze.com.tw/articles/3807610926 (優分析UAnalyze, 2025)
+- from_symbol: '4576'
+  to_symbol: KLAC
+  from_name: 大銀微系統
+  to_name: KLA
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導指大銀微主要客戶涵蓋豐田汽車、東京威力科創、美商應材、荷蘭ASML及科磊 — https://uanalyze.com.tw/articles/3807610926 (優分析UAnalyze, 2025)
+- from_symbol: '6672'
+  to_symbol: F
+  from_name: 騰輝電子-KY
+  to_name: Ford
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 2025 Q2法說會整理指鋁基板與厚銅金屬基板客戶涵蓋上汽五菱、華為電動車、蔚來、福特等 — https://vocus.cc/article/689ccb60fd897800019f6375 (Vocus, 2025)
+- from_symbol: '6672'
+  to_symbol: INTC
+  from_name: 騰輝電子-KY
+  to_name: Intel
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 2025 Q2法說會整理指半導體測試用基板客戶包括Intel、NXP — https://vocus.cc/article/689ccb60fd897800019f6375 (Vocus, 2025)
+- from_symbol: '6672'
+  to_symbol: NXPI
+  from_name: 騰輝電子-KY
+  to_name: NXP
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 2025 Q2法說會整理指半導體測試用基板客戶包括Intel、NXP — https://vocus.cc/article/689ccb60fd897800019f6375 (Vocus, 2025)
+- from_symbol: '2607'
+  to_symbol: '2603'
+  from_name: 榮運
+  to_name: 長榮
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: 榮運官網主要客戶群名單列有長榮海運股份有限公司 — https://www.evergreen-eitc.com.tw/eitchtdocs/zh/A06-0-Clients.html (長榮國際儲運官網)
+- from_symbol: '2607'
+  to_symbol: '2618'
+  from_name: 榮運
+  to_name: 長榮航
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: 榮運官網主要客戶群名單列有長榮航空股份有限公司 — https://www.evergreen-eitc.com.tw/eitchtdocs/zh/A06-0-Clients.html (長榮國際儲運官網)
+- from_symbol: '2607'
+  to_symbol: '2609'
+  from_name: 榮運
+  to_name: 陽明
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: 榮運官網主要客戶群名單列有陽明海運股份有限公司 — https://www.evergreen-eitc.com.tw/eitchtdocs/zh/A06-0-Clients.html (長榮國際儲運官網)
+- from_symbol: '2607'
+  to_symbol: '2645'
+  from_name: 榮運
+  to_name: 長榮航太
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: 榮運官網主要客戶群名單列有長榮航太科技股份有限公司 — https://www.evergreen-eitc.com.tw/eitchtdocs/zh/A06-0-Clients.html (長榮國際儲運官網)
+- from_symbol: '2607'
+  to_symbol: '1231'
+  from_name: 榮運
+  to_name: 聯華食
+  edge_type: supplies
+  confidence: high
+  revenue_pct: null
+  evidence: 榮運官網主要客戶群名單列有聯華食品工業股份有限公司 — https://www.evergreen-eitc.com.tw/eitchtdocs/zh/A06-0-Clients.html (長榮國際儲運官網)
+- from_symbol: '2317'
+  to_symbol: '2204'
+  from_name: 鴻海
+  to_name: 中華
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 中華汽車3.5噸電動商用車ET35的電池系統由鴻海提供 — https://www.ctee.com.tw/news/20250822701742-431207 (工商時報, 2025) ; https://www.cna.com.tw/news/afe/202506180048.aspx (中央社, 2025)
+- from_symbol: '1503'
+  to_symbol: '2204'
+  from_name: 士電
+  to_name: 中華
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: 中華汽車ET35的二合一馬達控制器由士林電機供應 — https://www.ctee.com.tw/news/20250822701742-431207 (工商時報, 2025) ; https://www.cna.com.tw/news/afe/202506180048.aspx (中央社, 2025)
+- from_symbol: '3265'
+  to_symbol: '2454'
+  from_name: 台星科
+  to_name: 聯發科
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: Article states 台星科 customers include 聯發科, 江蘇長電 and AMD — https://uanalyze.com.tw/articles/557385219 (優分析 UAnalyze, 2024)
+- from_symbol: '3265'
+  to_symbol: AMD
+  from_name: 台星科
+  to_name: AMD
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: Article states 台星科 customers include 聯發科, 江蘇長電 and AMD — https://uanalyze.com.tw/articles/557385219 (優分析 UAnalyze, 2024)
+- from_symbol: '8110'
+  to_symbol: '2344'
+  from_name: 華東
+  to_name: 華邦電
+  edge_type: supplies
+  confidence: medium
+  revenue_pct: null
+  evidence: MoneyDJ profile says 華東 mainly takes packaging and testing orders from group company 華邦; a separate article states 60%-63% of 華東 revenue comes directly from 華邦電 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=3ff514ae-5eac-486d-a90c-1b854a87d5d7 and https://vocus.cc/article/695bab4efd89780001affd9c (MoneyDJ; Vocus, 2025)
+- from_symbol: '8064'
+  to_symbol: '3481'
+  from_name: 東捷
+  to_name: 群創
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile states 東捷科技's main customers are 群創 and related mainland China manufacturers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=ebba8a00-67af-4c66-b702-6c40cd40e778 (MoneyDJ理財網, 2025)
+- from_symbol: '6739'
+  to_symbol: '6196'
+  from_name: 竹陞科技
+  to_name: 帆宣
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 竹陞科技's domestic competitors include 帆宣 and 翔名 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=69d50104-14f8-4b45-b30f-d2d198ba3297 (MoneyDJ理財網, 2025)
+- from_symbol: '6739'
+  to_symbol: '8091'
+  from_name: 竹陞科技
+  to_name: 翔名
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 竹陞科技's domestic competitors include 帆宣 and 翔名 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=69d50104-14f8-4b45-b30f-d2d198ba3297 (MoneyDJ理財網, 2025)
+- from_symbol: '8271'
+  to_symbol: '3260'
+  from_name: 宇瞻
+  to_name: 威剛
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 宇瞻's competitors include Kingston, Penguin Solutions, 威剛, 創見, 十銓 and 宜鼎 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=98a24b1c-8c32-46ac-a564-caafe7fa26cf (MoneyDJ理財網, 2025)
+- from_symbol: '8271'
+  to_symbol: '2451'
+  from_name: 宇瞻
+  to_name: 創見
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 宇瞻's competitors include Kingston, Penguin Solutions, 威剛, 創見, 十銓 and 宜鼎 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=98a24b1c-8c32-46ac-a564-caafe7fa26cf (MoneyDJ理財網, 2025)
+- from_symbol: '8271'
+  to_symbol: '4967'
+  from_name: 宇瞻
+  to_name: 十銓
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 宇瞻's competitors include Kingston, Penguin Solutions, 威剛, 創見, 十銓 and 宜鼎 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=98a24b1c-8c32-46ac-a564-caafe7fa26cf (MoneyDJ理財網, 2025)
+- from_symbol: '8271'
+  to_symbol: '5289'
+  from_name: 宇瞻
+  to_name: 宜鼎
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 宇瞻's competitors include Kingston, Penguin Solutions, 威剛, 創見, 十銓 and 宜鼎 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=98a24b1c-8c32-46ac-a564-caafe7fa26cf (MoneyDJ理財網, 2025)
+- from_symbol: '6579'
+  to_symbol: '2395'
+  from_name: 研揚
+  to_name: 研華
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 友通, 研華, 凌華 and 樺漢 as 研揚's main competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=66cecde8-d307-41e3-b27c-010d96cd5dce (MoneyDJ理財網, 2025)
+- from_symbol: '6579'
+  to_symbol: '6166'
+  from_name: 研揚
+  to_name: 凌華
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 友通, 研華, 凌華 and 樺漢 as 研揚's main competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=66cecde8-d307-41e3-b27c-010d96cd5dce (MoneyDJ理財網, 2025)
+- from_symbol: '6579'
+  to_symbol: '2397'
+  from_name: 研揚
+  to_name: 友通
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 友通, 研華, 凌華 and 樺漢 as 研揚's main competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=66cecde8-d307-41e3-b27c-010d96cd5dce (MoneyDJ理財網, 2025)
+- from_symbol: '6579'
+  to_symbol: '6414'
+  from_name: 研揚
+  to_name: 樺漢
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 友通, 研華, 凌華 and 樺漢 as 研揚's main competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=66cecde8-d307-41e3-b27c-010d96cd5dce (MoneyDJ理財網, 2025)
+- from_symbol: '5425'
+  to_symbol: '2481'
+  from_name: 台半
+  to_name: 強茂
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 敦南, 朋程, 德微, 強茂 and 虹揚-KY as 台半's domestic competitors; a separate FinLab summary lists the same peers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=6975c3a4-ae46-43b4-8c85-8f9f80792088 (MoneyDJ理財網, 2025)
+- from_symbol: '5425'
+  to_symbol: '8255'
+  from_name: 台半
+  to_name: 朋程
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 敦南, 朋程, 德微, 強茂 and 虹揚-KY as 台半's domestic competitors; a separate FinLab summary lists the same peers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=6975c3a4-ae46-43b4-8c85-8f9f80792088 (MoneyDJ理財網, 2025)
+- from_symbol: '5425'
+  to_symbol: '3675'
+  from_name: 台半
+  to_name: 德微
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 敦南, 朋程, 德微, 強茂 and 虹揚-KY as 台半's domestic competitors; a separate FinLab summary lists the same peers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=6975c3a4-ae46-43b4-8c85-8f9f80792088 (MoneyDJ理財網, 2025)
+- from_symbol: '5425'
+  to_symbol: '6573'
+  from_name: 台半
+  to_name: 虹揚-KY
+  edge_type: competes
+  confidence: medium
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 敦南, 朋程, 德微, 強茂 and 虹揚-KY as 台半's domestic competitors; a separate FinLab summary lists the same peers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=6975c3a4-ae46-43b4-8c85-8f9f80792088 (MoneyDJ理財網, 2025)
+- from_symbol: '3362'
+  to_symbol: '3008'
+  from_name: 先進光
+  to_name: 大立光
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile names 大立光, 玉晶光 and 亞光 among 先進光電's competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=d80bb2a0-d4fd-44fb-8ae8-cbe935cc00e9 (MoneyDJ理財網, 2025)
+- from_symbol: '3362'
+  to_symbol: '3406'
+  from_name: 先進光
+  to_name: 玉晶光
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile names 大立光, 玉晶光 and 亞光 among 先進光電's competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=d80bb2a0-d4fd-44fb-8ae8-cbe935cc00e9 (MoneyDJ理財網, 2025)
+- from_symbol: '3362'
+  to_symbol: '3019'
+  from_name: 先進光
+  to_name: 亞光
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile names 大立光, 玉晶光 and 亞光 among 先進光電's competitors — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=d80bb2a0-d4fd-44fb-8ae8-cbe935cc00e9 (MoneyDJ理財網, 2025)
+- from_symbol: '2002'
+  to_symbol: '2023'
+  from_name: 中鋼
+  to_name: 燁輝
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 燁輝's hot-rolled coil raw material comes from the 中鋼 group and 燁輝 is 中鋼's largest domestic hot-rolled coil customer — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=ec76c2c9-18f0-4712-99b3-26917dba9ecd (MoneyDJ理財網, 2025)
+- from_symbol: '2208'
+  to_symbol: '2609'
+  from_name: 台船
+  to_name: 陽明
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 陽明海運 among 台船's main customers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=e6cd1dbe-9c41-4e86-b08d-283158f9421b (MoneyDJ理財網, 2025)
+- from_symbol: '1232'
+  to_symbol: '1219'
+  from_name: 大統益
+  to_name: 福壽
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 大統益's domestic soybean meal competitor is 福壽 — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=903b8b46-3d00-4620-b8c9-43d0b0998c29 (MoneyDJ理財網, 2025)
+- from_symbol: '1232'
+  to_symbol: '1227'
+  from_name: 大統益
+  to_name: 佳格
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 佳格 among 大統益's competing edible oil producers — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=903b8b46-3d00-4620-b8c9-43d0b0998c29 (MoneyDJ理財網, 2025)
+- from_symbol: '1232'
+  to_symbol: '1216'
+  from_name: 大統益
+  to_name: 統一
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile says 統一, 大成 and 泰華 commission 大統益 for contract processing — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=903b8b46-3d00-4620-b8c9-43d0b0998c29 (MoneyDJ理財網, 2025)
+- from_symbol: '1227'
+  to_symbol: '1216'
+  from_name: 佳格
+  to_name: 統一
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile lists 統一 among 佳格's competitors in the dairy and edible oil markets — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=f1dfc540-73f7-4be6-b2db-17e90bbd9b98 (MoneyDJ理財網, 2025)
+- from_symbol: '1227'
+  to_symbol: '1217'
+  from_name: 佳格
+  to_name: 愛之味
+  edge_type: competes
+  confidence: low
+  revenue_pct: null
+  evidence: MoneyDJ profile names 愛之味 as 佳格's main competitor in ready-to-drink cereal products — https://www.moneydj.com/kmdj/wiki/wikiviewer.aspx?keyid=f1dfc540-73f7-4be6-b2db-17e90bbd9b98 (MoneyDJ理財網, 2025)
+- from_symbol: '7788'
+  to_symbol: '2308'
+  from_name: 松川精密
+  to_name: 台達電
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱松川精密目前供貨給台達電等電源供應器廠商 — https://m.cnyes.com/news/id/6156819 (鉅亨網, 2025)
+- from_symbol: '7788'
+  to_symbol: '2301'
+  from_name: 松川精密
+  to_name: 光寶科
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱松川精密目前供貨給光寶等電源供應器廠商 — https://m.cnyes.com/news/id/6156819 (鉅亨網, 2025)
+- from_symbol: '7788'
+  to_symbol: '6282'
+  from_name: 松川精密
+  to_name: 康舒
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱松川精密目前供貨給康舒等電源供應器廠商 — https://m.cnyes.com/news/id/6156819 (鉅亨網, 2025)
+- from_symbol: '2493'
+  to_symbol: '3037'
+  from_name: 揚博
+  to_name: 欣興
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱揚博PCB濕製程設備的主要客戶包括欣興、臻鼎等 — https://tw.stock.yahoo.com/news/copos%E8%A8%AD%E5%82%99%E7%99%BE%E5%AE%B6%E7%88%AD%E9%B3%B4-%E5%82%B3%E6%8F%9A%E5%8D%9A%E6%89%93%E5%85%A5%E5%AF%A6%E9%A9%97%E7%B7%9A-%E8%A9%95%E4%BC%B0%E4%B8%AD-021000273.html (MoneyDJ, 2026)
+- from_symbol: '2493'
+  to_symbol: '4958'
+  from_name: 揚博
+  to_name: 臻鼎-KY
+  edge_type: supplies
+  confidence: low
+  revenue_pct: null
+  evidence: 報導稱揚博PCB濕製程設備的主要客戶包括欣興、臻鼎等 — https://tw.stock.yahoo.com/news/copos%E8%A8%AD%E5%82%99%E7%99%BE%E5%AE%B6%E7%88%AD%E9%B3%B4-%E5%82%B3%E6%8F%9A%E5%8D%9A%E6%89%93%E5%85%A5%E5%AF%A6%E9%A9%97%E7%B7%9A-%E8%A9%95%E4%BC%B0%E4%B8%AD-021000273.html (MoneyDJ, 2026)
