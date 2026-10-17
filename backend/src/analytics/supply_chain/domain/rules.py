@@ -3,8 +3,8 @@
 Grade (derived, never typed in for researched rows):
   high    >= 1 primary source, or >= 2 secondary sources from different publishers
   medium  1 secondary + >= 1 tertiary, or >= 2 tertiary from different publishers
-  low     1 secondary
-  none    anything weaker (tertiary-only) -> the relation stays a candidate
+  low     1 secondary, or tertiary sources only (shown with its low grade and its sources)
+  none    no usable evidence at all -> the relation stays a candidate
 Evidence that is rejected, or does not support the claim, is ignored.
 
 Documented exception: a `seeded` relation carries no evidence and keeps its stated grade; it is
@@ -112,7 +112,7 @@ def grade_from_evidence(evidence: Iterable[Evidence]) -> Grade | None:
         return Grade.MEDIUM if tertiary else Grade.LOW
     if len(tertiary) >= _MIN_INDEPENDENT:
         return Grade.MEDIUM
-    return None
+    return Grade.LOW if tertiary else None
 
 
 def _months_before(today: date, months: int) -> date:

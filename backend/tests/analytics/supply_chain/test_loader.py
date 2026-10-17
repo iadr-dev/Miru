@@ -75,13 +75,16 @@ def test_parse_computes_trust_grade_and_status(reference: Path) -> None:
     )
 
 
-def test_untrusted_sources_stay_candidate(reference: Path) -> None:
+def test_unknown_domains_count_as_tertiary_and_publish_at_low_grade(reference: Path) -> None:
     rel_dir = reference / "supply_chain" / "relations"
     _write(rel_dir, "a.yaml", RESEARCH)  # no trust override: unknown domains are tertiary
     parsed = parse_relation_files(rel_dir, {}, TODAY)
     pairs = {(r.supplier.symbol, r.customer.symbol): r for r in parsed.relations}
     assert pairs[("9001", "9002")].grade is Grade.MEDIUM  # two tertiary publishers
-    assert pairs[("ZZZA", "9002")].status is Status.CANDIDATE
+    assert (pairs[("ZZZA", "9002")].grade, pairs[("ZZZA", "9002")].status) == (
+        Grade.LOW,
+        Status.VERIFIED,
+    )
 
 
 @pytest.mark.parametrize(

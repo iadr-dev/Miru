@@ -25,8 +25,8 @@ P, S, T, R = Trust.PRIMARY, Trust.SECONDARY, Trust.TERTIARY, Trust.REJECTED
         ([(S, "a")], Grade.LOW),
         ([(S, "a"), (T, "x")], Grade.MEDIUM),
         ([(T, "x"), (T, "y")], Grade.MEDIUM),
-        ([(T, "x"), (T, "x")], None),
-        ([(T, "x")], None),
+        ([(T, "x"), (T, "x")], Grade.LOW),  # one publisher twice, shown at its low grade
+        ([(T, "x")], Grade.LOW),
         ([(R, "z"), (R, "w")], None),
         ([(S, "a"), (R, "z")], Grade.LOW),  # rejected evidence ignored
         ([], None),
