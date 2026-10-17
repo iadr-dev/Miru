@@ -310,6 +310,34 @@ is in [api-reference.md](../api-reference.md).
   `GET /symbols/{symbol}/supply-chain`. All `public` and reachable anonymously (`optional_user`) —
   platform reference data, not user-scoped state. Layer 3 is not tier-gated.
 
+### Supply-chain relations (`analytics/supply_chain/`) — files are the truth, Postgres is an index
+
+The operator's private files (never in git; `REFERENCE_DATA_DIR`) are the source of truth. The tables
+`sc_relations` + `sc_evidence` (platform reference data, no `user_id`) are an **index rebuilt from the
+files** by the `sc_refdata_load` ingest job; nothing is restored from the database.
+
+- **File format** — `<reference dir>/supply_chain/relations/*.yaml`, each a YAML list of rows
+  `{supplier:{symbol,market,name}, customer:{...}, kind: supplies|competes, product, status, origin:
+  research|seeded|manual, revenue_pct, as_of, grade (seeded only), evidence:[{url, publisher,
+  published_on, excerpt <=300, checker}]}`. Each endpoint carries its own market (`TW`/`US`). Every
+  row is validated (`refdata_io/schema.py`); a bad row fails the whole load with `file row[i]: ...`
+  and the database is left untouched. An optional `supply_chain/publisher_trust.yaml`
+  (`domain: primary|secondary|tertiary|rejected`) overrides the built-in domain trust table.
+- **Rules** (`domain/rules.py`, pure) — trust comes from the evidence URL's publisher. Grade is derived,
+  never typed: high = >=1 primary or >=2 independent secondary; medium = 1 secondary + 1 tertiary or 2
+  tertiary from different publishers; low = 1 secondary; tertiary-only stays `candidate`; rejected
+  evidence is ignored. Older than 24 months (newest of `as_of`/`last_verified_at`) becomes `stale`.
+  Documented exception: `seeded` rows carry no evidence, keep their stated grade and are `verified`.
+- **Load** — `job_sc_refdata_load` (leader-only, daily 06:20 Taipei, also run once in the dev startup
+  catch-up) upserts by natural key `(supplier, customer, kind, product)` replacing each row's evidence,
+  and deletes index rows the files no longer contain. Idempotent. A missing or empty directory is a
+  no-op with one warning (it never wipes the index). CLI: `python -m analytics.supply_chain load|stats`.
+- **Read** — `GET /symbols/{symbol}/supply-chain?market=` and `get_supply_chain_edges` read these
+  tables and return only `verified`, non-stale relations. Each flat edge adds `from_market`,
+  `to_market`, `grade` (`confidence` is the legacy name), `status`, `product`, `as_of`,
+  `last_verified_at` and `sources[{publisher,url,published_on}]`. The older `supply_chain_edges`
+  table and its loaders are superseded and removed in a later change.
+
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an

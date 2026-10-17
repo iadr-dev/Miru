@@ -11,6 +11,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from analytics.supply_chain.domain.models import Grade, Kind, Status, Trust
+from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from analytics.themes.models import (
     EdgeConfidence,
     EdgeSource,
@@ -28,6 +30,7 @@ from db.base import Base
 from db.sqlite_pragma import enable_sqlite_foreign_keys
 from ingest.store import ParquetStore
 from schemas.enums import Market, Tier, TLSPolicy
+from tests.analytics.supply_chain.builders import ALPHA, BETA, GAMMA, evidence, relation
 from tools.base import ToolContext, dispatch_tool
 from tools.registry import ToolRegistry
 from tools.theme_tools import GetThemeTierHeatmapTool, build_registration_table
@@ -249,37 +252,88 @@ async def test_get_theme_tiers_groups_and_discloses_source(
     assert data["upstream"][0]["source"] == "heuristic"
 
 
-async def test_get_supply_chain_edges_both_directions_via_dispatch(
+async def _seed_relations(session_factory: async_sessionmaker) -> None:
+    async with session_factory() as session:
+        store = SqlAlchemySupplyChainStore(session)
+        await store.upsert_relation(
+            relation(
+                ALPHA,
+                BETA,
+                product="widgets",
+                revenue_pct=25.0,
+                evidence_rows=(evidence(Trust.PRIMARY, "Example IR"),),
+            )
+        )
+        await store.upsert_relation(relation(GAMMA, ALPHA, grade=Grade.LOW))
+        await store.upsert_relation(relation(ALPHA, GAMMA, status=Status.CANDIDATE))
+        await store.upsert_relation(
+            relation(BETA, ALPHA, kind=Kind.COMPETES, as_of=date(2019, 1, 1))
+        )
+        await session.commit()
+
+
+async def _edges(session_factory: async_sessionmaker, symbol: str, market: Market) -> dict:
+    tool = _registry(session_factory).get_tool("get_supply_chain_edges")
+    assert tool is not None
+    result = await dispatch_tool(
+        tool, tool.input_model.model_validate({"id": symbol, "market": market.value}), _ctx()
+    )
+    return result.model_dump(mode="json")
+
+
+async def test_get_supply_chain_edges_both_directions_with_contract_fields(
     session_factory: async_sessionmaker,
 ) -> None:
-    await _seed(session_factory)
-    registry = _registry(session_factory)
-    tool = registry.get_tool("get_supply_chain_edges")
-    assert tool is not None
-
-    result = await dispatch_tool(
-        tool, tool.input_model.model_validate({"id": "2330", "market": Market.TW.value}), _ctx()
-    )
-    data = result.model_dump()
+    await _seed_relations(session_factory)
+    data = await _edges(session_factory, "9001", Market.TW)
+    # The candidate and the stale (2019) rows are hidden; both directions are returned.
+    assert {(e["from_symbol"], e["to_symbol"]) for e in data["edges"]} == {
+        ("9001", "9002"),
+        ("ZZZA", "9001"),
+    }
     assert data["edge_count"] == 2
-    pairs = {(e["from_symbol"], e["to_symbol"]) for e in data["edges"]}
-    assert pairs == {("2330", "AAPL"), ("2454", "2330")}
+    top = data["edges"][0]
+    assert top == {
+        "from_symbol": "9001",
+        "to_symbol": "9002",
+        "market": "TW",
+        "from_market": "TW",
+        "to_market": "TW",
+        "edge_type": "supplies",
+        "confidence": "high",
+        "grade": "high",
+        "status": "verified",
+        "revenue_pct": 25.0,
+        "source": "research",
+        "from_name": "Alpha Parts",
+        "to_name": "Beta Devices",
+        "product": "widgets",
+        "as_of": "2026-01-01",
+        "last_verified_at": None,
+        "sources": [
+            {
+                "publisher": "Example IR",
+                "url": "https://example.com/Example-IR/1",
+                "published_on": "2025-01-02",
+            }
+        ],
+    }
+    assert data["edges"][1]["from_market"] == "US"
+    assert data["edges"][1]["market"] == "US"  # legacy: the supplier's market
 
 
-async def test_get_supply_chain_edges_empty_for_unknown_symbol(
+async def test_get_supply_chain_edges_honors_market(session_factory: async_sessionmaker) -> None:
+    await _seed_relations(session_factory)
+    data = await _edges(session_factory, "9001", Market.US)
+    assert data["edges"] == []
+
+
+async def test_get_supply_chain_edges_empty_for_unknown_or_unsupported(
     session_factory: async_sessionmaker,
 ) -> None:
-    await _seed(session_factory)
-    registry = _registry(session_factory)
-    tool = registry.get_tool("get_supply_chain_edges")
-    assert tool is not None
-
-    result = await dispatch_tool(
-        tool, tool.input_model.model_validate({"id": "9999", "market": Market.TW.value}), _ctx()
-    )
-    data = result.model_dump()
-    assert data["edge_count"] == 0
-    assert data["edges"] == ()
+    await _seed_relations(session_factory)
+    assert (await _edges(session_factory, "9999", Market.TW))["edge_count"] == 0
+    assert (await _edges(session_factory, "9001", Market.JP))["edge_count"] == 0
 
 
 async def test_get_theme_tier_heatmap_colors_tiles_by_real_price_change(

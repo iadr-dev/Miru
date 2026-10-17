@@ -115,8 +115,9 @@ async def symbol_supply_chain(
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),
 ) -> dict[str, object]:
-    """個股 > 產業分析's 供應鏈關係圖 card — every supply/customer/competitor edge involving one
-    symbol, from either side."""
+    """個股 > 產業分析's 供應鏈關係圖 card — every published supplies/competes edge involving one
+    company (`symbol` + `market`), from either side. Each edge carries its evidence `grade`,
+    `product`, `as_of` date and `sources`; candidate, rejected and stale relations are hidden."""
     return await _dispatch(
         state, "get_supply_chain_edges", {"id": symbol, "market": market.value}, ctx
     )
