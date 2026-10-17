@@ -27,6 +27,7 @@ import hmac
 import re
 import secrets
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol, cast
@@ -69,11 +70,10 @@ logger = structlog.get_logger(__name__)
 MAX_STATE_LENGTH = 2048
 PUBLIC_CLIENT_AUTH = "none"  # no client secret: PKCE binds a code to its client
 MAX_CLIENT_NAME_LENGTH = 100
-_STALE_DCR_DAYS = 30
 _KEEP_SPENT_SECONDS = 86_400
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
-ConsentFailure = Literal["not_found", "nonce_mismatch"]
+ConsentFailure = Literal["not_found", "nonce_mismatch", "browser_mismatch", "user_mismatch"]
 
 
 class OAuthProtocolError(Exception):
@@ -125,11 +125,20 @@ class ConsentView:
     client_name: str
     client_id: str
     client_kind: Literal["dcr", "cimd"]
+    redirect_uri: str
     redirect_host: str
+    verified: bool
     scope: str
     resource: str
     nonce: str
     expires_at: datetime
+
+
+@dataclass(frozen=True)
+class BegunAuthorization:
+    request_id: str
+    # The secret for the cookie that ties the consent screen to the browser that started the flow.
+    browser_secret: str
 
 
 @dataclass(frozen=True)
@@ -160,11 +169,16 @@ def _rows_changed(result: object) -> int:
 
 
 def build_redirect(redirect_uri: str, **params: str | None) -> str:
-    """`redirect_uri` with the given query parameters appended (existing ones kept)."""
+    """`redirect_uri` with the given query parameters appended (existing ones kept). Only the
+    query changes; the result is checked to still point at the same scheme and authority."""
     parts = urlsplit(redirect_uri)
     query = parse_qsl(parts.query, keep_blank_values=True)
     query.extend((k, v) for k, v in params.items() if v is not None)
-    return urlunsplit(parts._replace(query=urlencode(query)))
+    built = urlunsplit(parts._replace(query=urlencode(query)))
+    after = urlsplit(built)
+    if (after.scheme, after.netloc, after.path) != (parts.scheme, parts.netloc, parts.path):
+        raise ValueError("redirect composition changed the destination")
+    return built
 
 
 def _clean_name(value: object, fallback: str) -> str:
@@ -181,10 +195,13 @@ class AuthorizationServer:
         settings: Settings,
         *,
         metadata_source: ClientMetadataSource | None = None,
+        fetch_gate: Callable[[], Awaitable[bool]] | None = None,
     ) -> None:
         self._session = session
         self._settings = settings
         self._metadata_source = metadata_source
+        # Asked before each NEW metadata-document fetch (not for a cached client); False refuses.
+        self._fetch_gate = fetch_gate
 
     async def _run(self, statement: Executable) -> object:
         """Run an UPDATE/DELETE. `fetch` keeps objects already loaded in the session in step with
@@ -255,7 +272,8 @@ class AuthorizationServer:
         has_grant = exists().where(OAuthGrantRow.client_id == OAuthClientRow.client_id)
         await self._run(
             delete(OAuthClientRow).where(
-                OAuthClientRow.last_seen_at < now - timedelta(days=_STALE_DCR_DAYS),
+                OAuthClientRow.last_seen_at
+                < now - timedelta(days=self._settings.oauth_unused_client_days),
                 ~has_grant,
             )
         )
@@ -295,16 +313,34 @@ class AuthorizationServer:
             return self._info(row)
         if self._metadata_source is None:
             raise OAuthProtocolError("invalid_client", "Client metadata documents are disabled.")
+        if self._fetch_gate is not None and not await self._fetch_gate():
+            raise OAuthProtocolError(
+                "temporarily_unavailable", "Too many client lookups; slow down.", status=429
+            )
+        # Nothing is pending (only the cache read above ran): end the transaction so no database
+        # connection is held while a remote server takes up to its timeout to answer.
+        await self._session.commit()
         try:
             document = await self._metadata_source.fetch(url)
         except ClientMetadataFetchError as exc:
-            logger.warning("oauth_client_metadata_rejected", reason=exc.reason)
+            logger.warning("oauth_client_metadata_rejected", reason=exc.reason, detail=exc.detail)
+            # The reason stays in the log: to the caller it would map the server's network.
             raise OAuthProtocolError(
-                "invalid_client", f"Could not fetch the client metadata document ({exc.reason})."
+                "invalid_client", "The client metadata document could not be fetched."
             ) from exc
         name, uris = self._check_document(url, document)
+        row = await self._session.get(OAuthClientRow, url)
         if row is None:
             await self._drop_stale_clients(now)
+            cimd_count = await self._session.scalar(
+                select(func.count())
+                .select_from(OAuthClientRow)
+                .where(OAuthClientRow.kind == "cimd")
+            )
+            if (cimd_count or 0) >= self._settings.oauth_max_cimd_clients:
+                raise OAuthProtocolError(
+                    "temporarily_unavailable", "Client lookups are full; try later.", status=503
+                )
             row = OAuthClientRow(
                 client_id=url,
                 name=name,
@@ -366,19 +402,23 @@ class AuthorizationServer:
         resource: str | None,
         scope: str | None,
         state: str | None,
-    ) -> str:
-        """Validate an authorize request and store it; returns the request id for the consent
-        screen. Raises `AuthorizeRejectedError`, which carries a redirect target only once the
-        client and redirect URI are verified."""
+    ) -> BegunAuthorization:
+        """Validate an authorize request and store it. Raises `AuthorizeRejectedError`, which
+        carries a redirect target only once the client and redirect URI are verified."""
         try:
             client = await self.resolve_client(client_id)
         except OAuthProtocolError as exc:
             raise AuthorizeRejectedError(
                 error=exc.error, description=exc.description, redirect_uri=None, state=None
             ) from exc
+        supplied = redirect_uri is not None
         if redirect_uri is None and len(client.redirect_uris) == 1:
             redirect_uri = client.redirect_uris[0]
-        if not redirect_uri or not redirect_uri_matches(client.redirect_uris, redirect_uri):
+        if not redirect_uri or not redirect_uri_matches(
+            client.redirect_uris,
+            redirect_uri,
+            extra_schemes=self._settings.oauth_redirect_schemes(),
+        ):
             raise AuthorizeRejectedError(
                 error="invalid_request",
                 description="redirect_uri does not match a registered redirect URI.",
@@ -409,6 +449,7 @@ class AuthorizationServer:
         client_row = await self._session.get(OAuthClientRow, client.client_id)
         if client_row is not None:
             client_row.last_seen_at = now
+        browser_secret = secrets.token_urlsafe(32)
         request = OAuthAuthorizationRequestRow(
             id=str(uuid.uuid4()),
             client_id=client.client_id,
@@ -418,13 +459,15 @@ class AuthorizationServer:
             resource=canonical,
             scope=resolve_scope(scope),
             nonce=secrets.token_urlsafe(24),
+            browser_hash=hash_secret(browser_secret),
+            redirect_uri_supplied=supplied,
             created_at=now,
             expires_at=now
             + timedelta(seconds=self._settings.oauth_authorization_request_ttl_seconds),
         )
         self._session.add(request)
         await self._session.flush()
-        return request.id
+        return BegunAuthorization(request_id=request.id, browser_secret=browser_secret)
 
     async def _purge_expired(self, now: datetime) -> None:
         spent_before = now - timedelta(seconds=_KEEP_SPENT_SECONDS)
@@ -444,8 +487,28 @@ class AuthorizationServer:
             raise ConsentError("not_found")
         return row
 
-    async def consent_view(self, request_id: str) -> ConsentView:
+    async def _request_for(
+        self, request_id: str, *, user_id: str, browser_secret: str | None
+    ) -> OAuthAuthorizationRequestRow:
+        """The live request, if THIS browser started it and THIS user is the one it is bound to
+        (the first user to open it). Anyone else - a link passed to another person, another
+        signed-in account in the same browser - is refused."""
         row = await self._live_request(request_id)
+        if not browser_secret or not hmac.compare_digest(
+            row.browser_hash.encode(), hash_secret(browser_secret).encode()
+        ):
+            raise ConsentError("browser_mismatch")
+        if row.bound_user_id is None:
+            row.bound_user_id = user_id
+            await self._session.flush()
+        elif row.bound_user_id != user_id:
+            raise ConsentError("user_mismatch")
+        return row
+
+    async def consent_view(
+        self, request_id: str, *, user_id: str, browser_secret: str | None
+    ) -> ConsentView:
+        row = await self._request_for(request_id, user_id=user_id, browser_secret=browser_secret)
         client = await self._session.get(OAuthClientRow, row.client_id)
         if client is None:  # pragma: no cover - the FK cascade removes the request with its client
             raise ConsentError("not_found")
@@ -455,20 +518,32 @@ class AuthorizationServer:
             client_name=info.name,
             client_id=info.client_id,
             client_kind=info.kind,
-            redirect_host=redirect_host(info.redirect_uris),
+            # What the decision will actually redirect to - the stored request, not the client's
+            # registered list - so the screen can never show one destination and use another.
+            redirect_uri=row.redirect_uri,
+            redirect_host=redirect_host([row.redirect_uri]),
+            verified=info.client_id in self._settings.oauth_verified_clients(),
             scope=row.scope,
             resource=row.resource,
             nonce=row.nonce,
             expires_at=_utc(row.expires_at),
         )
 
-    async def decide(self, *, request_id: str, user_id: str, approve: bool, nonce: str) -> str:
+    async def decide(
+        self,
+        *,
+        request_id: str,
+        user_id: str,
+        approve: bool,
+        nonce: str,
+        browser_secret: str | None,
+    ) -> str:
         """Record the user's decision and return the URL to send the browser to.
 
         The nonce proves the decision comes from the page that showed this request to the
         signed-in user (cross-site forms and scripts cannot read it). The request is consumed
         either way, so a decision can be taken once."""
-        row = await self._live_request(request_id)
+        row = await self._request_for(request_id, user_id=user_id, browser_secret=browser_secret)
         if not hmac.compare_digest(row.nonce.encode(), nonce.encode()):
             raise ConsentError("nonce_mismatch")
         removed = await self._run(
@@ -494,6 +569,7 @@ class AuthorizationServer:
                 user_id=user_id,
                 client_id=row.client_id,
                 redirect_uri=row.redirect_uri,
+                redirect_uri_supplied=row.redirect_uri_supplied,
                 code_challenge=row.code_challenge,
                 resource=row.resource,
                 scope=row.scope,
@@ -521,14 +597,19 @@ class AuthorizationServer:
         if row is None:
             raise invalid
         if row.used_at is not None:
-            await self._revoke_grant(row.grant_id)
-            logger.warning("oauth_code_replayed", client_id=row.client_id)
+            # Revoke only for the client the code was issued to: someone who merely saw an old
+            # code (a log line, a referrer) must not be able to cut a user's connection.
+            if row.client_id == client_id:
+                await self._revoke_grant(row.grant_id)
+                logger.warning("oauth_code_replayed", client_id=row.client_id)
             raise invalid
-        if (
-            _utc(row.expires_at) <= _now()
-            or row.client_id != client_id
-            or redirect_uri != row.redirect_uri
-        ):
+        # RFC 6749 4.1.3: redirect_uri is required only if the authorization request included it.
+        redirect_ok = (
+            redirect_uri == row.redirect_uri
+            if row.redirect_uri_supplied
+            else redirect_uri in (None, row.redirect_uri)
+        )
+        if _utc(row.expires_at) <= _now() or row.client_id != client_id or not redirect_ok:
             raise invalid
         if resource is not None and not same_resource(resource, row.resource):
             raise OAuthProtocolError("invalid_target", "resource does not match the grant.")
@@ -543,6 +624,9 @@ class AuthorizationServer:
             .values(used_at=now)
         )
         if _rows_changed(claimed) != 1:  # a concurrent redemption won: this is a replay
+            # Atomic UPDATE ... WHERE used_at IS NULL: on Postgres two racing requests cannot both
+            # win. Only SQLite is exercised in this suite (a Postgres concurrency test needs the
+            # `concurrency` profile and a live server); the statement is what carries the guarantee.
             await self._session.refresh(row)
             await self._revoke_grant(row.grant_id)
             raise invalid

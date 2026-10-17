@@ -167,7 +167,8 @@ async def test_an_event_naming_another_user_is_never_deleted_by_a_shared_id(
 
 def test_every_table_keyed_by_a_user_is_covered() -> None:
     """A table whose per-user key is not called `user_id` would silently survive an erasure."""
-    covered = set(user_scoped_tables()) | {"users"}
+    # `oauth_authorization_requests.bound_user_id` is purged explicitly by `erase_user`.
+    covered = set(user_scoped_tables()) | {"users", "oauth_authorization_requests"}
     uncovered = [
         table.name
         for table in Base.metadata.sorted_tables

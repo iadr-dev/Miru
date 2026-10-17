@@ -313,13 +313,23 @@ def test_the_consent_response_shape_and_the_session_cookie(
     client.cookies.clear()
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"request_id", "client", "scopes", "resource", "nonce", "expires_at"}
+    assert set(body) == {
+        "request_id",
+        "client",
+        "redirect_uri",
+        "scopes",
+        "resource",
+        "nonce",
+        "expires_at",
+    }
+    assert body["redirect_uri"] == CALLBACK
     assert body["request_id"] == request_id
     assert body["client"] == {
         "name": "Test client",
         "client_id": body["client"]["client_id"],
         "kind": "registered",
         "redirect_host": "localhost",
+        "verified": False,
     }
     assert body["scopes"] == [{"id": "mcp:read", "description": body["scopes"][0]["description"]}]
     assert body["resource"] == {"url": RESOURCE, "label": "Miru MCP"}

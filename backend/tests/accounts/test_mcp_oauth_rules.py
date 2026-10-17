@@ -9,7 +9,6 @@ from accounts.mcp_oauth.rules import (
     is_public_cimd_url,
     is_valid_code_challenge,
     redirect_host,
-    redirect_uri_matches,
     resolve_scope,
     s256_challenge,
     same_resource,
@@ -18,8 +17,15 @@ from accounts.mcp_oauth.rules import (
     validate_redirect_uris,
     verify_pkce,
 )
+from accounts.mcp_oauth.rules import redirect_uri_matches as _matches
 
 SCHEMES = frozenset({"vscode", "cursor"})
+
+
+def redirect_uri_matches(registered: list[str], presented: str) -> bool:
+    return _matches(registered, presented, extra_schemes=SCHEMES)
+
+
 # RFC 7636 appendix B test vector.
 RFC_VERIFIER = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 RFC_CHALLENGE = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"

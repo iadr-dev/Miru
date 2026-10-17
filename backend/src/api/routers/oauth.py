@@ -57,7 +57,7 @@ from api.dependencies import (
     system_scope,
 )
 from api.errors import ApiError
-from api.rate_guard import client_address, guard_auth
+from api.rate_guard import client_address, guard_auth, rate_limit_address
 from config.settings import Settings
 from dataaccess.oauth_client_metadata import build_client_metadata_fetcher
 
@@ -143,7 +143,11 @@ class ConsentClient(BaseModel):
     # `registered` = registered by the client itself (anyone can pick any name); `metadata_url`
     # = the client_id is an https URL the server fetched - show the URL host as its identity.
     kind: Literal["registered", "metadata_url"]
+    # The host of the redirect URI the decision will send the browser to.
     redirect_host: str
+    # true only for client_ids the operator lists in OAUTH_VERIFIED_CLIENT_IDS. Anyone can
+    # register under any name, so show an "unverified app" warning when this is false.
+    verified: bool
 
 
 class ConsentScope(BaseModel):
@@ -159,6 +163,8 @@ class ConsentResource(BaseModel):
 class ConsentResponse(BaseModel):
     request_id: str
     client: ConsentClient
+    # The exact URL the browser is sent to on approve / deny (from the stored request).
+    redirect_uri: str
     scopes: list[ConsentScope]
     resource: ConsentResource
     nonce: str
@@ -198,11 +204,25 @@ def get_metadata_source(state: AppState = Depends(get_state)) -> ClientMetadataS
 
 
 def get_authorization_server(
+    request: Request,
     session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings_dep),
+    state: AppState = Depends(get_state),
     metadata_source: ClientMetadataSource = Depends(get_metadata_source),
 ) -> AuthorizationServer:
-    return AuthorizationServer(session, settings, metadata_source=metadata_source)
+    async def may_fetch() -> bool:
+        # A NEW metadata document makes this server open a connection of its own, so it is
+        # metered far tighter than the endpoint itself.
+        address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
+        verdict = await state.rate_limiter.check(
+            f"oauth:cimd:ip:{rate_limit_address(address)}",
+            max_requests=state.settings.oauth_cimd_fetch_per_minute,
+            window_seconds=_TOKEN_WINDOW_SECONDS,
+        )
+        return verdict.allowed
+
+    return AuthorizationServer(
+        session, state.settings, metadata_source=metadata_source, fetch_gate=may_fetch
+    )
 
 
 def _error(error: str, description: str, *, status_code: int = 400) -> JSONResponse:
@@ -223,7 +243,9 @@ async def _throttle(
 ) -> JSONResponse | None:
     address = client_address(request, trusted_proxy_count=state.settings.trusted_proxy_count)
     verdict = await state.rate_limiter.check(
-        f"oauth:{bucket}:ip:{address}", max_requests=limit, window_seconds=window
+        f"oauth:{bucket}:ip:{rate_limit_address(address)}",
+        max_requests=limit,
+        window_seconds=window,
     )
     if verdict.allowed:
         return None
@@ -234,16 +256,28 @@ async def _throttle(
     return response
 
 
+async def _read_capped(request: Request) -> bytes | None:
+    """The request body, or None if it exceeds the cap. A declared Content-Length over the cap is
+    refused before anything is read, and the stream is counted as it arrives and abandoned at the
+    cap, so a body that lies about (or omits) its length is never buffered whole."""
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > _MAX_FORM_BYTES:
+        return None
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > _MAX_FORM_BYTES:
+            return None
+    return bytes(body)
+
+
 async def _form(request: Request) -> dict[str, str] | JSONResponse:
     """The urlencoded body as a flat dict; a repeated parameter is an error (RFC 6749 3.2)."""
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
     if content_type != _FORM_CONTENT_TYPE:
         return _error("invalid_request", f"Content-Type must be {_FORM_CONTENT_TYPE}.")
-    declared = request.headers.get("content-length")
-    if declared is not None and declared.isdigit() and int(declared) > _MAX_FORM_BYTES:
-        return _error("invalid_request", "Request body is too large.", status_code=413)
-    raw = await request.body()
-    if len(raw) > _MAX_FORM_BYTES:
+    raw = await _read_capped(request)
+    if raw is None:
         return _error("invalid_request", "Request body is too large.", status_code=413)
     try:
         parsed = parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=50)
@@ -354,7 +388,7 @@ async def authorize(
             _consent_page(settings, request, error="invalid_request"), status_code=302
         )
     try:
-        request_id = await server.begin_authorization(
+        begun = await server.begin_authorization(
             client_id=client_id,
             redirect_uri=redirect_uri,
             response_type=response_type,
@@ -380,7 +414,22 @@ async def authorize(
             ),
             status_code=302,
         )
-    return RedirectResponse(_consent_page(settings, request, request=request_id), status_code=302)
+    redirect = RedirectResponse(
+        _consent_page(settings, request, request=begun.request_id), status_code=302
+    )
+    # Ties the consent screen to THIS browser: the secret is only in this cookie, and only its hash
+    # is stored. httpOnly + SameSite=Lax, host-only on the API origin, so the web app's consent
+    # calls must be made with credentials (the same way the session cookie already is).
+    redirect.set_cookie(
+        consent_cookie_name(begun.request_id),
+        begun.browser_secret,
+        httponly=True,
+        secure=settings.env == "production",
+        samesite="lax",
+        max_age=settings.oauth_authorization_request_ttl_seconds,
+        path="/",
+    )
+    return redirect
 
 
 # ---------------------------------------------------------------------------------- token
@@ -504,8 +553,18 @@ async def register(  # noqa: PLR0911 - one early return per RFC 7591 error
     )
     if throttled is not None:
         return throttled
-    raw = await request.body()
-    if len(raw) > _MAX_FORM_BYTES:
+    everyone = await state.rate_limiter.check(
+        "oauth:register:global",
+        max_requests=state.settings.oauth_register_global_per_hour,
+        window_seconds=_REGISTER_WINDOW_SECONDS,
+    )
+    if not everyone.allowed:
+        logger.warning("oauth_rate_limited", bucket="register_global")
+        return _error(
+            "temporarily_unavailable", "Registration is busy; try later.", status_code=429
+        )
+    raw = await _read_capped(request)
+    if raw is None:
         return _error("invalid_client_metadata", "Request body is too large.", status_code=413)
     try:
         metadata = RegisterRequest.model_validate(json.loads(raw))
@@ -607,7 +666,21 @@ async def revoke(
 # ---------------------------------------------------------------- web app: consent
 
 
+def consent_cookie_name(request_id: str) -> str:
+    return f"oauth_req_{request_id}"
+
+
 def _consent_error(exc: ConsentError) -> ApiError:
+    if exc.failure in {"browser_mismatch", "user_mismatch"}:
+        return ApiError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code=f"oauth_{exc.failure}",
+            message=(
+                "This sign-in was started in another browser or by another account. "
+                "Start it again from the app, in this browser."
+            ),
+            retryable=False,
+        )
     if exc.failure == "nonce_mismatch":
         return ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -626,13 +699,18 @@ def _consent_error(exc: ConsentError) -> ApiError:
 @web_router.get("/oauth/consent/{request_id}")
 async def get_consent(
     request_id: str,
-    _user: User = Depends(require_user),
+    request: Request,
+    user: User = Depends(require_user),
     server: AuthorizationServer = Depends(get_authorization_server),
 ) -> ConsentResponse:
     """What the signed-in user is being asked to approve. The `nonce` must be echoed in the
     decision: only this response contains it."""
     try:
-        view = await server.consent_view(request_id)
+        view = await server.consent_view(
+            request_id,
+            user_id=user.id,
+            browser_secret=request.cookies.get(consent_cookie_name(request_id)),
+        )
     except ConsentError as exc:
         raise _consent_error(exc) from exc
     return ConsentResponse(
@@ -642,7 +720,9 @@ async def get_consent(
             client_id=view.client_id,
             kind="metadata_url" if view.client_kind == "cimd" else "registered",
             redirect_host=view.redirect_host,
+            verified=view.verified,
         ),
+        redirect_uri=view.redirect_uri,
         scopes=[
             ConsentScope(id=s, description=_SCOPE_DESCRIPTIONS.get(s, s))
             for s in view.scope.split()
@@ -657,6 +737,7 @@ async def get_consent(
 async def decide_consent(
     request_id: str,
     body: ConsentDecisionRequest,
+    request: Request,
     user: User = Depends(require_user),
     server: AuthorizationServer = Depends(get_authorization_server),
 ) -> ConsentDecisionResponse:
@@ -668,6 +749,7 @@ async def decide_consent(
             user_id=user.id,
             approve=body.decision == "approve",
             nonce=body.nonce,
+            browser_secret=request.cookies.get(consent_cookie_name(request_id)),
         )
     except ConsentError as exc:
         raise _consent_error(exc) from exc

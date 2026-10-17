@@ -5,7 +5,9 @@ then downloads the JSON document at that URL to learn the client's name and redi
 is chosen by whoever sends the authorize request, so this is a server-side request forgery
 primitive unless it is fenced in. Every rule below exists for that:
 
-- https only, no userinfo, no fragment; nothing but the document's own host is ever contacted.
+- https only, port 443 only, no userinfo, no fragment; nothing but the document's own host is
+  contacted, with no proxy and no content-encoding. (The shared client is built on an explicit
+  transport, so httpx adds no proxy from HTTP(S)_PROXY / ALL_PROXY; a test pins that.)
 - The host is resolved here and EVERY address it resolves to must be globally routable - a private,
   loopback, link-local (cloud metadata is 169.254.169.254), CGNAT, reserved, multicast or
   NAT64/6to4-embedded address rejects the whole fetch.
@@ -25,6 +27,7 @@ import asyncio
 import ipaddress
 import json
 import socket
+import weakref
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Literal, cast
@@ -97,6 +100,22 @@ def _ip_literal(host: str) -> str | None:
         return None
 
 
+# At most this many metadata documents are in flight per event loop; a flood waits (inside the
+# overall deadline) instead of opening an unbounded number of outbound connections.
+_MAX_CONCURRENT_FETCHES = 8
+_slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _fetch_slots() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    slots = _slots.get(loop)
+    if slots is None:
+        slots = _slots[loop] = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
+    return slots
+
+
 class ClientMetadataFetcher:
     def __init__(
         self,
@@ -117,7 +136,7 @@ class ClientMetadataFetcher:
     async def fetch(self, url: str) -> dict[str, object]:
         host, port, path_and_query = self._parse(url)
         try:
-            async with asyncio.timeout(self._timeout):
+            async with asyncio.timeout(self._timeout), _fetch_slots():
                 address = await self._checked_address(host, port)
                 return await self._get(host, port, address, path_and_query)
         except TimeoutError as exc:
@@ -129,6 +148,8 @@ class ClientMetadataFetcher:
             parts = urlsplit(url)
             port = parts.port or _HTTPS_PORT
             host = parts.hostname
+            if port != _HTTPS_PORT:  # a metadata document is never worth probing other ports for
+                raise ClientMetadataFetchError("invalid_url", "only port 443 is allowed")
         except ValueError as exc:
             raise ClientMetadataFetchError("invalid_url") from exc
         if (
@@ -171,6 +192,7 @@ class ClientMetadataFetcher:
                     headers={
                         "Host": host_header,
                         "Accept": "application/json",
+                        "Accept-Encoding": "identity",
                         "User-Agent": _USER_AGENT,
                     },
                     extensions={"sni_hostname": host},

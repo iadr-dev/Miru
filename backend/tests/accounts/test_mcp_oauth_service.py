@@ -115,13 +115,25 @@ async def begin(server: AuthorizationServer, client: ClientInfo, **overrides: st
         "state": "xyz",
         **overrides,
     }
-    return await server.begin_authorization(**params)  # type: ignore[arg-type]
+    begun = await server.begin_authorization(**params)  # type: ignore[arg-type]
+    BROWSERS[begun.request_id] = begun.browser_secret
+    return begun.request_id
+
+
+# The cookie secret each request's browser holds (the route reads it from the cookie).
+BROWSERS: dict[str, str] = {}
 
 
 async def approve(server: AuthorizationServer, request_id: str, user_id: str) -> str:
-    view = await server.consent_view(request_id)
+    view = await server.consent_view(
+        request_id, user_id=user_id, browser_secret=BROWSERS[request_id]
+    )
     return await server.decide(
-        request_id=request_id, user_id=user_id, approve=True, nonce=view.nonce
+        request_id=request_id,
+        user_id=user_id,
+        approve=True,
+        nonce=view.nonce,
+        browser_secret=BROWSERS[request_id],
     )
 
 
@@ -271,7 +283,9 @@ async def test_a_valid_request_is_stored_with_a_nonce_and_a_short_life(
     assert len(row.nonce) >= 24
     lifetime = (row.expires_at - row.created_at).total_seconds()
     assert 0 < lifetime <= 600
-    view = await server.consent_view(request_id)
+    view = await server.consent_view(
+        request_id, user_id="viewer", browser_secret=BROWSERS[request_id]
+    )
     assert (view.client_name, view.redirect_host, view.scope) == (
         "Test client",
         "localhost",
@@ -379,9 +393,15 @@ async def test_denial_redirects_with_access_denied_and_issues_nothing(
     client = await register(server)
     user_id = await make_user(db_session)
     request_id = await begin(server, client)
-    nonce = (await server.consent_view(request_id)).nonce
+    nonce = (
+        await server.consent_view(request_id, user_id=user_id, browser_secret=BROWSERS[request_id])
+    ).nonce
     redirect = await server.decide(
-        request_id=request_id, user_id=user_id, approve=False, nonce=nonce
+        request_id=request_id,
+        user_id=user_id,
+        approve=False,
+        nonce=nonce,
+        browser_secret=BROWSERS[request_id],
     )
     params = query_of(redirect)
     assert params["error"] == "access_denied"
@@ -398,7 +418,13 @@ async def test_a_decision_without_the_right_nonce_is_refused_and_changes_nothing
     request_id = await begin(server, client)
     for wrong in ("", "guess", "x" * 500):
         with pytest.raises(ConsentError) as excinfo:
-            await server.decide(request_id=request_id, user_id=user_id, approve=True, nonce=wrong)
+            await server.decide(
+                request_id=request_id,
+                user_id=user_id,
+                approve=True,
+                nonce=wrong,
+                browser_secret=BROWSERS[request_id],
+            )
         assert excinfo.value.failure == "nonce_mismatch"
     assert (await db_session.scalars(select(OAuthAuthCodeRow))).all() == []
     assert await approve(server, request_id, user_id)  # the real nonce still works
@@ -410,13 +436,27 @@ async def test_a_request_can_be_decided_only_once(
     client = await register(server)
     user_id = await make_user(db_session)
     request_id = await begin(server, client)
-    nonce = (await server.consent_view(request_id)).nonce
-    await server.decide(request_id=request_id, user_id=user_id, approve=True, nonce=nonce)
+    nonce = (
+        await server.consent_view(request_id, user_id=user_id, browser_secret=BROWSERS[request_id])
+    ).nonce
+    await server.decide(
+        request_id=request_id,
+        user_id=user_id,
+        approve=True,
+        nonce=nonce,
+        browser_secret=BROWSERS[request_id],
+    )
     with pytest.raises(ConsentError) as excinfo:
-        await server.decide(request_id=request_id, user_id=user_id, approve=True, nonce=nonce)
+        await server.decide(
+            request_id=request_id,
+            user_id=user_id,
+            approve=True,
+            nonce=nonce,
+            browser_secret=BROWSERS[request_id],
+        )
     assert excinfo.value.failure == "not_found"
     with pytest.raises(ConsentError):
-        await server.consent_view(request_id)
+        await server.consent_view(request_id, user_id=user_id, browser_secret=BROWSERS[request_id])
 
 
 async def test_an_expired_request_cannot_be_viewed_or_decided(
@@ -425,16 +465,24 @@ async def test_an_expired_request_cannot_be_viewed_or_decided(
     client = await register(server)
     user_id = await make_user(db_session)
     request_id = await begin(server, client)
-    nonce = (await server.consent_view(request_id)).nonce
+    nonce = (
+        await server.consent_view(request_id, user_id=user_id, browser_secret=BROWSERS[request_id])
+    ).nonce
     await db_session.execute(
         update(OAuthAuthorizationRequestRow).values(
             expires_at=datetime.now(UTC) - timedelta(seconds=1)
         )
     )
     with pytest.raises(ConsentError):
-        await server.consent_view(request_id)
+        await server.consent_view(request_id, user_id=user_id, browser_secret=BROWSERS[request_id])
     with pytest.raises(ConsentError):
-        await server.decide(request_id=request_id, user_id=user_id, approve=True, nonce=nonce)
+        await server.decide(
+            request_id=request_id,
+            user_id=user_id,
+            approve=True,
+            nonce=nonce,
+            browser_secret=BROWSERS[request_id],
+        )
 
 
 # ------------------------------------------------------------------------ code redemption
@@ -774,7 +822,9 @@ async def test_a_failed_fetch_is_an_invalid_client_and_is_not_cached(
     source.fail_with = ClientMetadataFetchError("blocked_address")
     error = await protocol_error(server.resolve_client(CIMD_URL))
     assert error.error == "invalid_client"
-    assert "blocked_address" in error.description
+    # The reason is logged, not handed to the (unauthenticated) caller.
+    assert "blocked_address" not in error.description
+    assert error.description == "The client metadata document could not be fetched."
     source.fail_with = None
     assert (await server.resolve_client(CIMD_URL)).kind == "cimd"
 

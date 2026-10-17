@@ -173,7 +173,7 @@ async def test_the_request_is_pinned_to_the_checked_address_with_the_name_as_hos
     assert "cookie" not in request.headers
 
 
-async def test_an_ipv6_address_and_a_custom_port_are_formatted_correctly() -> None:
+async def test_an_ipv6_address_is_bracketed_in_the_pinned_url() -> None:
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -181,11 +181,49 @@ async def test_an_ipv6_address_and_a_custom_port_are_formatted_correctly() -> No
         return httpx.Response(200, json=DOCUMENT)
 
     fetcher = fetcher_for(handler, resolver=resolves_to("2606:4700:4700::1111"))
-    await fetcher.fetch("https://app.example.com:8443/c.json")
+    await fetcher.fetch(URL)
     (request,) = seen
     assert request.url.host == "2606:4700:4700::1111"
-    assert request.url.port == 8443
-    assert request.headers["host"] == "app.example.com:8443"
+    assert request.url.port is None or request.url.port == 443
+    assert request.headers["host"] == "app.example.com"
+    assert request.headers["accept-encoding"] == "identity"
+
+
+@pytest.mark.parametrize("port", [80, 8443, 8080, 22, 6379, 65535])
+async def test_only_port_443_is_ever_contacted(port: int) -> None:
+    fetcher = fetcher_for(never_called)
+    assert await reason_of(fetcher, f"https://app.example.com:{port}/c.json") == "invalid_url"
+    ok = fetcher_for(lambda request: httpx.Response(200, json=DOCUMENT))
+    assert await ok.fetch("https://app.example.com:443/c.json") == DOCUMENT
+
+
+async def test_the_default_client_reads_no_proxy_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "HTTP_PROXY"):
+        monkeypatch.setenv(name, "http://10.0.0.9:3128")
+    default = ClientMetadataFetcher()
+    async with default._client_factory() as client:
+        assert client._mounts == {}
+
+
+async def test_concurrent_fetches_are_bounded() -> None:
+    running = 0
+    peak = 0
+
+    async def slow_resolver(host: str, port: int) -> list[str]:
+        nonlocal running, peak
+        running += 1
+        peak = max(peak, running)
+        await asyncio.sleep(0.05)
+        running -= 1
+        return [PUBLIC_IP]
+
+    fetcher = fetcher_for(
+        lambda request: httpx.Response(200, json=DOCUMENT), resolver=slow_resolver
+    )
+    await asyncio.gather(*(fetcher.fetch(URL) for _ in range(40)))
+    assert 0 < peak <= 8
 
 
 @pytest.mark.parametrize("status", [301, 302, 307, 308])

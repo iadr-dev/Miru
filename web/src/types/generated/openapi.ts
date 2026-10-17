@@ -5494,6 +5494,8 @@ export interface components {
       name: string;
       /** Redirect Host */
       redirect_host: string;
+      /** Verified */
+      verified: boolean;
     };
     /** ConsentDecisionRequest */
     ConsentDecisionRequest: {
@@ -5527,6 +5529,8 @@ export interface components {
       expires_at: string;
       /** Nonce */
       nonce: string;
+      /** Redirect Uri */
+      redirect_uri: string;
       /** Request Id */
       request_id: string;
       resource: components["schemas"]["ConsentResource"];

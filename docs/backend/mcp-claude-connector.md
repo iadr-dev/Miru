@@ -19,6 +19,21 @@ registry tools, two resources (`canonical://{symbol}`, `health://sources`), and 
 **data and analysis only, never buy/sell advice**. Tools are read-only (annotated), have titles,
 and are listed in a stable (alphabetical) order.
 
+## Release notes: what changes when you deploy this
+
+- **`MCP_REQUIRE_AUTH` is `true` by default.** Every `/mcp` request needs an OAuth access token
+  issued by this app; a request without one gets HTTP 401. A deployment that used the MCP server
+  anonymously (the authless connector) must now sign in, or set `MCP_REQUIRE_AUTH=false`
+  (development only).
+- **The web app's own session JWT is refused** (it has no audience, so it was never issued for this
+  server) unless `MCP_ACCEPT_APP_ACCESS_TOKEN=true`, a development flag. `Authorization: Bearer
+  <session JWT>` and `x-api-key: <session JWT>` therefore stop working by default.
+- `MCP_AUTHORIZATION_SERVER_URL` is gone; set `OAUTH_ISSUER` and `MCP_PUBLIC_BASE_URL` on both the
+  `api` and the `mcp` service.
+- New tables (`oauth_*`) come from `create_all` (additive mode adds them to an existing dev DB; the
+  authorization-request and code tables gained columns during review, so reset a dev DB that
+  already holds an earlier build of this branch).
+
 ## How sign-in works (what every client does)
 
 Every major client starts sign-in only after the MCP server answers **HTTP 401**, then follows the
@@ -37,7 +52,15 @@ MCP authorization spec (revision 2026-07-28):
 5. Client opens the browser at `GET /oauth/authorize` (PKCE challenge, `resource` = the MCP URL).
    The API validates the request and sends the browser to the web app's consent screen
    `<FRONTEND_BASE_URL>/<locale>/oauth/consent?request=<id>`.
-6. **You see Miru's page.** If you are signed out you sign in with Google / LINE / Telegram as
+6. **The consent screen is bound to your browser and account.** `/oauth/authorize` sets an httpOnly,
+   `SameSite=Lax`, host-only cookie `oauth_req_<request id>` on the API origin (10 minutes); the
+   web page must call `GET`/`POST /api/v1/oauth/consent/<id>` **with credentials** so the browser
+   sends it (the same way it already sends the session cookie). Only the browser that started the
+   flow and the first account that opens the screen can view or answer it (403
+   `oauth_browser_mismatch` / `oauth_user_mismatch`). The screen shows the exact redirect URL the
+   decision will use and an "unverified app" flag unless the client id is in
+   `OAUTH_VERIFIED_CLIENT_IDS`.
+   **You see Miru's page.** If you are signed out you sign in with Google / LINE / Telegram as
    usual and land back on the same screen. The screen names the app and where it will send you
    back, and asks **Allow / Deny**.
 7. Allow -> the browser goes to the client's redirect URI with a one-time code (60 s) plus `state`
@@ -140,6 +163,13 @@ to the Origin allow-list (the DNS-rebinding protection the MCP spec requires). E
 `MCP_ALLOWED_HOSTS`. A request whose `Host` is not allowed gets HTTP 421 naming the setting to
 change; a rejected `Origin` gets 403 naming `MCP_ALLOWED_ORIGINS`.
 
+Abuse bounds added in review: IPv6 callers are counted per /64; `OAUTH_REGISTER_GLOBAL_PER_HOUR`
+caps registration across all callers; `OAUTH_MAX_CIMD_CLIENTS` caps metadata-document clients
+separately; `OAUTH_CIMD_FETCH_PER_MINUTE` meters how many NEW metadata documents one address can make
+the server fetch; `OAUTH_UNUSED_CLIENT_DAYS` (3) drops clients no user ever approved. Metadata
+documents are fetched on port 443 only, without proxies or content-encoding, and failures are logged
+server-side but answered with one generic message.
+
 Optional tuning (defaults in `.env.example`): `OAUTH_ACCESS_TOKEN_MINUTES` (10),
 `OAUTH_REFRESH_TOKEN_DAYS` (30, sliding), `OAUTH_EXTRA_REDIRECT_SCHEMES` (desktop clients that use a
 custom scheme, default `vscode,vscode-insiders,cursor,windsurf`; https and `http://localhost` /
@@ -232,6 +262,9 @@ screen itself (it is a web-app deliverable).
 - The consent screen is a web-app page (`/<locale>/oauth/consent`); the API side is complete but
   until the page exists, `/oauth/authorize` lands on a missing route.
 - No "connected apps" list in the app yet (see Revoking access).
+- Atomic code/refresh claims (`UPDATE ... WHERE used_at IS NULL`) carry the single-use guarantee
+  on Postgres; only SQLite is exercised in the suite (a Postgres concurrency test needs the
+  `concurrency` profile and a live database), so that path is reasoned, not run.
 - A client that retries a refresh after losing the response, with the old token, trips replay
   detection and the user must sign in again (rotation without a grace window, by design).
 - Unknown scopes a client asks for (`offline_access`, `openid`) are ignored; the only scope is

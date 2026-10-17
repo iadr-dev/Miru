@@ -2437,13 +2437,18 @@
      "redirect_host": {
       "title": "Redirect Host",
       "type": "string"
+     },
+     "verified": {
+      "title": "Verified",
+      "type": "boolean"
      }
     },
     "required": [
      "name",
      "client_id",
      "kind",
-     "redirect_host"
+     "redirect_host",
+     "verified"
     ],
     "title": "ConsentClient",
     "type": "object"
@@ -2518,6 +2523,10 @@
       "title": "Nonce",
       "type": "string"
      },
+     "redirect_uri": {
+      "title": "Redirect Uri",
+      "type": "string"
+     },
      "request_id": {
       "title": "Request Id",
       "type": "string"
@@ -2536,6 +2545,7 @@
     "required": [
      "request_id",
      "client",
+     "redirect_uri",
      "scopes",
      "resource",
      "nonce",

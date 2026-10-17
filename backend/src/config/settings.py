@@ -252,10 +252,23 @@ class Settings(BaseSettings):
     oauth_register_per_hour: int = 20
     oauth_token_per_minute: int = 120
     oauth_max_registered_clients: int = 10_000
+    # Registration across ALL callers (a botnet rotating addresses is not stopped by a per-address
+    # cap), and the table caps / per-address fetch cap for Client ID Metadata Document clients.
+    oauth_register_global_per_hour: int = 600
+    oauth_max_cimd_clients: int = 5_000
+    oauth_cimd_fetch_per_minute: int = 6
+    # A client that never got a user's approval is dropped after this many days unseen.
+    oauth_unused_client_days: int = 3
+    # Comma-separated client_ids the operator vouches for; the consent screen marks every other
+    # client "unverified" (anyone can register under any name).
+    oauth_verified_client_ids: str = ""
 
     def oauth_issuer_url(self) -> str | None:
         issuer = self.oauth_issuer.strip().rstrip("/")
         return issuer or None
+
+    def oauth_verified_clients(self) -> frozenset[str]:
+        return frozenset(c.strip() for c in self.oauth_verified_client_ids.split(",") if c.strip())
 
     def oauth_redirect_schemes(self) -> frozenset[str]:
         return frozenset(

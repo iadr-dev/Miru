@@ -62,6 +62,14 @@ class OAuthAuthorizationRequestRow(Base):
     resource: Mapped[str]
     scope: Mapped[str]
     nonce: Mapped[str]
+    # SHA-256 of the secret handed to the browser that opened /oauth/authorize (httpOnly cookie);
+    # consent is only served to that browser.
+    browser_hash: Mapped[str]
+    # Whether the client sent redirect_uri (false = it relied on its single registered one).
+    redirect_uri_supplied: Mapped[bool] = mapped_column(default=True, server_default="1")
+    # The user who first opened the consent screen; nobody else may view or answer it. Not named
+    # `user_id`: the row exists before any user does, so row-level security must not claim it.
+    bound_user_id: Mapped[str | None] = mapped_column(default=None)
     created_at: Mapped[datetime] = mapped_column(_UTC)
     expires_at: Mapped[datetime] = mapped_column(_UTC, index=True)
 
@@ -76,6 +84,7 @@ class OAuthAuthCodeRow(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey(_USERS_ID_FK, ondelete="CASCADE"), index=True)
     client_id: Mapped[str] = mapped_column(ForeignKey(_CLIENT_ID_FK, ondelete="CASCADE"))
     redirect_uri: Mapped[str]
+    redirect_uri_supplied: Mapped[bool] = mapped_column(default=True, server_default="1")
     code_challenge: Mapped[str]
     resource: Mapped[str]
     scope: Mapped[str]

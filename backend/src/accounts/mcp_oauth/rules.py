@@ -18,7 +18,7 @@ import hmac
 import ipaddress
 import re
 from collections.abc import Collection, Iterable
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import SplitResult, urlsplit, urlunsplit
 
 from accounts.mcp_tokens import MCP_SCOPE_READ, SUPPORTED_SCOPES
 
@@ -31,6 +31,9 @@ _CODE_CHALLENGE = re.compile(r"[A-Za-z0-9_-]{43}")
 _CODE_VERIFIER = re.compile(r"[A-Za-z0-9._~-]{43,128}")
 _SCHEME = re.compile(r"[a-z][a-z0-9+.-]*")
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+# The only spellings of a loopback http authority that are accepted: lower case, no userinfo,
+# no trailing dot, no percent-encoding, an optional numeric port.
+_LOOPBACK_NETLOC = re.compile(r"(localhost|127\.0\.0\.1|\[::1\])(:[0-9]{1,5})?")
 _FORBIDDEN_SCHEMES = frozenset({"javascript", "data", "file", "vbscript", "blob", "about", "ftp"})
 
 
@@ -66,37 +69,51 @@ def _parts(uri: str) -> SplitResult | None:
         return None
 
 
-def validate_redirect_uri(uri: str, *, extra_schemes: Collection[str]) -> str:
-    """Return `uri` if it is an acceptable registration, else raise `RedirectUriError`."""
+def validate_redirect_uri(  # noqa: PLR0912 - one early exit per rejected form is the point
+    uri: str, *, extra_schemes: Collection[str]
+) -> str:
+    """Return `uri` if it is an acceptable redirect URI, else raise `RedirectUriError`.
+
+    The same checks run on a registration AND on the URI a client presents at /authorize, because
+    parsers disagree about malformed URLs: Python reads `http://evil.com\\@localhost/cb` as host
+    `localhost` with userinfo, a browser follows the backslash as a slash and goes to `evil.com`.
+    So anything unusual - backslash, whitespace or control characters, userinfo, a fragment, a
+    percent-encoded or upper-case loopback host, port 0 - is refused outright, not interpreted."""
     if (
         not uri
         or len(uri) > MAX_REDIRECT_URI_LENGTH
         or any(c.isspace() or not c.isprintable() for c in uri)
     ):
         raise RedirectUriError("redirect URI is empty, too long or contains whitespace")
+    if "\\" in uri:
+        raise RedirectUriError("redirect URI must not contain a backslash")
     if "*" in uri:
         raise RedirectUriError("redirect URI must not contain a wildcard")
     parts = _parts(uri)
     if parts is None:
         raise RedirectUriError("redirect URI is not a valid URL")
-    scheme = parts.scheme.lower()
+    scheme = parts.scheme  # urlsplit lower-cases it, so look at the text itself
+    if not uri.startswith(f"{scheme}:"):
+        raise RedirectUriError("redirect URI scheme must be lower case")
     if parts.fragment or "#" in uri:
         raise RedirectUriError("redirect URI must not contain a fragment")
-    if parts.username is not None or parts.password is not None:
+    if parts.username is not None or parts.password is not None or "@" in parts.netloc:
         raise RedirectUriError("redirect URI must not contain credentials")
     if scheme in _FORBIDDEN_SCHEMES or _SCHEME.fullmatch(scheme) is None:
         raise RedirectUriError(f"redirect URI scheme {scheme!r} is not allowed")
     try:
         host = parts.hostname
-        _ = parts.port
+        port = parts.port
     except ValueError as exc:
         raise RedirectUriError("redirect URI has an invalid host or port") from exc
+    if port == 0:
+        raise RedirectUriError("redirect URI port 0 is not allowed")
     if scheme == "https":
         if not host:
             raise RedirectUriError("redirect URI has no host")
         return uri
     if scheme == "http":
-        if not is_loopback_host(host):
+        if _LOOPBACK_NETLOC.fullmatch(parts.netloc) is None:
             raise RedirectUriError("http redirect URIs are only allowed for localhost")
         return uri
     if scheme in {s.lower() for s in extra_schemes}:
@@ -117,32 +134,35 @@ def validate_redirect_uris(uris: Iterable[str], *, extra_schemes: Collection[str
     return checked
 
 
-def _same_except_port(registered: SplitResult, presented: SplitResult) -> bool:
-    return (
-        registered.scheme.lower() == presented.scheme.lower()
-        and (registered.hostname or "") == (presented.hostname or "")
-        and registered.path == presented.path
-        and registered.query == presented.query
-    )
+def _loopback_with_port(registered: str, port: int | None) -> str | None:
+    """`registered` (a loopback http URI) rebuilt with `port` in place of its own, else None."""
+    parts = _parts(registered)
+    if parts is None or parts.scheme != "http" or _LOOPBACK_NETLOC.fullmatch(parts.netloc) is None:
+        return None
+    host = f"[{parts.hostname}]" if parts.hostname and ":" in parts.hostname else parts.hostname
+    netloc = f"{host}:{port}" if port is not None else str(host)
+    return urlunsplit(("http", netloc, parts.path, parts.query, ""))
 
 
-def redirect_uri_matches(registered: Iterable[str], presented: str) -> bool:
-    """Exact string match against a registered URI; for loopback http the port is ignored."""
-    presented_parts = _parts(presented)
-    if presented_parts is None:
+def redirect_uri_matches(
+    registered: Iterable[str], presented: str, *, extra_schemes: Collection[str]
+) -> bool:
+    """Whether `presented` is one of the `registered` redirect URIs.
+
+    The presented URI must itself be a valid redirect URI (`validate_redirect_uri`). It then has
+    to equal a registered one character for character - the single exception being a loopback
+    http URI, whose port is free (RFC 8252 section 7.3): the registered URI is rebuilt with the
+    presented port and the two strings must be identical. No URL parser decides a match."""
+    try:
+        validate_redirect_uri(presented, extra_schemes=extra_schemes)
+        presented_parts = urlsplit(presented)
+        port = presented_parts.port
+    except (RedirectUriError, ValueError):
         return False
     for candidate in registered:
         if candidate == presented:
             return True
-        candidate_parts = _parts(candidate)
-        if (
-            candidate_parts is not None
-            and candidate_parts.scheme.lower() == "http"
-            and presented_parts.scheme.lower() == "http"
-            and is_loopback_host(candidate_parts.hostname)
-            and is_loopback_host(presented_parts.hostname)
-            and _same_except_port(candidate_parts, presented_parts)
-        ):
+        if presented_parts.scheme == "http" and _loopback_with_port(candidate, port) == presented:
             return True
     return False
 
