@@ -549,6 +549,10 @@ export type ContractChecks = [
   Accepts<typeof watchlistItemSchema, R<"/api/v1/watchlists/{watchlist_id}/items/{symbol}", "put">>,
 ];
 
+// TODO(chain-position): after the backend route merges and `pnpm gen:api` is re-run, add
+//   Accepts<typeof chainPositionsResponseSchema, R<"/api/v1/symbols/{symbol}/chain-positions", "get">>
+// (schema from "@/types/stock/chain-position"; client: stock-detail.getChainPositions).
+
 // Not JSON responses (event streams, redirects), so there is no body to check.
 //   GET /auth/oauth/{provider}/callback
 //   GET /quote/stream

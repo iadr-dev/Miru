@@ -3003,6 +3003,34 @@
         "supplier": "供應商",
         "customer": "客戶",
         "competitor": "同業競爭"
+      },
+      "chainPosition": {
+        "title": "產業鏈位置",
+        "badgeAria": "{name}：{position}",
+        "estimated": "推估",
+        "estimatedHint": "依產業關鍵字或低信心度推估，並非已驗證的位置。",
+        "unclassified": "尚未分類",
+        "otherChains": "其他產業鏈",
+        "switchAria": "查看{name}：{position}",
+        "why": "為什麼",
+        "whyAria": "為什麼{name}位於{position}",
+        "whyTitle": "這個位置如何判定",
+        "confidenceLabel": "信心程度：{level}",
+        "confidence": {
+          "high": "高",
+          "medium": "中",
+          "low": "低"
+        },
+        "reason": {
+          "override": "人工指定",
+          "prior_curated": "由人工整理的產業分類判定",
+          "prior_keyword": "依產業關鍵字推測，尚未驗證",
+          "graph_layering": "依已驗證的供應關係推算位置",
+          "graph_propagation": "依供應關係圖中相鄰公司的位置推估",
+          "agree_prior_graph": "供應關係與產業分類一致",
+          "conflict_graph_over_prior": "供應關係與產業分類不一致，以供應關係為準",
+          "unknown": "其他依據"
+        }
       }
     },
     "ai": {

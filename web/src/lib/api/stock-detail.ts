@@ -72,6 +72,10 @@ import {
   stockInsiderTransferDeclarationResponseSchema,
 } from "@/types/stock/ownership";
 import {
+  type ChainPositionsResponse,
+  chainPositionsResponseSchema,
+} from "@/types/stock/chain-position";
+import {
   type CompanyProfile,
   companyProfileSchema,
   type EsgScoreResponse,
@@ -593,6 +597,19 @@ export async function getSupplyChainEdges(
   const search = new URLSearchParams({ market });
   const raw = await requestJson(`/symbols/${symbol}/supply-chain?${search.toString()}`);
   return supplyChainEdgesResponseSchema.parse(raw);
+}
+
+// ---------------------------------------------------------------------------
+// GET /symbols/{symbol}/chain-positions (public) — 產業分析's 上/中/下游 position badge
+// ---------------------------------------------------------------------------
+
+export async function getChainPositions(
+  symbol: string,
+  market: Market,
+): Promise<ChainPositionsResponse> {
+  const search = new URLSearchParams({ market });
+  const raw = await requestJson(`/symbols/${symbol}/chain-positions?${search.toString()}`);
+  return chainPositionsResponseSchema.parse(raw);
 }
 
 // ---------------------------------------------------------------------------

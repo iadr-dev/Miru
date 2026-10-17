@@ -3003,6 +3003,34 @@
         "supplier": "supplier",
         "customer": "customer",
         "competitor": "competitor"
+      },
+      "chainPosition": {
+        "title": "Chain position",
+        "badgeAria": "{name}: {position}",
+        "estimated": "Estimated",
+        "estimatedHint": "An estimate from industry keywords or low confidence, not a verified position.",
+        "unclassified": "Not classified yet",
+        "otherChains": "Other chains",
+        "switchAria": "Show {name} — {position}",
+        "why": "Why",
+        "whyAria": "Why {name} is placed at {position}",
+        "whyTitle": "How this position was decided",
+        "confidenceLabel": "Confidence: {level}",
+        "confidence": {
+          "high": "high",
+          "medium": "medium",
+          "low": "low"
+        },
+        "reason": {
+          "override": "Set by hand",
+          "prior_curated": "Decided from the hand-curated industry classification",
+          "prior_keyword": "Guessed from industry keywords, not verified",
+          "graph_layering": "Position worked out from verified supply relationships",
+          "graph_propagation": "Position inferred from neighbouring companies in the supply graph",
+          "agree_prior_graph": "Supply relationships and the industry classification agree",
+          "conflict_graph_over_prior": "Supply relationships and the industry classification disagree; the supply relationships are used",
+          "unknown": "Other basis"
+        }
       }
     },
     "ai": {

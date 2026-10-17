@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
+import { ChainPositionBar } from "@/components/stock/chain-position";
 import { SupplyChainGraph } from "@/components/stock/supply-chain-graph";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
@@ -96,6 +97,8 @@ export function IndustryPanel({
           </button>
         ))}
       </div>
+
+      <ChainPositionBar symbol={symbol} market={market} />
 
       {!industryTheme ? (
         <section className="surface-card p-4 sm:p-5">
