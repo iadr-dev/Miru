@@ -611,7 +611,7 @@ table cannot carry.
 | GET | `/api/v1/themes/{key}/tiers` | optional | `get_theme_tiers` | public | One theme's sub-industries grouped into upstream/midstream/downstream, each assignment marked curated (editorial) or heuristic (automatically classif… |
 | GET | `/api/v1/symbols/{symbol}/themes` | optional | `get_symbol_themes` | public | The reverse lookup: every theme one symbol belongs to. |
 | GET | `/api/v1/themes/{key}/tier-heatmap` | optional | `get_theme_tier_heatmap` | public | 個股 > 產業分析's 產業鏈 tier-tile view — a theme's upstream/midstream/downstream sub-industry tiles, each colored by that sub-industry's own members' real av… |
-| GET | `/api/v1/symbols/{symbol}/supply-chain` | optional | `get_supply_chain_edges` | public | 個股 > 產業分析's 供應鏈關係圖 card — every supply/customer/competitor edge involving one symbol, from either side. |
+| GET | `/api/v1/symbols/{symbol}/supply-chain` | optional | `get_supply_chain_edges` | public | 個股 > 產業分析's 供應鏈關係圖 card — every published supplies/competes edge involving one company (`symbol` + `market`), from either side. |
 
 #### Funds, analysts & ETF overlap
 

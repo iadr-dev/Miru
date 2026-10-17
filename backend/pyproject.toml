@@ -204,6 +204,7 @@ module = [
   "tools.*",
   "analytics.models",
   "analytics.themes.models",
+  "analytics.supply_chain.*",
   "analytics.screener.catalog",
   "analytics.screener.gates",
   "analytics.screener.presets",

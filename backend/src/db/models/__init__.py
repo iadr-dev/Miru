@@ -80,6 +80,7 @@ from db.models.scores import (
     StockSummaryRow,
     TrendScoreRow,
 )
+from db.models.supply_chain import ScEvidenceRow, ScRelationRow
 from db.models.themes import (
     SupplyChainEdgeRow,
     ThemeChangeLogRow,
@@ -106,6 +107,8 @@ __all__ = [
     "OAuthClientRow",
     "OAuthGrantRow",
     "OAuthRefreshTokenRow",
+    "ScEvidenceRow",
+    "ScRelationRow",
     "ScheduleJobRow",
     "ScreenerScreenRow",
     "SessionRow",
