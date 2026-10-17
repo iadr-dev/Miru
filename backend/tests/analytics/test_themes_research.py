@@ -372,7 +372,9 @@ async def test_seed_supply_chain_edges_idempotent(
     assert first == second
     async with session_factory() as session:
         edges = await SqlAlchemyThemeStore(session).get_edges_from(from_symbol="2330")
-    # 2330 supplies AAPL, NVDA, AMD, QCOM, AVGO in the seed — exactly the seeded set, no
-    # duplication (idempotent reload).
-    assert {e.to_symbol for e in edges} == {"AAPL", "NVDA", "AMD", "QCOM", "AVGO"}
+    # 2330 supplies AAPL, NVDA, AMD, QCOM, AVGO in the seed (researched batches may add more),
+    # and a reload leaves each relationship once (idempotent).
+    targets = [e.to_symbol for e in edges]
+    assert {"AAPL", "NVDA", "AMD", "QCOM", "AVGO"} <= set(targets)
+    assert len(targets) == len(set(targets))
     assert all(e.source is EdgeSource.SEED for e in edges)
