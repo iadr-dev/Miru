@@ -4075,6 +4075,35 @@
       "failed": "Could not save. Please try again."
     }
   },
+  "featureLock": {
+    "upgrade": "Upgrade to Pro",
+    "signIn": "Sign in",
+    "supplyChain": {
+      "more": "{count, plural, one {# more company} other {# more companies}}",
+      "benefit": "Pro shows every supplier, customer and competitor, with sources.",
+      "sourcesLocked": "Sources are available on Pro"
+    },
+    "chainPosition": {
+      "why": "Why · Pro",
+      "moreChains": "{count, plural, one {# more chain · Pro} other {# more chains · Pro}}"
+    },
+    "entityGraph": {
+      "more": "{count, plural, one {# more node} other {# more nodes}}, including related companies",
+      "benefit": "Pro shows the full relation graph."
+    },
+    "themePage": {
+      "more": "{count, plural, one {# more company} other {# more companies}} in this theme",
+      "benefit": "Pro shows every member."
+    },
+    "themeTab": {
+      "more": "More concept themes are available",
+      "benefit": "Pro shows the full theme list."
+    },
+    "conceptChips": {
+      "more": "More themes · Pro"
+    }
+  },
+
   "themes": {
     "page": {
       "memberCount": "{count, plural, one {# member} other {# members}}",

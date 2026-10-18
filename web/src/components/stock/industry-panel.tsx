@@ -111,7 +111,10 @@ export function IndustryPanel({
         ))}
       </div>
 
-      <ConceptThemeChips themes={themesQuery.data?.themes ?? []} />
+      <ConceptThemeChips
+        themes={themesQuery.data?.themes ?? []}
+        locked={themesQuery.data?.concept_locked ?? false}
+      />
 
       <ChainPositionBar symbol={symbol} market={market} />
 

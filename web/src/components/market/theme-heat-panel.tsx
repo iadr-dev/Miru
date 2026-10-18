@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FeatureLock } from "@/components/ui/feature-lock";
 import { QueryState } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -54,7 +55,7 @@ export function ThemeHeatPanel(): ReactNode {
         />
       </div>
       <QueryState query={query} skeleton={<GridSkeleton />}>
-        {(data) => <ThemeGrid themes={data.themes} search={search} />}
+        {(data) => <ThemeGrid themes={data.themes} search={search} locked={data.concept_locked} />}
       </QueryState>
       <p className="text-[11.5px] text-[var(--text-muted)] leading-relaxed">{t("quoteNote")}</p>
     </Card>
@@ -64,28 +65,43 @@ export function ThemeHeatPanel(): ReactNode {
 function ThemeGrid({
   themes,
   search,
+  locked,
 }: {
   readonly themes: readonly ThemeSummary[];
   readonly search: string;
+  readonly locked: boolean;
 }): ReactNode {
   const t = useTranslations("themes.tab");
+  const tLock = useTranslations("featureLock");
   const concept = useMemo(() => themes.filter((theme) => theme.kind === "concept"), [themes]);
   const visible = concept.filter((theme) => matchesThemeQuery(theme, search));
 
+  const lock = locked ? (
+    <FeatureLock message={tLock("themeTab.more")} benefit={tLock("themeTab.benefit")} />
+  ) : null;
+
   if (concept.length === 0) {
-    return <EmptyState compact title={t("empty")} />;
+    return (
+      <>
+        <EmptyState compact title={t("empty")} />
+        {lock}
+      </>
+    );
   }
   if (visible.length === 0) {
     return <EmptyState compact title={t("noMatch")} />;
   }
   return (
-    <ul className="grid grid-cols-1 gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
-      {visible.map((theme) => (
-        <li key={theme.key} className="min-w-0">
-          <ThemeHeatCard theme={theme} />
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="grid grid-cols-1 gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
+        {visible.map((theme) => (
+          <li key={theme.key} className="min-w-0">
+            <ThemeHeatCard theme={theme} />
+          </li>
+        ))}
+      </ul>
+      {lock}
+    </>
   );
 }
 

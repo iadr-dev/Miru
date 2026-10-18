@@ -11,6 +11,7 @@ import type { ThemeMember, ThemeMembersResponse, ThemePosition } from "@/types/t
 
 vi.mock("@/lib/api/theme", () => ({ getThemes: vi.fn(), getThemeMembers: vi.fn() }));
 vi.mock("@/hooks/use-symbol-quotes", () => ({ useSymbolQuotes: vi.fn() }));
+vi.mock("@/hooks/use-is-anonymous", () => ({ useIsAnonymous: () => false }));
 vi.mock("@/i18n/navigation", () => ({
   Link: ({
     href,
@@ -45,6 +46,8 @@ function response(
     related_keys: ["film-coating"],
     members,
     message: "",
+    locked: false,
+    hidden_count: 0,
     ...extra,
   };
 }
@@ -63,6 +66,7 @@ function renderPage(): void {
 beforeEach(() => {
   vi.mocked(getThemes).mockResolvedValue({
     theme_count: 1,
+    concept_locked: false,
     themes: [
       {
         key: "film-coating",
@@ -181,5 +185,38 @@ describe("ThemePage", () => {
     vi.mocked(getThemeMembers).mockReturnValue(new Promise(() => undefined));
     renderPage();
     expect(screen.queryByRole("heading")).toBeNull();
+  });
+});
+
+describe("ThemePage Pro preview", () => {
+  const lock = messages.featureLock;
+
+  it("shows the hidden-members row with the server's count when locked", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([member("1001", "upstream")], { locked: true, hidden_count: 9 }),
+    );
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    const row = document.querySelector("[data-feature-lock]");
+    expect(row?.textContent).toBe(
+      `${lock.themePage.more.replace("{count}", "9")} · ${lock.themePage.benefit}${lock.upgrade}`,
+    );
+    expect(screen.getByRole("link", { name: lock.upgrade }).getAttribute("href")).toBe(
+      "/settings/billing",
+    );
+  });
+
+  it("shows no row when locked but nothing is hidden, or when not locked", async () => {
+    vi.mocked(getThemeMembers).mockResolvedValue(
+      response([member("1001", "upstream")], { locked: true, hidden_count: 0 }),
+    );
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(document.querySelector("[data-feature-lock]")).toBeNull();
+    cleanup();
+    vi.mocked(getThemeMembers).mockResolvedValue(response([member("1001", "upstream")]));
+    renderPage();
+    await screen.findByRole("region", { name: copy.boardAria });
+    expect(document.querySelector("[data-feature-lock]")).toBeNull();
   });
 });

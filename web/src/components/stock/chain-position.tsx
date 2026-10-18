@@ -4,6 +4,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { FeatureLock } from "@/components/ui/feature-lock";
 import { QueryFailure } from "@/components/ui/query-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { queryKeys } from "@/lib/api/query-keys";
@@ -62,6 +63,7 @@ export function ChainPositionBar({
   readonly market: Market;
 }): ReactNode {
   const t = useTranslations("stock.industry.chainPosition");
+  const tLock = useTranslations("featureLock");
   const query = useQuery({
     queryKey: queryKeys.symbolRead("chain_positions", symbol, market),
     queryFn: () => getChainPositions(symbol, market),
@@ -82,6 +84,9 @@ export function ChainPositionBar({
   const primary = positions.find((p) => p.is_primary) ?? positions[0];
   const active = positions.find((p) => p.chain_key === selectedKey) ?? primary;
   const others = positions.filter((p) => p !== active);
+  const data = query.data;
+  const locked = data?.locked ?? false;
+  const hiddenChains = locked ? (data?.hidden_count ?? 0) : 0;
 
   return (
     <section aria-label={t("title")} className="surface-card @container p-4">
@@ -90,12 +95,24 @@ export function ChainPositionBar({
         {active ? (
           <div className="flex flex-wrap items-center gap-2">
             <PositionBadge position={active} />
-            <WhyPopover position={active} />
+            {locked ? (
+              <FeatureLock message={tLock("chainPosition.why")} variant="chip" />
+            ) : (
+              <WhyPopover position={active} />
+            )}
           </div>
         ) : (
           <p className="text-[13px] text-[var(--text-muted)]">{t("unclassified")}</p>
         )}
       </div>
+      {hiddenChains > 0 ? (
+        <div className="mt-3">
+          <FeatureLock
+            message={tLock("chainPosition.moreChains", { count: hiddenChains })}
+            variant="chip"
+          />
+        </div>
+      ) : null}
       {others.length > 0 ? (
         <div className="mt-3 flex flex-col gap-2 @md:flex-row @md:flex-wrap @md:items-center">
           <p className="text-[12px] text-[var(--text-muted)]">{t("otherChains")}</p>

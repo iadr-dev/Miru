@@ -25,7 +25,13 @@ const base: ChainPosition = {
 };
 
 function renderBar(positions: ChainPosition[]): void {
-  vi.mocked(getChainPositions).mockResolvedValue({ symbol: "1001", market: "TW", positions });
+  vi.mocked(getChainPositions).mockResolvedValue({
+    symbol: "1001",
+    market: "TW",
+    positions,
+    locked: false,
+    hidden_count: 0,
+  });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   renderWithIntl(
     <QueryClientProvider client={client}>

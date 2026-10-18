@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FeatureLock } from "@/components/ui/feature-lock";
 import { QueryFailure } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -60,6 +61,7 @@ function marketOf(member: ThemeMember): Market {
  * the theme without a place on the chain. */
 export function ThemePage({ themeKey }: { readonly themeKey: string }): ReactNode {
   const t = useTranslations("themes.page");
+  const tLock = useTranslations("featureLock");
   const membersQuery = useThemeMembers(themeKey);
   const themesQuery = useThemes("concept");
   const [expanded, setExpanded] = useState(false);
@@ -167,6 +169,12 @@ export function ThemePage({ themeKey }: { readonly themeKey: string }): ReactNod
                 ))}
               </ul>
             </section>
+          ) : null}
+          {data.locked && data.hidden_count > 0 ? (
+            <FeatureLock
+              message={tLock("themePage.more", { count: data.hidden_count })}
+              benefit={tLock("themePage.benefit")}
+            />
           ) : null}
           {canToggle ? (
             <button

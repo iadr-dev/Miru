@@ -6,6 +6,7 @@ import { type KeyboardEvent, type ReactNode, useId, useMemo, useState } from "re
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FeatureLock } from "@/components/ui/feature-lock";
 import { QueryState } from "@/components/ui/query-state";
 import { useEntityGraph } from "@/hooks/use-entity-graph";
 import { useThemes } from "@/hooks/use-themes";
@@ -107,6 +108,7 @@ function EntityGraphBody({
   readonly themes: readonly ThemeRef[];
 }): ReactNode {
   const t = useTranslations("stock.industry.entityGraph");
+  const tLock = useTranslations("featureLock");
   const markerId = `${useId().replaceAll(":", "")}-arrow`;
   const [minWeight, setMinWeight] = useState(1);
   const [hiddenTypes, setHiddenTypes] = useState<ReadonlySet<EntityType>>(new Set());
@@ -265,6 +267,13 @@ function EntityGraphBody({
       ) : null}
 
       <ListFallback groups={groups} themes={themes} onSelect={setSelectedId} />
+
+      {graph.locked && graph.hidden_count > 0 ? (
+        <FeatureLock
+          message={tLock("entityGraph.more", { count: graph.hidden_count })}
+          benefit={tLock("entityGraph.benefit")}
+        />
+      ) : null}
     </div>
   );
 }
