@@ -315,7 +315,7 @@ async def test_get_supply_chain_edges_both_directions_with_contract_fields(
         "sources": [
             {
                 "publisher": "Example IR",
-                "url": "https://example.com/Example-IR/1",
+                "url": "https://example-ir.example/1",
                 "published_on": "2025-01-02",
             }
         ],

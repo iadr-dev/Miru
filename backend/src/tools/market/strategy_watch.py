@@ -291,13 +291,13 @@ class GetStrategyWatchTool(SyncStoreTool):
             if masked:
                 for name in _SPONSOR_FIELDS:
                     values.pop(name, None)
-            hit = latest.get(key)
-            if hit is not None:
-                conditions = _conditions(hit.get("conditions"))
-                values["latest_slot"] = str(hit.get("slot"))
-                values["price"] = None if masked else as_float(hit.get("price"))
+            latest_hit = latest.get(key)
+            if latest_hit is not None:
+                conditions = _conditions(latest_hit.get("conditions"))
+                values["latest_slot"] = str(latest_hit.get("slot"))
+                values["price"] = None if masked else as_float(latest_hit.get("price"))
                 values["conditions"] = _masked(conditions) if masked else conditions
-                values["all_met"] = hit.get("all_met") is True
+                values["all_met"] = latest_hit.get("all_met") is True
             values["alerted_at"] = alerted.get(key)
             values["close_confirmed"] = key in confirmed
             items.append(StrategyWatchItem.model_validate(values))

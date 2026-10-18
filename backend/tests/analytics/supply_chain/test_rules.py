@@ -8,6 +8,7 @@ from analytics.supply_chain.domain.models import Grade, Origin, Status, Trust
 from analytics.supply_chain.domain.rules import (
     grade_from_evidence,
     is_stale,
+    registrable_domain,
     resolve_status,
     trust_for_url,
 )
@@ -95,3 +96,16 @@ def test_seeded_is_verified_without_evidence() -> None:
         declared=Status.VERIFIED, origin=Origin.SEEDED, evidence_grade=None, stale=False
     )
     assert status is Status.VERIFIED
+
+
+def test_subdomains_of_one_site_are_one_source() -> None:
+    """Independence is per registrable domain, so spinning up subdomains cannot fake it."""
+    assert registrable_domain("a.news.example.com") == registrable_domain("b.example.com")
+    assert registrable_domain("money.example.com.tw") == "example.com.tw"
+    assert registrable_domain("example.com.tw") == "example.com.tw"
+    assert registrable_domain("example.com") == "example.com"
+    one_site = [
+        evidence(T, "x", 1).model_copy(update={"url": "https://a.fake.example.net/1"}),
+        evidence(T, "y", 2).model_copy(update={"url": "https://b.fake.example.net/2"}),
+    ]
+    assert grade_from_evidence(one_site) == Grade.LOW  # not medium: same site twice

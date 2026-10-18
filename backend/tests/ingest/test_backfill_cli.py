@@ -278,6 +278,10 @@ async def test_non_finmind_forward_only_jobs_all_run_for_today_and_land_in_the_a
     monkeypatch.setattr(
         backfill_cli_module, "_backfill_etf_expense_ratio", _noop_expense_ratio_backfill
     )
+    # Pin "today" to a trading day so the test does not depend on the weekday it runs on.
+    monkeypatch.setattr(
+        backfill_cli_module, "snapshot_day", lambda _calendar, *, now: date(2024, 1, 2)
+    )
     monkeypatch.setattr(backfill_cli_module, "job_etf_nav", _fake_job("etf_nav"))
     monkeypatch.setattr(backfill_cli_module, "job_etf_aum", _fake_job("etf_aum"))
     monkeypatch.setattr(
