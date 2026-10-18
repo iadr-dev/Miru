@@ -88,7 +88,9 @@ def _decide(
     chain_key: str, override: Override | None, prior: Prior | None, graph: GraphSignal | None
 ) -> tuple[Position, Method, float, tuple[Reason, ...]] | None:
     if override is not None:
-        reason = Reason(code=ReasonCode.OVERRIDE, detail=override.reason)
+        # The operator's free-text reason stays in the private overrides file: the stored reasons
+        # are served to every user, so they carry the code only.
+        reason = Reason(code=ReasonCode.OVERRIDE)
         return override.position, Method.OVERRIDE, OVERRIDE_CONFIDENCE, (reason,)
     if graph is not None:
         graph_reason = _graph_reason(graph)
