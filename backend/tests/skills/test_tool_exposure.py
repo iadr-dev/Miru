@@ -17,16 +17,7 @@ from tools import build_default_tool_registry
 
 # tool name -> why the internal chat agent deliberately does not get it. Every other registered
 # tool must appear in a skill allowlist, the warm set or the web-search set.
-_THEME_PENDING = (
-    "temporary: the theme-lookup skill is being reworked on another branch and will list this "
-    "tool; delete this entry when it does (test_no_stale_chat_exempt_entries then enforces it)"
-)
-CHAT_EXEMPT_TOOLS: dict[str, str] = {
-    "get_themes": _THEME_PENDING,
-    "get_supply_chain_edges": _THEME_PENDING,
-    "get_chain_position": _THEME_PENDING,
-    "get_theme_tier_heatmap": _THEME_PENDING,
-}
+CHAT_EXEMPT_TOOLS: dict[str, str] = {}
 
 
 def _registered() -> set[str]:
