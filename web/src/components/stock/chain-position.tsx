@@ -22,6 +22,7 @@ const KNOWN_REASONS = [
   "graph_propagation",
   "agree_prior_graph",
   "conflict_graph_over_prior",
+  "conflict_prior_kept",
 ] as const;
 type KnownReason = (typeof KNOWN_REASONS)[number];
 

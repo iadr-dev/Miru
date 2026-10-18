@@ -3023,12 +3023,13 @@
         },
         "reason": {
           "override": "人工指定",
-          "prior_curated": "由人工整理的產業分類判定",
+          "prior_curated": "依其細分產業在此產業鏈中的角色判定（產業分類，非個別公司分析）",
           "prior_keyword": "依產業關鍵字推測，尚未驗證",
           "graph_layering": "依已驗證的供應關係推算位置",
           "graph_propagation": "依供應關係圖中相鄰公司的位置推估",
           "agree_prior_graph": "供應關係與產業分類一致",
           "conflict_graph_over_prior": "供應關係與產業分類不一致，以供應關係為準",
+          "conflict_prior_kept": "供應關係與產業分類不一致，以產業分類為準",
           "unknown": "其他依據"
         }
       }
