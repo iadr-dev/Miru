@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { ScreenerLoading } from "@/components/screener/screener-loading";
 import { ScreenerTable } from "@/components/screener/screener-table";
 import { useThemeMembers, useThemes } from "@/hooks/use-themes";
+import { Link } from "@/i18n/navigation";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import { cn } from "@/lib/cn";
 
@@ -157,6 +158,14 @@ export function ThemeCards(): ReactNode {
       {activeKey && membersQuery.isLoading ? <ScreenerLoading /> : null}
       {activeKey && membersQuery.data?.found ? (
         <div className="flex flex-col gap-2">
+          {membersQuery.data.kind === "concept" ? (
+            <Link
+              href={`/themes/${encodeURIComponent(activeKey)}`}
+              className="min-h-11 w-fit self-start py-3 font-medium text-[13px] text-[var(--accent-text)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            >
+              {t("viewThemePage")}
+            </Link>
+          ) : null}
           {subIndustries.length > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[12px] text-[var(--text-muted)]">{t("subIndustry")}</span>

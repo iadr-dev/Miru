@@ -7,6 +7,7 @@ import {
   ShieldWarningIcon,
   SparkleIcon,
   SquaresFourIcon,
+  TagIcon,
 } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import { useTranslations } from "next-intl";
@@ -18,6 +19,7 @@ import { HeatmapPanel } from "@/components/market/heatmap-panel";
 import { MarketIndexStrip } from "@/components/market/market-index-strip";
 import { NewsFeedPanel } from "@/components/market/news-feed-panel";
 import { PttBoardPanel } from "@/components/market/ptt-board-panel";
+import { ThemeHeatPanel } from "@/components/market/theme-heat-panel";
 import { cn } from "@/lib/cn";
 import type { Market } from "@/types/settings";
 
@@ -26,6 +28,7 @@ const TW_SUB_TABS = [
   { key: "chip", icon: ScalesIcon },
   { key: "disposition", icon: ShieldWarningIcon },
   { key: "heatmap", icon: SquaresFourIcon },
+  { key: "themes", icon: TagIcon },
   { key: "news", icon: NewspaperIcon },
   { key: "ptt", icon: ChatCircleTextIcon },
 ] as const;
@@ -34,7 +37,8 @@ type TwSubTab = (typeof TW_SUB_TABS)[number]["key"];
 /**
  * The TW tab's own sub-tabs — 每日焦點 (AI 多空排行/漲跌家數+指數貢獻/漲跌幅排行, the default),
  * 籌碼 (三大法人買賣超/融資維持率/大戶加碼股), 處置 (處置王-style board: 風險股/處置中/
- * 即將出關), 熱力圖 (產業熱力圖 treemap + 產業鏈資金流向), 新聞 (即時新聞 — RSS/Finnhub feed via
+ * 即將出關), 熱力圖 (產業熱力圖 treemap + 產業鏈資金流向), 題材 (concept-theme cards with the members'
+ * average move, each linking to its theme page), 新聞 (即時新聞 — RSS/Finnhub feed via
  * `get_news_feed`), and PTT (5 boards via `get_ptt_board`: Stock/Tech_Job/Warrant/Beauty/
  * Gossiping). One more (名人) is not built yet. Matching `EtfTabContent`'s exact underline-tab shell/motion pattern so
  * the two market tabs share one sub-tab convention. Local `useState`, not the shared
@@ -51,7 +55,7 @@ export function TwTabContent({ market }: { readonly market: Market }): ReactNode
       <div
         role="tablist"
         aria-label={t("label")}
-        className="flex w-fit gap-6 border-[var(--border)] border-b"
+        className="flex w-fit max-w-full gap-6 overflow-x-auto border-[var(--border)] border-b pb-px"
       >
         {TW_SUB_TABS.map(({ key, icon: Icon }) => {
           const active = subTab === key;
@@ -92,6 +96,7 @@ export function TwTabContent({ market }: { readonly market: Market }): ReactNode
       {subTab === "chip" ? <ChipDataPanel market={market} /> : null}
       {subTab === "disposition" ? <DispositionBoardPanel market={market} /> : null}
       {subTab === "heatmap" ? <HeatmapPanel market={market} /> : null}
+      {subTab === "themes" ? <ThemeHeatPanel /> : null}
       {subTab === "news" ? <NewsFeedPanel market={market} /> : null}
       {subTab === "ptt" ? <PttBoardPanel /> : null}
     </div>

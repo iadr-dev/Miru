@@ -9,6 +9,11 @@ export const THEME_KINDS = ["industry", "concept"] as const;
 export const themeKindSchema = z.enum(THEME_KINDS);
 export type ThemeKind = z.infer<typeof themeKindSchema>;
 
+/** Where a member sits in a concept theme's chain. `related` = in the theme but not placed on it. */
+export const THEME_POSITIONS = ["upstream", "midstream", "downstream", "related"] as const;
+export const themePositionSchema = z.enum(THEME_POSITIONS);
+export type ThemePosition = z.infer<typeof themePositionSchema>;
+
 export const themeSummarySchema = z.object({
   key: z.string(),
   name_zh: z.string(),
@@ -16,6 +21,10 @@ export const themeSummarySchema = z.object({
   kind: themeKindSchema,
   status: z.string(),
   member_count: z.number(),
+  /** Additive: a short plain-language description; absent on older payloads. */
+  description: z.string().default(""),
+  /** Additive: keys of related themes; absent on older payloads. */
+  related_keys: z.array(z.string()).default([]),
 });
 export type ThemeSummary = z.infer<typeof themeSummarySchema>;
 
@@ -31,6 +40,8 @@ export const themeMemberSchema = z.object({
   sub_industry: z.string().default(""),
   confidence: z.number(),
   source: z.string(),
+  /** Additive: chain position within a concept theme; null/absent when unplaced. */
+  position: themePositionSchema.nullable().default(null),
 });
 export type ThemeMember = z.infer<typeof themeMemberSchema>;
 
@@ -41,6 +52,8 @@ export const themeMembersResponseSchema = z.object({
   name_en: z.string().default(""),
   kind: themeKindSchema.nullable(),
   member_count: z.number(),
+  description: z.string().default(""),
+  related_keys: z.array(z.string()).default([]),
   members: z.array(themeMemberSchema).default([]),
   message: z.string().default(""),
 });

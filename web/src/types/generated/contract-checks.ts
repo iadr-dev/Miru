@@ -507,6 +507,11 @@ export type ContractChecks = [
   >,
   // GET /symbols/{symbol}/themes — stock-detail.getSymbolThemes
   Accepts<typeof symbolThemesResponseSchema, R<"/api/v1/symbols/{symbol}/themes", "get">>,
+  // TODO(entity-graph): once the backend merges and `pnpm gen:api` runs, add
+  //   Accepts<typeof entityGraphResponseSchema, R<"/api/v1/symbols/{symbol}/entity-graph", "get">>
+  // for entity-graph.getEntityGraph (schema in "@/types/entity-graph"). The theme schemas gained
+  // additive description / related_keys / member position fields; the /themes and /themes/{key}
+  // lines below cover them after regeneration.
   // GET /themes — theme.getThemes
   Accepts<typeof themesResponseSchema, R<"/api/v1/themes", "get">>,
   // GET /themes/{key} — theme.getThemeMembers
