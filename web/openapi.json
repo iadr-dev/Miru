@@ -2476,6 +2476,16 @@
     "title": "CompactionBlock",
     "type": "object"
    },
+   "ConceptPosition": {
+    "enum": [
+     "upstream",
+     "midstream",
+     "downstream",
+     "related"
+    ],
+    "title": "ConceptPosition",
+    "type": "string"
+   },
    "ConnectionsResponse": {
     "properties": {
      "connections": {
@@ -4729,6 +4739,52 @@
     ],
     "title": "EntitlementView",
     "type": "object"
+   },
+   "EntityGraph": {
+    "additionalProperties": false,
+    "properties": {
+     "links": {
+      "items": {
+       "$ref": "#/components/schemas/GraphLink"
+      },
+      "title": "Links",
+      "type": "array"
+     },
+     "market": {
+      "$ref": "#/components/schemas/MarketCode"
+     },
+     "nodes": {
+      "items": {
+       "$ref": "#/components/schemas/GraphNode"
+      },
+      "title": "Nodes",
+      "type": "array"
+     },
+     "symbol": {
+      "title": "Symbol",
+      "type": "string"
+     }
+    },
+    "required": [
+     "symbol",
+     "market",
+     "nodes",
+     "links"
+    ],
+    "title": "EntityGraph",
+    "type": "object"
+   },
+   "EntityType": {
+    "enum": [
+     "tw_company",
+     "intl_company",
+     "technology",
+     "material",
+     "application",
+     "product"
+    ],
+    "title": "EntityType",
+    "type": "string"
    },
    "EsgScore": {
     "additionalProperties": false,
@@ -11685,6 +11741,11 @@
     "additionalProperties": false,
     "description": "A theme's identity plus its member symbols, each carrying the per-membership\n`sub_industry`/`confidence`/`source` so an AI-researched concept member is never presented as\nan editorially-guaranteed industry-chain one.",
     "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
      "found": {
       "title": "Found",
       "type": "boolean"
@@ -11706,7 +11767,7 @@
      },
      "members": {
       "items": {
-       "$ref": "#/components/schemas/ThemeMember"
+       "$ref": "#/components/schemas/ThemeMemberDetail"
       },
       "title": "Members",
       "type": "array"
@@ -11725,6 +11786,14 @@
       "default": "",
       "title": "Name Zh",
       "type": "string"
+     },
+     "related_keys": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Related Keys",
+      "type": "array"
      },
      "theme_key": {
       "title": "Theme Key",
@@ -12493,6 +12562,88 @@
     ],
     "title": "Grade",
     "type": "string"
+   },
+   "GraphLink": {
+    "additionalProperties": false,
+    "properties": {
+     "kind": {
+      "$ref": "#/components/schemas/LinkKind"
+     },
+     "source": {
+      "title": "Source",
+      "type": "string"
+     },
+     "target": {
+      "title": "Target",
+      "type": "string"
+     },
+     "weight": {
+      "title": "Weight",
+      "type": "number"
+     }
+    },
+    "required": [
+     "source",
+     "target",
+     "weight",
+     "kind"
+    ],
+    "title": "GraphLink",
+    "type": "object"
+   },
+   "GraphNode": {
+    "additionalProperties": false,
+    "properties": {
+     "focus": {
+      "default": false,
+      "title": "Focus",
+      "type": "boolean"
+     },
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "label": {
+      "title": "Label",
+      "type": "string"
+     },
+     "market": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/MarketCode"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "symbol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Symbol"
+     },
+     "type": {
+      "$ref": "#/components/schemas/EntityType"
+     },
+     "weight": {
+      "title": "Weight",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "label",
+     "type",
+     "weight"
+    ],
+    "title": "GraphNode",
+    "type": "object"
    },
    "HTTPValidationError": {
     "properties": {
@@ -13814,6 +13965,14 @@
     ],
     "title": "LineLink",
     "type": "object"
+   },
+   "LinkKind": {
+    "enum": [
+     "mention",
+     "cooccurrence",
+     "supply"
+    ],
+    "type": "string"
    },
    "LivePriceTick": {
     "additionalProperties": false,
@@ -21268,9 +21427,9 @@
     "title": "ThemeKind",
     "type": "string"
    },
-   "ThemeMember": {
+   "ThemeMemberDetail": {
     "additionalProperties": false,
-    "description": "One `theme_memberships` row, as returned by the reverse (symbol -> themes) lookup and\naccepted by the snapshot-replace write.",
+    "description": "A membership row; `position` is set for a concept theme's members (upstream / midstream /\ndownstream / related) and null for an industry theme, whose tiers sit on sub-industries.",
     "properties": {
      "confidence": {
       "default": 1.0,
@@ -21282,6 +21441,16 @@
      "market": {
       "title": "Market",
       "type": "string"
+     },
+     "position": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ConceptPosition"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "source": {
       "$ref": "#/components/schemas/ThemeSource"
@@ -21301,7 +21470,7 @@
      "market",
      "source"
     ],
-    "title": "ThemeMember",
+    "title": "ThemeMemberDetail",
     "type": "object"
    },
    "ThemeSource": {
@@ -21326,6 +21495,11 @@
     "additionalProperties": false,
     "description": "One theme's discovery-card shape — identity plus its member count, so a caller (the\nscreener's `PresetLibrary`-style theme picker) can show \"半導體 (128)\" without a second\nround-trip per theme.",
     "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
      "key": {
       "title": "Key",
       "type": "string"
@@ -21346,6 +21520,14 @@
      "name_zh": {
       "title": "Name Zh",
       "type": "string"
+     },
+     "related_keys": {
+      "default": [],
+      "items": {
+       "type": "string"
+      },
+      "title": "Related Keys",
+      "type": "array"
      },
      "status": {
       "$ref": "#/components/schemas/ThemeStatus"
@@ -33960,6 +34142,86 @@
      }
     },
     "summary": "Symbol Chain Positions",
+    "tags": [
+     "themes"
+    ]
+   }
+  },
+  "/api/v1/symbols/{symbol}/entity-graph": {
+   "get": {
+    "description": "個股 > 產業分析's 關聯圖譜: the entities one company's reports mention, the other companies\nthat mention the same ones, and the verified supply relations among the companies shown. Nodes\nand links carry only ids, labels, types and counts; at most 120 nodes.",
+    "operationId": "symbol_entity_graph_api_v1_symbols__symbol__entity_graph_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "symbol",
+      "required": true,
+      "schema": {
+       "title": "Symbol",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "market",
+      "required": false,
+      "schema": {
+       "default": "TW",
+       "enum": [
+        "TW",
+        "US"
+       ],
+       "title": "Market",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "min_weight",
+      "required": false,
+      "schema": {
+       "default": 1,
+       "minimum": 1,
+       "title": "Min Weight",
+       "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 60,
+       "maximum": 94,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/EntityGraph"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Symbol Entity Graph",
     "tags": [
      "themes"
     ]

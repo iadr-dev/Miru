@@ -390,6 +390,51 @@ table (full replace in one transaction); nothing is hand-edited there.
   empty list means 尚未分類. Not in this change (follow-ups): the LLM proposer for abstentions and the
   financial-profile tie-breaker.
 
+#### Concept themes & entity graph (`analytics/supply_chain/themes_io/`, `entities_io/`, `entity_graph.py`)
+
+Two more private file sets feed the index; as with relations, **the files are the truth and Postgres
+is an index rebuilt from them** (idempotent upsert, rows missing from the files are deleted, a
+missing/empty directory is a no-op with one warning, a bad row fails that load before anything is
+written).
+
+- **Concept themes** — `<reference dir>/themes/concepts/<key>.yaml`, one theme per file: `{key,
+  name_zh, name_en?, description?, related: [names], members: [{symbol, name, position:
+  upstream|midstream|downstream|related, origin: seeded|curated|proposed}]}`. The market of a member
+  is derived from the symbol (4-6 digit code = TW, ticker = US). Tables `sc_concept_themes` and
+  `sc_concept_members` hold them. Each theme is also **mirrored** (replace-per-theme, same
+  transaction) into `themes` (`kind='concept'`, `source='concept_research'`) and `theme_memberships`
+  (`sub_industry` = 上游 / 中游 / 下游 / 相關公司, `confidence` 0.6) so `get_themes`,
+  `get_theme_members`, `get_symbol_themes` and the screener 主題 chips list them with no further
+  change. A concept key that an industry theme already uses is refused (the load fails, nothing is
+  changed); a concept theme whose file is gone is deleted from all four tables.
+- **Entities** — `<reference dir>/entities/catalog.yaml` (`{id, type: tw_company | intl_company |
+  technology | material | application | product, mentions, reports, symbol?, aliases?}`) and
+  `entities/mentions.jsonl` (`{symbol, entity, section: business|chain|counterparty, role:
+  customer|supplier|null, count}`). Tables `sc_entities` and `sc_entity_mentions` (unique on symbol,
+  entity, section, role). A mention whose entity is not in the catalog or whose company symbol is not
+  a Taiwan code is dropped and counted in the job detail; a malformed line fails the load naming file
+  and line.
+- **Job** — `job_sc_themes_entities_load` (leader-only, daily 06:25 Taipei, between
+  `sc_refdata_load` and `sc_positions_refresh`, also run once in the dev startup catch-up). The two
+  loads are independent: a bad file in one is journaled as `failed` but never blocks the other.
+  `rows_written` = concept members + entities + mentions. `python -m analytics.supply_chain load`
+  loads relations, concept themes and entities; `stats` prints counts only.
+- **Theme routes** — additive: theme summaries (`GET /themes`) and `GET /themes/{key}` carry
+  `description` and `related_keys` (related names resolved to concept keys; unknown names dropped),
+  and each member of a concept theme carries `position` (null for industry themes).
+- **Entity graph** — `GET /symbols/{symbol}/entity-graph?market=TW&min_weight=1&limit=60` and the
+  deferred public tool `get_entity_graph` return `{symbol, market, nodes:[{id, label, type, symbol,
+  market, weight, focus}], links:[{source, target, weight, kind: mention|cooccurrence|supply}]}`.
+  The focus node is the company; entity nodes are the entities it mentions (weight = total mentions
+  across sections, most-mentioned first, `min_weight` filter, the company's own name excluded);
+  peer nodes are up to 25 other companies mentioning at least one shown entity (node weight = shared
+  entity count; the focus-peer `cooccurrence` link weight is the Jaccard overlap of the two full
+  entity sets, 0..1). `mention` links run company -> entity (weight = count). `supply` links are
+  directed supplier -> customer, weight 1, for verified non-stale `supplies` relations between the
+  companies shown. An entity that stands for a company already shown reuses that company's node. At
+  most 120 nodes (`limit` <= 94 entities + 25 peers + the focus). Only ids, labels, types and counts
+  leave the service - no report text.
+
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an

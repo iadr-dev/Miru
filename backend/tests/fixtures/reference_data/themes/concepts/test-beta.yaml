@@ -1,0 +1,8 @@
+# Synthetic fixture for the test suite - not the product's data.
+key: test-beta
+name_zh: 測試題材乙
+description: A second invented concept theme
+related:
+  - test-alpha
+members:
+  - {symbol: "9002", name: Beta Devices, position: upstream, origin: seeded}

@@ -45,7 +45,11 @@ import structlog
 from analytics.scoring_batch import job_scoring_batch, job_trend_score_batch
 from analytics.screener.batch import job_screener_flags
 from analytics.strategy_watch.batch import job_strategy_watchlist
-from analytics.supply_chain.jobs import job_sc_positions_refresh, job_sc_refdata_load
+from analytics.supply_chain.jobs import (
+    job_sc_positions_refresh,
+    job_sc_refdata_load,
+    job_sc_themes_entities_load,
+)
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
@@ -188,6 +192,9 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # source of truth) — local file read only, no upstream call; a daily pass keeps staleness
     # current and picks up an edited file.
     ScheduledIngestJob("sc_refdata_load", time_(6, 20), job_sc_refdata_load),
+    # Concept themes (with their mirror in the generic theme tables) and the entity catalog +
+    # mentions behind 關聯圖譜, rebuilt from the operator's private files - local only.
+    ScheduledIngestJob("sc_themes_entities_load", time_(6, 25), job_sc_themes_entities_load),
     # Chain positions (上游/中游/下游 per company per industry chain) recomputed from the tier map,
     # the verified relations just indexed above, and the operator's overrides — derived, local only.
     ScheduledIngestJob("sc_positions_refresh", time_(6, 30), job_sc_positions_refresh),

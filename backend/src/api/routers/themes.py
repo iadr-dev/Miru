@@ -140,4 +140,28 @@ async def symbol_chain_positions(
     return await _dispatch(state, "get_chain_position", {"id": symbol, "market": market.value}, ctx)
 
 
+@router.get(
+    "/symbols/{symbol}/entity-graph",
+    response_model=None,
+    responses=tool_responses("get_entity_graph"),
+)
+async def symbol_entity_graph(
+    symbol: str,
+    market: Literal["TW", "US"] = Query("TW"),
+    min_weight: int = Query(1, ge=1),
+    limit: int = Query(60, ge=1, le=94),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """個股 > 產業分析's 關聯圖譜: the entities one company's reports mention, the other companies
+    that mention the same ones, and the verified supply relations among the companies shown. Nodes
+    and links carry only ids, labels, types and counts; at most 120 nodes."""
+    return await _dispatch(
+        state,
+        "get_entity_graph",
+        {"id": symbol, "market": market, "min_weight": min_weight, "limit": limit},
+        ctx,
+    )
+
+
 __all__ = ["router"]

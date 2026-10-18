@@ -1,0 +1,6 @@
+{"symbol": "9001", "entity": "Widget Tech", "section": "business", "role": null, "count": 3}
+{"symbol": "9001", "entity": "Widget Material", "section": "chain", "role": null, "count": 1}
+{"symbol": "9002", "entity": "Widget Tech", "section": "business", "role": null, "count": 2}
+{"symbol": "9002", "entity": "Gamma Corp", "section": "counterparty", "role": "customer", "count": 2}
+{"symbol": "9003", "entity": "Widget Tech", "section": "chain", "role": null, "count": 4}
+{"symbol": "9003", "entity": "Widget App", "section": "business", "role": null, "count": 3}

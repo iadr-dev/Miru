@@ -54,6 +54,13 @@ class SupplyChainStore(Protocol):
         relations whose two ends are both Taiwan companies - the positions graph's edges."""
         ...
 
+    async def list_verified_supply_among(
+        self, companies: Collection[tuple[str, str]]
+    ) -> list[tuple[tuple[str, str], tuple[str, str]]]:
+        """Directed `(supplier, customer)` pairs, each a `(symbol, market)`, of the verified,
+        non-stale `supplies` relations whose two ends are both in `companies`."""
+        ...
+
     async def replace_positions(
         self, positions: Sequence[ChainPosition], *, computed_at: datetime
     ) -> int:

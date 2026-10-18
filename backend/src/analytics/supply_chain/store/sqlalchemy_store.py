@@ -220,6 +220,29 @@ class SqlAlchemySupplyChainStore:
         }
         return sorted(pairs)
 
+    async def list_verified_supply_among(
+        self, companies: Collection[tuple[str, str]]
+    ) -> list[tuple[tuple[str, str], tuple[str, str]]]:
+        wanted = set(companies)
+        symbols = sorted({symbol for symbol, _market in wanted})
+        if not symbols:
+            return []
+        today = datetime.now(UTC).date()
+        pairs: set[tuple[tuple[str, str], tuple[str, str]]] = set()
+        for start in range(0, len(symbols), _CHUNK):
+            chunk = symbols[start : start + _CHUNK]
+            stmt = select(ScRelationRow).where(
+                ScRelationRow.kind == Kind.SUPPLIES.value,
+                ScRelationRow.status == Status.VERIFIED.value,
+                ScRelationRow.supplier_symbol.in_(chunk),
+            )
+            for row in (await self._session.scalars(stmt)).all():
+                supplier = (row.supplier_symbol, row.supplier_market)
+                customer = (row.customer_symbol, row.customer_market)
+                if supplier in wanted and customer in wanted and not _row_is_stale(row, today):
+                    pairs.add((supplier, customer))
+        return sorted(pairs)
+
     async def replace_positions(
         self, positions: Sequence[ChainPosition], *, computed_at: datetime
     ) -> int:
