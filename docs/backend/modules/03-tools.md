@@ -373,7 +373,7 @@ Registered tools (module 20 owns the engines behind them):
 | `run_screener`, `get_factor_catalog`, `get_screener_presets` | `screener_tools.py` | public | web Screener (no skill) |
 | `get_technical_indicators` (MA/Bollinger/KD/MACD, support/resistance, patterns) | `technical_tools.py` | public | web (no skill) |
 | `get_themes`, `get_theme_members`, `get_symbol_themes`, `get_theme_tiers` | `theme_tools.py` | public | `theme-lookup` skill (`get_themes` is web-only) |
-| `get_supply_chain_edges`, `get_theme_tier_heatmap` | `theme_tools.py` | public | web (no skill) |
+| `get_supply_chain_edges`, `get_chain_position`, `get_theme_tier_heatmap` | `theme_tools.py` | public | web (no skill) |
 
 Design names that have no tool of that name: `get_indicators` (= `get_technical_indicators`),
 `get_score` (= `get_stock_score`), `get_score_breakdown` (the factor breakdown is inside

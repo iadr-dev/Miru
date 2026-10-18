@@ -338,6 +338,55 @@ files** by the `sc_refdata_load` ingest job; nothing is restored from the databa
   `last_verified_at` and `sources[{publisher,url,published_on}]`. The older `supply_chain_edges`
   table and its loaders are superseded and removed in a later change.
 
+#### Chain positions (`analytics/supply_chain/positions/`) — 上游 / 中游 / 下游 per company per chain
+
+A *chain* is an industry theme (`themes.kind='industry'`, key = industry name); a company's chain
+membership supplies `(symbol, chain_key, sub_industry)`. The **prior** is the existing `theme_tiers`
+row for `(chain, sub_industry)`: `curated` = confidence 0.8, `heuristic` (keyword rule) = 0.35. The
+files stay the truth: `sc_positions` is derived and the `sc_positions_refresh` job rewrites the whole
+table (full replace in one transaction); nothing is hand-edited there.
+
+- **Graph signal** (`signals.py`, pure) — a directed graph of verified, non-stale `supplies`
+  relations between Taiwan companies that are members of the same chain. A node needs **>= 2 distinct
+  incident edges** to get any opinion. *Layering*: strongly connected components are collapsed (cycle
+  protection), `score = depth / (depth + height)` from longest paths in the DAG (0 = pure supplier
+  side = upstream-leaning, 1 = pure customer side = downstream-leaning). *Propagation*: anchors =
+  operator overrides + curated priors (confidence >= 0.8), scored upstream 0 / midstream 0.5 /
+  downstream 1; every other node is set to the mean over its scored neighbours of `min(1, s(supplier)
+  + 0.25)` and `max(0, s(customer) - 0.25)` (Jacobi update, anchors fixed), until no score moves by
+  more than 1e-3 or 20 iterations. An anchor is scored with its own anchor removed (leave-one-out), so
+  a prior never confirms itself. Propagation is used when it has an opinion, else layering. Score ->
+  position: `< 0.34` upstream, `> 0.66` downstream, else midstream, with a +-0.04 band around each
+  threshold that yields **no** graph opinion.
+- **Resolver** (`resolver.py`) — precedence: operator override (`method=override`, 1.0) > prior and
+  graph agree (`evidence`, 0.95 curated / 0.85 heuristic, `agree_prior_graph`) > graph alone
+  (`evidence`, 0.60 + 0.05 per edge beyond two, max 0.80; `graph_layering` or `graph_propagation`, plus
+  `conflict_graph_over_prior` when it disagrees with a *curated* prior) > curated prior (`prior`, 0.8,
+  `prior_curated`) > heuristic prior (`prior`, 0.35, `prior_keyword`) > **abstain** (no row; the UI
+  shows 尚未分類). `is_primary`: per company the chain with the highest confidence (ties: the chain
+  with more members, then the alphabetically first key); a partial unique index keeps it to one.
+  Reason codes (stable API contract): `override`, `prior_curated`, `prior_keyword`, `graph_layering`,
+  `graph_propagation`, `agree_prior_graph`, `conflict_graph_over_prior`.
+- **Overrides** — optional private `<reference dir>/supply_chain/position_overrides.yaml`, a list of
+  `{symbol, market, chain_key, position, reason}`; a missing file means none, a bad row fails the run
+  with `file row[i]: field: message`.
+- **Job** — `job_sc_positions_refresh` (leader-only, daily 06:30 Taipei, after `sc_refdata_load`, also
+  run once in the dev startup catch-up after it). With no industry memberships it is journaled as
+  skipped and the existing rows are kept. CLI: `python -m analytics.supply_chain positions` (compute +
+  write, prints counts per position/method only).
+- **Evaluation** — `python -m analytics.supply_chain eval [--golden PATH] [--json]` computes positions
+  in memory from the current database and scores them against the private
+  `<reference dir>/supply_chain/golden_positions.yaml` (`{symbol, chain_key, position,
+  label_confidence: sure|unsure, note}`). Metrics: coverage (non-abstained share), accuracy on
+  non-abstained `sure` rows, per-position precision/recall/F1, a confusion matrix (with an `abstain`
+  column) and the list of disagreements. Gate (exit code 1): accuracy >= 85% and abstentions <= 25%.
+  CI exercises the gate logic with synthetic labels only.
+- **Read** — `GET /symbols/{symbol}/chain-positions?market=TW` and the deferred public tool
+  `get_chain_position` return `{symbol, market, positions:[{chain_key, chain_name, position,
+  is_primary, method, confidence, reasons:[{code, detail}], computed_at}]}`, primary chain first; an
+  empty list means 尚未分類. Not in this change (follow-ups): the LLM proposer for abstentions and the
+  financial-profile tie-breaker.
+
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an

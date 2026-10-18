@@ -123,4 +123,21 @@ async def symbol_supply_chain(
     )
 
 
+@router.get(
+    "/symbols/{symbol}/chain-positions",
+    response_model=None,
+    responses=tool_responses("get_chain_position"),
+)
+async def symbol_chain_positions(
+    symbol: str,
+    market: Market = Query(Market.TW),
+    state: AppState = Depends(get_state),
+    ctx: ToolContext = Depends(_context),
+) -> dict[str, object]:
+    """個股 > 產業分析's 產業鏈 position: where one company sits (upstream/midstream/downstream) in
+    each industry chain it belongs to, with the method, confidence and reason codes. An empty list
+    means 尚未分類 (the classifier abstained)."""
+    return await _dispatch(state, "get_chain_position", {"id": symbol, "market": market.value}, ctx)
+
+
 __all__ = ["router"]

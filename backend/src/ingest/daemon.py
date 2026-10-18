@@ -45,7 +45,7 @@ import structlog
 from analytics.scoring_batch import job_scoring_batch, job_trend_score_batch
 from analytics.screener.batch import job_screener_flags
 from analytics.strategy_watch.batch import job_strategy_watchlist
-from analytics.supply_chain.jobs import job_sc_refdata_load
+from analytics.supply_chain.jobs import job_sc_positions_refresh, job_sc_refdata_load
 from analytics.themes.seed import seed_industry_themes
 from analytics.themes.tiers_seed import seed_theme_tiers
 from config.settings import Settings, get_settings
@@ -188,6 +188,9 @@ SCHEDULED_JOBS: tuple[ScheduledIngestJob, ...] = (
     # source of truth) — local file read only, no upstream call; a daily pass keeps staleness
     # current and picks up an edited file.
     ScheduledIngestJob("sc_refdata_load", time_(6, 20), job_sc_refdata_load),
+    # Chain positions (上游/中游/下游 per company per industry chain) recomputed from the tier map,
+    # the verified relations just indexed above, and the operator's overrides — derived, local only.
+    ScheduledIngestJob("sc_positions_refresh", time_(6, 30), job_sc_positions_refresh),
     # 策略盯盤 pre-market screen — derived compute over the last session's landed price/flow/margin
     # partitions and the event feeds; writes today's watchlist with each stock's trigger levels
     # before the 09:00 open, so the intraday check and the morning-list alert have it to read.
