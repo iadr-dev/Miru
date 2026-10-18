@@ -275,3 +275,12 @@ screen itself (it is a web-app deliverable).
 - Large-tail tools are reached in two steps (`search_tools`, then `execute_tool`) by design.
 - Behind Cloudflare, free/proxied plans cap request duration (about 100 s); tool calls are well
   below that.
+
+## Tools that are not offered over MCP
+
+`ask_user` and the `propose_*` tools (alert, memory, schedule, watchlist change) only make sense
+inside the Miru chat: each ends in a card that the person confirms in the app. Over MCP nobody would
+see the card, and the calling model could wrongly tell its user that something was set up, so the
+server does not list them, does not find them with `search_tools` and refuses them in
+`execute_tool` (`MCP_EXCLUDED_TOOLS` in `mcp/app.py`). Every other registered tool is reachable
+automatically, with no separate MCP registration.
