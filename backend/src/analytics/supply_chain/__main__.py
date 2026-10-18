@@ -1,7 +1,10 @@
-"""Operator CLI: `python -m analytics.supply_chain load|stats`.
+"""Operator CLI: `python -m analytics.supply_chain load|stats|positions|eval`.
 
 `load` rebuilds the index tables from the private relation files; `stats` prints row counts
-(numbers only, never relation content).
+(numbers only, never relation content). `positions` recomputes and writes the chain positions and
+prints counts per position and method only. `eval [--golden PATH] [--json]` computes the positions
+in memory from the current database and scores them against the golden file (exit 1 when the gate
+fails or the golden file is unusable).
 """
 
 from __future__ import annotations
@@ -12,9 +15,17 @@ import contextlib
 import json
 import sys
 from datetime import UTC, datetime
+from pathlib import Path
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from analytics.supply_chain.evaluation.golden import GoldenFileError, load_golden
+from analytics.supply_chain.evaluation.metrics import check_gate, evaluate, format_report
+from analytics.supply_chain.positions.overrides import OverrideFileError, load_overrides
+from analytics.supply_chain.positions.service import compute_positions, summarize
 from analytics.supply_chain.refdata_io.loader import RelationFileError, load_reference_relations
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
+from analytics.themes.store import SqlAlchemyThemeStore
 from config.settings import get_settings
 from db import (
     models,  # noqa: F401  # pyright: ignore[reportUnusedImport] - registers ORM models
@@ -22,8 +33,41 @@ from db import (
 )
 from db.base import ensure_schema, make_engine, make_session_factory
 
+NO_MEMBERSHIPS = "no industry memberships to classify\n"
 
-async def _run(command: str) -> int:
+
+async def _positions(session: AsyncSession) -> tuple[int, str]:
+    store = SqlAlchemySupplyChainStore(session)
+    positions, memberships = await compute_positions(
+        SqlAlchemyThemeStore(session), store, load_overrides()
+    )
+    if memberships == 0:
+        return 1, NO_MEMBERSHIPS
+    await store.replace_positions(positions, computed_at=datetime.now(UTC))
+    await session.commit()
+    summary = {"memberships": memberships, "written": len(positions), **summarize(positions)}
+    return 0, json.dumps(summary) + "\n"
+
+
+async def _eval(
+    session: AsyncSession, golden_path: Path | None, *, as_json: bool
+) -> tuple[int, str]:
+    positions, memberships = await compute_positions(
+        SqlAlchemyThemeStore(session), SqlAlchemySupplyChainStore(session), load_overrides()
+    )
+    if memberships == 0:
+        return 1, NO_MEMBERSHIPS
+    report = evaluate(load_golden(golden_path), positions)
+    failures = check_gate(report)
+    code = 1 if failures else 0
+    if as_json:
+        body = report.model_dump(mode="json") | {"gate_failures": failures}
+        return code, json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+    verdict = "FAIL - " + "; ".join(failures) if failures else "pass"
+    return code, f"{format_report(report)}\n\ngate: {verdict}\n"
+
+
+async def _run(command: str, golden: Path | None, *, as_json: bool) -> int:
     settings = get_settings()
     rls.install(enabled=settings.row_level_security)
     rls.enter_system_mode()  # platform-wide reference data, not one user
@@ -41,6 +85,17 @@ async def _run(command: str) -> int:
                     return 1
                 await session.commit()
                 sys.stdout.write(json.dumps(result.__dict__) + "\n")
+            elif command in ("positions", "eval"):
+                try:
+                    if command == "positions":
+                        code, text = await _positions(session)
+                    else:
+                        code, text = await _eval(session, golden, as_json=as_json)
+                except (OverrideFileError, GoldenFileError) as exc:
+                    sys.stderr.write(f"{exc}\n")
+                    return 1
+                sys.stdout.write(text)
+                return code
             else:
                 counts = await store.counts()
                 sys.stdout.write(counts.model_dump_json(indent=2) + "\n")
@@ -51,9 +106,11 @@ async def _run(command: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m analytics.supply_chain")
-    parser.add_argument("command", choices=["load", "stats"])
+    parser.add_argument("command", choices=["load", "stats", "positions", "eval"])
+    parser.add_argument("--golden", type=Path, default=None, help="eval: golden file path")
+    parser.add_argument("--json", action="store_true", help="eval: print the report as JSON")
     args = parser.parse_args(argv)
-    return asyncio.run(_run(args.command))
+    return asyncio.run(_run(args.command, args.golden, as_json=args.json))
 
 
 if __name__ == "__main__":

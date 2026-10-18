@@ -46,7 +46,7 @@ from zoneinfo import ZoneInfo
 
 import structlog
 
-from analytics.supply_chain.jobs import job_sc_refdata_load
+from analytics.supply_chain.jobs import job_sc_positions_refresh, job_sc_refdata_load
 from config.logging_config import configure_logging
 from config.settings import Settings, get_settings
 from db import rls
@@ -153,6 +153,16 @@ async def _sc_refdata_catch_up(ctx: IngestContext) -> None:
         logger.exception("ingest_startup_sc_refdata_failed")
         return
     logger.info("ingest_startup_sc_refdata", status=run.status.value, rows=run.rows_written)
+    try:
+        positions_run = await job_sc_positions_refresh(datetime.now(_TAIPEI).date(), ctx)
+    except Exception:
+        logger.exception("ingest_startup_sc_positions_failed")
+        return
+    logger.info(
+        "ingest_startup_sc_positions",
+        status=positions_run.status.value,
+        rows=positions_run.rows_written,
+    )
 
 
 async def _startup_gap_fill(settings: Settings, ctx: IngestContext) -> None:
