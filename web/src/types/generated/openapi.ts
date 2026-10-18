@@ -11352,7 +11352,8 @@ export interface components {
       | "graph_layering"
       | "graph_propagation"
       | "agree_prior_graph"
-      | "conflict_graph_over_prior";
+      | "conflict_graph_over_prior"
+      | "conflict_prior_kept";
     /** RecessionBand */
     RecessionBand: {
       /**

@@ -107,25 +107,32 @@ def _decide(
                 confidence,
                 (agree, _prior_reason(prior, chain_key), graph_reason),
             )
+        if prior is not None and curated:
+            # Measured against the labelled set, a small noisy relationship graph is wrong more
+            # often than a curated sub-industry placement: keep the prior and say so.
+            return (
+                prior.position,
+                Method.PRIOR,
+                _prior_confidence(prior),
+                (
+                    _prior_reason(prior, chain_key),
+                    Reason(
+                        code=ReasonCode.CONFLICT_PRIOR_KEPT,
+                        detail=f"graph says {graph.position.value}, curated prior kept",
+                    ),
+                ),
+            )
         extra = min(graph.edge_count - 2, _EXTRA_EDGE_CAP)
         confidence = min(GRAPH_BASE_CONFIDENCE + GRAPH_PER_EDGE * extra, GRAPH_MAX_CONFIDENCE)
-        reasons = [graph_reason]
-        if prior is not None and curated:
-            reasons.append(
-                Reason(
-                    code=ReasonCode.CONFLICT_GRAPH_OVER_PRIOR,
-                    detail=f"graph says {graph.position.value}, curated prior says "
-                    f"{prior.position.value}",
-                )
-            )
-        return graph.position, Method.EVIDENCE, confidence, tuple(reasons)
-    if prior is not None:
+        return graph.position, Method.EVIDENCE, confidence, (graph_reason,)
+    if prior is not None and prior.source is PriorSource.CURATED:
         return (
             prior.position,
             Method.PRIOR,
             _prior_confidence(prior),
             (_prior_reason(prior, chain_key),),
         )
+    # A keyword guess alone scored at chance on the labelled set: abstain rather than publish it.
     return None
 
 
