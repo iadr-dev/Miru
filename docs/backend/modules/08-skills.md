@@ -185,7 +185,7 @@ are in the orchestrator's warm-tool default (`_WARM_TOOLS`).
 | `intraday-and-multi-timeframe-price` | Tick-level trades, minute K-bars, weekly/monthly bars, ten-year price line, 暫停交易 announcements for one stock | all sponsor |
 | `industry-chain-money-flow` | 產業鏈資金流 whole-market aggregate (single trading day) + a stock's static 產業鏈分類 | all sponsor |
 | `finmind-stock-news` | FinMind's own news dataset for one stock, one trading day at a time (distinct from the excluded RSS/GDELT/Finnhub aggregator + PTT buzz) | no (public) |
-| `theme-lookup` | 主題/產業鏈查詢: what theme a stock is in, what stocks are in a theme, and a theme's upstream/midstream/downstream breakdown — over the relational theme store (industry-chain facts vs AI-researched concept members distinguished, curated vs heuristic tiers distinguished) | no (public) |
+| `theme-lookup` | 主題/產業鏈/供應鏈查詢: the theme list, what theme a stock is in, what stocks are in a theme, a theme's upstream/midstream/downstream breakdown, a company's supply-chain relations and chain position, and its entity graph (full detail is Pro; other plans get a preview) — over the relational theme store (industry-chain facts vs AI-researched concept members distinguished, curated vs heuristic tiers distinguished) | no (public) |
 | `stock-score` | 多因子綜合評分: one symbol's cached 5-factor composite (momentum/trend_quality/value_guard/quality/revenue_flow) + descriptive band, swing/position horizon profiles, plus the whole-TW-universe bullish/bearish leaderboard — both cache-only, daily-batch reads | no (public) |
 | `stock-screener` | 篩選器: tag path (`get_tag_catalog` then `run_tag_screener`, TW end-of-day tags) and numeric path (`get_factor_catalog`, `get_screener_presets`, `run_screener` over TW/US/ETF with liquidity/price/cap/disposition gates) — descriptive filters, never a ranked recommendation | no (public) |
 | `etf-overlap-and-comparison` | 3檔以上非台股ETF持股重疊比較 (`get_etf_overlap`) + 跨市場（含台股）股利再投入總報酬比較 (`get_fund_comparison`), with honest disclosure of the TW-holdings/NAV adapter gap | no (public) |
@@ -218,8 +218,7 @@ The chat agent only gets a skill's allowlist, so every registered tool must be l
 **Deliberately outside the skills:** `web_search`/`fetch_url` (enablement-gated generic tools,
 not skill-shaped - the agent decides when to use them, subject to the per-turn web-search toggle)
 and the warm set. `CHAT_EXEMPT_TOOLS` (in the guard test) lists any UI-only tool kept out of chat,
-with a reason; it currently holds only the four theme/supply-chain tools that the `theme-lookup`
-rework is about to list.
+with a reason; it is currently empty (the theme and supply-chain tools are listed by `theme-lookup`).
 
 **Real-backing.** Skills are backed by named tools in `backend/src/tools/*.py` and don't invent
 fields their tools don't return. Several skills are honestly narrower than the original design intended, and say so explicitly in their
