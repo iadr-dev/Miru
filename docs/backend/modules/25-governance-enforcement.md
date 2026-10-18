@@ -84,7 +84,14 @@ lookups. `guardrails.py` has **no citation check**: web-claim citation is struct
 
 Two independent hooks; neither stands in for the other.
 
-- **Data class.** `schemas.enums.DataClass` is `public | sponsor`. `tools/base.py::dispatch_tool`
+- **Data class.** `schemas.enums.DataClass` is `public | sponsor | private`. `private` is one user's
+  own account data (watchlists, alerts, schedules, usage, notifications): `dispatch_tool` does not run
+  a `private` tool for an anonymous caller (`ctx.user_id is None`) and returns `SignInRequired`
+  (a normal result); the tool reads only `ctx.user_id`'s rows (the id never comes from a tool
+  argument), it is free at every signed-in tier (`is_entitled` is true), and it is excluded from MCP by
+  class (`mcp.app.is_mcp_offered`). Tests: `tests/tools/test_private_data_class.py`,
+  `tests/tools/test_account_tools.py`, `tests/accounts/test_account_reader.py`,
+  `tests/mcp/test_private_tools_excluded.py`. `tools/base.py::dispatch_tool`
   runs on every tool call: a `sponsor` tool for a tier that fails `is_entitled` (only Premium and Pro
   pass) does **not run**; it returns a `MaskedTeaser` (`locked=True`, `required_tier`, `preview`,
   `tool_name`) - a normal successful result, never an error. The loop builds no card from a teaser

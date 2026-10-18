@@ -140,7 +140,10 @@ together they are "capability resolution"):
    the abstract capability. The router stamps each normalized result with the `data_class` of the
    adapter that served it; entitlement resolves it per-user → masked teaser. (So the *same* live-ish
    MIS snapshot is `public` when served by `twse_mis` and `sponsor` when served by `finmind` — see §4.)
-   ← this module + §4.
+   ← this module + §4. A third class, `private` (one user's own watchlists, alerts, schedules,
+   usage, notifications - the `get_my_*` tools, [03](03-tools.md)), is not a tier question: it needs
+   a signed-in caller and is scoped to that caller, and it is **free at every signed-in tier**
+   (`is_entitled(PRIVATE, tier)` is true; an anonymous caller gets `SignInRequired`). Not offered over MCP.
 2. **Tier-feature** — `feature_allowed(user, feature)` (e.g. `deep_research`=Pro,
    `live_quote_stream`=Premium (server-pushed 5s streaming — a *feature* gate, not a data-class gate),
    `tick_minute_k`=Premium (sponsor-class data), `supply_chain`=Pro and `concept_themes`=Pro (see

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from accounts.byok import byok_active
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
 from accounts.entitlements import entitlement_view
 from accounts.models import EntitlementView, SecretKind, User
@@ -50,14 +51,8 @@ class ProfileResponse(BaseModel):
 
 
 async def _byok_active(session: AsyncSession, settings: Settings, *, user_id: str) -> bool:
-    """Whether the caller has any BYOK LLM key on file — the one flag that lifts the chat limit.
-    A missing/invalid encryption config never crashes a read: it simply means no BYOK key can be
-    resolved, so the caller is treated as non-BYOK (never over-granting)."""
-    try:
-        cipher = SecretCipher.from_settings(settings)
-    except SecretEncryptionNotConfiguredError:
-        return False
-    return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
+    """Whether the caller has any BYOK LLM key on file - the one flag that lifts the chat limit."""
+    return await byok_active(session, settings, user_id=user_id)
 
 
 @router.patch("/me")

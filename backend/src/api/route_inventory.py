@@ -55,6 +55,7 @@ ROUTER_SECTIONS: tuple[tuple[str, str, bool], ...] = (
     ("scheduler.notifications", "Alerts, schedules, notifications & channels", True),
     ("scheduler.channels", "Alerts, schedules, notifications & channels", True),
     ("scheduler.email", "Alerts, schedules, notifications & channels", True),
+    ("scheduler.strategy_watch", "Alerts, schedules, notifications & channels", True),
     ("probes", "Ops probes (app root, not under /api/v1)", False),
 )
 

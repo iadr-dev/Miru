@@ -64,6 +64,18 @@ def bind_user(user_id: str) -> None:
 
 
 @contextlib.contextmanager
+def acting_as(user_id: str) -> Generator[None]:
+    """Run a block as `user_id` and restore the previous identity afterwards - for work done on a
+    user's behalf outside the request that authenticated them (e.g. a read tool), where leaving the
+    binding set would leak it into whatever runs next on this task."""
+    token = _user_id.set(user_id)
+    try:
+        yield
+    finally:
+        _user_id.reset(token)
+
+
+@contextlib.contextmanager
 def system_access() -> Generator[None]:
     """Work that is not on behalf of one user: background jobs, inbound webhooks, sign-in.
 

@@ -159,6 +159,12 @@ proposes - the user confirms on the card, and the agent never writes); and
 snapshot, warrant branch flow, night-session institutional flow; all Sponsor). The authoritative
 list is the `backend/src/skills/built_ins/*/SKILL.md` directories.
 
+Routing note: the keyword fallback (used only when the LLM classifier fails) scores skills by how many
+of their `triggers` match, ties going to the alphabetically first name. `account-overview` therefore
+avoids bare one-word triggers that the propose-only skills also use (`提醒`, `通知`, `自選`, `排程`):
+"提醒我 ..." must still reach `alert-proposal` and "加入自選 ..." `watchlist-proposal`
+(`tests/skills/test_account_skills.py` pins this).
+
 **No skill exists** for `analyst-consensus` as its own skill (the tool lives in `company-profile`,
 `international-equity-snapshot` and `stock-report-us`) or for `theme-discovery` (flow-ranked themes).
 The former web-only tools now have chat homes: see the next section.
@@ -188,6 +194,8 @@ are in the orchestrator's warm-tool default (`_WARM_TOOLS`).
 | `theme-lookup` | 主題/產業鏈/供應鏈查詢: the theme list, what theme a stock is in, what stocks are in a theme, a theme's upstream/midstream/downstream breakdown, a company's supply-chain relations and chain position, and its entity graph (full detail is Pro; other plans get a preview) — over the relational theme store (industry-chain facts vs AI-researched concept members distinguished, curated vs heuristic tiers distinguished) | no (public) |
 | `stock-score` | 多因子綜合評分: one symbol's cached 5-factor composite (momentum/trend_quality/value_guard/quality/revenue_flow) + descriptive band, swing/position horizon profiles, plus the whole-TW-universe bullish/bearish leaderboard — both cache-only, daily-batch reads | no (public) |
 | `stock-screener` | 篩選器: tag path (`get_tag_catalog` then `run_tag_screener`, TW end-of-day tags) and numeric path (`get_factor_catalog`, `get_screener_presets`, `run_screener` over TW/US/ETF with liquidity/price/cap/disposition gates) — descriptive filters, never a ranked recommendation | no (public) |
+| `account-overview` | 我的帳戶概況: the signed-in user's OWN watchlists (optionally with latest close), alert rules / scheduled briefings / 策略盯盤 subscription, today's chat quota and usage, and recent notifications - read-only (`get_my_watchlists`, `get_my_automations`, `get_my_usage`, `get_my_notifications`; `private` tools, [03](03-tools.md)). Says plainly when signed out or a list is empty; never reveals another user's data; changes go through the propose-only skills | no (private; free at every signed-in tier) |
+| `watchlist-review` | 自選股回顧: how the user's own watchlist moved lately (`get_symbol_quotes`, `get_price_history`), upcoming ex-dividend / calendar events (`get_dividend_calendar`, `get_calendar_events`) and, on request, the cached descriptive factor score (`get_stock_score`) - descriptive only, no buy/sell/target wording, at most 20 symbols per call | `get_calendar_events` CB slice (sponsor); rest public |
 | `etf-overlap-and-comparison` | 3檔以上非台股ETF持股重疊比較 (`get_etf_overlap`) + 跨市場（含台股）股利再投入總報酬比較 (`get_fund_comparison`), with honest disclosure of the TW-holdings/NAV adapter gap | no (public) |
 
 ### Tools the web uses that the chat agent now reaches through skills

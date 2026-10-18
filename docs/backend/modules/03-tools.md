@@ -4,8 +4,10 @@ The agent's entire action surface. The agent **never** touches network or filesy
 directly — only through registered tools. All tools are **read-only and always runnable** (`propose_alert` is the one "propose-only" class:
 it computes nothing and writes nothing — see below);
 there is no safety-tier system and no confirmation/approval gate. The only access control is
-the **`sponsor` data-class entitlement** (paid FinMind data). These are also the tools
-projected over MCP (see [06-interfaces.md](06-interfaces.md)).
+the **`sponsor` data-class entitlement** (paid FinMind data) and, for the user's own account data,
+the **`private` data class** (sign-in required, always scoped to the caller - see
+[Account tools](#private--account-tools-get_my_)). The `public`/`sponsor` tools are also the tools
+projected over MCP (see [06-interfaces.md](06-interfaces.md)); `private` tools are not.
 
 ## Tool protocol (`base.py`)
 
@@ -13,13 +15,14 @@ projected over MCP (see [06-interfaces.md](06-interfaces.md)).
 class DataClass(str, Enum):
     PUBLIC = "public"     # gov OpenAPI + FinMind Free/Backer + derived — free for all
     SPONSOR = "sponsor"   # paid FinMind Sponsor data — Premium/Pro only
+    PRIVATE = "private"   # one user's OWN account data — signed-in only, scoped to ctx.user_id
 
 class Tool(Protocol):
     name: str
     description: str
     input_model: type[BaseModel]   # Pydantic v2 — doubles as MCP structured input schema
     output_model: type[BaseModel]  # Pydantic v2 — structured output
-    data_class: DataClass          # public | sponsor
+    data_class: DataClass          # public | sponsor | private
     card_type: str | None          # opts this tool's output into a `rich_card` SSE event
     def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel: ...
 ```
@@ -369,6 +372,39 @@ list in that test (each entry carries a reason; an entry for an unregistered or 
 tool also fails). A capability the agent should have therefore needs a skill that lists the tool;
 the tool-to-skill map is in [08-skills.md](08-skills.md).
 
+### `private` — account tools (`get_my_*`)
+
+The first `private` tools: read-only views of the **signed-in user's own** data, in
+`account_tools.py`. All are deferred (reached through a skill allowlist), all return small bounded
+outputs with a currentness caveat, and none changes anything (the `propose_*` tools stay the only
+write path, and they only draft a card).
+
+| Tool | Returns | Bounds | Used by |
+|------|---------|--------|---------|
+| `get_my_watchlists` | groups (name, market, size) and symbols; `include_quotes` adds name, latest close and daily change through the existing `get_symbol_quotes` | 200 items; quotes for the first 60 symbols, 20 per call | `account-overview`, `watchlist-review` |
+| `get_my_automations` | alert rules (target, `describe()` condition text, status, last triggered), scheduled briefings (cadence, next run) and the 策略盯盤 subscription | 100 alerts, 50 schedules (true counts reported) | `account-overview` |
+| `get_my_usage` | today's chat quota used / limit by tier (BYOK or Pro: no limit), optional LLM calls and tokens today (FinMind-independent) | top 5 models | `account-overview` |
+| `get_my_notifications` | most recent in-app notifications (title, short body, source, time, read); never marks anything read | default 20, max 50 | `account-overview` |
+
+Rules that make a `private` tool safe:
+
+- **Sign-in only.** `dispatch_tool` never runs a `private` tool when `ctx.user_id is None`; it returns
+  `SignInRequired` (`requires_sign_in`, `tool_name`, a calm "sign in to see your own data" message) - a
+  normal result, not an exception. `require_user_id(ctx)` is the in-tool backstop.
+- **The user id comes only from the `ToolContext`.** No input model has a user field and every one is
+  `extra="forbid"`, so a prompt-injected `user_id` argument is a bad-argument error, never a lookup of
+  another account.
+- **Reuse, no new SQL.** `tools/` cannot import the stores (higher layers), so reads go through the
+  `AccountDataReader` Protocol; `accounts/account_reader.py::SqlAccountDataReader` wraps the same
+  `WatchlistStore` / `SchedulerStore` / `StrategySubscriptionStore` / usage store the REST routes use,
+  runs each read under `rls.acting_as(user_id)` (Postgres RLS backstop) and never commits. The API
+  composition root injects it; without a reader the four tools are simply not registered. The reader
+  does not seed the starter watchlist presets that `GET /watchlists` seeds, so a user who never opened
+  the app reads as empty.
+- **Free for every signed-in tier.** `is_entitled(PRIVATE, tier)` is true at every tier; reading your
+  own data is not a paid feature.
+- **Not offered over MCP** (see below).
+
 ### `public`/AI — derived analytics & scoring ([20](20-analytics-scoring.md))
 Registered tools (module 20 owns the engines behind them):
 
@@ -472,6 +508,8 @@ handoff, and no re-read-a-slice mechanism for any tool today.
 
 ## Enforcement
 
+- A `private` tool never runs for an anonymous caller (`ctx.user_id is None`): `dispatch_tool`
+  returns `SignInRequired` instead, and the tool only ever reads `ctx.user_id`'s rows.
 - A tool runs freely; if its `data_class == sponsor` and the caller lacks the entitlement,
   the `accounts/entitlements` check returns a **masked teaser** (`{locked, required_tier,
   preview}`) instead of full data — the frontend renders it blurred/馬賽克 with an upgrade
@@ -482,5 +520,9 @@ handoff, and no re-read-a-slice mechanism for any tool today.
 
 ## MCP exposure
 
-**All** tools are exposed over MCP (all read-only). `sponsor` tools return the masked teaser
-unless the MCP principal is entitled — same rule as the API, no special-casing.
+**All `public` and `sponsor` tools** are exposed over MCP (all read-only), except the chat-only and
+operator ones named in `mcp.app.MCP_EXCLUDED_TOOLS`. `sponsor` tools return the masked teaser
+unless the MCP principal is entitled — same rule as the API, no special-casing. **`private` tools are
+not offered over MCP at all** (`mcp.app.is_mcp_offered`): the connector's consent screen promises
+market data and analysis only, so the exclusion is by data class (not a hand-kept name list) and
+covers listing, `search_tools` and `execute_tool` alike, signed in or not.

@@ -29,6 +29,7 @@ def _registered() -> set[str]:
         market_data_reader=MagicMock(),
         summary_llm=MagicMock(),
         parquet_store=MagicMock(),
+        account_reader=MagicMock(),  # the user-scoped get_my_* tools register too
     )
     return {t.name for t in registry.all_tools()}
 

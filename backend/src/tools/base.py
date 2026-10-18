@@ -5,7 +5,8 @@ filesystem directly. All tools are **read-only and always runnable**; there is n
 safety-tier system and no confirmation/approval gate (a deliberate design choice, superseding an
 earlier safety-tier design). The *only* access control is the `data_class` entitlement check
 (`dispatch_tool` below), which substitutes a masked teaser for `sponsor` data instead of
-running the tool — never a hard error.
+running the tool — never a hard error. A `private` tool (one user's own data) is likewise never
+run for an anonymous caller: it gets a `SignInRequired` result instead.
 
 Design notes (judgment calls):
 - The design sketches its own `DataClass` enum, but it is byte-for-byte the same
@@ -38,7 +39,7 @@ import asyncio
 import time
 import weakref
 from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal, Protocol, assert_never, runtime_checkable
 
 import anyio.to_thread
 import structlog
@@ -250,6 +251,34 @@ class MaskedTeaser(BaseModel):
     tool_name: str
 
 
+class SignInRequired(BaseModel):
+    """What a `private` tool answers an anonymous caller with: a calm, successful result (never an
+    exception) that the model relays as "sign in to see your own data". Carries no data."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    requires_sign_in: Literal[True] = True
+    tool_name: str
+    message: str = (
+        "Sign in to see your own account data (watchlists, alerts, schedules, usage, "
+        "notifications). Nothing was read."
+    )
+
+
+class PrivateToolAnonymousError(RuntimeError):
+    """A `private` tool's `run()` was reached with no signed-in user. `dispatch_tool` refuses an
+    anonymous caller before `run()`, so this is a wiring bug, never a user-facing state."""
+
+
+def require_user_id(ctx: ToolContext) -> str:
+    """The signed-in user a `private` tool acts for. The id comes only from the `ToolContext`
+    (set by the server from the authenticated session), never from a tool argument, so a
+    prompt-injected argument cannot point a tool at someone else's data."""
+    if ctx.user_id is None:
+        raise PrivateToolAnonymousError("a private tool was run without a signed-in user")
+    return ctx.user_id
+
+
 _ENTITLED_TIERS: frozenset[Tier] = frozenset({Tier.PREMIUM, Tier.PRO})
 
 
@@ -257,20 +286,29 @@ def is_entitled(data_class: DataClass, tier: Tier) -> bool:
     """Pure predicate: does `tier` satisfy `data_class`'s access rule?
 
     `public` is free for everyone (incl. anonymous/`Tier.FREE`); `sponsor` requires
-    Premium/Pro. This has no side effects and performs no lookup of its own — `tier` is
-    supplied by the caller (see `dispatch_tool`).
+    Premium/Pro; `private` (a user's own data) is free at every tier — whether the caller is
+    signed in is a different question, answered by `dispatch_tool` from `ctx.user_id`. This has no
+    side effects and performs no lookup of its own — `tier` is supplied by the caller (see
+    `dispatch_tool`).
     """
-    if data_class is DataClass.PUBLIC:
-        return True
-    return tier in _ENTITLED_TIERS
+    match data_class:
+        case DataClass.PUBLIC | DataClass.PRIVATE:
+            return True
+        case DataClass.SPONSOR:
+            return tier in _ENTITLED_TIERS
+        case _:
+            assert_never(data_class)
 
 
-async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseModel | MaskedTeaser:
+async def dispatch_tool(
+    tool: Tool, args: BaseModel, ctx: ToolContext
+) -> BaseModel | MaskedTeaser | SignInRequired:
     """The `pre_tool`-shaped entitlement gate.
 
     A tool always runs — there is no approval/confirmation step. The *only* substitution this
     function can make instead of running the tool is a `MaskedTeaser`, and only when
-    `tool.data_class == DataClass.SPONSOR` and `ctx.tier` isn't entitled.
+    `tool.data_class == DataClass.SPONSOR` and `ctx.tier` isn't entitled — or a `SignInRequired`,
+    when `tool.data_class == DataClass.PRIVATE` and nobody is signed in (`ctx.user_id is None`).
 
     **Where the tier comes from:** `accounts/hooks.py::EntitlementResolver.tool_context_for`
     resolves the user to a tier when the request starts and builds `ctx` with it; this function
@@ -278,6 +316,9 @@ async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseMo
     `ctx.tier` is trusted as given. The tier is resolved fresh per request and never cached across
     requests, so a tier change applies from the next request, not mid-turn.
     """
+    if tool.data_class is DataClass.PRIVATE and ctx.user_id is None:
+        logger.info("tool_private_refused_anonymous", tool=tool.name)
+        return SignInRequired(tool_name=tool.name)
     if tool.data_class is DataClass.SPONSOR and not is_entitled(tool.data_class, ctx.tier):
         if tool.supports_row_preview:
             # Row-preview opt-in (governance.md §4 "top-N-preview exception"): the tool itself
@@ -301,8 +342,11 @@ async def dispatch_tool(tool: Tool, args: BaseModel, ctx: ToolContext) -> BaseMo
 __all__ = [
     "BaseTool",
     "MaskedTeaser",
+    "PrivateToolAnonymousError",
+    "SignInRequired",
     "Tool",
     "ToolContext",
     "dispatch_tool",
     "is_entitled",
+    "require_user_id",
 ]

@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 import tools
 from schemas.enums import DataClass
-from tools.base import BaseTool, MaskedTeaser
+from tools.base import BaseTool, MaskedTeaser, SignInRequired
 
 
 def _concrete(cls: type[BaseTool]) -> list[type[BaseTool]]:
@@ -56,6 +56,8 @@ def tool_responses(*tool_names: str) -> dict[int | str, dict[str, object]]:
         models.append(cls.output_model)
         if cls.data_class is DataClass.SPONSOR and not cls.supports_row_preview:
             models.append(MaskedTeaser)  # an unentitled caller gets the lock envelope instead
+        if cls.data_class is DataClass.PRIVATE:
+            models.append(SignInRequired)  # an anonymous caller gets the sign-in result instead
     unique = tuple(dict.fromkeys(models))
     return {200: {"model": unique[0] if len(unique) == 1 else Union[unique]}}  # noqa: UP007 — built at runtime from a tuple; `|` cannot be
 

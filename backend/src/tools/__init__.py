@@ -26,6 +26,7 @@ from ingest.reader import ParquetMarketDataReader
 from ingest.store import ParquetStore
 from llm.base import LLMClient
 from tools import (
+    account_tools,
     analyst_tools,
     ask_user_tools,
     calendar_tools,
@@ -72,13 +73,14 @@ from tools import (
 from tools.registry import ToolRegistry, build_default_registry
 
 
-def build_default_tool_registry(
+def build_default_tool_registry(  # noqa: PLR0913 — one keyword per optional tool-group seam
     router: DataAccessRouter,
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     market_data_reader: ParquetMarketDataReader | None = None,
     summary_llm: LLMClient | None = None,
     parquet_store: ParquetStore | None = None,
+    account_reader: account_tools.AccountDataReader | None = None,
 ) -> ToolRegistry:
     theme_group = (
         theme_tools.build_registration_table(session_factory) if session_factory is not None else []
@@ -163,6 +165,12 @@ def build_default_tool_registry(
     )
     # The morning brief composes other tools, so it is registered last, with the registry itself.
     registry.register(morning_brief_tools.build_registration(registry, router), immediate=False)
+    # The user-scoped (`private`) account tools need the user-data reader, which only a composition
+    # root above `tools/` can build; without one they are simply not registered (a narrow test).
+    # `get_my_watchlists` reaches `get_symbol_quotes` through the registry, so these come last.
+    if account_reader is not None:
+        for account_tool in account_tools.build_account_tools(account_reader, registry):
+            registry.register(account_tool, immediate=False)
     return registry
 
 
