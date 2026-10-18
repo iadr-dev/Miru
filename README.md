@@ -8,7 +8,7 @@
 
 [![Backend CI](https://github.com/iadr-dev/Miru/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/iadr-dev/Miru/actions/workflows/backend-ci.yml)
 [![Frontend CI](https://github.com/iadr-dev/Miru/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/iadr-dev/Miru/actions/workflows/frontend-ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-f2873a.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-f2873a.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.13+-3776AB?logo=python&logoColor=white)
 ![Node](https://img.shields.io/badge/node-22+-339933?logo=node.js&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-SSE-009688?logo=fastapi&logoColor=white)
@@ -43,7 +43,8 @@ about acting for you.
 | 💬 **Ask in plain language** | A chat agent that plans, calls data tools, and streams a sourced answer over SSE. You can stop, retry, edit and resend, and attach images or documents |
 | 🌏 **Taiwan + US markets** | Prices, institutional flows, margin and short interest, fundamentals, ETF holdings and NAV, derivatives, corporate actions, news. The router covers 150 data capabilities across TW, US and global markets |
 | 📊 **Stock & ETF pages** | Charts, technical indicators, a descriptive multi-factor 多空 (bull/bear) score, ETF comparison and overlap, valuation bands |
-| 🔎 **Screener & themes** | A tag screener, theme and supply-chain layers, market breadth and rankings |
+| 🔎 **Screener & themes** | A tag screener, market breadth and rankings. Concept themes (CoWoS, HBM, low-orbit satellites and more) with a theme page and a market tab, plus industry chains |
+| 🕸️ **Supply chain & relationships** | A supply-chain graph where every supplier, customer and competitor link carries a confidence grade, an as-of date and clickable sources; a company's position in its chain (upstream, midstream, downstream) with the reasons, or "not yet classified" when the evidence is thin; and an entity graph of the technologies, materials and companies it is mentioned with |
 | 👁️ **AI watch** | Five rule-based watch strategies (volatility squeeze, oversold bounce, volume-price divergence, chip accumulation, strong consolidation) screened at 08:00 and re-checked every 10 minutes during the session; the conditions you subscribe to alert you through your channels. Descriptive context, never a signal to trade |
 | 🏛️ **US macro** | A yield curve with recession bands, plus inflation, jobs, credit, liquidity, growth, housing and money-supply indicators, and a release feed with the latest value against the previous one (needs a free `FRED_API_KEY`) |
 | 🧩 **41 built-in skills** | Packaged analysis playbooks: stock reports (TW/US), ETF reports, morning brief, chip-flow review, earnings quality, macro dashboard and more |
@@ -146,6 +147,7 @@ variable. The web app needs only `NEXT_PUBLIC_API_BASE` in `web/.env.local`.
 | LLM | `ANTHROPIC_API_KEY` · `OPENAI_API_KEY` · `GEMINI_API_KEY` · `OPENROUTER_API_KEY` · `OLLAMA_BASE_URL` | Set the ones you use; `LLM_PROVIDER` / `MODEL_ROLE_*` route models by role |
 | Market data | `FINMIND_API_KEY` | Whole-market ingest needs FinMind **Backer** or above. Sponsor-only datasets (for example institutional detail and ETF holdings) stop updating on a lower plan, and the app then shows the last day it has |
 | Optional data | `FINNHUB_KEY` · `BRAVE_SEARCH_API_KEY` · `FRED_API_KEY` | US analyst estimates, web-search fallback, and the US macro dashboard (free key; without it the nightly job skips and the panels stay empty) |
+| Reference data | `REFERENCE_DATA_DIR` | The supply-chain, concept-theme and entity data you maintain locally (default `./reference-data`, gitignored, mounted read-only in Docker). It is not part of this repository: without it those panels show honest empty states. Load it with `python -m analytics.supply_chain load`, then `positions`; `eval` scores positions against your own labelled set |
 | Datastores | `DATABASE_URL` · `REDIS_URL` · `DUCKDB_PATH` · `PARQUET_ROOT` | SQLite + local paths work for dev |
 | Sign-in | `GOOGLE_*` · `LINE_*` · `TELEGRAM_LOGIN_*` · `JWT_*` | Google, LINE Login, Log in with Telegram |
 | Delivery | `LINE_MESSAGING_*` · `TELEGRAM_BOT_*` · `RESEND_*` · `VAPID_*` | Alert and brief channels (LINE, Telegram, email, web push) |
@@ -161,7 +163,8 @@ Miru/
 ├─ backend/   FastAPI + MCP backend (Python 3.13, uv): src/<domain>/, tests/, docker-compose.yml
 ├─ web/       Next.js App Router frontend (pnpm): chat, market, screener, stock pages, settings
 ├─ docs/      the authoritative spec: architecture, API reference, 27 module specs, brand
-└─ scripts/   dev-backend.sh · dev-frontend.sh
+├─ scripts/   dev-backend.sh · dev-frontend.sh
+└─ reference-data/   your local supply-chain and theme data (gitignored, not shipped)
 ```
 
 ## 🧪 Development
@@ -192,4 +195,4 @@ decisions, and consult a licensed professional where appropriate.
 
 ## 📄 License
 
-[MIT](LICENSE) © 2026 Ray Shen
+[Apache License 2.0](LICENSE) © 2026 Ray Shen
