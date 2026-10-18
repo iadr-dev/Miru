@@ -358,15 +358,18 @@ table (full replace in one transaction); nothing is hand-edited there.
   a prior never confirms itself. Propagation is used when it has an opinion, else layering. Score ->
   position: `< 0.34` upstream, `> 0.66` downstream, else midstream, with a +-0.04 band around each
   threshold that yields **no** graph opinion.
-- **Resolver** (`resolver.py`) — precedence: operator override (`method=override`, 1.0) > prior and
-  graph agree (`evidence`, 0.95 curated / 0.85 heuristic, `agree_prior_graph`) > graph alone
-  (`evidence`, 0.60 + 0.05 per edge beyond two, max 0.80; `graph_layering` or `graph_propagation`, plus
-  `conflict_graph_over_prior` when it disagrees with a *curated* prior) > curated prior (`prior`, 0.8,
-  `prior_curated`) > heuristic prior (`prior`, 0.35, `prior_keyword`) > **abstain** (no row; the UI
-  shows 尚未分類). `is_primary`: per company the chain with the highest confidence (ties: the chain
-  with more members, then the alphabetically first key); a partial unique index keeps it to one.
-  Reason codes (stable API contract): `override`, `prior_curated`, `prior_keyword`, `graph_layering`,
-  `graph_propagation`, `agree_prior_graph`, `conflict_graph_over_prior`.
+- **Resolver** (`resolver.py`) — precedence: operator override (`method=override`, 1.0; the operator's
+  note stays private, only the code is published) > prior and graph agree (`evidence`, 0.95 curated /
+  0.85 heuristic, `agree_prior_graph`) > **curated prior kept** when the graph disagrees (`prior`, 0.8,
+  `prior_curated` + `conflict_prior_kept`) > graph alone when there is no curated prior (`evidence`,
+  0.60 + 0.05 per edge beyond two, max 0.80; `graph_layering` or `graph_propagation`) > curated prior
+  (`prior`, 0.8, `prior_curated`) > **abstain** (no row; the UI shows 尚未分類). A keyword (heuristic)
+  prior alone abstains. Both choices follow from measuring against the labelled set (`eval`): keyword
+  guesses scored at chance and a small noisy relationship graph scored below the curated placement.
+  `is_primary`: per company the chain with the highest confidence (ties: the chain with more members,
+  then the alphabetically first key); a partial unique index keeps it to one. Reason codes (stable API
+  contract): `override`, `prior_curated`, `prior_keyword`, `graph_layering`, `graph_propagation`,
+  `agree_prior_graph`, `conflict_graph_over_prior`, `conflict_prior_kept`.
 - **Overrides** — optional private `<reference dir>/supply_chain/position_overrides.yaml`, a list of
   `{symbol, market, chain_key, position, reason}`; a missing file means none, a bad row fails the run
   with `file row[i]: field: message`.

@@ -78,7 +78,7 @@ async def _seed_chain(factory: async_sessionmaker) -> None:
             theme_id=theme.id,
             sub_industry="parts",
             tier=ThemeTierName.MIDSTREAM,
-            source=ThemeTierSource.HEURISTIC,
+            source=ThemeTierSource.CURATED,
         )
         await session.commit()
 

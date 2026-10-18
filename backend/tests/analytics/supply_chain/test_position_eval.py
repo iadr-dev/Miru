@@ -145,7 +145,7 @@ def _synthetic_chain() -> tuple[ChainSpec, list[tuple[str, str]], list[GoldenLab
         tiers={
             "ore": Prior(position=UP, source=PriorSource.CURATED),
             "parts": Prior(position=MID, source=PriorSource.CURATED),
-            "device": Prior(position=MID, source=PriorSource.HEURISTIC),
+            "device": Prior(position=MID, source=PriorSource.CURATED),
             "retail": Prior(position=DOWN, source=PriorSource.CURATED),
         },
     )

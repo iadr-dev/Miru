@@ -30,6 +30,7 @@ class ReasonCode(StrEnum):
     GRAPH_PROPAGATION = "graph_propagation"
     AGREE_PRIOR_GRAPH = "agree_prior_graph"
     CONFLICT_GRAPH_OVER_PRIOR = "conflict_graph_over_prior"
+    CONFLICT_PRIOR_KEPT = "conflict_prior_kept"
 
 
 class PriorSource(StrEnum):
