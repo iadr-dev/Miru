@@ -3606,6 +3606,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/symbols/{symbol}/entity-graph": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Symbol Entity Graph
+     * @description 個股 > 產業分析's 關聯圖譜: the entities one company's reports mention, the other companies
+     *     that mention the same ones, and the verified supply relations among the companies shown. Nodes
+     *     and links carry only ids, labels, types and counts; at most 120 nodes.
+     */
+    get: operations["symbol_entity_graph_api_v1_symbols__symbol__entity_graph_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/symbols/{symbol}/supply-chain": {
     parameters: {
       query?: never;
@@ -5534,6 +5556,11 @@ export interface components {
       /** Summary */
       summary: string;
     };
+    /**
+     * ConceptPosition
+     * @enum {string}
+     */
+    ConceptPosition: "upstream" | "midstream" | "downstream" | "related";
     /** ConnectionsResponse */
     ConnectionsResponse: {
       /** Connections */
@@ -6392,6 +6419,27 @@ export interface components {
       platform_models?: string[] | null;
       tier: components["schemas"]["Tier"];
     };
+    /** EntityGraph */
+    EntityGraph: {
+      /** Links */
+      links: components["schemas"]["GraphLink"][];
+      market: components["schemas"]["MarketCode"];
+      /** Nodes */
+      nodes: components["schemas"]["GraphNode"][];
+      /** Symbol */
+      symbol: string;
+    };
+    /**
+     * EntityType
+     * @enum {string}
+     */
+    EntityType:
+      | "tw_company"
+      | "intl_company"
+      | "technology"
+      | "material"
+      | "application"
+      | "product";
     /**
      * EsgScore
      * @description `esg` — Sustainalytics-derived ESG risk score (large-cap only, sparse coverage).
@@ -8903,6 +8951,11 @@ export interface components {
      *     an editorially-guaranteed industry-chain one.
      */
     GetThemeMembersOutput: {
+      /**
+       * Description
+       * @default
+       */
+      description: string;
       /** Found */
       found: boolean;
       kind?: components["schemas"]["ThemeKind"] | null;
@@ -8912,7 +8965,7 @@ export interface components {
        */
       member_count: number;
       /** Members */
-      members?: components["schemas"]["ThemeMember"][];
+      members?: components["schemas"]["ThemeMemberDetail"][];
       /**
        * Message
        * @default
@@ -8928,6 +8981,11 @@ export interface components {
        * @default
        */
       name_zh: string;
+      /**
+       * Related Keys
+       * @default []
+       */
+      related_keys: string[];
       /** Theme Key */
       theme_key: string;
     };
@@ -9230,6 +9288,34 @@ export interface components {
      * @enum {string}
      */
     Grade: "high" | "medium" | "low";
+    /** GraphLink */
+    GraphLink: {
+      kind: components["schemas"]["LinkKind"];
+      /** Source */
+      source: string;
+      /** Target */
+      target: string;
+      /** Weight */
+      weight: number;
+    };
+    /** GraphNode */
+    GraphNode: {
+      /**
+       * Focus
+       * @default false
+       */
+      focus: boolean;
+      /** Id */
+      id: string;
+      /** Label */
+      label: string;
+      market?: components["schemas"]["MarketCode"] | null;
+      /** Symbol */
+      symbol?: string | null;
+      type: components["schemas"]["EntityType"];
+      /** Weight */
+      weight: number;
+    };
     /** HTTPValidationError */
     HTTPValidationError: {
       /** Detail */
@@ -9745,6 +9831,8 @@ export interface components {
       /** Expires In Seconds */
       expires_in_seconds: number;
     };
+    /** @enum {string} */
+    LinkKind: "mention" | "cooccurrence" | "supply";
     /**
      * LivePriceTick
      * @description One decoded `PricingData` WebSocket message — mapped straight off yfinance's own
@@ -12890,11 +12978,11 @@ export interface components {
      */
     ThemeKind: "industry" | "concept";
     /**
-     * ThemeMember
-     * @description One `theme_memberships` row, as returned by the reverse (symbol -> themes) lookup and
-     *     accepted by the snapshot-replace write.
+     * ThemeMemberDetail
+     * @description A membership row; `position` is set for a concept theme's members (upstream / midstream /
+     *     downstream / related) and null for an industry theme, whose tiers sit on sub-industries.
      */
-    ThemeMember: {
+    ThemeMemberDetail: {
       /**
        * Confidence
        * @default 1
@@ -12902,6 +12990,7 @@ export interface components {
       confidence: number;
       /** Market */
       market: string;
+      position?: components["schemas"]["ConceptPosition"] | null;
       source: components["schemas"]["ThemeSource"];
       /**
        * Sub Industry
@@ -12928,6 +13017,11 @@ export interface components {
      *     round-trip per theme.
      */
     ThemeSummary: {
+      /**
+       * Description
+       * @default
+       */
+      description: string;
       /** Key */
       key: string;
       kind: components["schemas"]["ThemeKind"];
@@ -12943,6 +13037,11 @@ export interface components {
       name_en: string;
       /** Name Zh */
       name_zh: string;
+      /**
+       * Related Keys
+       * @default []
+       */
+      related_keys: string[];
       status: components["schemas"]["ThemeStatus"];
     };
     /**
@@ -19720,6 +19819,41 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["GetChainPositionOutput"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  symbol_entity_graph_api_v1_symbols__symbol__entity_graph_get: {
+    parameters: {
+      query?: {
+        market?: "TW" | "US";
+        min_weight?: number;
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        symbol: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EntityGraph"];
         };
       };
       /** @description Validation Error */

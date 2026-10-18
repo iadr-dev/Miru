@@ -149,6 +149,7 @@ function EntityGraphBody({
     count: filtered.nodes.length,
   });
   const neighbours = activeId === null ? null : neighbourIds(filtered.links, activeId);
+  const focusId = filtered.nodes.find((n) => n.focus)?.id ?? null;
   const isDimmed = (id: string): boolean => {
     if (activeId !== null) {
       return id !== activeId && !neighbours?.has(id);
@@ -219,6 +220,10 @@ function EntityGraphBody({
                 const to = placedById.get(link.target);
                 if (!from || !to) return null;
                 const touchesActive = link.source === activeId || link.target === activeId;
+                // A peer's mentions of shared entities would bury the graph: draw them only for
+                // the hovered / focused / selected node.
+                const touchesFocus = link.source === focusId || link.target === focusId;
+                if (activeId === null && link.kind === "mention" && !touchesFocus) return null;
                 const faded = activeId === null ? matches.size > 0 : !touchesActive;
                 return (
                   <LinkLine
