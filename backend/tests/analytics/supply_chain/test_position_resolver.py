@@ -16,7 +16,6 @@ from analytics.supply_chain.positions.models import (
 from analytics.supply_chain.positions.resolver import (
     AGREE_CURATED_CONFIDENCE,
     CURATED_CONFIDENCE,
-    HEURISTIC_CONFIDENCE,
     resolve_positions,
 )
 
@@ -63,10 +62,9 @@ def test_curated_prior_alone() -> None:
     assert _codes(row) == [ReasonCode.PRIOR_CURATED]
 
 
-def test_heuristic_prior_alone_is_low_confidence() -> None:
-    row = resolve_positions([_chain("c1", {"1": "s"}, {"s": (MID, HEURISTIC)})], [])[0]
-    assert (row.method, row.confidence) == (Method.PRIOR, HEURISTIC_CONFIDENCE)
-    assert _codes(row) == [ReasonCode.PRIOR_KEYWORD]
+def test_heuristic_prior_alone_abstains() -> None:
+    # Measured at chance on the labelled set, so a keyword guess is never published.
+    assert resolve_positions([_chain("c1", {"1": "s"}, {"s": (MID, HEURISTIC)})], []) == []
 
 
 def test_no_prior_and_no_graph_abstains() -> None:
@@ -100,11 +98,11 @@ def test_prior_and_graph_agree_gives_high_confidence() -> None:
     assert ReasonCode.CONFLICT_GRAPH_OVER_PRIOR not in _codes(row)
 
 
-def test_graph_wins_over_a_curated_prior_and_says_so() -> None:
-    chain = _chain("c1", {"1": "x", "2": "wrong", "3": "x"}, {"wrong": (DOWN, CURATED)})
+def test_curated_prior_is_kept_over_a_disagreeing_graph_and_says_so() -> None:
+    chain = _chain("c1", {"1": "x", "2": "kept", "3": "x"}, {"kept": (DOWN, CURATED)})
     row = _by(resolve_positions([chain], [("1", "2"), ("2", "3")]))[("2", "c1")]
-    assert (row.position, row.method) == (MID, Method.EVIDENCE)
-    assert ReasonCode.CONFLICT_GRAPH_OVER_PRIOR in _codes(row)
+    assert (row.position, row.method, row.confidence) == (DOWN, Method.PRIOR, CURATED_CONFIDENCE)
+    assert _codes(row) == [ReasonCode.PRIOR_CURATED, ReasonCode.CONFLICT_PRIOR_KEPT]
 
 
 def test_graph_over_heuristic_prior_has_no_conflict_reason() -> None:
@@ -145,10 +143,11 @@ def test_inputs_hash_is_stable_and_tracks_inputs() -> None:
 
 
 def test_exactly_one_primary_per_symbol_highest_confidence_first() -> None:
-    strong = _chain("zz", {"1": "s"}, {"s": (UP, CURATED)})
-    weak = _chain("aa", {"1": "s"}, {"s": (UP, HEURISTIC)})
-    rows = resolve_positions([weak, strong], [])
-    assert {r.chain_key: r.is_primary for r in rows} == {"zz": True, "aa": False}
+    strong = _chain("zz", {"1": "x", "2": "mid", "3": "x"}, {"mid": (MID, CURATED)})
+    weak = _chain("aa", {"2": "mid"}, {"mid": (MID, CURATED)})
+    rows = _by(resolve_positions([weak, strong], [("1", "2"), ("2", "3")]))
+    # prior and graph agree in zz (higher confidence), so zz is the primary chain of symbol 2
+    assert rows[("2", "zz")].is_primary and not rows[("2", "aa")].is_primary
 
 
 def test_primary_tie_goes_to_the_larger_chain_then_alphabetical() -> None:
