@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from accounts.account_reader import SqlAccountDataReader
 from api.app import create_app
 from config.logging_config import configure_logging
 from config.settings import Settings, get_settings
@@ -28,6 +29,7 @@ from orchestrator.composition import (
     build_tool_registry,
 )
 from personality.registry import default_registry as default_personality_registry
+from usage.store import SqlAlchemyUsageStore
 
 
 def build_app(settings: Settings | None = None) -> FastAPI:
@@ -43,7 +45,15 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     # not import `sources/` (layering test), so this stays a downward `dataaccess` call.
     live_quote_manager = build_live_quote_manager()
     router = build_default_router(resolved, live_quote_manager=live_quote_manager)
-    tool_registry = build_tool_registry(router, session_factory=session_factory)
+    tool_registry = build_tool_registry(
+        router,
+        session_factory=session_factory,
+        account_reader=SqlAccountDataReader(
+            session_factory,
+            usage_store=SqlAlchemyUsageStore(session_factory),
+            settings=resolved,
+        ),
+    )
     skill_registry = build_skill_registry()
     # Built once and shared: the orchestrator resolves the turn's personality fragment from it,
     # `AppState.personality_registry` is the same instance so `/accounts` validates a chosen

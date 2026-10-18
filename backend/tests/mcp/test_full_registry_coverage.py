@@ -16,15 +16,15 @@ from __future__ import annotations
 
 import asyncio
 
-from mcp.app import MCP_EXCLUDED_TOOLS, build_mcp_server
+from mcp.app import MCP_EXCLUDED_TOOLS, build_mcp_server, is_mcp_offered
 from tests.mcp.conftest import build_real_registry
 
 
 def test_every_real_tool_is_reachable_over_mcp() -> None:
     registry = build_real_registry()
     server = build_mcp_server(registry)
-    all_tool_names = {tool.name for tool in registry.all_tools()} - MCP_EXCLUDED_TOOLS
-    immediate_names = {tool.name for tool in registry.immediate_tools()} - MCP_EXCLUDED_TOOLS
+    all_tool_names = {tool.name for tool in registry.all_tools() if is_mcp_offered(tool)}
+    immediate_names = {tool.name for tool in registry.immediate_tools() if is_mcp_offered(tool)}
 
     async def run() -> None:
         mcp_tools = await server.list_tools()

@@ -14,10 +14,13 @@ class TimingClass(StrEnum):
 
 
 class DataClass(StrEnum):
-    """The single access gate — vendor-neutral licensed/paid vs free."""
+    """What a tool's data is, and so who may be handed it: vendor-neutral free (`public`), licensed
+    /paid (`sponsor`, the tier gate), or one user's own account data (`private`, which needs a
+    signed-in caller and is always scoped to that caller)."""
 
     PUBLIC = "public"
     SPONSOR = "sponsor"
+    PRIVATE = "private"
 
 
 class TLSPolicy(StrEnum):

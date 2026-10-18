@@ -27,6 +27,17 @@ class ByokKeyRequiredError(RuntimeError):
         self.providers = providers
 
 
+async def byok_active(session: AsyncSession, settings: Settings, *, user_id: str) -> bool:
+    """Whether the user has any BYOK LLM key on file - the one flag that lifts the chat limit. A
+    missing/invalid encryption config never crashes a read: it means no key can be resolved, so the
+    user counts as non-BYOK (never over-granting)."""
+    try:
+        cipher = SecretCipher.from_settings(settings)
+    except SecretEncryptionNotConfiguredError:
+        return False
+    return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
+
+
 async def resolve_byok_override(
     session: AsyncSession, settings: Settings, *, user_id: str, model_override: str | None
 ) -> ByokOverride | None:

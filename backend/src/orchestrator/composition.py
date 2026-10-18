@@ -30,6 +30,7 @@ from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry
 from skills.registry import SkillRegistry
 from tools import build_default_tool_registry
+from tools.account_tools import AccountDataReader
 from tools.registry import ToolRegistry
 
 
@@ -58,6 +59,7 @@ def build_tool_registry(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     settings: Settings | None = None,
+    account_reader: AccountDataReader | None = None,
 ) -> ToolRegistry:
     """The fully-wired tool registry. `session_factory` backs the relational theme-lookup tools
     (which read the ingested theme store rather than a live source); the real composition roots
@@ -69,7 +71,9 @@ def build_tool_registry(
     docstring) — an unconfigured role degrades to the tool simply not registering (matching
     `theme_group`/`score_group`'s own optional-dependency shape), rather than failing the whole
     registry build, since the summary feature is Sponsor-tier-gated and additive, never load-
-    bearing for the rest of the tool surface."""
+    bearing for the rest of the tool surface. `account_reader` (built by a composition root above
+    this layer, over the app database) enables the user-scoped `get_my_*` account tools; without
+    it they are not registered."""
     summary_llm = None
     with contextlib.suppress(ProviderNotConfiguredError):
         summary_llm = resolve_role(ModelRole.SUBAGENT, settings)
@@ -79,6 +83,7 @@ def build_tool_registry(
         market_data_reader=build_market_data_reader(),
         summary_llm=summary_llm,
         parquet_store=ParquetStore(root=(settings or get_settings()).parquet_root),
+        account_reader=account_reader,
     )
 
 

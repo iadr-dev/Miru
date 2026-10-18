@@ -99,7 +99,8 @@ _SEARCH_TOOLS_NAME = "search_tools"
 # Costly or internal: web_search / fetch_url spend the operator's search budget and fetch arbitrary
 # pages for any caller (MCP clients have their own browsing), and get_source_matrix lists the
 # configured upstream sources, which is operator infrastructure, not market data. None of these is
-# listed, found by search_tools or run by execute_tool.
+# listed, found by search_tools or run by execute_tool. (Account tools are kept out by data class
+# rather than by name - see `is_mcp_offered`.)
 MCP_EXCLUDED_TOOLS: frozenset[str] = frozenset(
     {
         "ask_user",
@@ -112,6 +113,17 @@ MCP_EXCLUDED_TOOLS: frozenset[str] = frozenset(
         "web_search",
     }
 )
+
+
+def is_mcp_offered(tool: Tool) -> bool:
+    """Whether an MCP caller may list, search for or run `tool`. Excluded: the names above, and -
+    by data class, so a future tool is covered without anyone remembering to list it - every
+    `private` tool (one user's own watchlists, alerts, usage, notifications). The connector's
+    consent screen promises market data and analysis only, so account data is not offered over MCP
+    at all for now, signed in or not."""
+    return tool.name not in MCP_EXCLUDED_TOOLS and tool.data_class is not DataClass.PRIVATE
+
+
 _EXECUTE_TOOL_NAME = "execute_tool"
 _MAX_SEARCH_RESULTS = 8
 _MAX_SUGGESTIONS = 3
@@ -215,7 +227,7 @@ def _search_deferred_tools(registry: ToolRegistry, intent: str) -> SearchToolsOu
     candidates = [
         Candidate(e.name, e.description)
         for e in registry.deferred_index()
-        if e.name not in MCP_EXCLUDED_TOOLS
+        if (tool := registry.get_tool(e.name)) is not None and is_mcp_offered(tool)
     ]
     matches: list[SearchToolsMatch] = []
     for hit in rank(intent, candidates, limit=_MAX_SEARCH_RESULTS):
@@ -287,8 +299,8 @@ class _ExecuteToolTool(FastMCPTool):
         except Exception as exc:  # bad args must become isError, not a crashed connection
             return render_error(f"Invalid arguments for 'execute_tool': {exc}")
 
-        target = None if parsed.id in MCP_EXCLUDED_TOOLS else self.registry.get_tool(parsed.id)
-        if target is None:
+        target = self.registry.get_tool(parsed.id)
+        if target is None or not is_mcp_offered(target):
             return render_error(self._unknown_tool_message(parsed.id))
         ctx = await self.context_provider()
         return await dispatch_and_render(target, parsed.args, ctx)
@@ -299,7 +311,7 @@ class _ExecuteToolTool(FastMCPTool):
             [
                 Candidate(t.name, t.description)
                 for t in self.registry.all_tools()
-                if t.name not in MCP_EXCLUDED_TOOLS
+                if is_mcp_offered(t)
             ],
             limit=_MAX_SUGGESTIONS,
         )
@@ -380,7 +392,7 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
     listed = [
         _immediate_tool(t, context_provider=context_provider)
         for t in registry.immediate_tools()
-        if t.name not in MCP_EXCLUDED_TOOLS
+        if is_mcp_offered(t)
     ]
     listed.extend(_search_and_execute_tools(registry, context_provider=context_provider))
     for fm_tool in sorted(listed, key=lambda t: t.name):
@@ -423,13 +435,8 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
                 "version": _package_version(),
                 "uptime_seconds": int(time.monotonic() - started),
                 "tools": {
-                    "total": len(
-                        [t for t in registry.all_tools() if t.name not in MCP_EXCLUDED_TOOLS]
-                    ),
-                    "listed": sum(
-                        1 for t in registry.immediate_tools() if t.name not in MCP_EXCLUDED_TOOLS
-                    )
-                    + 2,
+                    "total": len([t for t in registry.all_tools() if is_mcp_offered(t)]),
+                    "listed": sum(1 for t in registry.immediate_tools() if is_mcp_offered(t)) + 2,
                 },
                 "auth": {
                     "required": auth_required,
@@ -493,4 +500,4 @@ def build_http_app(  # noqa: PLR0913 - mirrors FastMCP.http_app's own keyword su
     return app
 
 
-__all__ = ["SERVER_INSTRUCTIONS", "build_http_app", "build_mcp_server"]
+__all__ = ["SERVER_INSTRUCTIONS", "build_http_app", "build_mcp_server", "is_mcp_offered"]

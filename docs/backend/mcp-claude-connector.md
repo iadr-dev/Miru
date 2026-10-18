@@ -288,4 +288,12 @@ listed, not found by `search_tools` and refused by `execute_tool`.
   arbitrary pages for any caller (MCP clients have their own browsing); `get_source_matrix` lists
   the configured upstream sources, which is operator infrastructure, not market data.
 
+- **Account data (`private` tools):** the `get_my_*` tools (watchlists, alerts / schedules,
+  usage, notifications) read one user's own account. The consent screen promises market data and
+  analysis only, so they are not offered over MCP at all for now - not listed, not found by
+  `search_tools`, refused by `execute_tool` - signed in or not. This is enforced by data class
+  (`DataClass.PRIVATE`, `mcp.app.is_mcp_offered`), not by a name list, so a future private tool is
+  covered automatically; `tests/mcp/test_private_tools_excluded.py` pins it. Offering them later would
+  need a consent-screen change first.
+
 Every other registered tool is reachable automatically, with no separate MCP registration.
