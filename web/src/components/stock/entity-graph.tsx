@@ -24,8 +24,8 @@ import {
   groupByType,
   matchingNodeIds,
   maxNodeWeight,
-  themeKeyForEntity,
   type TypeGroup,
+  themeKeyForEntity,
 } from "@/lib/entity-graph-view";
 import {
   ENTITY_TYPES,
@@ -411,6 +411,7 @@ function LegendLine({
   return (
     <li className="flex items-center gap-1.5">
       <svg width="28" height="10" aria-hidden className="shrink-0">
+        <title>{label}</title>
         <line x1="1" y1="5" x2={kind === "supply" ? 22 : 27} y2="5" {...linkStyle(kind)} />
         {kind === "supply" ? <path d="M21 1 L27 5 L21 9 z" fill="var(--text)" /> : null}
       </svg>

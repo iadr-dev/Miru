@@ -214,7 +214,7 @@ describe("EntityGraph", () => {
     const canvas = 'svg[role="group"]';
     expect(container.querySelectorAll(`${canvas} line[marker-end]`)).toHaveLength(1);
     expect(container.querySelectorAll(`${canvas} line[stroke-dasharray]`)).toHaveLength(1);
-    expect(screen.getByText(copy.linkCooccurrence)).toBeTruthy();
+    expect(screen.getAllByText(copy.linkCooccurrence).length).toBeGreaterThan(0);
     expect(screen.getByText(copy.cooccurrenceNote)).toBeTruthy();
   });
 

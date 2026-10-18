@@ -131,9 +131,7 @@ function ThemeHeatCard({ theme }: { readonly theme: ThemeSummary }): ReactNode {
           <span className="flex items-baseline gap-2">
             <SignedChange value={heat.average} decimals={2} unit="%" className="text-[15px]" />
             <span className="text-[11px] text-[var(--text-muted)]">
-              {heat.average === null
-                ? t("avgUnavailable")
-                : t("avgSample", { count: heat.quoted })}
+              {heat.average === null ? t("avgUnavailable") : t("avgSample", { count: heat.quoted })}
             </span>
           </span>
         )}
