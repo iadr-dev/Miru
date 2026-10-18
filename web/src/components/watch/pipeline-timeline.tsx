@@ -124,8 +124,14 @@ export function PipelineTimeline({
 
   const openView = views.find((v) => v.key === open) ?? null;
   return (
-    <div>
-      <div ref={scroller} className="overflow-x-auto pb-1">
+    <div className="@container">
+      <StepList
+        views={views}
+        data={data}
+        open={open}
+        onToggle={(key) => setOpen((now) => (now === key ? null : key))}
+      />
+      <div ref={scroller} className="hidden overflow-x-auto pb-1 @3xl:block">
         {/* Side padding so the first and last step labels are never clipped at the edges. */}
         <div className="min-w-[820px] px-16">
           <div className="relative h-[112px]">
@@ -273,7 +279,7 @@ export function PipelineTimeline({
           </div>
         </div>
       </div>
-      <div id="watch-step-details" aria-live="polite">
+      <div id="watch-step-details" aria-live="polite" className="hidden @3xl:block">
         {openView !== null ? (
           <motion.div
             key={openView.key}
@@ -291,6 +297,83 @@ export function PipelineTimeline({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** The same day as a vertical list, for a narrow container where the sideways track has no room for
+ * its labels: one row per step with its time, status and note; tap a row for what it does. */
+function StepList({
+  views,
+  data,
+  open,
+  onToggle,
+}: {
+  views: readonly StepView[];
+  data: StrategyWatchToday;
+  open: PipelineStepKey | null;
+  onToggle: (key: PipelineStepKey) => void;
+}): ReactNode {
+  const t = useTranslations("watch");
+  return (
+    <ol className="m-0 flex list-none flex-col p-0 @3xl:hidden">
+      {views.map((view, index) => {
+        const expanded = open === view.key;
+        const color = view.stale ? "var(--warn)" : view.color;
+        return (
+          <li key={view.key} className="relative pl-9">
+            {index < views.length - 1 ? (
+              <span
+                aria-hidden
+                className="absolute top-7 bottom-0 left-[13px] w-px bg-[var(--border)]"
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onToggle(view.key)}
+              aria-expanded={expanded}
+              aria-controls={`watch-step-${view.key}`}
+              className="flex min-h-11 w-full flex-col items-start gap-0.5 py-2 text-left focus-visible:outline-2 focus-visible:outline-[var(--accent)] focus-visible:outline-offset-2"
+            >
+              <span
+                aria-hidden
+                className="absolute top-2 left-0 flex size-[26px] items-center justify-center rounded-full border-2"
+                style={{
+                  borderColor: color,
+                  backgroundColor: view.done ? view.color : "var(--surface)",
+                }}
+              >
+                {view.done ? (
+                  <CheckIcon size={13} weight="bold" className="text-[var(--bg)]" aria-hidden />
+                ) : (
+                  <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+                )}
+              </span>
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-medium text-[13px] text-[var(--text)]">
+                  {t(`pipeline.${view.key}`)}
+                </span>
+                <span className="text-[11px] text-[var(--text-muted)]">
+                  {t(`pipeline.${statusKey(view)}`)}
+                </span>
+              </span>
+              <StepNote view={view} wrap />
+            </button>
+            {expanded ? (
+              <div
+                id={`watch-step-${view.key}`}
+                className="mb-2 rounded-[var(--radius-input)] p-3 text-[12px]"
+                style={{
+                  backgroundColor: tint(color, 8),
+                  borderLeft: `3px solid ${color}`,
+                }}
+              >
+                <StepDetails view={view} data={data} />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -360,7 +443,7 @@ function StepMarker({
   );
 }
 
-function StepNote({ view }: { view: StepView }): ReactNode {
+function StepNote({ view, wrap = false }: { view: StepView; wrap?: boolean }): ReactNode {
   const t = useTranslations("watch");
   const note = view.note;
   if (note === null) return null;
@@ -384,7 +467,7 @@ function StepNote({ view }: { view: StepView }): ReactNode {
   return (
     <span
       className={cn(
-        "whitespace-nowrap text-[11px]",
+        wrap ? "text-[11px]" : "whitespace-nowrap text-[11px]",
         view.stale ? "text-[var(--warn)]" : "text-[var(--text-muted)]",
       )}
     >
