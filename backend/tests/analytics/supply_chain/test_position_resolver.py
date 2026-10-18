@@ -53,7 +53,8 @@ def test_override_beats_everything() -> None:
     override = Override(symbol="1", chain_key="c1", position=DOWN, reason="operator decision")
     row = resolve_positions([chain], [], [override])[0]
     assert (row.position, row.method, row.confidence) == (DOWN, Method.OVERRIDE, 1.0)
-    assert [(r.code, r.detail) for r in row.reasons] == [(ReasonCode.OVERRIDE, "operator decision")]
+    # the operator's private note is never published
+    assert [(r.code, r.detail) for r in row.reasons] == [(ReasonCode.OVERRIDE, "")]
 
 
 def test_curated_prior_alone() -> None:
