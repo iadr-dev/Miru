@@ -7,6 +7,8 @@ const LABELED_FEATURES = new Set([
   "full_score",
   "deep_research",
   "tick_minute_k",
+  "supply_chain",
+  "concept_themes",
 ]);
 
 type Translate = (key: string) => string;

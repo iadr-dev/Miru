@@ -2473,7 +2473,9 @@
         "swot": "SWOT analysis",
         "full_score": "Full score breakdown",
         "deep_research": "Deep research",
-        "tick_minute_k": "Tick / minute candles"
+        "tick_minute_k": "Tick / minute candles",
+        "supply_chain": "Full supply chain, chain positions and entity graph",
+        "concept_themes": "Full concept theme members"
       },
       "usedOfLimit": "{used} / {limit} used today",
       "upgrade": "See plans and upgrade",

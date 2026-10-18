@@ -18,10 +18,10 @@ from analytics.supply_chain.positions.models import (
 )
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from config.settings import Settings
-from schemas.enums import Capability, DataClass, Market, TimingClass
+from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
-from tests.api.conftest import build_test_client
+from tests.api.conftest import build_test_client, enter_client, sign_in
 from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
 
@@ -80,7 +80,10 @@ def _stub_result() -> SourceResult:
 
 
 def _client(settings: Settings, agent_answer: str) -> TestClient:
+    """A Pro caller: the full view (below Pro the routes return a preview - see
+    `test_pro_previews.py`)."""
     client = build_test_client(settings, agent_answer=agent_answer)
+    enter_client(client).headers.update(sign_in(client, settings, tier=Tier.PRO)[0])
     state = client.app.state.app_state
     router, _ = make_router(
         Symbol(id="9001", market=Market.TW), dict.fromkeys(Capability, _stub_result())
@@ -95,9 +98,16 @@ def test_route_shape_is_public_and_primary_first(settings: Settings, agent_answe
     resp = _client(settings, agent_answer).get(
         "/api/v1/symbols/9001/chain-positions", params={"market": "TW"}
     )
-    assert resp.status_code == 200  # anonymous caller
+    assert resp.status_code == 200  # a Pro caller
     body = resp.json()
-    assert set(body) == {"symbol", "market", "positions"}
+    assert set(body) == {
+        "symbol",
+        "market",
+        "positions",
+        "locked",
+        "hidden_count",
+        "upgrade_note",
+    }
     assert (body["symbol"], body["market"]) == ("9001", "TW")
     first, second = body["positions"]
     assert set(first) == {
@@ -131,6 +141,13 @@ def test_route_shape_is_public_and_primary_first(settings: Settings, agent_answe
 def test_unclassified_company_returns_an_empty_list(settings: Settings, agent_answer: str) -> None:
     client = _client(settings, agent_answer)
     body = client.get("/api/v1/symbols/9999/chain-positions").json()
-    assert body == {"symbol": "9999", "market": "TW", "positions": []}
+    assert body == {
+        "symbol": "9999",
+        "market": "TW",
+        "positions": [],
+        "locked": False,
+        "hidden_count": 0,
+        "upgrade_note": "",
+    }
     wrong_market = client.get("/api/v1/symbols/9001/chain-positions", params={"market": "US"})
     assert wrong_market.json()["positions"] == []

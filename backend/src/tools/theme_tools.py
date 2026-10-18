@@ -22,6 +22,7 @@ editorially-guaranteed fact.
 from __future__ import annotations
 
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
+from collections.abc import Sequence
 from datetime import date as date_
 from datetime import datetime
 
@@ -30,7 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analytics.supply_chain.domain.concepts import ConceptPosition
-from analytics.supply_chain.domain.models import MarketCode
+from analytics.supply_chain.domain.models import Kind, MarketCode
 from analytics.supply_chain.edges import ScEdge, to_edges
 from analytics.supply_chain.entity_graph import (
     DEFAULT_LIMIT as ENTITY_GRAPH_DEFAULT_LIMIT,
@@ -58,10 +59,23 @@ from config.settings import get_settings
 from ingest.jobs import PRICE_EOD_JOB
 from ingest.store import ParquetStore
 from schemas.enums import DataClass, Market
+from schemas.feature_tiers import (
+    PREVIEW_CHAIN_ROWS,
+    PREVIEW_CONCEPT_MEMBERS_PER_POSITION,
+    PREVIEW_ENTITY_NODES,
+    PREVIEW_PEERS_PER_ROLE,
+    UPGRADE_NOTE,
+    access_for,
+)
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 from tools.common import SymbolInput
 
 _DEFAULT_MEMBER_LIMIT = 200
+
+# The `FEATURE_MIN_TIER` rows whose full view is Pro-only. Below Pro the tools below return the
+# preview itself (server-side), so every route, the agent and MCP see the same limited data.
+SUPPLY_CHAIN_FEATURE = "supply_chain"
+CONCEPT_THEMES_FEATURE = "concept_themes"
 
 
 class GetThemesInput(BaseModel):
@@ -98,6 +112,8 @@ class GetThemesOutput(BaseModel):
 
     theme_count: int = 0
     themes: tuple[ThemeSummary, ...] = Field(default_factory=tuple)
+    # True for a caller below Pro: concept themes are listed, but their member detail is limited.
+    concept_locked: bool = False
 
 
 class GetThemesTool(BaseTool):
@@ -120,7 +136,6 @@ class GetThemesTool(BaseTool):
         self._session_factory = session_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(GetThemesInput, args)
         status = typed.status if typed.status is not None else ThemeStatus.ACTIVE
         async with self._session_factory() as session:
@@ -140,7 +155,11 @@ class GetThemesTool(BaseTool):
                 )
                 for theme in themes
             ]
-        return GetThemesOutput(theme_count=len(summaries), themes=tuple(summaries))
+        return GetThemesOutput(
+            theme_count=len(summaries),
+            themes=tuple(summaries),
+            concept_locked=not access_for(CONCEPT_THEMES_FEATURE, ctx.tier).full,
+        )
 
 
 class GetThemeMembersInput(BaseModel):
@@ -179,6 +198,27 @@ class GetThemeMembersOutput(BaseModel):
     message: str = ""
     description: str = ""
     related_keys: tuple[str, ...] = ()
+    # Preview of a concept theme for a caller below Pro: `locked` when members were withheld,
+    # `hidden_count` how many (`member_count` stays the true total).
+    locked: bool = False
+    hidden_count: int = 0
+    upgrade_note: str = ""
+
+
+def preview_concept_members(
+    members: Sequence[ThemeMemberDetail],
+) -> tuple[tuple[ThemeMemberDetail, ...], int]:
+    """Pure: the first `PREVIEW_CONCEPT_MEMBERS_PER_POSITION` members of each position
+    (upstream / midstream / downstream / related), in the theme's own member order, and how many
+    were withheld."""
+    taken: dict[str, int] = {}
+    kept: list[ThemeMemberDetail] = []
+    for member in members:
+        group = member.position.value if member.position is not None else ""
+        if taken.get(group, 0) < PREVIEW_CONCEPT_MEMBERS_PER_POSITION:
+            taken[group] = taken.get(group, 0) + 1
+            kept.append(member)
+    return tuple(kept), len(members) - len(kept)
 
 
 class GetThemeMembersTool(BaseTool):
@@ -200,7 +240,6 @@ class GetThemeMembersTool(BaseTool):
         self._session_factory = session_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(GetThemeMembersInput, args)
         async with self._session_factory() as session:
             store: ThemeStore = SqlAlchemyThemeStore(session)
@@ -215,6 +254,19 @@ class GetThemeMembersTool(BaseTool):
             concepts = SqlAlchemyConceptStore(session)
             info = (await concepts.concept_info([theme.key])).get(theme.key)
             positions = await concepts.concept_positions(theme.key) if info else {}
+        detailed = [
+            ThemeMemberDetail(
+                **member.model_dump(), position=positions.get((member.symbol, member.market))
+            )
+            for member in members
+        ]
+        hidden = 0
+        if (
+            theme.kind is ThemeKind.CONCEPT
+            and not access_for(CONCEPT_THEMES_FEATURE, ctx.tier).full
+        ):
+            kept, hidden = preview_concept_members(detailed)
+            detailed = list(kept)
         return GetThemeMembersOutput(
             theme_key=theme.key,
             found=True,
@@ -222,14 +274,12 @@ class GetThemeMembersTool(BaseTool):
             name_en=theme.name_en,
             kind=theme.kind,
             member_count=len(members),
-            members=tuple(
-                ThemeMemberDetail(
-                    **member.model_dump(), position=positions.get((member.symbol, member.market))
-                )
-                for member in members[: typed.limit]
-            ),
+            members=tuple(detailed[: typed.limit]),
             description=info.description if info else "",
             related_keys=info.related_keys if info else (),
+            locked=hidden > 0,
+            hidden_count=hidden,
+            upgrade_note=UPGRADE_NOTE if hidden > 0 else "",
         )
 
 
@@ -243,6 +293,9 @@ class GetSymbolThemesOutput(BaseModel):
     market: str
     theme_count: int = 0
     themes: tuple[SymbolTheme, ...] = Field(default_factory=tuple)
+    # True when, for a caller below Pro, the per-membership position of the concept themes listed
+    # was withheld (the concept themes themselves, by name, are always listed).
+    concept_locked: bool = False
 
 
 class GetSymbolThemesTool(BaseTool):
@@ -264,16 +317,24 @@ class GetSymbolThemesTool(BaseTool):
         self._session_factory = session_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(SymbolInput, args)
         async with self._session_factory() as session:
             store: ThemeStore = SqlAlchemyThemeStore(session)
             themes = await store.get_symbol_themes(symbol=typed.id, market=typed.market.value)
+        concept_locked = False
+        if not access_for(CONCEPT_THEMES_FEATURE, ctx.tier).full:
+            # Names only: a concept membership's `sub_industry` is the symbol's position in it.
+            concept_locked = any(t.kind is ThemeKind.CONCEPT and t.sub_industry for t in themes)
+            themes = [
+                t.model_copy(update={"sub_industry": ""}) if t.kind is ThemeKind.CONCEPT else t
+                for t in themes
+            ]
         return GetSymbolThemesOutput(
             symbol=typed.id,
             market=typed.market.value,
             theme_count=len(themes),
             themes=tuple(themes),
+            concept_locked=concept_locked,
         )
 
 
@@ -356,6 +417,64 @@ class GetSupplyChainEdgesOutput(BaseModel):
     market: str
     edge_count: int = 0
     edges: tuple[ScEdge, ...] = Field(default_factory=tuple)
+    # Preview for a caller below Pro: at most a few peers per role, no source links. `locked` when
+    # anything was withheld, `hidden_count` how many edges, `sources_locked` that links are Pro.
+    locked: bool = False
+    hidden_count: int = 0
+    sources_locked: bool = False
+    upgrade_note: str = ""
+
+
+_GRADE_ORDER = {"high": 0, "medium": 1, "low": 2}
+_ROLE_ORDER = ("supplier", "customer", "competitor")
+
+
+def _edge_role(edge: ScEdge, symbol: str, market: str) -> str:
+    """The peer's role relative to the focus company: a supplier sells to it, a customer buys
+    from it, a competitor competes with it."""
+    if edge.edge_type is Kind.COMPETES:
+        return "competitor"
+    focus_supplies = edge.from_symbol == symbol and edge.from_market == market
+    return "customer" if focus_supplies else "supplier"
+
+
+def _edge_peer(edge: ScEdge, symbol: str, market: str) -> tuple[str, str, str]:
+    if edge.from_symbol == symbol and edge.from_market == market:
+        return edge.to_symbol, edge.to_market, edge.to_name
+    return edge.from_symbol, edge.from_market, edge.from_name
+
+
+def preview_supply_edges(
+    edges: Sequence[ScEdge], symbol: str, market: str
+) -> tuple[tuple[ScEdge, ...], int, bool]:
+    """Pure: the preview of a company's supply-chain edges - per role, the best edge of each of
+    the top `PREVIEW_PEERS_PER_ROLE` peers (grade high>medium>low, then revenue share descending
+    with unknown last, then name), each with its source links removed. Returns the edges kept, how
+    many edges were withheld, and whether any source link was removed."""
+    by_role: dict[str, dict[tuple[str, str], tuple[tuple[object, ...], ScEdge]]] = {}
+    for edge in edges:
+        role = _edge_role(edge, symbol, market)
+        peer_symbol, peer_market, peer_name = _edge_peer(edge, symbol, market)
+        revenue = edge.revenue_pct
+        key: tuple[object, ...] = (
+            _GRADE_ORDER[edge.grade.value],
+            revenue is None,
+            -(revenue or 0.0),
+            peer_name or peer_symbol,
+            peer_symbol,
+        )
+        best = by_role.setdefault(role, {})
+        peer = (peer_symbol, peer_market)
+        if peer not in best or key < best[peer][0]:
+            best[peer] = (key, edge)
+    kept: list[ScEdge] = []
+    stripped = False
+    for role in _ROLE_ORDER:
+        ranked = sorted(by_role.get(role, {}).values(), key=lambda item: item[0])
+        for _, edge in ranked[:PREVIEW_PEERS_PER_ROLE]:
+            stripped = stripped or bool(edge.sources)
+            kept.append(edge.model_copy(update={"sources": ()}))
+    return tuple(kept), len(edges) - len(kept), stripped
 
 
 class GetSupplyChainEdgesTool(BaseTool):
@@ -378,7 +497,6 @@ class GetSupplyChainEdgesTool(BaseTool):
         self._session_factory = session_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(SymbolInput, args)
         if typed.market not in (Market.TW, Market.US):
             return GetSupplyChainEdgesOutput(symbol=typed.id, market=typed.market.value)
@@ -387,8 +505,20 @@ class GetSupplyChainEdgesTool(BaseTool):
                 typed.id, "TW" if typed.market is Market.TW else "US"
             )
         edges = to_edges(relations)
+        if access_for(SUPPLY_CHAIN_FEATURE, ctx.tier).full:
+            return GetSupplyChainEdgesOutput(
+                symbol=typed.id, market=typed.market.value, edge_count=len(edges), edges=edges
+            )
+        kept, hidden, stripped = preview_supply_edges(edges, typed.id, typed.market.value)
         return GetSupplyChainEdgesOutput(
-            symbol=typed.id, market=typed.market.value, edge_count=len(edges), edges=edges
+            symbol=typed.id,
+            market=typed.market.value,
+            edge_count=len(kept),
+            edges=kept,
+            locked=hidden > 0 or stripped,
+            hidden_count=hidden,
+            sources_locked=True,
+            upgrade_note=UPGRADE_NOTE if hidden > 0 or stripped else "",
         )
 
 
@@ -427,6 +557,22 @@ class GetChainPositionOutput(BaseModel):
     symbol: str
     market: str
     positions: tuple[ChainPositionItem, ...] = Field(default_factory=tuple)
+    # Preview for a caller below Pro: the primary chain only, without its reason codes.
+    locked: bool = False
+    hidden_count: int = 0
+    upgrade_note: str = ""
+
+
+def preview_positions(
+    items: Sequence[ChainPositionItem],
+) -> tuple[tuple[ChainPositionItem, ...], int, bool]:
+    """Pure: only the primary chain row (else the first), `reasons` removed. Returns the rows
+    kept, how many chains were withheld, and whether reasons were removed."""
+    if not items:
+        return (), 0, False
+    primary = next((i for i in items if i.is_primary), items[0])
+    kept = (primary.model_copy(update={"reasons": ()}),)[:PREVIEW_CHAIN_ROWS]
+    return kept, len(items) - len(kept), bool(primary.reasons)
 
 
 class GetChainPositionTool(BaseTool):
@@ -447,7 +593,6 @@ class GetChainPositionTool(BaseTool):
         self._session_factory = session_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(SymbolInput, args)
         if typed.market not in (Market.TW, Market.US):
             return GetChainPositionOutput(symbol=typed.id, market=typed.market.value)
@@ -455,22 +600,31 @@ class GetChainPositionTool(BaseTool):
             rows = await SqlAlchemySupplyChainStore(session).get_positions_for_symbol(
                 typed.id, "TW" if typed.market is Market.TW else "US"
             )
+        items = tuple(
+            ChainPositionItem(
+                chain_key=r.chain_key,
+                chain_name=r.chain_name,
+                position=r.position,
+                is_primary=r.is_primary,
+                method=r.method,
+                confidence=r.confidence,
+                reasons=tuple(ChainReason(code=x.code, detail=x.detail) for x in r.reasons),
+                computed_at=r.computed_at,
+            )
+            for r in rows
+        )
+        if access_for(SUPPLY_CHAIN_FEATURE, ctx.tier).full:
+            return GetChainPositionOutput(
+                symbol=typed.id, market=typed.market.value, positions=items
+            )
+        kept, hidden, stripped = preview_positions(items)
         return GetChainPositionOutput(
             symbol=typed.id,
             market=typed.market.value,
-            positions=tuple(
-                ChainPositionItem(
-                    chain_key=r.chain_key,
-                    chain_name=r.chain_name,
-                    position=r.position,
-                    is_primary=r.is_primary,
-                    method=r.method,
-                    confidence=r.confidence,
-                    reasons=tuple(ChainReason(code=x.code, detail=x.detail) for x in r.reasons),
-                    computed_at=r.computed_at,
-                )
-                for r in rows
-            ),
+            positions=kept,
+            locked=hidden > 0 or stripped,
+            hidden_count=hidden,
+            upgrade_note=UPGRADE_NOTE if hidden > 0 or stripped else "",
         )
 
 
@@ -490,6 +644,37 @@ class GetEntityGraphInput(BaseModel):
     )
 
 
+class GetEntityGraphOutput(EntityGraph):
+    """The entity graph, plus the preview markers: for a caller below Pro only the focus company
+    and its top entities (no peer companies, no peer or supply links); `hidden_count` nodes
+    withheld."""
+
+    locked: bool = False
+    hidden_count: int = 0
+    upgrade_note: str = ""
+
+
+def preview_entity_graph(graph: EntityGraph) -> tuple[EntityGraph, int]:
+    """Pure: the focus node plus the top `PREVIEW_ENTITY_NODES` entity nodes by weight (peer
+    company nodes dropped), with only the focus's own mention links to the kept entities. Returns
+    the reduced graph and how many nodes were withheld."""
+    focus = [n for n in graph.nodes if n.focus]
+    focus_ids = {n.id for n in focus}
+    entities = sorted(
+        (n for n in graph.nodes if not n.focus and n.id.startswith("ent:")),
+        key=lambda n: (-n.weight, n.id),
+    )[:PREVIEW_ENTITY_NODES]
+    kept_ids = focus_ids | {n.id for n in entities}
+    links = tuple(
+        link
+        for link in graph.links
+        if link.kind == "mention" and link.source in focus_ids and link.target in kept_ids
+    )
+    nodes = (*focus, *entities)
+    reduced = EntityGraph(symbol=graph.symbol, market=graph.market, nodes=nodes, links=links)
+    return reduced, len(graph.nodes) - len(nodes)
+
+
 class GetEntityGraphTool(BaseTool):
     """`get_entity_graph` - the 關聯圖譜 ego graph of one company: the entities (technologies,
     materials, applications, products, other companies) its reports mention, the companies that
@@ -503,7 +688,7 @@ class GetEntityGraphTool(BaseTool):
         "(supplier to customer) among those shown. Only the company when nothing is indexed."
     )
     input_model: type[BaseModel] = GetEntityGraphInput
-    output_model: type[BaseModel] = EntityGraph
+    output_model: type[BaseModel] = GetEntityGraphOutput
     data_class = DataClass.PUBLIC
     card_type: str | None = None
 
@@ -511,10 +696,9 @@ class GetEntityGraphTool(BaseTool):
         self._session_factory = session_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
-        del ctx
         typed = parse_args(GetEntityGraphInput, args)
         async with self._session_factory() as session:
-            return await build_entity_graph(
+            graph = await build_entity_graph(
                 SqlAlchemyConceptStore(session),
                 SqlAlchemySupplyChainStore(session),
                 typed.id,
@@ -522,6 +706,15 @@ class GetEntityGraphTool(BaseTool):
                 min_weight=typed.min_weight,
                 limit=typed.limit,
             )
+        if access_for(SUPPLY_CHAIN_FEATURE, ctx.tier).full:
+            return GetEntityGraphOutput(**graph.model_dump())
+        reduced, hidden = preview_entity_graph(graph)
+        return GetEntityGraphOutput(
+            **reduced.model_dump(),
+            locked=hidden > 0,
+            hidden_count=hidden,
+            upgrade_note=UPGRADE_NOTE if hidden > 0 else "",
+        )
 
 
 def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:

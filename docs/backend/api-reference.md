@@ -230,11 +230,11 @@ real, wired endpoints; the `Premium+` `/analytics/themes` row above (LLM-discove
 
 | Method | Path | Purpose | Access |
 |--------|------|---------|--------|
-| GET | `/themes/{key}` | one theme's identity + member symbols, each with sub-industry/confidence/source (`get_theme_members`) | public |
+| GET | `/themes/{key}` | one theme's identity + member symbols, each with sub-industry/confidence/source (`get_theme_members`); a concept theme below Pro: first 3 members per position, `locked` + `hidden_count` | public (Pro for the full concept view) |
 | GET | `/themes/{key}/tiers` | the theme's sub-industries grouped upstream/midstream/downstream, each marked curated vs heuristic (`get_theme_tiers`) | public |
 | GET | `/symbols/{symbol}/themes?market=TW` | reverse lookup: every theme a symbol belongs to (`get_symbol_themes`) | public |
-| GET | `/symbols/{symbol}/chain-positions?market=TW` | the company's upstream/midstream/downstream position in each industry chain, with method, confidence and reason codes; empty = 尚未分類 (`get_chain_position`) | public |
-| GET | `/symbols/{symbol}/entity-graph?market=TW&min_weight=1&limit=60` | 關聯圖譜: the entities a company's reports mention, the peer companies sharing them and the verified supply links among the companies shown, as `{nodes, links}` (ids, labels, types, counts only; at most 120 nodes) (`get_entity_graph`) | public |
+| GET | `/symbols/{symbol}/chain-positions?market=TW` | the company's upstream/midstream/downstream position in each industry chain, with method, confidence and reason codes; empty = 尚未分類 (`get_chain_position`); below Pro: the primary chain only, no reasons, `locked` + `hidden_count` | public (Pro for the full view) |
+| GET | `/symbols/{symbol}/entity-graph?market=TW&min_weight=1&limit=60` | 關聯圖譜: the entities a company's reports mention, the peer companies sharing them and the verified supply links among the companies shown, as `{nodes, links}` (ids, labels, types, counts only; at most 120 nodes) (`get_entity_graph`); below Pro: the focus plus the top 8 entities, `locked` + `hidden_count` | public (Pro for the full view) |
 
 An unknown theme key returns `found=false` at HTTP 200, not a 404 — the caller distinguishes
 "no such theme" from an error. Concept-theme membership is AI-researched and carries a confidence
