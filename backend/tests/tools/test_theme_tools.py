@@ -14,10 +14,6 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from analytics.supply_chain.domain.models import Grade, Kind, Status, Trust
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from analytics.themes.models import (
-    EdgeConfidence,
-    EdgeSource,
-    EdgeType,
-    SupplyChainEdge,
     ThemeKind,
     ThemeMember,
     ThemeSource,
@@ -107,33 +103,6 @@ async def _seed(session_factory: async_sessionmaker) -> None:
             sub_industry="IC設計",
             tier=ThemeTierName.UPSTREAM,
             source=ThemeTierSource.HEURISTIC,
-        )
-        await store.replace_edges_for_source(
-            source=EdgeSource.SEED,
-            edges=[
-                SupplyChainEdge(
-                    from_symbol="2330",
-                    to_symbol="AAPL",
-                    market="TW",
-                    edge_type=EdgeType.SUPPLIES,
-                    confidence=EdgeConfidence.HIGH,
-                    revenue_pct=25.0,
-                    source=EdgeSource.SEED,
-                    from_name="台積電",
-                    to_name="Apple",
-                ),
-                SupplyChainEdge(
-                    from_symbol="2454",
-                    to_symbol="2330",
-                    market="TW",
-                    edge_type=EdgeType.CUSTOMER,
-                    confidence=EdgeConfidence.MEDIUM,
-                    revenue_pct=None,
-                    source=EdgeSource.SEED,
-                    from_name="聯發科",
-                    to_name="台積電",
-                ),
-            ],
         )
         await session.commit()
 

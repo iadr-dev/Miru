@@ -38,31 +38,10 @@ class ThemeSource(StrEnum):
     LLM_DISCOVERY = "llm_discovery"
 
 
-class EdgeType(StrEnum):
-    SUPPLIES = "supplies"
-    CUSTOMER = "customer"
-    COMPETES = "competes"
-
-
-class EdgeConfidence(StrEnum):
-    """A textual trust band, not a number — it records how trustworthy an extraction's provenance
-    is (a hand-seeded fact vs. a model's proposal), which a numeric score would obscure."""
-
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-class EdgeSource(StrEnum):
-    SEED = "seed"
-    LLM_EXTRACTION = "llm_extraction"
-
-
 class ChangeEntity(StrEnum):
     THEME = "theme"
     MEMBERSHIP = "membership"
     TIER = "tier"
-    EDGE = "edge"
 
 
 class ChangeAction(StrEnum):
@@ -125,23 +104,6 @@ class ThemeTier(BaseModel):
     updated_at: datetime
 
 
-class SupplyChainEdge(BaseModel):
-    """One directed supply-chain relationship between two symbols, as written by the seed or the
-    in-theme edge generator and read back for provenance display."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    from_symbol: str
-    to_symbol: str
-    market: str
-    edge_type: EdgeType
-    confidence: EdgeConfidence
-    revenue_pct: float | None = None
-    source: EdgeSource
-    from_name: str = ""
-    to_name: str = ""
-
-
 class ThemeChangeEntry(BaseModel):
     """One audit-log row correlating a create/update/replace against a theme, membership, tier, or
     edge with the run that produced it. `detail` is a short human summary, capped so the log stays
@@ -160,10 +122,6 @@ class ThemeChangeEntry(BaseModel):
 __all__ = [
     "ChangeAction",
     "ChangeEntity",
-    "EdgeConfidence",
-    "EdgeSource",
-    "EdgeType",
-    "SupplyChainEdge",
     "SymbolTheme",
     "Theme",
     "ThemeChangeEntry",

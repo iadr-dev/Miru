@@ -16,7 +16,7 @@ class ThemeRow(Base):
     """One theme — an industry classification (`kind='industry'`, e.g. 半導體) or, in a later
     layer, a research/LLM-discovered concept (`kind='concept'`, e.g. `cowos-advanced-packaging`).
 
-    Unlike every other table in this file, these four theme/tier/edge tables carry **no
+    Unlike every other table in this file, these theme/tier tables carry **no
     `user_id`**: they are platform-wide reference data (a stock's industry membership is the same
     for everyone), not per-user state, so the `WHERE user_id = ?` isolation wrapper does not apply
     to them. `key` is the natural slug a caller looks a theme up by — for industry themes it is
@@ -102,41 +102,6 @@ class ThemeTierRow(Base):
     )
 
 
-class SupplyChainEdgeRow(Base):
-    """One directed supply-chain relationship between two symbols. `confidence` is a text band
-    (`high`/`medium`/`low`) rather than a number because it records provenance transparency — how
-    trustworthy the extraction is — not a computed score. Not populated by this layer (the edge-
-    generation layer fills it); ships now for schema coherence."""
-
-    __tablename__ = "supply_chain_edges"
-
-    id: Mapped[str] = mapped_column(primary_key=True)
-    from_symbol: Mapped[str]
-    to_symbol: Mapped[str]
-    market: Mapped[str]
-    edge_type: Mapped[str]
-    confidence: Mapped[str]
-    revenue_pct: Mapped[float | None] = mapped_column(default=None)
-    source: Mapped[str]
-    from_name: Mapped[str] = mapped_column(default="")
-    to_name: Mapped[str] = mapped_column(default="")
-    created_at: Mapped[datetime] = mapped_column(_UTC)
-    updated_at: Mapped[datetime] = mapped_column(_UTC)
-
-    __table_args__ = (
-        CheckConstraint(_MARKET_TW_US_CHECK, name="ck_supply_chain_edges_market"),
-        CheckConstraint(
-            "edge_type IN ('supplies','customer','competes')", name="ck_supply_chain_edges_type"
-        ),
-        CheckConstraint(
-            "confidence IN ('high','medium','low')", name="ck_supply_chain_edges_confidence"
-        ),
-        CheckConstraint("source IN ('seed','llm_extraction')", name="ck_supply_chain_edges_source"),
-        Index("ix_supply_chain_edges_from", "from_symbol"),
-        Index("ix_supply_chain_edges_to", "to_symbol"),
-    )
-
-
 class ThemeChangeLogRow(Base):
     """An append-only audit trail of theme/membership/tier/edge writes. `run_id` correlates every
     row a single seed/refresh invocation produced, so an operator can see exactly what one run
@@ -157,7 +122,7 @@ class ThemeChangeLogRow(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "entity IN ('theme','membership','tier','edge')", name="ck_theme_change_log_entity"
+            "entity IN ('theme','membership','tier')", name="ck_theme_change_log_entity"
         ),
         CheckConstraint(
             "action IN ('create','update','replace')", name="ck_theme_change_log_action"

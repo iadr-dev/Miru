@@ -90,7 +90,6 @@ from db.models.supply_chain import (
     ScRelationRow,
 )
 from db.models.themes import (
-    SupplyChainEdgeRow,
     ThemeChangeLogRow,
     ThemeMembershipRow,
     ThemeRow,
@@ -130,7 +129,6 @@ __all__ = [
     "StrategySubscriptionRow",
     "StreamEventRow",
     "SubscriptionRow",
-    "SupplyChainEdgeRow",
     "ThemeChangeLogRow",
     "ThemeMembershipRow",
     "ThemeRow",
