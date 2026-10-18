@@ -29,8 +29,19 @@ import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from analytics.supply_chain.domain.concepts import ConceptPosition
+from analytics.supply_chain.domain.models import MarketCode
 from analytics.supply_chain.edges import ScEdge, to_edges
+from analytics.supply_chain.entity_graph import (
+    DEFAULT_LIMIT as ENTITY_GRAPH_DEFAULT_LIMIT,
+)
+from analytics.supply_chain.entity_graph import (
+    MAX_ENTITIES,
+    EntityGraph,
+    build_entity_graph,
+)
 from analytics.supply_chain.positions.models import Method, Position, ReasonCode
+from analytics.supply_chain.store.concept_store import SqlAlchemyConceptStore
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from analytics.symbol_universe import is_scoreable_symbol
 from analytics.themes.models import (
@@ -78,6 +89,8 @@ class ThemeSummary(BaseModel):
     kind: ThemeKind
     status: ThemeStatus
     member_count: int = 0
+    description: str = ""
+    related_keys: tuple[str, ...] = ()
 
 
 class GetThemesOutput(BaseModel):
@@ -113,6 +126,7 @@ class GetThemesTool(BaseTool):
         async with self._session_factory() as session:
             store: ThemeStore = SqlAlchemyThemeStore(session)
             themes = await store.list_themes(kind=typed.kind, status=status)
+            concept = await SqlAlchemyConceptStore(session).concept_info()
             summaries = [
                 ThemeSummary(
                     key=theme.key,
@@ -121,6 +135,8 @@ class GetThemesTool(BaseTool):
                     kind=theme.kind,
                     status=theme.status,
                     member_count=await store.count_theme_members(theme_key=theme.key),
+                    description=concept[theme.key].description if theme.key in concept else "",
+                    related_keys=concept[theme.key].related_keys if theme.key in concept else (),
                 )
                 for theme in themes
             ]
@@ -139,6 +155,13 @@ class GetThemeMembersInput(BaseModel):
     )
 
 
+class ThemeMemberDetail(ThemeMember):
+    """A membership row; `position` is set for a concept theme's members (upstream / midstream /
+    downstream / related) and null for an industry theme, whose tiers sit on sub-industries."""
+
+    position: ConceptPosition | None = None
+
+
 class GetThemeMembersOutput(BaseModel):
     """A theme's identity plus its member symbols, each carrying the per-membership
     `sub_industry`/`confidence`/`source` so an AI-researched concept member is never presented as
@@ -152,8 +175,10 @@ class GetThemeMembersOutput(BaseModel):
     name_en: str = ""
     kind: ThemeKind | None = None
     member_count: int = 0
-    members: tuple[ThemeMember, ...] = Field(default_factory=tuple)
+    members: tuple[ThemeMemberDetail, ...] = Field(default_factory=tuple)
     message: str = ""
+    description: str = ""
+    related_keys: tuple[str, ...] = ()
 
 
 class GetThemeMembersTool(BaseTool):
@@ -187,6 +212,9 @@ class GetThemeMembersTool(BaseTool):
                     message=f"No theme found for key {typed.theme_key!r}.",
                 )
             members = await store.get_theme_member_details(theme_key=typed.theme_key)
+            concepts = SqlAlchemyConceptStore(session)
+            info = (await concepts.concept_info([theme.key])).get(theme.key)
+            positions = await concepts.concept_positions(theme.key) if info else {}
         return GetThemeMembersOutput(
             theme_key=theme.key,
             found=True,
@@ -194,7 +222,14 @@ class GetThemeMembersTool(BaseTool):
             name_en=theme.name_en,
             kind=theme.kind,
             member_count=len(members),
-            members=tuple(members[: typed.limit]),
+            members=tuple(
+                ThemeMemberDetail(
+                    **member.model_dump(), position=positions.get((member.symbol, member.market))
+                )
+                for member in members[: typed.limit]
+            ),
+            description=info.description if info else "",
+            related_keys=info.related_keys if info else (),
         )
 
 
@@ -439,6 +474,56 @@ class GetChainPositionTool(BaseTool):
         )
 
 
+class GetEntityGraphInput(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(min_length=1, description="Exchange-scoped symbol id, e.g. '2330'.")
+    market: MarketCode = "TW"
+    min_weight: int = Field(
+        default=1, ge=1, description="Drop entities the company mentions fewer times than this."
+    )
+    limit: int = Field(
+        default=ENTITY_GRAPH_DEFAULT_LIMIT,
+        ge=1,
+        le=MAX_ENTITIES,
+        description="Maximum entity nodes (the most-mentioned first).",
+    )
+
+
+class GetEntityGraphTool(BaseTool):
+    """`get_entity_graph` - the 關聯圖譜 ego graph of one company: the entities (technologies,
+    materials, applications, products, other companies) its reports mention, the companies that
+    mention the same ones, and the verified supply relations among the companies shown. Only ids,
+    labels, types and counts; descriptive, never a rating."""
+
+    name = "get_entity_graph"
+    description = (
+        "Get a company's entity graph: the entities it mentions (weighted by mention count), the "
+        "peer companies sharing them (weighted by shared entities), and verified supply links "
+        "(supplier to customer) among those shown. Only the company when nothing is indexed."
+    )
+    input_model: type[BaseModel] = GetEntityGraphInput
+    output_model: type[BaseModel] = EntityGraph
+    data_class = DataClass.PUBLIC
+    card_type: str | None = None
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(GetEntityGraphInput, args)
+        async with self._session_factory() as session:
+            return await build_entity_graph(
+                SqlAlchemyConceptStore(session),
+                SqlAlchemySupplyChainStore(session),
+                typed.id,
+                typed.market,
+                min_weight=typed.min_weight,
+                limit=typed.limit,
+            )
+
+
 def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
     """The real trading-day calendar for `market` — duplicated from `tools/market/`'s
     own private helper of the same name/shape rather than imported, matching this codebase's
@@ -629,6 +714,7 @@ def build_registration_table(
         (GetThemeTiersTool(session_factory), False),
         (GetSupplyChainEdgesTool(session_factory), False),
         (GetChainPositionTool(session_factory), False),
+        (GetEntityGraphTool(session_factory), False),
         (GetThemeTierHeatmapTool(session_factory, store), False),
     ]
     return tools
@@ -639,6 +725,8 @@ __all__ = [
     "ChainReason",
     "GetChainPositionOutput",
     "GetChainPositionTool",
+    "GetEntityGraphInput",
+    "GetEntityGraphTool",
     "GetSupplyChainEdgesOutput",
     "GetSupplyChainEdgesTool",
     "GetSymbolThemesOutput",
@@ -655,6 +743,7 @@ __all__ = [
     "GetThemesOutput",
     "GetThemesTool",
     "SubIndustryHeat",
+    "ThemeMemberDetail",
     "ThemeSummary",
     "build_registration_table",
 ]

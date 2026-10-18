@@ -130,3 +130,99 @@ class ScPositionRow(Base):
             postgresql_where=text("is_primary"),
         ),
     )
+
+
+class ScConceptThemeRow(Base):
+    """One concept theme (a cross-industry cut such as a technology wave), loaded from the
+    operator's theme files. `related` is a JSON list of display names. Platform reference data,
+    so no `user_id`. Each theme is also mirrored into `themes`/`theme_memberships`
+    (`kind='concept'`) so the generic theme tools and the screener chips see it."""
+
+    __tablename__ = "sc_concept_themes"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(unique=True)
+    name_zh: Mapped[str]
+    name_en: Mapped[str] = mapped_column(default="")
+    description: Mapped[str] = mapped_column(default="")
+    related: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class ScConceptMemberRow(Base):
+    __tablename__ = "sc_concept_members"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    theme_key: Mapped[str] = mapped_column(ForeignKey("sc_concept_themes.key", ondelete="CASCADE"))
+    symbol: Mapped[str]
+    market: Mapped[str]
+    name: Mapped[str] = mapped_column(default="")
+    position: Mapped[str]
+    origin: Mapped[str]
+
+    __table_args__ = (
+        CheckConstraint("market IN ('TW','US')", name="ck_sc_concept_members_market"),
+        CheckConstraint(
+            "position IN ('upstream','midstream','downstream','related')",
+            name="ck_sc_concept_members_position",
+        ),
+        CheckConstraint(
+            "origin IN ('seeded','curated','proposed')", name="ck_sc_concept_members_origin"
+        ),
+        UniqueConstraint("theme_key", "symbol", "market", name="uq_sc_concept_members_natural"),
+        Index("ix_sc_concept_members_symbol", "symbol", "market"),
+    )
+
+
+class ScEntityRow(Base):
+    """A named thing the operator's reports mention (a company, technology, material, ...).
+    `id` is the entity's own name string; `symbol`/`market` are set for listed companies."""
+
+    __tablename__ = "sc_entities"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    type: Mapped[str]
+    symbol: Mapped[str | None] = mapped_column(default=None)
+    market: Mapped[str | None] = mapped_column(default=None)
+    aliases: Mapped[list[str]] = mapped_column(JSON, default=list)
+    mentions: Mapped[int] = mapped_column(default=0)
+    reports: Mapped[int] = mapped_column(default=0)
+
+    __table_args__ = (
+        CheckConstraint(
+            "type IN ('tw_company','intl_company','technology','material','application','product')",
+            name="ck_sc_entities_type",
+        ),
+        CheckConstraint("market IS NULL OR market IN ('TW','US')", name="ck_sc_entities_market"),
+        CheckConstraint("mentions >= 0 AND reports >= 0", name="ck_sc_entities_counts"),
+        Index("ix_sc_entities_symbol", "symbol", "market"),
+    )
+
+
+class ScEntityMentionRow(Base):
+    """How often one company's report mentions one entity in one section. `role_key` is the role
+    or '' (NOT NULL so the unique key behaves the same on SQLite and Postgres)."""
+
+    __tablename__ = "sc_entity_mentions"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    symbol: Mapped[str]
+    entity_id: Mapped[str] = mapped_column(ForeignKey("sc_entities.id", ondelete="CASCADE"))
+    section: Mapped[str]
+    role: Mapped[str | None] = mapped_column(default=None)
+    role_key: Mapped[str] = mapped_column(default="")
+    count: Mapped[int] = mapped_column(default=1)
+
+    __table_args__ = (
+        CheckConstraint(
+            "section IN ('business','chain','counterparty')", name="ck_sc_entity_mentions_section"
+        ),
+        CheckConstraint(
+            "role IS NULL OR role IN ('customer','supplier')", name="ck_sc_entity_mentions_role"
+        ),
+        CheckConstraint("count >= 0", name="ck_sc_entity_mentions_count"),
+        UniqueConstraint(
+            "symbol", "entity_id", "section", "role_key", name="uq_sc_entity_mentions_natural"
+        ),
+        Index("ix_sc_entity_mentions_entity", "entity_id"),
+        Index("ix_sc_entity_mentions_symbol", "symbol"),
+    )

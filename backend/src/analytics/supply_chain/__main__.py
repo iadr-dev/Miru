@@ -1,10 +1,10 @@
 """Operator CLI: `python -m analytics.supply_chain load|stats|positions|eval`.
 
-`load` rebuilds the index tables from the private relation files; `stats` prints row counts
-(numbers only, never relation content). `positions` recomputes and writes the chain positions and
-prints counts per position and method only. `eval [--golden PATH] [--json]` computes the positions
-in memory from the current database and scores them against the golden file (exit 1 when the gate
-fails or the golden file is unusable).
+`load` rebuilds the index tables from the private relation, concept-theme and entity files;
+`stats` prints row counts (numbers only, never file content). `positions` recomputes and writes
+the chain positions and prints counts per position and method only.
+`eval [--golden PATH] [--json]` computes the positions in memory from the current database and
+scores them against the golden file (exit 1 when the gate fails or the golden file is unusable).
 """
 
 from __future__ import annotations
@@ -19,12 +19,16 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from analytics.supply_chain.entities_io.loader import EntityFileError, load_entities
 from analytics.supply_chain.evaluation.golden import GoldenFileError, load_golden
 from analytics.supply_chain.evaluation.metrics import check_gate, evaluate, format_report
 from analytics.supply_chain.positions.overrides import OverrideFileError, load_overrides
 from analytics.supply_chain.positions.service import compute_positions, summarize
 from analytics.supply_chain.refdata_io.loader import RelationFileError, load_reference_relations
+from analytics.supply_chain.store.concept_protocol import ConceptCollisionError
+from analytics.supply_chain.store.concept_store import SqlAlchemyConceptStore
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
+from analytics.supply_chain.themes_io.loader import ConceptFileError, load_concept_themes
 from analytics.themes.store import SqlAlchemyThemeStore
 from config.settings import get_settings
 from db import (
@@ -67,6 +71,28 @@ async def _eval(
     return code, f"{format_report(report)}\n\ngate: {verdict}\n"
 
 
+async def _load_all(session: AsyncSession) -> tuple[int, str]:
+    """Relations, then concept themes, then entities. Each load validates before it writes, so a
+    bad file stops the run with nothing from that file applied (earlier loads stay committed)."""
+    store = SqlAlchemySupplyChainStore(session)
+    concepts = SqlAlchemyConceptStore(session)
+    report: dict[str, object] = {}
+    try:
+        relations = await load_reference_relations(store, today=datetime.now(UTC).date())
+        await session.commit()
+        report["relations"] = relations.__dict__
+        themes = await load_concept_themes(concepts)
+        await session.commit()
+        report["concept_themes"] = themes.__dict__
+        entities = await load_entities(concepts)
+        await session.commit()
+        report["entities"] = entities.__dict__
+    except (RelationFileError, ConceptFileError, ConceptCollisionError, EntityFileError) as exc:
+        await session.rollback()
+        return 1, f"invalid file: {exc}\n"
+    return 0, json.dumps(report) + "\n"
+
+
 async def _run(command: str, golden: Path | None, *, as_json: bool) -> int:
     settings = get_settings()
     rls.install(enabled=settings.row_level_security)
@@ -78,13 +104,9 @@ async def _run(command: str, golden: Path | None, *, as_json: bool) -> int:
         async with factory() as session:
             store = SqlAlchemySupplyChainStore(session)
             if command == "load":
-                try:
-                    result = await load_reference_relations(store, today=datetime.now(UTC).date())
-                except RelationFileError as exc:
-                    sys.stderr.write(f"invalid relation file: {exc}\n")
-                    return 1
-                await session.commit()
-                sys.stdout.write(json.dumps(result.__dict__) + "\n")
+                code, text = await _load_all(session)
+                (sys.stdout if code == 0 else sys.stderr).write(text)
+                return code
             elif command in ("positions", "eval"):
                 try:
                     if command == "positions":
@@ -97,8 +119,9 @@ async def _run(command: str, golden: Path | None, *, as_json: bool) -> int:
                 sys.stdout.write(text)
                 return code
             else:
-                counts = await store.counts()
-                sys.stdout.write(counts.model_dump_json(indent=2) + "\n")
+                counts = (await store.counts()).model_dump(mode="json")
+                concept = (await SqlAlchemyConceptStore(session).counts()).model_dump(mode="json")
+                sys.stdout.write(json.dumps(counts | {"concepts": concept}, indent=2) + "\n")
     finally:
         await engine.dispose()
     return 0

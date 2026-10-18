@@ -80,7 +80,15 @@ from db.models.scores import (
     StockSummaryRow,
     TrendScoreRow,
 )
-from db.models.supply_chain import ScEvidenceRow, ScPositionRow, ScRelationRow
+from db.models.supply_chain import (
+    ScConceptMemberRow,
+    ScConceptThemeRow,
+    ScEntityMentionRow,
+    ScEntityRow,
+    ScEvidenceRow,
+    ScPositionRow,
+    ScRelationRow,
+)
 from db.models.themes import (
     SupplyChainEdgeRow,
     ThemeChangeLogRow,
@@ -107,6 +115,10 @@ __all__ = [
     "OAuthClientRow",
     "OAuthGrantRow",
     "OAuthRefreshTokenRow",
+    "ScConceptMemberRow",
+    "ScConceptThemeRow",
+    "ScEntityMentionRow",
+    "ScEntityRow",
     "ScEvidenceRow",
     "ScPositionRow",
     "ScRelationRow",

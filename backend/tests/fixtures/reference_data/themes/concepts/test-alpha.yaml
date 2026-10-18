@@ -1,0 +1,12 @@
+# Synthetic fixture for the test suite - not the product's data.
+key: test-alpha
+name_zh: 測試題材甲
+name_en: Test alpha
+description: Invented concept theme used by the test suite
+related:
+  - 測試題材乙
+members:
+  - {symbol: "9001", name: Alpha Parts, position: upstream, origin: seeded}
+  - {symbol: "9002", name: Beta Devices, position: midstream, origin: curated}
+  - {symbol: ZZZA, name: Gamma Corp, position: downstream, origin: proposed}
+  - {symbol: "9003", name: Delta Works, position: related, origin: seeded}

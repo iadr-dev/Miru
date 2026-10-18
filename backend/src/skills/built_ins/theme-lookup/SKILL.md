@@ -1,8 +1,8 @@
 ---
 name: theme-lookup
 version: 1.0.0
-description: 主題/產業鏈查詢 — what theme a stock is in, what stocks are in a theme, and a theme's upstream/midstream/downstream breakdown (industry-chain facts vs AI-researched concept members clearly distinguished).
-triggers: [主題, 概念股, 產業鏈, 上游, 中游, 下游, theme, concept, supply chain, upstream, downstream, 相關個股]
+description: 主題/產業鏈/關聯圖譜查詢 — what theme a stock is in, what stocks are in a theme (concept themes with 上游/中游/下游/相關 positions), a theme's upstream/midstream/downstream breakdown, and a company's entity graph (what its reports mention and which companies share it).
+triggers: [主題, 概念股, 題材, 產業鏈, 上游, 中游, 下游, 關聯圖譜, 共同提及, theme, concept, supply chain, upstream, downstream, entity graph, 相關個股]
 design_pattern: tool_wrapper
 inputs:
   theme_key:
@@ -11,15 +11,18 @@ inputs:
   stock_id:
     type: string
     required: false
-tools: [get_canonical_context, get_theme_members, get_symbol_themes, get_theme_tiers]
+tools: [get_canonical_context, get_theme_members, get_symbol_themes, get_theme_tiers, get_entity_graph]
 output_structure:
   - '主題成員: 個股清單，每檔標明子產業、信心分數、來源（產業鏈 / AI 研究）'
   - '個股所屬主題: 反查一檔個股屬於哪些主題'
   - '產業鏈分層: 上游 / 中游 / 下游，每項標明 curated（人工審定）或 heuristic（自動分類）'
-freshness_rule: 主題與成員為已入庫的分類資料；概念股成員為 AI 研究、附信心分數，須明確標示，不得等同於人工審定的產業鏈事實。
+  - '概念題材: 說明、相關題材，以及成員的位置（上游 / 中游 / 下游 / 相關公司）'
+  - '關聯圖譜: 公司提及的實體（技術 / 材料 / 應用 / 產品 / 公司）、共同提及的同業，以及已驗證的供應關係'
+freshness_rule: 主題與成員為已入庫的分類資料；概念股成員附信心分數與位置（來源為整理的題材資料，非編輯保證），須明確標示，不得等同於人工審定的產業鏈事實。關聯圖譜為已入庫的提及次數統計，僅是描述性的關聯，不代表供應關係。
 boundaries:
   - 不提供目標價、評等或買賣建議。
-  - 概念股成員（相對於產業鏈成員）附有信心分數且為 AI 研究，非編輯保證；輸出須逐檔顯示 confidence 與 source，不得隱藏此區別。
+  - 概念股成員（相對於產業鏈成員）附有信心分數，非編輯保證；輸出須逐檔顯示 confidence 與 source，不得隱藏此區別。
+  - 關聯圖譜的「共同提及」只表示兩家公司的資料提到相同的實體，不是供應或合作關係；只有 kind 為 supply 的連線才是已驗證的供應關係。
   - 產業鏈分層若為 heuristic（自動分類），須與 curated（人工審定）明確區分，不得將自動猜測呈現為同等權威。
 resources: []
 outputs: markdown
@@ -61,7 +64,18 @@ outputs: markdown
    for this key, then cite third-party sources for the rest) — this is honest and correct
    behavior, not a fallback of last resort.
 4. Always surface the `source`/`confidence` distinction verbatim. An industry-chain member is an
-   editorial fact at confidence 1.0; a concept member is AI-researched with a confidence score —
+   editorial fact at confidence 1.0; a concept member carries a lower confidence score —
    never present the latter as equally guaranteed as the former.
-5. For tiers, never let a `heuristic` assignment read as authoritative as a `curated` one — label
+5. **Concept themes** (`kind` = `concept`, e.g. a technology wave) are cross-industry cuts. In
+   `get_theme_members` they carry a `description`, `related_keys` (other concept themes) and, per
+   member, a `position` of `upstream` / `midstream` / `downstream` / `related` (the 相關公司 bucket).
+   Present members grouped by position, keep the `confidence` and `source` of each, and offer
+   `related_keys` as follow-ups rather than expanding them.
+6. **"what does X mention / who is related to X / 關聯圖譜"** → `get_entity_graph(id, market)`. The
+   focus node is the company; entity nodes (technology, material, application, product, company)
+   are weighted by how often its reports mention them; peer companies are those sharing entities.
+   Summarise the top entities and the peers with the most shared entities, and state plainly that a
+   `cooccurrence` link means shared mentions only. Only `supply` links (supplier -> customer) are
+   verified supply relations. If the graph holds just the company, say nothing is indexed for it.
+7. For tiers, never let a `heuristic` assignment read as authoritative as a `curated` one — label
    each group's assignments so the reader can tell them apart.
