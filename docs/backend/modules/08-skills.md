@@ -141,7 +141,7 @@ skill still runs and reports around the masked section).
 | `valuation-band` | PE/PB band + yield context vs history | no (public) |
 | `derivatives-positioning` | 期權 OI / P-C ratio (self-computed from raw volume) / 大額交易人 context / VIX | 大額交易人 OI + VIX (sponsor); rest public |
 | `daily-context-brief` | Assemble conversation brief for a watchlist | no (public) |
-| `disposition-watch` | 處置有價證券 announcement stream (注意股 side + escalation forecast not covered — no adapter) | disposition stream (sponsor) |
+| `disposition-watch` | 處置有價證券 announcement stream for one stock, plus the whole-market 處置/注意股 board with a rule-based, caveated "days until next disposition" projection | disposition stream (sponsor); board public |
 | `catalyst-scan` | MOPS 重大訊息 (today only) + 董監事持股/質押 for a stock (董事會決議/庫藏股/法說會/自結 not covered — no adapter) | no (public) |
 | `governance-risk` | 質押比 (董監事持股) + 資金貸與/質押 collateral balance (背書保證/訴訟裁罰 not covered — no adapter) | collateral balance (sponsor); rest public |
 | `active-etf-flow` | 主動式ETF 操作日報 + cross-ETF 資金流向 (流入/流出, 加碼/減碼, 多空共識) | active-ETF holdings (sponsor) |
@@ -159,11 +159,9 @@ proposes - the user confirms on the card, and the agent never writes); and
 snapshot, warrant branch flow, night-session institutional flow; all Sponsor). The authoritative
 list is the `backend/src/skills/built_ins/*/SKILL.md` directories.
 
-**No skill exists** for `news-sentiment`, `analyst-consensus`, `market-calendar`, `market-pulse`,
-`technical-read`, `ai-summary-swot` or `theme-discovery` (flow-ranked themes). For some of these the
-tool exists (`get_technical_indicators`, `get_stock_summary`, `get_calendar_events`,
-`get_advance_decline`, `get_index_contribution`, `get_themes`) but is used only by the web, not the
-chat agent.
+**No skill exists** for `analyst-consensus` as its own skill (the tool lives in `company-profile`,
+`international-equity-snapshot` and `stock-report-us`) or for `theme-discovery` (flow-ranked themes).
+The former web-only tools now have chat homes: see the next section.
 
 ## Catch-all skills (cover previously-orphaned tools, not in the original 20-skill starter set)
 
@@ -182,19 +180,46 @@ are in the orchestrator's warm-tool default (`_WARM_TOOLS`).
 | `macro-dashboard` | 匯率/利率/黃金/原油/美債殖利率/Fear-Greed + TW 景氣對策信號 (market-level, no per-symbol scope) | all sponsor |
 | `international-equity-snapshot` | yfinance-backed non-TW options/holders/fund-holdings/market-status/sector-overview/calendars + FinMind's own international roster+price, for US/GB/JP/EU | US minute price (sponsor); rest public |
 | `reference-data-lookup` | Symbol search/lookup (non-TW), TW stock/warrant roster, trading calendar, active-ETF roster, warrant-underlying mapping, source matrix | warrant-underlying (sponsor); rest public |
-| `market-breadth-and-flow` | TAIEX/TPEx 5-second index/order-book snapshots, whole-market 三大法人 totals + one-stock wide view, 報酬指數, non-TAIEX index snapshots, US/GB/JP/EU equity screener (漲跌分佈/家數 + 指數貢獻排行 not covered — no adapter) | non-TAIEX index snapshot (sponsor); rest public |
+| `market-breadth-and-flow` | TAIEX/TPEx 5-second index/order-book snapshots, TW/US index strips, advance/decline breadth, approximate index contribution, whole-market 三大法人 totals + one-stock wide view, 報酬指數, non-TAIEX index snapshots, US/GB/JP/EU equity screener | non-TAIEX index snapshot + index contribution (sponsor); rest public |
 | `corporate-actions-and-market-value` | 減資/下市/分割/面額變動 events, daily market value + market-cap-weight ranking, 當沖 eligibility, 漲跌停參考價 | market value + weight ranking (sponsor); rest public |
 | `intraday-and-multi-timeframe-price` | Tick-level trades, minute K-bars, weekly/monthly bars, ten-year price line, 暫停交易 announcements for one stock | all sponsor |
 | `industry-chain-money-flow` | 產業鏈資金流 whole-market aggregate (single trading day) + a stock's static 產業鏈分類 | all sponsor |
 | `finmind-stock-news` | FinMind's own news dataset for one stock, one trading day at a time (distinct from the excluded RSS/GDELT/Finnhub aggregator + PTT buzz) | no (public) |
 | `theme-lookup` | 主題/產業鏈查詢: what theme a stock is in, what stocks are in a theme, and a theme's upstream/midstream/downstream breakdown — over the relational theme store (industry-chain facts vs AI-researched concept members distinguished, curated vs heuristic tiers distinguished) | no (public) |
 | `stock-score` | 多因子綜合評分: one symbol's cached 5-factor composite (momentum/trend_quality/value_guard/quality/revenue_flow) + descriptive band, swing/position horizon profiles, plus the whole-TW-universe bullish/bearish leaderboard — both cache-only, daily-batch reads | no (public) |
-| `stock-screener` | 標籤篩選器: discover the real tag catalog (技術面/籌碼面/熱門/智能) via `get_tag_catalog`, then AND/OR-match TW symbols against named end-of-day tags via `run_tag_screener` — a daily-batch-computed descriptive filter, never a ranked recommendation | no (public) |
+| `stock-screener` | 篩選器: tag path (`get_tag_catalog` then `run_tag_screener`, TW end-of-day tags) and numeric path (`get_factor_catalog`, `get_screener_presets`, `run_screener` over TW/US/ETF with liquidity/price/cap/disposition gates) — descriptive filters, never a ranked recommendation | no (public) |
 | `etf-overlap-and-comparison` | 3檔以上非台股ETF持股重疊比較 (`get_etf_overlap`) + 跨市場（含台股）股利再投入總報酬比較 (`get_fund_comparison`), with honest disclosure of the TW-holdings/NAV adapter gap | no (public) |
 
-**Deliberately uncovered by any skill:** `web_search`/`fetch_url` (enablement-gated generic
-tools, not skill-shaped - the agent decides when to use them, subject to the per-turn web-search
-toggle).
+### Tools the web uses that the chat agent now reaches through skills
+
+The chat agent only gets a skill's allowlist, so every registered tool must be listed by a skill
+(or be in the warm set / web-search set / `CHAT_EXEMPT_TOOLS`) - enforced by
+`backend/tests/skills/test_tool_exposure.py`. The previously orphaned tools map as follows.
+
+| Skill | Tools added | Uses sponsor data? |
+|-------|-------------|--------------------|
+| `stock-screener` | `run_screener`, `get_screener_presets`, `get_factor_catalog` | no (public) |
+| `market-breadth-and-flow` | TAIEX/TPEx 5-second index/order-book snapshots, TW/US index strips, advance/decline breadth, approximate index contribution, whole-market 三大法人 totals + one-stock wide view, 報酬指數, non-TAIEX index snapshots, US/GB/JP/EU equity screener | non-TAIEX index snapshot + index contribution (sponsor); rest public |
+| `live-snapshot-check` | `get_live_price_quote`, `get_tick_snapshot`, `get_futures_snapshot` | tick/futures snapshots (sponsor) |
+| `daily-context-brief` | `get_symbol_quotes`, `get_price_history` | no (public) |
+| `disposition-watch` | 處置有價證券 announcement stream for one stock, plus the whole-market 處置/注意股 board with a rule-based, caveated "days until next disposition" projection | disposition stream (sponsor); board public |
+| `catalyst-scan` | `get_calendar_events`, `get_material_announcement_feed`, `get_insider_transfer_declarations` | no (public) |
+| `company-profile` | `get_dividend_result` | no (public) |
+| `stock-report-us` | `get_sec_filings` | no (public) |
+| `stock-score` | `get_stock_summary` | summary (sponsor) |
+| `active-etf-flow` | `get_daily_signal`, `get_etfs_holding_stock` | all sponsor |
+| `news-and-sentiment` (new) | `get_news_feed`, `get_ptt_board`, `get_ptt_stock_search` | no (public); third-party content, forum posts are unverified data, never advice |
+| `market-rankings` (new) | `get_tw_market_rankings`, `get_us_market_rankings`, `get_price_momentum`, `get_holder_accumulation`, `get_stock_heatmap`, `get_strategy_watch` | holder accumulation (sponsor) |
+| `sector-rotation` (new) | `get_sector_heatmap`, `get_sector_constituents`, `get_sector_rotation`, `get_sector_rotation_rrg` | no (public) |
+| `us-macro-data` (new) | `get_us_macro_dashboard`, `get_us_macro_series`, `get_us_economic_releases`, `get_series_revisions`, `get_macro_calendar` | no (public) |
+| `technical-trend-read` (new) | `get_technical_indicators`, `get_trend_score` | no (public) |
+| `etf-market-overview` (new) | `get_etf_list`, `get_dividend_calendar` | no (public) |
+
+**Deliberately outside the skills:** `web_search`/`fetch_url` (enablement-gated generic tools,
+not skill-shaped - the agent decides when to use them, subject to the per-turn web-search toggle)
+and the warm set. `CHAT_EXEMPT_TOOLS` (in the guard test) lists any UI-only tool kept out of chat,
+with a reason; it currently holds only the four theme/supply-chain tools that the `theme-lookup`
+rework is about to list.
 
 **Real-backing.** Skills are backed by named tools in `backend/src/tools/*.py` and don't invent
 fields their tools don't return. Several skills are honestly narrower than the original design intended, and say so explicitly in their
@@ -202,5 +227,4 @@ own `SKILL.md` `boundaries`/output-structure, mirroring `company-profile`'s esta
 `missing_fields` pattern: `catalyst-scan` (no 董事會決議/庫藏股/法說會/自結 adapter),
 `governance-risk` (no 背書保證/訴訟裁罰 adapter), `disposition-watch` (no TPEX 注意股 adapter,
 no escalation forecast), `etf-compare` (no NAV/折溢價/受益人數/fees/yield adapter),
-`market-breadth-and-flow` (its skill does not use `get_advance_decline`/`get_index_contribution`,
-which are web-only tools).
+`market-breadth-and-flow` (index contribution is an approximation and always carries its caveat).

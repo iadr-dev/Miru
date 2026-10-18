@@ -122,7 +122,7 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   Sponsor-tier); this tool remains the separate, narrower yfinance-native non-TW feed bundle.
 - `get_sector_overview` / `get_industry_overview` — yfinance sector/industry overview (non-TW).
   *Design's `get_sector_indices` (TW 未含金融電子/產業分類 sub-indices) has no real tool; the
-  whole-market TW industry heatmap is `get_sector_heatmap` (`tools/market/`, web-only).*
+  whole-market TW industry heatmap is `get_sector_heatmap` (`tools/market/`, reachable in chat through the `sector-rotation` skill).*
 - `get_market_status` — yfinance market open/closed status (non-TW).
 - `run_equity_screener_us` — yfinance-backed US/GB/JP/EU equity screener. Not to be confused with
   `run_screener` (`screener_tools.py`), the analytics-owned gates→setup funnel for TW/US/ETF that
@@ -157,10 +157,9 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_active_etf_roster` — free-tier whole-market active-ETF roster.
 - `get_finmind_stock_news` — FinMind's own news dataset. The design's `get_stock_news` (multi-source
   aggregator) and `get_social_buzz`/`get_trending_buzz` (PTT) became three real tools, all
-  `public` and **web-only** (REST routes, no skill - so the chat agent cannot call them; the
-  `news-sentiment` skill is still not built): `get_news_feed` (`news_tools.py`, RSS + optional
-  Finnhub), `get_ptt_board` and `get_ptt_stock_search` (`ptt_tools.py`; unverified chatter,
-  attention signal only).
+  `public`; `get_news_feed` (`news_tools.py`, RSS + optional Finnhub), `get_ptt_board` and
+  `get_ptt_stock_search` (`ptt_tools.py`; unverified chatter, attention signal only) are reached in
+  chat through the `news-and-sentiment` skill (third-party content, never advice).
 - `get_etf_fund_info` — TW ETF fund-level metadata (issuer, tracked index, units outstanding) —
   not per-constituent holdings (documented gap in the adapter itself). Sibling tools in
   `etf_pcf_tools.py`: `get_etf_expense_ratio` (SITCA 內扣費用), `get_etf_theme_tags` (主題/因子 +
@@ -291,8 +290,8 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 **Design names with no tool of that name:** `get_disposition_stocks`/`get_disposition_forecast`/
 `get_attention_stocks` are covered by two real tools instead: the narrower, Sponsor-gated
 `get_disposition_securities` (below) and `get_disposition_board` (`disposition_board_tools.py`,
-Sponsor, web-only: 注意/處置 buckets with price, institutional flow, margin ratio and a rule-based
-"days until next disposition" projection). There is still no TPEX 注意股 adapter.
+public, in the `disposition-watch` skill: 注意/處置 buckets with price, institutional flow, margin
+ratio and a rule-based "days until next disposition" projection with a `projection_caveat`).
 (`get_esg_score` and `get_analyst_consensus` are real, registered tools; see `analyst_tools.py`
 in the list above.)
 
@@ -353,13 +352,13 @@ The agent only ever sees tools from three places: the **matched skill's allowlis
 (`orchestrator._tools_for`), the **warm set** used when no skill matches (`get_canonical_context`,
 `get_source_health`, `propose_alert`/`propose_memory`/`propose_schedule`/`propose_watchlist_change`),
 and `web_search` + `fetch_url`, added only when the chat's *Web search* toggle is on (see the
-web-search section below). Every other registered tool is reachable by the **web through REST**
-(`api/routers/market_rest/`, `analytics.py`, `themes.py` dispatch them by name) and by MCP's
-`search_tools`, but **not by the chat agent**. Dozens of tools are in that web-only group (market
-heatmaps/rankings/strips, `get_news_feed`, `get_price_history`, `get_symbol_quotes` (the list-row view: name, close, daily
-change %, volume, sparkline), `get_technical_indicators`,
-`get_stock_summary`, `get_trend_score`, `run_screener`, ...). That is by design for dashboards,
-but a capability the agent should have needs a skill that lists the tool.
+web-search section below). A registered tool that none of these expose is **orphaned** from chat
+(the web still reaches it through REST and MCP clients through `search_tools`). Orphans are not
+allowed: `backend/tests/skills/test_tool_exposure.py` fails unless every registered tool is in a
+skill's `tools:` allowlist, the warm set, the web-search set or the explicit `CHAT_EXEMPT_TOOLS`
+list in that test (each entry carries a reason; an entry for an unregistered or already-exposed
+tool also fails). A capability the agent should have therefore needs a skill that lists the tool;
+the tool-to-skill map is in [08-skills.md](08-skills.md).
 
 ### `public`/AI — derived analytics & scoring ([20](20-analytics-scoring.md))
 Registered tools (module 20 owns the engines behind them):
@@ -367,11 +366,11 @@ Registered tools (module 20 owns the engines behind them):
 | Tool | Module | Class | Used by |
 |------|--------|-------|---------|
 | `get_stock_score`, `get_score_leaderboard` | `score_tools.py` | public | `stock-score` skill |
-| `get_trend_score` | `trend_score_tools.py` | public | web AI panel (no skill) |
-| `get_stock_summary` (headline, narrative, SWOT) | `summary_tools.py` | sponsor | web AI panel (no skill) |
+| `get_trend_score` | `trend_score_tools.py` | public | `technical-trend-read` skill |
+| `get_stock_summary` (headline, narrative, SWOT) | `summary_tools.py` | sponsor | `stock-score` skill |
 | `run_tag_screener`, `get_tag_catalog` | `screener_tools.py` | public | `stock-screener` skill |
-| `run_screener`, `get_factor_catalog`, `get_screener_presets` | `screener_tools.py` | public | web Screener (no skill) |
-| `get_technical_indicators` (MA/Bollinger/KD/MACD, support/resistance, patterns) | `technical_tools.py` | public | web (no skill) |
+| `run_screener`, `get_factor_catalog`, `get_screener_presets` | `screener_tools.py` | public | `stock-screener` skill |
+| `get_technical_indicators` (MA/Bollinger/KD/MACD, support/resistance, patterns) | `technical_tools.py` | public | `technical-trend-read` skill |
 | `get_themes`, `get_theme_members`, `get_symbol_themes`, `get_theme_tiers`, `get_entity_graph` | `theme_tools.py` | public | `theme-lookup` skill (`get_themes` is web-only) |
 | `get_supply_chain_edges`, `get_chain_position`, `get_theme_tier_heatmap` | `theme_tools.py` | public | web (no skill) |
 
