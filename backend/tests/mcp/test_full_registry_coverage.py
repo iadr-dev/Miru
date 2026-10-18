@@ -16,15 +16,15 @@ from __future__ import annotations
 
 import asyncio
 
-from mcp.app import build_mcp_server
+from mcp.app import MCP_EXCLUDED_TOOLS, build_mcp_server
 from tests.mcp.conftest import build_real_registry
 
 
 def test_every_real_tool_is_reachable_over_mcp() -> None:
     registry = build_real_registry()
     server = build_mcp_server(registry)
-    all_tool_names = {tool.name for tool in registry.all_tools()}
-    immediate_names = {tool.name for tool in registry.immediate_tools()}
+    all_tool_names = {tool.name for tool in registry.all_tools()} - MCP_EXCLUDED_TOOLS
+    immediate_names = {tool.name for tool in registry.immediate_tools()} - MCP_EXCLUDED_TOOLS
 
     async def run() -> None:
         mcp_tools = await server.list_tools()
@@ -75,5 +75,24 @@ def test_screener_tools_are_present_and_dispatchable_after_the_fixture_fix() -> 
             },
         )
         assert not screener_result.is_error
+
+    asyncio.run(run())
+
+
+def test_chat_only_tools_are_not_offered_over_mcp() -> None:
+    """The propose_* / ask_user tools end in a card only the Miru chat can show, so MCP neither
+    lists them, finds them with search_tools, nor runs them with execute_tool."""
+    registry = build_real_registry()
+    server = build_mcp_server(registry)
+    assert {tool.name for tool in registry.all_tools()} >= MCP_EXCLUDED_TOOLS, "stale exclusion"
+
+    async def run() -> None:
+        listed = {tool.name for tool in await server.list_tools()}
+        assert not listed & MCP_EXCLUDED_TOOLS
+        for name in sorted(MCP_EXCLUDED_TOOLS):
+            found = await server.call_tool("search_tools", {"intent": name})
+            assert name not in (found.content[0].text if found.content else "")
+            ran = await server.call_tool("execute_tool", {"id": name, "args": {}})
+            assert "Unknown tool id" in (ran.content[0].text if ran.content else "")
 
     asyncio.run(run())

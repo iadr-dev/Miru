@@ -65,9 +65,10 @@ class ToolContext(BaseModel):
     """Per-call context: caller identity/entitlement, the active
     TLS policy, and a journal-handle slot.
 
-    `tier` stands in for the not-yet-built `accounts/entitlements` per-user lookup (Phase 9):
-    the future runtime resolves the authenticated (or anonymous -> `Tier.FREE`) caller's tier
-    and passes it here. **This module never queries a database or session itself.**
+    `tier` is the caller's subscription tier (Free / Premium / Pro; anonymous -> `Tier.FREE`),
+    resolved fresh per request by `accounts.hooks.EntitlementResolver` and passed here. It drives
+    the sponsor-data gate (`is_entitled`: Premium and Pro) and the preview policy of Pro-only
+    features (`schemas.feature_tiers.access_for`). **This module never queries a database.**
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

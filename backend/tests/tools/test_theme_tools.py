@@ -276,7 +276,9 @@ async def _edges(session_factory: async_sessionmaker, symbol: str, market: Marke
     tool = _registry(session_factory).get_tool("get_supply_chain_edges")
     assert tool is not None
     result = await dispatch_tool(
-        tool, tool.input_model.model_validate({"id": symbol, "market": market.value}), _ctx()
+        tool,
+        tool.input_model.model_validate({"id": symbol, "market": market.value}),
+        ToolContext(user_id="u", tier=Tier.PRO, tls_policy=TLSPolicy.STRICT),
     )
     return result.model_dump(mode="json")
 

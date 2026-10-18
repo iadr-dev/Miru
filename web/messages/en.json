@@ -2474,8 +2474,8 @@
         "full_score": "Full score breakdown",
         "deep_research": "Deep research",
         "tick_minute_k": "Tick / minute candles",
-        "supply_chain": "Supply chain graph, chain position and relation graph",
-        "concept_themes": "Concept themes"
+        "supply_chain": "Full supply chain, chain positions and entity graph",
+        "concept_themes": "Full concept theme members"
       },
       "usedOfLimit": "{used} / {limit} used today",
       "upgrade": "See plans and upgrade",

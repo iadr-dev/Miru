@@ -6419,16 +6419,6 @@ export interface components {
       platform_models?: string[] | null;
       tier: components["schemas"]["Tier"];
     };
-    /** EntityGraph */
-    EntityGraph: {
-      /** Links */
-      links: components["schemas"]["GraphLink"][];
-      market: components["schemas"]["MarketCode"];
-      /** Nodes */
-      nodes: components["schemas"]["GraphNode"][];
-      /** Symbol */
-      symbol: string;
-    };
     /**
      * EntityType
      * @enum {string}
@@ -7498,12 +7488,27 @@ export interface components {
      *     A descriptive classification, never a rating.
      */
     GetChainPositionOutput: {
+      /**
+       * Hidden Count
+       * @default 0
+       */
+      hidden_count: number;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
       /** Market */
       market: string;
       /** Positions */
       positions?: components["schemas"]["ChainPositionItem"][];
       /** Symbol */
       symbol: string;
+      /**
+       * Upgrade Note
+       * @default
+       */
+      upgrade_note: string;
     };
     /**
      * GetChipFlowsOutput
@@ -7769,6 +7774,36 @@ export interface components {
       health_status: components["schemas"]["HealthStatus"];
       /** Source Id */
       source_id: string;
+    };
+    /**
+     * GetEntityGraphOutput
+     * @description The entity graph, plus the preview markers: for a caller below Pro only the focus company
+     *     and its top entities (no peer companies, no peer or supply links); `hidden_count` nodes
+     *     withheld.
+     */
+    GetEntityGraphOutput: {
+      /**
+       * Hidden Count
+       * @default 0
+       */
+      hidden_count: number;
+      /** Links */
+      links: components["schemas"]["GraphLink"][];
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
+      market: components["schemas"]["MarketCode"];
+      /** Nodes */
+      nodes: components["schemas"]["GraphNode"][];
+      /** Symbol */
+      symbol: string;
+      /**
+       * Upgrade Note
+       * @default
+       */
+      upgrade_note: string;
     };
     /** GetEsgScoreOutput */
     GetEsgScoreOutput: {
@@ -8809,10 +8844,30 @@ export interface components {
       edge_count: number;
       /** Edges */
       edges?: components["schemas"]["ScEdge"][];
+      /**
+       * Hidden Count
+       * @default 0
+       */
+      hidden_count: number;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
       /** Market */
       market: string;
+      /**
+       * Sources Locked
+       * @default false
+       */
+      sources_locked: boolean;
       /** Symbol */
       symbol: string;
+      /**
+       * Upgrade Note
+       * @default
+       */
+      upgrade_note: string;
     };
     /**
      * GetSymbolDirectorySearchOutput
@@ -8887,6 +8942,11 @@ export interface components {
      *     sub-industry and confidence.
      */
     GetSymbolThemesOutput: {
+      /**
+       * Concept Locked
+       * @default false
+       */
+      concept_locked: boolean;
       /** Market */
       market: string;
       /** Symbol */
@@ -8958,7 +9018,17 @@ export interface components {
       description: string;
       /** Found */
       found: boolean;
+      /**
+       * Hidden Count
+       * @default 0
+       */
+      hidden_count: number;
       kind?: components["schemas"]["ThemeKind"] | null;
+      /**
+       * Locked
+       * @default false
+       */
+      locked: boolean;
       /**
        * Member Count
        * @default 0
@@ -8988,6 +9058,11 @@ export interface components {
       related_keys: string[];
       /** Theme Key */
       theme_key: string;
+      /**
+       * Upgrade Note
+       * @default
+       */
+      upgrade_note: string;
     };
     /**
      * GetThemeTierHeatmapOutput
@@ -9050,6 +9125,11 @@ export interface components {
     };
     /** GetThemesOutput */
     GetThemesOutput: {
+      /**
+       * Concept Locked
+       * @default false
+       */
+      concept_locked: boolean;
       /**
        * Theme Count
        * @default 0
@@ -19853,7 +19933,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["EntityGraph"];
+          "application/json": components["schemas"]["GetEntityGraphOutput"];
         };
       };
       /** @description Validation Error */

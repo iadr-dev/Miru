@@ -1,19 +1,20 @@
 ---
 name: company-profile
-version: 1.0.0
+version: 1.1.0
 description: 個股資訊卡 — sector/industry classification, MOPS identity fields (TW), latest announced dividend, market cap/PER/dividend-yield/EPS, and analyst consensus/ESG score for one stock (missing fields disclosed, never fabricated).
-triggers: [公司概況, 產業分類, 股利, 配息, 董座, 資本額, 發言人, 簽證會計師, 目標價, ESG, company profile, sector, dividend, chairman, analyst consensus, esg]
+triggers: [公司概況, 產業分類, 股利, 配息, 除權息結果, 填權息, 董座, 資本額, 發言人, 簽證會計師, 目標價, ESG, company profile, sector, dividend, chairman, analyst consensus, esg]
 design_pattern: tool_wrapper
 inputs:
   stock_id:
     type: string
     required: true
-tools: [get_canonical_context, get_company_profile, get_dividend_schedule, get_analyst_consensus, get_esg_score, ask_user]
+tools: [get_canonical_context, get_company_profile, get_dividend_schedule, get_dividend_result, get_analyst_consensus, get_esg_score, ask_user]
 output_structure:
   - '產業分類: sector / industry'
   - '公司基本資料: 董座/總經理/發言人/簽證會計師/資本額/成立日期/總部/官網 — 僅 TW 個股提供，其他市場一律列入 missing_fields (內部實作走 MOPS，但這是資料來源細節，絕不在輸出文字或欄位標題中提及來源名稱)'
   - '市值與估值: 市值、PER、股利率、EPS'
   - '最近一次股利: 金額與宣告日期'
+  - '除權息結果 (使用者問除權息當天實際結果時): 每次除權息的參考價前後價格與股利，與宣告股利分開陳述'
   - '分析師共識: 目標價區間、評等分佈 (若有覆蓋)'
   - 'ESG 分數: 風險分數 (若有覆蓋，僅陳述分數本身，不提供分數提供者/資料供應商名稱)'
   - '尚無法提供的欄位: 以中文欄位名稱明確列出 (如「營收年增率」「毛利率」「每股盈餘」，以及非 TW 市場的公司基本資料欄位) — 絕不輸出原始英文欄位識別碼 (revenue_yoy/margins/eps 等)'
@@ -56,7 +57,11 @@ outputs: markdown
    coverage; state plainly "no ESG data" when `esg` is null.
 6. If the caller specifically asked about dividends, call `get_dividend_schedule(stock_id,
    market)` for a fuller history than the single latest-dividend field the profile tool
-   carries, and cite each entry's declared/paid date.
+   carries, and cite each entry's declared/paid date. If the caller asks what actually happened
+   on the ex-dividend/ex-rights day, also call `get_dividend_result(id, market, start_date,
+   end_date)` — the settled 除權息結果 rows (before/after reference prices, dividend), distinct
+   from the announced schedule; present the two separately and describe the figures without
+   implying a trade view.
 7. Present sector/industry first, then (TW) the company identity card, then market value/
    valuation, then the dividend read, then analyst consensus/ESG, then the missing-fields
    disclosure. Never imply completeness the underlying data doesn't have. The rendered output

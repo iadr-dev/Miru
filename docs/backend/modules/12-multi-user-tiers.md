@@ -143,11 +143,30 @@ together they are "capability resolution"):
    ← this module + §4.
 2. **Tier-feature** — `feature_allowed(user, feature)` (e.g. `deep_research`=Pro,
    `live_quote_stream`=Premium (server-pushed 5s streaming — a *feature* gate, not a data-class gate),
-   `tick_minute_k`=Premium (sponsor-class data); note **voice is Free** - speech-to-text and
+   `tick_minute_k`=Premium (sponsor-class data), `supply_chain`=Pro and `concept_themes`=Pro (see
+   **Pro previews** below); note **voice is Free** - speech-to-text and
    read-aloud are not tier-gated and have no daily quota while they run on free providers (local
    Whisper, Edge TTS); every user gets a 20 requests/min abuse bound, and a daily cap of 100 per
    kind (`429 voice_limit_reached`) applies only if a provider that bills per call (TTS `openai`)
    is configured — [13](13-chat-interaction-features.md) Voice): a feature-min-tier lookup.
+   **Pro previews (`supply_chain`, `concept_themes`):** not a 403 and not a masked teaser - a caller
+   below Pro (Free, Premium, signed out) gets a normal, server-side-limited result; Pro gets everything.
+   The policy is one pure function, `access_for(feature, tier) -> Access(full)` (`schemas/feature_tiers.py`,
+   re-exported by `accounts.entitlements`) with the limits as named constants beside it
+   (`PREVIEW_PEERS_PER_ROLE=3`, `PREVIEW_CHAIN_ROWS=1`, `PREVIEW_ENTITY_NODES=8`,
+   `PREVIEW_CONCEPT_MEMBERS_PER_POSITION=3`). The tools in `tools/theme_tools.py` apply it from
+   `ctx.tier` (resolved fresh per request - `EntitlementResolver` and the MCP resolver now carry the
+   user's own tier, so Pro is distinguishable from Premium), so the REST routes, the agent and MCP
+   return identical previews. Additive response fields: `locked` (anything withheld), `hidden_count`,
+   `upgrade_note` (relayable text: the full view is part of the Pro plan), plus `sources_locked` on
+   supply-chain edges and `concept_locked` on `get_themes` / `get_symbol_themes`. Rules: supply-chain
+   edges - best 3 peers per role (supplier / customer / competitor; grade, then revenue share, then
+   name), no source links; chain positions - the primary chain only, no reason codes; entity graph -
+   the focus plus the top 8 entities, no peer companies or supply overlay; concept themes - listed
+   (name, description, member count) and related themes for everyone, members limited to the first 3
+   per position, a symbol's concept memberships listed by name only. Industry themes and the
+   industry-chain tiers / heatmap stay free. `tests/arch/test_pro_preview_tools.py` fails if any other
+   request-path module reads the stored data.
    **Model picker (platform key):** a Free account may pick only the light models
    (`FREE_PLATFORM_MODELS`; others -> `403 model_requires_upgrade`, shown locked in the picker via
    `entitlements.platform_models`); paid tiers and BYOK callers (their own key) are unrestricted.

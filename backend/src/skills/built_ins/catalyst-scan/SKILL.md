@@ -1,22 +1,26 @@
 ---
 name: catalyst-scan
-version: 1.0.0
-description: MOPS 重大訊息 + 董監事持股/質押 catalysts for one stock today (narrowed to what's actually backed; 董事會決議/庫藏股/法說會/自結 not covered).
-triggers: [重大訊息, 內部人, 董監事持股, 質押, catalyst, material announcement, insider shareholding]
+version: 1.1.0
+description: MOPS 重大訊息 + 董監事持股/質押 catalysts for one stock today, the whole-market 重大訊息 / 內部人轉讓申報 daily feeds, and a stock's upcoming 除權息/可轉債 calendar dates (narrowed to what's actually backed; 董事會決議/庫藏股/法說會/自結 not covered).
+triggers: [重大訊息, 內部人, 董監事持股, 質押, 內部人轉讓, 事前申報, 除權息日, 除息日, 即將除息, 事件日曆, 賣回日, catalyst, material announcement, insider shareholding, insider transfer, ex-dividend date, upcoming events]
 design_pattern: tool_wrapper
 inputs:
   stock_id:
     type: string
     required: true
-tools: [get_canonical_context, get_source_health, get_material_announcements, get_insider_shareholding]
+tools: [get_canonical_context, get_source_health, get_material_announcements, get_insider_shareholding, get_material_announcement_feed, get_insider_transfer_declarations, get_calendar_events]
 output_structure:
   - '今日重大訊息: 當日公告列表 (契約/併購/訴訟/財測/澄清等類型)'
+  - '全市場重大訊息 / 內部人轉讓申報 (使用者問「今天有哪些重大訊息」時): 單日公告依類別的筆數與清單；內部人股權轉讓事前申報清單'
+  - '即將到來的事件日期: 該標的的除權息日、可轉債賣回/到期日等日曆事件 (非公告內容)'
   - '董監事持股變化: 本月持股餘額與質押比 (風險旗標)'
   - '尚無法提供的催化劑類型: 明確列出 (董事會決議/庫藏股/法說會/自結 等)'
-freshness_rule: 重大訊息僅為當日快照 (無日期區間參數)，董監事持股為當月餘額；兩者皆須標明資料截止日。
+freshness_rule: 重大訊息僅為當日快照 (無日期區間參數)，董監事持股為當月餘額；全市場公告與轉讓申報預設為最近一個已擷取的日期，事件日期取自來源的日曆資料，皆須標明資料截止日。
 boundaries:
   - 本技能範疇窄於原始設計：董事會決議、庫藏股、法說會、自結財報目前無對應工具，一律列在 missing_scope，不得杜撰。
   - 不解讀公告內容為買賣訊號，僅描述事件類型與內容摘要。
+  - 內部人轉讓事前申報只是「計畫」，不代表已成交，也不推論內部人看法；事件日曆僅列日期，不推論除權息前後的價格表現。
+  - 全市場公告與轉讓申報是單日清單，用來回答「今天有什麼」，不得拿來逐檔掃描整個市場做排名。
   - 質押比升高僅作為風險描述性旗標，不構成投資建議。
   - 所有判斷僅為資訊參考，不構成投資建議。
 resources: []
@@ -39,4 +43,11 @@ outputs: markdown
    not cover: 董事會決議, 庫藏股實施, 法人說明會排程, 自結財報 — no adapter exists for any of
    these today (no matching MOPS capability is wired). Never present today's announcement dump
    as if it were a complete catalyst calendar.
-5. Synthesize using `output_structure`, in order, every item tagged with its as-of date.
+5. For a whole-market question ("今天有哪些重大訊息", "有誰申報轉讓持股"), call
+   `get_material_announcement_feed(market, trade_date, category)` (one day, optional category
+   bucket, with per-category counts) and `get_insider_transfer_declarations(market, trade_date)`.
+   Both default to the latest day ingest has captured; state which day that was.
+6. For "when is the next 除息/除權 / 賣回日", call `get_calendar_events(id, market, start_date,
+   end_date)` — a bounded, feed-sourced list of dividend/ex-rights and convertible-bond dates for
+   one symbol. Report the dates only; when the list is empty say so.
+7. Synthesize using `output_structure`, in order, every item tagged with its as-of date.

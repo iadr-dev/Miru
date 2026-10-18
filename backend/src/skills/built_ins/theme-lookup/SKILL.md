@@ -24,6 +24,7 @@ boundaries:
   - 概念股成員（相對於產業鏈成員）附有信心分數，非編輯保證；輸出須逐檔顯示 confidence 與 source，不得隱藏此區別。
   - 關聯圖譜的「共同提及」只表示兩家公司的資料提到相同的實體，不是供應或合作關係；只有 kind 為 supply 的連線才是已驗證的供應關係。
   - 產業鏈分層若為 heuristic（自動分類），須與 curated（人工審定）明確區分，不得將自動猜測呈現為同等權威。
+  - 結果標示 locked / concept_locked 時為預覽，完整內容屬於 Pro 方案；須說明這是預覽、不得重試或改用其他工具取得被隱藏的項目。
 resources: []
 outputs: markdown
 ---
@@ -79,3 +80,11 @@ outputs: markdown
    verified supply relations. If the graph holds just the company, say nothing is indexed for it.
 7. For tiers, never let a `heuristic` assignment read as authoritative as a `curated` one — label
    each group's assignments so the reader can tell them apart.
+8. **Previews (Pro plan).** The full concept-theme member list, supply relations, chain positions and
+   the entity graph are part of the Pro plan. For other users these tools return a preview: the result
+   carries `locked: true` (or `concept_locked: true` on a theme list / a symbol's themes), a
+   `hidden_count` and an `upgrade_note`. Present exactly what came back, say plainly that this is a
+   preview and that the full view is part of the Pro plan (use the `upgrade_note`), and give the
+   `hidden_count` when it helps. **Never retry, rephrase or call another tool to get the withheld
+   items** - the limit is applied by the server, so a retry returns the same preview and only spends
+   a step. Industry themes and their tiers are never limited.

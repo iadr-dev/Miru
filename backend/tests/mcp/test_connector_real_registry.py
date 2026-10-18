@@ -97,9 +97,9 @@ async def test_real_search_results_include_a_usable_argument_schema_and_data_cla
 
 async def test_real_execute_tool_runs_over_http() -> None:
     async with serve(build_app(build_real_registry())) as server, official_session(server) as s:
-        result = await s.call_tool("execute_tool", {"id": "get_source_matrix", "args": {}})
+        result = await s.call_tool("execute_tool", {"id": "get_tag_catalog", "args": {}})
         assert not result.isError
-        assert "entries" in result.structuredContent  # type: ignore[operator]
+        assert result.structuredContent  # a real tool result, not an unknown-tool refusal
 
 
 async def test_a_tool_registered_later_is_exposed_without_touching_the_mcp_package() -> None:

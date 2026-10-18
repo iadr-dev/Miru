@@ -172,7 +172,10 @@ for tool in registry.immediate_tools():             # small core only (5 real to
   token) is verified by `mcp.auth.McpTokenVerifier` and resolved by
   `mcp.accounts_resolver.AccountsPrincipalResolver` to `(user_id, tier)`, reading the tier from the
   user row on this call (never from the token; `lapse_if_overdue` applies exactly as in the app).
-  A Free user gets masked teasers for `sponsor` tools, a Premium/Pro user gets the data.
+  A Free user gets masked teasers for `sponsor` tools, a Premium/Pro user gets the data. The
+  Pro-only supply-chain / chain-position / entity-graph / concept-theme tools return a limited
+  preview (`locked: true`, `hidden_count`, `upgrade_note`) to a Free or Premium token and the full
+  data to a Pro token; the tier is read from the user row on every call.
 - **Anonymous -> `Tier.FREE`** only when `MCP_REQUIRE_AUTH=false` (local development). In
   production the gateway has already answered 401, so no anonymous call reaches a tool.
 - The resolver seams (`PrincipalResolver`, `BearerResolver`) stay Protocols; the default

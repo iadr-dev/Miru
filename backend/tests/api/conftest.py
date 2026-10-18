@@ -308,6 +308,24 @@ def build_test_client(  # noqa: PLR0913 — passthrough to build_test_app, all k
     return TestClient(app)
 
 
+_ENTERED_CLIENTS: list[TestClient] = []
+
+
+def enter_client(test_client: TestClient) -> TestClient:
+    """Start `test_client`'s portal (needed by `sign_in`) in a helper that is not a fixture; the
+    autouse fixture below closes it when the test ends."""
+    test_client.__enter__()
+    _ENTERED_CLIENTS.append(test_client)
+    return test_client
+
+
+@pytest.fixture(autouse=True)
+def _close_entered_clients() -> Iterator[None]:
+    yield
+    while _ENTERED_CLIENTS:
+        _ENTERED_CLIENTS.pop().__exit__(None, None, None)
+
+
 @pytest.fixture
 def client(settings: Settings, agent_answer: str) -> Iterator[TestClient]:
     with build_test_client(settings, agent_answer=agent_answer) as test_client:

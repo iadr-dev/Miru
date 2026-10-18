@@ -16,7 +16,6 @@ from __future__ import annotations
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from accounts.entitlements import finmind_class_for
 from accounts.store import SqlAlchemyUserStore, UserNotFoundError
 from config.settings import Settings
 from db import rls
@@ -66,7 +65,7 @@ class AccountsPrincipalResolver:
                     settings=self._settings,
                 ).lapse_if_overdue(user)
             await session.commit()
-        return user.id, finmind_class_for(user)
+        return user.id, user.tier
 
 
 __all__ = ["AccountsPrincipalResolver"]

@@ -111,7 +111,8 @@ Two independent hooks; neither stands in for the other.
   | Pro | unlimited | 600 | yes |
 
   `FEATURE_MIN_TIER`: `live_quote_stream`, `ai_summary`, `swot`, `full_score`, `tick_minute_k` ->
-  Premium; `deep_research` -> **Pro**. `feature_allowed` treats an unlisted feature as open. Deep
+  Premium; `deep_research`, `supply_chain` and `concept_themes` -> **Pro** (the last two are previews below Pro, applied
+  server-side by `access_for` in the theme tools - [12](12-multi-user-tiers.md)). `feature_allowed` treats an unlisted feature as open. Deep
   research has **no daily cap**, only its own run budget plus the normal rate limit and chat
   reservation ([24](24-deep-research.md) §3). BYOK lifts only the chat limit (`chat_limit_for`). Free
   accounts on the platform key may pick only `FREE_PLATFORM_MODELS`. Tier management and gating at

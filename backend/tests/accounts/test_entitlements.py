@@ -121,3 +121,30 @@ def test_tier_catalog_is_a_projection_of_the_enforced_tables() -> None:
     # deep research is Pro-only
     assert "deep_research" not in premium.features
     assert "deep_research" in pro.features
+
+
+def test_resolver_carries_the_users_own_tier_so_pro_is_distinguishable_from_premium() -> None:
+    resolver = EntitlementResolver()
+    assert resolver.tool_context_for(None).tier is Tier.FREE
+    assert resolver.tool_context_for(_user(Tier.FREE)).tier is Tier.FREE
+    assert resolver.tool_context_for(_user(Tier.PREMIUM)).tier is Tier.PREMIUM
+    assert resolver.tool_context_for(_user(Tier.PRO)).tier is Tier.PRO
+
+
+@pytest.mark.parametrize("feature", ["supply_chain", "concept_themes"])
+def test_supply_chain_and_concept_themes_are_pro_features(feature: str) -> None:
+    from accounts.entitlements import (  # noqa: PLC0415
+        FEATURE_MIN_TIER,
+        access_for_user,
+        allowed_features,
+    )
+
+    assert FEATURE_MIN_TIER[feature] is Tier.PRO
+    assert access_for_user(None, feature).full is False
+    assert access_for_user(_user(Tier.FREE), feature).full is False
+    assert access_for_user(_user(Tier.PREMIUM), feature).full is False
+    assert access_for_user(_user(Tier.PRO), feature).full is True
+    assert feature_allowed(_user(Tier.PRO), feature)
+    assert not feature_allowed(_user(Tier.PREMIUM), feature)
+    assert feature in allowed_features(_user(Tier.PRO))
+    assert feature not in allowed_features(_user(Tier.PREMIUM))
