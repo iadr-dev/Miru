@@ -1,6 +1,6 @@
 ---
 name: stock-report-us
-version: 1.0.0
+version: 1.1.0
 description: 美股個股完整分析報告 — 標的識別、年度財務指標表、股利、營收趨勢與季節性（來源允許時）、獲利能力與財務健康、質性與風險輪廓，圖表自動附上；全部數字由工具預先算好，純資料整理，不含買賣建議。
 triggers: [美股個股完整分析報告, 美股完整分析報告, 美股個股分析報告, 美股分析報告, 美股個股報告, 美股個股, 美股深度分析, 美股財報分析, US stock report]
 design_pattern: pipeline
@@ -8,7 +8,7 @@ inputs:
   symbol_id:
     type: string
     required: true
-tools: [get_company_profile, get_annual_fundamentals, get_revenue_seasonality, get_risk_metrics, get_analyst_consensus, get_stock_peers, get_price_quote, get_source_health, ask_user]
+tools: [get_company_profile, get_annual_fundamentals, get_revenue_seasonality, get_risk_metrics, get_analyst_consensus, get_stock_peers, get_sec_filings, get_price_quote, get_source_health, ask_user]
 output_structure:
   - '一、標的基本識別: 公司名稱、代號、產業／板塊、主要業務、分析資料期間'
   - '二、財務指標分析（年度表格）: 年度｜營收｜YoY｜EPS｜ROE｜毛利率｜現金股利｜殖利率｜備註；再分 1 股利發放、2 營收成長、3 獲利能力、4 財務健康'
@@ -21,6 +21,7 @@ boundaries:
   - 分析師共識（若有）只能以「N 位分析師，截至日期」的歸屬方式陳述，不得當成本系統的評等或目標價。
   - 所有數字只能引用工具輸出；null 一律寫「—」並說明原因，不得估算、不得憑記憶補數字。
   - 填息天數本系統目前只提供台股，美股不要列此項。
+  - 申報紀錄只是表單類型與日期的清單，不得把任何一份申報解讀為利多或利空。
   - 輸出文字絕不提及內部資料來源或供應商名稱。
   - 輸出文字絕不出現工具欄位名稱或程式識別碼（例如 peak_quarter、spread_pct、fill_rate_pct、days_to_fill、adjusted_breaks），一律改寫成中文說法。
   - 圖表會自動顯示在報告上方，不要用文字重畫，也不要整段貼出工具的原始列資料。
@@ -36,7 +37,7 @@ hide_cards: [get_company_profile, get_price_quote, get_source_health]
 ## 執行方式
 
 1. 代號有歧義（例如同名 ADR）時先 `ask_user`，本回合只做這一件事。
-2. **第一步一次平行呼叫全部資料工具**（市場一律 `US`）：`get_company_profile`、`get_annual_fundamentals`（`years=5`）、`get_revenue_seasonality`（`years=5`）、`get_risk_metrics`（`years=5`）、`get_analyst_consensus`、`get_stock_peers`、`get_price_quote`、`get_source_health`。
+2. **第一步一次平行呼叫全部資料工具**（市場一律 `US`）：`get_company_profile`、`get_annual_fundamentals`（`years=5`）、`get_revenue_seasonality`（`years=5`）、`get_risk_metrics`（`years=5`）、`get_analyst_consensus`、`get_stock_peers`、`get_sec_filings`、`get_price_quote`、`get_source_health`。
 3. 第二步依下列格式寫報告，不要再呼叫工具。
 
 ## 報告格式
@@ -71,7 +72,7 @@ hide_cards: [get_company_profile, get_price_quote, get_source_health]
 ### 四、質性分析
 - **核心業務**：以 `get_company_profile` 可支持的內容為主。
 - **產業地位**：用 `get_stock_peers` 列出同業，若 `get_analyst_consensus` 有覆蓋，寫「N 位分析師，截至 日期」的歸屬式共識區間，不自行解讀為評等。
-- **重大事件**：本系統對美股沒有重大訊息來源，寫「本系統資料未提供近期重大事件」。
+- **重大事件**：用 `get_sec_filings` 列出最近幾筆美國證券交易委員會（SEC）申報的表單類型（年報、季報、臨時報告等）與申報日期，只列類型與日期、不解讀內容也不推論影響；回傳空清單時寫「本系統資料未提供近期申報紀錄」。
 - **風險等級（低／中／高，0–10 分）**：四項各 0–2.5 分再加總，逐項列數值與得分：
   - 財務槓桿（最新年度負債比）：<30%→0；30–50%→1；50–70%→1.75；>70%→2.5
   - 市場敏感度（Beta，大盤代理為 SPY）：<0.8→0；0.8–1.2→1；1.2–1.5→1.75；>1.5→2.5
