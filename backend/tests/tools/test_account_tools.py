@@ -245,6 +245,10 @@ async def test_watchlists_empty() -> None:
     assert isinstance(out, GetMyWatchlistsOutput)
     assert out.groups == ()
     assert out.total_items == 0
+    # An empty list is stated as a normal state (starter lists are made when the page is first
+    # opened), never left for the model to read as a failure.
+    assert out.note is not None and "No watchlists yet" in out.note
+    assert "not an error" in out.note
 
 
 async def test_watchlists_passes_the_item_cap_and_market_filter_to_the_reader() -> None:

@@ -13,6 +13,7 @@ No network I/O at construction time.
 
 from __future__ import annotations
 
+from accounts.account_reader import build_account_reader
 from accounts.hooks import EntitlementResolver
 from config.settings import Settings, get_settings, reveal
 from dataaccess.composition import build_default_router
@@ -41,7 +42,13 @@ async def build_scheduler_from_settings(settings: Settings | None = None) -> Sch
     session_factory = build_session_factory(resolved)
     await ensure_schema_for(session_factory)
     router = build_default_router(resolved)
-    tool_registry = build_tool_registry(router, session_factory=session_factory)
+    # Scheduled agent runs act for a user, so they get the same `private` account tools the chat
+    # route has (`get_my_*`); the tool gate still refuses them without a signed-in user.
+    tool_registry = build_tool_registry(
+        router,
+        session_factory=session_factory,
+        account_reader=build_account_reader(session_factory, resolved),
+    )
     skill_registry = build_skill_registry()
     orchestrator = build_orchestrator(
         skill_registry=skill_registry,

@@ -380,3 +380,15 @@ async def test_through_the_tools_a_forged_user_argument_never_reaches_another_ac
     ):
         out = await dispatch_tool(tools[name], args, ctx)
         assert isinstance(out, BaseModel) and "bob" not in out.model_dump_json()
+
+
+async def test_reading_watchlists_never_seeds_the_starter_presets(session_factory) -> None:
+    """Seeding is the watchlist page's write-on-first-open; a read-only tool must not do it."""
+    alice = await _user(session_factory)
+    reader = _reader(session_factory)
+
+    snapshot = await reader.watchlists(user_id=alice, market=None, max_items=200)
+
+    assert snapshot.groups == () and snapshot.total_items == 0
+    async with session_factory() as session:
+        assert await WatchlistStore(session).list_groups(alice) == []
