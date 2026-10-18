@@ -3584,6 +3584,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/symbols/{symbol}/chain-positions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Symbol Chain Positions
+     * @description 個股 > 產業分析's 產業鏈 position: where one company sits (upstream/midstream/downstream) in
+     *     each industry chain it belongs to, with the method, confidence and reason codes. An empty list
+     *     means 尚未分類 (the classifier abstained).
+     */
+    get: operations["symbol_chain_positions_api_v1_symbols__symbol__chain_positions_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/symbols/{symbol}/supply-chain": {
     parameters: {
       query?: never;
@@ -5301,6 +5323,41 @@ export interface components {
       market: components["schemas"]["Market"];
       /** Symbol */
       symbol: string;
+    };
+    /**
+     * ChainPositionItem
+     * @description One industry chain the company sits in. `method` says how the position was reached:
+     *     `override` (an operator decision), `evidence` (verified supply relations, alone or
+     *     confirming the tier map) or `prior` (the sub-industry tier map only; low confidence when the
+     *     reason is `prior_keyword`).
+     */
+    ChainPositionItem: {
+      /** Chain Key */
+      chain_key: string;
+      /** Chain Name */
+      chain_name: string;
+      /** Computed At */
+      computed_at?: string | null;
+      /** Confidence */
+      confidence: number;
+      /** Is Primary */
+      is_primary: boolean;
+      method: components["schemas"]["Method"];
+      position: components["schemas"]["Position"];
+      /**
+       * Reasons
+       * @default []
+       */
+      reasons: components["schemas"]["ChainReason"][];
+    };
+    /** ChainReason */
+    ChainReason: {
+      code: components["schemas"]["ReasonCode"];
+      /**
+       * Detail
+       * @default
+       */
+      detail: string;
     };
     /**
      * ChannelStatus
@@ -7385,6 +7442,20 @@ export interface components {
       symbol: string;
       /** Version */
       version: number;
+    };
+    /**
+     * GetChainPositionOutput
+     * @description Where a company sits (upstream/midstream/downstream) in each industry chain it belongs to.
+     *     Empty `positions` means unclassified (尚未分類) - the classifier abstains rather than guesses.
+     *     A descriptive classification, never a rating.
+     */
+    GetChainPositionOutput: {
+      /** Market */
+      market: string;
+      /** Positions */
+      positions?: components["schemas"]["ChainPositionItem"][];
+      /** Symbol */
+      symbol: string;
     };
     /**
      * GetChipFlowsOutput
@@ -10267,6 +10338,11 @@ export interface components {
       | "compaction"
       | "attachment"
       | "web_search_sources";
+    /**
+     * Method
+     * @enum {string}
+     */
+    Method: "override" | "evidence" | "prior";
     /** ModelTotals */
     ModelTotals: {
       /**
@@ -11061,6 +11137,11 @@ export interface components {
       portal_url: string | null;
     };
     /**
+     * Position
+     * @enum {string}
+     */
+    Position: "upstream" | "midstream" | "downstream";
+    /**
      * PresetCondition
      * @description One condition inside a preset — the same shape `run_screener` accepts, minus the `market`
      *     wrapper (a preset is scoped to one market by construction).
@@ -11260,6 +11341,18 @@ export interface components {
      * @enum {string}
      */
     Rarity: "common" | "uncommon" | "rare" | "legendary";
+    /**
+     * ReasonCode
+     * @enum {string}
+     */
+    ReasonCode:
+      | "override"
+      | "prior_curated"
+      | "prior_keyword"
+      | "graph_layering"
+      | "graph_propagation"
+      | "agree_prior_graph"
+      | "conflict_graph_over_prior";
     /** RecessionBand */
     RecessionBand: {
       /**
@@ -19593,6 +19686,39 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["GetStrategyWatchOutput"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  symbol_chain_positions_api_v1_symbols__symbol__chain_positions_get: {
+    parameters: {
+      query?: {
+        market?: components["schemas"]["Market"];
+      };
+      header?: never;
+      path: {
+        symbol: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["GetChainPositionOutput"];
         };
       };
       /** @description Validation Error */

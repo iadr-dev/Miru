@@ -129,6 +129,7 @@ import type {
   stockSummaryResponseSchema,
   trendScoreResponseSchema,
 } from "@/types/stock/ai";
+import type { chainPositionsResponseSchema } from "@/types/stock/chain-position";
 import type {
   chipFlowsResponseSchema,
   dayTradingResponseSchema,
@@ -499,6 +500,11 @@ export type ContractChecks = [
   Accepts<typeof valuationRatiosResponseSchema, R<"/api/v1/stock/valuation-ratios", "get">>,
   // GET /symbols/{symbol}/supply-chain — stock-detail.getSupplyChainEdges
   Accepts<typeof supplyChainEdgesResponseSchema, R<"/api/v1/symbols/{symbol}/supply-chain", "get">>,
+  // GET /symbols/{symbol}/chain-positions — stock-detail.getChainPositions
+  Accepts<
+    typeof chainPositionsResponseSchema,
+    R<"/api/v1/symbols/{symbol}/chain-positions", "get">
+  >,
   // GET /symbols/{symbol}/themes — stock-detail.getSymbolThemes
   Accepts<typeof symbolThemesResponseSchema, R<"/api/v1/symbols/{symbol}/themes", "get">>,
   // GET /themes — theme.getThemes
@@ -548,10 +554,6 @@ export type ContractChecks = [
   // PUT /watchlists/{watchlist_id}/items/{symbol} — watchlist.addWatchlistItem
   Accepts<typeof watchlistItemSchema, R<"/api/v1/watchlists/{watchlist_id}/items/{symbol}", "put">>,
 ];
-
-// TODO(chain-position): after the backend route merges and `pnpm gen:api` is re-run, add
-//   Accepts<typeof chainPositionsResponseSchema, R<"/api/v1/symbols/{symbol}/chain-positions", "get">>
-// (schema from "@/types/stock/chain-position"; client: stock-detail.getChainPositions).
 
 // Not JSON responses (event streams, redirects), so there is no body to check.
 //   GET /auth/oauth/{provider}/callback

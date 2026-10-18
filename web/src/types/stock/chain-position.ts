@@ -24,7 +24,7 @@ export const chainPositionSchema = z.object({
   method: chainPositionMethodSchema,
   confidence: z.number().min(0).max(1),
   reasons: z.array(chainPositionReasonSchema).default([]),
-  computed_at: z.string(),
+  computed_at: z.string().nullable(),
 });
 
 export type ChainPosition = z.infer<typeof chainPositionSchema>;
