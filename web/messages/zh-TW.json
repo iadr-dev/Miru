@@ -2473,7 +2473,9 @@
         "swot": "SWOT 分析",
         "full_score": "完整評分",
         "deep_research": "深度研究",
-        "tick_minute_k": "逐筆／分K"
+        "tick_minute_k": "逐筆／分K",
+        "supply_chain": "完整供應鏈、產業鏈位置與關聯圖譜",
+        "concept_themes": "完整概念題材成員"
       },
       "usedOfLimit": "今日已用 {used} / {limit}",
       "upgrade": "查看方案並升級",

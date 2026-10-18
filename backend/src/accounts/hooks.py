@@ -20,7 +20,6 @@ inversion, never an upward import.
 
 from __future__ import annotations
 
-from accounts.entitlements import finmind_class_for
 from accounts.models import User
 from schemas.enums import TLSPolicy
 from tools.base import ToolContext
@@ -29,9 +28,10 @@ from tools.base import ToolContext
 class EntitlementResolver:
     """Resolves a `User` to the per-turn `ToolContext` the Step loop's sponsor gate consumes.
 
-    The resolved `tier` is the *data-licensing* tier (`finmind_class_for`), which is exactly
-    what `tools.base.is_entitled` compares `data_class == sponsor` against — a Premium/Pro user
-    unmasks sponsor data, a Free/anonymous user gets the teaser."""
+    The resolved `tier` is the user's own subscription tier, read from the user row passed in
+    (resolved fresh per request). `tools.base.is_entitled` unmasks sponsor data for Premium and
+    Pro, and the `required_feature` gate (e.g. supply chain / concept themes = Pro only) compares
+    against the same value; a Free/anonymous user gets the teaser / the feature lock."""
 
     def __init__(self, *, tls_policy: TLSPolicy = TLSPolicy.STRICT) -> None:
         self._tls_policy = tls_policy
@@ -43,7 +43,7 @@ class EntitlementResolver:
             return ToolContext(user_id=None, tls_policy=self._tls_policy)
         return ToolContext(
             user_id=user.id,
-            tier=finmind_class_for(user),
+            tier=user.tier,
             tls_policy=self._tls_policy,
         )
 

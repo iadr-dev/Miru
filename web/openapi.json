@@ -4740,40 +4740,6 @@
     "title": "EntitlementView",
     "type": "object"
    },
-   "EntityGraph": {
-    "additionalProperties": false,
-    "properties": {
-     "links": {
-      "items": {
-       "$ref": "#/components/schemas/GraphLink"
-      },
-      "title": "Links",
-      "type": "array"
-     },
-     "market": {
-      "$ref": "#/components/schemas/MarketCode"
-     },
-     "nodes": {
-      "items": {
-       "$ref": "#/components/schemas/GraphNode"
-      },
-      "title": "Nodes",
-      "type": "array"
-     },
-     "symbol": {
-      "title": "Symbol",
-      "type": "string"
-     }
-    },
-    "required": [
-     "symbol",
-     "market",
-     "nodes",
-     "links"
-    ],
-    "title": "EntityGraph",
-    "type": "object"
-   },
    "EntityType": {
     "enum": [
      "tw_company",
@@ -7449,6 +7415,16 @@
     "additionalProperties": false,
     "description": "Where a company sits (upstream/midstream/downstream) in each industry chain it belongs to.\nEmpty `positions` means unclassified (尚未分類) - the classifier abstains rather than guesses.\nA descriptive classification, never a rating.",
     "properties": {
+     "hidden_count": {
+      "default": 0,
+      "title": "Hidden Count",
+      "type": "integer"
+     },
+     "locked": {
+      "default": false,
+      "title": "Locked",
+      "type": "boolean"
+     },
      "market": {
       "title": "Market",
       "type": "string"
@@ -7462,6 +7438,11 @@
      },
      "symbol": {
       "title": "Symbol",
+      "type": "string"
+     },
+     "upgrade_note": {
+      "default": "",
+      "title": "Upgrade Note",
       "type": "string"
      }
     },
@@ -8247,6 +8228,56 @@
      "health_status"
     ],
     "title": "GetDividendScheduleOutput",
+    "type": "object"
+   },
+   "GetEntityGraphOutput": {
+    "additionalProperties": false,
+    "description": "The entity graph, plus the preview markers: for a caller below Pro only the focus company\nand its top entities (no peer companies, no peer or supply links); `hidden_count` nodes\nwithheld.",
+    "properties": {
+     "hidden_count": {
+      "default": 0,
+      "title": "Hidden Count",
+      "type": "integer"
+     },
+     "links": {
+      "items": {
+       "$ref": "#/components/schemas/GraphLink"
+      },
+      "title": "Links",
+      "type": "array"
+     },
+     "locked": {
+      "default": false,
+      "title": "Locked",
+      "type": "boolean"
+     },
+     "market": {
+      "$ref": "#/components/schemas/MarketCode"
+     },
+     "nodes": {
+      "items": {
+       "$ref": "#/components/schemas/GraphNode"
+      },
+      "title": "Nodes",
+      "type": "array"
+     },
+     "symbol": {
+      "title": "Symbol",
+      "type": "string"
+     },
+     "upgrade_note": {
+      "default": "",
+      "title": "Upgrade Note",
+      "type": "string"
+     }
+    },
+    "required": [
+     "symbol",
+     "market",
+     "nodes",
+     "links"
+    ],
+    "title": "GetEntityGraphOutput",
     "type": "object"
    },
    "GetEsgScoreOutput": {
@@ -11348,12 +11379,32 @@
       "title": "Edges",
       "type": "array"
      },
+     "hidden_count": {
+      "default": 0,
+      "title": "Hidden Count",
+      "type": "integer"
+     },
+     "locked": {
+      "default": false,
+      "title": "Locked",
+      "type": "boolean"
+     },
      "market": {
       "title": "Market",
       "type": "string"
      },
+     "sources_locked": {
+      "default": false,
+      "title": "Sources Locked",
+      "type": "boolean"
+     },
      "symbol": {
       "title": "Symbol",
+      "type": "string"
+     },
+     "upgrade_note": {
+      "default": "",
+      "title": "Upgrade Note",
       "type": "string"
      }
     },
@@ -11548,6 +11599,11 @@
     "additionalProperties": false,
     "description": "The reverse lookup — every theme a symbol belongs to, with that membership's own\nsub-industry and confidence.",
     "properties": {
+     "concept_locked": {
+      "default": false,
+      "title": "Concept Locked",
+      "type": "boolean"
+     },
      "market": {
       "title": "Market",
       "type": "string"
@@ -11750,6 +11806,11 @@
       "title": "Found",
       "type": "boolean"
      },
+     "hidden_count": {
+      "default": 0,
+      "title": "Hidden Count",
+      "type": "integer"
+     },
      "kind": {
       "anyOf": [
        {
@@ -11759,6 +11820,11 @@
         "type": "null"
        }
       ]
+     },
+     "locked": {
+      "default": false,
+      "title": "Locked",
+      "type": "boolean"
      },
      "member_count": {
       "default": 0,
@@ -11797,6 +11863,11 @@
      },
      "theme_key": {
       "title": "Theme Key",
+      "type": "string"
+     },
+     "upgrade_note": {
+      "default": "",
+      "title": "Upgrade Note",
       "type": "string"
      }
     },
@@ -11942,6 +12013,11 @@
    "GetThemesOutput": {
     "additionalProperties": false,
     "properties": {
+     "concept_locked": {
+      "default": false,
+      "title": "Concept Locked",
+      "type": "boolean"
+     },
      "theme_count": {
       "default": 0,
       "title": "Theme Count",
@@ -34204,7 +34280,7 @@
       "content": {
        "application/json": {
         "schema": {
-         "$ref": "#/components/schemas/EntityGraph"
+         "$ref": "#/components/schemas/GetEntityGraphOutput"
         }
        }
       },

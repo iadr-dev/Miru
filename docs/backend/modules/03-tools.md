@@ -217,9 +217,18 @@ convention) or don't exist yet at all. Corrections are called out inline below.
 - `get_theme_members` — the member symbols of one theme (industry-chain or concept), each with
   its sub-industry, confidence, and source (industry-chain fact vs AI-researched). Reads the
   relational theme store directly (not the router), so it is wired with the DB session factory
-  rather than a capability adapter. Unknown key → `found=False`, never an error.
+  rather than a capability adapter. Unknown key → `found=False`, never an error. For a **concept**
+  theme a caller below Pro gets the header, description and related themes but only the first 3
+  members per position, with `locked`, `hidden_count` and an `upgrade_note` (the full view is
+  Pro); industry themes are never limited.
 - `get_symbol_themes` — the reverse lookup: every theme a symbol belongs to, each membership
-  carrying its own sub-industry/confidence. Answers "what themes is 2330 in".
+  carrying its own sub-industry/confidence. Answers "what themes is 2330 in". Below Pro the
+  concept memberships are listed by name only (`sub_industry` blank, `concept_locked`).
+- `get_supply_chain_edges`, `get_chain_position`, `get_entity_graph` — **Pro previews**: below Pro
+  they return the preview (3 peers per role without sources / the primary chain without reasons /
+  the focus plus 8 entities) with `locked`, `hidden_count` and `upgrade_note`; Pro gets everything.
+  The model should say the full view is part of the Pro plan and not retry. `get_themes` lists
+  concept themes for everyone and sets `concept_locked` below Pro.
 - `get_theme_tiers` — one theme's sub-industries grouped upstream/midstream/downstream, each
   assignment marked curated (editorial) or heuristic (auto-classified) so a guess never reads as
   authoritative as a verified position. These three carry no scoring/directional framing, so they

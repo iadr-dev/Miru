@@ -252,6 +252,11 @@ it doesn't — no numeric field/operator/value query shape.
 ## 5b. Theme / tier / supply-chain layer (`analytics/themes/`)
 
 A three-layer design. Theme membership is **never a scored factor** — it tags/groups symbols only.
+**Pro previews:** the supply-chain relations, chain positions, entity graph and the member detail of
+concept themes are Pro features (`FEATURE_MIN_TIER`: `supply_chain`, `concept_themes`). A caller below
+Pro gets a server-side preview from the same tools (3 peers per role without sources, the primary chain,
+the top 8 entities, 3 concept members per position) with additive `locked` / `hidden_count` fields;
+industry themes and the industry-chain tier heatmap stay free ([12](12-multi-user-tiers.md)).
 The tables (`themes`, `theme_memberships`, `theme_tiers`, `supply_chain_edges`,
 `theme_change_log`) are SQLAlchemy models in `backend/src/db/models/themes.py`; the REST surface
 is in [api-reference.md](../api-reference.md).

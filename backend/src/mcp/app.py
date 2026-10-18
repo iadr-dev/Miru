@@ -72,6 +72,10 @@ Quote that caveat when you report a number, and never present delayed or end-of-
 - Some data is sponsor-tier. If the caller's plan does not include it, the tool still succeeds \
 but returns a masked teaser ({"locked": true, "required_tier": ..., "preview": ...}) instead of \
 data. Tell the user that the data needs a Premium or Pro plan; do not guess the hidden values.
+- Supply-chain relations, chain positions, the entity graph and concept-theme members are a \
+preview unless the caller is on the Pro plan: a result with "locked": true (or "concept_locked": \
+true) is limited and carries "hidden_count" and an "upgrade_note". Tell the user the full view is \
+part of the Pro plan; do not retry to get more.
 - A tool error (isError) includes a recovery hint: fix the arguments, or use search_tools to find \
 another tool.
 

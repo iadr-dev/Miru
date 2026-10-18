@@ -13,11 +13,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from analytics.supply_chain.domain.models import Status, Trust
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from config.settings import Settings
-from schemas.enums import Capability, DataClass, Market, TimingClass
+from schemas.enums import Capability, DataClass, Market, Tier, TimingClass
 from schemas.market import Symbol
 from schemas.source import HealthStatus, SourceHealth, SourceResult
 from tests.analytics.supply_chain.builders import ALPHA, BETA, GAMMA, evidence, relation
-from tests.api.conftest import build_test_client
+from tests.api.conftest import build_test_client, enter_client, sign_in
 from tests.tools.conftest import make_router
 from tools import build_default_tool_registry
 
@@ -54,7 +54,10 @@ def _stub_result() -> SourceResult:
 
 
 def _client(settings: Settings, agent_answer: str) -> TestClient:
+    """A Pro caller: the full view (below Pro the routes return a preview - see
+    `test_pro_previews.py`)."""
     client = build_test_client(settings, agent_answer=agent_answer)
+    enter_client(client).headers.update(sign_in(client, settings, tier=Tier.PRO)[0])
     state = client.app.state.app_state
     router, _ = make_router(
         Symbol(id="9001", market=Market.TW), dict.fromkeys(Capability, _stub_result())

@@ -23,9 +23,7 @@ from pydantic import BaseModel, ConfigDict
 
 from accounts.models import EntitlementView, User
 from schemas.enums import Tier
-
-# Ordering for min-tier comparisons — Free < Premium < Pro.
-_TIER_RANK: Final[dict[Tier, int]] = {Tier.FREE: 0, Tier.PREMIUM: 1, Tier.PRO: 2}
+from schemas.feature_tiers import FEATURE_MIN_TIER, Access, access_for, tier_at_least
 
 
 class TierLimits(BaseModel):
@@ -50,20 +48,8 @@ TIER_LIMITS: Final[dict[Tier, TierLimits]] = {
     ),
 }
 
-# Feature → minimum tier. A feature absent from this table is unrestricted (available to every
-# tier, incl. anonymous/Free). Voice STT and TTS read-aloud are both deliberately NOT here — both
-# are Free, quota-bounded rather than tier-gated (voice conversation mode is built on both, and
-# is a Free-tier feature end to end).
-FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
-    "live_quote_stream": Tier.PREMIUM,
-    "ai_summary": Tier.PREMIUM,
-    "swot": Tier.PREMIUM,
-    "full_score": Tier.PREMIUM,
-    "deep_research": Tier.PRO,
-    # Tick and minute-K are sponsor-class data, which the tool-dispatch gate unlocks at Premium and
-    # above - so this row says Premium, matching what is actually enforced.
-    "tick_minute_k": Tier.PREMIUM,
-}
+# Feature → minimum tier: `FEATURE_MIN_TIER` is defined in `schemas.feature_tiers` (shared with the
+# tool-dispatch gate, which sits below this layer) and re-exported here.
 
 
 class TierSummary(BaseModel):
@@ -84,7 +70,7 @@ def tier_catalog() -> list[TierSummary]:
     for tier in (Tier.FREE, Tier.PREMIUM, Tier.PRO):
         limits = TIER_LIMITS[tier]
         features = tuple(
-            sorted(f for f, minimum in FEATURE_MIN_TIER.items() if _tier_at_least(tier, minimum))
+            sorted(f for f, minimum in FEATURE_MIN_TIER.items() if tier_at_least(tier, minimum))
         )
         summaries.append(
             TierSummary(
@@ -95,10 +81,6 @@ def tier_catalog() -> list[TierSummary]:
             )
         )
     return summaries
-
-
-def _tier_at_least(tier: Tier, minimum: Tier) -> bool:
-    return _TIER_RANK[tier] >= _TIER_RANK[minimum]
 
 
 def chat_limit_for(user: User, *, byok_active: bool) -> int | None:
@@ -163,7 +145,13 @@ def feature_allowed(user: User, feature: str) -> bool:
     minimum = FEATURE_MIN_TIER.get(feature)
     if minimum is None:
         return True
-    return _tier_at_least(user.tier, minimum)
+    return tier_at_least(user.tier, minimum)
+
+
+def access_for_user(user: User | None, feature: str) -> Access:
+    """The preview policy for `user` (`None` = anonymous). Resolved from the row passed in, so it
+    is fresh on every request - nothing here caches a tier."""
+    return access_for(feature, user.tier if user is not None else Tier.FREE)
 
 
 def allowed_features(user: User) -> tuple[str, ...]:
@@ -188,8 +176,11 @@ __all__ = [
     "TIER_LIMITS",
     "VOICE_DAILY_LIMIT",
     "VOICE_REQUESTS_PER_MINUTE",
+    "Access",
     "TierLimits",
     "TierSummary",
+    "access_for",
+    "access_for_user",
     "allowed_features",
     "chat_limit_for",
     "entitlement_view",
