@@ -24,7 +24,7 @@ def evidence(
     trust: Trust = Trust.SECONDARY, publisher: str = "Example News", n: int = 1
 ) -> Evidence:
     return Evidence(
-        url=f"https://example.com/{publisher.replace(' ', '-')}/{n}",
+        url=f"https://{publisher.replace(' ', '-').lower()}.example/{n}",
         publisher=publisher,
         published_on=date(2025, 1, 2),
         excerpt="synthetic sentence",

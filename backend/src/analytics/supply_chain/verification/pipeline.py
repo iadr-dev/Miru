@@ -17,7 +17,7 @@ import anyio.to_thread
 import structlog
 
 from analytics.supply_chain.domain.models import Evidence, Grade, Status, Trust
-from analytics.supply_chain.domain.rules import grade_from_evidence
+from analytics.supply_chain.domain.rules import grade_from_evidence, independence_key
 from analytics.supply_chain.verification.budget import Budget
 from analytics.supply_chain.verification.directory import CompanyDirectory
 from analytics.supply_chain.verification.judge import (
@@ -284,7 +284,7 @@ def _status_for(evidence: Sequence[Evidence]) -> Status:
     publisher, or two independent tertiary ones. Anything resting on a single tertiary source
     (including any unlisted host) is written as a candidate for a person or a second source."""
     reliable = any(e.trust in (Trust.PRIMARY, Trust.SECONDARY) for e in evidence)
-    tertiary = {e.publisher.strip().lower() for e in evidence if e.trust is Trust.TERTIARY}
+    tertiary = {independence_key(e) for e in evidence if e.trust is Trust.TERTIARY}
     return (
         Status.VERIFIED
         if reliable or len(tertiary) >= _MIN_TERTIARY_PUBLISHERS

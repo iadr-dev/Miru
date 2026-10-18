@@ -95,8 +95,32 @@ def trust_for_url(url: str, trust_table: Mapping[str, Trust] | None = None) -> T
     return Trust.TERTIARY
 
 
+_SECOND_LEVEL_LABELS = frozenset({"com", "co", "org", "net", "gov", "edu", "ac", "or", "ne"})
+_CC_TLD_LENGTH = 2
+_PLAIN_DOMAIN_LABELS = 2
+_REGISTRABLE_LABELS_UNDER_SECOND_LEVEL = 3
+
+
+def registrable_domain(host: str) -> str:
+    """The site a host belongs to: `a.example.com` and `b.example.com` are one publisher. A
+    deliberately small public-suffix rule (two labels, or three under `com.tw` / `co.jp` style
+    suffixes) so that spinning up subdomains cannot fake independent sources."""
+    labels = [part for part in host.lower().strip(".").split(".") if part]
+    if len(labels) <= _PLAIN_DOMAIN_LABELS:
+        return ".".join(labels)
+    if len(labels[-1]) == _CC_TLD_LENGTH and labels[-2] in _SECOND_LEVEL_LABELS:
+        return ".".join(labels[-_REGISTRABLE_LABELS_UNDER_SECOND_LEVEL:])
+    return ".".join(labels[-_PLAIN_DOMAIN_LABELS:])
+
+
+def independence_key(evidence: Evidence) -> str:
+    """What makes two sources independent: the site they were published on."""
+    host = host_of(evidence.url)
+    return registrable_domain(host) if host else evidence.publisher.strip().lower()
+
+
 def _publishers(evidence: Iterable[Evidence], trust: Trust) -> set[str]:
-    return {e.publisher.strip().lower() for e in evidence if e.trust is trust}
+    return {independence_key(e) for e in evidence if e.trust is trust}
 
 
 def grade_from_evidence(evidence: Iterable[Evidence]) -> Grade | None:
@@ -150,7 +174,9 @@ __all__ = [
     "STALE_AFTER_MONTHS",
     "grade_from_evidence",
     "host_of",
+    "independence_key",
     "is_stale",
+    "registrable_domain",
     "resolve_status",
     "trust_for_url",
 ]

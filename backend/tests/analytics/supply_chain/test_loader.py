@@ -25,7 +25,7 @@ RESEARCH = """
   as_of: 2026-03-01
   evidence:
     - {url: "https://news.example/a/1", publisher: Pub A, excerpt: "synthetic", checker: human}
-    - {url: "https://news.example/b/2", publisher: Pub B, published_on: 2026-02-01}
+    - {url: "https://wire.example/b/2", publisher: Pub B, published_on: 2026-02-01}
 - supplier: {symbol: ZZZA, market: US, name: Gamma Corp}
   customer: {symbol: "9002", market: TW, name: Beta Devices}
   origin: research
@@ -40,7 +40,7 @@ SEEDED = """
   grade: medium
 """
 
-TRUST = "news.example: secondary\n"
+TRUST = "news.example: secondary\nwire.example: secondary\n"
 
 
 def _write(directory: Path, name: str, text: str) -> None:

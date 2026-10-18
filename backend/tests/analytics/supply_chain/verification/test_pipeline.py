@@ -27,8 +27,8 @@ from tests.analytics.supply_chain.verification.support import (
 
 TRUST = {
     "ir.example.com": Trust.PRIMARY,
-    "wire-a.example.com": Trust.SECONDARY,
-    "wire-b.example.com": Trust.SECONDARY,
+    "wire-a.test": Trust.SECONDARY,
+    "wire-b.test": Trust.SECONDARY,
     "forum.example.org": Trust.REJECTED,
 }
 DIRECTORY = build_directory(roster={"9001": "阿爾法零件", "9002": "貝塔裝置"}, market_values={})
@@ -61,19 +61,17 @@ def pages(*hosts: str) -> StubSearch:
 
 
 async def test_two_independent_secondary_sources_grade_high() -> None:
-    p = pipeline(
-        pages("wire-a.example.com", "wire-b.example.com"), llm(judgement_json(), judgement_json())
-    )
+    p = pipeline(pages("wire-a.test", "wire-b.test"), llm(judgement_json(), judgement_json()))
     outcome = await p.verify_target(target())
     assert outcome.kind is OutcomeKind.VERIFIED
     [result] = outcome.results
     assert result.grade is Grade.HIGH and result.status is Status.VERIFIED
-    assert {e.publisher for e in result.evidence} == {"wire-a.example.com", "wire-b.example.com"}
+    assert {e.publisher for e in result.evidence} == {"wire-a.test", "wire-b.test"}
     assert str(result.as_of) == "2026-09-01"
 
 
 async def test_a_primary_source_stops_the_search_early() -> None:
-    search = pages("ir.example.com", "wire-a.example.com")
+    search = pages("ir.example.com", "wire-a.test")
     client = llm(judgement_json(), judgement_json())
     p = pipeline(search, client)
     outcome = await p.verify_target(target())
@@ -83,14 +81,14 @@ async def test_a_primary_source_stops_the_search_early() -> None:
 
 
 async def test_single_tertiary_source_is_published_with_a_low_grade() -> None:
-    p = pipeline(pages("wire-a.example.com"), llm(judgement_json()))
+    p = pipeline(pages("wire-a.test"), llm(judgement_json()))
     outcome = await p.verify_target(target())
     assert outcome.results[0].grade is Grade.LOW
 
 
 async def test_pages_that_fail_the_guards_make_a_rejected_claim() -> None:
     p = pipeline(
-        pages("wire-a.example.com", "wire-b.example.com"),
+        pages("wire-a.test", "wire-b.test"),
         llm(judgement_json(current=False), judgement_json(excerpt="nope")),
     )
     outcome = await p.verify_target(target())
@@ -110,12 +108,12 @@ async def test_rejected_publishers_are_never_fetched_and_tiers_are_preferred() -
         hit("https://forum.example.org/a"),
         hit("https://blog.example.net/b"),
         hit("https://ir.example.com/c"),
-        hit("https://wire-a.example.com/d"),
+        hit("https://wire-a.test/d"),
     ]
     picked = pick_hits(hits, limit=3, trust_table=TRUST)
     assert [h.url for h in picked] == [
         "https://ir.example.com/c",
-        "https://wire-a.example.com/d",
+        "https://wire-a.test/d",
         "https://blog.example.net/b",
     ]
     assert len(pick_hits(hits + hits, limit=10, trust_table=TRUST)) == 3  # duplicates dropped
@@ -152,7 +150,7 @@ async def test_page_budget_ends_the_claim_as_skipped() -> None:
 
 
 async def test_second_opinion_disagreement_downgrades_to_candidate() -> None:
-    search = pages("wire-a.example.com")
+    search = pages("wire-a.test")
     p = pipeline(
         search,
         llm(judgement_json()),
@@ -169,7 +167,7 @@ async def test_second_opinion_disagreement_downgrades_to_candidate() -> None:
 
 async def test_second_opinion_is_off_by_default_and_skipped_for_strong_claims() -> None:
     second = llm(judgement_json(supports=False))
-    off = pipeline(pages("wire-a.example.com"), llm(judgement_json()), second=second)
+    off = pipeline(pages("wire-a.test"), llm(judgement_json()), second=second)
     assert (await off.verify_target(target())).results[0].status is Status.VERIFIED
     assert second.calls == []
     strong = pipeline(
@@ -182,9 +180,7 @@ async def test_second_opinion_is_off_by_default_and_skipped_for_strong_claims() 
 async def test_run_writes_verified_claims_and_logs_rejections(tmp_path: Path) -> None:
     relations = tmp_path / "supply_chain" / "relations"
     ok, bad = target(), target(BETA, ALPHA)
-    search = StubSearch(
-        [hit("https://wire-a.example.com/p")], {"https://wire-a.example.com/p": PAGE_TEXT}
-    )
+    search = StubSearch([hit("https://wire-a.test/p")], {"https://wire-a.test/p": PAGE_TEXT})
     client = llm(judgement_json(), judgement_json(supports=False))
     p = pipeline(search, client)
     writer = RelationWriter(relations, is_leader=lambda: True, today=TODAY, trust_table=TRUST)
@@ -209,9 +205,7 @@ async def test_run_writes_verified_claims_and_logs_rejections(tmp_path: Path) ->
 
 async def test_dry_run_writes_and_logs_nothing(tmp_path: Path) -> None:
     relations = tmp_path / "supply_chain" / "relations"
-    search = StubSearch(
-        [hit("https://wire-a.example.com/p")], {"https://wire-a.example.com/p": PAGE_TEXT}
-    )
+    search = StubSearch([hit("https://wire-a.test/p")], {"https://wire-a.test/p": PAGE_TEXT})
     p = pipeline(search, llm(judgement_json(), judgement_json(supports=False)))
     writer = RelationWriter(
         relations, is_leader=lambda: True, today=TODAY, trust_table=TRUST, dry_run=True
@@ -229,7 +223,7 @@ async def test_dry_run_writes_and_logs_nothing(tmp_path: Path) -> None:
 
 
 async def test_claim_cap_stops_the_run_gracefully() -> None:
-    search = pages("wire-a.example.com")
+    search = pages("wire-a.test")
     p = pipeline(search, llm(*[judgement_json(supports=False)] * 3), limits=Limits(max_claims=2))
     targets = [
         target(),
@@ -243,7 +237,7 @@ async def test_claim_cap_stops_the_run_gracefully() -> None:
 
 
 async def test_spend_cap_stops_the_run_and_is_reported() -> None:
-    search = pages("wire-a.example.com")
+    search = pages("wire-a.test")
     p = pipeline(search, llm(*[judgement_json(supports=False)] * 5), limits=Limits(budget_usd=0.03))
     targets = [target().model_copy(update={"claim_id": f"c{i}"}) for i in range(5)]
     summary = await run_pipeline(
@@ -255,7 +249,7 @@ async def test_spend_cap_stops_the_run_and_is_reported() -> None:
 
 
 async def test_llm_cap_stops_the_run() -> None:
-    search = pages("wire-a.example.com")
+    search = pages("wire-a.test")
     p = pipeline(search, llm(*[judgement_json(supports=False)] * 5), limits=Limits(max_llm_calls=1))
     targets = [target().model_copy(update={"claim_id": f"c{i}"}) for i in range(4)]
     summary = await run_pipeline(
@@ -265,7 +259,7 @@ async def test_llm_cap_stops_the_run() -> None:
 
 
 async def test_budget_skipped_claims_are_not_logged_as_rejected(tmp_path: Path) -> None:
-    search = pages("wire-a.example.com")
+    search = pages("wire-a.test")
     p = pipeline(search, llm(judgement_json()), limits=Limits(max_llm_calls=0))
     summary = await run_pipeline(
         [target()],
@@ -280,7 +274,7 @@ async def test_budget_skipped_claims_are_not_logged_as_rejected(tmp_path: Path) 
 
 
 async def test_gap_target_turns_a_page_into_concrete_claims() -> None:
-    search = pages("wire-a.example.com")
+    search = pages("wire-a.test")
     reply = json.dumps(
         [
             {
@@ -308,9 +302,7 @@ async def test_a_single_unlisted_source_is_only_a_candidate() -> None:
 
 
 async def test_two_independent_unlisted_sources_publish_at_medium() -> None:
-    p = pipeline(
-        pages("one.example.net", "two.example.net"), llm(judgement_json(), judgement_json())
-    )
+    p = pipeline(pages("one.test", "two.test"), llm(judgement_json(), judgement_json()))
     [result] = (await p.verify_target(target())).results
     assert (result.status, result.grade) == (Status.VERIFIED, Grade.MEDIUM)
 

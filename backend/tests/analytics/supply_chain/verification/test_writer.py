@@ -19,7 +19,7 @@ from analytics.supply_chain.verification.writer import (
 )
 from tests.analytics.supply_chain.verification.support import ALPHA, BETA, GAMMA, TODAY
 
-TRUST = {"news.example.com": Trust.SECONDARY, "wire.example.com": Trust.SECONDARY}
+TRUST = {"news.example.com": Trust.SECONDARY, "wire.example.org": Trust.SECONDARY}
 
 
 def evidence(
@@ -76,7 +76,7 @@ def test_upsert_merges_evidence_by_url_and_moves_dates_forward(tmp_path: Path) -
     writer(tmp_path).apply([result()])
     later = result(
         evidence(),  # same url: not duplicated
-        evidence("https://wire.example.com/b", "wire.example.com"),
+        evidence("https://wire.example.org/b", "wire.example.org"),
         as_of=date(2026, 10, 1),
     )
     report = writer(tmp_path).apply([later])
@@ -84,7 +84,7 @@ def test_upsert_merges_evidence_by_url_and_moves_dates_forward(tmp_path: Path) -
     [row] = rows(tmp_path / "TW-9001.yaml")
     assert [e["url"] for e in row["evidence"]] == [  # type: ignore[index]
         "https://news.example.com/a",
-        "https://wire.example.com/b",
+        "https://wire.example.org/b",
     ]
     assert row["as_of"] == date(2026, 10, 1)
     assert row["last_verified_at"] == TODAY
@@ -116,7 +116,7 @@ def test_manual_and_seeded_rows_are_never_touched(tmp_path: Path, origin: str) -
 
 def test_other_rows_in_the_same_file_survive_and_none_is_deleted(tmp_path: Path) -> None:
     writer(tmp_path).apply([result(), result(customer=GAMMA)])
-    writer(tmp_path).apply([result(evidence("https://wire.example.com/b", "wire.example.com"))])
+    writer(tmp_path).apply([result(evidence("https://wire.example.org/b", "wire.example.org"))])
     assert len(rows(tmp_path / "TW-9001.yaml")) == 2
 
 
@@ -133,7 +133,7 @@ def test_a_candidate_result_never_demotes_a_verified_row(tmp_path: Path) -> None
 def test_a_row_found_in_another_file_is_updated_there(tmp_path: Path) -> None:
     writer(tmp_path).apply([result()])
     (tmp_path / "TW-9001.yaml").rename(tmp_path / "batch-001.yaml")
-    writer(tmp_path).apply([result(evidence("https://wire.example.com/b", "wire.example.com"))])
+    writer(tmp_path).apply([result(evidence("https://wire.example.org/b", "wire.example.org"))])
     assert not (tmp_path / "TW-9001.yaml").exists()
     assert len(rows(tmp_path / "batch-001.yaml")[0]["evidence"]) == 2  # type: ignore[arg-type]
 
@@ -180,7 +180,7 @@ def test_a_failure_while_swapping_restores_files_already_swapped(
     with pytest.raises(WriterError):
         writer(tmp_path).apply(
             [
-                result(evidence("https://wire.example.com/b", "wire.example.com")),
+                result(evidence("https://wire.example.org/b", "wire.example.org")),
                 result(supplier=other, customer=BETA),
             ]
         )
