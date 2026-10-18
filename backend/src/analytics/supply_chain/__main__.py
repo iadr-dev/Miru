@@ -1,10 +1,13 @@
-"""Operator CLI: `python -m analytics.supply_chain load|stats|positions|eval`.
+"""Operator CLI: `python -m analytics.supply_chain load|stats|positions|eval|discover|verify`.
 
 `load` rebuilds the index tables from the private relation, concept-theme and entity files;
 `stats` prints row counts (numbers only, never file content). `positions` recomputes and writes
 the chain positions and prints counts per position and method only.
 `eval [--golden PATH] [--json]` computes the positions in memory from the current database and
 scores them against the golden file (exit 1 when the gate fails or the golden file is unusable).
+`discover [--limit N] [--source S]` lists the next claims to research; `verify [--limit N]
+[--source S] [--dry-run]` researches them (see `verification/cli.py`). Both print counts and
+claim ids only.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from analytics.supply_chain.store.concept_protocol import ConceptCollisionError
 from analytics.supply_chain.store.concept_store import SqlAlchemyConceptStore
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from analytics.supply_chain.themes_io.loader import ConceptFileError, load_concept_themes
+from analytics.supply_chain.verification.cli import run_research_command
 from analytics.themes.store import SqlAlchemyThemeStore
 from config.settings import get_settings
 from db import (
@@ -129,10 +133,28 @@ async def _run(command: str, golden: Path | None, *, as_json: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m analytics.supply_chain")
-    parser.add_argument("command", choices=["load", "stats", "positions", "eval"])
+    parser.add_argument(
+        "command", choices=["load", "stats", "positions", "eval", "discover", "verify"]
+    )
     parser.add_argument("--golden", type=Path, default=None, help="eval: golden file path")
     parser.add_argument("--json", action="store_true", help="eval: print the report as JSON")
+    parser.add_argument("--limit", type=int, default=None, help="discover/verify: max claims")
+    parser.add_argument(
+        "--source",
+        choices=["candidates", "gaps", "stale", "all"],
+        default="all",
+        help="discover/verify: which claims to take",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="verify: search and judge, write nothing"
+    )
     args = parser.parse_args(argv)
+    if args.command in ("discover", "verify"):
+        return asyncio.run(
+            run_research_command(
+                args.command, limit=args.limit, dry_run=args.dry_run, source=args.source
+            )
+        )
     return asyncio.run(_run(args.command, args.golden, as_json=args.json))
 
 

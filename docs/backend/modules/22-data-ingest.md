@@ -105,6 +105,7 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 | `sc_refdata_load` | 06:20 | daily | rebuild the supply-chain index tables from the operator's private relation files; local file read only, leader-only, no upstream call (module 20 §5b) |
 | `sc_themes_entities_load` | 06:25 | daily | rebuild the concept-theme tables (mirrored into `themes`/`theme_memberships`) and the entity catalog + mention tables from the operator's private `themes/concepts/*.yaml`, `entities/catalog.yaml` and `entities/mentions.jsonl`; local file read only, leader-only, no upstream call; a bad file fails only its own load (module 20 §5b) |
 | `sc_positions_refresh` | 06:30 | daily | recompute every company's upstream/midstream/downstream position per industry chain from the tier map, the verified relations and the private overrides, and rewrite `sc_positions`; local compute only, leader-only, skipped (journaled) without memberships (module 20 §5b) |
+| `sc_research` | 22:15 | weekly | supply-chain DISCOVER -> VERIFY: budgeted web search + LLM checks, deterministic guards, evidence-backed rows written to the private relation files, then `sc_refdata_load`; leader-only; **journals SKIPPED unless `SUPPLY_CHAIN_RESEARCH_ENABLED=true`** (off by default and in production), the search key and an LLM key are present; capped per run by `SUPPLY_CHAIN_RESEARCH_*` (module 20 §5b) |
 | `us_symbol_universe` | 05:30 | monthly | US symbol roster (§2c) |
 | `us_price_eod` | 06:00 | daily (US session) | US EOD prices (§2c) |
 | `us_fundamentals` | 07:00 | weekly | US financials/dividends/splits (§2c) |
@@ -342,6 +343,7 @@ process shapes.
 - **Unconditional production hard-stop.** `_check_not_production` raises `ProductionHardStopError`
   whenever `Settings.env == "production"`, checked before touching any spec and **regardless of
   `--yes`**, so a mis-set override can never become an accidental prod backfill.
+- **Optional supply-chain research step.** After the derived catch-up, one `sc_research` pass runs when `SUPPLY_CHAIN_RESEARCH_ENABLED=true` (the job re-checks the leader, search key and LLM gates and journals SKIPPED otherwise). Its operator-run counterpart is `python -m analytics.supply_chain discover|verify [--dry-run]` (module 20 §5b).
 - **Exit code** is `1` if any `JobRun` has `status=RunStatus.FAILED`, else `0`.
 
 **FinMind quota.** Ingest shares the FinMind token with the API, and every call it makes is
