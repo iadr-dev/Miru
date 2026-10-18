@@ -227,6 +227,18 @@ describe("PipelineTimeline", () => {
     vi.setSystemTime(new Date("2026-10-16T07:00:00Z")); // 15:00 in Taipei
     expect(render(data).querySelector(".watch-scan")).toBeNull();
   });
+
+  it("offers the same five steps as a list for a narrow container, with details on tap", () => {
+    const list = render(data).querySelectorAll("ol > li");
+    expect(list).toHaveLength(5);
+    const first = list[0]?.querySelector("button");
+    expect(first?.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(first as HTMLElement);
+    expect(first?.getAttribute("aria-expanded")).toBe("true");
+    expect(list[0]?.querySelector("[id^='watch-step-']")).not.toBeNull();
+    fireEvent.click(first as HTMLElement);
+    expect(list[0]?.querySelector("[id^='watch-step-']")).toBeNull();
+  });
 });
 
 describe("timeline-math", () => {
