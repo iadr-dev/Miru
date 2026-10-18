@@ -22,7 +22,14 @@ const tiers: TierSummary[] = [
     tier: "pro",
     chat_limit_per_day: null,
     sponsor_data: true,
-    features: ["ai_summary", "deep_research", "live_quote_stream", "tick_minute_k"],
+    features: [
+      "ai_summary",
+      "deep_research",
+      "live_quote_stream",
+      "tick_minute_k",
+      "supply_chain",
+      "concept_themes",
+    ],
   },
 ];
 
@@ -43,6 +50,17 @@ describe("TierComparison", () => {
     expect(html).toContain("Public data only");
     expect(html).toContain("Deep research");
     expect(html).not.toMatch(/reports a day|requests a minute/); // no engineering numbers on the plan page
+  });
+
+  it("lists the supply-chain and concept-theme features under Pro only, by name", () => {
+    const html = render("free");
+    const [freeCard, premiumCard, proCard] = html.split("<section").slice(1);
+    const names = en.settings.usage.featureOption;
+    for (const key of ["supply_chain", "concept_themes"] as const) {
+      expect(proCard).toContain(names[key]);
+      expect(freeCard).not.toContain(names[key]);
+      expect(premiumCard).not.toContain(names[key]);
+    }
   });
 
   it("marks only the caller's own plan", () => {

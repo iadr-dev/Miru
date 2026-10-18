@@ -11,6 +11,7 @@ import type { ThemeMember, ThemeSummary } from "@/types/theme";
 
 vi.mock("@/lib/api/theme", () => ({ getThemes: vi.fn(), getThemeMembers: vi.fn() }));
 vi.mock("@/hooks/use-symbol-quotes", () => ({ useSymbolQuotes: vi.fn() }));
+vi.mock("@/hooks/use-is-anonymous", () => ({ useIsAnonymous: () => false }));
 vi.mock("@/i18n/navigation", () => ({
   Link: ({
     href,
@@ -67,7 +68,11 @@ function renderPanel(): void {
 }
 
 beforeEach(() => {
-  vi.mocked(getThemes).mockResolvedValue({ theme_count: THEMES.length, themes: THEMES });
+  vi.mocked(getThemes).mockResolvedValue({
+    theme_count: THEMES.length,
+    themes: THEMES,
+    concept_locked: false,
+  });
   vi.mocked(getThemeMembers).mockImplementation(async (key) => ({
     theme_key: key,
     found: true,
@@ -78,6 +83,8 @@ beforeEach(() => {
     description: "",
     related_keys: [],
     // Three members, one of which has no quote; a long theme is cut to the sample.
+    locked: false,
+    hidden_count: 0,
     members:
       key === "laser-module"
         ? members(["1001", "1002", "1003", ...Array.from({ length: 17 }, (_, i) => `${9000 + i}`)])
@@ -152,6 +159,7 @@ describe("ThemeHeatPanel", () => {
   it("only lists concept themes", async () => {
     vi.mocked(getThemes).mockResolvedValue({
       theme_count: 2,
+      concept_locked: false,
       themes: [LASER, { ...QUIET, kind: "industry" }],
     });
     renderPanel();
@@ -160,7 +168,7 @@ describe("ThemeHeatPanel", () => {
   });
 
   it("shows an empty state when there are no concept themes", async () => {
-    vi.mocked(getThemes).mockResolvedValue({ theme_count: 0, themes: [] });
+    vi.mocked(getThemes).mockResolvedValue({ theme_count: 0, themes: [], concept_locked: false });
     renderPanel();
     expect(await screen.findByText(copy.empty)).toBeTruthy();
   });
@@ -169,5 +177,27 @@ describe("ThemeHeatPanel", () => {
     vi.mocked(getThemes).mockRejectedValue(new Error("boom"));
     renderPanel();
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  });
+});
+
+describe("ThemeHeatPanel Pro preview", () => {
+  const lock = messages.featureLock;
+
+  it("keeps the cards and adds one prompt when concept_locked", async () => {
+    vi.mocked(getThemes).mockResolvedValue({
+      theme_count: 1,
+      themes: [LASER],
+      concept_locked: true,
+    });
+    renderPanel();
+    await cardFor("Laser Module");
+    const row = document.querySelector("[data-feature-lock]");
+    expect(row?.textContent).toContain(lock.themeTab.more);
+  });
+
+  it("shows no prompt when not locked", async () => {
+    renderPanel();
+    await cardFor("Laser Module");
+    expect(document.querySelector("[data-feature-lock]")).toBeNull();
   });
 });

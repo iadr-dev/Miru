@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { FeatureLock } from "@/components/ui/feature-lock";
 import { Link } from "@/i18n/navigation";
 import { hashToChartToken } from "@/lib/chart-token-hash";
 import type { SymbolTheme } from "@/types/stock/profile";
@@ -11,12 +12,16 @@ import type { SymbolTheme } from "@/types/stock/profile";
  * nothing when the stock is in no concept theme, so there is never an empty label. */
 export function ConceptThemeChips({
   themes,
+  locked = false,
 }: {
   readonly themes: readonly SymbolTheme[];
+  /** The server withheld some concept themes for the caller's plan (`concept_locked`). */
+  readonly locked?: boolean;
 }): ReactNode {
   const t = useTranslations("stock.industry.conceptThemes");
+  const tLock = useTranslations("featureLock");
   const concept = themes.filter((theme) => theme.kind === "concept");
-  if (concept.length === 0) {
+  if (concept.length === 0 && !locked) {
     return null;
   }
   return (
@@ -39,6 +44,11 @@ export function ConceptThemeChips({
             </Link>
           </li>
         ))}
+        {locked ? (
+          <li>
+            <FeatureLock message={tLock("conceptChips.more")} variant="chip" />
+          </li>
+        ) : null}
       </ul>
     </div>
   );

@@ -110,6 +110,8 @@ export const symbolThemesResponseSchema = z.object({
   market: z.string(),
   theme_count: z.number().default(0),
   themes: z.array(symbolThemeSchema).default([]),
+  /** Additive: true when some concept themes were withheld for the caller's plan. */
+  concept_locked: z.boolean().default(false),
 });
 
 export type SymbolThemesResponse = z.infer<typeof symbolThemesResponseSchema>;
@@ -174,6 +176,12 @@ export const supplyChainEdgesResponseSchema = z.object({
   market: z.string(),
   edge_count: z.number().default(0),
   edges: z.array(supplyChainEdgeSchema).default([]),
+  /** Additive: true when the server withheld part of this answer for the caller's plan. */
+  locked: z.boolean().default(false),
+  /** Additive: how many items were withheld (0 when nothing was). */
+  hidden_count: z.number().default(0),
+  /** Additive: true when every edge's `sources` was emptied for the caller's plan. */
+  sources_locked: z.boolean().default(false),
 });
 
 export type SupplyChainEdgesResponse = z.infer<typeof supplyChainEdgesResponseSchema>;

@@ -43,7 +43,15 @@ const base: SupplyChainEdge = {
 };
 
 function respond(edges: SupplyChainEdge[]): SupplyChainEdgesResponse {
-  return { symbol: "1001", market: "TW", edge_count: edges.length, edges };
+  return {
+    symbol: "1001",
+    market: "TW",
+    edge_count: edges.length,
+    edges,
+    locked: false,
+    hidden_count: 0,
+    sources_locked: false,
+  };
 }
 
 function renderGraph(edges: SupplyChainEdge[]): void {

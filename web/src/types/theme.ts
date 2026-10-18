@@ -31,6 +31,8 @@ export type ThemeSummary = z.infer<typeof themeSummarySchema>;
 export const themesResponseSchema = z.object({
   theme_count: z.number(),
   themes: z.array(themeSummarySchema).default([]),
+  /** Additive: true when some concept themes were withheld for the caller's plan. */
+  concept_locked: z.boolean().default(false),
 });
 export type ThemesResponse = z.infer<typeof themesResponseSchema>;
 
@@ -56,5 +58,9 @@ export const themeMembersResponseSchema = z.object({
   related_keys: z.array(z.string()).default([]),
   members: z.array(themeMemberSchema).default([]),
   message: z.string().default(""),
+  /** Additive: true when the server withheld part of this answer for the caller's plan. */
+  locked: z.boolean().default(false),
+  /** Additive: how many items were withheld (0 when nothing was). */
+  hidden_count: z.number().default(0),
 });
 export type ThemeMembersResponse = z.infer<typeof themeMembersResponseSchema>;

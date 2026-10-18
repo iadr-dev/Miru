@@ -2473,7 +2473,9 @@
         "swot": "SWOT 分析",
         "full_score": "完整評分",
         "deep_research": "深度研究",
-        "tick_minute_k": "逐筆／分K"
+        "tick_minute_k": "逐筆／分K",
+        "supply_chain": "供應鏈關係圖、產業鏈位置與關聯圖譜",
+        "concept_themes": "概念題材"
       },
       "usedOfLimit": "今日已用 {used} / {limit}",
       "upgrade": "查看方案並升級",
@@ -4073,6 +4075,35 @@
       "failed": "儲存失敗，請稍後再試。"
     }
   },
+  "featureLock": {
+    "upgrade": "升級 Pro",
+    "signIn": "登入",
+    "supplyChain": {
+      "more": "還有 {count} 家公司",
+      "benefit": "Pro 可查看完整的供應商、客戶與競爭者及其來源",
+      "sourcesLocked": "來源資料為 Pro 功能"
+    },
+    "chainPosition": {
+      "why": "判斷依據・Pro",
+      "moreChains": "另有 {count} 個產業鏈・Pro"
+    },
+    "entityGraph": {
+      "more": "還有 {count} 個節點（含相關公司）",
+      "benefit": "Pro 可查看完整關聯圖譜"
+    },
+    "themePage": {
+      "more": "還有 {count} 檔",
+      "benefit": "Pro 可查看題材的全部成員"
+    },
+    "themeTab": {
+      "more": "還有更多概念題材",
+      "benefit": "Pro 可查看完整題材清單"
+    },
+    "conceptChips": {
+      "more": "更多題材・Pro"
+    }
+  },
+
   "themes": {
     "page": {
       "memberCount": "{count} 檔成員",

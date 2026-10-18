@@ -9,6 +9,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FeatureLock } from "@/components/ui/feature-lock";
 import { QueryFailure } from "@/components/ui/query-state";
 import { SignedChange } from "@/components/ui/signed-change";
 import { useSymbolQuotes } from "@/hooks/use-symbol-quotes";
@@ -63,6 +64,7 @@ export function SupplyChainGraph({
   readonly market: Market;
 }): ReactNode {
   const t = useTranslations("stock.industry");
+  const tLock = useTranslations("featureLock");
   const query = useQuery({
     queryKey: queryKeys.symbolRead("supply_chain_edges", symbol, market),
     queryFn: () => getSupplyChainEdges(symbol, market),
@@ -121,6 +123,7 @@ export function SupplyChainGraph({
   const rows = Math.max(suppliers.length, customers.length, 1);
   const height = rows * ROW_PX;
   const focusQuote = quoteOf(symbol, market);
+  const sourcesLocked = data.sources_locked;
 
   return (
     <Card as="section" className="overflow-hidden">
@@ -144,6 +147,7 @@ export function SupplyChainGraph({
               hovered={hovered}
               onHover={setHovered}
               quoteOf={quoteOf}
+              sourcesLocked={sourcesLocked}
             />
 
             <div className="relative hidden md:block" style={{ height }}>
@@ -162,6 +166,7 @@ export function SupplyChainGraph({
               hovered={hovered}
               onHover={setHovered}
               quoteOf={quoteOf}
+              sourcesLocked={sourcesLocked}
             />
           </div>
         </div>
@@ -176,9 +181,18 @@ export function SupplyChainGraph({
             hovered={hovered}
             onHover={setHovered}
             quoteOf={quoteOf}
+            sourcesLocked={sourcesLocked}
             wrap
           />
         </div>
+      ) : null}
+
+      {data.locked && data.hidden_count > 0 ? (
+        <FeatureLock
+          className="mt-4"
+          message={tLock("supplyChain.more", { count: data.hidden_count })}
+          benefit={tLock("supplyChain.benefit")}
+        />
       ) : null}
 
       {canToggle ? (
@@ -244,6 +258,7 @@ function PeerColumn({
   hovered,
   onHover,
   quoteOf,
+  sourcesLocked,
 }: {
   readonly side: "left" | "right";
   readonly kind: PeerRole;
@@ -253,6 +268,7 @@ function PeerColumn({
   readonly hovered: string | null;
   readonly onHover: (symbol: string | null) => void;
   readonly quoteOf: (code: string, market: Market) => QuoteLite | undefined;
+  readonly sourcesLocked: boolean;
 }): ReactNode {
   const t = useTranslations("stock.industry");
   const heading = role === "supplier" ? t("supplyChainSuppliers") : t("supplyChainCustomers");
@@ -270,6 +286,7 @@ function PeerColumn({
           hovered={hovered}
           onHover={onHover}
           quoteOf={quoteOf}
+          sourcesLocked={sourcesLocked}
           height={height}
           side={side}
         />
@@ -284,6 +301,7 @@ function PeerList({
   hovered,
   onHover,
   quoteOf,
+  sourcesLocked,
   height,
   side,
   wrap = false,
@@ -293,6 +311,7 @@ function PeerList({
   readonly hovered: string | null;
   readonly onHover: (key: string | null) => void;
   readonly quoteOf: (code: string, market: Market) => QuoteLite | undefined;
+  readonly sourcesLocked: boolean;
   readonly height?: number;
   readonly side?: "left" | "right";
   readonly wrap?: boolean;
@@ -335,6 +354,7 @@ function PeerList({
             dimmed={hovered !== null && hovered !== peerKey(peer)}
             onHover={onHover}
             quote={quoteOf(peer.symbol, peer.market)}
+            sourcesLocked={sourcesLocked}
             compact={wrap}
           />
         </motion.li>
@@ -348,15 +368,18 @@ function PeerNode({
   dimmed,
   onHover,
   quote,
+  sourcesLocked,
   compact,
 }: {
   readonly peer: Peer;
   readonly dimmed: boolean;
   readonly onHover: (key: string | null) => void;
   readonly quote: QuoteLite | undefined;
+  readonly sourcesLocked: boolean;
   readonly compact: boolean;
 }): ReactNode {
   const t = useTranslations("stock.industry");
+  const tLock = useTranslations("featureLock");
   const change = quote?.changePct ?? null;
   const roleLabel = t(`supplyChainRole.${peer.role}`);
   const gradeLabel = t(`supplyChainGrade.${peer.grade}`);
@@ -415,7 +438,14 @@ function PeerNode({
         </span>
         {change === null ? null : <ChangeBadge value={change} />}
       </Link>
-      {peer.sources.length === 0 ? null : <SourcesPopover peer={peer} hoverProps={hoverProps} />}
+      {peer.sources.length > 0 ? <SourcesPopover peer={peer} hoverProps={hoverProps} /> : null}
+      {peer.sources.length === 0 && sourcesLocked ? (
+        <FeatureLock
+          variant="icon"
+          message={tLock("supplyChain.sourcesLocked")}
+          className="rounded-r-[var(--radius-input)] rounded-l-none border-[var(--border)] border-l"
+        />
+      ) : null}
     </div>
   );
 }

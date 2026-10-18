@@ -54,6 +54,8 @@ function company(
 const GRAPH: EntityGraphResponse = {
   symbol: "1001",
   market: "TW",
+  locked: false,
+  hidden_count: 0,
   nodes: [
     company("1001", "Acme Optics", 12, { focus: true }),
     entity("laser", "Laser Module", "technology", 8),
@@ -100,6 +102,7 @@ function opacityOf(container: HTMLElement, label: string): string | null | undef
 beforeEach(() => {
   vi.mocked(getThemes).mockResolvedValue({
     theme_count: 1,
+    concept_locked: false,
     themes: [
       {
         key: "laser-module",

@@ -47,5 +47,9 @@ export const entityGraphResponseSchema = z.object({
   market: z.string(),
   nodes: z.array(entityNodeSchema).default([]),
   links: z.array(entityLinkSchema).default([]),
+  /** Additive: true when the server withheld part of this answer for the caller's plan. */
+  locked: z.boolean().default(false),
+  /** Additive: how many items were withheld (0 when nothing was). */
+  hidden_count: z.number().default(0),
 });
 export type EntityGraphResponse = z.infer<typeof entityGraphResponseSchema>;

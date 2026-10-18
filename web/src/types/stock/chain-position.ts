@@ -34,6 +34,10 @@ export const chainPositionsResponseSchema = z.object({
   symbol: z.string(),
   market: z.string(),
   positions: z.array(chainPositionSchema).default([]),
+  /** Additive: true when the server withheld part of this answer for the caller's plan. */
+  locked: z.boolean().default(false),
+  /** Additive: how many items were withheld (0 when nothing was). */
+  hidden_count: z.number().default(0),
 });
 
 export type ChainPositionsResponse = z.infer<typeof chainPositionsResponseSchema>;
