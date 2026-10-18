@@ -22,6 +22,7 @@ import type { feedbackRecordSchema } from "@/lib/api/threads";
 import type { speakResponseSchema, transcriptSchema } from "@/lib/api/voice";
 import type { entitlementViewSchema, meResponseSchema } from "@/types/account";
 import type { threadListResponseSchema, threadSchema } from "@/types/conversation";
+import type { entityGraphResponseSchema } from "@/types/entity-graph";
 import type {
   activeEtfReportResponseSchema,
   etfExpenseRatioResponseSchema,
@@ -507,6 +508,8 @@ export type ContractChecks = [
   >,
   // GET /symbols/{symbol}/themes — stock-detail.getSymbolThemes
   Accepts<typeof symbolThemesResponseSchema, R<"/api/v1/symbols/{symbol}/themes", "get">>,
+  // GET /symbols/{symbol}/entity-graph — entity-graph.getEntityGraph
+  Accepts<typeof entityGraphResponseSchema, R<"/api/v1/symbols/{symbol}/entity-graph", "get">>,
   // GET /themes — theme.getThemes
   Accepts<typeof themesResponseSchema, R<"/api/v1/themes", "get">>,
   // GET /themes/{key} — theme.getThemeMembers

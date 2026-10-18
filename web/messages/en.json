@@ -165,7 +165,8 @@
         "disposition": "Disposition",
         "heatmap": "Heatmap",
         "news": "News",
-        "ptt": "PTT"
+        "ptt": "PTT",
+        "themes": "Themes"
       },
       "usSub": {
         "label": "US views",
@@ -3032,6 +3033,47 @@
           "conflict_prior_kept": "Supply relationships disagree with the industry classification; the classification is kept",
           "unknown": "Other basis"
         }
+      },
+      "entitiesView": "Relation Graph",
+      "conceptThemes": {
+        "title": "Themes",
+        "aria": "{name} theme page"
+      },
+      "entityGraph": {
+        "title": "Relation Graph",
+        "hint": "The technologies, materials, applications and products this company is mentioned with, and the other companies that mention the same items. A line means a mention or a co-appearance unless it is marked as a supply relationship.",
+        "emptyTitle": "No mentions yet",
+        "emptyBody": "There are no technology, material or application mentions to list for this company yet. That does not mean it has no related business, only that we have no data.",
+        "filteredEmpty": "Nothing to show under the current filters.",
+        "sliderLabel": "Minimum mentions",
+        "searchLabel": "Search nodes",
+        "searchPlaceholder": "Type a name or code",
+        "matches": "{count} matching",
+        "noMatches": "No matching nodes",
+        "typeFilterLabel": "Filter by type",
+        "legendTitle": "Line legend",
+        "linkSupply": "Supply relationship (supplier → customer)",
+        "linkMention": "Mention",
+        "linkCooccurrence": "Co-mentioned",
+        "cooccurrenceNote": "Co-mentioned only means the two appear in the same source. It does not mean they do business together.",
+        "canvasAria": "Relation graph for {name}, {count} nodes",
+        "weight": "{count, plural, one {# mention} other {# mentions}}",
+        "openStock": "open stock page",
+        "openTheme": "open theme page",
+        "showDetail": "show details",
+        "detailTitle": "Details for {name}",
+        "detailClose": "Close details",
+        "detailNoTheme": "There is no theme page to open for this item yet.",
+        "detailConnected": "Connected to:",
+        "listTitle": "List view",
+        "type": {
+          "tw_company": "TW companies",
+          "intl_company": "International companies",
+          "technology": "Technologies",
+          "material": "Materials",
+          "application": "Applications",
+          "product": "Products"
+        }
       }
     },
     "ai": {
@@ -3840,7 +3882,8 @@
       "search": "Search themes",
       "noThemesMatch": "No themes match",
       "subIndustry": "Sub-industry:",
-      "allSubIndustries": "All"
+      "allSubIndustries": "All",
+      "viewThemePage": "View theme page"
     },
     "drawer": {
       "title": "Add / edit condition",
@@ -4028,6 +4071,43 @@
       "conflict": "These settings changed on another device. Reload and try again.",
       "needOne": "Pick at least one strategy",
       "failed": "Could not save. Please try again."
+    }
+  },
+  "themes": {
+    "page": {
+      "memberCount": "{count, plural, one {# member} other {# members}}",
+      "relatedTitle": "Related themes",
+      "boardTitle": "Upstream → Midstream → Downstream",
+      "boardAria": "Theme members by upstream, midstream and downstream",
+      "emptyColumn": "No members at this position",
+      "relatedCompanies": "Related companies",
+      "position": {
+        "upstream": "Upstream",
+        "midstream": "Midstream",
+        "downstream": "Downstream",
+        "related": "Related"
+      },
+      "emptyTitle": "This theme has no members yet",
+      "emptyBody": "Members appear here once the data is updated.",
+      "notFoundTitle": "Theme not found",
+      "notFoundBody": "The theme may have been removed. Go back to the Themes tab on Market to pick another.",
+      "backToThemes": "Back to themes",
+      "quoteNote": "Change is the latest close against the previous trading day. Theme groupings are data organisation, not investment advice.",
+      "showAll": "Show all ({count} more)",
+      "showFewer": "Show fewer"
+    },
+    "tab": {
+      "title": "Concept themes",
+      "hint": "Browse companies by theme. The average change uses the first {sample} members' latest trading day and is for reference only.",
+      "searchLabel": "Search themes",
+      "searchPlaceholder": "Search theme names",
+      "noMatch": "No themes match",
+      "empty": "No concept themes yet",
+      "members": "{count, plural, one {# member} other {# members}}",
+      "avgLabel": "Average change",
+      "avgSample": "from {count}",
+      "avgUnavailable": "No quotes",
+      "quoteNote": "Average change is the latest close against the previous trading day. Theme groupings are data organisation, not investment advice."
     }
   }
 }

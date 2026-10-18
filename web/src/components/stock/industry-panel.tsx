@@ -6,6 +6,8 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SymbolQuoteRows } from "@/components/market/symbol-quote-rows";
 import { ChainPositionBar } from "@/components/stock/chain-position";
+import { ConceptThemeChips } from "@/components/stock/concept-theme-chips";
+import { EntityGraph } from "@/components/stock/entity-graph";
 import { SupplyChainGraph } from "@/components/stock/supply-chain-graph";
 import { ExpandModal } from "@/components/ui/expand-modal";
 import { QueryFailure } from "@/components/ui/query-state";
@@ -23,8 +25,14 @@ import type { SubIndustryHeat } from "@/types/stock/profile";
 const TIER_ORDER = ["upstream", "midstream", "downstream"] as const;
 type TierName = (typeof TIER_ORDER)[number];
 
-const VIEWS = ["tiers", "graph"] as const;
+const VIEWS = ["tiers", "graph", "entities"] as const;
 type IndustryView = (typeof VIEWS)[number];
+
+const VIEW_LABEL_KEY = {
+  tiers: "tiersView",
+  graph: "graphView",
+  entities: "entitiesView",
+} as const satisfies Record<IndustryView, string>;
 
 /** 個股 › 產業分析's 供應鏈/產業鏈 tab — two views over two distinct real data sources:
  *
@@ -37,6 +45,11 @@ type IndustryView = (typeof VIEWS)[number];
  *    confidence as a curated one.
  * 2. **供應鏈** (`SupplyChainGraph`) — every real supply/customer/competitor edge involving
  *    this symbol (`get_supply_chain_edges`), rendered as a focus-node radial graph.
+ * 3. **關聯圖譜** (`EntityGraph`) — the technologies/materials/applications the company is
+ *    mentioned with and the other companies that share them; mentions, never a claimed
+ *    business relationship unless a link is a verified supply edge.
+ *
+ * Above the views, 所屬題材 chips link to the concept-theme pages the stock belongs to.
  *
  * A symbol with no theme membership yet renders an honest empty state, never a fabricated
  * industry. The original 同業比較/多空訊號 cards are NOT built
@@ -77,7 +90,7 @@ export function IndustryPanel({
       <div
         role="tablist"
         aria-label={t("viewSwitcherLabel")}
-        className="flex w-fit gap-1 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] p-1"
+        className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] p-1"
       >
         {VIEWS.map((key) => (
           <button
@@ -93,28 +106,54 @@ export function IndustryPanel({
                 : "text-[var(--text-muted)] hover:text-[var(--text)]",
             )}
           >
-            {t(key === "tiers" ? "tiersView" : "graphView")}
+            {t(VIEW_LABEL_KEY[key])}
           </button>
         ))}
       </div>
 
+      <ConceptThemeChips themes={themesQuery.data?.themes ?? []} />
+
       <ChainPositionBar symbol={symbol} market={market} />
 
-      {!industryTheme ? (
-        <section className="surface-card p-4 sm:p-5">
-          <p className="text-[13px] text-[var(--text-muted)]">{t("noIndustryTheme")}</p>
-        </section>
-      ) : view === "tiers" ? (
-        <TierHeatmapView
-          themeKey={industryTheme.theme_key}
-          themeName={industryTheme.name_zh}
-          market={market}
-        />
-      ) : (
-        <SupplyChainGraph symbol={symbol} market={market} />
-      )}
+      <IndustryViewBody view={view} symbol={symbol} market={market} industryTheme={industryTheme} />
     </div>
   );
+}
+
+/** The selected sub-view. 關聯圖譜 reads the entity graph and so does not need an industry-chain
+ * classification; the other two do. */
+function IndustryViewBody({
+  view,
+  symbol,
+  market,
+  industryTheme,
+}: {
+  readonly view: IndustryView;
+  readonly symbol: string;
+  readonly market: Market;
+  readonly industryTheme: { readonly theme_key: string; readonly name_zh: string } | undefined;
+}): ReactNode {
+  const t = useTranslations("stock.industry");
+  if (view === "entities") {
+    return <EntityGraph symbol={symbol} market={market} />;
+  }
+  if (!industryTheme) {
+    return (
+      <section className="surface-card p-4 sm:p-5">
+        <p className="text-[13px] text-[var(--text-muted)]">{t("noIndustryTheme")}</p>
+      </section>
+    );
+  }
+  if (view === "tiers") {
+    return (
+      <TierHeatmapView
+        themeKey={industryTheme.theme_key}
+        themeName={industryTheme.name_zh}
+        market={market}
+      />
+    );
+  }
+  return <SupplyChainGraph symbol={symbol} market={market} />;
 }
 
 // ---------------------------------------------------------------------------

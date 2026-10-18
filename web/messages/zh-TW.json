@@ -165,7 +165,8 @@
         "disposition": "處置",
         "heatmap": "熱力圖",
         "news": "新聞",
-        "ptt": "PTT"
+        "ptt": "PTT",
+        "themes": "題材"
       },
       "usSub": {
         "label": "美股 檢視",
@@ -3032,6 +3033,47 @@
           "conflict_prior_kept": "供應關係與產業分類不一致，以產業分類為準",
           "unknown": "其他依據"
         }
+      },
+      "entitiesView": "關聯圖譜",
+      "conceptThemes": {
+        "title": "所屬題材",
+        "aria": "{name}題材頁"
+      },
+      "entityGraph": {
+        "title": "關聯圖譜",
+        "hint": "這家公司被一併提及的技術、材料、應用與產品，以及同樣提及這些項目的其他公司。連線只代表提及或共同出現，除非標示為供應關係。",
+        "emptyTitle": "尚無提及項目",
+        "emptyBody": "這家公司目前沒有可列出的技術、材料或應用提及。這不代表它沒有相關業務，只是還沒有資料。",
+        "filteredEmpty": "目前的篩選條件下沒有可顯示的項目。",
+        "sliderLabel": "最低提及次數",
+        "searchLabel": "搜尋節點",
+        "searchPlaceholder": "輸入名稱或代號",
+        "matches": "{count} 個符合",
+        "noMatches": "沒有符合的節點",
+        "typeFilterLabel": "依類型篩選",
+        "legendTitle": "連線圖例",
+        "linkSupply": "供應關係（供應商 → 客戶）",
+        "linkMention": "提及",
+        "linkCooccurrence": "共同提及",
+        "cooccurrenceNote": "「共同提及」只表示兩者出現在同一份資料中，不代表彼此有業務往來。",
+        "canvasAria": "{name}的關聯圖譜，共 {count} 個節點",
+        "weight": "提及 {count} 次",
+        "openStock": "前往個股頁",
+        "openTheme": "前往題材頁",
+        "showDetail": "查看詳情",
+        "detailTitle": "{name}詳情",
+        "detailClose": "關閉詳情",
+        "detailNoTheme": "目前沒有對應的題材頁可前往。",
+        "detailConnected": "相連項目：",
+        "listTitle": "清單檢視",
+        "type": {
+          "tw_company": "台股公司",
+          "intl_company": "國際公司",
+          "technology": "技術",
+          "material": "材料",
+          "application": "應用",
+          "product": "產品"
+        }
       }
     },
     "ai": {
@@ -3840,7 +3882,8 @@
       "search": "搜尋主題",
       "noThemesMatch": "沒有符合的主題",
       "subIndustry": "次產業：",
-      "allSubIndustries": "全部"
+      "allSubIndustries": "全部",
+      "viewThemePage": "查看題材頁"
     },
     "drawer": {
       "title": "新增 / 編輯指標條件",
@@ -4028,6 +4071,43 @@
       "conflict": "設定已在其他裝置變更，請重新整理後再試。",
       "needOne": "至少選一個策略",
       "failed": "儲存失敗，請稍後再試。"
+    }
+  },
+  "themes": {
+    "page": {
+      "memberCount": "{count} 檔成員",
+      "relatedTitle": "相關題材",
+      "boardTitle": "上游 → 中游 → 下游",
+      "boardAria": "題材成員依上游、中游、下游分欄",
+      "emptyColumn": "此位置尚無成員",
+      "relatedCompanies": "相關公司",
+      "position": {
+        "upstream": "上游",
+        "midstream": "中游",
+        "downstream": "下游",
+        "related": "相關"
+      },
+      "emptyTitle": "這個題材目前沒有成員",
+      "emptyBody": "成員資料更新後會顯示在這裡。",
+      "notFoundTitle": "找不到這個題材",
+      "notFoundBody": "題材可能已被移除，請回到大盤的題材分頁挑選其他題材。",
+      "backToThemes": "回到題材列表",
+      "quoteNote": "漲跌幅為最近一個交易日收盤相較前一日，題材分類為資料整理，不構成投資建議。",
+      "showAll": "顯示全部（還有 {count} 檔）",
+      "showFewer": "收合"
+    },
+    "tab": {
+      "title": "概念題材",
+      "hint": "依題材瀏覽成員公司。平均漲跌是取前 {sample} 檔成員的最近一個交易日平均，僅供參考。",
+      "searchLabel": "搜尋題材",
+      "searchPlaceholder": "搜尋題材名稱",
+      "noMatch": "沒有符合的題材",
+      "empty": "目前沒有概念題材",
+      "members": "{count} 檔成員",
+      "avgLabel": "平均漲跌",
+      "avgSample": "取 {count} 檔計算",
+      "avgUnavailable": "暫無報價",
+      "quoteNote": "平均漲跌為最近一個交易日收盤相較前一日；題材分類為資料整理，不構成投資建議。"
     }
   }
 }

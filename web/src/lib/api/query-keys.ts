@@ -13,6 +13,8 @@ export const queryKeys = {
       : (["stock_institutional_flow", market, symbol, startDate] as const),
   priceHistory: (market: Market, symbol: string, days: number) =>
     ["price_history", market, symbol, days] as const,
+  entityGraph: (market: Market, symbol: string, minWeight: number, limit: number) =>
+    ["entity_graph", market, symbol, minWeight, limit] as const,
   themeMembers: (themeKey: string) => ["theme_members", themeKey] as const,
   themes: (kind: string) => ["themes", kind] as const,
   /** 策略盯盤: today's list (or a given day's) and the user's one subscription. */
