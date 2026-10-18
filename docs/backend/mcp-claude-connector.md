@@ -278,9 +278,14 @@ screen itself (it is a web-app deliverable).
 
 ## Tools that are not offered over MCP
 
-`ask_user` and the `propose_*` tools (alert, memory, schedule, watchlist change) only make sense
-inside the Miru chat: each ends in a card that the person confirms in the app. Over MCP nobody would
-see the card, and the calling model could wrongly tell its user that something was set up, so the
-server does not list them, does not find them with `search_tools` and refuses them in
-`execute_tool` (`MCP_EXCLUDED_TOOLS` in `mcp/app.py`). Every other registered tool is reachable
-automatically, with no separate MCP registration.
+Seven registered tools are deliberately left out (`MCP_EXCLUDED_TOOLS` in `mcp/app.py`): they are not
+listed, not found by `search_tools` and refused by `execute_tool`.
+
+- **Chat-only:** `ask_user` and the `propose_*` tools (alert, memory, schedule, watchlist change) end
+  in a card that the person confirms in the Miru app. Over MCP nobody would see the card, and the
+  calling model could wrongly tell its user that something was set up.
+- **Costly or internal:** `web_search` and `fetch_url` spend the operator's search budget and fetch
+  arbitrary pages for any caller (MCP clients have their own browsing); `get_source_matrix` lists
+  the configured upstream sources, which is operator infrastructure, not market data.
+
+Every other registered tool is reachable automatically, with no separate MCP registration.
