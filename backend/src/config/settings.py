@@ -81,6 +81,22 @@ class Settings(BaseSettings):
     # A directory the operator keeps locally; empty or missing = those features show nothing.
     reference_data_dir: str = "./reference-data"
 
+    # ---- Supply-chain research pipeline (analytics/supply_chain/verification) ----
+    # Budgeted, leader-only web research that writes evidence-backed rows into the private relation
+    # files. Off by default and off in production; every cap below ends a run gracefully.
+    supply_chain_research_enabled: bool = False
+    supply_chain_research_max_claims: int = 25
+    supply_chain_research_max_searches: int = 60
+    supply_chain_research_max_pages: int = 90
+    supply_chain_research_max_llm_calls: int = 120
+    supply_chain_research_budget_usd: float = 2.0
+    supply_chain_pages_per_claim: int = 3
+    supply_chain_reverify_days: int = 365
+    supply_chain_reject_cooldown_days: int = 90
+    supply_chain_max_source_age_days: int = 1095
+    supply_chain_gap_top_n: int = 50
+    supply_chain_second_opinion: bool = False
+
     # ---- TLS policy (M6D, governance.md §5) ----
     tls_policy: TLSPolicy = TLSPolicy.STRICT
 

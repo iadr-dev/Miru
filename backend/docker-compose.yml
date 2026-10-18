@@ -48,6 +48,19 @@ x-app-env: &app-env
   # Private reference data (supply chain, concept themes) mounted read-only from ../reference-data
   # on the services that load it; kept out of git on purpose.
   REFERENCE_DATA_DIR: /app/reference-data
+  # Supply-chain research pipeline (off by default; production keeps it off). Caps end a run early.
+  SUPPLY_CHAIN_RESEARCH_ENABLED: ${SUPPLY_CHAIN_RESEARCH_ENABLED:-false}
+  SUPPLY_CHAIN_RESEARCH_MAX_CLAIMS: ${SUPPLY_CHAIN_RESEARCH_MAX_CLAIMS:-25}
+  SUPPLY_CHAIN_RESEARCH_MAX_SEARCHES: ${SUPPLY_CHAIN_RESEARCH_MAX_SEARCHES:-60}
+  SUPPLY_CHAIN_RESEARCH_MAX_PAGES: ${SUPPLY_CHAIN_RESEARCH_MAX_PAGES:-90}
+  SUPPLY_CHAIN_RESEARCH_MAX_LLM_CALLS: ${SUPPLY_CHAIN_RESEARCH_MAX_LLM_CALLS:-120}
+  SUPPLY_CHAIN_RESEARCH_BUDGET_USD: ${SUPPLY_CHAIN_RESEARCH_BUDGET_USD:-2.0}
+  SUPPLY_CHAIN_PAGES_PER_CLAIM: ${SUPPLY_CHAIN_PAGES_PER_CLAIM:-3}
+  SUPPLY_CHAIN_REVERIFY_DAYS: ${SUPPLY_CHAIN_REVERIFY_DAYS:-365}
+  SUPPLY_CHAIN_REJECT_COOLDOWN_DAYS: ${SUPPLY_CHAIN_REJECT_COOLDOWN_DAYS:-90}
+  SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS: ${SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS:-1095}
+  SUPPLY_CHAIN_GAP_TOP_N: ${SUPPLY_CHAIN_GAP_TOP_N:-50}
+  SUPPLY_CHAIN_SECOND_OPINION: ${SUPPLY_CHAIN_SECOND_OPINION:-false}
   ENV: development
   # Dev-only startup gap-fill (ingest/__main__.py's `_startup_gap_fill`, docs/backend/
   # modules/22-data-ingest.md §6a). Defaults to OFF: an unattended `docker compose up`/
@@ -353,9 +366,11 @@ services:
     # the scoring batch grew past 4 GB and was OOM-killed (exit 137) before the fixes.
     mem_limit: ${INGEST_MEM_LIMIT:-5g}
     memswap_limit: ${INGEST_MEM_LIMIT:-5g}
+    # Read-write only here: the ingest leader is the single writer of the research pipeline
+    # (verification/writer.py); the api and the others keep the read-only mount.
     volumes:
       - marketdata:/app/data
-      - ../reference-data:/app/reference-data:ro
+      - ../reference-data:/app/reference-data
     depends_on:
       postgres:
         condition: service_healthy

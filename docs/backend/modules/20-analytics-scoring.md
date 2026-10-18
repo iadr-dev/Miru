@@ -440,6 +440,83 @@ written).
   most 120 nodes (`limit` <= 94 entities + 25 peers + the focus). Only ids, labels, types and counts
   leave the service - no report text.
 
+### Research pipeline: DISCOVER -> VERIFY (`analytics/supply_chain/verification/`)
+
+A budgeted, auditable replacement for hand-driven research. It keeps the file-truth model: verified
+results are written to the private relation files and the loader then refreshes the index. It is
+**off by default and off in production** (`SUPPLY_CHAIN_RESEARCH_ENABLED=false`).
+
+- **Discover** (`discovery.py`, pure). A target is a claim `{supplier, customer, kind}` with a stable
+  id `kind:MARKET-symbol>MARKET-symbol` (a coverage-gap target is `gap:MARKET-symbol`). Sources, in
+  priority order: (a) `supply_chain/candidates.jsonl` - only claims whose two ends both resolve to a
+  real company (a Taiwan code in the stock roster, or a resolved US ticker); (b) coverage gaps - the
+  top `SUPPLY_CHAIN_GAP_TOP_N` companies by market value with no published relation; (c) stale
+  re-checks of `research` rows whose `last_verified_at` (else `as_of`) is older than
+  `SUPPLY_CHAIN_REVERIFY_DAYS` or unknown. Within a source the larger company's market value ranks
+  first. With `--source all` the claim limit is shared 60/25/15 between the three sources and room a
+  source does not use flows to the next, so the (large) candidates file cannot starve the others.
+  Skipped: a pair already published, and any claim in `supply_chain/rejected.jsonl` (append-only,
+  one atomic `O_APPEND` write per line) within `SUPPLY_CHAIN_REJECT_COOLDOWN_DAYS`.
+- **Search + read** (`search.py`). `SearchProvider` is a Protocol; the one real implementation wraps
+  `dataaccess.web_search.WebSearchGateway` (Brave search, SSRF-guarded page reads), so `analytics/`
+  makes no network call of its own. Two queries per claim (Traditional Chinese names, then English),
+  hits from publishers the trust table marks `rejected` are dropped, primary then secondary then
+  tertiary are preferred, and at most `SUPPLY_CHAIN_PAGES_PER_CLAIM` pages are read.
+- **Judge** (`judge.py`, `ModelRole.SUBAGENT`). The page goes in a delimited block labelled untrusted
+  data with an instruction to ignore anything written in it (the delimiter is stripped from the page
+  text). Strict JSON back: `{supports, direction, supplier_is_first, excerpt, current,
+  anonymous_counterparty, as_of_year}`. A page that does not name both companies, is from a rejected
+  host or is dated older than the cap never reaches the model. A gap target is turned into concrete
+  claims by one extraction call per page; a counterparty the company directory does not know is
+  dropped (the fabrication safeguard of the theme research), so the model cannot add a company.
+- **Guards** (`guards.py`, pure, unit-tested rule by rule) - the model cannot override any of them:
+  the excerpt must be a verbatim substring of the fetched page (after whitespace normalisation), at
+  most 300 characters, and name both companies or a known alias (roster names, entity-catalog
+  aliases, names already in the relation files; corporate suffixes are tolerated); past or ended
+  wording (曾, 過去, 原為, 先前, 已終止, 歷年, formerly, previously, no longer) is rejected unless the
+  same sentence also has a present-tense marker; anonymous counterparties (客戶A, 某大客戶, "a major
+  customer") are rejected; sector, peer and concept-stock lists are rejected; a `supplies` claim needs
+  relation wording and a `competes` claim explicit rivalry wording; the direction must match and not
+  be flipped; the source is rejected when older than `SUPPLY_CHAIN_MAX_SOURCE_AGE_DAYS` (1095) when a
+  date can be parsed, and so is a host whose trust is `rejected`; and the excerpt is scanned with
+  `governance.textscan` (advice wording or a data-vendor name rejects it).
+- **Aggregate**. Each accepted page becomes `Evidence(checker=llm)`; the grade is
+  `domain.rules.grade_from_evidence` (publisher = the page host, so independence is by host). A claim
+  is published only when a grade exists. Reading stops early once the grade is high. With
+  `SUPPLY_CHAIN_SECOND_OPINION=true` (default false) a low-grade single-source claim is re-judged
+  once by `ModelRole.SYNTHESIS`; a disagreement writes it as `candidate` instead of `verified`.
+  A claim that was examined and not supported is logged to `rejected.jsonl`; one that was not
+  examined (budget cap, provider down) is skipped and not logged.
+- **Write** (`writer.py`) - the only writer of `relations/*.yaml`, leader-only. One file per supplier
+  (`TW-<symbol>.yaml`, `US-<ticker>.yaml`); a row already in any file is updated in place, found by
+  `(supplier, customer, kind, product)`. Evidence merges by URL, `last_verified_at` is set, `as_of`
+  only moves forward, rows are never deleted, and `manual` and `seeded` rows are never touched. A
+  `candidate` result never demotes a published row. Writes take a lock file in the directory, stage
+  every touched file beside its original, validate each with the loader's own row parser
+  (`RelationFileRow` + `build_relation`), and only then `os.replace`; on any failure files already
+  swapped are restored and nothing half-written remains. Rewritten files are normalised YAML
+  (comments are not kept). A dry run plans the same changes and writes nothing.
+- **Budget** (`budget.py`). Per run: `SUPPLY_CHAIN_RESEARCH_MAX_CLAIMS` (25), `..._MAX_SEARCHES` (60),
+  `..._MAX_PAGES` (90), `..._MAX_LLM_CALLS` (120), `..._BUDGET_USD` (2.0) against a conservative
+  per-call estimate (search 0.005, subagent call 0.02, synthesis call 0.03; a higher cost reported by
+  the provider wins). The first cap reached ends the run gracefully (`stopped_by`).
+- **Entry points.** `python -m analytics.supply_chain discover [--limit N] [--source
+  candidates|gaps|stale|all]` prints the next targets; `verify [--limit N] [--source ...]
+  [--dry-run]` runs the pipeline. A dry run does search and call the model within the caps but
+  writes no file and no rejection. A real `verify` takes the ingest writer lease (exit 3 if the daemon
+  holds it), writes, and runs the loader. Both print counts and claim ids only - never page text.
+  The weekly job `sc_research` (`job_sc_research`, leader-only, registered in
+  `ingest.daemon.SCHEDULED_JOBS` and an optional step of the dev backfill CLI) is gated by
+  `SUPPLY_CHAIN_RESEARCH_ENABLED`; it journals SKIPPED when disabled, not the leader, no
+  `BRAVE_SEARCH_API_KEY`, or no LLM key for the SUBAGENT role. After a run that wrote rows it calls
+  `job_sc_refdata_load`. The journal detail is the run summary (claims tried, verified, candidates,
+  rejected, skipped, searches, pages, LLM calls, estimated spend, `stopped_by`, rejection reason
+  counts); no page text is logged or journaled.
+- **Safety.** Web content is untrusted data, never instructions: the only things from a page that can
+  reach a file are a verbatim excerpt that passed every guard and the page URL. The ingest container
+  mounts `reference-data` read-write (the other services keep it read-only) because it is the single
+  writer.
+
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 
 A three-stage pipeline: an 08:00 screen, an intraday check every 10 minutes (09:00-13:30), and an

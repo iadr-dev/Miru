@@ -51,6 +51,7 @@ from datetime import UTC, datetime, timedelta
 
 import structlog
 
+from analytics.supply_chain.verification.job import job_sc_research
 from config.settings import Settings, get_settings
 from ingest.context import IngestContext
 from ingest.daemon import build_ingest_context_from_settings, close_ingest_context
@@ -491,6 +492,7 @@ async def _run_backfill(
     else:
         runs = await run_backfill_cli(settings, ctx, override=args.yes, years=years)
         runs += await run_derived_compute_catchup(settings, ctx, override=args.yes, years=years)
+        runs += await _optional_sc_research(settings, ctx)
     if not runs:
         logger.info("ingest_backfill_cli_no_runs")
         return 0
@@ -501,6 +503,14 @@ async def _run_backfill(
         failed_runs=len(failed),
     )
     return 1 if failed else 0
+
+
+async def _optional_sc_research(settings: Settings, ctx: IngestContext) -> tuple[JobRun, ...]:
+    """Optional dev step: one budgeted supply-chain research pass, only when
+    SUPPLY_CHAIN_RESEARCH_ENABLED is set (the job re-checks the leader, key and LLM gates)."""
+    if not settings.supply_chain_research_enabled:
+        return ()
+    return (await job_sc_research(datetime.now(UTC).date(), ctx),)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
