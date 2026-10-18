@@ -93,17 +93,23 @@ _READ_ONLY_ANNOTATIONS = ToolAnnotations(
 
 _SEARCH_TOOLS_NAME = "search_tools"
 
-# Tools that only make sense inside the Miru chat: each ends in a card the user confirms in the app
-# (propose_*) or asks the person a question in the chat UI (ask_user). Over MCP nobody would see
-# the card, and the calling model could wrongly tell its user that an alert or schedule was set
-# up, so they are not listed, found by search_tools or run by execute_tool.
+# Tools an MCP caller should not get. Chat-only: each ends in a card the user confirms in the app
+# (propose_*) or asks the person a question in the chat UI (ask_user); over MCP nobody would see
+# the card, and the calling model could wrongly tell its user that an alert or schedule was set up.
+# Costly or internal: web_search / fetch_url spend the operator's search budget and fetch arbitrary
+# pages for any caller (MCP clients have their own browsing), and get_source_matrix lists the
+# configured upstream sources, which is operator infrastructure, not market data. None of these is
+# listed, found by search_tools or run by execute_tool.
 MCP_EXCLUDED_TOOLS: frozenset[str] = frozenset(
     {
         "ask_user",
+        "fetch_url",
+        "get_source_matrix",
         "propose_alert",
         "propose_memory",
         "propose_schedule",
         "propose_watchlist_change",
+        "web_search",
     }
 )
 _EXECUTE_TOOL_NAME = "execute_tool"

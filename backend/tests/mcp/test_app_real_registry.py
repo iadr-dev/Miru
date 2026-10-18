@@ -54,10 +54,10 @@ def test_real_execute_tool_round_trips_a_real_deferred_tool() -> None:
     async def run() -> None:
         result = await server.call_tool(
             "execute_tool",
-            {"id": "get_source_matrix", "args": {}},
+            {"id": "get_tag_catalog", "args": {}},
         )
         assert not result.is_error
-        assert "entries" in result.structured_content
+        assert result.structured_content
 
     asyncio.run(run())
 
