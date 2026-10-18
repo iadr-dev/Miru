@@ -15,7 +15,7 @@ export const SCREENER_OPERATORS = ["gt", "gte", "lt", "lte", "between", "eq", "i
 export const screenerOperatorSchema = z.enum(SCREENER_OPERATORS);
 export type ScreenerOperator = z.infer<typeof screenerOperatorSchema>;
 
-export const SCREENER_DATA_CLASSES = ["public", "sponsor"] as const;
+export const SCREENER_DATA_CLASSES = ["public", "sponsor", "private"] as const;
 export const screenerDataClassSchema = z.enum(SCREENER_DATA_CLASSES);
 export type ScreenerDataClass = z.infer<typeof screenerDataClassSchema>;
 
