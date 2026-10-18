@@ -47,6 +47,8 @@ from llm.base import LLMClient
 
 logger = structlog.get_logger(__name__)
 
+_MIN_TERTIARY_PUBLISHERS = 2
+
 REASON_NO_SOURCES = "no_sources"
 REASON_SEARCH_DOWN = "search_unavailable"
 REASON_FETCH_FAILED = "fetch_failed"
@@ -198,9 +200,10 @@ class Pipeline:
     async def _finish(self, collected: _Collected) -> ClaimResult:
         """Grade the evidence; a weak single-source claim may get a second opinion."""
         grade = grade_from_evidence(collected.evidence) or Grade.LOW
-        status = Status.VERIFIED
+        status = _status_for(collected.evidence)
         if (
-            self._cfg.second_opinion
+            status is Status.VERIFIED
+            and self._cfg.second_opinion
             and self._second is not None
             and grade is Grade.LOW
             and len(collected.evidence) == 1
@@ -269,11 +272,24 @@ class Pipeline:
             supplier=collected.supplier,
             customer=collected.customer,
             kind=collected.target.kind,
-            status=Status.VERIFIED,
+            status=_status_for(collected.evidence),
             grade=grade,
             as_of=_as_of(collected.evidence, collected.years),
             evidence=tuple(collected.evidence),
         )
+
+
+def _status_for(evidence: Sequence[Evidence]) -> Status:
+    """Unattended research publishes only what a reliable source backs: a primary or secondary
+    publisher, or two independent tertiary ones. Anything resting on a single tertiary source
+    (including any unlisted host) is written as a candidate for a person or a second source."""
+    reliable = any(e.trust in (Trust.PRIMARY, Trust.SECONDARY) for e in evidence)
+    tertiary = {e.publisher.strip().lower() for e in evidence if e.trust is Trust.TERTIARY}
+    return (
+        Status.VERIFIED
+        if reliable or len(tertiary) >= _MIN_TERTIARY_PUBLISHERS
+        else Status.CANDIDATE
+    )
 
 
 async def run_pipeline(  # noqa: PLR0913 - collaborators are injected, one per seam

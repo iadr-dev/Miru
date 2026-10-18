@@ -51,7 +51,7 @@ def test_non_supporting_evidence_is_ignored() -> None:
         ("https://www.moneydj.com/a", T),
         ("https://www.ptt.cc/bbs/x", R),
         ("https://unknown.example.org/a", T),
-        ("https://ir.somecompany.example/report", P),
+        ("https://ir.somecompany.example/report", T),  # a prefix alone proves nothing
     ],
 )
 def test_trust_for_url_default_table(url: str, expected: Trust) -> None:

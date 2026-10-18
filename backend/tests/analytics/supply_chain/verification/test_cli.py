@@ -26,6 +26,9 @@ URL = "https://news.example.com/p"
 def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "ref"
     (root / "supply_chain").mkdir(parents=True)
+    (root / "supply_chain" / "publisher_trust.yaml").write_text(
+        "news.example.com: secondary\n", encoding="utf-8"
+    )
     line = {
         "supplier": "9001",
         "customer": "9002",

@@ -68,7 +68,6 @@ _REJECTED = (
     "facebook.com",
     "reddit.com",
 )
-_IR_HOST_PREFIXES = ("ir.", "investor.", "investors.")
 
 DEFAULT_TRUST_TABLE: Mapping[str, Trust] = {
     **dict.fromkeys(_TERTIARY, Trust.TERTIARY),
@@ -85,15 +84,14 @@ def host_of(url: str) -> str:
 
 def trust_for_url(url: str, trust_table: Mapping[str, Trust] | None = None) -> Trust:
     """Trust of a source by its domain. `trust_table` entries override the built-in table; the
-    longest matching domain suffix wins. A company investor-relations host (`ir.`/`investor.`)
-    is primary; an unknown domain is tertiary (never enough alone)."""
+    longest matching domain suffix wins. A domain not in the table is tertiary: a hostname that
+    merely starts with `ir.` proves nothing (anyone can register one), so company investor-relations
+    sites are primary only when listed in the trust table."""
     host = host_of(url)
     table = {**DEFAULT_TRUST_TABLE, **(trust_table or {})}
     matches = [d for d in table if host == d or host.endswith("." + d)]
     if matches:
         return table[max(matches, key=len)]
-    if host.startswith(_IR_HOST_PREFIXES):
-        return Trust.PRIMARY
     return Trust.TERTIARY
 
 

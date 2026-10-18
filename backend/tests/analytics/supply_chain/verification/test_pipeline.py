@@ -83,7 +83,7 @@ async def test_a_primary_source_stops_the_search_early() -> None:
 
 
 async def test_single_tertiary_source_is_published_with_a_low_grade() -> None:
-    p = pipeline(pages("blog.example.net"), llm(judgement_json()))
+    p = pipeline(pages("wire-a.example.com"), llm(judgement_json()))
     outcome = await p.verify_target(target())
     assert outcome.results[0].grade is Grade.LOW
 
@@ -152,7 +152,7 @@ async def test_page_budget_ends_the_claim_as_skipped() -> None:
 
 
 async def test_second_opinion_disagreement_downgrades_to_candidate() -> None:
-    search = pages("blog.example.net")
+    search = pages("wire-a.example.com")
     p = pipeline(
         search,
         llm(judgement_json()),
@@ -169,7 +169,7 @@ async def test_second_opinion_disagreement_downgrades_to_candidate() -> None:
 
 async def test_second_opinion_is_off_by_default_and_skipped_for_strong_claims() -> None:
     second = llm(judgement_json(supports=False))
-    off = pipeline(pages("blog.example.net"), llm(judgement_json()), second=second)
+    off = pipeline(pages("wire-a.example.com"), llm(judgement_json()), second=second)
     assert (await off.verify_target(target())).results[0].status is Status.VERIFIED
     assert second.calls == []
     strong = pipeline(
@@ -298,3 +298,26 @@ async def test_gap_target_turns_a_page_into_concrete_claims() -> None:
     [result] = outcome.results
     assert (result.supplier.symbol, result.customer.symbol) == ("9001", "9002")
     assert result.evidence[0].checker.value == "llm"
+
+
+async def test_a_single_unlisted_source_is_only_a_candidate() -> None:
+    """An unlisted host is tertiary, and a lone tertiary source never publishes unattended."""
+    p = pipeline(pages("unlisted.example.net"), llm(judgement_json()))
+    [result] = (await p.verify_target(target())).results
+    assert result.status is Status.CANDIDATE
+
+
+async def test_two_independent_unlisted_sources_publish_at_medium() -> None:
+    p = pipeline(
+        pages("one.example.net", "two.example.net"), llm(judgement_json(), judgement_json())
+    )
+    [result] = (await p.verify_target(target())).results
+    assert (result.status, result.grade) == (Status.VERIFIED, Grade.MEDIUM)
+
+
+async def test_an_ir_looking_hostname_does_not_earn_primary_trust() -> None:
+    """Anyone can register ir.<anything>; only the trust table grants primary."""
+    p = pipeline(pages("ir.attacker.example.net"), llm(judgement_json()))
+    [result] = (await p.verify_target(target())).results
+    assert result.status is Status.CANDIDATE
+    assert all(e.trust is Trust.TERTIARY for e in result.evidence)
