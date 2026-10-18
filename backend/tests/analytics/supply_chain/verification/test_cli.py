@@ -52,6 +52,9 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(job_module, "load_directory", lambda *_a, **_k: directory)
     monkeypatch.setattr(job_module, "resolve_role", lambda *_a, **_k: llm(judgement_json()))
     monkeypatch.setattr(
+        job_module, "resolve_role_with_override", lambda *_a, **_k: llm(judgement_json())
+    )
+    monkeypatch.setattr(
         job_module,
         "BraveSearchProvider",
         lambda **_k: StubSearch([hit(URL)], {URL: PAGE_TEXT}),

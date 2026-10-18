@@ -258,7 +258,12 @@ async def test_concurrency_cap_sheds_load_with_503_and_recovers() -> None:
         assert shed.headers["retry-after"] == "1"
         release.set()
         assert (await first).status_code == 200
-        ok = await http.post(server.mcp_url, json=INITIALIZE, headers=MCP_HEADERS)
+        # The slot frees just after the response is delivered, so allow it a moment.
+        for _ in range(20):
+            ok = await http.post(server.mcp_url, json=INITIALIZE, headers=MCP_HEADERS)
+            if ok.status_code != 503:
+                break
+            await asyncio.sleep(0.1)
         assert ok.status_code == 200
 
 

@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     # Budgeted, leader-only web research that writes evidence-backed rows into the private relation
     # files. Off by default and off in production; every cap below ends a run gracefully.
     supply_chain_research_enabled: bool = False
+    # "provider/model" for the research judge only (chat sub-agents keep their own role);
+    # unset or unusable = the SUBAGENT role's normal chain.
+    supply_chain_research_model: str | None = None
     supply_chain_research_max_claims: int = 25
     supply_chain_research_max_searches: int = 60
     supply_chain_research_max_pages: int = 90
