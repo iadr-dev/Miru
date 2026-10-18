@@ -134,7 +134,7 @@ async def test_missing_llm_role_is_skipped(
     def no_provider(*_a: object, **_k: object) -> object:
         raise ProviderNotConfiguredError("nope")
 
-    monkeypatch.setattr(job_module, "resolve_role", no_provider)
+    monkeypatch.setattr(job_module, "resolve_role_with_override", no_provider)
     run = await run_research_job(
         TODAY, make_ctx(tmp_path, AlwaysLeader()), settings=settings(), root=reference
     )
@@ -253,3 +253,18 @@ async def test_the_backfill_step_runs_only_when_the_setting_is_on(
     assert await backfill_cli._optional_sc_research(off, ctx) == ()
     assert len(await backfill_cli._optional_sc_research(settings(), ctx)) == 1
     assert len(calls) == 1
+
+
+def test_the_research_model_setting_picks_the_judge_and_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str | None] = []
+
+    def fake(_role: object, override: str | None, _settings: object = None) -> object:
+        seen.append(override)
+        return object()
+
+    monkeypatch.setattr(job_module, "resolve_role_with_override", fake)
+    assert job_module.missing_prerequisite(settings(supply_chain_research_model="ollama/x")) is None
+    assert job_module.missing_prerequisite(settings()) is None
+    assert seen == ["ollama/x", None]

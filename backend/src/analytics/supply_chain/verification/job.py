@@ -46,7 +46,12 @@ from ingest.context import IngestContext
 from ingest.journal import JobRun, RunStatus, journal_run
 from ingest.store import ParquetStore
 from llm.base import LLMClient
-from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
+from llm.registry import (
+    ModelRole,
+    ProviderNotConfiguredError,
+    resolve_role,
+    resolve_role_with_override,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -103,7 +108,9 @@ def missing_prerequisite(settings: Settings, *, need_second: bool = False) -> st
     if not reveal(settings.brave_search_api_key):
         return "no search key configured"
     try:
-        resolve_role(ModelRole.SUBAGENT, settings)
+        resolve_role_with_override(
+            ModelRole.SUBAGENT, settings.supply_chain_research_model, settings
+        )
         if need_second:
             resolve_role(ModelRole.SYNTHESIS, settings)
     except ProviderNotConfiguredError:
@@ -133,7 +140,10 @@ async def execute_research(  # noqa: PLR0913 - collaborators are injected, one p
     trust = load_trust_table(base.joinpath(*TRUST_FILE))
     pipeline = Pipeline(
         search=search or BraveSearchProvider(tls_policy=settings.tls_policy),
-        judge_client=judge_client or resolve_role(ModelRole.SUBAGENT, settings),
+        judge_client=judge_client
+        or resolve_role_with_override(
+            ModelRole.SUBAGENT, settings.supply_chain_research_model, settings
+        ),
         second_client=second_client
         or (
             resolve_role(ModelRole.SYNTHESIS, settings)
