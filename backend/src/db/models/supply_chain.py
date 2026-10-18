@@ -1,4 +1,4 @@
-"""Supply-chain relations and their evidence.
+"""Supply-chain relations, their evidence, and the derived chain positions.
 
 An index over the operator's private files (the files are the source of truth, rebuilt into
 these tables by `analytics.supply_chain.jobs`). Platform reference data, so — like the theme
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, Index, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -87,4 +87,46 @@ class ScEvidenceRow(Base):
         CheckConstraint("checker IN ('rule','llm','human')", name="ck_sc_evidence_checker"),
         CheckConstraint("length(excerpt) <= 300", name="ck_sc_evidence_excerpt_len"),
         Index("ix_sc_evidence_relation", "relation_id"),
+    )
+
+
+class ScPositionRow(Base):
+    """One company's computed position in one industry chain. Derived data: the positions job
+    rewrites the whole table, so nothing here is hand-edited (operator decisions live in the
+    private overrides file). Platform reference data, so no `user_id`."""
+
+    __tablename__ = "sc_positions"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    symbol: Mapped[str]
+    market: Mapped[str]
+    chain_key: Mapped[str]
+    chain_name: Mapped[str] = mapped_column(default="")
+    position: Mapped[str]
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    method: Mapped[str]
+    confidence: Mapped[float]
+    reasons: Mapped[list[dict[str, str]]] = mapped_column(JSON, default=list)
+    inputs_hash: Mapped[str] = mapped_column(default="")
+    computed_at: Mapped[datetime] = mapped_column(_UTC)
+
+    __table_args__ = (
+        CheckConstraint("market IN ('TW','US')", name="ck_sc_positions_market"),
+        CheckConstraint(
+            "position IN ('upstream','midstream','downstream')", name="ck_sc_positions_position"
+        ),
+        CheckConstraint("method IN ('override','evidence','prior')", name="ck_sc_positions_method"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_sc_positions_confidence"),
+        UniqueConstraint("symbol", "market", "chain_key", name="uq_sc_positions_natural_key"),
+        Index("ix_sc_positions_symbol", "symbol", "market"),
+        Index("ix_sc_positions_chain", "chain_key"),
+        # Exactly one primary chain per company, enforced by the database.
+        Index(
+            "uq_sc_positions_primary",
+            "symbol",
+            "market",
+            unique=True,
+            sqlite_where=text("is_primary = 1"),
+            postgresql_where=text("is_primary"),
+        ),
     )

@@ -23,12 +23,14 @@ from __future__ import annotations
 
 from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from datetime import date as date_
+from datetime import datetime
 
 import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analytics.supply_chain.edges import ScEdge, to_edges
+from analytics.supply_chain.positions.models import Method, Position, ReasonCode
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
 from analytics.symbol_universe import is_scoreable_symbol
 from analytics.themes.models import (
@@ -355,6 +357,88 @@ class GetSupplyChainEdgesTool(BaseTool):
         )
 
 
+class ChainReason(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    code: ReasonCode
+    detail: str = ""
+
+
+class ChainPositionItem(BaseModel):
+    """One industry chain the company sits in. `method` says how the position was reached:
+    `override` (an operator decision), `evidence` (verified supply relations, alone or
+    confirming the tier map) or `prior` (the sub-industry tier map only; low confidence when the
+    reason is `prior_keyword`)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chain_key: str
+    chain_name: str
+    position: Position
+    is_primary: bool
+    method: Method
+    confidence: float
+    reasons: tuple[ChainReason, ...] = ()
+    computed_at: datetime | None = None
+
+
+class GetChainPositionOutput(BaseModel):
+    """Where a company sits (upstream/midstream/downstream) in each industry chain it belongs to.
+    Empty `positions` means unclassified (尚未分類) - the classifier abstains rather than guesses.
+    A descriptive classification, never a rating."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    symbol: str
+    market: str
+    positions: tuple[ChainPositionItem, ...] = Field(default_factory=tuple)
+
+
+class GetChainPositionTool(BaseTool):
+    """`get_chain_position` - a company's computed position in each of its industry chains."""
+
+    name = "get_chain_position"
+    description = (
+        "Get where one company sits (upstream/midstream/downstream) in each industry chain it "
+        "belongs to, with the method, confidence and reason codes behind each position. An empty "
+        "list means not yet classified."
+    )
+    input_model: type[BaseModel] = SymbolInput
+    output_model: type[BaseModel] = GetChainPositionOutput
+    data_class = DataClass.PUBLIC
+    card_type: str | None = None
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
+        del ctx
+        typed = parse_args(SymbolInput, args)
+        if typed.market not in (Market.TW, Market.US):
+            return GetChainPositionOutput(symbol=typed.id, market=typed.market.value)
+        async with self._session_factory() as session:
+            rows = await SqlAlchemySupplyChainStore(session).get_positions_for_symbol(
+                typed.id, "TW" if typed.market is Market.TW else "US"
+            )
+        return GetChainPositionOutput(
+            symbol=typed.id,
+            market=typed.market.value,
+            positions=tuple(
+                ChainPositionItem(
+                    chain_key=r.chain_key,
+                    chain_name=r.chain_name,
+                    position=r.position,
+                    is_primary=r.is_primary,
+                    method=r.method,
+                    confidence=r.confidence,
+                    reasons=tuple(ChainReason(code=x.code, detail=x.detail) for x in r.reasons),
+                    computed_at=r.computed_at,
+                )
+                for r in rows
+            ),
+        )
+
+
 def _real_calendar(store: ParquetStore, market: str) -> TradingDayCalendar:
     """The real trading-day calendar for `market` — duplicated from `tools/market/`'s
     own private helper of the same name/shape rather than imported, matching this codebase's
@@ -531,7 +615,7 @@ def _latest_price_date(store: ParquetStore, market: str) -> date_ | None:
 def build_registration_table(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> list[tuple[Tool, bool]]:
-    """This module's `(tool, immediate)` registration table. All five are deferred long-tail
+    """This module's `(tool, immediate)` registration table. All are deferred long-tail
     reads. Unlike the router-backed tool groups, these read the relational theme store, so this
     table takes the app's session factory rather than the data-access router;
     `get_theme_tier_heatmap` additionally builds its own `ParquetStore` (same
@@ -544,12 +628,17 @@ def build_registration_table(
         (GetSymbolThemesTool(session_factory), False),
         (GetThemeTiersTool(session_factory), False),
         (GetSupplyChainEdgesTool(session_factory), False),
+        (GetChainPositionTool(session_factory), False),
         (GetThemeTierHeatmapTool(session_factory, store), False),
     ]
     return tools
 
 
 __all__ = [
+    "ChainPositionItem",
+    "ChainReason",
+    "GetChainPositionOutput",
+    "GetChainPositionTool",
     "GetSupplyChainEdgesOutput",
     "GetSupplyChainEdgesTool",
     "GetSymbolThemesOutput",

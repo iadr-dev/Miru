@@ -1943,6 +1943,82 @@
     "title": "CentralBankRateRow",
     "type": "object"
    },
+   "ChainPositionItem": {
+    "additionalProperties": false,
+    "description": "One industry chain the company sits in. `method` says how the position was reached:\n`override` (an operator decision), `evidence` (verified supply relations, alone or\nconfirming the tier map) or `prior` (the sub-industry tier map only; low confidence when the\nreason is `prior_keyword`).",
+    "properties": {
+     "chain_key": {
+      "title": "Chain Key",
+      "type": "string"
+     },
+     "chain_name": {
+      "title": "Chain Name",
+      "type": "string"
+     },
+     "computed_at": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Computed At"
+     },
+     "confidence": {
+      "title": "Confidence",
+      "type": "number"
+     },
+     "is_primary": {
+      "title": "Is Primary",
+      "type": "boolean"
+     },
+     "method": {
+      "$ref": "#/components/schemas/Method"
+     },
+     "position": {
+      "$ref": "#/components/schemas/Position"
+     },
+     "reasons": {
+      "default": [],
+      "items": {
+       "$ref": "#/components/schemas/ChainReason"
+      },
+      "title": "Reasons",
+      "type": "array"
+     }
+    },
+    "required": [
+     "chain_key",
+     "chain_name",
+     "position",
+     "is_primary",
+     "method",
+     "confidence"
+    ],
+    "title": "ChainPositionItem",
+    "type": "object"
+   },
+   "ChainReason": {
+    "additionalProperties": false,
+    "properties": {
+     "code": {
+      "$ref": "#/components/schemas/ReasonCode"
+     },
+     "detail": {
+      "default": "",
+      "title": "Detail",
+      "type": "string"
+     }
+    },
+    "required": [
+     "code"
+    ],
+    "title": "ChainReason",
+    "type": "object"
+   },
    "ChannelStatus": {
     "additionalProperties": false,
     "description": "Which external channels can actually reach this user right now.",
@@ -7311,6 +7387,33 @@
      "records"
     ],
     "title": "GetCanonicalContextOutput",
+    "type": "object"
+   },
+   "GetChainPositionOutput": {
+    "additionalProperties": false,
+    "description": "Where a company sits (upstream/midstream/downstream) in each industry chain it belongs to.\nEmpty `positions` means unclassified (尚未分類) - the classifier abstains rather than guesses.\nA descriptive classification, never a rating.",
+    "properties": {
+     "market": {
+      "title": "Market",
+      "type": "string"
+     },
+     "positions": {
+      "items": {
+       "$ref": "#/components/schemas/ChainPositionItem"
+      },
+      "title": "Positions",
+      "type": "array"
+     },
+     "symbol": {
+      "title": "Symbol",
+      "type": "string"
+     }
+    },
+    "required": [
+     "symbol",
+     "market"
+    ],
+    "title": "GetChainPositionOutput",
     "type": "object"
    },
    "GetChipFlowsOutput": {
@@ -15127,6 +15230,15 @@
     "title": "MessageBlockType",
     "type": "string"
    },
+   "Method": {
+    "enum": [
+     "override",
+     "evidence",
+     "prior"
+    ],
+    "title": "Method",
+    "type": "string"
+   },
    "ModelTotals": {
     "additionalProperties": false,
     "properties": {
@@ -16883,6 +16995,15 @@
     "title": "PortalResponse",
     "type": "object"
    },
+   "Position": {
+    "enum": [
+     "upstream",
+     "midstream",
+     "downstream"
+    ],
+    "title": "Position",
+    "type": "string"
+   },
    "PresetCondition": {
     "additionalProperties": false,
     "description": "One condition inside a preset — the same shape `run_screener` accepts, minus the `market`\nwrapper (a preset is scoped to one market by construction).",
@@ -17366,6 +17487,19 @@
      "legendary"
     ],
     "title": "Rarity",
+    "type": "string"
+   },
+   "ReasonCode": {
+    "enum": [
+     "override",
+     "prior_curated",
+     "prior_keyword",
+     "graph_layering",
+     "graph_propagation",
+     "agree_prior_graph",
+     "conflict_graph_over_prior"
+    ],
+    "title": "ReasonCode",
     "type": "string"
    },
    "RecessionBand": {
@@ -33775,6 +33909,58 @@
     "summary": "Strategy Watch Today",
     "tags": [
      "scheduler"
+    ]
+   }
+  },
+  "/api/v1/symbols/{symbol}/chain-positions": {
+   "get": {
+    "description": "個股 > 產業分析's 產業鏈 position: where one company sits (upstream/midstream/downstream) in\neach industry chain it belongs to, with the method, confidence and reason codes. An empty list\nmeans 尚未分類 (the classifier abstained).",
+    "operationId": "symbol_chain_positions_api_v1_symbols__symbol__chain_positions_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "symbol",
+      "required": true,
+      "schema": {
+       "title": "Symbol",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "market",
+      "required": false,
+      "schema": {
+       "$ref": "#/components/schemas/Market",
+       "default": "TW"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/GetChainPositionOutput"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Symbol Chain Positions",
+    "tags": [
+     "themes"
     ]
    }
   },

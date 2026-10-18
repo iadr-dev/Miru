@@ -26,8 +26,15 @@ from analytics.supply_chain.domain.models import (
     Trust,
 )
 from analytics.supply_chain.domain.rules import is_stale
+from analytics.supply_chain.positions.models import (
+    ChainPosition,
+    Method,
+    Position,
+    Reason,
+    ReasonCode,
+)
 from analytics.supply_chain.store.protocol import ScCounts
-from db.models import ScEvidenceRow, ScRelationRow
+from db.models import ScEvidenceRow, ScPositionRow, ScRelationRow
 
 _CHUNK = 500
 
@@ -199,6 +206,54 @@ class SqlAlchemySupplyChainStore:
                 out.setdefault(ev.relation_id, []).append(ev)
         return out
 
+    async def list_supply_pairs(self) -> list[tuple[str, str]]:
+        stmt = select(ScRelationRow).where(
+            ScRelationRow.kind == Kind.SUPPLIES.value,
+            ScRelationRow.status == Status.VERIFIED.value,
+            ScRelationRow.supplier_market == "TW",
+            ScRelationRow.customer_market == "TW",
+        )
+        today = datetime.now(UTC).date()
+        rows = (await self._session.scalars(stmt)).all()
+        pairs = {
+            (r.supplier_symbol, r.customer_symbol) for r in rows if not _row_is_stale(r, today)
+        }
+        return sorted(pairs)
+
+    async def replace_positions(
+        self, positions: Sequence[ChainPosition], *, computed_at: datetime
+    ) -> int:
+        await self._session.execute(delete(ScPositionRow))
+        self._session.add_all(
+            ScPositionRow(
+                id=str(uuid.uuid4()),
+                symbol=p.symbol,
+                market=p.market,
+                chain_key=p.chain_key,
+                chain_name=p.chain_name,
+                position=p.position.value,
+                is_primary=p.is_primary,
+                method=p.method.value,
+                confidence=p.confidence,
+                reasons=[{"code": r.code.value, "detail": r.detail} for r in p.reasons],
+                inputs_hash=p.inputs_hash,
+                computed_at=computed_at,
+            )
+            for p in positions
+        )
+        await self._session.flush()
+        return len(positions)
+
+    async def get_positions_for_symbol(
+        self, symbol: str, market: MarketCode = "TW"
+    ) -> list[ChainPosition]:
+        stmt = (
+            select(ScPositionRow)
+            .where(ScPositionRow.symbol == symbol, ScPositionRow.market == market)
+            .order_by(ScPositionRow.is_primary.desc(), ScPositionRow.chain_key)
+        )
+        return [_position_of(r) for r in (await self._session.scalars(stmt)).all()]
+
     async def counts(self) -> ScCounts:
         return ScCounts(
             relations=await self._total(ScRelationRow),
@@ -215,6 +270,24 @@ class SqlAlchemySupplyChainStore:
     async def _grouped(self, column: InstrumentedAttribute[str]) -> dict[str, int]:
         result = await self._session.execute(select(column, func.count()).group_by(column))
         return {str(value): int(n) for value, n in result.all()}
+
+
+def _position_of(row: ScPositionRow) -> ChainPosition:
+    return ChainPosition(
+        symbol=row.symbol,
+        market=cast("MarketCode", row.market),
+        chain_key=row.chain_key,
+        chain_name=row.chain_name,
+        position=Position(row.position),
+        is_primary=row.is_primary,
+        method=Method(row.method),
+        confidence=row.confidence,
+        reasons=tuple(
+            Reason(code=ReasonCode(r["code"]), detail=r.get("detail", "")) for r in row.reasons
+        ),
+        inputs_hash=row.inputs_hash,
+        computed_at=row.computed_at,
+    )
 
 
 def _row_is_stale(row: ScRelationRow, today: date) -> bool:
