@@ -128,10 +128,12 @@ async def test_unlisted_host_is_refused_with_a_message_naming_the_setting() -> N
 
 
 def test_public_base_url_setting_allow_lists_its_host_and_origin() -> None:
-    settings = Settings(mcp_public_base_url="https://mcp.example.com/", jwt_secret_key="x" * 40)
+    settings = Settings(
+        _env_file=None, mcp_public_base_url="https://mcp.example.com/", jwt_secret_key="x" * 40
+    )
     assert settings.mcp_allowed_hosts_list() == ["mcp.example.com"]
     assert settings.mcp_allowed_origins_list() == ["https://mcp.example.com"]
-    plain = Settings(jwt_secret_key="x" * 40)
+    plain = Settings(_env_file=None, jwt_secret_key="x" * 40)
     assert plain.mcp_allowed_hosts_list() is None
 
 
@@ -146,6 +148,7 @@ async def test_protected_resource_metadata_matches_the_configured_public_url() -
     from mcp.app import build_http_app, build_mcp_server  # noqa: PLC0415
 
     settings = Settings(
+        _env_file=None,
         jwt_secret_key="x" * 40,
         mcp_public_base_url="https://mcp.example.com",
         oauth_issuer="https://auth.example.com/",
@@ -174,7 +177,9 @@ async def test_protected_resource_metadata_matches_the_configured_public_url() -
 
 
 async def test_without_an_authorization_server_no_metadata_is_configured() -> None:
-    settings = Settings(jwt_secret_key="x" * 40, mcp_public_base_url="https://mcp.example.com")
+    settings = Settings(
+        _env_file=None, jwt_secret_key="x" * 40, mcp_public_base_url="https://mcp.example.com"
+    )
     assert resource_metadata_from_settings(settings, "/mcp") is None
 
 

@@ -88,6 +88,20 @@ _READ_ONLY_ANNOTATIONS = ToolAnnotations(
 )
 
 _SEARCH_TOOLS_NAME = "search_tools"
+
+# Tools that only make sense inside the Miru chat: each ends in a card the user confirms in the app
+# (propose_*) or asks the person a question in the chat UI (ask_user). Over MCP nobody would see
+# the card, and the calling model could wrongly tell its user that an alert or schedule was set
+# up, so they are not listed, found by search_tools or run by execute_tool.
+MCP_EXCLUDED_TOOLS: frozenset[str] = frozenset(
+    {
+        "ask_user",
+        "propose_alert",
+        "propose_memory",
+        "propose_schedule",
+        "propose_watchlist_change",
+    }
+)
 _EXECUTE_TOOL_NAME = "execute_tool"
 _MAX_SEARCH_RESULTS = 8
 _MAX_SUGGESTIONS = 3
@@ -188,7 +202,11 @@ class SearchToolsOutput(BaseModel):
 
 
 def _search_deferred_tools(registry: ToolRegistry, intent: str) -> SearchToolsOutput:
-    candidates = [Candidate(e.name, e.description) for e in registry.deferred_index()]
+    candidates = [
+        Candidate(e.name, e.description)
+        for e in registry.deferred_index()
+        if e.name not in MCP_EXCLUDED_TOOLS
+    ]
     matches: list[SearchToolsMatch] = []
     for hit in rank(intent, candidates, limit=_MAX_SEARCH_RESULTS):
         tool = registry.get_tool(hit.name)
@@ -259,7 +277,7 @@ class _ExecuteToolTool(FastMCPTool):
         except Exception as exc:  # bad args must become isError, not a crashed connection
             return render_error(f"Invalid arguments for 'execute_tool': {exc}")
 
-        target = self.registry.get_tool(parsed.id)
+        target = None if parsed.id in MCP_EXCLUDED_TOOLS else self.registry.get_tool(parsed.id)
         if target is None:
             return render_error(self._unknown_tool_message(parsed.id))
         ctx = await self.context_provider()
@@ -268,7 +286,11 @@ class _ExecuteToolTool(FastMCPTool):
     def _unknown_tool_message(self, tool_id: str) -> str:
         close = rank(
             tool_id,
-            [Candidate(t.name, t.description) for t in self.registry.all_tools()],
+            [
+                Candidate(t.name, t.description)
+                for t in self.registry.all_tools()
+                if t.name not in MCP_EXCLUDED_TOOLS
+            ],
             limit=_MAX_SUGGESTIONS,
         )
         hint = f" Did you mean: {', '.join(c.name for c in close)}?" if close else ""
@@ -346,7 +368,9 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
     # Registered in name order so tools/list is byte-for-byte stable across restarts and
     # registry reshuffles (clients and prompt caches key off it).
     listed = [
-        _immediate_tool(t, context_provider=context_provider) for t in registry.immediate_tools()
+        _immediate_tool(t, context_provider=context_provider)
+        for t in registry.immediate_tools()
+        if t.name not in MCP_EXCLUDED_TOOLS
     ]
     listed.extend(_search_and_execute_tools(registry, context_provider=context_provider))
     for fm_tool in sorted(listed, key=lambda t: t.name):
@@ -389,8 +413,13 @@ def build_mcp_server(  # noqa: PLR0913 - one keyword per wiring seam; all option
                 "version": _package_version(),
                 "uptime_seconds": int(time.monotonic() - started),
                 "tools": {
-                    "total": len(registry.all_tools()),
-                    "listed": len(registry.immediate_tools()) + 2,
+                    "total": len(
+                        [t for t in registry.all_tools() if t.name not in MCP_EXCLUDED_TOOLS]
+                    ),
+                    "listed": sum(
+                        1 for t in registry.immediate_tools() if t.name not in MCP_EXCLUDED_TOOLS
+                    )
+                    + 2,
                 },
                 "auth": {
                     "required": auth_required,
