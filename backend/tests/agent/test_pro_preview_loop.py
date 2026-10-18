@@ -62,7 +62,7 @@ async def test_non_pro_turn_gets_the_preview_and_the_note(tools: list[Tool], tie
     assert '"locked":true' in edges
     assert '"sources_locked":true' in edges
     assert "Pro plan" in edges
-    assert "example.com" not in edges  # the source links are withheld
+    assert ".example/" not in edges  # the source links are withheld
 
     members = await _tool_result(tools, "get_theme_members", {"theme_key": "wave"}, tier)
     assert '"locked":true' in members
@@ -75,7 +75,7 @@ async def test_pro_turn_gets_everything(tools: list[Tool]) -> None:
         tools, "get_supply_chain_edges", {"id": "9001", "market": "TW"}, Tier.PRO
     )
     assert '"locked":false' in edges
-    assert "example.com" in edges
+    assert ".example/" in edges
     members = await _tool_result(tools, "get_theme_members", {"theme_key": "wave"}, Tier.PRO)
     assert '"locked":false' in members
     assert "9103" in members
