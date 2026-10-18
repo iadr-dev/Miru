@@ -635,3 +635,9 @@ the dataset names and lookback windows, `inputs` the loading/reshaping of stored
 per-symbol series and universes, `scoring` the multi-factor batch and its per-symbol scorers, and
 `trend` the trend-score batch. Modules import only downward
 (`datasets` <- `inputs` <- `scoring` <- `trend`).
+
+> **Trust of automated evidence.** A host is primary or secondary only when the trust table says so
+> (built-in list plus the private `publisher_trust.yaml`); every unlisted host, including one that
+> merely starts with `ir.`, is tertiary. Unattended research (`verify`) publishes a relation only when
+> a primary or secondary publisher, or two independent tertiary ones, back it; a lone tertiary source
+> is written as a `candidate` for a person or a second source to confirm.
