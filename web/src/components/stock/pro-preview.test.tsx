@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, screen, within } from "@testing-library/react";
-import type { AnchorHTMLAttributes, ReactNode } from "react";
+import type { AnchorHTMLAttributes, ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChainPositionBar } from "@/components/stock/chain-position";
 import { ConceptThemeChips } from "@/components/stock/concept-theme-chips";
@@ -55,7 +55,7 @@ vi.mock("@/i18n/navigation", () => ({
 
 const lock = messages.featureLock;
 
-function withClient(ui: ReactNode): ReactNode {
+function withClient(ui: ReactElement): ReactElement {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={client}>{ui}</QueryClientProvider>;
 }
