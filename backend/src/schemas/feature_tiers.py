@@ -16,9 +16,13 @@ from schemas.enums import Tier
 TIER_RANK: Final[dict[Tier, int]] = {Tier.FREE: 0, Tier.PREMIUM: 1, Tier.PRO: 2}
 
 # Feature -> minimum tier. A feature absent from this table is unrestricted (available to every
-# tier, incl. anonymous/Free). Voice STT and TTS read-aloud are both deliberately NOT here - both
-# are Free, quota-bounded rather than tier-gated (voice conversation mode is built on both, and
-# is a Free-tier feature end to end).
+# tier, incl. anonymous/Free). Premium rows backed by sponsor-class tools (`ai_summary` ->
+# `get_stock_summary`, `tick_minute_k`) are enforced by the `dispatch_tool` sponsor gate, which
+# answers an unentitled caller with the HTTP-200 locked teaser; only the Pro rows use
+# `access_for` previews (`tests/tools/test_ai_summary_tier.py` keeps the row and gate aligned).
+# Voice STT and TTS read-aloud are both deliberately NOT here - both are Free, quota-bounded
+# rather than tier-gated (voice conversation mode is built on both, and is a Free-tier feature
+# end to end).
 FEATURE_MIN_TIER: Final[dict[str, Tier]] = {
     "live_quote_stream": Tier.PREMIUM,
     "ai_summary": Tier.PREMIUM,

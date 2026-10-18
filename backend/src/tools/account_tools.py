@@ -232,8 +232,17 @@ class GetMyWatchlistsOutput(BaseModel):
     quotes_included: bool = False
     # True when include_quotes covered only the first MAX_QUOTED_SYMBOLS symbols.
     quotes_truncated: bool = False
+    # Set when there are no groups: an empty list is a normal state, not an error or a failed read.
+    note: str | None = None
     as_of: datetime
     currentness_caveat: str = _FRESHNESS
+
+
+NO_WATCHLISTS_NOTE: Final = (
+    "No watchlists yet. This is normal, not an error: the app creates the starter watchlists the "
+    "first time the user opens their watchlist page, and this read never creates anything. The "
+    "user can open the watchlist page to get the starter set or create their own."
+)
 
 
 class GetMyWatchlistsTool(BaseTool):
@@ -267,6 +276,7 @@ class GetMyWatchlistsTool(BaseTool):
             truncated=snapshot.truncated,
             quotes_included=typed.include_quotes,
             quotes_truncated=quotes_truncated,
+            note=None if groups else NO_WATCHLISTS_NOTE,
             as_of=_now(),
         )
 
@@ -497,6 +507,7 @@ __all__ = [
     "MAX_SCHEDULES",
     "MAX_USAGE_MODELS",
     "MAX_WATCHLIST_ITEMS",
+    "NO_WATCHLISTS_NOTE",
     "AccountDataReader",
     "AlertRuleSummary",
     "AutomationsSnapshot",

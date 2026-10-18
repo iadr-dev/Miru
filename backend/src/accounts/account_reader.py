@@ -58,7 +58,7 @@ from tools.account_tools import (
     WatchlistsSnapshot,
 )
 from usage.llm_usage import summarize_llm_usage
-from usage.store import UsageStore
+from usage.store import SqlAlchemyUsageStore, UsageStore
 
 logger = structlog.get_logger(__name__)
 
@@ -302,4 +302,15 @@ class SqlAccountDataReader:
         return [_notification_summary(row) for row in rows]
 
 
-__all__ = ["SqlAccountDataReader"]
+def build_account_reader(
+    session_factory: async_sessionmaker[AsyncSession], settings: Settings
+) -> SqlAccountDataReader:
+    """The one way a composition root builds the reader, so every process that runs a user-scoped
+    agent turn (API, scheduler) wires it identically. MCP deliberately never calls this: `private`
+    tools are excluded from MCP by data class (`mcp.app.is_mcp_offered`)."""
+    return SqlAccountDataReader(
+        session_factory, usage_store=SqlAlchemyUsageStore(session_factory), settings=settings
+    )
+
+
+__all__ = ["SqlAccountDataReader", "build_account_reader"]

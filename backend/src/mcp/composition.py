@@ -58,6 +58,8 @@ def build_mcp_http_app(
     that exercise sign-in against a small known set of tools); production never passes it."""
     resolved = settings or get_settings()
     session_factory = build_session_factory(resolved)
+    # No `account_reader` on purpose: MCP never offers `private` (own-account) tools, and
+    # `mcp.app.is_mcp_offered` would filter them out even if they were registered.
     tool_registry = registry or build_tool_registry(
         build_default_router(resolved), session_factory=session_factory
     )
