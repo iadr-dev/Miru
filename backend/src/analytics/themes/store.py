@@ -19,10 +19,6 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from analytics.themes.models import (
-    EdgeConfidence,
-    EdgeSource,
-    EdgeType,
-    SupplyChainEdge,
     SymbolTheme,
     Theme,
     ThemeChangeEntry,
@@ -35,7 +31,6 @@ from analytics.themes.models import (
     ThemeTierSource,
 )
 from db.models import (
-    SupplyChainEdgeRow,
     ThemeChangeLogRow,
     ThemeMembershipRow,
     ThemeRow,
@@ -91,14 +86,6 @@ class ThemeStore(Protocol):
     async def find_symbols_by_sub_industry_keyword(
         self, *, keywords: list[str]
     ) -> list[tuple[str, str, str]]: ...
-
-    async def replace_edges_for_source(
-        self, *, source: EdgeSource, edges: list[SupplyChainEdge]
-    ) -> int: ...
-
-    async def get_edges_from(self, *, from_symbol: str) -> list[SupplyChainEdge]: ...
-
-    async def get_edges_to(self, *, to_symbol: str) -> list[SupplyChainEdge]: ...
 
     async def record_change(self, *, entry: ThemeChangeEntry) -> None: ...
 
@@ -396,95 +383,6 @@ class SqlAlchemyThemeStore:
         )
         rows = (await self._session.execute(stmt)).all()
         return [(symbol, market, sub_industry) for symbol, market, sub_industry in rows]
-
-    async def replace_edges_for_source(
-        self, *, source: EdgeSource, edges: list[SupplyChainEdge]
-    ) -> int:
-        """Replace this source's `supply_chain_edges` rows with a fresh snapshot, in the caller's
-        one transaction: delete the `source` partition, then insert `edges`. A re-run is a clean
-        replace, never a growing union. Returns the number of rows inserted. Edges carrying a
-        different `source` than the argument are ignored; a duplicated `(from,to,type)` within one
-        snapshot keeps the first."""
-        await self._session.execute(
-            delete(SupplyChainEdgeRow).where(SupplyChainEdgeRow.source == source.value)
-        )
-        now = datetime.now(UTC)
-        inserted = 0
-        seen: set[tuple[str, str, str]] = set()
-        for edge in edges:
-            if edge.source is not source:
-                continue
-            dedupe_key = (edge.from_symbol, edge.to_symbol, edge.edge_type.value)
-            if dedupe_key in seen:
-                continue
-            seen.add(dedupe_key)
-            self._session.add(
-                SupplyChainEdgeRow(
-                    id=str(uuid.uuid4()),
-                    from_symbol=edge.from_symbol,
-                    to_symbol=edge.to_symbol,
-                    market=edge.market,
-                    edge_type=edge.edge_type.value,
-                    confidence=edge.confidence.value,
-                    revenue_pct=edge.revenue_pct,
-                    source=source.value,
-                    from_name=edge.from_name,
-                    to_name=edge.to_name,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            inserted += 1
-        await self._session.flush()
-        return inserted
-
-    async def get_edges_from(self, *, from_symbol: str) -> list[SupplyChainEdge]:
-        """The edges originating at a symbol, resolved through the `from_symbol` index."""
-        stmt = (
-            select(SupplyChainEdgeRow)
-            .where(SupplyChainEdgeRow.from_symbol == from_symbol)
-            .order_by(SupplyChainEdgeRow.to_symbol)
-        )
-        rows = (await self._session.scalars(stmt)).all()
-        return [
-            SupplyChainEdge(
-                from_symbol=row.from_symbol,
-                to_symbol=row.to_symbol,
-                market=row.market,
-                edge_type=EdgeType(row.edge_type),
-                confidence=EdgeConfidence(row.confidence),
-                revenue_pct=row.revenue_pct,
-                source=EdgeSource(row.source),
-                from_name=row.from_name,
-                to_name=row.to_name,
-            )
-            for row in rows
-        ]
-
-    async def get_edges_to(self, *, to_symbol: str) -> list[SupplyChainEdge]:
-        """The edges terminating at a symbol, resolved through the `to_symbol` index — the
-        reverse of `get_edges_from`, needed so a focus symbol's graph shows edges where it's
-        either the supplier or the customer/competitor side."""
-        stmt = (
-            select(SupplyChainEdgeRow)
-            .where(SupplyChainEdgeRow.to_symbol == to_symbol)
-            .order_by(SupplyChainEdgeRow.from_symbol)
-        )
-        rows = (await self._session.scalars(stmt)).all()
-        return [
-            SupplyChainEdge(
-                from_symbol=row.from_symbol,
-                to_symbol=row.to_symbol,
-                market=row.market,
-                edge_type=EdgeType(row.edge_type),
-                confidence=EdgeConfidence(row.confidence),
-                revenue_pct=row.revenue_pct,
-                source=EdgeSource(row.source),
-                from_name=row.from_name,
-                to_name=row.to_name,
-            )
-            for row in rows
-        ]
 
     async def record_change(self, *, entry: ThemeChangeEntry) -> None:
         """Append one audit-log row. Never raises on a benign duplicate — the log is append-only and

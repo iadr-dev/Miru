@@ -1,4 +1,4 @@
-"""The operator-triggered concept-theme research + supply-chain edge run — `python -m
+"""The operator-triggered concept-theme research run — `python -m
 analytics.themes`.
 
 Deliberately NOT a daemon and NOT wired into any scheduled ingest pass. This layer is the only one
@@ -6,11 +6,9 @@ that spends on language-model calls and does live web research, so it carries an
 and unattended-spend risk the deterministic industry/tier seeds do not. It is run by an operator,
 by hand, when they want to refresh the concept themes — a one-shot run-and-exit script.
 
-One invocation, under one correlated `run_id`: load the bootstrap supply-chain edges, research
-every concept theme in `concept_themes.yaml` (two researchers + a verifier, with the fabrication
-safeguard filtering every proposed symbol against the real stored universe), then generate
-in-theme-only supply-chain edges for themes with enough members. Each stage commits its own
-transaction so a later-stage failure never rolls back completed earlier work.
+One invocation, under one correlated `run_id`: research every concept theme in
+`concept_themes.yaml` (two researchers + a verifier, with the fabrication safeguard filtering every
+proposed symbol against the real stored universe).
 """
 
 from __future__ import annotations
@@ -24,10 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from analytics.themes.research import (
     ConceptThemeSpec,
-    generate_in_theme_edges,
     load_concept_themes,
     run_concept_research,
-    seed_supply_chain_edges,
 )
 from analytics.themes.store import SqlAlchemyThemeStore
 from config.settings import get_settings
@@ -50,7 +46,6 @@ async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators, on
     researcher_a: LLMClient,
     researcher_b: LLMClient,
     verifier: LLMClient,
-    extractor: LLMClient,
     specs: list[ConceptThemeSpec],
     run_id: str,
 ) -> None:
@@ -62,10 +57,6 @@ async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators, on
 
     async with session_factory() as session:
         store = SqlAlchemyThemeStore(session)
-
-        seeded = await seed_supply_chain_edges(store=store, run_id=run_id)
-        await session.commit()
-        logger.info("bootstrap_edges_seeded", run_id=run_id, edges=seeded)
 
         summary = await run_concept_research(
             specs,
@@ -85,16 +76,6 @@ async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators, on
             total_dropped_fabricated=summary.total_dropped_fabricated,
         )
 
-        edges = await generate_in_theme_edges(
-            store=store,
-            web_search=web_search,
-            extractor=extractor,
-            run_id=run_id,
-            theme_keys=[spec.key for spec in specs],
-        )
-        await session.commit()
-        logger.info("in_theme_edges_complete", run_id=run_id, edges=edges)
-
     logger.info("operator_run_finished", run_id=run_id)
 
 
@@ -108,7 +89,7 @@ async def main() -> None:
     session_factory = make_session_factory(engine)
 
     # Role-based routing — two different roles give the two researchers model independence; the
-    # verifier reconciles disputed picks; the extractor is a single-model extraction. No provider or
+    # verifier reconciles disputed picks; No provider or
     # model name appears here — the roles resolve through config/env.
     try:
         await run_operator_pipeline(
@@ -117,7 +98,6 @@ async def main() -> None:
             researcher_a=resolve_role(ModelRole.SUBAGENT, settings),
             researcher_b=resolve_role(ModelRole.AGENT, settings),
             verifier=resolve_role(ModelRole.SYNTHESIS, settings),
-            extractor=resolve_role(ModelRole.SUBAGENT, settings),
             specs=load_concept_themes(),
             run_id=run_id,
         )

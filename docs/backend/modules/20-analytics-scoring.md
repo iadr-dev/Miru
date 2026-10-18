@@ -257,7 +257,7 @@ concept themes are Pro features (`FEATURE_MIN_TIER`: `supply_chain`, `concept_th
 Pro gets a server-side preview from the same tools (3 peers per role without sources, the primary chain,
 the top 8 entities, 3 concept members per position) with additive `locked` / `hidden_count` fields;
 industry themes and the industry-chain tier heatmap stay free ([12](12-multi-user-tiers.md)).
-The tables (`themes`, `theme_memberships`, `theme_tiers`, `supply_chain_edges`,
+The tables (`themes`, `theme_memberships`, `theme_tiers`,
 `theme_change_log`) are SQLAlchemy models in `backend/src/db/models/themes.py`; the REST surface
 is in [api-reference.md](../api-reference.md).
 
@@ -280,7 +280,7 @@ is in [api-reference.md](../api-reference.md).
   backfills every other pair Layer 1 produced membership for (`ThemeTierSource.HEURISTIC`).
   `upsert_theme_tier` itself refuses a heuristic write against an already-curated row, so a re-run
   in any order can never flip an editor's decision back to a guess.
-- **Layer 3 — operator-triggered LLM concept-theme research + in-theme-only supply-chain edges
+- **Layer 3 — operator-triggered LLM concept-theme research
   (`analytics/themes/research.py`, run via `python -m analytics.themes`).** Deliberately **not**
   wired into any scheduled ingest pass — it is the only layer that spends on LLM calls and does
   live web research, so it carries an unattended-drift/unattended-spend risk the two deterministic
@@ -301,13 +301,6 @@ is in [api-reference.md](../api-reference.md).
   the reconciliation result including the fail-open branch, so failing open never lets a
   fabricated code through. Kept members are written `ThemeSource.CONCEPT_RESEARCH` at one of two
   confidence bands (0.9 if both researchers agreed, 0.6 if only one did and the verifier kept it).
-  The in-theme edge generator (`generate_in_theme_edges`) is a deliberately narrower, safer
-  extraction: for each concept theme with at least 3 members, it lists **only that theme's own
-  member symbols** and asks the model to connect stocks strictly within that list; any proposed
-  edge is additionally filtered to endpoints that are both members of that same theme and distinct
-  — the model cannot introduce an edge to a symbol outside the listed set, whatever it proposes.
-  Hand-seeded bootstrap edges (`supply_chain/seed.yaml` plus `supply_chain/relations/*.yaml` (private reference directory), `ThemeSource`-independent
-  `EdgeSource.SEED`) load separately as a known-good baseline.
 - **Exposure:** tools in `tools/theme_tools.py` — `get_themes`, `get_theme_members`,
   `get_symbol_themes`, `get_theme_tiers`, `get_supply_chain_edges`, `get_theme_tier_heatmap` — and
   REST routes in `api/routers/themes.py`: `GET /themes`, `GET /themes/{key}`,
@@ -340,8 +333,7 @@ files** by the `sc_refdata_load` ingest job; nothing is restored from the databa
 - **Read** — `GET /symbols/{symbol}/supply-chain?market=` and `get_supply_chain_edges` read these
   tables and return only `verified`, non-stale relations. Each flat edge adds `from_market`,
   `to_market`, `grade` (`confidence` is the legacy name), `status`, `product`, `as_of`,
-  `last_verified_at` and `sources[{publisher,url,published_on}]`. The older `supply_chain_edges`
-  table and its loaders are superseded and removed in a later change.
+  `last_verified_at` and `sources[{publisher,url,published_on}]`.
 
 #### Chain positions (`analytics/supply_chain/positions/`) — 上游 / 中游 / 下游 per company per chain
 

@@ -139,7 +139,7 @@ data is never scored. Dependencies:
 - `scoring_batch` <- `price_eod`, `institutional_flow`, `financials`/`balance_sheet`/`cash_flow`,
   `market_value` (and the ETF datasets for ETF symbols); upserts the relational `stock_scores`
   cache for both horizon profiles in one pass.
-- Layer 3 concept-theme research + in-theme supply-chain edges (module 20) is **deliberately
+- Layer 3 concept-theme research (module 20) is **deliberately
   unscheduled** — an operator runs `python -m analytics.themes` by hand, since it is the only
   analytics job that spends on LLM calls and does live web research.
 

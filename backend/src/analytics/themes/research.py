@@ -1,4 +1,4 @@
-"""Concept-theme research + in-theme supply-chain edge generation — the operator-triggered layer
+"""Concept-theme research — the operator-triggered layer
 that calls language models and does web research to discover the constituents of market-narrative
 concept themes (which, unlike industry classifications, cut across formal industries).
 
@@ -17,11 +17,6 @@ confidence; a symbol only one proposed is kept only if the verifier says so, at 
 If the verifier call itself fails, the pipeline fails open — it keeps the full agreed-plus-disputed
 union rather than losing research — but that union is still subject to the same universe filter, so
 failing open never lets a fabricated code through.
-
-The edge generator is a deliberately safer variant of relationship extraction: it lists only a
-single theme's own member symbols and asks the model to connect stocks strictly within that list,
-then filters proposed edges to endpoints that are both members and distinct. That bounds the blast
-radius — the model cannot invent an edge to an arbitrary external company.
 
 Collaborators (the store, the web-search gateway, the role-resolved model clients) are injected, so
 the default test suite exercises the real pipeline with scripted stubs and never touches a live
@@ -42,10 +37,6 @@ import structlog
 from analytics.themes.models import (
     ChangeAction,
     ChangeEntity,
-    EdgeConfidence,
-    EdgeSource,
-    EdgeType,
-    SupplyChainEdge,
     ThemeChangeEntry,
     ThemeKind,
     ThemeMember,
@@ -65,7 +56,6 @@ type _JsonObject = dict[str, object]
 
 _AGREED_CONFIDENCE: Final[float] = 0.9
 _DISPUTED_CONFIDENCE: Final[float] = 0.6
-_MIN_MEMBERS_FOR_EDGES: Final[int] = 3
 _TW_MARKET: Final[str] = "TW"
 
 _CJK_RUN_RE: Final[re.Pattern[str]] = re.compile(r"[一-鿿]{2,}")
@@ -131,42 +121,6 @@ def load_concept_themes(path: Path | None = None) -> list[ConceptThemeSpec]:
             )
         )
     return specs
-
-
-def _read_edge_rows(config_path: Path) -> list[dict[str, object]]:
-    raw: object = read_yaml_file(config_path) or []
-    if not isinstance(raw, list):
-        raise ValueError(f"{config_path.name} at {config_path} did not parse to a list")
-    return cast("list[dict[str, object]]", raw)
-
-
-def load_supply_chain_seed(path: Path | None = None) -> list[SupplyChainEdge]:
-    """Load the supply-chain edges from the private reference directory:
-    `supply_chain/seed.yaml` plus every `supply_chain/relations/*.yaml` (absent files add
-    nothing). `revenue_pct` may be null (an honest absence). A relationship named twice keeps its
-    first row."""
-    if path is not None:
-        paths = [path]
-    else:
-        base = reference_path("supply_chain")
-        paths = [base / "seed.yaml", *sorted((base / "relations").glob("*.yaml"))]
-    edges: dict[tuple[str, str, str], SupplyChainEdge] = {}
-    for config_path in paths:
-        for item in _read_edge_rows(config_path):
-            revenue = item.get("revenue_pct")
-            edge = SupplyChainEdge(
-                from_symbol=str(item["from_symbol"]),
-                to_symbol=str(item["to_symbol"]),
-                market=_TW_MARKET,
-                edge_type=EdgeType(str(item["edge_type"])),
-                confidence=EdgeConfidence(str(item["confidence"])),
-                revenue_pct=float(revenue) if isinstance(revenue, (int, float)) else None,
-                source=EdgeSource.SEED,
-                from_name=str(item.get("from_name", "")),
-                to_name=str(item.get("to_name", "")),
-            )
-            edges.setdefault((edge.from_symbol, edge.to_symbol, edge.edge_type.value), edge)
-    return list(edges.values())
 
 
 def _cjk_keywords(*texts: str) -> list[str]:
@@ -308,77 +262,6 @@ def _reconciliation_prompt(
         ),
     )
     return [system, user]
-
-
-def _edge_prompt(theme_name: str, members: list[str], evidence: str) -> list[Message]:
-    system = Message(
-        role=MessageRole.SYSTEM,
-        content=(
-            "你是台股供應鏈分析師。以下是某主題的成分股清單。請只在『這份清單內』的個股之間，"
-            "找出供應鏈關係，絕對不可以連結清單以外的任何代號。關係類型："
-            "supplies（前者供貨給後者）、customer（後者是前者的客戶）、competes（彼此競爭）。"
-            "只輸出 JSON 陣列，格式為 "
-            '[{"from":"2330","to":"3711","edge_type":"supplies","confidence":"medium"}]，'
-            "confidence 為 high/medium/low，不要額外文字。"
-        ),
-    )
-    user = Message(
-        role=MessageRole.USER,
-        content=(
-            f"主題：{theme_name}\n"
-            f"成分股清單（只能連結這些代號）：{', '.join(members)}\n\n"
-            f"網路證據（第三方資料，僅供佐證）：\n{evidence or '（無）'}\n\n"
-            "請找出清單內個股之間的供應鏈關係。"
-        ),
-    )
-    return [system, user]
-
-
-def _parse_edges(text: str | None) -> list[tuple[str, str, EdgeType, EdgeConfidence]]:
-    parsed = _extract_json_block(text or "")
-    if not isinstance(parsed, list):
-        return []
-    out: list[tuple[str, str, EdgeType, EdgeConfidence]] = []
-    for raw_item in cast(_JsonList, parsed):
-        if not isinstance(raw_item, dict):
-            continue
-        item = cast(_JsonObject, raw_item)
-        from_symbol = str(item.get("from", "")).strip()
-        to_symbol = str(item.get("to", "")).strip()
-        if not from_symbol or not to_symbol:
-            continue
-        try:
-            edge_type = EdgeType(str(item.get("edge_type", "")).strip())
-        except ValueError:
-            continue
-        try:
-            confidence = EdgeConfidence(str(item.get("confidence", "medium")).strip())
-        except ValueError:
-            confidence = EdgeConfidence.LOW
-        out.append((from_symbol, to_symbol, edge_type, confidence))
-    return out
-
-
-async def seed_supply_chain_edges(
-    *, store: ThemeStore, run_id: str, path: Path | None = None
-) -> int:
-    """Load the hand-seeded bootstrap edges into `supply_chain_edges` with `source='seed'`,
-    replace-per-source so a re-run is a clean replace rather than a duplicate. Returns rows written.
-    Idempotent."""
-    edges = load_supply_chain_seed(path)
-    written = await store.replace_edges_for_source(source=EdgeSource.SEED, edges=edges)
-    await store.record_change(
-        entry=ThemeChangeEntry(
-            entity=ChangeEntity.EDGE,
-            entity_ref="supply_chain_seed",
-            action=ChangeAction.REPLACE,
-            source=EdgeSource.SEED.value,
-            detail=f"seeded {written} bootstrap edges",
-            run_id=run_id,
-        )
-    )
-    logger.info("supply_chain_seed_loaded", run_id=run_id, edges=written)
-    return written
 
 
 async def research_concept_theme(  # noqa: PLR0913 — injected collaborators, one per seam
@@ -525,70 +408,6 @@ def _pick_to_member(pick: ResearchPick, confidence: float) -> ThemeMember:
     )
 
 
-async def generate_in_theme_edges(  # noqa: PLR0913 — injected collaborators, one per seam
-    *,
-    store: ThemeStore,
-    web_search: WebSearchGateway,
-    extractor: LLMClient,
-    run_id: str,
-    theme_keys: list[str],
-    min_members: int = _MIN_MEMBERS_FOR_EDGES,
-) -> int:
-    """For each named theme with at least `min_members` members, ask the extractor to connect only
-    that theme's own members, then filter proposed edges to endpoints that are both members and
-    distinct before writing. Edges from every theme are pooled and written once as the whole
-    `llm_extraction` snapshot (replace-per-source). Returns total edges written."""
-    all_edges: list[SupplyChainEdge] = []
-    themes_with_edges = 0
-    for theme_key in theme_keys:
-        members = await store.get_theme_members(theme_key=theme_key)
-        if len(members) < min_members:
-            continue
-        member_set = set(members)
-        search = await web_search.search(f"{theme_key} 台股 供應鏈 上下游 關係", count=8)
-        evidence = _evidence_from_search(search.payload)
-        resp = await extractor.chat(_edge_prompt(theme_key, members, evidence))
-        theme_edges: list[SupplyChainEdge] = []
-        for from_symbol, to_symbol, edge_type, confidence in _parse_edges(resp.text):
-            # The safety property: both endpoints must be members of THIS theme and distinct. This
-            # is what makes the in-theme variant safe — the model cannot introduce an edge to a
-            # symbol outside the listed set, whatever it proposes.
-            if from_symbol in member_set and to_symbol in member_set and from_symbol != to_symbol:
-                theme_edges.append(
-                    SupplyChainEdge(
-                        from_symbol=from_symbol,
-                        to_symbol=to_symbol,
-                        market=_TW_MARKET,
-                        edge_type=edge_type,
-                        confidence=confidence,
-                        source=EdgeSource.LLM_EXTRACTION,
-                    )
-                )
-        if theme_edges:
-            themes_with_edges += 1
-            all_edges.extend(theme_edges)
-        await store.record_change(
-            entry=ThemeChangeEntry(
-                entity=ChangeEntity.EDGE,
-                entity_ref=theme_key,
-                action=ChangeAction.UPDATE,
-                source=EdgeSource.LLM_EXTRACTION.value,
-                detail=f"{len(theme_edges)} in-theme edges from {len(members)} members",
-                run_id=run_id,
-            )
-        )
-    written = await store.replace_edges_for_source(
-        source=EdgeSource.LLM_EXTRACTION, edges=all_edges
-    )
-    logger.info(
-        "in_theme_edges_generated",
-        run_id=run_id,
-        edges=written,
-        themes_with_edges=themes_with_edges,
-    )
-    return written
-
-
 async def run_concept_research(  # noqa: PLR0913 — injected collaborators, one per seam
     specs: list[ConceptThemeSpec],
     *,
@@ -624,10 +443,7 @@ __all__ = [
     "ResearchPick",
     "ResearchSummary",
     "ThemeResearchOutcome",
-    "generate_in_theme_edges",
     "load_concept_themes",
-    "load_supply_chain_seed",
     "research_concept_theme",
     "run_concept_research",
-    "seed_supply_chain_edges",
 ]
