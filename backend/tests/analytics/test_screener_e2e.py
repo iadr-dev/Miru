@@ -233,12 +233,14 @@ def _seed_with_pattern(store: ParquetStore, calendar: TradingDayCalendar) -> Non
 _HOT_AND_SMART_TAGS = frozenset(
     {
         "volume_surge",
+        "new_20d_high",
         "new_52w_high",
         "new_52w_low",
         "smart_breakout_volume",
         "smart_reversal_chip",
         "smart_trend_continuation",
         "smart_new_high_chip",
+        "smart_foreign_buy_20d_high",
     }
 )
 
@@ -297,16 +299,19 @@ async def test_daemon_pass_triggers_hot_and_smart_tags_end_to_end(tmp_path: Path
         tags_by_symbol.setdefault(str(row["symbol"]), set()).add(str(row["tag"]))
 
     smart_combo_new_tags = tags_by_symbol.get("2603", set()) & _HOT_AND_SMART_TAGS
-    assert smart_combo_new_tags == {"volume_surge", "smart_breakout_volume"}
+    assert smart_combo_new_tags == {"volume_surge", "new_20d_high", "smart_breakout_volume"}
     assert "breakout_above_ma20" in tags_by_symbol.get("2603", set())
 
     # BREAKOUT satisfies the breakout half only (flat volume, no surge) — the combo must not fire.
     assert "breakout_above_ma20" in tags_by_symbol.get("2330", set())
-    assert not (tags_by_symbol.get("2330", set()) & _HOT_AND_SMART_TAGS)
+    # It is also a 20-day high (flat 100 then 130) but has no volume surge and no foreign
+    # streak.
+    assert tags_by_symbol.get("2330", set()) & _HOT_AND_SMART_TAGS == {"new_20d_high"}
 
     # No regression: Dispatch 1/2's tags still fire in the same run.
     assert "foreign_net_buy_streak_3" in tags_by_symbol.get("2454", set())
-    assert not any(r["symbol"] == "2317" for r in rows)
+    # NEITHER rises monotonically, so its only flag is the 20-day high.
+    assert {r["tag"] for r in rows if r["symbol"] == "2317"} <= {"new_20d_high"}
 
 
 async def test_daemon_pass_triggers_new_tags_end_to_end(tmp_path: Path) -> None:
@@ -338,7 +343,8 @@ async def test_daemon_pass_triggers_new_tags_end_to_end(tmp_path: Path) -> None:
     # legitimate momentum event, not a spurious candlestick match, so it's not excluded here).
     candlestick_tags = _NEW_TAGS - {"kd_golden_cross", "kd_death_cross"}
     assert not (tags_by_symbol.get("2330", set()) & candlestick_tags)
-    assert not any(r["symbol"] == "2317" for r in rows)
+    # NEITHER rises monotonically, so its only flag is the 20-day high.
+    assert {r["tag"] for r in rows if r["symbol"] == "2317"} <= {"new_20d_high"}
 
 
 async def test_daemon_pass_writes_flag_partition(tmp_path: Path) -> None:
@@ -359,7 +365,8 @@ async def test_daemon_pass_writes_flag_partition(tmp_path: Path) -> None:
     assert ("2330", "breakout_above_ma20") in flags
     assert ("2454", "foreign_net_buy_streak_3") in flags
     # NEITHER carries no flag at all, so it never appears in the tidy/long partition.
-    assert not any(r["symbol"] == "2317" for r in rows)
+    # NEITHER rises monotonically, so its only flag is the 20-day high.
+    assert {r["tag"] for r in rows if r["symbol"] == "2317"} <= {"new_20d_high"}
 
 
 async def test_seam_reads_back_and_and_or(tmp_path: Path) -> None:

@@ -108,3 +108,46 @@ def test_holder_share_flat_week_breaks_the_streak() -> None:
     rows = compute_flag_rows([], [], [], snapshots)
     tags = {r["tag"] for r in rows if r["symbol"] == "2330"}
     assert "small_holder_share_rising_3w" not in tags
+
+
+def _price_row(symbol: str, day: str, close: float) -> dict[str, object]:
+    return {
+        "symbol": symbol,
+        "trade_date": day,
+        "open": close,
+        "high": close,
+        "low": close,
+        "close": close,
+        "volume": 1000,
+    }
+
+
+def _days(count: int) -> list[str]:
+    return [f"2024-02-{d:02d}" for d in range(1, count + 1)]
+
+
+def test_foreign_buy_streak_and_20d_high_fires_smart_combo() -> None:
+    days = _days(20)
+    price_rows = [_price_row("2330", d, 100.0 + i) for i, d in enumerate(days)]
+    flow_rows = [_flow_row("2330", d, "Foreign_Investor", 500, 100) for d in days[-3:]]
+    rows = compute_flag_rows(price_rows, flow_rows)
+    tags = {r["tag"] for r in rows if r["symbol"] == "2330"}
+    assert {"new_20d_high", "foreign_net_buy_streak_3", "smart_foreign_buy_20d_high"} <= tags
+
+
+def test_smart_combo_needs_both_halves() -> None:
+    days = _days(20)
+    rising = [_price_row("2330", d, 100.0 + i) for i, d in enumerate(days)]
+    falling = [_price_row("2317", d, 200.0 - i) for i, d in enumerate(days)]
+    flow_rows = [
+        *[_flow_row("2330", d, "Foreign_Investor", 100, 500) for d in days[-3:]],  # net sell
+        *[_flow_row("2317", d, "Foreign_Investor", 500, 100) for d in days[-3:]],  # net buy
+    ]
+    rows = compute_flag_rows(rising + falling, flow_rows)
+    tags_2330 = {r["tag"] for r in rows if r["symbol"] == "2330"}
+    tags_2317 = {r["tag"] for r in rows if r["symbol"] == "2317"}
+    assert "new_20d_high" in tags_2330
+    assert "smart_foreign_buy_20d_high" not in tags_2330
+    assert "foreign_net_buy_streak_3" in tags_2317
+    assert "new_20d_high" not in tags_2317
+    assert "smart_foreign_buy_20d_high" not in tags_2317

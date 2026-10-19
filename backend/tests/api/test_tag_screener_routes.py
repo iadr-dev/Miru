@@ -146,6 +146,15 @@ class TestTagCatalogRoute:
             assert tag["label_zh"]
             assert tag["label_en"]
 
+    def test_catalog_lists_20d_high_tags(
+        self, settings: Settings, agent_answer: str, tmp_path: Path
+    ) -> None:
+        client = _client_with_reader(settings, agent_answer, tmp_path, seed=False)
+        body = client.get("/api/v1/market/tag-catalog").json()
+        by_key = {t["key"]: c["category"] for c in body["categories"] for t in c["tags"]}
+        assert by_key["new_20d_high"] == "熱門"
+        assert by_key["smart_foreign_buy_20d_high"] == "智能"
+
 
 class TestTagScreenerRoute:
     def test_and_query(self, settings: Settings, agent_answer: str, tmp_path: Path) -> None:
