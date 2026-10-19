@@ -173,7 +173,7 @@ export function StructureToggleRow({
           onClick={() => onToggleEvents(!showEvents)}
           aria-pressed={showEvents}
           className={cn(
-            "inline-flex min-h-[44px] items-center rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
+            "rounded-[var(--radius-pill)] px-2.5 py-1 text-[11px] transition-colors",
             showEvents
               ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
               : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
