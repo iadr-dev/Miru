@@ -6,11 +6,6 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ActiveTurnView } from "@/app/[locale]/(app)/chat/active-turn-view";
 import { Composer } from "@/app/[locale]/(app)/chat/composer";
-import {
-  DEFAULT_MODEL_PROVIDER,
-  firstModelFor,
-  modelProvider,
-} from "@/app/[locale]/(app)/chat/composer-parts/model-options";
 import { EmptyState } from "@/app/[locale]/(app)/chat/empty-state";
 import { PersistedThreadView } from "@/app/[locale]/(app)/chat/persisted-thread-view";
 import { PetCompanion, type PetNotice } from "@/app/[locale]/(app)/chat/pet-companion";
@@ -29,7 +24,6 @@ import {
   streamThreadResume,
 } from "@/lib/api/agent-stream";
 import { queryKeys } from "@/lib/api/query-keys";
-import { listSavedKeys } from "@/lib/api/settings";
 import { streamWithResume } from "@/lib/api/stream-resume";
 import { cancelTurn, getThread, patchThread } from "@/lib/api/threads";
 import { FOLLOW_ACCOUNT_TONE } from "@/lib/personality";
@@ -128,7 +122,7 @@ export function ChatClient(): ReactNode {
   // blocking the turn — the picker is a convenience, not a governance-critical path, and the next
   // successful pick/turn will retry the same PATCH shape anyway.
   const applyModelOverride = useCallback(
-    async (targetThreadId: string, modelId: string): Promise<void> => {
+    async (targetThreadId: string, modelId: string | null): Promise<void> => {
       try {
         const current = await getThread(targetThreadId);
         await patchThread(targetThreadId, { model_override: modelId }, current.version);
@@ -376,7 +370,7 @@ export function ChatClient(): ReactNode {
   }, []);
 
   const onModelOverrideChange = useCallback(
-    (modelId: string): void => {
+    (modelId: string | null): void => {
       if (threadId === null) {
         // Thread doesn't exist yet — hold the pick until `runTurn` learns the real thread id.
         setPendingModelOverride(modelId);
@@ -404,31 +398,9 @@ export function ChatClient(): ReactNode {
   const modelOverride = pendingModelOverride ?? threadQuery.data?.model_override ?? null;
   const toneOverride = chosenTone(pendingTone, threadQuery.data?.personality_override ?? null);
 
-  // With their own keys saved, a caller can only run those providers' models (the turn runs on
-  // their key). If the current/default model belongs to another provider, move to one they can use.
-  const keysQuery = useQuery({ queryKey: queryKeys.byokKeys, queryFn: listSavedKeys });
-  const byokProviders =
-    keysQuery.data !== undefined && keysQuery.data.length > 0
-      ? keysQuery.data.map((k) => k.provider)
-      : null;
-  // Without own keys the platform picks the model (the server ignores any pick), so every entry
-  // in the menu is locked; with own keys it is open. Interim until the catalog-driven menu.
-  const platformModels: string[] | null = byokProviders === null ? [] : null;
-  const autoSwitchedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (byokProviders === null || (threadId !== null && threadQuery.isLoading)) {
-      return;
-    }
-    const current = modelOverride === null ? DEFAULT_MODEL_PROVIDER : modelProvider(modelOverride);
-    if (byokProviders.includes(current)) {
-      return;
-    }
-    const next = firstModelFor(byokProviders);
-    if (next !== null && autoSwitchedRef.current !== next) {
-      autoSwitchedRef.current = next;
-      onModelOverrideChange(next);
-    }
-  }, [byokProviders, modelOverride, threadId, threadQuery.isLoading, onModelOverrideChange]);
+  // The model picker exists only for a caller on their own keys (`/me` -> `byok_active`); for
+  // everyone else the platform chooses the model and the server ignores any pick.
+  const byokActive = meQuery.data?.entitlements.byok_active;
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem-var(--bottom-nav-h)-env(safe-area-inset-top))] flex-col">
@@ -474,8 +446,7 @@ export function ChatClient(): ReactNode {
         webSearchEnabled={webSearchEnabled}
         onWebSearchEnabledChange={setWebSearchEnabled}
         deepResearchLocked={meQuery.data !== undefined && !canDeepResearch}
-        byokProviders={byokProviders}
-        platformModels={platformModels}
+        byokActive={byokActive}
         deepResearch={
           canDeepResearch
             ? { enabled: deepResearchEnabled, onChange: setDeepResearchEnabled }

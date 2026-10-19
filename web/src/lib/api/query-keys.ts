@@ -24,6 +24,9 @@ export const queryKeys = {
   watchlists: ["watchlists"] as const,
   threads: ["threads"] as const,
   byokKeys: ["byok-keys"] as const,
+  /** The selectable model catalog (`GET /models`) and the saved default (`GET /me/model-default`). */
+  models: ["models"] as const,
+  modelDefault: ["model-default"] as const,
   thread: (threadId: string | null | undefined) => ["thread", threadId] as const,
   /** Account and preference reads, grouped under "settings" so one prefix invalidates a section. */
   settings: (section: string, ...args: unknown[]) => ["settings", section, ...args] as const,

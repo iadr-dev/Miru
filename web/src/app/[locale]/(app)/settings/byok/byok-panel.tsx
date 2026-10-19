@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { DefaultModelSetting } from "@/app/[locale]/(app)/settings/byok/default-model-setting";
 import { Select, TextInput } from "@/components/settings/form-controls";
 import { SettingsRow, SettingsSection } from "@/components/settings/settings-section";
 import { SavedToast } from "@/components/settings/settings-states";
@@ -199,6 +200,10 @@ export function ByokPanel(): ReactNode {
               ) : null}
             </>
           )}
+        </div>
+
+        <div className="border-[var(--border)] border-t pt-4">
+          <DefaultModelSetting />
         </div>
       </div>
       {saved ? <SavedToast message={tc("saved")} /> : null}

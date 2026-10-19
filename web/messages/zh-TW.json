@@ -2150,18 +2150,13 @@
         "heading": "此對話的語氣"
       },
       "modelMenu": {
-        "locked": "需付費方案",
         "trigger": "模型：{model}",
-        "default": "伺服器預設",
-        "category": {
-          "anthropic": "Anthropic",
-          "openai": "OpenAI",
-          "openrouter": "OpenRouter",
-          "grok": "Grok（經 OpenRouter）",
-          "deepseek": "DeepSeek（經 OpenRouter）",
-          "gemini": "Gemini",
-          "ollama": "Ollama（本機）"
-        }
+        "default": "自動",
+        "useDefault": "使用我的預設",
+        "mainBadge": "主要",
+        "loadError": "無法載入模型清單。",
+        "retry": "重試",
+        "empty": "你儲存的金鑰目前沒有可用的模型。"
       }
     },
     "voiceMode": {
@@ -2452,7 +2447,15 @@
       "cancel": "取消",
       "providerSaved": "{provider}（已儲存）",
       "keySavedHint": "此供應商已儲存金鑰，金鑰以加密方式保存，不會完整顯示。",
-      "selectProvider": "查看 {provider} 金鑰"
+      "selectProvider": "查看 {provider} 金鑰",
+      "defaultModel": {
+        "label": "預設模型",
+        "hint": "你的對話與排程執行預設使用這個模型，單一對話自行選擇時以該選擇為準。",
+        "auto": "自動（建議）",
+        "saveFailed": "無法儲存預設模型，請再試一次。",
+        "platformNote": "對話使用的模型由平台決定。儲存自己的金鑰後，即可自行選擇。",
+        "empty": "你儲存的金鑰目前沒有可用的模型。"
+      }
     },
     "usage": {
       "title": "用量",
