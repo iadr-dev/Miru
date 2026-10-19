@@ -42,7 +42,6 @@ const FREE: MeResponse = {
     finmind_class: "free",
     byok_active: false,
     features: [],
-    platform_models: null,
   },
 };
 

@@ -45,6 +45,9 @@ class User(BaseModel):
     nationality: str | None = None
     tier: Tier = Tier.FREE
     personality_id: str = "steady"
+    # BYOK only: the "provider/model" this user runs on when a chat picks nothing (None = the
+    # provider default). Applied only while its provider still has a saved key.
+    default_model: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -72,8 +75,6 @@ class EntitlementView(BaseModel):
     finmind_class: Tier  # free | sponsor-equivalent — drives data_class unmask
     byok_active: bool
     features: tuple[str, ...]  # feature ids allowed at this tier
-    # Models pickable on the platform key; None = unrestricted (paid tier, or BYOK).
-    platform_models: tuple[str, ...] | None = None
 
 
 __all__ = [

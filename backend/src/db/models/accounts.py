@@ -33,6 +33,8 @@ class UserRow(Base):
     nationality: Mapped[str | None] = mapped_column(default=None)
     tier: Mapped[str] = mapped_column(default="free")
     personality_id: Mapped[str] = mapped_column(default="steady")
+    # BYOK users' saved default main model ("provider/model"); None = the provider default.
+    default_model: Mapped[str | None] = mapped_column(default=None)
     # The user's switch for long-term memory: off = nothing is recalled into a turn and
     # nothing new is saved (existing memories are kept, not deleted).
     memory_enabled: Mapped[bool] = mapped_column(default=True, server_default="1")

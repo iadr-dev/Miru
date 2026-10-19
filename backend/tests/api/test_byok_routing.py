@@ -121,7 +121,7 @@ def test_a_model_from_a_provider_without_a_key_is_refused_not_served_on_ours(
 ) -> None:
     headers, _ = sign_in(byok_client, settings, tier=Tier.FREE)
     _save_key(byok_client, headers, "openai")
-    refused = _chat(byok_client, headers, "anthropic/claude-sonnet-4-6")
+    refused = _chat(byok_client, headers, "anthropic/claude-sonnet-5-5")
     assert refused.status_code == 409
     assert refused.json()["code"] == "byok_key_required"
     assert "openai" in refused.json()["message"]

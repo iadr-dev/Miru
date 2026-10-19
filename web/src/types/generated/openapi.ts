@@ -2410,6 +2410,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/model-default": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get Model Default */
+    get: operations["get_model_default_api_v1_me_model_default_get"];
+    /**
+     * Put Model Default
+     * @description Save (or, with null/"" , clear) the model BYOK chats and scheduled runs use when nothing
+     *     else is picked. BYOK only: it must be in the catalog and its provider must have a saved key.
+     *     A caller with no key can still clear a stale value but cannot set one (403 `byok_required`).
+     */
+    put: operations["put_model_default_api_v1_me_model_default_put"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/memory": {
     parameters: {
       query?: never;
@@ -2476,6 +2499,28 @@ export interface paths {
      * @description Edit a memory's content in place (its key and type stay).
      */
     patch: operations["update_memory_api_v1_memory__memory_id__patch"];
+    trace?: never;
+  };
+  "/api/v1/models": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List Models
+     * @description The models the caller may choose. Only a BYOK caller (a saved key) can choose: they get the
+     *     curated models of the providers they hold a key for. Everyone else runs on the platform's
+     *     model profile - `{selectable: false, models: []}`.
+     */
+    get: operations["list_models_api_v1_models_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   "/api/v1/notifications": {
@@ -3809,8 +3854,12 @@ export interface paths {
     head?: never;
     /**
      * Patch Thread
-     * @description Rename / star / archive / tag. `If-Match: <version>` enforces optimistic concurrency —
-     *     a stale version means another device edited first, surfaced as 409.
+     * @description Rename / star / archive / tag / model. `If-Match: <version>` enforces optimistic
+     *     concurrency — a stale version means another device edited first, surfaced as 409.
+     *
+     *     `model_override`: omitted = unchanged; null or "" = clear; a value = set it after validating it
+     *     against the caller's model catalog (422 unknown, 409 no key for its provider). For a caller
+     *     without their own key the value is ignored (the platform profile decides the model).
      */
     patch: operations["patch_thread_api_v1_threads__thread_id__patch"];
     trace?: never;
@@ -6417,8 +6466,6 @@ export interface components {
       /** Features */
       features: string[];
       finmind_class: components["schemas"]["Tier"];
-      /** Platform Models */
-      platform_models?: string[] | null;
       tier: components["schemas"]["Tier"];
     };
     /**
@@ -10513,6 +10560,34 @@ export interface components {
      * @enum {string}
      */
     Method: "override" | "evidence" | "prior";
+    /** ModelCatalog */
+    ModelCatalog: {
+      /** Models */
+      models: components["schemas"]["ModelOption"][];
+      /** Selectable */
+      selectable: boolean;
+    };
+    /** ModelDefault */
+    ModelDefault: {
+      /** Default Model */
+      default_model: string | null;
+    };
+    /** ModelOption */
+    ModelOption: {
+      /** Id */
+      id: string;
+      /** Is Default */
+      is_default: boolean;
+      /** Label En */
+      label_en: string;
+      /** Label Zh */
+      label_zh: string;
+      /**
+       * Provider
+       * @enum {string}
+       */
+      provider: "anthropic" | "openai" | "gemini" | "openrouter";
+    };
     /** ModelTotals */
     ModelTotals: {
       /**
@@ -11451,6 +11526,11 @@ export interface components {
       kind: components["schemas"]["SecretKind"];
       /** Provider */
       provider: string;
+    };
+    /** PutModelDefaultRequest */
+    PutModelDefaultRequest: {
+      /** Default Model */
+      default_model?: string | null;
     };
     /**
      * PutStrategySubscriptionRequest
@@ -13872,6 +13952,8 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      /** Default Model */
+      default_model?: string | null;
       /**
        * Display Name
        * @default
@@ -17885,6 +17967,59 @@ export interface operations {
       };
     };
   };
+  get_model_default_api_v1_me_model_default_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelDefault"];
+        };
+      };
+    };
+  };
+  put_model_default_api_v1_me_model_default_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PutModelDefaultRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelDefault"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   list_memory_api_v1_memory_get: {
     parameters: {
       query?: {
@@ -18094,6 +18229,26 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  list_models_api_v1_models_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ModelCatalog"];
         };
       };
     };

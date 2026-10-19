@@ -216,6 +216,11 @@ over each skill's `triggers`); `Synthesizer` degrades the same way on `ModelRole
 failures, falling back to `_structured_concatenation()` of the completed lane results. Neither
 of these is a provider hop — they're the last-resort floor below the provider chain above.
 
+**Who may override:** only a BYOK caller (a saved key). The API validates the pick against the
+BYOK catalog (`llm/byok_catalog.py`, [12](12-multi-user-tiers.md) section 5) before it is stored or
+used, and ignores it for everyone else, so on the platform profile the role chains alone decide
+the model. A BYOK caller's saved `users.default_model` fills in when nothing is picked.
+
 **Per-thread model override:** `llm/registry.py::resolve_role_with_override(role,
 model_override, settings)` honors a user-supplied `"provider/model"` string for a role when one
 is given, building that exact client; any failure to use it (malformed spec, unconfigured

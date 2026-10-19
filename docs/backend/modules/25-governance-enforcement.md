@@ -121,8 +121,8 @@ Two independent hooks; neither stands in for the other.
   Premium; `deep_research`, `supply_chain` and `concept_themes` -> **Pro** (the last two are previews below Pro, applied
   server-side by `access_for` in the theme tools - [12](12-multi-user-tiers.md)). `feature_allowed` treats an unlisted feature as open. Deep
   research has **no daily cap**, only its own run budget plus the normal rate limit and chat
-  reservation ([24](24-deep-research.md) §3). BYOK lifts only the chat limit (`chat_limit_for`). Free
-  accounts on the platform key may pick only `FREE_PLATFORM_MODELS`. Tier management and gating at
+  reservation ([24](24-deep-research.md) §3). BYOK lifts only the chat limit (`chat_limit_for`). A model
+  pick is honored only for a BYOK caller and only from the BYOK catalog. Tier management and gating at
   the API: [12](12-multi-user-tiers.md); tool contract: [03](03-tools.md).
 
 ## 4. Caveats end to end
