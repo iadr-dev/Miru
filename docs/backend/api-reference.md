@@ -55,7 +55,7 @@ product/app state (threads, memory, schedules…).
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/agent/query` | Start a turn (thread_id optional → auto-creates); returns SSE. **Real request body today is `{message, thread_id?, web_search?, deep_research?, locale?, attachments?}`** (`api/routers/agent.py`'s `AgentQueryRequest`) + the `Idempotency-Key` header — the classifier alone decides framework/skills routing server-side. `web_search` toggles web search for the turn and `attachments` are processed via `process_attachments()`, both wired through to `start_turn_stream(web_search_enabled=body.web_search, ...)`. A per-turn `model` override is real too, but lives on the separate `PATCH /threads/{id}` route (`model_override`, below), not on this body. `deep_research:true` runs Pro-only cited web research instead of a normal reply ([24](modules/24-deep-research.md)): `403 feature_not_entitled` for non-Pro; no daily report cap (`regenerate`/`edit` bodies accept `deep_research?` too; omitted = re-run the way the original request ran, stored as `turns.mode`). **Not yet built:** `plan` mode, `skill_hint`. Personality resolves from `threads.personality_override` else `users.personality_id` ([modules/23](modules/23-agent-personality.md), real, wired into every turn via `PersonalityContext`) — set via `PATCH /me {personality_id}` (user default); the per-chat pin is `threads.personality_override`, set by `PATCH /threads/{id}` or by the optional `personality` field of this body (`"default"` clears it; unknown id → `422 unknown_personality`). Each turn emits an SSE `personality.used {personality}` and stores the id in `turns.usage.personality` |
+| POST | `/agent/query` | Start a turn (thread_id optional → auto-creates); returns SSE. **Real request body today is `{message, thread_id?, web_search?, deep_research?, locale?, attachments?}`** (`api/routers/agent.py`'s `AgentQueryRequest`) + the `Idempotency-Key` header — the classifier alone decides framework/skills routing server-side. `web_search` toggles web search for the turn and `attachments` are processed via `process_attachments()`, both wired through to `start_turn_stream(web_search_enabled=body.web_search, ...)`. `model?` is the composer's per-turn model pick (`"provider/model"` from `GET /models`), stored as the thread's `model_override` before the turn runs: BYOK callers only - malformed or not in the catalog is `422 invalid_model`, a provider with no saved key is `409 byok_key_required`, and for a caller without their own key it is ignored (the platform decides the model; no error). `deep_research:true` runs Pro-only cited web research instead of a normal reply ([24](modules/24-deep-research.md)): `403 feature_not_entitled` for non-Pro; no daily report cap (`regenerate`/`edit` bodies accept `deep_research?` too; omitted = re-run the way the original request ran, stored as `turns.mode`). **Not yet built:** `plan` mode, `skill_hint`. Personality resolves from `threads.personality_override` else `users.personality_id` ([modules/23](modules/23-agent-personality.md), real, wired into every turn via `PersonalityContext`) — set via `PATCH /me {personality_id}` (user default); the per-chat pin is `threads.personality_override`, set by `PATCH /threads/{id}` or by the optional `personality` field of this body (`"default"` clears it; unknown id → `422 unknown_personality`). Each turn emits an SSE `personality.used {personality}` and stores the id in `turns.usage.personality` |
 | GET | `/threads/{id}/stream` | Attach/resume live stream (`Last-Event-ID`) |
 | POST | `/threads/{id}/steer` | Queue a **steering** message into the running turn (redirect, no cancel) |
 | POST | `/threads/{id}/switch-branch` | Switch active path to another message (generates a Branch Summary) |
@@ -103,7 +103,7 @@ Full semantics + run-tree: [modules/07](modules/07-conversation-streaming.md).
 | POST | `/threads` | Create thread |
 | GET | `/threads?include_archived=` | List mine. **Real query surface today is just `include_archived: bool` (default `false`)** (`api/routers/threads.py`'s `list_threads`) — `sort`/`filter`/`q`/pagination are not yet implemented as query params; use `GET /threads/search?q=` (below) for a text query |
 | GET | `/threads/{id}` | Thread + history |
-| PATCH | `/threads/{id}` | Rename title, star/pin, archive, tag, set per-thread `model_override` / `personality_override` (`"default"` clears) |
+| PATCH | `/threads/{id}` | Rename title, star/pin, archive, tag, set per-thread `model_override` / `personality_override` (`"default"` clears). `model_override`: omitted = unchanged, `null` or `""` = clear, a value = set (validated like `model` on `/agent/query`: `422 invalid_model`, `409 byok_key_required`; ignored for a caller without their own key) |
 | DELETE | `/threads/{id}` | Soft-delete → purge |
 | POST | `/threads/{id}/fork` | Fork from a turn |
 | GET | `/threads/search?q=` | Full-text search (title + messages) |
@@ -359,6 +359,9 @@ and may overlay `GET /quote/stream?symbols=…` (live-ish, Premium+). Never one 
 | GET | `/me/keys` | Providers the caller has saved an LLM key for (names only, never keys) |
 | POST | `/me/keys` | Store BYOK key (encrypted); `422 unsupported_provider` for an unknown provider. With a key saved, turns run on the user's key and model - `409 byok_key_required` if the picked model's provider has no key ([12 §5](modules/12-multi-user-tiers.md)) |
 | DELETE | `/me/keys/{provider}` | Remove BYOK key |
+| GET | `/models` | The model catalog for the caller: BYOK -> `{selectable: true, models: [{provider, id, label_zh, label_en, is_default}]}` limited to providers with a saved key; otherwise `{selectable: false, models: []}` (the platform model profile decides) |
+| GET | `/me/model-default` | The caller's saved default model (`{default_model: "provider/model" \| null}`) |
+| PUT | `/me/model-default` | Save the default model BYOK chats use when nothing is picked; `null` or `""` clears. `403 byok_required` without a saved key, `422 invalid_model` outside the catalog, `409 byok_key_required` for a provider with no key |
 
 ---
 
@@ -484,7 +487,7 @@ table cannot carry.
 
 <!-- ROUTES:BEGIN (generated by tests/api/test_api_reference_sync.py) -->
 
-225 routes. **Auth**: `user` = sign-in required (401 otherwise); `optional` = anonymous allowed, the caller's tier applies when signed in; `none` = no auth dependency (probes, webhooks verified by signature, OAuth). **Tier** is the backing tool's data class: `sponsor` data is masked for unentitled callers with the HTTP 200 teaser envelope.
+228 routes. **Auth**: `user` = sign-in required (401 otherwise); `optional` = anonymous allowed, the caller's tier applies when signed in; `none` = no auth dependency (probes, webhooks verified by signature, OAuth). **Tier** is the backing tool's data class: `sponsor` data is masked for unentitled callers with the HTTP 200 teaser envelope.
 
 
 #### Context, quotes & source health
@@ -655,7 +658,7 @@ table cannot carry.
 
 | Method | Path | Auth | Tool | Tier | Summary |
 |---|---|---|---|---|---|
-| PATCH | `/api/v1/threads/{thread_id}` | user | — | — | Rename / star / archive / tag. |
+| PATCH | `/api/v1/threads/{thread_id}` | user | — | — | Rename / star / archive / tag / model. |
 | POST | `/api/v1/threads/{thread_id}/fork` | user | — | — | Fork from a turn into a fresh thread (shares no message rows with the source). |
 | GET | `/api/v1/threads/search` | user | — | — | Full-text-ish search over the caller's own thread titles + message text. |
 | GET | `/api/v1/threads/{thread_id}/export` | user | — | — | Export a thread + its history as JSON or Markdown. |
@@ -736,6 +739,9 @@ table cannot carry.
 | GET | `/api/v1/me/keys` | user | — | — | Which providers the caller has saved an LLM key for, each with a masked preview - never the keys. |
 | POST | `/api/v1/me/keys` | user | — | — | Store an encrypted BYOK key. |
 | DELETE | `/api/v1/me/keys/{provider}` | user | — | — | Remove a BYOK key. |
+| GET | `/api/v1/models` | user | — | — | The models the caller may choose. |
+| GET | `/api/v1/me/model-default` | user | — | — | Get model default |
+| PUT | `/api/v1/me/model-default` | user | — | — | Save (or, with null/"" , clear) the model BYOK chats and scheduled runs use when nothing else is picked. |
 
 #### Billing (Paddle)
 

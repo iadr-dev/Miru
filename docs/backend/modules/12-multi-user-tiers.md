@@ -170,9 +170,12 @@ together they are "capability resolution"):
    per position, a symbol's concept memberships listed by name only. Industry themes and the
    industry-chain tiers / heatmap stay free. `tests/arch/test_pro_preview_tools.py` fails if any other
    request-path module reads the stored data.
-   **Model picker (platform key):** a Free account may pick only the light models
-   (`FREE_PLATFORM_MODELS`; others -> `403 model_requires_upgrade`, shown locked in the picker via
-   `entitlements.platform_models`); paid tiers and BYOK callers (their own key) are unrestricted.
+   **Model choice:** a tier never selects a model. A caller without their own key runs on the
+   platform model profile ([04](04-llm-adapter.md)); any `model` / `model_override` they send is
+   ignored (not stored, no error), and `GET /models` answers `{selectable: false, models: []}`.
+   Only a BYOK caller chooses, from the curated catalog of the providers they hold a key for (see
+   section 5). `FREE_PLATFORM_MODELS`, `403 model_requires_upgrade` and
+   `entitlements.platform_models` no longer exist.
 3. **Per-turn consent** — a request-scoped toggle the *user* flips for that turn (e.g. the
    web-search toggle, [03-tools.md](03-tools.md)): opt-in, not tier.
 
@@ -232,8 +235,24 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
   (`409 byok_key_required`) - never served on ours, since a BYOK turn is uncapped.
 - **One flag:** `accounts/byok.py::byok_active` is the only BYOK-active check (key presence; pass
   `subscription_byok` for a subscription view, where it must also have a key on file).
-- The chat picker shows only the providers the caller has keys for (`GET /me/keys` returns names,
-  never keys). Removing the keys restores the plan's normal limits and models.
+- **Model catalog (`GET /models`, `llm/byok_catalog.py`):** for a BYOK caller, the `selectable`
+  ids of `llm/byok_profiles.py` for the providers they hold a key for, each as `{provider, id
+  ("provider/model"), label_zh, label_en, is_default}`; `is_default` marks their effective main model
+  (saved default while its provider has a key, else the first keyed provider's `default_main`).
+  Non-BYOK callers get `{selectable: false, models: []}`. Removing the keys restores the plan's
+  normal limits and the platform model.
+- **Override validation (`api/byok.py::validated_model_pick`):** `POST /agent/query` `model` and
+  `PATCH /threads/{id}` `model_override` are checked for a BYOK caller: malformed or not in the
+  catalog -> `422 invalid_model`; a provider with no saved key -> `409 byok_key_required`. For a
+  non-BYOK caller the value is ignored. A thread's stored override only applies to a turn that runs
+  on the caller's key.
+- **Clearing:** `PATCH /threads/{id}` with `model_override: null` or `""` clears the override
+  (omitting the field leaves it unchanged; the store's `clear_model_override` flag mirrors
+  `clear_personality_override`).
+- **Saved default (`users.default_model`):** `GET/PUT /me/model-default` (PUT `null`/`""` clears).
+  Setting needs a saved key (`403 byok_required` without one), a catalog model (`422 invalid_model`)
+  and a keyed provider (`409 byok_key_required`). `resolve_byok_override(default_model=...)` applies
+  it only while its provider still has a key; a per-request or per-thread pick wins over it.
 - Deep research stays Pro-only with no daily report cap (each run is bounded by its own budget, and
   the per-minute rate and daily-chat allowance still apply); its model calls run on the user's key.
   `llm_usage.byok` marks these calls.

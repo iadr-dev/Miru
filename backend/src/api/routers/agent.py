@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from accounts.entitlements import chat_limit_for
 from accounts.models import User
 from api.attachments import AttachmentInput, process_attachments
-from api.byok import enforce_platform_model, resolve_byok
+from api.byok import resolve_byok, validated_model_pick
 from api.dependencies import (
     AppState,
     get_session,
@@ -59,6 +59,8 @@ class AgentQueryRequest(BaseModel):
     attachments: tuple[AttachmentInput, ...] = Field(default_factory=tuple)
     # The composer's model pick, sent WITH the message so the very first turn of a new chat honors
     # it (a separate PATCH /threads can only land after the thread exists, i.e. after this turn).
+    # Only a BYOK caller's pick counts (validated against `GET /models`); for everyone else the
+    # platform profile decides the model and this field is ignored.
     model: str | None = Field(default=None, max_length=200)
     # This chat's 語氣 (a preset id, or "default" to follow the account setting), sent WITH the
     # message for the same reason as `model`: a new chat has no thread to PATCH yet.
@@ -122,9 +124,15 @@ async def agent_query(
         await _reject_duplicate(store, user.id, idempotency_key)
     # Decide BYOK first (it needs the model the turn will use), then let the gate act on that one
     # decision - a refusal here happens before anything is claimed.
-    model = await _model_for_turn(store, user.id, body)
-    byok = await resolve_byok(session, settings, user_id=user.id, model_override=model)
-    enforce_platform_model(user, model, byok=byok is not None)
+    picked = await validated_model_pick(session, settings, user_id=user.id, pick=body.model)
+    model = await _model_for_turn(store, user.id, body, picked)
+    byok = await resolve_byok(
+        session,
+        settings,
+        user_id=user.id,
+        model_override=model,
+        default_model=user.default_model,
+    )
     await enforce_pre_turn_gate(
         state, session, user, deep_research=body.deep_research, byok=byok is not None
     )
@@ -136,9 +144,9 @@ async def agent_query(
     )
 
     thread = await _resolve_thread(store, user_id=user.id, thread_id=body.thread_id)
-    if body.model is not None and body.model != thread.model_override:
+    if picked is not None and picked != thread.model_override:
         thread = await store.update_thread(
-            user_id=user.id, thread_id=thread.id, model_override=body.model
+            user_id=user.id, thread_id=thread.id, model_override=picked
         )
     clear_tone, tone = personality_patch(state, body.personality)
     if clear_tone or (tone is not None and tone != thread.personality_override):
@@ -196,7 +204,8 @@ async def agent_query(
         ctx=ctx,
         personality=personality,
         answer_parent_message_id=answer_parent_message_id,
-        model_override=thread.model_override,
+        # a stored override only means something on the caller's own key
+        model_override=thread.model_override if byok is not None else None,
         web_search_enabled=body.web_search,
         locale=body.locale,
         images=images,
@@ -206,12 +215,12 @@ async def agent_query(
 
 
 async def _model_for_turn(
-    store: ConversationStore, user_id: str, body: AgentQueryRequest
+    store: ConversationStore, user_id: str, body: AgentQueryRequest, picked: str | None
 ) -> str | None:
-    """The model override this request will end up with: the composer's pick, else the existing
-    thread's. A thread that does not exist is left for `_resolve_thread` to report (404)."""
-    if body.model is not None:
-        return body.model
+    """The model override this request will end up with: the (validated) composer pick, else the
+    existing thread's. A missing thread is left for `_resolve_thread` to report (404)."""
+    if picked is not None:
+        return picked
     if body.thread_id is None:
         return None
     try:

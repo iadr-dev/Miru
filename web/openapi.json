@@ -4713,20 +4713,6 @@
      "finmind_class": {
       "$ref": "#/components/schemas/Tier"
      },
-     "platform_models": {
-      "anyOf": [
-       {
-        "items": {
-         "type": "string"
-        },
-        "type": "array"
-       },
-       {
-        "type": "null"
-       }
-      ],
-      "title": "Platform Models"
-     },
      "tier": {
       "$ref": "#/components/schemas/Tier"
      }
@@ -15475,6 +15461,86 @@
     "title": "Method",
     "type": "string"
    },
+   "ModelCatalog": {
+    "properties": {
+     "models": {
+      "items": {
+       "$ref": "#/components/schemas/ModelOption"
+      },
+      "title": "Models",
+      "type": "array"
+     },
+     "selectable": {
+      "title": "Selectable",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "selectable",
+     "models"
+    ],
+    "title": "ModelCatalog",
+    "type": "object"
+   },
+   "ModelDefault": {
+    "properties": {
+     "default_model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Default Model"
+     }
+    },
+    "required": [
+     "default_model"
+    ],
+    "title": "ModelDefault",
+    "type": "object"
+   },
+   "ModelOption": {
+    "properties": {
+     "id": {
+      "title": "Id",
+      "type": "string"
+     },
+     "is_default": {
+      "title": "Is Default",
+      "type": "boolean"
+     },
+     "label_en": {
+      "title": "Label En",
+      "type": "string"
+     },
+     "label_zh": {
+      "title": "Label Zh",
+      "type": "string"
+     },
+     "provider": {
+      "enum": [
+       "anthropic",
+       "openai",
+       "gemini",
+       "openrouter"
+      ],
+      "title": "Provider",
+      "type": "string"
+     }
+    },
+    "required": [
+     "provider",
+     "id",
+     "label_zh",
+     "label_en",
+     "is_default"
+    ],
+    "title": "ModelOption",
+    "type": "object"
+   },
    "ModelTotals": {
     "additionalProperties": false,
     "properties": {
@@ -17590,6 +17656,24 @@
      "key"
     ],
     "title": "PutKeyRequest",
+    "type": "object"
+   },
+   "PutModelDefaultRequest": {
+    "properties": {
+     "default_model": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Default Model"
+     }
+    },
+    "title": "PutModelDefaultRequest",
     "type": "object"
    },
    "PutStrategySubscriptionRequest": {
@@ -23290,6 +23374,17 @@
       "format": "date-time",
       "title": "Created At",
       "type": "string"
+     },
+     "default_model": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Default Model"
      },
      "display_name": {
       "default": "",
@@ -30454,6 +30549,67 @@
     ]
    }
   },
+  "/api/v1/me/model-default": {
+   "get": {
+    "operationId": "get_model_default_api_v1_me_model_default_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ModelDefault"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Model Default",
+    "tags": [
+     "accounts"
+    ]
+   },
+   "put": {
+    "description": "Save (or, with null/\"\" , clear) the model BYOK chats and scheduled runs use when nothing\nelse is picked. BYOK only: it must be in the catalog and its provider must have a saved key.\nA caller with no key can still clear a stale value but cannot set one (403 `byok_required`).",
+    "operationId": "put_model_default_api_v1_me_model_default_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PutModelDefaultRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ModelDefault"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Put Model Default",
+    "tags": [
+     "accounts"
+    ]
+   }
+  },
   "/api/v1/memory": {
    "delete": {
     "description": "Forget everything (or one scope) in one go.",
@@ -30752,6 +30908,28 @@
     "summary": "Update Memory",
     "tags": [
      "memory"
+    ]
+   }
+  },
+  "/api/v1/models": {
+   "get": {
+    "description": "The models the caller may choose. Only a BYOK caller (a saved key) can choose: they get the\ncurated models of the providers they hold a key for. Everyone else runs on the platform's\nmodel profile - `{selectable: false, models: []}`.",
+    "operationId": "list_models_api_v1_models_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ModelCatalog"
+        }
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "List Models",
+    "tags": [
+     "accounts"
     ]
    }
   },
@@ -34823,7 +35001,7 @@
     ]
    },
    "patch": {
-    "description": "Rename / star / archive / tag. `If-Match: <version>` enforces optimistic concurrency —\na stale version means another device edited first, surfaced as 409.",
+    "description": "Rename / star / archive / tag / model. `If-Match: <version>` enforces optimistic\nconcurrency — a stale version means another device edited first, surfaced as 409.\n\n`model_override`: omitted = unchanged; null or \"\" = clear; a value = set it after validating it\nagainst the caller's model catalog (422 unknown, 409 no key for its provider). For a caller\nwithout their own key the value is ignored (the platform profile decides the model).",
     "operationId": "patch_thread_api_v1_threads__thread_id__patch",
     "parameters": [
      {
