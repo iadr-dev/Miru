@@ -30,6 +30,12 @@ import {
   type MaWindow,
   type SubOverlay,
 } from "@/components/stock/technical/shared";
+import {
+  CHART_EVENT_STYLE,
+  type ChartEvent,
+  mergeMarkers,
+  snapEventsToBars,
+} from "@/lib/chart-events";
 import { resolveToken } from "@/lib/resolve-css-token";
 import type { Market } from "@/types/settings";
 import type { EodBar, TechnicalIndicatorsResponse } from "@/types/stock/technical";
@@ -94,11 +100,10 @@ function drawSupportResistance(
  * marker per bar (a bar completing several patterns only shows the first, avoiding stacked
  * same-timestamp markers) and capped to the most recent few — a long daily window completes
  * dozens of short-lived patterns, and drawing every one is unreadable. */
-function drawPatternMarkers(
-  candleSeries: ISeriesApi<"Candlestick">,
+function buildPatternMarkers(
   indicators: TechnicalIndicatorsResponse,
   t: ReturnType<typeof useTranslations>,
-): void {
+): SeriesMarker<Time>[] {
   const hitsByBar = new Map<number, (typeof indicators.candlestick_patterns)[number]>();
   for (const hit of indicators.candlestick_patterns) {
     if (!hitsByBar.has(hit.bar_index)) hitsByBar.set(hit.bar_index, hit);
@@ -106,8 +111,6 @@ function drawPatternMarkers(
   const hits = [...hitsByBar.values()]
     .sort((a, b) => a.bar_index - b.bar_index)
     .slice(-PATTERN_MARKER_LIMIT);
-  if (hits.length === 0) return;
-
   const markers: SeriesMarker<Time>[] = [];
   for (const hit of hits) {
     const date = indicators.trade_dates[hit.bar_index];
@@ -120,7 +123,38 @@ function drawPatternMarkers(
       text: t(`pattern.${hit.pattern}` as `pattern.${string}`),
     });
   }
-  createSeriesMarkers(candleSeries, markers);
+  return markers;
+}
+
+/** 公司事件 pins (除息/除權/股東會/增資), one per bar that carries any, above the bar in a
+ * categorical `--chart-N` colour (never the signed up/down tokens). Each event is snapped to a bar
+ * that exists in the displayed series, so a 週/月 chart pins it to the bucket containing the date;
+ * events outside the loaded range have no bar and are left to the list under the chart. */
+function buildEventMarkers(
+  events: readonly ChartEvent[],
+  bars: readonly EodBar[],
+  rangeStart: string | undefined,
+  t: ReturnType<typeof useTranslations>,
+): SeriesMarker<Time>[] {
+  const snapped = snapEventsToBars(
+    events,
+    bars.map((b) => b.trade_date),
+    rangeStart,
+  );
+  return snapped.flatMap(({ time, kinds }) => {
+    const first = kinds[0];
+    if (!first) return [];
+    const style = CHART_EVENT_STYLE[first];
+    return [
+      {
+        time: time as Time,
+        position: "aboveBar" as const,
+        color: resolveToken(style.token),
+        shape: style.shape,
+        text: kinds.map((k) => t(`events.marker.${k}`)).join("/"),
+      },
+    ];
+  });
 }
 
 /** 布林通道 (Bollinger Bands) draws directly on the MAIN candle pane, not a separate subpane —
@@ -172,6 +206,8 @@ export function KLineChart({
   subOverlays,
   showSupportResistance,
   showPatterns,
+  showEvents,
+  events,
   symbol,
   market,
   startDate,
@@ -184,6 +220,8 @@ export function KLineChart({
   readonly subOverlays: ReadonlySet<SubOverlay>;
   readonly showSupportResistance: boolean;
   readonly showPatterns: boolean;
+  readonly showEvents: boolean;
+  readonly events: readonly ChartEvent[];
   readonly symbol: string;
   readonly market: Market;
   readonly startDate: string;
@@ -265,7 +303,13 @@ export function KLineChart({
 
     drawMovingAverages(chart, visibleMa, maSeriesByWindow);
     if (showSupportResistance) drawSupportResistance(candleSeries, indicators, t);
-    if (showPatterns) drawPatternMarkers(candleSeries, indicators, t);
+    // One markers plugin per series (a second createSeriesMarkers call replaces the first), so
+    // pattern pins and event pins are merged into a single array.
+    const markers = mergeMarkers(
+      showPatterns ? buildPatternMarkers(indicators, t) : [],
+      showEvents ? buildEventMarkers(events, bars, indicators.trade_dates[0], t) : [],
+    );
+    if (markers.length > 0) createSeriesMarkers(candleSeries, markers);
     if (subOverlays.has("bollinger") && indicators.bollinger) drawBollinger(chart, indicators);
     drawVolumePane(chart, bars);
 
@@ -282,6 +326,8 @@ export function KLineChart({
     maSeriesByWindow,
     showSupportResistance,
     showPatterns,
+    showEvents,
+    events,
     subOverlays,
     t,
   ]);
