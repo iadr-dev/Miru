@@ -11,7 +11,7 @@ independent of whether today's row exists.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -240,7 +240,8 @@ async def test_history_close_is_populated_from_real_price_eod(
 async def test_history_returned_independent_of_todays_row(
     session_factory: async_sessionmaker,
 ) -> None:
-    dates = [date(2026, 9, day) for day in (18, 19, 20)]
+    today = date.today()  # the 30-day window is relative to now, so seed relative dates too
+    dates = [today - timedelta(days=offset) for offset in (3, 2, 1)]
     async with session_factory() as session:
         for as_of in dates:
             await upsert_trend_score(session, _seeded_result(as_of))
