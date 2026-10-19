@@ -166,8 +166,8 @@ consistent with the memory-deletion rule in [09-memory.md](09-memory.md).
 - **Per-chat model / 語氣 selector: built.** `Thread.model_override` is set by `PATCH /threads/{id}`
   or the `model` field of `POST /agent/query` and read on every turn; `Thread.personality_override`
   is set via `PATCH` (`"default"` clears it) and threaded into `PersonalityContext.thread_override`.
-  A Free account on the platform key may only pick the light models (see
-  [12](12-multi-user-tiers.md) §3).
+  Only a BYOK caller can choose a model (validated against `GET /models`; ignored for everyone
+  else); `PATCH` with `model_override: null` or `""` clears it (see [12](12-multi-user-tiers.md) §5).
 
 ## Governance obligations
 - Every action is per-`user_id`; no cross-user access.

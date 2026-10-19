@@ -38,20 +38,20 @@ class TestThreadManagement:
         assert list(body["tags"]) == ["a", "b"]
         assert body["version"] == 1
 
-    def test_patch_model_override_round_trips(self, client: TestClient, signed_in_user) -> None:
+    def test_patch_model_override_is_ignored_without_own_key(
+        self, client: TestClient, signed_in_user
+    ) -> None:
+        # Only a BYOK caller can choose a model (see tests/api/test_model_overrides.py); for a
+        # platform-profile caller the value is dropped: not stored and not refused.
         headers, _ = signed_in_user
         thread_id = _create_thread(client, headers)
         resp = client.patch(
             f"/api/v1/threads/{thread_id}",
-            json={"model_override": "anthropic/claude-opus-4-8"},
+            json={"model_override": "anthropic/claude-opus-5-5"},
             headers=headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["model_override"] == "anthropic/claude-opus-4-8"
-
-        get_resp = client.get(f"/api/v1/threads/{thread_id}", headers=headers)
-        assert get_resp.status_code == 200
-        assert get_resp.json()["model_override"] == "anthropic/claude-opus-4-8"
+        assert resp.json()["model_override"] is None
 
     def test_patch_if_match_mismatch_409(self, client: TestClient, signed_in_user) -> None:
         headers, _ = signed_in_user

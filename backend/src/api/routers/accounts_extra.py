@@ -14,12 +14,13 @@ from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from accounts.byok import byok_active
+from accounts.byok import byok_active, byok_providers, effective_main
 from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
 from accounts.entitlements import entitlement_view
 from accounts.models import EntitlementView, SecretKind, User
 from accounts.secrets import SqlAlchemySecretStore
 from accounts.store import UserStore
+from api.byok import check_catalog_spec, key_required
 from api.dependencies import (
     AppState,
     get_session,
@@ -30,6 +31,7 @@ from api.dependencies import (
 )
 from api.errors import ApiError
 from config.settings import Settings
+from llm.byok_catalog import ByokProviderId, catalog_for, spec_of
 from llm.registry import BYOK_PROVIDERS
 from usage.llm_usage import MAX_DAYS, LlmUsageSummary, summarize_llm_usage
 
@@ -238,6 +240,91 @@ async def delete_key(
     await SqlAlchemySecretStore(session, cipher).delete(
         user_id=user.id, kind=kind, provider=provider
     )
+
+
+class ModelOption(BaseModel):
+    provider: ByokProviderId
+    id: str  # the "provider/model" spec to send as `model` / `model_override`
+    label_zh: str
+    label_en: str
+    is_default: bool  # the caller's effective main model when a chat picks nothing
+
+
+class ModelCatalog(BaseModel):
+    selectable: bool  # false = the platform picks the model; show no picker
+    models: list[ModelOption]
+
+
+@router.get("/models")
+async def list_models(
+    user: User = Depends(require_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> ModelCatalog:
+    """The models the caller may choose. Only a BYOK caller (a saved key) can choose: they get the
+    curated models of the providers they hold a key for. Everyone else runs on the platform's
+    model profile - `{selectable: false, models: []}`."""
+    providers = await byok_providers(session, settings, user_id=user.id)
+    if not providers:
+        return ModelCatalog(selectable=False, models=[])
+    main = effective_main(providers, user.default_model)
+    default_spec = spec_of(*main) if main is not None else None
+    return ModelCatalog(
+        selectable=True,
+        models=[
+            ModelOption(
+                provider=m.provider,
+                id=m.spec,
+                label_zh=m.label_zh,
+                label_en=m.label_en,
+                is_default=m.spec == default_spec,
+            )
+            for m in catalog_for(providers)
+        ],
+    )
+
+
+class ModelDefault(BaseModel):
+    default_model: str | None  # the saved "provider/model", or None = the provider default
+
+
+class PutModelDefaultRequest(BaseModel):
+    default_model: str | None = Field(default=None, max_length=200)  # null or "" clears
+
+
+@router.get("/me/model-default")
+async def get_model_default(user: User = Depends(require_user)) -> ModelDefault:
+    return ModelDefault(default_model=user.default_model)
+
+
+@router.put("/me/model-default")
+async def put_model_default(
+    body: PutModelDefaultRequest,
+    user: User = Depends(require_user),
+    store: UserStore = Depends(get_user_store),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+) -> ModelDefault:
+    """Save (or, with null/"" , clear) the model BYOK chats and scheduled runs use when nothing
+    else is picked. BYOK only: it must be in the catalog and its provider must have a saved key.
+    A caller with no key can still clear a stale value but cannot set one (403 `byok_required`)."""
+    spec = body.default_model.strip() if body.default_model else ""
+    if not spec:
+        updated = await store.set_default_model(user_id=user.id, default_model=None)
+        return ModelDefault(default_model=updated.default_model)
+    providers = await byok_providers(session, settings, user_id=user.id)
+    if not providers:
+        raise ApiError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="byok_required",
+            message="Choosing a default model needs your own API key; add one in Settings first.",
+            retryable=False,
+        )
+    checked = check_catalog_spec(spec)
+    if checked.partition("/")[0] not in providers:
+        raise key_required(providers)
+    updated = await store.set_default_model(user_id=user.id, default_model=checked)
+    return ModelDefault(default_model=updated.default_model)
 
 
 __all__ = ["router"]

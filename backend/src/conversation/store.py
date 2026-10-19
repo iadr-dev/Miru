@@ -115,6 +115,7 @@ class ConversationStore(Protocol):
         archived: bool | None = None,
         tags: tuple[str, ...] | None = None,
         model_override: str | None = None,
+        clear_model_override: bool = False,
         personality_override: str | None = None,
         clear_personality_override: bool = False,
         expected_version: int | None = None,
@@ -412,6 +413,7 @@ class SqlAlchemyConversationStore:
         archived: bool | None = None,
         tags: tuple[str, ...] | None = None,
         model_override: str | None = None,
+        clear_model_override: bool = False,
         personality_override: str | None = None,
         clear_personality_override: bool = False,
         expected_version: int | None = None,
@@ -421,13 +423,9 @@ class SqlAlchemyConversationStore:
         rather than overwrite the newer state. Every applied patch bumps `version`, so the next
         stale write is caught.
 
-        `model_override` follows every other field's own "set if provided, never explicitly
-        clear" semantics (`None` means the caller didn't touch this field, exactly like `title`/
-        `starred`/`archived`/`tags` above) rather than adding a separate sentinel — there is no
-        existing precedent in this method for distinguishing "omitted" from "clear to None", and
-        this PATCH surface has no need to invent one yet: a client that wants to remove an
-        override can PATCH a resolvable `"provider/model"` string back to the default, and a
-        dedicated clear affordance can be added later if a real need for it shows up.
+        `model_override` is set when provided; `clear_model_override=True` removes it (back to the
+        account default), exactly like `clear_personality_override` - `None` alone still means
+        "leave this field as it is".
         """
         row = await self._get_thread_row(user_id=user_id, thread_id=thread_id, lock=True)
         if expected_version is not None and row.version != expected_version:
@@ -440,7 +438,9 @@ class SqlAlchemyConversationStore:
             row.archived = archived
         if tags is not None:
             row.tags = list(tags)
-        if model_override is not None:
+        if clear_model_override:
+            row.model_override = None
+        elif model_override is not None:
             row.model_override = model_override
         if clear_personality_override:
             row.personality_override = None  # back to following the account's setting

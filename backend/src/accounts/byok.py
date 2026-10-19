@@ -60,6 +60,27 @@ def _parse_model_spec(spec: str | None) -> tuple[str, str] | None:
     return (provider, model) if provider and model else None
 
 
+async def byok_providers(session: AsyncSession, settings: Settings, *, user_id: str) -> list[str]:
+    """The providers the user has a saved LLM key for ([] when none, or encryption is off)."""
+    try:
+        cipher = SecretCipher.from_settings(settings)
+    except SecretEncryptionNotConfiguredError:
+        return []
+    return list(await SqlAlchemySecretStore(session, cipher).llm_providers(user_id=user_id))
+
+
+def effective_main(providers: list[str], default_model: str | None) -> tuple[str, str] | None:
+    """The `(provider, model)` a BYOK user runs on when they pick nothing: their saved
+    `default_model` while its provider still has a key, else the `default_main` of the first
+    provider (`BYOK_PROVIDER_ORDER`) they hold a key for. None when no provider qualifies."""
+    saved = _parse_model_spec(default_model)
+    if saved is not None and saved[0] in providers:
+        return saved
+    provider = next((p for p in BYOK_PROVIDER_ORDER if p in providers), "")
+    tiers = provider_tiers(provider)
+    return (provider, tiers.default_main) if tiers is not None else None
+
+
 async def resolve_byok_override(
     session: AsyncSession,
     settings: Settings,
@@ -93,16 +114,11 @@ async def resolve_byok_override(
             logger.info("byok_key_missing_for_model", user_id=user_id, provider=provider)
             raise ByokKeyRequiredError(list(providers))
     else:
-        saved = _parse_model_spec(default_model)
-        if saved is not None and saved[0] in providers:
-            provider, model = saved
-        else:
-            provider = next((p for p in BYOK_PROVIDER_ORDER if p in providers), "")
-            tiers = provider_tiers(provider)
-            if tiers is None:
-                logger.info("byok_no_usable_provider", user_id=user_id)
-                raise ByokKeyRequiredError(list(providers))
-            model = tiers.default_main
+        chosen = effective_main(list(providers), default_model)
+        if chosen is None:
+            logger.info("byok_no_usable_provider", user_id=user_id)
+            raise ByokKeyRequiredError(list(providers))
+        provider, model = chosen
 
     key = await store.get(user_id=user_id, kind=SecretKind.LLM_KEY, provider=provider)
     if key is None:
@@ -113,4 +129,10 @@ async def resolve_byok_override(
     return ByokOverride(provider_id=provider, api_key=key, main_model=model, cheap_model=cheap)
 
 
-__all__ = ["ByokKeyRequiredError", "byok_active", "resolve_byok_override"]
+__all__ = [
+    "ByokKeyRequiredError",
+    "byok_active",
+    "byok_providers",
+    "effective_main",
+    "resolve_byok_override",
+]

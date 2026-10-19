@@ -73,6 +73,8 @@ class UserStore(Protocol):
         personality_id: str | None = None,
     ) -> User: ...
 
+    async def set_default_model(self, *, user_id: str, default_model: str | None) -> User: ...
+
 
 def _row_to_user(row: UserRow) -> User:
     return User(
@@ -86,6 +88,7 @@ def _row_to_user(row: UserRow) -> User:
         nationality=row.nationality,
         tier=Tier(row.tier),
         personality_id=row.personality_id,
+        default_model=row.default_model,
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -278,6 +281,16 @@ class SqlAlchemyUserStore:
         row.updated_at = datetime.now(UTC)
         await self._session.flush()
         logger.info("user_profile_updated", user_id=user_id)
+        return _row_to_user(row)
+
+    async def set_default_model(self, *, user_id: str, default_model: str | None) -> User:
+        """Set (or, with None, clear) the user's saved default main model. The caller validates it
+        against the model catalog; this store only persists."""
+        row = await self._get_row(user_id)
+        row.default_model = default_model
+        row.updated_at = datetime.now(UTC)
+        await self._session.flush()
+        logger.info("user_default_model_set", user_id=user_id, cleared=default_model is None)
         return _row_to_user(row)
 
     async def _add_link(

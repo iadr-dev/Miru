@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.models import User
 from api.attachments import AttachmentInput
-from api.byok import enforce_platform_model, resolve_byok
+from api.byok import resolve_byok, validated_model_pick
 from api.dependencies import (
     AppState,
     get_session,
@@ -91,6 +91,8 @@ class PatchThreadRequest(BaseModel):
     starred: bool | None = None
     archived: bool | None = None
     tags: tuple[str, ...] | None = None
+    # A "provider/model" from GET /models (BYOK callers only; ignored for everyone else). Send
+    # null or "" to CLEAR the override; omit the field to leave it unchanged.
     model_override: str | None = Field(default=None, max_length=200)
     # A preset id for this chat only, or "default" to follow the account's 語氣 setting again.
     personality_override: str | None = Field(default=None, max_length=50)
@@ -103,11 +105,25 @@ async def patch_thread(
     user: User = Depends(require_user),
     store: ConversationStore = Depends(_store),
     state: AppState = Depends(get_state),
+    session: AsyncSession = Depends(get_session),
     if_match: int | None = Header(default=None, alias="If-Match"),
 ) -> Thread:
-    """Rename / star / archive / tag. `If-Match: <version>` enforces optimistic concurrency —
-    a stale version means another device edited first, surfaced as 409."""
+    """Rename / star / archive / tag / model. `If-Match: <version>` enforces optimistic
+    concurrency — a stale version means another device edited first, surfaced as 409.
+
+    `model_override`: omitted = unchanged; null or "" = clear; a value = set it after validating it
+    against the caller's model catalog (422 unknown, 409 no key for its provider). For a caller
+    without their own key the value is ignored (the platform profile decides the model)."""
     clear_tone, tone = personality_patch(state, body.personality_override)
+    clear_model = False
+    model: str | None = None
+    if "model_override" in body.model_fields_set:
+        if body.model_override is None or not body.model_override.strip():
+            clear_model = True
+        else:
+            model = await validated_model_pick(
+                session, state.settings, user_id=user.id, pick=body.model_override
+            )
     try:
         return await store.update_thread(
             user_id=user.id,
@@ -116,7 +132,8 @@ async def patch_thread(
             starred=body.starred,
             archived=body.archived,
             tags=body.tags,
-            model_override=body.model_override,
+            model_override=model,
+            clear_model_override=clear_model,
             personality_override=tone,
             clear_personality_override=clear_tone,
             expected_version=if_match,
@@ -626,9 +643,12 @@ async def regenerate_turn(
     thread = await _require_owned_thread(store, user_id=user.id, thread_id=thread_id)
     ctx = tool_context_for(user, state)
     byok = await resolve_byok(
-        session, state.settings, user_id=user.id, model_override=thread.model_override
+        session,
+        state.settings,
+        user_id=user.id,
+        model_override=thread.model_override,
+        default_model=user.default_model,
     )
-    enforce_platform_model(user, thread.model_override, byok=byok is not None)
     deep_research = _resolve_deep_research(body.deep_research, source_user_turn)
     await enforce_pre_turn_gate(
         state, session, user, deep_research=deep_research, byok=byok is not None
@@ -650,7 +670,7 @@ async def regenerate_turn(
         personality=personality,
         answer_parent_message_id=sibling_parent_id,
         regenerate_of=turn_id,
-        model_override=thread.model_override,
+        model_override=thread.model_override if byok is not None else None,
         web_search_enabled=body.web_search,
         deep_research=deep_research,
         byok=byok,
@@ -706,9 +726,12 @@ async def edit_turn(
     # only one writer at a time — an uncommitted write already held on this session's connection
     # would deadlock against that second connection (observed as "database is locked").
     byok = await resolve_byok(
-        session, settings, user_id=user.id, model_override=thread.model_override
+        session,
+        settings,
+        user_id=user.id,
+        model_override=thread.model_override,
+        default_model=user.default_model,
     )
-    enforce_platform_model(user, thread.model_override, byok=byok is not None)
     deep_research = _resolve_deep_research(body.deep_research, turn)
     await enforce_pre_turn_gate(
         state, session, user, deep_research=deep_research, byok=byok is not None
@@ -740,7 +763,7 @@ async def edit_turn(
         ctx=ctx,
         personality=personality,
         answer_parent_message_id=answer_parent_message_id,
-        model_override=thread.model_override,
+        model_override=thread.model_override if byok is not None else None,
         web_search_enabled=body.web_search,
         deep_research=deep_research,
         byok=byok,
