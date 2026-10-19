@@ -37,6 +37,10 @@ VOLUME_CONTRACTION_FRACTION = 0.5
 # (see `batch.py`'s layer note for why the two are never wired together).
 FIFTY_TWO_WEEK_WINDOW = 252
 
+# The short-horizon price-extreme lookback: 20 trading days (~1 month), the same "recent normal"
+# span `VOLUME_SURGE_WINDOW` uses, so a "20-day high" and a "20-day average" mean the same stretch.
+TWENTY_DAY_WINDOW = 20
+
 
 def volume_surge(bars: Sequence[PriceBar], *, multiple: float = VOLUME_SURGE_MULTIPLE) -> bool:
     """Today's volume is at least `multiple` times the average volume of the `VOLUME_SURGE_WINDOW`
@@ -79,6 +83,16 @@ def new_52w_high(bars: Sequence[PriceBar]) -> bool:
     return bars[-1].close >= max(bar.close for bar in window)
 
 
+def new_20d_high(bars: Sequence[PriceBar]) -> bool:
+    """Today's close is the highest close over the trailing `TWENTY_DAY_WINDOW` trading days
+    (today included; a tie with the window maximum counts). `False` if fewer than
+    `TWENTY_DAY_WINDOW` bars are available — a partial window is not a proven 20-day extreme."""
+    if len(bars) < TWENTY_DAY_WINDOW:
+        return False
+    window = bars[-TWENTY_DAY_WINDOW:]
+    return bars[-1].close >= max(bar.close for bar in window)
+
+
 def new_52w_low(bars: Sequence[PriceBar]) -> bool:
     """Today's close is the lowest close over the trailing `FIFTY_TWO_WEEK_WINDOW` trading days
     (today included). `False` if fewer than `FIFTY_TWO_WEEK_WINDOW` bars are available."""
@@ -90,9 +104,11 @@ def new_52w_low(bars: Sequence[PriceBar]) -> bool:
 
 __all__ = [
     "FIFTY_TWO_WEEK_WINDOW",
+    "TWENTY_DAY_WINDOW",
     "VOLUME_CONTRACTION_FRACTION",
     "VOLUME_SURGE_MULTIPLE",
     "VOLUME_SURGE_WINDOW",
+    "new_20d_high",
     "new_52w_high",
     "new_52w_low",
     "volume_contraction",

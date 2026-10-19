@@ -226,9 +226,10 @@ it doesn't — no numeric field/operator/value query shape.
   add a tag without wiring its predicate in code). Each entry has a stable `key`, bilingual labels,
   a `TagCategory`, a description, and a `data_class` (every tag is `PUBLIC` — chip tags rest on
   the public 三大法人 totals, never the sponsor-gated 分點 data). **4 categories** — 技術面,
-  籌碼面, 熱門, 智能 — and **37 tags**: 18 technical (9 MA-cross/oscillator/MACD events plus the
-  9 candlestick booleans of §1), 11 chip, 4 momentum/熱門 (e.g. volume surge, 52-week high/low),
-  and 4 pre-bundled 智能 combos that AND already-catalogued tags. Fundamental and theme tag
+  籌碼面, 熱門, 智能 — and **39 tags**: 18 technical (9 MA-cross/oscillator/MACD events plus the
+  9 candlestick booleans of §1), 11 chip, 5 momentum/熱門 (volume surge/contraction, 20-day high,
+  52-week high/low), and 5 pre-bundled 智能 combos that AND already-catalogued tags (e.g.
+  `smart_foreign_buy_20d_high` = 外資連3買 AND 創20日新高, descriptive only). Fundamental and theme tag
   categories do not exist. `catalog.py` is the source of truth for the exact list.
 - **Daily-batch-then-fast-read, never live per-query:** `job_screener_flags`
   (`analytics/screener/batch.py`, **20:30 Asia/Taipei**, after the day's price and
@@ -244,8 +245,9 @@ it doesn't — no numeric field/operator/value query shape.
   at all is not in the partition and is not a negation match, disclosed via `detail`. An unknown
   tag key resolves to zero matches for that condition, never an error, with the key in `detail`.
 - **Exposure:** the tools `run_tag_screener` and `get_tag_catalog` (`tools/screener_tools.py`,
-  both `public`) read the derived Parquet store directly (not the router). There is no dedicated
-  tag REST route; tags also appear as boolean factors in the `run_screener` factor catalog.
+  both `public`) read the derived Parquet store directly (not the router). The same tools back the REST routes
+  `GET /market/tag-catalog` and `GET /market/tag-screener` ([api-reference](../api-reference.md));
+  tags also appear as boolean factors in the `run_screener` factor catalog.
 - **Governance:** a result is "符合『外資連3買』的個股", never a recommendation list;
   `TagScreenerResult.detail` is never empty, so an empty/failed query carries an honest reason.
 

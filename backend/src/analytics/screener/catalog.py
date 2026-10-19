@@ -316,6 +316,14 @@ CATALOG: tuple[TagDefinition, ...] = (
         "days — a conventional 量縮 threshold flagging visibly reduced activity.",
     ),
     TagDefinition(
+        key="new_20d_high",
+        label_zh="創20日新高",
+        label_en="New 20-day high",
+        category=TagCategory.HOT,
+        description="Today's close is the highest close over the trailing 20 trading days "
+        "(~1 month), including today.",
+    ),
+    TagDefinition(
         key="new_52w_high",
         label_zh="創52週新高",
         label_en="New 52-week high",
@@ -366,6 +374,14 @@ CATALOG: tuple[TagDefinition, ...] = (
         "made while foreign investors have been net-buying for 3 consecutive days, distinguishing "
         "an institutionally-backed high from an unsupported spike.",
     ),
+    TagDefinition(
+        key="smart_foreign_buy_20d_high",
+        label_zh="外資連買3日且創20日新高",
+        label_en="Foreign net buying 3 days + 20-day high",
+        category=TagCategory.SMART,
+        description="A shortcut for '外資連3買' AND '創20日新高' together — a 20-day closing high "
+        "recorded while foreign investors have been net buyers for 3 consecutive trading days.",
+    ),
 )
 
 # Pre-bundled 智能 combo tags: each maps to the set of already-catalogued tags that must ALL be
@@ -378,6 +394,7 @@ SMART_COMBOS: dict[str, frozenset[str]] = {
     "smart_reversal_chip": frozenset({"v_reversal", "foreign_net_buy_5d_cumulative"}),
     "smart_trend_continuation": frozenset({"three_rising", "golden_cross_5_20"}),
     "smart_new_high_chip": frozenset({"new_52w_high", "foreign_net_buy_streak_3"}),
+    "smart_foreign_buy_20d_high": frozenset({"foreign_net_buy_streak_3", "new_20d_high"}),
 }
 
 _BY_KEY: dict[str, TagDefinition] = {entry.key: entry for entry in CATALOG}
