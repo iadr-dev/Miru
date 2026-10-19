@@ -928,6 +928,7 @@
       "dragGroup": "Drag to reorder group",
       "alertItem": "Set an alert for {name}",
       "alertGroup": "Group alerts for {name}",
+      "compareGroup": "Compare the stocks in {name}",
       "alertGroupRelative": "Group alert",
       "alertGroupRelativeHint": "Percent move, volume, institutions… conditions that fit every stock",
       "alertGroupPerStock": "Set price levels per stock",
@@ -3463,7 +3464,41 @@
       "sponsorLocked": "This subpane is Sponsor-tier data",
       "empty": "No data for this range.",
       "collapse": "Collapse",
-      "nonTradingCaveat": "Indicators and patterns describe the chart — not a trading instruction."
+      "nonTradingCaveat": "Indicators and patterns describe the chart — not a trading instruction.",
+      "sub": {
+        "label": "Technical views",
+        "chart": "Chart",
+        "compare": "Compare"
+      },
+      "compare": {
+        "title": "Compare stocks",
+        "hint": "Each line is the % change since the first date every selected stock has a close, so stocks at different prices share one scale.",
+        "rangeLabel": "Range",
+        "range": {
+          "1m": "1M",
+          "3m": "3M",
+          "6m": "6M",
+          "1y": "1Y"
+        },
+        "selectedLabel": "Stocks being compared",
+        "pickerLabel": "Add a stock to compare",
+        "pickerPlaceholder": "Search by code or name",
+        "pickerSearching": "Searching…",
+        "pickerNone": "No matching stock",
+        "limitHint": "You can compare up to {max} stocks. Remove one to add another.",
+        "remove": "Remove {name}",
+        "needMore": "Pick at least two stocks to compare.",
+        "tooFew": "There is not enough shared history in this range to draw lines.",
+        "chartLabel": "Percent change since {date}, one line per stock",
+        "legendLabel": "Lines — press a stock to hide or show its line",
+        "legendHidden": "hidden",
+        "noData": "No data",
+        "endHeading": "Change over the range",
+        "baseNote": "All lines start at 0% on {date}.",
+        "limitedNote": "{names} has no earlier history in this range, so every line starts from {date}.",
+        "missingNote": "{names}: no price data for this range, so no line is drawn.",
+        "asOf": "Latest data: {date} (daily close)"
+      }
     },
     "tracker": {
       "title": "ETF Holdings",

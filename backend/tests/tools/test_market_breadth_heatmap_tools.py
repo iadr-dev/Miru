@@ -12,6 +12,9 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from ingest.store import ParquetStore
 from schemas.enums import Market
 from tools.base import ToolContext
@@ -457,6 +460,15 @@ async def test_price_history_tw_unchanged(tmp_path: Path) -> None:
     assert output.data_available is True
     closes = [row.close for row in output.rows if row.symbol == "2330"]
     assert closes == [100.0, 110.0]
+
+
+def test_price_history_accepts_a_year_but_not_more_and_quotes_stay_short() -> None:
+    assert GetPriceHistoryInput(symbols=("2330",), days=260).days == 260
+    with pytest.raises(ValidationError):
+        GetPriceHistoryInput(symbols=("2330",), days=261)
+    # the list-row sparkline window did not widen with the history cap
+    with pytest.raises(ValidationError):
+        GetSymbolQuotesInput(symbols=("2330",), days=61)
 
 
 async def test_price_history_us_resolves_us_price_eod_dataset(tmp_path: Path) -> None:

@@ -2,8 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { SubTabRow } from "@/components/stock/chip/shared";
+import { StockComparePanel } from "@/components/stock/compare/compare-panel";
 import { EventList } from "@/components/stock/technical/event-list";
 import { KLineChart } from "@/components/stock/technical/k-line-chart";
 import type {
@@ -21,8 +23,10 @@ import {
 } from "@/components/stock/technical/toggles";
 import { QueryFailure } from "@/components/ui/query-state";
 import { useChartEvents } from "@/hooks/use-chart-events";
+import { useUrlParams } from "@/hooks/use-url-params";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
+import { parseTechnicalSub, TECHNICAL_SUBS } from "@/lib/stock-compare";
 import type { Market } from "@/types/settings";
 import type { EodBar } from "@/types/stock/technical";
 
@@ -52,7 +56,51 @@ function rangeStartDate(range: RangeKey, today: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 技術分析: the candlestick chart, or (TW stocks) the multi-stock compare overlay. The view is
+ * `?sub=` in the URL (`chart` is the default and leaves the URL clean), and the compare list is
+ * `?cmp=`. Each view mounts on first use and then stays mounted, so the chart's indicator/range
+ * toggles survive a trip to 比較 and back. */
 export function TechnicalAnalysisPanel({
+  symbol,
+  market,
+}: {
+  readonly symbol: string;
+  readonly market: Market;
+}): ReactNode {
+  const t = useTranslations("stock.technical.sub");
+  const { searchParams, setParams } = useUrlParams();
+  const sub = market === "TW" ? parseTechnicalSub(searchParams.get("sub")) : "chart";
+  const [visitedCompare, setVisitedCompare] = useState(sub === "compare");
+  useEffect(() => {
+    if (sub === "compare") setVisitedCompare(true);
+  }, [sub]);
+
+  return (
+    <div>
+      {market === "TW" ? (
+        <div role="group" aria-label={t("label")}>
+          <SubTabRow
+            tabs={TECHNICAL_SUBS}
+            active={sub}
+            onChange={(next) => setParams({ sub: next === "chart" ? null : next })}
+            labelFor={(tab) => t(tab)}
+            touchTarget
+          />
+        </div>
+      ) : null}
+      <div className={sub === "chart" ? undefined : "hidden"}>
+        <TechnicalChartView symbol={symbol} market={market} />
+      </div>
+      {visitedCompare ? (
+        <div className={sub === "compare" ? undefined : "hidden"}>
+          <StockComparePanel symbol={symbol} market={market} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TechnicalChartView({
   symbol,
   market,
 }: {

@@ -547,7 +547,7 @@ table cannot carry.
 | GET | `/api/v1/market/tag-catalog` | optional | `get_tag_catalog` | public | The discoverable tap-tile screener tag list, grouped by category with bilingual labels — `get_tag_catalog` takes no input, so this route dispatches w… |
 | GET | `/api/v1/market/tag-screener` | optional | `run_tag_screener` | public | Tap-tile tag screener over the nightly-computed flag partition. |
 | GET | `/api/v1/market/symbol-info` | optional | `get_symbol_info` | public | Batched symbol->name (+ industry/security-type) lookup, e.g. |
-| GET | `/api/v1/market/price-history` | optional | `get_price_history` | public | A bounded trailing-day OHLCV window for up to 20 symbols — the data behind a sparkline or a client-computed %-change, for any bare-symbol list (leade… |
+| GET | `/api/v1/market/price-history` | optional | `get_price_history` | public | A bounded trailing-day OHLCV window (up to 260 trading days) for up to 20 symbols — the data behind a sparkline, a compare chart or a client-computed… |
 | GET | `/api/v1/market/quotes` | optional | `get_symbol_quotes` | public | The list-row view for up to 20 symbols: name, latest close, DAILY change/change %, volume and a sparkline, in one call. |
 | GET | `/api/v1/derivatives/taiex-vix` | optional | `get_taiex_vix` | sponsor | 臺指選擇權波動率指數 (TAIEX option VIX) reading series — whole-market, Sponsor-tier. |
 | GET | `/api/v1/derivatives/{contract}` | optional | `get_derivatives_institutional`, `get_futures_options_daily`, `get_put_call_ratio` | public/sponsor | 期/選 daily OI/price, put/call positioning, and institutional/large-trader positioning for one contract code — descriptive positioning context, not a d… |

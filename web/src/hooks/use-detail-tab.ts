@@ -12,6 +12,7 @@
 import { useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 import { usePathname, useRouter } from "@/i18n/navigation";
+import { withSearchParams } from "@/lib/url-params";
 
 export function useDetailTab<T extends string>(
   tabs: readonly T[],
@@ -25,14 +26,10 @@ export function useDetailTab<T extends string>(
 
   const setTab = useCallback(
     (next: T) => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (next === defaultTab) {
-        params.delete("tab");
-      } else {
-        params.set("tab", next);
-      }
-      const query = params.toString();
-      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+      const href = withSearchParams(pathname, searchParams, {
+        tab: next === defaultTab ? null : next,
+      });
+      router.replace(href, { scroll: false });
     },
     [pathname, router, searchParams, defaultTab],
   );

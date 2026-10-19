@@ -20,6 +20,7 @@ import {
   BellSimpleIcon,
   CaretDownIcon,
   CaretRightIcon,
+  ChartLineIcon,
   CheckIcon,
   DotsSixVerticalIcon,
   PaletteIcon,
@@ -53,6 +54,7 @@ import { useRouter } from "@/i18n/navigation";
 import { cn } from "@/lib/cn";
 import { formatNumber } from "@/lib/format-number";
 import { directionColor, formatSignedChange } from "@/lib/signed";
+import { compareHref } from "@/lib/stock-compare";
 import { groupNameStyle } from "@/lib/watchlist-color";
 import type { Market } from "@/types/settings";
 import {
@@ -378,6 +380,12 @@ function WatchlistGroupSection({
   const deleteMutation = useDeleteWatchlist(market);
   const router = useRouter();
   const alertable = market === "TW" || market === "US";
+  // The 技術分析 compare view for the group's first five TW stocks (stocks only; needs two).
+  const compareSymbols =
+    market === "TW" && view.group.asset_class === "stock"
+      ? view.items.map((item) => item.symbol)
+      : [];
+  const compareLink = compareSymbols.length >= 2 ? compareHref(compareSymbols) : null;
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: view.group.id,
@@ -474,6 +482,16 @@ function WatchlistGroupSection({
         <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px] text-[var(--text-muted)]">
           {view.items.length}
         </span>
+        {compareLink ? (
+          <button
+            type="button"
+            onClick={() => router.push(compareLink)}
+            aria-label={t("compareGroup", { name: view.group.name })}
+            className="-my-1.5 flex size-11 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)]"
+          >
+            <ChartLineIcon size={14} weight="regular" aria-hidden />
+          </button>
+        ) : null}
         {alertable ? (
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>

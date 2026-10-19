@@ -75,11 +75,14 @@ export function SubTabRow<T extends string>({
   active,
   onChange,
   labelFor,
+  touchTarget = false,
 }: {
   readonly tabs: readonly T[];
   readonly active: T;
   readonly onChange: (tab: T) => void;
   readonly labelFor: (tab: T) => string;
+  /** Grow each button to the 44px minimum touch target (web/OVERVIEW.md §7). */
+  readonly touchTarget?: boolean;
 }): ReactNode {
   return (
     <div className="mb-3 flex flex-wrap gap-1 rounded-[var(--radius-pill)] bg-[var(--surface-2)] p-0.5">
@@ -90,7 +93,8 @@ export function SubTabRow<T extends string>({
           onClick={() => onChange(tab)}
           aria-pressed={active === tab}
           className={cn(
-            "rounded-[var(--radius-pill)] px-2.5 py-1 font-medium text-[12px] transition-colors",
+            "rounded-[var(--radius-pill)] font-medium text-[12px] transition-colors",
+            touchTarget ? "min-h-11 px-4" : "px-2.5 py-1",
             active === tab
               ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
               : "text-[var(--text-muted)] hover:text-[var(--text)]",

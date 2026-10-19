@@ -107,3 +107,20 @@ class TestPriceHistoryRoute:
         body = resp.json()
         symbols = {row["symbol"] for row in body["rows"]}
         assert symbols == {"2330", "2454"}
+
+    def test_days_cap_is_a_trading_year(
+        self,
+        settings: Settings,
+        agent_answer: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        client = client_with_symbol_store(settings, agent_answer, tmp_path, monkeypatch)
+
+        ok = client.get("/api/v1/market/price-history", params={"symbols": "2330", "days": 260})
+        too_long = client.get(
+            "/api/v1/market/price-history", params={"symbols": "2330", "days": 261}
+        )
+
+        assert ok.status_code == 200
+        assert too_long.status_code == 422
