@@ -64,7 +64,8 @@ export async function patchThread(
     title?: string;
     starred?: boolean;
     archived?: boolean;
-    model_override?: string;
+    /** A model id, or null to clear the pick (the caller's default applies again). */
+    model_override?: string | null;
     personality_override?: string;
   },
   expectedVersion: number,

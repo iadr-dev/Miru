@@ -2150,18 +2150,13 @@
         "heading": "Voice for this chat"
       },
       "modelMenu": {
-        "locked": "Paid plan",
         "trigger": "Model: {model}",
-        "default": "Server default",
-        "category": {
-          "anthropic": "Anthropic",
-          "openai": "OpenAI",
-          "openrouter": "OpenRouter",
-          "grok": "Grok (via OpenRouter)",
-          "deepseek": "DeepSeek (via OpenRouter)",
-          "gemini": "Gemini",
-          "ollama": "Ollama (Local)"
-        }
+        "default": "Automatic",
+        "useDefault": "Use my default",
+        "mainBadge": "Main",
+        "loadError": "Couldn't load the model list.",
+        "retry": "Try again",
+        "empty": "No models are available for your saved keys yet."
       }
     },
     "voiceMode": {
@@ -2452,7 +2447,15 @@
       "cancel": "Cancel",
       "providerSaved": "{provider} (saved)",
       "keySavedHint": "A key is saved for this provider. It is stored encrypted and never shown in full.",
-      "selectProvider": "Show {provider} key"
+      "selectProvider": "Show {provider} key",
+      "defaultModel": {
+        "label": "Default model",
+        "hint": "Used for your chats and scheduled runs unless a chat picks its own.",
+        "auto": "Automatic (recommended)",
+        "saveFailed": "Couldn't save your default model. Please try again.",
+        "platformNote": "The platform chooses the model for your chats. Save your own key to pick one yourself.",
+        "empty": "No models are available for your saved keys yet."
+      }
     },
     "usage": {
       "title": "Usage",

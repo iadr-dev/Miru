@@ -89,6 +89,7 @@ import type {
   usMacroSeriesResponseSchema,
   usSeriesRevisionsResponseSchema,
 } from "@/types/market/us-macro";
+import type { modelCatalogSchema, modelDefaultSchema } from "@/types/models";
 import type { consentDecisionResponseSchema, consentResponseSchema } from "@/types/oauth-consent";
 import type {
   factorCatalogResponseSchema,
@@ -376,6 +377,10 @@ export type ContractChecks = [
   Accepts<typeof connectionsResponseSchema, R<"/api/v1/me/connections", "get">>,
   // POST /me/devices — settings.registerDevice
   Accepts<typeof devicePushTokenSchema, R<"/api/v1/me/devices", "post">>,
+  // GET /me/model-default — models.getModelDefault
+  Accepts<typeof modelDefaultSchema, R<"/api/v1/me/model-default", "get">>,
+  // PUT /me/model-default — models.putModelDefault
+  Accepts<typeof modelDefaultSchema, R<"/api/v1/me/model-default", "put">>,
   // GET /memory — settings.listMemories
   Accepts<typeof memoriesResponseSchema, R<"/api/v1/memory", "get">>,
   // POST /memory — settings.createMemory
@@ -386,6 +391,8 @@ export type ContractChecks = [
   Accepts<typeof memorySettingsSchema, R<"/api/v1/memory/settings", "get">>,
   // PUT /memory/settings — settings.setMemoryEnabled
   Accepts<typeof memorySettingsSchema, R<"/api/v1/memory/settings", "put">>,
+  // GET /models — models.getModelCatalog
+  Accepts<typeof modelCatalogSchema, R<"/api/v1/models", "get">>,
   // GET /notifications — settings.listNotifications
   Accepts<typeof notificationsResponseSchema, R<"/api/v1/notifications", "get">>,
   // GET /notifications/badge — settings.getNotificationBadge

@@ -14,7 +14,6 @@ import {
 import { AttachmentPreview } from "@/app/[locale]/(app)/chat/composer-parts/attachments";
 import { FeatureMenu } from "@/app/[locale]/(app)/chat/composer-parts/feature-menu";
 import { ModelMenu } from "@/app/[locale]/(app)/chat/composer-parts/model-menu";
-import { modelOptionFor } from "@/app/[locale]/(app)/chat/composer-parts/model-options";
 import { captureScreenshot } from "@/app/[locale]/(app)/chat/composer-parts/screenshot";
 import { ToneMenu } from "@/app/[locale]/(app)/chat/composer-parts/tone-menu";
 import {
@@ -79,15 +78,15 @@ export function Composer({
   onWebSearchEnabledChange,
   deepResearch,
   deepResearchLocked,
-  byokProviders,
-  platformModels,
+  byokActive,
   onOpenVoiceMode,
 }: {
   streaming: boolean;
   onSend: (text: string, attachments: AttachmentInput[]) => void;
   onStop: () => void;
   modelOverride: string | null;
-  onModelOverrideChange: (modelId: string) => void;
+  /** Null clears the chat's own pick, so it follows the caller's default model again. */
+  onModelOverrideChange: (modelId: string | null) => void;
   /** This chat's own 語氣 preset id, or null to follow the account setting. */
   toneOverride: string | null;
   /** A preset id, or `FOLLOW_ACCOUNT_TONE` to clear the chat's own pick. */
@@ -99,12 +98,8 @@ export function Composer({
   /** True when the caller's plan has no deep research: the row is shown locked, with the way to
    * upgrade, rather than hidden. */
   deepResearchLocked: boolean;
-  /** Providers the caller has their own key for, or null when they have none. With keys, only
-   * those providers' models can be used (they run on the caller's key). */
-  byokProviders: string[] | null;
-  /** Models the caller's plan includes on the shared key, or null for no restriction. The rest
-   * show locked with the way to upgrade. Ignored with own keys (their turns run on their key). */
-  platformModels: string[] | null;
+  /** Whether the caller runs on their own keys. Only then is the model picker shown. */
+  byokActive: boolean | undefined;
   onOpenVoiceMode: () => void;
 }): ReactNode {
   const t = useTranslations("chat.composer");
@@ -495,9 +490,8 @@ export function Composer({
           <div className="flex min-w-0 items-center gap-1 px-1 pb-0.5">
             <ModelMenu
               label={t("model")}
-              selected={modelOptionFor(modelOverride)}
-              allowedProviders={byokProviders}
-              platformModels={platformModels}
+              byokActive={byokActive}
+              selectedId={modelOverride}
               onSelect={onModelOverrideChange}
             />
             <ToneMenu selected={toneOverride} onSelect={onToneOverrideChange} />
