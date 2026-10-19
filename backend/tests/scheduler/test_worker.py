@@ -650,6 +650,146 @@ async def test_a_scheduled_run_uses_the_providers_default_never_the_platform_key
     assert seen.main_model == "gemini-3.5-flash"  # type: ignore[attr-defined]
 
 
+async def _set_default_model(session_factory, user_id: str, spec: str) -> None:
+    from sqlalchemy import update  # noqa: PLC0415
+
+    from db.models import UserRow  # noqa: PLC0415
+
+    async with session_factory() as session:
+        await session.execute(
+            update(UserRow).where(UserRow.id == user_id).values(default_model=spec)
+        )
+        await session.commit()
+
+
+async def _run_byok_job(session_factory, settings, orch, user: str) -> SchedulerWorker:
+    from dataclasses import replace  # noqa: PLC0415
+
+    await _make_job(session_factory, user)
+    ctx = _ctx(
+        session_factory,
+        orchestrator=orch,
+        router=_StubRouter({}),
+        leader=AlwaysLeader(),
+        quota_gate=DenyAllQuotaGate(),
+    )
+    worker = SchedulerWorker(replace(ctx, settings=settings))
+    await worker.run_due_jobs()
+    return worker
+
+
+async def test_a_scheduled_run_honours_the_owners_saved_default_model(session_factory) -> None:
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _save_key(session_factory, settings, user, "anthropic")
+    await _save_key(session_factory, settings, user, "gemini")
+    await _set_default_model(session_factory, user, "gemini/gemini-3.6-flash")
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+    await _run_byok_job(session_factory, settings, orch, user)
+    (seen,) = orch.seen
+    assert seen is not None
+    assert seen.provider_id == "gemini"  # type: ignore[attr-defined]
+    assert seen.main_model == "gemini-3.6-flash"  # type: ignore[attr-defined]
+
+
+async def test_a_stale_default_model_falls_back_to_a_keyed_providers_default_main(
+    session_factory,
+) -> None:
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _save_key(session_factory, settings, user, "gemini")  # the openai key was removed
+    await _set_default_model(session_factory, user, "openai/gpt-5.6-sol")
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+    await _run_byok_job(session_factory, settings, orch, user)
+    (seen,) = orch.seen
+    assert seen is not None
+    assert seen.provider_id == "gemini"  # type: ignore[attr-defined]
+    assert seen.main_model == "gemini-3.5-flash"  # type: ignore[attr-defined]
+
+
+async def test_a_default_model_outside_the_catalog_is_ignored(session_factory) -> None:
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _save_key(session_factory, settings, user, "anthropic")
+    await _set_default_model(session_factory, user, "anthropic/retired-model")
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+    await _run_byok_job(session_factory, settings, orch, user)
+    (seen,) = orch.seen
+    assert seen is not None
+    assert seen.main_model == "claude-sonnet-5-5"  # type: ignore[attr-defined]
+
+
+async def test_a_run_with_no_usable_key_is_skipped_with_a_reason_never_the_platform_key(
+    session_factory,
+) -> None:
+    from accounts.byok import ByokKeyRequiredError  # noqa: PLC0415
+
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+
+    async def _no_key(*_args: object, **_kwargs: object) -> None:
+        raise ByokKeyRequiredError(["gemini"])
+
+    with patch.object(SchedulerWorker, "_byok_for", _no_key):
+        await _run_byok_job(session_factory, settings, orch, user)
+    assert orch.seen == []  # the skill never ran, on any key
+    async with session_factory() as session:
+        job = (await SqlAlchemySchedulerStore(session).list_jobs(user_id=user))[0]
+    assert job.status is JobStatus.SKIPPED_QUOTA
+    assert job.status_reason == "byok_key_required"
+
+
+async def test_a_user_without_keys_runs_on_the_platform_profile(session_factory) -> None:
+    """Non-BYOK is unaffected: no override in scope (so resolve_role serves the platform
+    profile), the chat cap still applies, and a saved default model is not consulted."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _set_default_model(session_factory, user, "gemini/gemini-3.6-flash")
+    await _make_job(session_factory, user)
+    orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
+    ctx = _ctx(
+        session_factory,
+        orchestrator=orch,
+        router=_StubRouter({}),
+        leader=AlwaysLeader(),
+        quota_gate=AllowAllQuotaGate(),
+    )
+    await SchedulerWorker(replace(ctx, settings=settings)).run_due_jobs()
+    assert orch.seen == [None]
+
+
+async def test_scheduled_usage_rows_record_the_model_used_and_the_byok_flag(
+    session_factory,
+) -> None:
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from db.models import LlmUsageRow  # noqa: PLC0415
+    from events.usage import ModelUsage, TurnUsage  # noqa: PLC0415
+
+    class _UsageOrchestrator(_StubOrchestrator):
+        async def run_skill(
+            self, skill_ref: str, message: str, **kwargs: object
+        ) -> OrchestratorResult:
+            base = await super().run_skill(skill_ref, message, **kwargs)
+            usage = TurnUsage(
+                turn_id="t",
+                models=(ModelUsage(provider="gemini", model="gemini-3.6-flash", calls=1),),
+            )
+            return base.model_copy(update={"usage": usage})
+
+    settings = _byok_settings()
+    user = await insert_user(session_factory, tier=Tier.FREE)
+    await _save_key(session_factory, settings, user, "gemini")
+    await _set_default_model(session_factory, user, "gemini/gemini-3.6-flash")
+    await _run_byok_job(session_factory, settings, _UsageOrchestrator(_CLEAN_ANSWER), user)
+    async with session_factory() as session:
+        rows = (await session.execute(select(LlmUsageRow))).scalars().all()
+    assert [(r.provider, r.model, r.byok) for r in rows] == [("gemini", "gemini-3.6-flash", True)]
+
+
 async def test_a_job_that_is_no_longer_due_is_not_run(session_factory) -> None:
     """A worker holding a stale scan result stands down once another has run the job."""
     user = await insert_user(session_factory, tier=Tier.PRO)

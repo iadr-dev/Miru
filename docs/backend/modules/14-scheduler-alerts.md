@@ -16,6 +16,11 @@ schedule, and the work is coarse, non-trading and quota-bounded.
   keys don't cover the default model's provider the run is skipped and reported
   (`byok_key_required`), never moved onto the platform key. Every run (platform or BYOK) writes its
   model usage under a per-run id.
+- **Which model a BYOK run uses.** A schedule job has no model field and no thread, so the owner's
+  saved `users.default_model` is the only pick: honoured while it is still in the catalog
+  (`llm/byok_catalog.py`) and its provider still has a key, else the `default_main` of the first
+  keyed provider (`llm/byok_profiles.py`). `llm_usage` rows record the (provider, model) actually
+  called and `byok`. Non-BYOK runs keep the platform profile via `resolve_role`.
 - `triggers.py` resolves `next_run` (market events on trading days in the market timezone; 5-field
   cron with lists/ranges/steps); set on create and after every run. Pro gate removed; fair-use
   caps (`caps.py`, 409 `cap_reached`).
