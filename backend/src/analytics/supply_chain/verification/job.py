@@ -49,6 +49,7 @@ from llm.base import LLMClient
 from llm.registry import (
     ModelRole,
     ProviderNotConfiguredError,
+    assert_no_byok_scope,
     resolve_role,
     resolve_role_with_override,
 )
@@ -133,6 +134,7 @@ async def execute_research(  # noqa: PLR0913 - collaborators are injected, one p
     root: Path | None = None,
 ) -> RunSummary:
     """Discover, verify and (unless dry) write. Raises RelationFileError on a bad relation file."""
+    assert_no_byok_scope()
     base = root or reference_dir()
     targets, directory, _ = await anyio.to_thread.run_sync(
         lambda: prepare(settings, store, base, today, source=source, limit=limit)
@@ -207,6 +209,7 @@ async def run_research_job(  # noqa: PLR0913 - collaborators are injected, one p
     limit: int | None = None,
     dry_run: bool = False,
 ) -> JobRun:
+    assert_no_byok_scope()
     if not settings.supply_chain_research_enabled:
         return _skipped(run_date, "SUPPLY_CHAIN_RESEARCH_ENABLED is off")
     if not ctx.leader.is_leader():

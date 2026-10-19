@@ -449,7 +449,7 @@ class TestSummaryRoute:
         stub_router, _ = make_router(symbol, {})
         state = client.app.state.app_state
         registry = build_default_tool_registry(
-            stub_router, session_factory=state.session_factory, summary_llm=llm
+            stub_router, session_factory=state.session_factory, summary_llm_factory=lambda: llm
         )
         object.__setattr__(state, "tool_registry", registry)
         if not seed_score:

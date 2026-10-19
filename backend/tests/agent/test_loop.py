@@ -418,7 +418,7 @@ def test_card_opted_tool_declares_its_exact_card_type(
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(symbol, {})
     registry = build_default_tool_registry(
-        router, session_factory=_theme_session_factory(), summary_llm=_summary_llm_stub()
+        router, session_factory=_theme_session_factory(), summary_llm_factory=_summary_llm_stub
     )
 
     tool = registry.get_tool(tool_name)
@@ -432,7 +432,7 @@ def test_exactly_the_card_opted_tools_declare_a_card_type() -> None:
     symbol = Symbol(id="2330", market=Market.TW)
     router, _ = make_router(symbol, {})
     registry = build_default_tool_registry(
-        router, session_factory=_theme_session_factory(), summary_llm=_summary_llm_stub()
+        router, session_factory=_theme_session_factory(), summary_llm_factory=_summary_llm_stub
     )
 
     opted_in = {t.name: t.card_type for t in registry.all_tools() if t.card_type is not None}

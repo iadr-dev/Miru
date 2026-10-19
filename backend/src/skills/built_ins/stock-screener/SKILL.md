@@ -43,7 +43,7 @@ outputs: markdown
    catalog is the only source of truth for what `run_tag_screener` accepts, and it has grown
    across dispatches (currently four categories: 技術面 technical signals like moving-average
    crosses and candlestick patterns; 籌碼面 chip/institutional-flow streaks; 熱門 momentum
-   events like volume surges and 52-week highs/lows; 智能 pre-bundled AND-combinations of the
+   events like volume surges and 20-day/52-week highs and 52-week lows; 智能 pre-bundled AND-combinations of the
    other categories' tags, e.g. a breakout confirmed by a volume surge on the same day).
 2. Map the caller's request onto one or more real tag keys from the catalog. If the caller's
    phrasing doesn't clearly map onto any cataloged tag, say so rather than picking the closest

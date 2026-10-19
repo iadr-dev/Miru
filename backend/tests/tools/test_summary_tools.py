@@ -101,7 +101,7 @@ async def test_no_score_yet_returns_found_false_without_llm_call(
     session_factory: async_sessionmaker,
 ) -> None:
     llm = StubLLMClient(script=[])
-    table = build_registration_table(session_factory, llm)
+    table = build_registration_table(session_factory, lambda: llm)
     tool = table[0][0]
 
     result = await dispatch_tool(
@@ -123,7 +123,7 @@ async def test_cache_miss_generates_and_persists_summary(
         await session.commit()
 
     llm = StubLLMClient(script=[_clean_script_response()])
-    table = build_registration_table(session_factory, llm)
+    table = build_registration_table(session_factory, lambda: llm)
     tool = table[0][0]
 
     result = await dispatch_tool(
@@ -139,7 +139,7 @@ async def test_cache_miss_generates_and_persists_summary(
 
     # Persisted — a fresh tool instance over the same DB serves it without calling the LLM again.
     llm2 = StubLLMClient(script=[])
-    table2 = build_registration_table(session_factory, llm2)
+    table2 = build_registration_table(session_factory, lambda: llm2)
     tool2 = table2[0][0]
     result2 = await dispatch_tool(
         tool2, tool2.input_model(id="2330", market=Market.TW), _premium_ctx()
@@ -158,7 +158,7 @@ async def test_cached_summary_row_hit_never_calls_llm_again(
         await session.commit()
 
     llm = StubLLMClient(script=[_clean_script_response()])
-    table = build_registration_table(session_factory, llm)
+    table = build_registration_table(session_factory, lambda: llm)
     tool = table[0][0]
     args = tool.input_model(id="2330", market=Market.TW)
 
@@ -192,7 +192,7 @@ async def test_dirty_llm_response_trading_language_is_redacted_before_persisting
         }
     )
     llm = StubLLMClient(script=[make_text_response(dirty_payload)])
-    table = build_registration_table(session_factory, llm)
+    table = build_registration_table(session_factory, lambda: llm)
     tool = table[0][0]
 
     result = await dispatch_tool(
@@ -204,3 +204,84 @@ async def test_dirty_llm_response_trading_language_is_redacted_before_persisting
     assert "buy" not in result.headline.lower()
     assert "buy" not in result.narrative.lower()
     assert all("buy" not in bullet.lower() for bullet in result.swot.strengths)
+
+
+async def _seed_score(session_factory: async_sessionmaker) -> None:
+    async with session_factory() as session:
+        await upsert_score(session, _score_result())
+        await session.commit()
+
+
+def _record_builds(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, str | None]]:
+    from llm import registry  # noqa: PLC0415
+
+    built: list[tuple[str, str, str | None]] = []
+
+    def fake(provider, model, settings=None, *, api_key=None):
+        built.append((provider, model, api_key))
+        return StubLLMClient(script=[_clean_script_response()], provider_id=provider)
+
+    monkeypatch.setattr(registry, "build_client", fake)
+    return built
+
+
+async def test_summary_runs_on_the_users_key_inside_a_byok_scope(
+    session_factory: async_sessionmaker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from config.settings import Settings  # noqa: PLC0415
+    from llm.registry import ByokOverride, ModelRole, byok_scope, resolve_role  # noqa: PLC0415
+
+    await _seed_score(session_factory)
+    built = _record_builds(monkeypatch)
+    settings = Settings(_env_file=None, anthropic_api_key="platform-key")  # type: ignore[call-arg]
+    # The registry is wired ONCE (as at app start), outside any scope; resolution happens per call.
+    tool = build_registration_table(
+        session_factory, lambda: resolve_role(ModelRole.SUBAGENT, settings)
+    )[0][0]
+    assert built == []
+
+    override = ByokOverride("openai", "user-key", "gpt-5.6-sol", "gpt-4o-mini")
+    with byok_scope(override):
+        result = await dispatch_tool(
+            tool, tool.input_model(id="2330", market=Market.TW), _premium_ctx()
+        )
+    assert isinstance(result, GetStockSummaryOutput)
+    assert result.found is True
+    assert built == [("openai", "gpt-5.6-sol", "user-key")]
+
+
+async def test_summary_runs_on_the_platform_profile_outside_a_scope(
+    session_factory: async_sessionmaker, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from config.settings import Settings  # noqa: PLC0415
+    from llm.registry import ModelRole, resolve_role  # noqa: PLC0415
+
+    await _seed_score(session_factory)
+    built = _record_builds(monkeypatch)
+    settings = Settings(_env_file=None, anthropic_api_key="platform-key")  # type: ignore[call-arg]
+    tool = build_registration_table(
+        session_factory, lambda: resolve_role(ModelRole.SUBAGENT, settings)
+    )[0][0]
+    await dispatch_tool(tool, tool.input_model(id="2330", market=Market.TW), _premium_ctx())
+    assert len(built) == 1
+    assert built[0][0] == "anthropic"
+    assert built[0][2] is None  # no user key: build_client reads the platform key itself
+
+
+async def test_an_unconfigured_summary_model_answers_found_false(
+    session_factory: async_sessionmaker,
+) -> None:
+    from llm.registry import ProviderNotConfiguredError  # noqa: PLC0415
+
+    await _seed_score(session_factory)
+
+    def unconfigured() -> StubLLMClient:
+        raise ProviderNotConfiguredError("anthropic_api_key is not configured")
+
+    tool = build_registration_table(session_factory, unconfigured)[0][0]
+    result = await dispatch_tool(
+        tool, tool.input_model(id="2330", market=Market.TW), _premium_ctx()
+    )
+    assert isinstance(result, GetStockSummaryOutput)
+    assert result.found is False
+    assert "not available" in result.message

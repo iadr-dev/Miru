@@ -19,7 +19,7 @@ entry of the supported catalog applies, not a hardcoded core decision.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncIterator, Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -30,6 +30,7 @@ import structlog
 from config.settings import Settings, get_settings, reveal
 from llm.anthropic_client import AnthropicClient
 from llm.base import LLMClient, LLMEvent, LLMResponse, Message, ModelCapabilities, ToolSpec
+from llm.byok_profiles import BYOK_PROVIDER_TIERS
 from llm.gemini_client import GeminiClient
 from llm.local_client import LocalOllamaClient
 from llm.openai_client import OpenAIClient
@@ -171,10 +172,18 @@ class FallbackLLMClient:
     performs network I/O, matching every other `LLMClient`'s contract.
     """
 
-    def __init__(self, clients: tuple[LLMClient, ...]) -> None:
+    def __init__(
+        self,
+        clients: tuple[LLMClient, ...],
+        *,
+        fall_through_on: Callable[[Exception], bool] | None = None,
+    ) -> None:
         if not clients:
             raise ValueError("FallbackLLMClient needs at least one client")
         self._clients = clients
+        # When given, only an error it accepts moves on to the next client; any other error
+        # (e.g. a bad key) is raised as is. None means every error falls through.
+        self._fall_through_on = fall_through_on
         self.provider_id = clients[0].provider_id
         self.model_id = clients[0].model_id
         self.capabilities = clients[0].capabilities
@@ -192,6 +201,8 @@ class FallbackLLMClient:
                 return await client.chat(messages, tools, native_web_search=native_web_search)
             except Exception as exc:
                 # rate-limit error from one provider must not abort the whole chain
+                if self._fall_through_on is not None and not self._fall_through_on(exc):
+                    raise
                 last_exc = exc
                 logger.warning(
                     "llm_fallback_chat_failed",
@@ -221,6 +232,8 @@ class FallbackLLMClient:
             except StopAsyncIteration:
                 return
             except Exception as exc:
+                if self._fall_through_on is not None and not self._fall_through_on(exc):
+                    raise
                 last_exc = exc
                 logger.warning(
                     "llm_fallback_stream_failed",
@@ -241,31 +254,58 @@ class FallbackLLMClient:
 
 
 # Providers a user can bring their own key for (every one with a hosted, key-authenticated API).
-BYOK_PROVIDERS: Final[frozenset[str]] = frozenset({"anthropic", "openai", "gemini", "openrouter"})
+BYOK_PROVIDERS: Final[frozenset[str]] = frozenset(BYOK_PROVIDER_TIERS)
 
 
 @dataclass(frozen=True)
 class ByokOverride:
-    """One turn's "use the user's own model and key for every LLM call" instruction."""
+    """One turn's "use the user's own key" instruction: `main_model` serves the reply agent, the
+    sub-agent lanes and synthesis; `cheap_model` serves the classifier, titles and branch summaries.
+    Both are bare model ids of `provider_id`."""
 
     provider_id: str
-    model_id: str
     api_key: str = field(repr=False)  # never printed or logged
+    main_model: str
+    cheap_model: str
 
 
 _byok: ContextVar[ByokOverride | None] = ContextVar("byok_override", default=None)
 
+# An HTTP status meaning "this model id is unknown / not allowed for this key". SDK errors expose it
+# as `status_code` (Anthropic, OpenAI), `code` (Gemini) or on `.response` (httpx).
+_MODEL_REJECTED_STATUSES: Final[frozenset[int]] = frozenset({400, 403, 404})
+
+
+def _is_model_rejection(exc: Exception) -> bool:
+    """Whether a provider rejected the model itself (unknown id, no access), as opposed to the key
+    (401), a rate limit (429) or an outage - only the former degrades the cheap tier to main."""
+    status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(exc, "code", None)
+    if status is None:
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+    return isinstance(status, int) and status in _MODEL_REJECTED_STATUSES
+
 
 @contextmanager
 def byok_scope(override: ByokOverride | None) -> Generator[None]:
-    """While active, every role resolution in this task uses the user's model and key - the
-    classifier, sub-agents and synthesis included - and never falls back to a platform key. The
-    plaintext key lives only in this context for the duration of the turn."""
+    """While active, every role resolution in this task uses the user's key - main model for the
+    agent, sub-agents and synthesis, cheap model for the classifier - and never falls back to a
+    platform key. The plaintext key lives only in this context for the duration of the turn."""
     token = _byok.set(override)
     try:
         yield
     finally:
         _byok.reset(token)
+
+
+def assert_no_byok_scope() -> None:
+    """Guard for platform-only jobs (research verification, theme builds, summary batches): they
+    spend the platform's key and must never run inside a user's BYOK scope."""
+    if _byok.get() is not None:
+        raise RuntimeError(
+            "platform-only job started inside a BYOK scope; it must not use a user key"
+        )
 
 
 def agent_model_spec(
@@ -279,11 +319,31 @@ def agent_model_spec(
     return _split_provider_model(platform_role_chains(settings)[ModelRole.AGENT][0])
 
 
-def _byok_client(settings: Settings) -> LLMClient | None:
+def _byok_client(role: ModelRole, settings: Settings) -> LLMClient | None:
+    """The BYOK client for `role`, or None outside a BYOK scope. The classifier role gets the cheap
+    model; if the provider rejects that model it degrades to the main model on the same user key
+    (never to a platform key). Every other role gets the main model."""
     active = _byok.get()
     if active is None:
         return None
-    return build_client(active.provider_id, active.model_id, settings, api_key=active.api_key)
+
+    def build(model: str) -> LLMClient:
+        return build_client(active.provider_id, model, settings, api_key=active.api_key)
+
+    main = build(active.main_model)
+    if role is not ModelRole.CLASSIFIER or active.cheap_model == active.main_model:
+        return main
+    try:
+        cheap = build(active.cheap_model)
+    except Exception as exc:  # the cheap tier is an optimization, never a reason to fail the turn
+        logger.warning(
+            "byok_cheap_model_unavailable_using_main",
+            provider=active.provider_id,
+            model=active.cheap_model,
+            error=type(exc).__name__,
+        )
+        return main
+    return FallbackLLMClient((cheap, main), fall_through_on=_is_model_rejection)
 
 
 def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient:
@@ -293,7 +353,7 @@ def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient
     entry's client directly; a multi-entry chain returns a `FallbackLLMClient` that tries each
     in order on failure."""
     settings = settings or get_settings()
-    if (byok_client := _byok_client(settings)) is not None:
+    if (byok_client := _byok_client(role, settings)) is not None:
         return byok_client
     chain = platform_role_chains(settings)[role]
 
@@ -345,7 +405,7 @@ def resolve_role_with_override(
     plumbing the user has no mental model of and never named here, so callers simply don't pass
     an override through to them — this function itself does not enforce that carve-out."""
     settings = settings or get_settings()
-    if (byok_client := _byok_client(settings)) is not None:
+    if (byok_client := _byok_client(role, settings)) is not None:
         return byok_client
     if model_override is None:
         return resolve_role(role, settings)
@@ -369,6 +429,7 @@ __all__ = [
     "ModelRole",
     "ProviderNotConfiguredError",
     "agent_model_spec",
+    "assert_no_byok_scope",
     "build_client",
     "byok_scope",
     "default_client",

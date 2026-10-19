@@ -11,7 +11,7 @@ import pytest
 
 from accounts.store import SqlAlchemyUserStore
 from config.settings import Settings
-from payments.service import BillingService, effective_byok_active
+from payments.service import BillingService
 from payments.store import SqlAlchemySubscriptionStore
 from payments.webhooks import PaddleEvent
 from schemas.enums import Tier
@@ -228,14 +228,6 @@ async def test_unknown_price_is_ignored(db_session, settings: Settings) -> None:
         )
     )
     assert (await users.get(user_id=user_id)).tier is Tier.FREE
-
-
-def test_effective_byok_requires_stored_key() -> None:
-    # A BYOK subscription with no stored key falls back to non-BYOK entitlement (never silently
-    # billed the standard rate).
-    assert effective_byok_active(subscription_byok=True, has_llm_key=False) is False
-    assert effective_byok_active(subscription_byok=True, has_llm_key=True) is True
-    assert effective_byok_active(subscription_byok=False, has_llm_key=True) is False
 
 
 async def test_paused_holds_the_paid_tier_back_and_resumed_restores_it(

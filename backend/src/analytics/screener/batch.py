@@ -205,6 +205,8 @@ def _hot_flags(bars: Sequence[PriceBar]) -> list[str]:
         flags.append("volume_surge")
     if momentum.volume_contraction(bars):
         flags.append("volume_contraction")
+    if momentum.new_20d_high(bars):
+        flags.append("new_20d_high")
     if momentum.new_52w_high(bars):
         flags.append("new_52w_high")
     if momentum.new_52w_low(bars):

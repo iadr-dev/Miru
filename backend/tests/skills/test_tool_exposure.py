@@ -27,7 +27,7 @@ def _registered() -> set[str]:
         _router(),
         session_factory=MagicMock(),
         market_data_reader=MagicMock(),
-        summary_llm=MagicMock(),
+        summary_llm_factory=MagicMock,
         parquet_store=MagicMock(),
         account_reader=MagicMock(),  # the user-scoped get_my_* tools register too
     )

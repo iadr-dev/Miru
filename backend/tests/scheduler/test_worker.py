@@ -603,11 +603,9 @@ def _byok_settings():
 async def test_a_scheduled_run_uses_the_owners_own_key_and_skips_the_chat_cap(
     session_factory,
 ) -> None:
-    from llm.registry import agent_model_spec  # noqa: PLC0415
-
     settings = _byok_settings()
     user = await insert_user(session_factory, tier=Tier.FREE)
-    provider, _ = agent_model_spec(None, settings)
+    provider = "anthropic"
     await _save_key(session_factory, settings, user, provider)
     await _make_job(session_factory, user)
     orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
@@ -627,31 +625,29 @@ async def test_a_scheduled_run_uses_the_owners_own_key_and_skips_the_chat_cap(
     assert seen.provider_id == provider  # type: ignore[attr-defined]
 
 
-async def test_a_scheduled_run_never_falls_back_to_the_platform_key(session_factory) -> None:
+async def test_a_scheduled_run_uses_the_providers_default_never_the_platform_key(
+    session_factory,
+) -> None:
     from dataclasses import replace  # noqa: PLC0415
-
-    from llm.registry import agent_model_spec  # noqa: PLC0415
 
     settings = _byok_settings()
     user = await insert_user(session_factory, tier=Tier.FREE)
-    default_provider, _ = agent_model_spec(None, settings)
-    other = "gemini" if default_provider != "gemini" else "anthropic"
-    await _save_key(session_factory, settings, user, other)
-    job = await _make_job(session_factory, user)
+    await _save_key(session_factory, settings, user, "gemini")  # not the platform's provider
+    await _make_job(session_factory, user)
     orch = _KeyProbeOrchestrator(_CLEAN_ANSWER)
     ctx = _ctx(
         session_factory,
         orchestrator=orch,
         router=_StubRouter({}),
         leader=AlwaysLeader(),
-        quota_gate=AllowAllQuotaGate(),
+        quota_gate=DenyAllQuotaGate(),  # would refuse a platform-key run
     )
     worker = SchedulerWorker(replace(ctx, settings=settings))
-    assert await worker.run_due_jobs() == []
-    assert orch.calls == []
-    async with session_factory() as session:
-        refreshed = await SqlAlchemySchedulerStore(session).get_job(user_id=user, job_id=job.id)
-        assert refreshed.status is JobStatus.SKIPPED_QUOTA
+    assert len(await worker.run_due_jobs()) == 1
+    (seen,) = orch.seen
+    assert seen is not None
+    assert seen.provider_id == "gemini"  # type: ignore[attr-defined]
+    assert seen.main_model == "gemini-3.5-flash"  # type: ignore[attr-defined]
 
 
 async def test_a_job_that_is_no_longer_due_is_not_run(session_factory) -> None:

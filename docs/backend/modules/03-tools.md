@@ -261,7 +261,7 @@ convention) or don't exist yet at all. Corrections are called out inline below.
   accepts. `public`. (Both live in `screener_tools.py`; see
   [20-analytics-scoring.md](20-analytics-scoring.md) §5T for the staged build plan — the catalog
   now also carries KD-cross and the unambiguous candlestick-pattern tags, plus a 熱門 category
-  (volume-surge, 52-week high/low) and a 智能 category (pre-bundled AND-combinations of existing
+  (volume-surge, 20-day and 52-week highs, 52-week low) and a 智能 category (pre-bundled AND-combinations of existing
   tags, not a new composite score); the tools themselves are unchanged, enumerating the catalog
   dynamically. Fundamental-gate and theme tags remain later dispatches.)
 

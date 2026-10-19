@@ -223,11 +223,15 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
   gemini, openrouter - `POST /me/keys` rejects others with 422). No subscription
   is required.
 - **Routing (`api/byok.py`, `llm/registry.py::byok_scope`):** before a turn starts, `resolve_byok`
-  takes the thread's model (else the AGENT role default), decrypts the key for *that model's
-  provider* and runs the whole turn inside `byok_scope`: every role (classifier, lanes, synthesis,
-  title) resolves to that one model on the user's key, with **no fallback to a platform key**. If
-  the user has keys but none for the picked model's provider, the turn is refused
+  takes the thread's model pick (else the default_main of the first provider the user has a key for:
+  anthropic, openai, gemini, openrouter - `llm/byok_profiles.py`), decrypts the key for *that model's
+  provider* and runs the whole turn inside `byok_scope`: the reply agent, lanes and synthesis use the
+  main model, the classifier and titles the provider's cheap model (degrading to the main model if
+  the cheap one is rejected), all on the user's key with **no fallback to a platform key**. If the
+  user has keys but none for the picked model's provider, the turn is refused
   (`409 byok_key_required`) - never served on ours, since a BYOK turn is uncapped.
+- **One flag:** `accounts/byok.py::byok_active` is the only BYOK-active check (key presence; pass
+  `subscription_byok` for a subscription view, where it must also have a key on file).
 - The chat picker shows only the providers the caller has keys for (`GET /me/keys` returns names,
   never keys). Removing the keys restores the plan's normal limits and models.
 - Deep research stays Pro-only with no daily report cap (each run is bounded by its own budget, and

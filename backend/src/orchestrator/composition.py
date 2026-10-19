@@ -14,7 +14,6 @@ priority config.
 
 from __future__ import annotations
 
-import contextlib
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -25,7 +24,7 @@ from dataaccess.composition import build_default_router
 from dataaccess.router import DataAccessRouter
 from db.base import make_engine, make_session_factory
 from ingest import ParquetStore, build_market_data_reader
-from llm.registry import ModelRole, ProviderNotConfiguredError, resolve_role
+from llm.registry import ModelRole, resolve_role
 from orchestrator.orchestrator import Orchestrator
 from personality.registry import PersonalityRegistry
 from skills.registry import SkillRegistry
@@ -68,20 +67,16 @@ def build_tool_registry(
     owned Parquet flag store the nightly batch job writes — built from the same `parquet_root`
     config the rest of the app reads. The `get_stock_summary` tool's `LLMClient` is resolved here
     via `ModelRole.SUBAGENT` (an analytical-prose sub-task from tool data, per that role's own
-    docstring) — an unconfigured role degrades to the tool simply not registering (matching
-    `theme_group`/`score_group`'s own optional-dependency shape), rather than failing the whole
-    registry build, since the summary feature is Sponsor-tier-gated and additive, never load-
-    bearing for the rest of the tool surface. `account_reader` (built by a composition root above
-    this layer, over the app database) enables the user-scoped `get_my_*` account tools; without
-    it they are not registered."""
-    summary_llm = None
-    with contextlib.suppress(ProviderNotConfiguredError):
-        summary_llm = resolve_role(ModelRole.SUBAGENT, settings)
+    docstring), resolved lazily on each generation so it applies the running turn's BYOK scope. An
+    unconfigured role at that moment makes the tool answer `found=False` rather than fail, since
+    the summary feature is Sponsor-tier-gated and additive. `account_reader` (built by a
+    composition root above this layer, over the app database) enables the user-scoped `get_my_*`
+    account tools; without it they are not registered."""
     return build_default_tool_registry(
         router or build_default_router(),
         session_factory=session_factory,
         market_data_reader=build_market_data_reader(),
-        summary_llm=summary_llm,
+        summary_llm_factory=lambda: resolve_role(ModelRole.SUBAGENT, settings),
         parquet_store=ParquetStore(root=(settings or get_settings()).parquet_root),
         account_reader=account_reader,
     )

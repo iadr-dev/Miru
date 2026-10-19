@@ -6,6 +6,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SubTabRow } from "@/components/stock/chip/shared";
 import { StockComparePanel } from "@/components/stock/compare/compare-panel";
+import { EventList } from "@/components/stock/technical/event-list";
 import { KLineChart } from "@/components/stock/technical/k-line-chart";
 import type {
   MaWindow,
@@ -21,6 +22,7 @@ import {
   TimeframeToggle,
 } from "@/components/stock/technical/toggles";
 import { QueryFailure } from "@/components/ui/query-state";
+import { useChartEvents } from "@/hooks/use-chart-events";
 import { useUrlParams } from "@/hooks/use-url-params";
 import { queryKeys } from "@/lib/api/query-keys";
 import { getTechnicalIndicators } from "@/lib/api/stock-detail";
@@ -113,6 +115,7 @@ function TechnicalChartView({
   const [subOverlays, setSubOverlays] = useState<ReadonlySet<SubOverlay>>(new Set());
   const [showSupportResistance, setShowSupportResistance] = useState(false);
   const [showPatterns, setShowPatterns] = useState(false);
+  const [showEvents, setShowEvents] = useState(true);
 
   const today = useMemo(() => new Date(), []);
   const startDate = useMemo(() => rangeStartDate(range, today), [range, today]);
@@ -122,6 +125,9 @@ function TechnicalChartView({
     queryKey: queryKeys.symbolRead("technical_indicators", symbol, market, startDate, endDate),
     queryFn: () => getTechnicalIndicators(symbol, market, { startDate, endDate }),
   });
+
+  const chartEvents = useChartEvents(symbol, market);
+  const hasEventFeed = market === "TW";
 
   if (query.isLoading) {
     return (
@@ -164,6 +170,8 @@ function TechnicalChartView({
         onToggleSupportResistance={setShowSupportResistance}
         showPatterns={showPatterns}
         onTogglePatterns={setShowPatterns}
+        showEvents={hasEventFeed ? showEvents : undefined}
+        onToggleEvents={setShowEvents}
         t={t}
       />
       <OverlayToggleRow value={subOverlays} onChange={setSubOverlays} market={market} t={t} />
@@ -175,12 +183,26 @@ function TechnicalChartView({
         subOverlays={subOverlays}
         showSupportResistance={showSupportResistance}
         showPatterns={showPatterns}
+        showEvents={hasEventFeed && showEvents}
+        events={chartEvents.events}
         symbol={symbol}
         market={market}
         startDate={startDate}
         endDate={endDate}
         t={t}
       />
+
+      {hasEventFeed ? (
+        <EventList
+          events={chartEvents.events}
+          rangeStart={startDate}
+          isLoading={chartEvents.isLoading}
+          isError={chartEvents.isError}
+          degraded={chartEvents.degraded}
+          onRetry={chartEvents.refetch}
+          t={t}
+        />
+      ) : null}
 
       <p className="mt-3 text-[11px] text-[var(--text-muted)]">{data.non_trading_caveat}</p>
     </section>

@@ -71,16 +71,6 @@ def _tier_for(status: str, plan_tier: Tier, *, past_due_since: datetime | None =
     return plan_tier
 
 
-def effective_byok_active(*, subscription_byok: bool, has_llm_key: bool) -> bool:
-    """Resolve whether BYOK is genuinely active for entitlement purposes.
-
-    A BYOK subscription only lifts the chat limit while the user actually has a key on file. If a
-    BYOK subscriber removes all their keys, this returns `False` so they fall back to the standard
-    fair-use limit rather than being silently billed the higher standard rate — the coupling the
-    tier model requires."""
-    return subscription_byok and has_llm_key
-
-
 class BillingService:
     def __init__(
         self,
@@ -283,4 +273,4 @@ class BillingService:
         return existing.user_id if existing is not None else None
 
 
-__all__ = ["BillingService", "effective_byok_active"]
+__all__ = ["BillingService"]

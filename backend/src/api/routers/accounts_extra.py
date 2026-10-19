@@ -50,11 +50,6 @@ class ProfileResponse(BaseModel):
     entitlements: EntitlementView
 
 
-async def _byok_active(session: AsyncSession, settings: Settings, *, user_id: str) -> bool:
-    """Whether the caller has any BYOK LLM key on file - the one flag that lifts the chat limit."""
-    return await byok_active(session, settings, user_id=user_id)
-
-
 @router.patch("/me")
 async def update_me(
     body: UpdateProfileRequest,
@@ -82,7 +77,7 @@ async def update_me(
         nationality=body.nationality,
         personality_id=body.personality_id,
     )
-    byok = await _byok_active(session, settings, user_id=user.id)
+    byok = await byok_active(session, settings, user_id=user.id)
     return ProfileResponse(user=updated, entitlements=entitlement_view(updated, byok_active=byok))
 
 
@@ -131,7 +126,7 @@ async def usage_quota(
     """The caller's resolved limits (chats/day, req/min, FinMind class) given tier + BYOK. This
     is the entitlement envelope; live consumption counters are not surfaced here (no durable
     usage-rollup store is wired yet — see the report)."""
-    byok = await _byok_active(session, settings, user_id=user.id)
+    byok = await byok_active(session, settings, user_id=user.id)
     return entitlement_view(user, byok_active=byok)
 
 

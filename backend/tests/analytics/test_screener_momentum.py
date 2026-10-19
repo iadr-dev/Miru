@@ -106,3 +106,31 @@ def test_new_52w_extremes_false_with_insufficient_history() -> None:
     bars = _bars_with_closes(closes)
     assert momentum.new_52w_high(bars) is False
     assert momentum.new_52w_low(bars) is False
+
+
+def test_new_20d_high_fires_with_exactly_20_bars() -> None:
+    closes = [float(50 + i) for i in range(momentum.TWENTY_DAY_WINDOW - 1)] + [500.0]
+    assert len(closes) == momentum.TWENTY_DAY_WINDOW
+    assert momentum.new_20d_high(_bars_with_closes(closes)) is True
+
+
+def test_new_20d_high_false_with_19_bars() -> None:
+    closes = [float(50 + i) for i in range(momentum.TWENTY_DAY_WINDOW - 2)] + [500.0]
+    assert len(closes) == momentum.TWENTY_DAY_WINDOW - 1
+    assert momentum.new_20d_high(_bars_with_closes(closes)) is False
+
+
+def test_new_20d_high_tie_with_window_max_counts() -> None:
+    closes = [100.0] + [float(50 + i) for i in range(momentum.TWENTY_DAY_WINDOW - 2)] + [100.0]
+    assert momentum.new_20d_high(_bars_with_closes(closes)) is True
+
+
+def test_new_20d_high_false_when_below_window_max() -> None:
+    closes = [200.0] + [100.0] * (momentum.TWENTY_DAY_WINDOW - 2) + [199.0]
+    assert momentum.new_20d_high(_bars_with_closes(closes)) is False
+
+
+def test_new_20d_high_ignores_closes_older_than_the_window() -> None:
+    # A huge close 21 bars back is outside the trailing 20, so today's close is the window max.
+    closes = [1000.0] + [float(50 + i) for i in range(momentum.TWENTY_DAY_WINDOW - 1)] + [500.0]
+    assert momentum.new_20d_high(_bars_with_closes(closes)) is True
