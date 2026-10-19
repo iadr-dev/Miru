@@ -67,6 +67,13 @@ export function groupByType(nodes: readonly EntityNode[]): readonly TypeGroup[] 
   })).filter((group) => group.nodes.length > 0);
 }
 
+/** The mark drawn inside a company node: its first character (a CJK name's first glyph, a Latin
+ * name's initial). A badge, not a logo - no image is fetched, so nothing leaves our origin. */
+export function monogram(label: string): string {
+  const first = Array.from(label.trim())[0];
+  return first === undefined ? "" : first.toUpperCase();
+}
+
 /** `/stock/{symbol}?market=…` for a company node, or null when it has no symbol. */
 export function companyHref(node: EntityNode): string | null {
   if (node.symbol === null || node.market === null) {
