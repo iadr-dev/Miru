@@ -125,12 +125,17 @@ export function StructureToggleRow({
   onToggleSupportResistance,
   showPatterns,
   onTogglePatterns,
+  showEvents,
+  onToggleEvents,
   t,
 }: {
   readonly showSupportResistance: boolean;
   readonly onToggleSupportResistance: (v: boolean) => void;
   readonly showPatterns: boolean;
   readonly onTogglePatterns: (v: boolean) => void;
+  /** `undefined` hides the chip (markets with no event feed). */
+  readonly showEvents?: boolean | undefined;
+  readonly onToggleEvents?: ((v: boolean) => void) | undefined;
   readonly t: ReturnType<typeof useTranslations>;
 }): ReactNode {
   return (
@@ -162,6 +167,21 @@ export function StructureToggleRow({
       >
         {t("structurePatterns")}
       </button>
+      {showEvents !== undefined && onToggleEvents ? (
+        <button
+          type="button"
+          onClick={() => onToggleEvents(!showEvents)}
+          aria-pressed={showEvents}
+          className={cn(
+            "inline-flex min-h-[44px] items-center rounded-[var(--radius-pill)] px-3 text-[12px] transition-colors",
+            showEvents
+              ? "bg-[var(--accent-weak)] text-[var(--accent-text)]"
+              : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
+          )}
+        >
+          {t("events.toggle")}
+        </button>
+      ) : null}
     </div>
   );
 }

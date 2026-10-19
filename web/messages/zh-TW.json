@@ -3432,6 +3432,32 @@
         "three_rising": "紅三兵",
         "three_falling": "黑三兵"
       },
+      "events": {
+        "toggle": "公司事件",
+        "title": "公司事件",
+        "listLabel": "圖表區間內的公司事件",
+        "upcoming": "即將到來",
+        "cash": "現金股利 每股 {value} 元",
+        "stock": "股票股利 每股 {value} 元",
+        "empty": "此區間沒有公司事件。",
+        "error": "公司事件暫時無法載入。",
+        "retry": "重試",
+        "degraded": "事件日期可能不完整。",
+        "kind": {
+          "exDividend": "除息",
+          "exRights": "除權",
+          "exDividendRights": "除權息",
+          "agm": "股東會",
+          "capitalIncrease": "現金增資"
+        },
+        "marker": {
+          "exDividend": "除息",
+          "exRights": "除權",
+          "exDividendRights": "除權息",
+          "agm": "股東會",
+          "capitalIncrease": "增資"
+        }
+      },
       "kdGoldenCross": "KD 低檔黃金交叉",
       "kdDeathCross": "KD 高檔死亡交叉",
       "sponsorLocked": "此副圖為贊助方案專屬資料",

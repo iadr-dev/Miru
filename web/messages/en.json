@@ -3432,6 +3432,32 @@
         "three_rising": "Three Rising",
         "three_falling": "Three Falling"
       },
+      "events": {
+        "toggle": "Company events",
+        "title": "Company events",
+        "listLabel": "Company events in the chart range",
+        "upcoming": "Upcoming",
+        "cash": "Cash dividend {value}/share",
+        "stock": "Stock dividend {value}/share",
+        "empty": "No company events in this range.",
+        "error": "Company events could not be loaded right now.",
+        "retry": "Retry",
+        "degraded": "Event dates may be incomplete.",
+        "kind": {
+          "exDividend": "Ex-dividend",
+          "exRights": "Ex-rights",
+          "exDividendRights": "Ex-dividend / ex-rights",
+          "agm": "Shareholder meeting",
+          "capitalIncrease": "Cash capital increase"
+        },
+        "marker": {
+          "exDividend": "Ex-div",
+          "exRights": "Ex-rts",
+          "exDividendRights": "Ex-div/rts",
+          "agm": "AGM",
+          "capitalIncrease": "Capital inc."
+        }
+      },
       "kdGoldenCross": "KD golden cross (low range)",
       "kdDeathCross": "KD death cross (high range)",
       "sponsorLocked": "This subpane is Sponsor-tier data",
