@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildChartEvents, mergeMarkers, snapEventsToBars } from "@/lib/chart-events";
+import {
+  buildChartEvents,
+  formatPerShare,
+  mergeMarkers,
+  snapEventsToBars,
+} from "@/lib/chart-events";
 import type { DividendEvent } from "@/types/stock/dividends";
 import type { CalendarEventOut } from "@/types/stock/events";
 
@@ -151,6 +156,16 @@ describe("snapEventsToBars", () => {
 
   it("returns nothing for an empty bar series", () => {
     expect(snapEventsToBars([ev("2026-09-15")], [])).toEqual([]);
+  });
+});
+
+describe("formatPerShare", () => {
+  it("rounds source float noise and trims trailing zeros", () => {
+    expect(formatPerShare(7.00000137)).toBe("7");
+    expect(formatPerShare(6.00003573)).toBe("6");
+    expect(formatPerShare(5.00001118)).toBe("5");
+    expect(formatPerShare(2.5)).toBe("2.5");
+    expect(formatPerShare(0.35)).toBe("0.35");
   });
 });
 

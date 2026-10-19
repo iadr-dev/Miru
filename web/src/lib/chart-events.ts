@@ -139,3 +139,14 @@ export function mergeMarkers<M extends { readonly time: unknown }>(
 ): M[] {
   return groups.flat().sort((a, b) => String(a.time).localeCompare(String(b.time)));
 }
+
+const PER_SHARE_FORMAT = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 4,
+  useGrouping: false,
+});
+
+/** A per-share dividend for display: at most 4 decimals, trailing zeros trimmed, so source float
+ * noise (7.00000137) reads as 7. */
+export function formatPerShare(value: number): string {
+  return PER_SHARE_FORMAT.format(value);
+}

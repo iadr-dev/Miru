@@ -4,7 +4,12 @@ import { CoinsIcon, CurrencyCircleDollarIcon, UsersThreeIcon } from "@phosphor-i
 import type { useTranslations } from "next-intl";
 import type { ComponentType, ReactNode } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CHART_EVENT_STYLE, type ChartEvent, type ChartEventKind } from "@/lib/chart-events";
+import {
+  CHART_EVENT_STYLE,
+  type ChartEvent,
+  type ChartEventKind,
+  formatPerShare,
+} from "@/lib/chart-events";
 
 const KIND_ICON: Record<
   ChartEventKind,
@@ -21,8 +26,12 @@ type EventsT = ReturnType<typeof useTranslations>;
 
 function amountLine(event: ChartEvent, t: EventsT): string | null {
   const parts: string[] = [];
-  if (event.cash !== undefined) parts.push(t("events.cash", { value: event.cash }));
-  if (event.stock !== undefined) parts.push(t("events.stock", { value: event.stock }));
+  if (event.cash !== undefined) {
+    parts.push(t("events.cash", { value: formatPerShare(event.cash) }));
+  }
+  if (event.stock !== undefined) {
+    parts.push(t("events.stock", { value: formatPerShare(event.stock) }));
+  }
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
