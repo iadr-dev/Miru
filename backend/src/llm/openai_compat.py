@@ -46,6 +46,10 @@ from netclient import lease_client
 
 logger = structlog.get_logger(__name__)
 
+# The "endpoint unreachable" failures (refused, DNS, timeout) - re-exported so wrappers such as the
+# local client can name them without importing the HTTP library themselves.
+TRANSPORT_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
+
 _CHARS_PER_TOKEN_ESTIMATE: Final[float] = 4.0  # documented estimate — no real token-counting
 # endpoint exists for these providers
 # OpenRouter's own native web-search plugin — a raw tool-array entry, distinct from a
@@ -480,4 +484,4 @@ class OpenAICompatClient:
         return max(1, int(total_chars / _CHARS_PER_TOKEN_ESTIMATE))
 
 
-__all__ = ["OpenAICompatClient"]
+__all__ = ["TRANSPORT_ERRORS", "OpenAICompatClient"]

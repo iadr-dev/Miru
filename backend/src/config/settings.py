@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from schemas.enums import TLSPolicy
 
+# Which models the server uses for users without their own key (see llm/profiles.py).
+PlatformProfile = Literal["hosted", "local"]
+
 # Which Paddle host billing talks to; anything else is a startup error, never a silent fallback.
 PaddleEnvironment = Literal["sandbox", "production"]
 
@@ -109,6 +112,12 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     openrouter_api_key: SecretStr | None = None
     ollama_base_url: str = "http://localhost:11434"
+    # Platform model profile (llm/profiles.py): "hosted" = the hosted provider chains;
+    # "local" = every role on ollama/<local_model_id> at ollama_base_url. MODEL_ROLE_* still win.
+    platform_model_profile: PlatformProfile = "hosted"
+    local_model_id: str = "ai/qwen3.6:latest"
+    # Local profile only: append the hosted chain as fallback when the local endpoint fails.
+    local_fallback_to_hosted: bool = False
 
     # ---- LLM routing / agent loop (modules/04, orchestrator) ----
     llm_provider: str | None = None  # optional override; falls back to registry default

@@ -102,6 +102,10 @@ x-app-env: &app-env
   FINMIND_BASE_URL: ${FINMIND_BASE_URL:-https://api.finmindtrade.com/api/v4}
   # Point the offline path at the compose Ollama service when the `ollama` profile is up.
   OLLAMA_BASE_URL: http://ollama:11434
+  # Platform model profile: hosted (default) or local; see llm/profiles.py.
+  PLATFORM_MODEL_PROFILE: ${PLATFORM_MODEL_PROFILE:-hosted}
+  LOCAL_MODEL_ID: ${LOCAL_MODEL_ID:-ai/qwen3.6:latest}
+  LOCAL_FALLBACK_TO_HOSTED: ${LOCAL_FALLBACK_TO_HOSTED:-false}
   # LLM role/provider overrides — unset = config/settings.py's own per-role defaults apply.
   LLM_PROVIDER: ${LLM_PROVIDER:-}
   LLM_MODEL: ${LLM_MODEL:-}

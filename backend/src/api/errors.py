@@ -21,6 +21,9 @@ from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import JSONResponse
 
+from llm.local_client import LocalModelUnavailableError
+from llm.registry import ProviderNotConfiguredError
+
 logger = structlog.get_logger(__name__)
 
 # The numeric literal, not `status.HTTP_422_*` — the constant's name churns across Starlette
@@ -125,6 +128,23 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc.status_code,
             ErrorBody(code=code, message=message, retryable=exc.status_code in _RETRYABLE_STATUSES),
             headers=dict(exc.headers) if exc.headers else None,
+        )
+
+    @app.exception_handler(LocalModelUnavailableError)
+    @app.exception_handler(ProviderNotConfiguredError)
+    async def _handle_model_unavailable(  # pyright: ignore[reportUnusedFunction] — registered via decorator
+        _request: Request, exc: Exception
+    ) -> JSONResponse:
+        # No usable model for this request (local endpoint down, or the provider has no key): a
+        # calm, retryable 503. The message is fixed so no endpoint or key detail leaks.
+        logger.warning("api_model_unavailable", error=str(exc), error_type=type(exc).__name__)
+        return _render(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            ErrorBody(
+                code="model_unavailable",
+                message="The AI model is unavailable right now. Please try again shortly.",
+                retryable=True,
+            ),
         )
 
     @app.exception_handler(Exception)

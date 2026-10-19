@@ -9,7 +9,7 @@ import pytest
 
 import llm.openai_compat as openai_compat_module
 from llm.base import Message, MessageRole, StopReason
-from llm.local_client import LocalOllamaClient
+from llm.local_client import LocalModelUnavailableError, LocalOllamaClient
 from tests.http_support import OwnedLease
 
 _RealAsyncClient = httpx.AsyncClient
@@ -58,3 +58,24 @@ async def test_count_tokens_heuristic_no_network() -> None:
     client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
     messages = [Message(role=MessageRole.USER, content="a" * 40)]
     assert await client.count_tokens(messages) == 10
+
+
+async def test_unreachable_endpoint_raises_local_model_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused")
+
+    def factory(*, timeout: object = None, **_kwargs: object) -> httpx.AsyncClient:
+        return _RealAsyncClient(transport=httpx.MockTransport(handler), timeout=timeout)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        openai_compat_module, "lease_client", lambda **kwargs: OwnedLease(factory(**kwargs))
+    )
+    client = LocalOllamaClient(model_id="qwen3.6", base_url="http://localhost:11434")
+    messages = [Message(role=MessageRole.USER, content="hi")]
+    with pytest.raises(LocalModelUnavailableError):
+        await client.chat(messages)
+    with pytest.raises(LocalModelUnavailableError):
+        async for _ in client.stream(messages):
+            pass
