@@ -19,18 +19,24 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from llm.base import (
+    LLMEvent,
     LLMResponse,
     Message,
     ModelCapabilities,
-    StreamDoneEvent,
-    TextDeltaEvent,
-    ThinkingDeltaEvent,
-    ToolCallDeltaEvent,
-    ToolCallEvent,
     ToolSpec,
-    WebSearchResultEvent,
 )
-from llm.openai_compat import OpenAICompatClient
+from llm.openai_compat import TRANSPORT_ERRORS, OpenAICompatClient
+
+
+class LocalModelUnavailableError(RuntimeError):
+    """The local model endpoint could not be reached (daemon down, wrong address, timeout).
+
+    Raised instead of the raw transport error so the API can answer with a calm, retryable 503
+    and so nothing about the failure is mistaken for a hosted-provider problem."""
+
+    def __init__(self, base_url: str) -> None:
+        super().__init__("The local model is not reachable right now.")
+        self.base_url = base_url
 
 
 class LocalOllamaClient:
@@ -46,6 +52,7 @@ class LocalOllamaClient:
     ) -> None:
         self.provider_id = "ollama"
         self.model_id = model_id
+        self._base_url = base_url
         self.capabilities = capabilities or ModelCapabilities(
             native_tool_calling=True, streaming=True, native_web_search=False
         )
@@ -67,26 +74,28 @@ class LocalOllamaClient:
         *,
         native_web_search: bool = False,
     ) -> LLMResponse:
-        return await self._delegate.chat(messages, tools, native_web_search=native_web_search)
+        try:
+            return await self._delegate.chat(messages, tools, native_web_search=native_web_search)
+        except TRANSPORT_ERRORS as exc:
+            raise LocalModelUnavailableError(self._base_url) from exc
 
-    def stream(
+    async def stream(
         self,
         messages: list[Message],
         tools: list[ToolSpec] | None = None,
         *,
         native_web_search: bool = False,
-    ) -> AsyncIterator[
-        TextDeltaEvent
-        | ThinkingDeltaEvent
-        | ToolCallDeltaEvent
-        | ToolCallEvent
-        | WebSearchResultEvent
-        | StreamDoneEvent
-    ]:
-        return self._delegate.stream(messages, tools, native_web_search=native_web_search)
+    ) -> AsyncIterator[LLMEvent]:
+        try:
+            async for event in self._delegate.stream(
+                messages, tools, native_web_search=native_web_search
+            ):
+                yield event
+        except TRANSPORT_ERRORS as exc:
+            raise LocalModelUnavailableError(self._base_url) from exc
 
     async def count_tokens(self, messages: list[Message]) -> int:
         return await self._delegate.count_tokens(messages)
 
 
-__all__ = ["LocalOllamaClient"]
+__all__ = ["LocalModelUnavailableError", "LocalOllamaClient"]

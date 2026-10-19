@@ -23,7 +23,6 @@ from collections.abc import AsyncIterator, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Final
 
 import structlog
@@ -35,17 +34,9 @@ from llm.gemini_client import GeminiClient
 from llm.local_client import LocalOllamaClient
 from llm.openai_client import OpenAIClient
 from llm.openai_compat import OpenAICompatClient
+from llm.profiles import ModelRole, platform_role_chains
 
 logger = structlog.get_logger(__name__)
-
-
-class ModelRole(StrEnum):
-    """Cost/latency-tiered roles the orchestrator (Phase 8) names instead of a model."""
-
-    CLASSIFIER = "classifier"
-    AGENT = "agent"
-    SUBAGENT = "subagent"
-    SYNTHESIS = "synthesis"
 
 
 # The default provider/model when nothing else is configured — Anthropic Claude is the
@@ -53,19 +44,6 @@ class ModelRole(StrEnum):
 # `LLM_PROVIDER` / `LLM_MODEL`.
 _DEFAULT_PROVIDER: Final[str] = "anthropic"
 _DEFAULT_MODEL: Final[str] = "claude-sonnet-5-5"
-_ANTHROPIC_SONNET_FALLBACK: Final[str] = "anthropic/claude-sonnet-5-5"
-_ANTHROPIC_HAIKU: Final[str] = "anthropic/claude-haiku-5-5"
-
-# Suggested per-role defaults, each an ordered fallback chain of "provider/model" specs — the
-# first entry is tried first; on a `chat()`/`stream()` failure `FallbackLLMClient` tries the
-# next. All overridable via `MODEL_ROLE_<ROLE>` = "<provider>/<model>[,<provider>/<model>...]".
-_DEFAULT_ROLE_MODELS: Final[dict[ModelRole, tuple[str, ...]]] = {
-    ModelRole.CLASSIFIER: (_ANTHROPIC_HAIKU, _ANTHROPIC_SONNET_FALLBACK),
-    ModelRole.AGENT: (_ANTHROPIC_SONNET_FALLBACK, _ANTHROPIC_HAIKU),
-    ModelRole.SUBAGENT: (_ANTHROPIC_SONNET_FALLBACK,),
-    ModelRole.SYNTHESIS: ("openai/gpt-4o-mini", _ANTHROPIC_SONNET_FALLBACK),
-}
-
 _OPENAI_COMPAT_BASE_URLS: Final[dict[str, str]] = {
     "openrouter": "https://openrouter.ai/api/v1",
 }
@@ -262,12 +240,6 @@ class FallbackLLMClient:
         return await self._clients[0].count_tokens(messages)
 
 
-def _parse_role_chain(spec: str) -> tuple[str, ...]:
-    """A role override is one or more comma-separated `provider/model` specs — the fallback
-    chain, in try-order. Whitespace around each entry is stripped so `"a/b, c/d"` works."""
-    return tuple(part.strip() for part in spec.split(",") if part.strip())
-
-
 # Providers a user can bring their own key for (every one with a hosted, key-authenticated API).
 BYOK_PROVIDERS: Final[frozenset[str]] = frozenset({"anthropic", "openai", "gemini", "openrouter"})
 
@@ -304,9 +276,7 @@ def agent_model_spec(
     settings = settings or get_settings()
     if model_override:
         return _split_provider_model(model_override)
-    override = settings.model_role_agent
-    chain = _parse_role_chain(override) if override else _DEFAULT_ROLE_MODELS[ModelRole.AGENT]
-    return _split_provider_model(chain[0])
+    return _split_provider_model(platform_role_chains(settings)[ModelRole.AGENT][0])
 
 
 def _byok_client(settings: Settings) -> LLMClient | None:
@@ -325,14 +295,7 @@ def resolve_role(role: ModelRole, settings: Settings | None = None) -> LLMClient
     settings = settings or get_settings()
     if (byok_client := _byok_client(settings)) is not None:
         return byok_client
-    role_overrides: dict[ModelRole, str | None] = {
-        ModelRole.CLASSIFIER: settings.model_role_classifier,
-        ModelRole.AGENT: settings.model_role_agent,
-        ModelRole.SUBAGENT: settings.model_role_subagent,
-        ModelRole.SYNTHESIS: settings.model_role_synthesis,
-    }
-    override = role_overrides[role]
-    chain = _parse_role_chain(override) if override else _DEFAULT_ROLE_MODELS[role]
+    chain = platform_role_chains(settings)[role]
 
     # A single-entry chain must still raise `ProviderNotConfiguredError` loudly (a role with no
     # fallback has no other client to try). A multi-entry chain skips an unconfigured entry at

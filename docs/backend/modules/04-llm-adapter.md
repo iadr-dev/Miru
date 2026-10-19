@@ -234,6 +234,26 @@ override is built by `accounts/byok.py::resolve_byok_override` (decrypting the s
 entered by `api/turn_driver.py`; `BYOK_PROVIDERS` lists the hosted providers a user may bring a
 key for.
 
+## Platform model profile (`profiles.py`)
+
+`platform_role_chains(settings)` returns each `ModelRole`'s fallback chain for users without
+their own key; `resolve_role` and `agent_model_spec` read chains only through it. It also owns
+`ModelRole` and the hosted defaults (re-exported by `registry.py`).
+
+| `PLATFORM_MODEL_PROFILE` | Chain per role |
+|---|---|
+| `hosted` (default) | the hosted defaults (Anthropic Haiku/Sonnet, OpenAI mini for synthesis) |
+| `local` | `ollama/<LOCAL_MODEL_ID>` (default `ai/qwen3.6:latest`) at `OLLAMA_BASE_URL`, for all four roles |
+
+- `LOCAL_FALLBACK_TO_HOSTED=true` (default false) appends the hosted chain after the local model.
+  Off, an unreachable local endpoint fails the turn rather than silently spending hosted keys.
+- `MODEL_ROLE_<ROLE>` overrides still replace a role's chain under either profile.
+- An unknown profile value is rejected by settings validation.
+- An unreachable local endpoint raises `LocalModelUnavailableError`; `api/errors.py` maps it
+  (and `ProviderNotConfiguredError`) to a 503 `model_unavailable`, `retryable: true`. A turn that
+  is already streaming ends with an error frame carrying the same calm message.
+- BYOK is unaffected: a user's own key bypasses the platform profile.
+
 ## Callers (real usages outside `llm/`)
 
 Grep for `llm.base`/`llm.registry` imports outside `llm/` turns up:
