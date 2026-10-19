@@ -12,10 +12,8 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.byok import ByokKeyRequiredError, resolve_byok_override
-from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
 from accounts.entitlements import platform_model_allowed
 from accounts.models import User
-from accounts.secrets import SqlAlchemySecretStore
 from api.errors import ApiError
 from config.settings import Settings
 from llm.registry import ByokOverride
@@ -53,14 +51,4 @@ def enforce_platform_model(user: User, model_override: str | None, *, byok: bool
         )
 
 
-async def byok_active_for(session: AsyncSession, settings: Settings, *, user_id: str) -> bool:
-    """Whether the caller has any saved LLM key - the flag that lifts the daily chat cap. A missing
-    encryption config means no key can exist, so the answer is False (never over-grants)."""
-    try:
-        cipher = SecretCipher.from_settings(settings)
-    except SecretEncryptionNotConfiguredError:
-        return False
-    return await SqlAlchemySecretStore(session, cipher).has_llm_key(user_id=user_id)
-
-
-__all__ = ["byok_active_for", "enforce_platform_model", "resolve_byok"]
+__all__ = ["enforce_platform_model", "resolve_byok"]

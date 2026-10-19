@@ -35,6 +35,7 @@ from accounts.auth import (
     issue_access_token,
     require_jwt_secret,
 )
+from accounts.byok import byok_active
 from accounts.entitlements import entitlement_view
 from accounts.erasure import erase_user
 from accounts.models import EntitlementView, OAuthAccount, OAuthProvider, User
@@ -53,7 +54,6 @@ from accounts.store import (
     LastLoginMethodError,
     UserStore,
 )
-from api.byok import byok_active_for
 from api.dependencies import (
     ACCESS_TOKEN_COOKIE,
     AppState,
@@ -541,7 +541,7 @@ async def me(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings_dep),
 ) -> MeResponse:
-    byok = await byok_active_for(session, settings, user_id=user.id)
+    byok = await byok_active(session, settings, user_id=user.id)
     # The first page load of a Taipei day counts as that day's login for the pet streak.
     await SqlAlchemyPetStore(session).register_login(user_id=user.id)
     return MeResponse(user=user, entitlements=entitlement_view(user, byok_active=byok))

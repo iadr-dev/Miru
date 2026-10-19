@@ -17,6 +17,7 @@ served without calling the LLM again; only a genuine cache miss triggers `genera
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date as date_
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,6 +28,7 @@ from analytics.scoring_store import get_cached_score
 from analytics.summary_generation import generate_stock_summary
 from analytics.summary_store import get_cached_summary, upsert_summary
 from llm.base import LLMClient
+from llm.registry import ProviderNotConfiguredError
 from schemas.enums import DataClass, Market
 from tools.base import BaseTool, Tool, ToolContext, parse_args
 
@@ -73,9 +75,16 @@ class GetStockSummaryTool(BaseTool):
     data_class = DataClass.SPONSOR
     card_type: str | None = "stock_summary"
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], llm: LLMClient) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        llm_factory: Callable[[], LLMClient],
+    ) -> None:
+        # A factory, not a client: it is called per generation so it resolves inside the running
+        # turn's BYOK scope (a BYOK user's summary runs on their key, anyone else's on the platform
+        # profile) instead of being fixed once when the tool registry was built.
         self._session_factory = session_factory
-        self._llm = llm
+        self._llm_factory = llm_factory
 
     async def run(self, args: BaseModel, ctx: ToolContext) -> BaseModel:
         del ctx
@@ -112,7 +121,16 @@ class GetStockSummaryTool(BaseTool):
 
             await session.commit()  # the reads are done: hold nothing across the model call
 
-        generated = await generate_stock_summary(score, self._llm)
+        try:
+            llm = self._llm_factory()
+        except ProviderNotConfiguredError:
+            return GetStockSummaryOutput(
+                found=False,
+                symbol=typed.id,
+                market=typed.market,
+                message="The summary model is not available right now; please try again later.",
+            )
+        generated = await generate_stock_summary(score, llm)
         async with self._session_factory() as session:
             await upsert_summary(session, generated)
             await session.commit()
@@ -130,13 +148,14 @@ class GetStockSummaryTool(BaseTool):
 
 
 def build_registration_table(
-    session_factory: async_sessionmaker[AsyncSession], llm: LLMClient
+    session_factory: async_sessionmaker[AsyncSession], llm_factory: Callable[[], LLMClient]
 ) -> list[tuple[Tool, bool]]:
     """This module's `(tool, immediate)` registration table — a deferred long-tail read,
-    parameterized by both the DB session factory (the score cache + summary cache) and an
-    `LLMClient` (resolved via `llm.registry.resolve_role(ModelRole.SUBAGENT)` at the composition
-    root), matching `score_tools.py`'s pattern plus the one extra collaborator this tool needs."""
-    return [(GetStockSummaryTool(session_factory, llm), False)]
+    parameterized by both the DB session factory (the score cache + summary cache) and a
+    zero-argument `LLMClient` factory (the composition root passes `resolve_role(SUBAGENT)`; tests
+    pass a stub), matching `score_tools.py`'s pattern plus the one extra collaborator this tool
+    needs."""
+    return [(GetStockSummaryTool(session_factory, llm_factory), False)]
 
 
 __all__ = [

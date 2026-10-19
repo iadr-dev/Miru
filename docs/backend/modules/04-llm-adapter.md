@@ -227,12 +227,39 @@ override is meaningful for; `CLASSIFIER`/`SUBAGENT` are cost/latency-tiered plum
 never route a thread override through.
 
 **BYOK** ([12-multi-user-tiers.md](12-multi-user-tiers.md)): `build_client(..., api_key=...)` takes a
-user's own key, and `byok_scope(ByokOverride(provider_id, model_id, api_key))` is a context
-variable that makes `resolve_role`/`resolve_role_with_override` return that one client for every
-role (classifier, sub-agents and synthesis included) and never fall back to a platform key. The
-override is built by `accounts/byok.py::resolve_byok_override` (decrypting the saved key) and
-entered by `api/turn_driver.py`; `BYOK_PROVIDERS` lists the hosted providers a user may bring a
-key for.
+user's own key, and `byok_scope(ByokOverride(provider_id, api_key, main_model, cheap_model))` is a
+context variable that makes `resolve_role`/`resolve_role_with_override` return a client on that key
+for every role and never fall back to a platform key. The override is built by
+`accounts/byok.py::resolve_byok_override` (decrypting the saved key) and entered by
+`api/turn_driver.py`; `BYOK_PROVIDERS` lists the hosted providers a user may bring a key for.
+
+### BYOK role map (`byok_profiles.py`)
+
+`BYOK_PROVIDER_TIERS[provider]` is the single curated table: `default_main`, `cheap` and `selectable`
+(bare provider-local model ids; every id is priced in `pricing.py`, tested). Helpers:
+`provider_tiers(provider)`, `is_selectable(provider, model)`; `BYOK_PROVIDER_ORDER` is
+anthropic, openai, gemini, openrouter.
+
+| Role | BYOK model |
+|---|---|
+| `AGENT`, `SYNTHESIS`, `SUBAGENT` | `main_model` |
+| `CLASSIFIER` (also thread titles and branch summaries) | `cheap_model` |
+
+- Main model: the request/thread pick (`provider/model`) when its provider has a saved key (no key
+  -> `ByokKeyRequiredError`, HTTP 409), else the user's saved default model (a later change; the
+  `default_model` parameter of `resolve_byok_override`), else `default_main` of the first provider
+  in `BYOK_PROVIDER_ORDER` the user holds a key for. `MODEL_ROLE_*` is never consulted. Cheap
+  model: that provider's `cheap` tier.
+- If the provider rejects the cheap model (HTTP 400/403/404, or the client cannot be built) the
+  classifier call degrades to `main_model` on the same user key - never to a platform key. A bad key
+  (401), rate limit or outage is not masked. BYOK has no fallback chain by design.
+- OpenRouter has no known cheap tier: `cheap == default_main == openrouter/auto`, and it is the only
+  selectable id (free-form ids are not accepted yet).
+- `assert_no_byok_scope()` guards the platform-only jobs (`supply_chain/verification/job.py`,
+  `themes/__main__.py`): inside a BYOK scope they raise instead of spending a user's key.
+- Tools that call a model (`get_stock_summary`) take a client *factory* and resolve it per call, so
+  they run inside the active scope: on the user's key for BYOK callers, on the platform profile
+  otherwise.
 
 ## Platform model profile (`profiles.py`)
 
