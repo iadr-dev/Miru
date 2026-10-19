@@ -1791,10 +1791,10 @@ export interface paths {
     };
     /**
      * Price History
-     * @description A bounded trailing-day OHLCV window for up to 20 symbols — the data behind a sparkline
-     *     or a client-computed %-change, for any bare-symbol list (leaderboard, watchlist, ETF
-     *     roster). `get_price_quote`/`/quote` stay latest-bar-only; this is the separate bounded-
-     *     history capability those callers need instead.
+     * @description A bounded trailing-day OHLCV window (up to 260 trading days) for up to 20 symbols — the
+     *     data behind a sparkline, a compare chart or a client-computed %-change, for any bare-symbol
+     *     list (leaderboard, watchlist, ETF roster). `get_price_quote`/`/quote` stay latest-bar-only;
+     *     this is the separate bounded-history capability those callers need instead.
      */
     get: operations["price_history_api_v1_market_price_history_get"];
     put?: never;
@@ -16937,7 +16937,7 @@ export interface operations {
         /** @description Up to 20 comma-separated symbol ids, e.g. '2330,2454'. */
         symbols: string;
         market?: components["schemas"]["Market"];
-        /** @description Trailing trading-day count, 2-60. */
+        /** @description Trailing trading-day count, 2-260. */
         days?: number;
       };
       header?: never;

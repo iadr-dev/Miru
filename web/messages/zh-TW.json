@@ -928,6 +928,7 @@
       "dragGroup": "拖曳排序分組",
       "alertItem": "為 {name} 設定提醒",
       "alertGroup": "{name} 的群組提醒",
+      "compareGroup": "比較 {name} 的個股",
       "alertGroupRelative": "群組提醒",
       "alertGroupRelativeHint": "漲跌幅、成交量、法人連買賣… 每檔都適用的條件",
       "alertGroupPerStock": "逐檔設定價位",
@@ -3437,7 +3438,41 @@
       "sponsorLocked": "此副圖為贊助方案專屬資料",
       "empty": "此區間無資料。",
       "collapse": "收合",
-      "nonTradingCaveat": "技術指標與型態為圖表描述，非買賣建議。"
+      "nonTradingCaveat": "技術指標與型態為圖表描述，非買賣建議。",
+      "sub": {
+        "label": "技術分析檢視",
+        "chart": "走勢圖",
+        "compare": "比較"
+      },
+      "compare": {
+        "title": "個股比較",
+        "hint": "每條線是自所選個股都有收盤價的第一天起算的漲跌幅，不同股價的個股可以放在同一尺度上比較。",
+        "rangeLabel": "區間",
+        "range": {
+          "1m": "1月",
+          "3m": "3月",
+          "6m": "6月",
+          "1y": "1年"
+        },
+        "selectedLabel": "比較中的個股",
+        "pickerLabel": "新增比較個股",
+        "pickerPlaceholder": "輸入代號或名稱",
+        "pickerSearching": "搜尋中…",
+        "pickerNone": "找不到符合的個股",
+        "limitHint": "最多比較 {max} 檔，移除一檔後才能再新增。",
+        "remove": "移除 {name}",
+        "needMore": "請至少選擇兩檔個股來比較。",
+        "tooFew": "此區間內共同的資料不足，無法繪製線條。",
+        "chartLabel": "自 {date} 起各股漲跌幅走勢圖，每檔一條線",
+        "legendLabel": "圖例 — 點選個股可隱藏或顯示該線",
+        "legendHidden": "已隱藏",
+        "noData": "無資料",
+        "endHeading": "區間漲跌",
+        "baseNote": "所有線條自 {date} 起算為 0%。",
+        "limitedNote": "{names} 在此區間內沒有更早的資料，因此各線改由 {date} 起算。",
+        "missingNote": "{names} 在此區間內沒有價格資料，未繪製線條。",
+        "asOf": "最新資料：{date}（日收盤）"
+      }
     },
     "tracker": {
       "title": "ETF持有",

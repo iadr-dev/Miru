@@ -29,7 +29,10 @@ _MAX_BATCH_SYMBOLS = 20  # mirrors agent.guardrails._MAX_SYMBOLS_PER_CALL — on
 
 
 # a full-market scan; also matches the AI-leaderboard's own max row count (10 default/20 expanded)
-_MAX_PRICE_HISTORY_DAYS = 60  # bounded lookback window for a sparkline — never an open-ended range
+_MAX_PRICE_HISTORY_DAYS = (
+    260  # ~1 trading year — bounded window for a chart/compare view, never open-ended
+)
+_MAX_SPARKLINE_DAYS = 60  # the list-row sparkline window (`get_symbol_quotes`) stays short
 
 
 class GetSymbolInfoInput(BaseModel):
@@ -279,7 +282,7 @@ class GetPriceHistoryTool(SyncStoreTool):
 
     name = "get_price_history"
     description = (
-        "Get a bounded trailing window (2-60 trading days) of daily OHLCV bars for up to 20 "
+        "Get a bounded trailing window (2-260 trading days) of daily OHLCV bars for up to 20 "
         "stock/ETF symbols in one call — the data behind a sparkline or a %-change figure."
     )
     input_model: type[BaseModel] = GetPriceHistoryInput
@@ -321,7 +324,7 @@ class GetSymbolQuotesInput(BaseModel):
 
     symbols: tuple[str, ...] = Field(min_length=1, max_length=_MAX_BATCH_SYMBOLS)
     market: Market = Market.TW
-    days: int = Field(default=20, ge=2, le=_MAX_PRICE_HISTORY_DAYS)
+    days: int = Field(default=20, ge=2, le=_MAX_SPARKLINE_DAYS)
 
 
 class SymbolQuoteRow(BaseModel):

@@ -28853,7 +28853,7 @@
   },
   "/api/v1/market/price-history": {
    "get": {
-    "description": "A bounded trailing-day OHLCV window for up to 20 symbols — the data behind a sparkline\nor a client-computed %-change, for any bare-symbol list (leaderboard, watchlist, ETF\nroster). `get_price_quote`/`/quote` stay latest-bar-only; this is the separate bounded-\nhistory capability those callers need instead.",
+    "description": "A bounded trailing-day OHLCV window (up to 260 trading days) for up to 20 symbols — the\ndata behind a sparkline, a compare chart or a client-computed %-change, for any bare-symbol\nlist (leaderboard, watchlist, ETF roster). `get_price_quote`/`/quote` stay latest-bar-only;\nthis is the separate bounded-history capability those callers need instead.",
     "operationId": "price_history_api_v1_market_price_history_get",
     "parameters": [
      {
@@ -28877,14 +28877,14 @@
       }
      },
      {
-      "description": "Trailing trading-day count, 2-60.",
+      "description": "Trailing trading-day count, 2-260.",
       "in": "query",
       "name": "days",
       "required": false,
       "schema": {
        "default": 20,
-       "description": "Trailing trading-day count, 2-60.",
-       "maximum": 60,
+       "description": "Trailing trading-day count, 2-260.",
+       "maximum": 260,
        "minimum": 2,
        "title": "Days",
        "type": "integer"
