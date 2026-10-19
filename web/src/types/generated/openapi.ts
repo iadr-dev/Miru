@@ -13679,6 +13679,11 @@ export interface components {
        */
       cost_micros: number;
       /**
+       * Estimated Cost Micros
+       * @default 0
+       */
+      estimated_cost_micros: number;
+      /**
        * Finmind Calls
        * @default 0
        */

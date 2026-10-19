@@ -135,23 +135,69 @@ def _add(total: UsageTotals, row: LlmUsageRow, estimate: int) -> UsageTotals:
     )
 
 
-def _estimate(row: LlmUsageRow, day: date) -> int:
-    """List-price estimate for a row, 0 when the provider reported a charge or the model has no
-    known price. The estimate is kept apart from `cost_micros` so the two are never confused."""
-    if row.cost_micros > 0:
+def list_price_estimate(  # noqa: PLR0913 - one argument per usage dimension
+    *,
+    provider: str,
+    model: str,
+    on: date,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int,
+    cache_write_tokens: int,
+    reasoning_tokens: int,
+    cost_micros: int,
+) -> int:
+    """List-price estimate for one (provider, model) usage, 0 when the provider reported a charge
+    or the model has no known price. The estimate is kept apart from `cost_micros` so the two are
+    never confused. The one function both the settings summary and the chat turn chip use, so the
+    two numbers cannot diverge."""
+    if cost_micros > 0:
         return 0
     return (
         estimate_cost_micros(
-            provider=row.provider,
-            model=row.model,
-            on=day,
-            input_tokens=row.input_tokens,
-            output_tokens=row.output_tokens,
-            cached_tokens=row.cached_tokens,
-            cache_write_tokens=row.cache_write_tokens or 0,
-            reasoning_tokens=row.reasoning_tokens,
+            provider=provider,
+            model=model,
+            on=on,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            cache_write_tokens=cache_write_tokens,
+            reasoning_tokens=reasoning_tokens,
         )
         or 0
+    )
+
+
+def _estimate(row: LlmUsageRow, day: date) -> int:
+    return list_price_estimate(
+        provider=row.provider,
+        model=row.model,
+        on=day,
+        input_tokens=row.input_tokens,
+        output_tokens=row.output_tokens,
+        cached_tokens=row.cached_tokens,
+        cache_write_tokens=row.cache_write_tokens or 0,
+        reasoning_tokens=row.reasoning_tokens,
+        cost_micros=row.cost_micros,
+    )
+
+
+def estimate_turn_cost_micros(models: tuple[ModelUsage, ...], *, on: date | None = None) -> int:
+    """Sum of the list-price estimates over a turn's models (see `list_price_estimate`)."""
+    day = on or datetime.now(UTC).date()
+    return sum(
+        list_price_estimate(
+            provider=m.provider,
+            model=m.model,
+            on=day,
+            input_tokens=m.input_tokens,
+            output_tokens=m.output_tokens,
+            cached_tokens=m.cached_tokens,
+            cache_write_tokens=m.cache_write_tokens,
+            reasoning_tokens=m.reasoning_tokens,
+            cost_micros=m.cost_micros,
+        )
+        for m in models
     )
 
 
@@ -243,6 +289,8 @@ __all__ = [
     "LlmUsageSummary",
     "ModelTotals",
     "UsageTotals",
+    "estimate_turn_cost_micros",
+    "list_price_estimate",
     "summarize_llm_usage",
     "write_model_usage",
 ]

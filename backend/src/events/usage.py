@@ -84,6 +84,9 @@ class TurnUsage(BaseModel):
     tool_calls: int = Field(default=0, ge=0)
     finmind_calls: int = Field(default=0, ge=0)
     cost_micros: int = Field(default=0, ge=0)
+    # List-price estimate for a BYOK turn's models that report no charge (the user's own spend).
+    # Kept apart from `cost_micros` (provider-reported); 0 on platform-key turns.
+    estimated_cost_micros: int = Field(default=0, ge=0)
     breakdown: TokenBreakdown = Field(default_factory=TokenBreakdown)
     models: tuple[ModelUsage, ...] = Field(default_factory=tuple)
     # The memories recall put in front of the model this turn (empty when none or memory is off).
