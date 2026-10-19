@@ -7,6 +7,7 @@ import {
   maxNodeWeight,
   monogram,
   themeKeyForEntity,
+  truncateLabel,
 } from "@/lib/entity-graph-view";
 import type { EntityLink, EntityNode, EntityType } from "@/types/entity-graph";
 
@@ -106,6 +107,14 @@ describe("themeKeyForEntity", () => {
     expect(themeKeyForEntity("Film", themes)).toBe("film");
     expect(themeKeyForEntity("unknown", themes)).toBeNull();
     expect(themeKeyForEntity("  ", themes)).toBeNull();
+  });
+});
+
+describe("truncateLabel", () => {
+  it("keeps short names and cuts long ones by characters, not bytes", () => {
+    expect(truncateLabel("台積電")).toBe("台積電");
+    expect(truncateLabel("一二三四五六七八九十")).toBe("一二三四五六七八九…");
+    expect(truncateLabel("123456789")).toBe("123456789");
   });
 });
 
