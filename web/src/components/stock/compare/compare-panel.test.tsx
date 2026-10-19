@@ -102,7 +102,7 @@ afterEach(() => {
 });
 
 describe("StockComparePanel", () => {
-  it("shows the chips, the signed end-of-range change per stock, the caveat and the data date", () => {
+  it("shows the chips, the signed end-of-range change per stock and the data date, without the caveat chip", () => {
     mockHistories([TSMC, MTK]);
     renderWithIntl(<StockComparePanel symbol="2330" market="TW" />);
 
@@ -122,7 +122,7 @@ describe("StockComparePanel", () => {
         (label) => label.includes(messages.common.direction.down) && label.includes("10.00%"),
       ),
     ).toBe(true);
-    expect(screen.getByText(messages.chat.caveat.nonTrading)).toBeTruthy();
+    expect(screen.queryByText(messages.chat.caveat.nonTrading)).toBeNull();
     expect(screen.getByText(copy.asOf.replace("{date}", "2026-03-04"))).toBeTruthy();
     expect(screen.getByText(copy.baseNote.replace("{date}", "2026-03-02"))).toBeTruthy();
   });
@@ -172,11 +172,11 @@ describe("StockComparePanel", () => {
     expect(screen.queryByText(copy.legendLabel)).toBeNull();
   });
 
-  it("holds a loading skeleton and a retryable error without dropping the caveat", () => {
+  it("holds a loading skeleton and a retryable error ", () => {
     mockHistories([undefined, undefined], { isLoading: true });
     const view = renderWithIntl(<StockComparePanel symbol="2330" market="TW" />);
     expect(screen.queryByText(copy.legendLabel)).toBeNull();
-    expect(screen.getByText(messages.chat.caveat.nonTrading)).toBeTruthy();
+    expect(screen.queryByText(messages.chat.caveat.nonTrading)).toBeNull();
     view.unmount();
 
     const retry = vi.fn();

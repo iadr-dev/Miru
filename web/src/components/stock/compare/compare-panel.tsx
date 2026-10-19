@@ -6,7 +6,6 @@ import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { CompareChart } from "@/components/stock/compare/compare-chart";
 import { CompareLegend } from "@/components/stock/compare/compare-legend";
 import { ComparePicker } from "@/components/stock/compare/compare-picker";
-import { Caveat } from "@/components/ui/caveat";
 import { ChartWithDataSheet } from "@/components/ui/chart-with-data-sheet";
 import { QueryFailure } from "@/components/ui/query-state";
 import { useComparePeers } from "@/hooks/use-compare-peers";
@@ -85,7 +84,6 @@ export function StockComparePanel({
   readonly market: Market;
 }): ReactNode {
   const t = useTranslations("stock.technical.compare");
-  const tCaveat = useTranslations("chat.caveat");
   const { searchParams, setParams } = useUrlParams();
   const [range, setRange] = useState<CompareRange>(DEFAULT_COMPARE_RANGE);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
@@ -228,7 +226,6 @@ export function StockComparePanel({
       )}
 
       <div>
-        <Caveat text={tCaveat("nonTrading")} />
         {asOf === "" ? null : (
           <p className="mt-2 text-[12px] text-[var(--text-muted)]">{t("asOf", { date: asOf })}</p>
         )}
