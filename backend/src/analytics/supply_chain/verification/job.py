@@ -50,7 +50,6 @@ from llm.registry import (
     ModelRole,
     ProviderNotConfiguredError,
     assert_no_byok_scope,
-    resolve_role,
     resolve_role_with_override,
 )
 
@@ -104,6 +103,11 @@ def prepare(  # noqa: PLR0913 - keyword-only inputs
     return targets, directory, published
 
 
+def _second_model(settings: Settings) -> str | None:
+    """The second-opinion model spec; a blank value means the SYNTHESIS role chain."""
+    return settings.supply_chain_research_second_model.strip() or None
+
+
 def missing_prerequisite(settings: Settings, *, need_second: bool = False) -> str | None:
     """Why a real run cannot start (no search key, no LLM role), or None."""
     if not reveal(settings.brave_search_api_key):
@@ -113,7 +117,7 @@ def missing_prerequisite(settings: Settings, *, need_second: bool = False) -> st
             ModelRole.SUBAGENT, settings.supply_chain_research_model, settings
         )
         if need_second:
-            resolve_role(ModelRole.SYNTHESIS, settings)
+            resolve_role_with_override(ModelRole.SYNTHESIS, _second_model(settings), settings)
     except ProviderNotConfiguredError:
         return "no LLM role configured for the verification model"
     return None
@@ -148,7 +152,7 @@ async def execute_research(  # noqa: PLR0913 - collaborators are injected, one p
         ),
         second_client=second_client
         or (
-            resolve_role(ModelRole.SYNTHESIS, settings)
+            resolve_role_with_override(ModelRole.SYNTHESIS, _second_model(settings), settings)
             if settings.supply_chain_second_opinion
             else None
         ),

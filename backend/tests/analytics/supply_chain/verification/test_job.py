@@ -268,3 +268,24 @@ def test_the_research_model_setting_picks_the_judge_and_falls_back(
     assert job_module.missing_prerequisite(settings(supply_chain_research_model="ollama/x")) is None
     assert job_module.missing_prerequisite(settings()) is None
     assert seen == ["ollama/x", None]
+
+
+def test_the_second_opinion_model_setting_picks_its_own_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[object, str | None]] = []
+
+    def fake(role: object, override: str | None, _settings: object = None) -> object:
+        seen.append((role, override))
+        return object()
+
+    monkeypatch.setattr(job_module, "resolve_role_with_override", fake)
+    assert job_module.missing_prerequisite(settings(), need_second=True) is None
+    assert (
+        job_module.missing_prerequisite(
+            settings(supply_chain_research_second_model="  "), need_second=True
+        )
+        is None
+    )
+    second = [override for role, override in seen if getattr(role, "value", "") == "synthesis"]
+    assert second == ["openai/gpt-5.6-sol", None]

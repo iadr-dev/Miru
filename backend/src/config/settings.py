@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # "provider/model" for the research judge only (chat sub-agents keep their own role);
     # unset or unusable = the SUBAGENT role's normal chain.
     supply_chain_research_model: str | None = None
+    # "provider/model" for the optional second opinion (a different vendor from the judge, on
+    # purpose); blank or unusable falls back to the SYNTHESIS role chain.
+    supply_chain_research_second_model: str = "openai/gpt-5.6-sol"
     supply_chain_research_max_claims: int = 25
     supply_chain_research_max_searches: int = 60
     supply_chain_research_max_pages: int = 90
