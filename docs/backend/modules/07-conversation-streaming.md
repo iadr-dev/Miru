@@ -110,7 +110,7 @@ in addition to the envelope.
 | `personality.used` | `{personality}` | tone preset applied to this turn |
 | `pet.leveled` | `{pet_id, level}` | equipped pet leveled up (cosmetic, [21](21-pet-gamification.md)) |
 | `pet.pull_earned` | `{count}` | a milestone granted gacha pull(s) (cosmetic) |
-| `usage` | `TurnUsage` snapshot (tokens, `tool_calls`, `finmind_calls`, `cost_micros`, per-model breakdown) | published once per turn by `Orchestrator._finalize` |
+| `usage` | `TurnUsage` snapshot (tokens, `tool_calls`, `finmind_calls`, `cost_micros`, `estimated_cost_micros` (BYOK turns only), per-model breakdown) | published by `Orchestrator._finalize`; re-sent once with the estimate for a BYOK turn |
 | `message` | `{text, framework}` | the one final-answer frame, published just before `turn.end`; not chunked |
 | `turn.end` | `{status}` (+ `message` on `error`) | `done`, `cancelled` or `error` |
 

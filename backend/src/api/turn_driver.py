@@ -66,7 +66,7 @@ from memory.watchlists import WatchlistStore
 from orchestrator.models import OrchestratorResult
 from orchestrator.orchestrator import PersonalityContext
 from tools.base import ToolContext
-from usage.llm_usage import write_model_usage
+from usage.llm_usage import estimate_turn_cost_micros, write_model_usage
 from usage.store import write_turn_usage
 
 _RATE_WINDOW_SECONDS = 60
@@ -517,6 +517,16 @@ async def _drive_turn(
 
     result = _with_memories(result, turn_id=turn_id, memories=memories_used)
     result = _with_personality(result, turn_id=turn_id, preset_id=tone_id)
+    result = _with_estimated_cost(result, turn_id=turn_id, byok=byok is not None)
+    if result.usage is not None and result.usage.estimated_cost_micros > 0:
+        # The orchestrator's live frame predates the estimate: re-send the final totals (the
+        # client keeps the latest `usage` frame).
+        event_bus.publish(
+            EventKind.USAGE,
+            turn_id=turn_id,
+            agent_id="root",
+            data=result.usage.model_dump(mode="json"),
+        )
     try:
         async with _unit(state) as session:
             await _persist_answer(
@@ -608,6 +618,23 @@ def _with_personality(
     """The result with the 語氣 preset recorded on its usage snapshot."""
     usage = result.usage or TurnUsage(turn_id=turn_id)
     return result.model_copy(update={"usage": usage.model_copy(update={"personality": preset_id})})
+
+
+def _with_estimated_cost(
+    result: OrchestratorResult, *, turn_id: str, byok: bool
+) -> OrchestratorResult:
+    """The result with a BYOK turn's list-price estimate on its usage snapshot (the user's own
+    spend; shared with the settings usage page via `usage.llm_usage`). Platform-key turns are
+    left untouched."""
+    if not byok:
+        return result
+    usage = result.usage or TurnUsage(turn_id=turn_id)
+    estimate = estimate_turn_cost_micros(usage.models)
+    if estimate <= 0:
+        return result
+    return result.model_copy(
+        update={"usage": usage.model_copy(update={"estimated_cost_micros": estimate})}
+    )
 
 
 async def _record_usage(

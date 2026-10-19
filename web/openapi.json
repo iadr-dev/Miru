@@ -22654,6 +22654,12 @@
       "title": "Cost Micros",
       "type": "integer"
      },
+     "estimated_cost_micros": {
+      "default": 0,
+      "minimum": 0.0,
+      "title": "Estimated Cost Micros",
+      "type": "integer"
+     },
      "finmind_calls": {
       "default": 0,
       "minimum": 0.0,

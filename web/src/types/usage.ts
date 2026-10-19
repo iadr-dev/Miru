@@ -76,6 +76,8 @@ export const turnUsageDataSchema = z.object({
   input_tokens: z.number().int().default(0),
   output_tokens: z.number().int().default(0),
   cost_micros: z.number().int().default(0),
+  // List-price estimate (BYOK turns only), apart from the provider-reported `cost_micros`.
+  estimated_cost_micros: z.number().int().default(0),
   models: z
     .array(
       z.object({

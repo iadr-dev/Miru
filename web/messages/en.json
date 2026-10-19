@@ -2186,7 +2186,8 @@
       "manage": "Manage memory"
     },
     "usage": {
-      "summary": "{input} in · {output} out"
+      "summary": "{input} in · {output} out",
+      "estimatedCost": "Estimated cost, not a billed charge"
     }
   },
   "disclaimer": {

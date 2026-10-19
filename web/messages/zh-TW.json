@@ -2186,7 +2186,8 @@
       "manage": "管理記憶"
     },
     "usage": {
-      "summary": "輸入 {input} · 輸出 {output}"
+      "summary": "輸入 {input} · 輸出 {output}",
+      "estimatedCost": "預估費用，非實際帳單金額"
     }
   },
   "disclaimer": {
