@@ -226,12 +226,12 @@ function EntityGraphBody({
       ) : null}
 
       {hasGraph && !sphereOn ? (
-        <div className="hidden sm:block">
+        <div className="overflow-x-auto">
           <svg
             role="group"
             aria-label={canvasLabel}
             viewBox={`${layout.viewBox.x} ${layout.viewBox.y} ${layout.viewBox.w} ${layout.viewBox.h}`}
-            className="mx-auto h-auto max-h-[640px] w-full"
+            className="mx-auto h-auto max-h-[640px] w-full min-w-[720px] sm:min-w-0"
           >
             <title>{canvasLabel}</title>
             <defs>
@@ -295,7 +295,7 @@ function EntityGraphBody({
         </div>
       ) : null}
 
-      <Legend always={sphereOn} />
+      <Legend />
 
       {selected ? (
         <DetailCard
@@ -443,15 +443,10 @@ function TypeSwatch({ type }: { readonly type: EntityType }): ReactNode {
   );
 }
 
-function Legend({ always }: { readonly always: boolean }): ReactNode {
+function Legend(): ReactNode {
   const t = useTranslations("stock.industry.entityGraph");
   return (
-    <div
-      className={cn(
-        "flex-col gap-1.5 text-[12px] text-[var(--text-muted)]",
-        always ? "flex" : "hidden sm:flex",
-      )}
-    >
+    <div className="flex flex-col gap-1.5 text-[12px] text-[var(--text-muted)]">
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5" aria-label={t("legendTitle")}>
         <LegendLine kind="supply" label={t("linkSupply")} />
         <LegendLine kind="mention" label={t("linkMention")} />
