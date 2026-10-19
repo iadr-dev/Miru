@@ -5,6 +5,7 @@ import {
   groupByType,
   matchingNodeIds,
   maxNodeWeight,
+  monogram,
   themeKeyForEntity,
 } from "@/lib/entity-graph-view";
 import type { EntityLink, EntityNode, EntityType } from "@/types/entity-graph";
@@ -105,5 +106,13 @@ describe("themeKeyForEntity", () => {
     expect(themeKeyForEntity("Film", themes)).toBe("film");
     expect(themeKeyForEntity("unknown", themes)).toBeNull();
     expect(themeKeyForEntity("  ", themes)).toBeNull();
+  });
+});
+
+describe("monogram", () => {
+  it("takes the first glyph of a CJK name and the capital initial of a Latin one", () => {
+    expect(monogram("台積電")).toBe("台");
+    expect(monogram(" nvidia")).toBe("N");
+    expect(monogram("")).toBe("");
   });
 });

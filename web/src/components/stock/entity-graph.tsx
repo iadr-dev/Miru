@@ -25,6 +25,7 @@ import {
   groupByType,
   matchingNodeIds,
   maxNodeWeight,
+  monogram,
   type TypeGroup,
   themeKeyForEntity,
 } from "@/lib/entity-graph-view";
@@ -51,6 +52,8 @@ const TYPE_COLOR: Record<EntityType, string> = {
 };
 
 const LABEL_MAX_CHARS = 9;
+/** Below this radius a monogram would be unreadable, so the node stays a plain disc. */
+const MONOGRAM_MIN_RADIUS = 11;
 
 type NodeTarget =
   | { readonly kind: "stock"; readonly href: string }
@@ -528,12 +531,26 @@ function GraphNode({
         className="opacity-0 group-focus-visible:opacity-100"
       />
       {isCompanyType(node.type) ? (
-        <circle
-          r={r}
-          fill={`color-mix(in srgb, ${color} 30%, var(--surface))`}
-          stroke={color}
-          strokeWidth={node.focus ? 3 : 1.5}
-        />
+        <>
+          <circle
+            r={r}
+            fill={`color-mix(in srgb, ${color} 30%, var(--surface))`}
+            stroke={color}
+            strokeWidth={node.focus ? 3 : 1.5}
+          />
+          {r >= MONOGRAM_MIN_RADIUS ? (
+            <text
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={Math.round(r * 1.05)}
+              fontWeight={600}
+              fill="var(--text)"
+              aria-hidden
+            >
+              {monogram(node.label)}
+            </text>
+          ) : null}
+        </>
       ) : (
         <rect
           x={-r}
