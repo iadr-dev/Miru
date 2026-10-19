@@ -15,6 +15,7 @@ from accounts.crypto import SecretCipher, SecretEncryptionNotConfiguredError
 from accounts.models import SecretKind
 from accounts.secrets import SqlAlchemySecretStore
 from config.settings import Settings
+from llm.byok_catalog import InvalidModelSpecError, UnknownModelError, validate_spec
 from llm.byok_profiles import BYOK_PROVIDER_ORDER, provider_tiers
 from llm.registry import ByokOverride
 
@@ -69,12 +70,21 @@ async def byok_providers(session: AsyncSession, settings: Settings, *, user_id: 
     return list(await SqlAlchemySecretStore(session, cipher).llm_providers(user_id=user_id))
 
 
+def _in_catalog(spec: str | None) -> bool:
+    """A saved default that has since left the curated catalog is stale, not usable."""
+    try:
+        validate_spec(spec or "")
+    except (InvalidModelSpecError, UnknownModelError):
+        return False
+    return True
+
+
 def effective_main(providers: list[str], default_model: str | None) -> tuple[str, str] | None:
     """The `(provider, model)` a BYOK user runs on when they pick nothing: their saved
     `default_model` while its provider still has a key, else the `default_main` of the first
     provider (`BYOK_PROVIDER_ORDER`) they hold a key for. None when no provider qualifies."""
     saved = _parse_model_spec(default_model)
-    if saved is not None and saved[0] in providers:
+    if saved is not None and saved[0] in providers and _in_catalog(default_model):
         return saved
     provider = next((p for p in BYOK_PROVIDER_ORDER if p in providers), "")
     tiers = provider_tiers(provider)

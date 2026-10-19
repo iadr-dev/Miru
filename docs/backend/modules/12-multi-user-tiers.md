@@ -256,7 +256,7 @@ route (`/agent/query`, `regenerate`, `edit`) calls before a turn is created ([10
 - Deep research stays Pro-only with no daily report cap (each run is bounded by its own budget, and
   the per-minute rate and daily-chat allowance still apply); its model calls run on the user's key.
   `llm_usage.byok` marks these calls.
-- Not covered yet: scheduled runs (`scheduler/`) still use platform keys and the tier cap.
+- Scheduled runs (`scheduler/`) follow the same rule: a BYOK owner's schedule runs on their own key and saved default model (else the provider's `default_main`), skipped with `byok_key_required` when no key fits, exempt from the chat cap; non-BYOK owners keep the platform profile and the cap ([14](14-scheduler-alerts.md)).
 
 ## 6. Endpoints
 

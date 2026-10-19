@@ -1104,8 +1104,15 @@ class SchedulerWorker:
         """The owner's own key and default model for this run, or None to use the platform's."""
         if self._ctx.settings is None:
             return None
+        # A schedule job carries no model of its own and has no thread, so the owner's saved
+        # default (still catalogued, provider still keyed) is the only pick; otherwise the
+        # provider's default_main. Never the platform's role map.
         return await resolve_byok_override(
-            session, self._ctx.settings, user_id=user.id, model_override=None
+            session,
+            self._ctx.settings,
+            user_id=user.id,
+            model_override=None,
+            default_model=user.default_model,
         )
 
     @staticmethod
