@@ -19,6 +19,8 @@ registered only when a session factory is supplied.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dataaccess.router import DataAccessRouter
@@ -78,7 +80,7 @@ def build_default_tool_registry(  # noqa: PLR0913 — one keyword per optional t
     *,
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     market_data_reader: ParquetMarketDataReader | None = None,
-    summary_llm: LLMClient | None = None,
+    summary_llm_factory: Callable[[], LLMClient] | None = None,
     parquet_store: ParquetStore | None = None,
     account_reader: account_tools.AccountDataReader | None = None,
 ) -> ToolRegistry:
@@ -97,12 +99,12 @@ def build_default_tool_registry(  # noqa: PLR0913 — one keyword per optional t
         else []
     )
     # The AI-summary tool needs BOTH the DB session factory (score + summary cache) and a
-    # resolved `LLMClient` (ModelRole.SUBAGENT, resolved by the composition root) — registered
-    # only when both are supplied, matching `theme_group`/`score_group`'s optional-dependency
-    # shape so a narrow test wiring only the router-backed set still composes.
+    # `LLMClient` factory (ModelRole.SUBAGENT, resolved per call by the composition root) -
+    # registered only when both are supplied, matching `theme_group`/`score_group`'s
+    # optional-dependency shape so a narrow test wiring only the router-backed set still composes.
     summary_group = (
-        summary_tools.build_registration_table(session_factory, summary_llm)
-        if session_factory is not None and summary_llm is not None
+        summary_tools.build_registration_table(session_factory, summary_llm_factory)
+        if session_factory is not None and summary_llm_factory is not None
         else []
     )
     # The tag screener reads the ingest-owned Parquet flag store through the derived-store reader.

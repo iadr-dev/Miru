@@ -34,7 +34,7 @@ from db import (
 )
 from db.base import make_engine, make_session_factory
 from llm.base import LLMClient
-from llm.registry import ModelRole, resolve_role
+from llm.registry import ModelRole, assert_no_byok_scope, resolve_role
 
 logger = structlog.get_logger(__name__)
 
@@ -80,6 +80,7 @@ async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators, on
 
 
 async def main() -> None:
+    assert_no_byok_scope()  # a platform-only batch: it must never spend a user's key
     settings = get_settings()
     rls.install(enabled=settings.row_level_security)
     rls.enter_system_mode()  # platform-wide reference data, not one user

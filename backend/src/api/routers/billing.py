@@ -16,10 +16,10 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from accounts.byok import byok_active
 from accounts.entitlements import TierSummary, tier_catalog
 from accounts.models import User
 from accounts.store import SqlAlchemyUserStore
-from api.byok import byok_active_for
 from api.dependencies import (
     get_session,
     get_settings_dep,
@@ -37,7 +37,7 @@ from payments.plans import (
     price_id_for,
 )
 from payments.pricing import PricedPlan, PriceLookup, priced_plans
-from payments.service import BillingService, effective_byok_active
+from payments.service import BillingService
 from payments.store import SqlAlchemySubscriptionStore
 from payments.transactions import BillingTransaction, project_transaction
 from payments.webhooks import SignatureVerificationError, parse_event, verify_signature
@@ -211,10 +211,7 @@ async def _subscription_response(
 ) -> SubscriptionResponse:
     byok = False
     if record is not None:
-        byok = effective_byok_active(
-            subscription_byok=record.byok,
-            has_llm_key=await byok_active_for(session, settings, user_id=user_id),
-        )
+        byok = await byok_active(session, settings, user_id=user_id, subscription_byok=record.byok)
     return SubscriptionResponse(subscription=record, byok_active=byok)
 
 

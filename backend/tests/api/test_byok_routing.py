@@ -107,7 +107,11 @@ def test_the_turn_runs_in_a_byok_scope_on_the_users_model_and_key(
     assert len(seen) == 1
     active = seen[0]
     assert active is not None
-    assert (active.provider_id, active.model_id) == ("openai", "gpt-5.4-mini")
+    assert (active.provider_id, active.main_model, active.cheap_model) == (
+        "openai",
+        "gpt-5.4-mini",
+        "gpt-4o-mini",
+    )
     assert active.api_key == RAW_KEY
     assert registry._byok.get() is None
 
@@ -122,8 +126,26 @@ def test_a_model_from_a_provider_without_a_key_is_refused_not_served_on_ours(
     assert refused.json()["code"] == "byok_key_required"
     assert "openai" in refused.json()["message"]
     assert RAW_KEY not in refused.text
-    # ...and the default model (Anthropic) is refused the same way when no pick is made.
-    assert _chat(byok_client, headers).status_code == 409
+
+
+def test_without_a_pick_the_turn_runs_on_the_default_of_a_provider_the_user_has_a_key_for(
+    byok_client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    headers, _ = sign_in(byok_client, settings, tier=Tier.FREE)
+    _save_key(byok_client, headers, "openai")
+    seen: list[registry.ByokOverride | None] = []
+    orchestrator = byok_client.app.state.app_state.orchestrator  # type: ignore[attr-defined]
+    original = orchestrator.run
+
+    async def spy(*args, **kwargs):
+        seen.append(registry._byok.get())
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(orchestrator, "run", spy)
+    assert _chat(byok_client, headers).status_code == 200
+    active = seen[0]
+    assert active is not None
+    assert (active.provider_id, active.main_model) == ("openai", "gpt-5.6-sol")
 
 
 def test_removing_the_keys_restores_the_plans_normal_limits(
