@@ -2,8 +2,10 @@
 
 import { GraphIcon, MagnifyingGlassIcon, XIcon } from "@phosphor-icons/react";
 import { useTranslations } from "next-intl";
-import { type KeyboardEvent, type ReactNode, useId, useMemo, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
+import { EntityGraphSpherePanel } from "@/components/stock/entity-graph-sphere-panel";
+import { EntityGraphViewToggle, type GraphView } from "@/components/stock/entity-graph-view-toggle";
 import { Card, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FeatureLock } from "@/components/ui/feature-lock";
@@ -28,7 +30,9 @@ import {
   monogram,
   type TypeGroup,
   themeKeyForEntity,
+  truncateLabel,
 } from "@/lib/entity-graph-view";
+import { isWebGLAvailable } from "@/lib/webgl-support";
 import {
   ENTITY_TYPES,
   type EntityGraphResponse,
@@ -51,7 +55,6 @@ const TYPE_COLOR: Record<EntityType, string> = {
   product: "var(--chart-6)",
 };
 
-const LABEL_MAX_CHARS = 9;
 /** Below this radius a monogram would be unreadable, so the node stays a plain disc. */
 const MONOGRAM_MIN_RADIUS = 11;
 
@@ -71,11 +74,6 @@ function targetOf(node: EntityNode, themes: readonly ThemeRef[]): NodeTarget {
   return themeKey === null
     ? { kind: "detail" }
     : { kind: "theme", href: `/themes/${encodeURIComponent(themeKey)}` };
-}
-
-function truncateLabel(label: string): string {
-  const chars = Array.from(label);
-  return chars.length <= LABEL_MAX_CHARS ? label : `${chars.slice(0, LABEL_MAX_CHARS).join("")}…`;
 }
 
 /** 關聯圖譜: the company in focus in the middle, the entities it is mentioned with on a ring around
@@ -118,6 +116,14 @@ function EntityGraphBody({
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [view, setView] = useState<GraphView>("flat");
+  const [sphereFailed, setSphereFailed] = useState(false);
+  // Decided on the client only, after mount: the server cannot know, and the flat graph is the
+  // default, so the toggle simply appears where WebGL works.
+  const [webgl, setWebgl] = useState(false);
+  useEffect(() => {
+    setWebgl(isWebGLAvailable());
+  }, []);
 
   const maxWeight = maxNodeWeight(graph.nodes);
   const filtered = useMemo(
@@ -162,6 +168,14 @@ function EntityGraphBody({
     return matches.size > 0 && !matches.has(id);
   };
   const selected = selectedId === null ? undefined : placedById.get(selectedId)?.node;
+  const hasGraph = filtered.nodes.length > 1;
+  const sphereOn = view === "sphere" && webgl && !sphereFailed && hasGraph;
+  const dimmedIds = new Set(filtered.nodes.filter((n) => isDimmed(n.id)).map((n) => n.id));
+
+  function failSphere(): void {
+    setSphereFailed(true);
+    setView("flat");
+  }
 
   function toggleType(type: EntityType): void {
     setHiddenTypes((current) => {
@@ -187,7 +201,31 @@ function EntityGraphBody({
         countOf={(type) => peers.filter((n) => n.type === type).length}
       />
 
-      {filtered.nodes.length > 1 ? (
+      {hasGraph && webgl && !sphereFailed ? (
+        <EntityGraphViewToggle view={sphereOn ? "sphere" : "flat"} onChange={setView} />
+      ) : null}
+      {sphereFailed ? (
+        <p role="status" className="text-[12px] text-[var(--text-muted)]">
+          {t("sphereFailed")}
+        </p>
+      ) : null}
+
+      {sphereOn ? (
+        <EntityGraphSpherePanel
+          nodes={filtered.nodes}
+          links={filtered.links}
+          hoveredId={activeId}
+          selectedId={selectedId}
+          dimmedIds={dimmedIds}
+          matchedIds={matches}
+          onHover={setActiveId}
+          onSelect={setSelectedId}
+          onBackToFlat={() => setView("flat")}
+          onFailed={failSphere}
+        />
+      ) : null}
+
+      {hasGraph && !sphereOn ? (
         <div className="hidden sm:block">
           <svg
             role="group"
@@ -257,11 +295,12 @@ function EntityGraphBody({
         </div>
       ) : null}
 
-      <Legend />
+      <Legend always={sphereOn} />
 
       {selected ? (
         <DetailCard
           node={selected}
+          target={targetOf(selected, themes)}
           neighbourLabels={[...neighbourIds(filtered.links, selected.id)]
             .map((id) => placedById.get(id)?.node.label)
             .filter((label): label is string => label !== undefined)}
@@ -404,10 +443,15 @@ function TypeSwatch({ type }: { readonly type: EntityType }): ReactNode {
   );
 }
 
-function Legend(): ReactNode {
+function Legend({ always }: { readonly always: boolean }): ReactNode {
   const t = useTranslations("stock.industry.entityGraph");
   return (
-    <div className="hidden flex-col gap-1.5 text-[12px] text-[var(--text-muted)] sm:flex">
+    <div
+      className={cn(
+        "flex-col gap-1.5 text-[12px] text-[var(--text-muted)]",
+        always ? "flex" : "hidden sm:flex",
+      )}
+    >
       <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5" aria-label={t("legendTitle")}>
         <LegendLine kind="supply" label={t("linkSupply")} />
         <LegendLine kind="mention" label={t("linkMention")} />
@@ -644,10 +688,12 @@ function labelPlacement(placed: PlacedNode): LabelPlacement {
 
 function DetailCard({
   node,
+  target,
   neighbourLabels,
   onClose,
 }: {
   readonly node: EntityNode;
+  readonly target: NodeTarget;
   readonly neighbourLabels: readonly string[];
   readonly onClose: () => void;
 }): ReactNode {
@@ -674,7 +720,7 @@ function DetailCard({
           <XIcon size={16} weight="regular" aria-hidden />
         </button>
       </div>
-      <p className="mt-2 text-[12px] text-[var(--text-muted)]">{t("detailNoTheme")}</p>
+      <DetailTarget target={target} />
       {neighbourLabels.length > 0 ? (
         <p className="mt-2 break-words text-[12px] text-[var(--text)]">
           <span className="text-[var(--text-muted)]">{t("detailConnected")}</span>{" "}
@@ -682,6 +728,23 @@ function DetailCard({
         </p>
       ) : null}
     </section>
+  );
+}
+
+/** Where the detail card leads: the stock or theme page the flat graph links to, or the plain
+ * "nothing to open" note for an entity with no page. */
+function DetailTarget({ target }: { readonly target: NodeTarget }): ReactNode {
+  const t = useTranslations("stock.industry.entityGraph");
+  if (target.kind === "detail") {
+    return <p className="mt-2 text-[12px] text-[var(--text-muted)]">{t("detailNoTheme")}</p>;
+  }
+  return (
+    <Link
+      href={target.href}
+      className="mt-2 inline-flex min-h-11 items-center font-medium text-[13px] text-[var(--accent-text)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+    >
+      {target.kind === "stock" ? t("detailOpenStock") : t("detailOpenTheme")}
+    </Link>
   );
 }
 

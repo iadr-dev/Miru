@@ -82,7 +82,7 @@ function typeRank(type: EntityType): number {
 }
 
 /** Type, then weight (heaviest first), then label and id as final tie-breakers. */
-function compareNodes(a: EntityNode, b: EntityNode): number {
+export function compareNodes(a: EntityNode, b: EntityNode): number {
   return (
     typeRank(a.type) - typeRank(b.type) ||
     b.weight - a.weight ||

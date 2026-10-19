@@ -67,6 +67,14 @@ export function groupByType(nodes: readonly EntityNode[]): readonly TypeGroup[] 
   })).filter((group) => group.nodes.length > 0);
 }
 
+const LABEL_MAX_CHARS = 9;
+
+/** A node's name as drawn on the graph: long names are cut so labels do not run into each other. */
+export function truncateLabel(label: string): string {
+  const chars = Array.from(label);
+  return chars.length <= LABEL_MAX_CHARS ? label : `${chars.slice(0, LABEL_MAX_CHARS).join("")}…`;
+}
+
 /** The mark drawn inside a company node: its first character (a CJK name's first glyph, a Latin
  * name's initial). A badge, not a logo - no image is fetched, so nothing leaves our origin. */
 export function monogram(label: string): string {
