@@ -120,7 +120,7 @@ def _after_begin(session: Session, transaction: SessionTransaction, connection: 
 
 def install(*, enabled: bool) -> None:
     """Switch RLS plumbing on for this process (idempotent). Called from each entry point."""
-    global _enabled, _hook_installed  # noqa: PLW0603 - process-wide switch, set once at startup
+    global _enabled, _hook_installed  # noqa: PLW0603 - process-wide switch; set once at startup
     _enabled = enabled
     if enabled and not _hook_installed:
         event.listen(Session, "after_begin", _after_begin)
@@ -258,7 +258,7 @@ async def _apply_to_table(engine: AsyncEngine, table: str) -> None:
                     "or retry once it is gone."
                 ) from exc
             logger.warning("rls_policy_lock_busy", table=table, attempt=attempt)
-            await asyncio.sleep(0.5 * attempt + random.uniform(0, 0.5))  # noqa: S311 - jitter, not security
+            await asyncio.sleep(0.5 * attempt + random.uniform(0, 0.5))  # noqa: S311 - jitter; not security
 
 
 async def apply_policies(engine: AsyncEngine) -> list[str]:

@@ -304,7 +304,7 @@ def _split_slash_roc_date_range(raw: object) -> tuple[date | None, date | None]:
     feeds, not a typo. Each half is `YYY/MM/DD`, not the bare 7-digit `YYYMMDD`
     `_roc_to_iso_date` parses, so this splits on `/` too."""
     text = str(raw) if raw is not None else ""
-    parts = text.split("～")  # noqa: RUF001 — the real upstream separator, U+FF5E
+    parts = text.split("～")  # noqa: RUF001 — the real upstream separator; U+FF5E
     if len(parts) != _ROC_DATE_RANGE_PARTS:
         return None, None
     return _parse_slash_roc_date(parts[0]), _parse_slash_roc_date(parts[1])
@@ -312,7 +312,7 @@ def _split_slash_roc_date_range(raw: object) -> tuple[date | None, date | None]:
 
 def _parse_slash_roc_date(raw: str) -> date | None:
     segments = raw.strip().split("/")
-    if len(segments) != 3:  # noqa: PLR2004 — year/month/day, not a magic threshold to name
+    if len(segments) != 3:  # noqa: PLR2004 — year/month/day; not a magic threshold to name
         return None
     year_str, month_str, day_str = segments
     if not (year_str.isdigit() and month_str.isdigit() and day_str.isdigit()):

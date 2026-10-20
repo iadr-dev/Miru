@@ -33,8 +33,8 @@ class AttachmentExtractionError(RuntimeError):
 def _convert_blocking(data: bytes, filename: str, media_type: str) -> str:
     """The actual blocking `markitdown` call — imported lazily (see module docstring) and run
     only inside `anyio.to_thread.run_sync`, never directly on the event loop."""
-    from markitdown import MarkItDown  # noqa: PLC0415 — lazy import, optional extra
-    from markitdown._stream_info import StreamInfo  # noqa: PLC0415 — lazy import, optional extra
+    from markitdown import MarkItDown  # noqa: PLC0415 — lazy import; optional extra
+    from markitdown._stream_info import StreamInfo  # noqa: PLC0415 — lazy import; optional extra
 
     converter = MarkItDown(enable_plugins=False)
     stream_info = StreamInfo(mimetype=media_type, filename=filename)

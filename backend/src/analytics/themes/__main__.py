@@ -39,7 +39,7 @@ from llm.registry import ModelRole, assert_no_byok_scope, resolve_role
 logger = structlog.get_logger(__name__)
 
 
-async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators, one per seam
+async def run_operator_pipeline(  # noqa: PLR0913 — injected collaborators; one per seam
     *,
     session_factory: async_sessionmaker[AsyncSession],
     web_search: WebSearchGateway,

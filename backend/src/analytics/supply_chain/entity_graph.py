@@ -117,7 +117,7 @@ async def _supply_links(supply: SupplyChainStore, nodes: dict[str, GraphNode]) -
     ]
 
 
-async def build_entity_graph(  # noqa: PLR0913 - two stores, the focus, two query knobs
+async def build_entity_graph(  # noqa: PLR0913 - two stores and the focus and two query knobs
     concepts: ConceptStore,
     supply: SupplyChainStore,
     symbol: str,

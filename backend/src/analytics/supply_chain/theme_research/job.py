@@ -93,7 +93,7 @@ def _second_client(settings: Settings) -> LLMClient | None:
     return resolve_role_with_override(ModelRole.SYNTHESIS, spec, settings)
 
 
-async def execute_research(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def execute_research(  # noqa: PLR0913 - collaborators are injected; one per seam
     settings: Settings,
     store: ParquetStore,
     *,
@@ -222,7 +222,7 @@ def _already_proposed(group: list[ThemeClaim], ctx: VerifyContext, proposed: Pro
     return (key, first.symbol) in proposed.pairs
 
 
-async def execute_verify(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def execute_verify(  # noqa: PLR0913 - collaborators are injected; one per seam
     settings: Settings,
     store: ParquetStore,
     *,
@@ -355,7 +355,7 @@ def _journal(run_date: date, status: RunStatus, detail: str, rows: int = 0) -> J
     )
 
 
-async def run_theme_research_job(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def run_theme_research_job(  # noqa: PLR0913 - collaborators are injected; one per seam
     run_date: date,
     ctx: IngestContext,
     *,

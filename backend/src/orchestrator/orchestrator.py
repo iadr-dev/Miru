@@ -1117,7 +1117,7 @@ class Orchestrator:
         if unspent > 0:
             await refund(lanes=unspent)
 
-    def _build_loop(  # noqa: PLR0913 — mirrors AgentLoop's own knob set, per-lane
+    def _build_loop(  # noqa: PLR0913 — mirrors AgentLoop's own knob set; per-lane
         self,
         *,
         tools: list[Tool],

@@ -324,7 +324,7 @@ def has_advice_language(text: str) -> bool:
     return check_output(text, has_market_data=False).redacted_text is not None
 
 
-def evaluate(  # noqa: PLR0913, PLR0911, PLR0912 - one flat, ordered rule list is the point
+def evaluate(  # noqa: PLR0913, PLR0911, PLR0912 - one flat and ordered rule list is the point
     judgement: Judgement,
     *,
     kind: Kind,

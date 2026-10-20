@@ -69,7 +69,7 @@ class TargetResult:
 
 
 class ThemeResearcher:
-    def __init__(  # noqa: PLR0913 - collaborators are injected, one per seam
+    def __init__(  # noqa: PLR0913 - collaborators are injected; one per seam
         self,
         *,
         search: SearchProvider,
