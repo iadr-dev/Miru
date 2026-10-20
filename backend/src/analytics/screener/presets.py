@@ -22,6 +22,14 @@ from pydantic import BaseModel, ConfigDict, Field
 from schemas.enums import Market
 from schemas.screener import ScreenerOperator
 
+_GROUP_OWNERSHIP = "持股 Ownership"
+
+_GROUP_VALUATION = "估值 Valuation"
+
+_GROUP_TECHNICAL = "技術 Technical"
+
+_GROUP_CHIPS = "籌碼 Chips"
+
 
 class PresetCondition(BaseModel):
     """One condition inside a preset — the same shape `run_screener` accepts, minus the `market`
@@ -107,7 +115,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_trust_buying",
-        category="籌碼 Chips",
+        category=_GROUP_CHIPS,
         label_zh="投信連買",
         label_en="Trust net-buy streak",
         description="投信連續3日買超的個股。",
@@ -116,7 +124,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_foreign_buying",
-        category="籌碼 Chips",
+        category=_GROUP_CHIPS,
         label_zh="外資同買",
         label_en="Foreign net-buy streak",
         description="外資連續3日買超的個股。",
@@ -169,7 +177,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_margin_buildup",
-        category="籌碼 Chips",
+        category=_GROUP_CHIPS,
         label_zh="融資連增股",
         label_en="Margin-purchase balance building",
         description="融資餘額連續3日增加的個股 — 純描述性籌碼觀察，非操作建議。",
@@ -180,7 +188,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_short_covering",
-        category="籌碼 Chips",
+        category=_GROUP_CHIPS,
         label_zh="融券連減股",
         label_en="Short-sale balance shrinking",
         description="融券餘額連續3日減少的個股 — 空頭回補訊號，純描述性籌碼觀察。",
@@ -191,7 +199,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_rsi_overbought",
-        category="技術 Technical",
+        category=_GROUP_TECHNICAL,
         label_zh="RSI超買股",
         label_en="RSI overbought",
         description="RSI(14)大於70的個股 — 純描述性技術面觀察，非操作建議。",
@@ -200,7 +208,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_rsi_oversold",
-        category="技術 Technical",
+        category=_GROUP_TECHNICAL,
         label_zh="RSI超賣股",
         label_en="RSI oversold",
         description="RSI(14)小於30的個股 — 純描述性技術面觀察，非操作建議。",
@@ -209,7 +217,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="tw_volume_spike_above_ma",
-        category="技術 Technical",
+        category=_GROUP_TECHNICAL,
         label_zh="爆量站上均線股",
         label_en="Volume spike above the 20-day MA",
         description="成交量大於20日均量2倍且收盤價高於20日均線的個股。",
@@ -227,7 +235,7 @@ _TW_PRESETS: tuple[ScreenerPreset, ...] = (
 _US_PRESETS: tuple[ScreenerPreset, ...] = (
     ScreenerPreset(
         key="us_undervalued_large",
-        category="估值 Valuation",
+        category=_GROUP_VALUATION,
         label_zh="低估值大型股",
         label_en="Undervalued large-cap",
         description="本益比偏低、股東權益報酬率相對健康的個股。",
@@ -260,7 +268,7 @@ _US_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="us_shorted",
-        category="持股 Ownership",
+        category=_GROUP_OWNERSHIP,
         label_zh="高放空比例股",
         label_en="Heavily shorted",
         description="流通股放空比例偏高的個股 — 純描述性篩選，非操作建議。",
@@ -271,7 +279,7 @@ _US_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="us_garp",
-        category="估值 Valuation",
+        category=_GROUP_VALUATION,
         label_zh="合理價成長股 (GARP)",
         label_en="Growth at a reasonable price",
         description="PEG 比率偏低且 EPS 成長率仍高的個股 — 成長性未被高估值稀釋。",
@@ -283,7 +291,7 @@ _US_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="us_low_pb_value",
-        category="估值 Valuation",
+        category=_GROUP_VALUATION,
         label_zh="低股價淨值比股",
         label_en="Low price/book value",
         description="股價淨值比偏低且股東權益報酬率健康的個股 — 資產面估值相對便宜。",
@@ -295,7 +303,7 @@ _US_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="us_institutional_favorite",
-        category="持股 Ownership",
+        category=_GROUP_OWNERSHIP,
         label_zh="機構高持股股",
         label_en="High institutional ownership",
         description="機構持股比例偏高的個股 — 純描述性篩選，反映機構關注度，非操作建議。",
@@ -306,7 +314,7 @@ _US_PRESETS: tuple[ScreenerPreset, ...] = (
     ),
     ScreenerPreset(
         key="us_insider_conviction",
-        category="持股 Ownership",
+        category=_GROUP_OWNERSHIP,
         label_zh="內部人高持股股",
         label_en="High insider ownership",
         description="內部人持股比例偏高的個股 — 常見於創辦人主導型公司，純描述性篩選。",

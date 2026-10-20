@@ -23,6 +23,10 @@ from schemas.source import HealthStatus
 from sources.sitca import MONTH_NOT_PUBLISHED_KEY, fetch_whole_market_etf_fees
 from sources.twse_etf_nav import fetch_whole_market_etf_nav
 
+_NOT_LEADER_DETAIL = "not the leader — write skipped"
+
+_NON_TRADING_DETAIL = "non-trading day (calendar-gated)"
+
 logger = structlog.get_logger(__name__)
 
 
@@ -47,7 +51,7 @@ async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="non-trading day (calendar-gated)",
+            detail=_NON_TRADING_DETAIL,
         )
     if not ctx.leader.is_leader():
         return journal_run(
@@ -55,7 +59,7 @@ async def job_etf_nav(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="not the leader — write skipped",
+            detail=_NOT_LEADER_DETAIL,
         )
 
     result = await fetch_whole_market_etf_nav(tls_policy=ctx.tls_policy)
@@ -120,7 +124,7 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="non-trading day (calendar-gated)",
+            detail=_NON_TRADING_DETAIL,
         )
     if not ctx.leader.is_leader():
         return journal_run(
@@ -128,7 +132,7 @@ async def job_etf_expense_ratio(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="not the leader — write skipped",
+            detail=_NOT_LEADER_DETAIL,
         )
 
     result = await fetch_whole_market_etf_fees(
@@ -294,7 +298,7 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="non-trading day (calendar-gated)",
+            detail=_NON_TRADING_DETAIL,
         )
     if not ctx.leader.is_leader():
         return journal_run(
@@ -302,7 +306,7 @@ async def job_etf_aum(run_date: date_, ctx: IngestContext) -> JobRun:
             run_date,
             rows_written=0,
             status=RunStatus.SKIPPED,
-            detail="not the leader — write skipped",
+            detail=_NOT_LEADER_DETAIL,
         )
 
     nav_rows = _etf_nav_rows_as_of(ctx, run_date)

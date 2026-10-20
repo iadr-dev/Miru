@@ -240,7 +240,7 @@ class AgentLoop:
     """Drives one Turn's Step loop for the `single` execution mode (no orchestrator, no
     sub-agent fan-out — those are later phases' concern)."""
 
-    def __init__(  # noqa: PLR0913 — every constructor arg configures a distinct,
+    def __init__(  # noqa: PLR0913 — every constructor arg configures a distinct
         # independently-testable runtime knob (client, tool set, budget knobs, prompt layers,
         # the registrable non-veto hook lists, and the cooperative cancel/steering seams);
         # collapsing them into one options object would obscure each seam's default

@@ -83,6 +83,8 @@ from ingest.us_jobs import backfill_us_price_range
 from ingest.us_universe import job_us_symbol_universe
 from sources.finmind import FinMindQuotaRefusedError
 
+_NEEDS_YES_REASON = "INGEST_ON_STARTUP is false and --yes was not passed"
+
 logger = structlog.get_logger(__name__)
 
 # Exit status when another ingest process holds the single-writer lease (distinct from 1 = failed).
@@ -172,7 +174,7 @@ async def run_backfill_cli(
     if not ingest_on_startup:
         logger.warning(
             "ingest_backfill_cli_refused",
-            reason="INGEST_ON_STARTUP is false and --yes was not passed",
+            reason=_NEEDS_YES_REASON,
         )
         return ()
 
@@ -363,7 +365,7 @@ async def run_derived_compute_catchup(
     if not ingest_on_startup:
         logger.warning(
             "ingest_backfill_cli_refused",
-            reason="INGEST_ON_STARTUP is false and --yes was not passed",
+            reason=_NEEDS_YES_REASON,
         )
         return ()
 
@@ -403,7 +405,7 @@ async def run_us_backfill_cli(
     if not ingest_on_startup:
         logger.warning(
             "ingest_backfill_cli_refused",
-            reason="INGEST_ON_STARTUP is false and --yes was not passed",
+            reason=_NEEDS_YES_REASON,
         )
         return ()
 
@@ -456,7 +458,7 @@ async def _amain(argv: Sequence[str] | None = None) -> int:
     # One `data.updated` per dataset at the end, at its newest date, instead of one per partition
     # written (see `CoalescingDataUpdatePublisher`).
     signals = CoalescingDataUpdatePublisher(built.data_update_publisher)
-    ctx = dataclasses.replace(built, data_update_publisher=signals)
+    ctx: IngestContext = dataclasses.replace(built, data_update_publisher=signals)
     # A hand-run backfill is a second writer like any other: it takes the same lease as the daemon,
     # so it can never interleave with the scheduled jobs on the same partitions.
     try:

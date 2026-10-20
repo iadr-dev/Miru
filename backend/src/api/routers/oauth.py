@@ -198,16 +198,16 @@ _SCOPE_DESCRIPTIONS = {
 # ---------------------------------------------------------------------------------- plumbing
 
 
-def get_metadata_source(state: AppState = Depends(get_state)) -> ClientMetadataSource:
+def get_metadata_source(state: Annotated[AppState, Depends(get_state)]) -> ClientMetadataSource:
     """Seam for the Client ID Metadata Document fetcher (overridden in tests)."""
     return build_client_metadata_fetcher(state.settings)
 
 
 def get_authorization_server(
     request: Request,
-    session: AsyncSession = Depends(get_session),
-    state: AppState = Depends(get_state),
-    metadata_source: ClientMetadataSource = Depends(get_metadata_source),
+    session: Annotated[AsyncSession, Depends(get_session)],
+    state: Annotated[AppState, Depends(get_state)],
+    metadata_source: Annotated[ClientMetadataSource, Depends(get_metadata_source)],
 ) -> AuthorizationServer:
     async def may_fetch() -> bool:
         # A NEW metadata document makes this server open a connection of its own, so it is
@@ -327,7 +327,7 @@ def _require_configured(settings: Settings) -> JSONResponse | None:
     responses={404: {"model": OAuthErrorBody}},
 )
 async def authorization_server_metadata(
-    settings: Settings = Depends(get_settings_dep),
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> Response:
     issuer = settings.oauth_issuer_url()
     if issuer is None:
@@ -363,6 +363,8 @@ async def authorization_server_metadata(
 )
 async def authorize(
     request: Request,
+    server: Annotated[AuthorizationServer, Depends(get_authorization_server)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
     client_id: Annotated[str | None, Query(max_length=2048)] = None,
     redirect_uri: Annotated[str | None, Query(max_length=2048)] = None,
     response_type: Annotated[str | None, Query(max_length=32)] = None,
@@ -371,8 +373,6 @@ async def authorize(
     resource: Annotated[str | None, Query(max_length=2048)] = None,
     scope: Annotated[str | None, Query(max_length=500)] = None,
     state_param: Annotated[str | None, Query(alias="state", max_length=4096)] = None,
-    server: AuthorizationServer = Depends(get_authorization_server),
-    settings: Settings = Depends(get_settings_dep),
 ) -> Response:
     """Validate the request and hand the browser to the web app's consent screen.
 
@@ -465,8 +465,8 @@ _TOKEN_FORM_SCHEMA: dict[str, object] = {
 )
 async def token(  # noqa: PLR0911 - one early return per RFC 6749 error
     request: Request,
-    state: AppState = Depends(get_state),
-    server: AuthorizationServer = Depends(get_authorization_server),
+    state: Annotated[AppState, Depends(get_state)],
+    server: Annotated[AuthorizationServer, Depends(get_authorization_server)],
 ) -> Response:
     """Redeem an authorization code (PKCE) or rotate a refresh token. Public clients only."""
     problem = _require_configured(state.settings)
@@ -537,8 +537,8 @@ async def token(  # noqa: PLR0911 - one early return per RFC 6749 error
 )
 async def register(  # noqa: PLR0911 - one early return per RFC 7591 error
     request: Request,
-    state: AppState = Depends(get_state),
-    server: AuthorizationServer = Depends(get_authorization_server),
+    state: Annotated[AppState, Depends(get_state)],
+    server: Annotated[AuthorizationServer, Depends(get_authorization_server)],
 ) -> Response:
     """RFC 7591 dynamic client registration for public (no-secret) clients."""
     problem = _require_configured(state.settings)
@@ -636,8 +636,8 @@ _REVOKE_FORM_SCHEMA: dict[str, object] = {
 )
 async def revoke(
     request: Request,
-    state: AppState = Depends(get_state),
-    server: AuthorizationServer = Depends(get_authorization_server),
+    state: Annotated[AppState, Depends(get_state)],
+    server: Annotated[AuthorizationServer, Depends(get_authorization_server)],
 ) -> Response:
     """RFC 7009: ends the grant a refresh or access token belongs to. Answers 200 whether or not
     the token was known, so it cannot be used to probe for valid tokens."""
@@ -700,8 +700,8 @@ def _consent_error(exc: ConsentError) -> ApiError:
 async def get_consent(
     request_id: str,
     request: Request,
-    user: User = Depends(require_user),
-    server: AuthorizationServer = Depends(get_authorization_server),
+    user: Annotated[User, Depends(require_user)],
+    server: Annotated[AuthorizationServer, Depends(get_authorization_server)],
 ) -> ConsentResponse:
     """What the signed-in user is being asked to approve. The `nonce` must be echoed in the
     decision: only this response contains it."""
@@ -738,8 +738,8 @@ async def decide_consent(
     request_id: str,
     body: ConsentDecisionRequest,
     request: Request,
-    user: User = Depends(require_user),
-    server: AuthorizationServer = Depends(get_authorization_server),
+    user: Annotated[User, Depends(require_user)],
+    server: Annotated[AuthorizationServer, Depends(get_authorization_server)],
 ) -> ConsentDecisionResponse:
     """Approve or deny. CSRF: the call needs the session cookie, a JSON body (a cross-site form
     cannot send one) and the per-request nonce that only the consent GET reveals."""

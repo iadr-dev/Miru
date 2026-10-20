@@ -326,7 +326,7 @@ class QuotePoller:
     loop runs only while this worker has ≥1 local subscriber — it starts on the first subscribe
     and stops when the last one disconnects, so an idle worker touches nothing."""
 
-    def __init__(  # noqa: PLR0913 — one injected collaborator/config per parameter, all keyword-only
+    def __init__(  # noqa: PLR0913 — one injected collaborator/config per parameter; all keyword-only
         self,
         *,
         registry: DemandRegistry,

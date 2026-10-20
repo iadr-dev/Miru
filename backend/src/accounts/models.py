@@ -23,8 +23,8 @@ class SecretKind(StrEnum):
     """`user_secrets.kind` vocabulary. `LLM_KEY` is the BYOK case that lifts the chat limit."""
 
     LLM_KEY = "llm_key"
-    FINMIND_TOKEN = "finmind_token"  # noqa: S105 — enum member value, not a hardcoded secret
-    CHANNEL_TOKEN = "channel_token"  # noqa: S105 — enum member value, not a hardcoded secret
+    FINMIND_TOKEN = "finmind_token"  # noqa: S105 — enum member value; not a hardcoded secret
+    CHANNEL_TOKEN = "channel_token"  # noqa: S105 — enum member value; not a hardcoded secret
     ASR_KEY = "asr_key"
     TTS_KEY = "tts_key"
 

@@ -48,7 +48,7 @@ class PostToolHook(Protocol):
     """Fires after every tool dispatch (blocked, masked, or real). Never vetoes — a `post_tool`
     handler observes, it does not gate."""
 
-    async def __call__(  # noqa: PLR0913 — one typed field per journaled dimension, matching
+    async def __call__(  # noqa: PLR0913 — one typed field per journaled dimension; matching
         # `agent.journal.Journal.record_tool_call`'s own argument shape
         self,
         *,

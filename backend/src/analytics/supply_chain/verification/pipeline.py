@@ -82,7 +82,7 @@ def _as_of(evidence: Sequence[Evidence], years: Sequence[int]) -> date | None:
 
 
 class Pipeline:
-    def __init__(  # noqa: PLR0913 - collaborators are injected, one per seam
+    def __init__(  # noqa: PLR0913 - collaborators are injected; one per seam
         self,
         *,
         search: SearchProvider,
@@ -292,7 +292,7 @@ def status_for(evidence: Sequence[Evidence]) -> Status:
     )
 
 
-async def run_pipeline(  # noqa: PLR0913 - collaborators are injected, one per seam
+async def run_pipeline(  # noqa: PLR0913 - collaborators are injected; one per seam
     targets: Sequence[Target],
     pipeline: Pipeline,
     *,

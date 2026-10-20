@@ -376,7 +376,7 @@ async def _fetch_one_fundamental(
 _CHECKPOINT_EVERY_SYMBOLS = 25
 
 
-async def _collect_fundamentals_rows(  # noqa: PLR0913 - the universe, what is stored, where rows go
+async def _collect_fundamentals_rows(  # noqa: PLR0913 - the universe; what is stored; where rows go
     ctx: IngestContext,
     symbols: list[str],
     spool: RowSpool,

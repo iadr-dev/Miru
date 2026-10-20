@@ -264,7 +264,7 @@ def _reconciliation_prompt(
     return [system, user]
 
 
-async def research_concept_theme(  # noqa: PLR0913 — injected collaborators, one per seam
+async def research_concept_theme(  # noqa: PLR0913 — injected collaborators; one per seam
     spec: ConceptThemeSpec,
     *,
     store: ThemeStore,
@@ -408,7 +408,7 @@ def _pick_to_member(pick: ResearchPick, confidence: float) -> ThemeMember:
     )
 
 
-async def run_concept_research(  # noqa: PLR0913 — injected collaborators, one per seam
+async def run_concept_research(  # noqa: PLR0913 — injected collaborators; one per seam
     specs: list[ConceptThemeSpec],
     *,
     store: ThemeStore,

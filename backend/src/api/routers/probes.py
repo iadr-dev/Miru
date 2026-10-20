@@ -13,6 +13,8 @@ data-currency + FinMind quota, not infra state).
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Response, status
 from redis.asyncio import Redis
 from sqlalchemy import text
@@ -104,12 +106,16 @@ async def _readiness(state: AppState, response: Response) -> dict[str, object]:
 
 
 @router.get("/readyz")
-async def readyz(response: Response, state: AppState = Depends(get_state)) -> dict[str, object]:
+async def readyz(
+    response: Response, state: Annotated[AppState, Depends(get_state)]
+) -> dict[str, object]:
     return await _readiness(state, response)
 
 
 @router.get("/startupz")
-async def startupz(response: Response, state: AppState = Depends(get_state)) -> dict[str, object]:
+async def startupz(
+    response: Response, state: Annotated[AppState, Depends(get_state)]
+) -> dict[str, object]:
     return await _readiness(state, response)
 
 

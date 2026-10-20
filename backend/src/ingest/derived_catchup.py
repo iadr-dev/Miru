@@ -73,7 +73,7 @@ async def catch_up_us(
 ) -> tuple[JobRun, ...]:
     """Score every US session in `days` the 07:30 Taipei `us_scoring_batch` missed. A box with no
     US scores yet scores only `target`, the latest session."""
-    us_ctx = dataclasses.replace(ctx, market=Market.US)
+    us_ctx: IngestContext = dataclasses.replace(ctx, market=Market.US)
     missing = await days_without_scores(us_ctx, days, fallback={target})
     return tuple([await job_scoring_batch(run_date, us_ctx) for run_date in sorted(missing)])
 

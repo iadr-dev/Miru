@@ -134,7 +134,7 @@ async def agent_query(
         default_model=user.default_model,
     )
     await enforce_pre_turn_gate(
-        state, session, user, deep_research=body.deep_research, byok=byok is not None
+        state, user, deep_research=body.deep_research, byok=byok is not None
     )
     # End the read-only transaction the sign-in and the checks above opened (it holds share locks
     # on users/subscriptions) before the one slow step here, so nothing is held while it runs.

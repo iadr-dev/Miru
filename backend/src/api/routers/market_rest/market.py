@@ -19,6 +19,8 @@ from schemas.enums import Market
 from tools.base import ToolContext
 from tools.international_tools import FinMindInternationalMarket
 
+_STOCK_ID_DESCRIPTION = "Stock id — backing tool is per-symbol."
+
 router = APIRouter()
 _dispatch = dispatch_validated_tool
 
@@ -123,7 +125,7 @@ async def margin_maintenance(
 
 @router.get("/market/day-trading", response_model=None, responses=tool_responses("get_day_trading"))
 async def day_trading(
-    symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
+    symbol: str = Query(..., min_length=1, description=_STOCK_ID_DESCRIPTION),
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
     end_date: date_ | None = Query(None),
@@ -578,7 +580,7 @@ async def dividend_calendar(
     responses=tool_responses("get_shareholder_dispersion"),
 )
 async def big_holder_accumulation(
-    symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
+    symbol: str = Query(..., min_length=1, description=_STOCK_ID_DESCRIPTION),
     market: Market = Query(Market.TW),
     start_date: date_ | None = Query(None),
     end_date: date_ | None = Query(None),
@@ -653,7 +655,7 @@ async def international_index(
     responses=tool_responses("get_material_announcements"),
 )
 async def material_announcements(
-    symbol: str = Query(..., min_length=1, description="Stock id — backing tool is per-symbol."),
+    symbol: str = Query(..., min_length=1, description=_STOCK_ID_DESCRIPTION),
     market: Market = Query(Market.TW),
     state: AppState = Depends(get_state),
     ctx: ToolContext = Depends(_context),

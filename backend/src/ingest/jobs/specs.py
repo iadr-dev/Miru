@@ -25,6 +25,10 @@ from schemas.capabilities import (
 )
 from schemas.enums import Capability
 
+_CRON_2130_STATEMENT_PULLS = (
+    "21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)"
+)
+
 logger = structlog.get_logger(__name__)
 
 
@@ -141,7 +145,7 @@ MONTH_REVENUE_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockMonthRevenue",
     capability=Capability.MONTH_REVENUE,
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
-    cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
+    cron_hint=_CRON_2130_STATEMENT_PULLS,
     row_model=MonthRevenueRow,
 )
 
@@ -184,7 +188,7 @@ BALANCE_SHEET_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockBalanceSheet",
     capability=Capability.BALANCE_SHEET,
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
-    cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
+    cron_hint=_CRON_2130_STATEMENT_PULLS,
     row_model=FinancialStatementLine,
 )
 
@@ -193,7 +197,7 @@ CASH_FLOW_JOB = WholeMarketJobSpec(
     dataset="TaiwanStockCashFlowsStatement",
     capability=Capability.CASH_FLOW_STATEMENT,
     finmind_update_time=_IRREGULAR_PER_FILING_UPDATE_TIME,
-    cron_hint="21:30 Asia/Taipei (with the other statement pulls; catches same-day filings)",
+    cron_hint=_CRON_2130_STATEMENT_PULLS,
     row_model=FinancialStatementLine,
 )
 

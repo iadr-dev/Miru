@@ -183,7 +183,7 @@ def _cb_put_event_from_row(
     )
 
 
-async def fetch_dividend_events(  # noqa: PLR0913 — one param per fetch dimension, mirrors
+async def fetch_dividend_events(  # noqa: PLR0913 — one param per fetch dimension; mirrors
     # `fetch_feed_events`'s own shape plus the `as_of` reference-date threading.
     router: DataAccessRouter,
     symbol: Symbol,

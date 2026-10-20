@@ -249,7 +249,7 @@ def _text_from_response(response: Response) -> str | None:
 class OpenAIClient:
     """The native OpenAI `LLMClient`, backed by the Responses API."""
 
-    def __init__(  # noqa: PLR0913 — one keyword per independently-configurable knob, matching
+    def __init__(  # noqa: PLR0913 — one keyword per independently-configurable knob; matching
         # the existing `max_tokens`/`base_url` style rather than a config object
         self,
         *,

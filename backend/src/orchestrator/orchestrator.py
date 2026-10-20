@@ -547,11 +547,7 @@ class Orchestrator:
         SSE frame for every `none`-framework turn."""
         loop = self._build_loop(
             tools=[],
-            prompt_layers=dataclasses.replace(
-                default_prompt_layers(locale),
-                personality=personality_fragment.personality,
-                pet_hint=personality_fragment.pet_hint,
-            ),
+            prompt_layers=_skill_prompt_layers(None, personality_fragment, locale),
             max_steps=1,
             role=ModelRole.AGENT,
             event_bus=event_bus,
@@ -622,7 +618,6 @@ class Orchestrator:
             steering_source=steering_source,
             model_override=model_override,
             web_search_enabled=web_search_enabled,
-            locale=locale,
             recall_provider=recall_provider,
             hide_cards_for=frozenset(skill.frontmatter.hide_cards) if skill else frozenset(),
         )
@@ -914,7 +909,6 @@ class Orchestrator:
             turn_id=turn_id,
             agent_id=agent_id,
             web_search_enabled=web_search_enabled,
-            locale=locale,
             hide_cards_for=frozenset(skill.frontmatter.hide_cards),
         )
         try:
@@ -1116,7 +1110,7 @@ class Orchestrator:
         if unspent > 0:
             await refund(lanes=unspent)
 
-    def _build_loop(  # noqa: PLR0913 — mirrors AgentLoop's own knob set, per-lane
+    def _build_loop(  # noqa: PLR0913 — mirrors AgentLoop's own knob set; per-lane
         self,
         *,
         tools: list[Tool],
@@ -1129,7 +1123,6 @@ class Orchestrator:
         steering_source: SteeringSource | None = None,
         model_override: str | None = None,
         web_search_enabled: bool = False,
-        locale: str = "zh-TW",
         recall_provider: RecallBlockProvider | None = None,
         hide_cards_for: frozenset[str] = frozenset(),
     ) -> AgentLoop:
