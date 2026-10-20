@@ -15,9 +15,9 @@ function decodeKey(raw: string): string {
  * required caveat, and the client panel does the (signed-in-tier-dependent) reads. */
 export default async function ThemeRoutePage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string; key: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale, key } = await params;
   setRequestLocale(locale);
   const tCaveat = await getTranslations({ locale, namespace: "chat.caveat" });

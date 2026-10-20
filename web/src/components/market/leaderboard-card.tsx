@@ -42,7 +42,7 @@ export function LeaderboardCard({
   onDirectionChange,
   market,
   assetClass,
-}: {
+}: Readonly<{
   results: readonly ScoreResult[];
   asOf: string | null;
   direction: LeaderboardDirection;
@@ -52,7 +52,7 @@ export function LeaderboardCard({
    * ETF leaderboard (`EtfLeaderboardPanel`) always passes `"etf"`; this card no longer renders a
    * universe switcher (see docstring above), so it's a caller-supplied constant, never derived. */
   assetClass: WatchlistAssetClass;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.cards.leaderboard");
   const [expanded, setExpanded] = useState(false);
   const previewResults = results.slice(0, COLLAPSED_ROW_COUNT);
@@ -166,13 +166,13 @@ function LeaderboardRows({
   market,
   assetClass,
   t,
-}: {
+}: Readonly<{
   results: readonly ScoreResult[];
   quoteBySymbol: ReadonlyMap<string, ReturnType<typeof useSymbolQuotes>["quotes"][number]>;
   market: Market;
   assetClass: WatchlistAssetClass;
   t: ReturnType<typeof useTranslations>;
-}): ReactNode {
+}>): ReactNode {
   const locale = useLocale();
   return (
     <SymbolQuoteRows

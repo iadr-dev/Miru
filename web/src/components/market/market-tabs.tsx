@@ -56,11 +56,11 @@ export function MarketTabPanels({
   renderTw,
   renderUs,
   renderEtf,
-}: {
+}: Readonly<{
   renderTw: () => ReactNode;
   renderUs?: () => ReactNode;
   renderEtf?: () => ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.tabs");
   const { tab: active } = useMarketTab();
 
@@ -73,7 +73,7 @@ export function MarketTabPanels({
   );
 }
 
-function ComingSoon({ label }: { label: string }): ReactNode {
+function ComingSoon({ label }: Readonly<{ label: string }>): ReactNode {
   const t = useTranslations("market.tabs");
   return (
     <div

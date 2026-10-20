@@ -140,13 +140,7 @@ export function DispositionStockCard({
               ? formatCompactNumber(card.institutional_net, locale)
               : "—"
           }
-          valueColor={
-            card.institutional_net !== null
-              ? card.institutional_net >= 0
-                ? "var(--up)"
-                : "var(--down)"
-              : undefined
-          }
+          valueColor={institutionalNetColor(card.institutional_net)}
         />
         <StatRow
           label={t("marginRatio")}
@@ -254,4 +248,9 @@ function StatRow({
       </dd>
     </>
   );
+}
+
+function institutionalNetColor(net: number | null): string | undefined {
+  if (net === null) return undefined;
+  return net >= 0 ? "var(--up)" : "var(--down)";
 }

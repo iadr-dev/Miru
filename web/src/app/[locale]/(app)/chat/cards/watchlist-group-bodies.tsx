@@ -63,7 +63,7 @@ function Buttons({
   failed,
   onApply,
   onDismiss,
-}: {
+}: Readonly<{
   label: string;
   pendingLabel: string;
   pending: boolean;
@@ -71,7 +71,7 @@ function Buttons({
   failed: boolean;
   onApply: () => void;
   onDismiss: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   return (
     <>
@@ -112,11 +112,11 @@ function MatchPicker({
   matches,
   chosen,
   onPick,
-}: {
+}: Readonly<{
   matches: WatchlistGroupView[];
   chosen: WatchlistGroupView | undefined;
   onPick: (id: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   if (matches.length < 2) {
     return null;
@@ -137,7 +137,7 @@ function MatchPicker({
   );
 }
 
-function GroupNotFound({ name }: { name: string | null | undefined }): ReactNode {
+function GroupNotFound({ name }: Readonly<{ name: string | null | undefined }>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   return (
     <p className="mt-3 text-[13px] text-[var(--text-muted)]">
@@ -146,7 +146,13 @@ function GroupNotFound({ name }: { name: string | null | undefined }): ReactNode
   );
 }
 
-export function MoveBody({ proposal, groups, loading, onDone, onDismiss }: BodyProps): ReactNode {
+export function MoveBody({
+  proposal,
+  groups,
+  loading,
+  onDone,
+  onDismiss,
+}: Readonly<BodyProps>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const { matches, chosen, setId } = useGroupMatch(groups, proposal);
   const { pending, failed, run } = useApply(onDone);
@@ -191,7 +197,13 @@ export function MoveBody({ proposal, groups, loading, onDone, onDismiss }: BodyP
   );
 }
 
-export function RenameBody({ proposal, groups, loading, onDone, onDismiss }: BodyProps): ReactNode {
+export function RenameBody({
+  proposal,
+  groups,
+  loading,
+  onDone,
+  onDismiss,
+}: Readonly<BodyProps>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const { matches, chosen, setId } = useGroupMatch(groups, proposal);
   const { pending, failed, run } = useApply(onDone);
@@ -229,7 +241,13 @@ export function RenameBody({ proposal, groups, loading, onDone, onDismiss }: Bod
   );
 }
 
-export function DeleteBody({ proposal, groups, loading, onDone, onDismiss }: BodyProps): ReactNode {
+export function DeleteBody({
+  proposal,
+  groups,
+  loading,
+  onDone,
+  onDismiss,
+}: Readonly<BodyProps>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const { matches, chosen, setId } = useGroupMatch(groups, proposal);
   const { pending, failed, run } = useApply(onDone);
@@ -271,7 +289,7 @@ export function ReorderBody({
   loading,
   onDone,
   onDismiss,
-}: BodyProps): ReactNode {
+}: Readonly<BodyProps>): ReactNode {
   const t = useTranslations("chat.cards.watchlistProposal");
   const { matches, chosen, setId } = useGroupMatch(groups, proposal);
   const { pending, failed, run } = useApply(onDone);

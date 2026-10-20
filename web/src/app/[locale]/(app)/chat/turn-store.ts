@@ -55,6 +55,12 @@ import {
 
 export type TurnPhase = "thinking" | "done" | "error" | "cancelled";
 
+function turnEndPhase(status: string): TurnPhase {
+  if (status === "error") return "error";
+  if (status === "cancelled") return "cancelled";
+  return "done";
+}
+
 export type LaneView = {
   agentId: string;
   /** The envelope `seq` of this lane's FIRST frame — fixes its position among lane groups
@@ -428,13 +434,12 @@ const FRAME_REDUCERS: {
   "turn.end": (base, frame) => {
     const parsed = turnEndDataSchema.safeParse(frame.envelope.data);
     const status = parsed.success ? parsed.data.status : "done";
-    const phase: TurnPhase =
-      status === "error" ? "error" : status === "cancelled" ? "cancelled" : "done";
+    const phase = turnEndPhase(status);
+    const errorText = parsed.success ? parsed.data.message : null;
     return {
       ...base,
       phase,
-      errorMessage:
-        status === "error" ? ((parsed.success ? parsed.data.message : null) ?? "") : null,
+      errorMessage: status === "error" ? (errorText ?? "") : null,
     };
   },
   "synthesis.start": (base) => base,

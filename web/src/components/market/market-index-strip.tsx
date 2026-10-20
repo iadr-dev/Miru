@@ -265,13 +265,12 @@ function StripItemValue({
   const locale = useLocale();
   const up = changePct !== null && changePct >= 0;
   const color = changePct === null ? "var(--text-muted)" : directionColor(changePct ?? 0);
+  const directionLabel = up ? tCommon("direction.up") : tCommon("direction.down");
   return (
     <span
       role="group"
       aria-label={
-        changePct !== null
-          ? `${value} ${up ? tCommon("direction.up") : tCommon("direction.down")} ${Math.abs(changePct).toFixed(2)}%`
-          : value
+        changePct !== null ? `${value} ${directionLabel} ${Math.abs(changePct).toFixed(2)}%` : value
       }
       className="flex items-baseline gap-1.5"
     >

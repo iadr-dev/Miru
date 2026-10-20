@@ -49,12 +49,12 @@ export function CardHeader({
   description,
   action,
   className,
-}: {
+}: Readonly<{
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   className?: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className={cn("mb-4 flex items-start justify-between gap-3", className)}>
       <div className="min-w-0">

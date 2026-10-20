@@ -47,11 +47,7 @@ const TIMEZONE_SELECT_STYLES = {
     ...base,
     fontSize: 14,
     color: "var(--text)",
-    backgroundColor: state.isSelected
-      ? "var(--surface-2)"
-      : state.isFocused
-        ? "var(--surface-2)"
-        : "transparent",
+    backgroundColor: state.isSelected || state.isFocused ? "var(--surface-2)" : "transparent",
   }),
 };
 
@@ -220,7 +216,10 @@ export function NotificationsPanel(): ReactNode {
   // Order-insensitive equality check for the channel set — the sort is only to normalize
   // ordering before comparing, so an explicit lexicographic compare fn (not locale-aware) is
   // both correct and required.
-  const byCodePoint = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  const byCodePoint = (a: string, b: string): number => {
+    if (a < b) return -1;
+    return a > b ? 1 : 0;
+  };
   const dirty =
     JSON.stringify([...channels].sort(byCodePoint)) !==
       JSON.stringify([...original.channels].sort(byCodePoint)) ||
@@ -257,24 +256,164 @@ export function NotificationsPanel(): ReactNode {
 
   const status = statusQuery.data;
 
+  let browserControl: ReactNode;
+  if (browserState === "unsupported") {
+    browserControl = <span className="text-[var(--text-muted)]">{t("browser.unsupported")}</span>;
+  } else if (browserState === "denied") {
+    browserControl = <span className="text-[var(--warn)]">{t("browser.denied")}</span>;
+  } else if (!status?.web_push_public_key) {
+    browserControl = <span className="text-[var(--text-muted)]">{t("browser.notConfigured")}</span>;
+  } else if (browserState === "on") {
+    browserControl = (
+      <>
+        <span className="text-[var(--text)]">{t("browser.on")}</span>
+        <button
+          type="button"
+          className="text-[var(--accent)] underline"
+          onClick={() => browserMutation.mutate(false)}
+          disabled={browserMutation.isPending}
+        >
+          {t("browser.disable")}
+        </button>
+      </>
+    );
+  } else {
+    browserControl = (
+      <button
+        type="button"
+        className="text-[var(--accent)] underline"
+        onClick={() => browserMutation.mutate(true)}
+        disabled={browserMutation.isPending || browserState === null}
+      >
+        {t("browser.enable")}
+      </button>
+    );
+  }
+
+  let lineControl: ReactNode = null;
+  if (status?.line_available) {
+    if (status.line_linked) {
+      lineControl = (
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-[var(--text)]">{t("lineLinked")}</span>
+          <button
+            type="button"
+            className="text-[var(--accent)] underline"
+            onClick={() => lineUnlinkMutation.mutate()}
+            disabled={lineUnlinkMutation.isPending}
+          >
+            {t("lineUnlink")}
+          </button>
+        </div>
+      );
+    } else if (lineLink) {
+      lineControl = (
+        <div className="space-y-1">
+          <p className="text-[var(--text)]">
+            {t("lineSendCode")}{" "}
+            <code className="rounded bg-[var(--surface-2)] px-2 py-0.5 font-num tracking-widest">
+              {lineLink.code}
+            </code>
+          </p>
+          {lineLink.url ? (
+            <a
+              href={lineLink.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[var(--accent)] underline"
+            >
+              {t("lineAddFriend")}
+            </a>
+          ) : null}
+          <p className="text-[12px] text-[var(--text-muted)]">{t("lineCodeNote")}</p>
+        </div>
+      );
+    } else {
+      lineControl = (
+        <button
+          type="button"
+          className="text-[var(--accent)] underline"
+          onClick={() => lineLinkMutation.mutate()}
+          disabled={lineLinkMutation.isPending}
+        >
+          {t("lineLink")}
+        </button>
+      );
+    }
+  }
+
+  let telegramControl: ReactNode = null;
+  if (status?.telegram_available) {
+    if (status.telegram) {
+      telegramControl = (
+        <>
+          <span className="text-[var(--text)]">{t("telegramLinked")}</span>
+          <button
+            type="button"
+            className="text-[var(--accent)] underline"
+            onClick={() => unlinkMutation.mutate()}
+            disabled={unlinkMutation.isPending}
+          >
+            {t("telegramUnlink")}
+          </button>
+        </>
+      );
+    } else if (telegramUrl) {
+      telegramControl = (
+        <a
+          href={telegramUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-[var(--accent)] underline"
+          onClick={() =>
+            window.setTimeout(
+              () =>
+                void queryClient.invalidateQueries({
+                  queryKey: queryKeys.settings("channel-status"),
+                }),
+              8000,
+            )
+          }
+        >
+          {t("telegramOpenLink")}
+        </a>
+      );
+    } else {
+      telegramControl = (
+        <button
+          type="button"
+          className="text-[var(--accent)] underline"
+          onClick={() => linkMutation.mutate()}
+          disabled={linkMutation.isPending}
+        >
+          {t("telegramLink")}
+        </button>
+      );
+    }
+  }
+
   return (
     <SettingsSection title={t("title")} description={t("description")}>
       <div className="pb-4">
         <p className="mb-2 text-[13px] text-[var(--text-muted)]">{t("channels")}</p>
         <div className="flex flex-wrap gap-3">
-          {DELIVERY_CHANNEL_KINDS.map((channel) => (
-            <Checkbox
-              key={channel}
-              checked={channel === "in_app" || (channels ?? []).includes(channel)}
-              disabled={channel === "in_app"}
-              onChange={(checked) => toggleChannel(channel, checked)}
-              label={
-                channelReady(channel, status)
-                  ? t(`channelOption.${channel}`)
-                  : `${t(`channelOption.${channel}`)}（${t(channel === "line" || channel === "telegram" ? "channelNotLinked" : "channelNotReady")}）`
-              }
-            />
-          ))}
+          {DELIVERY_CHANNEL_KINDS.map((channel) => {
+            const channelName = t(`channelOption.${channel}`);
+            const notReadyKey =
+              channel === "line" || channel === "telegram" ? "channelNotLinked" : "channelNotReady";
+            const notReadyNote = t(notReadyKey);
+            return (
+              <Checkbox
+                key={channel}
+                checked={channel === "in_app" || (channels ?? []).includes(channel)}
+                disabled={channel === "in_app"}
+                onChange={(checked) => toggleChannel(channel, checked)}
+                label={
+                  channelReady(channel, status) ? channelName : `${channelName}（${notReadyNote}）`
+                }
+              />
+            );
+          })}
         </div>
         <p className="mt-2 text-[12px] text-[var(--text-muted)]">{t("channelReadyNote")}</p>
         {status?.email_blocked ? (
@@ -284,123 +423,14 @@ export function NotificationsPanel(): ReactNode {
         ) : null}
         <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px]">
           <span className="text-[var(--text-muted)]">{t("browser.label")}</span>
-          {browserState === "unsupported" ? (
-            <span className="text-[var(--text-muted)]">{t("browser.unsupported")}</span>
-          ) : browserState === "denied" ? (
-            <span className="text-[var(--warn)]">{t("browser.denied")}</span>
-          ) : !status?.web_push_public_key ? (
-            <span className="text-[var(--text-muted)]">{t("browser.notConfigured")}</span>
-          ) : browserState === "on" ? (
-            <>
-              <span className="text-[var(--text)]">{t("browser.on")}</span>
-              <button
-                type="button"
-                className="text-[var(--accent)] underline"
-                onClick={() => browserMutation.mutate(false)}
-                disabled={browserMutation.isPending}
-              >
-                {t("browser.disable")}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="text-[var(--accent)] underline"
-              onClick={() => browserMutation.mutate(true)}
-              disabled={browserMutation.isPending || browserState === null}
-            >
-              {t("browser.enable")}
-            </button>
-          )}
+          {browserControl}
         </div>
         {status?.line_available ? (
-          <div className="mt-3 space-y-1 text-[13px]">
-            {status.line_linked ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="text-[var(--text)]">{t("lineLinked")}</span>
-                <button
-                  type="button"
-                  className="text-[var(--accent)] underline"
-                  onClick={() => lineUnlinkMutation.mutate()}
-                  disabled={lineUnlinkMutation.isPending}
-                >
-                  {t("lineUnlink")}
-                </button>
-              </div>
-            ) : lineLink ? (
-              <div className="space-y-1">
-                <p className="text-[var(--text)]">
-                  {t("lineSendCode")}{" "}
-                  <code className="rounded bg-[var(--surface-2)] px-2 py-0.5 font-num tracking-widest">
-                    {lineLink.code}
-                  </code>
-                </p>
-                {lineLink.url ? (
-                  <a
-                    href={lineLink.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[var(--accent)] underline"
-                  >
-                    {t("lineAddFriend")}
-                  </a>
-                ) : null}
-                <p className="text-[12px] text-[var(--text-muted)]">{t("lineCodeNote")}</p>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="text-[var(--accent)] underline"
-                onClick={() => lineLinkMutation.mutate()}
-                disabled={lineLinkMutation.isPending}
-              >
-                {t("lineLink")}
-              </button>
-            )}
-          </div>
+          <div className="mt-3 space-y-1 text-[13px]">{lineControl}</div>
         ) : null}
         {status?.telegram_available ? (
           <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px]">
-            {status.telegram ? (
-              <>
-                <span className="text-[var(--text)]">{t("telegramLinked")}</span>
-                <button
-                  type="button"
-                  className="text-[var(--accent)] underline"
-                  onClick={() => unlinkMutation.mutate()}
-                  disabled={unlinkMutation.isPending}
-                >
-                  {t("telegramUnlink")}
-                </button>
-              </>
-            ) : telegramUrl ? (
-              <a
-                href={telegramUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[var(--accent)] underline"
-                onClick={() =>
-                  window.setTimeout(
-                    () =>
-                      void queryClient.invalidateQueries({
-                        queryKey: queryKeys.settings("channel-status"),
-                      }),
-                    8000,
-                  )
-                }
-              >
-                {t("telegramOpenLink")}
-              </a>
-            ) : (
-              <button
-                type="button"
-                className="text-[var(--accent)] underline"
-                onClick={() => linkMutation.mutate()}
-                disabled={linkMutation.isPending}
-              >
-                {t("telegramLink")}
-              </button>
-            )}
+            {telegramControl}
           </div>
         ) : null}
       </div>

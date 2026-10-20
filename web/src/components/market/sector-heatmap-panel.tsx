@@ -56,6 +56,21 @@ const INDUSTRY_HEATMAP_COLLAPSED_COUNT = 24;
 // stock-row slice could all land in the same 2-3 industries).
 const STOCK_HEATMAP_COLLAPSED_INDUSTRIES = 24;
 
+function viewButtonKey(v: SectorView): "viewHeatmap" | "viewStockHeatmap" | "viewRotation" {
+  if (v === "heatmap") return "viewHeatmap";
+  if (v === "stock") return "viewStockHeatmap";
+  return "viewRotation";
+}
+
+function sectorViewTitle(
+  view: SectorView,
+  t: (key: "title" | "viewStockHeatmap" | "rotationTitle") => string,
+): string {
+  if (view === "heatmap") return t("title");
+  if (view === "stock") return t("viewStockHeatmap");
+  return t("rotationTitle");
+}
+
 /**
  * 產業熱力圖 / 股票熱力圖 / 板塊輪動 — a 3-way view toggle over the same industry/stock universe:
  * "heatmap" is `get_sector_heatmap` rendered as a per-industry treemap (tile size = `sizeBy`,
@@ -113,8 +128,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
     enabled: selected !== null,
   });
 
-  const viewTitle =
-    view === "heatmap" ? t("title") : view === "stock" ? t("viewStockHeatmap") : t("rotationTitle");
+  const viewTitle = sectorViewTitle(view, t);
 
   return (
     <section aria-label={viewTitle} className="surface-card flex w-full flex-col p-4 sm:p-5">
@@ -137,13 +151,7 @@ export function SectorHeatmapPanel({ market }: { readonly market: Market }): Rea
                   : "text-[var(--text-muted)] hover:text-[var(--text)]",
               )}
             >
-              {t(
-                v === "heatmap"
-                  ? "viewHeatmap"
-                  : v === "stock"
-                    ? "viewStockHeatmap"
-                    : "viewRotation",
-              )}
+              {t(viewButtonKey(v))}
             </button>
           ))}
         </div>

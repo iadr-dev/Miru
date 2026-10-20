@@ -4,9 +4,9 @@ import { UsagePanel } from "./usage-panel";
 
 export default async function UsagePage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <UsagePanel />;

@@ -6,6 +6,7 @@ import { type ReactNode, useMemo, useState } from "react";
 import { CardSkeletonBody } from "@/components/market/card-skeleton";
 import { SponsorTeaser } from "@/components/market/sponsor-teaser";
 import { ExpandModal } from "@/components/ui/expand-modal";
+import { ExpandablePreview } from "@/components/ui/expandable-preview";
 import { MonthGridCalendar } from "@/components/ui/month-grid-calendar";
 import { QueryFailure } from "@/components/ui/query-state";
 import { ViewToggleButton } from "@/components/ui/view-toggle-button";
@@ -262,6 +263,30 @@ function InsiderShareholdingCard({
   if (holdings.length === 0) return null;
   const transferRows = transferQuery.data?.rows ?? [];
 
+  let transferBody: ReactNode;
+  if (transferQuery.isLoading) {
+    transferBody = <CardSkeletonBody height={160} />;
+  } else if (transferRows.length === 0) {
+    transferBody = (
+      <p className="text-[13px] text-[var(--text-muted)]">{t("insiderTransferEmpty")}</p>
+    );
+  } else {
+    transferBody = (
+      <ExpandablePreview
+        preview={
+          <InsiderTransferList rows={transferRows.slice(0, INSIDER_TRANSFER_COLLAPSED_ROW_COUNT)} />
+        }
+        full={<InsiderTransferList rows={transferRows} />}
+        showExpand={transferRows.length > INSIDER_TRANSFER_COLLAPSED_ROW_COUNT}
+        expandLabel={t("expandTo", { count: transferRows.length })}
+        title={t("insiderTransferTab")}
+        closeLabel={t("collapse")}
+        expanded={expanded}
+        onExpandedChange={setExpanded}
+      />
+    );
+  }
+
   return (
     <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
@@ -301,31 +326,8 @@ function InsiderShareholdingCard({
             <InsiderShareholdingList holdings={holdings} />
           </ExpandModal>
         </>
-      ) : transferQuery.isLoading ? (
-        <CardSkeletonBody height={160} />
-      ) : transferRows.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("insiderTransferEmpty")}</p>
       ) : (
-        <>
-          <InsiderTransferList rows={transferRows.slice(0, INSIDER_TRANSFER_COLLAPSED_ROW_COUNT)} />
-          {transferRows.length > INSIDER_TRANSFER_COLLAPSED_ROW_COUNT ? (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
-            >
-              {t("expandTo", { count: transferRows.length })}
-            </button>
-          ) : null}
-          <ExpandModal
-            open={expanded}
-            title={t("insiderTransferTab")}
-            closeLabel={t("collapse")}
-            onClose={() => setExpanded(false)}
-          >
-            <InsiderTransferList rows={transferRows} />
-          </ExpandModal>
-        </>
+        transferBody
       )}
     </section>
   );
@@ -456,6 +458,67 @@ function AnnouncementsCard({
         )
       : [];
 
+  let body: ReactNode;
+  if (view === "list") {
+    body =
+      announcements.length === 0 && calendarEvents.length === 0 ? (
+        <p className="text-[13px] text-[var(--text-muted)]">{t("announcementsEmpty")}</p>
+      ) : (
+        <>
+          <AnnouncementsList
+            announcements={announcements.slice(0, ANNOUNCEMENTS_COLLAPSED_ROW_COUNT)}
+            calendarEvents={calendarEvents.slice(0, ANNOUNCEMENTS_COLLAPSED_ROW_COUNT)}
+          />
+          {announcements.length + calendarEvents.length > ANNOUNCEMENTS_COLLAPSED_ROW_COUNT ? (
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
+            >
+              {t("expandTo", { count: announcements.length + calendarEvents.length })}
+            </button>
+          ) : null}
+          <ExpandModal
+            open={expanded}
+            title={t("announcementsTitle")}
+            closeLabel={t("collapse")}
+            onClose={() => setExpanded(false)}
+          >
+            <AnnouncementsList announcements={announcements} calendarEvents={calendarEvents} />
+          </ExpandModal>
+        </>
+      );
+  } else if (calendarLocked && calendarData && isMaskedTeaser(calendarData)) {
+    body = (
+      <SponsorTeaser
+        headline={t("announcementsTitle")}
+        preview={calendarData.preview}
+        requiredTier={calendarData.required_tier}
+      >
+        <div className="h-64 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
+      </SponsorTeaser>
+    );
+  } else {
+    body = (
+      <AnnouncementsCalendarView
+        year={calendarCursor.year}
+        month={calendarCursor.month}
+        announcements={announcements}
+        calendarEvents={calendarEvents}
+        onPrevMonth={() =>
+          setCalendarCursor(({ year, month }) =>
+            month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 },
+          )
+        }
+        onNextMonth={() =>
+          setCalendarCursor(({ year, month }) =>
+            month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 },
+          )
+        }
+      />
+    );
+  }
+
   return (
     <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
@@ -474,60 +537,7 @@ function AnnouncementsCard({
         </div>
       </div>
 
-      {view === "list" ? (
-        announcements.length === 0 && calendarEvents.length === 0 ? (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("announcementsEmpty")}</p>
-        ) : (
-          <>
-            <AnnouncementsList
-              announcements={announcements.slice(0, ANNOUNCEMENTS_COLLAPSED_ROW_COUNT)}
-              calendarEvents={calendarEvents.slice(0, ANNOUNCEMENTS_COLLAPSED_ROW_COUNT)}
-            />
-            {announcements.length + calendarEvents.length > ANNOUNCEMENTS_COLLAPSED_ROW_COUNT ? (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
-              >
-                {t("expandTo", { count: announcements.length + calendarEvents.length })}
-              </button>
-            ) : null}
-            <ExpandModal
-              open={expanded}
-              title={t("announcementsTitle")}
-              closeLabel={t("collapse")}
-              onClose={() => setExpanded(false)}
-            >
-              <AnnouncementsList announcements={announcements} calendarEvents={calendarEvents} />
-            </ExpandModal>
-          </>
-        )
-      ) : calendarLocked && calendarData && isMaskedTeaser(calendarData) ? (
-        <SponsorTeaser
-          headline={t("announcementsTitle")}
-          preview={calendarData.preview}
-          requiredTier={calendarData.required_tier}
-        >
-          <div className="h-64 rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-        </SponsorTeaser>
-      ) : (
-        <AnnouncementsCalendarView
-          year={calendarCursor.year}
-          month={calendarCursor.month}
-          announcements={announcements}
-          calendarEvents={calendarEvents}
-          onPrevMonth={() =>
-            setCalendarCursor(({ year, month }) =>
-              month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 },
-            )
-          }
-          onNextMonth={() =>
-            setCalendarCursor(({ year, month }) =>
-              month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 },
-            )
-          }
-        />
-      )}
+      {body}
     </section>
   );
 }

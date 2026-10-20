@@ -8,12 +8,12 @@ export function SettingsSection({
   description,
   children,
   className,
-}: {
+}: Readonly<{
   title: string;
   description?: string;
   children: ReactNode;
   className?: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <section className={cn("surface-card p-4 sm:p-5", className)}>
       <h2 className="font-semibold text-[18px] text-[var(--text)]">{title}</h2>
@@ -30,11 +30,11 @@ export function SettingsRow({
   label,
   hint,
   children,
-}: {
+}: Readonly<{
   label: string;
   hint?: string | undefined;
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="min-w-0">

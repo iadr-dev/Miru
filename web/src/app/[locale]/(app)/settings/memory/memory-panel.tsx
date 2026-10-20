@@ -201,7 +201,8 @@ function RelatedSettings(): ReactNode {
     queryFn: listPersonalityPresets,
   });
   const current = presets.data?.find((p) => p.id === me.data?.user.personality_id);
-  const toneName = current ? (locale === "zh-TW" ? current.name_zh : current.name_en) : "—";
+  let toneName = "—";
+  if (current) toneName = locale === "zh-TW" ? current.name_zh : current.name_en;
 
   return (
     <>
@@ -231,7 +232,7 @@ function MemoryList({
   searching,
   errorMessage,
   onChanged,
-}: {
+}: Readonly<{
   loading: boolean;
   error: boolean;
   onRetry: () => void;
@@ -239,7 +240,7 @@ function MemoryList({
   searching: boolean;
   errorMessage: string;
   onChanged: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.memory");
   if (loading) {
     return <SettingsLoading rows={3} />;
@@ -271,7 +272,10 @@ function MemoryList({
   );
 }
 
-function MemoryItem({ memory, onChanged }: { memory: Memory; onChanged: () => void }): ReactNode {
+function MemoryItem({
+  memory,
+  onChanged,
+}: Readonly<{ memory: Memory; onChanged: () => void }>): ReactNode {
   const t = useTranslations("settings.memory");
   const [editing, setEditing] = useState(false);
 
@@ -330,7 +334,7 @@ function MemoryItem({ memory, onChanged }: { memory: Memory; onChanged: () => vo
 }
 
 /** When it was saved, when and how often it was used, and the chat it came from. */
-function MemoryMeta({ memory }: { memory: Memory }): ReactNode {
+function MemoryMeta({ memory }: Readonly<{ memory: Memory }>): ReactNode {
   const t = useTranslations("settings.memory");
   const locale = useLocale();
   const day = (iso: string): string => formatDate(parseServerDate(iso).toISOString(), locale) ?? "";
@@ -359,11 +363,11 @@ function MemoryEditor({
   memory,
   onDone,
   onCancel,
-}: {
+}: Readonly<{
   memory: Memory;
   onDone: () => void;
   onCancel: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.memory");
   const tf = useTranslations("settings.memory.form");
   const [text, setText] = useState(memoryText(memory));
@@ -412,7 +416,10 @@ function saveErrorMessage(err: unknown, t: (key: string) => string): string {
     : t("errorGeneric");
 }
 
-function MemoryForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }): ReactNode {
+function MemoryForm({
+  onDone,
+  onCancel,
+}: Readonly<{ onDone: () => void; onCancel: () => void }>): ReactNode {
   const t = useTranslations("settings.memory.form");
   const tm = useTranslations("settings.memory");
 

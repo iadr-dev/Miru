@@ -67,7 +67,7 @@ export function GaugeCard({
   leftAxisLabel,
   rightAxisLabel,
   children,
-}: {
+}: Readonly<{
   title: string;
   /** `null` renders the gauge in an honest empty state — never a fabricated needle position. */
   value: number | null;
@@ -79,13 +79,14 @@ export function GaugeCard({
   leftAxisLabel: string;
   rightAxisLabel: string;
   children?: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("market.cards.gauge");
   const activeBand = value === null ? null : bands.find((b) => value >= b.min && value < b.max);
   const needleAngle =
     value === null ? GAUGE_MIN_ANGLE : valueToAngleDeg(value, domainMin, domainMax);
   const needleTip = polarToCartesian(needleAngle, NEEDLE_LENGTH);
+  const bandSuffix = activeBand ? ` ${activeBand.label}` : "";
 
   return (
     <div className="flex flex-wrap items-center gap-6">
@@ -133,9 +134,7 @@ export function GaugeCard({
             role="group"
             aria-label={
               value !== null
-                ? `${title} ${formatNumber(value, locale, { decimals })}${unit ?? ""}${
-                    activeBand ? ` ${activeBand.label}` : ""
-                  }`
+                ? `${title} ${formatNumber(value, locale, { decimals })}${unit ?? ""}${bandSuffix}`
                 : t("noData", { title })
             }
           >

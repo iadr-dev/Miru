@@ -27,7 +27,10 @@ const TIER_LABEL_STYLE: Record<Tier, string> = {
  * old Sisi footer + separate Settings nav row. Settings/Upgrade route to the real pages (Settings
  * opens as the `@modal` overlay via normal `Link` navigation, intercepted automatically); Language
  * is a submenu so switching locale doesn't require leaving the menu. */
-export function AccountChip({ me, collapsed }: { me: MeResponse; collapsed: boolean }): ReactNode {
+export function AccountChip({
+  me,
+  collapsed,
+}: Readonly<{ me: MeResponse; collapsed: boolean }>): ReactNode {
   const t = useTranslations("shell.account");
   const tTier = useTranslations("shell.tier");
   const router = useRouter();
@@ -124,11 +127,11 @@ function MenuLink({
   href,
   icon: Icon,
   label,
-}: {
+}: Readonly<{
   href: "/settings" | "/settings/billing";
   icon: typeof GearIcon;
   label: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <DropdownMenu.Item asChild>
       <Link

@@ -152,7 +152,7 @@ const MARKDOWN_COMPONENTS: Components = {
  * strikethrough, and autolinks, which model answers use routinely (comparison tables, task
  * lists). Text-only input; there is no raw-HTML pass-through (`skipHtml` default is already
  * true), so untrusted model text can never inject markup, only markdown structure. */
-export function AnswerMarkdown({ text }: { text: string }): ReactNode {
+export function AnswerMarkdown({ text }: Readonly<{ text: string }>): ReactNode {
   return (
     <div className="text-[16px]">
       <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>

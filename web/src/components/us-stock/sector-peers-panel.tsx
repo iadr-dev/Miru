@@ -262,7 +262,8 @@ function PeerCard({
                 <span className="shrink-0 rounded-[var(--radius-pill)] bg-[var(--accent)]/15 px-2 py-0.5 text-[11px] text-[var(--accent)]">
                   {t("self")}
                 </span>
-              ) : row.rating ? (
+              ) : null}
+              {row.symbol !== symbol && row.rating ? (
                 <span className="shrink-0 text-[11px] text-[var(--text-muted)]">{row.rating}</span>
               ) : null}
             </li>

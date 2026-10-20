@@ -47,10 +47,13 @@ export function PlansForm({
   confirmText,
   plan,
   locale,
-}: PlansFormProps): ReactNode {
+}: Readonly<PlansFormProps>): ReactNode {
   const t = useTranslations("settings.billing");
   const [confirming, setConfirming] = useState(false);
   const askFirst = confirmText != null && !blockedNote;
+  const priceText = plan?.price
+    ? `${formatMinorAmount(plan.price.amount, plan.price.currency_code, locale)} / ${t(`perInterval.${interval}`)}`
+    : t("priceUnavailable");
   return (
     <div className="space-y-4 py-1">
       <SettingsRow label={t("tier")}>
@@ -98,11 +101,7 @@ export function PlansForm({
         />
       </SettingsRow>
       <SettingsRow label={t("price")} hint={plan?.price ? t("taxNote") : undefined}>
-        <span className="font-medium text-[14px] text-[var(--text)] tabular-nums">
-          {plan?.price
-            ? `${formatMinorAmount(plan.price.amount, plan.price.currency_code, locale)} / ${t(`perInterval.${interval}`)}`
-            : t("priceUnavailable")}
-        </span>
+        <span className="font-medium text-[14px] text-[var(--text)] tabular-nums">{priceText}</span>
       </SettingsRow>
       {blockedNote ? <p className="text-[13px] text-[var(--text-muted)]">{blockedNote}</p> : null}
       {actionError ? (

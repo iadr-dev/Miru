@@ -195,6 +195,10 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
             const hasChange = pctChange !== null && pctChange !== undefined;
             const color = hasChange ? directionColor(pctChange, 2) : "var(--text-muted)";
             const name = row.name ?? quote?.name ?? row.symbol;
+            const changeLabel = hasChange
+              ? formatSignedChange(pctChange, locale, { decimals: 2, unit: "%" })
+              : t("empty");
+            const extraLabel = extraAriaLabel ? ` ${extraAriaLabel(row)}` : "";
             const rank = showRank ? rows.indexOf(row) + 1 : null;
             const volume = volumeFor ? volumeFor(row) : quote?.volume;
             const price = priceFor ? priceFor(row) : quote?.price;
@@ -202,11 +206,7 @@ export function SymbolQuoteRows<T extends SymbolQuoteRowItem>({
               <li
                 key={row.symbol}
                 role="group"
-                aria-label={`${name} ${row.symbol} ${
-                  hasChange
-                    ? formatSignedChange(pctChange, locale, { decimals: 2, unit: "%" })
-                    : t("empty")
-                }${extraAriaLabel ? ` ${extraAriaLabel(row)}` : ""}`}
+                aria-label={`${name} ${row.symbol} ${changeLabel}${extraLabel}`}
                 className={cn("grid items-center gap-2.5 py-2.5", gridCols)}
               >
                 {showRank ? (
@@ -292,13 +292,12 @@ function SortableHeaderCell({
   readonly direction: SortDirection;
   readonly onClick: () => void;
 }): ReactNode {
-  const CaretIcon = active ? (direction === "asc" ? CaretUpIcon : CaretDownIcon) : CaretUpDownIcon;
+  const asc = direction === "asc";
+  const ActiveCaretIcon = asc ? CaretUpIcon : CaretDownIcon;
+  const CaretIcon = active ? ActiveCaretIcon : CaretUpDownIcon;
+  const activeSort = asc ? "ascending" : "descending";
   return (
-    <div
-      role="columnheader"
-      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
-      tabIndex={-1}
-    >
+    <div role="columnheader" aria-sort={active ? activeSort : "none"} tabIndex={-1}>
       <button
         type="button"
         onClick={onClick}

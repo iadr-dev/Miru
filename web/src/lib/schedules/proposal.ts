@@ -40,7 +40,8 @@ function canonical(value: unknown): string {
     const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
       a.localeCompare(b),
     );
-    return `{${entries.map(([key, item]) => `${key}:${canonical(item)}`).join(",")}}`;
+    const members = entries.map(([key, item]) => `${key}:${canonical(item)}`);
+    return `{${members.join(",")}}`;
   }
   return JSON.stringify(value);
 }

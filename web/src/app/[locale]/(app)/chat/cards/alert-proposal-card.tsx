@@ -23,7 +23,9 @@ const ALERTS_KEY = ["settings", "alerts"] as const;
  * Deliberately its own component, not routed through `card-registry.ts`'s data-shape map — like
  * `ask_user`, this is an interactive prompt, not a rendering of fetched market data.
  */
-export function AlertProposalCard({ data }: { data: Record<string, unknown> }): ReactNode {
+export function AlertProposalCard({
+  data,
+}: Readonly<{ data: Record<string, unknown> }>): ReactNode {
   const t = useTranslations("chat.cards.alertProposal");
   const ts = useTranslations("settings.alerts.summary");
   const tc = useTranslations("settings.common");

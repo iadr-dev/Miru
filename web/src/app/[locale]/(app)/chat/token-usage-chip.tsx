@@ -13,7 +13,9 @@ import type { TurnUsageData } from "@/types/usage";
 /** The quiet "how much did this answer use" line under an answer: input and output tokens, the
  * model(s) that served it, and the charge: the provider's own when it reported one, otherwise a marked estimate. Renders nothing for
  * a turn with no model usage (e.g. a cached reply), so there is never a "0 tokens" line. */
-export function TokenUsageChip({ usage }: { usage: TurnUsageData | null | undefined }): ReactNode {
+export function TokenUsageChip({
+  usage,
+}: Readonly<{ usage: TurnUsageData | null | undefined }>): ReactNode {
   const t = useTranslations("chat.usage");
   if (!usage || usage.input_tokens + usage.output_tokens === 0) {
     return null;

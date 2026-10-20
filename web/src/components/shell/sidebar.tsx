@@ -28,13 +28,13 @@ export function Sidebar({
   onToggle,
   me,
   fluid = false,
-}: {
+}: Readonly<{
   collapsed: boolean;
   onToggle: () => void;
   me: MeResponse;
   /** Fill the parent's width instead of the fixed rail widths (the phone drawer). */
   fluid?: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations();
   const pathname = usePathname();
   const router = useRouter();
@@ -59,7 +59,7 @@ export function Sidebar({
       className={cn(
         "flex h-full flex-col border-[var(--border)] border-r bg-[var(--surface)]",
         "transition-all duration-300 ease-out",
-        fluid ? "w-full" : collapsed ? "w-16" : "w-60",
+        sidebarWidthClass(fluid, collapsed),
       )}
     >
       {/* Header: logo + collapse toggle */}
@@ -156,11 +156,11 @@ function NavRow({
   item,
   collapsed,
   active,
-}: {
+}: Readonly<{
   item: NavItem;
   collapsed: boolean;
   active: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("nav");
   const Icon = item.icon;
   const label = t(`${item.messageKey}.label`);
@@ -202,4 +202,9 @@ function NavRow({
       )}
     </Link>
   );
+}
+
+function sidebarWidthClass(fluid: boolean, collapsed: boolean): string {
+  if (fluid) return "w-full";
+  return collapsed ? "w-16" : "w-60";
 }

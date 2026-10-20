@@ -16,7 +16,7 @@ import type { Market } from "@/types/settings";
  * `LeaderboardCard` no longer exposes a universe toggle itself — each caller now owns a fixed
  * universe (this one "etf", `TopSplit`'s "stock"), since the ETF tab getting its own sub-tab
  * made an in-card stock/ETF switch redundant. */
-export function EtfLeaderboardPanel({ market }: { market: Market }): ReactNode {
+export function EtfLeaderboardPanel({ market }: Readonly<{ market: Market }>): ReactNode {
   const [direction, setDirection] = useState<LeaderboardDirection>("bullish");
 
   const query = useQuery({

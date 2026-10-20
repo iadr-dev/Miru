@@ -29,7 +29,9 @@ const PANELS: Record<SettingsNavItem["messageKey"], () => ReactNode> = {
 /** Maps the first `/settings/<segment>` path segment to its panel component — the single lookup
  * both the full-page route tree and the intercepted modal route resolve against, so the two never
  * drift into rendering different content for the same URL. */
-export function SettingsPanelSwitch({ segment }: { segment: string | undefined }): ReactNode {
+export function SettingsPanelSwitch({
+  segment,
+}: Readonly<{ segment: string | undefined }>): ReactNode {
   const key = (segment ?? "profile") as SettingsNavItem["messageKey"];
   const Panel = PANELS[key] ?? ProfilePanel;
   return <Panel />;

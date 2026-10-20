@@ -62,10 +62,10 @@ async function loadCloses(items: readonly WatchlistItem[]): Promise<Record<strin
 export function PerStockForm({
   onDone,
   initialGroupId,
-}: {
+}: Readonly<{
   onDone: () => void;
   initialGroupId?: string | undefined;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.alerts.perStock");
   const tf = useTranslations("settings.alerts.form");
   const format = useFormatter();

@@ -23,7 +23,9 @@ import type { MeResponse } from "@/types/account";
  * The resolved `MeResponse` is handed to children via a render prop so the top bar reads the real
  * tier/account without a second `/me` round-trip.
  */
-export function AuthGuard({ children }: { children: (me: MeResponse) => ReactNode }): ReactNode {
+export function AuthGuard({
+  children,
+}: Readonly<{ children: (me: MeResponse) => ReactNode }>): ReactNode {
   const t = useTranslations("shell");
   const router = useRouter();
 

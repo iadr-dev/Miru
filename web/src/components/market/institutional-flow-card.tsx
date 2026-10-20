@@ -41,9 +41,9 @@ const HISTORY_PREVIEW_DAYS = 10;
  * full range the caller requested. */
 export function InstitutionalFlowCard({
   rows,
-}: {
+}: Readonly<{
   rows: readonly InstitutionalFlowTotalMarketRow[];
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards");
   const tCard = useTranslations("market.cards.institutionalRanking");
   const locale = useLocale();

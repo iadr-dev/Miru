@@ -99,13 +99,13 @@ function AllowanceRow({
   limit,
   unlimitedLabel,
   summary,
-}: {
+}: Readonly<{
   label: string;
   used: number | null;
   limit: number | null;
   unlimitedLabel: string;
   summary: (used: number, limit: number) => string;
-}): ReactNode {
+}>): ReactNode {
   if (limit === null) {
     return (
       <SettingsRow label={label}>

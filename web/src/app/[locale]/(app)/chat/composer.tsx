@@ -80,7 +80,7 @@ export function Composer({
   deepResearchLocked,
   byokActive,
   onOpenVoiceMode,
-}: {
+}: Readonly<{
   streaming: boolean;
   onSend: (text: string, attachments: AttachmentInput[]) => void;
   onStop: () => void;
@@ -101,7 +101,7 @@ export function Composer({
   /** Whether the caller runs on their own keys. Only then is the model picker shown. */
   byokActive: boolean | undefined;
   onOpenVoiceMode: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.composer");
   const tDisc = useTranslations("disclaimer");
   const locale = useLocale();
@@ -343,6 +343,30 @@ export function Composer({
     [addAttachments],
   );
 
+  const idleControls =
+    voiceState === "recording" ? (
+      <RecordingControls
+        cancelLabel={t("voiceRecording.cancel")}
+        confirmLabel={t("voiceRecording.confirm")}
+        onCancel={cancelRecording}
+        onConfirm={confirmRecording}
+      />
+    ) : (
+      <>
+        {!hasText && voiceState === "idle" ? (
+          <VoiceModeTriggerButton label={t("voiceMode")} onClick={onOpenVoiceMode} />
+        ) : null}
+        <VoiceOrSendButton
+          canSend={canSend}
+          voiceState={voiceState}
+          streaming={streaming}
+          onStartRecording={startRecording}
+          voiceLabel={t("voice")}
+          sendLabel={t("send")}
+        />
+      </>
+    );
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4">
       <form onSubmit={submit}>
@@ -453,27 +477,8 @@ export function Composer({
               >
                 <SquareIcon size={18} weight="fill" />
               </button>
-            ) : voiceState === "recording" ? (
-              <RecordingControls
-                cancelLabel={t("voiceRecording.cancel")}
-                confirmLabel={t("voiceRecording.confirm")}
-                onCancel={cancelRecording}
-                onConfirm={confirmRecording}
-              />
             ) : (
-              <>
-                {!hasText && voiceState === "idle" ? (
-                  <VoiceModeTriggerButton label={t("voiceMode")} onClick={onOpenVoiceMode} />
-                ) : null}
-                <VoiceOrSendButton
-                  canSend={canSend}
-                  voiceState={voiceState}
-                  streaming={streaming}
-                  onStartRecording={startRecording}
-                  voiceLabel={t("voice")}
-                  sendLabel={t("send")}
-                />
-              </>
+              idleControls
             )}
           </div>
 

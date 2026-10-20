@@ -16,7 +16,7 @@ const MAX_EVENTS = 15;
 /** Discrete dated occurrences (`insider_activity`, `block_trade`, `dividend_schedule`, ...) — a
  * vertical list with the date pinned left and the event's other scalar fields as a compact
  * inline summary, newest first. */
-export function EventTimeline({ data }: { data: unknown }): ReactNode {
+export function EventTimeline({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   const rows = extractRows(data);

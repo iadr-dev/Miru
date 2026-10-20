@@ -16,7 +16,7 @@ import { cn } from "@/lib/cn";
  * user was actually on — Next's own route interception, not a fake dimmed shell — so closing
  * (`Esc`, backdrop click, or the ✕) calls `router.back()` to land exactly back there.
  */
-export function SettingsDialog({ children }: { children: ReactNode }): ReactNode {
+export function SettingsDialog({ children }: Readonly<{ children: ReactNode }>): ReactNode {
   const t = useTranslations("settings.common");
   const router = useRouter();
   const reduceMotion = useReducedMotion();

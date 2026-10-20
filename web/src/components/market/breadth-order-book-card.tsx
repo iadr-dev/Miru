@@ -72,15 +72,20 @@ const COLLAPSED_CONTRIBUTOR_COUNT = 5;
  * (`ingest/us_universe.py`'s own docstring), never the whole exchange the way TW's breadth
  * genuinely is — this label exists so 漲跌家數 for US is never mistaken for whole-market
  * breadth. */
+function bucketFill(key: string): string {
+  if (key === "unchanged") return "var(--text-muted)";
+  return key.startsWith("up") ? "var(--up)" : "var(--down)";
+}
+
 export function BreadthOrderBookCard({
   breadth,
   indexContribution,
   market,
-}: {
+}: Readonly<{
   breadth: AdvanceDeclineResponse;
   indexContribution: IndexContributionResponse | null;
   market: Market;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.cards.breadth");
   const tContribution = useTranslations("market.cards.indexContribution");
   const locale = useLocale();
@@ -158,16 +163,7 @@ export function BreadthOrderBookCard({
                 />
                 <Bar dataKey="count" name={t("breadthCountSeries")} radius={3}>
                   {bucketData.map((point) => (
-                    <Cell
-                      key={point.key}
-                      fill={
-                        point.key === "unchanged"
-                          ? "var(--text-muted)"
-                          : point.key.startsWith("up")
-                            ? "var(--up)"
-                            : "var(--down)"
-                      }
-                    />
+                    <Cell key={point.key} fill={bucketFill(point.key)} />
                   ))}
                 </Bar>
               </BarChart>
@@ -255,10 +251,10 @@ export function BreadthOrderBookCard({
 function AdvanceDeclineSummaryBar({
   breadth,
   locale,
-}: {
+}: Readonly<{
   breadth: AdvanceDeclineResponse;
   locale: string;
-}): ReactNode {
+}>): ReactNode {
   const total = breadth.advancing_count + breadth.declining_count + breadth.unchanged_count;
   if (total === 0) {
     return null;
@@ -291,12 +287,12 @@ function IndexContributionColumns({
   negativeContributors,
   positiveLabel,
   negativeLabel,
-}: {
+}: Readonly<{
   positiveContributors: readonly IndexContributionRow[];
   negativeContributors: readonly IndexContributionRow[];
   positiveLabel: string;
   negativeLabel: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="grid grid-cols-2 gap-4">
       <IndexContributionColumn
@@ -317,11 +313,11 @@ function IndexContributionColumn({
   label,
   rows,
   color,
-}: {
+}: Readonly<{
   label: string;
   rows: readonly IndexContributionRow[];
   color: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div>
       <p className="mb-2 text-[11px] text-[var(--text-muted)]">{label}</p>

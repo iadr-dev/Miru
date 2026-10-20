@@ -8,9 +8,9 @@ import { StockEmptyState } from "./stock-empty-state";
  * retired here specifically. */
 export default async function StockPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <StockEmptyState />;

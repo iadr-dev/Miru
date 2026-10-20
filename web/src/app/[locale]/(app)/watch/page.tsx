@@ -4,9 +4,9 @@ import { WatchDashboard } from "@/components/watch/watch-dashboard";
 
 export default async function WatchPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   // The dashboard reads `?date=&strategy=&symbol=` (a notification opens straight onto its stock).

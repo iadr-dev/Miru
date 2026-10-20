@@ -12,9 +12,9 @@ import { SettingsPanelSwitch } from "@/app/[locale]/(app)/settings/settings-pane
  */
 export default async function InterceptedSettingsPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string; rest?: string[] }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale, rest } = await params;
   setRequestLocale(locale);
   return <SettingsPanelSwitch segment={rest?.[0]} />;
