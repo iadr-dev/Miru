@@ -101,7 +101,9 @@ def _missing_column_steps(table: Table, live_columns: set[str], dialect: Dialect
     return steps
 
 
-def _missing_index_steps(table: Table, live_index_names: set[str], dialect: Dialect) -> list[_Step]:
+def _missing_index_steps(
+    table: Table, live_index_names: set[str | None], dialect: Dialect
+) -> list[_Step]:
     return [
         _Step(
             f"index {table.name}.{index.name}",
@@ -114,7 +116,10 @@ def _missing_index_steps(table: Table, live_index_names: set[str], dialect: Dial
 
 
 def _missing_unique_steps(
-    table: Table, live_unique_names: set[str], live_index_names: set[str], dialect: Dialect
+    table: Table,
+    live_unique_names: set[str | None],
+    live_index_names: set[str | None],
+    dialect: Dialect,
 ) -> list[_Step]:
     steps: list[_Step] = []
     for constraint in table.constraints:

@@ -18,7 +18,7 @@ from calendar.trading_days import TradingDayCalendar, calendar_from_known_dates
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date as date_
-from typing import Final, NamedTuple
+from typing import Final, Literal, NamedTuple
 
 import anyio.to_thread
 from pydantic import BaseModel, ConfigDict, Field
@@ -68,6 +68,7 @@ _PROJECTION_CAVEAT = (
 _BUCKET_IN_DISPOSITION: Final = "in_disposition"
 _BUCKET_EXITING_SOON: Final = "exiting_soon"
 _BUCKET_AT_RISK: Final = "at_risk"
+type _Bucket = Literal["at_risk", "in_disposition", "exiting_soon"]
 
 
 def _ranked_cards_by_bucket(
@@ -572,7 +573,7 @@ def _security_type_for(
 
 def _bucket_and_days_until_exiting(
     event: DispositionEventRow | None, report_date: date_, calendar: TradingDayCalendar
-) -> tuple[str, int | None]:
+) -> tuple[_Bucket, int | None]:
     """The card's bucket plus, for a symbol under a disposition event, the trading days left
     after `report_date`; `(at_risk, None)` when there is no event."""
     if event is None:
@@ -586,7 +587,7 @@ def _bucket_and_days_until_exiting(
     # inclusive range), but "days until exiting" means days remaining AFTER today, so today
     # itself must not count as one of them — a disposition ending today is 0 days out, not 1.
     days_until_exiting = max(len(days_remaining) - 1, 0)
-    bucket = (
+    bucket: _Bucket = (
         _BUCKET_EXITING_SOON
         if 0 < len(days_remaining) <= _EXITING_SOON_WINDOW_DAYS
         else _BUCKET_IN_DISPOSITION
