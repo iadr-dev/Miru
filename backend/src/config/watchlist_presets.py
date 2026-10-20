@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 from schemas.enums import Market
 
+_DEFAULT_LIST_NAME = "我的自選股"
+
 _STOCK = "stock"
 _ETF = "etf"
 
@@ -31,19 +33,19 @@ class WatchlistPreset:
 # default target to star into even if they delete every theme preset (seeding an empty-symbols
 # preset is already safe: the seed loop's `for symbol in preset.symbols` simply doesn't execute).
 _MY_WATCHLIST_TW_STOCK = WatchlistPreset(
-    name="我的自選股",
+    name=_DEFAULT_LIST_NAME,
     market=Market.TW,
     asset_class=_STOCK,
     symbols=(),
 )
 _MY_WATCHLIST_US_STOCK = WatchlistPreset(
-    name="我的自選股",
+    name=_DEFAULT_LIST_NAME,
     market=Market.US,
     asset_class=_STOCK,
     symbols=(),
 )
 _MY_WATCHLIST_TW_ETF = WatchlistPreset(
-    name="我的自選股",
+    name=_DEFAULT_LIST_NAME,
     market=Market.TW,
     asset_class=_ETF,
     symbols=(),

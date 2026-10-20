@@ -76,6 +76,8 @@ from tools.etf_pcf_tools import (
     GetEtfPremiumDiscountTool,
 )
 
+_AVG_YIELD_LABEL = "平均殖利率"
+
 _DEFAULT_YEARS = 5
 _MAX_YEARS = 7
 _MIN_POINTS = 2  # a return / CAGR needs a start and an end
@@ -1024,7 +1026,7 @@ def _risk_rows(a: _Side, b: _Side) -> tuple[ComparisonRow, ...]:
 
 def _stock_rows(a: _Side, b: _Side) -> tuple[ComparisonRow, ...]:
     return (
-        _row("平均殖利率", (a.avg_yield(), b.avg_yield()), suffix="%"),
+        _row(_AVG_YIELD_LABEL, (a.avg_yield(), b.avg_yield()), suffix="%"),
         _stability_row(a, b),
         _row("營收 CAGR", (a.cagr_of("revenue"), b.cagr_of("revenue")), suffix="%"),
         _row("EPS 成長率（CAGR）", (a.cagr_of("eps"), b.cagr_of("eps")), suffix="%"),
@@ -1064,7 +1066,7 @@ def _etf_rows(a: _Side, b: _Side) -> tuple[ComparisonRow, ...]:
             _fmt(ea.premium_pct, "%"),
             _fmt(eb.premium_pct, "%"),
         ),
-        _row("平均殖利率", (a.avg_yield(), b.avg_yield()), suffix="%"),
+        _row(_AVG_YIELD_LABEL, (a.avg_yield(), b.avg_yield()), suffix="%"),
         _stability_row(a, b),
         _row("含息年化報酬（概估）", (a.total_return_cagr(), b.total_return_cagr()), suffix="%"),
         _descriptive("年度報酬區間（價格）", a.best_worst_text(), b.best_worst_text()),
@@ -1082,7 +1084,7 @@ def _etf_rows(a: _Side, b: _Side) -> tuple[ComparisonRow, ...]:
 def _mixed_rows(a: _Side, b: _Side) -> tuple[ComparisonRow, ...]:
     """A stock against an ETF share only the metrics both have."""
     return (
-        _row("平均殖利率", (a.avg_yield(), b.avg_yield()), suffix="%"),
+        _row(_AVG_YIELD_LABEL, (a.avg_yield(), b.avg_yield()), suffix="%"),
         _stability_row(a, b),
         *_risk_rows(a, b),
     )

@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
+_OPENROUTER_AUTO = "openrouter/auto"
+
 
 @dataclass(frozen=True)
 class ByokProviderTiers:
@@ -53,9 +55,9 @@ BYOK_PROVIDER_TIERS: Final[dict[str, ByokProviderTiers]] = {
         selectable=("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"),
     ),
     "openrouter": ByokProviderTiers(
-        default_main="openrouter/auto",
-        cheap="openrouter/auto",
-        selectable=("openrouter/auto",),
+        default_main=_OPENROUTER_AUTO,
+        cheap=_OPENROUTER_AUTO,
+        selectable=(_OPENROUTER_AUTO,),
     ),
 }
 
