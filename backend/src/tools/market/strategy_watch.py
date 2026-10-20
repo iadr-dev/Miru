@@ -179,6 +179,41 @@ def _slots(hits: list[dict[str, object]]) -> tuple[StrategyWatchSlot, ...]:
     )
 
 
+type _StockStrategy = tuple[str, str]
+
+
+def _index_hits(
+    hits: list[dict[str, object]],
+) -> tuple[dict[_StockStrategy, dict[str, object]], dict[_StockStrategy, str], set[_StockStrategy]]:
+    """Per (symbol, strategy): its latest intraday hit, the earliest alertable intraday slot, and
+    whether the close confirmed it."""
+    latest: dict[_StockStrategy, dict[str, object]] = {}
+    alerted: dict[_StockStrategy, str] = {}
+    confirmed: set[_StockStrategy] = set()
+    for hit in hits:
+        key = (str(hit.get("symbol")), str(hit.get("strategy")))
+        slot = str(hit.get("slot", ""))
+        if slot == _CLOSE_SLOT:
+            if hit.get("alertable") is True:
+                confirmed.add(key)
+            continue
+        if key not in latest or slot > str(latest[key].get("slot", "")):
+            latest[key] = hit
+        if hit.get("alertable") is True and (key not in alerted or slot < alerted[key]):
+            alerted[key] = slot
+    return latest, alerted, confirmed
+
+
+def _apply_latest_hit(
+    values: dict[str, object], latest_hit: dict[str, object], *, masked: bool
+) -> None:
+    conditions = _conditions(latest_hit.get("conditions"))
+    values["latest_slot"] = str(latest_hit.get("slot"))
+    values["price"] = None if masked else as_float(latest_hit.get("price"))
+    values["conditions"] = _masked(conditions) if masked else conditions
+    values["all_met"] = latest_hit.get("all_met") is True
+
+
 class GetStrategyWatchTool(SyncStoreTool):
     """See the module docstring."""
 
@@ -266,20 +301,7 @@ class GetStrategyWatchTool(SyncStoreTool):
         *,
         masked: bool,
     ) -> list[StrategyWatchItem]:
-        latest: dict[tuple[str, str], dict[str, object]] = {}
-        alerted: dict[tuple[str, str], str] = {}
-        confirmed: set[tuple[str, str]] = set()
-        for hit in hits:
-            key = (str(hit.get("symbol")), str(hit.get("strategy")))
-            slot = str(hit.get("slot", ""))
-            if slot == _CLOSE_SLOT:
-                if hit.get("alertable") is True:
-                    confirmed.add(key)
-                continue
-            if key not in latest or slot > str(latest[key].get("slot", "")):
-                latest[key] = hit
-            if hit.get("alertable") is True and (key not in alerted or slot < alerted[key]):
-                alerted[key] = slot
+        latest, alerted, confirmed = _index_hits(hits)
         fields = set(StrategyWatchItem.model_fields)
         items: list[StrategyWatchItem] = []
         for row in watch:
@@ -293,11 +315,7 @@ class GetStrategyWatchTool(SyncStoreTool):
                     values.pop(name, None)
             latest_hit = latest.get(key)
             if latest_hit is not None:
-                conditions = _conditions(latest_hit.get("conditions"))
-                values["latest_slot"] = str(latest_hit.get("slot"))
-                values["price"] = None if masked else as_float(latest_hit.get("price"))
-                values["conditions"] = _masked(conditions) if masked else conditions
-                values["all_met"] = latest_hit.get("all_met") is True
+                _apply_latest_hit(values, latest_hit, masked=masked)
             values["alerted_at"] = alerted.get(key)
             values["close_confirmed"] = key in confirmed
             items.append(StrategyWatchItem.model_validate(values))
