@@ -17,6 +17,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date as date_
 from typing import cast
 
+import anyio.to_thread
 import structlog
 
 from analytics.indicators import PriceBar
@@ -188,7 +189,14 @@ def _holder_snapshots(
 
 
 async def job_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
-    """Write the `strategy_watchlist` partition for `run_date` (a trading-day morning)."""
+    """Write the `strategy_watchlist` partition for `run_date` (a trading-day morning).
+
+    The Parquet reads and the pandas/indicator compute are blocking, so the whole pass runs in a
+    worker thread rather than on the event loop."""
+    return await anyio.to_thread.run_sync(_write_strategy_watchlist, run_date, ctx)
+
+
+def _write_strategy_watchlist(run_date: date_, ctx: IngestContext) -> JobRun:
     if not ctx.calendar.is_trading_day_extrapolating(run_date):
         return journal_run(
             STRATEGY_WATCHLIST_DATASET,

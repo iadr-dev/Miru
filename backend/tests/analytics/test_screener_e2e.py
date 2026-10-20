@@ -19,6 +19,7 @@ the recorded-fixture-shaped technique the ingest daemon's own end-to-end test us
 
 from __future__ import annotations
 
+import threading
 from calendar.trading_days import TradingDayCalendar
 from datetime import date as date_
 from datetime import datetime
@@ -26,6 +27,9 @@ from datetime import time as time_
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
+from analytics.screener import batch as batch_module
 from analytics.screener.batch import (
     INSTITUTIONAL_FLOW_DATASET,
     PRICE_EOD_DATASET,
@@ -523,3 +527,23 @@ async def test_warrants_are_left_out_and_every_other_flag_is_unchanged(tmp_path:
     assert ("2330", "breakout_above_ma20") in flags
     assert ("2454", "foreign_net_buy_streak_3") in flags
     assert not any(symbol == "030001" for symbol, _ in flags)
+
+
+async def test_the_job_runs_its_blocking_pass_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ctx = _ctx(tmp_path)
+    _seed_upstream(ctx.store, ctx.calendar)
+    seen: list[int] = []
+    original = batch_module._scoreable_price_rows
+
+    def spy(*args: object, **kwargs: object) -> object:
+        seen.append(threading.get_ident())
+        return original(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(batch_module, "_scoreable_price_rows", spy)
+
+    await job_screener_flags(_RUN_DATE, ctx)
+
+    assert seen
+    assert threading.get_ident() not in seen
