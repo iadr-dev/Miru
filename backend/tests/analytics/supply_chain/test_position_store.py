@@ -57,7 +57,8 @@ async def test_replace_writes_and_reads_back_primary_first(
         rows = await store.get_positions_for_symbol("9001")
     assert [(r.chain_key, r.is_primary) for r in rows] == [("a", True), ("b", False)]
     first = rows[0]
-    assert first.computed_at is not None and first.computed_at.replace(tzinfo=UTC) == NOW
+    assert first.computed_at is not None
+    assert first.computed_at.replace(tzinfo=UTC) == NOW
     assert first.reasons == (Reason(code=ReasonCode.GRAPH_LAYERING, detail="d"),)
     assert (first.method, first.confidence, first.inputs_hash) == (Method.EVIDENCE, 0.7, "abc")
 
@@ -81,18 +82,17 @@ async def test_database_allows_only_one_primary_per_company(
 ) -> None:
     async with session_factory() as session:
         store = SqlAlchemySupplyChainStore(session)
+        positions = [_pos("9001", "a", primary=True), _pos("9001", "b", primary=True)]
         with pytest.raises(IntegrityError):
-            await store.replace_positions(
-                [_pos("9001", "a", primary=True), _pos("9001", "b", primary=True)],
-                computed_at=NOW,
-            )
+            await store.replace_positions(positions, computed_at=NOW)
 
 
 async def test_database_rejects_a_duplicate_chain_row(session_factory: async_sessionmaker) -> None:
     async with session_factory() as session:
         store = SqlAlchemySupplyChainStore(session)
+        positions = [_pos("9001", "a"), _pos("9001", "a")]
         with pytest.raises(IntegrityError):
-            await store.replace_positions([_pos("9001", "a"), _pos("9001", "a")], computed_at=NOW)
+            await store.replace_positions(positions, computed_at=NOW)
 
 
 async def test_supply_pairs_are_verified_fresh_supplies_between_taiwan_companies(

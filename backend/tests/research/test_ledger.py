@@ -176,7 +176,8 @@ def test_excluding_a_data_source_does_not_disturb_the_url_index() -> None:
     ledger = SourceLedger(max_sources=5)
     web = ledger.offer(SearchHit(title="w", url="https://a.example/1"))
     data = ledger.add_data(title="d", text="x")
-    assert web is not None and data is not None
+    assert web is not None
+    assert data is not None
     ledger.exclude(data.id)
     assert ledger.get(data.id) is None
     assert ledger.offer(SearchHit(title="w", url="https://a.example/1")) is None  # still known

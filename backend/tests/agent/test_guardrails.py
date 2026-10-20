@@ -462,7 +462,8 @@ def test_the_streaming_sentence_scan_and_structured_payloads_follow_the_same_rul
     assert scan_sentence("分析師目標價上看 1200 元。") == REDACTION_NOTICE_ZH
     assert scan_sentence("The price target is 1200.") == REDACTION_NOTICE_EN
     cleaned, redacted = scan_structured_payload({"note": "目標價 1200"})
-    assert redacted and cleaned == {"note": REDACTION_NOTICE_ZH}
+    assert redacted
+    assert cleaned == {"note": REDACTION_NOTICE_ZH}
 
 
 def test_the_chinese_notice_is_not_itself_trading_language() -> None:

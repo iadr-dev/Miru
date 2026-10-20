@@ -92,10 +92,14 @@ def test_kd_warms_up_then_matches_hand_computation() -> None:
     assert result.k[1] is None
     assert result.d[0] is None
     assert result.d[1] is None
-    assert result.k[2] is not None and math.isclose(result.k[2], 550 / 9, rel_tol=1e-12)
-    assert result.d[2] is not None and math.isclose(result.d[2], 1450 / 27, rel_tol=1e-12)
-    assert result.k[3] is not None and math.isclose(result.k[3], 1640 / 27, rel_tol=1e-12)
-    assert result.d[3] is not None and math.isclose(result.d[3], 4540 / 81, rel_tol=1e-12)
+    assert result.k[2] is not None
+    assert math.isclose(result.k[2], 550 / 9, rel_tol=1e-12)
+    assert result.d[2] is not None
+    assert math.isclose(result.d[2], 1450 / 27, rel_tol=1e-12)
+    assert result.k[3] is not None
+    assert math.isclose(result.k[3], 1640 / 27, rel_tol=1e-12)
+    assert result.d[3] is not None
+    assert math.isclose(result.d[3], 4540 / 81, rel_tol=1e-12)
 
 
 def test_kd_flat_window_takes_neutral_fifty() -> None:

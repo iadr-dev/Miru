@@ -30,7 +30,8 @@ def test_free_user_subscribes_and_reads_it_back(client: TestClient, settings: Se
     body = created.json()
     # Stored in display order whatever order the client sent.
     assert body["strategies"] == ["volatility_squeeze", "oversold_bounce"]
-    assert body["daily_limit"] == 5 and body["morning_list"] is True
+    assert body["daily_limit"] == 5
+    assert body["morning_list"] is True
     assert client.get(_URL, headers=headers).json()["id"] == body["id"]
 
 

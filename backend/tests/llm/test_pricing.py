@@ -100,11 +100,13 @@ def test_gemini_3_6_flash_price_steps_up_on_the_promo_end_date() -> None:
 def test_the_longest_matching_prefix_wins() -> None:
     lite = price_for("gemini", "gemini-3.5-flash-lite", TODAY)
     flash = price_for("gemini", "gemini-3.5-flash", TODAY)
-    assert lite is not None and flash is not None
+    assert lite is not None
+    assert flash is not None
     assert lite.output < flash.output
     mini = price_for("openai", "gpt-5.4-mini", TODAY)
     full = price_for("openai", "gpt-5.4", TODAY)
-    assert mini is not None and full is not None
+    assert mini is not None
+    assert full is not None
     assert mini.output < full.output
 
 

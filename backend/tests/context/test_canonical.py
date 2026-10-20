@@ -79,10 +79,11 @@ def test_new_version_never_mutates_self_and_increments() -> None:
 
 def test_canonical_package_extra_forbid() -> None:
     symbol = Symbol(id="2330", market=Market.TW)
+    built_at = datetime.now(UTC)
     with pytest.raises(ValidationError):
         CanonicalPackage(
             symbol=symbol,
-            built_at=datetime.now(UTC),
+            built_at=built_at,
             records=(),
             unexpected_field="nope",  # type: ignore[call-arg]
         )

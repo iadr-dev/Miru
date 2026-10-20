@@ -88,20 +88,26 @@ async def test_run_passes_explicit_range_to_gateway() -> None:
 
 
 def test_from_date_and_to_date_must_be_given_together() -> None:
+    from_date = date(2026, 8, 1)
+    to_date = date(2026, 8, 31)
     with pytest.raises(ValueError, match="from_date and to_date must be given together"):
-        GetMacroCalendarInput(from_date=date(2026, 8, 1))
+        GetMacroCalendarInput(from_date=from_date)
     with pytest.raises(ValueError, match="from_date and to_date must be given together"):
-        GetMacroCalendarInput(to_date=date(2026, 8, 31))
+        GetMacroCalendarInput(to_date=to_date)
 
 
 def test_to_date_must_not_be_before_from_date() -> None:
+    from_date = date(2026, 8, 31)
+    to_date = date(2026, 8, 1)
     with pytest.raises(ValueError, match="to_date must not be before from_date"):
-        GetMacroCalendarInput(from_date=date(2026, 8, 31), to_date=date(2026, 8, 1))
+        GetMacroCalendarInput(from_date=from_date, to_date=to_date)
 
 
 def test_explicit_range_is_bounded_to_max_days() -> None:
+    from_date = date(2026, 1, 1)
+    to_date = date(2026, 12, 31)
     with pytest.raises(ValueError, match="must not exceed 92 days"):
-        GetMacroCalendarInput(from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
+        GetMacroCalendarInput(from_date=from_date, to_date=to_date)
 
 
 def test_days_ahead_is_bounded() -> None:

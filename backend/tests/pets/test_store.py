@@ -43,7 +43,8 @@ async def test_first_pull_auto_equips_and_consumes_pull(db_session) -> None:
     assert stats.available_pulls == 0
     assert stats.total_pulls == 1
     active = await store.active_pet(user_id=user_id)
-    assert active is not None and active.pet_id == outcome.pet_id
+    assert active is not None
+    assert active.pet_id == outcome.pet_id
 
 
 async def test_pull_refused_when_none_available(db_session) -> None:
@@ -103,7 +104,8 @@ async def test_chat_xp_levels_up_equipped_pet(db_session) -> None:
     for _ in range(needed):
         await store.grant_chat_xp(user_id=user_id)
     active = await store.active_pet(user_id=user_id)
-    assert active is not None and active.level >= 2
+    assert active is not None
+    assert active.level >= 2
 
 
 async def test_level_milestone_grants_bonus_pulls_exactly_once(db_session) -> None:
@@ -153,7 +155,8 @@ async def test_level_milestone_not_double_granted_on_retry(db_session) -> None:
     assert active_pet is not None
     active_row = await store._pet_row(user_id=user_id, record_id=active_pet.id)
     stats_row = await store._stats_row(user_id=user_id)
-    assert active_row is not None and stats_row is not None
+    assert active_row is not None
+    assert stats_row is not None
 
     milestone_level = next(iter(sorted(config.LEVEL_MILESTONE_PULLS)))
     expected_bonus = config.LEVEL_MILESTONE_PULLS[milestone_level]

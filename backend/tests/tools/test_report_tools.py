@@ -197,7 +197,8 @@ async def test_seasonality_tool_reports_peak_and_a_bar_chart() -> None:
     assert out.summary is not None
     assert out.summary.peak_quarter == 4
     assert len(out.periods) == 12
-    assert out.chart_hint is not None and out.chart_hint.data_key == "periods"
+    assert out.chart_hint is not None
+    assert out.chart_hint.data_key == "periods"
 
 
 async def test_seasonality_tool_says_why_when_history_is_too_short() -> None:
@@ -245,9 +246,11 @@ async def test_risk_tool_computes_beta_against_the_proxy_and_names_it() -> None:
 
     assert isinstance(out, GetRiskMetricsOutput)
     assert out.metrics.beta == pytest.approx(1.0, abs=0.01)  # the stub serves one series to both
-    assert out.metrics.max_drawdown_pct is not None and out.metrics.max_drawdown_pct <= 0
+    assert out.metrics.max_drawdown_pct is not None
+    assert out.metrics.max_drawdown_pct <= 0
     assert "0050" in out.benchmark
-    assert out.chart_hint is not None and out.price_series
+    assert out.chart_hint is not None
+    assert out.price_series
 
 
 async def test_risk_tool_with_no_prices_is_honest() -> None:
@@ -259,7 +262,8 @@ async def test_risk_tool_with_no_prices_is_honest() -> None:
 
     assert isinstance(out, GetRiskMetricsOutput)
     assert out.unavailable_reason is not None
-    assert out.metrics.beta is None and out.chart_hint is None
+    assert out.metrics.beta is None
+    assert out.chart_hint is None
 
 
 async def test_comparison_tool_decides_the_stronger_side_by_code_with_a_stated_rule() -> None:
@@ -283,7 +287,8 @@ async def test_comparison_tool_decides_the_stronger_side_by_code_with_a_stated_r
     assert by_metric["波動度 (Beta)"].direction == "越低越佳"
     assert by_metric["營收 CAGR"].direction == "越高越佳"
     assert any("非買賣建議" in note or "買賣建議" in note for note in out.notes)
-    assert out.chart_hint is not None and out.chart_hint.color is not None
+    assert out.chart_hint is not None
+    assert out.chart_hint.color is not None
 
 
 # ---- ETF comparison -------------------------------------------------------------------------
@@ -388,7 +393,8 @@ async def test_two_etfs_get_etf_metrics_not_the_stock_rows() -> None:
     assert "近 1 年累計報酬" in metrics
     expense = metrics["費用率（經理費與保管費，下限近似）"]
     assert (expense.a, expense.b) == ("0.40%", "0.70%")
-    assert expense.stronger == "A" and expense.direction == "越低越佳"  # cheaper fund, by code
+    assert expense.stronger == "A"
+    assert expense.direction == "越低越佳"
     assert metrics["近 1 年累計報酬"].stronger == "A"  # 30% vs 12%
     assert metrics["追蹤指數、類別"].stronger is None  # described, never judged
     assert any("ETF 沒有營收" in note for note in out.notes)
@@ -404,7 +410,8 @@ async def test_a_stock_against_an_etf_shares_only_the_common_metrics() -> None:
     assert (out.kind_a, out.kind_b) == ("etf", "stock")
     names = [row.metric for row in out.rows]
     assert names[:2] == ["平均殖利率", "配息穩定性"]
-    assert "營收 CAGR" not in names and "費用率（經理費與保管費，下限近似）" not in names
+    assert "營收 CAGR" not in names
+    assert "費用率（經理費與保管費，下限近似）" not in names
     assert any("只比較兩者共有的指標" in note for note in out.notes)
 
 

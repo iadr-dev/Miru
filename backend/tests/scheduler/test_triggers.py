@@ -102,21 +102,29 @@ def test_cron_day_of_month_or_weekday_semantics() -> None:
 def test_result_is_utc_and_timezone_required() -> None:
     after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
     assert next_run_after(_event("pre_open"), after).utcoffset().total_seconds() == 0  # type: ignore[union-attr]
+    event = _event("pre_open")
+    naive = datetime(2026, 9, 30, 10, 0)
     with pytest.raises(ValueError, match="timezone-aware"):
-        next_run_after(_event("pre_open"), datetime(2026, 9, 30, 10, 0))
+        next_run_after(event, naive)
 
 
 @pytest.mark.parametrize("spec", ["0 8 * *", "61 8 * * *", "0 25 * * *", "0 8 * * 9", "a b c d e"])
 def test_malformed_cron_is_unresolvable(spec: str) -> None:
+    trigger = _cron(spec)
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
     with pytest.raises(UnresolvableTriggerError):
-        next_run_after(_cron(spec), datetime(2026, 9, 30, 10, 0, tzinfo=TPE))
+        next_run_after(trigger, after)
 
 
 def test_impossible_date_is_unresolvable() -> None:
+    trigger = _cron("0 8 30 2 *")
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
     with pytest.raises(UnresolvableTriggerError):
-        next_run_after(_cron("0 8 30 2 *"), datetime(2026, 9, 30, 10, 0, tzinfo=TPE))
+        next_run_after(trigger, after)
 
 
 def test_unknown_market_event_is_unresolvable() -> None:
+    trigger = _event("midnight")
+    after = datetime(2026, 9, 30, 10, 0, tzinfo=TPE)
     with pytest.raises(UnresolvableTriggerError):
-        next_run_after(_event("midnight"), datetime(2026, 9, 30, 10, 0, tzinfo=TPE))
+        next_run_after(trigger, after)

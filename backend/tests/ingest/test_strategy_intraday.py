@@ -82,12 +82,15 @@ async def test_two_slots_confirm_a_hit(tmp_path: Path) -> None:
     first = await run_strategy_slot(_RUN_DATE, ctx, at=time_(9, 41))
     second = await run_strategy_slot(_RUN_DATE, ctx, at=time_(9, 52))
 
-    assert first.status is RunStatus.SUCCESS and second.status is RunStatus.SUCCESS
+    assert first.status is RunStatus.SUCCESS
+    assert second.status is RunStatus.SUCCESS
     assert finmind.calls == [Capability.TICK_SNAPSHOT, Capability.TICK_SNAPSHOT]
     rows = ctx.store.read_partition(STRATEGY_HITS_DATASET, "TW", _RUN_DATE)
     by_slot = {r["slot"]: r for r in rows}
-    assert by_slot["09:40"]["all_met"] is True and by_slot["09:40"]["alertable"] is False
-    assert by_slot["09:50"]["confirmed"] is True and by_slot["09:50"]["alertable"] is True
+    assert by_slot["09:40"]["all_met"] is True
+    assert by_slot["09:40"]["alertable"] is False
+    assert by_slot["09:50"]["confirmed"] is True
+    assert by_slot["09:50"]["alertable"] is True
 
 
 async def test_rerunning_a_slot_replaces_it(tmp_path: Path) -> None:

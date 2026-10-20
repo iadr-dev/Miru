@@ -70,15 +70,17 @@ def test_missing_header_rejects() -> None:
 
 
 def test_malformed_header_rejects() -> None:
+    now = int(time.time())
     with pytest.raises(SignatureVerificationError):
-        verify_signature(b"{}", "not-a-valid-header", _SECRET, now=int(time.time()))
+        verify_signature(b"{}", "not-a-valid-header", _SECRET, now=now)
 
 
 def test_missing_secret_rejects() -> None:
     body = b"{}"
     ts = int(time.time())
+    signature = _sign(body, ts=ts)
     with pytest.raises(SignatureVerificationError):
-        verify_signature(body, _sign(body, ts=ts), "", now=ts)
+        verify_signature(body, signature, "", now=ts)
 
 
 def test_signature_is_bound_to_exact_bytes_not_reserialized_json() -> None:

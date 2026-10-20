@@ -29,8 +29,9 @@ def test_acquire_times_out_instead_of_waiting_forever(tmp_path: Path) -> None:
     holder = FileLock(path)
     assert holder.try_acquire()
     try:
+        contender = FileLock(path)
         with pytest.raises(LockTimeoutError):
-            FileLock(path).acquire(timeout=0.2)
+            contender.acquire(timeout=0.2)
     finally:
         holder.release()
 

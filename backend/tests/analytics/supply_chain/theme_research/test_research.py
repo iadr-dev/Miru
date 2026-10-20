@@ -104,11 +104,16 @@ async def test_extraction_becomes_claims_and_an_unresolved_name_is_dropped(
     claims = read_claims(claims_path(root))
     assert {c.symbol for c in claims} == {"9101", "9102"}
     first = next(c for c in claims if c.symbol == "9101")
-    assert first.theme == THEME_KEY and first.kind == "existing" and first.url == URL
-    assert first.publisher == "news.example.com" and first.retrieved_at == TODAY.isoformat()
-    assert first.excerpt == LINE_ZETA and first.position == "midstream"
+    assert first.theme == THEME_KEY
+    assert first.kind == "existing"
+    assert first.url == URL
+    assert first.publisher == "news.example.com"
+    assert first.retrieved_at == TODAY.isoformat()
+    assert first.excerpt == LINE_ZETA
+    assert first.position == "midstream"
     assert next(c for c in claims if c.symbol == "9102").position == "related"
-    assert summary.claims == 2 and summary.dropped == {"unresolved_company": 1}
+    assert summary.claims == 2
+    assert summary.dropped == {"unresolved_company": 1}
     assert search.queries == [f"{THEME_ZH} 概念股", f"{THEME_ZH} 供應鏈 台灣"]
 
 
@@ -142,8 +147,11 @@ async def test_dry_run_searches_and_judges_but_writes_nothing(tmp_path: Path) ->
     root = make_root(tmp_path)
     search = stub()
     summary = await go(researcher(search, reply(item(ZETA, LINE_ZETA))), root, dry_run=True)
-    assert summary.claims == 1 and summary.dry_run and search.queries
-    assert not claims_path(root).exists() and not state_path(root).exists()
+    assert summary.claims == 1
+    assert summary.dry_run
+    assert search.queries
+    assert not claims_path(root).exists()
+    assert not state_path(root).exists()
     assert "would_write=1" in summary.line()
 
 
@@ -165,7 +173,8 @@ async def test_a_stale_page_or_one_without_the_theme_never_reaches_the_model(
     )
     summary = await go(researcher(search), root)
     assert summary.dropped == {"source_too_old": 1, "theme_not_on_page": 1}
-    assert summary.llm_calls == 0 and summary.claims == 0
+    assert summary.llm_calls == 0
+    assert summary.claims == 0
 
 
 async def test_an_undated_page_is_judged_by_the_date_in_its_url(tmp_path: Path) -> None:
@@ -191,14 +200,16 @@ async def test_claim_cap_stops_the_run_after_the_first_target(tmp_path: Path) ->
         today=TODAY,
         dry_run=False,
     )
-    assert summary.targets == 1 and summary.stopped_by == "claims"
+    assert summary.targets == 1
+    assert summary.stopped_by == "claims"
 
 
 async def test_search_cap_stops_the_run_gracefully(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     run = researcher(stub(), reply(item(ZETA, LINE_ZETA)), limits=Limits(max_searches=1))
     summary = await go(run, root)
-    assert summary.searches == 1 and summary.stopped_by == "searches"
+    assert summary.searches == 1
+    assert summary.stopped_by == "searches"
     assert summary.claims == 1
 
 

@@ -175,12 +175,14 @@ def test_covered_by_name_is_audited_too() -> None:
 
 def test_entities_below_the_company_threshold_are_not_audited() -> None:
     out = mine([*firms(1000), ent("Tiny Thing")], mentions("Tiny Thing", symbols(9000, 2)), [])
-    assert out.candidates == [] and out.skipped == []
+    assert out.candidates == []
+    assert out.skipped == []
 
 
 def test_no_company_catalog_means_no_share_cap() -> None:
     out = mine([ent("Widget Tech")], mentions("Widget Tech", symbols(9000, 30)), [])
-    assert out.candidates[0].specificity == 30.0 and out.skipped == []
+    assert out.candidates[0].specificity == 30.0
+    assert out.skipped == []
 
 
 def test_mining_is_deterministic_for_any_input_order() -> None:
@@ -254,11 +256,14 @@ def test_cli_max_share_flag_and_no_company_names(
     monkeypatch.setattr("analytics.supply_chain.theme_discovery.job.reference_dir", lambda: root)
     assert cli.main(["discover", "--themes", "--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "Narrow Term" in out and "Broad Term" not in out and "skipped=1" in out
+    assert "Narrow Term" in out
+    assert "Broad Term" not in out
+    assert "skipped=1" in out
     assert "Firm" not in out
     assert cli.main(["discover", "--themes", "--dry-run", "--max-share", "0.5"]) == 0
     out = capsys.readouterr().out
-    assert "Broad Term technology 30" in out and "skipped=0" in out
+    assert "Broad Term technology 30" in out
+    assert "skipped=0" in out
 
 
 class _FakeThemeStore:

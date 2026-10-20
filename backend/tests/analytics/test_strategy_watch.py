@@ -82,7 +82,8 @@ def test_squeeze_records_the_upper_band_and_the_close_five_sessions_ago() -> Non
     setups = evaluate_setups("2330", _AS_OF, bars, regime=Regime.NEUTRAL)
     squeeze = [s for s in setups if s.strategy is Strategy.VOLATILITY_SQUEEZE]
     assert len(squeeze) == 1
-    assert squeeze[0].upper_band is not None and squeeze[0].upper_band > bars[-1].close
+    assert squeeze[0].upper_band is not None
+    assert squeeze[0].upper_band > bars[-1].close
     assert squeeze[0].close_5d_ago == bars[-6].close
 
 
@@ -100,8 +101,10 @@ def test_oversold_bounce_needs_a_steep_drop_and_rsi_under_30() -> None:
     setups = evaluate_setups("2317", _AS_OF, _oversold_series(), regime=Regime.NEUTRAL)
     oversold = [s for s in setups if s.strategy is Strategy.OVERSOLD_BOUNCE]
     assert len(oversold) == 1
-    assert oversold[0].drop_10d_pct is not None and oversold[0].drop_10d_pct <= -15
-    assert oversold[0].rsi14 is not None and oversold[0].rsi14 < 30
+    assert oversold[0].drop_10d_pct is not None
+    assert oversold[0].drop_10d_pct <= -15
+    assert oversold[0].rsi14 is not None
+    assert oversold[0].rsi14 < 30
 
 
 def test_ad_divergence_lists_a_stock_near_its_low_with_a_rising_ad_line() -> None:
@@ -111,7 +114,8 @@ def test_ad_divergence_lists_a_stock_near_its_low_with_a_rising_ad_line() -> Non
     assert len(divergence) == 1
     setup = divergence[0]
     assert setup.low_20d == min(b.low for b in bars[-20:])
-    assert setup.ad_value is not None and setup.ad_low_20d is not None
+    assert setup.ad_value is not None
+    assert setup.ad_low_20d is not None
     assert setup.ad_value > setup.ad_low_20d
     assert setup.rsi_at_low is not None
 
@@ -160,7 +164,8 @@ def test_chip_streaks_and_margin_change() -> None:
         for i, d in enumerate(range(20, 29))
     ]
     change = context.margin_change_pct(margin)
-    assert change is not None and round(change, 2) == round((1160 - 1060) / 1060 * 100, 2)
+    assert change is not None
+    assert round(change, 2) == round((1160 - 1060) / 1060 * 100, 2)
 
 
 def test_headline_is_the_newest_announcement_since_the_last_session() -> None:
@@ -290,10 +295,12 @@ def _accumulation(bars: list[PriceBar], chips: ChipInputs) -> list[object]:
 
 def test_chip_accumulation_lists_a_quiet_range_with_every_chip_sign_aligned() -> None:
     (setup,) = _accumulation(_range_series(), _chips())
-    assert setup.range_high_20d is not None and setup.range_low_20d is not None
+    assert setup.range_high_20d is not None
+    assert setup.range_low_20d is not None
     assert setup.range_high_20d > setup.close > setup.range_low_20d
     assert setup.large_holder_change_4w == pytest.approx(6.0)
-    assert setup.holders_change_4w_pct is not None and setup.holders_change_4w_pct < 0
+    assert setup.holders_change_4w_pct is not None
+    assert setup.holders_change_4w_pct < 0
 
 
 @pytest.mark.parametrize(
@@ -332,8 +339,10 @@ def test_chip_inputs_read_finmind_holder_rows() -> None:
     chips = context.chip_inputs(
         flow, [], [week(45.7, 600_000), week(47.0, 595_000), week(51.7, 581_955)]
     )
-    assert chips.large_holder_pct == 51.7 and chips.large_holder_pct_before == 45.7
-    assert chips.holders == 581_955 and chips.holders_before == 600_000
+    assert chips.large_holder_pct == 51.7
+    assert chips.large_holder_pct_before == 45.7
+    assert chips.holders == 581_955
+    assert chips.holders_before == 600_000
     assert chips.foreign_net_20d == 20 * 15  # the last 20 sessions only
     assert chips.foreign_streak == 24
 
@@ -395,9 +404,12 @@ def _flag(bars: list[PriceBar], chips: ChipInputs | None = None) -> list[object]
 
 def test_momentum_flag_lists_a_tight_pause_after_a_run_on_drying_volume() -> None:
     (setup,) = _flag(_flag_series())
-    assert setup.run_gain_pct is not None and setup.run_gain_pct >= 15
-    assert setup.flag_high is not None and setup.flag_low is not None
-    assert setup.pause_volume_ratio is not None and setup.pause_volume_ratio < 1
+    assert setup.run_gain_pct is not None
+    assert setup.run_gain_pct >= 15
+    assert setup.flag_high is not None
+    assert setup.flag_low is not None
+    assert setup.pause_volume_ratio is not None
+    assert setup.pause_volume_ratio < 1
     # A rising margin balance is reported, not a reason to drop the stock.
     assert setup.margin_change_20d_pct == 25
 

@@ -92,18 +92,14 @@ async def test_another_users_turn_is_not_found_and_nothing_is_sent(
     control = RedisTurnControl(fake_redis)
     await control.announce(turn_id="t1", user_id="owner", thread_id="th1")
 
+    intruder = _user("intruder")
+    state = _state(control)
+    store = cast(ConversationStore, _Store())
+    steer_request = SteerRequest(message="x")
     with pytest.raises(ApiError) as cancelled:
-        await cancel_turn(
-            "th1", "t1", _user("intruder"), _state(control), cast(ConversationStore, _Store())
-        )
+        await cancel_turn("th1", "t1", intruder, state, store)
     with pytest.raises(ApiError) as steered:
-        await steer_turn(
-            "th1",
-            SteerRequest(message="x"),
-            _user("intruder"),
-            _state(control),
-            cast(ConversationStore, _Store()),
-        )
+        await steer_turn("th1", steer_request, intruder, state, store)
 
     assert cancelled.value.status_code == 404
     assert steered.value.status_code == 409

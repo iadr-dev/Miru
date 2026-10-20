@@ -196,8 +196,9 @@ async def test_a_key_used_by_an_industry_theme_is_refused_without_touching_it(
         await session.commit()
     _write(concepts_dir, "a.yaml", ALPHA)
     async with session_factory() as session:
+        store = SqlAlchemyConceptStore(session)
         with pytest.raises(ConceptCollisionError):
-            await load_concept_themes(SqlAlchemyConceptStore(session))
+            await load_concept_themes(store)
         theme = await SqlAlchemyThemeStore(session).get_theme_by_key(key="alpha")
         assert theme is not None
         assert theme.kind is ThemeKind.INDUSTRY

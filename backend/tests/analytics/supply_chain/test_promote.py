@@ -243,8 +243,9 @@ def test_all_or_nothing_when_a_resulting_file_is_invalid(
 
     monkeypatch.setattr(pr, "_validate_result", picky)
     before = (root / "themes" / "concepts" / "demo-theme.yaml").read_text("utf-8")
+    changes = [addition(), new_theme()]
     with pytest.raises(PromoteWriteError):
-        promote(root, [addition(), new_theme()])
+        promote(root, changes)
     assert (root / "themes" / "concepts" / "demo-theme.yaml").read_text("utf-8") == before
     assert not (root / "themes" / "concepts" / "fresh-theme.yaml").exists()
     assert not (root / "themes" / "_backups").exists()

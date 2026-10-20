@@ -20,8 +20,9 @@ def _mock_factory(handler: Any):
 
 
 def test_missing_api_key_raises() -> None:
+    settings = Settings(paddle_api_key=None)
     with pytest.raises(PaddleConfigError):
-        PaddleClient(Settings(paddle_api_key=None))
+        PaddleClient(settings)
 
 
 async def test_sandbox_base_url_selected() -> None:

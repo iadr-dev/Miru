@@ -69,7 +69,8 @@ def test_creates_a_supplier_file_the_loader_accepts(tmp_path: Path) -> None:
     assert relation.grade is Grade.MEDIUM or relation.grade is Grade.LOW
     assert relation.evidence[0].checker.value == "llm"
     assert relation.last_verified_at is not None
-    assert not list(tmp_path.glob(".*tmp*")) and not (tmp_path / LOCK_NAME).exists()
+    assert not list(tmp_path.glob(".*tmp*"))
+    assert not (tmp_path / LOCK_NAME).exists()
 
 
 def test_upsert_merges_evidence_by_url_and_moves_dates_forward(tmp_path: Path) -> None:
@@ -95,7 +96,8 @@ def test_an_identical_result_changes_nothing(tmp_path: Path) -> None:
     writer(tmp_path).apply([result()])
     before = (tmp_path / "TW-9001.yaml").read_bytes()
     report = writer(tmp_path).apply([result()])
-    assert report.unchanged == 1 and report.rows_written == 0
+    assert report.unchanged == 1
+    assert report.rows_written == 0
     assert (tmp_path / "TW-9001.yaml").read_bytes() == before
 
 
@@ -110,7 +112,8 @@ def test_manual_and_seeded_rows_are_never_touched(tmp_path: Path, origin: str) -
     path = tmp_path / "TW-9001.yaml"
     path.write_text(existing, encoding="utf-8")
     report = writer(tmp_path).apply([result()])
-    assert report.protected == 1 and report.rows_written == 0
+    assert report.protected == 1
+    assert report.rows_written == 0
     assert path.read_text(encoding="utf-8") == existing
 
 
@@ -140,13 +143,16 @@ def test_a_row_found_in_another_file_is_updated_there(tmp_path: Path) -> None:
 
 def test_dry_run_writes_nothing_but_reports(tmp_path: Path) -> None:
     report = writer(tmp_path, dry_run=True).apply([result()])
-    assert report.dry_run and report.created == 1
+    assert report.dry_run
+    assert report.created == 1
     assert list(tmp_path.iterdir()) == []
 
 
 def test_not_the_leader_refuses_to_write(tmp_path: Path) -> None:
+    follower = writer(tmp_path, leader=False)
+    results = [result()]
     with pytest.raises(NotLeaderError):
-        writer(tmp_path, leader=False).apply([result()])
+        follower.apply(results)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -155,10 +161,13 @@ def test_an_invalid_row_rolls_back_every_file(tmp_path: Path) -> None:
     before = {p.name: p.read_bytes() for p in tmp_path.glob("*.yaml")}
     good_new = result(supplier=GAMMA.model_copy(update={"symbol": "ZZZB"}), customer=BETA)
     bad = result(customer=ALPHA)  # a company supplying itself fails the loader's own validation
+    target = writer(tmp_path)
+    batch = [good_new, bad]
     with pytest.raises(WriterError):
-        writer(tmp_path).apply([good_new, bad])
+        target.apply(batch)
     assert {p.name: p.read_bytes() for p in tmp_path.glob("*.yaml")} == before
-    assert not list(tmp_path.glob(".*tmp*")) and not (tmp_path / LOCK_NAME).exists()
+    assert not list(tmp_path.glob(".*tmp*"))
+    assert not (tmp_path / LOCK_NAME).exists()
 
 
 def test_a_failure_while_swapping_restores_files_already_swapped(
@@ -177,13 +186,13 @@ def test_a_failure_while_swapping_restores_files_already_swapped(
         return original_replace(self, target)
 
     monkeypatch.setattr(Path, "replace", flaky)
+    target = writer(tmp_path)
+    batch = [
+        result(evidence("https://wire.example.org/b", "wire.example.org")),
+        result(supplier=other, customer=BETA),
+    ]
     with pytest.raises(WriterError):
-        writer(tmp_path).apply(
-            [
-                result(evidence("https://wire.example.org/b", "wire.example.org")),
-                result(supplier=other, customer=BETA),
-            ]
-        )
+        target.apply(batch)
     monkeypatch.setattr(Path, "replace", original_replace)
     assert (tmp_path / "TW-9001.yaml").read_bytes() == before
     assert not (tmp_path / "US-ZZZB.yaml").exists()
@@ -191,8 +200,10 @@ def test_a_failure_while_swapping_restores_files_already_swapped(
 
 def test_an_unreadable_existing_file_stops_the_write(tmp_path: Path) -> None:
     (tmp_path / "bad.yaml").write_text("not: [a list", encoding="utf-8")
+    target = writer(tmp_path)
+    results = [result()]
     with pytest.raises(WriterError):
-        writer(tmp_path).apply([result()])
+        target.apply(results)
 
 
 def test_a_stale_lock_is_broken_and_a_live_lock_blocks(tmp_path: Path) -> None:
@@ -201,8 +212,9 @@ def test_a_stale_lock_is_broken_and_a_live_lock_blocks(tmp_path: Path) -> None:
     quick = RelationWriter(
         tmp_path, is_leader=lambda: True, today=TODAY, trust_table=TRUST, lock_timeout=0.2
     )
+    results = [result()]
     with pytest.raises(WriterError):
-        quick.apply([result()])
+        quick.apply(results)
     old = time.time() - 3600
     os.utime(lock, (old, old))
     assert quick.apply([result()]).created == 1

@@ -111,6 +111,7 @@ async def test_line_authorization_url_has_pkce_and_nonce() -> None:
 async def test_state_mismatch_rejected_before_exchange(db_session) -> None:
     store = SqlAlchemyUserStore(db_session)
     stub = _StubProvider(OAuthProvider.GOOGLE, requires_pkce=False, identity=_google_identity())
+    settings = _settings()
     with pytest.raises(StateMismatchError):
         await complete_authorization(
             OAuthProvider.GOOGLE,
@@ -118,7 +119,7 @@ async def test_state_mismatch_rejected_before_exchange(db_session) -> None:
             state="attacker-state",
             stored_state="real-state",
             store=store,
-            settings=_settings(),
+            settings=settings,
             client=stub,
         )
     assert stub.exchanged_verifier is None
@@ -202,6 +203,7 @@ async def test_missing_id_token_rejected(db_session) -> None:
 
     store = SqlAlchemyUserStore(db_session)
     stub = _NoIdToken(OAuthProvider.GOOGLE, requires_pkce=False, identity=_google_identity())
+    settings = _settings()
     with pytest.raises(IdentityVerificationError):
         await complete_authorization(
             OAuthProvider.GOOGLE,
@@ -209,7 +211,7 @@ async def test_missing_id_token_rejected(db_session) -> None:
             state="s",
             stored_state="s",
             store=store,
-            settings=_settings(),
+            settings=settings,
             client=stub,
         )
 

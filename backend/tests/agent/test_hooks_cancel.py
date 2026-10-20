@@ -25,8 +25,9 @@ async def test_run_turn_raises_when_cancel_token_is_already_flipped() -> None:
     llm = StubLLMClient(script=[])
     loop = AgentLoop(llm, tools=[], max_steps=4, cancel_token=_AlwaysCancelledToken())
 
+    context = ToolContext()
     with pytest.raises(TurnCancelledError):
-        await loop.run_turn("hi", tool_context=ToolContext())
+        await loop.run_turn("hi", tool_context=context)
 
 
 async def test_run_turn_proceeds_normally_when_cancel_token_is_never_flipped() -> None:

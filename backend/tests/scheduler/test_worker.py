@@ -459,7 +459,8 @@ async def test_a_scheduled_report_keeps_its_chart_cards_and_sends_a_short_notifi
     assert MessageBlockType.RICH_CARD in kinds  # the chart card is in the thread
     assert kinds.index(MessageBlockType.RICH_CARD) < kinds.index(MessageBlockType.TEXT)
     body = str(notifications[0].payload.get("body", ""))
-    assert len(body) < 260 and "完整報告請見對話" in body  # a pointer, not the whole report
+    assert len(body) < 260
+    assert "完整報告請見對話" in body
 
 
 class _InputRecordingOrchestrator(_StubOrchestrator):

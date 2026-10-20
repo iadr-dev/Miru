@@ -409,7 +409,8 @@ def test_a_release_lists_every_catalog_series_it_covers_with_latest_and_previous
     assert covered == {"PAYEMS", "UNRATE"}
     payems = next(s for s in employment[0].series if s.series_id == "PAYEMS")
     assert payems.units is MacroUnits.CHANGE  # the default transform
-    assert payems.latest is not None and payems.previous is not None
+    assert payems.latest is not None
+    assert payems.previous is not None
     assert payems.change == pytest.approx(payems.latest.value - payems.previous.value)
     assert payems.last_observation_date == date(2026, 10, 1)
 
@@ -427,10 +428,14 @@ def test_release_names_are_stable_keys_and_no_consensus_is_present(
 
 
 def test_releases_range_validation() -> None:
+    inverted_from = date(2026, 2, 1)
+    inverted_to = date(2026, 1, 1)
     with pytest.raises(ValidationError, match="after to_date"):
-        GetUsEconomicReleasesInput(from_date=date(2026, 2, 1), to_date=date(2026, 1, 1))
+        GetUsEconomicReleasesInput(from_date=inverted_from, to_date=inverted_to)
+    wide_from = date(2024, 1, 1)
+    wide_to = date(2026, 1, 1)
     with pytest.raises(ValidationError, match="must not exceed"):
-        GetUsEconomicReleasesInput(from_date=date(2024, 1, 1), to_date=date(2026, 1, 1))
+        GetUsEconomicReleasesInput(from_date=wide_from, to_date=wide_to)
 
 
 def test_releases_on_an_empty_store_degrade(tmp_path: Path) -> None:

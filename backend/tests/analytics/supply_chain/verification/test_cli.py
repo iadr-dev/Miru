@@ -71,7 +71,8 @@ async def test_discover_prints_claim_ids_only(
     assert code == 0
     assert out.splitlines()[0] == "targets=1"
     assert "supplies:TW-9001>TW-9002 candidates" in out
-    assert "阿爾法" not in out and "貝塔" not in out
+    assert "阿爾法" not in out
+    assert "貝塔" not in out
 
 
 async def test_verify_dry_run_reports_counts_and_never_page_text(
@@ -82,9 +83,12 @@ async def test_verify_dry_run_reports_counts_and_never_page_text(
     )
     out = capsys.readouterr().out
     assert code == 0
-    assert "claims=1 verified=1" in out and "would_write=1" in out
+    assert "claims=1 verified=1" in out
+    assert "would_write=1" in out
     assert "supplies:TW-9001>TW-9002 verified" in out
-    assert SENTENCE not in out and PAGE_TEXT not in out and "阿爾法" not in out
+    assert SENTENCE not in out
+    assert PAGE_TEXT not in out
+    assert "阿爾法" not in out
     assert not (env / "supply_chain" / "relations").exists()
     assert not (env / "supply_chain" / "rejected.jsonl").exists()
 
@@ -96,7 +100,9 @@ async def test_verify_without_a_search_key_fails_cleanly(
     monkeypatch.setattr(cli_module, "get_settings", lambda: no_key)
     code = await cli_module.run_research_command("verify", limit=1, dry_run=True, source="all")
     captured = capsys.readouterr()
-    assert code == 1 and "no search key" in captured.err and captured.out == ""
+    assert code == 1
+    assert "no search key" in captured.err
+    assert captured.out == ""
 
 
 def test_argument_parser_accepts_the_new_commands() -> None:

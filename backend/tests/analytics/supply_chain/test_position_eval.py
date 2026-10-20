@@ -181,7 +181,8 @@ def test_accuracy_gate_fails_when_the_classifier_regresses() -> None:
         }
     )
     report = evaluate(golden, resolve_positions([broken], []))
-    assert report.accuracy is not None and report.accuracy < 0.85
+    assert report.accuracy is not None
+    assert report.accuracy < 0.85
     assert check_gate(report)
 
 

@@ -504,8 +504,9 @@ async def test_series_updates_time_window_needs_both_ends(monkeypatch: pytest.Mo
     seen = _serve(monkeypatch, lambda _r: httpx.Response(200, json={"seriess": []}))
     adapter, _ = _adapter()
 
+    start_time = datetime(2026, 10, 15, 8, 30)
     with pytest.raises(ValueError, match="together"):
-        await adapter.series_updates(start_time=datetime(2026, 10, 15, 8, 30))
+        await adapter.series_updates(start_time=start_time)
     await adapter.series_updates(
         start_time=datetime(2026, 10, 15, 8, 30), end_time=datetime(2026, 10, 16, 8, 30)
     )

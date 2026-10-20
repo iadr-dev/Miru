@@ -154,7 +154,8 @@ async def test_job_uses_verified_relations_and_overrides(
     )
     ctx = _ctx(tmp_path, AlwaysLeader(), session_factory)
     run = await job_sc_positions_refresh(RUN_DATE, ctx)
-    assert run.status is RunStatus.SUCCESS and run.rows_written == 3
+    assert run.status is RunStatus.SUCCESS
+    assert run.rows_written == 3
     async with session_factory() as session:
         row = (await SqlAlchemySupplyChainStore(session).get_positions_for_symbol("9003"))[0]
     assert (row.position, row.method) == (Position.DOWNSTREAM, Method.OVERRIDE)

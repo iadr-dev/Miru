@@ -92,8 +92,9 @@ async def test_the_added_unique_key_is_enforced(engine: AsyncEngine):
     await apply_additive_upgrade(engine, _current_model())
     async with engine.begin() as conn:
         await conn.exec_driver_sql("INSERT INTO accounts (id, name, email) VALUES ('a2','B','x@y')")
+    transaction = engine.begin()
     with pytest.raises(Exception, match="UNIQUE"):
-        async with engine.begin() as conn:
+        async with transaction as conn:
             await conn.exec_driver_sql(
                 "INSERT INTO accounts (id, name, email) VALUES ('a3','C','x@y')"
             )

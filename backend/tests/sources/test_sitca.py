@@ -54,8 +54,9 @@ def test_supports_declares_tw_etf_expense_ratio() -> None:
 
 
 def test_validate_rejects_non_object_info() -> None:
+    adapter = SitcaAdapter()
     with pytest.raises(ValueError, match="not an object"):
-        SitcaAdapter().validate({"info": ["not", "an", "object"]})
+        adapter.validate({"info": ["not", "an", "object"]})
 
 
 async def test_fetch_parses_fee_row(monkeypatch: pytest.MonkeyPatch) -> None:

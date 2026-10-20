@@ -250,11 +250,12 @@ async def test_stale_job_edit_is_refused(session_factory) -> None:
         await store.update_job(
             user_id=user, job_id=job.id, patch=SchedulePatch(enabled=False), expected_version=0
         )
+        stale_patch = SchedulePatch(enabled=True)
         with pytest.raises(StaleVersionError):
             await store.update_job(
                 user_id=user,
                 job_id=job.id,
-                patch=SchedulePatch(enabled=True),
+                patch=stale_patch,
                 expected_version=0,
             )
 

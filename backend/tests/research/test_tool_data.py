@@ -123,8 +123,10 @@ async def test_a_symbol_the_tool_rejects_is_left_out() -> None:
     tool = _FakeTool("get_month_revenue", _Out(rows=[{"a": 1}]))
     tool.input_model = _Strict
     # a pydantic ValidationError is what the adapter handles; any other error is a real bug
+    adapter = _adapter(tool)
+    request = _request()
     with pytest.raises(ValueError, match="bad symbol"):
-        await _adapter(tool).fetch(_request())
+        await adapter.fetch(request)
 
 
 async def test_trading_language_in_a_result_is_redacted_before_it_can_be_cited() -> None:

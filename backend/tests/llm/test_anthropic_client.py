@@ -220,8 +220,9 @@ async def test_chat_never_logs_api_key_on_failure(
         client._client.messages, "create", AsyncMock(side_effect=RuntimeError("boom"))
     )
 
+    messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(RuntimeError):
-        await client.chat([Message(role=MessageRole.USER, content="hi")])
+        await client.chat(messages)
 
     assert "test-key" not in caplog.text
 
@@ -637,8 +638,9 @@ async def test_chat_raises_when_the_provider_declines_instead_of_returning_nothi
     refused = _sdk_message(content=[], stop_reason="refusal", output_tokens=0)
     monkeypatch.setattr(client._client.messages, "create", AsyncMock(return_value=refused))
 
+    messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(LLMRefusalError, match="claude-opus-5-5 declined"):
-        await client.chat([Message(role=MessageRole.USER, content="hi")])
+        await client.chat(messages)
 
 
 async def test_stream_raises_when_the_provider_declines(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -657,8 +659,9 @@ async def test_stream_raises_when_the_provider_declines(monkeypatch: pytest.Monk
         client._client.messages, "stream", lambda **_kwargs: _FakeMessageStream(events)
     )
 
+    messages = [Message(role=MessageRole.USER, content="hi")]
     with pytest.raises(LLMRefusalError):
-        [e async for e in client.stream([Message(role=MessageRole.USER, content="hi")])]
+        [e async for e in client.stream(messages)]
 
 
 def _diagnosed(reason: dict[str, Any] | None, *, message_id: str) -> AnthropicMessage:

@@ -31,8 +31,9 @@ def test_market_event_trigger_accepted() -> None:
 
 
 def test_unknown_market_event_rejected() -> None:
+    trigger = ScheduleTrigger(type=TriggerType.MARKET_EVENT, spec="every_tick")
     with pytest.raises(InvalidTriggerError):
-        validate_trigger(ScheduleTrigger(type=TriggerType.MARKET_EVENT, spec="every_tick"))
+        validate_trigger(trigger)
 
 
 def test_concrete_weekday_cron_accepted() -> None:
@@ -40,18 +41,21 @@ def test_concrete_weekday_cron_accepted() -> None:
 
 
 def test_wildcard_minute_cron_rejected_as_too_frequent() -> None:
+    trigger = ScheduleTrigger(type=TriggerType.CRON, spec="* 17 * * 1-5")
     with pytest.raises(InvalidTriggerError):
-        validate_trigger(ScheduleTrigger(type=TriggerType.CRON, spec="* 17 * * 1-5"))
+        validate_trigger(trigger)
 
 
 def test_malformed_cron_rejected() -> None:
+    trigger = ScheduleTrigger(type=TriggerType.CRON, spec="17 40")
     with pytest.raises(InvalidTriggerError):
-        validate_trigger(ScheduleTrigger(type=TriggerType.CRON, spec="17 40"))
+        validate_trigger(trigger)
 
 
 def test_unknown_skill_rejected(registry: SkillRegistry) -> None:
+    action = ScheduleAction(skill_ref="not-a-real-skill")
     with pytest.raises(UnknownSkillReferenceError):
-        validate_action(ScheduleAction(skill_ref="not-a-real-skill"), registry)
+        validate_action(action, registry)
 
 
 def test_real_skill_accepted(registry: SkillRegistry) -> None:

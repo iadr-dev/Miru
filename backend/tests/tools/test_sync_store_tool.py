@@ -176,8 +176,10 @@ async def test_identical_simultaneous_requests_compute_once() -> None:
 
 async def test_a_failed_computation_is_not_cached() -> None:
     tool = _CachedTool(_FakeStore(), fail=True)
+    args = _MarketArgs()
+    context = ToolContext()
     with pytest.raises(RuntimeError):
-        await tool.run(_MarketArgs(), ToolContext())
+        await tool.run(args, context)
 
     tool.fail = False
     result = await tool.run(_MarketArgs(), ToolContext())

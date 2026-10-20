@@ -92,7 +92,8 @@ def test_both_ends_must_resolve_to_a_real_company() -> None:
         "supplies:TW-9001>US-ZZZA",
     }
     us = next(t for t in targets if t.customer and t.customer.market == "US")
-    assert us.customer is not None and us.customer.names == ("Zed Corp",)
+    assert us.customer is not None
+    assert us.customer.names == ("Zed Corp",)
 
 
 def test_ranked_by_the_larger_companys_market_value() -> None:
@@ -178,7 +179,8 @@ def test_gaps_are_the_biggest_companies_without_any_relation() -> None:
     targets = gap_targets(directory(), published, top_n=3)
     # top 3 by value: 9002, 9005, 9003 -> 9002 and 9003 are covered
     assert [t.claim_id for t in targets] == ["gap:TW-9005"]
-    assert targets[0].is_gap and targets[0].customer is None
+    assert targets[0].is_gap
+    assert targets[0].customer is None
 
 
 def test_stale_rechecks_pick_old_or_never_verified_research_rows_only() -> None:

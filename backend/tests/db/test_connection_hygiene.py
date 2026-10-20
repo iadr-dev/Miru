@@ -61,8 +61,9 @@ async def test_a_session_left_idle_in_a_transaction_is_ended_by_the_server(
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))  # autobegin: now idle in a transaction
             await asyncio.sleep(1.8)
+            statement = text("SELECT 1")
             with pytest.raises(DBAPIError):
-                await conn.execute(text("SELECT 1"))
+                await conn.execute(statement)
     finally:
         await engine.dispose()
 
