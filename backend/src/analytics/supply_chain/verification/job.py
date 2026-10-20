@@ -103,6 +103,11 @@ def prepare(  # noqa: PLR0913 - keyword-only inputs
     return targets, directory, published
 
 
+def research_model(settings: Settings) -> str | None:
+    """The research judge model spec; a blank value (compose passes one) means the subagent role."""
+    return (settings.supply_chain_research_model or "").strip() or None
+
+
 def _second_model(settings: Settings) -> str | None:
     """The second-opinion model spec; a blank value means the SYNTHESIS role chain."""
     return settings.supply_chain_research_second_model.strip() or None
@@ -113,9 +118,7 @@ def missing_prerequisite(settings: Settings, *, need_second: bool = False) -> st
     if not reveal(settings.brave_search_api_key):
         return "no search key configured"
     try:
-        resolve_role_with_override(
-            ModelRole.SUBAGENT, settings.supply_chain_research_model, settings
-        )
+        resolve_role_with_override(ModelRole.SUBAGENT, research_model(settings), settings)
         if need_second:
             resolve_role_with_override(ModelRole.SYNTHESIS, _second_model(settings), settings)
     except ProviderNotConfiguredError:
@@ -147,9 +150,7 @@ async def execute_research(  # noqa: PLR0913 - collaborators are injected, one p
     pipeline = Pipeline(
         search=search or BraveSearchProvider(tls_policy=settings.tls_policy),
         judge_client=judge_client
-        or resolve_role_with_override(
-            ModelRole.SUBAGENT, settings.supply_chain_research_model, settings
-        ),
+        or resolve_role_with_override(ModelRole.SUBAGENT, research_model(settings), settings),
         second_client=second_client
         or (
             resolve_role_with_override(ModelRole.SYNTHESIS, _second_model(settings), settings)
