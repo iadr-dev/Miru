@@ -260,16 +260,7 @@ async def line_webhook(
         reveal(settings.line_messaging_channel_access_token),
     )
     body = await request.body()
-    expected = (
-        base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
-        if secret
-        else None
-    )
-    if (
-        expected is None
-        or signature is None
-        or not hmac.compare_digest(signature.encode(), expected.encode())
-    ):
+    if not _line_signature_valid(secret, body, signature):
         raise ApiError(
             status_code=status.HTTP_403_FORBIDDEN,
             code="forbidden",
@@ -280,42 +271,81 @@ async def line_webhook(
         payload = cast("dict[str, object]", json.loads(body or b"{}"))
     except ValueError:
         return {"handled": 0}
-    events = payload.get("events")
     handled = 0
-    for raw in cast("list[object]", events) if isinstance(events, list) else []:
-        if not isinstance(raw, dict):
-            continue
-        event = cast("dict[str, object]", raw)
-        source = event.get("source")
-        line_user = (
-            cast("dict[str, object]", source).get("userId") if isinstance(source, dict) else None
-        )
-        reply_token = event.get("replyToken")
-        kind = event.get("type")
-        if not isinstance(line_user, str):
-            continue
-        if kind == "unfollow":
-            await store.unlink_line_user(line_user_id=line_user)
-            handled += 1
-        elif kind in ("follow", "message"):
-            message = event.get("message")
-            text = (
-                cast("dict[str, object]", message).get("text")
-                if isinstance(message, dict)
-                else None
-            )
-            match = _LINE_CODE.search(text.upper()) if isinstance(text, str) else None
-            linked = False
-            if match is not None:
-                user_id = await store.complete_channel_link(
-                    channel=_LINE, token=match.group(1), address=line_user, now=datetime.now(UTC)
-                )
-                linked = user_id is not None
-            if token and isinstance(reply_token, str):
-                reply = "已連結完成，之後的提醒會傳到這裡。" if linked else _LINK_HELP
-                await _line_reply(transport, token, reply_token, reply)
+    for event in _line_events(payload):
+        if await _handle_line_event(event, store=store, transport=transport, token=token):
             handled += 1
     return {"handled": handled}
+
+
+def _line_signature_valid(secret: str | None, body: bytes, signature: str | None) -> bool:
+    """`X-Line-Signature` = base64(HMAC-SHA256(channel secret, raw body)); never valid when the
+    channel secret is not configured."""
+    if not secret or signature is None:
+        return False
+    expected = base64.b64encode(hmac.new(secret.encode(), body, hashlib.sha256).digest()).decode()
+    return hmac.compare_digest(signature.encode(), expected.encode())
+
+
+def _line_events(payload: dict[str, object]) -> list[dict[str, object]]:
+    events = payload.get("events")
+    if not isinstance(events, list):
+        return []
+    return [
+        cast("dict[str, object]", raw)
+        for raw in cast("list[object]", events)
+        if isinstance(raw, dict)
+    ]
+
+
+def _line_event_user(event: dict[str, object]) -> str | None:
+    source = event.get("source")
+    line_user = (
+        cast("dict[str, object]", source).get("userId") if isinstance(source, dict) else None
+    )
+    return line_user if isinstance(line_user, str) else None
+
+
+def _line_event_text(event: dict[str, object]) -> str | None:
+    message = event.get("message")
+    text = cast("dict[str, object]", message).get("text") if isinstance(message, dict) else None
+    return text if isinstance(text, str) else None
+
+
+async def _complete_line_link(store: SchedulerStore, text: str | None, line_user: str) -> bool:
+    """Bind `line_user` when `text` carries a link code that is still valid."""
+    match = _LINE_CODE.search(text.upper()) if text is not None else None
+    if match is None:
+        return False
+    user_id = await store.complete_channel_link(
+        channel=_LINE, token=match.group(1), address=line_user, now=datetime.now(UTC)
+    )
+    return user_id is not None
+
+
+async def _handle_line_event(
+    event: dict[str, object],
+    *,
+    store: SchedulerStore,
+    transport: OutboundTransport,
+    token: str | None,
+) -> bool:
+    """Process one webhook event; True when it counts as handled."""
+    line_user = _line_event_user(event)
+    if line_user is None:
+        return False
+    kind = event.get("type")
+    if kind == "unfollow":
+        await store.unlink_line_user(line_user_id=line_user)
+        return True
+    if kind not in ("follow", "message"):
+        return False
+    linked = await _complete_line_link(store, _line_event_text(event), line_user)
+    reply_token = event.get("replyToken")
+    if token and isinstance(reply_token, str):
+        reply = "已連結完成，之後的提醒會傳到這裡。" if linked else _LINK_HELP
+        await _line_reply(transport, token, reply_token, reply)
+    return True
 
 
 @router.post("/webhooks/telegram", dependencies=[Depends(system_scope)])
