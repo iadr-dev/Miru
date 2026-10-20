@@ -76,11 +76,11 @@ const STEP_COLOR: Record<PipelineStepKey, string> = {
 export function RunStatus({
   data,
   stale,
-}: {
+}: Readonly<{
   data: StrategyWatchToday;
   /** Today's list was wanted and an older one is shown. */
   stale: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
   return (

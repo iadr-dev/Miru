@@ -12,10 +12,10 @@ import { cn } from "@/lib/cn";
 export function RainbowBorderCard({
   children,
   className,
-}: {
+}: Readonly<{
   children: ReactNode;
   className?: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className={cn("market-rainbow-border w-full rounded-[var(--radius-card)]", className)}>
       {children}

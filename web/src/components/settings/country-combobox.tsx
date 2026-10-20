@@ -9,7 +9,7 @@ import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/cn";
 import { COUNTRIES, type CountryEntry } from "@/lib/countries";
 
-function CountryFlag({ iso2 }: { iso2: string }): ReactNode {
+function CountryFlag({ iso2 }: Readonly<{ iso2: string }>): ReactNode {
   const Flag = (Flags as Record<string, (props: { className?: string }) => ReactNode>)[iso2];
   if (!Flag) {
     return <span className="inline-block h-3 w-4 shrink-0 rounded-[2px] bg-[var(--surface-2)]" />;
@@ -41,7 +41,7 @@ export function CountryCombobox({
   emptyLabel,
   display,
   ...rest
-}: CountryComboboxProps): ReactNode {
+}: Readonly<CountryComboboxProps>): ReactNode {
   const locale = useLocale();
   const [open, setOpen] = useState(false);
   const selected = value ? COUNTRIES.find((c) => c.iso2 === value) : undefined;

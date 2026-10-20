@@ -16,14 +16,14 @@ export function WatchTable({
   selected,
   onSelect,
   color = "var(--accent)",
-}: {
+}: Readonly<{
   items: readonly StrategyWatchItem[];
   caption: string;
   selected: string | null;
   onSelect: (symbol: string) => void;
   /** The strategy's colour: the selected row, the met-condition dots and the key level. */
   color?: string;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   const locale = useLocale();
 
@@ -137,12 +137,12 @@ export function ConditionDots({
   total,
   checked,
   color = "var(--accent)",
-}: {
+}: Readonly<{
   met: number;
   total: number;
   checked: boolean;
   color?: string;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch.status");
   if (!checked || total === 0) {
     return <span className="text-[11.5px] text-[var(--text-muted)]">{t("notChecked")}</span>;

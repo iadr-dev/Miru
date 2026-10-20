@@ -71,7 +71,7 @@ export function WatchDashboard(): ReactNode {
   );
 }
 
-function WatchBody({ data }: { data: StrategyWatchToday }): ReactNode {
+function WatchBody({ data }: Readonly<{ data: StrategyWatchToday }>): ReactNode {
   const t = useTranslations("watch");
   const params = useSearchParams();
   const asked = requestedDate(params.get("date"));

@@ -6,9 +6,9 @@ import { EntryScreen } from "@/components/entry/entry-screen";
  * RSC shell; all interactivity lives in the EntryScreen client leaf. */
 export default async function EntryPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <EntryScreen />;

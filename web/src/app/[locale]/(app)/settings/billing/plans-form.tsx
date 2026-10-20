@@ -47,7 +47,7 @@ export function PlansForm({
   confirmText,
   plan,
   locale,
-}: PlansFormProps): ReactNode {
+}: Readonly<PlansFormProps>): ReactNode {
   const t = useTranslations("settings.billing");
   const [confirming, setConfirming] = useState(false);
   const askFirst = confirmText != null && !blockedNote;

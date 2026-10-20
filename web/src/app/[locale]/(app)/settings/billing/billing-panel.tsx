@@ -376,11 +376,11 @@ function BillingHistorySection({
   query,
   locale,
   onReceipt,
-}: {
+}: Readonly<{
   query: ReturnType<typeof useQuery<BillingTransaction[]>>;
   locale: string;
   onReceipt: (transactionId: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.billing");
   const tc = useTranslations("settings.common");
 
@@ -407,11 +407,11 @@ function HistoryList({
   transactions,
   locale,
   onReceipt,
-}: {
+}: Readonly<{
   transactions: BillingTransaction[];
   locale: string;
   onReceipt: (transactionId: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.billing");
   return (
     <ul className="divide-y divide-[var(--border)]">

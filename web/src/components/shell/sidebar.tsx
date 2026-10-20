@@ -28,13 +28,13 @@ export function Sidebar({
   onToggle,
   me,
   fluid = false,
-}: {
+}: Readonly<{
   collapsed: boolean;
   onToggle: () => void;
   me: MeResponse;
   /** Fill the parent's width instead of the fixed rail widths (the phone drawer). */
   fluid?: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations();
   const pathname = usePathname();
   const router = useRouter();
@@ -156,11 +156,11 @@ function NavRow({
   item,
   collapsed,
   active,
-}: {
+}: Readonly<{
   item: NavItem;
   collapsed: boolean;
   active: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("nav");
   const Icon = item.icon;
   const label = t(`${item.messageKey}.label`);

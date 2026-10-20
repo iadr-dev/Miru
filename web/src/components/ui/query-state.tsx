@@ -17,7 +17,7 @@ export function QueryState<T>({
   query,
   skeleton,
   children,
-}: {
+}: Readonly<{
   query: {
     isLoading: boolean;
     isError: boolean;
@@ -27,7 +27,7 @@ export function QueryState<T>({
   };
   skeleton?: ReactNode;
   children: (data: T) => ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.cards");
 
   if (query.isLoading) {
@@ -69,9 +69,9 @@ export function QueryState<T>({
  * message (or to nothing), which reads as "there is nothing" when the truth is "it did not load". */
 export function QueryFailure({
   query,
-}: {
+}: Readonly<{
   query: { error: unknown; refetch: () => void };
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("market.cards");
   const message = query.error instanceof ApiRequestError ? query.error.message : t("error");
   return (

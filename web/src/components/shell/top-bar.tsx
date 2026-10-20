@@ -28,11 +28,11 @@ export function TopBar({
   me,
   onToggleWatchlist,
   watchlistOpen,
-}: {
+}: Readonly<{
   me: MeResponse;
   onToggleWatchlist: () => void;
   watchlistOpen: boolean;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("shell");
   const pathname = usePathname();
   const onMarketPage = pathname === "/market";
@@ -148,7 +148,7 @@ const TIER_STYLE: Record<Tier, string> = {
 };
 
 /** Real tier badge from `/me` entitlements — never fakes premium. */
-function TierBadge({ tier }: { tier: Tier }): ReactNode {
+function TierBadge({ tier }: Readonly<{ tier: Tier }>): ReactNode {
   const t = useTranslations("shell.tier");
   return (
     <span
@@ -164,7 +164,7 @@ function TierBadge({ tier }: { tier: Tier }): ReactNode {
 
 /** Radix `DropdownMenu` (not a hand-rolled `mousedown`/`keydown`-listener div) so `Esc`-close and
  * focus-return-to-trigger come for free, matching every other menu in the shell. */
-function AccountMenu({ me }: { me: MeResponse }): ReactNode {
+function AccountMenu({ me }: Readonly<{ me: MeResponse }>): ReactNode {
   const t = useTranslations("shell.account");
   const router = useRouter();
   const [open, setOpen] = useState(false);

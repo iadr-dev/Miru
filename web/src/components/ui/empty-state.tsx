@@ -16,14 +16,14 @@ export function EmptyState({
   action,
   compact = false,
   className,
-}: {
+}: Readonly<{
   icon?: ReactNode;
   title: ReactNode;
   description?: ReactNode;
   action?: ReactNode;
   compact?: boolean;
   className?: string;
-}): ReactNode {
+}>): ReactNode {
   const reduceMotion = useReducedMotion();
   return (
     <motion.div

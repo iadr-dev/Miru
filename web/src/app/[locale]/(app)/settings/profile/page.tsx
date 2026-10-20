@@ -4,9 +4,9 @@ import { ProfilePanel } from "./profile-panel";
 
 export default async function ProfilePage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return <ProfilePanel />;

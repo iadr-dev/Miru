@@ -21,10 +21,10 @@ export type PetNotice = { leveledTo: number | null; pullsEarned: number };
 export function PetCompanion({
   thinking,
   notice,
-}: {
+}: Readonly<{
   thinking: boolean;
   notice: PetNotice | null;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.pet");
   const locale = useLocale();
   const active = useQuery({ queryKey: queryKeys.settings("pet-active"), queryFn: getActivePet });

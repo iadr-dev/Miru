@@ -10,9 +10,9 @@ import { AuthErrorClient } from "./error-client";
  * `useSearchParams()` in the client leaf requires a Suspense boundary (Next.js App Router). */
 export default async function AuthErrorPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale } = await params;
   setRequestLocale(locale);
   return (

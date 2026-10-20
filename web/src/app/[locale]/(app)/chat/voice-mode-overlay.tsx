@@ -48,10 +48,10 @@ const _MAX_RECORDING_MS = 30_000;
 export function VoiceModeOverlay({
   onClose,
   runTurn,
-}: {
+}: Readonly<{
   onClose: () => void;
   runTurn: (message: string) => Promise<string | null>;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.voiceMode");
   const tCaveat = useTranslations("chat.caveat");
   const locale = useLocale();
@@ -370,10 +370,10 @@ export function VoiceModeOverlay({
 function VoiceOrb({
   phase,
   reduceMotion,
-}: {
+}: Readonly<{
   phase: VoicePhase;
   reduceMotion: boolean | null;
-}): ReactNode {
+}>): ReactNode {
   const pulseSpeed = phase === "listening" ? 1.4 : phase === "speaking" ? 0.9 : 2.2;
   return (
     <div className="relative flex size-40 items-center justify-center">

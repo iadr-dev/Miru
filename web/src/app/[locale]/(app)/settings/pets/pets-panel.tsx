@@ -196,7 +196,7 @@ export function PetsPanel(): ReactNode {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string | number }): ReactNode {
+function Stat({ label, value }: Readonly<{ label: string; value: string | number }>): ReactNode {
   return (
     <div>
       <p className="font-num text-[20px] text-[var(--text)] tabular-nums">{value}</p>
@@ -209,11 +209,11 @@ function OwnedLevel({
   level,
   xp,
   progress,
-}: {
+}: Readonly<{
   level: number;
   xp: number;
   progress: PetProgress;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.pets");
   const percent = Math.round(xpFraction(level, xp, progress) * 100);
   return (
@@ -242,14 +242,14 @@ function CollectionCard({
   progress,
   busy,
   onEquip,
-}: {
+}: Readonly<{
   entry: PetCatalogEntry;
   owned: OwnedPet | null;
   isActive: boolean;
   progress: PetProgress | undefined;
   busy: boolean;
   onEquip: (recordId: string) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.pets");
   const locale = useLocale();
   const name = locale === "zh-TW" ? entry.name_zh : entry.name;

@@ -97,11 +97,11 @@ export function AlertForm({
   onDone,
   rule,
   preset,
-}: {
+}: Readonly<{
   onDone: () => void;
   rule?: AlertRule;
   preset?: AlertFormPreset | undefined;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.alerts.form");
   const ts = useTranslations("settings.alerts.summary");
   const tc = useTranslations("settings.common");
@@ -614,12 +614,12 @@ function Field({
   htmlFor,
   className,
   children,
-}: {
+}: Readonly<{
   label: string;
   htmlFor: string;
   className?: string;
   children: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className={className}>
       <label className="mb-1 block text-[13px] text-[var(--text-muted)]" htmlFor={htmlFor}>

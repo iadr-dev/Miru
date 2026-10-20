@@ -80,7 +80,7 @@ export function Composer({
   deepResearchLocked,
   byokActive,
   onOpenVoiceMode,
-}: {
+}: Readonly<{
   streaming: boolean;
   onSend: (text: string, attachments: AttachmentInput[]) => void;
   onStop: () => void;
@@ -101,7 +101,7 @@ export function Composer({
   /** Whether the caller runs on their own keys. Only then is the model picker shown. */
   byokActive: boolean | undefined;
   onOpenVoiceMode: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.composer");
   const tDisc = useTranslations("disclaimer");
   const locale = useLocale();

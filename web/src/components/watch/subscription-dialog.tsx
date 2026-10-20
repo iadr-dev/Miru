@@ -16,11 +16,11 @@ export function SubscriptionDialog({
   open,
   onClose,
   current,
-}: {
+}: Readonly<{
   open: boolean;
   onClose: () => void;
   current: StrategySubscription | null;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   return (
     <ExpandModal
@@ -39,10 +39,10 @@ export function SubscriptionDialog({
 function SubscriptionForm({
   current,
   onDone,
-}: {
+}: Readonly<{
   current: StrategySubscription | null;
   onDone: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("watch");
   const groups = useWatchlists("TW");
   const save = useSaveStrategySubscription();

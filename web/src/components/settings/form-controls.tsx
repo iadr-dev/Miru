@@ -69,12 +69,12 @@ export function ToggleSwitch({
   onChange,
   label,
   disabled,
-}: {
+}: Readonly<{
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
   disabled?: boolean;
-}): ReactNode {
+}>): ReactNode {
   return (
     <button
       type="button"
@@ -113,12 +113,12 @@ export function Checkbox({
   onChange,
   label,
   disabled,
-}: {
+}: Readonly<{
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
   disabled?: boolean;
-}): ReactNode {
+}>): ReactNode {
   return (
     <label
       className={cn(
@@ -146,7 +146,7 @@ export function Checkbox({
 }
 
 /** Inline `--warn` field error, shown under an input on validation failure. */
-export function FieldError({ message }: { message: string }): ReactNode {
+export function FieldError({ message }: Readonly<{ message: string }>): ReactNode {
   return (
     <p role="alert" className="mt-1 text-[12px] text-[var(--warn)]">
       {message}

@@ -249,7 +249,7 @@ export function chartHintPayloads(data: unknown): Record<string, unknown>[] {
  * the collapsible data-sheet table underneath is free. Callers should gate on `chartHintUsable`
  * first (see that function's own docstring) — this still defensively returns `null` on its own if
  * called without that gate, but never fabricates a chart from data that doesn't support one. */
-export function GenericChart({ data }: { data: unknown }): ReactNode {
+export function GenericChart({ data }: Readonly<{ data: unknown }>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("chat.cards");
   if (!data || typeof data !== "object") {
@@ -297,12 +297,12 @@ function ArcChart({
   rows,
   locale,
   t,
-}: {
+}: Readonly<{
   hint: ChartHint;
   rows: Record<string, unknown>[];
   locale: string;
   t: Translator;
-}): ReactNode {
+}>): ReactNode {
   if (!hint.theta || !hint.color) {
     return null;
   }
@@ -387,12 +387,12 @@ function SeriesChart({
   rows,
   locale,
   t,
-}: {
+}: Readonly<{
   hint: ChartHint;
   rows: Record<string, unknown>[];
   locale: string;
   t: Translator;
-}): ReactNode {
+}>): ReactNode {
   if (!hint.x || !hint.y) {
     return null;
   }
@@ -564,6 +564,6 @@ function renderPlot(
   );
 }
 
-function ChartTitle({ title }: { title: string }): ReactNode {
+function ChartTitle({ title }: Readonly<{ title: string }>): ReactNode {
   return <p className="mb-2 font-medium text-[13px] text-[var(--text-muted)]">{title}</p>;
 }

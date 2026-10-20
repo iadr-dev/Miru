@@ -22,10 +22,10 @@ const DEFAULT_MARKET: Market = "TW";
 export default async function StockDetailPage({
   params,
   searchParams,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string; symbol: string }>;
   searchParams: Promise<{ market?: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale, symbol } = await params;
   const { market: marketParam } = await searchParams;
   setRequestLocale(locale);

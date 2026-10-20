@@ -27,7 +27,9 @@ const MEMORY_KEY = queryKeys.settings("memory");
  * governance scan apply there). The chat it came from is recorded as the memory's source, and a
  * paused memory switch turns the button into a link to turn memory back on.
  */
-export function MemoryProposalCard({ data }: { data: Record<string, unknown> }): ReactNode {
+export function MemoryProposalCard({
+  data,
+}: Readonly<{ data: Record<string, unknown> }>): ReactNode {
   const t = useTranslations("chat.cards.memoryProposal");
   const tm = useTranslations("settings.memory");
   const queryClient = useQueryClient();
@@ -127,14 +129,14 @@ function ProposalAction({
   pending,
   onSave,
   onDismiss,
-}: {
+}: Readonly<{
   saved: boolean;
   alreadyThere: boolean;
   paused: boolean;
   pending: boolean;
   onSave: () => void;
   onDismiss: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.cards.memoryProposal");
   if (saved) {
     return (

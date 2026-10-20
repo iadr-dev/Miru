@@ -7,7 +7,7 @@ import { isPersonalityPresetId } from "@/lib/personality";
 
 /** "語氣：數據派" under an answer: which tone preset styled it, so the user can tell what they got
  * (and why the format looks the way it does). Renders nothing when the turn recorded none. */
-export function PersonalityChip({ presetId }: { presetId: string | null }): ReactNode {
+export function PersonalityChip({ presetId }: Readonly<{ presetId: string | null }>): ReactNode {
   const t = useTranslations("chat.personalityUsed");
   const tp = useTranslations("settings.personality.preset");
   if (presetId === null) {

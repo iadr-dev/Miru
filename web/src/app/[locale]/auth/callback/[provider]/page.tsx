@@ -6,9 +6,9 @@ import { CallbackClient } from "./callback-client";
  * is client-side because it depends on the browser URL + credentialed fetch. */
 export default async function CallbackPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ locale: string; provider: string }>;
-}): Promise<ReactNode> {
+}>): Promise<ReactNode> {
   const { locale, provider } = await params;
   setRequestLocale(locale);
   return <CallbackClient provider={provider} />;

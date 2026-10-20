@@ -31,10 +31,10 @@ function useButtonMotionProps(reduceMotion: boolean | null): {
 function SendButton({
   sendLabel,
   reduceMotion,
-}: {
+}: Readonly<{
   sendLabel: string;
   reduceMotion: boolean | null;
-}): ReactNode {
+}>): ReactNode {
   return (
     <motion.button
       key="send"
@@ -63,12 +63,12 @@ export function RecordingControls({
   confirmLabel,
   onCancel,
   onConfirm,
-}: {
+}: Readonly<{
   cancelLabel: string;
   confirmLabel: string;
   onCancel: () => void;
   onConfirm: () => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="flex shrink-0 items-center gap-1.5">
       <button
@@ -109,10 +109,10 @@ export function RecordingControls({
 export function VoiceModeTriggerButton({
   label,
   onClick,
-}: {
+}: Readonly<{
   label: string;
   onClick: () => void;
-}): ReactNode {
+}>): ReactNode {
   return (
     <button
       type="button"
@@ -132,10 +132,10 @@ export function VoiceModeTriggerButton({
 function TranscribingButton({
   voiceLabel,
   reduceMotion,
-}: {
+}: Readonly<{
   voiceLabel: string;
   reduceMotion: boolean | null;
-}): ReactNode {
+}>): ReactNode {
   return (
     <motion.button
       key="transcribing"
@@ -163,12 +163,12 @@ function StartRecordingButton({
   streaming,
   reduceMotion,
   onStartRecording,
-}: {
+}: Readonly<{
   voiceLabel: string;
   streaming: boolean;
   reduceMotion: boolean | null;
   onStartRecording: () => void;
-}): ReactNode {
+}>): ReactNode {
   const [hovering, setHovering] = useState(false);
   return (
     <motion.button
@@ -215,14 +215,14 @@ export function VoiceOrSendButton({
   onStartRecording,
   voiceLabel,
   sendLabel,
-}: {
+}: Readonly<{
   canSend: boolean;
   voiceState: "idle" | "recording" | "transcribing";
   streaming: boolean;
   onStartRecording: () => void;
   voiceLabel: string;
   sendLabel: string;
-}): ReactNode {
+}>): ReactNode {
   const reduceMotion = useReducedMotion();
 
   return (

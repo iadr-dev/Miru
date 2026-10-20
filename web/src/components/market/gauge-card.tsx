@@ -67,7 +67,7 @@ export function GaugeCard({
   leftAxisLabel,
   rightAxisLabel,
   children,
-}: {
+}: Readonly<{
   title: string;
   /** `null` renders the gauge in an honest empty state — never a fabricated needle position. */
   value: number | null;
@@ -79,7 +79,7 @@ export function GaugeCard({
   leftAxisLabel: string;
   rightAxisLabel: string;
   children?: ReactNode;
-}): ReactNode {
+}>): ReactNode {
   const locale = useLocale();
   const t = useTranslations("market.cards.gauge");
   const activeBand = value === null ? null : bands.find((b) => value >= b.min && value < b.max);

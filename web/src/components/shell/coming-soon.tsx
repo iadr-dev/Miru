@@ -7,11 +7,11 @@ export function ComingSoon({
   icon: Icon,
   title,
   body,
-}: {
+}: Readonly<{
   icon: Icon;
   title: string;
   body: string;
-}): ReactNode {
+}>): ReactNode {
   return (
     <div className="flex min-h-full items-center justify-center p-6">
       <div className="surface-card w-full max-w-lg p-8 text-center">

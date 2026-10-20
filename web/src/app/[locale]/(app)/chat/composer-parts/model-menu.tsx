@@ -27,12 +27,12 @@ export function ModelMenu({
   byokActive,
   selectedId,
   onSelect,
-}: {
+}: Readonly<{
   label: string;
   byokActive: boolean | undefined;
   selectedId: string | null;
   onSelect: (modelId: string | null) => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("chat.composer.modelMenu");
   const tProvider = useTranslations("settings.byok.providerOption");
   const locale = useLocale();

@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 
 /** Plain-data loading skeleton for a Settings sub-page (no narration —
  * config forms are never the analysis-generation loading class). */
-export function SettingsLoading({ rows = 3 }: { rows?: number }): ReactNode {
+export function SettingsLoading({ rows = 3 }: Readonly<{ rows?: number }>): ReactNode {
   const keys = Array.from({ length: rows }, (_, i) => `skeleton-row-${i}`);
   return (
     <div className="animate-pulse space-y-3" aria-hidden>
@@ -22,10 +22,10 @@ export function SettingsLoading({ rows = 3 }: { rows?: number }): ReactNode {
 export function SettingsError({
   message,
   onRetry,
-}: {
+}: Readonly<{
   message: string;
   onRetry?: () => void;
-}): ReactNode {
+}>): ReactNode {
   const t = useTranslations("settings.common");
   return (
     <div
@@ -54,7 +54,7 @@ export function SettingsError({
 
 /** Transient "已儲存"-style success toast (save flow). Purely local/visual —
  * callers mount it conditionally and clear it on a timer. */
-export function SavedToast({ message }: { message: string }): ReactNode {
+export function SavedToast({ message }: Readonly<{ message: string }>): ReactNode {
   return (
     <div
       role="status"

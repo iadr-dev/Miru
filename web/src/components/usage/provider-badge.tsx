@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { providerStyle } from "@/lib/provider-style";
 
 /** A provider's name with its colour dot - the same colour the chart uses for that provider. */
-export function ProviderBadge({ provider }: { provider: string }): ReactNode {
+export function ProviderBadge({ provider }: Readonly<{ provider: string }>): ReactNode {
   const { label, color } = providerStyle(provider);
   return (
     <span
