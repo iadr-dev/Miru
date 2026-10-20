@@ -112,6 +112,8 @@ retried in a tight loop; the next window's pass or an explicit backfill retries)
 | `us_fundamentals` | 07:00 | weekly | US financials/dividends/splits (§2c) |
 | `us_scoring_batch`, `us_trend_score_batch` | 07:30 / 07:32 | daily (US session) | the scoring/trend batches run with `market=US` |
 
+`python -m analytics.supply_chain promote` (reviewed proposal files into concept-theme files, module 20 §5b "Promoting proposals") is an operator command and is **never scheduled**; the 06:25 `sc_themes_entities_load` only indexes what it wrote.
+
 Chain order is enforced by fire time: the derived batches run after the pulls they read.
 The whole-market FinMind pulls are the specs in `ingest.jobs.ALL_WHOLE_MARKET_JOBS`
 (`ingest/jobs/specs.py`; the backfill CLI walks it, §6b).

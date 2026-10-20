@@ -1,4 +1,5 @@
-"""Operator CLI: `python -m analytics.supply_chain load|stats|positions|eval|discover|verify`.
+"""Operator CLI: `python -m analytics.supply_chain COMMAND`, one of
+load|stats|positions|eval|discover|verify|promote.
 
 `load` rebuilds the index tables from the private relation, concept-theme and entity files;
 `stats` prints row counts (numbers only, never file content). `positions` recomputes and writes
@@ -11,7 +12,11 @@ claim ids only.
 `discover --themes [--min-companies N] [--limit N] [--dry-run]` instead mines new concept-theme
 candidates from the entity mentions (no search, no model, no key needed) and writes the private
 candidates file unless `--dry-run`; it prints rank, label, type, company count, trend and up to five
-stock symbols, never a company name (see `theme_discovery/`).
+stock symbols, never a company name (see `theme_discovery/`). When a database is reachable
+it also counts industry-chain overlap; otherwise it says so in one line and uses concept
+themes only. `promote FILE... [--dry-run] [--min-confidence medium|high]` turns reviewed
+proposal files into live concept-theme files (see `themes_io/promote.py`); an explicit
+operator step, never scheduled.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import asyncio
 import contextlib
 import json
 import sys
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -35,10 +41,21 @@ from analytics.supply_chain.refdata_io.loader import RelationFileError, load_ref
 from analytics.supply_chain.store.concept_protocol import ConceptCollisionError
 from analytics.supply_chain.store.concept_store import SqlAlchemyConceptStore
 from analytics.supply_chain.store.sqlalchemy_store import SqlAlchemySupplyChainStore
+from analytics.supply_chain.theme_discovery.industry import (
+    load_industry_groups,
+    load_industry_roster,
+)
 from analytics.supply_chain.theme_discovery.job import run_themes_command
 from analytics.supply_chain.themes_io.loader import ConceptFileError, load_concept_themes
+from analytics.supply_chain.themes_io.promote import (
+    IndustryRoster,
+    PromoteWriteError,
+    ProposalFileError,
+    run_promote,
+)
 from analytics.supply_chain.verification.cli import run_research_command
 from analytics.themes.store import SqlAlchemyThemeStore
+from config.private_data import reference_dir
 from config.settings import get_settings
 from db import (
     models,  # noqa: F401  # pyright: ignore[reportUnusedImport] - registers ORM models
@@ -136,10 +153,73 @@ async def _run(command: str, golden: Path | None, *, as_json: bool) -> int:
     return 0
 
 
+DB_TIMEOUT_SECONDS = 10.0
+
+
+async def _with_session[T](fn: Callable[[AsyncSession], Awaitable[T]]) -> T:
+    settings = get_settings()
+    rls.install(enabled=settings.row_level_security)
+    rls.enter_system_mode()
+    engine = make_engine(settings.database_url)
+    try:
+        async with make_session_factory(engine)() as session:
+            return await fn(session)
+    finally:
+        await engine.dispose()
+
+
+def _try_database[T](fn: Callable[[AsyncSession], Awaitable[T]]) -> T | None:
+    """Run `fn` against the app database, or None when it is not configured or unreachable.
+    Any failure means "unavailable": the callers degrade, they never fail on the database."""
+    try:
+        return asyncio.run(asyncio.wait_for(_with_session(fn), DB_TIMEOUT_SECONDS))
+    except Exception:
+        return None
+
+
+def _fetch_industry_groups() -> dict[str, frozenset[str]] | None:
+    return _try_database(lambda s: load_industry_groups(SqlAlchemyThemeStore(s)))
+
+
+def _fetch_industry_roster() -> IndustryRoster | None:
+    return _try_database(lambda s: load_industry_roster(SqlAlchemyThemeStore(s)))
+
+
+def _promote(files: list[Path], *, dry_run: bool, min_confidence: str) -> int:
+    if not files:
+        sys.stderr.write("promote needs at least one proposal file\n")
+        return 1
+    try:
+        report = run_promote(
+            reference_dir(),
+            files,
+            dry_run=dry_run,
+            min_confidence=min_confidence,
+            industry=_fetch_industry_roster(),
+        )
+    except (ProposalFileError, PromoteWriteError) as exc:
+        sys.stderr.write(f"invalid file: {exc}\n")
+        return 1
+    sys.stdout.write(report.format(dry_run=dry_run))
+    if not dry_run:
+        sys.stdout.write(
+            "next: run `python -m analytics.supply_chain load` (or wait for the 06:25 job) "
+            "to index it\n"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m analytics.supply_chain")
     parser.add_argument(
-        "command", choices=["load", "stats", "positions", "eval", "discover", "verify"]
+        "command", choices=["load", "stats", "positions", "eval", "discover", "verify", "promote"]
+    )
+    parser.add_argument("files", nargs="*", type=Path, help="promote: proposal YAML files")
+    parser.add_argument(
+        "--min-confidence",
+        choices=["medium", "high"],
+        default="medium",
+        help="promote: lowest evidence confidence accepted (default medium: both)",
     )
     parser.add_argument("--golden", type=Path, default=None, help="eval: golden file path")
     parser.add_argument("--json", action="store_true", help="eval: print the report as JSON")
@@ -187,10 +267,18 @@ def main(argv: list[str] | None = None) -> int:
         help="verify: search and judge, write nothing; discover --themes: print, write nothing",
     )
     args = parser.parse_args(argv)
+    if args.files and args.command != "promote":
+        parser.error("proposal files apply to the promote command only")
+    if args.command == "promote":
+        return _promote(args.files, dry_run=args.dry_run, min_confidence=args.min_confidence)
     if args.themes:
         if args.command != "discover":
             parser.error("--themes applies to the discover command only")
+        groups = _fetch_industry_groups()
+        if groups is None:
+            sys.stdout.write("industry overlap skipped: database unavailable\n")
         return run_themes_command(
+            industry_groups=groups,
             min_companies=args.min_companies,
             limit=args.limit,
             dry_run=args.dry_run,

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from analytics.supply_chain.theme_discovery.mining import normalize
+from analytics.supply_chain.themes_io.promote import IndustryRoster
 from analytics.themes.models import ThemeKind
 from analytics.themes.store import ThemeStore
 
@@ -32,4 +34,20 @@ async def load_industry_groups(store: ThemeStore) -> dict[str, frozenset[str]]:
     return groups
 
 
-__all__ = ["load_industry_groups"]
+async def load_industry_roster(store: ThemeStore) -> IndustryRoster:
+    """Keys, display names and listed symbols of the industry-chain themes (for `promote`)."""
+    keys: set[str] = set()
+    names: set[str] = set()
+    symbols: set[str] = set()
+    for theme in await store.list_themes(kind=ThemeKind.INDUSTRY):
+        keys.add(theme.key)
+        names.update(n for n in (normalize(theme.name_zh), normalize(theme.name_en)) if n)
+        symbols.update(
+            m.symbol
+            for m in await store.get_theme_member_details(theme_key=theme.key)
+            if m.market == "TW"
+        )
+    return IndustryRoster(frozenset(keys), frozenset(names), frozenset(symbols))
+
+
+__all__ = ["load_industry_groups", "load_industry_roster"]

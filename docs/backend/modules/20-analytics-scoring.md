@@ -551,7 +551,8 @@ Survivors are ranked by `specificity = company_count * ln(N_tw / company_count)`
 the catalog's `tw_company` count; plain `company_count` when `N_tw` is unknown), then total mentions,
 then label. Each candidate record carries `specificity`. Industry-chain membership has no file source,
 so it is injected: the weekly job reads it from the themes table (`theme_discovery/industry.py`); the
-file-only CLI uses concept-theme overlap only.
+CLI does the same when the database is reachable and otherwise prints `industry overlap skipped:
+database unavailable` and uses concept-theme overlap only (the database never fails the command).
 
 Dropped entities are written to `theme_candidates_skipped.jsonl` beside the candidates file (one
 object per line: `candidate_id`, `label`, `type`, `company_count`, `specificity`, `reason`), so the
@@ -564,6 +565,37 @@ operator can audit a drop. Entities below the company threshold are not listed. 
 - Job: `sc_theme_candidates` (weekly 22:05, leader-only, journaled). It spends nothing, so it is not
   gated by `SUPPLY_CHAIN_RESEARCH_ENABLED`; it journals SKIPPED with a reason when not the leader or
   when the entity files are absent.
+
+#### Promoting proposals
+
+`python -m analytics.supply_chain promote FILE... [--dry-run] [--min-confidence medium|high]`
+(`themes_io/promote.py`) is the explicit, repeatable operator step that turns reviewed proposal files
+into live `reference-data/themes/concepts/*.yaml`. It is never scheduled. A proposal file is a YAML
+list; each row is either a **new theme** (`key, name_zh, name_en, description, related, thin,
+members[]`) or a **member addition** (`theme_key, symbol, name, position, publisher, url, excerpt,
+confidence`), detected per row. Every failed check is a counted reject reason, never a silent drop:
+
+| Reason | Meaning |
+|---|---|
+| `unknown_theme` | member row names no existing (or just-created) concept theme |
+| `theme_exists` | new-theme key or `name_zh` already used by a concept theme |
+| `industry_collision` | new-theme key or name equals an industry-chain theme (the loader rejects it too) |
+| `unknown_symbol` | not a `tw_company` in the entity catalog nor in an industry-chain roster |
+| `invalid_position` | not upstream / midstream / downstream / related |
+| `evidence_missing` | url not `https://`, excerpt empty or over 200 chars, or it names neither the company nor a catalog alias (case/width-insensitive) |
+| `low_confidence` | below `--min-confidence` (default `medium` accepts high and medium) |
+| `duplicate_symbol` / `already_member` | repeated within a new theme / already in the theme (what makes a re-run add nothing) |
+| `schema_invalid`, `invalid_row`, `no_valid_members` | `ConceptThemeFile` validation, unrecognised row shape, new theme left with no accepted member |
+
+The industry roster (keys, names, symbols) comes from the themes table; with the database unreachable
+the command warns loudly, checks concept themes only and takes the symbol roster from the catalog.
+Accepted members get origin `proposed`. Existing files are rewritten in field order (`safe_dump`,
+`allow_unicode`, `sort_keys=False`, temp file then `os.replace`). Before any write the concepts directory
+is copied to `themes/_backups/concepts-<UTC timestamp>/` (5 newest kept); every resulting file is
+validated first and one failure writes nothing. `--dry-run` prints the report and writes nothing. A real
+run appends one line to `themes/promote_log.jsonl` (timestamp, input file names, counts per reason; no
+names). Output is counts per theme and reject reasons with symbols only; exit 1 on an unusable input
+file. Run `load` (or wait for the 06:25 job) afterwards to index the result.
 
 ## 5c. 策略盯盤 strategy watch (`analytics/strategy_watch/`)
 

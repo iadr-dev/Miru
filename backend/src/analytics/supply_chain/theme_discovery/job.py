@@ -7,6 +7,7 @@ job is leader-only and journals SKIPPED, with a reason, when the reference files
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -95,6 +96,7 @@ def run_themes_command(  # noqa: PLR0913 - keyword-only CLI knobs
     max_share: float | None = None,
     overlap_threshold: float | None = None,
     root: Path | None = None,
+    industry_groups: Mapping[str, frozenset[str]] | None = None,
 ) -> int:
     """`discover --themes`: prints the table (symbols only, no company names)."""
     base = root or reference_dir()
@@ -113,6 +115,7 @@ def run_themes_command(  # noqa: PLR0913 - keyword-only CLI knobs
                 overlap_threshold if overlap_threshold is not None else DEFAULT_OVERLAP_THRESHOLD
             ),
             dry_run=dry_run,
+            industry_groups=industry_groups,
         )
     except ThemeMiningError as exc:
         sys.stderr.write(f"invalid file: {exc}\n")
