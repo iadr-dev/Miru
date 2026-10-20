@@ -211,8 +211,9 @@ def _url_candidate(year: str, month: str, day: str, today: date) -> date | None:
 
 def url_date(url: str | None, today: date) -> date | None:
     """A publication date embedded in the URL path, only in unambiguous forms: /YYYY/MM/DD/,
-    YYYY-MM-DD, a bare /YYYYMMDD segment, or a 9-12 digit id (date + a short sequence) after a post/article-like segment
-    whose first eight digits are a valid date. Query strings, other numeric ids and out-of-range
+    YYYY-MM-DD, a bare /YYYYMMDD segment, or a 9-12 digit id (date + a short sequence) after a
+    post/article-like segment whose first eight digits are a valid date. Query strings, other
+    numeric ids and out-of-range
     years (before 2000, after today) yield None."""
     if not url:
         return None
