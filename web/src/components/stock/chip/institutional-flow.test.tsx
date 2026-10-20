@@ -1,22 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent } from "@testing-library/react";
-import { cloneElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InstitutionalFlowBody } from "@/components/stock/chip/institutional-flow";
 import { renderWithIntl } from "@/test/render";
 
-// jsdom has no layout, so ResponsiveContainer would render nothing; give the chart a fixed size.
-vi.mock("recharts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("recharts")>();
-  return {
-    ...actual,
-    ResponsiveContainer: ({
-      children,
-    }: {
-      children: ReactElement<{ width?: number; height?: number }>;
-    }) => cloneElement(children, { width: 600, height: 300 }),
-  };
-});
+vi.mock("recharts", async (importOriginal) =>
+  (await import("@/test/fixed-size-recharts")).withFixedSizeContainer(
+    await importOriginal<typeof import("recharts")>(),
+  ),
+);
 vi.mock("@/hooks/use-stock-data", () => ({
   useInstitutionalFlow: () => ({
     isLoading: false,

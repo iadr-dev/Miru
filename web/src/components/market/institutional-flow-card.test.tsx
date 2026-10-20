@@ -1,23 +1,15 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent } from "@testing-library/react";
-import { cloneElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InstitutionalFlowCard } from "@/components/market/institutional-flow-card";
 import { renderWithIntl } from "@/test/render";
 import type { InstitutionalFlowTotalMarketRow } from "@/types/market/flows";
 
-// jsdom has no layout, so ResponsiveContainer would render nothing; give the chart a fixed size.
-vi.mock("recharts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("recharts")>();
-  return {
-    ...actual,
-    ResponsiveContainer: ({
-      children,
-    }: {
-      children: ReactElement<{ width?: number; height?: number }>;
-    }) => cloneElement(children, { width: 600, height: 300 }),
-  };
-});
+vi.mock("recharts", async (importOriginal) =>
+  (await import("@/test/fixed-size-recharts")).withFixedSizeContainer(
+    await importOriginal<typeof import("recharts")>(),
+  ),
+);
 
 afterEach(cleanup);
 
@@ -41,7 +33,7 @@ describe("InstitutionalFlowCard legend", () => {
   it("renders one toggle per chart category and greys it out when hidden", () => {
     const { container } = renderWithIntl(<InstitutionalFlowCard rows={rows} />);
     const buttons = legendButtons(container);
-    expect(buttons.length).toBe(4);
+    expect(buttons).toHaveLength(4);
     const first = buttons[0];
     if (!first) throw new Error("legend button missing");
     expect(first.getAttribute("style")).toContain("var(--text)");

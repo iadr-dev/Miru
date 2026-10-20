@@ -144,7 +144,7 @@ describe("ScreenerTable cells", () => {
     renderWithIntl(table());
     expect(screen.getByLabelText("上漲 1.50%")).toBeTruthy();
     expect(screen.getByLabelText("下跌 2.25%")).toBeTruthy();
-    expect(within(rowOf("2317")).getAllByText("—").length).toBe(1);
+    expect(within(rowOf("2317")).getAllByText("—")).toHaveLength(1);
   });
 
   it("renders the US-only columns from survivor.display", () => {

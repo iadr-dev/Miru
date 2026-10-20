@@ -1,24 +1,16 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
-import { cloneElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ForeignShareholdingBody } from "@/components/stock/chip/foreign-holdings";
 import { getForeignShareholding } from "@/lib/api/stock-detail";
 import { messages, renderWithIntl } from "@/test/render";
 
-// jsdom has no layout, so ResponsiveContainer would render nothing; give the chart a fixed size.
-vi.mock("recharts", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("recharts")>();
-  return {
-    ...actual,
-    ResponsiveContainer: ({
-      children,
-    }: {
-      children: ReactElement<{ width?: number; height?: number }>;
-    }) => cloneElement(children, { width: 600, height: 300 }),
-  };
-});
+vi.mock("recharts", async (importOriginal) =>
+  (await import("@/test/fixed-size-recharts")).withFixedSizeContainer(
+    await importOriginal<typeof import("recharts")>(),
+  ),
+);
 vi.mock("@/lib/api/stock-detail", () => ({ getForeignShareholding: vi.fn() }));
 vi.mock("@/hooks/use-stock-data", () => ({
   useInstitutionalFlow: () => ({
