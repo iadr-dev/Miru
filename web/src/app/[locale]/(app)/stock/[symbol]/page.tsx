@@ -32,16 +32,19 @@ export default async function StockDetailPage({
   const market: Market = marketParam === "US" ? "US" : DEFAULT_MARKET;
   const symbolType = classifySymbolType(symbol);
 
+  let tabs: ReactNode;
+  if (market === "US") {
+    tabs = <UsDetailTabRouter symbol={symbol} market={market} />;
+  } else if (isEtfSymbolType(symbolType)) {
+    tabs = <EtfTabBar symbol={symbol} market={market} symbolType={symbolType} />;
+  } else {
+    tabs = <StockTabBar symbol={symbol} market={market} />;
+  }
+
   return (
     <div className="flex min-h-[100dvh] flex-col">
       <AssetHeader symbol={symbol} market={market} symbolType={symbolType} />
-      {market === "US" ? (
-        <UsDetailTabRouter symbol={symbol} market={market} />
-      ) : isEtfSymbolType(symbolType) ? (
-        <EtfTabBar symbol={symbol} market={market} symbolType={symbolType} />
-      ) : (
-        <StockTabBar symbol={symbol} market={market} />
-      )}
+      {tabs}
     </div>
   );
 }

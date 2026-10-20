@@ -155,6 +155,10 @@ function EtfListBody({
   );
 }
 
+function activeAriaSort(sortDirection: SortDirection): "ascending" | "descending" {
+  return sortDirection === "asc" ? "ascending" : "descending";
+}
+
 function EtfListHeaderRow({
   sortKey,
   sortDirection,
@@ -186,7 +190,7 @@ function EtfListHeaderRow({
     >
       {columns.map((col) => {
         const active = sortKey === col.key;
-        const ariaSort = active ? (sortDirection === "asc" ? "ascending" : "descending") : "none";
+        const ariaSort = active ? activeAriaSort(sortDirection) : "none";
         return (
           // aria-sort is only valid on a columnheader-role element, not on the interactive
           // <button> itself — this grid isn't a real <table>, so the role is applied by hand.

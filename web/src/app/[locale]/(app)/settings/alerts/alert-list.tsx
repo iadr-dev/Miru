@@ -96,6 +96,10 @@ export function AlertList({
 
   /** The group's members with whether each currently meets the rule (the engine records this per
    * symbol after every evaluation; a member it has not evaluated yet shows as pending). */
+  const memberStateLabel = (met: boolean | null): string => {
+    if (met === null) return t("memberPending");
+    return met ? t("memberMet") : t("memberNotMet");
+  };
   const memberStates = (alert: AlertRule): { symbol: string; met: boolean | null }[] => {
     const view = groupOf(alert.watchlist_id);
     const met = (alert.state.met ?? {}) as Record<string, unknown>;
@@ -204,12 +208,7 @@ export function AlertList({
                                 : "border-[var(--border)] text-[var(--text-muted)]",
                             )}
                           >
-                            {member.symbol} ·{" "}
-                            {member.met === null
-                              ? t("memberPending")
-                              : member.met
-                                ? t("memberMet")
-                                : t("memberNotMet")}
+                            {member.symbol} · {memberStateLabel(member.met)}
                           </li>
                         ))}
                       </ul>

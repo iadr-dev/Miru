@@ -201,7 +201,8 @@ function RelatedSettings(): ReactNode {
     queryFn: listPersonalityPresets,
   });
   const current = presets.data?.find((p) => p.id === me.data?.user.personality_id);
-  const toneName = current ? (locale === "zh-TW" ? current.name_zh : current.name_en) : "—";
+  let toneName = "—";
+  if (current) toneName = locale === "zh-TW" ? current.name_zh : current.name_en;
 
   return (
     <>

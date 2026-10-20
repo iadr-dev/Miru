@@ -292,13 +292,12 @@ function SortableHeaderCell({
   readonly direction: SortDirection;
   readonly onClick: () => void;
 }): ReactNode {
-  const CaretIcon = active ? (direction === "asc" ? CaretUpIcon : CaretDownIcon) : CaretUpDownIcon;
+  const asc = direction === "asc";
+  const ActiveCaretIcon = asc ? CaretUpIcon : CaretDownIcon;
+  const CaretIcon = active ? ActiveCaretIcon : CaretUpDownIcon;
+  const activeSort = asc ? "ascending" : "descending";
   return (
-    <div
-      role="columnheader"
-      aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
-      tabIndex={-1}
-    >
+    <div role="columnheader" aria-sort={active ? activeSort : "none"} tabIndex={-1}>
       <button
         type="button"
         onClick={onClick}

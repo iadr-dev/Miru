@@ -88,7 +88,8 @@ export function FeatureMenu({
               checked={deepResearch.enabled}
               onSelect={() => deepResearch.onChange(!deepResearch.enabled)}
             />
-          ) : deepResearchLocked ? (
+          ) : null}
+          {deepResearch === null && deepResearchLocked ? (
             <FeatureMenuItem
               icon={MagnifyingGlassIcon}
               label={t("featureMenuItems.deepResearchLocked")}

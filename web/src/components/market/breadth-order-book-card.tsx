@@ -72,6 +72,11 @@ const COLLAPSED_CONTRIBUTOR_COUNT = 5;
  * (`ingest/us_universe.py`'s own docstring), never the whole exchange the way TW's breadth
  * genuinely is — this label exists so 漲跌家數 for US is never mistaken for whole-market
  * breadth. */
+function bucketFill(key: string): string {
+  if (key === "unchanged") return "var(--text-muted)";
+  return key.startsWith("up") ? "var(--up)" : "var(--down)";
+}
+
 export function BreadthOrderBookCard({
   breadth,
   indexContribution,
@@ -158,16 +163,7 @@ export function BreadthOrderBookCard({
                 />
                 <Bar dataKey="count" name={t("breadthCountSeries")} radius={3}>
                   {bucketData.map((point) => (
-                    <Cell
-                      key={point.key}
-                      fill={
-                        point.key === "unchanged"
-                          ? "var(--text-muted)"
-                          : point.key.startsWith("up")
-                            ? "var(--up)"
-                            : "var(--down)"
-                      }
-                    />
+                    <Cell key={point.key} fill={bucketFill(point.key)} />
                   ))}
                 </Bar>
               </BarChart>

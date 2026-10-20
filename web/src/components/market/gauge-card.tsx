@@ -86,6 +86,7 @@ export function GaugeCard({
   const needleAngle =
     value === null ? GAUGE_MIN_ANGLE : valueToAngleDeg(value, domainMin, domainMax);
   const needleTip = polarToCartesian(needleAngle, NEEDLE_LENGTH);
+  const bandSuffix = activeBand ? ` ${activeBand.label}` : "";
 
   return (
     <div className="flex flex-wrap items-center gap-6">
@@ -133,9 +134,7 @@ export function GaugeCard({
             role="group"
             aria-label={
               value !== null
-                ? `${title} ${formatNumber(value, locale, { decimals })}${unit ?? ""}${
-                    activeBand ? ` ${activeBand.label}` : ""
-                  }`
+                ? `${title} ${formatNumber(value, locale, { decimals })}${unit ?? ""}${bandSuffix}`
                 : t("noData", { title })
             }
           >

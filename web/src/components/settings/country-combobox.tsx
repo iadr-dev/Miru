@@ -46,19 +46,17 @@ export function CountryCombobox({
   const [open, setOpen] = useState(false);
   const selected = value ? COUNTRIES.find((c) => c.iso2 === value) : undefined;
   const nameFor = (c: CountryEntry): string => (locale === "zh-TW" ? c.nameZh : c.nameEn);
+  const describe = (c: CountryEntry, separator: string): string => {
+    if (display === "dialCode") return `+${c.dialCode}${separator}${nameFor(c)}`;
+    return nameFor(c);
+  };
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
         type="button"
         aria-label={
-          selected
-            ? `${rest["aria-label"]}: ${
-                display === "dialCode"
-                  ? `+${selected.dialCode} ${nameFor(selected)}`
-                  : nameFor(selected)
-              }`
-            : rest["aria-label"]
+          selected ? `${rest["aria-label"]}: ${describe(selected, " ")}` : rest["aria-label"]
         }
         className={cn(
           "flex min-h-11 w-full items-center gap-2 rounded-[var(--radius-input)] border border-[var(--border)]",
@@ -68,11 +66,7 @@ export function CountryCombobox({
       >
         {selected ? <CountryFlag iso2={selected.iso2} /> : null}
         <span className={cn("flex-1 truncate", !selected && "text-[var(--text-muted)]")}>
-          {selected
-            ? display === "dialCode"
-              ? `+${selected.dialCode} · ${nameFor(selected)}`
-              : nameFor(selected)
-            : placeholder}
+          {selected ? describe(selected, " · ") : placeholder}
         </span>
         <CaretDownIcon size={14} weight="regular" className="shrink-0 text-[var(--text-muted)]" />
       </Popover.Trigger>

@@ -239,6 +239,28 @@ export function OverviewPanel({
     },
   ];
 
+  const ytdBody =
+    ytdReturn.value != null ? (
+      <div
+        className="mt-1 font-num text-[28px] tabular-nums"
+        style={{ color: directionColor(ytdReturn.value) }}
+      >
+        {directionGlyph(ytdReturn.value)}
+        {formatNumber(Math.abs(ytdReturn.value), locale, { decimals: 1 })}%
+      </div>
+    ) : (
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("ytdReturnUnavailable")}</p>
+    );
+  const holderBody =
+    holderCountWan != null ? (
+      <div className="mt-1 font-num text-[28px] text-[var(--text)] tabular-nums">
+        {formatNumber(holderCountWan, locale, { decimals: 2 })}
+        <span className="ml-1 text-[15px] text-[var(--text-muted)]">{t("holderCountUnit")}</span>
+      </div>
+    ) : (
+      <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("holderCountUnavailable")}</p>
+    );
+
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
       <section
@@ -250,16 +272,8 @@ export function OverviewPanel({
         <span className="text-[12.5px] text-[var(--text-muted)]">{t("ytdReturn")}</span>
         {ytdReturn.isLoading ? (
           <div className="mt-2 h-8 w-32 animate-pulse rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-        ) : ytdReturn.value != null ? (
-          <div
-            className="mt-1 font-num text-[28px] tabular-nums"
-            style={{ color: directionColor(ytdReturn.value) }}
-          >
-            {directionGlyph(ytdReturn.value)}
-            {formatNumber(Math.abs(ytdReturn.value), locale, { decimals: 1 })}%
-          </div>
         ) : (
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("ytdReturnUnavailable")}</p>
+          ytdBody
         )}
       </section>
 
@@ -272,15 +286,8 @@ export function OverviewPanel({
         <span className="text-[12.5px] text-[var(--text-muted)]">{t("holderCount")}</span>
         {themeTagsQuery.isLoading ? (
           <div className="mt-2 h-8 w-32 animate-pulse rounded-[var(--radius-input)] bg-[var(--surface-2)]" />
-        ) : holderCountWan != null ? (
-          <div className="mt-1 font-num text-[28px] text-[var(--text)] tabular-nums">
-            {formatNumber(holderCountWan, locale, { decimals: 2 })}
-            <span className="ml-1 text-[15px] text-[var(--text-muted)]">
-              {t("holderCountUnit")}
-            </span>
-          </div>
         ) : (
-          <p className="mt-1 text-[13px] text-[var(--text-muted)]">{t("holderCountUnavailable")}</p>
+          holderBody
         )}
       </section>
 

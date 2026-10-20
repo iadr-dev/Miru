@@ -234,15 +234,12 @@ function CostKpi({
   if (picked !== null) {
     const cost = modelCost(picked);
     const value = cost.kind === "unpriced" ? "—" : costString(cost.kind, cost.micros);
+    const hintKey = cost.kind === "estimated" ? "estimatedHint" : "unpricedHint";
     return (
       <Kpi
         label={t("kpi.cost")}
         value={value}
-        note={
-          cost.kind === "reported"
-            ? undefined
-            : t(cost.kind === "estimated" ? "estimatedHint" : "unpricedHint")
-        }
+        note={cost.kind === "reported" ? undefined : t(hintKey)}
       />
     );
   }
@@ -250,8 +247,8 @@ function CostKpi({
   const known = perProvider.filter((p) => p.kind !== "unpriced");
   const total = known.reduce((sum, p) => sum + p.costMicros, 0);
   const hasEstimate = known.some((p) => p.kind === "estimated");
-  const value =
-    known.length === 0 ? "—" : costString(hasEstimate ? "estimated" : "reported", total);
+  const totalKind = hasEstimate ? "estimated" : "reported";
+  const value = known.length === 0 ? "—" : costString(totalKind, total);
   return (
     <Kpi
       label={t("kpi.cost")}

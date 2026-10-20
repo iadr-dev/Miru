@@ -363,6 +363,12 @@ export function VoiceModeOverlay({
   );
 }
 
+function orbPulseSpeed(phase: VoicePhase): number {
+  if (phase === "listening") return 1.4;
+  if (phase === "speaking") return 0.9;
+  return 2.2;
+}
+
 /** The pulsing orb visualization — color/motion intensity reflects `phase` (governance: this is
  * chrome-only motion, never a price/score, so it isn't bound by the non-trading motion
  * restrictions on magnitude-scaled animation; it's decorative state feedback, same category as
@@ -374,7 +380,7 @@ function VoiceOrb({
   phase: VoicePhase;
   reduceMotion: boolean | null;
 }>): ReactNode {
-  const pulseSpeed = phase === "listening" ? 1.4 : phase === "speaking" ? 0.9 : 2.2;
+  const pulseSpeed = orbPulseSpeed(phase);
   return (
     <div className="relative flex size-40 items-center justify-center">
       <AnimatePresence>

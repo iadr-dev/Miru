@@ -155,11 +155,9 @@ function CategoryChip({
       style={active && color ? { backgroundColor: color, color: "#06231F" } : undefined}
       className={cn(
         "rounded-[var(--radius-pill)] px-3 py-1 text-[12px] transition-colors",
-        active
-          ? color
-            ? "font-semibold"
-            : "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]"
-          : "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
+        active && color && "font-semibold",
+        active && !color && "bg-[var(--accent-weak)] font-semibold text-[var(--accent-text)]",
+        !active && "bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)]",
       )}
     >
       {label} {count}

@@ -129,6 +129,33 @@ export function VoiceModeTriggerButton({
   );
 }
 
+/** A plain function (not a component) so the keyed button stays a direct child of AnimatePresence. */
+function renderNonSendButton({
+  voiceState,
+  voiceLabel,
+  streaming,
+  reduceMotion,
+  onStartRecording,
+}: Readonly<{
+  voiceState: "idle" | "recording" | "transcribing";
+  voiceLabel: string;
+  streaming: boolean;
+  reduceMotion: boolean | null;
+  onStartRecording: () => void;
+}>): ReactNode {
+  if (voiceState === "transcribing") {
+    return <TranscribingButton voiceLabel={voiceLabel} reduceMotion={reduceMotion} />;
+  }
+  return (
+    <StartRecordingButton
+      voiceLabel={voiceLabel}
+      streaming={streaming}
+      reduceMotion={reduceMotion}
+      onStartRecording={onStartRecording}
+    />
+  );
+}
+
 function TranscribingButton({
   voiceLabel,
   reduceMotion,
@@ -230,15 +257,14 @@ export function VoiceOrSendButton({
       <AnimatePresence initial={false} mode="wait">
         {canSend ? (
           <SendButton sendLabel={sendLabel} reduceMotion={reduceMotion} />
-        ) : voiceState === "transcribing" ? (
-          <TranscribingButton voiceLabel={voiceLabel} reduceMotion={reduceMotion} />
         ) : (
-          <StartRecordingButton
-            voiceLabel={voiceLabel}
-            streaming={streaming}
-            reduceMotion={reduceMotion}
-            onStartRecording={onStartRecording}
-          />
+          renderNonSendButton({
+            voiceState,
+            voiceLabel,
+            streaming,
+            reduceMotion,
+            onStartRecording,
+          })
         )}
       </AnimatePresence>
     </div>

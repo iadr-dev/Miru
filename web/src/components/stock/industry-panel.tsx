@@ -349,6 +349,23 @@ function SubIndustryMembersModal({
   const { quotes } = useSymbolQuotes(memberSymbols, market);
   const quoteBySymbol = useMemo(() => new Map(quotes.map((q) => [q.code, q])), [quotes]);
 
+  let body: ReactNode;
+  if (membersQuery.isLoading) {
+    body = <CardSkeletonBody height={280} />;
+  } else if (memberSymbols.length === 0) {
+    body = <p className="text-[13px] text-[var(--text-muted)]">{t("noMembers")}</p>;
+  } else {
+    body = (
+      <SymbolQuoteRows
+        rows={memberSymbols.map((symbol) => ({ symbol }))}
+        quoteBySymbol={quoteBySymbol}
+        market={market}
+        assetClass="stock"
+        gridCols="grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_28px]"
+      />
+    );
+  }
+
   return (
     <ExpandModal
       open={subIndustry !== null}
@@ -356,19 +373,7 @@ function SubIndustryMembersModal({
       closeLabel={t("closeMembers")}
       onClose={onClose}
     >
-      {membersQuery.isLoading ? (
-        <CardSkeletonBody height={280} />
-      ) : memberSymbols.length === 0 ? (
-        <p className="text-[13px] text-[var(--text-muted)]">{t("noMembers")}</p>
-      ) : (
-        <SymbolQuoteRows
-          rows={memberSymbols.map((symbol) => ({ symbol }))}
-          quoteBySymbol={quoteBySymbol}
-          market={market}
-          assetClass="stock"
-          gridCols="grid-cols-[1.3fr_0.8fr_0.8fr_0.9fr_0.9fr_28px]"
-        />
-      )}
+      {body}
     </ExpandModal>
   );
 }

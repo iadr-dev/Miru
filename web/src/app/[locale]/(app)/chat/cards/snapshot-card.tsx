@@ -235,9 +235,7 @@ export function SnapshotCard({
               }
             >
               {typeof value === "number"
-                ? COMPACT_NUMBER_FIELDS.has(key)
-                  ? formatCompactNumber(asNumber(value), locale)
-                  : formatNumber(asNumber(value), locale)
+                ? formatNumericField(key, value, locale)
                 : valueLabel(t, key, String(value))}
             </p>
           </div>
@@ -284,4 +282,9 @@ function unwrapEntity(data: unknown): Record<string, unknown> | null {
   }
   // company_profile has no wrapper — its fields sit at the top level.
   return record;
+}
+
+function formatNumericField(key: string, value: number, locale: string): string {
+  if (COMPACT_NUMBER_FIELDS.has(key)) return formatCompactNumber(asNumber(value), locale);
+  return formatNumber(asNumber(value), locale);
 }

@@ -231,6 +231,16 @@ export function BillingPanel(): ReactNode {
   // second checkout would bill them twice, so the server refuses it too.
   const block = live && subscription ? changeBlockReason(subscription, selectedPlan) : null;
   const notice = subscriptionNotice(subscription);
+  let noticeText: string;
+  if (notice === "pastDue") {
+    noticeText = t("pastDueNotice");
+  } else if (notice === "paused") {
+    noticeText = t("pausedNotice");
+  } else {
+    noticeText = t("cancelScheduledNotice", {
+      date: formatDate(subscription?.scheduled_cancel_at, locale) ?? "",
+    });
+  }
   const planLabel = `${t(`tierOption.${tier}`)} · ${t(`intervalOption.${interval}`)}${byok ? ` · ${t("byok")}` : ""}`;
   const confirmText = t("confirmChangeText", {
     plan: selectedPlan?.price
@@ -243,6 +253,75 @@ export function BillingPanel(): ReactNode {
       ? plansQuery.error.code === "billing_unconfigured"
       : !plansQuery.data?.client_token && (plansQuery.data?.plans.length ?? 0) === 0;
 
+  let subscriptionBody: ReactNode;
+  if (subscriptionQuery.isError) {
+    subscriptionBody = (
+      <SettingsError message={tc("errorLoad")} onRetry={() => void subscriptionQuery.refetch()} />
+    );
+  } else if (subscription && live) {
+    subscriptionBody = (
+      <SettingsRow label={t("currentPlan")} hint={subscriptionHint(t, subscription, plans, locale)}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={portalMutation.isPending}
+          onClick={() =>
+            portalMutation.mutate({ tab: window.open("", "_blank"), purpose: "overview" })
+          }
+        >
+          {t("managePlan")}
+        </Button>
+      </SettingsRow>
+    );
+  } else {
+    subscriptionBody = (
+      <p className="text-[13px] text-[var(--text-muted)]">{t("noSubscription")}</p>
+    );
+  }
+
+  let plansBody: ReactNode = null;
+  if (unconfigured) {
+    plansBody = <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>;
+  } else if (subscriptionQuery.isError) {
+    plansBody = null;
+  } else if (live) {
+    plansBody = (
+      <PlansForm
+        tier={tier}
+        setTier={setTier}
+        interval={interval}
+        setInterval={setInterval}
+        byok={byok}
+        setByok={setByok}
+        actionError={actionError}
+        pending={changeMutation.isPending}
+        onSubmit={() => changeMutation.mutate()}
+        submitLabel={t("changePlan")}
+        blockedNote={block ? t(`changeBlocked.${block}`) : null}
+        confirmText={confirmText}
+        plan={selectedPlan}
+        locale={locale}
+      />
+    );
+  } else {
+    plansBody = (
+      <PlansForm
+        tier={tier}
+        setTier={setTier}
+        interval={interval}
+        setInterval={setInterval}
+        byok={byok}
+        setByok={setByok}
+        actionError={actionError}
+        pending={checkoutMutation.isPending}
+        onSubmit={() => checkoutMutation.mutate()}
+        submitLabel={t("checkout")}
+        plan={selectedPlan}
+        locale={locale}
+      />
+    );
+  }
+
   return (
     <>
       {activation === "idle" ? null : (
@@ -251,40 +330,11 @@ export function BillingPanel(): ReactNode {
         </p>
       )}
       <SettingsSection title={t("subscriptionTitle")} className="mb-6">
-        {subscriptionQuery.isError ? (
-          <SettingsError
-            message={tc("errorLoad")}
-            onRetry={() => void subscriptionQuery.refetch()}
-          />
-        ) : subscription && live ? (
-          <SettingsRow
-            label={t("currentPlan")}
-            hint={subscriptionHint(t, subscription, plans, locale)}
-          >
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={portalMutation.isPending}
-              onClick={() =>
-                portalMutation.mutate({ tab: window.open("", "_blank"), purpose: "overview" })
-              }
-            >
-              {t("managePlan")}
-            </Button>
-          </SettingsRow>
-        ) : (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("noSubscription")}</p>
-        )}
+        {subscriptionBody}
         {notice ? (
           <div className="flex items-center justify-between gap-3 border-[var(--border)] border-t py-3">
             <p role="status" className="text-[13px] text-[var(--warn)]">
-              {notice === "pastDue"
-                ? t("pastDueNotice")
-                : notice === "paused"
-                  ? t("pausedNotice")
-                  : t("cancelScheduledNotice", {
-                      date: formatDate(subscription?.scheduled_cancel_at, locale) ?? "",
-                    })}
+              {noticeText}
             </p>
             {notice === "pastDue" ? (
               <Button
@@ -324,41 +374,7 @@ export function BillingPanel(): ReactNode {
       </SettingsSection>
 
       <SettingsSection title={t("plansTitle")} className="mb-6">
-        {unconfigured ? (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("unconfigured")}</p>
-        ) : subscriptionQuery.isError ? null : live ? (
-          <PlansForm
-            tier={tier}
-            setTier={setTier}
-            interval={interval}
-            setInterval={setInterval}
-            byok={byok}
-            setByok={setByok}
-            actionError={actionError}
-            pending={changeMutation.isPending}
-            onSubmit={() => changeMutation.mutate()}
-            submitLabel={t("changePlan")}
-            blockedNote={block ? t(`changeBlocked.${block}`) : null}
-            confirmText={confirmText}
-            plan={selectedPlan}
-            locale={locale}
-          />
-        ) : (
-          <PlansForm
-            tier={tier}
-            setTier={setTier}
-            interval={interval}
-            setInterval={setInterval}
-            byok={byok}
-            setByok={setByok}
-            actionError={actionError}
-            pending={checkoutMutation.isPending}
-            onSubmit={() => checkoutMutation.mutate()}
-            submitLabel={t("checkout")}
-            plan={selectedPlan}
-            locale={locale}
-          />
-        )}
+        {plansBody}
       </SettingsSection>
 
       <SettingsSection title={t("historyTitle")}>

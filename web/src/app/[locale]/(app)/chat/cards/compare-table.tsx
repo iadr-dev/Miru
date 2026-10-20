@@ -75,11 +75,7 @@ function EntityRows({
                         : "border-[var(--border)] border-b px-3 py-2 text-[var(--text)]"
                     }
                   >
-                    {typeof value === "number"
-                      ? formatNumber(asNumber(value), locale)
-                      : Array.isArray(value)
-                        ? value.map((v) => asString(v) ?? String(v)).join(", ")
-                        : (asString(value) ?? "—")}
+                    {formatCompareCell(value, locale)}
                   </td>
                 );
               })}
@@ -89,6 +85,12 @@ function EntityRows({
       </table>
     </div>
   );
+}
+
+function formatCompareCell(value: unknown, locale: string): string {
+  if (typeof value === "number") return formatNumber(asNumber(value), locale);
+  if (Array.isArray(value)) return value.map((v) => asString(v) ?? String(v)).join(", ");
+  return asString(value) ?? "—";
 }
 
 function PairwiseRows({

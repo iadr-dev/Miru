@@ -79,12 +79,12 @@ function SubscriptionForm({
     );
   };
 
-  const error =
-    save.error instanceof StrategyWatchApiError && save.error.status === 409
-      ? t("form.conflict")
-      : save.error
-        ? t("form.failed")
-        : null;
+  let error: string | null = null;
+  if (save.error instanceof StrategyWatchApiError && save.error.status === 409) {
+    error = t("form.conflict");
+  } else if (save.error) {
+    error = t("form.failed");
+  }
 
   return (
     <form onSubmit={submit} className="space-y-5 text-[13px]">
@@ -153,7 +153,8 @@ function SubscriptionForm({
               ))}
             </select>
           </label>
-        ) : groupOptions.length === 0 ? (
+        ) : null}
+        {groupId === null && groupOptions.length === 0 ? (
           <p className="pl-6 text-[12px] text-[var(--text-muted)]">{t("form.noGroups")}</p>
         ) : null}
       </fieldset>

@@ -71,6 +71,18 @@ export function ActiveTurnView({
   const showProcess =
     turn.toolSteps.length > 0 || turn.lanes.length > 0 || turn.thinkingChunks.length > 0;
 
+  const streamingPartial =
+    turn.answerText === null && turn.streamingAnswerText !== null ? (
+      // The live partial render while the terminal `message` frame hasn't landed yet —
+      // deliberately `aria-live="off"` (matches the thinking/tool narration rule in §7):
+      // `aria-live="polite"` above fires only once, on the FINAL answer, not on every
+      // growing partial. No actions/caveat/sources here either — those are only
+      // meaningful once the complete, governance-finalized text exists.
+      <div className="mt-1" aria-live="off">
+        <AnswerMarkdown text={typedStreamingAnswer} />
+      </div>
+    ) : null;
+
   return (
     <div className="flex flex-col gap-4">
       <UserBubble text={turn.userText} label={t("you")} />
@@ -111,16 +123,9 @@ export function ActiveTurnView({
              * persisted turn id). Copy/read-aloud need no turn id, so they're available now. */}
             <AssistantActions text={turn.answerText} />
           </div>
-        ) : turn.streamingAnswerText !== null ? (
-          // The live partial render while the terminal `message` frame hasn't landed yet —
-          // deliberately `aria-live="off"` (matches the thinking/tool narration rule in §7):
-          // `aria-live="polite"` above fires only once, on the FINAL answer, not on every
-          // growing partial. No actions/caveat/sources here either — those are only
-          // meaningful once the complete, governance-finalized text exists.
-          <div className="mt-1" aria-live="off">
-            <AnswerMarkdown text={typedStreamingAnswer} />
-          </div>
-        ) : null}
+        ) : (
+          streamingPartial
+        )}
 
         {turn.phase === "error" ? (
           <InlineError message={turn.errorMessage} fallback={t("error")} code={turn.errorCode} />
@@ -547,6 +552,12 @@ function ProcessDisclosure({ turn }: Readonly<{ turn: ActiveTurn }>): ReactNode 
   );
 }
 
+function laneDotClass(degraded: boolean, status: string | undefined): string {
+  if (degraded) return "bg-[var(--warn)]";
+  if (status === "running") return "bg-[var(--accent)]";
+  return "bg-[var(--text-muted)]";
+}
+
 /** One lane's header row (skipped for the root/no-lane bucket) plus its nested sub-timeline of
  * tool/thinking entries — the `|_` indentation from the flat-timeline predecessor's visual rule,
  * scoped to just this lane's own entries instead of spanning the whole turn. */
@@ -558,11 +569,7 @@ function LaneGroupRow({
   t: ReturnType<typeof useTranslations>;
 }>): ReactNode {
   const degraded = group.lane?.status === "degraded";
-  const dotClass = degraded
-    ? "bg-[var(--warn)]"
-    : group.lane?.status === "running"
-      ? "bg-[var(--accent)]"
-      : "bg-[var(--text-muted)]";
+  const dotClass = laneDotClass(degraded, group.lane?.status);
 
   return (
     <li className="flex flex-col gap-1.5">

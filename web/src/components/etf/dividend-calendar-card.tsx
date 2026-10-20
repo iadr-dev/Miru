@@ -82,6 +82,50 @@ export function DividendCalendarCard({
   const data = query.data;
   const events = data?.data_available ? data.events.filter((event) => event.symbol === symbol) : [];
 
+  let body: ReactNode;
+  if (!data?.data_available) {
+    body = (
+      <p className="text-[13px] text-[var(--text-muted)]">
+        {data?.unavailable_reason ?? t("unavailable")}
+      </p>
+    );
+  } else if (view !== "list") {
+    body = (
+      <DividendCalendarView
+        year={cursor.year}
+        month={cursor.month}
+        events={events}
+        onPrevMonth={goToPrevMonth}
+        onNextMonth={goToNextMonth}
+      />
+    );
+  } else if (events.length === 0) {
+    body = <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>;
+  } else {
+    body = (
+      <>
+        <DividendEventList events={events.slice(0, COLLAPSED_EVENT_COUNT)} />
+        {events.length > COLLAPSED_EVENT_COUNT ? (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
+          >
+            {t("expandTo", { count: events.length })}
+          </button>
+        ) : null}
+        <ExpandModal
+          open={expanded}
+          title={t("title")}
+          closeLabel={t("collapse")}
+          onClose={() => setExpanded(false)}
+        >
+          <DividendEventList events={events} />
+        </ExpandModal>
+      </>
+    );
+  }
+
   return (
     <section className="surface-card p-4 sm:p-5">
       <div className="mb-3 flex items-center justify-between">
@@ -100,44 +144,7 @@ export function DividendCalendarCard({
         </div>
       </div>
 
-      {!data?.data_available ? (
-        <p className="text-[13px] text-[var(--text-muted)]">
-          {data?.unavailable_reason ?? t("unavailable")}
-        </p>
-      ) : view === "list" ? (
-        events.length === 0 ? (
-          <p className="text-[13px] text-[var(--text-muted)]">{t("empty")}</p>
-        ) : (
-          <>
-            <DividendEventList events={events.slice(0, COLLAPSED_EVENT_COUNT)} />
-            {events.length > COLLAPSED_EVENT_COUNT ? (
-              <button
-                type="button"
-                onClick={() => setExpanded(true)}
-                className="mt-2.5 flex min-h-11 w-full items-center justify-center gap-1.5 rounded-[var(--radius-input)] bg-[var(--surface-2)] text-[12.5px] text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-3)] hover:text-[var(--text)]"
-              >
-                {t("expandTo", { count: events.length })}
-              </button>
-            ) : null}
-            <ExpandModal
-              open={expanded}
-              title={t("title")}
-              closeLabel={t("collapse")}
-              onClose={() => setExpanded(false)}
-            >
-              <DividendEventList events={events} />
-            </ExpandModal>
-          </>
-        )
-      ) : (
-        <DividendCalendarView
-          year={cursor.year}
-          month={cursor.month}
-          events={events}
-          onPrevMonth={goToPrevMonth}
-          onNextMonth={goToNextMonth}
-        />
-      )}
+      {body}
     </section>
   );
 }

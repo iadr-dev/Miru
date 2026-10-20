@@ -59,7 +59,7 @@ export function Sidebar({
       className={cn(
         "flex h-full flex-col border-[var(--border)] border-r bg-[var(--surface)]",
         "transition-all duration-300 ease-out",
-        fluid ? "w-full" : collapsed ? "w-16" : "w-60",
+        sidebarWidthClass(fluid, collapsed),
       )}
     >
       {/* Header: logo + collapse toggle */}
@@ -202,4 +202,9 @@ function NavRow({
       )}
     </Link>
   );
+}
+
+function sidebarWidthClass(fluid: boolean, collapsed: boolean): string {
+  if (fluid) return "w-full";
+  return collapsed ? "w-16" : "w-60";
 }

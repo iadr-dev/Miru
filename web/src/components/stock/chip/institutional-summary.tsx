@@ -163,8 +163,10 @@ export function InstitutionalSummaryBody({
       : null;
   const allRollingNet = bankRollingRow ? [...rollingNet, bankRollingRow] : rollingNet;
 
-  const netForWindow = (row: (typeof allRollingNet)[number]): number | null | undefined =>
-    window === "5d" ? row.net_5d : window === "10d" ? row.net_10d : row.net_20d;
+  const netForWindow = (row: (typeof allRollingNet)[number]): number | null | undefined => {
+    if (window === "5d") return row.net_5d;
+    return window === "10d" ? row.net_10d : row.net_20d;
+  };
 
   // A category with no real activity in any of the 3 rolling windows renders as a bare
   // zero-height bar with a label and nothing else. Two distinct "no data" shapes from the

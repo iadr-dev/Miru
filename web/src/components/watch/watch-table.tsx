@@ -96,7 +96,7 @@ export function WatchTable({
                     style={{ backgroundColor: color }}
                   />
                   {t(`levels.${level.key}`)}
-                  {distance !== null ? ` ${distance >= 0 ? "+" : ""}${distance.toFixed(1)}%` : ""}
+                  {distance !== null ? ` ${signPrefix(distance)}${distance.toFixed(1)}%` : ""}
                 </span>
               </td>
               <td className="px-2 py-2">
@@ -166,4 +166,8 @@ export function ConditionDots({
       ))}
     </span>
   );
+}
+
+function signPrefix(distance: number): string {
+  return distance >= 0 ? "+" : "";
 }
